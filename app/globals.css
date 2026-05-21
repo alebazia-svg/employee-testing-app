@@ -1,4 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-body { @apply bg-background text-foreground; }
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply min-h-screen bg-background text-foreground antialiased;
+  background-image:
+    radial-gradient(circle at 10% 10%, rgba(22, 163, 74, 0.08), transparent 35%),
+    radial-gradient(circle at 90% 90%, rgba(34, 197, 94, 0.08), transparent 30%);
+}
