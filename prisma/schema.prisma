@@ -1,0 +1,39 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "sqlite" url = env("DATABASE_URL") }
+
+enum Role { ADMIN EMPLOYEE }
+model User {
+  id Int @id @default(autoincrement())
+  login String @unique
+  passwordHash String
+  role Role
+  results Result[]
+}
+model Test {
+  id Int @id @default(autoincrement())
+  title String
+  passingScore Int
+  showCorrectAnswers Boolean @default(false)
+  questions Question[]
+  results Result[]
+}
+model Question {
+  id Int @id @default(autoincrement())
+  text String
+  options Json
+  correctIndex Int
+  testId Int
+  test Test @relation(fields:[testId], references:[id], onDelete: Cascade)
+}
+model Result {
+  id Int @id @default(autoincrement())
+  userId Int
+  testId Int
+  date DateTime @default(now())
+  percent Int
+  status String
+  mistakes Int
+  details Json
+  user User @relation(fields:[userId], references:[id])
+  test Test @relation(fields:[testId], references:[id])
+}
