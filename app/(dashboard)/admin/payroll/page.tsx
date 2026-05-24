@@ -132,7 +132,7 @@ type PayrollManualInput = {
 };
 
 type PayrollDaysSource = 'manual' | 'attendance' | 'schedule' | 'manualCorrection';
-type SalaryType = 'vl_percent' | 'wholesale_percent' | 'retail_sales_bonus' | 'fixed_salary';
+type SalaryType = 'vl_percent' | 'wholesale_percent' | 'retail_sales_bonus' | 'fixed_salary' | 'purchase_manager';
 
 type PayrollEmployee = {
   name: string;
@@ -149,6 +149,18 @@ type FixedPayrollInput = {
   comment: string;
 };
 
+type PurchasePayrollInput = {
+  advance: string;
+  deduction: string;
+  comment: string;
+};
+
+type PurchaseReportState = {
+  fileName: string;
+  base: number | null;
+  sourceRow: number | null;
+};
+
 type FullPayrollRow = BonusManagerSummary & {
   payrollDepartment: string;
   position: string;
@@ -159,6 +171,11 @@ type FullPayrollRow = BonusManagerSummary & {
   fixedSalary: number;
   fixedBonus: number;
   fixedDeduction: number;
+  purchaseBase: number | null;
+  purchasePercent: number;
+  purchasePercentAmount: number;
+  purchaseTargetAdjustment: number;
+  purchaseTargetSalary: number;
   comment: string;
   daysSource: PayrollDaysSource;
   dayRate: number;
@@ -167,7 +184,7 @@ type FullPayrollRow = BonusManagerSummary & {
   disciplineBonus: number;
   grossPay: number;
   netPay: number;
-  salaryRule: 'standard' | 'noDayPay' | 'belaPercent' | 'fixedSalary';
+  salaryRule: 'standard' | 'noDayPay' | 'belaPercent' | 'fixedSalary' | 'purchaseManager';
   payrollStatus: 'OK' | 'Проверить';
   payrollReasons: string[];
 };
@@ -334,6 +351,12 @@ const payrollEmployees: Record<string, PayrollEmployee> = {
     salaryType: 'fixed_salary',
     salary: 30000,
   },
+  'Тохов Астемир': {
+    name: 'Тохов Астемир',
+    department: 'Отдел закупок',
+    position: 'Менеджер по закупкам',
+    salaryType: 'purchase_manager',
+  },
 };
 
 const payrollAttendanceConfig: Record<string, PayrollAttendanceConfig> = {
@@ -406,6 +429,20 @@ type PayrollAttendancePreviewResponse = {
   scheduleSummaries: PayrollAttendanceScheduleSummary[];
 };
 
+type AttendanceApplyResult = {
+  fullApplied: number;
+  daysOnlyApplied: number;
+  skipped: number;
+  preservedManualFields: number;
+  rows: Array<{
+    manager: string;
+    sourceType: PayrollAttendanceSourceType;
+    appliedWorkedDays: number | null;
+    daySourceField: string;
+    appliedLateCount: number | null;
+  }>;
+};
+
 type PayrollParseResult = {
   headerIndex: number;
   headerMap: HeaderMap | null;
@@ -444,6 +481,11 @@ const months = [
 ];
 
 const years = Array.from({ length: 7 }, (_, index) => new Date().getFullYear() - 3 + index);
+const purchaseManagerName = 'Тохов Астемир';
+const purchaseTargetSalary = 100000;
+const purchaseStandardWorkedDays = 20;
+const purchaseDayRate = 600;
+const purchasePercent = 0.0175;
 
 const headerAliases = {
   manager: ['менеджер'],
@@ -1302,6 +1344,16 @@ function parseManualNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseReportNumber(value: CellValue) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const compact = value.trim().replace(/\s/g, '');
+  const normalized = compact.includes('.') ? compact.replace(/,/g, '') : compact.replace(',', '.');
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizePersonName(name: string) {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -1351,6 +1403,11 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
     fixedSalary: 0,
     fixedBonus: 0,
     fixedDeduction: 0,
+    purchaseBase: null,
+    purchasePercent: 0,
+    purchasePercentAmount: 0,
+    purchaseTargetAdjustment: 0,
+    purchaseTargetSalary: 0,
     comment: manual?.comment ?? '',
     daysSource: manual?.source ?? 'manual',
     dayRate,
@@ -1415,6 +1472,11 @@ function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>): FullP
         fixedSalary,
         fixedBonus,
         fixedDeduction,
+        purchaseBase: null,
+        purchasePercent: 0,
+        purchasePercentAmount: 0,
+        purchaseTargetAdjustment: 0,
+        purchaseTargetSalary: 0,
         comment: input?.comment ?? '',
         daysSource: 'manual',
         dayRate: 0,
@@ -1428,6 +1490,75 @@ function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>): FullP
         payrollReasons,
       } satisfies FullPayrollRow;
     });
+}
+
+function parsePurchaseReport(rows: SheetRow[]) {
+  const headerIndex = rows.findIndex((row) => row.values.some((value) => String(value ?? '').trim() === 'Увеличение нашего долга'));
+  if (headerIndex === -1) return { base: null, sourceRow: null };
+
+  const columnIndex = rows[headerIndex].values.findIndex((value) => String(value ?? '').trim() === 'Увеличение нашего долга');
+  const valueRow = rows.slice(headerIndex + 1).find((row) => parseReportNumber(row.values[columnIndex]) !== null);
+  const base = valueRow ? parseReportNumber(valueRow.values[columnIndex]) : null;
+
+  return {
+    base,
+    sourceRow: valueRow?.excelRow ?? null,
+  };
+}
+
+function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined, report: PurchaseReportState | null): FullPayrollRow {
+  const employee = payrollEmployees[purchaseManagerName];
+  const purchaseBase = report?.base ?? null;
+  const purchasePercentAmount = purchaseBase === null ? 0 : purchaseBase * purchasePercent;
+  const dayPay = purchaseStandardWorkedDays * purchaseDayRate;
+  const rawAdjustment = purchaseTargetSalary - dayPay - purchasePercentAmount;
+  const purchaseTargetAdjustment = purchaseBase === null ? 0 : Math.max(rawAdjustment, 0);
+  const advance = parseManualNumber(input?.advance ?? '') ?? 0;
+  const fixedDeduction = parseManualNumber(input?.deduction ?? '') ?? 0;
+  const grossPay = dayPay + purchasePercentAmount + purchaseTargetAdjustment;
+  const netPay = grossPay - advance - fixedDeduction;
+  const payrollReasons = [
+    purchaseBase === null ? 'Отчёт закупок не загружен или сумма закупок не найдена' : '',
+    rawAdjustment < 0 ? 'Проверить: расчёт по закупкам выше целевой ЗП' : '',
+  ].filter(Boolean);
+
+  return {
+    manager: employee.name,
+    department: 'Розница',
+    payrollDepartment: employee.department,
+    position: employee.position,
+    salaryType: 'purchase_manager',
+    revenue: 0,
+    grossProfit: 0,
+    creditBonus: 0,
+    filmBonus: 0,
+    techBonus: 0,
+    accessoryBonus: 0,
+    wholesaleBonus: 0,
+    totalBonus: 0,
+    workedDays: purchaseStandardWorkedDays,
+    lateCount: null,
+    advance,
+    fixedSalary: 0,
+    fixedBonus: 0,
+    fixedDeduction,
+    purchaseBase,
+    purchasePercent,
+    purchasePercentAmount,
+    purchaseTargetAdjustment,
+    purchaseTargetSalary,
+    comment: input?.comment ?? '',
+    daysSource: 'manual',
+    dayRate: purchaseDayRate,
+    dayPay,
+    salesBonus: 0,
+    disciplineBonus: 0,
+    grossPay,
+    netPay,
+    salaryRule: 'purchaseManager',
+    payrollStatus: payrollReasons.length ? 'Проверить' : 'OK',
+    payrollReasons,
+  };
 }
 
 function getPayrollStatusClass(status: 'OK' | 'Проверить') {
@@ -1449,6 +1580,7 @@ function getPayrollDaysSourceLabel(source: PayrollDaysSource) {
 }
 
 function getSalaryTypeLabel(salaryType: SalaryType) {
+  if (salaryType === 'purchase_manager') return 'Закупщик';
   if (salaryType === 'fixed_salary') return 'Фиксированная зарплата';
   if (salaryType === 'vl_percent') return 'ВЛ процент';
   if (salaryType === 'wholesale_percent') return 'Оптовый процент';
@@ -1456,6 +1588,7 @@ function getSalaryTypeLabel(salaryType: SalaryType) {
 }
 
 function getSalaryFormulaLabel(salaryType: SalaryType) {
+  if (salaryType === 'purchase_manager') return '20 × 600 + закупки × 1,75% + доведение до 100 000 - аванс - удержание';
   if (salaryType === 'fixed_salary') return 'оклад + премия - аванс - удержание';
   if (salaryType === 'vl_percent') return '12% от итоговых ЗП сотрудников';
   if (salaryType === 'wholesale_percent') return 'оптовый бонус + дни + дисциплина - аванс';
@@ -1582,15 +1715,13 @@ export default function AdminPayrollPage() {
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
   const [manualPayroll, setManualPayroll] = useState<Record<string, PayrollManualInput>>({});
   const [fixedPayroll, setFixedPayroll] = useState<Record<string, FixedPayrollInput>>({});
+  const [purchasePayroll, setPurchasePayroll] = useState<PurchasePayrollInput>({ advance: '', deduction: '', comment: '' });
+  const [purchaseReport, setPurchaseReport] = useState<PurchaseReportState | null>(null);
+  const [purchaseError, setPurchaseError] = useState('');
   const [attendancePreview, setAttendancePreview] = useState<PayrollAttendancePreviewResponse | null>(null);
   const [attendancePreviewError, setAttendancePreviewError] = useState('');
   const [isAttendancePreviewLoading, setIsAttendancePreviewLoading] = useState(false);
-  const [attendanceApplyResult, setAttendanceApplyResult] = useState<{
-    fullApplied: number;
-    daysOnlyApplied: number;
-    skipped: number;
-    preservedManualFields: number;
-  } | null>(null);
+  const [attendanceApplyResult, setAttendanceApplyResult] = useState<AttendanceApplyResult | null>(null);
   const [problemManagerFilter, setProblemManagerFilter] = useState('all');
   const [problemDepartmentFilter, setProblemDepartmentFilter] = useState('all');
   const [problemCategoryFilter, setProblemCategoryFilter] = useState('all');
@@ -1625,7 +1756,10 @@ export default function AdminPayrollPage() {
     [classification.managerSummaries, manualPayroll],
   );
   const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll), [fixedPayroll]);
-  const fullPayrollRows = useMemo(() => [...salesPayrollRows, ...fixedPayrollRows], [salesPayrollRows, fixedPayrollRows]);
+  const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport), [purchasePayroll, purchaseReport]);
+  const fullPayrollRows = useMemo(() => [...salesPayrollRows, ...fixedPayrollRows, purchasePayrollRow], [salesPayrollRows, fixedPayrollRows, purchasePayrollRow]);
+  const purchaseTargetBase = purchaseTargetSalary / purchasePercent;
+  const purchaseCompletionPercent = (purchasePayrollRow.purchasePercentAmount / purchaseTargetSalary) * 100;
   const payrollAttendanceMappingRows = useMemo(
     () =>
       salesPayrollRows.map((row) => {
@@ -1666,6 +1800,8 @@ export default function AdminPayrollPage() {
           uniqueFormDates,
           scheduleDays,
           workedDays: null,
+          daysToApply: null,
+          daySourceField: 'manual',
           lateCount: null,
           status: 'проверить',
           comment: 'Нет настройки источника для предпросмотра.',
@@ -1683,6 +1819,8 @@ export default function AdminPayrollPage() {
           uniqueFormDates: 0,
           scheduleDays: 0,
           workedDays: null,
+          daysToApply: null,
+          daySourceField: 'manual',
           lateCount: null,
           status: 'исключена из автоподстановки',
           comment: config.comment,
@@ -1700,6 +1838,8 @@ export default function AdminPayrollPage() {
           uniqueFormDates: 0,
           scheduleDays: 0,
           workedDays: null,
+          daysToApply: null,
+          daySourceField: 'manual',
           lateCount: null,
           status: 'ручной ввод / отдельная схема позже',
           comment: config.comment,
@@ -1719,6 +1859,8 @@ export default function AdminPayrollPage() {
           uniqueFormDates,
           scheduleDays,
           workedDays: uniqueScheduleMatches.length ? scheduleDays : null,
+          daysToApply: uniqueScheduleMatches.length ? scheduleDays : null,
+          daySourceField: 'scheduleDays',
           lateCount: null,
           status,
           comment: uniqueScheduleMatches.length ? 'Сотрудник не отмечается в форме, опоздания невозможно посчитать автоматически.' : config.comment,
@@ -1726,7 +1868,6 @@ export default function AdminPayrollPage() {
       }
 
       const status = uniqueFormMatches.length === 0 ? 'не найден' : uniqueFormMatches.length > 1 ? 'несколько совпадений' : 'найдено по форме';
-      const workedDays = uniqueFormMatches.reduce((sum, match) => sum + match.workedDays, 0);
       const lateCount = uniqueFormMatches.length ? uniqueFormMatches.reduce((sum, match) => sum + match.lateCount, 0) : null;
 
       return {
@@ -1738,7 +1879,9 @@ export default function AdminPayrollPage() {
         formRows,
         uniqueFormDates,
         scheduleDays,
-        workedDays: uniqueFormMatches.length ? workedDays : null,
+        workedDays: uniqueFormMatches.length ? uniqueFormDates : null,
+        daysToApply: uniqueFormMatches.length ? uniqueFormDates : null,
+        daySourceField: 'formUniqueDates',
         lateCount,
         status,
         comment: config.comment,
@@ -1775,7 +1918,7 @@ export default function AdminPayrollPage() {
   const classificationErrorCount = classification.accessoryExcludedRows.length + unclassifiedRows.length;
   const selectedManagerSummary = useMemo(() => classification.managerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [classification.managerSummaries, selectedManager]);
   const selectedManagerRows = useMemo(() => classification.rows.filter((row) => row.manager === selectedManager), [classification.rows, selectedManager]);
-  const selectedManagerStatus = selectedManagerPayroll?.salaryType === 'fixed_salary'
+  const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager')
     ? { status: selectedManagerPayroll.payrollStatus, reason: selectedManagerPayroll.payrollReasons.join(', ') || 'замечаний нет' }
     : selectedManagerSummary
       ? getManagerStatus(selectedManagerSummary, classification.rows, classification.accessoryExcludedRows)
@@ -1895,6 +2038,13 @@ export default function AdminPayrollPage() {
     });
   }
 
+  function updatePurchasePayroll(field: keyof PurchasePayrollInput, value: string) {
+    setPurchasePayroll((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
   async function loadAttendancePreview() {
     setAttendancePreviewError('');
     setAttendanceApplyResult(null);
@@ -1920,11 +2070,12 @@ export default function AdminPayrollPage() {
   function applyAttendancePreviewDays() {
     if (!attendancePreview) return;
 
-    const result = {
+    const result: AttendanceApplyResult = {
       fullApplied: 0,
       daysOnlyApplied: 0,
       skipped: 0,
       preservedManualFields: 0,
+      rows: [],
     };
     const next = { ...manualPayroll };
 
@@ -1940,14 +2091,14 @@ export default function AdminPayrollPage() {
       const hasManualWorkedDays = Boolean(previous.workedDays.trim());
       const hasManualLateCount = Boolean(previous.lateCount.trim());
 
-      if (row.sourceType === 'form' && row.status === 'найдено по форме' && row.workedDays !== null && row.lateCount !== null) {
+      if (row.sourceType === 'form' && row.status === 'найдено по форме' && row.daysToApply !== null && row.lateCount !== null) {
         let appliedWorkedDays = false;
         let appliedLateCount = false;
 
         if (hasManualWorkedDays) {
           result.preservedManualFields += 1;
         } else {
-          previous.workedDays = String(row.workedDays);
+          previous.workedDays = String(row.daysToApply);
           appliedWorkedDays = true;
         }
 
@@ -1962,6 +2113,13 @@ export default function AdminPayrollPage() {
           previous.source = 'attendance';
           if (appliedWorkedDays && appliedLateCount) result.fullApplied += 1;
           else result.daysOnlyApplied += 1;
+          result.rows.push({
+            manager: row.manager,
+            sourceType: row.sourceType,
+            appliedWorkedDays: appliedWorkedDays ? row.daysToApply : null,
+            daySourceField: row.daySourceField,
+            appliedLateCount: appliedLateCount ? row.lateCount : null,
+          });
         } else {
           result.skipped += 1;
         }
@@ -1970,17 +2128,24 @@ export default function AdminPayrollPage() {
         continue;
       }
 
-      if (row.sourceType === 'schedule_only' && row.status === 'дни из графика, опоздания вручную' && row.workedDays !== null) {
+      if (row.sourceType === 'schedule_only' && row.status === 'дни из графика, опоздания вручную' && row.daysToApply !== null) {
         if (hasManualWorkedDays) {
           result.preservedManualFields += 1;
           result.skipped += 1;
         } else {
           next[row.manager] = {
             ...previous,
-            workedDays: String(row.workedDays),
+            workedDays: String(row.daysToApply),
             source: 'schedule',
           };
           result.daysOnlyApplied += 1;
+          result.rows.push({
+            manager: row.manager,
+            sourceType: row.sourceType,
+            appliedWorkedDays: row.daysToApply,
+            daySourceField: row.daySourceField,
+            appliedLateCount: null,
+          });
         }
         continue;
       }
@@ -2054,6 +2219,46 @@ export default function AdminPayrollPage() {
     }
   }
 
+  async function handlePurchaseFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setPurchaseError('');
+    setPurchaseReport(null);
+
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      if (!extension || !['xlsx', 'csv'].includes(extension)) {
+        throw new Error('Загрузите отчёт закупок в формате .xlsx или .csv.');
+      }
+
+      const XLSX = await import('xlsx');
+      const buffer = await file.arrayBuffer();
+      const parsed = XLSX.read(buffer, {
+        type: 'array',
+        cellDates: true,
+        cellStyles: true,
+        raw: false,
+      });
+      const sheetName = parsed.SheetNames.includes('TDSheet') ? 'TDSheet' : parsed.SheetNames[0] ?? '';
+      const sheet = parsed.Sheets[sheetName] as SheetLike;
+      const result = parsePurchaseReport(sheetToRows(XLSX, sheet));
+
+      if (result.base === null) {
+        throw new Error('Не найдена сумма по колонке “Увеличение нашего долга”.');
+      }
+
+      setPurchaseReport({
+        fileName: file.name,
+        base: result.base,
+        sourceRow: result.sourceRow,
+      });
+    } catch (caughtError) {
+      setPurchaseReport(null);
+      setPurchaseError(caughtError instanceof Error ? caughtError.message : 'Не удалось прочитать отчёт закупок.');
+    }
+  }
+
   return (
     <AdminShell>
       <div className='max-w-full overflow-x-hidden'>
@@ -2079,7 +2284,7 @@ export default function AdminPayrollPage() {
             </div>
           </div>
 
-          <div className='grid gap-4 md:grid-cols-[180px_140px_1fr]'>
+          <div className='grid gap-4 md:grid-cols-[180px_140px_1fr_1fr]'>
             <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
               Месяц
               <select value={month} onChange={(event) => setMonth(event.target.value)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
@@ -2109,9 +2314,19 @@ export default function AdminPayrollPage() {
                 <Input type='file' accept='.xlsx,.csv' onChange={handleFileChange} className='pl-10 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700' />
               </span>
             </label>
+
+            <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
+              Отчёт по закупкам 1С
+              <span className='relative flex items-center'>
+                <Upload className='pointer-events-none absolute left-3 h-4 w-4 text-slate-400' />
+                <Input type='file' accept='.xlsx,.csv' onChange={handlePurchaseFileChange} className='pl-10 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700' />
+              </span>
+            </label>
           </div>
 
           {error && <p className='mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{error}</p>}
+          {purchaseError && <p className='mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{purchaseError}</p>}
+          {purchaseReport && <p className='mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>Отчёт закупок загружен: {purchaseReport.fileName}, база {formatMoney(purchaseReport.base ?? 0)}{purchaseReport.sourceRow ? `, строка ${purchaseReport.sourceRow}` : ''}.</p>}
           {isParsing && <p className='mt-4 text-sm text-slate-500'>Читаю файл...</p>}
         </Card>
 
@@ -2206,6 +2421,16 @@ export default function AdminPayrollPage() {
                         <span>ВП: {formatMoney(totalGrossProfit)}</span>
                       </div>
                     </Card>
+                    <Card className='min-w-0 p-4 md:col-span-2'>
+                      <p className='text-xs font-semibold uppercase text-slate-500'>Контроль закупок</p>
+                      <p className='mt-1 text-xl font-bold text-slate-900'>{purchasePayrollRow.purchaseBase === null ? 'Отчёт не загружен' : formatMoney(purchasePayrollRow.purchaseBase)}</p>
+                      <div className='mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2'>
+                        <span>1,75%: {formatMoney(purchasePayrollRow.purchasePercentAmount)}</span>
+                        <span>Целевая ЗП: {formatMoney(purchaseTargetSalary)}</span>
+                        <span>Ориентир базы: {formatMoney(purchaseTargetBase)}</span>
+                        <span>Выполнение: {purchaseCompletionPercent.toFixed(2)}%</span>
+                      </div>
+                    </Card>
                   </div>
 
                   <Card>
@@ -2245,7 +2470,7 @@ export default function AdminPayrollPage() {
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.workedDays ?? '—'}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.lateCount ?? '—'}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right font-semibold text-slate-900'>{formatMoney(summary.salesBonus)}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.salaryType === 'fixed_salary' ? '—' : formatMoney(summary.disciplineBonus)}</td>
+                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.salaryType === 'fixed_salary' || summary.salaryType === 'purchase_manager' ? '—' : formatMoney(summary.disciplineBonus)}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{formatMoney(summary.advance)}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right font-bold text-slate-900'>{formatMoney(summary.netPay)}</td>
                                 <td className='px-2 py-2'>
@@ -2355,6 +2580,49 @@ export default function AdminPayrollPage() {
                     </div>
                   </div>
                   <div className='mt-5'>
+                    <div className='mb-3'>
+                      <h3 className='text-base font-bold text-slate-900'>Закупщик</h3>
+                      <p className='mt-1 text-sm text-slate-500'>Расчёт по отчёту закупок 1С: дни фиксированы, аванс и удержание заполняются вручную.</p>
+                    </div>
+                    <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
+                      <table className='w-full min-w-[1180px] text-sm'>
+                        <thead className='bg-slate-50 text-left text-slate-500'>
+                          <tr>
+                            <th className='px-3 py-3'>Сотрудник</th>
+                            <th className='px-3 py-3'>Отдел / должность</th>
+                            <th className='px-3 py-3 text-right'>Дни</th>
+                            <th className='px-3 py-3 text-right'>Ставка</th>
+                            <th className='px-3 py-3 text-right'>База закупок</th>
+                            <th className='px-3 py-3 text-right'>1,75%</th>
+                            <th className='px-3 py-3 text-right'>Доведение</th>
+                            <th className='px-3 py-3'>Аванс</th>
+                            <th className='px-3 py-3'>Удержание</th>
+                            <th className='px-3 py-3 text-right'>К выплате</th>
+                            <th className='px-3 py-3'>Комментарий</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className='border-t border-border/70 align-top'>
+                            <td className='px-3 py-2 font-semibold text-slate-900'>{purchasePayrollRow.manager}</td>
+                            <td className='px-3 py-2 text-slate-700'>
+                              <span className='block font-semibold'>{purchasePayrollRow.payrollDepartment}</span>
+                              <span className='text-xs text-slate-500'>{purchasePayrollRow.position}</span>
+                            </td>
+                            <td className='px-3 py-2 text-right'>{purchasePayrollRow.workedDays}</td>
+                            <td className='px-3 py-2 text-right'>{formatMoney(purchasePayrollRow.dayRate)}</td>
+                            <td className='px-3 py-2 text-right'>{purchasePayrollRow.purchaseBase === null ? '—' : formatMoney(purchasePayrollRow.purchaseBase)}</td>
+                            <td className='px-3 py-2 text-right'>{formatMoney(purchasePayrollRow.purchasePercentAmount)}</td>
+                            <td className='px-3 py-2 text-right'>{formatMoney(purchasePayrollRow.purchaseTargetAdjustment)}</td>
+                            <td className='px-3 py-2'><Input type='number' min='0' step='100' value={purchasePayroll.advance} onChange={(event) => updatePurchasePayroll('advance', event.target.value)} className='h-9 w-32' /></td>
+                            <td className='px-3 py-2'><Input type='number' min='0' step='100' value={purchasePayroll.deduction} onChange={(event) => updatePurchasePayroll('deduction', event.target.value)} className='h-9 w-32' /></td>
+                            <td className='px-3 py-2 text-right font-bold'>{formatMoney(purchasePayrollRow.netPay)}</td>
+                            <td className='px-3 py-2'><Input value={purchasePayroll.comment} onChange={(event) => updatePurchasePayroll('comment', event.target.value)} placeholder='Комментарий' className='h-9 min-w-[220px]' /></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className='mt-5'>
                     <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
                       <div>
                         <h3 className='text-base font-bold text-slate-900'>Сопоставление с посещаемостью</h3>
@@ -2419,22 +2687,48 @@ export default function AdminPayrollPage() {
                           </button>
                         </div>
                         {attendanceApplyResult && (
-                          <div className='mb-3 grid gap-2 text-sm sm:grid-cols-4'>
-                            <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                              <p className='text-xs font-semibold uppercase text-slate-500'>Применено полностью</p>
-                              <p className='font-bold text-slate-900'>{attendanceApplyResult.fullApplied}</p>
+                          <div className='mb-3 grid gap-3'>
+                            <div className='grid gap-2 text-sm sm:grid-cols-4'>
+                              <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                                <p className='text-xs font-semibold uppercase text-slate-500'>Применено полностью</p>
+                                <p className='font-bold text-slate-900'>{attendanceApplyResult.fullApplied}</p>
+                              </div>
+                              <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                                <p className='text-xs font-semibold uppercase text-slate-500'>Только дни</p>
+                                <p className='font-bold text-slate-900'>{attendanceApplyResult.daysOnlyApplied}</p>
+                              </div>
+                              <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                                <p className='text-xs font-semibold uppercase text-slate-500'>Пропущено</p>
+                                <p className='font-bold text-slate-900'>{attendanceApplyResult.skipped}</p>
+                              </div>
+                              <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                                <p className='text-xs font-semibold uppercase text-slate-500'>Ручных полей сохранено</p>
+                                <p className='font-bold text-slate-900'>{attendanceApplyResult.preservedManualFields}</p>
+                              </div>
                             </div>
-                            <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                              <p className='text-xs font-semibold uppercase text-slate-500'>Только дни</p>
-                              <p className='font-bold text-slate-900'>{attendanceApplyResult.daysOnlyApplied}</p>
-                            </div>
-                            <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                              <p className='text-xs font-semibold uppercase text-slate-500'>Пропущено</p>
-                              <p className='font-bold text-slate-900'>{attendanceApplyResult.skipped}</p>
-                            </div>
-                            <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                              <p className='text-xs font-semibold uppercase text-slate-500'>Ручных полей сохранено</p>
-                              <p className='font-bold text-slate-900'>{attendanceApplyResult.preservedManualFields}</p>
+                            <div className='overflow-x-auto rounded-lg border border-border'>
+                              <table className='w-full min-w-[720px] text-xs'>
+                                <thead className='bg-slate-50 text-left text-slate-500'>
+                                  <tr>
+                                    <th className='px-3 py-2'>Сотрудник</th>
+                                    <th className='px-3 py-2'>sourceType</th>
+                                    <th className='px-3 py-2 text-right'>appliedWorkedDays</th>
+                                    <th className='px-3 py-2'>Поле-источник дней</th>
+                                    <th className='px-3 py-2 text-right'>appliedLateCount</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {attendanceApplyResult.rows.map((row) => (
+                                    <tr key={`${row.manager}-${row.daySourceField}`} className='border-t border-border/70'>
+                                      <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
+                                      <td className='px-3 py-2'>{row.sourceType}</td>
+                                      <td className='px-3 py-2 text-right'>{row.appliedWorkedDays ?? '—'}</td>
+                                      <td className='px-3 py-2'>{row.daySourceField}</td>
+                                      <td className='px-3 py-2 text-right'>{row.appliedLateCount ?? '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
                           </div>
                         )}
@@ -2449,6 +2743,7 @@ export default function AdminPayrollPage() {
                                 <th className='px-3 py-3 text-right'>Уникальных дат формы</th>
                                 <th className='px-3 py-3 text-right'>Дней по графику</th>
                                 <th className='px-3 py-3 text-right'>Отработано дней для предпросмотра</th>
+                                <th className='px-3 py-3 text-right'>Дней к подстановке</th>
                                 <th className='px-3 py-3 text-right'>Опозданий для предпросмотра</th>
                                 <th className='px-3 py-3'>Статус</th>
                                 <th className='px-3 py-3'>Комментарий</th>
@@ -2467,6 +2762,10 @@ export default function AdminPayrollPage() {
                                   <td className='px-3 py-2 text-right text-slate-700'>{row.uniqueFormDates}</td>
                                   <td className='px-3 py-2 text-right text-slate-700'>{row.scheduleDays}</td>
                                   <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
+                                  <td className='px-3 py-2 text-right font-semibold text-slate-900'>
+                                    {row.daysToApply ?? '—'}
+                                    <span className='block text-xs font-medium text-slate-500'>{row.daySourceField}</span>
+                                  </td>
                                   <td className='px-3 py-2 text-right text-slate-700'>{row.lateCount ?? '—'}</td>
                                   <td className='px-3 py-2'>
                                     <Badge className={row.status === 'найдено по форме' ? 'bg-green-100 text-green-800' : row.status === 'не найден' ? 'bg-red-100 text-red-700' : row.status === 'исключена из автоподстановки' || row.status === 'ручной ввод / отдельная схема позже' ? 'bg-slate-100 text-slate-700' : 'bg-amber-100 text-amber-800'}>
@@ -2721,7 +3020,25 @@ export default function AdminPayrollPage() {
                     <Card>
                       <h3 className='mb-3 text-base font-bold text-slate-900'>Начисления</h3>
                       <div className='grid gap-3 sm:grid-cols-3'>
-                        {(selectedManagerPayroll.salaryType === 'fixed_salary'
+                        {(selectedManagerPayroll.salaryType === 'purchase_manager'
+                          ? [
+                              ['Отдел', selectedManagerPayroll.payrollDepartment],
+                              ['Должность', selectedManagerPayroll.position],
+                              ['Тип расчёта', getSalaryTypeLabel(selectedManagerPayroll.salaryType)],
+                              ['Стандарт дней', purchaseStandardWorkedDays],
+                              ['Ставка за выход', formatMoney(selectedManagerPayroll.dayRate)],
+                              ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
+                              ['База закупок', selectedManagerPayroll.purchaseBase === null ? '—' : formatMoney(selectedManagerPayroll.purchaseBase)],
+                              ['Процент закупок', '1,75%'],
+                              ['Расчёт по закупкам', formatMoney(selectedManagerPayroll.purchasePercentAmount)],
+                              ['Доведение до целевой ЗП', formatMoney(selectedManagerPayroll.purchaseTargetAdjustment)],
+                              ['Целевая ЗП', formatMoney(selectedManagerPayroll.purchaseTargetSalary)],
+                              ['Аванс', formatMoney(selectedManagerPayroll.advance)],
+                              ['Удержание', formatMoney(selectedManagerPayroll.fixedDeduction)],
+                              ['Формула', getSalaryFormulaLabel(selectedManagerPayroll.salaryType)],
+                              ['К выплате', formatMoney(selectedManagerPayroll.netPay)],
+                            ]
+                          : selectedManagerPayroll.salaryType === 'fixed_salary'
                           ? [
                               ['Отдел', selectedManagerPayroll.payrollDepartment],
                               ['Должность', selectedManagerPayroll.position],
