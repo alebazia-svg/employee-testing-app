@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, FileSpreadsheet, Upload } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -128,13 +128,17 @@ type PayrollManualInput = {
   lateCount: string;
   advance: string;
   comment: string;
+  source?: PayrollDaysSource;
 };
+
+type PayrollDaysSource = 'manual' | 'attendance' | 'schedule' | 'manualCorrection';
 
 type FullPayrollRow = BonusManagerSummary & {
   workedDays: number | null;
   lateCount: number | null;
   advance: number;
   comment: string;
+  daysSource: PayrollDaysSource;
   dayRate: number;
   dayPay: number;
   salesBonus: number;
@@ -221,6 +225,84 @@ type DiagnosticRow = {
   currentCategory: string;
   revenue: number;
   grossProfit: number;
+};
+
+type PayrollAttendanceSourceType = 'form' | 'schedule_only' | 'manual_excluded' | 'manual_special';
+
+type PayrollAttendanceConfig = {
+  attendanceNames: string[];
+  sourceType: PayrollAttendanceSourceType;
+  comment: string;
+};
+
+const payrollAttendanceConfig: Record<string, PayrollAttendanceConfig> = {
+  'Ахобекова Залина': {
+    attendanceNames: ['Залина'],
+    sourceType: 'form',
+    comment: 'Дни и опоздания из Google-формы / рассчитанной посещаемости',
+  },
+  'Хурзокова Лиана': {
+    attendanceNames: ['Ляна', 'Лиана'],
+    sourceType: 'form',
+    comment: 'Дни и опоздания из Google-формы / рассчитанной посещаемости',
+  },
+  'Чеченова Милана': {
+    attendanceNames: ['Милана'],
+    sourceType: 'form',
+    comment: 'Дни и опоздания из Google-формы / рассчитанной посещаемости',
+  },
+  'Абшаева Зухра': {
+    attendanceNames: ['Зухра'],
+    sourceType: 'form',
+    comment: 'Дни и опоздания из Google-формы / рассчитанной посещаемости',
+  },
+  'СтажерРозница': {
+    attendanceNames: ['Магомед'],
+    sourceType: 'form',
+    comment: 'Магомед в посещаемости = СтажерРозница в зарплате',
+  },
+  'Кумахова Диана': {
+    attendanceNames: ['Диана', 'Кумахова Диана'],
+    sourceType: 'schedule_only',
+    comment: 'Не отмечается в Google-форме. Дни можно брать из графика, опоздания вручную.',
+  },
+  'Кештова Бэла': {
+    attendanceNames: [],
+    sourceType: 'manual_excluded',
+    comment: 'Админ, не отмечается, графика нет. Только ручной ввод.',
+  },
+  'Икаев Асад': {
+    attendanceNames: [],
+    sourceType: 'manual_special',
+    comment: 'Поклейщик. Пока ручной ввод, позже отдельная схема зарплаты.',
+  },
+};
+
+type PayrollAttendanceFormSummary = {
+  employee: string;
+  formRows: number;
+  uniqueFormDates: number;
+  workedDays: number;
+  lateCount: number;
+};
+
+type PayrollAttendanceScheduleSummary = {
+  employee: string;
+  scheduleDays: number;
+};
+
+type PayrollAttendancePreviewResponse = {
+  period: {
+    monthIndex: number;
+    year: number;
+    periodKey: string;
+  };
+  attendanceMode: 'demo' | 'google-sheets';
+  attendanceMessage: string;
+  scheduleMode: 'not-configured' | 'google-sheets';
+  scheduleMessage: string;
+  formSummaries: PayrollAttendanceFormSummary[];
+  scheduleSummaries: PayrollAttendanceScheduleSummary[];
 };
 
 type PayrollParseResult = {
@@ -1162,6 +1244,7 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
     lateCount,
     advance,
     comment: manual?.comment ?? '',
+    daysSource: manual?.source ?? 'manual',
     dayRate,
     dayPay,
     salesBonus,
@@ -1193,6 +1276,29 @@ function applyBelaPercentRule(rows: FullPayrollRow[]): FullPayrollRow[] {
 
 function getPayrollStatusClass(status: 'OK' | 'Проверить') {
   return status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800';
+}
+
+function getPayrollAttendanceSourceLabel(sourceType: PayrollAttendanceSourceType) {
+  if (sourceType === 'form') return 'форма';
+  if (sourceType === 'schedule_only') return 'график';
+  if (sourceType === 'manual_excluded') return 'исключён';
+  return 'ручной ввод';
+}
+
+function getPayrollDaysSourceLabel(source: PayrollDaysSource) {
+  if (source === 'attendance') return 'Посещаемость';
+  if (source === 'schedule') return 'График + опоздания вручную';
+  if (source === 'manualCorrection') return 'Ручная корректировка';
+  return 'Ручной ввод';
+}
+
+function findAttendanceMatches<T extends { employee: string }>(rows: T[], attendanceNames: string[]) {
+  const normalizedNames = attendanceNames.map((name) => normalizePersonName(name)).filter(Boolean);
+
+  return rows.filter((row) => {
+    const normalizedEmployee = normalizePersonName(row.employee);
+    return normalizedNames.some((name) => normalizedEmployee === name || normalizedEmployee.includes(name) || name.includes(normalizedEmployee));
+  });
 }
 
 function buildProblemRows(definitions: Array<{ type: SalesProblemType; label: string; rows: ClassifiedSalesRow[] }>) {
@@ -1305,6 +1411,15 @@ export default function AdminPayrollPage() {
   const [expandedManager, setExpandedManager] = useState<string | null>(null);
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
   const [manualPayroll, setManualPayroll] = useState<Record<string, PayrollManualInput>>({});
+  const [attendancePreview, setAttendancePreview] = useState<PayrollAttendancePreviewResponse | null>(null);
+  const [attendancePreviewError, setAttendancePreviewError] = useState('');
+  const [isAttendancePreviewLoading, setIsAttendancePreviewLoading] = useState(false);
+  const [attendanceApplyResult, setAttendanceApplyResult] = useState<{
+    fullApplied: number;
+    daysOnlyApplied: number;
+    skipped: number;
+    preservedManualFields: number;
+  } | null>(null);
   const [problemManagerFilter, setProblemManagerFilter] = useState('all');
   const [problemDepartmentFilter, setProblemDepartmentFilter] = useState('all');
   const [problemCategoryFilter, setProblemCategoryFilter] = useState('all');
@@ -1338,7 +1453,127 @@ export default function AdminPayrollPage() {
     () => applyBelaPercentRule(classification.managerSummaries.map((summary) => buildFullPayrollRow(summary, manualPayroll[summary.manager]))),
     [classification.managerSummaries, manualPayroll],
   );
+  const payrollAttendanceMappingRows = useMemo(
+    () =>
+      fullPayrollRows.map((row) => {
+        const config = payrollAttendanceConfig[row.manager];
+        const attendanceNames = config?.attendanceNames ?? [];
+        return {
+          manager: row.manager,
+          attendanceNames,
+          source: config ? getPayrollAttendanceSourceLabel(config.sourceType) : 'не задано',
+          status: config ? 'задано' : 'проверить',
+          comment: config?.comment ?? 'Нет ручного соответствия в карте.',
+        };
+      }),
+    [fullPayrollRows],
+  );
+  const payrollAttendancePreviewRows = useMemo(() => {
+    if (!attendancePreview) return [];
+
+    return fullPayrollRows.map((row) => {
+      const config = payrollAttendanceConfig[row.manager];
+      const attendanceNames = config?.attendanceNames ?? [];
+      const formMatches = findAttendanceMatches(attendancePreview.formSummaries, attendanceNames);
+      const scheduleMatches = findAttendanceMatches(attendancePreview.scheduleSummaries, attendanceNames);
+      const uniqueFormMatches = Array.from(new Map(formMatches.map((match) => [normalizePersonName(match.employee), match])).values());
+      const uniqueScheduleMatches = Array.from(new Map(scheduleMatches.map((match) => [normalizePersonName(match.employee), match])).values());
+      const formRows = uniqueFormMatches.reduce((sum, match) => sum + match.formRows, 0);
+      const uniqueFormDates = uniqueFormMatches.reduce((sum, match) => sum + match.uniqueFormDates, 0);
+      const scheduleDays = uniqueScheduleMatches.reduce((sum, match) => sum + match.scheduleDays, 0);
+
+      if (!config) {
+        return {
+          manager: row.manager,
+          sourceType: null,
+          source: 'не задано',
+          sourceNames: '—',
+          matchedNames: '—',
+          formRows,
+          uniqueFormDates,
+          scheduleDays,
+          workedDays: null,
+          lateCount: null,
+          status: 'проверить',
+          comment: 'Нет настройки источника для предпросмотра.',
+        };
+      }
+
+      if (config.sourceType === 'manual_excluded') {
+        return {
+          manager: row.manager,
+          sourceType: config.sourceType,
+          source: getPayrollAttendanceSourceLabel(config.sourceType),
+          sourceNames: attendanceNames.join(', ') || '—',
+          matchedNames: '—',
+          formRows: 0,
+          uniqueFormDates: 0,
+          scheduleDays: 0,
+          workedDays: null,
+          lateCount: null,
+          status: 'исключена из автоподстановки',
+          comment: config.comment,
+        };
+      }
+
+      if (config.sourceType === 'manual_special') {
+        return {
+          manager: row.manager,
+          sourceType: config.sourceType,
+          source: getPayrollAttendanceSourceLabel(config.sourceType),
+          sourceNames: attendanceNames.join(', ') || '—',
+          matchedNames: '—',
+          formRows: 0,
+          uniqueFormDates: 0,
+          scheduleDays: 0,
+          workedDays: null,
+          lateCount: null,
+          status: 'ручной ввод / отдельная схема позже',
+          comment: config.comment,
+        };
+      }
+
+      if (config.sourceType === 'schedule_only') {
+        const status = uniqueScheduleMatches.length === 0 ? 'не найден' : uniqueScheduleMatches.length > 1 ? 'несколько совпадений' : 'дни из графика, опоздания вручную';
+
+        return {
+          manager: row.manager,
+          sourceType: config.sourceType,
+          source: getPayrollAttendanceSourceLabel(config.sourceType),
+          sourceNames: attendanceNames.join(', ') || '—',
+          matchedNames: uniqueScheduleMatches.map((match) => match.employee).join(', ') || '—',
+          formRows,
+          uniqueFormDates,
+          scheduleDays,
+          workedDays: uniqueScheduleMatches.length ? scheduleDays : null,
+          lateCount: null,
+          status,
+          comment: uniqueScheduleMatches.length ? 'Сотрудник не отмечается в форме, опоздания невозможно посчитать автоматически.' : config.comment,
+        };
+      }
+
+      const status = uniqueFormMatches.length === 0 ? 'не найден' : uniqueFormMatches.length > 1 ? 'несколько совпадений' : 'найдено по форме';
+      const workedDays = uniqueFormMatches.reduce((sum, match) => sum + match.workedDays, 0);
+      const lateCount = uniqueFormMatches.length ? uniqueFormMatches.reduce((sum, match) => sum + match.lateCount, 0) : null;
+
+      return {
+        manager: row.manager,
+        sourceType: config.sourceType,
+        source: getPayrollAttendanceSourceLabel(config.sourceType),
+        sourceNames: attendanceNames.join(', ') || '—',
+        matchedNames: uniqueFormMatches.map((match) => match.employee).join(', ') || '—',
+        formRows,
+        uniqueFormDates,
+        scheduleDays,
+        workedDays: uniqueFormMatches.length ? workedDays : null,
+        lateCount,
+        status,
+        comment: config.comment,
+      };
+    });
+  }, [attendancePreview, fullPayrollRows]);
   const selectedManagerPayroll = useMemo(() => fullPayrollRows.find((summary) => summary.manager === selectedManager) ?? null, [fullPayrollRows, selectedManager]);
+  const selectedManagerAttendanceNames = selectedManagerPayroll ? payrollAttendanceConfig[selectedManagerPayroll.manager]?.attendanceNames ?? [] : [];
   const payrollTotals = useMemo(
     () =>
       fullPayrollRows.reduce(
@@ -1451,15 +1686,114 @@ export default function AdminPayrollPage() {
         advance: '',
         comment: '',
       };
+      const nextSource = field === 'workedDays' || field === 'lateCount' ? 'manualCorrection' : previous.source;
 
       return {
         ...current,
         [manager]: {
           ...previous,
           [field]: value,
+          source: nextSource,
         },
       };
     });
+  }
+
+  async function loadAttendancePreview() {
+    setAttendancePreviewError('');
+    setAttendanceApplyResult(null);
+    setIsAttendancePreviewLoading(true);
+
+    try {
+      const response = await fetch(`/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`, { cache: 'no-store' });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Не удалось загрузить предпросмотр посещаемости.');
+      }
+
+      setAttendancePreview(payload as PayrollAttendancePreviewResponse);
+    } catch (caught) {
+      setAttendancePreview(null);
+      setAttendancePreviewError(caught instanceof Error ? caught.message : 'Не удалось загрузить предпросмотр посещаемости.');
+    } finally {
+      setIsAttendancePreviewLoading(false);
+    }
+  }
+
+  function applyAttendancePreviewDays() {
+    if (!attendancePreview) return;
+
+    const result = {
+      fullApplied: 0,
+      daysOnlyApplied: 0,
+      skipped: 0,
+      preservedManualFields: 0,
+    };
+    const next = { ...manualPayroll };
+
+    for (const row of payrollAttendancePreviewRows) {
+      const previous = {
+        ...(next[row.manager] ?? {
+          workedDays: '',
+          lateCount: '',
+          advance: '',
+          comment: '',
+        }),
+      };
+      const hasManualWorkedDays = Boolean(previous.workedDays.trim());
+      const hasManualLateCount = Boolean(previous.lateCount.trim());
+
+      if (row.sourceType === 'form' && row.status === 'найдено по форме' && row.workedDays !== null && row.lateCount !== null) {
+        let appliedWorkedDays = false;
+        let appliedLateCount = false;
+
+        if (hasManualWorkedDays) {
+          result.preservedManualFields += 1;
+        } else {
+          previous.workedDays = String(row.workedDays);
+          appliedWorkedDays = true;
+        }
+
+        if (hasManualLateCount) {
+          result.preservedManualFields += 1;
+        } else {
+          previous.lateCount = String(row.lateCount);
+          appliedLateCount = true;
+        }
+
+        if (appliedWorkedDays || appliedLateCount) {
+          previous.source = 'attendance';
+          if (appliedWorkedDays && appliedLateCount) result.fullApplied += 1;
+          else result.daysOnlyApplied += 1;
+        } else {
+          result.skipped += 1;
+        }
+
+        next[row.manager] = { ...previous };
+        continue;
+      }
+
+      if (row.sourceType === 'schedule_only' && row.status === 'дни из графика, опоздания вручную' && row.workedDays !== null) {
+        if (hasManualWorkedDays) {
+          result.preservedManualFields += 1;
+          result.skipped += 1;
+        } else {
+          next[row.manager] = {
+            ...previous,
+            workedDays: String(row.workedDays),
+            source: 'schedule',
+          };
+          result.daysOnlyApplied += 1;
+        }
+        continue;
+      }
+
+      result.skipped += 1;
+    }
+
+    setManualPayroll(next);
+    setAttendanceApplyResult(result);
   }
 
   const filteredClassifiedRows = useMemo(
@@ -1746,6 +2080,7 @@ export default function AdminPayrollPage() {
                         <tr>
                           <th className='px-3 py-3'>Сотрудник</th>
                           <th className='px-3 py-3'>Отдел</th>
+                          <th className='px-3 py-3'>Источник</th>
                           <th className='px-3 py-3'>Отработано дней</th>
                           <th className='px-3 py-3 text-right'>Ставка</th>
                           <th className='px-3 py-3 text-right'>Оплата по дням</th>
@@ -1764,6 +2099,7 @@ export default function AdminPayrollPage() {
                             <tr key={row.manager} className='border-t border-border/70 align-top'>
                               <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
                               <td className='px-3 py-2'>{row.department}</td>
+                              <td className='px-3 py-2 text-slate-700'>{getPayrollDaysSourceLabel(row.daysSource)}</td>
                               <td className='px-3 py-2'><Input type='number' min='0' step='0.5' value={workedDaysValue} onChange={(event) => updateManualPayroll(row.manager, 'workedDays', event.target.value)} className='h-9 w-28' /></td>
                               <td className='px-3 py-2 text-right'>{formatMoney(row.dayRate)}</td>
                               <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.dayPay)}</td>
@@ -1776,6 +2112,134 @@ export default function AdminPayrollPage() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                  <div className='mt-5'>
+                    <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+                      <div>
+                        <h3 className='text-base font-bold text-slate-900'>Сопоставление с посещаемостью</h3>
+                        <p className='mt-1 text-sm text-slate-500'>Ручная карта имён для будущей автоподстановки дней. Дни и опоздания пока заполняются вручную.</p>
+                      </div>
+                      <button
+                        type='button'
+                        onClick={loadAttendancePreview}
+                        disabled={isAttendancePreviewLoading}
+                        className='inline-flex w-fit items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60'
+                      >
+                        <Eye className='h-4 w-4' />
+                        {isAttendancePreviewLoading ? 'Загрузка...' : 'Предпросмотр дней из посещаемости'}
+                      </button>
+                    </div>
+                    <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
+                      <table className='w-full min-w-[760px] text-sm'>
+                        <thead className='bg-slate-50 text-left text-slate-500'>
+                          <tr>
+                            <th className='px-3 py-3'>Сотрудник в ЗП</th>
+                            <th className='px-3 py-3'>Источник</th>
+                            <th className='px-3 py-3'>Имя/варианты имени в посещаемости</th>
+                            <th className='px-3 py-3'>Статус</th>
+                            <th className='px-3 py-3'>Комментарий</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payrollAttendanceMappingRows.map((row) => (
+                            <tr key={row.manager} className='border-t border-border/70'>
+                              <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
+                              <td className='px-3 py-2 text-slate-700'>{row.source}</td>
+                              <td className='px-3 py-2 text-slate-700'>{row.attendanceNames.join(', ') || '—'}</td>
+                              <td className='px-3 py-2'>
+                                <Badge className={row.status === 'задано' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+                                  {row.status}
+                                </Badge>
+                              </td>
+                              <td className='px-3 py-2 text-slate-600'>{row.comment}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {attendancePreviewError && <p className='mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{attendancePreviewError}</p>}
+                    {attendancePreview && (
+                      <div className='mt-4'>
+                        <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+                          <div className='flex flex-wrap gap-2'>
+                            <Badge className={attendancePreview.attendanceMode === 'google-sheets' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
+                              Посещаемость: {attendancePreview.attendanceMode}
+                            </Badge>
+                            <Badge className={attendancePreview.scheduleMode === 'google-sheets' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
+                              График: {attendancePreview.scheduleMode}
+                            </Badge>
+                          </div>
+                          <button
+                            type='button'
+                            onClick={applyAttendancePreviewDays}
+                            className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90'
+                          >
+                            Применить найденные дни
+                          </button>
+                        </div>
+                        {attendanceApplyResult && (
+                          <div className='mb-3 grid gap-2 text-sm sm:grid-cols-4'>
+                            <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                              <p className='text-xs font-semibold uppercase text-slate-500'>Применено полностью</p>
+                              <p className='font-bold text-slate-900'>{attendanceApplyResult.fullApplied}</p>
+                            </div>
+                            <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                              <p className='text-xs font-semibold uppercase text-slate-500'>Только дни</p>
+                              <p className='font-bold text-slate-900'>{attendanceApplyResult.daysOnlyApplied}</p>
+                            </div>
+                            <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                              <p className='text-xs font-semibold uppercase text-slate-500'>Пропущено</p>
+                              <p className='font-bold text-slate-900'>{attendanceApplyResult.skipped}</p>
+                            </div>
+                            <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                              <p className='text-xs font-semibold uppercase text-slate-500'>Ручных полей сохранено</p>
+                              <p className='font-bold text-slate-900'>{attendanceApplyResult.preservedManualFields}</p>
+                            </div>
+                          </div>
+                        )}
+                        <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
+                          <table className='w-full min-w-[820px] text-sm'>
+                            <thead className='bg-slate-50 text-left text-slate-500'>
+                              <tr>
+                                <th className='px-3 py-3'>Сотрудник в ЗП</th>
+                                <th className='px-3 py-3'>Источник</th>
+                                <th className='px-3 py-3'>Имя/варианты имени в источнике</th>
+                                <th className='px-3 py-3 text-right'>Строк формы за период</th>
+                                <th className='px-3 py-3 text-right'>Уникальных дат формы</th>
+                                <th className='px-3 py-3 text-right'>Дней по графику</th>
+                                <th className='px-3 py-3 text-right'>Отработано дней для предпросмотра</th>
+                                <th className='px-3 py-3 text-right'>Опозданий для предпросмотра</th>
+                                <th className='px-3 py-3'>Статус</th>
+                                <th className='px-3 py-3'>Комментарий</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {payrollAttendancePreviewRows.map((row) => (
+                                <tr key={row.manager} className='border-t border-border/70'>
+                                  <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
+                                  <td className='px-3 py-2 text-slate-700'>{row.source}</td>
+                                  <td className='px-3 py-2 text-slate-700'>
+                                    <span className='font-semibold text-slate-900'>{row.matchedNames}</span>
+                                    <span className='mt-1 block text-xs text-slate-500'>карта: {row.sourceNames}</span>
+                                  </td>
+                                  <td className='px-3 py-2 text-right text-slate-700'>{row.formRows}</td>
+                                  <td className='px-3 py-2 text-right text-slate-700'>{row.uniqueFormDates}</td>
+                                  <td className='px-3 py-2 text-right text-slate-700'>{row.scheduleDays}</td>
+                                  <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
+                                  <td className='px-3 py-2 text-right text-slate-700'>{row.lateCount ?? '—'}</td>
+                                  <td className='px-3 py-2'>
+                                    <Badge className={row.status === 'найдено по форме' ? 'bg-green-100 text-green-800' : row.status === 'не найден' ? 'bg-red-100 text-red-700' : row.status === 'исключена из автоподстановки' || row.status === 'ручной ввод / отдельная схема позже' ? 'bg-slate-100 text-slate-700' : 'bg-amber-100 text-amber-800'}>
+                                      {row.status}
+                                    </Badge>
+                                  </td>
+                                  <td className='px-3 py-2 text-slate-600'>{row.comment}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </Card>
               )}
@@ -2018,8 +2482,10 @@ export default function AdminPayrollPage() {
                       <div className='grid gap-3 sm:grid-cols-3'>
                         {[
                           ['Ставка', formatMoney(selectedManagerPayroll.dayRate)],
+                          ['Источник дней', getPayrollDaysSourceLabel(selectedManagerPayroll.daysSource)],
                           ['Дни', selectedManagerPayroll.workedDays ?? '—'],
                           ['Опоздания', selectedManagerPayroll.lateCount ?? '—'],
+                          ['Имя в посещаемости', selectedManagerAttendanceNames.join(', ') || '—'],
                           ['Правило зарплаты', selectedManagerPayroll.salaryRule === 'belaPercent' ? '12% от итоговых ЗП сотрудников' : selectedManagerPayroll.salaryRule === 'noDayPay' ? 'Без оплаты выходов по дням' : 'Стандарт'],
                           ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
                           ['Бонус продаж', formatMoney(selectedManagerPayroll.salesBonus)],
