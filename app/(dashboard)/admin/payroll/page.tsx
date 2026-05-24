@@ -132,11 +132,33 @@ type PayrollManualInput = {
 };
 
 type PayrollDaysSource = 'manual' | 'attendance' | 'schedule' | 'manualCorrection';
+type SalaryType = 'vl_percent' | 'wholesale_percent' | 'retail_sales_bonus' | 'fixed_salary';
+
+type PayrollEmployee = {
+  name: string;
+  department: string;
+  position: string;
+  salaryType: SalaryType;
+  salary?: number;
+};
+
+type FixedPayrollInput = {
+  bonus: string;
+  advance: string;
+  deduction: string;
+  comment: string;
+};
 
 type FullPayrollRow = BonusManagerSummary & {
+  payrollDepartment: string;
+  position: string;
+  salaryType: SalaryType;
   workedDays: number | null;
   lateCount: number | null;
   advance: number;
+  fixedSalary: number;
+  fixedBonus: number;
+  fixedDeduction: number;
   comment: string;
   daysSource: PayrollDaysSource;
   dayRate: number;
@@ -145,7 +167,7 @@ type FullPayrollRow = BonusManagerSummary & {
   disciplineBonus: number;
   grossPay: number;
   netPay: number;
-  salaryRule: 'standard' | 'noDayPay' | 'belaPercent';
+  salaryRule: 'standard' | 'noDayPay' | 'belaPercent' | 'fixedSalary';
   payrollStatus: 'OK' | 'Проверить';
   payrollReasons: string[];
 };
@@ -233,6 +255,85 @@ type PayrollAttendanceConfig = {
   attendanceNames: string[];
   sourceType: PayrollAttendanceSourceType;
   comment: string;
+};
+
+const payrollEmployees: Record<string, PayrollEmployee> = {
+  'Кештова Бэла': {
+    name: 'Кештова Бэла',
+    department: 'Финансы и операционный контроль',
+    position: 'Финансово-операционный управляющий',
+    salaryType: 'vl_percent',
+  },
+  'Ахобекова Залина': {
+    name: 'Ахобекова Залина',
+    department: 'Оптовый отдел',
+    position: 'Менеджер по оптовым продажам',
+    salaryType: 'wholesale_percent',
+  },
+  'Хурзокова Лиана': {
+    name: 'Хурзокова Лиана',
+    department: 'Оптовый отдел',
+    position: 'Менеджер по оптовым продажам',
+    salaryType: 'wholesale_percent',
+  },
+  'Чеченова Милана': {
+    name: 'Чеченова Милана',
+    department: 'Розничный отдел',
+    position: 'Менеджер по розничным продажам',
+    salaryType: 'retail_sales_bonus',
+  },
+  'Абшаева Зухра': {
+    name: 'Абшаева Зухра',
+    department: 'Розничный отдел',
+    position: 'Менеджер по розничным продажам',
+    salaryType: 'retail_sales_bonus',
+  },
+  'СтажерРозница': {
+    name: 'СтажерРозница',
+    department: 'Розничный отдел',
+    position: 'Стажёр менеджера по продажам',
+    salaryType: 'retail_sales_bonus',
+  },
+  'Икаев Асад': {
+    name: 'Икаев Асад',
+    department: 'Розничный отдел',
+    position: 'Специалист по поклейке защитных плёнок',
+    salaryType: 'retail_sales_bonus',
+  },
+  'Кумахова Диана': {
+    name: 'Кумахова Диана',
+    department: 'Розничный отдел',
+    position: 'Старший менеджер розничного отдела',
+    salaryType: 'retail_sales_bonus',
+  },
+  'Улубиев Марат': {
+    name: 'Улубиев Марат',
+    department: 'IT и техническая поддержка',
+    position: 'Специалист по сопровождению 1С и IT-инфраструктуры',
+    salaryType: 'fixed_salary',
+    salary: 10000,
+  },
+  'Даудова Татьяна': {
+    name: 'Даудова Татьяна',
+    department: 'Хозяйственный отдел',
+    position: 'Сотрудник хозяйственного отдела',
+    salaryType: 'fixed_salary',
+    salary: 15000,
+  },
+  'Дагиров Ибрагим': {
+    name: 'Дагиров Ибрагим',
+    department: 'Отдел закупок',
+    position: 'Помощник менеджера по закупкам',
+    salaryType: 'fixed_salary',
+    salary: 40000,
+  },
+  'Атабиева Марианна': {
+    name: 'Атабиева Марианна',
+    department: 'Складской учёт и контроль брака',
+    position: 'Специалист по учёту брака',
+    salaryType: 'fixed_salary',
+    salary: 30000,
+  },
 };
 
 const payrollAttendanceConfig: Record<string, PayrollAttendanceConfig> = {
@@ -1219,6 +1320,7 @@ function getDayRate(department: Department) {
 }
 
 function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManualInput | undefined): FullPayrollRow {
+  const employee = payrollEmployees[summary.manager];
   const manualWorkedDays = parseManualNumber(manual?.workedDays ?? '');
   const manualLateCount = parseManualNumber(manual?.lateCount ?? '');
   const salaryRule = isBelaManager(summary.manager) ? 'belaPercent' : isNoDayPayManager(summary.manager) ? 'noDayPay' : 'standard';
@@ -1240,9 +1342,15 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
 
   return {
     ...summary,
+    payrollDepartment: employee?.department ?? summary.department,
+    position: employee?.position ?? 'Сотрудник',
+    salaryType: employee?.salaryType ?? (summary.department === 'Опт' ? 'wholesale_percent' : 'retail_sales_bonus'),
     workedDays,
     lateCount,
     advance,
+    fixedSalary: 0,
+    fixedBonus: 0,
+    fixedDeduction: 0,
     comment: manual?.comment ?? '',
     daysSource: manual?.source ?? 'manual',
     dayRate,
@@ -1274,6 +1382,54 @@ function applyBelaPercentRule(rows: FullPayrollRow[]): FullPayrollRow[] {
   });
 }
 
+function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>): FullPayrollRow[] {
+  return Object.values(payrollEmployees)
+    .filter((employee) => employee.salaryType === 'fixed_salary')
+    .map((employee) => {
+      const input = inputs[employee.name];
+      const fixedSalary = employee.salary ?? 0;
+      const fixedBonus = parseManualNumber(input?.bonus ?? '') ?? 0;
+      const advance = parseManualNumber(input?.advance ?? '') ?? 0;
+      const fixedDeduction = parseManualNumber(input?.deduction ?? '') ?? 0;
+      const grossPay = fixedSalary + fixedBonus;
+      const netPay = grossPay - advance - fixedDeduction;
+      const payrollReasons = fixedSalary > 0 ? [] : ['Не заполнен оклад'];
+
+      return {
+        manager: employee.name,
+        department: 'Розница',
+        payrollDepartment: employee.department,
+        position: employee.position,
+        salaryType: employee.salaryType,
+        revenue: 0,
+        grossProfit: 0,
+        creditBonus: 0,
+        filmBonus: 0,
+        techBonus: 0,
+        accessoryBonus: 0,
+        wholesaleBonus: 0,
+        totalBonus: 0,
+        workedDays: null,
+        lateCount: null,
+        advance,
+        fixedSalary,
+        fixedBonus,
+        fixedDeduction,
+        comment: input?.comment ?? '',
+        daysSource: 'manual',
+        dayRate: 0,
+        dayPay: 0,
+        salesBonus: 0,
+        disciplineBonus: 0,
+        grossPay,
+        netPay,
+        salaryRule: 'fixedSalary',
+        payrollStatus: payrollReasons.length ? 'Проверить' : 'OK',
+        payrollReasons,
+      } satisfies FullPayrollRow;
+    });
+}
+
 function getPayrollStatusClass(status: 'OK' | 'Проверить') {
   return status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800';
 }
@@ -1290,6 +1446,20 @@ function getPayrollDaysSourceLabel(source: PayrollDaysSource) {
   if (source === 'schedule') return 'График + опоздания вручную';
   if (source === 'manualCorrection') return 'Ручная корректировка';
   return 'Ручной ввод';
+}
+
+function getSalaryTypeLabel(salaryType: SalaryType) {
+  if (salaryType === 'fixed_salary') return 'Фиксированная зарплата';
+  if (salaryType === 'vl_percent') return 'ВЛ процент';
+  if (salaryType === 'wholesale_percent') return 'Оптовый процент';
+  return 'Розничный бонус продаж';
+}
+
+function getSalaryFormulaLabel(salaryType: SalaryType) {
+  if (salaryType === 'fixed_salary') return 'оклад + премия - аванс - удержание';
+  if (salaryType === 'vl_percent') return '12% от итоговых ЗП сотрудников';
+  if (salaryType === 'wholesale_percent') return 'оптовый бонус + дни + дисциплина - аванс';
+  return 'дни + бонусы продаж + дисциплина - аванс';
 }
 
 function findAttendanceMatches<T extends { employee: string }>(rows: T[], attendanceNames: string[]) {
@@ -1411,6 +1581,7 @@ export default function AdminPayrollPage() {
   const [expandedManager, setExpandedManager] = useState<string | null>(null);
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
   const [manualPayroll, setManualPayroll] = useState<Record<string, PayrollManualInput>>({});
+  const [fixedPayroll, setFixedPayroll] = useState<Record<string, FixedPayrollInput>>({});
   const [attendancePreview, setAttendancePreview] = useState<PayrollAttendancePreviewResponse | null>(null);
   const [attendancePreviewError, setAttendancePreviewError] = useState('');
   const [isAttendancePreviewLoading, setIsAttendancePreviewLoading] = useState(false);
@@ -1449,13 +1620,15 @@ export default function AdminPayrollPage() {
   const totalRevenue = useMemo(() => classification.rows.reduce((sum, row) => sum + row.revenue, 0), [classification.rows]);
   const totalGrossProfit = useMemo(() => classification.rows.reduce((sum, row) => sum + row.grossProfit, 0), [classification.rows]);
   const totalBonus = useMemo(() => classification.managerSummaries.reduce((sum, row) => sum + row.totalBonus, 0), [classification.managerSummaries]);
-  const fullPayrollRows = useMemo(
+  const salesPayrollRows = useMemo(
     () => applyBelaPercentRule(classification.managerSummaries.map((summary) => buildFullPayrollRow(summary, manualPayroll[summary.manager]))),
     [classification.managerSummaries, manualPayroll],
   );
+  const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll), [fixedPayroll]);
+  const fullPayrollRows = useMemo(() => [...salesPayrollRows, ...fixedPayrollRows], [salesPayrollRows, fixedPayrollRows]);
   const payrollAttendanceMappingRows = useMemo(
     () =>
-      fullPayrollRows.map((row) => {
+      salesPayrollRows.map((row) => {
         const config = payrollAttendanceConfig[row.manager];
         const attendanceNames = config?.attendanceNames ?? [];
         return {
@@ -1466,12 +1639,12 @@ export default function AdminPayrollPage() {
           comment: config?.comment ?? 'Нет ручного соответствия в карте.',
         };
       }),
-    [fullPayrollRows],
+    [salesPayrollRows],
   );
   const payrollAttendancePreviewRows = useMemo(() => {
     if (!attendancePreview) return [];
 
-    return fullPayrollRows.map((row) => {
+    return salesPayrollRows.map((row) => {
       const config = payrollAttendanceConfig[row.manager];
       const attendanceNames = config?.attendanceNames ?? [];
       const formMatches = findAttendanceMatches(attendancePreview.formSummaries, attendanceNames);
@@ -1571,7 +1744,7 @@ export default function AdminPayrollPage() {
         comment: config.comment,
       };
     });
-  }, [attendancePreview, fullPayrollRows]);
+  }, [attendancePreview, salesPayrollRows]);
   const selectedManagerPayroll = useMemo(() => fullPayrollRows.find((summary) => summary.manager === selectedManager) ?? null, [fullPayrollRows, selectedManager]);
   const selectedManagerAttendanceNames = selectedManagerPayroll ? payrollAttendanceConfig[selectedManagerPayroll.manager]?.attendanceNames ?? [] : [];
   const payrollTotals = useMemo(
@@ -1602,7 +1775,11 @@ export default function AdminPayrollPage() {
   const classificationErrorCount = classification.accessoryExcludedRows.length + unclassifiedRows.length;
   const selectedManagerSummary = useMemo(() => classification.managerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [classification.managerSummaries, selectedManager]);
   const selectedManagerRows = useMemo(() => classification.rows.filter((row) => row.manager === selectedManager), [classification.rows, selectedManager]);
-  const selectedManagerStatus = selectedManagerSummary ? getManagerStatus(selectedManagerSummary, classification.rows, classification.accessoryExcludedRows) : null;
+  const selectedManagerStatus = selectedManagerPayroll?.salaryType === 'fixed_salary'
+    ? { status: selectedManagerPayroll.payrollStatus, reason: selectedManagerPayroll.payrollReasons.join(', ') || 'замечаний нет' }
+    : selectedManagerSummary
+      ? getManagerStatus(selectedManagerSummary, classification.rows, classification.accessoryExcludedRows)
+      : null;
   const selectedManagerCounts = useMemo(
     () => ({
       disputed: selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH').length,
@@ -1694,6 +1871,25 @@ export default function AdminPayrollPage() {
           ...previous,
           [field]: value,
           source: nextSource,
+        },
+      };
+    });
+  }
+
+  function updateFixedPayroll(manager: string, field: keyof FixedPayrollInput, value: string) {
+    setFixedPayroll((current) => {
+      const previous = current[manager] ?? {
+        bonus: '',
+        advance: '',
+        deduction: '',
+        comment: '',
+      };
+
+      return {
+        ...current,
+        [manager]: {
+          ...previous,
+          [field]: value,
         },
       };
     });
@@ -2041,12 +2237,15 @@ export default function AdminPayrollPage() {
                             const combinedStatus = statusInfo.status === 'OK' && summary.payrollStatus === 'OK' ? 'OK' : 'Проверить';
                             return (
                               <tr key={summary.manager} className='border-t border-border/70 align-top'>
-                                <td className='max-w-[210px] truncate px-2 py-2 font-semibold text-slate-900' title={summary.manager}>{summary.manager}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-slate-700'>{summary.department}</td>
+                                <td className='max-w-[210px] truncate px-2 py-2 font-semibold text-slate-900' title={`${summary.manager} · ${summary.position}`}>
+                                  <span className='block truncate'>{summary.manager}</span>
+                                  <span className='block truncate text-[11px] font-medium text-slate-500'>{summary.position}</span>
+                                </td>
+                                <td className='whitespace-nowrap px-2 py-2 text-slate-700'>{summary.payrollDepartment}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.workedDays ?? '—'}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.lateCount ?? '—'}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right font-semibold text-slate-900'>{formatMoney(summary.salesBonus)}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{formatMoney(summary.disciplineBonus)}</td>
+                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.salaryType === 'fixed_salary' ? '—' : formatMoney(summary.disciplineBonus)}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{formatMoney(summary.advance)}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right font-bold text-slate-900'>{formatMoney(summary.netPay)}</td>
                                 <td className='px-2 py-2'>
@@ -2091,14 +2290,14 @@ export default function AdminPayrollPage() {
                         </tr>
                       </thead>
                       <tbody>
-                          {fullPayrollRows.map((row) => {
+                          {salesPayrollRows.map((row) => {
                             const manual = manualPayroll[row.manager] ?? { workedDays: '', lateCount: '', advance: '', comment: '' };
                             const workedDaysValue = manual.workedDays || (row.workedDays === null ? '' : String(row.workedDays));
                             const lateCountValue = manual.lateCount || (row.lateCount === null ? '' : String(row.lateCount));
                             return (
                             <tr key={row.manager} className='border-t border-border/70 align-top'>
                               <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
-                              <td className='px-3 py-2'>{row.department}</td>
+                              <td className='px-3 py-2'>{row.payrollDepartment}</td>
                               <td className='px-3 py-2 text-slate-700'>{getPayrollDaysSourceLabel(row.daysSource)}</td>
                               <td className='px-3 py-2'><Input type='number' min='0' step='0.5' value={workedDaysValue} onChange={(event) => updateManualPayroll(row.manager, 'workedDays', event.target.value)} className='h-9 w-28' /></td>
                               <td className='px-3 py-2 text-right'>{formatMoney(row.dayRate)}</td>
@@ -2112,6 +2311,48 @@ export default function AdminPayrollPage() {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                  <div className='mt-5'>
+                    <div className='mb-3'>
+                      <h3 className='text-base font-bold text-slate-900'>Фиксированная зарплата</h3>
+                      <p className='mt-1 text-sm text-slate-500'>Отдельный ручной блок для сотрудников без расчёта по продажам.</p>
+                    </div>
+                    <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
+                      <table className='w-full min-w-[1180px] text-sm'>
+                        <thead className='bg-slate-50 text-left text-slate-500'>
+                          <tr>
+                            <th className='px-3 py-3'>Сотрудник</th>
+                            <th className='px-3 py-3'>Отдел / должность</th>
+                            <th className='px-3 py-3 text-right'>Оклад</th>
+                            <th className='px-3 py-3'>Премия</th>
+                            <th className='px-3 py-3'>Аванс</th>
+                            <th className='px-3 py-3'>Удержание</th>
+                            <th className='px-3 py-3 text-right'>К выплате</th>
+                            <th className='px-3 py-3'>Комментарий</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fixedPayrollRows.map((row) => {
+                            const manual = fixedPayroll[row.manager] ?? { bonus: '', advance: '', deduction: '', comment: '' };
+                            return (
+                              <tr key={row.manager} className='border-t border-border/70 align-top'>
+                                <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
+                                <td className='px-3 py-2 text-slate-700'>
+                                  <span className='block font-semibold'>{row.payrollDepartment}</span>
+                                  <span className='text-xs text-slate-500'>{row.position}</span>
+                                </td>
+                                <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.fixedSalary)}</td>
+                                <td className='px-3 py-2'><Input type='number' min='0' step='100' value={manual.bonus} onChange={(event) => updateFixedPayroll(row.manager, 'bonus', event.target.value)} className='h-9 w-32' /></td>
+                                <td className='px-3 py-2'><Input type='number' min='0' step='100' value={manual.advance} onChange={(event) => updateFixedPayroll(row.manager, 'advance', event.target.value)} className='h-9 w-32' /></td>
+                                <td className='px-3 py-2'><Input type='number' min='0' step='100' value={manual.deduction} onChange={(event) => updateFixedPayroll(row.manager, 'deduction', event.target.value)} className='h-9 w-32' /></td>
+                                <td className='px-3 py-2 text-right font-bold'>{formatMoney(row.netPay)}</td>
+                                <td className='px-3 py-2'><Input value={manual.comment} onChange={(event) => updateFixedPayroll(row.manager, 'comment', event.target.value)} placeholder='Комментарий' className='h-9 min-w-[220px]' /></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                   <div className='mt-5'>
                     <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
@@ -2437,13 +2678,13 @@ export default function AdminPayrollPage() {
               )}
             </div>
 
-            {selectedManagerSummary && selectedManagerStatus && selectedManagerPayroll && (
+            {selectedManagerStatus && selectedManagerPayroll && (
               <div className='fixed inset-0 z-50 flex justify-end bg-slate-950/45'>
                 <aside className='h-full w-full overflow-y-auto bg-white p-5 shadow-2xl md:w-[62vw] xl:w-[58vw]'>
                   <div className='mb-5 flex items-start justify-between gap-4 border-b border-border pb-4'>
                     <div className='min-w-0'>
-                      <h2 className='truncate text-2xl font-bold text-slate-900'>{selectedManagerSummary.manager}</h2>
-                      <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {selectedManagerSummary.department}</p>
+                      <h2 className='truncate text-2xl font-bold text-slate-900'>{selectedManagerPayroll.manager}</h2>
+                      <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {selectedManagerPayroll.payrollDepartment} · {selectedManagerPayroll.position}</p>
                       <div className='mt-3 flex flex-wrap items-center gap-2'>
                         <Badge className={selectedManagerStatus.status === 'OK' && selectedManagerPayroll.payrollStatus === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
                           {selectedManagerStatus.status === 'OK' && selectedManagerPayroll.payrollStatus === 'OK' ? 'OK' : 'Проверить'}
@@ -2480,18 +2721,34 @@ export default function AdminPayrollPage() {
                     <Card>
                       <h3 className='mb-3 text-base font-bold text-slate-900'>Начисления</h3>
                       <div className='grid gap-3 sm:grid-cols-3'>
-                        {[
-                          ['Ставка', formatMoney(selectedManagerPayroll.dayRate)],
-                          ['Источник дней', getPayrollDaysSourceLabel(selectedManagerPayroll.daysSource)],
-                          ['Дни', selectedManagerPayroll.workedDays ?? '—'],
-                          ['Опоздания', selectedManagerPayroll.lateCount ?? '—'],
-                          ['Имя в посещаемости', selectedManagerAttendanceNames.join(', ') || '—'],
-                          ['Правило зарплаты', selectedManagerPayroll.salaryRule === 'belaPercent' ? '12% от итоговых ЗП сотрудников' : selectedManagerPayroll.salaryRule === 'noDayPay' ? 'Без оплаты выходов по дням' : 'Стандарт'],
-                          ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
-                          ['Бонус продаж', formatMoney(selectedManagerPayroll.salesBonus)],
-                          ['Бонус дисциплины', formatMoney(selectedManagerPayroll.disciplineBonus)],
-                          ['Всего начислено', formatMoney(selectedManagerPayroll.grossPay)],
-                        ].map(([label, value]) => (
+                        {(selectedManagerPayroll.salaryType === 'fixed_salary'
+                          ? [
+                              ['Отдел', selectedManagerPayroll.payrollDepartment],
+                              ['Должность', selectedManagerPayroll.position],
+                              ['Тип расчёта', getSalaryTypeLabel(selectedManagerPayroll.salaryType)],
+                              ['Оклад', formatMoney(selectedManagerPayroll.fixedSalary)],
+                              ['Премия', formatMoney(selectedManagerPayroll.fixedBonus)],
+                              ['Аванс', formatMoney(selectedManagerPayroll.advance)],
+                              ['Удержание', formatMoney(selectedManagerPayroll.fixedDeduction)],
+                              ['Формула', getSalaryFormulaLabel(selectedManagerPayroll.salaryType)],
+                              ['К выплате', formatMoney(selectedManagerPayroll.netPay)],
+                            ]
+                          : [
+                              ['Отдел', selectedManagerPayroll.payrollDepartment],
+                              ['Должность', selectedManagerPayroll.position],
+                              ['Тип расчёта', getSalaryTypeLabel(selectedManagerPayroll.salaryType)],
+                              ['Формула расчёта', getSalaryFormulaLabel(selectedManagerPayroll.salaryType)],
+                              ['Ставка', formatMoney(selectedManagerPayroll.dayRate)],
+                              ['Источник дней', getPayrollDaysSourceLabel(selectedManagerPayroll.daysSource)],
+                              ['Дни', selectedManagerPayroll.workedDays ?? '—'],
+                              ['Опоздания', selectedManagerPayroll.lateCount ?? '—'],
+                              ['Имя в посещаемости', selectedManagerAttendanceNames.join(', ') || '—'],
+                              ['Правило зарплаты', selectedManagerPayroll.salaryRule === 'belaPercent' ? '12% от итоговых ЗП сотрудников' : selectedManagerPayroll.salaryRule === 'noDayPay' ? 'Без оплаты выходов по дням' : 'Стандарт'],
+                              ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
+                              ['Бонус продаж', formatMoney(selectedManagerPayroll.salesBonus)],
+                              ['Бонус дисциплины', formatMoney(selectedManagerPayroll.disciplineBonus)],
+                              ['Всего начислено', formatMoney(selectedManagerPayroll.grossPay)],
+                            ]).map(([label, value]) => (
                           <div key={label} className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
                             <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
                             <p className='font-bold text-slate-900'>{value}</p>
@@ -2506,7 +2763,8 @@ export default function AdminPayrollPage() {
                       <div className='grid gap-3 sm:grid-cols-2'>
                         {[
                           ['Аванс', formatMoney(selectedManagerPayroll.advance)],
-                          ['Всего удержано', formatMoney(selectedManagerPayroll.advance)],
+                          ['Удержание', selectedManagerPayroll.salaryType === 'fixed_salary' ? formatMoney(selectedManagerPayroll.fixedDeduction) : '—'],
+                          ['Всего удержано', formatMoney(selectedManagerPayroll.advance + selectedManagerPayroll.fixedDeduction)],
                         ].map(([label, value]) => (
                           <div key={label} className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
                             <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
@@ -2525,6 +2783,8 @@ export default function AdminPayrollPage() {
                       </div>
                     </Card>
 
+                    {selectedManagerPayroll.salaryType !== 'fixed_salary' && selectedManagerSummary && (
+                      <>
                     <Card>
                       <h3 className='mb-3 text-base font-bold text-slate-900'>Структура бонусов</h3>
                       <p className='mb-3 text-sm text-slate-600'>
@@ -2597,6 +2857,8 @@ export default function AdminPayrollPage() {
                       </div>
                       {selectedManagerCounts.negative > 0 && <p className='mt-3 text-xs text-slate-500'>Отрицательная ВП может быть возвратом или корректировкой. Проверьте строки.</p>}
                     </Card>
+                      </>
+                    )}
                   </div>
                 </aside>
               </div>
