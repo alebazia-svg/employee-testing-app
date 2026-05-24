@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int               @id @default(autoincrement())
+  name          String
+  login         String            @unique
+  passwordHash  String
+  role          String
+  results       Result[]
+  progresses    AttemptProgress[]
+  resetTargets  AttemptReset[]    @relation("ResetTarget")
+  resetByActions AttemptReset[]    @relation("ResetBy")
+}
+
+model Attestation {
+  id           Int               @id @default(autoincrement())
+  title        String
+  passingScore Int
+  status       String            @default("DRAFT")
+  type         String            @default("PRACTICE")
+  sections     Section[]
+  results      Result[]
+  progresses   AttemptProgress[]
+  resets       AttemptReset[]
+}
+
+model Section {
+  id            Int         @id @default(autoincrement())
+  title         String
+  order         Int         @default(0)
+  attestationId Int
+  attestation   Attestation @relation(fields: [attestationId], references: [id], onDelete: Cascade)
+  questions     Question[]
+}
+
+model Question {
+  id           Int     @id @default(autoincrement())
+  text         String
+  options      String
+  correctIndex Int
+  order        Int     @default(0)
+  sectionId    Int
+  section      Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+}
+
+model AttemptProgress {
+  id            Int         @id @default(autoincrement())
+  userId        Int
+  attestationId Int
+  answers       String      @default("{}")
+  questionOrder String
+  currentIndex  Int         @default(0)
+  updatedAt     DateTime    @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attestation   Attestation @relation(fields: [attestationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, attestationId])
+}
+
+model Result {
+  id            Int         @id @default(autoincrement())
+  userId        Int
+  attestationId Int
+  date          DateTime    @default(now())
+  percent       Int
+  status        String
+  correctCount  Int
+  totalQuestions Int
+  mistakes      Int
+  details       String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attestation   Attestation @relation(fields: [attestationId], references: [id], onDelete: Cascade)
+}
+
+model AttemptReset {
+  id            Int         @id @default(autoincrement())
+  userId        Int
+  attestationId Int
+  resetById     Int
+  date          DateTime    @default(now())
+  user          User        @relation("ResetTarget", fields: [userId], references: [id], onDelete: Cascade)
+  resetBy       User        @relation("ResetBy", fields: [resetById], references: [id], onDelete: Cascade)
+  attestation   Attestation @relation(fields: [attestationId], references: [id], onDelete: Cascade)
+}
