@@ -1,8 +1,14 @@
 ﻿node_modules/
 .next/
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 *.log
 tsconfig.tsbuildinfo
 prisma/dev.db
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3

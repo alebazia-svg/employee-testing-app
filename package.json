@@ -7,8 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:push": "C:\\Progra~1\\nodejs\\node.exe node_modules/prisma/build/index.js db push --force-reset --accept-data-loss",
-    "db:seed": "C:\\Progra~1\\nodejs\\node.exe node_modules/tsx/dist/cli.mjs prisma/seed.ts"
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:seed:demo": "C:\\Progra~1\\nodejs\\node.exe node_modules/tsx/dist/cli.mjs prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
