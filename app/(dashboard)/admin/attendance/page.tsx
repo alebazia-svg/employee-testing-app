@@ -1,5 +1,6 @@
 import { AlertCircle, CalendarCheck, CheckCircle2, Clock, Timer, Users } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
+import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
@@ -866,11 +867,12 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
 
   return (
     <AdminShell>
-      <div className='mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+      <div className='mb-7 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
         <div>
-          <h1 className='text-2xl font-bold text-slate-900'>Посещаемость</h1>
-          <p className='text-sm text-slate-500'>Аналитика по отметкам из Google Sheets: лист “Ответы на форму (1)”, диапазон A:F.</p>
-          <p className='mt-1 text-sm text-slate-500'>На текущем этапе явка считается подтверждённой по отметке начала рабочего дня. Отсутствие отметки ухода фиксируется отдельно и не обнуляет явку.</p>
+          <AdminBreadcrumbs current='Посещаемость' />
+          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Посещаемость</h1>
+          <p className='mt-1 text-base font-medium text-slate-500'>Аналитика по отметкам из Google Sheets: лист “Ответы на форму (1)”, диапазон A:F.</p>
+          <p className='mt-1 text-sm font-medium text-slate-500'>На текущем этапе явка считается подтверждённой по отметке начала рабочего дня. Отсутствие отметки ухода фиксируется отдельно и не обнуляет явку.</p>
         </div>
         <Badge className={isDemo ? 'bg-slate-100 text-slate-700' : 'bg-green-100 text-green-800'}>
           {isDemo ? 'Demo mode' : 'Google Sheets'}

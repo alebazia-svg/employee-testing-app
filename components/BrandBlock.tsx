@@ -3,20 +3,22 @@ import { cn } from '@/lib/utils';
 
 type BrandSize = 'login' | 'header' | 'sidebar';
 
-const logoSizes: Record<BrandSize, string> = {
-  login: 'w-[245px] md:w-[285px]',
-  header: 'w-[170px] md:w-[190px]',
-  sidebar: 'w-[170px]',
-};
-
-const captionSizes: Record<BrandSize, string> = {
-  login: '-mt-8 w-[245px] text-[13px] md:-mt-9 md:w-[285px] md:text-sm',
-  header: '-mt-5 w-[170px] text-[11px] md:-mt-6 md:w-[190px] md:text-xs',
-  sidebar: '-mt-5 w-[170px] text-[11px]',
+const logoConfig: Record<BrandSize, { src: string; className: string }> = {
+  login: {
+    src: '/logo-offonika-full.webp',
+    className: 'w-[290px] sm:w-[360px] lg:w-[460px]',
+  },
+  header: {
+    src: '/logo-offonika-sidebar.webp',
+    className: 'w-[190px] md:w-[215px]',
+  },
+  sidebar: {
+    src: '/logo-offonika-sidebar.webp',
+    className: 'w-[190px]',
+  },
 };
 
 export function BrandBlock({
-  compact = false,
   large = false,
   size,
 }: {
@@ -26,18 +28,18 @@ export function BrandBlock({
   size?: BrandSize;
 }) {
   const brandSize = size ?? (large ? 'login' : 'header');
+  const config = logoConfig[brandSize];
 
   return (
-    <div className='inline-flex min-w-0 flex-col items-start'>
+    <div className='inline-flex min-w-0 items-start'>
       <Image
-        src='/offonika-wordmark.png'
+        src={config.src}
         alt='OFFONIKA'
-        width={2048}
-        height={682}
+        width={1873}
+        height={274}
         priority={large}
-        className={cn('h-auto max-w-full object-contain mix-blend-multiply', logoSizes[brandSize])}
+        className={cn('h-auto max-w-full object-contain', config.className)}
       />
-      {!compact && <p className={cn('text-center font-semibold leading-none text-slate-500', captionSizes[brandSize])}>Система аттестации сотрудников</p>}
     </div>
   );
 }

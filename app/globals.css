@@ -8,8 +8,7 @@
 
 body {
   @apply min-h-screen bg-background text-foreground antialiased;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(245, 247, 246, 0.96) 42%, #eef3ef 100%);
+  background: #f7faf8;
   font-feature-settings:
     "cv02" 1,
     "cv03" 1,
@@ -18,4 +17,16 @@ body {
 
 ::selection {
   background: rgba(81, 180, 17, 0.22);
+}
+
+thead th {
+  font-weight: 700;
+}
+
+tbody tr {
+  transition: background-color 140ms ease;
+}
+
+tbody tr:hover {
+  background: rgba(248, 250, 252, 0.88);
 }

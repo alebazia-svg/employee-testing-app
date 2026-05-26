@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Pencil, Trash2, UserPlus } from 'lucide-react';
+import { Pencil, ShieldCheck, Trash2, UserCheck, UserCog, UserPlus, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,6 +17,8 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
   const [draft, setDraft] = useState(emptyDraft);
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [error, setError] = useState('');
+  const adminCount = users.filter((user) => user.role === 'ADMIN').length;
+  const employeeCount = users.filter((user) => user.role !== 'ADMIN').length;
 
   function startCreate() {
     setError('');
@@ -62,13 +64,39 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
   }
 
   return (
-    <div className='space-y-4'>
-      <div className='flex justify-end'>
+    <div className='space-y-5'>
+      <div className='grid gap-4 md:grid-cols-3'>
+        {[
+          { label: 'Всего сотрудников', value: users.length, icon: Users, tone: 'green' },
+          { label: 'Администраторы', value: adminCount, icon: UserCog, tone: 'blue' },
+          { label: 'Сотрудники', value: employeeCount, icon: UserCheck, tone: 'green' },
+        ].map((item) => {
+          const Icon = item.icon;
+          const toneClass = item.tone === 'blue' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-primary';
+          return (
+            <Card key={item.label} className='flex items-center gap-4'>
+              <div className={`flex h-12 w-12 items-center justify-center rounded-full ${toneClass}`}>
+                <Icon className='h-6 w-6' />
+              </div>
+              <div>
+                <p className='text-sm font-bold text-slate-600'>{item.label}</p>
+                <p className='mt-1 text-2xl font-extrabold text-slate-950'>{item.value}</p>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Card className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+        <div>
+          <p className='text-sm font-bold text-slate-950'>Список сотрудников</p>
+          <p className='text-sm font-medium text-slate-500'>Роли и доступы сохраняются текущей логикой приложения.</p>
+        </div>
         <Button className='gap-2' onClick={startCreate}>
           <UserPlus className='h-4 w-4' />
           Создать сотрудника
         </Button>
-      </div>
+      </Card>
 
       {editingId && (
         <Card>
@@ -77,7 +105,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
             <Input placeholder='Имя' value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))} />
             <Input placeholder='Логин' value={draft.login} onChange={(event) => setDraft((value) => ({ ...value, login: event.target.value }))} />
             <Input placeholder={editingId === 'new' ? 'Пароль' : 'Новый пароль, если нужно'} type='password' value={draft.password} onChange={(event) => setDraft((value) => ({ ...value, password: event.target.value }))} />
-            <select className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm' value={draft.role} onChange={(event) => setDraft((value) => ({ ...value, role: event.target.value }))}>
+            <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.role} onChange={(event) => setDraft((value) => ({ ...value, role: event.target.value }))}>
               <option value='ADMIN'>Администратор</option>
               <option value='EMPLOYEE'>Сотрудник</option>
             </select>
@@ -102,11 +130,12 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
           </thead>
           <tbody>
             {users.map((user) => (
-              <tr key={user.id} className='border-t border-border/70'>
+              <tr key={user.id} className='border-t border-slate-200/80'>
                 <td className='px-5 py-4 font-medium text-slate-900'>{user.name}</td>
                 <td className='px-5 py-4 text-slate-700'>{user.login}</td>
                 <td className='px-5 py-4'>
                   <Badge className={user.role === 'ADMIN' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
+                    {user.role === 'ADMIN' && <ShieldCheck className='mr-1 inline h-3.5 w-3.5' />}
                     {user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}
                   </Badge>
                 </td>
@@ -122,6 +151,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
             ))}
           </tbody>
         </Table>
+        {!users.length && <p className='p-5 text-sm font-medium text-slate-500'>Нет данных для отображения.</p>}
       </Card>
     </div>
   );

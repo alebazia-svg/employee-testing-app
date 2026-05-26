@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { ClipboardList, Layers, Pencil, Target, Trash2 } from 'lucide-react';
+import { AlertCircle, ClipboardList, Layers, Pencil, ShieldCheck, Target, Trash2, Users } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { AdminShell } from '@/components/AdminShell';
+import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,16 +15,44 @@ export default async function AdminAttestationsPage() {
     include: { sections: { include: { questions: true } } },
     orderBy: { id: 'asc' },
   });
+  const activeCount = attestations.filter((attestation) => attestation.status === 'ACTIVE').length;
+  const draftCount = attestations.filter((attestation) => attestation.status !== 'ACTIVE').length;
+  const questionCount = attestations.reduce((total, attestation) => total + attestation.sections.reduce((sum, section) => sum + section.questions.length, 0), 0);
+  const employeeCount = await prisma.user.count({ where: { role: 'EMPLOYEE' } });
 
   return (
     <AdminShell>
-      <div className='mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+      <div className='mb-7 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
         <div>
-          <h1 className='text-2xl font-bold text-slate-900'>Аттестации</h1>
-          <p className='text-sm text-slate-500'>Список аттестаций, статусы и структура разделов.</p>
+          <AdminBreadcrumbs current='Аттестации' />
+          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Аттестации</h1>
+          <p className='mt-1 text-base font-medium text-slate-500'>Управление аттестациями и назначениями</p>
         </div>
         <CreateAttestation />
       </div>
+
+      <section className='mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
+        {[
+          { label: 'Активных аттестаций', value: activeCount, icon: ShieldCheck, tone: 'green' },
+          { label: 'Назначено сотрудникам', value: employeeCount, icon: Users, tone: 'green' },
+          { label: 'Черновики', value: draftCount, icon: AlertCircle, tone: 'red' },
+          { label: 'Вопросов в базе', value: questionCount, icon: ClipboardList, tone: 'green' },
+        ].map((item) => {
+          const Icon = item.icon;
+          const toneClass = item.tone === 'red' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-primary';
+          return (
+            <Card key={item.label} className='flex items-center gap-4'>
+              <div className={`flex h-12 w-12 items-center justify-center rounded-full ${toneClass}`}>
+                <Icon className='h-6 w-6' />
+              </div>
+              <div>
+                <p className='text-sm font-bold text-slate-600'>{item.label}</p>
+                <p className='mt-1 text-2xl font-extrabold text-slate-950'>{item.value}</p>
+              </div>
+            </Card>
+          );
+        })}
+      </section>
 
       <Card className='p-0'>
         <Table>
@@ -42,7 +71,7 @@ export default async function AdminAttestationsPage() {
             {attestations.map((attestation) => {
               const questionCount = attestation.sections.reduce((sum, section) => sum + section.questions.length, 0);
               return (
-                <tr key={attestation.id} className='border-t border-border/70'>
+                <tr key={attestation.id} className='border-t border-slate-200/80'>
                   <td className='px-5 py-4'>
                     <div className='flex items-center gap-3'>
                       <div className='flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-700'>
@@ -79,6 +108,7 @@ export default async function AdminAttestationsPage() {
             })}
           </tbody>
         </Table>
+        {!attestations.length && <p className='p-5 text-sm font-medium text-slate-500'>Нет данных для отображения.</p>}
       </Card>
     </AdminShell>
   );

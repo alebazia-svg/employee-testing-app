@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
+import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -38,6 +39,8 @@ type SalesRow = {
   client: string;
   category: string;
   item: string;
+  registrar: string;
+  registrars: string[];
   revenue: number;
   cost: number;
   grossProfit: number;
@@ -51,8 +54,11 @@ type CalculationType =
   | 'WHOLESALE_REVIEW_TECH'
   | 'WHOLESALE_INCLUDED_1_75'
   | 'CREDIT_GROSS_PROFIT'
+  | 'CREDIT_ACCESSORY_NO_BONUS'
+  | 'CREDIT_REVIEW_NO_BONUS'
   | 'RETAIL_REVIEW_TECH'
   | 'RETAIL_FILM_50'
+  | 'RETAIL_PLOTTER_MATERIAL_COST_50'
   | 'RETAIL_GROSS_PROFIT_10'
   | 'RETAIL_ACCESSORY_5';
 
@@ -68,6 +74,9 @@ type ClassifiedSalesRow = SalesRow & {
   includedInWholesaleBase: boolean | null;
   classificationReason: string;
   matchedRule: string;
+  isCreditSale: boolean;
+  creditProductType: 'tech' | 'accessory' | 'review' | null;
+  creditIncludedInBonus: boolean;
 };
 
 type ProblemType =
@@ -80,6 +89,7 @@ type ProblemType =
   | 'zeroBase'
   | 'unclassified'
   | 'accessoryExcluded'
+  | 'expensiveUnclassified'
   | 'invalidNumbers'
   | 'disciplineBonusRemoved';
 
@@ -117,6 +127,7 @@ type BonusManagerSummary = {
   grossProfit: number;
   creditBonus: number;
   filmBonus: number;
+  plotterBonus: number;
   techBonus: number;
   accessoryBonus: number;
   wholesaleBonus: number;
@@ -127,6 +138,7 @@ type PayrollManualInput = {
   workedDays: string;
   lateCount: string;
   advance: string;
+  agentCreditCommission?: string;
   comment: string;
   source?: PayrollDaysSource;
 };
@@ -168,6 +180,7 @@ type FullPayrollRow = BonusManagerSummary & {
   workedDays: number | null;
   lateCount: number | null;
   advance: number;
+  agentCreditCommission: number;
   fixedSalary: number;
   fixedBonus: number;
   fixedDeduction: number;
@@ -205,6 +218,7 @@ type ClassificationResult = {
   managerSummaries: BonusManagerSummary[];
   disputedRows: ClassifiedSalesRow[];
   accessoryExcludedRows: ClassifiedSalesRow[];
+  expensiveReviewRows: ClassifiedSalesRow[];
   counts: {
     total: number;
     wholesale: number;
@@ -258,12 +272,19 @@ type DiagnosticRow = {
   excelRow: number;
   text: string;
   outlineLevel?: number;
-  detectedLevel: 'manager' | 'client' | 'category' | 'item' | 'ignored';
+  detectedLevel: 'manager' | 'client' | 'registrar' | 'category' | 'item' | 'document' | 'ignored';
   currentManager: string;
   currentClient: string;
+  currentRegistrar: string;
   currentCategory: string;
   revenue: number;
   grossProfit: number;
+};
+
+type DiagnosticLevelSummary = {
+  level: DiagnosticRow['detectedLevel'];
+  count: number;
+  examples: string[];
 };
 
 type PayrollAttendanceSourceType = 'form' | 'schedule_only' | 'manual_excluded' | 'manual_special';
@@ -348,6 +369,13 @@ const payrollEmployees: Record<string, PayrollEmployee> = {
     name: 'Атабиева Марианна',
     department: 'Складской учёт и контроль брака',
     position: 'Специалист по учёту брака',
+    salaryType: 'fixed_salary',
+    salary: 30000,
+  },
+  'Жамбекова Саида': {
+    name: 'Жамбекова Саида',
+    department: 'SMM',
+    position: 'SMM-специалист',
     salaryType: 'fixed_salary',
     salary: 30000,
   },
@@ -448,11 +476,17 @@ type PayrollParseResult = {
   headerMap: HeaderMap | null;
   columns: string[];
   rows: SalesRow[];
+  isRegistrarReport: boolean;
+  isSafeForPayrollCalculation: boolean;
+  safetyWarnings: ParseWarning[];
+  sourceRowCount: number;
+  detailRowCount: number;
   managers: string[];
   clients: string[];
   categories: string[];
   warnings: ParseWarning[];
   diagnostics: DiagnosticRow[];
+  levelSummaries: DiagnosticLevelSummary[];
   strategy: string;
   managerSummaries: ManagerSummary[];
   managerCategorySummaries: CategorySummary[];
@@ -486,6 +520,8 @@ const purchaseTargetSalary = 100000;
 const purchaseStandardWorkedDays = 20;
 const purchaseDayRate = 600;
 const purchasePercent = 0.0175;
+const agentCreditCommissionEmployee = 'Кумахова Диана';
+const asadManagerName = 'Икаев Асад';
 
 const headerAliases = {
   manager: ['менеджер'],
@@ -538,8 +574,11 @@ const calculationLabels: Record<CalculationType, string> = {
   WHOLESALE_REVIEW_TECH: 'Опт: спорная техника',
   WHOLESALE_INCLUDED_1_75: 'Опт: база 1.75%',
   CREDIT_GROSS_PROFIT: 'Кредит: ВП × 0.91 × 10%',
+  CREDIT_ACCESSORY_NO_BONUS: 'Кредитный аксессуар: без бонуса',
+  CREDIT_REVIEW_NO_BONUS: 'Кредит: требуется классификация',
   RETAIL_REVIEW_TECH: 'Розница: спорная техника',
-  RETAIL_FILM_50: 'Поклейка/бронь: 50%',
+  RETAIL_FILM_50: 'Услуги оказываемые: 50%',
+  RETAIL_PLOTTER_MATERIAL_COST_50: 'Плоттерные материалы: 50% от с/с',
   RETAIL_GROSS_PROFIT_10: 'Техника: 10% от ВП',
   RETAIL_ACCESSORY_5: 'Аксессуары: 5%',
 };
@@ -549,8 +588,11 @@ const calculationFormulas: Record<CalculationType, string> = {
   WHOLESALE_REVIEW_TECH: 'входит в базу опта, требует проверки',
   WHOLESALE_INCLUDED_1_75: 'выручка × 1.75%',
   CREDIT_GROSS_PROFIT: 'ВП × 0.91 × 10%',
+  CREDIT_ACCESSORY_NO_BONUS: 'не входит в кредитный бонус',
+  CREDIT_REVIEW_NO_BONUS: 'кредитная строка без начисления до классификации',
   RETAIL_REVIEW_TECH: 'выручка × 5%, требует проверки',
   RETAIL_FILM_50: 'выручка × 50%',
+  RETAIL_PLOTTER_MATERIAL_COST_50: 'с/с × 50%',
   RETAIL_GROSS_PROFIT_10: 'ВП × 10%',
   RETAIL_ACCESSORY_5: 'выручка × 5%',
 };
@@ -708,7 +750,7 @@ function looksLikeManagerName(text: string) {
   if (!cleanText || cleanText.includes('/') || cleanText.includes('(')) return false;
   if (normalizeText(cleanText).includes('итого')) return false;
 
-  if (knownManagers.includes(normalizeText(cleanText))) return true;
+  if (isKnownManagerName(cleanText)) return true;
   if (normalizeText(cleanText).includes('стажер')) return true;
 
   const parts = cleanText.split(/\s+/).filter(Boolean);
@@ -717,14 +759,30 @@ function looksLikeManagerName(text: string) {
   return parts.every((part) => /^[А-ЯA-ZЁ][а-яa-zё-]+$/.test(part));
 }
 
+function isKnownManagerName(text: string) {
+  return knownManagers.includes(normalizeText(text));
+}
+
 function isTotalRow(text: string) {
   const normalized = normalizeText(text);
   return normalized === 'итого' || normalized === 'всего' || normalized.startsWith('итого ') || normalized.startsWith('всего ');
 }
 
+function isRegistrarDocument(text: string) {
+  return containsAny(text, [
+    'Реализация товаров и услуг',
+    'Возврат товаров от клиента',
+    'Корректировка',
+    'Заказ клиента',
+    'Отчет о розничных продажах',
+    'Отчёт о розничных продажах',
+    'Регистратор',
+  ]);
+}
+
 function isHierarchyHeaderRow(text: string) {
   const normalized = normalizeText(text);
-  return normalized === 'клиент' || normalized === 'номенклатура.вид номенклатуры' || normalized === 'номенклатура, артикул';
+  return normalized === 'клиент' || normalized === 'регистратор' || normalized === 'номенклатура.вид номенклатуры' || normalized === 'номенклатура, артикул' || normalized === 'заказ клиента / реализация';
 }
 
 function isKnownCategory(text: string) {
@@ -751,6 +809,39 @@ function hasProductMarkers(text: string) {
     normalized.includes('hoco') ||
     normalized.includes('borofone')
   );
+}
+
+function hasClientProductMarkers(text: string) {
+  return containsAny(text, [
+    'кабель',
+    'чехол',
+    'накладка',
+    'стекло',
+    'плёнка',
+    'пленка',
+    'переходник',
+    'адаптер',
+    'зарядка',
+    'блок питания',
+    'аккумулятор',
+    'батарейка',
+    'смартфон',
+    'телефон',
+    'iphone',
+    'samsung',
+    'xiaomi',
+    'hoco',
+    'remax',
+    'borofone',
+    'apple watch',
+    'airpods',
+    'наушники',
+    'ремешок',
+    'камера',
+    'видеорегистратор',
+    'фен',
+    'пылесос',
+  ]);
 }
 
 function isBroadCategoryCandidate(text: string) {
@@ -791,7 +882,95 @@ function sumByKey<T extends Record<string, unknown>>(rows: SalesRow[], keyGetter
   return Array.from(map.values());
 }
 
-function buildResult(headerIndex: number, headerMap: HeaderMap | null, columns: string[], rows: SalesRow[], managers: Set<string>, clients: Set<string>, categories: Set<string>, warnings: ParseWarning[], diagnostics: DiagnosticRow[], strategy: string): PayrollParseResult {
+function hasRegistrarHierarchy(rows: SheetRow[], headerIndex: number) {
+  return rows
+    .slice(headerIndex + 1, headerIndex + 80)
+    .some((row) => normalizeText(getFirstText(row.values)) === 'регистратор');
+}
+
+function hasDocumentUnderItemHierarchy(rows: SheetRow[], headerIndex: number) {
+  const headers = rows.slice(headerIndex + 1, headerIndex + 8).map((row) => normalizeText(getFirstText(row.values)));
+
+  return (
+    headers.includes('клиент') &&
+    headers.includes('номенклатура.вид номенклатуры') &&
+    headers.includes('номенклатура, артикул') &&
+    headers.some((header) => header.includes('заказ клиента') && header.includes('реализация'))
+  );
+}
+
+function getUniqueRegistrars(rows: SalesRow[]) {
+  return Array.from(new Set(rows.flatMap((row) => row.registrars.length ? row.registrars : row.registrar ? [row.registrar] : []).filter(Boolean)));
+}
+
+function aggregateRowsByProduct(rows: SalesRow[]) {
+  const map = new Map<string, SalesRow[]>();
+
+  rows.forEach((row) => {
+    const key = [row.manager, row.client, row.category, row.item].map(normalizeText).join('::');
+    const current = map.get(key) ?? [];
+    current.push(row);
+    map.set(key, current);
+  });
+
+  return Array.from(map.values()).map((group) => {
+    const first = group[0];
+    const revenue = group.reduce((sum, row) => sum + row.revenue, 0);
+    const cost = group.reduce((sum, row) => sum + row.cost, 0);
+    const grossProfit = group.reduce((sum, row) => sum + row.grossProfit, 0);
+    const registrars = getUniqueRegistrars(group);
+
+    return {
+      ...first,
+      registrar: registrars.join(' | '),
+      registrars,
+      revenue,
+      cost,
+      grossProfit,
+      profitability: revenue ? (grossProfit / revenue) * 100 : 0,
+    };
+  });
+}
+
+function addRegistrarToRow(row: SalesRow, documentName: string) {
+  if (!documentName || row.registrars.includes(documentName)) return;
+  row.registrars.push(documentName);
+  row.registrar = row.registrars.join(' | ');
+}
+
+function buildLevelSummaries(diagnostics: DiagnosticRow[]): DiagnosticLevelSummary[] {
+  const levels: DiagnosticRow['detectedLevel'][] = ['manager', 'client', 'registrar', 'category', 'item', 'document', 'ignored'];
+
+  return levels.map((level) => {
+    const levelRows = diagnostics.filter((row) => row.detectedLevel === level);
+
+    return {
+      level,
+      count: levelRows.length,
+      examples: Array.from(new Set(levelRows.map((row) => row.text).filter(Boolean))).slice(0, 20),
+    };
+  });
+}
+
+function buildResult(
+  headerIndex: number,
+  headerMap: HeaderMap | null,
+  columns: string[],
+  rows: SalesRow[],
+  managers: Set<string>,
+  clients: Set<string>,
+  categories: Set<string>,
+  warnings: ParseWarning[],
+  diagnostics: DiagnosticRow[],
+  strategy: string,
+  options: {
+    isRegistrarReport?: boolean;
+    isSafeForPayrollCalculation?: boolean;
+    safetyWarnings?: ParseWarning[];
+    sourceRowCount?: number;
+    detailRowCount?: number;
+  } = {},
+): PayrollParseResult {
   const managerSummaries = sumByKey<ManagerSummary>(
     rows,
     (row) => row.manager,
@@ -830,11 +1009,17 @@ function buildResult(headerIndex: number, headerMap: HeaderMap | null, columns: 
     headerMap,
     columns,
     rows,
+    isRegistrarReport: options.isRegistrarReport ?? false,
+    isSafeForPayrollCalculation: options.isSafeForPayrollCalculation ?? true,
+    safetyWarnings: options.safetyWarnings ?? [],
+    sourceRowCount: options.sourceRowCount ?? rows.length,
+    detailRowCount: options.detailRowCount ?? rows.length,
     managers: Array.from(managers),
     clients: Array.from(clients),
     categories: Array.from(categories),
     warnings,
     diagnostics,
+    levelSummaries: buildLevelSummaries(diagnostics),
     strategy,
     managerSummaries,
     managerCategorySummaries,
@@ -842,7 +1027,7 @@ function buildResult(headerIndex: number, headerMap: HeaderMap | null, columns: 
   };
 }
 
-function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap: HeaderMap, columns: string[], strategy: 'outline' | 'content') {
+function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap: HeaderMap, columns: string[], strategy: 'outline' | 'content', hasRegistrar: boolean) {
   const warnings: ParseWarning[] = [];
   const salesRows: SalesRow[] = [];
   const managers = new Set<string>();
@@ -860,12 +1045,11 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
   const baseIndentLevel = indentLevels.length ? Math.min(...indentLevels) : 0;
   let currentManager = '';
   let currentClient = '';
+  let currentRegistrar = '';
   let currentCategory = '';
   let seenItemInClient = false;
 
   const addDiagnostic = (row: SheetRow, text: string, detectedLevel: DiagnosticRow['detectedLevel']) => {
-    if (diagnostics.length >= 100) return;
-
     diagnostics.push({
       excelRow: row.excelRow,
       text,
@@ -873,6 +1057,7 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
       detectedLevel,
       currentManager,
       currentClient,
+      currentRegistrar,
       currentCategory,
       revenue: toNumber(row.values[headerMap.revenue]),
       grossProfit: toNumber(row.values[headerMap.grossProfit]),
@@ -892,25 +1077,29 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
     if (strategy === 'outline') {
       const rowLevel = getOutlineLevel(row, hasOutlineLevels, baseIndentLevel);
       if (rowLevel !== null) {
-        detectedLevel = rowLevel <= 0 ? 'manager' : rowLevel === 1 ? 'client' : rowLevel === 2 ? 'category' : 'item';
+        detectedLevel = hasRegistrar
+          ? rowLevel <= 0 ? 'manager' : rowLevel === 1 ? 'client' : rowLevel === 2 ? 'registrar' : rowLevel === 3 ? 'category' : 'item'
+          : rowLevel <= 0 ? 'manager' : rowLevel === 1 ? 'client' : rowLevel === 2 ? 'category' : 'item';
       }
     }
 
     if (strategy === 'content' || detectedLevel === 'ignored') {
       const nextLooksCategory = isKnownCategory(nextText) || isBroadCategoryCandidate(nextText);
 
-      if (looksLikeManagerName(text)) {
+      if (hasRegistrar ? isKnownManagerName(text) : looksLikeManagerName(text)) {
         detectedLevel = 'manager';
       } else if (!currentManager) {
         detectedLevel = 'ignored';
         warnings.push({ excelRow: row.excelRow, text, reason: 'Строка пропущена: до неё не найден менеджер.' });
-      } else if (!currentClient) {
+      } else if (hasRegistrar && isRegistrarDocument(text)) {
+        detectedLevel = 'registrar';
+      } else if (!currentClient && !hasClientProductMarkers(text)) {
         detectedLevel = 'client';
       } else if (!currentCategory) {
         detectedLevel = 'category';
       } else if (isKnownCategory(text)) {
         detectedLevel = 'category';
-      } else if (seenItemInClient && !isLikelyProduct(text) && nextLooksCategory) {
+      } else if (seenItemInClient && !isLikelyProduct(text) && !hasClientProductMarkers(text) && nextLooksCategory) {
         detectedLevel = 'client';
       } else if (isBroadCategoryCandidate(text) && isLikelyProduct(nextText)) {
         detectedLevel = 'category';
@@ -919,9 +1108,34 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
       }
     }
 
+    if (hasRegistrar && isRegistrarDocument(text)) {
+      detectedLevel = 'registrar';
+    }
+
+    if (hasRegistrar && !currentClient && detectedLevel !== 'manager' && detectedLevel !== 'registrar' && hasClientProductMarkers(text)) {
+      warnings.push({
+        excelRow: row.excelRow,
+        text,
+        reason: 'Файл с регистратором распознан нестабильно: товарная строка встретилась там, где ожидался клиент. Разбор небезопасен для расчёта зарплаты.',
+      });
+      addDiagnostic(row, text, 'ignored');
+      return;
+    }
+
+    if (hasRegistrar && detectedLevel === 'client' && hasClientProductMarkers(text)) {
+      warnings.push({
+        excelRow: row.excelRow,
+        text,
+        reason: 'Файл с регистратором распознан нестабильно: товарная строка попала на уровень клиента. Разбор небезопасен для расчёта зарплаты.',
+      });
+      addDiagnostic(row, text, 'ignored');
+      return;
+    }
+
     if (detectedLevel === 'manager') {
       currentManager = text;
       currentClient = '';
+      currentRegistrar = '';
       currentCategory = '';
       seenItemInClient = false;
       managers.add(text);
@@ -931,9 +1145,18 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
 
     if (detectedLevel === 'client') {
       currentClient = text;
+      currentRegistrar = '';
       currentCategory = '';
       seenItemInClient = false;
       clients.add(text);
+      addDiagnostic(row, text, detectedLevel);
+      return;
+    }
+
+    if (detectedLevel === 'registrar') {
+      currentRegistrar = text;
+      currentCategory = '';
+      seenItemInClient = false;
       addDiagnostic(row, text, detectedLevel);
       return;
     }
@@ -963,6 +1186,8 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
         client: currentClient,
         category: currentCategory,
         item: text,
+        registrar: currentRegistrar,
+        registrars: currentRegistrar ? [currentRegistrar] : [],
         revenue: toNumber(row.values[headerMap.revenue]),
         cost: toNumber(row.values[headerMap.cost]),
         grossProfit: toNumber(row.values[headerMap.grossProfit]),
@@ -972,7 +1197,141 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
     }
   });
 
-  return buildResult(headerIndex, headerMap, columns, salesRows, managers, clients, categories, warnings, diagnostics, strategy === 'outline' ? 'outlineLevel' : 'эвристика по содержимому');
+  const parsedRows = hasRegistrar ? aggregateRowsByProduct(salesRows) : salesRows;
+  const strategyLabel = hasRegistrar
+    ? `${strategy === 'outline' ? 'outlineLevel' : 'эвристика по содержимому'} + регистратор`
+    : strategy === 'outline' ? 'outlineLevel' : 'эвристика по содержимому';
+
+  return buildResult(headerIndex, headerMap, columns, parsedRows, managers, clients, categories, warnings, diagnostics, strategyLabel, {
+    isRegistrarReport: hasRegistrar,
+    sourceRowCount: meaningfulRows.length,
+    detailRowCount: salesRows.length,
+  });
+}
+
+function parseRowsWithDocumentUnderItem(rows: SheetRow[], headerIndex: number, headerMap: HeaderMap, columns: string[]) {
+  const warnings: ParseWarning[] = [];
+  const salesRows: SalesRow[] = [];
+  const managers = new Set<string>();
+  const clients = new Set<string>();
+  const categories = new Set<string>();
+  const diagnostics: DiagnosticRow[] = [];
+  const hierarchyRows = rows.slice(headerIndex + 1).filter((row) => formatCell(row.values[headerMap.manager]).trim() !== '');
+  const meaningfulRows = hierarchyRows.filter((row) => {
+    const text = getHierarchyText(row, headerMap);
+    return !isTotalRow(text) && !isHierarchyHeaderRow(text);
+  });
+  const outlineLevels = meaningfulRows.map((row) => row.outlineLevel).filter((level): level is number => typeof level === 'number');
+  const hasOutlineLevels = outlineLevels.length > 0;
+  const indentLevels = meaningfulRows.map((row) => row.indentLevel).filter((level) => level > 0);
+  const baseIndentLevel = indentLevels.length ? Math.min(...indentLevels) : 0;
+  let currentManager = '';
+  let currentClient = '';
+  let currentCategory = '';
+  let lastSalesRow: SalesRow | null = null;
+
+  const addDiagnostic = (row: SheetRow, text: string, detectedLevel: DiagnosticRow['detectedLevel']) => {
+    diagnostics.push({
+      excelRow: row.excelRow,
+      text,
+      outlineLevel: row.outlineLevel,
+      detectedLevel,
+      currentManager,
+      currentClient,
+      currentRegistrar: lastSalesRow?.registrar ?? '',
+      currentCategory,
+      revenue: toNumber(row.values[headerMap.revenue]),
+      grossProfit: toNumber(row.values[headerMap.grossProfit]),
+    });
+  };
+
+  meaningfulRows.forEach((row) => {
+    const text = getHierarchyText(row, headerMap);
+    const rowLevel = getOutlineLevel(row, hasOutlineLevels, baseIndentLevel);
+
+    if (!text || isTotalRow(text)) {
+      addDiagnostic(row, text, 'ignored');
+      return;
+    }
+
+    if (isKnownManagerName(text)) {
+      currentManager = text;
+      currentClient = '';
+      currentCategory = '';
+      lastSalesRow = null;
+      managers.add(text);
+      addDiagnostic(row, text, 'manager');
+      return;
+    }
+
+    if (!currentManager) {
+      warnings.push({
+        excelRow: row.excelRow,
+        text,
+        reason: 'Строка пропущена: в формате с документом под товаром до неё не найден менеджер из справочника payroll.',
+      });
+      addDiagnostic(row, text, 'ignored');
+      return;
+    }
+
+    if (isRegistrarDocument(text)) {
+      if (lastSalesRow) addRegistrarToRow(lastSalesRow, text);
+      addDiagnostic(row, text, 'document');
+      return;
+    }
+
+    if ((rowLevel === null || rowLevel === 0) && !isKnownCategory(text) && !hasClientProductMarkers(text)) {
+      currentClient = text;
+      currentCategory = '';
+      lastSalesRow = null;
+      clients.add(text);
+      addDiagnostic(row, text, 'client');
+      return;
+    }
+
+    if (rowLevel === 1 || (isKnownCategory(text) && !hasProductMarkers(text))) {
+      currentCategory = text;
+      lastSalesRow = null;
+      categories.add(text);
+      addDiagnostic(row, text, 'category');
+      return;
+    }
+
+    if (!currentClient || !currentCategory) {
+      warnings.push({
+        excelRow: row.excelRow,
+        text,
+        reason: 'Номенклатура пропущена: не хватает контекста клиента или категории в формате document-under-item.',
+      });
+      addDiagnostic(row, text, 'ignored');
+      return;
+    }
+
+    const salesRow: SalesRow = {
+      manager: currentManager,
+      client: currentClient,
+      category: currentCategory,
+      item: text,
+      registrar: '',
+      registrars: [],
+      revenue: toNumber(row.values[headerMap.revenue]),
+      cost: toNumber(row.values[headerMap.cost]),
+      grossProfit: toNumber(row.values[headerMap.grossProfit]),
+      profitability: headerMap.profitability >= 0 ? toNumber(row.values[headerMap.profitability]) : 0,
+    };
+
+    salesRows.push(salesRow);
+    lastSalesRow = salesRow;
+    addDiagnostic(row, text, 'item');
+  });
+
+  const parsedRows = aggregateRowsByProduct(salesRows);
+
+  return buildResult(headerIndex, headerMap, columns, parsedRows, managers, clients, categories, warnings, diagnostics, 'outlineLevel + документ под товаром', {
+    isRegistrarReport: true,
+    sourceRowCount: meaningfulRows.length,
+    detailRowCount: salesRows.length,
+  });
 }
 
 function isSuspiciousParse(result: PayrollParseResult, sourceRowCount: number) {
@@ -981,6 +1340,92 @@ function isSuspiciousParse(result: PayrollParseResult, sourceRowCount: number) {
   if (result.categories.length > Math.max(1500, result.rows.length * 0.5)) return true;
   if (result.rows.length > 0 && result.categories.length > result.rows.length * 0.7) return true;
   return false;
+}
+
+function getRegistrarSafetyWarnings(result: PayrollParseResult, sourceRowCount: number): ParseWarning[] {
+  if (!result.isRegistrarReport) return [];
+
+  const warnings: ParseWarning[] = [];
+  const productClients = result.clients.filter(hasClientProductMarkers);
+  const productManagers = result.managers.filter(hasClientProductMarkers);
+  const documentManagers = result.managers.filter(isRegistrarDocument);
+  const categoryManagers = result.managers.filter(isKnownCategory);
+  const unknownManagers = result.managers.filter((manager) => !isKnownManagerName(manager));
+  const registrarRows = result.diagnostics.filter((row) => row.detectedLevel === 'registrar' || row.detectedLevel === 'document').length;
+
+  if (result.managers.length > 20) {
+    warnings.push({
+      excelRow: 0,
+      text: `${result.managers.length} менеджеров`,
+      reason: 'Файл с регистратором распознан нестабильно: менеджеров слишком много. Возможен сдвиг уровней manager/client.',
+    });
+  }
+
+  if (unknownManagers.length > 0) {
+    warnings.push({
+      excelRow: 0,
+      text: unknownManagers.slice(0, 5).join(', '),
+      reason: 'Файл с регистратором распознан нестабильно: среди менеджеров есть строки вне справочника реальных менеджеров.',
+    });
+  }
+
+  if (productManagers.length > 0 || documentManagers.length > 0 || categoryManagers.length > 0) {
+    warnings.push({
+      excelRow: 0,
+      text: [...productManagers, ...documentManagers, ...categoryManagers].slice(0, 5).join(', '),
+      reason: 'Файл с регистратором распознан нестабильно: товар, документ 1С или категория попали на уровень менеджера.',
+    });
+  }
+
+  if (productClients.length > 0) {
+    warnings.push({
+      excelRow: 0,
+      text: productClients.slice(0, 5).join(', '),
+      reason: 'Файл с регистратором распознан нестабильно: среди клиентов найдены товарные названия. Расчёт зарплаты по нему небезопасен.',
+    });
+  }
+
+  if (result.clients.length < 50 || result.clients.length > 260) {
+    warnings.push({
+      excelRow: 0,
+      text: `${result.clients.length} клиентов`,
+      reason: 'Файл с регистратором распознан нестабильно: количество клиентов выглядит нехарактерно для отчёта, проверьте уровни client/registrar.',
+    });
+  }
+
+  if (result.clients.length > Math.max(220, result.managers.length * 24)) {
+    warnings.push({
+      excelRow: 0,
+      text: `${result.clients.length} клиентов`,
+      reason: 'Файл с регистратором распознан нестабильно: количество клиентов резко выше ожидаемого, возможен сдвиг уровней.',
+    });
+  }
+
+  if (result.detailRowCount > 0 && registrarRows === 0) {
+    warnings.push({
+      excelRow: 0,
+      text: '',
+      reason: 'Файл похож на отчёт с документами, но строки документов 1С не распознаны стабильно.',
+    });
+  }
+
+  if (sourceRowCount > 1000 && result.rows.length < 100) {
+    warnings.push({
+      excelRow: 0,
+      text: '',
+      reason: 'Файл с регистратором распознан нестабильно: после агрегации осталось слишком мало товарных строк.',
+    });
+  }
+
+  if (warnings.length > 0) {
+    warnings.unshift({
+      excelRow: 0,
+      text: '',
+      reason: 'Файл с регистратором распознан нестабильно. Расчёт зарплаты по нему небезопасен. Используйте обычный отчёт без регистратора для расчёта, а файл с регистратором — только для диагностики.',
+    });
+  }
+
+  return warnings;
 }
 
 function parsePayrollReport(rows: SheetRow[]): PayrollParseResult {
@@ -1002,11 +1447,21 @@ function parsePayrollReport(rows: SheetRow[]): PayrollParseResult {
     );
   }
 
+  const hasDocumentUnderItem = hasDocumentUnderItemHierarchy(rows, headerIndex);
+  const hasRegistrar = !hasDocumentUnderItem && hasRegistrarHierarchy(rows, headerIndex);
   const sourceRowCount = rows.slice(headerIndex + 1).filter((row) => !isTotalRow(getHierarchyText(row, headerMap))).length;
-  const outlineResult = parseRowsWithStrategy(rows, headerIndex, headerMap, columns, 'outline');
-  const contentResult = parseRowsWithStrategy(rows, headerIndex, headerMap, columns, 'content');
+  const documentUnderItemResult = hasDocumentUnderItem ? parseRowsWithDocumentUnderItem(rows, headerIndex, headerMap, columns) : null;
+  const outlineResult = parseRowsWithStrategy(rows, headerIndex, headerMap, columns, 'outline', hasRegistrar);
+  const contentResult = parseRowsWithStrategy(rows, headerIndex, headerMap, columns, 'content', hasRegistrar);
   const outlineIsSuspicious = isSuspiciousParse(outlineResult, sourceRowCount);
-  const result = !outlineIsSuspicious && outlineResult.rows.length >= contentResult.rows.length * 0.8 ? outlineResult : contentResult;
+  const result = documentUnderItemResult ?? (hasRegistrar ? contentResult : !outlineIsSuspicious && outlineResult.rows.length >= contentResult.rows.length * 0.8 ? outlineResult : contentResult);
+  const registrarSafetyWarnings = getRegistrarSafetyWarnings(result, sourceRowCount);
+
+  result.safetyWarnings = registrarSafetyWarnings;
+  result.isSafeForPayrollCalculation = registrarSafetyWarnings.length === 0;
+  if (registrarSafetyWarnings.length > 0) {
+    result.warnings.unshift(...registrarSafetyWarnings);
+  }
 
   if (sourceRowCount > 1000 && result.rows.length < 100) {
     result.warnings.unshift({
@@ -1045,17 +1500,174 @@ function isReviewTechCategory(category: string) {
   return Boolean(getCategoryMatch(category, reviewTechCategories));
 }
 
+function isTabletCategory(category: string) {
+  return normalizeText(category) === 'планшеты';
+}
+
 function isPhoneCategory(category: string) {
   return normalizeText(category) === 'телефоны';
 }
 
-function isAppleItem(item: string) {
-  return containsAny(item, ['Apple', 'iPad', 'MacBook', 'Mac ', 'Айпад', 'Макбук']);
+function hasExplicitAccessoryMarker(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  const hasAccessoryItemMarker = containsAny(text, [
+    'чехол',
+    'чехлы',
+    'накладка',
+    'бампер',
+    'стекло',
+    'стекла',
+    'пленка',
+    'плёнка',
+    'кабель',
+    'провод',
+    'зарядка',
+    'зарядное',
+    'блок питания',
+    'адаптер',
+    'держатель',
+    'ремешок',
+    'magsafe',
+    'lightning',
+    'стилус',
+    'penpro',
+    'переходник',
+  ]);
+  const hasAccessoryCategory = isAccessoryCategory(row.category) && !hasAirPods(row);
+
+  return hasAccessoryCategory || hasAccessoryItemMarker;
 }
 
-function isAppleOnlyExcludedCategory(row: SalesRow) {
-  const category = normalizeText(row.category);
-  return (category === 'планшеты' || category === 'ноутбуки') && isAppleItem(row.item);
+function isButtonPhone(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return containsAny(text, [
+    'кнопочный телефон',
+    'телефон кнопочный',
+    'кнопочные телефоны',
+    'мобильный телефон bq',
+    'bq 1858',
+    'bq 3590',
+    'bq 2820',
+    'nokia 1202',
+    'philips xenium',
+    'maxvi',
+    'texet',
+    'teXet',
+  ]);
+}
+
+function isSmartphone(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return isExcludedTechCategory(row.category) || containsAny(text, [
+    'смартфон',
+    'смартфоны',
+    'iphone',
+    'galaxy',
+    'redmi',
+    'poco',
+    'realme',
+    'honor',
+    'tecno',
+    'infinix',
+    'vivo',
+    'oppo',
+    'huawei',
+    'motorola',
+  ]);
+}
+
+function isAmbiguousPhone(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return isPhoneCategory(row.category) || containsAny(text, ['телефон']);
+}
+
+function isTablet(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return isTabletCategory(row.category) || containsAny(text, ['планшет', 'ipad', 'айпад', 'tablet', 'tg30']);
+}
+
+function isAppleWatch(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return containsAny(text, ['apple watch']);
+}
+
+function isMacBookOrAppleNotebook(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return containsAny(text, ['macbook', 'макбук', 'ноутбук apple', 'apple notebook']);
+}
+
+function isPlayStation(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return containsAny(text, ['playstation', 'sony playstation', 'ps5', 'ps4', 'консоль sony']);
+}
+
+function hasAirPods(row: SalesRow) {
+  return containsAny(row.item, ['airpods', 'аирподс', 'эйрподс']);
+}
+
+function hasAirPodsCopyMarker(row: SalesRow) {
+  return containsAny(row.item, ['hoco', 'borofone', 'celebrat', 'tws', 'copy', 'копия', 'replica', 'aaa', 'аналог', 'совместимые', 'неоригинал']);
+}
+
+function isOriginalAirPods(row: SalesRow) {
+  return hasAirPods(row) && !hasAirPodsCopyMarker(row) && containsAny(row.item, ['apple', 'original', 'оригинал', 'оригинальные', 'airpods pro', 'airpods 2', 'airpods 3']);
+}
+
+function isAmbiguousAirPods(row: SalesRow) {
+  return hasAirPods(row) && !hasAirPodsCopyMarker(row) && !isOriginalAirPods(row);
+}
+
+function isNonAppleSmartWatch(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return isReviewTechCategory(row.category) && !isAppleWatch(row) && containsAny(text, ['hoco', 'hk', 'hk11', 'hk ultra', 'garmin', 'watch', 'часы', 'смарт-часы']);
+}
+
+function isKnownPremiumTech(row: SalesRow) {
+  return isAppleWatch(row) || isMacBookOrAppleNotebook(row) || isOriginalAirPods(row) || isPlayStation(row);
+}
+
+function isBroadReviewCategory(category: string) {
+  return isReviewTechCategory(category) || isTabletCategory(category) || normalizeText(category) === 'прочее';
+}
+
+function isWholesaleCameraOrRecorder(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return isWholesaleManager(row.manager) && containsAny(text, ['камера', 'wi-fi камера', 'wifi камера', '4g камера', 'видеорегистратор', 'регистратор', 'dvr', 'faizfull']);
+}
+
+function isToyOrRobot(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return containsAny(text, ['игрушка', 'игрушки', 'робот собака', 'робот-собака', 'детский робот']);
+}
+
+function isSmartGlasses(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return containsAny(text, ['умные очки', 'smart glasses', 'g2 glasses', 'очки с камерой', 'очки солнцезащитные с наушником', 'очки с микрофоном', 'hn-w088']);
+}
+
+function isAffordableHairDryer(row: SalesRow) {
+  const text = `${row.category} ${row.item}`;
+  return containsAny(text, ['фен xiaomi', 'фен hoco', 'xiaomi mijia', 'hoco hp10']) && row.revenue < 15000;
+}
+
+function isVoiceRecorder(row: SalesRow) {
+  return containsAny(row.item, ['диктофон', 'remax rp3']);
+}
+
+function isReplicaLikePhone(row: SalesRow) {
+  return containsAny(row.item, ['17 pro max mini']) && !containsAny(row.item, ['apple', 'iphone']);
+}
+
+function getNewExpensiveReviewReason(row: SalesRow) {
+  if (containsAny(row.item, ['dyson'])) return 'найдено слово Dyson';
+  if (containsAny(row.item, ['фен']) && !isAffordableHairDryer(row)) return 'найдено слово фен';
+  if (containsAny(row.item, ['стайлер'])) return 'найдено слово стайлер';
+  if (containsAny(row.item, ['робот-пылесос'])) return 'найдено слово робот-пылесос';
+  if (containsAny(row.item, ['пылесос'])) return 'найдено слово пылесос';
+  if (containsAny(row.item, ['playstation', 'ps5', 'ps4', 'консоль'])) return 'найдена игровая консоль';
+  if (containsAny(row.item, ['камера']) && !isWholesaleCameraOrRecorder(row) && !isToyOrRobot(row) && !isSmartGlasses(row)) return 'найдено слово камера';
+  if (isBroadReviewCategory(row.category) && row.revenue >= 15000) return `дорогой товар в широкой категории ${row.category}`;
+  return '';
 }
 
 function getArticle(item: string) {
@@ -1064,51 +1676,216 @@ function getArticle(item: string) {
 }
 
 function isFilmService(row: SalesRow) {
-  return containsAny(row.item, ['Поклейка', 'Бронь', 'Бронепленка', 'Бронеплёнка']);
+  const category = normalizeText(row.category);
+  return category === 'услуги оказываемые' || category.includes('услуги оказываемые');
+}
+
+function isAsadManager(manager: string) {
+  return normalizeText(manager) === normalizeText(asadManagerName);
+}
+
+function isPlotterMaterial(row: SalesRow) {
+  if (!isAsadManager(row.manager)) return false;
+
+  const category = normalizeText(row.category);
+  const item = normalizeText(row.item);
+  const isProtectiveFilmCategory = category === 'защитные стекла и пленки' || category.includes('защитные стекла и пленки');
+  const hasProtectiveFilmName = item.includes('защитная пленка');
+  const hasPlotterMaterialMarker = containsAny(row.item, ['антигравийная', 'плоттера', '3m skin', 'матовая', 'глянцевая', 'текстурная']);
+  const isGlassOrLens = item.includes('защитное стекло') || item.includes('защитные линзы') || item.includes('защитная линза');
+
+  return isProtectiveFilmCategory && hasProtectiveFilmName && hasPlotterMaterialMarker && !isGlassOrLens;
 }
 
 function hasDisputeMarkers(row: SalesRow) {
   return containsAny(`${row.category} ${row.item}`, ['Apple', 'Original', 'iPad', 'AirPods', 'Mac', 'Watch']);
 }
 
+function isCreditSale(row: SalesRow) {
+  return normalizeText(row.client).includes('кредит/рассрочка');
+}
+
+function getCreditTechReason(row: SalesRow, rule: string) {
+  if (rule === 'smartphone-tech') return 'кредит + смартфон: входит в кредитный бонус';
+  if (rule === 'tablet-tech-included-wholesale') return 'кредит + планшет: входит в кредитный бонус';
+  if (rule === 'playstation-tech') return 'кредит + PlayStation: входит в кредитный бонус';
+  if (rule === 'apple-watch-tech') return 'кредит + Apple Watch: входит в кредитный бонус';
+  if (rule === 'macbook-tech') return 'кредит + MacBook: входит в кредитный бонус';
+  if (rule === 'original-airpods-tech') return 'кредит + оригинальные AirPods: входит в кредитный бонус';
+  return `кредит + техника: входит в кредитный бонус (${row.category})`;
+}
+
+function getCreditAccessoryReason(row: SalesRow, rule: string) {
+  if (rule === 'accessory-category' || rule === 'accessory-item-marker') return 'кредит + аксессуар: не входит в кредитный бонус';
+  if (rule === 'button-phone-accessory') return 'кредит + кнопочный телефон: не входит в кредитный бонус';
+  if (rule === 'airpods-copy-accessory') return 'кредит + неоригинальные AirPods / TWS / копия: не входит в кредитный бонус';
+  if (rule === 'non-apple-watch-accessory') return 'кредит + не-Apple смарт-часы: не входит в кредитный бонус';
+  return `кредит + аксессуар: не входит в кредитный бонус (${row.category})`;
+}
+
 function getCategoryReason(row: SalesRow) {
-  if (isAccessoryCategory(row.category)) {
+  if (hasAirPods(row) && hasAirPodsCopyMarker(row)) {
     return {
       kind: 'accessory' as const,
-      reason: `аксессуарная категория: ${row.category}`,
-      rule: 'accessory-category',
+      reason: 'неоригинальные AirPods / TWS / копия — аксессуар / обычная база',
+      rule: 'airpods-copy-accessory',
     };
   }
 
-  if (isPhoneCategory(row.category)) {
+  if (hasExplicitAccessoryMarker(row)) {
     return {
-      kind: 'phone' as const,
-      reason: 'категория Телефоны: не исключается из опта',
-      rule: 'phones-category-included',
+      kind: 'accessory' as const,
+      reason: containsAny(row.item, ['watch']) && containsAny(row.item, ['ремешок'])
+        ? 'Ремешок Apple Watch — аксессуар, слово Watch не исключает'
+        : containsAny(row.item, ['стилус', 'penpro'])
+          ? 'Стилус — аксессуар'
+          : `явный аксессуар по категории/названию: ${row.category}`,
+      rule: isAccessoryCategory(row.category) ? 'accessory-category' : 'accessory-item-marker',
     };
   }
 
-  if (isExcludedTechCategory(row.category)) {
+  if (isButtonPhone(row)) {
+    return {
+      kind: 'accessory' as const,
+      reason: 'кнопочный телефон — обычная база',
+      rule: 'button-phone-accessory',
+    };
+  }
+
+  if (isSmartphone(row)) {
     return {
       kind: 'excludedTech' as const,
-      reason: `исключаемая техника: категория ${row.category}`,
-      rule: 'excluded-tech-category',
+      reason: 'Смартфон — техника, для опта исключён из базы',
+      rule: 'smartphone-tech',
     };
   }
 
-  if (isAppleOnlyExcludedCategory(row)) {
+  if (isAmbiguousPhone(row)) {
+    if (isReplicaLikePhone(row)) {
+      return {
+        kind: 'accessory' as const,
+        reason: 'похоже на копию/неоригинальный телефон — обычная база, не iPhone без Apple/iPhone в названии',
+        rule: 'replica-like-phone-accessory',
+      };
+    }
+
     return {
-      kind: 'excludedTech' as const,
-      reason: `исключаемая Apple-техника: категория ${row.category}`,
-      rule: 'apple-only-excluded-tech',
+      kind: 'reviewTech' as const,
+      reason: 'неясно: смартфон или кнопочный телефон',
+      rule: 'ambiguous-phone-review',
+    };
+  }
+
+  if (isTablet(row)) {
+    return {
+      kind: 'retailTech' as const,
+      reason: 'Планшет — техника, но для опта входит в оптовую базу',
+      rule: 'tablet-tech-included-wholesale',
+    };
+  }
+
+  if (isAppleWatch(row)) {
+    return {
+      kind: 'retailTech' as const,
+      reason: 'Apple Watch — техника',
+      rule: 'apple-watch-tech',
+    };
+  }
+
+  if (isNonAppleSmartWatch(row)) {
+    return {
+      kind: 'accessory' as const,
+      reason: 'Hoco/HK/Garmin или другие не-Apple смарт-часы — аксессуар / обычная база',
+      rule: 'non-apple-watch-accessory',
+    };
+  }
+
+  if (isMacBookOrAppleNotebook(row)) {
+    return {
+      kind: 'retailTech' as const,
+      reason: 'MacBook / ноутбук Apple — техника',
+      rule: 'macbook-tech',
+    };
+  }
+
+  if (isOriginalAirPods(row)) {
+    return {
+      kind: 'retailTech' as const,
+      reason: 'Оригинальные AirPods — техника',
+      rule: 'original-airpods-tech',
+    };
+  }
+
+  if (isAmbiguousAirPods(row)) {
+    return {
+      kind: 'reviewTech' as const,
+      reason: 'AirPods: неясно, оригинал или копия',
+      rule: 'ambiguous-airpods-review',
+    };
+  }
+
+  if (isPlayStation(row)) {
+    return {
+      kind: 'retailTech' as const,
+      reason: 'PlayStation — техника',
+      rule: 'playstation-tech',
+    };
+  }
+
+  if (isWholesaleCameraOrRecorder(row)) {
+    return {
+      kind: 'other' as const,
+      reason: 'камера/видеорегистратор у опта — входит в оптовую базу',
+      rule: 'wholesale-camera-recorder-base',
+    };
+  }
+
+  if (isToyOrRobot(row)) {
+    return {
+      kind: 'accessory' as const,
+      reason: 'игрушка/робот — обычная база',
+      rule: 'toy-robot-accessory',
+    };
+  }
+
+  if (isSmartGlasses(row)) {
+    return {
+      kind: 'accessory' as const,
+      reason: 'умные очки / очки с камерой — обычная база',
+      rule: 'smart-glasses-accessory',
+    };
+  }
+
+  if (isAffordableHairDryer(row)) {
+    return {
+      kind: 'accessory' as const,
+      reason: 'недорогой фен Xiaomi/Hoco — обычная база',
+      rule: 'affordable-hair-dryer-accessory',
+    };
+  }
+
+  if (isVoiceRecorder(row)) {
+    return {
+      kind: 'accessory' as const,
+      reason: 'диктофон — обычная база',
+      rule: 'voice-recorder-accessory',
+    };
+  }
+
+  const expensiveReviewReason = getNewExpensiveReviewReason(row);
+  if (expensiveReviewReason) {
+    return {
+      kind: 'reviewTech' as const,
+      reason: `${expensiveReviewReason} — требуется классификация`,
+      rule: 'new-expensive-review',
     };
   }
 
   if (isReviewTechCategory(row.category)) {
     return {
       kind: 'reviewTech' as const,
-      reason: `спорная техника: категория ${row.category}`,
-      rule: 'review-tech-category',
+      reason: `Категория ${row.category} слишком широкая, правило по названию не найдено`,
+      rule: 'broad-review-category',
     };
   }
 
@@ -1123,10 +1900,11 @@ function getCalculationDetails(row: SalesRow): Omit<ClassifiedSalesRow, keyof Sa
   const department: Department = isWholesaleManager(row.manager) ? 'Опт' : 'Розница';
   const categoryReason = getCategoryReason(row);
   const article = getArticle(row.item);
+  const creditSale = isCreditSale(row);
 
   if (department === 'Опт') {
     const calculationType: CalculationType =
-      categoryReason.kind === 'excludedTech'
+    categoryReason.kind === 'excludedTech'
         ? 'WHOLESALE_EXCLUDED_TECH'
         : categoryReason.kind === 'reviewTech'
           ? 'WHOLESALE_REVIEW_TECH'
@@ -1147,22 +1925,9 @@ function getCalculationDetails(row: SalesRow): Omit<ClassifiedSalesRow, keyof Sa
       includedInWholesaleBase,
       classificationReason: categoryReason.reason,
       matchedRule: categoryReason.rule,
-    };
-  }
-
-  if (normalizeText(row.client).includes('кредит/рассрочка')) {
-    return {
-      department,
-      calculationType: 'CREDIT_GROSS_PROFIT',
-      calculationLabel: calculationLabels.CREDIT_GROSS_PROFIT,
-      article,
-      base: row.grossProfit * 0.91,
-      percent: 0.1,
-      bonus: row.grossProfit * 0.91 * 0.1,
-      formula: calculationFormulas.CREDIT_GROSS_PROFIT,
-      includedInWholesaleBase: null,
-      classificationReason: 'клиент содержит Кредит/рассрочка',
-      matchedRule: 'credit-client',
+      isCreditSale: false,
+      creditProductType: null,
+      creditIncludedInBonus: false,
     };
   }
 
@@ -1177,12 +1942,91 @@ function getCalculationDetails(row: SalesRow): Omit<ClassifiedSalesRow, keyof Sa
       bonus: row.revenue * 0.5,
       formula: calculationFormulas.RETAIL_FILM_50,
       includedInWholesaleBase: null,
-      classificationReason: 'номенклатура содержит Поклейка/Бронь/Бронепленка',
-      matchedRule: 'film-service-item',
+      classificationReason: 'категория / вид номенклатуры = Услуги оказываемые',
+      matchedRule: 'service-category',
+      isCreditSale: creditSale,
+      creditProductType: null,
+      creditIncludedInBonus: false,
     };
   }
 
-  if (categoryReason.kind === 'excludedTech') {
+  if (isPlotterMaterial(row)) {
+    return {
+      department,
+      calculationType: 'RETAIL_PLOTTER_MATERIAL_COST_50',
+      calculationLabel: calculationLabels.RETAIL_PLOTTER_MATERIAL_COST_50,
+      article,
+      base: row.cost,
+      percent: 0.5,
+      bonus: row.cost * 0.5,
+      formula: calculationFormulas.RETAIL_PLOTTER_MATERIAL_COST_50,
+      includedInWholesaleBase: null,
+      classificationReason: 'Икаев Асад + плоттерные плёнки / материалы для плоттера',
+      matchedRule: 'asad-plotter-material',
+      isCreditSale: creditSale,
+      creditProductType: null,
+      creditIncludedInBonus: false,
+    };
+  }
+
+  if (creditSale && (categoryReason.kind === 'excludedTech' || categoryReason.kind === 'retailTech')) {
+    return {
+      department,
+      calculationType: 'CREDIT_GROSS_PROFIT',
+      calculationLabel: calculationLabels.CREDIT_GROSS_PROFIT,
+      article,
+      base: row.grossProfit * 0.91,
+      percent: 0.1,
+      bonus: row.grossProfit * 0.91 * 0.1,
+      formula: calculationFormulas.CREDIT_GROSS_PROFIT,
+      includedInWholesaleBase: null,
+      classificationReason: getCreditTechReason(row, categoryReason.rule),
+      matchedRule: `credit-tech:${categoryReason.rule}`,
+      isCreditSale: true,
+      creditProductType: 'tech',
+      creditIncludedInBonus: true,
+    };
+  }
+
+  if (creditSale && categoryReason.kind === 'accessory') {
+    return {
+      department,
+      calculationType: 'CREDIT_ACCESSORY_NO_BONUS',
+      calculationLabel: calculationLabels.CREDIT_ACCESSORY_NO_BONUS,
+      article,
+      base: 0,
+      percent: 0,
+      bonus: 0,
+      formula: calculationFormulas.CREDIT_ACCESSORY_NO_BONUS,
+      includedInWholesaleBase: null,
+      classificationReason: getCreditAccessoryReason(row, categoryReason.rule),
+      matchedRule: `credit-accessory:${categoryReason.rule}`,
+      isCreditSale: true,
+      creditProductType: 'accessory',
+      creditIncludedInBonus: false,
+    };
+  }
+
+  if (creditSale) {
+    return {
+      department,
+      calculationType: 'CREDIT_REVIEW_NO_BONUS',
+      calculationLabel: calculationLabels.CREDIT_REVIEW_NO_BONUS,
+      article,
+      base: 0,
+      percent: 0,
+      bonus: 0,
+      formula: calculationFormulas.CREDIT_REVIEW_NO_BONUS,
+      includedInWholesaleBase: null,
+      classificationReason: `кредит + товар спорный: требуется классификация. ${categoryReason.reason}`,
+      matchedRule: `credit-review:${categoryReason.rule}`,
+      isCreditSale: true,
+      creditProductType: 'review',
+      creditIncludedInBonus: false,
+    };
+  }
+
+  if (categoryReason.kind === 'excludedTech' || categoryReason.kind === 'retailTech') {
     return {
       department,
       calculationType: 'RETAIL_GROSS_PROFIT_10',
@@ -1195,6 +2039,9 @@ function getCalculationDetails(row: SalesRow): Omit<ClassifiedSalesRow, keyof Sa
       includedInWholesaleBase: null,
       classificationReason: categoryReason.reason,
       matchedRule: categoryReason.rule,
+      isCreditSale: false,
+      creditProductType: null,
+      creditIncludedInBonus: false,
     };
   }
 
@@ -1211,6 +2058,9 @@ function getCalculationDetails(row: SalesRow): Omit<ClassifiedSalesRow, keyof Sa
       includedInWholesaleBase: null,
       classificationReason: categoryReason.reason,
       matchedRule: categoryReason.rule,
+      isCreditSale: false,
+      creditProductType: null,
+      creditIncludedInBonus: false,
     };
   }
 
@@ -1226,6 +2076,9 @@ function getCalculationDetails(row: SalesRow): Omit<ClassifiedSalesRow, keyof Sa
     includedInWholesaleBase: null,
     classificationReason: categoryReason.reason,
     matchedRule: categoryReason.rule,
+    isCreditSale: false,
+    creditProductType: null,
+    creditIncludedInBonus: false,
   };
 }
 
@@ -1268,6 +2121,7 @@ function classifySalesRows(rows: SalesRow[]): ClassificationResult {
     const department: Department = isWholesaleManager(manager) ? 'Опт' : 'Розница';
     const creditBonus = managerRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').reduce((sum, row) => sum + row.bonus, 0);
     const filmBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').reduce((sum, row) => sum + row.bonus, 0);
+    const plotterBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50').reduce((sum, row) => sum + row.bonus, 0);
     const techBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').reduce((sum, row) => sum + row.bonus, 0);
     const accessoryBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5').reduce((sum, row) => sum + row.bonus, 0);
     const wholesaleBonus = department === 'Опт' ? wholesale.bonusEach : 0;
@@ -1279,10 +2133,11 @@ function classifySalesRows(rows: SalesRow[]): ClassificationResult {
       grossProfit: managerRows.reduce((sum, row) => sum + row.grossProfit, 0),
       creditBonus,
       filmBonus,
+      plotterBonus,
       techBonus,
       accessoryBonus,
       wholesaleBonus,
-      totalBonus: creditBonus + filmBonus + techBonus + accessoryBonus + wholesaleBonus,
+      totalBonus: creditBonus + filmBonus + plotterBonus + techBonus + accessoryBonus + wholesaleBonus,
     };
   });
 
@@ -1293,11 +2148,12 @@ function classifySalesRows(rows: SalesRow[]): ClassificationResult {
     managerSummaries,
     disputedRows: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH' || (hasDisputeMarkers(row) && row.matchedRule === 'default-category')),
     accessoryExcludedRows: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH' && isAccessoryCategory(row.category)),
+    expensiveReviewRows: classifiedRows.filter((row) => row.matchedRule === 'new-expensive-review'),
     counts: {
       total: classifiedRows.length,
       wholesale: classifiedRows.filter((row) => row.department === 'Опт').length,
       retail: classifiedRows.filter((row) => row.department === 'Розница').length,
-      credit: classifiedRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').length,
+      credit: classifiedRows.filter((row) => row.isCreditSale).length,
       film: classifiedRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').length,
       retailTech: classifiedRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').length,
       accessory: classifiedRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5' || row.calculationType === 'RETAIL_REVIEW_TECH').length,
@@ -1338,6 +2194,39 @@ function sumRows(rows: ClassifiedSalesRow[]) {
   );
 }
 
+function hasUnexpectedZeroBase(row: ClassifiedSalesRow) {
+  return row.base === 0 && row.calculationType !== 'WHOLESALE_EXCLUDED_TECH' && row.calculationType !== 'CREDIT_ACCESSORY_NO_BONUS';
+}
+
+function hasRegistrarFragment(row: SalesRow, fragment: string) {
+  return row.registrars.some((registrar) => normalizeText(registrar).includes(normalizeText(fragment))) || normalizeText(row.registrar).includes(normalizeText(fragment));
+}
+
+function getRegistrarSummary(row: SalesRow) {
+  return row.registrars.length ? row.registrars.join(' | ') : row.registrar;
+}
+
+function getSalesProblemReason(row: ClassifiedSalesRow, type: SalesProblemType) {
+  const hasReturn = hasRegistrarFragment(row, 'Возврат товаров от клиента');
+  const hasSale = hasRegistrarFragment(row, 'Реализация товаров и услуг') || hasRegistrarFragment(row, 'Отчет о розничных продажах') || hasRegistrarFragment(row, 'Отчёт о розничных продажах');
+  const hasCorrection = hasRegistrarFragment(row, 'Корректировка');
+
+  if (type === 'zeroBase' && row.revenue === 0 && row.grossProfit > 0 && (hasReturn || hasSale || hasCorrection)) {
+    if (hasSale && hasReturn) return 'реализация + возврат: продажа и возврат свернулись в 0 выручки, остаточная ВП — контроль 1С, бонус не начисляется';
+    if (hasReturn) return 'найден возврат по регистратору: строка с нулевой выручкой требует контроля 1С';
+    if (hasSale) return 'найдена реализация по регистратору: нулевая выручка с остаточной ВП требует контроля 1С';
+    return 'найдена корректировка по регистратору: нулевая выручка требует контроля 1С';
+  }
+
+  if (type === 'negative') {
+    if (hasReturn) return 'отрицательная ВП связана с возвратом';
+    if (hasSale) return 'отрицательная ВП по реализации — проверить продажу ниже себестоимости/скидку/себестоимость';
+    if (hasCorrection) return 'отрицательная ВП по корректировке — проверить документ 1С';
+  }
+
+  return row.classificationReason;
+}
+
 function parseManualNumber(value: string) {
   if (!value.trim()) return null;
   const parsed = Number(value.replace(',', '.'));
@@ -1363,6 +2252,33 @@ function isBelaManager(manager: string) {
   return normalized.includes('бэла') || normalized.includes('бела') || normalized.includes('кештова');
 }
 
+function isBelaBaseEmployee(manager: string) {
+  const normalized = normalizePersonName(manager);
+  return (
+    normalized.includes('тохов') ||
+    normalized.includes('астемир') ||
+    normalized.includes('ахобекова') ||
+    normalized.includes('залина') ||
+    normalized.includes('хурцокова') ||
+    normalized.includes('хурзокова') ||
+    normalized.includes('ляна') ||
+    normalized.includes('лиана') ||
+    normalized.includes('кумакова') ||
+    normalized.includes('кумахова') ||
+    normalized.includes('диана') ||
+    normalized.includes('чиченова') ||
+    normalized.includes('чеченова') ||
+    normalized.includes('милана') ||
+    normalized.includes('абшаева') ||
+    normalized.includes('зухра') ||
+    normalized.includes('икаев') ||
+    normalized.includes('асад') ||
+    normalized.includes('магомед') ||
+    normalized.includes('стажеррозница') ||
+    normalized.includes('стажёррозница')
+  );
+}
+
 function isNoDayPayManager(manager: string) {
   return normalizePersonName(manager).includes('асад');
 }
@@ -1380,11 +2296,12 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
   const workedDays = dayPayNotRequired ? null : manualWorkedDays;
   const lateCount = dayPayNotRequired ? null : manualLateCount;
   const advance = parseManualNumber(manual?.advance ?? '') ?? 0;
+  const agentCreditCommission = summary.manager === agentCreditCommissionEmployee ? parseManualNumber(manual?.agentCreditCommission ?? '') ?? 0 : 0;
   const dayRate = dayPayNotRequired ? 0 : getDayRate(summary.department);
   const dayPay = workedDays === null ? 0 : workedDays * dayRate;
   const salesBonus = salaryRule === 'belaPercent' ? 0 : summary.totalBonus;
   const disciplineBonus = salaryRule === 'standard' && lateCount !== null && lateCount <= 3 ? 3000 : 0;
-  const grossPay = dayPay + salesBonus + disciplineBonus;
+  const grossPay = dayPay + salesBonus + disciplineBonus + agentCreditCommission;
   const netPay = grossPay - advance;
   const payrollReasons = [
     !dayPayNotRequired && workedDays === null ? 'Не заполнены отработанные дни' : '',
@@ -1400,6 +2317,7 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
     workedDays,
     lateCount,
     advance,
+    agentCreditCommission,
     fixedSalary: 0,
     fixedBonus: 0,
     fixedDeduction: 0,
@@ -1423,11 +2341,13 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
 }
 
 function applyBelaPercentRule(rows: FullPayrollRow[]): FullPayrollRow[] {
-  const otherNetPay = rows.filter((row) => row.salaryRule !== 'belaPercent').reduce((sum, row) => sum + row.netPay, 0);
+  const belaBaseGrossPay = rows
+    .filter((row) => row.salaryRule !== 'belaPercent' && isBelaBaseEmployee(row.manager))
+    .reduce((sum, row) => sum + row.grossPay, 0);
 
   return rows.map((row) => {
     if (row.salaryRule !== 'belaPercent') return row;
-    const grossPay = otherNetPay * 0.12;
+    const grossPay = belaBaseGrossPay * 0.12;
     const netPay = grossPay - row.advance;
     return {
       ...row,
@@ -1462,6 +2382,7 @@ function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>): FullP
         grossProfit: 0,
         creditBonus: 0,
         filmBonus: 0,
+        plotterBonus: 0,
         techBonus: 0,
         accessoryBonus: 0,
         wholesaleBonus: 0,
@@ -1469,6 +2390,7 @@ function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>): FullP
         workedDays: null,
         lateCount: null,
         advance,
+        agentCreditCommission: 0,
         fixedSalary,
         fixedBonus,
         fixedDeduction,
@@ -1532,6 +2454,7 @@ function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined, report
     grossProfit: 0,
     creditBonus: 0,
     filmBonus: 0,
+    plotterBonus: 0,
     techBonus: 0,
     accessoryBonus: 0,
     wholesaleBonus: 0,
@@ -1539,6 +2462,7 @@ function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined, report
     workedDays: purchaseStandardWorkedDays,
     lateCount: null,
     advance,
+    agentCreditCommission: 0,
     fixedSalary: 0,
     fixedBonus: 0,
     fixedDeduction,
@@ -1590,7 +2514,7 @@ function getSalaryTypeLabel(salaryType: SalaryType) {
 function getSalaryFormulaLabel(salaryType: SalaryType) {
   if (salaryType === 'purchase_manager') return '20 × 600 + закупки × 1,75% + доведение до 100 000 - аванс - удержание';
   if (salaryType === 'fixed_salary') return 'оклад + премия - аванс - удержание';
-  if (salaryType === 'vl_percent') return '12% от итоговых ЗП сотрудников';
+  if (salaryType === 'vl_percent') return '12% от итого начислено выбранных сотрудников';
   if (salaryType === 'wholesale_percent') return 'оптовый бонус + дни + дисциплина - аванс';
   return 'дни + бонусы продаж + дисциплина - аванс';
 }
@@ -1679,9 +2603,9 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
   }
 
   const disputed = managerRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH').length;
-  const credits = managerRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').length;
+  const credits = managerRows.filter((row) => row.isCreditSale).length;
   const negative = managerRows.filter((row) => row.grossProfit < 0).length;
-  const zeroBase = managerRows.filter((row) => row.base === 0 && row.calculationType !== 'WHOLESALE_EXCLUDED_TECH').length;
+  const zeroBase = managerRows.filter(hasUnexpectedZeroBase).length;
 
   if (disputed || credits || negative || zeroBase) {
     const reasons = [
@@ -1731,8 +2655,31 @@ export default function AdminPayrollPage() {
   const [problemArticleSearch, setProblemArticleSearch] = useState('');
   const [detailSearch, setDetailSearch] = useState('');
   const [articleSearch, setArticleSearch] = useState('');
+  const loadedManualPayrollKey = useRef('');
+  const skipNextManualPayrollSave = useRef(true);
 
   const rows = selectedSheet && workbook ? workbook.sheets[selectedSheet] ?? [] : [];
+  const payrollManualStorageKey = `payroll-manual-${year}-${month}`;
+
+  useEffect(() => {
+    skipNextManualPayrollSave.current = true;
+    try {
+      const saved = window.localStorage.getItem(payrollManualStorageKey);
+      setManualPayroll(saved ? JSON.parse(saved) as Record<string, PayrollManualInput> : {});
+    } catch {
+      setManualPayroll({});
+    }
+    loadedManualPayrollKey.current = payrollManualStorageKey;
+  }, [payrollManualStorageKey]);
+
+  useEffect(() => {
+    if (loadedManualPayrollKey.current !== payrollManualStorageKey) return;
+    if (skipNextManualPayrollSave.current) {
+      skipNextManualPayrollSave.current = false;
+      return;
+    }
+    window.localStorage.setItem(payrollManualStorageKey, JSON.stringify(manualPayroll));
+  }, [manualPayroll, payrollManualStorageKey]);
 
   const parseResult = useMemo(() => parsePayrollReport(rows), [rows]);
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
@@ -1742,22 +2689,25 @@ export default function AdminPayrollPage() {
   const categoryOptions = useMemo(() => Array.from(new Set(classification.rows.map((row) => row.category))).sort((a, b) => a.localeCompare(b, 'ru')), [classification.rows]);
   const clientOptions = useMemo(() => Array.from(new Set(classification.rows.map((row) => row.client))).sort((a, b) => a.localeCompare(b, 'ru')), [classification.rows]);
   const negativeRows = useMemo(() => classification.rows.filter((row) => row.grossProfit < 0), [classification.rows]);
-  const zeroBaseRows = useMemo(() => classification.rows.filter((row) => row.base === 0 && row.calculationType !== 'WHOLESALE_EXCLUDED_TECH'), [classification.rows]);
+  const zeroBaseRows = useMemo(() => classification.rows.filter(hasUnexpectedZeroBase), [classification.rows]);
   const unclassifiedRows = useMemo(() => classification.rows.filter((row) => !row.calculationType), [classification.rows]);
   const wholesaleReviewRows = useMemo(() => classification.rows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH'), [classification.rows]);
   const retailReviewRows = useMemo(() => classification.rows.filter((row) => row.calculationType === 'RETAIL_REVIEW_TECH'), [classification.rows]);
   const excludedWholesaleRows = useMemo(() => classification.rows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH'), [classification.rows]);
-  const creditRows = useMemo(() => classification.rows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT'), [classification.rows]);
+  const creditRows = useMemo(() => classification.rows.filter((row) => row.isCreditSale), [classification.rows]);
+  const creditTechRows = useMemo(() => creditRows.filter((row) => row.creditProductType === 'tech'), [creditRows]);
+  const creditAccessoryRows = useMemo(() => creditRows.filter((row) => row.creditProductType === 'accessory'), [creditRows]);
+  const creditReviewRows = useMemo(() => creditRows.filter((row) => row.creditProductType === 'review'), [creditRows]);
   const totalRevenue = useMemo(() => classification.rows.reduce((sum, row) => sum + row.revenue, 0), [classification.rows]);
   const totalGrossProfit = useMemo(() => classification.rows.reduce((sum, row) => sum + row.grossProfit, 0), [classification.rows]);
   const totalBonus = useMemo(() => classification.managerSummaries.reduce((sum, row) => sum + row.totalBonus, 0), [classification.managerSummaries]);
   const salesPayrollRows = useMemo(
-    () => applyBelaPercentRule(classification.managerSummaries.map((summary) => buildFullPayrollRow(summary, manualPayroll[summary.manager]))),
+    () => classification.managerSummaries.map((summary) => buildFullPayrollRow(summary, manualPayroll[summary.manager])),
     [classification.managerSummaries, manualPayroll],
   );
   const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll), [fixedPayroll]);
   const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport), [purchasePayroll, purchaseReport]);
-  const fullPayrollRows = useMemo(() => [...salesPayrollRows, ...fixedPayrollRows, purchasePayrollRow], [salesPayrollRows, fixedPayrollRows, purchasePayrollRow]);
+  const fullPayrollRows = useMemo(() => applyBelaPercentRule([...salesPayrollRows, ...fixedPayrollRows, purchasePayrollRow]), [salesPayrollRows, fixedPayrollRows, purchasePayrollRow]);
   const purchaseTargetBase = purchaseTargetSalary / purchasePercent;
   const purchaseCompletionPercent = (purchasePayrollRow.purchasePercentAmount / purchaseTargetSalary) * 100;
   const payrollAttendanceMappingRows = useMemo(
@@ -1913,9 +2863,12 @@ export default function AdminPayrollPage() {
   const retailTechSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10')), [retailRows]);
   const retailAccessorySummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5')), [retailRows]);
   const retailFilmSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_FILM_50')), [retailRows]);
-  const retailCreditSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT')), [retailRows]);
+  const retailPlotterSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50')), [retailRows]);
+  const retailCreditSummary = useMemo(() => sumRows(creditTechRows), [creditTechRows]);
   const retailReviewSummary = useMemo(() => sumRows(retailReviewRows), [retailReviewRows]);
   const classificationErrorCount = classification.accessoryExcludedRows.length + unclassifiedRows.length;
+  const payrollReviewCount = fullPayrollRows.filter((row) => row.payrollStatus === 'Проверить').length;
+  const registrarParseUnsafe = parseResult.isRegistrarReport && (!parseResult.isSafeForPayrollCalculation || payrollReviewCount > 20);
   const selectedManagerSummary = useMemo(() => classification.managerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [classification.managerSummaries, selectedManager]);
   const selectedManagerRows = useMemo(() => classification.rows.filter((row) => row.manager === selectedManager), [classification.rows, selectedManager]);
   const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager')
@@ -1926,14 +2879,15 @@ export default function AdminPayrollPage() {
   const selectedManagerCounts = useMemo(
     () => ({
       disputed: selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH').length,
-      credits: selectedManagerRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').length,
+      credits: selectedManagerRows.filter((row) => row.isCreditSale).length,
       negative: selectedManagerRows.filter((row) => row.grossProfit < 0).length,
-      zeroBase: selectedManagerRows.filter((row) => row.base === 0 && row.calculationType !== 'WHOLESALE_EXCLUDED_TECH').length,
+      zeroBase: selectedManagerRows.filter(hasUnexpectedZeroBase).length,
       unclassified: selectedManagerRows.filter((row) => !row.calculationType).length,
       accessoryExcluded: classification.accessoryExcludedRows.filter((row) => row.manager === selectedManager).length,
       invalidNumbers: selectedManagerRows.filter((row) => [row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))).length,
       creditBase: selectedManagerRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').reduce((sum, row) => sum + row.base, 0),
       filmBase: selectedManagerRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').reduce((sum, row) => sum + row.base, 0),
+      plotterBase: selectedManagerRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50').reduce((sum, row) => sum + row.base, 0),
       techBase: selectedManagerRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').reduce((sum, row) => sum + row.base, 0),
       accessoryBase: selectedManagerRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5' || row.calculationType === 'RETAIL_REVIEW_TECH').reduce((sum, row) => sum + row.base, 0),
     }),
@@ -1943,16 +2897,17 @@ export default function AdminPayrollPage() {
   const problemDefinitions = useMemo(
     () => [
       { type: 'disputed' as const, label: 'Спорные товары', rows: classification.disputedRows },
-      { type: 'credit' as const, label: 'Кредиты', rows: creditRows },
+      { type: 'credit' as const, label: 'Кредитные продажи — сверка', rows: creditRows },
       { type: 'wholesaleReview' as const, label: 'Спорная техника опта', rows: wholesaleReviewRows },
       { type: 'retailReview' as const, label: 'Спорная техника розницы', rows: retailReviewRows },
+      { type: 'expensiveUnclassified' as const, label: 'Новые дорогие товары / требуют классификации', rows: classification.expensiveReviewRows },
       { type: 'negative' as const, label: 'Отрицательная ВП', rows: negativeRows },
-      { type: 'zeroBase' as const, label: 'Нулевая база', rows: zeroBaseRows },
+      { type: 'zeroBase' as const, label: 'Подозрительная нулевая база', rows: zeroBaseRows },
       { type: 'unclassified' as const, label: 'Без классификации', rows: unclassifiedRows },
       { type: 'accessoryExcluded' as const, label: 'Ошибочно исключённые аксессуары', rows: classification.accessoryExcludedRows },
       { type: 'invalidNumbers' as const, label: 'NaN/undefined', rows: invalidNumberRows },
     ],
-    [classification.disputedRows, creditRows, wholesaleReviewRows, retailReviewRows, negativeRows, zeroBaseRows, unclassifiedRows, classification.accessoryExcludedRows, invalidNumberRows],
+    [classification.disputedRows, creditRows, wholesaleReviewRows, retailReviewRows, classification.expensiveReviewRows, negativeRows, zeroBaseRows, unclassifiedRows, classification.accessoryExcludedRows, invalidNumberRows],
   );
   const payrollProblemDefinitions = useMemo(
     () => [
@@ -2259,17 +3214,401 @@ export default function AdminPayrollPage() {
     }
   }
 
+  function getPayrollRowStatus(row: FullPayrollRow) {
+    if (row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager') return row.payrollStatus;
+    const statusInfo = getManagerStatus(row, classification.rows, classification.accessoryExcludedRows);
+    return statusInfo.status === 'OK' && row.payrollStatus === 'OK' ? 'OK' : 'Проверить';
+  }
+
+  function getPayrollExportMainAmount(row: FullPayrollRow) {
+    if (row.salaryType === 'fixed_salary') return row.fixedSalary;
+    if (row.salaryType === 'purchase_manager') return row.purchasePercentAmount + row.purchaseTargetAdjustment;
+    if (row.salaryType === 'vl_percent') return row.grossPay;
+    return row.salesBonus;
+  }
+
+  function getPayrollExportCategory(row: FullPayrollRow) {
+    if (row.salaryType === 'purchase_manager') return 'Закупки';
+    if (row.salaryType === 'fixed_salary') return 'Фиксированная ЗП';
+    if (row.salaryType === 'vl_percent') return 'ВЛ';
+    if (row.salaryType === 'wholesale_percent') return 'Опт';
+    return 'Розница';
+  }
+
+  function getPayrollExportShortType(row: FullPayrollRow) {
+    if (row.salaryType === 'purchase_manager') return 'Закупщик';
+    if (row.salaryType === 'fixed_salary') return 'Оклад';
+    if (row.salaryType === 'vl_percent') return 'ВЛ 12%';
+    if (row.salaryType === 'wholesale_percent') return 'Опт 1,75%';
+    return 'Розница';
+  }
+
+  function toExportMoney(value: number) {
+    return Math.round(value * 100) / 100;
+  }
+
+  function getManagerComponentBases(manager: string) {
+    const managerRows = classification.rows.filter((row) => row.manager === manager);
+    return {
+      credit: managerRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').reduce((sum, row) => sum + row.base, 0),
+      film: managerRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').reduce((sum, row) => sum + row.base, 0),
+      plotter: managerRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50').reduce((sum, row) => sum + row.base, 0),
+      tech: managerRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').reduce((sum, row) => sum + row.base, 0),
+      accessory: managerRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5' || row.calculationType === 'RETAIL_REVIEW_TECH').reduce((sum, row) => sum + row.base, 0),
+    };
+  }
+
+  function buildAccrualExportRows() {
+    return fullPayrollRows.flatMap((row) => {
+      const baseColumns = [row.manager, getPayrollExportCategory(row), getPayrollExportShortType(row)] as const;
+      const rowsForEmployee: Array<Array<string | number | null>> = [];
+      const push = (component: string, base: string | number | null, formula: string, amount: number, comment = '') => {
+        rowsForEmployee.push([...baseColumns, component, typeof base === 'number' ? toExportMoney(base) : base, formula, toExportMoney(amount), comment]);
+      };
+
+      if (row.salaryType === 'fixed_salary') {
+        push('Фиксированный оклад', row.fixedSalary, 'оклад', row.fixedSalary, row.position);
+        push('Премия', row.fixedBonus, 'ручной ввод', row.fixedBonus);
+        push('Аванс', row.advance, 'удержание', -row.advance);
+        push('Удержание', row.fixedDeduction, 'ручной ввод', -row.fixedDeduction);
+        push('К выплате', row.grossPay, 'оклад + премия - аванс - удержание', row.netPay, row.comment);
+        return rowsForEmployee;
+      }
+
+      if (row.salaryType === 'purchase_manager') {
+        push('Оплата по дням', purchaseStandardWorkedDays, `${purchaseStandardWorkedDays} × ${purchaseDayRate}`, row.dayPay, `ставка ${formatMoney(purchaseDayRate)}`);
+        push('Закупки 1,75%', row.purchaseBase, 'закупки × 1,75%', row.purchasePercentAmount);
+        push('Доведение закупщика до 100 000', row.purchaseTargetSalary, 'целевая ЗП - дни - закупки 1,75%', row.purchaseTargetAdjustment);
+        push('Аванс', row.advance, 'удержание', -row.advance);
+        push('Удержание', row.fixedDeduction, 'ручной ввод', -row.fixedDeduction);
+        push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType), row.netPay, row.comment);
+        return rowsForEmployee;
+      }
+
+      if (row.dayPay) push('Оплата по дням', row.workedDays, `${row.workedDays ?? 0} × ${row.dayRate}`, row.dayPay, getPayrollDaysSourceLabel(row.daysSource));
+
+      if (row.salaryType === 'vl_percent') {
+        push('ВЛ 12%', row.grossPay / 0.12, '12% от итого начислено выбранных сотрудников', row.grossPay);
+      } else if (row.salaryType === 'wholesale_percent') {
+        push('Бонус опта 1,75%', classification.wholesale.base, 'общая база опта × 1,75%', row.wholesaleBonus);
+      } else {
+        const bases = getManagerComponentBases(row.manager);
+        if (row.filmBonus) push('Услуги оказываемые 50%', bases.film, 'выручка × 50%', row.filmBonus);
+        if (row.plotterBonus) push('Плоттерные материалы 50% от с/с', bases.plotter, 'с/с × 50%', row.plotterBonus);
+        if (row.techBonus) push('Техника 10% от ВП', bases.tech, 'ВП × 10%', row.techBonus);
+        if (row.accessoryBonus) push('Аксессуары 5%', bases.accessory, 'выручка × 5%', row.accessoryBonus);
+        if (row.creditBonus) push('Кредитный бонус', bases.credit, 'ВП × 0,91 × 10%', row.creditBonus);
+      }
+
+      if (row.disciplineBonus) push('Дисциплина', row.lateCount, 'опозданий ≤ 3', row.disciplineBonus);
+      if (row.agentCreditCommission > 0) push('Агентские по кредитам', null, 'ручной ввод', row.agentCreditCommission, 'Отдельное ручное начисление');
+      push('Аванс', row.advance, 'удержание', -row.advance);
+      push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType), row.netPay, row.comment);
+
+      return rowsForEmployee;
+    });
+  }
+
+  function buildPayrollCheckRows() {
+    return fullPayrollRows.flatMap((row) => {
+      const managerRows = classification.rows.filter((item) => item.manager === row.manager);
+      const checks = [
+        ['Спорные товары', managerRows.filter((item) => item.calculationType === 'WHOLESALE_REVIEW_TECH' || item.calculationType === 'RETAIL_REVIEW_TECH').length, 'Проверить', 'Проверьте спорную технику и товары'],
+        ['Отрицательная валовая прибыль', managerRows.filter((item) => item.grossProfit < 0).length, 'Проверить', 'Возможны возвраты или корректировки'],
+        ['Строки с подозрительной нулевой базой', managerRows.filter(hasUnexpectedZeroBase).length, 'Проверить', 'База расчёта равна нулю без ожидаемого исключения'],
+        ['Кредиты', managerRows.filter((item) => item.isCreditSale).length, 'Проверить', 'Кредитные продажи требуют сверки'],
+        ['Строки без классификации', managerRows.filter((item) => !item.calculationType).length, 'Ошибка', 'Нет классификации строки'],
+        ['Не заполнены дни', row.workedDays === null && row.salaryType !== 'fixed_salary' ? 1 : 0, 'Проверить', 'Заполните дни вручную или через предпросмотр'],
+        ['Не заполнены опоздания', row.lateCount === null && row.salaryType !== 'fixed_salary' && row.salaryType !== 'purchase_manager' ? 1 : 0, 'Проверить', 'Заполните опоздания вручную'],
+        ['Ручная корректировка дней', row.daysSource === 'manualCorrection' ? 1 : 0, 'Проверить', 'Дни или опоздания изменены вручную'],
+        ['Особая схема расчёта', row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager' || row.salaryType === 'vl_percent' ? 1 : 0, 'OK', getSalaryTypeLabel(row.salaryType)],
+      ];
+
+      return checks
+        .filter(([, count]) => Number(count) > 0)
+        .map(([check, count, status, comment]) => [row.manager, check, count, status, comment]);
+    });
+  }
+
+  async function exportPayrollWorkbook() {
+    const XLSX = (await import('xlsx-js-style')).default;
+    const workbookExport = XLSX.utils.book_new();
+    const periodLabel = `${months[Number(month)]} ${year}`;
+    const generatedAt = new Date().toLocaleString('ru-RU');
+    const moneyFormat = '# ##0';
+    const accrualMoneyFormat = '# ##0,00 ₽;[Red]-# ##0,00 ₽';
+    const integerFormat = '#,##0';
+    const border = {
+      top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+    };
+    const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border };
+    const titleStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 16 }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', vertical: 'center' }, border };
+    const summaryLabelStyle = { font: { bold: true, color: { rgb: '475569' } }, fill: { fgColor: { rgb: 'F8FAFC' } }, alignment: { horizontal: 'center' }, border };
+    const summaryValueStyle = { font: { bold: true, color: { rgb: '0F172A' } }, fill: { fgColor: { rgb: 'E2E8F0' } }, alignment: { horizontal: 'center' }, border };
+    const totalStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, border };
+    const warningStyle = { fill: { fgColor: { rgb: 'FEF3C7' } } };
+    const retailGroupStyle = { fill: { fgColor: { rgb: 'F3F8F6' } }, border };
+    const wholesaleGroupStyle = { fill: { fgColor: { rgb: 'F2F7FB' } }, border };
+    const purchaseGroupStyle = { fill: { fgColor: { rgb: 'FAF7EF' } }, border };
+    const mutedGroupStyle = { fill: { fgColor: { rgb: 'F5F4F7' } }, border };
+    const fixedColumnStyle = { fill: { fgColor: { rgb: 'E5E7EB' } }, border };
+    const dayColumnStyle = { fill: { fgColor: { rgb: 'FFEDD5' } }, border };
+    const salesColumnStyle = { fill: { fgColor: { rgb: 'DBEAFE' } }, border };
+    const purchaseColumnStyle = { fill: { fgColor: { rgb: 'EDE9FE' } }, border };
+    const greenColumnStyle = { fill: { fgColor: { rgb: 'DCFCE7' } }, border };
+    const deductionColumnStyle = { fill: { fgColor: { rgb: 'FCE7F3' } }, border };
+    const payoutColumnStyle = { font: { bold: true }, fill: { fgColor: { rgb: 'E0F2FE' } }, border };
+    const disciplineRemovedStyle = { font: { bold: true, color: { rgb: '92400E' } }, fill: { fgColor: { rgb: 'FDE68A' } }, border };
+    const checkErrorStyle = { fill: { fgColor: { rgb: 'FEE2E2' } } };
+    const checkWarningStyle = { fill: { fgColor: { rgb: 'FEF3C7' } } };
+    const baseCellStyle = { border, alignment: { vertical: 'center' } };
+    const fileInfoStyle = { border, alignment: { vertical: 'center', wrapText: true }, fill: { fgColor: { rgb: 'F8FAFC' } } };
+    const accrualHeaderStyle = {
+      font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '0F172A' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border,
+    };
+    const accrualBlockBorder = {
+      top: { style: 'medium', color: { rgb: '64748B' } },
+      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+    };
+    const accrualPayoutBorder = {
+      top: { style: 'medium', color: { rgb: '0F766E' } },
+      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+    };
+    const setCellStyle = (sheet: Record<string, unknown>, address: string, style: object) => {
+      const cell = sheet[address] as { s?: object } | undefined;
+      if (cell) cell.s = { ...(cell.s ?? {}), ...style };
+    };
+    const mergeCellStyle = (sheet: Record<string, unknown>, rowNumber: number, col: number, style: object) => {
+      setCellStyle(sheet, XLSX.utils.encode_cell({ r: rowNumber - 1, c: col }), style);
+    };
+    const setRowStyle = (sheet: Record<string, unknown>, rowNumber: number, fromCol: number, toCol: number, style: object) => {
+      for (let col = fromCol; col <= toCol; col += 1) setCellStyle(sheet, XLSX.utils.encode_cell({ r: rowNumber - 1, c: col }), style);
+    };
+    const setColumnNumberFormat = (sheet: Record<string, unknown>, firstRow: number, lastRow: number, columns: number[], format: string) => {
+      for (let rowIndex = firstRow - 1; rowIndex <= lastRow - 1; rowIndex += 1) {
+        for (const col of columns) {
+          const cell = sheet[XLSX.utils.encode_cell({ r: rowIndex, c: col })] as { z?: string } | undefined;
+          if (cell) cell.z = format;
+        }
+      }
+    };
+
+    const statusCounts = fullPayrollRows.reduce(
+      (acc, row) => {
+        const status = getPayrollRowStatus(row);
+        if (status === 'OK') acc.ok += 1;
+        else acc.review += 1;
+        return acc;
+      },
+      { ok: 0, review: 0 },
+    );
+    const totalDeductions = fullPayrollRows.reduce((sum, row) => sum + row.fixedDeduction, 0);
+    const totalMainAmount = fullPayrollRows.reduce((sum, row) => sum + getPayrollExportMainAmount(row), 0);
+    const totalFixedBonus = fullPayrollRows.reduce((sum, row) => sum + row.fixedBonus, 0);
+
+    const summaryRows = [
+      ['Зарплатная ведомость — ' + periodLabel],
+      ['Дата формирования', '', generatedAt, 'Файл продаж', workbook?.fileName ?? 'не загружен', '', '', 'Файл закупок', purchaseReport?.fileName ?? 'не загружен'],
+      [],
+      ['Всего сотрудников', '', fullPayrollRows.length, '', 'Всего начислено', '', toExportMoney(payrollTotals.grossPay), '', 'Всего авансов', '', toExportMoney(payrollTotals.advance), ''],
+      ['Всего удержаний', '', toExportMoney(totalDeductions), '', 'Итого к выплате', '', toExportMoney(payrollTotals.netPay), '', 'OK', statusCounts.ok, 'Проверить', statusCounts.review],
+      [],
+    ];
+    const tableHeader = ['№', 'Сотрудник', 'Категория', 'Итого начислено', 'Фикс / оклад', 'Дни', 'Ставка', 'Оплата дней', 'Продажи / бонус', 'Закупки / бонус', 'Доведение', 'ВЛ', 'Дисциплина', 'Премия', 'Агентские', 'Аванс', 'Удержание', 'К выплате', 'Статус', 'Комментарий'];
+    const tableRows = fullPayrollRows.map((row, index) => [
+      index + 1,
+      row.manager,
+      getPayrollExportCategory(row),
+      toExportMoney(row.grossPay),
+      row.salaryType === 'fixed_salary' ? toExportMoney(row.fixedSalary) : '',
+      row.workedDays ?? '',
+      row.dayRate || '',
+      toExportMoney(row.dayPay),
+      row.salaryType === 'retail_sales_bonus' || row.salaryType === 'wholesale_percent' ? toExportMoney(row.salesBonus) : '',
+      row.salaryType === 'purchase_manager' ? toExportMoney(row.purchasePercentAmount) : '',
+      row.salaryType === 'purchase_manager' ? toExportMoney(row.purchaseTargetAdjustment) : '',
+      row.salaryType === 'vl_percent' ? toExportMoney(row.grossPay) : '',
+      row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager' ? '' : toExportMoney(row.disciplineBonus),
+      toExportMoney(row.fixedBonus),
+      toExportMoney(row.agentCreditCommission),
+      toExportMoney(row.advance),
+      toExportMoney(row.fixedDeduction),
+      toExportMoney(row.netPay),
+      getPayrollRowStatus(row),
+      [getPayrollExportShortType(row), row.lateCount === null ? '' : `Опозд.: ${row.lateCount}`, row.comment].filter(Boolean).join(' · '),
+    ]);
+    const totalPurchaseBonus = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'purchase_manager' ? row.purchasePercentAmount : 0), 0);
+    const totalPurchaseAdjustment = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'purchase_manager' ? row.purchaseTargetAdjustment : 0), 0);
+    const totalVlAmount = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'vl_percent' ? row.grossPay : 0), 0);
+    const totalFixedSalary = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'fixed_salary' ? row.fixedSalary : 0), 0);
+    const totalAgentCreditCommission = fullPayrollRows.reduce((sum, row) => sum + row.agentCreditCommission, 0);
+    const totalRow = ['ИТОГО', '', '', toExportMoney(payrollTotals.grossPay), toExportMoney(totalFixedSalary), '', '', toExportMoney(payrollTotals.dayPay), toExportMoney(totalBonus), toExportMoney(totalPurchaseBonus), toExportMoney(totalPurchaseAdjustment), toExportMoney(totalVlAmount), toExportMoney(payrollTotals.disciplineBonus), toExportMoney(totalFixedBonus), toExportMoney(totalAgentCreditCommission), toExportMoney(payrollTotals.advance), toExportMoney(totalDeductions), toExportMoney(payrollTotals.netPay), '', ''];
+    const summarySheet = XLSX.utils.aoa_to_sheet([...summaryRows, tableHeader, ...tableRows, totalRow]);
+    const tableHeaderRow = summaryRows.length + 1;
+    const totalRowNumber = tableHeaderRow + tableRows.length + 1;
+    summarySheet['!cols'] = [5, 24, 13, 13, 11, 6, 8, 11, 13, 13, 11, 9, 10, 9, 10, 10, 10, 12, 11, 28].map((wch) => ({ wch }));
+    summarySheet['!rows'] = [{ hpt: 28 }, { hpt: 38 }, { hpt: 8 }, { hpt: 26 }, { hpt: 26 }, { hpt: 8 }, { hpt: 38 }];
+    summarySheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 19 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
+      { s: { r: 1, c: 4 }, e: { r: 1, c: 6 } },
+      { s: { r: 1, c: 8 }, e: { r: 1, c: 11 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 1 } },
+      { s: { r: 3, c: 2 }, e: { r: 3, c: 3 } },
+      { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } },
+      { s: { r: 3, c: 6 }, e: { r: 3, c: 7 } },
+      { s: { r: 3, c: 8 }, e: { r: 3, c: 9 } },
+      { s: { r: 3, c: 10 }, e: { r: 3, c: 11 } },
+      { s: { r: 4, c: 0 }, e: { r: 4, c: 1 } },
+      { s: { r: 4, c: 2 }, e: { r: 4, c: 3 } },
+      { s: { r: 4, c: 4 }, e: { r: 4, c: 5 } },
+      { s: { r: 4, c: 6 }, e: { r: 4, c: 7 } },
+    ];
+    summarySheet['!autofilter'] = { ref: `A${tableHeaderRow}:T${totalRowNumber}` };
+    summarySheet['!freeze'] = { xSplit: 0, ySplit: tableHeaderRow, topLeftCell: `A${tableHeaderRow + 1}`, activePane: 'bottomLeft', state: 'frozen' };
+    setRowStyle(summarySheet, 1, 0, 19, titleStyle);
+    [0, 2, 3, 4, 7, 8].forEach((col) => mergeCellStyle(summarySheet, 2, col, fileInfoStyle));
+    [0, 3, 7].forEach((col) => mergeCellStyle(summarySheet, 2, col, { ...fileInfoStyle, font: { bold: true, color: { rgb: '475569' } } }));
+    [0, 4, 8].forEach((col) => mergeCellStyle(summarySheet, 4, col, summaryLabelStyle));
+    [2, 6, 10].forEach((col) => mergeCellStyle(summarySheet, 4, col, summaryValueStyle));
+    [0, 4, 8, 10].forEach((col) => mergeCellStyle(summarySheet, 5, col, summaryLabelStyle));
+    [2, 6, 9, 11].forEach((col) => mergeCellStyle(summarySheet, 5, col, summaryValueStyle));
+    setRowStyle(summarySheet, tableHeaderRow, 0, 19, headerStyle);
+    setRowStyle(summarySheet, totalRowNumber, 0, 19, totalStyle);
+    tableRows.forEach(([, , category, , , , , , , , , , , , , , , , status], index) => {
+      const rowNumber = tableHeaderRow + index + 1;
+      for (let col = 0; col <= 19; col += 1) mergeCellStyle(summarySheet, rowNumber, col, baseCellStyle);
+      if (category === 'Розница') [1, 2].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, retailGroupStyle));
+      if (category === 'Опт') [1, 2].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, wholesaleGroupStyle));
+      if (category === 'Закупки') [1, 2].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, purchaseGroupStyle));
+      if (category === 'ВЛ' || category === 'Фиксированная ЗП') [1, 2].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, mutedGroupStyle));
+      mergeCellStyle(summarySheet, rowNumber, 4, fixedColumnStyle);
+      [5, 6, 7].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, dayColumnStyle));
+      mergeCellStyle(summarySheet, rowNumber, 8, salesColumnStyle);
+      [9, 10].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, purchaseColumnStyle));
+      [11, 12].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, greenColumnStyle));
+      [15, 16].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, deductionColumnStyle));
+      mergeCellStyle(summarySheet, rowNumber, 17, payoutColumnStyle);
+      const payrollRow = fullPayrollRows[index];
+      if (payrollRow.salaryType !== 'fixed_salary' && payrollRow.salaryType !== 'purchase_manager' && payrollRow.lateCount !== null && payrollRow.lateCount > 3 && payrollRow.disciplineBonus === 0) {
+        mergeCellStyle(summarySheet, rowNumber, 12, disciplineRemovedStyle);
+      }
+      if (status === 'Проверить') mergeCellStyle(summarySheet, rowNumber, 18, warningStyle);
+    });
+    mergeCellStyle(summarySheet, tableHeaderRow, 4, { ...headerStyle, fill: { fgColor: { rgb: '6B7280' } } });
+    [5, 6, 7].forEach((col) => mergeCellStyle(summarySheet, tableHeaderRow, col, { ...headerStyle, fill: { fgColor: { rgb: 'C2410C' } } }));
+    mergeCellStyle(summarySheet, tableHeaderRow, 8, { ...headerStyle, fill: { fgColor: { rgb: '1D4ED8' } } });
+    [9, 10].forEach((col) => mergeCellStyle(summarySheet, tableHeaderRow, col, { ...headerStyle, fill: { fgColor: { rgb: '6D28D9' } } }));
+    [11, 12].forEach((col) => mergeCellStyle(summarySheet, tableHeaderRow, col, { ...headerStyle, fill: { fgColor: { rgb: '15803D' } } }));
+    [15, 16].forEach((col) => mergeCellStyle(summarySheet, tableHeaderRow, col, { ...headerStyle, fill: { fgColor: { rgb: 'BE185D' } } }));
+    mergeCellStyle(summarySheet, tableHeaderRow, 17, { ...headerStyle, fill: { fgColor: { rgb: '0F766E' } } });
+    setColumnNumberFormat(summarySheet, tableHeaderRow + 1, totalRowNumber, [3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], moneyFormat);
+    setColumnNumberFormat(summarySheet, 4, 5, [1, 3, 5, 7], moneyFormat);
+    setColumnNumberFormat(summarySheet, tableHeaderRow + 1, totalRowNumber, [0, 5], integerFormat);
+    XLSX.utils.book_append_sheet(workbookExport, summarySheet, 'Ведомость ЗП');
+
+    const accrualHeader = ['Сотрудник', 'Категория', 'Тип расчёта', 'Компонент', 'База', 'Формула', 'Сумма', 'Комментарий'];
+    const accrualRows = buildAccrualExportRows();
+    const accrualSheet = XLSX.utils.aoa_to_sheet([accrualHeader, ...accrualRows]);
+    accrualSheet['!cols'] = [30, 18, 18, 38, 18, 48, 18, 50].map((wch) => ({ wch }));
+    accrualSheet['!autofilter'] = { ref: `A1:H${accrualRows.length + 1}` };
+    accrualSheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    accrualSheet['!rows'] = [{ hpt: 34 }, ...accrualRows.map((row) => ({ hpt: row[3] === 'К выплате' ? 26 : 22 }))];
+    setRowStyle(accrualSheet, 1, 0, 7, accrualHeaderStyle);
+    for (let rowNumber = 2; rowNumber <= accrualRows.length + 1; rowNumber += 1) {
+      const row = accrualRows[rowNumber - 2];
+      const previousRow = accrualRows[rowNumber - 3];
+      const isNewEmployee = !previousRow || previousRow[0] !== row[0];
+      const isPayoutRow = row[3] === 'К выплате';
+      const isZebraRow = rowNumber % 2 === 0;
+      const rowBorder = isPayoutRow ? accrualPayoutBorder : isNewEmployee ? accrualBlockBorder : border;
+      const rowStyle = {
+        border: rowBorder,
+        fill: { fgColor: { rgb: isPayoutRow ? 'E0F2FE' : isNewEmployee ? 'EEF2FF' : isZebraRow ? 'F8FAFC' : 'FFFFFF' } },
+        font: { bold: isPayoutRow },
+        alignment: { vertical: 'center', wrapText: true },
+      };
+      setRowStyle(accrualSheet, rowNumber, 0, 7, rowStyle);
+      mergeCellStyle(accrualSheet, rowNumber, 0, { font: { bold: isNewEmployee || isPayoutRow } });
+      [4, 6].forEach((col) => {
+        const value = row[col];
+        const isNegative = typeof value === 'number' && value < 0;
+        mergeCellStyle(accrualSheet, rowNumber, col, {
+          alignment: { horizontal: 'right', vertical: 'center', wrapText: true },
+          font: { bold: isPayoutRow, color: isNegative ? { rgb: 'B91C1C' } : { rgb: '0F172A' } },
+        });
+      });
+      [1, 2, 3, 5, 7].forEach((col) => {
+        mergeCellStyle(accrualSheet, rowNumber, col, { alignment: { vertical: 'center', wrapText: true } });
+      });
+    }
+    setColumnNumberFormat(accrualSheet, 2, accrualRows.length + 1, [4, 6], accrualMoneyFormat);
+    XLSX.utils.book_append_sheet(workbookExport, accrualSheet, 'Расшифровка начислений');
+
+    const checkHeader = ['Сотрудник', 'Тип проверки', 'Количество', 'Статус', 'Комментарий'];
+    const checkRows = buildPayrollCheckRows();
+    const checkSheet = XLSX.utils.aoa_to_sheet([checkHeader, ...checkRows]);
+    checkSheet['!cols'] = [24, 32, 12, 14, 48].map((wch) => ({ wch }));
+    checkSheet['!autofilter'] = { ref: `A1:E${checkRows.length + 1}` };
+    checkSheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
+    setRowStyle(checkSheet, 1, 0, 4, headerStyle);
+    checkRows.forEach((row, index) => {
+      const rowNumber = index + 2;
+      setRowStyle(checkSheet, rowNumber, 0, 4, baseCellStyle);
+      if (row[3] === 'Ошибка') setRowStyle(checkSheet, rowNumber, 0, 4, { ...checkErrorStyle, border });
+      if (row[3] === 'Проверить') setRowStyle(checkSheet, rowNumber, 0, 4, { ...checkWarningStyle, border });
+    });
+    XLSX.utils.book_append_sheet(workbookExport, checkSheet, 'Проверка');
+
+    const sourceRows = [
+      ['Показатель', 'Значение', 'Комментарий'],
+      ['Период', periodLabel, 'Выбранный месяц и год'],
+      ['Файл продаж', workbook?.fileName ?? 'не загружен', 'Основной отчёт 1С'],
+      ['Файл закупок', purchaseReport?.fileName ?? 'не загружен', 'Отчёт по закупкам 1С'],
+      ['Всего товарных строк', parseResult.rows.length, 'После разбора файла продаж'],
+      ['Менеджеров', parseResult.managers.length, 'Распознано в файле продаж'],
+      ['Клиентов', parseResult.clients.length, 'Распознано в файле продаж'],
+      ['Общая выручка', totalRevenue, 'По строкам продаж'],
+      ['Общая валовая прибыль', totalGrossProfit, 'По строкам продаж'],
+      ['База опта', classification.wholesale.base, 'После исключений'],
+      ['Бонус опта', classification.wholesale.bonusEach, '1,75% от базы опта'],
+      ['База закупок', purchasePayrollRow.purchaseBase ?? '', 'Колонка “Увеличение нашего долга”'],
+      ['1,75% от закупок', purchasePayrollRow.purchasePercentAmount, 'Аналитика закупщика'],
+      ['Целевая ЗП закупщика', purchaseTargetSalary, 'Тохов Астемир'],
+      ['Закупок нужно для 100 000 при 1,75%', purchaseTargetBase, '100000 / 0,0175'],
+    ];
+    const sourceSheet = XLSX.utils.aoa_to_sheet(sourceRows);
+    sourceSheet['!cols'] = [36, 24, 48].map((wch) => ({ wch }));
+    setRowStyle(sourceSheet, 1, 0, 2, headerStyle);
+    for (let rowNumber = 2; rowNumber <= sourceRows.length; rowNumber += 1) setRowStyle(sourceSheet, rowNumber, 0, 2, baseCellStyle);
+    setColumnNumberFormat(sourceSheet, 2, sourceRows.length, [1], moneyFormat);
+    XLSX.utils.book_append_sheet(workbookExport, sourceSheet, 'Исходные итоги');
+
+    XLSX.writeFile(workbookExport, `payroll_${months[Number(month)]}_${year}.xlsx`, { bookType: 'xlsx' });
+  }
+
   return (
     <AdminShell>
       <div className='max-w-full overflow-x-hidden'>
-      <div className='mb-6 flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+      <div className='mb-7 flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between'>
         <div>
-          <h1 className='text-2xl font-bold text-slate-900'>Зарплата</h1>
-          <p className='mt-1 max-w-3xl text-sm text-slate-500'>
-            На этом этапе портал только проверяет Excel-отчёт из 1С. Расчёт зарплаты будет добавлен следующим шагом.
+          <AdminBreadcrumbs current='Зарплата' />
+          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Зарплата</h1>
+          <p className='mt-1 max-w-3xl text-base font-medium text-slate-500'>
+            Расчёт начислений и контроль выплат
           </p>
         </div>
-        <Badge className='w-fit bg-amber-100 text-amber-800'>Черновой импорт</Badge>
+        <Badge className='w-fit bg-green-100 text-green-800'>Финансовый расчёт</Badge>
       </div>
 
       <div className='grid gap-5'>
@@ -2287,7 +3626,7 @@ export default function AdminPayrollPage() {
           <div className='grid gap-4 md:grid-cols-[180px_140px_1fr_1fr]'>
             <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
               Месяц
-              <select value={month} onChange={(event) => setMonth(event.target.value)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
+              <select value={month} onChange={(event) => setMonth(event.target.value)} className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
                 {months.map((monthName, index) => (
                   <option key={monthName} value={index}>
                     {monthName}
@@ -2298,7 +3637,7 @@ export default function AdminPayrollPage() {
 
             <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
               Год
-              <select value={year} onChange={(event) => setYear(event.target.value)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-slate-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
+              <select value={year} onChange={(event) => setYear(event.target.value)} className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
                 {years.map((yearValue) => (
                   <option key={yearValue} value={yearValue}>
                     {yearValue}
@@ -2338,16 +3677,24 @@ export default function AdminPayrollPage() {
                   <h2 className='text-lg font-bold text-slate-900'>Проверка расчёта</h2>
                   <p className='text-sm text-slate-500'>{workbook.fileName} · {months[Number(month)]} {year}</p>
                 </div>
-                <Badge className={getCheckStatus(classificationErrorCount > 0 ? 'error' : classification.disputedRows.length || creditRows.length ? 'warning' : 'ok')}>
-                  {classificationErrorCount > 0 ? 'Есть ошибки' : classification.disputedRows.length || creditRows.length ? 'Требует проверки' : 'Готово к проверке'}
+                <Badge className={getCheckStatus(registrarParseUnsafe || classificationErrorCount > 0 ? 'error' : classification.disputedRows.length || creditRows.length ? 'warning' : 'ok')}>
+                  {registrarParseUnsafe ? 'Небезопасный файл с регистратором' : classificationErrorCount > 0 ? 'Есть ошибки' : classification.disputedRows.length || creditRows.length ? 'Требует проверки' : 'Готово к проверке'}
                 </Badge>
               </div>
+
+              {registrarParseUnsafe && (
+                <p className='mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900'>
+                  Файл с регистратором распознан нестабильно. Расчёт зарплаты по нему небезопасен: используйте обычный отчёт без регистратора для расчёта, а файл с регистратором только для диагностики возвратов и корректировок.
+                </p>
+              )}
 
               <div className='grid min-w-0 gap-2 grid-cols-1 md:grid-cols-2 xl:grid-cols-3'>
                 {[
                   { label: 'Файл прочитан', detail: workbook.fileName, status: 'ok' as const, count: 0 },
+                  { label: 'Тип отчёта', detail: parseResult.isRegistrarReport ? 'с регистратором' : 'обычный', status: parseResult.isRegistrarReport && registrarParseUnsafe ? 'warning' as const : 'ok' as const, count: 0 },
+                  { label: 'Безопасность расчёта', detail: parseResult.isRegistrarReport ? (!registrarParseUnsafe ? 'регистратор распознан стабильно' : 'только диагностика') : 'основной формат', status: !registrarParseUnsafe ? 'ok' as const : 'error' as const, count: 0 },
                   { label: 'Шапка отчёта найдена', detail: parseResult.headerMap ? `строка ${rows[parseResult.headerIndex]?.excelRow}` : 'не найдена', status: parseResult.headerMap ? 'ok' as const : 'error' as const, count: 0 },
-                  { label: 'Товарные строки распознаны', detail: `${parseResult.rows.length}`, status: parseResult.rows.length > 100 ? 'ok' as const : 'error' as const, count: 0 },
+                  { label: 'Товарные строки распознаны', detail: parseResult.isRegistrarReport ? `${parseResult.rows.length} после агрегации из ${parseResult.detailRowCount}` : `${parseResult.rows.length}`, status: parseResult.rows.length > 100 ? 'ok' as const : 'error' as const, count: 0 },
                   { label: 'Менеджеры распознаны', detail: `${parseResult.managers.length}`, status: parseResult.managers.length > 0 ? 'ok' as const : 'error' as const, count: 0 },
                   { label: 'Клиенты распознаны', detail: `${parseResult.clients.length}`, status: parseResult.clients.length > 0 ? 'ok' as const : 'error' as const, count: 0 },
                   { label: 'Опт рассчитан', detail: `база ${formatMoney(classification.wholesale.base)}`, status: classification.wholesale.base > 0 ? 'ok' as const : 'error' as const, count: 0 },
@@ -2356,8 +3703,8 @@ export default function AdminPayrollPage() {
                   { label: 'Спорная техника розницы', detail: `${retailReviewRows.length} строк`, status: retailReviewRows.length ? 'warning' as const : 'ok' as const, count: retailReviewRows.length, problemType: 'retailReview' as ProblemType },
                   { label: 'Строки без классификации', detail: `${unclassifiedRows.length} строк`, status: unclassifiedRows.length ? 'error' as const : 'ok' as const, count: unclassifiedRows.length, problemType: 'unclassified' as ProblemType },
                   { label: 'Отрицательная валовая прибыль', detail: `${negativeRows.length} строк`, status: negativeRows.length ? 'warning' as const : 'ok' as const, count: negativeRows.length, problemType: 'negative' as ProblemType },
-                  { label: 'Строки с нулевой базой расчёта', detail: `${zeroBaseRows.length} строк`, status: zeroBaseRows.length ? 'warning' as const : 'ok' as const, count: zeroBaseRows.length, problemType: 'zeroBase' as ProblemType },
-                  { label: 'Кредиты найдены', detail: `${creditRows.length} строк, требуется сверка`, status: creditRows.length ? 'warning' as const : 'ok' as const, count: creditRows.length, problemType: 'credit' as ProblemType },
+                  { label: 'Строки с подозрительной нулевой базой', detail: `${zeroBaseRows.length} строк`, status: zeroBaseRows.length ? 'warning' as const : 'ok' as const, count: zeroBaseRows.length, problemType: 'zeroBase' as ProblemType },
+                  { label: 'Кредитные продажи — сверка', detail: `${creditRows.length} строк: техника ${creditTechRows.length}, аксессуары ${creditAccessoryRows.length}, спорные ${creditReviewRows.length}`, status: creditRows.length ? 'warning' as const : 'ok' as const, count: creditRows.length, problemType: 'credit' as ProblemType },
                 ].map((item) => {
                   const isClickable = Boolean(item.problemType && item.count > 0);
                   const clickableClass =
@@ -2436,9 +3783,14 @@ export default function AdminPayrollPage() {
                   <Card>
                     <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                       <h2 className='text-lg font-bold text-slate-900'>Итог по сотрудникам</h2>
-                      <button type='button' onClick={() => setActivePayrollTab('Дни и авансы')} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900'>
-                        Редактировать дни и авансы
-                      </button>
+                      <div className='flex flex-wrap gap-2'>
+                        <button type='button' onClick={exportPayrollWorkbook} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90'>
+                          Скачать ведомость Excel
+                        </button>
+                        <button type='button' onClick={() => setActivePayrollTab('Дни и авансы')} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900'>
+                          Редактировать дни и авансы
+                        </button>
+                      </div>
                     </div>
                     <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
                       <table className='w-full min-w-[780px] text-xs'>
@@ -2510,6 +3862,7 @@ export default function AdminPayrollPage() {
                           <th className='px-3 py-3 text-right'>Оплата по дням</th>
                           <th className='px-3 py-3'>Опоздания</th>
                           <th className='px-3 py-3 text-right'>Бонус дисциплины</th>
+                          <th className='px-3 py-3'>Агентские</th>
                           <th className='px-3 py-3'>Аванс</th>
                           <th className='px-3 py-3'>Комментарий</th>
                         </tr>
@@ -2529,6 +3882,13 @@ export default function AdminPayrollPage() {
                               <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.dayPay)}</td>
                               <td className='px-3 py-2'><Input type='number' min='0' step='1' value={lateCountValue} onChange={(event) => updateManualPayroll(row.manager, 'lateCount', event.target.value)} className='h-9 w-28' /></td>
                               <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.disciplineBonus)}</td>
+                              <td className='px-3 py-2'>
+                                {row.manager === agentCreditCommissionEmployee ? (
+                                  <Input type='number' min='0' step='100' value={manual.agentCreditCommission ?? ''} onChange={(event) => updateManualPayroll(row.manager, 'agentCreditCommission', event.target.value)} className='h-9 w-32' />
+                                ) : (
+                                  <span className='text-slate-400'>—</span>
+                                )}
+                              </td>
                               <td className='px-3 py-2'><Input type='number' min='0' step='100' value={manual.advance} onChange={(event) => updateManualPayroll(row.manager, 'advance', event.target.value)} className='h-9 w-32' /></td>
                               <td className='px-3 py-2'><Input value={manual.comment} onChange={(event) => updateManualPayroll(row.manager, 'comment', event.target.value)} placeholder='Комментарий' className='h-9 min-w-[220px]' /></td>
                             </tr>
@@ -2833,12 +4193,13 @@ export default function AdminPayrollPage() {
 
               {activePayrollTab === 'Розница' && (
                 <div className='grid gap-5'>
-                  <div className='grid gap-3 md:grid-cols-5'>
+                  <div className='grid gap-3 md:grid-cols-6'>
                     {[
                       ['Техника 10%', `${retailTechSummary.rows} / ${formatMoney(retailTechSummary.base)} / ${formatMoney(retailTechSummary.bonus)}`],
                       ['Аксессуары 5%', `${retailAccessorySummary.rows} / ${formatMoney(retailAccessorySummary.base)} / ${formatMoney(retailAccessorySummary.bonus)}`],
-                      ['Поклейка 50%', `${retailFilmSummary.rows} / ${formatMoney(retailFilmSummary.base)} / ${formatMoney(retailFilmSummary.bonus)}`],
-                      ['Кредиты', `${retailCreditSummary.rows} / ${formatMoney(retailCreditSummary.base)} / ${formatMoney(retailCreditSummary.bonus)}`],
+                      ['Услуги 50%', `${retailFilmSummary.rows} / ${formatMoney(retailFilmSummary.base)} / ${formatMoney(retailFilmSummary.bonus)}`],
+                      ['Плоттер 50% с/с', `${retailPlotterSummary.rows} / ${formatMoney(retailPlotterSummary.base)} / ${formatMoney(retailPlotterSummary.bonus)}`],
+                      ['Кредиты', `${creditRows.length} строк · техника ${creditTechRows.length} / аксессуары ${creditAccessoryRows.length} / спорные ${creditReviewRows.length} · бонус ${formatMoney(retailCreditSummary.bonus)}`],
                       ['Спорная розница', `${retailReviewSummary.rows} / ${formatMoney(retailReviewSummary.revenue)}`],
                     ].map(([label, value]) => <Card key={label} className='p-4'><p className='text-xs font-semibold uppercase text-slate-500'>{label}</p><p className='mt-1 text-sm font-bold text-slate-900'>{value}</p></Card>)}
                   </div>
@@ -2846,10 +4207,10 @@ export default function AdminPayrollPage() {
                     <h2 className='mb-4 text-lg font-bold text-slate-900'>Розничные менеджеры</h2>
                     <div className='max-h-[520px] overflow-auto rounded-lg border border-border'>
                       <table className='w-full min-w-[980px] text-sm'>
-                        <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-3'>Менеджер</th><th className='px-3 py-3 text-right'>Выручка</th><th className='px-3 py-3 text-right'>ВП</th><th className='px-3 py-3 text-right'>Кредит</th><th className='px-3 py-3 text-right'>Поклейка</th><th className='px-3 py-3 text-right'>Техника</th><th className='px-3 py-3 text-right'>Аксессуары</th><th className='px-3 py-3 text-right'>Итого</th><th className='px-3 py-3 text-right'>Спорные</th></tr></thead>
+                        <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-3'>Менеджер</th><th className='px-3 py-3 text-right'>Выручка</th><th className='px-3 py-3 text-right'>ВП</th><th className='px-3 py-3 text-right'>Кредит</th><th className='px-3 py-3 text-right'>Услуги</th><th className='px-3 py-3 text-right'>Плоттер</th><th className='px-3 py-3 text-right'>Техника</th><th className='px-3 py-3 text-right'>Аксессуары</th><th className='px-3 py-3 text-right'>Итого</th><th className='px-3 py-3 text-right'>Спорные</th></tr></thead>
                         <tbody>
                           {classification.managerSummaries.filter((row) => row.department === 'Розница').map((row) => (
-                            <tr key={row.manager} className='border-t border-border/70'><td className='px-3 py-2 font-semibold'>{row.manager}</td><td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.creditBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.filmBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.techBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.accessoryBonus)}</td><td className='px-3 py-2 text-right font-bold'>{formatMoney(row.totalBonus)}</td><td className='px-3 py-2 text-right'>{retailReviewRows.filter((item) => item.manager === row.manager).length}</td></tr>
+                            <tr key={row.manager} className='border-t border-border/70'><td className='px-3 py-2 font-semibold'>{row.manager}</td><td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.creditBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.filmBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.plotterBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.techBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.accessoryBonus)}</td><td className='px-3 py-2 text-right font-bold'>{formatMoney(row.totalBonus)}</td><td className='px-3 py-2 text-right'>{retailReviewRows.filter((item) => item.manager === row.manager).length}</td></tr>
                           ))}
                         </tbody>
                       </table>
@@ -2869,11 +4230,12 @@ export default function AdminPayrollPage() {
                   <div className='mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7'>
                     <select value={problemTypeFilter} onChange={(event) => setProblemTypeFilter(event.target.value as ProblemType)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm'>
                       <option value='all'>Все проблемы</option>
-                      <option value='credit'>Кредиты</option>
+                      <option value='credit'>Кредитные продажи — сверка</option>
                       <option value='wholesaleReview'>Спорная техника опта</option>
                       <option value='retailReview'>Спорная техника розницы</option>
+                      <option value='expensiveUnclassified'>Новые дорогие товары / требуют классификации</option>
                       <option value='negative'>Отрицательная ВП</option>
-                      <option value='zeroBase'>Нулевая база</option>
+                      <option value='zeroBase'>Подозрительная нулевая база</option>
                       <option value='unclassified'>Без классификации</option>
                       <option value='accessoryExcluded'>Ошибочно исключённые аксессуары</option>
                       <option value='invalidNumbers'>NaN/undefined</option>
@@ -2889,7 +4251,7 @@ export default function AdminPayrollPage() {
                   </div>
                   <div className='max-h-[560px] overflow-auto rounded-lg border border-border'>
                     <table className='w-full min-w-[1500px] text-xs'>
-                      <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Тип проблемы</th><th className='px-3 py-2'>Сотрудник</th><th className='px-3 py-2'>Отдел</th><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>Валовая прибыль</th><th className='px-3 py-2 text-right'>База расчёта</th><th className='px-3 py-2'>Тип расчёта</th><th className='px-3 py-2'>Причина</th><th className='px-3 py-2'>Правило</th></tr></thead>
+                      <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Тип проблемы</th><th className='px-3 py-2'>Сотрудник</th><th className='px-3 py-2'>Отдел</th><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Регистратор</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>Валовая прибыль</th><th className='px-3 py-2 text-right'>База расчёта</th><th className='px-3 py-2'>Тип расчёта</th><th className='px-3 py-2'>Причина</th><th className='px-3 py-2'>Правило</th></tr></thead>
                       <tbody>{problemRows.slice(0, 500).map((problem, index) => {
                         const isErrorProblem = problem.type === 'unclassified' || problem.type === 'accessoryExcluded' || problem.type === 'invalidNumbers';
                         if (problem.kind === 'sales') {
@@ -2902,12 +4264,13 @@ export default function AdminPayrollPage() {
                               <td className='px-3 py-2'>{row.client}</td>
                               <td className='px-3 py-2'>{row.category}</td>
                               <td className='max-w-[360px] truncate px-3 py-2' title={row.item}>{row.item}</td>
+                              <td className='max-w-[320px] truncate px-3 py-2' title={getRegistrarSummary(row)}>{getRegistrarSummary(row) || '—'}</td>
                               <td className='px-3 py-2'>{row.article || '—'}</td>
                               <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
                               <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
                               <td className='px-3 py-2 text-right'>{formatMoney(row.base)}</td>
                               <td className='px-3 py-2'>{row.calculationLabel}</td>
-                              <td className='px-3 py-2'>{row.classificationReason}</td>
+                              <td className='px-3 py-2'>{getSalesProblemReason(row, problem.type)}</td>
                               <td className='px-3 py-2'>{row.matchedRule}</td>
                             </tr>
                           );
@@ -2922,6 +4285,7 @@ export default function AdminPayrollPage() {
                             <td className='px-3 py-2'>—</td>
                             <td className='px-3 py-2'>—</td>
                             <td className='max-w-[360px] truncate px-3 py-2' title={row.comment}>{row.comment || '—'}</td>
+                            <td className='px-3 py-2'>—</td>
                             <td className='px-3 py-2'>—</td>
                             <td className='px-3 py-2 text-right'>—</td>
                             <td className='px-3 py-2 text-right'>—</td>
@@ -2965,12 +4329,33 @@ export default function AdminPayrollPage() {
                   <div className='mb-4 flex flex-wrap gap-2'>
                     <Badge className='bg-slate-100 text-slate-700'>Шапка: строка {rows[parseResult.headerIndex]?.excelRow ?? '—'}</Badge>
                     <Badge className='bg-slate-100 text-slate-700'>Стратегия: {parseResult.strategy}</Badge>
+                    {parseResult.isRegistrarReport && (
+                      <Badge className={!registrarParseUnsafe ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-700'}>
+                        {!registrarParseUnsafe ? 'Регистратор распознан стабильно' : 'Регистратор: только диагностика'}
+                      </Badge>
+                    )}
+                    {parseResult.isRegistrarReport && (
+                      <Badge className='bg-slate-100 text-slate-700'>Детальные строки: {parseResult.detailRowCount} · после агрегации: {parseResult.rows.length}</Badge>
+                    )}
                     {parseResult.columns.map((column) => <Badge key={column} className='bg-slate-100 text-slate-700'>{column}</Badge>)}
+                  </div>
+                  <div className='mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+                    {parseResult.levelSummaries.map((summary) => (
+                      <div key={summary.level} className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                        <div className='mb-2 flex items-center justify-between gap-3'>
+                          <p className='text-sm font-bold text-slate-900'>{summary.level}</p>
+                          <Badge className='bg-white text-slate-700'>{summary.count}</Badge>
+                        </div>
+                        <p className='line-clamp-4 text-xs text-slate-600' title={summary.examples.join(' · ')}>
+                          {summary.examples.length ? summary.examples.join(' · ') : '—'}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                   <div className='max-h-[620px] overflow-auto rounded-lg border border-border'>
                     <table className='w-full min-w-[1100px] text-xs'>
-                      <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Строка</th><th className='px-3 py-2'>Значение</th><th className='px-3 py-2'>outlineLevel</th><th className='px-3 py-2'>Уровень</th><th className='px-3 py-2'>currentManager</th><th className='px-3 py-2'>currentClient</th><th className='px-3 py-2'>currentCategory</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th></tr></thead>
-                      <tbody>{parseResult.diagnostics.map((row, index) => <tr key={`${row.excelRow}-${index}`} className='border-t border-border/70'><td className='px-3 py-2'>#{row.excelRow}</td><td className='max-w-[320px] truncate px-3 py-2' title={row.text}>{row.text}</td><td className='px-3 py-2'>{row.outlineLevel ?? '—'}</td><td className='px-3 py-2'>{row.detectedLevel}</td><td className='px-3 py-2'>{row.currentManager || '—'}</td><td className='px-3 py-2'>{row.currentClient || '—'}</td><td className='px-3 py-2'>{row.currentCategory || '—'}</td><td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td></tr>)}</tbody>
+                      <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Строка</th><th className='px-3 py-2'>Значение</th><th className='px-3 py-2'>outlineLevel</th><th className='px-3 py-2'>Уровень</th><th className='px-3 py-2'>currentManager</th><th className='px-3 py-2'>currentClient</th><th className='px-3 py-2'>currentRegistrar</th><th className='px-3 py-2'>currentCategory</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th></tr></thead>
+                      <tbody>{parseResult.diagnostics.slice(0, 500).map((row, index) => <tr key={`${row.excelRow}-${index}`} className='border-t border-border/70'><td className='px-3 py-2'>#{row.excelRow}</td><td className='max-w-[320px] truncate px-3 py-2' title={row.text}>{row.text}</td><td className='px-3 py-2'>{row.outlineLevel ?? '—'}</td><td className='px-3 py-2'>{row.detectedLevel}</td><td className='px-3 py-2'>{row.currentManager || '—'}</td><td className='px-3 py-2'>{row.currentClient || '—'}</td><td className='max-w-[240px] truncate px-3 py-2' title={row.currentRegistrar}>{row.currentRegistrar || '—'}</td><td className='px-3 py-2'>{row.currentCategory || '—'}</td><td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td></tr>)}</tbody>
                     </table>
                   </div>
                 </Card>
@@ -2997,7 +4382,7 @@ export default function AdminPayrollPage() {
                           <ul className='mt-1 grid gap-1'>
                             {selectedManagerCounts.disputed > 0 && <li>Спорная техника: {selectedManagerCounts.disputed} строк</li>}
                             {selectedManagerCounts.negative > 0 && <li>Отрицательная ВП: {selectedManagerCounts.negative} строк</li>}
-                            {selectedManagerCounts.zeroBase > 0 && <li>Нулевая база: {selectedManagerCounts.zeroBase} строк</li>}
+                            {selectedManagerCounts.zeroBase > 0 && <li>Подозрительная нулевая база: {selectedManagerCounts.zeroBase} строк</li>}
                             {selectedManagerCounts.credits > 0 && <li>Кредиты: {selectedManagerCounts.credits} строк</li>}
                             {selectedManagerCounts.unclassified > 0 && <li>Строки без классификации: {selectedManagerCounts.unclassified}</li>}
                             {selectedManagerCounts.accessoryExcluded > 0 && <li>Ошибочно исключённые аксессуары: {selectedManagerCounts.accessoryExcluded}</li>}
@@ -3060,9 +4445,10 @@ export default function AdminPayrollPage() {
                               ['Дни', selectedManagerPayroll.workedDays ?? '—'],
                               ['Опоздания', selectedManagerPayroll.lateCount ?? '—'],
                               ['Имя в посещаемости', selectedManagerAttendanceNames.join(', ') || '—'],
-                              ['Правило зарплаты', selectedManagerPayroll.salaryRule === 'belaPercent' ? '12% от итоговых ЗП сотрудников' : selectedManagerPayroll.salaryRule === 'noDayPay' ? 'Без оплаты выходов по дням' : 'Стандарт'],
+                              ['Правило зарплаты', selectedManagerPayroll.salaryRule === 'belaPercent' ? '12% от итого начислено выбранных сотрудников' : selectedManagerPayroll.salaryRule === 'noDayPay' ? 'Без оплаты выходов по дням' : 'Стандарт'],
                               ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
                               ['Бонус продаж', formatMoney(selectedManagerPayroll.salesBonus)],
+                              ...(selectedManagerPayroll.agentCreditCommission > 0 ? [['Агентские по кредитам', formatMoney(selectedManagerPayroll.agentCreditCommission)]] : []),
                               ['Бонус дисциплины', formatMoney(selectedManagerPayroll.disciplineBonus)],
                               ['Всего начислено', formatMoney(selectedManagerPayroll.grossPay)],
                             ]).map(([label, value]) => (
@@ -3107,7 +4493,7 @@ export default function AdminPayrollPage() {
                       <p className='mb-3 text-sm text-slate-600'>
                         {selectedManagerSummary.department === 'Опт'
                           ? 'Схема расчёта: Опт — 1,75% от общей базы опта. Залина и Лиана получают каждая полный бонус, бонус не делится пополам.'
-                          : 'Схема расчёта: Розница — кредитный бонус, поклейка / бронь 50%, техника 10% от ВП, аксессуары 5%.'}
+                          : 'Схема расчёта: Розница — услуги оказываемые 50%, плоттерные материалы Асада 50% от с/с, техника 10% от ВП, аксессуары 5%, кредитный бонус.'}
                       </p>
                       <div className='overflow-x-auto rounded-lg border border-border'>
                         <table className='w-full min-w-[620px] text-sm'>
@@ -3116,10 +4502,11 @@ export default function AdminPayrollPage() {
                             {(selectedManagerSummary.department === 'Опт'
                               ? [['Опт 1,75%', classification.wholesale.base, 'общая база опта × 1,75%, не делится пополам', selectedManagerSummary.wholesaleBonus]]
                               : [
-                                  selectedManagerCounts.credits || selectedManagerSummary.creditBonus ? ['Кредитный бонус', selectedManagerCounts.creditBase, 'ВП × 0,91 × 10%', selectedManagerSummary.creditBonus] : null,
-                                  selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? ['Поклейка / бронь 50%', selectedManagerCounts.filmBase, 'выручка × 50%', selectedManagerSummary.filmBonus] : null,
+                                  selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? ['Услуги оказываемые 50%', selectedManagerCounts.filmBase, 'выручка × 50%', selectedManagerSummary.filmBonus] : null,
+                                  selectedManagerCounts.plotterBase || selectedManagerSummary.plotterBonus ? ['Плоттерные материалы 50% от с/с', selectedManagerCounts.plotterBase, 'с/с × 50%', selectedManagerSummary.plotterBonus] : null,
                                   selectedManagerCounts.techBase || selectedManagerSummary.techBonus ? ['Техника 10% от ВП', selectedManagerCounts.techBase, 'ВП × 10%', selectedManagerSummary.techBonus] : null,
                                   selectedManagerCounts.accessoryBase || selectedManagerSummary.accessoryBonus ? ['Аксессуары 5%', selectedManagerCounts.accessoryBase, 'выручка × 5%', selectedManagerSummary.accessoryBonus] : null,
+                                  selectedManagerCounts.credits || selectedManagerSummary.creditBonus ? ['Кредитный бонус', selectedManagerCounts.creditBase, 'ВП × 0,91 × 10%', selectedManagerSummary.creditBonus] : null,
                                 ].filter((component): component is [string, number, string, number] => Boolean(component))
                             ).map(([component, base, formula, bonus]) => (
                               <tr key={String(component)} className='border-t border-border/70'><td className='px-3 py-2 font-semibold'>{component}</td><td className='px-3 py-2 text-right'>{formatMoney(Number(base))}</td><td className='px-3 py-2'>{formula}</td><td className='px-3 py-2 text-right font-bold'>{formatMoney(Number(bonus))}</td></tr>
@@ -3134,8 +4521,8 @@ export default function AdminPayrollPage() {
                       <div className='grid gap-2 sm:grid-cols-2'>
                         {[
                           { label: 'Строки без классификации', count: selectedManagerCounts.unclassified, tone: 'error', problemType: 'unclassified' as ProblemType },
-                          { label: 'Кредиты', count: selectedManagerCounts.credits, tone: 'warning', problemType: 'credit' as ProblemType },
-                          { label: 'Нулевая база расчёта', count: selectedManagerCounts.zeroBase, tone: 'warning', problemType: 'zeroBase' as ProblemType },
+                          { label: 'Кредитные продажи', count: selectedManagerCounts.credits, tone: 'warning', problemType: 'credit' as ProblemType },
+                          { label: 'Подозрительная нулевая база', count: selectedManagerCounts.zeroBase, tone: 'warning', problemType: 'zeroBase' as ProblemType },
                           { label: 'NaN/undefined', count: selectedManagerCounts.invalidNumbers, tone: 'error', problemType: 'invalidNumbers' as ProblemType },
                           { label: 'Спорные товары', count: selectedManagerCounts.disputed, tone: 'warning', problemType: 'disputed' as ProblemType },
                           { label: 'Отрицательная валовая прибыль', count: selectedManagerCounts.negative, tone: 'warning', problemType: 'negative' as ProblemType },
@@ -3274,13 +4661,14 @@ export default function AdminPayrollPage() {
                     <th className='px-4 py-3'>Уровень</th>
                     <th className='px-4 py-3'>currentManager</th>
                     <th className='px-4 py-3'>currentClient</th>
+                    <th className='px-4 py-3'>currentRegistrar</th>
                     <th className='px-4 py-3'>currentCategory</th>
                     <th className='px-4 py-3'>Выручка</th>
                     <th className='px-4 py-3'>Валовая прибыль</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {parseResult.diagnostics.map((row, rowIndex) => (
+                  {parseResult.diagnostics.slice(0, 100).map((row, rowIndex) => (
                     <tr key={`${row.excelRow}-${rowIndex}`} className='border-t border-border/70'>
                       <td className='whitespace-nowrap px-4 py-3 text-xs font-semibold text-slate-400'>#{row.excelRow}</td>
                       <td className='max-w-[320px] truncate px-4 py-3 text-slate-700' title={row.text}>{row.text}</td>
@@ -3288,6 +4676,7 @@ export default function AdminPayrollPage() {
                       <td className='whitespace-nowrap px-4 py-3 font-semibold text-slate-900'>{row.detectedLevel}</td>
                       <td className='max-w-[220px] truncate px-4 py-3 text-slate-700' title={row.currentManager}>{row.currentManager || <span className='text-slate-300'>—</span>}</td>
                       <td className='max-w-[220px] truncate px-4 py-3 text-slate-700' title={row.currentClient}>{row.currentClient || <span className='text-slate-300'>—</span>}</td>
+                      <td className='max-w-[260px] truncate px-4 py-3 text-slate-700' title={row.currentRegistrar}>{row.currentRegistrar || <span className='text-slate-300'>—</span>}</td>
                       <td className='max-w-[220px] truncate px-4 py-3 text-slate-700' title={row.currentCategory}>{row.currentCategory || <span className='text-slate-300'>—</span>}</td>
                       <td className='whitespace-nowrap px-4 py-3 text-right text-slate-700'>{formatMoney(row.revenue)}</td>
                       <td className='whitespace-nowrap px-4 py-3 text-right text-slate-700'>{formatMoney(row.grossProfit)}</td>
@@ -3321,7 +4710,7 @@ export default function AdminPayrollPage() {
                   ['Строк опта', classification.counts.wholesale],
                   ['Строк розницы', classification.counts.retail],
                   ['Кредитные строки', classification.counts.credit],
-                  ['Поклейка/бронь', classification.counts.film],
+                  ['Услуги оказываемые', classification.counts.film],
                   ['Техника 10%', classification.counts.retailTech],
                   ['Аксессуары 5%', classification.counts.accessory],
                   ['Исключённая техника опта', classification.counts.wholesaleExcludedTech],
@@ -3419,7 +4808,8 @@ export default function AdminPayrollPage() {
                     <th className='px-4 py-3'>Выручка</th>
                     <th className='px-4 py-3'>Валовая прибыль</th>
                     <th className='px-4 py-3'>Кредитный бонус</th>
-                    <th className='px-4 py-3'>Поклейка 50%</th>
+                    <th className='px-4 py-3'>Услуги 50%</th>
+                    <th className='px-4 py-3'>Плоттер 50% с/с</th>
                     <th className='px-4 py-3'>Техника 10% от ВП</th>
                     <th className='px-4 py-3'>Аксессуары 5%</th>
                     <th className='px-4 py-3'>Опт 1.75%</th>
@@ -3435,6 +4825,7 @@ export default function AdminPayrollPage() {
                       <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.grossProfit)}</td>
                       <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.creditBonus)}</td>
                       <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.filmBonus)}</td>
+                      <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.plotterBonus)}</td>
                       <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.techBonus)}</td>
                       <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.accessoryBonus)}</td>
                       <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.wholesaleBonus)}</td>
@@ -3576,28 +4967,34 @@ export default function AdminPayrollPage() {
             </Card>
 
             <Card>
-              <h2 className='mb-4 text-lg font-bold text-slate-900'>Сводка по кредитам</h2>
+              <h2 className='mb-4 text-lg font-bold text-slate-900'>Сводка по кредитной технике</h2>
               <Table>
                 <thead className='bg-slate-50 text-left text-slate-500'>
                   <tr>
                     <th className='px-4 py-3'>Менеджер</th>
-                    <th className='px-4 py-3'>Валовая прибыль по кредитам</th>
+                    <th className='px-4 py-3'>Валовая прибыль по кредитной технике</th>
                     <th className='px-4 py-3'>База после вычета 9%</th>
                     <th className='px-4 py-3'>Бонус 10%</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {parseResult.creditSummaries.map((summary) => (
+                  {classification.managerSummaries.filter((summary) => summary.creditBonus !== 0).map((summary) => {
+                    const managerCreditTechRows = creditTechRows.filter((row) => row.manager === summary.manager);
+                    const creditGrossProfit = managerCreditTechRows.reduce((sum, row) => sum + row.grossProfit, 0);
+                    const creditBase = managerCreditTechRows.reduce((sum, row) => sum + row.base, 0);
+
+                    return (
                     <tr key={summary.manager} className='border-t border-border/70'>
                       <td className='px-4 py-3 font-semibold text-slate-900'>{summary.manager}</td>
-                      <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.grossProfit)}</td>
-                      <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(summary.baseAfterNinePercent)}</td>
-                      <td className='px-4 py-3 text-right font-semibold text-slate-900'>{formatMoney(summary.bonus)}</td>
+                      <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(creditGrossProfit)}</td>
+                      <td className='px-4 py-3 text-right text-slate-700'>{formatMoney(creditBase)}</td>
+                      <td className='px-4 py-3 text-right font-semibold text-slate-900'>{formatMoney(summary.creditBonus)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </Table>
-              {!parseResult.creditSummaries.length && <p className='mt-3 text-sm text-slate-500'>Строки с клиентом “Кредит/рассрочка” пока не найдены.</p>}
+              {!creditRows.length && <p className='mt-3 text-sm text-slate-500'>Строки с клиентом “Кредит/рассрочка” пока не найдены.</p>}
             </Card>
               </>
             )}
