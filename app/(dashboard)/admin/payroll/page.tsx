@@ -173,6 +173,41 @@ type PurchaseReportState = {
   sourceRow: number | null;
 };
 
+type PayrollSourceFileSnapshot = {
+  type: 'sales' | 'purchase';
+  originalName: string;
+  extension: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  selectedSheet?: string;
+  rowCount?: number;
+  parsedRowCount?: number;
+  status: string;
+  warnings?: unknown[];
+  metadata?: Record<string, unknown>;
+};
+
+type SavedPayrollRunSummary = {
+  id: number;
+  runNumber: number;
+  status: string;
+  employeeCount: number;
+  reviewCount: number;
+  grossPay: number;
+  netPay: number;
+  createdAt: string;
+};
+
+type SavedPayrollPeriod = {
+  id: number;
+  year: number;
+  month: number;
+  periodKey: string;
+  status: string;
+  runs: SavedPayrollRunSummary[];
+};
+
 type FullPayrollRow = BonusManagerSummary & {
   payrollDepartment: string;
   position: string;
@@ -665,6 +700,36 @@ function toNumber(value: CellValue) {
 
 function formatMoney(value: number) {
   return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+}
+
+function getFileExtension(fileName: string) {
+  return fileName.split('.').pop()?.toLowerCase() ?? '';
+}
+
+async function sha256ArrayBuffer(buffer: ArrayBuffer) {
+  if (!globalThis.crypto?.subtle) return '';
+  const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function buildSourceFileSnapshot(
+  file: File,
+  buffer: ArrayBuffer,
+  type: PayrollSourceFileSnapshot['type'],
+  extra: Partial<PayrollSourceFileSnapshot> = {},
+): Promise<PayrollSourceFileSnapshot> {
+  return {
+    type,
+    originalName: file.name,
+    extension: getFileExtension(file.name),
+    mimeType: file.type,
+    sizeBytes: file.size,
+    sha256: await sha256ArrayBuffer(buffer),
+    status: 'UPLOADED',
+    ...extra,
+  };
 }
 
 function formatPercent(value: number) {
@@ -2641,6 +2706,8 @@ export default function AdminPayrollPage() {
   const [fixedPayroll, setFixedPayroll] = useState<Record<string, FixedPayrollInput>>({});
   const [purchasePayroll, setPurchasePayroll] = useState<PurchasePayrollInput>({ advance: '', deduction: '', comment: '' });
   const [purchaseReport, setPurchaseReport] = useState<PurchaseReportState | null>(null);
+  const [salesSourceFile, setSalesSourceFile] = useState<PayrollSourceFileSnapshot | null>(null);
+  const [purchaseSourceFile, setPurchaseSourceFile] = useState<PayrollSourceFileSnapshot | null>(null);
   const [purchaseError, setPurchaseError] = useState('');
   const [attendancePreview, setAttendancePreview] = useState<PayrollAttendancePreviewResponse | null>(null);
   const [attendancePreviewError, setAttendancePreviewError] = useState('');
@@ -2655,6 +2722,12 @@ export default function AdminPayrollPage() {
   const [problemArticleSearch, setProblemArticleSearch] = useState('');
   const [detailSearch, setDetailSearch] = useState('');
   const [articleSearch, setArticleSearch] = useState('');
+  const [savedPeriods, setSavedPeriods] = useState<SavedPayrollPeriod[]>([]);
+  const [isSavedPeriodsLoading, setIsSavedPeriodsLoading] = useState(false);
+  const [saveStatus, setSaveStatus] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [isSavingPayroll, setIsSavingPayroll] = useState(false);
+  const [lastSavedRunId, setLastSavedRunId] = useState<number | null>(null);
   const loadedManualPayrollKey = useRef('');
   const skipNextManualPayrollSave = useRef(true);
 
@@ -2680,6 +2753,10 @@ export default function AdminPayrollPage() {
     }
     window.localStorage.setItem(payrollManualStorageKey, JSON.stringify(manualPayroll));
   }, [manualPayroll, payrollManualStorageKey]);
+
+  useEffect(() => {
+    void loadSavedPayrollPeriods();
+  }, []);
 
   const parseResult = useMemo(() => parsePayrollReport(rows), [rows]);
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
@@ -3162,12 +3239,19 @@ export default function AdminPayrollPage() {
       }, {});
 
       const nextSelectedSheet = parsed.SheetNames.includes('TDSheet') ? 'TDSheet' : parsed.SheetNames[0] ?? '';
+      const selectedRows = nextSelectedSheet ? sheets[nextSelectedSheet] ?? [] : [];
+      const sourceSnapshot = await buildSourceFileSnapshot(file, buffer, 'sales', {
+        selectedSheet: nextSelectedSheet,
+        rowCount: selectedRows.length,
+      });
 
       setWorkbook({ fileName: file.name, sheetNames: parsed.SheetNames, sheets });
       setSelectedSheet(nextSelectedSheet);
+      setSalesSourceFile(sourceSnapshot);
     } catch (caughtError) {
       setWorkbook(null);
       setSelectedSheet('');
+      setSalesSourceFile(null);
       setError(caughtError instanceof Error ? caughtError.message : 'Не удалось прочитать файл.');
     } finally {
       setIsParsing(false);
@@ -3180,6 +3264,7 @@ export default function AdminPayrollPage() {
 
     setPurchaseError('');
     setPurchaseReport(null);
+    setPurchaseSourceFile(null);
 
     try {
       const extension = file.name.split('.').pop()?.toLowerCase();
@@ -3197,7 +3282,8 @@ export default function AdminPayrollPage() {
       });
       const sheetName = parsed.SheetNames.includes('TDSheet') ? 'TDSheet' : parsed.SheetNames[0] ?? '';
       const sheet = parsed.Sheets[sheetName] as SheetLike;
-      const result = parsePurchaseReport(sheetToRows(XLSX, sheet));
+      const purchaseRows = sheetToRows(XLSX, sheet);
+      const result = parsePurchaseReport(purchaseRows);
 
       if (result.base === null) {
         throw new Error('Не найдена сумма по колонке “Увеличение нашего долга”.');
@@ -3208,8 +3294,18 @@ export default function AdminPayrollPage() {
         base: result.base,
         sourceRow: result.sourceRow,
       });
+      setPurchaseSourceFile(await buildSourceFileSnapshot(file, buffer, 'purchase', {
+        selectedSheet: sheetName,
+        rowCount: purchaseRows.length,
+        parsedRowCount: 1,
+        metadata: {
+          base: result.base,
+          sourceRow: result.sourceRow,
+        },
+      }));
     } catch (caughtError) {
       setPurchaseReport(null);
+      setPurchaseSourceFile(null);
       setPurchaseError(caughtError instanceof Error ? caughtError.message : 'Не удалось прочитать отчёт закупок.');
     }
   }
@@ -3328,6 +3424,191 @@ export default function AdminPayrollPage() {
         .filter(([, count]) => Number(count) > 0)
         .map(([check, count, status, comment]) => [row.manager, check, count, status, comment]);
     });
+  }
+
+  async function loadSavedPayrollPeriods() {
+    setIsSavedPeriodsLoading(true);
+    try {
+      const response = await fetch('/api/admin/payroll/periods', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Не удалось загрузить сохранённые расчёты.');
+      setSavedPeriods(await response.json() as SavedPayrollPeriod[]);
+    } catch (caughtError) {
+      setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось загрузить сохранённые расчёты.');
+    } finally {
+      setIsSavedPeriodsLoading(false);
+    }
+  }
+
+  function buildCalculationDetailsByEmployee() {
+    return buildAccrualExportRows().reduce<Record<string, Array<{ component: string; base: number | null; formula: string; amount: number; comment: string; order: number }>>>((acc, detailRow) => {
+      const employeeName = String(detailRow[0] ?? '');
+      if (!employeeName) return acc;
+      const currentRows = acc[employeeName] ?? [];
+      currentRows.push({
+        component: String(detailRow[3] ?? ''),
+        base: typeof detailRow[4] === 'number' ? detailRow[4] : null,
+        formula: String(detailRow[5] ?? ''),
+        amount: typeof detailRow[6] === 'number' ? detailRow[6] : Number(detailRow[6] ?? 0) || 0,
+        comment: String(detailRow[7] ?? ''),
+        order: currentRows.length,
+      });
+      acc[employeeName] = currentRows;
+      return acc;
+    }, {});
+  }
+
+  function buildPayrollSnapshotPayload() {
+    const detailsByEmployee = buildCalculationDetailsByEmployee();
+    const reviewCount = fullPayrollRows.filter((row) => getPayrollRowStatus(row) !== 'OK').length;
+    const deductions = fullPayrollRows.reduce((sum, row) => sum + row.fixedDeduction, 0);
+    const sourceFiles = [
+      salesSourceFile
+        ? {
+            ...salesSourceFile,
+            parsedRowCount: parseResult.rows.length,
+            warnings: parseResult.warnings,
+            metadata: {
+              ...(salesSourceFile.metadata ?? {}),
+              isRegistrarReport: parseResult.isRegistrarReport,
+              isSafeForPayrollCalculation: parseResult.isSafeForPayrollCalculation,
+              sourceRowCount: parseResult.sourceRowCount,
+              detailRowCount: parseResult.detailRowCount,
+              managerCount: parseResult.managers.length,
+              clientCount: parseResult.clients.length,
+            },
+          }
+        : null,
+      purchaseSourceFile,
+    ].filter(Boolean);
+
+    return {
+      period: {
+        year: Number(year),
+        month: Number(month),
+      },
+      totals: {
+        employeeCount: fullPayrollRows.length,
+        reviewCount,
+        grossPay: payrollTotals.grossPay,
+        netPay: payrollTotals.netPay,
+        advance: payrollTotals.advance,
+        deductions,
+        dayPay: payrollTotals.dayPay,
+        salesBonus: payrollTotals.salesBonus,
+        disciplineBonus: payrollTotals.disciplineBonus,
+      },
+      sourceSummary: {
+        status: reviewCount > 0 || registrarParseUnsafe || classificationErrorCount > 0 ? 'REVIEW' : 'DRAFT',
+        periodLabel: `${months[Number(month)]} ${year}`,
+        totalRevenue,
+        totalGrossProfit,
+        totalBonus,
+        wholesaleTotalBonus,
+        retailTotalBonus,
+        purchaseBase: purchasePayrollRow.purchaseBase,
+        classificationErrorCount,
+        payrollReviewCount: reviewCount,
+      },
+      sourceFiles,
+      manualInputs: [
+        ...Object.entries(manualPayroll).map(([employeeName, input]) => ({
+          employeeName,
+          inputType: 'sales',
+          workedDays: input.workedDays,
+          lateCount: input.lateCount,
+          advance: input.advance,
+          agentCreditCommission: input.agentCreditCommission ?? '',
+          comment: input.comment,
+          source: input.source ?? '',
+        })),
+        ...Object.entries(fixedPayroll).map(([employeeName, input]) => ({
+          employeeName,
+          inputType: 'fixed',
+          advance: input.advance,
+          fixedBonus: input.bonus,
+          fixedDeduction: input.deduction,
+          comment: input.comment,
+        })),
+        {
+          employeeName: purchaseManagerName,
+          inputType: 'purchase',
+          purchaseAdvance: purchasePayroll.advance,
+          purchaseDeduction: purchasePayroll.deduction,
+          comment: purchasePayroll.comment,
+        },
+      ],
+      employeeResults: fullPayrollRows.map((row, index) => ({
+        employeeName: row.manager,
+        department: row.department,
+        payrollDepartment: row.payrollDepartment,
+        position: row.position,
+        salaryType: row.salaryType,
+        salaryRule: row.salaryRule,
+        workedDays: row.workedDays,
+        lateCount: row.lateCount,
+        daysSource: row.daysSource,
+        dayRate: row.dayRate,
+        dayPay: row.dayPay,
+        revenue: row.revenue,
+        grossProfit: row.grossProfit,
+        creditBonus: row.creditBonus,
+        filmBonus: row.filmBonus,
+        plotterBonus: row.plotterBonus,
+        techBonus: row.techBonus,
+        accessoryBonus: row.accessoryBonus,
+        wholesaleBonus: row.wholesaleBonus,
+        salesBonus: row.salesBonus,
+        totalBonus: row.totalBonus,
+        disciplineBonus: row.disciplineBonus,
+        fixedSalary: row.fixedSalary,
+        fixedBonus: row.fixedBonus,
+        fixedDeduction: row.fixedDeduction,
+        purchaseBase: row.purchaseBase,
+        purchasePercent: row.purchasePercent,
+        purchasePercentAmount: row.purchasePercentAmount,
+        purchaseTargetAdjustment: row.purchaseTargetAdjustment,
+        purchaseTargetSalary: row.purchaseTargetSalary,
+        agentCreditCommission: row.agentCreditCommission,
+        advance: row.advance,
+        grossPay: row.grossPay,
+        netPay: row.netPay,
+        status: getPayrollRowStatus(row),
+        reasons: row.payrollReasons,
+        comment: row.comment,
+        order: index,
+        calculationDetails: detailsByEmployee[row.manager] ?? [],
+      })),
+    };
+  }
+
+  async function savePayrollSnapshot() {
+    if (!fullPayrollRows.length) return;
+
+    setIsSavingPayroll(true);
+    setSaveError('');
+    setSaveStatus('');
+
+    try {
+      const response = await fetch('/api/admin/payroll/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPayrollSnapshotPayload()),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось сохранить расчёт.');
+      }
+
+      const run = await response.json() as { id: number; runNumber: number };
+      setLastSavedRunId(run.id);
+      setSaveStatus(`Расчёт сохранён: запуск #${run.runNumber}.`);
+      await loadSavedPayrollPeriods();
+    } catch (caughtError) {
+      setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось сохранить расчёт.');
+    } finally {
+      setIsSavingPayroll(false);
+    }
   }
 
   async function exportPayrollWorkbook() {
@@ -3784,6 +4065,9 @@ export default function AdminPayrollPage() {
                     <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                       <h2 className='text-lg font-bold text-slate-900'>Итог по сотрудникам</h2>
                       <div className='flex flex-wrap gap-2'>
+                        <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
+                          {isSavingPayroll ? 'Сохраняю...' : 'Сохранить расчёт'}
+                        </button>
                         <button type='button' onClick={exportPayrollWorkbook} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90'>
                           Скачать ведомость Excel
                         </button>
@@ -3792,6 +4076,8 @@ export default function AdminPayrollPage() {
                         </button>
                       </div>
                     </div>
+                    {saveStatus && <p className='mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>{saveStatus}</p>}
+                    {saveError && <p className='mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{saveError}</p>}
                     <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
                       <table className='w-full min-w-[780px] text-xs'>
                         <thead className='bg-slate-50 text-left text-slate-500'>
@@ -3839,6 +4125,50 @@ export default function AdminPayrollPage() {
                         </tbody>
                       </table>
                     </div>
+                  </Card>
+
+                  <Card>
+                    <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                      <div>
+                        <h2 className='text-lg font-bold text-slate-900'>Сохранённые расчёты</h2>
+                        <p className='text-sm text-slate-500'>Последние snapshot-запуски по периодам.</p>
+                      </div>
+                      {lastSavedRunId && <Badge className='w-fit bg-green-100 text-green-800'>Последний ID: {lastSavedRunId}</Badge>}
+                    </div>
+                    {isSavedPeriodsLoading ? (
+                      <p className='text-sm text-slate-500'>Загружаю сохранённые расчёты...</p>
+                    ) : savedPeriods.length === 0 ? (
+                      <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>Сохранённых расчётов пока нет.</p>
+                    ) : (
+                      <div className='grid gap-2'>
+                        {savedPeriods.slice(0, 6).map((period) => (
+                          <div key={period.id} className='rounded-lg border border-border bg-white px-3 py-2'>
+                            <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                              <div>
+                                <p className='text-sm font-bold text-slate-900'>{months[period.month] ?? period.periodKey} {period.year}</p>
+                                <p className='text-xs text-slate-500'>Период {period.periodKey} · {period.status}</p>
+                              </div>
+                              <Badge className='w-fit bg-slate-100 text-slate-700'>Запусков: {period.runs.length}</Badge>
+                            </div>
+                            <div className='mt-2 grid gap-2 md:grid-cols-2'>
+                              {period.runs.map((run) => (
+                                <div key={run.id} className='rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm'>
+                                  <div className='flex items-center justify-between gap-2'>
+                                    <span className='font-semibold text-slate-900'>#{run.runNumber} · ID {run.id}</span>
+                                    <span className='text-xs text-slate-500'>{new Date(run.createdAt).toLocaleString('ru-RU')}</span>
+                                  </div>
+                                  <div className='mt-1 grid gap-1 text-xs text-slate-600 sm:grid-cols-3'>
+                                    <span>Сотрудников: {run.employeeCount}</span>
+                                    <span>Проверить: {run.reviewCount}</span>
+                                    <span>К выплате: {formatMoney(run.netPay)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </Card>
 
                 </div>

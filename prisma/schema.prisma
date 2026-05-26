@@ -17,6 +17,8 @@ model User {
   progresses    AttemptProgress[]
   resetTargets  AttemptReset[]    @relation("ResetTarget")
   resetByActions AttemptReset[]    @relation("ResetBy")
+  payrollRuns   PayrollRun[]      @relation("PayrollRunCreatedBy")
+  payrollAdjustments PayrollAdjustment[] @relation("PayrollAdjustmentCreatedBy")
 }
 
 model Attestation {
@@ -88,4 +90,175 @@ model AttemptReset {
   user          User        @relation("ResetTarget", fields: [userId], references: [id], onDelete: Cascade)
   resetBy       User        @relation("ResetBy", fields: [resetById], references: [id], onDelete: Cascade)
   attestation   Attestation @relation(fields: [attestationId], references: [id], onDelete: Cascade)
+}
+
+model PayrollPeriod {
+  id        Int          @id @default(autoincrement())
+  year      Int
+  month     Int
+  periodKey String       @unique
+  status    String       @default("OPEN")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  closedAt  DateTime?
+  runs      PayrollRun[]
+
+  @@unique([year, month])
+}
+
+model PayrollRun {
+  id                  Int                      @id @default(autoincrement())
+  periodId            Int
+  runNumber           Int
+  status              String                   @default("DRAFT")
+  rulesVersion        String                   @default("client-snapshot-v1")
+  employeeCount       Int                      @default(0)
+  reviewCount         Int                      @default(0)
+  grossPay            Float                    @default(0)
+  netPay              Float                    @default(0)
+  advance             Float                    @default(0)
+  deductions          Float                    @default(0)
+  dayPay              Float                    @default(0)
+  salesBonus          Float                    @default(0)
+  disciplineBonus     Float                    @default(0)
+  sourceSummary       Json?
+  createdByUserId     Int?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  checkedAt           DateTime?
+  closedAt            DateTime?
+  period              PayrollPeriod            @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  createdBy           User?                    @relation("PayrollRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  employeeResults     PayrollEmployeeResult[]
+  sourceFiles         PayrollSourceFile[]
+  manualInputs        PayrollManualInput[]
+  adjustments         PayrollAdjustment[]
+
+  @@unique([periodId, runNumber])
+}
+
+model PayrollEmployeeResult {
+  id                       Int                        @id @default(autoincrement())
+  runId                    Int
+  employeeName             String
+  userId                   Int?
+  department               String
+  payrollDepartment        String
+  position                 String
+  salaryType               String
+  salaryRule               String
+  workedDays               Float?
+  lateCount                Float?
+  daysSource               String
+  dayRate                  Float                      @default(0)
+  dayPay                   Float                      @default(0)
+  revenue                  Float                      @default(0)
+  grossProfit              Float                      @default(0)
+  creditBonus              Float                      @default(0)
+  filmBonus                Float                      @default(0)
+  plotterBonus             Float                      @default(0)
+  techBonus                Float                      @default(0)
+  accessoryBonus           Float                      @default(0)
+  wholesaleBonus           Float                      @default(0)
+  salesBonus               Float                      @default(0)
+  totalBonus               Float                      @default(0)
+  disciplineBonus          Float                      @default(0)
+  fixedSalary              Float                      @default(0)
+  fixedBonus               Float                      @default(0)
+  fixedDeduction           Float                      @default(0)
+  purchaseBase             Float?
+  purchasePercent          Float                      @default(0)
+  purchasePercentAmount    Float                      @default(0)
+  purchaseTargetAdjustment Float                      @default(0)
+  purchaseTargetSalary     Float                      @default(0)
+  agentCreditCommission    Float                      @default(0)
+  advance                  Float                      @default(0)
+  grossPay                 Float                      @default(0)
+  netPay                   Float                      @default(0)
+  status                   String
+  reasons                  Json?
+  comment                  String                     @default("")
+  order                    Int                        @default(0)
+  run                      PayrollRun                 @relation(fields: [runId], references: [id], onDelete: Cascade)
+  calculationDetails       PayrollCalculationDetail[]
+  adjustments              PayrollAdjustment[]
+
+  @@index([runId])
+  @@index([employeeName])
+}
+
+model PayrollSourceFile {
+  id             Int        @id @default(autoincrement())
+  runId          Int
+  type           String
+  originalName   String
+  extension      String
+  mimeType       String?
+  sizeBytes      Int?
+  sha256         String?
+  uploadedAt     DateTime   @default(now())
+  selectedSheet  String?
+  rowCount       Int?
+  parsedRowCount Int?
+  status         String     @default("UPLOADED")
+  warnings       Json?
+  metadata       Json?
+  run            PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([sha256])
+}
+
+model PayrollManualInput {
+  id                    Int        @id @default(autoincrement())
+  runId                 Int
+  employeeName          String
+  inputType             String
+  workedDays            String?
+  lateCount             String?
+  advance               String?
+  agentCreditCommission String?
+  fixedBonus            String?
+  fixedDeduction        String?
+  purchaseAdvance       String?
+  purchaseDeduction     String?
+  comment               String    @default("")
+  source                String?
+  updatedAt             DateTime   @default(now())
+  run                   PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([employeeName])
+}
+
+model PayrollCalculationDetail {
+  id               Int                   @id @default(autoincrement())
+  employeeResultId Int
+  component        String
+  base             Float?
+  formula          String
+  amount           Float                 @default(0)
+  comment          String                @default("")
+  order            Int                   @default(0)
+  employeeResult   PayrollEmployeeResult @relation(fields: [employeeResultId], references: [id], onDelete: Cascade)
+
+  @@index([employeeResultId])
+}
+
+model PayrollAdjustment {
+  id               Int                    @id @default(autoincrement())
+  runId            Int
+  employeeResultId Int?
+  type             String
+  amount           Float                  @default(0)
+  reason           String
+  comment          String                 @default("")
+  createdByUserId  Int?
+  createdAt        DateTime               @default(now())
+  run              PayrollRun             @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employeeResult   PayrollEmployeeResult? @relation(fields: [employeeResultId], references: [id], onDelete: Cascade)
+  createdBy        User?                  @relation("PayrollAdjustmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([runId])
+  @@index([employeeResultId])
 }
