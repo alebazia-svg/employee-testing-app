@@ -15,6 +15,14 @@ function formatDate(date: Date) {
 
 const emptyText = 'Нет данных для отображения.';
 
+function formatDateTime(date: Date) {
+  return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
+}
+
+function formatMoney(value: number) {
+  return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+}
+
 function EmptyState({
   icon: Icon,
   title,
@@ -44,6 +52,7 @@ export default async function AdminPage() {
     resultCount,
     failedResultCount,
     latestResults,
+    latestPayrollRun,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.attestation.count(),
@@ -56,6 +65,10 @@ export default async function AdminPage() {
       orderBy: { date: 'desc' },
       include: { user: true, attestation: true },
     }),
+    prisma.payrollRun.findFirst({
+      orderBy: { createdAt: 'desc' },
+      include: { period: true },
+    }),
   ]);
 
   const reviewCount = failedResultCount + draftAttestationCount;
@@ -64,7 +77,7 @@ export default async function AdminPage() {
     { title: 'Аттестации', value: String(attestationCount), note: `${activeAttestationCount} активных`, icon: GraduationCap, href: '/admin/attestations', tone: 'green' },
     { title: 'Результаты', value: String(resultCount), note: 'Всего результатов', icon: BarChart3, href: '/admin/results', tone: 'green' },
     { title: 'Посещаемость', value: '—', note: emptyText, icon: CalendarCheck, href: '/admin/attendance', tone: 'green' },
-    { title: 'Зарплата', value: '—', note: emptyText, icon: Banknote, href: '/admin/payroll', tone: 'green' },
+    { title: 'Зарплата', value: latestPayrollRun ? formatMoney(latestPayrollRun.netPay) : '—', note: latestPayrollRun ? `${latestPayrollRun.period.periodKey} · расчёт №${latestPayrollRun.runNumber}` : emptyText, icon: Banknote, href: '/admin/payroll', tone: 'green' },
     { title: 'Требует проверки', value: String(reviewCount), note: 'Несданные результаты и черновики', icon: AlertTriangle, href: '/admin/results', tone: 'amber' },
   ];
 
@@ -190,11 +203,51 @@ export default async function AdminPage() {
           <div className='border-b border-slate-200/80 px-5 py-4'>
             <h2 className='text-lg font-extrabold text-slate-950'>Зарплата</h2>
           </div>
-          <EmptyState
-            icon={Banknote}
-            title='Нет данных по зарплате.'
-            text='После отдельной доработки сохранения расчётов здесь будет отображаться последняя сводка по зарплате.'
-          />
+          {latestPayrollRun ? (
+            <div className='grid gap-4 p-5'>
+              <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                <div>
+                  <p className='text-sm font-bold text-slate-500'>Период</p>
+                  <p className='mt-1 text-2xl font-extrabold text-slate-950'>{latestPayrollRun.period.periodKey}</p>
+                </div>
+                <Badge className={latestPayrollRun.status === 'FINAL' ? 'w-fit bg-green-100 text-green-800' : latestPayrollRun.status === 'CHECKED' ? 'w-fit bg-blue-100 text-blue-800' : 'w-fit bg-slate-100 text-slate-700'}>
+                  {latestPayrollRun.status}
+                </Badge>
+              </div>
+              <div className='grid gap-3 sm:grid-cols-2'>
+                <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                  <p className='text-xs font-semibold uppercase text-slate-500'>Расчёт</p>
+                  <p className='mt-1 text-lg font-bold text-slate-900'>№{latestPayrollRun.runNumber}</p>
+                </div>
+                <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                  <p className='text-xs font-semibold uppercase text-slate-500'>Дата сохранения</p>
+                  <p className='mt-1 text-lg font-bold text-slate-900'>{formatDateTime(latestPayrollRun.createdAt)}</p>
+                </div>
+                <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                  <p className='text-xs font-semibold uppercase text-slate-500'>Сотрудников</p>
+                  <p className='mt-1 text-lg font-bold text-slate-900'>{latestPayrollRun.employeeCount}</p>
+                </div>
+                <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                  <p className='text-xs font-semibold uppercase text-slate-500'>Проверить</p>
+                  <p className='mt-1 text-lg font-bold text-slate-900'>{latestPayrollRun.reviewCount}</p>
+                </div>
+              </div>
+              <div className='rounded-lg border border-green-100 bg-green-50 px-3 py-3'>
+                <p className='text-xs font-semibold uppercase text-green-700'>К выплате</p>
+                <p className='mt-1 text-2xl font-extrabold text-green-900'>{formatMoney(latestPayrollRun.netPay)}</p>
+              </div>
+              <Link href='/admin/payroll' className='inline-flex w-fit items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white transition hover:bg-primary/90'>
+                Открыть зарплату
+                <ChevronRight className='h-4 w-4' />
+              </Link>
+            </div>
+          ) : (
+            <EmptyState
+              icon={Banknote}
+              title='Нет данных по зарплате.'
+              text='После сохранения расчёта здесь появится последняя сводка по зарплате.'
+            />
+          )}
         </Card>
 
         <Card className='p-0'>

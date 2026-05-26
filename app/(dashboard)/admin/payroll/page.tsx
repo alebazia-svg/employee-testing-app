@@ -208,6 +208,63 @@ type SavedPayrollPeriod = {
   runs: SavedPayrollRunSummary[];
 };
 
+type SavedPayrollCalculationDetail = {
+  id: number;
+  component: string;
+  base: number | null;
+  formula: string;
+  amount: number;
+  comment: string;
+  order: number;
+};
+
+type SavedPayrollEmployeeResult = {
+  id: number;
+  employeeName: string;
+  payrollDepartment: string;
+  position: string;
+  salaryType: string;
+  workedDays: number | null;
+  lateCount: number | null;
+  grossPay: number;
+  netPay: number;
+  status: string;
+  comment: string;
+  calculationDetails: SavedPayrollCalculationDetail[];
+};
+
+type SavedPayrollSourceFile = {
+  id: number;
+  type: string;
+  originalName: string;
+  sha256: string | null;
+  selectedSheet: string | null;
+  rowCount: number | null;
+  parsedRowCount: number | null;
+  uploadedAt: string;
+};
+
+type SavedPayrollManualInput = {
+  id: number;
+  employeeName: string;
+  inputType: string;
+  workedDays: string | null;
+  lateCount: string | null;
+  advance: string | null;
+  fixedBonus: string | null;
+  fixedDeduction: string | null;
+  purchaseAdvance: string | null;
+  purchaseDeduction: string | null;
+  comment: string;
+};
+
+type SavedPayrollRunDetail = SavedPayrollRunSummary & {
+  period: SavedPayrollPeriod;
+  sourceFiles: SavedPayrollSourceFile[];
+  manualInputs: SavedPayrollManualInput[];
+  employeeResults: SavedPayrollEmployeeResult[];
+};
+
 type FullPayrollRow = BonusManagerSummary & {
   payrollDepartment: string;
   position: string;
@@ -2352,6 +2409,36 @@ function getDayRate(department: Department) {
   return department === 'Опт' ? 500 : 600;
 }
 
+function getDefaultPayrollDepartment(employee: PayrollEmployee): Department {
+  return employee.salaryType === 'wholesale_percent' ? 'Опт' : 'Розница';
+}
+
+function buildEmptyManagerSummary(employee: PayrollEmployee): BonusManagerSummary {
+  return {
+    manager: employee.name,
+    department: getDefaultPayrollDepartment(employee),
+    revenue: 0,
+    grossProfit: 0,
+    creditBonus: 0,
+    filmBonus: 0,
+    plotterBonus: 0,
+    techBonus: 0,
+    accessoryBonus: 0,
+    wholesaleBonus: 0,
+    totalBonus: 0,
+  };
+}
+
+function buildSalesPayrollSummaries(managerSummaries: BonusManagerSummary[]) {
+  const summariesByManager = new Map(managerSummaries.map((summary) => [summary.manager, summary]));
+  const payrollSalesSummaries = Object.values(payrollEmployees)
+    .filter((employee) => employee.salaryType === 'vl_percent' || employee.salaryType === 'wholesale_percent' || employee.salaryType === 'retail_sales_bonus')
+    .map((employee) => summariesByManager.get(employee.name) ?? buildEmptyManagerSummary(employee));
+  const reportOnlySummaries = managerSummaries.filter((summary) => !payrollEmployees[summary.manager]);
+
+  return [...payrollSalesSummaries, ...reportOnlySummaries];
+}
+
 function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManualInput | undefined): FullPayrollRow {
   const employee = payrollEmployees[summary.manager];
   const manualWorkedDays = parseManualNumber(manual?.workedDays ?? '');
@@ -2728,6 +2815,9 @@ export default function AdminPayrollPage() {
   const [saveError, setSaveError] = useState('');
   const [isSavingPayroll, setIsSavingPayroll] = useState(false);
   const [lastSavedRunId, setLastSavedRunId] = useState<number | null>(null);
+  const [payrollHistoryActionId, setPayrollHistoryActionId] = useState<string | null>(null);
+  const [selectedSavedRun, setSelectedSavedRun] = useState<SavedPayrollRunDetail | null>(null);
+  const [isSavedRunLoading, setIsSavedRunLoading] = useState(false);
   const loadedManualPayrollKey = useRef('');
   const skipNextManualPayrollSave = useRef(true);
 
@@ -2779,7 +2869,7 @@ export default function AdminPayrollPage() {
   const totalGrossProfit = useMemo(() => classification.rows.reduce((sum, row) => sum + row.grossProfit, 0), [classification.rows]);
   const totalBonus = useMemo(() => classification.managerSummaries.reduce((sum, row) => sum + row.totalBonus, 0), [classification.managerSummaries]);
   const salesPayrollRows = useMemo(
-    () => classification.managerSummaries.map((summary) => buildFullPayrollRow(summary, manualPayroll[summary.manager])),
+    () => buildSalesPayrollSummaries(classification.managerSummaries).map((summary) => buildFullPayrollRow(summary, manualPayroll[summary.manager])),
     [classification.managerSummaries, manualPayroll],
   );
   const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll), [fixedPayroll]);
@@ -2933,6 +3023,11 @@ export default function AdminPayrollPage() {
       ),
     [fullPayrollRows],
   );
+  const currentSavedPeriod = useMemo(
+    () => savedPeriods.find((period) => period.year === Number(year) && period.month === Number(month)) ?? null,
+    [savedPeriods, year, month],
+  );
+  const isCurrentPeriodClosed = currentSavedPeriod?.status === 'CLOSED';
   const wholesaleTotalBonus = classification.wholesale.bonusEach * 2;
   const retailTotalBonus = classification.managerSummaries.filter((row) => row.department === 'Розница').reduce((sum, row) => sum + row.totalBonus, 0);
   const wholesaleCategorySummaries = useMemo(() => buildWholesaleCategorySummaries(classification.rows), [classification.rows]);
@@ -3439,6 +3534,85 @@ export default function AdminPayrollPage() {
     }
   }
 
+  function getPayrollRunStatusLabel(status: string) {
+    if (status === 'FINAL') return 'Финальный';
+    if (status === 'CHECKED') return 'Проверен';
+    return 'Черновик';
+  }
+
+  function getPayrollRunStatusClass(status: string) {
+    if (status === 'FINAL') return 'bg-green-100 text-green-800';
+    if (status === 'CHECKED') return 'bg-blue-100 text-blue-800';
+    return 'bg-slate-100 text-slate-700';
+  }
+
+  async function updatePayrollRunStatus(runId: number, status: 'CHECKED' | 'FINAL') {
+    setPayrollHistoryActionId(`run-${runId}-${status}`);
+    setSaveError('');
+    setSaveStatus('');
+
+    try {
+      const response = await fetch(`/api/admin/payroll/runs/${runId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось изменить статус расчёта.');
+      }
+
+      setSaveStatus(status === 'FINAL' ? 'Расчёт отмечен как финальный.' : 'Расчёт отмечен как проверенный.');
+      await loadSavedPayrollPeriods();
+    } catch (caughtError) {
+      setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось изменить статус расчёта.');
+    } finally {
+      setPayrollHistoryActionId(null);
+    }
+  }
+
+  async function updatePayrollPeriodStatus(periodId: number, status: 'OPEN' | 'CLOSED') {
+    setPayrollHistoryActionId(`period-${periodId}-${status}`);
+    setSaveError('');
+    setSaveStatus('');
+
+    try {
+      const response = await fetch(`/api/admin/payroll/periods/${periodId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось изменить статус периода.');
+      }
+
+      setSaveStatus(status === 'CLOSED' ? 'Период закрыт.' : 'Период открыт.');
+      await loadSavedPayrollPeriods();
+    } catch (caughtError) {
+      setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось изменить статус периода.');
+    } finally {
+      setPayrollHistoryActionId(null);
+    }
+  }
+
+  async function openSavedPayrollRun(runId: number) {
+    setIsSavedRunLoading(true);
+    setSaveError('');
+
+    try {
+      const response = await fetch(`/api/admin/payroll/runs/${runId}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Не удалось открыть сохранённый расчёт.');
+      setSelectedSavedRun(await response.json() as SavedPayrollRunDetail);
+    } catch (caughtError) {
+      setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось открыть сохранённый расчёт.');
+    } finally {
+      setIsSavedRunLoading(false);
+    }
+  }
+
   function buildCalculationDetailsByEmployee() {
     return buildAccrualExportRows().reduce<Record<string, Array<{ component: string; base: number | null; formula: string; amount: number; comment: string; order: number }>>>((acc, detailRow) => {
       const employeeName = String(detailRow[0] ?? '');
@@ -3583,6 +3757,10 @@ export default function AdminPayrollPage() {
 
   async function savePayrollSnapshot() {
     if (!fullPayrollRows.length) return;
+    if (isCurrentPeriodClosed) {
+      setSaveError('Период закрыт. Новые расчёты за этот месяц запрещены.');
+      return;
+    }
 
     setIsSavingPayroll(true);
     setSaveError('');
@@ -3602,7 +3780,7 @@ export default function AdminPayrollPage() {
 
       const run = await response.json() as { id: number; runNumber: number };
       setLastSavedRunId(run.id);
-      setSaveStatus(`Расчёт сохранён: запуск #${run.runNumber}.`);
+      setSaveStatus(`Расчёт сохранён в PostgreSQL. Его можно открыть в блоке “Сохранённые расчёты”. Запуск #${run.runNumber}.`);
       await loadSavedPayrollPeriods();
     } catch (caughtError) {
       setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось сохранить расчёт.');
@@ -3947,6 +4125,9 @@ export default function AdminPayrollPage() {
           {error && <p className='mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{error}</p>}
           {purchaseError && <p className='mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{purchaseError}</p>}
           {purchaseReport && <p className='mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>Отчёт закупок загружен: {purchaseReport.fileName}, база {formatMoney(purchaseReport.base ?? 0)}{purchaseReport.sourceRow ? `, строка ${purchaseReport.sourceRow}` : ''}.</p>}
+          <p className='mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900'>
+            Загруженный Excel и текущий расчёт хранятся на странице временно. Чтобы сохранить расчёт в историю, нажмите “Сохранить расчёт”.
+          </p>
           {isParsing && <p className='mt-4 text-sm text-slate-500'>Читаю файл...</p>}
         </Card>
 
@@ -4065,7 +4246,7 @@ export default function AdminPayrollPage() {
                     <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                       <h2 className='text-lg font-bold text-slate-900'>Итог по сотрудникам</h2>
                       <div className='flex flex-wrap gap-2'>
-                        <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
+                        <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0 || isCurrentPeriodClosed} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
                           {isSavingPayroll ? 'Сохраняю...' : 'Сохранить расчёт'}
                         </button>
                         <button type='button' onClick={exportPayrollWorkbook} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90'>
@@ -4076,6 +4257,7 @@ export default function AdminPayrollPage() {
                         </button>
                       </div>
                     </div>
+                    {isCurrentPeriodClosed && <p className='mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900'>Период закрыт. Новые расчёты за этот месяц запрещены.</p>}
                     {saveStatus && <p className='mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>{saveStatus}</p>}
                     {saveError && <p className='mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{saveError}</p>}
                     <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
@@ -4141,21 +4323,47 @@ export default function AdminPayrollPage() {
                       <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>Сохранённых расчётов пока нет.</p>
                     ) : (
                       <div className='grid gap-2'>
-                        {savedPeriods.slice(0, 6).map((period) => (
+                        {savedPeriods.slice(0, 6).map((period) => {
+                          const hasFinalRun = period.runs.some((run) => run.status === 'FINAL');
+                          return (
                           <div key={period.id} className='rounded-lg border border-border bg-white px-3 py-2'>
                             <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                               <div>
                                 <p className='text-sm font-bold text-slate-900'>{months[period.month] ?? period.periodKey} {period.year}</p>
                                 <p className='text-xs text-slate-500'>Период {period.periodKey} · {period.status}</p>
                               </div>
-                              <Badge className='w-fit bg-slate-100 text-slate-700'>Запусков: {period.runs.length}</Badge>
+                              <div className='flex flex-wrap gap-2'>
+                                <Badge className={period.status === 'CLOSED' ? 'w-fit bg-amber-100 text-amber-900' : 'w-fit bg-slate-100 text-slate-700'}>{period.status === 'CLOSED' ? 'Период закрыт' : 'OPEN'}</Badge>
+                                <Badge className='w-fit bg-slate-100 text-slate-700'>Запусков: {period.runs.length}</Badge>
+                                {period.status !== 'CLOSED' && hasFinalRun && (
+                                  <button type='button' onClick={() => updatePayrollPeriodStatus(period.id, 'CLOSED')} disabled={payrollHistoryActionId === `period-${period.id}-CLOSED`} className='rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-900 transition hover:border-amber-300 disabled:cursor-not-allowed disabled:opacity-60'>
+                                    Закрыть период
+                                  </button>
+                                )}
+                              </div>
                             </div>
                             <div className='mt-2 grid gap-2 md:grid-cols-2'>
                               {period.runs.map((run) => (
                                 <div key={run.id} className='rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm'>
                                   <div className='flex items-center justify-between gap-2'>
-                                    <span className='font-semibold text-slate-900'>#{run.runNumber} · ID {run.id}</span>
+                                    <span className='font-semibold text-slate-900'>Расчёт №{run.runNumber} · ID {run.id}</span>
                                     <span className='text-xs text-slate-500'>{new Date(run.createdAt).toLocaleString('ru-RU')}</span>
+                                  </div>
+                                  <div className='mt-2 flex flex-wrap items-center gap-2'>
+                                    <Badge className={getPayrollRunStatusClass(run.status)}>{getPayrollRunStatusLabel(run.status)}</Badge>
+                                    {run.status === 'DRAFT' && period.status !== 'CLOSED' && (
+                                      <button type='button' onClick={() => updatePayrollRunStatus(run.id, 'CHECKED')} disabled={payrollHistoryActionId === `run-${run.id}-CHECKED`} className='rounded-md border border-blue-200 bg-white px-2 py-1 text-xs font-bold text-blue-800 transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-60'>
+                                        Отметить проверенным
+                                      </button>
+                                    )}
+                                    {(run.status === 'DRAFT' || run.status === 'CHECKED') && period.status !== 'CLOSED' && (
+                                      <button type='button' onClick={() => updatePayrollRunStatus(run.id, 'FINAL')} disabled={payrollHistoryActionId === `run-${run.id}-FINAL`} className='rounded-md border border-green-200 bg-white px-2 py-1 text-xs font-bold text-green-800 transition hover:border-green-300 disabled:cursor-not-allowed disabled:opacity-60'>
+                                        Сделать финальным
+                                      </button>
+                                    )}
+                                    <button type='button' onClick={() => openSavedPayrollRun(run.id)} disabled={isSavedRunLoading} className='rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 transition hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-60'>
+                                      Открыть сохранённый расчёт
+                                    </button>
                                   </div>
                                   <div className='mt-1 grid gap-1 text-xs text-slate-600 sm:grid-cols-3'>
                                     <span>Сотрудников: {run.employeeCount}</span>
@@ -4166,10 +4374,125 @@ export default function AdminPayrollPage() {
                               ))}
                             </div>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     )}
                   </Card>
+
+                  {selectedSavedRun && (
+                    <Card>
+                      <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                        <div>
+                          <h2 className='text-lg font-bold text-slate-900'>Сохранённый расчёт №{selectedSavedRun.runNumber}</h2>
+                          <p className='mt-1 text-sm text-slate-500'>
+                            {selectedSavedRun.period.periodKey} · {getPayrollRunStatusLabel(selectedSavedRun.status)} · {new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU')}
+                          </p>
+                        </div>
+                        <button type='button' onClick={() => setSelectedSavedRun(null)} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40'>
+                          Закрыть просмотр
+                        </button>
+                      </div>
+
+                      <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
+                        Это сохранённый снимок расчёта. Исходный Excel-файл не восстанавливается, сохранены итоговые данные расчёта.
+                      </p>
+
+                      <div className='mb-4 grid gap-3 md:grid-cols-4'>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Сотрудников</p>
+                          <p className='mt-1 text-xl font-bold text-slate-900'>{selectedSavedRun.employeeCount}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Проверить</p>
+                          <p className='mt-1 text-xl font-bold text-slate-900'>{selectedSavedRun.reviewCount}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Начислено</p>
+                          <p className='mt-1 text-xl font-bold text-slate-900'>{formatMoney(selectedSavedRun.grossPay)}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>К выплате</p>
+                          <p className='mt-1 text-xl font-bold text-slate-900'>{formatMoney(selectedSavedRun.netPay)}</p>
+                        </div>
+                      </div>
+
+                      <div className='grid gap-4 xl:grid-cols-2'>
+                        <div>
+                          <h3 className='mb-2 text-sm font-bold text-slate-900'>Сотрудники</h3>
+                          <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
+                            <table className='w-full min-w-[760px] text-xs'>
+                              <thead className='bg-slate-50 text-left text-slate-500'>
+                                <tr>
+                                  <th className='px-3 py-2'>Сотрудник</th>
+                                  <th className='px-3 py-2'>Отдел</th>
+                                  <th className='px-3 py-2 text-right'>Дни</th>
+                                  <th className='px-3 py-2 text-right'>Начислено</th>
+                                  <th className='px-3 py-2 text-right'>К выплате</th>
+                                  <th className='px-3 py-2'>Статус</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedSavedRun.employeeResults.map((row) => (
+                                  <tr key={row.id} className='border-t border-border/70'>
+                                    <td className='px-3 py-2 font-semibold text-slate-900'>{row.employeeName}</td>
+                                    <td className='px-3 py-2 text-slate-700'>{row.payrollDepartment}</td>
+                                    <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
+                                    <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossPay)}</td>
+                                    <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.netPay)}</td>
+                                    <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status}</Badge></td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div className='grid gap-4'>
+                          <div>
+                            <h3 className='mb-2 text-sm font-bold text-slate-900'>Исходные файлы</h3>
+                            <div className='grid gap-2'>
+                              {selectedSavedRun.sourceFiles.length ? selectedSavedRun.sourceFiles.map((file) => (
+                                <div key={file.id} className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm'>
+                                  <p className='font-semibold text-slate-900'>{file.originalName}</p>
+                                  <p className='text-xs text-slate-500'>{file.type} · sheet {file.selectedSheet ?? '—'} · строк {file.rowCount ?? '—'} · распознано {file.parsedRowCount ?? '—'}</p>
+                                  {file.sha256 && <p className='mt-1 break-all text-xs text-slate-400'>sha256: {file.sha256}</p>}
+                                </div>
+                              )) : <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>Файлы не сохранены.</p>}
+                            </div>
+                          </div>
+
+                          <div>
+                            <h3 className='mb-2 text-sm font-bold text-slate-900'>Ручные вводы</h3>
+                            <div className='max-h-52 overflow-auto rounded-lg border border-border'>
+                              {selectedSavedRun.manualInputs.length ? selectedSavedRun.manualInputs.map((input) => (
+                                <div key={input.id} className='border-b border-border bg-white px-3 py-2 text-xs last:border-b-0'>
+                                  <p className='font-semibold text-slate-900'>{input.employeeName} · {input.inputType}</p>
+                                  <p className='text-slate-600'>дни {input.workedDays ?? '—'} · опозд. {input.lateCount ?? '—'} · аванс {input.advance ?? input.purchaseAdvance ?? '—'} · премия {input.fixedBonus ?? '—'} · удержание {input.fixedDeduction ?? input.purchaseDeduction ?? '—'}</p>
+                                  {input.comment && <p className='mt-1 text-slate-500'>{input.comment}</p>}
+                                </div>
+                              )) : <p className='px-3 py-2 text-sm text-slate-600'>Ручных вводов нет.</p>}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className='mt-4'>
+                        <h3 className='mb-2 text-sm font-bold text-slate-900'>Расшифровка начислений</h3>
+                        <div className='max-h-80 overflow-auto rounded-lg border border-border'>
+                          {selectedSavedRun.employeeResults.flatMap((employee) =>
+                            employee.calculationDetails.map((detail) => ({ employee, detail })),
+                          ).map(({ employee, detail }) => (
+                            <div key={detail.id} className='grid gap-2 border-b border-border bg-white px-3 py-2 text-xs last:border-b-0 md:grid-cols-[1.2fr_1fr_1fr_1fr]'>
+                              <span className='font-semibold text-slate-900'>{employee.employeeName}</span>
+                              <span className='text-slate-700'>{detail.component}</span>
+                              <span className='text-slate-600'>{detail.formula}</span>
+                              <span className='text-right font-bold text-slate-900'>{formatMoney(detail.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </Card>
+                  )}
 
                 </div>
               )}
@@ -5327,6 +5650,104 @@ export default function AdminPayrollPage() {
               {!creditRows.length && <p className='mt-3 text-sm text-slate-500'>Строки с клиентом “Кредит/рассрочка” пока не найдены.</p>}
             </Card>
               </>
+            )}
+          </>
+        )}
+        {!workbook && (
+          <>
+            <Card>
+              <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                <div>
+                  <h2 className='text-lg font-bold text-slate-900'>Сохранённые расчёты</h2>
+                  <p className='text-sm text-slate-500'>Сохранённые snapshot-запуски доступны без повторной загрузки Excel.</p>
+                </div>
+                {lastSavedRunId && <Badge className='w-fit bg-green-100 text-green-800'>Последний ID: {lastSavedRunId}</Badge>}
+              </div>
+              {isSavedPeriodsLoading ? (
+                <p className='text-sm text-slate-500'>Загружаю сохранённые расчёты...</p>
+              ) : savedPeriods.length === 0 ? (
+                <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>Сохранённых расчётов пока нет.</p>
+              ) : (
+                <div className='grid gap-2'>
+                  {savedPeriods.slice(0, 6).map((period) => (
+                    <div key={period.id} className='rounded-lg border border-border bg-white px-3 py-2'>
+                      <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                        <div>
+                          <p className='text-sm font-bold text-slate-900'>{months[period.month] ?? period.periodKey} {period.year}</p>
+                          <p className='text-xs text-slate-500'>Период {period.periodKey}</p>
+                        </div>
+                        <Badge className={period.status === 'CLOSED' ? 'w-fit bg-amber-100 text-amber-900' : 'w-fit bg-slate-100 text-slate-700'}>{period.status === 'CLOSED' ? 'Период закрыт' : 'OPEN'}</Badge>
+                      </div>
+                      <div className='grid gap-2 md:grid-cols-2'>
+                        {period.runs.map((run) => (
+                          <div key={run.id} className='rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm'>
+                            <div className='flex items-center justify-between gap-2'>
+                              <span className='font-semibold text-slate-900'>Расчёт №{run.runNumber} · ID {run.id}</span>
+                              <span className='text-xs text-slate-500'>{new Date(run.createdAt).toLocaleString('ru-RU')}</span>
+                            </div>
+                            <div className='mt-2 flex flex-wrap items-center gap-2'>
+                              <Badge className={getPayrollRunStatusClass(run.status)}>{getPayrollRunStatusLabel(run.status)}</Badge>
+                              <button type='button' onClick={() => openSavedPayrollRun(run.id)} disabled={isSavedRunLoading} className='rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 transition hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-60'>
+                                Открыть сохранённый расчёт
+                              </button>
+                            </div>
+                            <div className='mt-1 grid gap-1 text-xs text-slate-600 sm:grid-cols-3'>
+                              <span>Сотрудников: {run.employeeCount}</span>
+                              <span>Проверить: {run.reviewCount}</span>
+                              <span>К выплате: {formatMoney(run.netPay)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            {selectedSavedRun && (
+              <Card>
+                <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+                  <div>
+                    <h2 className='text-lg font-bold text-slate-900'>Сохранённый расчёт №{selectedSavedRun.runNumber}</h2>
+                    <p className='mt-1 text-sm text-slate-500'>{selectedSavedRun.period.periodKey} · {getPayrollRunStatusLabel(selectedSavedRun.status)} · {new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU')}</p>
+                  </div>
+                  <button type='button' onClick={() => setSelectedSavedRun(null)} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40'>
+                    Закрыть просмотр
+                  </button>
+                </div>
+                <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
+                  Это сохранённый снимок расчёта. Исходный Excel-файл не восстанавливается, сохранены итоговые данные расчёта.
+                </p>
+                <div className='mb-4 grid gap-3 md:grid-cols-4'>
+                  <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'><p className='text-xs font-semibold uppercase text-slate-500'>Сотрудников</p><p className='mt-1 text-xl font-bold text-slate-900'>{selectedSavedRun.employeeCount}</p></div>
+                  <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'><p className='text-xs font-semibold uppercase text-slate-500'>Проверить</p><p className='mt-1 text-xl font-bold text-slate-900'>{selectedSavedRun.reviewCount}</p></div>
+                  <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'><p className='text-xs font-semibold uppercase text-slate-500'>Начислено</p><p className='mt-1 text-xl font-bold text-slate-900'>{formatMoney(selectedSavedRun.grossPay)}</p></div>
+                  <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'><p className='text-xs font-semibold uppercase text-slate-500'>К выплате</p><p className='mt-1 text-xl font-bold text-slate-900'>{formatMoney(selectedSavedRun.netPay)}</p></div>
+                </div>
+                <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
+                  <table className='w-full min-w-[760px] text-xs'>
+                    <thead className='bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Сотрудник</th><th className='px-3 py-2'>Отдел</th><th className='px-3 py-2 text-right'>Дни</th><th className='px-3 py-2 text-right'>Начислено</th><th className='px-3 py-2 text-right'>К выплате</th><th className='px-3 py-2'>Статус</th></tr></thead>
+                    <tbody>
+                      {selectedSavedRun.employeeResults.map((row) => (
+                        <tr key={row.id} className='border-t border-border/70'>
+                          <td className='px-3 py-2 font-semibold text-slate-900'>{row.employeeName}</td>
+                          <td className='px-3 py-2 text-slate-700'>{row.payrollDepartment}</td>
+                          <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
+                          <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossPay)}</td>
+                          <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.netPay)}</td>
+                          <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status}</Badge></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className='mt-4 grid gap-4 xl:grid-cols-3'>
+                  <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Исходные файлы</h3>{selectedSavedRun.sourceFiles.map((file) => <p key={file.id} className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-slate-600'>{file.originalName} · {file.type} · строк {file.rowCount ?? '—'} · распознано {file.parsedRowCount ?? '—'}</p>)}</div>
+                  <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Ручные вводы</h3><div className='max-h-48 overflow-auto rounded-lg border border-border'>{selectedSavedRun.manualInputs.map((input) => <p key={input.id} className='border-b border-border px-3 py-2 text-xs last:border-b-0'>{input.employeeName} · {input.inputType} · аванс {input.advance ?? input.purchaseAdvance ?? '—'} · {input.comment}</p>)}</div></div>
+                  <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Расшифровка</h3><div className='max-h-48 overflow-auto rounded-lg border border-border'>{selectedSavedRun.employeeResults.flatMap((employee) => employee.calculationDetails.map((detail) => <p key={detail.id} className='border-b border-border px-3 py-2 text-xs last:border-b-0'>{employee.employeeName} · {detail.component} · {formatMoney(detail.amount)}</p>))}</div></div>
+                </div>
+              </Card>
             )}
           </>
         )}

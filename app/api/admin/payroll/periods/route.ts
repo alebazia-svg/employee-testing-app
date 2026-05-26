@@ -8,7 +8,6 @@ export async function GET() {
     include: {
       runs: {
         orderBy: { createdAt: 'desc' },
-        take: 5,
         select: {
           id: true,
           runNumber: true,

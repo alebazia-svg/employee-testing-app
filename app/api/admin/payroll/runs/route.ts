@@ -58,6 +58,7 @@ export async function POST(req: Request) {
   const periodKey = buildPeriodKey(year, month);
   const totals = payload.totals ?? {};
 
+  try {
   const createdRun = await prisma.$transaction(async (tx) => {
     const period = await tx.payrollPeriod.upsert({
       where: { periodKey },
@@ -69,6 +70,10 @@ export async function POST(req: Request) {
       },
     });
 
+    if (period.status === 'CLOSED') {
+      throw new Error('PAYROLL_PERIOD_CLOSED');
+    }
+
     const lastRun = await tx.payrollRun.findFirst({
       where: { periodId: period.id },
       orderBy: { runNumber: 'desc' },
@@ -79,7 +84,7 @@ export async function POST(req: Request) {
       data: {
         periodId: period.id,
         runNumber: (lastRun?.runNumber ?? 0) + 1,
-        status: asString(payload.sourceSummary && typeof payload.sourceSummary === 'object' && 'status' in payload.sourceSummary ? (payload.sourceSummary as { status?: unknown }).status : undefined, 'DRAFT'),
+        status: 'DRAFT',
         employeeCount: asNumber(totals.employeeCount),
         reviewCount: asNumber(totals.reviewCount),
         grossPay: asNumber(totals.grossPay),
@@ -186,4 +191,10 @@ export async function POST(req: Request) {
   });
 
   return Response.json(createdRun, { status: 201 });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PAYROLL_PERIOD_CLOSED') {
+      return Response.json({ error: 'Период закрыт' }, { status: 409 });
+    }
+    throw error;
+  }
 }
