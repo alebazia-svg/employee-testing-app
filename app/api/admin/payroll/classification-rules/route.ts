@@ -24,6 +24,7 @@ const allowedTargets = new Set([
   'RETAIL_PLOTTER_MATERIAL_COST_50',
   'RETAIL_GROSS_PROFIT_10',
   'RETAIL_ACCESSORY_5',
+  'MANUAL_EXCLUDED',
   'REVIEW_ONLY',
 ]);
 

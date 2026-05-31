@@ -60,7 +60,8 @@ type CalculationType =
   | 'RETAIL_FILM_50'
   | 'RETAIL_PLOTTER_MATERIAL_COST_50'
   | 'RETAIL_GROSS_PROFIT_10'
-  | 'RETAIL_ACCESSORY_5';
+  | 'RETAIL_ACCESSORY_5'
+  | 'MANUAL_EXCLUDED';
 
 type PayrollClassificationRule = {
   id: number;
@@ -711,6 +712,7 @@ const calculationLabels: Record<CalculationType, string> = {
   RETAIL_PLOTTER_MATERIAL_COST_50: 'Плоттерные материалы: 50% от с/с',
   RETAIL_GROSS_PROFIT_10: 'Техника: 10% от ВП',
   RETAIL_ACCESSORY_5: 'Аксессуары: 5%',
+  MANUAL_EXCLUDED: 'Исключено вручную',
 };
 
 const calculationFormulas: Record<CalculationType, string> = {
@@ -725,6 +727,7 @@ const calculationFormulas: Record<CalculationType, string> = {
   RETAIL_PLOTTER_MATERIAL_COST_50: 'с/с × 50%',
   RETAIL_GROSS_PROFIT_10: 'ВП × 10%',
   RETAIL_ACCESSORY_5: 'выручка × 5%',
+  MANUAL_EXCLUDED: 'не входит в начисления',
 };
 
 const accessoryCategories = [
@@ -2270,6 +2273,7 @@ function getRuleTargetDetails(
     RETAIL_PLOTTER_MATERIAL_COST_50: row.cost,
     RETAIL_GROSS_PROFIT_10: row.grossProfit,
     RETAIL_ACCESSORY_5: row.revenue,
+    MANUAL_EXCLUDED: 0,
   };
   const percentByTarget: Record<CalculationType, number> = {
     WHOLESALE_EXCLUDED_TECH: 0,
@@ -2283,6 +2287,7 @@ function getRuleTargetDetails(
     RETAIL_PLOTTER_MATERIAL_COST_50: 0.5,
     RETAIL_GROSS_PROFIT_10: 0.1,
     RETAIL_ACCESSORY_5: 0.05,
+    MANUAL_EXCLUDED: 0,
   };
   const base = baseByTarget[target];
   const percent = percentByTarget[target];
@@ -2362,10 +2367,18 @@ function applyClassificationRules(
 
   const overriddenDetails = getRuleTargetDetails(row, details, matchedRule.targetCalculationType);
   const ruleLabel = matchedRule.title || matchedRule.reason || `#${matchedRule.id}`;
+  const manualReason =
+    overriddenDetails.calculationType === 'RETAIL_ACCESSORY_5'
+      ? 'manual-accessory'
+      : overriddenDetails.calculationType === 'RETAIL_GROSS_PROFIT_10' || overriddenDetails.calculationType === 'CREDIT_GROSS_PROFIT'
+        ? 'manual-tech'
+        : overriddenDetails.calculationType === 'MANUAL_EXCLUDED'
+          ? 'manual-excluded'
+          : 'manual-rule';
 
   return {
     ...overriddenDetails,
-    classificationReason: `Р СѓС‡РЅРѕРµ РїСЂР°РІРёР»Рѕ ${ruleLabel}: ${matchedRule.reason || overriddenDetails.classificationReason}`,
+    classificationReason: `${manualReason}: ${ruleLabel}. ${matchedRule.reason || overriddenDetails.classificationReason}`,
     matchedRule: `manual-rule:${matchedRule.id}`,
   };
 }
@@ -2486,7 +2499,7 @@ function sumRows(rows: ClassifiedSalesRow[]) {
 }
 
 function hasUnexpectedZeroBase(row: ClassifiedSalesRow) {
-  return row.base === 0 && row.calculationType !== 'WHOLESALE_EXCLUDED_TECH';
+  return row.base === 0 && row.calculationType !== 'WHOLESALE_EXCLUDED_TECH' && row.calculationType !== 'MANUAL_EXCLUDED';
 }
 
 function hasRegistrarFragment(row: SalesRow, fragment: string) {
@@ -2577,16 +2590,17 @@ function isUnresolvedReviewRow(row: ClassifiedSalesRow) {
 }
 
 function isServiceNotIncludedRow(row: ClassifiedSalesRow) {
-  return row.department === 'Розница' && isServiceLikeRow(row) && row.calculationType !== 'RETAIL_FILM_50';
+  return row.department === 'Розница' && isServiceLikeRow(row) && row.calculationType !== 'RETAIL_FILM_50' && row.calculationType !== 'MANUAL_EXCLUDED';
 }
 
 function isPotentialAccessoryNotIncludedRow(row: ClassifiedSalesRow) {
-  return row.department === 'Розница' && !isPlotterCalculationRow(row) && !isAccessoryBonusRow(row) && isAccessoryLikeRow(row);
+  return row.department === 'Розница' && row.calculationType !== 'MANUAL_EXCLUDED' && !isPlotterCalculationRow(row) && !isAccessoryBonusRow(row) && isAccessoryLikeRow(row);
 }
 
 function isCriticalZeroBaseRow(row: ClassifiedSalesRow) {
   if (!hasUnexpectedZeroBase(row)) return false;
   if (row.calculationType === 'WHOLESALE_EXCLUDED_TECH') return false;
+  if (row.calculationType === 'MANUAL_EXCLUDED') return false;
   if (row.department === 'Опт') return false;
   if (row.revenue === 0 && row.grossProfit === 0 && row.calculationType) return false;
   if (isUnresolvedReviewRow(row)) return true;
@@ -3687,65 +3701,40 @@ export default function AdminPayrollPage() {
           comment: '',
         }),
       };
-      const hasManualWorkedDays = Boolean(previous.workedDays.trim());
-      const hasManualLateCount = Boolean(previous.lateCount.trim());
+      const preservedManualFields = [previous.advance, previous.comment, previous.agentCreditCommission].filter((value) => Boolean(value?.trim())).length;
 
       if (row.sourceType === 'form' && row.status === 'найдено по форме' && row.daysToApply !== null && row.lateCount !== null) {
-        let appliedWorkedDays = false;
-        let appliedLateCount = false;
-
-        if (hasManualWorkedDays) {
-          result.preservedManualFields += 1;
-        } else {
-          previous.workedDays = String(row.daysToApply);
-          appliedWorkedDays = true;
-        }
-
-        if (hasManualLateCount) {
-          result.preservedManualFields += 1;
-        } else {
-          previous.lateCount = String(row.lateCount);
-          appliedLateCount = true;
-        }
-
-        if (appliedWorkedDays || appliedLateCount) {
-          previous.source = 'attendance';
-          if (appliedWorkedDays && appliedLateCount) result.fullApplied += 1;
-          else result.daysOnlyApplied += 1;
-          result.rows.push({
-            manager: row.manager,
-            sourceType: row.sourceType,
-            appliedWorkedDays: appliedWorkedDays ? row.daysToApply : null,
-            daySourceField: row.daySourceField,
-            appliedLateCount: appliedLateCount ? row.lateCount : null,
-          });
-        } else {
-          result.skipped += 1;
-        }
-
+        previous.workedDays = String(row.daysToApply);
+        previous.lateCount = String(row.lateCount);
+        previous.source = 'attendance';
+        result.preservedManualFields += preservedManualFields;
+        result.fullApplied += 1;
+        result.rows.push({
+          manager: row.manager,
+          sourceType: row.sourceType,
+          appliedWorkedDays: row.daysToApply,
+          daySourceField: row.daySourceField,
+          appliedLateCount: row.lateCount,
+        });
         next[row.manager] = { ...previous };
         continue;
       }
 
       if (row.sourceType === 'schedule_only' && row.status === 'дни из графика, опоздания вручную' && row.daysToApply !== null) {
-        if (hasManualWorkedDays) {
-          result.preservedManualFields += 1;
-          result.skipped += 1;
-        } else {
-          next[row.manager] = {
-            ...previous,
-            workedDays: String(row.daysToApply),
-            source: 'schedule',
-          };
-          result.daysOnlyApplied += 1;
-          result.rows.push({
-            manager: row.manager,
-            sourceType: row.sourceType,
-            appliedWorkedDays: row.daysToApply,
-            daySourceField: row.daySourceField,
-            appliedLateCount: null,
-          });
-        }
+        next[row.manager] = {
+          ...previous,
+          workedDays: String(row.daysToApply),
+          source: 'schedule',
+        };
+        result.preservedManualFields += preservedManualFields;
+        result.daysOnlyApplied += 1;
+        result.rows.push({
+          manager: row.manager,
+          sourceType: row.sourceType,
+          appliedWorkedDays: row.daysToApply,
+          daySourceField: row.daySourceField,
+          appliedLateCount: null,
+        });
         continue;
       }
 
@@ -3926,8 +3915,22 @@ export default function AdminPayrollPage() {
     }
   }
 
-  async function createAccessoryClassificationRule(row: ClassifiedSalesRow) {
-    const actionId = `accessory-${row.item}-${row.category}-${row.article}`;
+  function getManualRuleActionId(action: string, row: ClassifiedSalesRow) {
+    return `${action}-${row.item}-${row.category}-${row.article}`;
+  }
+
+  function getManualRuleId(row: ClassifiedSalesRow) {
+    const match = row.matchedRule.match(/^manual-rule:(\d+)$/);
+    return match ? Number(match[1]) : null;
+  }
+
+  async function createManualClassificationRule(
+    row: ClassifiedSalesRow,
+    targetCalculationType: PayrollClassificationRule['targetCalculationType'],
+    manualReason: 'manual-accessory' | 'manual-tech' | 'manual-excluded',
+    successMessage: string,
+  ) {
+    const actionId = getManualRuleActionId(manualReason, row);
     setClassificationRuleActionId(actionId);
     setClassificationRuleError('');
     setClassificationRuleMessage('');
@@ -3944,10 +3947,8 @@ export default function AdminPayrollPage() {
           article: row.article || null,
           department: row.department === 'Опт' ? 'wholesale' : 'retail',
           saleContext: row.isCreditSale ? 'credit' : 'regular',
-          targetCalculationType: 'RETAIL_ACCESSORY_5',
-          reason: row.isCreditSale
-            ? 'Ручно отнесено к аксессуарам 5% по точной номенклатуре. Кредитная продажа не меняет правило аксессуаров.'
-            : 'Ручно отнесено к аксессуарам по точной номенклатуре.',
+          targetCalculationType,
+          reason: `${manualReason}: точечное правило по номенклатуре${row.article ? ', артикулу' : ''} и категории.`,
         }),
       });
 
@@ -3962,7 +3963,7 @@ export default function AdminPayrollPage() {
         return [savedRule, ...withoutSavedRule].sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.priority - right.priority || left.id - right.id);
       });
       void loadClassificationRules();
-      setClassificationRuleMessage('Точечное правило сохранено. Позиция пересчитана как аксессуар.');
+      setClassificationRuleMessage(successMessage);
     } catch (caughtError) {
       setClassificationRuleError(caughtError instanceof Error ? caughtError.message : 'Не удалось создать правило.');
     } finally {
@@ -3970,47 +3971,37 @@ export default function AdminPayrollPage() {
     }
   }
 
+  async function createTechClassificationRule(row: ClassifiedSalesRow) {
+    return createManualClassificationRule(
+      row,
+      row.isCreditSale ? 'CREDIT_GROSS_PROFIT' : 'RETAIL_GROSS_PROFIT_10',
+      'manual-tech',
+      row.isCreditSale
+        ? 'Точечное правило сохранено. Позиция пересчитана как кредитная техника.'
+        : 'Точечное правило сохранено. Позиция пересчитана как техника 10% от ВП.',
+    );
+  }
+
+  async function createExcludedClassificationRule(row: ClassifiedSalesRow) {
+    return createManualClassificationRule(
+      row,
+      'MANUAL_EXCLUDED',
+      'manual-excluded',
+      'Точечное правило сохранено. Позиция исключена из начислений.',
+    );
+  }
+
+  async function createAccessoryClassificationRule(row: ClassifiedSalesRow) {
+    return createManualClassificationRule(
+      row,
+      'RETAIL_ACCESSORY_5',
+      'manual-accessory',
+      'Точечное правило сохранено. Позиция пересчитана как аксессуар 5%.',
+    );
+  }
 
   async function createCreditTechClassificationRule(row: ClassifiedSalesRow) {
-    const actionId = `credit-tech-${row.item}-${row.category}-${row.article}`;
-    setClassificationRuleActionId(actionId);
-    setClassificationRuleError('');
-    setClassificationRuleMessage('');
-
-    try {
-      const response = await fetch('/api/admin/payroll/classification-rules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: row.article ? `${row.article} · ${row.item}` : row.item,
-          matchType: 'EXACT_ITEM',
-          itemText: row.item,
-          categoryText: row.category,
-          article: row.article || null,
-          department: row.department === 'Опт' ? 'wholesale' : 'retail',
-          saleContext: 'credit',
-          targetCalculationType: 'CREDIT_GROSS_PROFIT',
-          reason: 'Ручно отнесено к кредитной технике по точной номенклатуре.',
-        }),
-      });
-
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось создать правило.');
-      }
-
-      const savedRule = await response.json() as PayrollClassificationRule;
-      setClassificationRules((currentRules) => {
-        const withoutSavedRule = currentRules.filter((rule) => rule.id !== savedRule.id);
-        return [savedRule, ...withoutSavedRule].sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.priority - right.priority || left.id - right.id);
-      });
-      void loadClassificationRules();
-      setClassificationRuleMessage('Точечное правило сохранено. Позиция пересчитана как кредитная техника.');
-    } catch (caughtError) {
-      setClassificationRuleError(caughtError instanceof Error ? caughtError.message : 'Не удалось создать правило.');
-    } finally {
-      setClassificationRuleActionId(null);
-    }
+    return createTechClassificationRule(row);
   }
 
   async function disableClassificationRule(ruleId: number) {
@@ -4043,6 +4034,7 @@ export default function AdminPayrollPage() {
   function canCreateAccessoryRule(row: ClassifiedSalesRow, problemType?: ProblemType) {
     if (row.grossProfit < 0) return false;
     if (row.matchedRule.startsWith('manual-rule:')) return false;
+    if (row.calculationType === 'RETAIL_ACCESSORY_5') return false;
     return !problemType || ['credit', 'disputed', 'wholesaleReview', 'retailReview', 'expensiveUnclassified', 'accessoryExcluded'].includes(problemType);
   }
 
@@ -4054,36 +4046,77 @@ export default function AdminPayrollPage() {
     return !problemType || ['credit', 'disputed', 'retailReview', 'expensiveUnclassified'].includes(problemType);
   }
 
+  function canCreateTechRule(row: ClassifiedSalesRow, problemType?: ProblemType) {
+    if (row.grossProfit < 0) return false;
+    if (row.matchedRule.startsWith('manual-rule:')) return false;
+    if (row.calculationType === (row.isCreditSale ? 'CREDIT_GROSS_PROFIT' : 'RETAIL_GROSS_PROFIT_10')) return false;
+    return !problemType || ['credit', 'disputed', 'wholesaleReview', 'retailReview', 'expensiveUnclassified', 'accessoryExcluded'].includes(problemType);
+  }
+
+  function canCreateExcludedRule(row: ClassifiedSalesRow, problemType?: ProblemType) {
+    if (row.matchedRule.startsWith('manual-rule:')) return false;
+    if (row.calculationType === 'MANUAL_EXCLUDED') return false;
+    return !problemType || ['credit', 'disputed', 'wholesaleReview', 'retailReview', 'expensiveUnclassified', 'accessoryExcluded', 'zeroBase'].includes(problemType);
+  }
+
   function renderAccessoryRuleButton(row: ClassifiedSalesRow, problemType?: ProblemType) {
-    const actionId = `accessory-${row.item}-${row.category}-${row.article}`;
-    const creditTechActionId = `credit-tech-${row.item}-${row.category}-${row.article}`;
-    const enabled = canCreateAccessoryRule(row, problemType);
-    const creditTechEnabled = canCreateCreditTechRule(row, problemType);
+    const manualRuleId = getManualRuleId(row);
+    const accessoryActionId = getManualRuleActionId('manual-accessory', row);
+    const techActionId = getManualRuleActionId('manual-tech', row);
+    const excludeActionId = getManualRuleActionId('manual-excluded', row);
+    const accessoryEnabled = canCreateAccessoryRule(row, problemType);
+    const techEnabled = canCreateTechRule(row, problemType);
+    const excludeEnabled = canCreateExcludedRule(row, problemType);
+
+    if (manualRuleId) {
+      const disableActionId = `disable-${manualRuleId}`;
+
+      return (
+        <div className='flex min-w-[150px] flex-col gap-1'>
+          <button
+            type='button'
+            onClick={() => void disableClassificationRule(manualRuleId)}
+            disabled={classificationRuleActionId === disableActionId}
+            className='rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
+            title='Отключить ручное правило и вернуть автоматическую классификацию'
+          >
+            Сбросить ручное правило
+          </button>
+          <span className='text-[11px] leading-tight text-emerald-700'>Применено ручное правило.</span>
+        </div>
+      );
+    }
 
     return (
       <div className='flex min-w-[150px] flex-col gap-1'>
         <button
           type='button'
           onClick={() => void createAccessoryClassificationRule(row)}
-          disabled={!enabled || classificationRuleActionId === actionId}
+          disabled={!accessoryEnabled || classificationRuleActionId === accessoryActionId}
           className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50'
           title='Создать точечное правило аксессуара по item + category + article, если артикул есть'
         >
           В аксессуары
         </button>
-        {row.isCreditSale && (
-          <button
-            type='button'
-            onClick={() => void createCreditTechClassificationRule(row)}
-            disabled={!creditTechEnabled || classificationRuleActionId === creditTechActionId}
-            className='rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50'
-            title='Создать точечное правило кредитной техники по item + category + article, если артикул есть'
-          >
-            В кредитную технику
-          </button>
-        )}
+        <button
+          type='button'
+          onClick={() => void createTechClassificationRule(row)}
+          disabled={!techEnabled || classificationRuleActionId === techActionId}
+          className='rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50'
+          title='Создать точечное правило техники по item + category + article, если артикул есть'
+        >
+          {row.isCreditSale ? 'В кредитную технику' : 'В технику'}
+        </button>
+        <button
+          type='button'
+          onClick={() => void createExcludedClassificationRule(row)}
+          disabled={!excludeEnabled || classificationRuleActionId === excludeActionId}
+          className='rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50'
+          title='Создать точечное правило исключения по item + category + article, если артикул есть'
+        >
+          Исключить из расчёта
+        </button>
         {row.grossProfit < 0 && <span className='text-[11px] leading-tight text-amber-700'>Отрицательная ВП — проверить отдельно.</span>}
-        {row.matchedRule.startsWith('manual-rule:') && <span className='text-[11px] leading-tight text-emerald-700'>Уже применено ручное правило.</span>}
       </div>
     );
   }
@@ -6238,7 +6271,7 @@ export default function AdminPayrollPage() {
                           {selectedManagerAccessoryRows.length ? (
                             <div className='max-h-72 overflow-auto rounded-lg border border-border'>
                               <table className='w-full min-w-[980px] text-xs'>
-                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Причина / правило</th></tr></thead>
+                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Причина / правило</th><th className='px-3 py-2'>Действие</th></tr></thead>
                                 <tbody>{selectedManagerAccessoryRows.map((row, index) => (
                                   <tr key={'accessory-diagnostic-' + row.item + '-' + index} className='border-t border-border/70'>
                                     <td className='px-3 py-2'>{row.client || '—'}</td>
@@ -6248,6 +6281,7 @@ export default function AdminPayrollPage() {
                                     <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
                                     <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
                                     <td className='px-3 py-2'>{row.classificationReason} · {row.matchedRule.startsWith('manual-rule:') ? 'ручное правило' : row.matchedRule}</td>
+                                    <td className='px-3 py-2'>{renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>
                                   </tr>
                                 ))}</tbody>
                               </table>
@@ -6296,7 +6330,7 @@ export default function AdminPayrollPage() {
                                     <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
                                     <td className='px-3 py-2'>{row.calculationLabel}</td>
                                     <td className='px-3 py-2'>{row.grossProfit < 0 ? 'Отрицательная ВП — проверить' : row.classificationReason} · {row.matchedRule}</td>
-                                    <td className='px-3 py-2'>{row.grossProfit < 0 ? 'Проверить' : renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>
+                                    <td className='px-3 py-2'>{row.grossProfit < 0 && !getManualRuleId(row) ? 'Проверить' : renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>
                                   </tr>
                                 ))}</tbody>
                               </table>
@@ -6745,23 +6779,7 @@ export default function AdminPayrollPage() {
                         <td className='max-w-[520px] truncate px-4 py-3 text-slate-700' title={row.item}>{row.item}</td>
                         <td className='px-4 py-3 font-semibold text-slate-900'>{row.calculationLabel}</td>
                         <td className='max-w-[360px] px-4 py-3 text-slate-700'>{row.classificationReason}</td>
-                        <td className='px-4 py-3'>
-                          <div className='flex flex-wrap gap-2'>
-                            <button
-                              type='button'
-                              onClick={() => void createAccessoryClassificationRule(row)}
-                              disabled={classificationRuleActionId === `accessory-${row.item}-${row.category}-${row.article}` || row.grossProfit < 0}
-                              className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50'
-                              title='Создать точечное правило по item + category + article, если артикул есть'
-                            >
-                              В аксессуары
-                            </button>
-                            <button type='button' disabled className='rounded-lg border border-border bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-400'>В технику 10%</button>
-                            <button type='button' disabled className='rounded-lg border border-border bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-400'>В кредитные аксессуары</button>
-                            <button type='button' disabled className='rounded-lg border border-border bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-400'>Оставить спорным</button>
-                          </div>
-                          {row.grossProfit < 0 && <p className='mt-1 text-xs text-amber-700'>Отрицательная валовая прибыль — проверить.</p>}
-                        </td>
+                        <td className='px-4 py-3'>{renderAccessoryRuleButton(row, 'disputed')}</td>
                       </tr>
                     ))}
                   </tbody>
