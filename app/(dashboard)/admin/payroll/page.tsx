@@ -62,6 +62,23 @@ type CalculationType =
   | 'RETAIL_GROSS_PROFIT_10'
   | 'RETAIL_ACCESSORY_5';
 
+type PayrollClassificationRule = {
+  id: number;
+  title: string | null;
+  isActive: boolean;
+  priority: number;
+  matchType: 'EXACT_ITEM' | 'CONTAINS_ITEM' | 'CATEGORY' | 'CATEGORY_AND_CONTAINS_ITEM' | 'ARTICLE';
+  itemText: string | null;
+  categoryText: string | null;
+  article: string | null;
+  department: 'all' | 'retail' | 'wholesale' | string | null;
+  saleContext: 'all' | 'credit' | 'regular' | string | null;
+  targetCalculationType: CalculationType | 'REVIEW_ONLY';
+  reason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type ClassifiedSalesRow = SalesRow & {
   department: Department;
   calculationType: CalculationType;
@@ -666,7 +683,7 @@ const calculationLabels: Record<CalculationType, string> = {
   WHOLESALE_REVIEW_TECH: 'Опт: спорная техника',
   WHOLESALE_INCLUDED_1_75: 'Опт: база 1.75%',
   CREDIT_GROSS_PROFIT: 'Кредит: ВП × 0.91 × 10%',
-  CREDIT_ACCESSORY_NO_BONUS: 'Кредитный аксессуар: без бонуса',
+  CREDIT_ACCESSORY_NO_BONUS: 'Кредитный аксессуар: 5% от выручки',
   CREDIT_REVIEW_NO_BONUS: 'Кредит: требуется классификация',
   RETAIL_REVIEW_TECH: 'Розница: спорная техника',
   RETAIL_FILM_50: 'Услуги оказываемые: 50%',
@@ -680,7 +697,7 @@ const calculationFormulas: Record<CalculationType, string> = {
   WHOLESALE_REVIEW_TECH: 'входит в базу опта, требует проверки',
   WHOLESALE_INCLUDED_1_75: 'выручка × 1.75%',
   CREDIT_GROSS_PROFIT: 'ВП × 0.91 × 10%',
-  CREDIT_ACCESSORY_NO_BONUS: 'не входит в кредитный бонус',
+  CREDIT_ACCESSORY_NO_BONUS: 'выручка × 5%',
   CREDIT_REVIEW_NO_BONUS: 'кредитная строка без начисления до классификации',
   RETAIL_REVIEW_TECH: 'выручка × 5%, требует проверки',
   RETAIL_FILM_50: 'выручка × 50%',
@@ -1838,11 +1855,11 @@ function getCreditTechReason(row: SalesRow, rule: string) {
 }
 
 function getCreditAccessoryReason(row: SalesRow, rule: string) {
-  if (rule === 'accessory-category' || rule === 'accessory-item-marker') return 'кредит + аксессуар: не входит в кредитный бонус';
-  if (rule === 'button-phone-accessory') return 'кредит + кнопочный телефон: не входит в кредитный бонус';
-  if (rule === 'airpods-copy-accessory') return 'кредит + неоригинальные AirPods / TWS / копия: не входит в кредитный бонус';
-  if (rule === 'non-apple-watch-accessory') return 'кредит + не-Apple смарт-часы: не входит в кредитный бонус';
-  return `кредит + аксессуар: не входит в кредитный бонус (${row.category})`;
+  if (rule === 'accessory-category' || rule === 'accessory-item-marker') return 'кредит + аксессуар: 5% от выручки';
+  if (rule === 'button-phone-accessory') return 'кредит + кнопочный телефон: 5% от выручки';
+  if (rule === 'airpods-copy-accessory') return 'кредит + неоригинальные AirPods / TWS / копия: 5% от выручки';
+  if (rule === 'non-apple-watch-accessory') return 'кредит + не-Apple смарт-часы: 5% от выручки';
+  return `кредит + аксессуар: 5% от выручки (${row.category})`;
 }
 
 function getCategoryReason(row: SalesRow) {
@@ -2113,13 +2130,13 @@ function getCalculationDetails(row: SalesRow): Omit<ClassifiedSalesRow, keyof Sa
   if (creditSale && categoryReason.kind === 'accessory') {
     return {
       department,
-      calculationType: 'CREDIT_ACCESSORY_NO_BONUS',
-      calculationLabel: calculationLabels.CREDIT_ACCESSORY_NO_BONUS,
+      calculationType: 'RETAIL_ACCESSORY_5',
+      calculationLabel: 'Кредитная продажа, аксессуар: 5%',
       article,
-      base: 0,
-      percent: 0,
-      bonus: 0,
-      formula: calculationFormulas.CREDIT_ACCESSORY_NO_BONUS,
+      base: row.revenue,
+      percent: 0.05,
+      bonus: row.revenue * 0.05,
+      formula: calculationFormulas.RETAIL_ACCESSORY_5,
       includedInWholesaleBase: null,
       classificationReason: getCreditAccessoryReason(row, categoryReason.rule),
       matchedRule: `credit-accessory:${categoryReason.rule}`,
@@ -2204,8 +2221,139 @@ function getCalculationDetails(row: SalesRow): Omit<ClassifiedSalesRow, keyof Sa
   };
 }
 
-function classifySalesRows(rows: SalesRow[]): ClassificationResult {
-  const classifiedRows = rows.map((row) => ({ ...row, ...getCalculationDetails(row) }));
+function getRuleTargetDetails(
+  row: SalesRow,
+  currentDetails: Omit<ClassifiedSalesRow, keyof SalesRow>,
+  targetCalculationType: PayrollClassificationRule['targetCalculationType'],
+): Omit<ClassifiedSalesRow, keyof SalesRow> {
+  const article = getArticle(row.item);
+  const isCredit = currentDetails.isCreditSale;
+  const target: CalculationType =
+    targetCalculationType === 'REVIEW_ONLY'
+      ? isCredit
+        ? 'CREDIT_REVIEW_NO_BONUS'
+        : currentDetails.department === 'Опт'
+          ? 'WHOLESALE_REVIEW_TECH'
+          : 'RETAIL_REVIEW_TECH'
+      : targetCalculationType;
+
+  const baseByTarget: Record<CalculationType, number> = {
+    WHOLESALE_EXCLUDED_TECH: 0,
+    WHOLESALE_REVIEW_TECH: row.revenue,
+    WHOLESALE_INCLUDED_1_75: row.revenue,
+    CREDIT_GROSS_PROFIT: row.grossProfit * 0.91,
+    CREDIT_ACCESSORY_NO_BONUS: row.revenue,
+    CREDIT_REVIEW_NO_BONUS: 0,
+    RETAIL_REVIEW_TECH: row.revenue,
+    RETAIL_FILM_50: row.revenue,
+    RETAIL_PLOTTER_MATERIAL_COST_50: row.cost,
+    RETAIL_GROSS_PROFIT_10: row.grossProfit,
+    RETAIL_ACCESSORY_5: row.revenue,
+  };
+  const percentByTarget: Record<CalculationType, number> = {
+    WHOLESALE_EXCLUDED_TECH: 0,
+    WHOLESALE_REVIEW_TECH: 0.0175,
+    WHOLESALE_INCLUDED_1_75: 0.0175,
+    CREDIT_GROSS_PROFIT: 0.1,
+    CREDIT_ACCESSORY_NO_BONUS: 0.05,
+    CREDIT_REVIEW_NO_BONUS: 0,
+    RETAIL_REVIEW_TECH: 0.05,
+    RETAIL_FILM_50: 0.5,
+    RETAIL_PLOTTER_MATERIAL_COST_50: 0.5,
+    RETAIL_GROSS_PROFIT_10: 0.1,
+    RETAIL_ACCESSORY_5: 0.05,
+  };
+  const base = baseByTarget[target];
+  const percent = percentByTarget[target];
+
+  return {
+    department: currentDetails.department,
+    calculationType: target,
+    calculationLabel: isCredit && target === 'RETAIL_ACCESSORY_5' ? 'Кредитная продажа, аксессуар: 5%' : calculationLabels[target],
+    article,
+    base,
+    percent,
+    bonus: base * percent,
+    formula: calculationFormulas[target],
+    includedInWholesaleBase:
+      target === 'WHOLESALE_EXCLUDED_TECH'
+        ? false
+        : target === 'WHOLESALE_REVIEW_TECH' || target === 'WHOLESALE_INCLUDED_1_75'
+          ? true
+          : null,
+    classificationReason: currentDetails.classificationReason,
+    matchedRule: currentDetails.matchedRule,
+    isCreditSale: isCredit,
+    creditProductType:
+      target === 'CREDIT_GROSS_PROFIT'
+        ? 'tech'
+        : target === 'CREDIT_ACCESSORY_NO_BONUS' || (isCredit && target === 'RETAIL_ACCESSORY_5')
+          ? 'accessory'
+          : target === 'CREDIT_REVIEW_NO_BONUS'
+            ? 'review'
+            : null,
+    creditIncludedInBonus: target === 'CREDIT_GROSS_PROFIT',
+  };
+}
+
+function doesClassificationRuleMatch(row: SalesRow, details: Omit<ClassifiedSalesRow, keyof SalesRow>, rule: PayrollClassificationRule) {
+  if (!rule.isActive) return false;
+
+  const department = isWholesaleManager(row.manager) ? 'wholesale' : 'retail';
+  const saleContext = details.isCreditSale ? 'credit' : 'regular';
+  const ruleDepartment = rule.department || 'all';
+  const ruleSaleContext = rule.saleContext || 'all';
+
+  if (ruleDepartment !== 'all' && ruleDepartment !== department) return false;
+  if (ruleSaleContext !== 'all' && ruleSaleContext !== saleContext) return false;
+
+  const item = normalizeText(row.item);
+  const category = normalizeText(row.category);
+  const article = normalizeText(getArticle(row.item));
+  const ruleItem = normalizeText(rule.itemText ?? '');
+  const ruleCategory = normalizeText(rule.categoryText ?? '');
+  const ruleArticle = normalizeText(rule.article ?? '');
+
+  if (rule.matchType === 'EXACT_ITEM') {
+    return Boolean(ruleItem) && item === ruleItem && (!ruleCategory || category === ruleCategory) && (!ruleArticle || article === ruleArticle);
+  }
+  if (rule.matchType === 'CONTAINS_ITEM') return Boolean(ruleItem) && item.includes(ruleItem);
+  if (rule.matchType === 'CATEGORY') return Boolean(ruleCategory) && category === ruleCategory;
+  if (rule.matchType === 'CATEGORY_AND_CONTAINS_ITEM') {
+    return Boolean(ruleCategory && ruleItem) && category === ruleCategory && item.includes(ruleItem);
+  }
+  if (rule.matchType === 'ARTICLE') return Boolean(ruleArticle) && article === ruleArticle;
+
+  return false;
+}
+
+function applyClassificationRules(
+  row: SalesRow,
+  details: Omit<ClassifiedSalesRow, keyof SalesRow>,
+  rules: PayrollClassificationRule[],
+): Omit<ClassifiedSalesRow, keyof SalesRow> {
+  const matchedRule = rules
+    .filter((rule) => rule.isActive)
+    .sort((left, right) => left.priority - right.priority || left.id - right.id)
+    .find((rule) => doesClassificationRuleMatch(row, details, rule));
+
+  if (!matchedRule) return details;
+
+  const overriddenDetails = getRuleTargetDetails(row, details, matchedRule.targetCalculationType);
+  const ruleLabel = matchedRule.title || matchedRule.reason || `#${matchedRule.id}`;
+
+  return {
+    ...overriddenDetails,
+    classificationReason: `Р СѓС‡РЅРѕРµ РїСЂР°РІРёР»Рѕ ${ruleLabel}: ${matchedRule.reason || overriddenDetails.classificationReason}`,
+    matchedRule: `manual-rule:${matchedRule.id}`,
+  };
+}
+
+function classifySalesRows(rows: SalesRow[], classificationRules: PayrollClassificationRule[] = []): ClassificationResult {
+  const classifiedRows = rows.map((row) => {
+    const details = getCalculationDetails(row);
+    return { ...row, ...applyClassificationRules(row, details, classificationRules) };
+  });
   const wholesaleRows = classifiedRows.filter((row) => row.department === 'Опт');
   const zalinaRevenue = wholesaleRows.filter((row) => normalizeText(row.manager) === normalizeText('Ахобекова Залина')).reduce((sum, row) => sum + row.revenue, 0);
   const lianaRevenue = wholesaleRows.filter((row) => normalizeText(row.manager) === normalizeText('Хурзокова Лиана')).reduce((sum, row) => sum + row.revenue, 0);
@@ -2241,11 +2389,11 @@ function classifySalesRows(rows: SalesRow[]): ClassificationResult {
   const managerSummaries = managers.map((manager) => {
     const managerRows = classifiedRows.filter((row) => row.manager === manager);
     const department: Department = isWholesaleManager(manager) ? 'Опт' : 'Розница';
-    const creditBonus = managerRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').reduce((sum, row) => sum + row.bonus, 0);
+    const creditBonus = getCreditTechCalculationRows(managerRows).reduce((sum, row) => sum + getCreditTechCalculationBase(row) * 0.91 * 0.1, 0);
     const filmBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').reduce((sum, row) => sum + row.bonus, 0);
     const plotterBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50').reduce((sum, row) => sum + row.bonus, 0);
-    const techBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').reduce((sum, row) => sum + row.bonus, 0);
-    const accessoryBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5').reduce((sum, row) => sum + row.bonus, 0);
+    const techBonus = getRetailTechCalculationRows(managerRows).reduce((sum, row) => sum + getRetailTechCalculationBase(row) * 0.1, 0);
+    const accessoryBonus = getAccessoryCalculationRows(managerRows).reduce((sum, row) => sum + getAccessoryCalculationBase(row) * 0.05, 0);
     const wholesaleBonus = department === 'Опт' ? wholesale.bonusEach : 0;
 
     return {
@@ -2268,7 +2416,7 @@ function classifySalesRows(rows: SalesRow[]): ClassificationResult {
     wholesale,
     typeSummaries,
     managerSummaries,
-    disputedRows: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH' || (hasDisputeMarkers(row) && row.matchedRule === 'default-category')),
+    disputedRows: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH' || row.calculationType === 'CREDIT_REVIEW_NO_BONUS' || (hasDisputeMarkers(row) && row.matchedRule === 'default-category')),
     accessoryExcludedRows: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH' && isAccessoryCategory(row.category)),
     expensiveReviewRows: classifiedRows.filter((row) => row.matchedRule === 'new-expensive-review'),
     counts: {
@@ -2278,7 +2426,7 @@ function classifySalesRows(rows: SalesRow[]): ClassificationResult {
       credit: classifiedRows.filter((row) => row.isCreditSale).length,
       film: classifiedRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').length,
       retailTech: classifiedRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').length,
-      accessory: classifiedRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5' || row.calculationType === 'RETAIL_REVIEW_TECH').length,
+      accessory: classifiedRows.filter((row) => isAccessoryBonusRow(row) || row.calculationType === 'RETAIL_REVIEW_TECH').length,
       wholesaleExcludedTech: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH').length,
     },
   };
@@ -2317,7 +2465,7 @@ function sumRows(rows: ClassifiedSalesRow[]) {
 }
 
 function hasUnexpectedZeroBase(row: ClassifiedSalesRow) {
-  return row.base === 0 && row.calculationType !== 'WHOLESALE_EXCLUDED_TECH' && row.calculationType !== 'CREDIT_ACCESSORY_NO_BONUS';
+  return row.base === 0 && row.calculationType !== 'WHOLESALE_EXCLUDED_TECH';
 }
 
 function hasRegistrarFragment(row: SalesRow, fragment: string) {
@@ -2347,6 +2495,118 @@ function getSalesProblemReason(row: ClassifiedSalesRow, type: SalesProblemType) 
   }
 
   return row.classificationReason;
+}
+
+const accessoryDiagnosticKeywords = [
+  'чехол',
+  'чехлы',
+  'накладка',
+  'стекло',
+  'защитное стекло',
+  'пленка',
+  'плёнка',
+  'кабель',
+  'зарядка',
+  'блок питания',
+  'адаптер',
+  'ремешок',
+  'держатель',
+  'аксессуары',
+  'защитные стекла',
+  'защитные стёкла',
+  'защитные стекла и пленки',
+  'защитные стёкла и плёнки',
+  'чехлы, накладки, сумки и бампера',
+];
+
+function isServiceLikeRow(row: ClassifiedSalesRow) {
+  const category = normalizeText(row.category);
+  const item = normalizeText(row.item);
+  return category.includes('услуги оказываемые') || item.includes('услуги оказываемые');
+}
+
+function isAccessoryLikeRow(row: ClassifiedSalesRow) {
+  const haystack = normalizeText(row.category + ' ' + row.item);
+  return accessoryDiagnosticKeywords.some((keyword) => haystack.includes(normalizeText(keyword)));
+}
+
+function getNotIncludedInServiceReason(row: ClassifiedSalesRow) {
+  if (row.calculationType === 'RETAIL_FILM_50') return 'Вошла в услуги 50%';
+  if (row.grossProfit < 0) return 'Не вошла: отрицательная ВП, требуется проверка';
+  return 'Не вошла: текущий тип расчёта ' + row.calculationLabel;
+}
+
+function getNotIncludedInAccessoryReason(row: ClassifiedSalesRow) {
+  if (row.calculationType === 'RETAIL_ACCESSORY_5' || row.calculationType === 'CREDIT_ACCESSORY_NO_BONUS') return 'Вошла в аксессуары 5%';
+  if (row.grossProfit < 0) return 'Не вошла: отрицательная ВП, требуется проверка';
+  if (row.calculationType === 'CREDIT_GROSS_PROFIT') return 'Не вошла: классифицирована как кредитная техника';
+  if (row.calculationType === 'RETAIL_FILM_50') return 'Не вошла: классифицирована как услуга 50%';
+  if (row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50') return 'Не вошла: плоттерные материалы Асада 50% от с/с';
+  return 'Не вошла: текущий тип расчёта ' + row.calculationLabel;
+}
+
+function isUnresolvedReviewRow(row: ClassifiedSalesRow) {
+  return (
+    !row.calculationType ||
+    row.calculationType === 'WHOLESALE_REVIEW_TECH' ||
+    row.calculationType === 'RETAIL_REVIEW_TECH' ||
+    row.calculationType === 'CREDIT_REVIEW_NO_BONUS' ||
+    row.matchedRule === 'new-expensive-review'
+  );
+}
+
+function isServiceNotIncludedRow(row: ClassifiedSalesRow) {
+  return row.department === 'Розница' && isServiceLikeRow(row) && row.calculationType !== 'RETAIL_FILM_50';
+}
+
+function isPotentialAccessoryNotIncludedRow(row: ClassifiedSalesRow) {
+  return row.department === 'Розница' && !isPlotterCalculationRow(row) && !isAccessoryBonusRow(row) && isAccessoryLikeRow(row);
+}
+
+function isCriticalZeroBaseRow(row: ClassifiedSalesRow) {
+  if (!hasUnexpectedZeroBase(row)) return false;
+  if (row.calculationType === 'WHOLESALE_EXCLUDED_TECH') return false;
+  if (row.department === 'Опт') return false;
+  if (row.revenue === 0 && row.grossProfit === 0 && row.calculationType) return false;
+  if (isUnresolvedReviewRow(row)) return true;
+  return row.base === 0 && row.percent === 0 && row.grossProfit !== 0;
+}
+
+function isPlotterCalculationRow(row: ClassifiedSalesRow) {
+  return row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50' || row.matchedRule === 'asad-plotter-material' || isPlotterMaterial(row);
+}
+
+function isAccessoryBonusRow(row: ClassifiedSalesRow) {
+  const calculationType = String(row.calculationType).trim();
+  if (calculationType === 'RETAIL_ACCESSORY_5' || calculationType === 'CREDIT_ACCESSORY_NO_BONUS') return true;
+  if (row.formula === calculationFormulas.RETAIL_ACCESSORY_5 && row.percent === 0.05) return true;
+  if (normalizeText(row.calculationLabel).includes('аксессуар')) return true;
+  if (normalizeText(row.classificationReason).includes('аксессуар')) return true;
+  return row.matchedRule === 'accessory-category' || row.matchedRule === 'accessory-item-marker' || row.matchedRule.startsWith('credit-accessory:');
+}
+
+function getAccessoryCalculationRows(rows: ClassifiedSalesRow[]) {
+  return rows.filter((row) => isAccessoryBonusRow(row));
+}
+
+function getAccessoryCalculationBase(row: ClassifiedSalesRow) {
+  return row.revenue;
+}
+
+function getRetailTechCalculationRows(rows: ClassifiedSalesRow[]) {
+  return rows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10');
+}
+
+function getCreditTechCalculationRows(rows: ClassifiedSalesRow[]) {
+  return rows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT');
+}
+
+function getRetailTechCalculationBase(row: ClassifiedSalesRow) {
+  return row.grossProfit;
+}
+
+function getCreditTechCalculationBase(row: ClassifiedSalesRow) {
+  return row.grossProfit;
 }
 
 function parseManualNumber(value: string) {
@@ -2441,6 +2701,7 @@ function buildSalesPayrollSummaries(managerSummaries: BonusManagerSummary[]) {
 
 function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManualInput | undefined): FullPayrollRow {
   const employee = payrollEmployees[summary.manager];
+  const salaryType = employee?.salaryType ?? (summary.department === 'Опт' ? 'wholesale_percent' : 'retail_sales_bonus');
   const manualWorkedDays = parseManualNumber(manual?.workedDays ?? '');
   const manualLateCount = parseManualNumber(manual?.lateCount ?? '');
   const salaryRule = isBelaManager(summary.manager) ? 'belaPercent' : isNoDayPayManager(summary.manager) ? 'noDayPay' : 'standard';
@@ -2451,13 +2712,13 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
   const agentCreditCommission = summary.manager === agentCreditCommissionEmployee ? parseManualNumber(manual?.agentCreditCommission ?? '') ?? 0 : 0;
   const dayRate = dayPayNotRequired ? 0 : getDayRate(summary.department);
   const dayPay = workedDays === null ? 0 : workedDays * dayRate;
-  const salesBonus = salaryRule === 'belaPercent' ? 0 : summary.totalBonus;
+  const salesBonus = salaryRule === 'belaPercent' ? 0 : salaryType === 'wholesale_percent' ? summary.wholesaleBonus : summary.totalBonus;
   const disciplineBonus = salaryRule === 'standard' && lateCount !== null && lateCount <= 3 ? 3000 : 0;
   const grossPay = dayPay + salesBonus + disciplineBonus + agentCreditCommission;
   const netPay = grossPay - advance;
   const payrollReasons = [
     !dayPayNotRequired && workedDays === null ? 'Не заполнены отработанные дни' : '',
-    !dayPayNotRequired && lateCount === null ? 'Не заполнено количество опозданий' : '',
+    !dayPayNotRequired && lateCount === null ? 'Посещаемость по форме не подтверждена' : '',
     advance > grossPay ? 'Аванс больше начислений' : '',
   ].filter(Boolean);
 
@@ -2465,7 +2726,7 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
     ...summary,
     payrollDepartment: employee?.department ?? summary.department,
     position: employee?.position ?? 'Сотрудник',
-    salaryType: employee?.salaryType ?? (summary.department === 'Опт' ? 'wholesale_percent' : 'retail_sales_bonus'),
+    salaryType,
     workedDays,
     lateCount,
     advance,
@@ -2754,17 +3015,17 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
     return { status: 'Ошибка', reason: reasons.join(', ') };
   }
 
-  const disputed = managerRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH').length;
-  const credits = managerRows.filter((row) => row.isCreditSale).length;
-  const negative = managerRows.filter((row) => row.grossProfit < 0).length;
-  const zeroBase = managerRows.filter(hasUnexpectedZeroBase).length;
+  const disputed = managerRows.filter(isUnresolvedReviewRow).length;
+  const serviceNotIncluded = managerRows.filter(isServiceNotIncludedRow).length;
+  const potentialAccessories = managerRows.filter(isPotentialAccessoryNotIncludedRow).length;
+  const zeroBase = managerRows.filter(isCriticalZeroBaseRow).length;
 
-  if (disputed || credits || negative || zeroBase) {
+  if (disputed || serviceNotIncluded || potentialAccessories || zeroBase) {
     const reasons = [
-      disputed ? `спорная техника ${disputed}` : '',
-      credits ? `кредиты ${credits}` : '',
-      negative ? `отрицательная ВП ${negative}` : '',
-      zeroBase ? `нулевая база ${zeroBase}` : '',
+      disputed ? `спорные строки ${disputed}` : '',
+      serviceNotIncluded ? `услуги не вошли ${serviceNotIncluded}` : '',
+      potentialAccessories ? `похожие на аксессуары ${potentialAccessories}` : '',
+      zeroBase ? `нулевая база без понятного расчёта ${zeroBase}` : '',
     ].filter(Boolean);
     return { status: 'Проверить', reason: reasons.join(', ') };
   }
@@ -2818,6 +3079,11 @@ export default function AdminPayrollPage() {
   const [payrollHistoryActionId, setPayrollHistoryActionId] = useState<string | null>(null);
   const [selectedSavedRun, setSelectedSavedRun] = useState<SavedPayrollRunDetail | null>(null);
   const [isSavedRunLoading, setIsSavedRunLoading] = useState(false);
+  const [classificationRules, setClassificationRules] = useState<PayrollClassificationRule[]>([]);
+  const [isClassificationRulesLoading, setIsClassificationRulesLoading] = useState(false);
+  const [classificationRuleActionId, setClassificationRuleActionId] = useState<string | null>(null);
+  const [classificationRuleMessage, setClassificationRuleMessage] = useState('');
+  const [classificationRuleError, setClassificationRuleError] = useState('');
   const loadedManualPayrollKey = useRef('');
   const skipNextManualPayrollSave = useRef(true);
 
@@ -2846,11 +3112,12 @@ export default function AdminPayrollPage() {
 
   useEffect(() => {
     void loadSavedPayrollPeriods();
+    void loadClassificationRules();
   }, []);
 
   const parseResult = useMemo(() => parsePayrollReport(rows), [rows]);
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
-  const classification = useMemo(() => classifySalesRows(parseResult.rows), [parseResult.rows]);
+  const classification = useMemo(() => classifySalesRows(parseResult.rows, classificationRules), [parseResult.rows, classificationRules]);
   const managerOptions = useMemo(() => Array.from(new Set(classification.rows.map((row) => row.manager))).sort((a, b) => a.localeCompare(b, 'ru')), [classification.rows]);
   const typeOptions = useMemo(() => Array.from(new Set(classification.rows.map((row) => row.calculationType))), [classification.rows]);
   const categoryOptions = useMemo(() => Array.from(new Set(classification.rows.map((row) => row.category))).sort((a, b) => a.localeCompare(b, 'ru')), [classification.rows]);
@@ -3033,7 +3300,7 @@ export default function AdminPayrollPage() {
   const wholesaleCategorySummaries = useMemo(() => buildWholesaleCategorySummaries(classification.rows), [classification.rows]);
   const retailRows = useMemo(() => classification.rows.filter((row) => row.department === 'Розница'), [classification.rows]);
   const retailTechSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10')), [retailRows]);
-  const retailAccessorySummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5')), [retailRows]);
+  const retailAccessorySummary = useMemo(() => sumRows(getAccessoryCalculationRows(retailRows)), [retailRows]);
   const retailFilmSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_FILM_50')), [retailRows]);
   const retailPlotterSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50')), [retailRows]);
   const retailCreditSummary = useMemo(() => sumRows(creditTechRows), [creditTechRows]);
@@ -3050,20 +3317,170 @@ export default function AdminPayrollPage() {
       : null;
   const selectedManagerCounts = useMemo(
     () => ({
-      disputed: selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH').length,
+      disputed: selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH' || row.calculationType === 'CREDIT_REVIEW_NO_BONUS' || row.matchedRule === 'new-expensive-review').length,
       credits: selectedManagerRows.filter((row) => row.isCreditSale).length,
       negative: selectedManagerRows.filter((row) => row.grossProfit < 0).length,
-      zeroBase: selectedManagerRows.filter(hasUnexpectedZeroBase).length,
+      zeroBase: selectedManagerRows.filter(isCriticalZeroBaseRow).length,
       unclassified: selectedManagerRows.filter((row) => !row.calculationType).length,
       accessoryExcluded: classification.accessoryExcludedRows.filter((row) => row.manager === selectedManager).length,
       invalidNumbers: selectedManagerRows.filter((row) => [row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))).length,
-      creditBase: selectedManagerRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').reduce((sum, row) => sum + row.base, 0),
+      creditReview: selectedManagerRows.filter((row) => row.calculationType === 'CREDIT_REVIEW_NO_BONUS').length,
+      potentialAccessories: selectedManagerRows.filter(isPotentialAccessoryNotIncludedRow).length,
+      serviceNotIncluded: selectedManagerRows.filter(isServiceNotIncludedRow).length,
+      classifiedCredits: selectedManagerRows.filter((row) => row.isCreditSale && row.calculationType !== 'CREDIT_REVIEW_NO_BONUS').length,
+      accountedNegative: selectedManagerRows.filter((row) => row.grossProfit < 0 && !isUnresolvedReviewRow(row)).length,
+      informationalZeroBase: selectedManagerRows.filter((row) => hasUnexpectedZeroBase(row) && !isCriticalZeroBaseRow(row)).length,
+      creditBase: getCreditTechCalculationRows(selectedManagerRows).reduce((sum, row) => sum + getCreditTechCalculationBase(row), 0),
       filmBase: selectedManagerRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').reduce((sum, row) => sum + row.base, 0),
       plotterBase: selectedManagerRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50').reduce((sum, row) => sum + row.base, 0),
-      techBase: selectedManagerRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').reduce((sum, row) => sum + row.base, 0),
-      accessoryBase: selectedManagerRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5' || row.calculationType === 'RETAIL_REVIEW_TECH').reduce((sum, row) => sum + row.base, 0),
+      techBase: getRetailTechCalculationRows(selectedManagerRows).reduce((sum, row) => sum + getRetailTechCalculationBase(row), 0),
+      accessoryBase: getAccessoryCalculationRows(selectedManagerRows).reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0),
     }),
     [selectedManagerRows, classification.accessoryExcludedRows, selectedManager],
+  );
+  const selectedManagerServiceRows = useMemo(() => selectedManagerRows.filter(isServiceLikeRow), [selectedManagerRows]);
+  const selectedManagerPlotterRows = useMemo(() => selectedManagerRows.filter(isPlotterCalculationRow), [selectedManagerRows]);
+  const selectedManagerAccessoryRows = useMemo(() => getAccessoryCalculationRows(selectedManagerRows), [selectedManagerRows]);
+  const selectedManagerPotentialAccessoryRows = useMemo(
+    () => selectedManagerRows.filter(isPotentialAccessoryNotIncludedRow),
+    [selectedManagerRows],
+  );
+  const selectedManagerProblemSalesRows = useMemo(
+    () =>
+      selectedManagerRows.filter(
+        (row) =>
+          row.calculationType === 'WHOLESALE_REVIEW_TECH' ||
+          row.calculationType === 'RETAIL_REVIEW_TECH' ||
+          row.calculationType === 'CREDIT_REVIEW_NO_BONUS' ||
+          row.matchedRule === 'new-expensive-review' ||
+          (row.grossProfit < 0 && !isPlotterCalculationRow(row)) ||
+          !row.calculationType,
+      ),
+    [selectedManagerRows],
+  );
+  const selectedManagerDiagnostics = useMemo(() => {
+    const includedService = selectedManagerServiceRows.filter((row) => row.calculationType === 'RETAIL_FILM_50');
+    const excludedService = selectedManagerServiceRows.filter((row) => row.calculationType !== 'RETAIL_FILM_50');
+    const serviceIncludedRevenue = includedService.reduce((sum, row) => sum + row.revenue, 0);
+    const serviceExcludedRevenue = excludedService.reduce((sum, row) => sum + row.revenue, 0);
+    const negativeAccessoryRows = selectedManagerAccessoryRows.filter((row) => row.revenue < 0 || row.grossProfit < 0 || row.base < 0);
+    const negativeAccessoryRevenue = negativeAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+    const negativeCreditAccessoryRows = negativeAccessoryRows.filter((row) => row.isCreditSale && row.creditProductType === 'accessory');
+    const negativeRegularAccessoryRows = negativeAccessoryRows.filter((row) => !negativeCreditAccessoryRows.includes(row));
+    const positiveRegularAccessoryRevenue = selectedManagerAccessoryRows
+      .filter((row) => !row.isCreditSale && getAccessoryCalculationBase(row) > 0)
+      .reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+    const positiveCreditAccessoryRevenue = selectedManagerAccessoryRows
+      .filter((row) => row.isCreditSale && getAccessoryCalculationBase(row) > 0)
+      .reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+    const negativeRegularAccessoryRevenue = negativeRegularAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+    const negativeCreditAccessoryRevenue = negativeCreditAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+    const finalRegularAccessoryRevenue = positiveRegularAccessoryRevenue + negativeRegularAccessoryRevenue;
+    const finalCreditAccessoryRevenue = positiveCreditAccessoryRevenue + negativeCreditAccessoryRevenue;
+    const finalAccessoryBase = finalRegularAccessoryRevenue + finalCreditAccessoryRevenue;
+    const retailTechRows = getRetailTechCalculationRows(selectedManagerRows);
+    const creditTechRowsForManager = getCreditTechCalculationRows(selectedManagerRows);
+    const positiveRetailTechGrossProfit = retailTechRows.filter((row) => getRetailTechCalculationBase(row) > 0).reduce((sum, row) => sum + getRetailTechCalculationBase(row), 0);
+    const negativeRetailTechGrossProfit = retailTechRows.filter((row) => getRetailTechCalculationBase(row) < 0).reduce((sum, row) => sum + getRetailTechCalculationBase(row), 0);
+    const negativeRetailTechCount = retailTechRows.filter((row) => getRetailTechCalculationBase(row) < 0).length;
+    const retailTechGrossProfitBase = positiveRetailTechGrossProfit + negativeRetailTechGrossProfit;
+    const positiveCreditTechGrossProfit = creditTechRowsForManager.filter((row) => getCreditTechCalculationBase(row) > 0).reduce((sum, row) => sum + getCreditTechCalculationBase(row), 0);
+    const negativeCreditTechGrossProfit = creditTechRowsForManager.filter((row) => getCreditTechCalculationBase(row) < 0).reduce((sum, row) => sum + getCreditTechCalculationBase(row), 0);
+    const negativeCreditTechCount = creditTechRowsForManager.filter((row) => getCreditTechCalculationBase(row) < 0).length;
+    const creditTechGrossProfitBase = positiveCreditTechGrossProfit + negativeCreditTechGrossProfit;
+    const negativeTechCount = negativeRetailTechCount + negativeCreditTechCount;
+    const negativeTechGrossProfit = negativeRetailTechGrossProfit + negativeCreditTechGrossProfit;
+    const techGrossProfitBase = retailTechGrossProfitBase + creditTechGrossProfitBase;
+    const techBonus = retailTechGrossProfitBase * 0.1 + creditTechGrossProfitBase * 0.91 * 0.1;
+    const potentialAccessoryRevenue = selectedManagerPotentialAccessoryRows.reduce((sum, row) => sum + row.revenue, 0);
+
+    return {
+      serviceIncludedRevenue,
+      serviceExcludedRevenue,
+      serviceTotalRevenue: serviceIncludedRevenue + serviceExcludedRevenue,
+      serviceBonus: serviceIncludedRevenue * 0.5,
+      positiveRegularAccessoryRevenue,
+      negativeRegularAccessoryRevenue,
+      regularAccessoryRevenue: finalRegularAccessoryRevenue,
+      positiveCreditAccessoryRevenue,
+      negativeCreditAccessoryRevenue,
+      creditAccessoryRevenue: finalCreditAccessoryRevenue,
+      accessoryRevenue: finalAccessoryBase,
+      accessoryBonus: finalAccessoryBase * 0.05,
+      negativeAccessoryCount: negativeAccessoryRows.length,
+      negativeAccessoryRevenue,
+      positiveRetailTechGrossProfit,
+      negativeRetailTechGrossProfit,
+      retailTechGrossProfitBase,
+      positiveCreditTechGrossProfit,
+      negativeCreditTechGrossProfit,
+      creditTechGrossProfitBase,
+      negativeTechCount,
+      negativeTechGrossProfit,
+      techGrossProfitBase,
+      techBonus,
+      variableSalesBonus: serviceIncludedRevenue * 0.5 + finalAccessoryBase * 0.05 + techBonus,
+      potentialAccessoryRevenue,
+    };
+  }, [selectedManagerAccessoryRows, selectedManagerPotentialAccessoryRows, selectedManagerRows, selectedManagerServiceRows]);
+  const payrollDiagnosticsByEmployee = useMemo(
+    () =>
+      fullPayrollRows.map((payrollRow) => {
+        const employeeRows = classification.rows.filter((row) => row.manager === payrollRow.manager);
+        const serviceRows = employeeRows.filter(isServiceLikeRow);
+        const serviceIncludedRows = serviceRows.filter((row) => row.calculationType === 'RETAIL_FILM_50');
+        const accessoryRows = getAccessoryCalculationRows(employeeRows);
+        const techRows = getRetailTechCalculationRows(employeeRows);
+        const creditTechRowsForEmployee = getCreditTechCalculationRows(employeeRows);
+        const serviceBase = serviceIncludedRows.reduce((sum, row) => sum + row.base, 0);
+        const serviceMissedBase = serviceRows.filter((row) => row.calculationType !== 'RETAIL_FILM_50').reduce((sum, row) => sum + row.revenue, 0);
+        const negativeAccessoryRows = accessoryRows.filter((row) => row.revenue < 0 || row.grossProfit < 0 || row.base < 0);
+        const negativeAccessoryBase = negativeAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+        const negativeCreditAccessoryRows = negativeAccessoryRows.filter((row) => row.isCreditSale && row.creditProductType === 'accessory');
+        const negativeRegularAccessoryRows = negativeAccessoryRows.filter((row) => !negativeCreditAccessoryRows.includes(row));
+        const positiveRegularAccessoryBase = accessoryRows
+          .filter((row) => !row.isCreditSale && getAccessoryCalculationBase(row) > 0)
+          .reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+        const positiveCreditAccessoryBase = accessoryRows
+          .filter((row) => row.isCreditSale && getAccessoryCalculationBase(row) > 0)
+          .reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+        const regularAccessoryBase = positiveRegularAccessoryBase + negativeRegularAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+        const creditAccessoryBase = positiveCreditAccessoryBase + negativeCreditAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+        const accessoryBase = regularAccessoryBase + creditAccessoryBase;
+        const techGrossProfitBase = techRows.reduce((sum, row) => sum + getRetailTechCalculationBase(row), 0);
+        const creditTechGrossProfitBase = creditTechRowsForEmployee.reduce((sum, row) => sum + getCreditTechCalculationBase(row), 0);
+        const techBonus = techGrossProfitBase * 0.1 + creditTechGrossProfitBase * 0.91 * 0.1;
+
+        return {
+          manager: payrollRow.manager,
+          salaryType: payrollRow.salaryType,
+          workedDays: payrollRow.workedDays,
+          dayPay: payrollRow.dayPay,
+          serviceBase,
+          serviceBonus: serviceBase * 0.5,
+          serviceMissedBase,
+          regularAccessoryBase,
+          creditAccessoryBase,
+          accessoryBase,
+          accessoryBonus: accessoryBase * 0.05,
+          negativeAccessoryCount: negativeAccessoryRows.length,
+          negativeAccessoryBase,
+          techGrossProfitBase,
+          creditTechGrossProfitBase,
+          techBonus,
+          salesBonus: payrollRow.salesBonus,
+          grossPay: payrollRow.grossPay,
+        };
+      }),
+    [classification.rows, fullPayrollRows],
+  );
+  const payrollDiagnosticsWithCreditAccessories = useMemo(
+    () => payrollDiagnosticsByEmployee.filter((row) => row.creditAccessoryBase > 0),
+    [payrollDiagnosticsByEmployee],
+  );
+  const payrollDiagnosticsWithMissedServices = useMemo(
+    () => payrollDiagnosticsByEmployee.filter((row) => row.serviceMissedBase > 0),
+    [payrollDiagnosticsByEmployee],
   );
   const invalidNumberRows = useMemo(() => classification.rows.filter((row) => [row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))), [classification.rows]);
   const problemDefinitions = useMemo(
@@ -3411,12 +3828,190 @@ export default function AdminPayrollPage() {
     return statusInfo.status === 'OK' && row.payrollStatus === 'OK' ? 'OK' : 'Проверить';
   }
 
+  async function loadClassificationRules() {
+    setIsClassificationRulesLoading(true);
+    setClassificationRuleError('');
+
+    try {
+      const response = await fetch('/api/admin/payroll/classification-rules', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Не удалось загрузить правила классификации.');
+      setClassificationRules(await response.json() as PayrollClassificationRule[]);
+    } catch (caughtError) {
+      setClassificationRuleError(caughtError instanceof Error ? caughtError.message : 'Не удалось загрузить правила классификации.');
+    } finally {
+      setIsClassificationRulesLoading(false);
+    }
+  }
+
+  async function createAccessoryClassificationRule(row: ClassifiedSalesRow) {
+    const actionId = `accessory-${row.item}-${row.category}-${row.article}`;
+    setClassificationRuleActionId(actionId);
+    setClassificationRuleError('');
+    setClassificationRuleMessage('');
+
+    try {
+      const response = await fetch('/api/admin/payroll/classification-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: row.article ? `${row.article} · ${row.item}` : row.item,
+          matchType: 'EXACT_ITEM',
+          itemText: row.item,
+          categoryText: row.category,
+          article: row.article || null,
+          department: row.department === 'Опт' ? 'wholesale' : 'retail',
+          saleContext: row.isCreditSale ? 'credit' : 'regular',
+          targetCalculationType: 'RETAIL_ACCESSORY_5',
+          reason: row.isCreditSale
+            ? 'Ручно отнесено к аксессуарам 5% по точной номенклатуре. Кредитная продажа не меняет правило аксессуаров.'
+            : 'Ручно отнесено к аксессуарам по точной номенклатуре.',
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось создать правило.');
+      }
+
+      const savedRule = await response.json() as PayrollClassificationRule;
+      setClassificationRules((currentRules) => {
+        const withoutSavedRule = currentRules.filter((rule) => rule.id !== savedRule.id);
+        return [savedRule, ...withoutSavedRule].sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.priority - right.priority || left.id - right.id);
+      });
+      void loadClassificationRules();
+      setClassificationRuleMessage('Точечное правило сохранено. Позиция пересчитана как аксессуар.');
+    } catch (caughtError) {
+      setClassificationRuleError(caughtError instanceof Error ? caughtError.message : 'Не удалось создать правило.');
+    } finally {
+      setClassificationRuleActionId(null);
+    }
+  }
+
+
+  async function createCreditTechClassificationRule(row: ClassifiedSalesRow) {
+    const actionId = `credit-tech-${row.item}-${row.category}-${row.article}`;
+    setClassificationRuleActionId(actionId);
+    setClassificationRuleError('');
+    setClassificationRuleMessage('');
+
+    try {
+      const response = await fetch('/api/admin/payroll/classification-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: row.article ? `${row.article} · ${row.item}` : row.item,
+          matchType: 'EXACT_ITEM',
+          itemText: row.item,
+          categoryText: row.category,
+          article: row.article || null,
+          department: row.department === 'Опт' ? 'wholesale' : 'retail',
+          saleContext: 'credit',
+          targetCalculationType: 'CREDIT_GROSS_PROFIT',
+          reason: 'Ручно отнесено к кредитной технике по точной номенклатуре.',
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось создать правило.');
+      }
+
+      const savedRule = await response.json() as PayrollClassificationRule;
+      setClassificationRules((currentRules) => {
+        const withoutSavedRule = currentRules.filter((rule) => rule.id !== savedRule.id);
+        return [savedRule, ...withoutSavedRule].sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.priority - right.priority || left.id - right.id);
+      });
+      void loadClassificationRules();
+      setClassificationRuleMessage('Точечное правило сохранено. Позиция пересчитана как кредитная техника.');
+    } catch (caughtError) {
+      setClassificationRuleError(caughtError instanceof Error ? caughtError.message : 'Не удалось создать правило.');
+    } finally {
+      setClassificationRuleActionId(null);
+    }
+  }
+
+  async function disableClassificationRule(ruleId: number) {
+    const actionId = `disable-${ruleId}`;
+    setClassificationRuleActionId(actionId);
+    setClassificationRuleError('');
+    setClassificationRuleMessage('');
+
+    try {
+      const response = await fetch(`/api/admin/payroll/classification-rules/${ruleId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: false }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось отключить правило.');
+      }
+
+      await loadClassificationRules();
+      setClassificationRuleMessage('Правило отключено. Расчёт обновлён.');
+    } catch (caughtError) {
+      setClassificationRuleError(caughtError instanceof Error ? caughtError.message : 'Не удалось отключить правило.');
+    } finally {
+      setClassificationRuleActionId(null);
+    }
+  }
+
+  function canCreateAccessoryRule(row: ClassifiedSalesRow, problemType?: ProblemType) {
+    if (row.grossProfit < 0) return false;
+    if (row.matchedRule.startsWith('manual-rule:')) return false;
+    return !problemType || ['credit', 'disputed', 'wholesaleReview', 'retailReview', 'expensiveUnclassified', 'accessoryExcluded'].includes(problemType);
+  }
+
+  function canCreateCreditTechRule(row: ClassifiedSalesRow, problemType?: ProblemType) {
+    if (!row.isCreditSale) return false;
+    if (row.grossProfit < 0) return false;
+    if (row.matchedRule.startsWith('manual-rule:')) return false;
+    if (row.calculationType === 'CREDIT_GROSS_PROFIT') return false;
+    return !problemType || ['credit', 'disputed', 'retailReview', 'expensiveUnclassified'].includes(problemType);
+  }
+
+  function renderAccessoryRuleButton(row: ClassifiedSalesRow, problemType?: ProblemType) {
+    const actionId = `accessory-${row.item}-${row.category}-${row.article}`;
+    const creditTechActionId = `credit-tech-${row.item}-${row.category}-${row.article}`;
+    const enabled = canCreateAccessoryRule(row, problemType);
+    const creditTechEnabled = canCreateCreditTechRule(row, problemType);
+
+    return (
+      <div className='flex min-w-[150px] flex-col gap-1'>
+        <button
+          type='button'
+          onClick={() => void createAccessoryClassificationRule(row)}
+          disabled={!enabled || classificationRuleActionId === actionId}
+          className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50'
+          title='Создать точечное правило аксессуара по item + category + article, если артикул есть'
+        >
+          В аксессуары
+        </button>
+        {row.isCreditSale && (
+          <button
+            type='button'
+            onClick={() => void createCreditTechClassificationRule(row)}
+            disabled={!creditTechEnabled || classificationRuleActionId === creditTechActionId}
+            className='rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50'
+            title='Создать точечное правило кредитной техники по item + category + article, если артикул есть'
+          >
+            В кредитную технику
+          </button>
+        )}
+        {row.grossProfit < 0 && <span className='text-[11px] leading-tight text-amber-700'>Отрицательная ВП — проверить отдельно.</span>}
+        {row.matchedRule.startsWith('manual-rule:') && <span className='text-[11px] leading-tight text-emerald-700'>Уже применено ручное правило.</span>}
+      </div>
+    );
+  }
+
   function getPayrollExportMainAmount(row: FullPayrollRow) {
     if (row.salaryType === 'fixed_salary') return row.fixedSalary;
-    if (row.salaryType === 'purchase_manager') return row.purchasePercentAmount + row.purchaseTargetAdjustment;
-    if (row.salaryType === 'vl_percent') return row.grossPay;
-    return row.salesBonus;
-  }
+  if (row.salaryType === 'purchase_manager') return row.purchasePercentAmount + row.purchaseTargetAdjustment;
+  if (row.salaryType === 'vl_percent') return row.grossPay;
+  if (row.salaryType === 'wholesale_percent') return row.wholesaleBonus;
+  return row.salesBonus;
+}
 
   function getPayrollExportCategory(row: FullPayrollRow) {
     if (row.salaryType === 'purchase_manager') return 'Закупки';
@@ -3441,11 +4036,11 @@ export default function AdminPayrollPage() {
   function getManagerComponentBases(manager: string) {
     const managerRows = classification.rows.filter((row) => row.manager === manager);
     return {
-      credit: managerRows.filter((row) => row.calculationType === 'CREDIT_GROSS_PROFIT').reduce((sum, row) => sum + row.base, 0),
+      credit: getCreditTechCalculationRows(managerRows).reduce((sum, row) => sum + getCreditTechCalculationBase(row), 0),
       film: managerRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').reduce((sum, row) => sum + row.base, 0),
       plotter: managerRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50').reduce((sum, row) => sum + row.base, 0),
-      tech: managerRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').reduce((sum, row) => sum + row.base, 0),
-      accessory: managerRows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5' || row.calculationType === 'RETAIL_REVIEW_TECH').reduce((sum, row) => sum + row.base, 0),
+      tech: getRetailTechCalculationRows(managerRows).reduce((sum, row) => sum + getRetailTechCalculationBase(row), 0),
+      accessory: getAccessoryCalculationRows(managerRows).reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0),
     };
   }
 
@@ -3510,7 +4105,7 @@ export default function AdminPayrollPage() {
         ['Кредиты', managerRows.filter((item) => item.isCreditSale).length, 'Проверить', 'Кредитные продажи требуют сверки'],
         ['Строки без классификации', managerRows.filter((item) => !item.calculationType).length, 'Ошибка', 'Нет классификации строки'],
         ['Не заполнены дни', row.workedDays === null && row.salaryType !== 'fixed_salary' ? 1 : 0, 'Проверить', 'Заполните дни вручную или через предпросмотр'],
-        ['Не заполнены опоздания', row.lateCount === null && row.salaryType !== 'fixed_salary' && row.salaryType !== 'purchase_manager' ? 1 : 0, 'Проверить', 'Заполните опоздания вручную'],
+        ['Посещаемость по форме не подтверждена', row.lateCount === null && row.salaryType !== 'fixed_salary' && row.salaryType !== 'purchase_manager' ? 1 : 0, 'Проверить', 'Проверьте отметки прихода/ухода и опоздания вручную'],
         ['Ручная корректировка дней', row.daysSource === 'manualCorrection' ? 1 : 0, 'Проверить', 'Дни или опоздания изменены вручную'],
         ['Особая схема расчёта', row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager' || row.salaryType === 'vl_percent' ? 1 : 0, 'OK', getSalaryTypeLabel(row.salaryType)],
       ];
@@ -3682,6 +4277,19 @@ export default function AdminPayrollPage() {
         purchaseBase: purchasePayrollRow.purchaseBase,
         classificationErrorCount,
         payrollReviewCount: reviewCount,
+        manualClassificationRuleCount: classification.rows.filter((row) => row.matchedRule.startsWith('manual-rule:')).length,
+        manualClassificationRows: classification.rows
+          .filter((row) => row.matchedRule.startsWith('manual-rule:'))
+          .map((row) => ({
+            manager: row.manager,
+            category: row.category,
+            item: row.item,
+            article: row.article,
+            calculationType: row.calculationType,
+            calculationLabel: row.calculationLabel,
+            classificationReason: row.classificationReason,
+            matchedRule: row.matchedRule,
+          })),
       },
       sourceFiles,
       manualInputs: [
@@ -4241,6 +4849,67 @@ export default function AdminPayrollPage() {
                       </div>
                     </Card>
                   </div>
+
+                  <Card>
+                    <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between'>
+                      <div>
+                        <h2 className='text-lg font-bold text-slate-900'>Сверка начислений по всем сотрудникам</h2>
+                        <p className='text-sm text-slate-500'>Диагностика по текущему загруженному отчёту: услуги, аксессуары, кредитные аксессуары, техника и дни.</p>
+                      </div>
+                      <div className='flex flex-wrap gap-2 text-xs font-semibold text-slate-500'>
+                        <span className='rounded-full bg-slate-100 px-3 py-1'>Кредитные аксессуары: {payrollDiagnosticsWithCreditAccessories.length}</span>
+                        <span className='rounded-full bg-slate-100 px-3 py-1'>Услуги не вошли: {payrollDiagnosticsWithMissedServices.length}</span>
+                      </div>
+                    </div>
+                    <div className='max-h-[420px] overflow-auto rounded-lg border border-border'>
+                      <table className='w-full min-w-[1220px] text-xs'>
+                        <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'>
+                          <tr>
+                            <th className='px-3 py-2'>Сотрудник</th>
+                            <th className='px-3 py-2 text-right'>Услуги база</th>
+                            <th className='px-3 py-2 text-right'>Услуги 50%</th>
+                            <th className='px-3 py-2 text-right'>Услуги не вошли</th>
+                            <th className='px-3 py-2 text-right'>Аксессуары</th>
+                            <th className='px-3 py-2 text-right'>Кредитные акс.</th>
+                            <th className='px-3 py-2 text-right'>Акс. база</th>
+                            <th className='px-3 py-2 text-right'>Акс. 5%</th>
+                            <th className='px-3 py-2 text-right'>Минус акс.</th>
+                            <th className='px-3 py-2 text-right'>Техника ВП</th>
+                            <th className='px-3 py-2 text-right'>Техника бонус</th>
+                            <th className='px-3 py-2 text-right'>Дни</th>
+                            <th className='px-3 py-2 text-right'>Дни сумма</th>
+                            <th className='px-3 py-2 text-right'>Итого начислено</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payrollDiagnosticsByEmployee.map((row) => (
+                            <tr key={'payroll-diagnostic-' + row.manager} className='border-t border-border/70 align-top'>
+                              <td className='min-w-[190px] px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.serviceBase)}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.serviceBonus)}</td>
+                              <td className='px-3 py-2 text-right font-semibold text-amber-700'>{formatMoney(row.serviceMissedBase)}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.regularAccessoryBase)}</td>
+                              <td className='px-3 py-2 text-right font-semibold text-emerald-700'>{formatMoney(row.creditAccessoryBase)}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.accessoryBase)}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.accessoryBonus)}</td>
+                              <td className='px-3 py-2 text-right font-semibold text-amber-700'>{row.negativeAccessoryCount ? `${row.negativeAccessoryCount} / ${formatMoney(row.negativeAccessoryBase)}` : '—'}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.techGrossProfitBase)}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.techBonus)}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.dayPay)}</td>
+                              <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.grossPay)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {payrollDiagnosticsWithMissedServices.length > 0 && (
+                      <div className='mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900'>
+                        <p className='font-semibold'>Услуги, не вошедшие в расчёт</p>
+                        <p className='mt-1'>Проверьте сотрудников: {payrollDiagnosticsWithMissedServices.map((row) => row.manager + ' — ' + formatMoney(row.serviceMissedBase)).join('; ')}.</p>
+                      </div>
+                    )}
+                  </Card>
 
                   <Card>
                     <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
@@ -4880,6 +5549,8 @@ export default function AdminPayrollPage() {
                       <p className='text-sm text-slate-500'>Проблемные строки после текущих фильтров: {problemRows.length}</p>
                     </div>
                   </div>
+                  {classificationRuleMessage && <p className='mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700'>{classificationRuleMessage}</p>}
+                  {classificationRuleError && <p className='mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700'>{classificationRuleError}</p>}
                   <div className='mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7'>
                     <select value={problemTypeFilter} onChange={(event) => setProblemTypeFilter(event.target.value as ProblemType)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm'>
                       <option value='all'>Все проблемы</option>
@@ -4903,49 +5574,70 @@ export default function AdminPayrollPage() {
                     <Input value={problemArticleSearch} onChange={(event) => setProblemArticleSearch(event.target.value)} placeholder='Поиск по артикулу' />
                   </div>
                   <div className='max-h-[560px] overflow-auto rounded-lg border border-border'>
-                    <table className='w-full min-w-[1500px] text-xs'>
-                      <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Тип проблемы</th><th className='px-3 py-2'>Сотрудник</th><th className='px-3 py-2'>Отдел</th><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Регистратор</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>Валовая прибыль</th><th className='px-3 py-2 text-right'>База расчёта</th><th className='px-3 py-2'>Тип расчёта</th><th className='px-3 py-2'>Причина</th><th className='px-3 py-2'>Правило</th></tr></thead>
+                    <table className='w-full min-w-[1040px] table-fixed text-xs'>
+                      <colgroup>
+                        <col className='w-[150px]' />
+                        <col className='w-[150px]' />
+                        <col className='w-[170px]' />
+                        <col />
+                        <col className='w-[110px]' />
+                        <col className='w-[110px]' />
+                        <col className='w-[170px]' />
+                        <col className='w-[150px]' />
+                      </colgroup>
+                      <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'>
+                        <tr>
+                          <th className='px-3 py-2'>Тип проблемы</th>
+                          <th className='px-3 py-2'>Сотрудник</th>
+                          <th className='px-3 py-2'>Категория</th>
+                          <th className='px-3 py-2'>Номенклатура</th>
+                          <th className='px-3 py-2 text-right'>Выручка</th>
+                          <th className='px-3 py-2 text-right'>ВП</th>
+                          <th className='px-3 py-2'>Тип расчёта</th>
+                          <th className='px-3 py-2'>Действие</th>
+                        </tr>
+                      </thead>
                       <tbody>{problemRows.slice(0, 500).map((problem, index) => {
                         const isErrorProblem = problem.type === 'unclassified' || problem.type === 'accessoryExcluded' || problem.type === 'invalidNumbers';
                         if (problem.kind === 'sales') {
                           const row = problem.row;
-                          return (
-                            <tr key={`${problem.type}-${row.manager}-${row.item}-${index}`} className='border-t border-border/70'>
+                          return [
+                            <tr key={problem.type + '-' + row.manager + '-' + row.item + '-' + index} className='border-t border-border/70 align-top'>
                               <td className='px-3 py-2'><Badge className={isErrorProblem ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}>{problem.label}</Badge></td>
-                              <td className='px-3 py-2'>{row.manager}</td>
-                              <td className='px-3 py-2'>{row.department}</td>
-                              <td className='px-3 py-2'>{row.client}</td>
-                              <td className='px-3 py-2'>{row.category}</td>
-                              <td className='max-w-[360px] truncate px-3 py-2' title={row.item}>{row.item}</td>
-                              <td className='max-w-[320px] truncate px-3 py-2' title={getRegistrarSummary(row)}>{getRegistrarSummary(row) || '—'}</td>
-                              <td className='px-3 py-2'>{row.article || '—'}</td>
-                              <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
-                              <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
-                              <td className='px-3 py-2 text-right'>{formatMoney(row.base)}</td>
-                              <td className='px-3 py-2'>{row.calculationLabel}</td>
-                              <td className='px-3 py-2'>{getSalesProblemReason(row, problem.type)}</td>
-                              <td className='px-3 py-2'>{row.matchedRule}</td>
-                            </tr>
-                          );
+                              <td className='px-3 py-2 font-semibold text-slate-700'>{row.manager}</td>
+                              <td className='px-3 py-2 text-slate-700'>{row.category}</td>
+                              <td className='px-3 py-2 font-semibold leading-snug text-slate-900' title={row.item}>
+                                <span className='line-clamp-2 break-normal'>{row.item}</span>
+                              </td>
+                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.revenue)}</td>
+                              <td className='px-3 py-2 text-right font-semibold text-slate-900'>{formatMoney(row.grossProfit)}</td>
+                              <td className='px-3 py-2'>
+                                <span className='block font-semibold text-slate-900'>{row.calculationLabel}</span>
+                                {(row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH' || row.calculationType === 'CREDIT_REVIEW_NO_BONUS') && (
+                                  <Badge className='mt-1 bg-amber-100 text-amber-800'>требует классификации</Badge>
+                                )}
+                              </td>
+                              <td className='px-3 py-2'>{renderAccessoryRuleButton(row, problem.type)}</td>
+                            </tr>,
+                            <tr key={problem.type + '-' + row.manager + '-' + row.item + '-' + index + '-details'} className='border-b border-border/70 bg-slate-50/60'>
+                              <td colSpan={8} className='px-3 pb-2 pt-0 text-[11px] leading-relaxed text-slate-500'>
+                                Клиент: {row.client || '—'} · Отдел: {row.department} · Регистратор: {getRegistrarSummary(row) || '—'} · Артикул: {row.article || '—'} · База: {formatMoney(row.base)} · Причина: {getSalesProblemReason(row, problem.type)} · Правило: {row.matchedRule}
+                              </td>
+                            </tr>,
+                          ];
                         }
 
                         const row = problem.row;
                         return (
-                          <tr key={`${problem.type}-${row.manager}-${index}`} className='border-t border-border/70'>
+                          <tr key={problem.type + '-' + row.manager + '-' + index} className='border-t border-border/70 align-top'>
                             <td className='px-3 py-2'><Badge className={isErrorProblem ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}>{problem.label}</Badge></td>
-                            <td className='px-3 py-2'>{row.manager}</td>
+                            <td className='px-3 py-2 font-semibold text-slate-700'>{row.manager}</td>
                             <td className='px-3 py-2'>{row.department}</td>
-                            <td className='px-3 py-2'>—</td>
-                            <td className='px-3 py-2'>—</td>
-                            <td className='max-w-[360px] truncate px-3 py-2' title={row.comment}>{row.comment || '—'}</td>
-                            <td className='px-3 py-2'>—</td>
-                            <td className='px-3 py-2'>—</td>
+                            <td className='px-3 py-2 leading-snug text-slate-700' title={row.comment}>{row.comment || 'Зарплатная строка'}</td>
                             <td className='px-3 py-2 text-right'>—</td>
                             <td className='px-3 py-2 text-right'>—</td>
-                            <td className='px-3 py-2 text-right'>{`${row.workedDays ?? '—'} дн. / ${row.lateCount ?? '—'} опозд.`}</td>
                             <td className='px-3 py-2'>Зарплата</td>
-                            <td className='px-3 py-2'>{row.payrollReasons.join(', ') || 'Бонус дисциплины снят: опозданий больше 3'}</td>
-                            <td className='px-3 py-2'>Ручной ввод</td>
+                            <td className='px-3 py-2 text-slate-400'>—</td>
                           </tr>
                         );
                       })}</tbody>
@@ -5029,20 +5721,35 @@ export default function AdminPayrollPage() {
                       </div>
                       <div className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'>
                         <p className='font-semibold text-slate-900'>Требует проверки</p>
-                        {selectedManagerStatus.reason === 'замечаний нет' && selectedManagerPayroll.payrollReasons.length === 0 ? (
+                        {selectedManagerStatus.status === 'OK' && selectedManagerPayroll.payrollReasons.length === 0 ? (
                           <p className='mt-1'>Замечаний нет</p>
                         ) : (
                           <ul className='mt-1 grid gap-1'>
-                            {selectedManagerCounts.disputed > 0 && <li>Спорная техника: {selectedManagerCounts.disputed} строк</li>}
-                            {selectedManagerCounts.negative > 0 && <li>Отрицательная ВП: {selectedManagerCounts.negative} строк</li>}
-                            {selectedManagerCounts.zeroBase > 0 && <li>Подозрительная нулевая база: {selectedManagerCounts.zeroBase} строк</li>}
-                            {selectedManagerCounts.credits > 0 && <li>Кредиты: {selectedManagerCounts.credits} строк</li>}
+                            {selectedManagerCounts.disputed > 0 && <li>Спорные строки: {selectedManagerCounts.disputed}</li>}
+                            {selectedManagerCounts.serviceNotIncluded > 0 && <li>Услуги не вошли в 50%: {selectedManagerCounts.serviceNotIncluded}</li>}
+                            {selectedManagerCounts.potentialAccessories > 0 && <li>Похоже на аксессуары, но не вошло: {selectedManagerCounts.potentialAccessories}</li>}
+                            {selectedManagerCounts.zeroBase > 0 && <li>Нулевая база без понятного расчёта: {selectedManagerCounts.zeroBase}</li>}
                             {selectedManagerCounts.unclassified > 0 && <li>Строки без классификации: {selectedManagerCounts.unclassified}</li>}
                             {selectedManagerCounts.accessoryExcluded > 0 && <li>Ошибочно исключённые аксессуары: {selectedManagerCounts.accessoryExcluded}</li>}
                             {selectedManagerCounts.invalidNumbers > 0 && <li>NaN/undefined в расчётах: {selectedManagerCounts.invalidNumbers}</li>}
-                            {selectedManagerPayroll.payrollReasons.map((reason) => <li key={reason}>{reason}</li>)}
+                            {selectedManagerPayroll.payrollReasons.map((reason) => (
+                              <li key={reason}>
+                                {reason === 'Посещаемость по форме не подтверждена'
+                                  ? 'Дни рассчитаны по Google Sheets “График посещений”. Отметок прихода/ухода из Google-формы нет, поэтому опоздания и фактическое присутствие нужно проверить вручную.'
+                                  : reason}
+                              </li>
+                            ))}
                           </ul>
                         )}
+                      </div>
+                      <div className='mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900'>
+                        <p className='font-semibold'>Контроль / уже учтено</p>
+                        <ul className='mt-1 grid gap-1 text-blue-800'>
+                          {selectedManagerCounts.classifiedCredits > 0 && <li>Кредиты с понятным расчётом: {selectedManagerCounts.classifiedCredits}</li>}
+                          {selectedManagerCounts.accountedNegative > 0 && <li>Отрицательная ВП учтена в своём типе расчёта: {selectedManagerCounts.accountedNegative}</li>}
+                          {selectedManagerCounts.informationalZeroBase > 0 && <li>Нулевая база как контроль: {selectedManagerCounts.informationalZeroBase}</li>}
+                          {selectedManagerCounts.classifiedCredits === 0 && selectedManagerCounts.accountedNegative === 0 && selectedManagerCounts.informationalZeroBase === 0 && <li>Контрольных флагов нет</li>}
+                        </ul>
                       </div>
                     </div>
                     <div className='shrink-0 text-right'>
@@ -5169,16 +5876,250 @@ export default function AdminPayrollPage() {
                       </div>
                     </Card>
 
+
+                    {selectedManagerSummary.department === 'Опт' && (
+                    <Card>
+                      <h3 className='mb-3 text-base font-bold text-slate-900'>Диагностика оптового расчёта</h3>
+                      <p className='mb-4 text-sm text-slate-500'>Показывает оптовую базу 1,75%, исключения и начисления сотрудника. Розничные блоки 5% для опта не применяются.</p>
+                      <div className='grid gap-3 md:grid-cols-3'>
+                        {[
+                          ['База опта', formatMoney(classification.wholesale.base)],
+                          ['Ставка', '1,75%'],
+                          ['Бонус опта', formatMoney(selectedManagerSummary.wholesaleBonus)],
+                          ['Дни', selectedManagerPayroll.workedDays ?? '—'],
+                          ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
+                          ['Бонус дисциплины', formatMoney(selectedManagerPayroll.disciplineBonus)],
+                          ['Всего начислено', formatMoney(selectedManagerPayroll.grossPay)],
+                          ['К выплате', formatMoney(selectedManagerPayroll.netPay)],
+                        ].map(([label, value]) => (
+                          <div key={String(label)} className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                            <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
+                            <p className='font-bold text-slate-900'>{value}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className='mt-4 grid gap-3 md:grid-cols-2'>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Строки сотрудника в базе опта</p>
+                          <p className='font-bold text-slate-900'>{selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_INCLUDED_1_75').length}</p>
+                          <p className='mt-1 text-xs text-slate-500'>Сумма строк сотрудника: {formatMoney(selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_INCLUDED_1_75').reduce((sum, row) => sum + row.revenue, 0))}</p>
+                          <p className='mt-1 text-xs text-slate-400'>Бонус считается от общей базы опта: {formatMoney(classification.wholesale.base)}</p>
+                        </div>
+                        <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-amber-700'>Исключено из базы опта</p>
+                          <p className='font-bold text-amber-900'>{selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH').length}</p>
+                          <p className='mt-1 text-xs text-amber-700'>Сумма: {formatMoney(selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH').reduce((sum, row) => sum + row.revenue, 0))}</p>
+                        </div>
+                      </div>
+                    </Card>
+                    )}
+
+                    {selectedManagerSummary.department !== 'Опт' && (
+                    <Card>
+                      <h3 className='mb-3 text-base font-bold text-slate-900'>Диагностика расчёта по сотруднику</h3>
+                      <p className='mb-4 text-sm text-slate-500'>Показывает строки текущего загруженного отчёта, из которых портал собирает услуги, аксессуары и спорные позиции. Формулы здесь не меняются.</p>
+
+                      <div className='grid gap-3 md:grid-cols-3'>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Услуги вошли</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.serviceIncludedRevenue)}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Услуги не вошли</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.serviceExcludedRevenue)}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Все услуги</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.serviceTotalRevenue)}</p>
+                        </div>
+                      </div>
+
+                      <div className='mt-3 grid gap-3 md:grid-cols-4'>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Услуги бонус 50%</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.serviceBonus)}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Обычные аксессуары</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.regularAccessoryRevenue)}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Кредитные аксессуары</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.creditAccessoryRevenue)}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Итого переменная часть</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.variableSalesBonus)}</p>
+                        </div>
+                      </div>
+
+                      <div className='mt-3 grid gap-3 md:grid-cols-3'>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Общая база аксессуаров</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.accessoryRevenue)}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Бонус аксессуаров 5%</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.accessoryBonus)}</p>
+                        </div>
+                        <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-amber-700'>Отрицательные аксессуары</p>
+                          <p className='font-bold text-amber-900'>{selectedManagerDiagnostics.negativeAccessoryCount} / {formatMoney(selectedManagerDiagnostics.negativeAccessoryRevenue)}</p>
+                        </div>
+                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Техника ВП / бонус</p>
+                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.techGrossProfitBase)} / {formatMoney(selectedManagerDiagnostics.techBonus)}</p>
+                        </div>
+                        <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-amber-700'>Отрицательная техника ВП</p>
+                          <p className='font-bold text-amber-900'>{selectedManagerDiagnostics.negativeTechCount} / {formatMoney(selectedManagerDiagnostics.negativeTechGrossProfit)}</p>
+                        </div>
+                      </div>
+
+                      <div className='mt-5 space-y-5'>
+                        <div>
+                          <h4 className='mb-2 text-sm font-bold text-slate-900'>Услуги оказываемые — строки</h4>
+                          {selectedManagerServiceRows.length ? (
+                            <div className='max-h-72 overflow-auto rounded-lg border border-border'>
+                              <table className='w-full min-w-[980px] text-xs'>
+                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Тип</th><th className='px-3 py-2'>Вошла?</th></tr></thead>
+                                <tbody>{selectedManagerServiceRows.map((row, index) => (
+                                  <tr key={'service-diagnostic-' + row.item + '-' + index} className='border-t border-border/70'>
+                                    <td className='px-3 py-2'>{row.client || '—'}</td>
+                                    <td className='px-3 py-2'>{row.category}</td>
+                                    <td className='max-w-[320px] truncate px-3 py-2' title={row.item}>{row.item}</td>
+                                    <td className='px-3 py-2'>{row.article || '—'}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
+                                    <td className='px-3 py-2'>{row.calculationLabel}</td>
+                                    <td className='px-3 py-2'>{getNotIncludedInServiceReason(row)} · {row.matchedRule}</td>
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            </div>
+                          ) : <p className='text-sm text-slate-500'>Строк “Услуги оказываемые” по сотруднику не найдено.</p>}
+                        </div>
+
+                        {isAsadManager(selectedManagerSummary.manager) && (
+                          <div>
+                            <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
+                              <h4 className='text-sm font-bold text-slate-900'>Плоттерные / антигравийные плёнки Асада</h4>
+                              <p className='text-xs text-slate-500'>База {formatMoney(selectedManagerPlotterRows.reduce((sum, row) => sum + row.base, 0))} · бонус {formatMoney(selectedManagerPlotterRows.reduce((sum, row) => sum + row.bonus, 0))}</p>
+                            </div>
+                            {selectedManagerPlotterRows.length ? (
+                              <div className='max-h-72 overflow-auto rounded-lg border border-border'>
+                                <table className='w-full min-w-[1120px] text-xs'>
+                                  <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>Себестоимость / база</th><th className='px-3 py-2'>Формула</th><th className='px-3 py-2 text-right'>Бонус</th><th className='px-3 py-2'>Статус</th></tr></thead>
+                                  <tbody>{selectedManagerPlotterRows.map((row, index) => {
+                                    const isNegativePlotterRow = row.revenue < 0 || row.cost < 0 || row.base < 0 || row.bonus < 0 || row.grossProfit < 0;
+                                    return (
+                                      <tr key={'plotter-diagnostic-' + row.item + '-' + index} className='border-t border-border/70'>
+                                        <td className='px-3 py-2'>{row.client || '—'}</td>
+                                        <td className='px-3 py-2'>{row.category}</td>
+                                        <td className='max-w-[340px] truncate px-3 py-2' title={row.item}>{row.item}</td>
+                                        <td className='px-3 py-2'>{row.article || '—'}</td>
+                                        <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
+                                        <td className='px-3 py-2 text-right'>{formatMoney(row.base)}</td>
+                                        <td className='px-3 py-2'>себестоимость × 50%</td>
+                                        <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.bonus)}</td>
+                                        <td className='px-3 py-2'>{isNegativePlotterRow ? <Badge className='bg-amber-100 text-amber-800'>Возврат / минус / отрицательная ВП учтена</Badge> : <Badge className='bg-green-100 text-green-800'>Учтено</Badge>}</td>
+                                      </tr>
+                                    );
+                                  })}</tbody>
+                                </table>
+                              </div>
+                            ) : <p className='text-sm text-slate-500'>Плоттерных / антигравийных строк по Асаду не найдено.</p>}
+                          </div>
+                        )}
+
+                        <div>
+                          <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
+                            <h4 className='text-sm font-bold text-slate-900'>Аксессуары 5% — вошли в расчёт</h4>
+                            <p className='text-xs text-slate-500'>База {formatMoney(selectedManagerDiagnostics.accessoryRevenue)} · бонус {formatMoney(selectedManagerDiagnostics.accessoryBonus)}</p>
+                          </div>
+                          {selectedManagerAccessoryRows.length ? (
+                            <div className='max-h-72 overflow-auto rounded-lg border border-border'>
+                              <table className='w-full min-w-[980px] text-xs'>
+                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Причина / правило</th></tr></thead>
+                                <tbody>{selectedManagerAccessoryRows.map((row, index) => (
+                                  <tr key={'accessory-diagnostic-' + row.item + '-' + index} className='border-t border-border/70'>
+                                    <td className='px-3 py-2'>{row.client || '—'}</td>
+                                    <td className='px-3 py-2'>{row.category}</td>
+                                    <td className='max-w-[360px] truncate px-3 py-2' title={row.item}>{row.item}</td>
+                                    <td className='px-3 py-2'>{row.article || '—'}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
+                                    <td className='px-3 py-2'>{row.classificationReason} · {row.matchedRule.startsWith('manual-rule:') ? 'ручное правило' : row.matchedRule}</td>
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            </div>
+                          ) : <p className='text-sm text-slate-500'>Строк аксессуаров 5% по сотруднику не найдено.</p>}
+                        </div>
+
+                        <div>
+                          <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
+                            <h4 className='text-sm font-bold text-slate-900'>Похоже на аксессуары, но не вошло</h4>
+                            <p className='text-xs text-slate-500'>Потенциальная сумма {formatMoney(selectedManagerDiagnostics.potentialAccessoryRevenue)}</p>
+                          </div>
+                          {selectedManagerPotentialAccessoryRows.length ? (
+                            <div className='max-h-72 overflow-auto rounded-lg border border-border'>
+                              <table className='w-full min-w-[1080px] text-xs'>
+                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2'>Текущий тип</th><th className='px-3 py-2'>Почему не вошла</th><th className='px-3 py-2'>Действие</th></tr></thead>
+                                <tbody>{selectedManagerPotentialAccessoryRows.map((row, index) => (
+                                  <tr key={'potential-accessory-' + row.item + '-' + index} className='border-t border-border/70 align-top'>
+                                    <td className='px-3 py-2'>{row.client || '—'}</td>
+                                    <td className='px-3 py-2'>{row.category}</td>
+                                    <td className='max-w-[320px] truncate px-3 py-2' title={row.item}>{row.item}</td>
+                                    <td className='px-3 py-2'>{row.article || '—'}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
+                                    <td className='px-3 py-2'>{row.calculationLabel}</td>
+                                    <td className='px-3 py-2'>{getNotIncludedInAccessoryReason(row)} · {row.matchedRule}</td>
+                                    <td className='px-3 py-2'>{renderAccessoryRuleButton(row, 'disputed')}</td>
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            </div>
+                          ) : <p className='text-sm text-slate-500'>Похожих на аксессуары пропущенных строк не найдено.</p>}
+                        </div>
+
+                        <div>
+                          <h4 className='mb-2 text-sm font-bold text-slate-900'>Спорные строки сотрудника</h4>
+                          {selectedManagerProblemSalesRows.length ? (
+                            <div className='max-h-72 overflow-auto rounded-lg border border-border'>
+                              <table className='w-full min-w-[1040px] text-xs'>
+                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Тип</th><th className='px-3 py-2'>Причина</th><th className='px-3 py-2'>Действие</th></tr></thead>
+                                <tbody>{selectedManagerProblemSalesRows.map((row, index) => (
+                                  <tr key={'problem-sales-' + row.item + '-' + index} className='border-t border-border/70 align-top'>
+                                    <td className='px-3 py-2'>{row.client || '—'}</td>
+                                    <td className='px-3 py-2'>{row.category}</td>
+                                    <td className='max-w-[320px] truncate px-3 py-2' title={row.item}>{row.item}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
+                                    <td className='px-3 py-2'>{row.calculationLabel}</td>
+                                    <td className='px-3 py-2'>{row.grossProfit < 0 ? 'Отрицательная ВП — проверить' : row.classificationReason} · {row.matchedRule}</td>
+                                    <td className='px-3 py-2'>{row.grossProfit < 0 ? 'Проверить' : renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            </div>
+                          ) : <p className='text-sm text-slate-500'>Спорных строк по сотруднику не найдено.</p>}
+                        </div>
+                      </div>
+                    </Card>
+                    )}
+
                     <Card>
                       <h3 className='mb-3 text-base font-bold text-slate-900'>Проверка по сотруднику</h3>
+                      <h4 className='mb-2 text-sm font-bold text-slate-900'>Требует решения</h4>
                       <div className='grid gap-2 sm:grid-cols-2'>
                         {[
                           { label: 'Строки без классификации', count: selectedManagerCounts.unclassified, tone: 'error', problemType: 'unclassified' as ProblemType },
-                          { label: 'Кредитные продажи', count: selectedManagerCounts.credits, tone: 'warning', problemType: 'credit' as ProblemType },
-                          { label: 'Подозрительная нулевая база', count: selectedManagerCounts.zeroBase, tone: 'warning', problemType: 'zeroBase' as ProblemType },
                           { label: 'NaN/undefined', count: selectedManagerCounts.invalidNumbers, tone: 'error', problemType: 'invalidNumbers' as ProblemType },
                           { label: 'Спорные товары', count: selectedManagerCounts.disputed, tone: 'warning', problemType: 'disputed' as ProblemType },
-                          { label: 'Отрицательная валовая прибыль', count: selectedManagerCounts.negative, tone: 'warning', problemType: 'negative' as ProblemType },
+                          { label: 'Услуги не вошли в 50%', count: selectedManagerCounts.serviceNotIncluded, tone: 'warning', problemType: 'disputed' as ProblemType },
+                          { label: 'Похоже на аксессуары, но не вошло', count: selectedManagerCounts.potentialAccessories, tone: 'warning', problemType: 'disputed' as ProblemType },
+                          { label: 'Нулевая база без понятного расчёта', count: selectedManagerCounts.zeroBase, tone: 'warning', problemType: 'zeroBase' as ProblemType },
                           { label: 'Ошибочно исключённые аксессуары', count: selectedManagerCounts.accessoryExcluded, tone: 'error', problemType: 'accessoryExcluded' as ProblemType },
                         ].map(({ label, count, tone, problemType }) => {
                           const status = Number(count) === 0 ? 'OK' : tone === 'error' ? 'Ошибка' : 'Проверить';
@@ -5212,7 +6153,39 @@ export default function AdminPayrollPage() {
                           );
                         })}
                       </div>
-                      {selectedManagerCounts.negative > 0 && <p className='mt-3 text-xs text-slate-500'>Отрицательная ВП может быть возвратом или корректировкой. Проверьте строки.</p>}
+                      <h4 className='mb-2 mt-4 text-sm font-bold text-slate-900'>Контроль / уже учтено</h4>
+                      <div className='grid gap-2 sm:grid-cols-2'>
+                        {[
+                          { label: 'Кредитные продажи с понятным расчётом', count: selectedManagerCounts.classifiedCredits, problemType: 'credit' as ProblemType },
+                          { label: 'Отрицательная ВП учтена в расчёте', count: selectedManagerCounts.accountedNegative, problemType: 'negative' as ProblemType },
+                          { label: 'Нулевая база как контроль', count: selectedManagerCounts.informationalZeroBase, problemType: 'zeroBase' as ProblemType },
+                        ].map(({ label, count, problemType }) => {
+                          const isClickable = Number(count) > 0;
+                          return (
+                            <button
+                              key={label}
+                              type='button'
+                              disabled={!isClickable}
+                              onClick={() => {
+                                openProblemRows(problemType, selectedManagerSummary.manager);
+                                setSelectedManager(null);
+                              }}
+                              className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition ${isClickable ? 'cursor-pointer border-blue-100 bg-blue-50/50 hover:border-blue-200 hover:bg-blue-50 hover:shadow-sm' : 'cursor-default border-border bg-white'}`}
+                            >
+                              <span className='min-w-0'>
+                                <span className='block text-sm font-semibold text-slate-700'>{label}</span>
+                                <span className='block text-xs text-slate-500'>{count} строк</span>
+                              </span>
+                              <span className='shrink-0'>
+                                <Badge className={`${Number(count) === 0 ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'} ${isClickable ? 'ring-1 ring-current/20' : ''}`}>
+                                  {Number(count) === 0 ? 'OK' : 'Учтено'}
+                                  {isClickable && <ArrowRight className='ml-1 inline h-3.5 w-3.5' />}
+                                </Badge>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </Card>
                       </>
                     )}
@@ -5490,6 +6463,68 @@ export default function AdminPayrollPage() {
             </Card>
 
             <Card>
+              <div className='mb-4 flex flex-wrap items-start justify-between gap-3'>
+                <div>
+                  <h2 className='text-lg font-bold text-slate-900'>Правила классификации</h2>
+                      <p className='mt-1 text-sm text-slate-500'>Чтобы убрать позицию из спорных, нажмите “В аксессуары”. Будет создано точечное правило по этой номенклатуре: item + category + article, если он есть.</p>
+                </div>
+                <button
+                  type='button'
+                  onClick={() => void loadClassificationRules()}
+                  disabled={isClassificationRulesLoading}
+                  className='rounded-lg border border-border bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
+                >
+                  Обновить
+                </button>
+              </div>
+              {classificationRuleMessage && <p className='mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700'>{classificationRuleMessage}</p>}
+              {classificationRuleError && <p className='mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700'>{classificationRuleError}</p>}
+              {classificationRules.length ? (
+                <Table>
+                  <thead className='bg-slate-50 text-left text-slate-500'>
+                    <tr>
+                      <th className='px-4 py-3'>Статус</th>
+                      <th className='px-4 py-3'>Что ищем</th>
+                      <th className='px-4 py-3'>Во что классифицируем</th>
+                      <th className='px-4 py-3'>Причина</th>
+                      <th className='px-4 py-3'>Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {classificationRules.slice(0, 50).map((rule) => (
+                      <tr key={rule.id} className='border-t border-border/70'>
+                        <td className='px-4 py-3'><Badge className={rule.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}>{rule.isActive ? 'Активно' : 'Отключено'}</Badge></td>
+                        <td className='px-4 py-3 text-slate-700'>
+                          <p className='font-semibold'>{rule.matchType}</p>
+                          <p className='max-w-[420px] truncate text-xs text-slate-500' title={rule.itemText ?? ''}>{rule.itemText || '—'}</p>
+                          <p className='text-xs text-slate-500'>{rule.categoryText || '—'}{rule.article ? ` · ${rule.article}` : ''}</p>
+                        </td>
+                        <td className='px-4 py-3 font-semibold text-slate-900'>{rule.targetCalculationType === 'REVIEW_ONLY' ? 'Проверить вручную' : calculationLabels[rule.targetCalculationType]}</td>
+                        <td className='px-4 py-3 text-slate-700'>{rule.reason || '—'}</td>
+                        <td className='px-4 py-3'>
+                          {rule.isActive ? (
+                            <button
+                              type='button'
+                              onClick={() => void disableClassificationRule(rule.id)}
+                              disabled={classificationRuleActionId === `disable-${rule.id}`}
+                              className='rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
+                            >
+                              Отключить
+                            </button>
+                          ) : (
+                            <span className='text-xs text-slate-400'>Отключено</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              ) : (
+                <p className='text-sm text-slate-500'>{isClassificationRulesLoading ? 'Правила загружаются.' : 'Активных ручных правил пока нет.'}</p>
+              )}
+            </Card>
+
+            <Card>
               <h2 className='mb-4 text-lg font-bold text-slate-900'>Спорные товары</h2>
               {classification.disputedRows.length ? (
                 <Table>
@@ -5499,6 +6534,8 @@ export default function AdminPayrollPage() {
                       <th className='px-4 py-3'>Категория</th>
                       <th className='px-4 py-3'>Номенклатура</th>
                       <th className='px-4 py-3'>Тип расчёта</th>
+                      <th className='px-4 py-3'>Причина</th>
+                      <th className='px-4 py-3'>Действия</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -5508,6 +6545,24 @@ export default function AdminPayrollPage() {
                         <td className='px-4 py-3 text-slate-700'>{row.category}</td>
                         <td className='max-w-[520px] truncate px-4 py-3 text-slate-700' title={row.item}>{row.item}</td>
                         <td className='px-4 py-3 font-semibold text-slate-900'>{row.calculationLabel}</td>
+                        <td className='max-w-[360px] px-4 py-3 text-slate-700'>{row.classificationReason}</td>
+                        <td className='px-4 py-3'>
+                          <div className='flex flex-wrap gap-2'>
+                            <button
+                              type='button'
+                              onClick={() => void createAccessoryClassificationRule(row)}
+                              disabled={classificationRuleActionId === `accessory-${row.item}-${row.category}-${row.article}` || row.grossProfit < 0}
+                              className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50'
+                              title='Создать точечное правило по item + category + article, если артикул есть'
+                            >
+                              В аксессуары
+                            </button>
+                            <button type='button' disabled className='rounded-lg border border-border bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-400'>В технику 10%</button>
+                            <button type='button' disabled className='rounded-lg border border-border bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-400'>В кредитные аксессуары</button>
+                            <button type='button' disabled className='rounded-lg border border-border bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-400'>Оставить спорным</button>
+                          </div>
+                          {row.grossProfit < 0 && <p className='mt-1 text-xs text-amber-700'>Отрицательная валовая прибыль — проверить.</p>}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

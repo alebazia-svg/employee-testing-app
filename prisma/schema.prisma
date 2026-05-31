@@ -262,3 +262,24 @@ model PayrollAdjustment {
   @@index([runId])
   @@index([employeeResultId])
 }
+
+model PayrollClassificationRule {
+  id                    Int      @id @default(autoincrement())
+  title                 String?
+  isActive              Boolean  @default(true)
+  priority              Int      @default(100)
+  matchType             String
+  itemText              String?
+  categoryText          String?
+  article               String?
+  department            String?  @default("all")
+  saleContext           String?  @default("all")
+  targetCalculationType String
+  reason                String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([isActive, priority])
+  @@index([matchType])
+  @@index([targetCalculationType])
+}
