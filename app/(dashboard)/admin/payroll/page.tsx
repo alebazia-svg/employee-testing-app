@@ -213,6 +213,7 @@ type SavedPayrollRunSummary = {
   reviewCount: number;
   grossPay: number;
   netPay: number;
+  sourceSummary?: unknown;
   createdAt: string;
 };
 
@@ -246,6 +247,7 @@ type SavedPayrollEmployeeResult = {
   grossPay: number;
   netPay: number;
   status: string;
+  reasons?: unknown;
   comment: string;
   calculationDetails: SavedPayrollCalculationDetail[];
 };
@@ -281,6 +283,25 @@ type SavedPayrollRunDetail = SavedPayrollRunSummary & {
   manualInputs: SavedPayrollManualInput[];
   employeeResults: SavedPayrollEmployeeResult[];
 };
+
+function getSavedRunReviewReasons(run: { sourceSummary?: unknown }) {
+  const summary = run.sourceSummary;
+  if (!summary || typeof summary !== 'object' || !('reviewReasons' in summary)) return [];
+  const reviewReasons = (summary as { reviewReasons?: unknown }).reviewReasons;
+  if (!Array.isArray(reviewReasons)) return [];
+  return reviewReasons
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const reason = (item as { reason?: unknown }).reason;
+      const count = (item as { count?: unknown }).count;
+      return typeof reason === 'string' ? { reason, count: Number(count) || 0 } : null;
+    })
+    .filter((item): item is { reason: string; count: number } => Boolean(item));
+}
+
+function getSavedEmployeeReasons(row: { reasons?: unknown }) {
+  return Array.isArray(row.reasons) ? row.reasons.filter((reason): reason is string => typeof reason === 'string') : [];
+}
 
 type FullPayrollRow = BonusManagerSummary & {
   payrollDepartment: string;
@@ -3322,7 +3343,23 @@ export default function AdminPayrollPage() {
   const retailCreditSummary = useMemo(() => sumRows(creditTechRows), [creditTechRows]);
   const retailReviewSummary = useMemo(() => sumRows(retailReviewRows), [retailReviewRows]);
   const classificationErrorCount = classification.accessoryExcludedRows.length + unclassifiedRows.length;
-  const payrollReviewCount = fullPayrollRows.filter((row) => row.payrollStatus === 'Проверить').length;
+  const payrollReviewItems = useMemo(
+    () =>
+      fullPayrollRows
+        .map((row) => ({ row, reasons: getPayrollRowReviewReasons(row) }))
+        .filter((item) => item.reasons.length > 0),
+    [fullPayrollRows, classification.rows, classification.accessoryExcludedRows],
+  );
+  const payrollReviewCount = payrollReviewItems.length;
+  const payrollOkCount = fullPayrollRows.length - payrollReviewCount;
+  const payrollReviewReasonCounts = useMemo(() => {
+    const reasonCounts = new Map<string, number>();
+    payrollReviewItems.forEach((item) => {
+      item.reasons.forEach((reason) => reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1));
+    });
+    return Array.from(reasonCounts.entries()).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], 'ru'));
+  }, [payrollReviewItems]);
+  const payrollHasCriticalCostIssue = payrollReviewReasonCounts.some(([reason]) => reason === 'Подозрительно нулевая / неполная себестоимость техники');
   const registrarParseUnsafe = parseResult.isRegistrarReport && (!parseResult.isSafeForPayrollCalculation || payrollReviewCount > 20);
   const selectedManagerSummary = useMemo(() => classification.managerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [classification.managerSummaries, selectedManager]);
   const selectedManagerRows = useMemo(() => classification.rows.filter((row) => row.manager === selectedManager), [classification.rows, selectedManager]);
@@ -3841,17 +3878,35 @@ export default function AdminPayrollPage() {
   }
 
   function getPayrollRowStatus(row: FullPayrollRow) {
-    if (row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager') return row.payrollStatus;
-    const statusInfo = getManagerStatus(row, classification.rows, classification.accessoryExcludedRows);
-    return statusInfo.status === 'OK' && row.payrollStatus === 'OK' ? 'OK' : 'Проверить';
+    return getPayrollRowReviewReasons(row).length ? 'Проверить' : 'OK';
+  }
+
+  function getPayrollRowReviewReasons(row: FullPayrollRow) {
+    const reasons = [...row.payrollReasons];
+    const managerRows = classification.rows.filter((item) => item.manager === row.manager);
+    const checks = [
+      ['Строки без классификации', managerRows.filter((item) => !item.calculationType).length],
+      ['Ошибочно исключённые аксессуары', classification.accessoryExcludedRows.filter((item) => item.manager === row.manager).length],
+      ['NaN/undefined в расчётах', managerRows.filter((item) => [item.revenue, item.grossProfit, item.base, item.bonus].some((value) => !Number.isFinite(value))).length],
+      ['Спорные / нерешённые строки', managerRows.filter(isUnresolvedReviewRow).length],
+      ['Услуги не вошли в 50%', managerRows.filter(isServiceNotIncludedRow).length],
+      ['Похожие на аксессуары, но не вошли', managerRows.filter(isPotentialAccessoryNotIncludedRow).length],
+      ['Нулевая база без понятного расчёта', managerRows.filter(isCriticalZeroBaseRow).length],
+      ['Подозрительно нулевая / неполная себестоимость техники', managerRows.filter(isSuspiciousTechCostRow).length],
+    ];
+
+    checks.forEach(([reason, count]) => {
+      if (Number(count) > 0) reasons.push(String(reason));
+    });
+
+    return Array.from(new Set(reasons));
   }
 
   function getPayrollRowExportComment(row: FullPayrollRow) {
     const comments = [getPayrollExportShortType(row)];
     const managerRows = classification.rows.filter((item) => item.manager === row.manager);
     if (row.lateCount !== null) comments.push(`Опозд.: ${row.lateCount}`);
-    if (row.payrollReasons.includes('Посещаемость по форме не подтверждена')) comments.push('Посещаемость по форме не подтверждена');
-    if (managerRows.some(isSuspiciousTechCostRow)) comments.push('Подозрительно нулевая / неполная себестоимость техники');
+    getPayrollRowReviewReasons(row).forEach((reason) => comments.push(reason));
     if (row.comment) comments.push(row.comment);
     return comments.filter(Boolean).join(' · ');
   }
@@ -4340,6 +4395,12 @@ export default function AdminPayrollPage() {
         purchaseBase: purchasePayrollRow.purchaseBase,
         classificationErrorCount,
         payrollReviewCount: reviewCount,
+        reviewReasons: payrollReviewReasonCounts.map(([reason, count]) => ({ reason, count })),
+        reviewEmployees: payrollReviewItems.map((item) => ({
+          employeeName: item.row.manager,
+          reasons: item.reasons,
+          netPay: item.row.netPay,
+        })),
         manualClassificationRuleCount: classification.rows.filter((row) => row.matchedRule.startsWith('manual-rule:')).length,
         manualClassificationRows: classification.rows
           .filter((row) => row.matchedRule.startsWith('manual-rule:'))
@@ -4418,7 +4479,7 @@ export default function AdminPayrollPage() {
         grossPay: row.grossPay,
         netPay: row.netPay,
         status: getPayrollRowStatus(row),
-        reasons: row.payrollReasons,
+        reasons: getPayrollRowReviewReasons(row),
         comment: row.comment,
         order: index,
         calculationDetails: detailsByEmployee[row.manager] ?? [],
@@ -4451,7 +4512,9 @@ export default function AdminPayrollPage() {
 
       const run = await response.json() as { id: number; runNumber: number };
       setLastSavedRunId(run.id);
-      setSaveStatus(`Расчёт сохранён в PostgreSQL. Его можно открыть в блоке “Сохранённые расчёты”. Запуск #${run.runNumber}.`);
+      setSaveStatus(
+        `Расчёт сохранён в PostgreSQL как ${payrollReviewCount > 0 ? 'черновик / требует проверки' : 'черновик без критичных проверок'}. Его можно открыть в блоке “Сохранённые расчёты”. Запуск #${run.runNumber}.`,
+      );
       await loadSavedPayrollPeriods();
     } catch (caughtError) {
       setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось сохранить расчёт.');
@@ -4991,6 +5054,31 @@ export default function AdminPayrollPage() {
                       </div>
                     </div>
                     {isCurrentPeriodClosed && <p className='mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900'>Период закрыт. Новые расчёты за этот месяц запрещены.</p>}
+                    <div className={`mb-4 rounded-lg border px-3 py-3 ${payrollReviewCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
+                      <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+                        <div>
+                          <p className='text-sm font-bold'>{payrollReviewCount > 0 ? 'Требует проверки' : 'Готово к выплате'}</p>
+                          <p className='mt-1 text-sm'>
+                            OK: {payrollOkCount} · Проверить: {payrollReviewCount}
+                          </p>
+                          {payrollReviewReasonCounts.length > 0 && (
+                            <div className='mt-2 flex flex-wrap gap-2'>
+                              {payrollReviewReasonCounts.slice(0, 5).map(([reason, count]) => (
+                                <Badge key={reason} className='bg-white/80 text-slate-800'>{reason}: {count}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <Badge className={payrollReviewCount > 0 ? 'w-fit bg-amber-100 text-amber-900' : 'w-fit bg-emerald-100 text-emerald-800'}>
+                          {payrollReviewCount > 0 ? 'Черновик / не финально' : 'Без критичных проверок'}
+                        </Badge>
+                      </div>
+                      {payrollHasCriticalCostIssue && (
+                        <p className='mt-3 rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-sm font-semibold text-amber-950'>
+                          Ведомость нельзя считать финальной, пока не проверена себестоимость в 1С / закрытие месяца.
+                        </p>
+                      )}
+                    </div>
                     {saveStatus && <p className='mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>{saveStatus}</p>}
                     {saveError && <p className='mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{saveError}</p>}
                     <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
@@ -5011,8 +5099,7 @@ export default function AdminPayrollPage() {
                         </thead>
                         <tbody>
                           {fullPayrollRows.map((summary) => {
-                            const statusInfo = getManagerStatus(summary, classification.rows, classification.accessoryExcludedRows);
-                            const combinedStatus = statusInfo.status === 'OK' && summary.payrollStatus === 'OK' ? 'OK' : 'Проверить';
+                            const combinedStatus = getPayrollRowStatus(summary);
                             return (
                               <tr key={summary.manager} className='border-t border-border/70 align-top'>
                                 <td className='max-w-[210px] truncate px-2 py-2 font-semibold text-slate-900' title={`${summary.manager} · ${summary.position}`}>
@@ -5103,6 +5190,13 @@ export default function AdminPayrollPage() {
                                     <span>Проверить: {run.reviewCount}</span>
                                     <span>К выплате: {formatMoney(run.netPay)}</span>
                                   </div>
+                                  {getSavedRunReviewReasons(run).length > 0 && (
+                                    <div className='mt-2 flex flex-wrap gap-1'>
+                                      {getSavedRunReviewReasons(run).slice(0, 4).map((item) => (
+                                        <Badge key={item.reason} className='bg-amber-100 text-amber-900'>{item.reason}: {item.count}</Badge>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -5129,6 +5223,16 @@ export default function AdminPayrollPage() {
                       <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
                         Это сохранённый снимок расчёта. Исходный Excel-файл не восстанавливается, сохранены итоговые данные расчёта.
                       </p>
+                      {getSavedRunReviewReasons(selectedSavedRun).length > 0 && (
+                        <div className='mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>
+                          <p className='font-bold'>Основные причины проверки</p>
+                          <div className='mt-2 flex flex-wrap gap-2'>
+                            {getSavedRunReviewReasons(selectedSavedRun).map((item) => (
+                              <Badge key={item.reason} className='bg-white text-amber-900'>{item.reason}: {item.count}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                       <div className='mb-4 grid gap-3 md:grid-cols-4'>
                         <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
@@ -5153,7 +5257,7 @@ export default function AdminPayrollPage() {
                         <div>
                           <h3 className='mb-2 text-sm font-bold text-slate-900'>Сотрудники</h3>
                           <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
-                            <table className='w-full min-w-[760px] text-xs'>
+                            <table className='w-full min-w-[900px] text-xs'>
                               <thead className='bg-slate-50 text-left text-slate-500'>
                                 <tr>
                                   <th className='px-3 py-2'>Сотрудник</th>
@@ -5162,6 +5266,7 @@ export default function AdminPayrollPage() {
                                   <th className='px-3 py-2 text-right'>Начислено</th>
                                   <th className='px-3 py-2 text-right'>К выплате</th>
                                   <th className='px-3 py-2'>Статус</th>
+                                  <th className='px-3 py-2'>Причины</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -5173,6 +5278,7 @@ export default function AdminPayrollPage() {
                                     <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossPay)}</td>
                                     <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.netPay)}</td>
                                     <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status}</Badge></td>
+                                    <td className='px-3 py-2 text-slate-600'>{getSavedEmployeeReasons(row).join('; ') || '—'}</td>
                                   </tr>
                                 ))}
                               </tbody>

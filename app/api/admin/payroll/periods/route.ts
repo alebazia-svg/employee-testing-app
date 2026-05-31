@@ -16,6 +16,7 @@ export async function GET() {
           reviewCount: true,
           grossPay: true,
           netPay: true,
+          sourceSummary: true,
           createdAt: true,
         },
       },
