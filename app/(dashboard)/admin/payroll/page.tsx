@@ -2572,6 +2572,20 @@ function isCriticalZeroBaseRow(row: ClassifiedSalesRow) {
   return row.base === 0 && row.percent === 0 && row.grossProfit !== 0;
 }
 
+function isSuspiciousTechCostRow(row: ClassifiedSalesRow) {
+  const isTechCalculation = row.calculationType === 'RETAIL_GROSS_PROFIT_10' || row.calculationType === 'CREDIT_GROSS_PROFIT';
+  if (!isTechCalculation || row.revenue <= 0) return false;
+  const costRatio = row.cost / row.revenue;
+  const grossProfitRatio = row.grossProfit / row.revenue;
+  return row.cost === 0 || costRatio <= 0.05 || grossProfitRatio >= 0.95;
+}
+
+function getSuspiciousTechCostReason(row: ClassifiedSalesRow) {
+  if (row.cost === 0) return 'Возможна нерассчитанная себестоимость в 1С: себестоимость = 0';
+  if (row.cost / row.revenue <= 0.05) return 'Возможна нерассчитанная себестоимость в 1С: себестоимость подозрительно низкая';
+  return 'Возможна нерассчитанная себестоимость в 1С: ВП почти равна выручке';
+}
+
 function isPlotterCalculationRow(row: ClassifiedSalesRow) {
   return row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50' || row.matchedRule === 'asad-plotter-material' || isPlotterMaterial(row);
 }
@@ -3019,13 +3033,15 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
   const serviceNotIncluded = managerRows.filter(isServiceNotIncludedRow).length;
   const potentialAccessories = managerRows.filter(isPotentialAccessoryNotIncludedRow).length;
   const zeroBase = managerRows.filter(isCriticalZeroBaseRow).length;
+  const suspiciousTechCost = managerRows.filter(isSuspiciousTechCostRow).length;
 
-  if (disputed || serviceNotIncluded || potentialAccessories || zeroBase) {
+  if (disputed || serviceNotIncluded || potentialAccessories || zeroBase || suspiciousTechCost) {
     const reasons = [
       disputed ? `спорные строки ${disputed}` : '',
       serviceNotIncluded ? `услуги не вошли ${serviceNotIncluded}` : '',
       potentialAccessories ? `похожие на аксессуары ${potentialAccessories}` : '',
       zeroBase ? `нулевая база без понятного расчёта ${zeroBase}` : '',
+      suspiciousTechCost ? `подозрительная себестоимость техники ${suspiciousTechCost}` : '',
     ].filter(Boolean);
     return { status: 'Проверить', reason: reasons.join(', ') };
   }
@@ -3327,6 +3343,7 @@ export default function AdminPayrollPage() {
       creditReview: selectedManagerRows.filter((row) => row.calculationType === 'CREDIT_REVIEW_NO_BONUS').length,
       potentialAccessories: selectedManagerRows.filter(isPotentialAccessoryNotIncludedRow).length,
       serviceNotIncluded: selectedManagerRows.filter(isServiceNotIncludedRow).length,
+      suspiciousTechCost: selectedManagerRows.filter(isSuspiciousTechCostRow).length,
       classifiedCredits: selectedManagerRows.filter((row) => row.isCreditSale && row.calculationType !== 'CREDIT_REVIEW_NO_BONUS').length,
       accountedNegative: selectedManagerRows.filter((row) => row.grossProfit < 0 && !isUnresolvedReviewRow(row)).length,
       informationalZeroBase: selectedManagerRows.filter((row) => hasUnexpectedZeroBase(row) && !isCriticalZeroBaseRow(row)).length,
@@ -3345,6 +3362,7 @@ export default function AdminPayrollPage() {
     () => selectedManagerRows.filter(isPotentialAccessoryNotIncludedRow),
     [selectedManagerRows],
   );
+  const selectedManagerSuspiciousTechCostRows = useMemo(() => selectedManagerRows.filter(isSuspiciousTechCostRow), [selectedManagerRows]);
   const selectedManagerProblemSalesRows = useMemo(
     () =>
       selectedManagerRows.filter(
@@ -3828,6 +3846,16 @@ export default function AdminPayrollPage() {
     return statusInfo.status === 'OK' && row.payrollStatus === 'OK' ? 'OK' : 'Проверить';
   }
 
+  function getPayrollRowExportComment(row: FullPayrollRow) {
+    const comments = [getPayrollExportShortType(row)];
+    const managerRows = classification.rows.filter((item) => item.manager === row.manager);
+    if (row.lateCount !== null) comments.push(`Опозд.: ${row.lateCount}`);
+    if (row.payrollReasons.includes('Посещаемость по форме не подтверждена')) comments.push('Посещаемость по форме не подтверждена');
+    if (managerRows.some(isSuspiciousTechCostRow)) comments.push('Подозрительно нулевая / неполная себестоимость техники');
+    if (row.comment) comments.push(row.comment);
+    return comments.filter(Boolean).join(' · ');
+  }
+
   async function loadClassificationRules() {
     setIsClassificationRulesLoading(true);
     setClassificationRuleError('');
@@ -4096,24 +4124,59 @@ export default function AdminPayrollPage() {
   }
 
   function buildPayrollCheckRows() {
-    return fullPayrollRows.flatMap((row) => {
+    const employeeCheckRows = fullPayrollRows.flatMap((row) => {
       const managerRows = classification.rows.filter((item) => item.manager === row.manager);
+      const payrollReasonRows = row.payrollReasons.map((reason) => [
+        row.manager,
+        reason,
+        1,
+        'Проверить',
+        reason === 'Посещаемость по форме не подтверждена'
+          ? 'Дни рассчитаны по Google Sheets "График посещений". Отметок прихода/ухода из Google-формы нет, поэтому опоздания и фактическое присутствие нужно проверить вручную.'
+          : reason,
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ]);
       const checks = [
-        ['Спорные товары', managerRows.filter((item) => item.calculationType === 'WHOLESALE_REVIEW_TECH' || item.calculationType === 'RETAIL_REVIEW_TECH').length, 'Проверить', 'Проверьте спорную технику и товары'],
-        ['Отрицательная валовая прибыль', managerRows.filter((item) => item.grossProfit < 0).length, 'Проверить', 'Возможны возвраты или корректировки'],
-        ['Строки с подозрительной нулевой базой', managerRows.filter(hasUnexpectedZeroBase).length, 'Проверить', 'База расчёта равна нулю без ожидаемого исключения'],
-        ['Кредиты', managerRows.filter((item) => item.isCreditSale).length, 'Проверить', 'Кредитные продажи требуют сверки'],
+        ['Спорные / нерешённые строки', managerRows.filter(isUnresolvedReviewRow).length, 'Проверить', 'Требуется ручная классификация строки'],
+        ['Похожие на аксессуары, но не вошли', managerRows.filter(isPotentialAccessoryNotIncludedRow).length, 'Проверить', 'Проверьте, нужно ли создать ручное правило'],
+        ['Услуги не вошли в 50%', managerRows.filter(isServiceNotIncludedRow).length, 'Проверить', 'Строка похожа на услуги, но не попала в расчёт услуг'],
+        ['Нулевая база без понятного расчёта', managerRows.filter(isCriticalZeroBaseRow).length, 'Проверить', 'База расчёта равна нулю, но строка может влиять на зарплату'],
         ['Строки без классификации', managerRows.filter((item) => !item.calculationType).length, 'Ошибка', 'Нет классификации строки'],
-        ['Не заполнены дни', row.workedDays === null && row.salaryType !== 'fixed_salary' ? 1 : 0, 'Проверить', 'Заполните дни вручную или через предпросмотр'],
-        ['Посещаемость по форме не подтверждена', row.lateCount === null && row.salaryType !== 'fixed_salary' && row.salaryType !== 'purchase_manager' ? 1 : 0, 'Проверить', 'Проверьте отметки прихода/ухода и опоздания вручную'],
-        ['Ручная корректировка дней', row.daysSource === 'manualCorrection' ? 1 : 0, 'Проверить', 'Дни или опоздания изменены вручную'],
-        ['Особая схема расчёта', row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager' || row.salaryType === 'vl_percent' ? 1 : 0, 'OK', getSalaryTypeLabel(row.salaryType)],
+        ['NaN/undefined в расчётах', managerRows.filter((item) => [item.revenue, item.grossProfit, item.base, item.bonus].some((value) => !Number.isFinite(value))).length, 'Ошибка', 'В строке есть некорректные числовые значения'],
+        ['Ошибочно исключённые аксессуары', classification.accessoryExcludedRows.filter((item) => item.manager === row.manager).length, 'Ошибка', 'Аксессуар исключён из расчёта и требует проверки'],
+        ['Ручная корректировка дней', row.daysSource === 'manualCorrection' ? 1 : 0, 'Контроль / учтено', 'Дни или опоздания изменены вручную'],
       ];
 
-      return checks
+      return [
+        ...payrollReasonRows,
+        ...checks
         .filter(([, count]) => Number(count) > 0)
-        .map(([check, count, status, comment]) => [row.manager, check, count, status, comment]);
+        .map(([check, count, status, comment]) => [row.manager, check, count, status, comment, '', '', '', '', '', '']),
+      ];
     });
+
+    const suspiciousCostRows = classification.rows
+      .filter(isSuspiciousTechCostRow)
+      .map((row) => [
+        row.manager,
+        'Подозрительно нулевая / неполная себестоимость техники',
+        1,
+        'Проверить',
+        getSuspiciousTechCostReason(row),
+        row.category,
+        row.item,
+        row.article || '',
+        toExportMoney(row.revenue),
+        toExportMoney(row.cost),
+        toExportMoney(row.grossProfit),
+      ]);
+
+    return [...employeeCheckRows, ...suspiciousCostRows];
   }
 
   async function loadSavedPayrollPeriods() {
@@ -4512,7 +4575,7 @@ export default function AdminPayrollPage() {
       toExportMoney(row.fixedDeduction),
       toExportMoney(row.netPay),
       getPayrollRowStatus(row),
-      [getPayrollExportShortType(row), row.lateCount === null ? '' : `Опозд.: ${row.lateCount}`, row.comment].filter(Boolean).join(' · '),
+      getPayrollRowExportComment(row),
     ]);
     const totalPurchaseBonus = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'purchase_manager' ? row.purchasePercentAmount : 0), 0);
     const totalPurchaseAdjustment = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'purchase_manager' ? row.purchaseTargetAdjustment : 0), 0);
@@ -4622,19 +4685,20 @@ export default function AdminPayrollPage() {
     setColumnNumberFormat(accrualSheet, 2, accrualRows.length + 1, [4, 6], accrualMoneyFormat);
     XLSX.utils.book_append_sheet(workbookExport, accrualSheet, 'Расшифровка начислений');
 
-    const checkHeader = ['Сотрудник', 'Тип проверки', 'Количество', 'Статус', 'Комментарий'];
+    const checkHeader = ['Сотрудник', 'Тип проверки', 'Количество', 'Статус', 'Комментарий', 'Категория', 'Номенклатура', 'Артикул', 'Выручка', 'Себестоимость', 'ВП'];
     const checkRows = buildPayrollCheckRows();
     const checkSheet = XLSX.utils.aoa_to_sheet([checkHeader, ...checkRows]);
-    checkSheet['!cols'] = [24, 32, 12, 14, 48].map((wch) => ({ wch }));
-    checkSheet['!autofilter'] = { ref: `A1:E${checkRows.length + 1}` };
+    checkSheet['!cols'] = [24, 42, 12, 18, 58, 28, 52, 18, 14, 14, 14].map((wch) => ({ wch }));
+    checkSheet['!autofilter'] = { ref: `A1:K${checkRows.length + 1}` };
     checkSheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
-    setRowStyle(checkSheet, 1, 0, 4, headerStyle);
+    setRowStyle(checkSheet, 1, 0, 10, headerStyle);
     checkRows.forEach((row, index) => {
       const rowNumber = index + 2;
-      setRowStyle(checkSheet, rowNumber, 0, 4, baseCellStyle);
-      if (row[3] === 'Ошибка') setRowStyle(checkSheet, rowNumber, 0, 4, { ...checkErrorStyle, border });
-      if (row[3] === 'Проверить') setRowStyle(checkSheet, rowNumber, 0, 4, { ...checkWarningStyle, border });
+      setRowStyle(checkSheet, rowNumber, 0, 10, baseCellStyle);
+      if (row[3] === 'Ошибка') setRowStyle(checkSheet, rowNumber, 0, 10, { ...checkErrorStyle, border });
+      if (row[3] === 'Проверить') setRowStyle(checkSheet, rowNumber, 0, 10, { ...checkWarningStyle, border });
     });
+    setColumnNumberFormat(checkSheet, 2, checkRows.length + 1, [8, 9, 10], moneyFormat);
     XLSX.utils.book_append_sheet(workbookExport, checkSheet, 'Проверка');
 
     const sourceRows = [
@@ -5729,6 +5793,7 @@ export default function AdminPayrollPage() {
                             {selectedManagerCounts.serviceNotIncluded > 0 && <li>Услуги не вошли в 50%: {selectedManagerCounts.serviceNotIncluded}</li>}
                             {selectedManagerCounts.potentialAccessories > 0 && <li>Похоже на аксессуары, но не вошло: {selectedManagerCounts.potentialAccessories}</li>}
                             {selectedManagerCounts.zeroBase > 0 && <li>Нулевая база без понятного расчёта: {selectedManagerCounts.zeroBase}</li>}
+                            {selectedManagerCounts.suspiciousTechCost > 0 && <li>Подозрительно нулевая / неполная себестоимость техники: {selectedManagerCounts.suspiciousTechCost}</li>}
                             {selectedManagerCounts.unclassified > 0 && <li>Строки без классификации: {selectedManagerCounts.unclassified}</li>}
                             {selectedManagerCounts.accessoryExcluded > 0 && <li>Ошибочно исключённые аксессуары: {selectedManagerCounts.accessoryExcluded}</li>}
                             {selectedManagerCounts.invalidNumbers > 0 && <li>NaN/undefined в расчётах: {selectedManagerCounts.invalidNumbers}</li>}
@@ -6034,6 +6099,33 @@ export default function AdminPayrollPage() {
 
                         <div>
                           <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
+                            <h4 className='text-sm font-bold text-slate-900'>Подозрительная себестоимость техники / проверь 1С</h4>
+                            <p className='text-xs text-slate-500'>{selectedManagerSuspiciousTechCostRows.length} строк</p>
+                          </div>
+                          {selectedManagerSuspiciousTechCostRows.length ? (
+                            <div className='max-h-72 overflow-auto rounded-lg border border-amber-200'>
+                              <table className='w-full min-w-[1180px] text-xs'>
+                                <thead className='sticky top-0 bg-amber-50 text-left text-amber-800'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>Себестоимость</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Тип расчёта</th><th className='px-3 py-2'>Причина</th></tr></thead>
+                                <tbody>{selectedManagerSuspiciousTechCostRows.map((row, index) => (
+                                  <tr key={'suspicious-tech-cost-' + row.item + '-' + index} className='border-t border-amber-100 align-top'>
+                                    <td className='px-3 py-2'>{row.client || '—'}</td>
+                                    <td className='px-3 py-2'>{row.category}</td>
+                                    <td className='max-w-[340px] truncate px-3 py-2' title={row.item}>{row.item}</td>
+                                    <td className='px-3 py-2'>{row.article || '—'}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.cost)}</td>
+                                    <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
+                                    <td className='px-3 py-2'>{row.calculationLabel}</td>
+                                    <td className='px-3 py-2'>{getSuspiciousTechCostReason(row)} / проверь закрытие месяца</td>
+                                  </tr>
+                                ))}</tbody>
+                              </table>
+                            </div>
+                          ) : <p className='text-sm text-slate-500'>Подозрительной себестоимости техники по сотруднику не найдено.</p>}
+                        </div>
+
+                        <div>
+                          <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
                             <h4 className='text-sm font-bold text-slate-900'>Аксессуары 5% — вошли в расчёт</h4>
                             <p className='text-xs text-slate-500'>База {formatMoney(selectedManagerDiagnostics.accessoryRevenue)} · бонус {formatMoney(selectedManagerDiagnostics.accessoryBonus)}</p>
                           </div>
@@ -6120,6 +6212,7 @@ export default function AdminPayrollPage() {
                           { label: 'Услуги не вошли в 50%', count: selectedManagerCounts.serviceNotIncluded, tone: 'warning', problemType: 'disputed' as ProblemType },
                           { label: 'Похоже на аксессуары, но не вошло', count: selectedManagerCounts.potentialAccessories, tone: 'warning', problemType: 'disputed' as ProblemType },
                           { label: 'Нулевая база без понятного расчёта', count: selectedManagerCounts.zeroBase, tone: 'warning', problemType: 'zeroBase' as ProblemType },
+                          { label: 'Подозрительно нулевая / неполная себестоимость техники', count: selectedManagerCounts.suspiciousTechCost, tone: 'warning', problemType: 'disputed' as ProblemType },
                           { label: 'Ошибочно исключённые аксессуары', count: selectedManagerCounts.accessoryExcluded, tone: 'error', problemType: 'accessoryExcluded' as ProblemType },
                         ].map(({ label, count, tone, problemType }) => {
                           const status = Number(count) === 0 ? 'OK' : tone === 'error' ? 'Ошибка' : 'Проверить';
