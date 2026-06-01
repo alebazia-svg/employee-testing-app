@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
@@ -607,6 +607,7 @@ type PayrollParseResult = {
   headerMap: HeaderMap | null;
   columns: string[];
   rows: SalesRow[];
+  detailRows: SalesRow[];
   isRegistrarReport: boolean;
   isSafeForPayrollCalculation: boolean;
   safetyWarnings: ParseWarning[];
@@ -1132,6 +1133,7 @@ function buildResult(
     safetyWarnings?: ParseWarning[];
     sourceRowCount?: number;
     detailRowCount?: number;
+    detailRows?: SalesRow[];
   } = {},
 ): PayrollParseResult {
   const managerSummaries = sumByKey<ManagerSummary>(
@@ -1172,6 +1174,7 @@ function buildResult(
     headerMap,
     columns,
     rows,
+    detailRows: options.detailRows ?? rows,
     isRegistrarReport: options.isRegistrarReport ?? false,
     isSafeForPayrollCalculation: options.isSafeForPayrollCalculation ?? true,
     safetyWarnings: options.safetyWarnings ?? [],
@@ -1369,6 +1372,7 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
     isRegistrarReport: hasRegistrar,
     sourceRowCount: meaningfulRows.length,
     detailRowCount: salesRows.length,
+    detailRows: salesRows,
   });
 }
 
@@ -1494,6 +1498,7 @@ function parseRowsWithDocumentUnderItem(rows: SheetRow[], headerIndex: number, h
     isRegistrarReport: true,
     sourceRowCount: meaningfulRows.length,
     detailRowCount: salesRows.length,
+    detailRows: salesRows,
   });
 }
 
@@ -2564,6 +2569,13 @@ function isAccessoryLikeRow(row: ClassifiedSalesRow) {
   return accessoryDiagnosticKeywords.some((keyword) => haystack.includes(normalizeText(keyword)));
 }
 
+function looksLikeTechAuditRow(row: ClassifiedSalesRow) {
+  const item = normalizeText(row.item);
+  const accessoryMarkers = ['кабель', 'провод', 'зарядка', 'зарядное', 'блок питания', 'адаптер', 'переходник', 'чехол', 'стекло', 'пленка', 'плёнка', 'держатель', 'ремешок'];
+  if (accessoryMarkers.some((marker) => item.includes(normalizeText(marker)))) return false;
+  return ['airpods', 'airpods pro', 'apple watch', 'ipad', 'iphone', 'macbook', 'playstation', 'ps5'].some((marker) => item.includes(marker));
+}
+
 function getNotIncludedInServiceReason(row: ClassifiedSalesRow) {
   if (row.calculationType === 'RETAIL_FILM_50') return 'Вошла в услуги 50%';
   if (row.grossProfit < 0) return 'Не вошла: отрицательная ВП, требуется проверка';
@@ -3098,7 +3110,7 @@ export default function AdminPayrollPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [clientFilter, setClientFilter] = useState('all');
   const [specialFilter, setSpecialFilter] = useState('all');
-  const [activePayrollTab, setActivePayrollTab] = useState('summary');
+  const [activePayrollTab, setActivePayrollTab] = useState('Итог ЗП');
   const [expandedManager, setExpandedManager] = useState<string | null>(null);
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
   const [manualPayroll, setManualPayroll] = useState<Record<string, PayrollManualInput>>({});
@@ -3169,6 +3181,11 @@ export default function AdminPayrollPage() {
   const parseResult = useMemo(() => parsePayrollReport(rows), [rows]);
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
   const classification = useMemo(() => classifySalesRows(parseResult.rows, classificationRules), [parseResult.rows, classificationRules]);
+  // TODO: For deeper audit, add parseResult.auditRows from document-level rows when the source Excel contains per-document revenue/grossProfit. Do not use auditRows for payroll calculation.
+  const auditClassification = useMemo(
+    () => (parseResult.detailRows === parseResult.rows ? classification : classifySalesRows(parseResult.detailRows, classificationRules)),
+    [classification, parseResult.detailRows, parseResult.rows, classificationRules],
+  );
   const managerOptions = useMemo(() => Array.from(new Set(classification.rows.map((row) => row.manager))).sort((a, b) => a.localeCompare(b, 'ru')), [classification.rows]);
   const typeOptions = useMemo(() => Array.from(new Set(classification.rows.map((row) => row.calculationType))), [classification.rows]);
   const categoryOptions = useMemo(() => Array.from(new Set(classification.rows.map((row) => row.category))).sort((a, b) => a.localeCompare(b, 'ru')), [classification.rows]);
@@ -3599,6 +3616,66 @@ export default function AdminPayrollPage() {
       },
     );
   }, [problemDefinitions, payrollProblemDefinitions, problemTypeFilter, problemManagerFilter, problemDepartmentFilter, problemCategoryFilter, problemClientFilter, problemSearch, problemArticleSearch]);
+  const auditInvalidNumberRows = useMemo(() => auditClassification.rows.filter((row) => [row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))), [auditClassification.rows]);
+  const auditSuspiciousTechCostRows = useMemo(() => auditClassification.rows.filter(isSuspiciousTechCostRow), [auditClassification.rows]);
+  const auditUnclassifiedRows = useMemo(() => auditClassification.rows.filter((row) => !row.calculationType), [auditClassification.rows]);
+  const auditRetailReviewRows = useMemo(() => auditClassification.rows.filter((row) => row.calculationType === 'RETAIL_REVIEW_TECH'), [auditClassification.rows]);
+  const auditWholesaleReviewRows = useMemo(() => auditClassification.rows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH'), [auditClassification.rows]);
+  const auditActionRows = useMemo(() => {
+    const seen = new Set<string>();
+    const rows = [
+      ...auditUnclassifiedRows,
+      ...auditInvalidNumberRows,
+      ...auditSuspiciousTechCostRows,
+      ...auditClassification.accessoryExcludedRows,
+      ...auditRetailReviewRows,
+      ...auditWholesaleReviewRows,
+      ...auditClassification.expensiveReviewRows,
+    ];
+
+    return rows.filter((row) => {
+      const key = [row.manager, row.client, row.category, row.item, row.article, row.revenue, row.grossProfit, row.matchedRule].join('\u0000');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [auditClassification.accessoryExcludedRows, auditClassification.expensiveReviewRows, auditInvalidNumberRows, auditRetailReviewRows, auditSuspiciousTechCostRows, auditUnclassifiedRows, auditWholesaleReviewRows]);
+  const topRetailAccessoryAuditRows = useMemo(
+    () => auditClassification.rows.filter((row) => row.calculationType === 'RETAIL_ACCESSORY_5').sort((left, right) => right.revenue - left.revenue).slice(0, 30),
+    [auditClassification.rows],
+  );
+  const topWholesaleAccessoryAuditRows = useMemo(
+    () => auditClassification.rows.filter((row) => row.calculationType === 'WHOLESALE_INCLUDED_1_75').sort((left, right) => right.revenue - left.revenue).slice(0, 30),
+    [auditClassification.rows],
+  );
+  const topBonusAuditRows = useMemo(
+    () => auditClassification.rows.filter((row) => Number.isFinite(row.bonus) && row.bonus !== 0).sort((left, right) => Math.abs(right.bonus) - Math.abs(left.bonus)).slice(0, 30),
+    [auditClassification.rows],
+  );
+  const expensiveAutomaticAuditRows = useMemo(
+    () =>
+      auditClassification.rows
+        .filter((row) => !row.matchedRule.startsWith('manual-rule:') && !['manual-accessory', 'manual-tech', 'manual-excluded'].some((marker) => row.classificationReason.includes(marker)))
+        .sort((left, right) => right.revenue - left.revenue)
+        .slice(0, 30),
+    [auditClassification.rows],
+  );
+  const newExpensiveAuditRows = useMemo(
+    () => [...auditClassification.expensiveReviewRows].sort((left, right) => right.revenue - left.revenue),
+    [auditClassification.expensiveReviewRows],
+  );
+  const serviceAuditRows = useMemo(
+    () => auditClassification.rows.filter((row) => row.calculationType === 'RETAIL_FILM_50').sort((left, right) => Math.abs(right.revenue) - Math.abs(left.revenue)),
+    [auditClassification.rows],
+  );
+  const asadPlotterAuditRows = useMemo(
+    () => auditClassification.rows.filter(isPlotterCalculationRow).sort((left, right) => Math.max(Math.abs(right.bonus), Math.abs(right.cost)) - Math.max(Math.abs(left.bonus), Math.abs(left.cost))),
+    [auditClassification.rows],
+  );
+  const manualClassificationAuditRows = useMemo(
+    () => auditClassification.rows.filter((row) => row.matchedRule.startsWith('manual-rule:')),
+    [auditClassification.rows],
+  );
 
   function openProblemRows(problemType: ProblemType, manager = 'all') {
     setProblemTypeFilter(problemType);
@@ -3608,7 +3685,7 @@ export default function AdminPayrollPage() {
     setProblemClientFilter('all');
     setProblemSearch('');
     setProblemArticleSearch('');
-    setActivePayrollTab('Проверка');
+    setActivePayrollTab('Аудит расчёта');
   }
 
   function updateManualPayroll(manager: string, field: keyof PayrollManualInput, value: string) {
@@ -4117,6 +4194,67 @@ export default function AdminPayrollPage() {
           Исключить из расчёта
         </button>
         {row.grossProfit < 0 && <span className='text-[11px] leading-tight text-amber-700'>Отрицательная ВП — проверить отдельно.</span>}
+      </div>
+    );
+  }
+
+  function getAuditActionReason(row: ClassifiedSalesRow) {
+    const reasons = [];
+    if (!row.calculationType) reasons.push('нет классификации');
+    if ([row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))) reasons.push('NaN/undefined в числах');
+    if (isSuspiciousTechCostRow(row)) reasons.push(getSuspiciousTechCostReason(row));
+    if (auditClassification.accessoryExcludedRows.includes(row)) reasons.push('аксессуар ошибочно исключён из расчёта');
+    if (row.calculationType === 'RETAIL_REVIEW_TECH') reasons.push('спорная техника розницы');
+    if (row.calculationType === 'WHOLESALE_REVIEW_TECH') reasons.push('спорная техника опта');
+    if (row.matchedRule === 'new-expensive-review') reasons.push('новый дорогой товар требует классификации');
+    return reasons.join(' · ') || row.classificationReason;
+  }
+
+  function renderAuditRowsTable(
+    rows: ClassifiedSalesRow[],
+    getReason: (row: ClassifiedSalesRow) => ReactNode,
+    options: { showActions?: boolean; emptyText: string },
+  ) {
+    if (!rows.length) return <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>{options.emptyText}</p>;
+
+    return (
+      <div className='max-h-[420px] overflow-auto rounded-lg border border-border'>
+        <table className='w-full min-w-[1280px] text-xs'>
+          <thead className='sticky top-0 z-10 bg-slate-50 text-left text-slate-500'>
+            <tr>
+              <th className='px-3 py-2'>Сотрудник</th>
+              <th className='px-3 py-2'>Клиент</th>
+              <th className='px-3 py-2'>Категория</th>
+              <th className='px-3 py-2'>Номенклатура</th>
+              <th className='px-3 py-2'>Артикул</th>
+              <th className='px-3 py-2 text-right'>Выручка строки/агрегата</th>
+              <th className='px-3 py-2 text-right'>ВП строки/агрегата</th>
+              <th className='px-3 py-2'>Тип расчёта</th>
+              <th className='px-3 py-2 text-right'>Начисление строки/агрегата</th>
+              <th className='px-3 py-2'>Причина / пометка</th>
+              {options.showActions !== false && <th className='px-3 py-2'>Действие</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`${row.manager}-${row.item}-${row.article}-${index}`} className='border-t border-border/70 align-top'>
+                <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
+                <td className='px-3 py-2 text-slate-700'>{row.client || '—'}</td>
+                <td className='px-3 py-2 text-slate-700'>{row.category}</td>
+                <td className='max-w-[360px] px-3 py-2 font-semibold leading-snug text-slate-900' title={row.item}>
+                  <span className='line-clamp-2'>{row.item}</span>
+                </td>
+                <td className='px-3 py-2 text-slate-700'>{row.article || '—'}</td>
+                <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.revenue)}</td>
+                <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossProfit)}</td>
+                <td className='px-3 py-2 text-slate-700'>{row.calculationLabel}</td>
+                <td className='px-3 py-2 text-right font-semibold text-slate-900'>{formatMoney(row.bonus)}</td>
+                <td className='px-3 py-2 text-slate-600'>{getReason(row)}</td>
+                {options.showActions !== false && <td className='px-3 py-2'>{renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     );
   }
@@ -4918,7 +5056,9 @@ export default function AdminPayrollPage() {
                 </p>
               )}
 
-              <div className='grid min-w-0 gap-2 grid-cols-1 md:grid-cols-2 xl:grid-cols-3'>
+              <details className='rounded-lg border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2'>
+                <summary className='cursor-pointer text-sm font-bold text-slate-800'>Техническая диагностика загрузки файла</summary>
+                <div className='mt-3 grid min-w-0 gap-2 grid-cols-1 md:grid-cols-2 xl:grid-cols-3'>
                 {[
                   { label: 'Файл прочитан', detail: workbook.fileName, status: 'ok' as const, count: 0 },
                   { label: 'Тип отчёта', detail: parseResult.isRegistrarReport ? 'с регистратором' : 'обычный', status: parseResult.isRegistrarReport && registrarParseUnsafe ? 'warning' as const : 'ok' as const, count: 0 },
@@ -4953,13 +5093,14 @@ export default function AdminPayrollPage() {
                     </span>
                   </button>
                 )})}
-              </div>
+                </div>
+              </details>
 
             </Card>
 
             <div>
               <div className='mb-5 flex flex-wrap gap-2'>
-                {['Итог ЗП', 'Дни и авансы', 'Опт', 'Розница', 'Проверка', 'Детализация строк', 'Диагностика файла'].map((tab) => (
+                {['Итог ЗП', 'Дни и авансы', 'Аудит расчёта'].map((tab) => (
                   <button
                     key={tab}
                     type='button'
@@ -5669,6 +5810,130 @@ export default function AdminPayrollPage() {
                 </Card>
               )}
 
+              {activePayrollTab === 'Аудит расчёта' && (
+                <div className='grid gap-5'>
+                  <Card>
+                    <div className='mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between'>
+                      <div>
+                        <h2 className='text-lg font-bold text-slate-900'>Аудит расчёта</h2>
+                        <p className='text-sm text-slate-500'>Рабочая проверка зарплаты перед сохранением snapshot: критичные строки, дорогие позиции и ручные исправления.</p>
+                        <p className='mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900'>
+                          Аудит показывает строки расчёта из ВВП. В некоторых форматах отчёта строка может быть агрегатом по товару/клиенту/менеджеру, если сам ВВП отдаёт её как итог по номенклатуре. Расчёт зарплаты от этого не меняется.
+                        </p>
+                      </div>
+                    </div>
+                    {classificationRuleMessage && <p className='mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700'>{classificationRuleMessage}</p>}
+                    {classificationRuleError && <p className='mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700'>{classificationRuleError}</p>}
+                    <div className='grid gap-2 md:grid-cols-3 xl:grid-cols-8'>
+                      {[
+                        ['Требует действия', auditActionRows.length],
+                        ['Аксессуары розницы', topRetailAccessoryAuditRows.length],
+                        ['Аксессуары опта', topWholesaleAccessoryAuditRows.length],
+                        ['Большие начисления', topBonusAuditRows.length],
+                        ['Без ручного правила', expensiveAutomaticAuditRows.length],
+                        ['Новые дорогие', newExpensiveAuditRows.length],
+                        ['Услуги 50%', serviceAuditRows.length],
+                        ['Ручные правила', manualClassificationAuditRows.length],
+                      ].map(([label, count]) => (
+                        <div key={label} className='rounded-lg border border-border bg-white px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
+                          <p className='mt-1 text-xl font-bold text-slate-900'>{count}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {auditActionRows.length === 0 && (
+                      <p className='mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-800'>
+                        Критичных проблем не найдено. Проверьте дорогие строки и ручные исправления перед сохранением.
+                      </p>
+                    )}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Требует действия</h3>
+                    <p className='mb-3 text-sm text-slate-500'>Только строки, где нужно принять решение: классификация, себестоимость, ошибочное исключение или некорректные числа.</p>
+                    {renderAuditRowsTable(auditActionRows, getAuditActionReason, { emptyText: 'Критичных строк для ручного решения не найдено.' })}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Самые дорогие аксессуары розницы</h3>
+                    <p className='mb-3 text-sm text-slate-500'>TOP-30 розничных строк RETAIL_ACCESSORY_5 по выручке. Пометка не меняет классификацию, только помогает быстро найти технику среди аксессуаров.</p>
+                    {renderAuditRowsTable(
+                      topRetailAccessoryAuditRows,
+                      (row) => (
+                        <span>
+                          {looksLikeTechAuditRow(row) && <Badge className='mr-2 bg-amber-100 text-amber-900'>Похоже на технику — проверь</Badge>}
+                          {row.classificationReason} · {row.matchedRule}
+                        </span>
+                      ),
+                      { emptyText: 'Розничные аксессуары 5% не найдены.' },
+                    )}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Самые дорогие аксессуары опта</h3>
+                    <p className='mb-3 text-sm text-slate-500'>TOP-30 оптовых строк WHOLESALE_INCLUDED_1_75 по выручке. Блок отделён от розницы, чтобы оптовые позиции Залины и Лианы не мешали проверке розничной зарплаты.</p>
+                    {renderAuditRowsTable(topWholesaleAccessoryAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Оптовые строки в базе 1,75% не найдены.' })}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Самые большие начисления</h3>
+                    <p className='mb-3 text-sm text-slate-500'>TOP-30 строк по модулю начисления. Эти позиции сильнее всего влияют на итоговую зарплату.</p>
+                    {renderAuditRowsTable(topBonusAuditRows, (row) => `${row.formula} · ${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Начисления по строкам не найдены.' })}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Дорогие товары без ручного правила</h3>
+                    <p className='mb-3 text-sm text-slate-500'>Самые дорогие строки, которые портал классифицировал автоматически. Используйте блок для проверки товаров, которые могут быть ошибочно отнесены к аксессуарам, технике, услугам или другим категориям.</p>
+                    {renderAuditRowsTable(expensiveAutomaticAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Автоматически классифицированные дорогие строки не найдены.' })}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Новые дорогие товары</h3>
+                    <p className='mb-3 text-sm text-slate-500'>Используется только существующая логика new-expensive-review, без нового порога “дорого”.</p>
+                    {renderAuditRowsTable(newExpensiveAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Новых дорогих товаров по правилу new-expensive-review нет.' })}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Услуги 50%</h3>
+                    <p className='mb-3 text-sm text-slate-500'>Строки, вошедшие в услуги 50%, включая отрицательные строки с минусом.</p>
+                    {renderAuditRowsTable(serviceAuditRows, (row) => `${row.revenue < 0 ? 'Отрицательная строка учтена · ' : ''}${row.classificationReason} · ${row.matchedRule}`, { showActions: false, emptyText: 'Строк услуг 50% не найдено.' })}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Плёнки / антигравийные материалы Асада</h3>
+                    <p className='mb-3 text-sm text-slate-500'>Строки Асада, вошедшие в отдельный расчёт себестоимость × 50%.</p>
+                    {renderAuditRowsTable(asadPlotterAuditRows, (row) => `${row.revenue < 0 || row.grossProfit < 0 ? 'Возврат / минус учтён · ' : ''}${row.classificationReason} · ${row.matchedRule}`, { showActions: false, emptyText: 'Плёнки / антигравийные материалы Асада не найдены.' })}
+                  </Card>
+
+                  <Card>
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Ручные исправления</h3>
+                    <p className='mb-3 text-sm text-slate-500'>Строки текущего расчёта, где сработало сохранённое ручное правило classification-rules.</p>
+                    {renderAuditRowsTable(manualClassificationAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Ручные правила в текущем расчёте не применялись.' })}
+                  </Card>
+                </div>
+              )}
+
+              <details open={['Опт', 'Розница', 'Детализация строк', 'Диагностика файла'].includes(activePayrollTab)} className='rounded-lg border border-dashed border-slate-300 bg-slate-50/70 px-4 py-3'>
+                <summary className='cursor-pointer text-sm font-bold text-slate-800'>
+                  Техническая диагностика (для отладки)
+                </summary>
+                <p className='mt-1 text-sm text-slate-500'>
+                  Здесь оставлены служебные срезы по опту, рознице, строкам и распознаванию файла. Для ежедневной проверки используйте вкладку “Аудит расчёта”.
+                </p>
+                <div className='mt-3 flex flex-wrap gap-2'>
+                  {['Опт', 'Розница', 'Детализация строк', 'Диагностика файла'].map((tab) => (
+                    <button
+                      key={tab}
+                      type='button'
+                      onClick={() => setActivePayrollTab(tab)}
+                      className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${activePayrollTab === tab ? 'bg-slate-900 text-white shadow-sm' : 'border border-border bg-white text-slate-600 hover:border-primary/40 hover:text-slate-900'}`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+                <div className='mt-4'>
+
               {activePayrollTab === 'Опт' && (
                 <div className='grid gap-5'>
                   <div className='grid gap-3 md:grid-cols-4'>
@@ -5744,111 +6009,6 @@ export default function AdminPayrollPage() {
                 </div>
               )}
 
-              {activePayrollTab === 'Проверка' && (
-                <Card>
-                  <div className='mb-4 flex flex-col gap-1 md:flex-row md:items-end md:justify-between'>
-                    <div>
-                      <h2 className='text-lg font-bold text-slate-900'>Проверка</h2>
-                      <p className='text-sm text-slate-500'>Проблемные строки после текущих фильтров: {problemRows.length}</p>
-                    </div>
-                  </div>
-                  {classificationRuleMessage && <p className='mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700'>{classificationRuleMessage}</p>}
-                  {classificationRuleError && <p className='mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700'>{classificationRuleError}</p>}
-                  <div className='mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-7'>
-                    <select value={problemTypeFilter} onChange={(event) => setProblemTypeFilter(event.target.value as ProblemType)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm'>
-                      <option value='all'>Все проблемы</option>
-                      <option value='credit'>Кредитные продажи — сверка</option>
-                      <option value='wholesaleReview'>Спорная техника опта</option>
-                      <option value='retailReview'>Спорная техника розницы</option>
-                      <option value='expensiveUnclassified'>Новые дорогие товары / требуют классификации</option>
-                      <option value='negative'>Отрицательная ВП</option>
-                      <option value='zeroBase'>Подозрительная нулевая база</option>
-                      <option value='unclassified'>Без классификации</option>
-                      <option value='accessoryExcluded'>Ошибочно исключённые аксессуары</option>
-                      <option value='invalidNumbers'>NaN/undefined</option>
-                      <option value='disputed'>Спорные товары</option>
-                      <option value='disciplineBonusRemoved'>Бонус дисциплины снят из-за опозданий</option>
-                    </select>
-                    <select value={problemManagerFilter} onChange={(event) => setProblemManagerFilter(event.target.value)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm'><option value='all'>Все сотрудники</option>{managerOptions.map((manager) => <option key={manager} value={manager}>{manager}</option>)}</select>
-                    <select value={problemDepartmentFilter} onChange={(event) => setProblemDepartmentFilter(event.target.value)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm'><option value='all'>Все отделы</option><option value='Опт'>Опт</option><option value='Розница'>Розница</option></select>
-                    <select value={problemCategoryFilter} onChange={(event) => setProblemCategoryFilter(event.target.value)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm'><option value='all'>Все категории</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select>
-                    <select value={problemClientFilter} onChange={(event) => setProblemClientFilter(event.target.value)} className='rounded-lg border border-border bg-white px-3 py-2.5 text-sm'><option value='all'>Все клиенты</option>{clientOptions.map((client) => <option key={client} value={client}>{client}</option>)}</select>
-                    <Input value={problemSearch} onChange={(event) => setProblemSearch(event.target.value)} placeholder='Поиск по товару' />
-                    <Input value={problemArticleSearch} onChange={(event) => setProblemArticleSearch(event.target.value)} placeholder='Поиск по артикулу' />
-                  </div>
-                  <div className='max-h-[560px] overflow-auto rounded-lg border border-border'>
-                    <table className='w-full min-w-[1040px] table-fixed text-xs'>
-                      <colgroup>
-                        <col className='w-[150px]' />
-                        <col className='w-[150px]' />
-                        <col className='w-[170px]' />
-                        <col />
-                        <col className='w-[110px]' />
-                        <col className='w-[110px]' />
-                        <col className='w-[170px]' />
-                        <col className='w-[150px]' />
-                      </colgroup>
-                      <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'>
-                        <tr>
-                          <th className='px-3 py-2'>Тип проблемы</th>
-                          <th className='px-3 py-2'>Сотрудник</th>
-                          <th className='px-3 py-2'>Категория</th>
-                          <th className='px-3 py-2'>Номенклатура</th>
-                          <th className='px-3 py-2 text-right'>Выручка</th>
-                          <th className='px-3 py-2 text-right'>ВП</th>
-                          <th className='px-3 py-2'>Тип расчёта</th>
-                          <th className='px-3 py-2'>Действие</th>
-                        </tr>
-                      </thead>
-                      <tbody>{problemRows.slice(0, 500).map((problem, index) => {
-                        const isErrorProblem = problem.type === 'unclassified' || problem.type === 'accessoryExcluded' || problem.type === 'invalidNumbers';
-                        if (problem.kind === 'sales') {
-                          const row = problem.row;
-                          return [
-                            <tr key={problem.type + '-' + row.manager + '-' + row.item + '-' + index} className='border-t border-border/70 align-top'>
-                              <td className='px-3 py-2'><Badge className={isErrorProblem ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}>{problem.label}</Badge></td>
-                              <td className='px-3 py-2 font-semibold text-slate-700'>{row.manager}</td>
-                              <td className='px-3 py-2 text-slate-700'>{row.category}</td>
-                              <td className='px-3 py-2 font-semibold leading-snug text-slate-900' title={row.item}>
-                                <span className='line-clamp-2 break-normal'>{row.item}</span>
-                              </td>
-                              <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.revenue)}</td>
-                              <td className='px-3 py-2 text-right font-semibold text-slate-900'>{formatMoney(row.grossProfit)}</td>
-                              <td className='px-3 py-2'>
-                                <span className='block font-semibold text-slate-900'>{row.calculationLabel}</span>
-                                {(row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH' || row.calculationType === 'CREDIT_REVIEW_NO_BONUS') && (
-                                  <Badge className='mt-1 bg-amber-100 text-amber-800'>требует классификации</Badge>
-                                )}
-                              </td>
-                              <td className='px-3 py-2'>{renderAccessoryRuleButton(row, problem.type)}</td>
-                            </tr>,
-                            <tr key={problem.type + '-' + row.manager + '-' + row.item + '-' + index + '-details'} className='border-b border-border/70 bg-slate-50/60'>
-                              <td colSpan={8} className='px-3 pb-2 pt-0 text-[11px] leading-relaxed text-slate-500'>
-                                Клиент: {row.client || '—'} · Отдел: {row.department} · Регистратор: {getRegistrarSummary(row) || '—'} · Артикул: {row.article || '—'} · База: {formatMoney(row.base)} · Причина: {getSalesProblemReason(row, problem.type)} · Правило: {row.matchedRule}
-                              </td>
-                            </tr>,
-                          ];
-                        }
-
-                        const row = problem.row;
-                        return (
-                          <tr key={problem.type + '-' + row.manager + '-' + index} className='border-t border-border/70 align-top'>
-                            <td className='px-3 py-2'><Badge className={isErrorProblem ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}>{problem.label}</Badge></td>
-                            <td className='px-3 py-2 font-semibold text-slate-700'>{row.manager}</td>
-                            <td className='px-3 py-2'>{row.department}</td>
-                            <td className='px-3 py-2 leading-snug text-slate-700' title={row.comment}>{row.comment || 'Зарплатная строка'}</td>
-                            <td className='px-3 py-2 text-right'>—</td>
-                            <td className='px-3 py-2 text-right'>—</td>
-                            <td className='px-3 py-2'>Зарплата</td>
-                            <td className='px-3 py-2 text-slate-400'>—</td>
-                          </tr>
-                        );
-                      })}</tbody>
-                    </table>
-                  </div>
-                </Card>
-              )}
-
               {activePayrollTab === 'Детализация строк' && (
                 <Card>
                   <h2 className='mb-4 text-lg font-bold text-slate-900'>Строки продаж с классификацией</h2>
@@ -5908,6 +6068,8 @@ export default function AdminPayrollPage() {
                   </div>
                 </Card>
               )}
+                </div>
+              </details>
             </div>
 
             {selectedManagerStatus && selectedManagerPayroll && (
