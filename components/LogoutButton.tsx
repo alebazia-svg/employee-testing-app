@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export function LogoutButton({ className = '' }: { className?: string }) {
+export function LogoutButton({ className = '', iconOnly = false, title }: { className?: string; iconOnly?: boolean; title?: string }) {
   const router = useRouter();
 
   async function logout() {
@@ -14,9 +14,9 @@ export function LogoutButton({ className = '' }: { className?: string }) {
   }
 
   return (
-    <Button className={className || 'gap-2 bg-slate-200 text-slate-700 hover:bg-slate-300 hover:text-slate-900'} onClick={logout}>
+    <Button className={className || 'gap-2 bg-slate-200 text-slate-700 hover:bg-slate-300 hover:text-slate-900'} onClick={logout} title={title}>
       <LogOut className='h-4 w-4' />
-      Выйти
+      {!iconOnly && 'Выйти'}
     </Button>
   );
 }

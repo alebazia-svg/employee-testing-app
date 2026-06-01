@@ -867,10 +867,10 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
 
   return (
     <AdminShell>
-      <div className='mb-7 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+      <div className='mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
         <div>
           <AdminBreadcrumbs current='Посещаемость' />
-          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Посещаемость</h1>
+          <h1 className='text-[26px] font-extrabold tracking-normal text-slate-950 md:text-[28px]'>Посещаемость</h1>
           <p className='mt-1 text-base font-medium text-slate-500'>Аналитика по отметкам из Google Sheets: лист “Ответы на форму (1)”, диапазон A:F.</p>
           <p className='mt-1 text-sm font-medium text-slate-500'>На текущем этапе явка считается подтверждённой по отметке начала рабочего дня. Отсутствие отметки ухода фиксируется отдельно и не обнуляет явку.</p>
         </div>
@@ -889,7 +889,7 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
 
       <FilterBar months={months} employees={employees} statuses={statuses} filters={filters} />
 
-      <section className='mb-6'>
+      <section className='mb-5'>
         <h2 className='mb-3 text-lg font-bold text-slate-900'>{scheduleData.mode === 'google-sheets' ? 'Главная сводка за период' : 'Краткая сводка по отметкам'}</h2>
         {data.mode === 'demo' && scheduleData.mode === 'google-sheets' && (
           <Card className='mb-3 border-amber-100 bg-amber-50/70 text-sm text-amber-900'>
@@ -900,8 +900,8 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
           {stats.map((item) => {
             const Icon = item.icon;
             return (
-              <Card key={item.label} className='flex items-center gap-4'>
-                <div className='flex h-11 w-11 items-center justify-center rounded-lg bg-green-100 text-green-700'>
+              <Card key={item.label} className='flex items-center gap-3 p-4'>
+                <div className='flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-700'>
                   <Icon className='h-5 w-5' />
                 </div>
                 <div>
@@ -914,7 +914,7 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
         </div>
       </section>
 
-      <Card className='mb-6 p-0'>
+      <Card className='mb-5 p-0'>
         <div className='border-b border-border/80 px-5 py-4'>
           <h2 className='font-semibold text-slate-900'>Итоги по сотрудникам</h2>
           <p className='text-sm text-slate-500'>
@@ -928,8 +928,9 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
           : (employeeSummaries.length ? <EmployeeTotalsTable rows={employeeSummaries} /> : <div className='p-6 text-sm text-slate-500'>Нет сотрудников по выбранным фильтрам.</div>)}
       </Card>
 
-      <Card className='mb-6 p-0'>
-        <div className='flex flex-col gap-2 border-b border-border/80 px-5 py-4 md:flex-row md:items-start md:justify-between'>
+      <details className='mb-5 rounded-lg border border-slate-200/80 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)]'>
+        <summary className='cursor-pointer list-none'>
+          <div className='flex flex-col gap-2 border-b border-border/80 px-5 py-4 md:flex-row md:items-start md:justify-between'>
           <div>
             <h2 className='font-semibold text-slate-900'>План/факт по дням</h2>
             <p className='text-sm text-slate-500'>График читается по цвету ячейки на листе “График работы”: зелёный — работает, красный — не работает.</p>
@@ -938,7 +939,8 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
           <Badge className={scheduleData.mode === 'google-sheets' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
             {scheduleData.mode === 'google-sheets' ? 'График подключён' : 'График не подключён'}
           </Badge>
-        </div>
+          </div>
+        </summary>
         {(scheduleError || scheduleData.mode !== 'google-sheets') && (
           <div className='border-b border-border/80 px-5 py-3 text-sm text-amber-800'>
             {scheduleError || scheduleData.message}
@@ -947,7 +949,7 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
         {scheduleData.mode === 'google-sheets'
           ? (filteredPlanFactRows.length ? <PlanFactTable rows={filteredPlanFactRows} /> : <div className='p-6 text-sm text-slate-500'>Нет строк графика по выбранным фильтрам.</div>)
           : <div className='p-6 text-sm text-slate-500'>График не подключён. План/факт по дням появится после подключения GOOGLE_SHEETS_SCHEDULE_SPREADSHEET_ID.</div>}
-      </Card>
+      </details>
 
       <Card className='mb-6 p-0'>
         <div className='border-b border-border/80 px-5 py-4'>
@@ -957,13 +959,15 @@ export default async function AdminAttendancePage({ searchParams }: { searchPara
         {filteredSummaries.length ? <DailyTable rows={filteredSummaries} /> : <div className='p-6 text-sm text-slate-500'>Нет данных по выбранным фильтрам.</div>}
       </Card>
 
-      <Card className='p-0'>
+      <details className='rounded-lg border border-slate-200/80 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.05)]'>
+        <summary className='cursor-pointer list-none'>
         <div className='border-b border-border/80 px-5 py-4'>
           <h2 className='font-semibold text-slate-900'>Журнал отметок</h2>
           <p className='text-sm text-slate-500'>Сырые отметки из формы Google Sheets.</p>
         </div>
+        </summary>
         {filteredRows.length ? <RawTable rows={filteredRows} /> : <div className='p-6 text-sm text-slate-500'>Нет отметок по выбранным фильтрам.</div>}
-      </Card>
+      </details>
     </AdminShell>
   );
 }
