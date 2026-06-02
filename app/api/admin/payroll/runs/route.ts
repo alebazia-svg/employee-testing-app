@@ -12,6 +12,7 @@ type PayrollRunPayload = {
   totals?: Record<string, unknown>;
   sourceSummary?: unknown;
   sourceFiles?: Array<Record<string, unknown>>;
+  analyticsRows?: Array<Record<string, unknown>>;
   manualInputs?: Array<Record<string, unknown>>;
   employeeResults?: Array<Record<string, unknown> & { calculationDetails?: Array<Record<string, unknown>> }>;
 };
@@ -29,6 +30,10 @@ function asNullableNumber(value: unknown) {
 
 function asString(value: unknown, fallback = '') {
   return typeof value === 'string' ? value : fallback;
+}
+
+function asBoolean(value: unknown, fallback = false) {
+  return typeof value === 'boolean' ? value : fallback;
 }
 
 function asJson(value: unknown): Prisma.InputJsonValue | undefined {
@@ -80,7 +85,7 @@ export async function POST(req: Request) {
       select: { runNumber: true },
     });
 
-    return tx.payrollRun.create({
+    const createdRun = await tx.payrollRun.create({
       data: {
         periodId: period.id,
         runNumber: (lastRun?.runNumber ?? 0) + 1,
@@ -188,6 +193,55 @@ export async function POST(req: Request) {
         sourceFiles: { select: { id: true } },
       },
     });
+
+    const sourceFileIds = new Map<string, number>();
+    createdRun.sourceFiles.forEach((file, index) => {
+      const sourceFile = payload.sourceFiles?.[index];
+      if (!sourceFile) return;
+      sourceFileIds.set(`${asString(sourceFile.type, 'unknown')}|${asString(sourceFile.originalName)}`, file.id);
+    });
+
+    if (payload.analyticsRows?.length) {
+      await tx.payrollAnalyticsRow.createMany({
+        data: payload.analyticsRows.map((row) => {
+          const sourceKey = `${asString(row.sourceFileType, 'sales')}|${asString(row.sourceFileName)}`;
+          return {
+            payrollRunId: createdRun.id,
+            sourceFileId: sourceFileIds.get(sourceKey) ?? null,
+            periodKey,
+            year,
+            month,
+            employeeName: asString(row.employeeName),
+            employeeId: asNullableNumber(row.employeeId),
+            department: asString(row.department) || null,
+            location: asString(row.location) || null,
+            client: asString(row.client) || null,
+            category: asString(row.category) || null,
+            nomenclatureType: asString(row.nomenclatureType) || null,
+            itemName: asString(row.itemName),
+            article: asString(row.article) || null,
+            quantity: asNullableNumber(row.quantity),
+            revenue: asNumber(row.revenue),
+            cost: asNumber(row.cost),
+            grossProfit: asNumber(row.grossProfit),
+            marginPercent: asNullableNumber(row.marginPercent),
+            markupPercent: asNullableNumber(row.markupPercent),
+            calculationType: asString(row.calculationType),
+            componentType: asString(row.componentType) || null,
+            commissionAmount: asNumber(row.commissionAmount),
+            isCredit: asBoolean(row.isCredit),
+            isReturn: asBoolean(row.isReturn),
+            isNegative: asBoolean(row.isNegative),
+            isManualRuleApplied: asBoolean(row.isManualRuleApplied),
+            manualRuleLabel: asString(row.manualRuleLabel) || null,
+            problemFlags: asJson(row.problemFlags),
+            checkReason: asString(row.checkReason) || null,
+          };
+        }),
+      });
+    }
+
+    return createdRun;
   });
 
   return Response.json(createdRun, { status: 201 });

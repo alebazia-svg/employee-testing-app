@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BarChart3, CalendarCheck, GraduationCap, Home, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
+import { Banknote, BarChart3, CalendarCheck, GraduationCap, Home, LineChart, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
 import { LogoutButton } from '@/components/LogoutButton';
 import { cn } from '@/lib/utils';
@@ -15,6 +16,7 @@ const navigation = [
   { href: '/admin/results', label: 'Результаты', icon: BarChart3 },
   { href: '/admin/attendance', label: 'Посещаемость', icon: CalendarCheck },
   { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
+  { href: '/admin/analytics', label: 'Аналитика', icon: LineChart },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -48,9 +50,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       >
         <div className={cn('flex items-center justify-between gap-4', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:block')}>
           <div className={cn(sidebarCollapsed ? 'md:flex md:justify-center' : '')}>
-            <div className={sidebarCollapsed ? 'hidden md:flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-base font-extrabold text-white shadow-sm' : 'hidden'}>
-              O
-            </div>
+            {sidebarCollapsed && <Image src='/logo-offonika-icon.png' alt='OFFONIKA' width={32} height={32} className='hidden h-8 w-8 bg-transparent object-contain md:block' />}
             <div className={sidebarCollapsed ? 'md:hidden' : ''}>
               <BrandBlock size='sidebar' />
             </div>

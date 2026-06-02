@@ -206,6 +206,36 @@ type PayrollSourceFileSnapshot = {
   metadata?: Record<string, unknown>;
 };
 
+type PayrollAnalyticsRowSnapshot = {
+  sourceFileType: 'sales';
+  sourceFileName: string;
+  employeeName: string;
+  employeeId: number | null;
+  department: string;
+  location: string | null;
+  client: string;
+  category: string;
+  nomenclatureType: string | null;
+  itemName: string;
+  article: string;
+  quantity: number | null;
+  revenue: number;
+  cost: number;
+  grossProfit: number;
+  marginPercent: number | null;
+  markupPercent: number | null;
+  calculationType: CalculationType;
+  componentType: string;
+  commissionAmount: number;
+  isCredit: boolean;
+  isReturn: boolean;
+  isNegative: boolean;
+  isManualRuleApplied: boolean;
+  manualRuleLabel: string | null;
+  problemFlags: string[];
+  checkReason: string | null;
+};
+
 type SavedPayrollRunSummary = {
   id: number;
   runNumber: number;
@@ -2633,6 +2663,32 @@ function getSuspiciousTechCostReason(row: ClassifiedSalesRow) {
   return 'Возможна нерассчитанная себестоимость в 1С: ВП почти равна выручке';
 }
 
+function getAnalyticsProblemFlags(row: ClassifiedSalesRow) {
+  const flags: string[] = [];
+  if (isUnresolvedReviewRow(row)) flags.push('requires-classification');
+  if (isPotentialAccessoryNotIncludedRow(row)) flags.push('potential-accessory-not-included');
+  if (isServiceNotIncludedRow(row)) flags.push('service-not-included');
+  if (isCriticalZeroBaseRow(row)) flags.push('critical-zero-base');
+  if (isSuspiciousTechCostRow(row)) flags.push('suspicious-tech-cost');
+  if (row.matchedRule === 'new-expensive-review') flags.push('new-expensive-review');
+  if (row.grossProfit < 0) flags.push('negative-gross-profit');
+  if (row.revenue < 0) flags.push('negative-revenue');
+  if (row.isCreditSale) flags.push('credit-sale');
+  if (hasRegistrarFragment(row, 'Возврат')) flags.push('return');
+  if (row.matchedRule.startsWith('manual-rule:')) flags.push('manual-rule');
+  return flags;
+}
+
+function getAnalyticsCheckReason(row: ClassifiedSalesRow, flags: string[]) {
+  if (flags.includes('suspicious-tech-cost')) return getSuspiciousTechCostReason(row);
+  if (flags.includes('requires-classification')) return row.classificationReason;
+  if (flags.includes('potential-accessory-not-included')) return getNotIncludedInAccessoryReason(row);
+  if (flags.includes('service-not-included')) return getNotIncludedInServiceReason(row);
+  if (flags.includes('critical-zero-base')) return getSalesProblemReason(row, 'zeroBase');
+  if (flags.includes('negative-gross-profit')) return getSalesProblemReason(row, 'negative');
+  return row.classificationReason || null;
+}
+
 function isPlotterCalculationRow(row: ClassifiedSalesRow) {
   return row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50' || row.matchedRule === 'asad-plotter-material' || isPlotterMaterial(row);
 }
@@ -4515,6 +4571,46 @@ export default function AdminPayrollPage() {
     }, {});
   }
 
+  function buildPayrollAnalyticsRowsPayload(): PayrollAnalyticsRowSnapshot[] {
+    if (!salesSourceFile) return [];
+
+    return classification.rows.map((row) => {
+      const marginPercent = row.revenue !== 0 ? (row.grossProfit / row.revenue) * 100 : null;
+      const markupPercent = row.cost !== 0 ? (row.grossProfit / row.cost) * 100 : null;
+      const problemFlags = getAnalyticsProblemFlags(row);
+
+      return {
+        sourceFileType: 'sales',
+        sourceFileName: salesSourceFile.originalName,
+        employeeName: row.manager,
+        employeeId: null,
+        department: row.department,
+        location: row.department,
+        client: row.client,
+        category: row.category,
+        nomenclatureType: null,
+        itemName: row.item,
+        article: row.article,
+        quantity: null,
+        revenue: row.revenue,
+        cost: row.cost,
+        grossProfit: row.grossProfit,
+        marginPercent,
+        markupPercent,
+        calculationType: row.calculationType,
+        componentType: row.calculationLabel,
+        commissionAmount: row.bonus,
+        isCredit: row.isCreditSale,
+        isReturn: hasRegistrarFragment(row, 'Возврат'),
+        isNegative: row.revenue < 0 || row.grossProfit < 0,
+        isManualRuleApplied: row.matchedRule.startsWith('manual-rule:'),
+        manualRuleLabel: row.matchedRule.startsWith('manual-rule:') ? row.matchedRule : null,
+        problemFlags,
+        checkReason: getAnalyticsCheckReason(row, problemFlags),
+      };
+    });
+  }
+
   function buildPayrollSnapshotPayload() {
     const detailsByEmployee = buildCalculationDetailsByEmployee();
     const reviewCount = fullPayrollRows.filter((row) => getPayrollRowStatus(row) !== 'OK').length;
@@ -4587,6 +4683,7 @@ export default function AdminPayrollPage() {
           })),
       },
       sourceFiles,
+      analyticsRows: buildPayrollAnalyticsRowsPayload(),
       manualInputs: [
         ...Object.entries(manualPayroll).map(([employeeName, input]) => ({
           employeeName,

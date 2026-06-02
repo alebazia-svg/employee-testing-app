@@ -133,6 +133,7 @@ model PayrollRun {
   sourceFiles         PayrollSourceFile[]
   manualInputs        PayrollManualInput[]
   adjustments         PayrollAdjustment[]
+  analyticsRows       PayrollAnalyticsRow[]
 
   @@unique([periodId, runNumber])
 }
@@ -204,9 +205,54 @@ model PayrollSourceFile {
   warnings       Json?
   metadata       Json?
   run            PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  analyticsRows  PayrollAnalyticsRow[]
 
   @@index([runId])
   @@index([sha256])
+}
+
+model PayrollAnalyticsRow {
+  id                  Int                @id @default(autoincrement())
+  payrollRunId        Int
+  sourceFileId        Int?
+  periodKey           String
+  year                Int
+  month               Int
+  employeeName        String
+  employeeId          Int?
+  department          String?
+  location            String?
+  client              String?
+  category            String?
+  nomenclatureType    String?
+  itemName            String
+  article             String?
+  quantity            Float?
+  revenue             Float             @default(0)
+  cost                Float             @default(0)
+  grossProfit         Float             @default(0)
+  marginPercent       Float?
+  markupPercent       Float?
+  calculationType     String
+  componentType       String?
+  commissionAmount    Float             @default(0)
+  isCredit            Boolean           @default(false)
+  isReturn            Boolean           @default(false)
+  isNegative          Boolean           @default(false)
+  isManualRuleApplied Boolean           @default(false)
+  manualRuleLabel     String?
+  problemFlags        Json?
+  checkReason         String?
+  createdAt           DateTime           @default(now())
+  payrollRun          PayrollRun         @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  sourceFile          PayrollSourceFile? @relation(fields: [sourceFileId], references: [id], onDelete: SetNull)
+
+  @@index([payrollRunId])
+  @@index([periodKey])
+  @@index([employeeName])
+  @@index([calculationType])
+  @@index([isCredit])
+  @@index([isNegative])
 }
 
 model PayrollManualInput {
