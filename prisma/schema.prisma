@@ -255,6 +255,64 @@ model PayrollAnalyticsRow {
   @@index([isNegative])
 }
 
+model SalesAnalyticsReport {
+  id               Int                 @id @default(autoincrement())
+  period           String
+  sourceReportType String              @default("extended_vgp")
+  fileName         String
+  uploadedAt       DateTime            @default(now())
+  rowsCount        Int                 @default(0)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  rows             SalesAnalyticsRow[]
+
+  @@index([period])
+  @@index([sourceReportType])
+  @@index([uploadedAt])
+}
+
+model SalesAnalyticsRow {
+  id                  Int                  @id @default(autoincrement())
+  reportId            Int
+  sourceReportType    String               @default("extended_vgp")
+  employeeName        String
+  department          String?
+  location            String?
+  client              String?
+  category            String?
+  nomenclatureType    String?
+  itemName            String
+  article             String?
+  quantity            Float?
+  revenue             Float                @default(0)
+  cost                Float                @default(0)
+  grossProfit         Float                @default(0)
+  marginPercent       Float?
+  markupPercent       Float?
+  documentName        String?
+  documentType        String               @default("UNKNOWN")
+  documentDate        DateTime?
+  unitRevenue         Float?
+  unitCost            Float?
+  unitGrossProfit     Float?
+  isCredit            Boolean              @default(false)
+  isReturn            Boolean              @default(false)
+  isRealReturn        Boolean              @default(false)
+  isNegative          Boolean              @default(false)
+  problemFlags        Json?
+  checkReason         String?
+  createdAt           DateTime             @default(now())
+  report              SalesAnalyticsReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([sourceReportType])
+  @@index([employeeName])
+  @@index([documentType])
+  @@index([isCredit])
+  @@index([isRealReturn])
+  @@index([isNegative])
+}
+
 model PayrollManualInput {
   id                    Int        @id @default(autoincrement())
   runId                 Int

@@ -6,24 +6,159 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { prisma } from '@/lib/prisma';
+import { ExtendedVgpUpload } from './ExtendedVgpUpload';
 
 export const dynamic = 'force-dynamic';
 
-async function getLatestPayrollRun() {
+async function getLatestPayrollRun(period?: string) {
   return prisma.payrollRun.findFirst({
+    where: period ? { period: { periodKey: period } } : undefined,
     orderBy: { createdAt: 'desc' },
     include: {
       period: true,
       employeeResults: { orderBy: [{ order: 'asc' }, { employeeName: 'asc' }] },
       sourceFiles: { orderBy: { uploadedAt: 'asc' } },
-      analyticsRows: { orderBy: { id: 'asc' } },
+      analyticsRows: {
+        orderBy: { id: 'asc' },
+        select: {
+          id: true,
+          employeeName: true,
+          department: true,
+          client: true,
+          category: true,
+          nomenclatureType: true,
+          itemName: true,
+          article: true,
+          quantity: true,
+          revenue: true,
+          cost: true,
+          grossProfit: true,
+          marginPercent: true,
+          markupPercent: true,
+          calculationType: true,
+          componentType: true,
+          commissionAmount: true,
+          isCredit: true,
+          isReturn: true,
+          isNegative: true,
+          isManualRuleApplied: true,
+          manualRuleLabel: true,
+          problemFlags: true,
+          checkReason: true,
+        },
+      },
     },
   });
 }
 
+async function getLatestExtendedReportHeader() {
+  return prisma.salesAnalyticsReport.findFirst({
+    where: { sourceReportType: 'extended_vgp' },
+    orderBy: { uploadedAt: 'desc' },
+    select: {
+      id: true,
+      period: true,
+      fileName: true,
+      uploadedAt: true,
+      rowsCount: true,
+    },
+  });
+}
+
+async function getExtendedReport(period: string) {
+  return prisma.salesAnalyticsReport.findFirst({
+    where: { period, sourceReportType: 'extended_vgp' },
+    orderBy: { uploadedAt: 'desc' },
+    include: {
+      rows: {
+        orderBy: { id: 'asc' },
+        select: {
+          id: true,
+          sourceReportType: true,
+          employeeName: true,
+          department: true,
+          client: true,
+          category: true,
+          nomenclatureType: true,
+          itemName: true,
+          article: true,
+          quantity: true,
+          revenue: true,
+          cost: true,
+          grossProfit: true,
+          marginPercent: true,
+          markupPercent: true,
+          documentName: true,
+          documentType: true,
+          documentDate: true,
+          isCredit: true,
+          isReturn: true,
+          isRealReturn: true,
+          isNegative: true,
+          problemFlags: true,
+          checkReason: true,
+        },
+      },
+    },
+  });
+}
+
+async function getAvailablePeriods() {
+  const [extendedPeriods, payrollPeriods] = await Promise.all([
+    prisma.salesAnalyticsReport.findMany({
+      where: { sourceReportType: 'extended_vgp' },
+      distinct: ['period'],
+      orderBy: { period: 'desc' },
+      select: { period: true },
+    }),
+    prisma.payrollPeriod.findMany({
+      orderBy: { periodKey: 'desc' },
+      select: { periodKey: true },
+    }),
+  ]);
+
+  return Array.from(new Set([
+    ...extendedPeriods.map((item) => item.period),
+    ...payrollPeriods.map((item) => item.periodKey),
+  ])).sort((left, right) => right.localeCompare(left));
+}
+
 type LatestPayrollRun = NonNullable<Awaited<ReturnType<typeof getLatestPayrollRun>>>;
 type EmployeeResult = LatestPayrollRun['employeeResults'][number];
-type AnalyticsRow = LatestPayrollRun['analyticsRows'][number];
+type PayrollAnalyticsRow = LatestPayrollRun['analyticsRows'][number];
+type ExtendedReport = NonNullable<Awaited<ReturnType<typeof getExtendedReport>>>;
+type ExtendedAnalyticsRow = ExtendedReport['rows'][number];
+type SourceKind = 'extended_vgp' | 'payroll_snapshot';
+type SourceMode = 'auto' | 'extended_vgp' | 'payroll_snapshot';
+
+type AnalyticsRow = {
+  id: number;
+  employeeName: string;
+  department: string | null;
+  client: string | null;
+  category: string | null;
+  nomenclatureType: string | null;
+  itemName: string;
+  article: string | null;
+  quantity: number | null;
+  revenue: number;
+  cost: number;
+  grossProfit: number;
+  marginPercent: number | null;
+  markupPercent: number | null;
+  calculationType: string;
+  componentType: string | null;
+  documentName: string | null;
+  documentDate: Date | null;
+  commissionAmount: number;
+  isCredit: boolean;
+  isReturn: boolean;
+  isNegative: boolean;
+  isManualRuleApplied: boolean;
+  manualRuleLabel: string | null;
+  problemFlags: unknown;
+  checkReason: string | null;
+};
 
 type CategorySummary = {
   group: string;
@@ -88,6 +223,11 @@ function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
+function formatDate(date: Date | null | undefined) {
+  if (!date) return 'нет данных';
+  return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+}
+
 function getStatusClass(status: InsightStatus) {
   if (status === 'Хорошо') return 'bg-green-100 text-green-800';
   if (status === 'Нормально') return 'bg-blue-100 text-blue-800';
@@ -133,6 +273,46 @@ function readReviewEmployees(source: Record<string, unknown>) {
 
 function readFlags(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function normalizePayrollRows(rows: PayrollAnalyticsRow[]): AnalyticsRow[] {
+  return rows.map((row) => ({
+    ...row,
+    nomenclatureType: row.nomenclatureType ?? null,
+    documentName: null,
+    documentDate: null,
+  }));
+}
+
+function normalizeExtendedRows(rows: ExtendedAnalyticsRow[]): AnalyticsRow[] {
+  return rows.map((row) => ({
+    id: row.id,
+    employeeName: row.employeeName,
+    department: row.department,
+    client: row.client,
+    category: row.category || row.nomenclatureType,
+    nomenclatureType: row.nomenclatureType,
+    itemName: row.itemName,
+    article: row.article,
+    quantity: row.quantity,
+    revenue: row.revenue,
+    cost: row.cost,
+    grossProfit: row.grossProfit,
+    marginPercent: row.marginPercent,
+    markupPercent: row.markupPercent,
+    calculationType: row.documentType,
+    componentType: row.sourceReportType,
+    documentName: row.documentName,
+    documentDate: row.documentDate,
+    commissionAmount: 0,
+    isCredit: row.isCredit,
+    isReturn: row.isReturn || row.isRealReturn,
+    isNegative: row.isNegative,
+    isManualRuleApplied: false,
+    manualRuleLabel: null,
+    problemFlags: row.problemFlags,
+    checkReason: row.checkReason,
+  }));
 }
 
 function sumRows(rows: AnalyticsRow[], key: 'revenue' | 'cost' | 'grossProfit' | 'commissionAmount') {
@@ -272,9 +452,9 @@ function getCreditProductGroup(row: AnalyticsRow): CreditProductSummary['group']
 }
 
 function getBusinessGroup(row: AnalyticsRow) {
-  if (row.isCredit && isAccessoryRow(row)) return 'Кредитные аксессуары';
   if (isWorkServiceRow(row)) return 'Услуги / работы';
   if (isPlotterMaterialRow(row)) return 'Плоттерные материалы / антигравийка';
+  if (row.isCredit && isAccessoryRow(row)) return 'Кредитные аксессуары';
   if (row.calculationType === 'WHOLESALE_INCLUDED_1_75' || isWholesaleText(row.department)) return 'Опт';
   if (isTechRow(row)) return 'Техника / смартфоны';
   if (isAccessoryRow(row)) return 'Аксессуары';
@@ -331,7 +511,7 @@ function buildCategorySummaries(rows: AnalyticsRow[]) {
   return Array.from(groups.values()).sort((left, right) => right.grossProfit - left.grossProfit);
 }
 
-function buildSalespeople(rows: AnalyticsRow[], employees: EmployeeResult[]) {
+function buildSalespeople(rows: AnalyticsRow[], employees: EmployeeResult[], sourceKind: SourceKind) {
   const employeeByName = new Map(employees.map((employee) => [employee.employeeName, employee]));
   const rowsByEmployee = new Map<string, AnalyticsRow[]>();
   const summaries = new Map<string, SalespersonSummary>();
@@ -342,17 +522,17 @@ function buildSalespeople(rows: AnalyticsRow[], employees: EmployeeResult[]) {
 
   rows.forEach((row) => {
     const employee = employeeByName.get(row.employeeName);
-    if (!employee || isExcludedFromSalesEfficiency(employee)) return;
+    if (sourceKind === 'payroll_snapshot' && (!employee || isExcludedFromSalesEfficiency(employee))) return;
     if (row.revenue === 0 && row.grossProfit === 0) return;
 
     const current = summaries.get(row.employeeName) ?? {
       employeeName: row.employeeName,
-      direction: employee.payrollDepartment || employee.department || row.department || 'нет данных',
+      direction: employee?.payrollDepartment || employee?.department || row.department || 'нет данных',
       rows: 0,
       revenue: 0,
       grossProfit: 0,
       creditRevenue: 0,
-      grossPay: employee.grossPay,
+      grossPay: employee?.grossPay ?? 0,
       salesProblems: [],
     };
 
@@ -367,7 +547,7 @@ function buildSalespeople(rows: AnalyticsRow[], employees: EmployeeResult[]) {
   return Array.from(summaries.values()).sort((left, right) => right.grossProfit - left.grossProfit);
 }
 
-function buildPriceControlRows(rows: AnalyticsRow[]) {
+function buildPriceControlRows(rows: AnalyticsRow[], sourceKind: SourceKind) {
   const rowsByProduct = new Map<string, AnalyticsRow[]>();
 
   rows.forEach((row) => {
@@ -377,26 +557,34 @@ function buildPriceControlRows(rows: AnalyticsRow[]) {
 
   return rows
     .map((row): PriceControlRow | null => {
+      const isExtendedReturn = sourceKind === 'extended_vgp' && row.calculationType === 'RETURN';
+      const isExtendedSale = sourceKind !== 'extended_vgp' || row.calculationType === 'SALE' || row.calculationType === 'RETAIL_SALE';
+      if (isExtendedReturn || !isExtendedSale) return null;
+
       const reasons: string[] = [];
       const rowMargin = margin(row.revenue, row.grossProfit);
       const rowMarkup = markup(row.cost, row.grossProfit);
       let severity = 99;
 
-      if (row.grossProfit < 0) {
-        reasons.push('ВП отрицательная');
+      if (row.grossProfit < 0 && (sourceKind !== 'extended_vgp' || row.revenue > 0)) {
+        reasons.push(sourceKind === 'extended_vgp' ? 'Отрицательная ВП по продаже' : 'ВП отрицательная');
         severity = Math.min(severity, 1);
       }
-      if (row.revenue < row.cost) {
-        reasons.push('Цена ниже себестоимости');
+      if (row.revenue < row.cost && (sourceKind !== 'extended_vgp' || row.revenue > 0)) {
+        reasons.push(sourceKind === 'extended_vgp' ? 'Продажа ниже себестоимости' : 'Цена ниже себестоимости');
         severity = Math.min(severity, 2);
       }
       if (isTechRow(row) && rowMargin !== null && rowMargin < 10) {
-        reasons.push('Маржа техники < 10%');
+        reasons.push(sourceKind === 'extended_vgp' && row.isCredit ? 'Кредитная продажа с низкой маржей' : sourceKind === 'extended_vgp' ? 'Низкая маржа техники' : 'Маржа техники < 10%');
         severity = Math.min(severity, 3);
       }
-      if (isTechRow(row) && rowMarkup !== null && rowMarkup < 10) {
+      if (isTechRow(row) && row.cost > 0 && rowMarkup !== null && rowMarkup < 10) {
         reasons.push('Наценка техники < 10%');
         severity = Math.min(severity, 4);
+      }
+      if (sourceKind === 'extended_vgp' && isTechRow(row) && row.revenue > 0 && row.cost === 0) {
+        reasons.push('Проверить себестоимость');
+        severity = Math.min(severity, 2);
       }
 
       if (row.quantity && row.quantity > 0) {
@@ -553,31 +741,44 @@ function PercentCell({ value, danger = false }: { value: number | null | undefin
   return <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${danger ? 'text-red-700' : 'text-slate-800'}`}>{formatPercent(value)}</td>;
 }
 
-function SalesOverview({ rows, totalGrossPay, totalNetPay }: { rows: AnalyticsRow[]; totalGrossPay: number; totalNetPay: number }) {
+function SalesOverview({ rows, totalGrossPay, totalNetPay, sourceKind }: { rows: AnalyticsRow[]; totalGrossPay: number; totalNetPay: number; sourceKind: SourceKind }) {
   const creditRows = rows.filter((row) => row.isCredit);
   const regularRows = rows.filter((row) => !row.isCredit);
+  const returnRows = rows.filter((row) => row.isReturn);
+  const negativeRows = rows.filter((row) => row.isNegative);
   const totalRevenue = sumRows(rows, 'revenue');
   const totalGrossProfit = sumRows(rows, 'grossProfit');
   const creditRevenue = sumRows(creditRows, 'revenue');
   const creditGrossProfit = sumRows(creditRows, 'grossProfit');
   const regularRevenue = sumRows(regularRows, 'revenue');
   const regularGrossProfit = sumRows(regularRows, 'grossProfit');
+  const totalQuantity = rows.reduce((total, row) => total + (typeof row.quantity === 'number' ? row.quantity : 0), 0);
 
   return (
     <section className='mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
       <MetricCard title='Общая выручка' value={formatMoney(totalRevenue)} note={`${formatNumber(rows.length)} строк продаж`} />
       <MetricCard title='Валовая прибыль' value={formatMoney(totalGrossProfit)} note={`Средняя маржа: ${formatPercent(margin(totalRevenue, totalGrossProfit))}`} />
-      <MetricCard title='Кредитная выручка' value={formatMoney(creditRevenue)} note={`Доля кредитов: ${formatPercent(margin(totalRevenue, creditRevenue))}`} />
-      <MetricCard title='ВП по кредитам' value={formatMoney(creditGrossProfit)} note={`Не кредит: ${formatMoney(regularGrossProfit)}`} />
-      <MetricCard title='Выручка без кредитов' value={formatMoney(regularRevenue)} note={`${formatNumber(regularRows.length)} строк`} />
-      <MetricCard title='Начислено сотрудникам' value={formatMoney(totalGrossPay)} note={`Доля от ВП: ${formatPercent(margin(totalGrossProfit, totalGrossPay))}`} />
-      <MetricCard title='К выплате' value={formatMoney(totalNetPay)} note='После авансов и удержаний' />
-      <MetricCard title='Источник' value='analyticsRows' note='Read-only данные последнего snapshot' />
+      <MetricCard title={sourceKind === 'extended_vgp' ? 'Выручка без возвратов' : 'Кредитная выручка'} value={formatMoney(sourceKind === 'extended_vgp' ? rows.filter((row) => !row.isReturn).reduce((sum, row) => sum + row.revenue, 0) : creditRevenue)} note={sourceKind === 'extended_vgp' ? `${formatNumber(returnRows.length)} RETURN-строк` : `Доля кредитов: ${formatPercent(margin(totalRevenue, creditRevenue))}`} />
+      <MetricCard title={sourceKind === 'extended_vgp' ? 'Количество товаров' : 'ВП по кредитам'} value={sourceKind === 'extended_vgp' ? formatNumber(totalQuantity) : formatMoney(creditGrossProfit)} note={sourceKind === 'extended_vgp' ? `${formatNumber(negativeRows.length)} отрицательных строк` : `Не кредит: ${formatMoney(regularGrossProfit)}`} />
+      <MetricCard title={sourceKind === 'extended_vgp' ? 'Возвраты RETURN' : 'Выручка без кредитов'} value={sourceKind === 'extended_vgp' ? formatNumber(returnRows.length) : formatMoney(regularRevenue)} note={sourceKind === 'extended_vgp' ? `Доля: ${formatPercent(margin(rows.length, returnRows.length))}` : `${formatNumber(regularRows.length)} строк`} />
+      {sourceKind === 'payroll_snapshot' ? (
+        <>
+          <MetricCard title='Начислено сотрудникам' value={formatMoney(totalGrossPay)} note={`Доля от ВП: ${formatPercent(margin(totalGrossProfit, totalGrossPay))}`} />
+          <MetricCard title='К выплате' value={formatMoney(totalNetPay)} note='После авансов и удержаний' />
+          <MetricCard title='Источник' value='payroll snapshot' note='Read-only данные сохранённого расчёта' />
+        </>
+      ) : (
+        <>
+          <MetricCard title='Строк продаж' value={formatNumber(rows.length)} note='Расширенный ВВП, без зарплатных расчётов' />
+          <MetricCard title='Средняя маржа' value={formatPercent(margin(totalRevenue, totalGrossProfit))} note='По строкам расширенного ВВП' />
+          <MetricCard title='Источник' value='extended_vgp' note='Не влияет на расчёт зарплаты' />
+        </>
+      )}
     </section>
   );
 }
 
-function CategoryTable({ summaries, totalRevenue, totalGrossProfit }: { summaries: CategorySummary[]; totalRevenue: number; totalGrossProfit: number }) {
+function CategoryTable({ summaries, totalRevenue, totalGrossProfit, sourceKind }: { summaries: CategorySummary[]; totalRevenue: number; totalGrossProfit: number; sourceKind: SourceKind }) {
   const topRevenue = [...summaries].sort((left, right) => right.revenue - left.revenue)[0];
   const topProfit = [...summaries].sort((left, right) => right.grossProfit - left.grossProfit)[0];
   const highRevenueWeakMargin = summaries.find((item) => totalRevenue > 0 && item.revenue / totalRevenue >= 0.15 && (margin(item.revenue, item.grossProfit) ?? 100) < 12);
@@ -587,7 +788,9 @@ function CategoryTable({ summaries, totalRevenue, totalGrossProfit }: { summarie
     <Card className='mb-5 p-0'>
       <div className='border-b border-slate-200/80 px-5 py-4'>
         <h2 className='text-lg font-extrabold text-slate-950'>Продажи по категориям</h2>
-        <p className='mt-1 text-sm font-medium text-slate-500'>Группировка по бизнес-направлениям на основе сохранённых calculationType/category.</p>
+        <p className='mt-1 text-sm font-medium text-slate-500'>
+          {sourceKind === 'extended_vgp' ? 'Группировка по категориям расширенного ВВП.' : 'Группировка по бизнес-направлениям на основе сохранённых calculationType/category.'}
+        </p>
       </div>
       {summaries.length ? (
         <div className='grid gap-3 border-b border-slate-200/80 p-4 md:grid-cols-2 xl:grid-cols-4'>
@@ -631,7 +834,9 @@ function CategoryTable({ summaries, totalRevenue, totalGrossProfit }: { summarie
   );
 }
 
-function SalespeopleTable({ salespeople }: { salespeople: SalespersonSummary[] }) {
+function SalespeopleTable({ salespeople, sourceKind }: { salespeople: SalespersonSummary[]; sourceKind: SourceKind }) {
+  const showDirection = sourceKind === 'payroll_snapshot' || salespeople.some((item) => item.direction && item.direction !== 'нет данных');
+
   return (
     <Card className='mb-5 p-0'>
       <div className='border-b border-slate-200/80 px-5 py-4'>
@@ -643,15 +848,19 @@ function SalespeopleTable({ salespeople }: { salespeople: SalespersonSummary[] }
           <thead className='bg-slate-50 text-left text-xs uppercase text-slate-500'>
             <tr>
               <th className='px-4 py-3'>Сотрудник</th>
-              <th className='px-4 py-3'>Направление</th>
+              {showDirection ? <th className='px-4 py-3'>Направление</th> : null}
               <th className='px-4 py-3 text-right'>Выручка</th>
               <th className='px-4 py-3 text-right'>ВП</th>
               <th className='px-4 py-3 text-right'>Маржа</th>
               <th className='px-4 py-3 text-right'>Строк</th>
               <th className='px-4 py-3 text-right'>Средняя продажа</th>
               <th className='px-4 py-3 text-right'>Доля кредитов</th>
-              <th className='px-4 py-3 text-right'>Начислено</th>
-              <th className='px-4 py-3 text-right'>Начислено от ВП</th>
+              {sourceKind === 'payroll_snapshot' ? (
+                <>
+                  <th className='px-4 py-3 text-right'>Начислено</th>
+                  <th className='px-4 py-3 text-right'>Начислено от ВП</th>
+                </>
+              ) : null}
               <th className='px-4 py-3'>Проблемы продаж</th>
             </tr>
           </thead>
@@ -659,15 +868,19 @@ function SalespeopleTable({ salespeople }: { salespeople: SalespersonSummary[] }
             {salespeople.map((item) => (
               <tr key={item.employeeName} className='border-t border-slate-200/80 align-top'>
                 <td className='px-4 py-3 font-bold text-slate-950'>{item.employeeName}</td>
-                <td className='px-4 py-3 text-slate-600'>{item.direction}</td>
+                {showDirection ? <td className='px-4 py-3 text-slate-600'>{item.direction}</td> : null}
                 <MoneyCell value={item.revenue} />
                 <MoneyCell value={item.grossProfit} strong />
                 <PercentCell value={margin(item.revenue, item.grossProfit)} />
                 <td className='whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-800'>{formatNumber(item.rows)}</td>
                 <MoneyCell value={item.rows ? item.revenue / item.rows : null} />
                 <PercentCell value={margin(item.revenue, item.creditRevenue)} />
-                <MoneyCell value={item.grossPay} />
-                <PercentCell value={margin(item.grossProfit, item.grossPay)} />
+                {sourceKind === 'payroll_snapshot' ? (
+                  <>
+                    <MoneyCell value={item.grossPay} />
+                    <PercentCell value={margin(item.grossProfit, item.grossPay)} />
+                  </>
+                ) : null}
                 <td className='px-4 py-3'>
                   {item.salesProblems.length ? (
                     <Badge className='bg-amber-100 text-amber-800'>Проверить</Badge>
@@ -687,15 +900,23 @@ function SalespeopleTable({ salespeople }: { salespeople: SalespersonSummary[] }
   );
 }
 
-function PriceControlTable({ rows }: { rows: PriceControlRow[] }) {
+function PriceControlTable({ rows, sourceKind }: { rows: PriceControlRow[]; sourceKind: SourceKind }) {
+  const showDocumentColumns = sourceKind === 'extended_vgp';
+
   return (
     <Table>
       <thead className='bg-slate-50 text-left text-xs uppercase text-slate-500'>
         <tr>
           <th className='px-4 py-3'>Сотрудник</th>
+          {showDocumentColumns ? <th className='px-4 py-3'>Дата</th> : null}
+          {showDocumentColumns ? <th className='px-4 py-3'>Тип документа</th> : null}
+          {showDocumentColumns ? <th className='px-4 py-3'>Документ</th> : null}
+          {showDocumentColumns ? <th className='px-4 py-3'>Клиент</th> : null}
           <th className='px-4 py-3'>Товар</th>
           <th className='px-4 py-3'>Артикул</th>
           <th className='px-4 py-3'>Категория</th>
+          {showDocumentColumns ? <th className='px-4 py-3 text-right'>Кол-во</th> : null}
+          {showDocumentColumns ? <th className='px-4 py-3'>Кредит</th> : null}
           <th className='px-4 py-3 text-right'>Выручка</th>
           <th className='px-4 py-3 text-right'>Себестоимость</th>
           <th className='px-4 py-3 text-right'>ВП</th>
@@ -708,9 +929,15 @@ function PriceControlTable({ rows }: { rows: PriceControlRow[] }) {
         {rows.map(({ row, reasons }) => (
           <tr key={row.id} className='border-t border-slate-200/80 align-top'>
             <td className='px-4 py-3 font-bold text-slate-950'>{row.employeeName}</td>
+            {showDocumentColumns ? <td className='whitespace-nowrap px-4 py-3 text-slate-600'>{formatDate(row.documentDate)}</td> : null}
+            {showDocumentColumns ? <td className='whitespace-nowrap px-4 py-3 font-semibold text-slate-700'>{row.calculationType}</td> : null}
+            {showDocumentColumns ? <td className='min-w-[220px] px-4 py-3 text-slate-600'>{row.documentName || 'нет данных'}</td> : null}
+            {showDocumentColumns ? <td className='min-w-[180px] px-4 py-3 text-slate-600'>{row.client || 'нет данных'}</td> : null}
             <td className='min-w-[240px] px-4 py-3 font-semibold text-slate-900'>{row.itemName}</td>
             <td className='whitespace-nowrap px-4 py-3 text-slate-600'>{row.article || 'нет данных'}</td>
             <td className='px-4 py-3 text-slate-600'>{row.category || 'нет данных'}</td>
+            {showDocumentColumns ? <td className='whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-800'>{formatNumber(row.quantity)}</td> : null}
+            {showDocumentColumns ? <td className='whitespace-nowrap px-4 py-3'>{row.isCredit ? <Badge className='bg-blue-100 text-blue-800'>кредит</Badge> : <span className='text-slate-400'>нет</span>}</td> : null}
             <MoneyCell value={row.revenue} />
             <MoneyCell value={row.cost} />
             <MoneyCell value={row.grossProfit} danger={row.grossProfit < 0} />
@@ -724,23 +951,39 @@ function PriceControlTable({ rows }: { rows: PriceControlRow[] }) {
   );
 }
 
-function PriceControl({ rows }: { rows: PriceControlRow[] }) {
+function PriceControl({ rows, sourceRows, sourceKind }: { rows: PriceControlRow[]; sourceRows: AnalyticsRow[]; sourceKind: SourceKind }) {
   const topRows = rows.slice(0, 20);
   const hiddenRows = rows.slice(20);
+  const hiddenPreviewRows = hiddenRows.slice(0, 200);
+  const returnRowsCount = sourceKind === 'extended_vgp'
+    ? sourceRows.filter((row) => row.calculationType === 'RETURN').length
+    : sourceRows.filter((row) => row.isReturn).length;
+  const negativeNonReturnCount = sourceRows.filter((row) => row.calculationType !== 'RETURN' && (row.isNegative || row.revenue < 0 || row.grossProfit < 0)).length;
 
   return (
     <Card className='mb-5 p-0'>
       <div className='border-b border-slate-200/80 px-5 py-4'>
         <h2 className='text-lg font-extrabold text-slate-950'>Контроль цен и наценки</h2>
-        <p className='mt-1 text-sm font-medium text-slate-500'>Топ-20 самых критичных продаж. Порог 10% — предварительный контроль для техники/смартфонов; строки попадают сюда из-за отрицательной ВП, цены ниже себестоимости, низкой маржи или низкой наценки.</p>
+        <p className='mt-1 text-sm font-medium text-slate-500'>
+          {sourceKind === 'extended_vgp'
+            ? 'В этот блок не входят документы RETURN. Здесь показаны продажи, где цена/маржа выглядят проблемно: продажа ниже себестоимости, отрицательная ВП или низкая маржа.'
+            : 'Топ-20 самых критичных продаж. Порог 10% — предварительный контроль для техники/смартфонов; строки попадают сюда из-за отрицательной ВП, цены ниже себестоимости, низкой маржи или низкой наценки.'}
+        </p>
+        {sourceKind === 'extended_vgp' ? (
+          <div className='mt-3 flex flex-wrap gap-2'>
+            <Badge className='bg-slate-100 text-slate-700'>Возвраты RETURN: {returnRowsCount}</Badge>
+            <Badge className={rows.length ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>Проблемные продажи без RETURN: {rows.length}</Badge>
+            <Badge className={negativeNonReturnCount ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>Отрицательные строки вне RETURN: {negativeNonReturnCount}</Badge>
+          </div>
+        ) : null}
       </div>
       {rows.length ? (
         <>
-          <PriceControlTable rows={topRows} />
+          <PriceControlTable rows={topRows} sourceKind={sourceKind} />
           {hiddenRows.length ? (
             <details className='border-t border-slate-200/80'>
-              <summary className='cursor-pointer px-5 py-4 text-sm font-bold text-primary hover:bg-slate-50'>Показать все подозрительные продажи ({rows.length})</summary>
-              <PriceControlTable rows={hiddenRows} />
+              <summary className='cursor-pointer px-5 py-4 text-sm font-bold text-primary hover:bg-slate-50'>Показать дополнительные подозрительные продажи ({hiddenRows.length}, на экране первые {hiddenPreviewRows.length})</summary>
+              <PriceControlTable rows={hiddenPreviewRows} sourceKind={sourceKind} />
             </details>
           ) : null}
         </>
@@ -919,21 +1162,28 @@ function RawRows({ rows }: { rows: AnalyticsRow[] }) {
   );
 }
 
-function DataQuality({ rows, reviewEmployees }: { rows: AnalyticsRow[]; reviewEmployees: ReturnType<typeof readReviewEmployees> }) {
-  const negativeGrossProfitRows = rows.filter((row) => row.grossProfit < 0 || readFlags(row.problemFlags).includes('negative-gross-profit'));
-  const returnRows = rows.filter((row) => row.isReturn || row.isNegative);
+function DataQuality({ rows, reviewEmployees, sourceKind }: { rows: AnalyticsRow[]; reviewEmployees: ReturnType<typeof readReviewEmployees>; sourceKind: SourceKind }) {
   const manualRuleRows = rows.filter((row) => row.isManualRuleApplied || readFlags(row.problemFlags).includes('manual-rule'));
   const suspiciousCostRows = rows.filter((row) => readFlags(row.problemFlags).includes('suspicious-tech-cost'));
   const disputedRows = rows.filter((row) => readFlags(row.problemFlags).some((flag) => flag === 'requires-classification' || flag === 'potential-accessory-not-included' || flag === 'new-expensive-review'));
   const creditRows = rows.filter((row) => row.isCredit);
-  const sections = [
-    { title: 'Отрицательная ВП', rows: negativeGrossProfitRows },
-    { title: 'Возвраты / отрицательные строки', rows: returnRows },
-    { title: 'Ручные правила классификации', rows: manualRuleRows },
-    { title: 'Подозрительная себестоимость', rows: suspiciousCostRows },
-    { title: 'Спорные категории', rows: disputedRows },
-    { title: 'Кредитные строки', rows: creditRows },
-  ];
+  const sections = sourceKind === 'extended_vgp'
+    ? [
+      { title: 'Возвраты RETURN', rows: rows.filter((row) => row.calculationType === 'RETURN' || row.isReturn) },
+      { title: 'Отрицательные строки вне RETURN', rows: rows.filter((row) => row.calculationType !== 'RETURN' && (row.isNegative || row.revenue < 0 || row.grossProfit < 0)) },
+      { title: 'UNKNOWN documentType', rows: rows.filter((row) => row.calculationType === 'UNKNOWN') },
+      { title: 'Подозрительная себестоимость', rows: suspiciousCostRows },
+      { title: 'Спорные категории', rows: disputedRows },
+      { title: 'Кредитные строки', rows: creditRows },
+    ]
+    : [
+      { title: 'Отрицательная ВП', rows: rows.filter((row) => row.grossProfit < 0 || readFlags(row.problemFlags).includes('negative-gross-profit')) },
+      { title: 'Возвраты / отрицательные строки', rows: rows.filter((row) => row.isReturn || row.isNegative) },
+      { title: 'Ручные правила классификации', rows: manualRuleRows },
+      { title: 'Подозрительная себестоимость', rows: suspiciousCostRows },
+      { title: 'Спорные категории', rows: disputedRows },
+      { title: 'Кредитные строки', rows: creditRows },
+    ];
 
   return (
     <Card className='p-0'>
@@ -944,7 +1194,11 @@ function DataQuality({ rows, reviewEmployees }: { rows: AnalyticsRow[]; reviewEm
           </div>
           <div>
             <h2 className='text-lg font-extrabold text-slate-950'>Качество данных / контроль</h2>
-            <p className='text-sm font-medium text-slate-500'>Технические флаги ниже бизнес-аналитики. Возвраты сейчас определяются по отрицательным строкам ВВП. Для точного анализа возвратов нужен отдельный расширенный отчёт с документами реализации/возврата.</p>
+            <p className='text-sm font-medium text-slate-500'>
+              {sourceKind === 'extended_vgp'
+                ? 'Возвраты определяются по documentType RETURN. Отрицательные строки вне RETURN и подозрительная себестоимость выводятся как контроль качества данных.'
+                : 'Технические флаги ниже бизнес-аналитики. Возвраты сейчас определяются по отрицательным строкам ВВП. Для точного анализа возвратов нужен отдельный расширенный отчёт с документами реализации/возврата.'}
+            </p>
           </div>
         </div>
       </div>
@@ -976,50 +1230,110 @@ function DataQuality({ rows, reviewEmployees }: { rows: AnalyticsRow[]; reviewEm
   );
 }
 
-export default async function AdminAnalyticsPage() {
-  const latestRun = await getLatestPayrollRun();
+function getSourceMode(value: unknown): SourceMode {
+  return value === 'extended_vgp' || value === 'payroll_snapshot' ? value : 'auto';
+}
 
-  if (!latestRun) {
-    return (
-      <AdminShell>
-        <AdminBreadcrumbs current='Аналитика' />
-        <div className='mb-6'>
-          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Аналитика продаж</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Появится после сохранения первого расчёта зарплаты.</p>
-        </div>
-        <Card className='p-8 text-center'>
-          <div className='mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-500'>
-            <LineChart className='h-7 w-7' />
-          </div>
-          <h2 className='mt-4 text-xl font-extrabold text-slate-950'>Сохранённых payroll snapshot пока нет.</h2>
-          <p className='mx-auto mt-2 max-w-xl text-sm font-medium leading-relaxed text-slate-500'>Аналитика строится только по последнему сохранённому расчёту в PostgreSQL.</p>
-          <Link href='/admin/payroll' className='mt-5 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-white transition hover:bg-primary/90'>
-            Открыть зарплату
-            <ChevronRight className='h-4 w-4' />
-          </Link>
-        </Card>
-      </AdminShell>
-    );
-  }
+function SourceControls({ period, sourceMode, periods }: { period: string; sourceMode: SourceMode; periods: string[] }) {
+  return (
+    <form key={`${period}-${sourceMode}`} className='mt-4 grid gap-3 md:grid-cols-[180px_220px_auto] md:items-end'>
+      <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
+        Период
+        <input
+          name='period'
+          type='month'
+          defaultValue={period}
+          list='analytics-periods'
+          className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15'
+        />
+        <datalist id='analytics-periods'>
+          {periods.map((item) => <option key={item} value={item} />)}
+        </datalist>
+      </label>
+      <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
+        Источник
+        <select
+          name='source'
+          defaultValue={sourceMode}
+          className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15'
+        >
+          <option value='auto'>Авто</option>
+          <option value='extended_vgp'>Расширенный ВВП</option>
+          <option value='payroll_snapshot'>Payroll snapshot</option>
+        </select>
+      </label>
+      <button className='h-10 rounded-lg bg-primary px-4 text-sm font-bold text-white transition hover:bg-primary/90'>
+        Обновить
+      </button>
+    </form>
+  );
+}
 
-  const employees = latestRun.employeeResults;
-  const rows = latestRun.analyticsRows;
+type PageSearchParams = {
+  period?: string;
+  source?: string;
+};
+
+export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: PageSearchParams }) {
+  const sourceMode = getSourceMode(searchParams?.source);
+  const [latestExtendedHeader, latestRunForDefault, periods] = await Promise.all([
+    getLatestExtendedReportHeader(),
+    getLatestPayrollRun(),
+    getAvailablePeriods(),
+  ]);
+  const selectedPeriod = typeof searchParams?.period === 'string' && /^\d{4}-\d{2}$/.test(searchParams.period)
+    ? searchParams.period
+    : latestExtendedHeader?.period || latestRunForDefault?.period.periodKey || new Date().toISOString().slice(0, 7);
+
+  const [extendedReport, payrollRun] = await Promise.all([
+    sourceMode === 'payroll_snapshot' ? Promise.resolve(null) : getExtendedReport(selectedPeriod),
+    sourceMode === 'extended_vgp' ? Promise.resolve(null) : getLatestPayrollRun(selectedPeriod),
+  ]);
+
+  const activeSourceKind: SourceKind | null = sourceMode === 'extended_vgp'
+    ? (extendedReport ? 'extended_vgp' : null)
+    : sourceMode === 'payroll_snapshot'
+      ? (payrollRun ? 'payroll_snapshot' : null)
+      : extendedReport
+        ? 'extended_vgp'
+        : payrollRun
+          ? 'payroll_snapshot'
+          : null;
+
+  const activeExtendedReport = activeSourceKind === 'extended_vgp' ? extendedReport : null;
+  const activePayrollRun = activeSourceKind === 'payroll_snapshot' ? payrollRun : null;
+  const employees = activePayrollRun?.employeeResults ?? [];
+  const rows = activeExtendedReport
+    ? normalizeExtendedRows(activeExtendedReport.rows)
+    : activePayrollRun
+      ? normalizePayrollRows(activePayrollRun.analyticsRows)
+      : [];
   const hasRows = rows.length > 0;
-  const summary = asObject(latestRun.sourceSummary);
+  const summary = asObject(activePayrollRun?.sourceSummary);
   const fallbackRevenue = readNumber(summary, 'totalRevenue') ?? sumEmployees(employees, 'revenue');
   const fallbackGrossProfit = readNumber(summary, 'totalGrossProfit') ?? sumEmployees(employees, 'grossProfit');
   const totalRevenue = hasRows ? sumRows(rows, 'revenue') : fallbackRevenue;
   const totalGrossProfit = hasRows ? sumRows(rows, 'grossProfit') : fallbackGrossProfit;
-  const totalGrossPay = latestRun.grossPay || sumEmployees(employees, 'grossPay');
-  const totalNetPay = latestRun.netPay || sumEmployees(employees, 'netPay');
+  const totalGrossPay = activePayrollRun ? activePayrollRun.grossPay || sumEmployees(employees, 'grossPay') : 0;
+  const totalNetPay = activePayrollRun ? activePayrollRun.netPay || sumEmployees(employees, 'netPay') : 0;
   const categorySummaries = hasRows ? buildCategorySummaries(rows) : [];
-  const salespeople = hasRows ? buildSalespeople(rows, employees) : [];
-  const priceControlRows = hasRows ? buildPriceControlRows(rows) : [];
+  const salespeople = hasRows && activeSourceKind ? buildSalespeople(rows, employees, activeSourceKind) : [];
+  const priceControlRows = hasRows && activeSourceKind ? buildPriceControlRows(rows, activeSourceKind) : [];
   const creditRows = rows.filter((row) => row.isCredit);
   const creditProducts = buildCreditProductSummaries(rows);
   const monthInsights = buildMonthInsights(rows, categorySummaries, priceControlRows, creditRows);
-  const reviewEmployees = readReviewEmployees(summary);
-  const latestFile = latestRun.sourceFiles[latestRun.sourceFiles.length - 1];
+  const reviewEmployees = activePayrollRun ? readReviewEmployees(summary) : [];
+  const latestFile = activePayrollRun?.sourceFiles[activePayrollRun.sourceFiles.length - 1];
+  const sourceTitle = activeExtendedReport
+    ? 'extended_vgp · ' + activeExtendedReport.period + ' · файл ' + activeExtendedReport.fileName
+    : activePayrollRun
+      ? 'payroll snapshot · ' + activePayrollRun.period.periodKey + ' · расчёт №' + activePayrollRun.runNumber
+      : 'Источник не найден';
+  const sourceSubtitle = activeExtendedReport
+    ? 'Обновлён: ' + formatDateTime(activeExtendedReport.uploadedAt) + ' · ' + formatNumber(activeExtendedReport.rowsCount) + ' строк · не влияет на зарплату'
+    : activePayrollRun
+      ? 'Обновлён: ' + formatDateTime(activePayrollRun.createdAt) + (latestFile ? ' · файл: ' + latestFile.originalName : '')
+      : 'За период ' + selectedPeriod + ' нет данных выбранного источника.';
 
   return (
     <AdminShell>
@@ -1027,7 +1341,7 @@ export default async function AdminAnalyticsPage() {
       <div className='mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
         <div>
           <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Аналитика продаж</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Продажи месяца по последнему сохранённому snapshot без повторного расчёта зарплаты.</p>
+          <p className='mt-1 text-base font-medium text-slate-500'>Продажи месяца по выбранному read-only источнику для аналитики продаж.</p>
           <ReadingHelp />
         </div>
         <Link href='/admin/payroll' className='inline-flex w-fit items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-primary ring-1 ring-green-200 transition hover:bg-green-50'>
@@ -1039,45 +1353,55 @@ export default async function AdminAnalyticsPage() {
       <Card className='mb-5 p-5'>
         <div className='flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between'>
           <div>
-            <p className='text-sm font-bold uppercase tracking-wide text-slate-500'>Источник аналитики</p>
-            <h2 className='mt-1 text-2xl font-extrabold text-slate-950'>{latestRun.period.periodKey} · расчёт №{latestRun.runNumber}</h2>
-            <p className='mt-1 text-sm font-medium text-slate-500'>
-              Сохранён {formatDateTime(latestRun.createdAt)}
-              {latestFile ? ` · файл: ${latestFile.originalName}` : ''}
-            </p>
+            <p className='text-sm font-bold uppercase tracking-wide text-slate-500'>Источник данных</p>
+            <h2 className='mt-1 text-2xl font-extrabold text-slate-950'>Источник: {sourceTitle}</h2>
+            <p className='mt-1 text-sm font-medium text-slate-500'>{sourceSubtitle}</p>
+            <SourceControls period={selectedPeriod} sourceMode={sourceMode} periods={periods} />
           </div>
           <div className='flex flex-wrap gap-2'>
-            <Badge className={hasRows ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{hasRows ? `${rows.length} analyticsRows` : 'нужно пересохранить расчёт'}</Badge>
-            <Badge className='bg-slate-100 text-slate-700'>{latestRun.status}</Badge>
+            <Badge className={hasRows ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{hasRows ? String(rows.length) + ' строк' : 'нет строк'}</Badge>
+            <Badge className='bg-slate-100 text-slate-700'>{activeSourceKind ?? sourceMode}</Badge>
+            {sourceMode === 'auto' ? <Badge className='bg-blue-100 text-blue-800'>Авто</Badge> : null}
+            {activePayrollRun ? <Badge className='bg-slate-100 text-slate-700'>{activePayrollRun.status}</Badge> : null}
           </div>
         </div>
       </Card>
+
+      <div className='mb-5'>
+        <ExtendedVgpUpload initialPeriod={selectedPeriod} />
+      </div>
 
       {!hasRows ? (
         <Card className='mb-5 border-amber-200 bg-amber-50 p-5'>
           <div className='flex gap-3'>
             <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' />
             <div>
-              <p className='font-extrabold text-amber-950'>Для бизнес-аналитики нужно пересохранить расчёт.</p>
-              <p className='mt-1 text-sm font-medium leading-relaxed text-amber-800'>Этот snapshot сохранён без analyticsRows. Общие итоги доступны, но категории, кредиты и контроль цен требуют строковой аналитики.</p>
+              <p className='font-extrabold text-amber-950'>Нет строк для выбранного периода и источника.</p>
+              <p className='mt-1 text-sm font-medium leading-relaxed text-amber-800'>В режиме “Авто” страница сначала ищет расширенный ВВП за выбранный период, затем payroll snapshot за тот же период. Данные разных месяцев не смешиваются.</p>
             </div>
           </div>
         </Card>
       ) : null}
 
-      <SalesOverview rows={rows} totalGrossPay={totalGrossPay} totalNetPay={totalNetPay} />
+      {activeSourceKind === 'extended_vgp' ? (
+        <Card className='mb-5 border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-800'>
+          Эти показатели построены по расширенному ВВП и не влияют на зарплату. Зарплатные суммы доступны только при источнике “Payroll snapshot”.
+        </Card>
+      ) : null}
+
+      <SalesOverview rows={rows} totalGrossPay={totalGrossPay} totalNetPay={totalNetPay} sourceKind={activeSourceKind ?? 'payroll_snapshot'} />
 
       <MonthInsights insights={monthInsights} />
 
-      <CategoryTable summaries={categorySummaries} totalRevenue={totalRevenue} totalGrossProfit={totalGrossProfit} />
+      <CategoryTable summaries={categorySummaries} totalRevenue={totalRevenue} totalGrossProfit={totalGrossProfit} sourceKind={activeSourceKind ?? 'payroll_snapshot'} />
 
-      <SalespeopleTable salespeople={salespeople} />
+      <SalespeopleTable salespeople={salespeople} sourceKind={activeSourceKind ?? 'payroll_snapshot'} />
 
-      <PriceControl rows={priceControlRows} />
+      <PriceControl rows={priceControlRows} sourceRows={rows} sourceKind={activeSourceKind ?? 'payroll_snapshot'} />
 
       <CreditSales rows={creditRows} products={creditProducts} />
 
-      <DataQuality rows={rows} reviewEmployees={reviewEmployees} />
+      <DataQuality rows={rows} reviewEmployees={reviewEmployees} sourceKind={activeSourceKind ?? 'payroll_snapshot'} />
     </AdminShell>
   );
 }
