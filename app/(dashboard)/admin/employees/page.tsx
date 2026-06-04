@@ -5,8 +5,8 @@ import EmployeesClient from './EmployeesClient';
 
 export default async function EmployeesPage() {
   const users = await prisma.user.findMany({
-    orderBy: [{ role: 'asc' }, { id: 'asc' }],
-    select: { id: true, name: true, login: true, role: true },
+    orderBy: [{ isActive: 'desc' }, { role: 'asc' }, { name: 'asc' }],
+    select: { id: true, name: true, login: true, role: true, department: true, isActive: true, payrollName: true },
   });
 
   return (
@@ -14,7 +14,7 @@ export default async function EmployeesPage() {
       <div className='mb-7'>
         <AdminBreadcrumbs current='Сотрудники' />
         <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Сотрудники</h1>
-        <p className='mt-1 text-base font-medium text-slate-500'>Управление списком сотрудников и статусами</p>
+        <p className='mt-1 text-base font-medium text-slate-500'>Аккаунты для входа в портал и будущей отметки рабочего дня</p>
       </div>
       <EmployeesClient initialUsers={users} />
     </AdminShell>

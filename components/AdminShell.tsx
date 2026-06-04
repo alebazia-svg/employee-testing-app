@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BarChart3, CalendarCheck, GraduationCap, Home, LineChart, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
+import { Banknote, BarChart3, BriefcaseBusiness, CalendarCheck, GraduationCap, Home, LineChart, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
 import { LogoutButton } from '@/components/LogoutButton';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ const navigation = [
   { href: '/admin/attestations', label: 'Аттестации', icon: GraduationCap },
   { href: '/admin/results', label: 'Результаты', icon: BarChart3 },
   { href: '/admin/attendance', label: 'Посещаемость', icon: CalendarCheck },
+  { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness },
   { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
   { href: '/admin/analytics', label: 'Аналитика', icon: LineChart },
 ];

@@ -13,12 +13,57 @@ model User {
   login         String            @unique
   passwordHash  String
   role          String
+  department    String            @default("retail")
+  isActive      Boolean           @default(true)
+  payrollName   String?
   results       Result[]
   progresses    AttemptProgress[]
   resetTargets  AttemptReset[]    @relation("ResetTarget")
   resetByActions AttemptReset[]    @relation("ResetBy")
   payrollRuns   PayrollRun[]      @relation("PayrollRunCreatedBy")
   payrollAdjustments PayrollAdjustment[] @relation("PayrollAdjustmentCreatedBy")
+  workSchedules WorkScheduleEntry[]
+  workDays      WorkDayEntry[]
+}
+
+model WorkScheduleEntry {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  date       String
+  department String
+  status     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([department, date])
+  @@index([status])
+}
+
+model WorkDayEntry {
+  id                Int       @id @default(autoincrement())
+  userId            Int
+  date              String
+  department        String
+  shiftCode         String
+  shiftLabel        String
+  shiftStartMinutes Int?
+  shiftEndMinutes   Int?
+  startedAt         DateTime  @default(now())
+  endedAt           DateTime?
+  lateMinutes       Int       @default(0)
+  comment           String    @default("")
+  status            String    @default("active")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([department, date])
+  @@index([status])
 }
 
 model Attestation {

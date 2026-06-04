@@ -8,17 +8,43 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table } from '@/components/ui/table';
 
-type User = { id: number; name: string; login: string; role: string };
+type User = {
+  id: number;
+  name: string;
+  login: string;
+  role: string;
+  department: string;
+  isActive: boolean;
+  payrollName: string | null;
+};
 
-const emptyDraft = { id: 0, name: '', login: '', password: '', role: 'EMPLOYEE' };
+type Draft = User & { password: string };
+
+const departmentLabels: Record<string, string> = {
+  retail: 'Розница',
+  wholesale: 'Опт',
+  operations: 'Операции',
+};
+
+const emptyDraft: Draft = {
+  id: 0,
+  name: '',
+  login: '',
+  password: '',
+  role: 'EMPLOYEE',
+  department: 'retail',
+  isActive: true,
+  payrollName: '',
+};
 
 export default function EmployeesClient({ initialUsers }: { initialUsers: User[] }) {
   const [users, setUsers] = useState(initialUsers);
-  const [draft, setDraft] = useState(emptyDraft);
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [error, setError] = useState('');
   const adminCount = users.filter((user) => user.role === 'ADMIN').length;
   const employeeCount = users.filter((user) => user.role !== 'ADMIN').length;
+  const activeCount = users.filter((user) => user.isActive).length;
 
   function startCreate() {
     setError('');
@@ -29,7 +55,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
   function startEdit(user: User) {
     setError('');
     setEditingId(user.id);
-    setDraft({ ...user, password: '' });
+    setDraft({ ...user, payrollName: user.payrollName ?? '', password: '' });
   }
 
   async function save() {
@@ -45,7 +71,10 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
     }
 
     const saved = await response.json();
-    setUsers((current) => (editingId === 'new' ? [...current, saved] : current.map((user) => (user.id === saved.id ? saved : user))));
+    setUsers((current) => {
+      const next = editingId === 'new' ? [...current, saved] : current.map((user) => (user.id === saved.id ? saved : user));
+      return next.sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.role.localeCompare(right.role) || left.name.localeCompare(right.name, 'ru'));
+    });
     setEditingId(null);
     setDraft(emptyDraft);
   }
@@ -65,9 +94,10 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
 
   return (
     <div className='space-y-5'>
-      <div className='grid gap-4 md:grid-cols-3'>
+      <div className='grid gap-4 md:grid-cols-4'>
         {[
-          { label: 'Всего сотрудников', value: users.length, icon: Users, tone: 'green' },
+          { label: 'Всего пользователей', value: users.length, icon: Users, tone: 'green' },
+          { label: 'Активные', value: activeCount, icon: UserCheck, tone: 'green' },
           { label: 'Администраторы', value: adminCount, icon: UserCog, tone: 'blue' },
           { label: 'Сотрудники', value: employeeCount, icon: UserCheck, tone: 'green' },
         ].map((item) => {
@@ -89,8 +119,10 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
 
       <Card className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
         <div>
-          <p className='text-sm font-bold text-slate-950'>Список сотрудников</p>
-          <p className='text-sm font-medium text-slate-500'>Роли и доступы сохраняются текущей логикой приложения.</p>
+          <p className='text-sm font-bold text-slate-950'>Пользователи портала</p>
+          <p className='text-sm font-medium text-slate-500'>
+            Эти аккаунты используются для входа в портал. Поле “ФИО в payroll” подготовлено для будущего раздела “Моя зарплата”, но сейчас не влияет на расчёты.
+          </p>
         </div>
         <Button className='gap-2' onClick={startCreate}>
           <UserPlus className='h-4 w-4' />
@@ -101,14 +133,24 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
       {editingId && (
         <Card>
           <h2 className='mb-3 text-lg font-semibold text-slate-900'>{editingId === 'new' ? 'Новый сотрудник' : 'Редактирование сотрудника'}</h2>
-          <div className='grid gap-3 md:grid-cols-2'>
-            <Input placeholder='Имя' value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))} />
+          <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+            <Input placeholder='Отображаемое имя' value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))} />
             <Input placeholder='Логин' value={draft.login} onChange={(event) => setDraft((value) => ({ ...value, login: event.target.value }))} />
+            <Input placeholder='ФИО в payroll, если отличается' value={draft.payrollName ?? ''} onChange={(event) => setDraft((value) => ({ ...value, payrollName: event.target.value }))} />
             <Input placeholder={editingId === 'new' ? 'Пароль' : 'Новый пароль, если нужно'} type='password' value={draft.password} onChange={(event) => setDraft((value) => ({ ...value, password: event.target.value }))} />
             <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.role} onChange={(event) => setDraft((value) => ({ ...value, role: event.target.value }))}>
               <option value='ADMIN'>Администратор</option>
               <option value='EMPLOYEE'>Сотрудник</option>
             </select>
+            <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.department} onChange={(event) => setDraft((value) => ({ ...value, department: event.target.value }))}>
+              <option value='retail'>Розница</option>
+              <option value='wholesale'>Опт</option>
+              <option value='operations'>Операции</option>
+            </select>
+            <label className='flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700'>
+              <input type='checkbox' checked={draft.isActive} onChange={(event) => setDraft((value) => ({ ...value, isActive: event.target.checked }))} />
+              Активен
+            </label>
           </div>
           {error && <p className='mt-3 text-sm text-red-600'>{error}</p>}
           <div className='mt-4 flex gap-2'>
@@ -125,6 +167,9 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
               <th className='px-5 py-4'>Имя</th>
               <th className='px-5 py-4'>Логин</th>
               <th className='px-5 py-4'>Роль</th>
+              <th className='px-5 py-4'>Отдел</th>
+              <th className='px-5 py-4'>ФИО в payroll</th>
+              <th className='px-5 py-4'>Статус</th>
               <th className='px-5 py-4'>Действия</th>
             </tr>
           </thead>
@@ -137,6 +182,13 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
                   <Badge className={user.role === 'ADMIN' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
                     {user.role === 'ADMIN' && <ShieldCheck className='mr-1 inline h-3.5 w-3.5' />}
                     {user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}
+                  </Badge>
+                </td>
+                <td className='px-5 py-4 text-slate-700'>{departmentLabels[user.department] ?? user.department}</td>
+                <td className='px-5 py-4 text-slate-700'>{user.payrollName || 'не связано'}</td>
+                <td className='px-5 py-4'>
+                  <Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}>
+                    {user.isActive ? 'Активен' : 'Отключён'}
                   </Badge>
                 </td>
                 <td className='flex gap-2 px-5 py-4'>

@@ -10,6 +10,10 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Неверный логин или пароль' }, { status: 401 });
   }
 
+  if (!user.isActive) {
+    return Response.json({ error: 'Пользователь отключён' }, { status: 403 });
+  }
+
   cookies().set('userId', String(user.id), { path: '/' });
 
   return Response.json({ role: user.role });
