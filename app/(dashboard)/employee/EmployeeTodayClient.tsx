@@ -8,6 +8,8 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   GraduationCap,
   Home,
@@ -74,6 +76,7 @@ type Props = {
 };
 
 type Tab = 'day' | 'schedule' | 'attestations';
+type ScheduleMode = 'list' | 'month';
 
 const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: 'day', label: 'Рабочий день', icon: Home },
@@ -91,6 +94,56 @@ function scheduleLabel(status: string | null | undefined) {
   if (status === 'working') return 'По графику';
   if (status === 'off') return 'Выходной';
   return 'Нет графика';
+}
+
+function scheduleWorkLabel(status: string | null | undefined) {
+  if (status === 'working') return 'Работаю';
+  if (status === 'off') return 'Выходной';
+  return 'Не заполнено';
+}
+
+function scheduleCellLabel(status: string | null | undefined) {
+  if (status === 'working') return 'раб';
+  if (status === 'off') return 'вых';
+  return '?';
+}
+
+function monthKeyFromDate(date: string) {
+  return date.slice(0, 7);
+}
+
+function addMonths(monthKey: string, offset: number) {
+  const [year, month] = monthKey.split('-').map(Number);
+  const next = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthTitle(monthKey: string) {
+  const [year, month] = monthKey.split('-').map(Number);
+  const title = new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric' }).format(new Date(Date.UTC(year, month - 1, 1)));
+  return title.charAt(0).toUpperCase() + title.slice(1);
+}
+
+function buildCalendarMonth(monthKey: string) {
+  const [year, month] = monthKey.split('-').map(Number);
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const startOffset = (first.getUTCDay() + 6) % 7;
+  const last = new Date(Date.UTC(year, month, 0));
+  const lastOffset = (last.getUTCDay() + 6) % 7;
+  const daysInMonth = last.getUTCDate();
+  const daysCount = startOffset + daysInMonth + (6 - lastOffset);
+  const start = new Date(first);
+  start.setUTCDate(first.getUTCDate() - startOffset);
+
+  return Array.from({ length: daysCount }, (_, index) => {
+    const day = new Date(start);
+    day.setUTCDate(start.getUTCDate() + index);
+    return {
+      date: day.toISOString().slice(0, 10),
+      day: day.getUTCDate(),
+      inMonth: day.getUTCMonth() === month - 1,
+    };
+  });
 }
 
 function factTone(status: string | null | undefined) {
@@ -120,6 +173,11 @@ function initials(name: string) {
     .join('')
     .slice(0, 2)
     .toUpperCase();
+}
+
+function personDisplayName(name: string) {
+  const shortName = name.split('/').pop()?.trim();
+  return shortName || name;
 }
 
 function byName(a: UserSummary, b: UserSummary) {
@@ -238,6 +296,9 @@ export function EmployeeTodayClient({
   const [comment, setComment] = useState('');
   const [showLateComment, setShowLateComment] = useState(false);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('list');
+  const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
+  const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -289,6 +350,126 @@ export function EmployeeTodayClient({
   const workingColleagues = colleagueUsers.filter((person) => todayEntryByUser.get(person.id)?.status === 'working');
   const offColleagues = colleagueUsers.filter((person) => todayEntryByUser.get(person.id)?.status === 'off');
   const missingColleagues = colleagueUsers.filter((person) => !todayEntryByUser.has(person.id));
+  const calendarDays = useMemo(() => buildCalendarMonth(calendarMonth), [calendarMonth]);
+  const scheduleLegendUsers = useMemo(() => [...departmentUsers].filter((person) => person.id !== user.id).sort(byName), [departmentUsers, user.id]);
+
+  function getColleagueRows(date: string) {
+    const entries = departmentScheduleByDate.get(date) ?? [];
+    const entryByUser = new Map(entries.map((entry) => [entry.userId, entry]));
+    return colleagueUsers.map((person) => ({
+      person,
+      entry: entryByUser.get(person.id),
+    }));
+  }
+
+  function getWorkingInitials(date: string) {
+    const entries = departmentScheduleByDate.get(date) ?? [];
+    const entryByUser = new Map(entries.map((entry) => [entry.userId, entry]));
+    return colleagueUsers
+      .filter((person) => entryByUser.get(person.id)?.status === 'working')
+      .slice(0, 4)
+      .map((person) => initials(person.name));
+  }
+
+  function ScheduleDayCard({ date, selected = false }: { date: string; selected?: boolean }) {
+    const ownEntry = ownScheduleByDate.get(date);
+    const colleagueRows = getColleagueRows(date);
+    const selectedWorkingRows = colleagueRows.filter(({ entry }) => entry?.status === 'working');
+    const selectedOffRows = colleagueRows.filter(({ entry }) => entry?.status === 'off');
+    const selectedMissingRows = colleagueRows.filter(({ entry }) => !entry);
+
+    function SelectedColleagueGroup({ title, rows, tone }: { title: string; rows: typeof colleagueRows; tone: 'green' | 'slate' | 'amber' }) {
+      const dotClass = tone === 'green' ? 'bg-primary' : tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400';
+
+      return (
+        <div className='rounded-lg bg-slate-50 px-2.5 py-2'>
+          <div className='mb-1.5 flex items-center justify-between gap-2'>
+            <span className='inline-flex items-center gap-2 text-xs font-extrabold text-slate-700'>
+              <span className={cn('h-2 w-2 rounded-full', dotClass)} />
+              {title}
+            </span>
+            <span className='text-[11px] font-extrabold text-slate-400'>{rows.length}</span>
+          </div>
+          {rows.length ? (
+            <div className='grid gap-1'>
+              {rows.map(({ person }) => (
+                <div key={person.id} className='flex min-w-0 items-center gap-2'>
+                  <span className='flex h-5 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-extrabold text-green-800 ring-1 ring-green-100'>
+                    {initials(person.name)}
+                  </span>
+                  <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className='text-xs font-medium text-slate-400'>Нет сотрудников</p>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className={cn('rounded-lg border bg-white p-3', selected ? 'border-primary/40 ring-2 ring-primary/10' : 'border-slate-200')}>
+        <div className='mb-2.5 flex items-center justify-between gap-3'>
+          <div className='min-w-0'>
+            <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
+            {ownEntry?.status === 'working' && <p className='mt-0.5 text-xs font-bold text-green-700'>Рабочий день</p>}
+          </div>
+          <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px]', scheduleTone(ownEntry?.status))}>
+            Я: {scheduleWorkLabel(ownEntry?.status)}
+          </Badge>
+        </div>
+
+        <div className='grid grid-cols-2 gap-2'>
+          <Button
+            className={cn('h-10 rounded-lg', ownEntry?.status !== 'working' && 'bg-slate-100 text-slate-700 shadow-none hover:bg-green-100 hover:text-green-800')}
+            onClick={() => updateSchedule(date, 'working')}
+            disabled={isSaving}
+          >
+            Работаю
+          </Button>
+          <Button
+            className={cn('h-10 rounded-lg', ownEntry?.status === 'off' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200')}
+            onClick={() => updateSchedule(date, 'off')}
+            disabled={isSaving}
+          >
+            Выходной
+          </Button>
+        </div>
+
+        <div className='mt-3 border-t border-slate-100 pt-2.5'>
+          <p className='mb-2 text-[11px] font-extrabold uppercase leading-none text-slate-400'>
+            {selected ? 'Коллеги на этот день' : 'Коллеги'}
+          </p>
+          {selected ? (
+            <div className='grid gap-1.5'>
+              <SelectedColleagueGroup title='Работают' rows={selectedWorkingRows} tone='green' />
+              <SelectedColleagueGroup title='Выходной' rows={selectedOffRows} tone='slate' />
+              <SelectedColleagueGroup title='Не заполнено' rows={selectedMissingRows} tone='amber' />
+            </div>
+          ) : colleagueRows.length ? (
+            <div className='grid gap-1.5'>
+              {colleagueRows.map(({ person, entry }) => (
+                <div key={person.id} className='flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
+                  <div className='flex min-w-0 items-center gap-2'>
+                    <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-[10px] font-extrabold text-green-800'>
+                      {initials(person.name)}
+                    </span>
+                    <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
+                  </div>
+                  <span className={cn('shrink-0 text-xs font-extrabold', entry?.status === 'working' ? 'text-green-700' : entry?.status === 'off' ? 'text-slate-500' : 'text-amber-700')}>
+                    {scheduleWorkLabel(entry?.status)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className='text-sm font-medium text-slate-400'>Нет коллег из отдела.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   async function updateSchedule(date: string, status: 'working' | 'off') {
     setError('');
@@ -580,67 +761,133 @@ export function EmployeeTodayClient({
           )}
 
           {activeTab === 'schedule' && (
-            <Card>
-              <div className='mb-4 flex items-center gap-2'>
-                <CalendarDays className='h-5 w-5 text-primary' />
-                <div>
-                  <h2 className='text-lg font-extrabold text-slate-950'>График</h2>
-                  <p className='mt-1 text-sm font-medium text-slate-500'>Логика графика сохранена: можно отметить рабочие и выходные дни.</p>
+            <div className='space-y-3'>
+              <Card className='space-y-3 p-3.5'>
+                <div className='flex items-center gap-2'>
+                  <CalendarDays className='h-5 w-5 text-primary' />
+                  <h2 className='text-xl font-extrabold text-slate-950'>График</h2>
                 </div>
-              </div>
 
-              <div className='grid gap-3'>
-                {visibleDates.map((date) => {
-                  const ownEntry = ownScheduleByDate.get(date);
-                  const colleagues = (departmentScheduleByDate.get(date) ?? [])
-                    .filter((entry) => entry.userId !== user.id)
-                    .sort((a, b) => (a.user?.name ?? '').localeCompare(b.user?.name ?? '', 'ru'));
-                  return (
-                    <div key={date} className='rounded-lg border border-slate-200 bg-white p-3'>
-                      <div className='mb-3 flex items-center justify-between gap-3'>
-                        <p className='font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
-                        <Badge className={scheduleTone(ownEntry?.status)}>Я: {scheduleLabel(ownEntry?.status)}</Badge>
-                      </div>
-                      <div className='grid grid-cols-2 gap-2'>
-                        <Button
-                          className={cn('h-10', ownEntry?.status !== 'working' && 'bg-slate-100 text-slate-700 shadow-none hover:bg-green-100 hover:text-green-800')}
-                          onClick={() => updateSchedule(date, 'working')}
-                          disabled={isSaving}
+                <div className='grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1'>
+                  {[
+                    { id: 'list' as const, label: 'Список' },
+                    { id: 'month' as const, label: 'Месяц' },
+                  ].map((mode) => (
+                    <button
+                      key={mode.id}
+                      type='button'
+                      onClick={() => setScheduleMode(mode.id)}
+                      className={cn(
+                        'h-10 rounded-lg text-sm font-extrabold transition',
+                        scheduleMode === mode.id ? 'bg-[#111821] text-white shadow-[0_8px_18px_rgba(15,23,42,0.16)]' : 'text-slate-600 hover:bg-white',
+                      )}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+              </Card>
+
+              {scheduleMode === 'list' && (
+                <>
+                  <div className='grid gap-2.5'>
+                    {visibleDates.map((date) => (
+                      <ScheduleDayCard key={date} date={date} />
+                    ))}
+                  </div>
+
+                  <Button className='w-full gap-2 bg-slate-100 text-slate-800 shadow-none hover:bg-slate-200' onClick={() => setShowFullSchedule((current) => !current)}>
+                    {showFullSchedule ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
+                    {showFullSchedule ? 'Свернуть график' : 'Открыть полный график'}
+                  </Button>
+                </>
+              )}
+
+              {scheduleMode === 'month' && (
+                <Card className='space-y-3 p-3'>
+                  <div className='flex items-center justify-between gap-2'>
+                    <button
+                      type='button'
+                      className='flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
+                      onClick={() => setCalendarMonth((current) => addMonths(current, -1))}
+                      aria-label='Предыдущий месяц'
+                    >
+                      <ChevronLeft className='h-5 w-5' />
+                    </button>
+                    <p className='text-base font-extrabold text-slate-950'>{monthTitle(calendarMonth)}</p>
+                    <button
+                      type='button'
+                      className='flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
+                      onClick={() => setCalendarMonth((current) => addMonths(current, 1))}
+                      aria-label='Следующий месяц'
+                    >
+                      <ChevronRight className='h-5 w-5' />
+                    </button>
+                  </div>
+
+                  <div className='grid grid-cols-7 gap-1 text-center text-[11px] font-extrabold text-slate-500'>
+                    {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => (
+                      <span key={day}>{day}</span>
+                    ))}
+                  </div>
+
+                  <div className='grid grid-cols-7 gap-1'>
+                    {calendarDays.map((cell) => {
+                      const ownEntry = ownScheduleByDate.get(cell.date);
+                      const workingInitials = getWorkingInitials(cell.date);
+                      const selected = selectedScheduleDate === cell.date;
+                      const statusClass =
+                        ownEntry?.status === 'working'
+                          ? 'bg-green-50 text-green-900 ring-green-100'
+                          : ownEntry?.status === 'off'
+                            ? 'bg-slate-100 text-slate-700 ring-slate-200'
+                            : 'bg-amber-50 text-amber-800 ring-amber-100';
+
+                      return (
+                        <button
+                          key={cell.date}
+                          type='button'
+                          onClick={() => setSelectedScheduleDate(cell.date)}
+                          className={cn(
+                            'flex min-h-[60px] min-w-0 flex-col rounded-md p-1 text-left ring-1 transition hover:scale-[1.01]',
+                            statusClass,
+                            !cell.inMonth && 'opacity-40',
+                            selected && 'ring-2 ring-primary shadow-[0_8px_18px_rgba(81,180,17,0.16)]',
+                          )}
                         >
-                          Работаю
-                        </Button>
-                        <Button
-                          className={cn('h-10', ownEntry?.status === 'off' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200')}
-                          onClick={() => updateSchedule(date, 'off')}
-                          disabled={isSaving}
-                        >
-                          Выходной
-                        </Button>
-                      </div>
-                      <div className='mt-3 border-t border-slate-100 pt-3'>
-                        <p className='mb-2 text-xs font-extrabold uppercase text-slate-400'>Коллеги</p>
-                        {colleagues.length ? (
-                          <div className='flex flex-wrap gap-2'>
-                            {colleagues.map((entry) => (
-                              <span key={entry.id} className='rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-700 ring-1 ring-slate-200'>
-                                {entry.user?.name}: {scheduleLabel(entry.status)}
+                          <span className='text-[13px] font-extrabold leading-none'>{cell.day}</span>
+                          <span className='mt-0.5 text-[10px] font-extrabold leading-none'>{scheduleCellLabel(ownEntry?.status)}</span>
+                          <span className='mt-auto flex max-w-full flex-wrap gap-x-1 gap-y-0.5 overflow-hidden leading-none'>
+                            {workingInitials.map((letter, index) => (
+                              <span key={`${letter}-${index}`} className='text-[8px] font-extrabold leading-none text-green-800'>
+                                {letter}
                               </span>
                             ))}
-                          </div>
-                        ) : (
-                          <p className='text-sm font-medium text-slate-400'>Нет заполненных дней коллег.</p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-              <Button className='mt-4 w-full gap-2 bg-slate-100 text-slate-800 shadow-none hover:bg-slate-200' onClick={() => setShowFullSchedule((current) => !current)}>
-                {showFullSchedule ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
-                {showFullSchedule ? 'Свернуть график' : 'Открыть полный график месяца'}
-              </Button>
-            </Card>
+                  <div className='rounded-lg border border-slate-200 bg-white p-2.5'>
+                    <p className='mb-2 text-sm font-extrabold text-slate-950'>Обозначения</p>
+                    <div className='grid gap-1.5'>
+                      {scheduleLegendUsers.map((person) => (
+                        <div key={person.id} className='flex min-w-0 items-baseline gap-2 text-xs font-bold text-slate-700'>
+                          <span className='shrink-0 font-extrabold text-green-800'>
+                            {initials(person.name)}
+                          </span>
+                          <span className='shrink-0 text-slate-300'>—</span>
+                          <span className='min-w-0 leading-tight'>{personDisplayName(person.name)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <ScheduleDayCard date={selectedScheduleDate} selected />
+                </Card>
+              )}
+            </div>
           )}
 
           {activeTab === 'attestations' && (
