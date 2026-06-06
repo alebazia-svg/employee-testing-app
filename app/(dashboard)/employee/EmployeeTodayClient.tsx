@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  Banknote,
   CalendarDays,
   Check,
   CheckCircle2,
@@ -11,11 +12,16 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  ClipboardCheck,
+  Clock,
+  CreditCard,
   GraduationCap,
   Home,
   MessageSquare,
   Play,
   Power,
+  ReceiptText,
+  Store,
   Users,
 } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
@@ -64,6 +70,53 @@ type AttestationSummary = {
   hasProgress: boolean;
 };
 
+type ShiftControlTask = {
+  id: number;
+  runId: number;
+  title: string;
+  category: string;
+  sortOrder: number;
+  required: boolean;
+  plannedTimeMinutes: number | null;
+  status: string;
+  completedAt: string | Date | null;
+  numericValue: number | null;
+  integerValue: number | null;
+  booleanValue: boolean | null;
+  textValue: string | null;
+  handoverData?: unknown;
+  comment: string;
+};
+
+type ShiftControlRun = {
+  id: number;
+  workDayEntryId: number;
+  userId: number;
+  department: string;
+  date: string;
+  status: string;
+  startedAt: string | Date;
+  completedAt?: string | Date | null;
+};
+
+type ShiftControlState = {
+  run: ShiftControlRun | null;
+  tasks: ShiftControlTask[];
+};
+
+type CashOperation = {
+  id: number;
+  userId: number;
+  workDayEntryId: number;
+  date: string;
+  direction: 'phone_reserve' | 'deposit_safe';
+  amount: number;
+  photoPath: string;
+  comment: string;
+  status: string;
+  createdAt: string | Date;
+};
+
 type Props = {
   user: UserSummary;
   today: string;
@@ -73,10 +126,54 @@ type Props = {
   todayWorkDay: WorkDayEntry | null;
   unfinishedWorkDay: WorkDayEntry | null;
   attestations: AttestationSummary[];
+  shiftControl: ShiftControlState;
+  cashOperations: CashOperation[];
 };
 
 type Tab = 'day' | 'schedule' | 'attestations';
 type ScheduleMode = 'list' | 'month';
+type ShiftTaskDraft = {
+  numericValue: string;
+  integerValue: string;
+  booleanValue: boolean;
+  comment: string;
+};
+type HandoverPhotoKey =
+  | 'personalStatementPhoto'
+  | 'personalAcquiringReceiptsPhoto'
+  | 'sberbankTerminalReportPhoto'
+  | 'tbankTerminalReportPhoto'
+  | 'zReportPhoto'
+  | 'encashmentDocumentPhoto';
+type HandoverSavedPhoto = {
+  storagePath?: string;
+  originalName?: string;
+};
+type HandoverPhotoValue = File | HandoverSavedPhoto | null;
+type HandoverDraft = {
+  personalStatementPhoto: HandoverPhotoValue;
+  personalAcquiringReceiptsPhoto: HandoverPhotoValue;
+  personalCashBalance: string;
+  discrepancyType: '' | 'none' | 'surplus' | 'shortage';
+  discrepancyAmount: string;
+  hadWithdrawal: '' | 'yes' | 'no';
+  withdrawalAmount: string;
+  cashOrderAmount: string;
+  sberbankTerminalReportPhoto: HandoverPhotoValue;
+  sberbankTerminalTotal: string;
+  hasTbankCredit: '' | 'yes' | 'no';
+  tbankTerminalReportPhoto: HandoverPhotoValue;
+  tbankTerminalTotal: string;
+  zReportPhoto: HandoverPhotoValue;
+  encashmentAmount: string;
+  encashmentDocumentPhoto: HandoverPhotoValue;
+  comment: string;
+};
+type CashOperationDraft = {
+  direction: CashOperation['direction'] | null;
+  amount: string;
+  comment: string;
+};
 
 const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: 'day', label: 'Рабочий день', icon: Home },
@@ -207,6 +304,208 @@ function minutesToTime(minutes: number | null | undefined) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
+function plannedTimeLabel(minutes: number | null | undefined) {
+  if (minutes === null || minutes === undefined) return 'без времени';
+  return minutesToTime(minutes);
+}
+
+function shiftTaskStatus(task: ShiftControlTask, now: Date) {
+  if (task.status === 'done') return 'done';
+  if (task.plannedTimeMinutes !== null && task.plannedTimeMinutes !== undefined && getMoscowMinutes(now) > task.plannedTimeMinutes) {
+    return 'overdue';
+  }
+  return 'pending';
+}
+
+function shiftTaskStatusLabel(status: string) {
+  if (status === 'done') return 'выполнено';
+  if (status === 'overdue') return 'просрочено';
+  return 'ожидает';
+}
+
+function shiftTaskStatusClass(status: string) {
+  if (status === 'done') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
+  if (status === 'overdue') return 'bg-amber-100 text-amber-800 ring-1 ring-amber-200';
+  return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
+}
+
+function shiftTaskIcon(task: ShiftControlTask) {
+  if (task.category === 'cash') return Banknote;
+  if (task.category === 'credit') return ReceiptText;
+  if (task.category === 'acquiring') return CreditCard;
+  if (task.category === 'opening') return Store;
+  if (task.category === 'handover') return ClipboardCheck;
+  if (task.category === 'closing') return ReceiptText;
+  return Clock;
+}
+
+function shiftTaskTitle(task: ShiftControlTask) {
+  if (task.category === 'cash') {
+    return task.title
+      .replace('Проверить наличные при входе в смену', 'Проверить наличные в кассе при входе в смену')
+      .replace('Проверить наличные в кассе', 'Проверить наличные в кассе');
+  }
+  if (task.category === 'acquiring') return task.title.replace('Проверить эквайринг', 'Проверить оплаты картой').replace('эквайринг', 'оплаты картой');
+  if (task.category === 'credit') return task.title.replace('кредиты и рассрочки', 'кредиты / рассрочки').replace('Кредиты', 'Кредиты / рассрочки');
+  return task.title;
+}
+
+function shiftTaskIconClass(category: string) {
+  if (category === 'cash') return 'bg-green-50 text-green-700 ring-green-100';
+  if (category === 'credit') return 'bg-blue-50 text-blue-700 ring-blue-100';
+  if (category === 'acquiring') return 'bg-emerald-50 text-emerald-700 ring-emerald-100';
+  if (category === 'opening') return 'bg-slate-50 text-slate-700 ring-slate-200';
+  if (category === 'handover') return 'bg-amber-50 text-amber-700 ring-amber-100';
+  if (category === 'closing') return 'bg-slate-100 text-slate-800 ring-slate-200';
+  return 'bg-slate-50 text-primary ring-slate-200';
+}
+
+function timeUntilLabel(minutes: number | null | undefined, now: Date) {
+  if (minutes === null || minutes === undefined) return 'можно выполнить сейчас';
+  const diff = minutes - getMoscowMinutes(now);
+  if (diff <= 0) return 'пора выполнить';
+  const hours = Math.floor(diff / 60);
+  const restMinutes = diff % 60;
+  if (hours > 0 && restMinutes > 0) return `примерно через ${hours} ч ${restMinutes} мин`;
+  if (hours > 0) return `примерно через ${hours} ч`;
+  return `примерно через ${restMinutes} мин`;
+}
+
+function formatShiftMoney(value: number | null | undefined) {
+  if (value === null || value === undefined) return null;
+  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
+}
+
+function formatTaskCompletedAt(value: string | Date | null | undefined) {
+  if (!value) return null;
+  return formatTime(value);
+}
+
+function emptyShiftTaskDraft(task?: ShiftControlTask): ShiftTaskDraft {
+  return {
+    numericValue: task?.numericValue !== null && task?.numericValue !== undefined ? String(task.numericValue) : '',
+    integerValue: task?.integerValue !== null && task?.integerValue !== undefined ? String(task.integerValue) : '',
+    booleanValue: task?.booleanValue ?? false,
+    comment: task?.comment ?? '',
+  };
+}
+
+function emptyHandoverDraft(): HandoverDraft {
+  return {
+    personalStatementPhoto: null,
+    personalAcquiringReceiptsPhoto: null,
+    personalCashBalance: '',
+    discrepancyType: '',
+    discrepancyAmount: '',
+    hadWithdrawal: '',
+    withdrawalAmount: '',
+    cashOrderAmount: '',
+    sberbankTerminalReportPhoto: null,
+    sberbankTerminalTotal: '',
+    hasTbankCredit: '',
+    tbankTerminalReportPhoto: null,
+    tbankTerminalTotal: '',
+    zReportPhoto: null,
+    encashmentAmount: '',
+    encashmentDocumentPhoto: null,
+    comment: '',
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readRecord(value: unknown, key: string) {
+  return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
+}
+
+function readSavedPhoto(value: unknown, key: string): HandoverSavedPhoto | null {
+  const photos = readRecord(value, 'photos');
+  const photo = photos?.[key];
+  return isRecord(photo) ? { storagePath: typeof photo.storagePath === 'string' ? photo.storagePath : undefined, originalName: typeof photo.originalName === 'string' ? photo.originalName : undefined } : null;
+}
+
+function isHandoverFile(value: HandoverPhotoValue): value is File {
+  return typeof File !== 'undefined' && value instanceof File;
+}
+
+function hasHandoverPhoto(value: HandoverPhotoValue) {
+  return Boolean(value && (isHandoverFile(value) || value.storagePath));
+}
+
+function stringFromUnknown(value: unknown) {
+  return value === null || value === undefined ? '' : String(value);
+}
+
+function booleanDraftValue(value: unknown): '' | 'yes' | 'no' {
+  if (value === true) return 'yes';
+  if (value === false) return 'no';
+  return '';
+}
+
+function draftFromHandoverData(data: unknown): HandoverDraft {
+  const draft = emptyHandoverDraft();
+  const personalCash = readRecord(data, 'personalCash');
+  const storeClosing = readRecord(data, 'storeClosing');
+  if (personalCash) {
+    draft.personalCashBalance = stringFromUnknown(personalCash.cashBalance);
+    draft.discrepancyType = ['none', 'surplus', 'shortage'].includes(String(personalCash.discrepancyType)) ? String(personalCash.discrepancyType) as HandoverDraft['discrepancyType'] : '';
+    draft.discrepancyAmount = stringFromUnknown(personalCash.discrepancyAmount);
+    draft.hadWithdrawal = booleanDraftValue(personalCash.hadWithdrawal);
+    draft.withdrawalAmount = stringFromUnknown(personalCash.withdrawalAmount);
+    draft.cashOrderAmount = stringFromUnknown(personalCash.cashOrderAmount);
+    draft.encashmentAmount = stringFromUnknown(personalCash.encashmentAmount);
+  }
+  if (storeClosing) {
+    draft.sberbankTerminalTotal = stringFromUnknown(storeClosing.sberbankTerminalTotal);
+    draft.hasTbankCredit = booleanDraftValue(storeClosing.hasTbankCredit);
+    draft.tbankTerminalTotal = stringFromUnknown(storeClosing.tbankTerminalTotal);
+  }
+  if (isRecord(data) && typeof data.comment === 'string') draft.comment = data.comment;
+  draft.personalStatementPhoto = readSavedPhoto(data, 'personalStatement');
+  draft.personalAcquiringReceiptsPhoto = readSavedPhoto(data, 'personalAcquiringReceipts');
+  draft.sberbankTerminalReportPhoto = readSavedPhoto(data, 'sberbankTerminalReport');
+  draft.tbankTerminalReportPhoto = readSavedPhoto(data, 'tbankTerminalReport');
+  draft.zReportPhoto = readSavedPhoto(data, 'zReport');
+  draft.encashmentDocumentPhoto = readSavedPhoto(data, 'encashmentDocument');
+  return draft;
+}
+
+function parseMoneyInput(value: string) {
+  if (!value.trim()) return null;
+  const number = Number(value.replace(',', '.'));
+  return Number.isFinite(number) ? number : null;
+}
+
+function readIntegerFromDraft(value: string) {
+  if (!value.trim()) return null;
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : null;
+}
+
+function isClosingShift(shiftCode: string | null | undefined) {
+  return shiftCode === '11_20';
+}
+
+function creditCountLabel(count: number | null | undefined) {
+  const safeCount = count ?? 0;
+  const mod10 = safeCount % 10;
+  const mod100 = safeCount % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${safeCount} кредит`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${safeCount} кредита`;
+  return `${safeCount} кредитов`;
+}
+
+function cashOperationDirectionLabel(direction: CashOperation['direction']) {
+  if (direction === 'phone_reserve') return 'в резерв';
+  return 'в депозитный сейф';
+}
+
+function formatCashOperationAmount(amount: number) {
+  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(amount)} ₽`;
+}
+
 function shiftLabel(code: string) {
   const shift = shiftOptions.find((option) => option.code === code);
   if (!shift) return 'не выбрана';
@@ -286,12 +585,17 @@ export function EmployeeTodayClient({
   todayWorkDay,
   unfinishedWorkDay,
   attestations,
+  shiftControl,
+  cashOperations,
 }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('day');
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
   const [workDay, setWorkDay] = useState(todayWorkDay);
   const [unfinished, setUnfinished] = useState(unfinishedWorkDay);
+  const [shiftControlState, setShiftControlState] = useState(shiftControl);
+  const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
+  const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '' });
   const [selectedShift, setSelectedShift] = useState('');
   const [comment, setComment] = useState('');
   const [showLateComment, setShowLateComment] = useState(false);
@@ -299,6 +603,16 @@ export function EmployeeTodayClient({
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('list');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
+  const [openShiftTaskId, setOpenShiftTaskId] = useState<number | null>(null);
+  const [shiftTaskDrafts, setShiftTaskDrafts] = useState<Record<number, ShiftTaskDraft>>({});
+  const [shiftTaskErrors, setShiftTaskErrors] = useState<Record<number, Record<string, string>>>({});
+  const [showFullShiftPlan, setShowFullShiftPlan] = useState(false);
+  const [activeHandoverTaskId, setActiveHandoverTaskId] = useState<number | null>(null);
+  const [handoverStep, setHandoverStep] = useState(0);
+  const [handoverAttemptedStep, setHandoverAttemptedStep] = useState<string | null>(null);
+  const [handoverDraft, setHandoverDraft] = useState<HandoverDraft>(() => emptyHandoverDraft());
+  const [openingPhotoTaskId, setOpeningPhotoTaskId] = useState<number | null>(null);
+  const [openingPhotoFile, setOpeningPhotoFile] = useState<File | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -343,6 +657,8 @@ export function EmployeeTodayClient({
   };
   const shiftStart = workDay ? workDay.shiftStartMinutes : selectedShiftOption?.startMinutes;
   const shiftEnd = workDay ? workDay.shiftEndMinutes : selectedShiftOption?.endMinutes;
+  const canUseCashOperations = user.department === 'retail' || user.department === 'wholesale';
+  const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
   const todayDepartmentEntries = departmentScheduleByDate.get(today) ?? [];
   const todayEntryByUser = new Map(todayDepartmentEntries.map((entry) => [entry.userId, entry]));
@@ -350,8 +666,65 @@ export function EmployeeTodayClient({
   const workingColleagues = colleagueUsers.filter((person) => todayEntryByUser.get(person.id)?.status === 'working');
   const offColleagues = colleagueUsers.filter((person) => todayEntryByUser.get(person.id)?.status === 'off');
   const missingColleagues = colleagueUsers.filter((person) => !todayEntryByUser.has(person.id));
+  const shiftControlCompleted = shiftControlState.run?.status === 'completed' || shiftControlState.run?.completedAt;
+  const showShiftControl =
+    (user.department === 'retail' || user.department === 'wholesale') &&
+    Boolean(shiftControlState.run) &&
+    !(isCompleted && shiftControlCompleted);
+  const shiftControlTasks = shiftControlState.tasks;
+  const completedShiftControlCount = shiftControlTasks.filter((task) => task.status === 'done').length;
+  const hiddenDuringHandoverCategories = new Set(['handover', 'closing']);
+  const visibleShiftControlTasks = activeHandoverTaskId
+    ? shiftControlTasks.filter((task) => task.status === 'done' || !hiddenDuringHandoverCategories.has(task.category))
+    : shiftControlTasks;
+  const pendingShiftControlTasks = visibleShiftControlTasks.filter((task) => task.status !== 'done');
+  const actionableShiftControlTask =
+    pendingShiftControlTasks.find((task) => task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(now) >= task.plannedTimeMinutes) ?? null;
+  const handoverTask = shiftControlTasks.find((task) => task.category === 'handover') ?? null;
+  const isHandoverDone = handoverTask?.status === 'done';
+  const activeHandoverTask = activeHandoverTaskId ? shiftControlTasks.find((task) => task.id === activeHandoverTaskId) ?? null : null;
+  const nextShiftControlTask =
+    actionableShiftControlTask
+      ? pendingShiftControlTasks.find((task) => task.id !== actionableShiftControlTask.id) ?? null
+      : pendingShiftControlTasks[0] ?? null;
+  const primaryShiftControlTask = actionableShiftControlTask ?? nextShiftControlTask;
+  const previewShiftControlTasks = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).slice(0, 2);
+  const handoverPersonalCashBalance = parseMoneyInput(handoverDraft.personalCashBalance);
+  const handoverDiscrepancyAmount = parseMoneyInput(handoverDraft.discrepancyAmount);
+  const handoverIsClosingEmployee = isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode);
+  const handoverRequiresEncashment = handoverPersonalCashBalance !== null && handoverPersonalCashBalance > 50000;
+  const handoverWithdrawalAmount = parseMoneyInput(handoverDraft.withdrawalAmount);
+  const handoverCashOrderAmount = parseMoneyInput(handoverDraft.cashOrderAmount);
+  const handoverWithdrawalDifference =
+    handoverDraft.hadWithdrawal === 'yes' && handoverWithdrawalAmount !== null && handoverCashOrderAmount !== null
+      ? Math.abs(handoverWithdrawalAmount - handoverCashOrderAmount)
+      : 0;
+  function buildHandoverSteps(draft = handoverDraft) {
+    const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
+    const draftRequiresEncashment = draftCashBalance !== null && draftCashBalance > 50000;
+    const isClosingEmployee = isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode);
+    return [
+      'personalStatementPhoto',
+      'personalCashBalance',
+      ...(user.department === 'retail' ? ['personalAcquiringReceiptsPhoto'] : []),
+      'discrepancy',
+      ...(user.department === 'retail' ? ['withdrawal'] : []),
+      ...(draftRequiresEncashment ? ['encashment'] : []),
+      ...(isClosingEmployee ? ['sberbankTerminal', 'tbankQuestion'] : []),
+      ...(isClosingEmployee && draft.hasTbankCredit === 'yes' ? ['tbankTerminal'] : []),
+      ...(isClosingEmployee ? ['zReportPhoto'] : []),
+    ] as const;
+  }
+  const handoverSteps = buildHandoverSteps(handoverDraft);
   const calendarDays = useMemo(() => buildCalendarMonth(calendarMonth), [calendarMonth]);
   const scheduleLegendUsers = useMemo(() => [...departmentUsers].filter((person) => person.id !== user.id).sort(byName), [departmentUsers, user.id]);
+
+  useEffect(() => {
+    if (!handoverTask || handoverTask.status === 'done' || activeHandoverTaskId) return;
+    if (isRecord(handoverTask.handoverData) && handoverTask.handoverData.draft !== false) {
+      startHandoverWizard(handoverTask);
+    }
+  }, [activeHandoverTaskId, handoverTask?.id, handoverTask?.status]);
 
   function getColleagueRows(date: string) {
     const entries = departmentScheduleByDate.get(date) ?? [];
@@ -510,6 +883,10 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось начать рабочий день');
       setWorkDay(payload.workDay);
+      if (payload.shiftControlRun) {
+        const { tasks, ...run } = payload.shiftControlRun;
+        setShiftControlState({ run, tasks: tasks ?? [] });
+      }
       setNow(new Date());
       setMessage('');
     } catch (reason) {
@@ -522,6 +899,12 @@ export function EmployeeTodayClient({
   async function finishWorkDay() {
     setError('');
     setMessage('');
+    if ((user.department === 'retail' || user.department === 'wholesale') && showShiftControl && handoverTask && !isHandoverDone) {
+      setError('Сначала сдайте смену');
+      setShowFullShiftPlan(false);
+      if (canActOnShiftTask(handoverTask)) startHandoverWizard(handoverTask);
+      return;
+    }
     setIsSaving(true);
     try {
       const response = await fetch('/api/employee/workday/finish', { method: 'POST' });
@@ -536,6 +919,948 @@ export function EmployeeTodayClient({
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function updateShiftTaskDraft(taskId: number, patch: Partial<ShiftTaskDraft>) {
+    setShiftTaskDrafts((current) => ({
+      ...current,
+      [taskId]: { ...emptyShiftTaskDraft(), ...current[taskId], ...patch },
+    }));
+    setShiftTaskErrors((current) => ({ ...current, [taskId]: {} }));
+  }
+
+  function openShiftTaskForm(task: ShiftControlTask) {
+    setOpenShiftTaskId((current) => (current === task.id ? null : task.id));
+    setShiftTaskDrafts((current) => ({
+      ...current,
+      [task.id]: current[task.id] ?? emptyShiftTaskDraft(task),
+    }));
+    setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
+  }
+
+  function firstIncompleteHandoverStep(draft: HandoverDraft) {
+    const steps = buildHandoverSteps(draft);
+    const index = steps.findIndex((step) => getHandoverStepError(step, draft));
+    return index === -1 ? Math.max(0, steps.length - 1) : index;
+  }
+
+  function startHandoverWizard(task: ShiftControlTask) {
+    const restoredDraft = isRecord(task.handoverData) ? draftFromHandoverData(task.handoverData) : emptyHandoverDraft();
+    setActiveHandoverTaskId(task.id);
+    setHandoverDraft(restoredDraft);
+    setHandoverStep(firstIncompleteHandoverStep(restoredDraft));
+    setHandoverAttemptedStep(null);
+    setShowFullShiftPlan(false);
+    setError('');
+    setMessage('');
+  }
+
+  function updateHandoverDraft(patch: Partial<HandoverDraft>) {
+    setHandoverDraft((current) => ({ ...current, ...patch }));
+  }
+
+  function openCashOperation(direction: CashOperation['direction']) {
+    setCashOperationDraft({ direction, amount: '', comment: '' });
+    setError('');
+    setMessage('');
+  }
+
+  async function submitCashOperation(file: File | null) {
+    if (!cashOperationDraft.direction) return;
+    if (!file) return;
+
+    const amount = parseMoneyInput(cashOperationDraft.amount);
+    if (amount === null) {
+      setError('Укажите сумму перед фото');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('direction', cashOperationDraft.direction);
+    formData.append('amount', cashOperationDraft.amount);
+    formData.append('comment', cashOperationDraft.comment);
+    formData.append('photo', file);
+
+    setError('');
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/cash-operations', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось сохранить кассовую операцию');
+
+      setCashOperationsState((current) => [result.operation, ...current]);
+      setCashOperationDraft({ direction: null, amount: '', comment: '' });
+      setMessage(`Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveHandoverDraft(task: ShiftControlTask, draft = handoverDraft) {
+    const formData = new FormData();
+    formData.append('intent', 'draft');
+    ([
+      'personalStatementPhoto',
+      'personalAcquiringReceiptsPhoto',
+      'sberbankTerminalReportPhoto',
+      'tbankTerminalReportPhoto',
+      'zReportPhoto',
+      'encashmentDocumentPhoto',
+    ] as HandoverPhotoKey[]).forEach((key) => {
+      const file = draft[key];
+      if (isHandoverFile(file)) formData.append(key, file);
+    });
+    formData.append('personalCashBalance', draft.personalCashBalance);
+    formData.append('discrepancyType', draft.discrepancyType);
+    formData.append('discrepancyAmount', draft.discrepancyAmount);
+    formData.append('hadWithdrawal', draft.hadWithdrawal ? String(draft.hadWithdrawal === 'yes') : '');
+    formData.append('withdrawalAmount', draft.withdrawalAmount);
+    formData.append('cashOrderAmount', draft.cashOrderAmount);
+    formData.append('sberbankTerminalTotal', draft.sberbankTerminalTotal);
+    formData.append('hasTbankCredit', draft.hasTbankCredit ? String(draft.hasTbankCredit === 'yes') : '');
+    formData.append('tbankTerminalTotal', draft.tbankTerminalTotal);
+    formData.append('encashmentAmount', draft.encashmentAmount);
+    formData.append('comment', draft.comment);
+
+    const response = await fetch('/api/employee/shift-control/tasks/' + task.id, {
+      method: 'PATCH',
+      body: formData,
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Не удалось сохранить шаг');
+    setShiftControlState((current) => ({
+      ...current,
+      tasks: current.tasks.map((item) => (item.id === result.task.id ? result.task : item)),
+    }));
+    return result.task as ShiftControlTask;
+  }
+
+  function shiftControlPhotoMessage(tasks: ShiftControlTask[], completedTaskId: number) {
+    const pendingTasks = tasks.filter((task) => task.status !== 'done' && task.id !== completedTaskId);
+    const nextActionable = pendingTasks.find((task) => task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(new Date()) >= task.plannedTimeMinutes);
+    if (nextActionable) return 'Фото прикреплено';
+
+    const nextTask = pendingTasks[0];
+    if (nextTask?.plannedTimeMinutes !== null && nextTask?.plannedTimeMinutes !== undefined) {
+      return `Фото прикреплено. Следующая проверка в ${plannedTimeLabel(nextTask.plannedTimeMinutes)}.`;
+    }
+    return 'Фото прикреплено';
+  }
+
+  async function completeOpeningPhotoTask(task: ShiftControlTask, file: File) {
+    const formData = new FormData();
+    formData.append('openingReportPhoto', file);
+
+    setError('');
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/employee/shift-control/tasks/${task.id}`, {
+        method: 'PATCH',
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось обновить задачу');
+
+      const nextTasks = shiftControlState.tasks.map((item) => (item.id === result.task.id ? result.task : item));
+      setShiftControlState((current) => ({
+        ...current,
+        tasks: current.tasks.map((item) => (item.id === result.task.id ? result.task : item)),
+      }));
+      setOpenShiftTaskId(null);
+      setOpeningPhotoTaskId(null);
+      setOpeningPhotoFile(null);
+      setShiftTaskDrafts((current) => ({
+        ...current,
+        [result.task.id]: emptyShiftTaskDraft(result.task),
+      }));
+      setMessage(shiftControlPhotoMessage(nextTasks, result.task.id));
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Не удалось обновить задачу';
+      if (openShiftTaskId === task.id) {
+        setShiftTaskErrors((current) => ({ ...current, [task.id]: { form: message } }));
+      } else {
+        setError(message);
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function completeShiftControlTask(task: ShiftControlTask) {
+    const draft = shiftTaskDrafts[task.id] ?? emptyShiftTaskDraft(task);
+    const localErrors: Record<string, string> = {};
+    const payload: {
+      status: 'done';
+      numericValue?: string;
+      integerValue?: string;
+      booleanValue?: boolean;
+      comment?: string;
+      textValue?: string;
+    } = { status: 'done' };
+
+    if (task.category === 'cash' || task.category === 'acquiring') {
+      if (parseMoneyInput(draft.numericValue) === null) {
+        localErrors.numericValue = task.category === 'cash' ? 'Укажите сумму наличных в кассе' : 'Укажите сумму оплат картой по чекам';
+      }
+      payload.numericValue = draft.numericValue;
+    } else if (task.category === 'credit') {
+      if (readIntegerFromDraft(draft.integerValue) === null) localErrors.integerValue = 'Укажите количество кредитов / рассрочек';
+      if (parseMoneyInput(draft.numericValue) === null) localErrors.numericValue = 'Укажите общую сумму кредитов / рассрочек';
+      if (!draft.booleanValue) localErrors.booleanValue = 'Подтвердите проверку контрагентов';
+      payload.integerValue = draft.integerValue;
+      payload.numericValue = draft.numericValue;
+      payload.booleanValue = draft.booleanValue;
+      payload.comment = draft.comment;
+    } else if (task.category === 'opening') {
+      if (!openingPhotoFile) {
+        setError('Сделайте фото X-отчёта / чека открытия смены');
+        return;
+      }
+    } else if (task.category === 'handover') {
+      startHandoverWizard(task);
+      return;
+    } else {
+      payload.comment = draft.comment;
+      payload.textValue = draft.comment;
+    }
+
+    if (Object.keys(localErrors).length > 0) {
+      setShiftTaskErrors((current) => ({ ...current, [task.id]: localErrors }));
+      return;
+    }
+
+    setError('');
+    setIsSaving(true);
+    try {
+      const requestBody =
+        task.category === 'opening'
+          ? (() => {
+              const formData = new FormData();
+              formData.append('openingReportPhoto', openingPhotoFile as File);
+              return formData;
+            })()
+          : JSON.stringify(payload);
+      const response = await fetch(`/api/employee/shift-control/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: task.category === 'opening' ? undefined : { 'Content-Type': 'application/json' },
+        body: requestBody,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось обновить задачу');
+
+      setShiftControlState((current) => ({
+        ...current,
+        tasks: current.tasks.map((task) => (task.id === result.task.id ? result.task : task)),
+      }));
+      setOpenShiftTaskId(null);
+      setOpeningPhotoTaskId(null);
+      setOpeningPhotoFile(null);
+      setShiftTaskErrors((current) => ({ ...current, [result.task.id]: {} }));
+      setShiftTaskDrafts((current) => ({
+        ...current,
+        [result.task.id]: emptyShiftTaskDraft(result.task),
+      }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function canActOnShiftTask(task: ShiftControlTask) {
+    if (task.status === 'done') return false;
+    return task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(now) >= task.plannedTimeMinutes;
+  }
+
+  function renderShiftTaskAnswer(task: ShiftControlTask, compact = false) {
+    if (task.status !== 'done') return null;
+
+    const completedAt = formatTaskCompletedAt(task.completedAt);
+    const money = formatShiftMoney(task.numericValue);
+
+    if (compact) {
+      const parts: string[] = [];
+      if (task.category === 'cash' || task.category === 'acquiring') {
+        if (money) parts.push(`${money} ₽`);
+      } else if (task.category === 'credit') {
+        parts.push(creditCountLabel(task.integerValue));
+        if (money) parts.push(`${money} ₽`);
+        if (task.booleanValue) parts.push('контрагенты проверены');
+        if (task.comment) parts.push(task.comment);
+      } else if (task.comment) {
+        parts.push(task.comment);
+      }
+      if (completedAt) parts.push(`выполнено ${completedAt}`);
+
+      return <p className='mt-1 text-xs font-bold leading-snug text-slate-500'>{parts.join(' · ')}</p>;
+    }
+
+    return (
+      <div className='mt-2 rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold leading-snug text-green-900 ring-1 ring-green-100'>
+        {(task.category === 'cash' || task.category === 'acquiring') && money && <p>Сумма: {money} ₽</p>}
+        {task.category === 'credit' && (
+          <div className='grid gap-0.5'>
+            <p>Количество: {task.integerValue ?? 0}</p>
+            {money && <p>Сумма: {money} ₽</p>}
+            {task.booleanValue && <p>Контрагенты проверены</p>}
+            {task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
+          </div>
+        )}
+        {task.category !== 'cash' && task.category !== 'acquiring' && task.category !== 'credit' && task.comment && (
+          <p>Комментарий: {task.comment}</p>
+        )}
+        {completedAt && <p className='mt-1 text-green-800/70'>Выполнено: {completedAt}</p>}
+      </div>
+    );
+  }
+
+  function renderShiftTaskAction(task: ShiftControlTask, compact = false) {
+    if (task.status === 'done') return renderShiftTaskAnswer(task);
+    if (!canActOnShiftTask(task)) return null;
+
+    const draft = shiftTaskDrafts[task.id] ?? emptyShiftTaskDraft(task);
+    const isOpen = openShiftTaskId === task.id;
+    const isCash = task.category === 'cash';
+    const isAcquiring = task.category === 'acquiring';
+    const isCredit = task.category === 'credit';
+    const isOpening = task.category === 'opening';
+    const simpleLabel = task.category === 'handover' ? 'Начать сдачу смены' : 'Подтвердить';
+    const errors = shiftTaskErrors[task.id] ?? {};
+
+    if (isOpening) {
+      return (
+        <label className={cn('mt-2 flex w-full cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-9 text-sm' : 'min-h-8 text-xs')}>
+          {isSaving && openingPhotoTaskId === task.id ? 'Сохраняем фото...' : 'Сделать фото'}
+          <input
+            type='file'
+            accept='image/*'
+            capture='environment'
+            className='sr-only'
+            disabled={isSaving}
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              event.currentTarget.value = '';
+              if (!file) return;
+              setOpeningPhotoTaskId(task.id);
+              setOpeningPhotoFile(file);
+              completeOpeningPhotoTask(task, file);
+            }}
+          />
+        </label>
+      );
+    }
+
+    if (!isCash && !isAcquiring && !isCredit) {
+      return (
+        <Button
+          className={cn('mt-2 w-full font-extrabold', compact ? 'h-9 text-sm' : 'h-8 text-xs')}
+          onClick={() => completeShiftControlTask(task)}
+          disabled={isSaving}
+        >
+          {simpleLabel}
+        </Button>
+      );
+    }
+
+    if (!isOpen) {
+      return (
+        <Button
+          className={cn('mt-2 w-full font-extrabold', compact ? 'h-9 text-sm' : 'h-8 bg-slate-100 text-xs text-slate-800 shadow-none hover:bg-green-100 hover:text-green-800')}
+          onClick={() => openShiftTaskForm(task)}
+          disabled={isSaving}
+        >
+          {isCredit ? 'Заполнить проверку' : 'Внести сумму'}
+        </Button>
+      );
+    }
+
+    return (
+      <div className='mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
+        {(isCash || isAcquiring) && (
+          <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+            {isCash ? 'Остаток наличных в кассе' : 'Сумма оплат картой по чекам'}
+            {isAcquiring && (
+              <span className='text-[11px] font-semibold leading-snug text-slate-500'>
+                Сложите чеки оплаты картой за текущую смену. Не вводите сумму наличных.
+              </span>
+            )}
+            <input
+              type='number'
+              inputMode='decimal'
+              min='0'
+              step='0.01'
+              value={draft.numericValue}
+              onChange={(event) => updateShiftTaskDraft(task.id, { numericValue: event.target.value })}
+              className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+              placeholder='0'
+            />
+            {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
+          </label>
+        )}
+
+        {isCredit && (
+          <>
+            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+              Количество кредитов / рассрочек
+              <input
+                type='number'
+                inputMode='numeric'
+                min='0'
+                step='1'
+                value={draft.integerValue}
+                onChange={(event) => updateShiftTaskDraft(task.id, { integerValue: event.target.value })}
+                className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                placeholder='0'
+              />
+              {errors.integerValue && <span className='text-[11px] font-bold text-amber-700'>{errors.integerValue}</span>}
+            </label>
+            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+              Общая сумма кредитов / рассрочек
+              <input
+                type='number'
+                inputMode='decimal'
+                min='0'
+                step='0.01'
+                value={draft.numericValue}
+                onChange={(event) => updateShiftTaskDraft(task.id, { numericValue: event.target.value })}
+                className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                placeholder='0'
+              />
+              {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
+            </label>
+            <label className='flex items-start gap-2 rounded-lg bg-white px-2.5 py-2 text-xs font-bold leading-snug text-slate-700 ring-1 ring-slate-200/80'>
+              <input
+                type='checkbox'
+                checked={draft.booleanValue}
+                onChange={(event) => updateShiftTaskDraft(task.id, { booleanValue: event.target.checked })}
+                className='mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary'
+              />
+              <span>Проверено: реализации оформлены на кредитных контрагентов, не на Розничного покупателя</span>
+            </label>
+            {errors.booleanValue && <p className='text-[11px] font-bold text-amber-700'>{errors.booleanValue}</p>}
+            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+              Комментарий
+              <textarea
+                value={draft.comment}
+                onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
+                className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                placeholder='Необязательно'
+              />
+            </label>
+          </>
+        )}
+
+        {errors.form && <p className='rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200'>{errors.form}</p>}
+
+        <div className='grid grid-cols-2 gap-2'>
+          <Button
+            type='button'
+            className='h-9 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
+            onClick={() => {
+              setOpenShiftTaskId(null);
+              setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
+            }}
+            disabled={isSaving}
+          >
+            Назад
+          </Button>
+          <Button type='button' className='h-9 text-xs font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
+            Сохранить
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  function getHandoverStepError(step = handoverSteps[handoverStep], draft = handoverDraft) {
+    const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
+    const draftDiscrepancyAmount = parseMoneyInput(draft.discrepancyAmount);
+    const draftWithdrawalAmount = parseMoneyInput(draft.withdrawalAmount);
+    const draftCashOrderAmount = parseMoneyInput(draft.cashOrderAmount);
+    const draftWithdrawalDifference =
+      draft.hadWithdrawal === 'yes' && draftWithdrawalAmount !== null && draftCashOrderAmount !== null
+        ? Math.abs(draftWithdrawalAmount - draftCashOrderAmount)
+        : 0;
+
+    if (step === 'personalStatementPhoto' && !hasHandoverPhoto(draft.personalStatementPhoto)) return 'Сделайте фото моей ведомости 1С';
+    if (step === 'personalCashBalance' && draftCashBalance === null) return 'Укажите остаток наличных в моей кассе';
+    if (step === 'personalAcquiringReceiptsPhoto' && !hasHandoverPhoto(draft.personalAcquiringReceiptsPhoto)) return 'Сделайте фото моих чеков оплат картой';
+    if (step === 'discrepancy') {
+      if (!draft.discrepancyType) return 'Укажите расхождение по моей кассе';
+      if (draft.discrepancyType !== 'none') {
+        if (draftDiscrepancyAmount === null) return 'Укажите сумму расхождения';
+        if (draftDiscrepancyAmount > 300 && !draft.comment.trim()) return 'Комментарий обязателен: расхождение больше 300 ₽';
+      }
+    }
+    if (step === 'sberbankTerminal') {
+      if (!hasHandoverPhoto(draft.sberbankTerminalReportPhoto)) return 'Сделайте фото отчёта терминала Сбербанка';
+      if (parseMoneyInput(draft.sberbankTerminalTotal) === null) return 'Укажите итоговую сумму по отчёту терминала Сбербанка';
+    }
+    if (step === 'tbankQuestion' && !draft.hasTbankCredit) return 'Укажите, были ли операции через терминал Т-Банка';
+    if (step === 'tbankTerminal') {
+      if (!hasHandoverPhoto(draft.tbankTerminalReportPhoto)) return 'Сделайте фото отчёта терминала Т-Банка';
+      if (parseMoneyInput(draft.tbankTerminalTotal) === null) return 'Укажите итоговую сумму по отчёту терминала Т-Банка';
+    }
+    if (step === 'zReportPhoto' && !hasHandoverPhoto(draft.zReportPhoto)) return 'Сделайте фото Z-отчёта / чека закрытия смены';
+    if (step === 'withdrawal') {
+      if (!draft.hadWithdrawal) return 'Укажите, была ли выемка';
+      if (draft.hadWithdrawal === 'yes') {
+        if (draftWithdrawalAmount === null) return 'Укажите сумму выемки';
+        if (draftCashOrderAmount === null) return 'Укажите сумму приходника';
+        if (draftWithdrawalDifference > 0 && !draft.comment.trim()) return 'Добавьте комментарий к расхождению выемки';
+      }
+    }
+    if (step === 'encashment') {
+      if (parseMoneyInput(draft.encashmentAmount) === null) return 'Укажите сумму инкассации';
+      if (!hasHandoverPhoto(draft.encashmentDocumentPhoto)) return 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.';
+    }
+    return '';
+  }
+
+  async function submitHandover(task: ShiftControlTask, draft = handoverDraft, steps = buildHandoverSteps(draft)) {
+    for (const step of steps) {
+      const stepError = getHandoverStepError(step, draft);
+      if (stepError) {
+        setHandoverAttemptedStep(step);
+        setHandoverStep(Math.max(0, steps.indexOf(step)));
+        return;
+      }
+    }
+
+    const formData = new FormData();
+    ([
+      'personalStatementPhoto',
+      'personalAcquiringReceiptsPhoto',
+      'sberbankTerminalReportPhoto',
+      'tbankTerminalReportPhoto',
+      'zReportPhoto',
+      'encashmentDocumentPhoto',
+    ] as HandoverPhotoKey[]).forEach((key) => {
+      const file = draft[key];
+      if (isHandoverFile(file)) formData.append(key, file);
+    });
+    formData.append('personalCashBalance', draft.personalCashBalance);
+    formData.append('discrepancyType', draft.discrepancyType);
+    formData.append('discrepancyAmount', draft.discrepancyAmount);
+    formData.append('hadWithdrawal', draft.hadWithdrawal ? String(draft.hadWithdrawal === 'yes') : '');
+    formData.append('withdrawalAmount', draft.withdrawalAmount);
+    formData.append('cashOrderAmount', draft.cashOrderAmount);
+    formData.append('sberbankTerminalTotal', draft.sberbankTerminalTotal);
+    formData.append('hasTbankCredit', draft.hasTbankCredit ? String(draft.hasTbankCredit === 'yes') : '');
+    formData.append('tbankTerminalTotal', draft.tbankTerminalTotal);
+    formData.append('encashmentAmount', draft.encashmentAmount);
+    formData.append('comment', draft.comment);
+
+    setError('');
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/shift-control/tasks/' + task.id, {
+        method: 'PATCH',
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось сдать смену');
+
+      setShiftControlState((current) => ({
+        run: result.run ?? current.run,
+        tasks: result.tasks ?? current.tasks.map((item) => (item.id === result.task.id ? result.task : item)),
+      }));
+      if (result.workDay) {
+        setWorkDay(result.workDay);
+        setUnfinished(null);
+      }
+      setActiveHandoverTaskId(null);
+      setHandoverAttemptedStep(null);
+      setHandoverStep(0);
+      setHandoverDraft(emptyHandoverDraft());
+      setMessage(result.message || 'Смена сдана, рабочий день завершён');
+      setNow(new Date());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
+    if (!file) return;
+
+    const nextDraft = { ...handoverDraft, [field]: file };
+    setHandoverDraft(nextDraft);
+    setHandoverAttemptedStep(null);
+    setError('');
+
+    try {
+      setIsSaving(true);
+      await saveHandoverDraft(task, nextDraft);
+      const nextSteps = buildHandoverSteps(nextDraft);
+      const isFinalStep = handoverStep >= nextSteps.length - 1;
+      const purePhotoStep =
+        field === 'personalStatementPhoto' ||
+        field === 'personalAcquiringReceiptsPhoto' ||
+        field === 'zReportPhoto' ||
+        (field === 'encashmentDocumentPhoto' && isFinalStep);
+      if (purePhotoStep) {
+        if (isFinalStep) {
+          await submitHandover(task, nextDraft, nextSteps);
+          return;
+        }
+        setMessage('Фото прикреплено');
+        setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
+      } else {
+        setMessage('Фото прикреплено');
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить фото');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function renderPhotoInput(label: string, field: HandoverPhotoKey, task: ShiftControlTask, hint?: string, fieldError?: string) {
+    const file = handoverDraft[field];
+    return (
+      <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
+        {label}
+        {hint && <span className='text-xs font-semibold leading-snug text-slate-500'>{hint}</span>}
+        {!file && (
+          <span className='flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 text-sm font-extrabold text-white shadow-sm'>
+            Сделать фото
+          </span>
+        )}
+        <input
+          type='file'
+          accept='image/*'
+          capture='environment'
+          className='sr-only'
+          disabled={isSaving}
+          onChange={(event) => {
+            const file = event.target.files?.[0] ?? null;
+            event.currentTarget.value = '';
+            handleHandoverPhotoSelected(task, field, file);
+          }}
+        />
+        {file && <span className='rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold text-green-700 ring-1 ring-green-100'>Фото прикреплено</span>}
+        {fieldError && <span className='text-[11px] font-bold text-amber-700'>{fieldError}</span>}
+      </label>
+    );
+  }
+
+  function renderHandoverStep(task: ShiftControlTask) {
+    const step = handoverSteps[handoverStep];
+    const isLastStep = handoverStep === handoverSteps.length - 1;
+    const stepError = handoverAttemptedStep === step ? getHandoverStepError() : '';
+    const sectionTitle = ['sberbankTerminal', 'tbankQuestion', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
+    const handoverIcon =
+      step === 'personalCashBalance' || step === 'withdrawal' || step === 'encashment'
+        ? Banknote
+        : step === 'personalAcquiringReceiptsPhoto' || step === 'sberbankTerminal'
+          ? CreditCard
+          : step === 'tbankQuestion' || step === 'tbankTerminal'
+            ? ReceiptText
+            : step === 'discrepancy'
+              ? AlertTriangle
+              : ReceiptText;
+    const HandoverIcon = handoverIcon;
+
+    return (
+      <div className='rounded-xl bg-white p-3 ring-1 ring-slate-200/80'>
+        <div className='mb-3 flex items-start justify-between gap-3'>
+          <div className='flex items-start gap-2'>
+            <span className='mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'>
+              <HandoverIcon className='h-4 w-4' />
+            </span>
+            <div>
+              <p className='text-[11px] font-extrabold uppercase text-green-700'>{sectionTitle}</p>
+              <h3 className='mt-0.5 text-base font-extrabold text-slate-950'>Шаг {handoverStep + 1} из {handoverSteps.length}</h3>
+            </div>
+          </div>
+          <Badge className='bg-green-100 text-green-800 ring-1 ring-green-200'>{workDay?.shiftLabel}</Badge>
+        </div>
+
+        {step === 'personalStatementPhoto' && renderPhotoInput('Фото моей ведомости 1С', 'personalStatementPhoto', task, undefined, stepError)}
+        {step === 'personalAcquiringReceiptsPhoto' && renderPhotoInput('Фото моих чеков оплат картой', 'personalAcquiringReceiptsPhoto', task, undefined, stepError)}
+        {step === 'zReportPhoto' && renderPhotoInput('Z-отчёт / чек закрытия смены', 'zReportPhoto', task, undefined, stepError)}
+
+        {step === 'personalCashBalance' && (
+          <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
+            Остаток наличных в моей кассе
+            <input
+              type='number'
+              inputMode='decimal'
+              min='0'
+              step='0.01'
+              value={handoverDraft.personalCashBalance}
+              onChange={(event) => updateHandoverDraft({ personalCashBalance: event.target.value })}
+              className='h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+              placeholder='0'
+            />
+            {stepError && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+          </label>
+        )}
+
+        {step === 'discrepancy' && (
+          <div className='grid gap-3'>
+            <p className='text-sm font-extrabold text-slate-800'>Расхождение по моей кассе</p>
+            <div className='grid grid-cols-3 gap-2'>
+              {[
+                ['none', 'Нет'],
+                ['surplus', 'Излишек'],
+                ['shortage', 'Недостача'],
+              ].map(([value, label]) => (
+                <Button
+                  key={value}
+                  type='button'
+                  className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.discrepancyType === value ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                  onClick={() => updateHandoverDraft({ discrepancyType: value as HandoverDraft['discrepancyType'], discrepancyAmount: value === 'none' ? '' : handoverDraft.discrepancyAmount, comment: value === 'none' ? '' : handoverDraft.comment })}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            {handoverDraft.discrepancyType && handoverDraft.discrepancyType !== 'none' && (
+              <div className='grid gap-2'>
+                <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                  {handoverDraft.discrepancyType === 'surplus' ? 'Сумма излишка' : 'Сумма недостачи'}
+                  <input
+                    type='number'
+                    inputMode='decimal'
+                    min='0'
+                    step='0.01'
+                    value={handoverDraft.discrepancyAmount}
+                    onChange={(event) => updateHandoverDraft({ discrepancyAmount: event.target.value })}
+                    className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                    placeholder='0'
+                  />
+                </label>
+                <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                  Комментарий к расхождению {handoverDiscrepancyAmount !== null && handoverDiscrepancyAmount > 300 ? '(обязательно)' : '(необязательно)'}
+                  <textarea
+                    value={handoverDraft.comment}
+                    onChange={(event) => updateHandoverDraft({ comment: event.target.value })}
+                    className='min-h-16 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                    placeholder='Причина расхождения'
+                  />
+                </label>
+              </div>
+            )}
+            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+          </div>
+        )}
+
+        {step === 'withdrawal' && (
+          <div className='grid gap-3'>
+            <p className='text-sm font-extrabold text-slate-800'>Была выемка?</p>
+            <div className='grid grid-cols-2 gap-2'>
+              <Button
+                type='button'
+                className={cn('h-10 shadow-none', handoverDraft.hadWithdrawal === 'yes' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                onClick={() => updateHandoverDraft({ hadWithdrawal: 'yes' })}
+              >
+                Была
+              </Button>
+              <Button
+                type='button'
+                className={cn('h-10 shadow-none', handoverDraft.hadWithdrawal === 'no' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                onClick={() => updateHandoverDraft({ hadWithdrawal: 'no', withdrawalAmount: '', cashOrderAmount: '' })}
+              >
+                Не было
+              </Button>
+            </div>
+            {handoverDraft.hadWithdrawal === 'yes' && (
+              <div className='grid gap-2'>
+                <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                  Сумма выемки
+                  <input
+                    type='number'
+                    inputMode='decimal'
+                    min='0'
+                    step='0.01'
+                    value={handoverDraft.withdrawalAmount}
+                    onChange={(event) => updateHandoverDraft({ withdrawalAmount: event.target.value })}
+                    className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                    placeholder='0'
+                  />
+                </label>
+                <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                  Сумма приходника
+                  <input
+                    type='number'
+                    inputMode='decimal'
+                    min='0'
+                    step='0.01'
+                    value={handoverDraft.cashOrderAmount}
+                    onChange={(event) => updateHandoverDraft({ cashOrderAmount: event.target.value })}
+                    className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                    placeholder='0'
+                  />
+                </label>
+                {handoverWithdrawalDifference > 0 && (
+                  <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                    Комментарий к расхождению выемки
+                    <textarea
+                      value={handoverDraft.comment}
+                      onChange={(event) => updateHandoverDraft({ comment: event.target.value })}
+                      className='min-h-16 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                      placeholder={`Расхождение ${formatShiftMoney(handoverWithdrawalDifference)} ₽`}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+          </div>
+        )}
+
+        {step === 'encashment' && (
+          <div className='grid gap-3'>
+            <p className='rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
+              Остаток наличных в моей кассе больше 50 000 ₽, нужна инкассация.
+            </p>
+            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+              Сумма инкассации
+              <input
+                type='number'
+                inputMode='decimal'
+                min='0'
+                step='0.01'
+                value={handoverDraft.encashmentAmount}
+                onChange={(event) => updateHandoverDraft({ encashmentAmount: event.target.value })}
+                className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                placeholder='0'
+              />
+              {stepError && parseMoneyInput(handoverDraft.encashmentAmount) === null && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+            </label>
+            {renderPhotoInput(
+              'Фото денег',
+              'encashmentDocumentPhoto',
+              task,
+              'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.',
+              stepError && parseMoneyInput(handoverDraft.encashmentAmount) !== null ? stepError : undefined,
+            )}
+          </div>
+        )}
+
+        {step === 'sberbankTerminal' && (
+          <div className='grid gap-3'>
+            {renderPhotoInput('Фото отчёта терминала Сбербанка', 'sberbankTerminalReportPhoto', task, undefined, stepError && !hasHandoverPhoto(handoverDraft.sberbankTerminalReportPhoto) ? stepError : undefined)}
+            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+              Итоговая сумма по отчёту терминала Сбербанка
+              <input
+                type='number'
+                inputMode='decimal'
+                min='0'
+                step='0.01'
+                value={handoverDraft.sberbankTerminalTotal}
+                onChange={(event) => updateHandoverDraft({ sberbankTerminalTotal: event.target.value })}
+                className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                placeholder='Введите итоговую сумму с отчёта терминала'
+              />
+              {stepError && hasHandoverPhoto(handoverDraft.sberbankTerminalReportPhoto) && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+            </label>
+          </div>
+        )}
+
+        {step === 'tbankQuestion' && (
+          <div className='grid gap-3'>
+            <p className='text-sm font-extrabold text-slate-800'>Были операции через терминал Т-Банка?</p>
+            <div className='grid grid-cols-2 gap-2'>
+              <Button
+                type='button'
+                className={cn('h-10 shadow-none', handoverDraft.hasTbankCredit === 'yes' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                onClick={() => updateHandoverDraft({ hasTbankCredit: 'yes' })}
+              >
+                Да
+              </Button>
+              <Button
+                type='button'
+                className={cn('h-10 shadow-none', handoverDraft.hasTbankCredit === 'no' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                onClick={() => updateHandoverDraft({ hasTbankCredit: 'no', tbankTerminalReportPhoto: null, tbankTerminalTotal: '' })}
+              >
+                Нет
+              </Button>
+            </div>
+            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+          </div>
+        )}
+
+        {step === 'tbankTerminal' && (
+          <div className='grid gap-3'>
+            {renderPhotoInput('Фото отчёта терминала Т-Банка', 'tbankTerminalReportPhoto', task, undefined, stepError && !hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) ? stepError : undefined)}
+            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+              Сумма по отчёту терминала Т-Банка
+              <input
+                type='number'
+                inputMode='decimal'
+                min='0'
+                step='0.01'
+                value={handoverDraft.tbankTerminalTotal}
+                onChange={(event) => updateHandoverDraft({ tbankTerminalTotal: event.target.value })}
+                className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                placeholder='Введите итоговую сумму с отчёта терминала'
+              />
+              {stepError && hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+            </label>
+          </div>
+        )}
+
+        <div className='mt-4 grid grid-cols-2 gap-2'>
+          <Button
+            type='button'
+            className='h-10 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
+            onClick={() => {
+              if (handoverStep === 0) {
+                setActiveHandoverTaskId(null);
+                setHandoverAttemptedStep(null);
+                return;
+              }
+              setHandoverStep((current) => Math.max(0, current - 1));
+              setHandoverAttemptedStep(null);
+              setError('');
+            }}
+            disabled={isSaving}
+          >
+            {handoverStep === 0 ? 'Отмена' : 'Назад'}
+          </Button>
+          <Button
+            type='button'
+            className='h-10 text-xs font-extrabold'
+            onClick={async () => {
+              const currentError = getHandoverStepError();
+              if (currentError) {
+                setHandoverAttemptedStep(step);
+                return;
+              }
+              setHandoverAttemptedStep(null);
+              setError('');
+              try {
+                setIsSaving(true);
+                const nextDraft = handoverDraft;
+                await saveHandoverDraft(task, nextDraft);
+                const nextSteps = buildHandoverSteps(nextDraft);
+                if (handoverStep >= nextSteps.length - 1) {
+                  await submitHandover(task, nextDraft, nextSteps);
+                  return;
+                }
+                setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
+              } catch (reason) {
+                setError(reason instanceof Error ? reason.message : 'Не удалось сохранить шаг');
+              } finally {
+                setIsSaving(false);
+              }
+            }}
+            disabled={isSaving}
+          >
+            {isLastStep ? 'Сдать смену' : 'Далее'}
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -732,6 +2057,246 @@ export function EmployeeTodayClient({
                   </>
                 )}
               </Card>
+
+              {showShiftControl && (
+                <Card className='space-y-3 p-4'>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div>
+                      <h2 className='text-base font-extrabold text-slate-950'>Контроль смены</h2>
+                      <p className='mt-0.5 text-xs font-bold text-slate-500'>
+                        Выполнено {completedShiftControlCount} / {shiftControlTasks.length}
+                      </p>
+                    </div>
+                    <Badge className='shrink-0 bg-green-100 text-green-800 ring-1 ring-green-200'>
+                      {user.department === 'wholesale' ? 'wholesale' : 'retail'}
+                    </Badge>
+                  </div>
+
+                  {activeHandoverTask ? (
+                    <div className='rounded-lg bg-green-50 px-3 py-2.5 ring-1 ring-green-100'>
+                      <p className='text-[11px] font-extrabold uppercase text-green-700'>Идёт сдача смены</p>
+                      <p className='mt-1 text-base font-extrabold leading-tight text-slate-950'>Заполните шаги мастера ниже</p>
+                    </div>
+                  ) : (
+                    <div className={cn('rounded-lg px-3 py-2.5 ring-1', actionableShiftControlTask ? 'bg-green-50 ring-green-100' : 'bg-slate-50 ring-slate-200/80')}>
+                      <p className={cn('text-[11px] font-extrabold uppercase', actionableShiftControlTask ? 'text-green-700' : 'text-slate-400')}>
+                        {actionableShiftControlTask ? 'Сейчас нужно выполнить' : 'Следующая проверка'}
+                      </p>
+                      <div className='mt-1 flex items-center gap-2'>
+                        {primaryShiftControlTask && (() => {
+                          const Icon = shiftTaskIcon(primaryShiftControlTask);
+                          return (
+                            <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1', shiftTaskIconClass(primaryShiftControlTask.category))}>
+                              <Icon className='h-4 w-4' />
+                            </span>
+                          );
+                        })()}
+                        <p className='min-w-0 text-base font-extrabold leading-tight text-slate-950'>
+                          {primaryShiftControlTask ? shiftTaskTitle(primaryShiftControlTask) : 'Все задачи выполнены'}
+                        </p>
+                      </div>
+                      {primaryShiftControlTask && (
+                        <div className='mt-2 flex flex-wrap items-center gap-2'>
+                          <Badge className={cn('px-2 py-0.5 text-[10px]', shiftTaskStatusClass(shiftTaskStatus(primaryShiftControlTask, now)))}>
+                            {shiftTaskStatusLabel(shiftTaskStatus(primaryShiftControlTask, now))}
+                          </Badge>
+                          <span className='text-xs font-bold text-slate-500'>
+                            {plannedTimeLabel(primaryShiftControlTask.plannedTimeMinutes)}
+                          </span>
+                          {!actionableShiftControlTask && (
+                            <span className='text-xs font-bold text-slate-500'>{timeUntilLabel(primaryShiftControlTask.plannedTimeMinutes, now)}</span>
+                          )}
+                        </div>
+                      )}
+                      {actionableShiftControlTask && renderShiftTaskAction(actionableShiftControlTask, true)}
+                    </div>
+                  )}
+
+                  {activeHandoverTask && renderHandoverStep(activeHandoverTask)}
+
+                  {previewShiftControlTasks.length > 0 && (
+                    <div className='grid gap-1.5'>
+                      {previewShiftControlTasks.map((task) => {
+                        const uiStatus = shiftTaskStatus(task, now);
+                        return (
+                          <div key={task.id} className='flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-200/80'>
+                            <div className='min-w-0'>
+                              <p className='truncate text-xs font-extrabold text-slate-800'>{shiftTaskTitle(task)}</p>
+                              <p className='mt-0.5 text-[11px] font-bold text-slate-400'>{plannedTimeLabel(task.plannedTimeMinutes)}</p>
+                            </div>
+                            <Badge className={cn('shrink-0 px-2 py-0.5 text-[10px]', shiftTaskStatusClass(uiStatus))}>
+                              {shiftTaskStatusLabel(uiStatus)}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {!activeHandoverTask && (
+                    <Button
+                      type='button'
+                      className='h-9 w-full bg-slate-100 text-xs font-extrabold text-slate-800 shadow-none hover:bg-slate-200'
+                      onClick={() => setShowFullShiftPlan((current) => !current)}
+                    >
+                      {showFullShiftPlan ? 'Скрыть план смены' : 'Показать весь план смены'}
+                    </Button>
+                  )}
+
+                  {!activeHandoverTask && showFullShiftPlan && (
+                    <div className='grid gap-2'>
+                      {visibleShiftControlTasks.map((task) => {
+                      const uiStatus = shiftTaskStatus(task, now);
+                      const Icon = shiftTaskIcon(task);
+                      return (
+                        <div key={task.id} className={cn('flex gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-200/80', uiStatus === 'done' && 'bg-slate-50')}>
+                          <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1', shiftTaskIconClass(task.category))}>
+                            {uiStatus === 'done' ? <CheckCircle2 className='h-4 w-4' /> : <Icon className='h-4 w-4' />}
+                          </div>
+                          <div className='min-w-0 flex-1'>
+                            <div className='flex items-start justify-between gap-2'>
+                              <div className='min-w-0'>
+                                <p className='text-sm font-extrabold leading-tight text-slate-950'>{shiftTaskTitle(task)}</p>
+                                <p className='mt-1 text-xs font-bold text-slate-500'>План: {plannedTimeLabel(task.plannedTimeMinutes)}</p>
+                              </div>
+                              <Badge className={cn('shrink-0 px-2 py-0.5 text-[10px]', shiftTaskStatusClass(uiStatus))}>
+                                {shiftTaskStatusLabel(uiStatus)}
+                              </Badge>
+                            </div>
+                            {uiStatus === 'done'
+                              ? renderShiftTaskAnswer(task, true)
+                              : task.id === actionableShiftControlTask?.id
+                                ? null
+                                : renderShiftTaskAction(task)}
+                          </div>
+                        </div>
+                      );
+                      })}
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {canUseCashOperations && activeWorkDay && !activeHandoverTask && (
+                <Card className='space-y-3 p-4'>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div>
+                      <h2 className='text-base font-extrabold text-slate-950'>Инкассация сегодня</h2>
+                      <p className='mt-0.5 text-xs font-semibold leading-snug text-slate-500'>Фиксируйте только если переложили деньги</p>
+                      <p className='mt-0.5 text-xs font-bold text-slate-500'>
+                        {cashOperationsState.length} операций · {formatCashOperationAmount(cashOperationTotal)}
+                      </p>
+                    </div>
+                    <Banknote className='h-5 w-5 text-primary' />
+                  </div>
+
+                  <div className={cn('grid gap-2', user.department === 'retail' ? 'grid-cols-2' : 'grid-cols-1')}>
+                    {user.department === 'retail' && (
+                      <Button
+                        type='button'
+                        className='h-9 border border-slate-200 bg-white px-2 text-xs font-extrabold text-slate-800 shadow-none hover:bg-slate-50 hover:text-slate-950'
+                        onClick={() => openCashOperation('phone_reserve')}
+                        disabled={!workDay || isSaving}
+                      >
+                        Пополнить резерв
+                      </Button>
+                    )}
+                    <Button
+                      type='button'
+                      className='h-9 border border-slate-200 bg-white px-2 text-xs font-extrabold text-slate-800 shadow-none hover:bg-slate-50 hover:text-slate-950'
+                      onClick={() => openCashOperation('deposit_safe')}
+                      disabled={!workDay || isSaving}
+                    >
+                      В депозитный сейф
+                    </Button>
+                  </div>
+
+                  {!workDay && (
+                    <p className='rounded-lg bg-slate-50 px-2.5 py-2 text-xs font-bold text-slate-500 ring-1 ring-slate-200/80'>
+                      Сначала начните рабочий день.
+                    </p>
+                  )}
+
+                  {cashOperationDraft.direction && (
+                    <div className='grid gap-2 rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200/80'>
+                      <div className='flex items-center justify-between gap-2'>
+                        <p className='text-sm font-extrabold text-slate-950'>
+                          {cashOperationDraft.direction === 'phone_reserve' ? 'Пополнить резерв' : 'В депозитный сейф'}
+                        </p>
+                        <button
+                          type='button'
+                          className='text-xs font-extrabold text-slate-400 hover:text-slate-700'
+                          onClick={() => setCashOperationDraft({ direction: null, amount: '', comment: '' })}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                      <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                        Сумма
+                        <input
+                          type='number'
+                          inputMode='decimal'
+                          min='0'
+                          step='0.01'
+                          value={cashOperationDraft.amount}
+                          onChange={(event) => setCashOperationDraft((current) => ({ ...current, amount: event.target.value }))}
+                          className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                          placeholder='0'
+                        />
+                      </label>
+                      <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                        Комментарий
+                        <textarea
+                          value={cashOperationDraft.comment}
+                          onChange={(event) => setCashOperationDraft((current) => ({ ...current, comment: event.target.value }))}
+                          className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                          placeholder='Необязательно'
+                        />
+                      </label>
+                      <label
+                        className={cn(
+                          'flex min-h-10 items-center justify-center rounded-lg px-3 text-sm font-extrabold shadow-sm',
+                          parseMoneyInput(cashOperationDraft.amount) === null || isSaving
+                            ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                            : 'cursor-pointer bg-[#111821] text-white',
+                        )}
+                      >
+                        {isSaving ? 'Сохраняем фото...' : 'Сделать фото'}
+                        <input
+                          type='file'
+                          accept='image/*'
+                          capture='environment'
+                          className='sr-only'
+                          disabled={parseMoneyInput(cashOperationDraft.amount) === null || isSaving}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            event.currentTarget.value = '';
+                            submitCashOperation(file);
+                          }}
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  {cashOperationsState.length > 0 && (
+                    <div className='grid gap-1.5'>
+                      {cashOperationsState.map((operation) => (
+                        <div key={operation.id} className='flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-200/80'>
+                          <div className='min-w-0'>
+                            <p className='text-xs font-extrabold text-slate-900'>
+                              {formatCashOperationAmount(operation.amount)} {cashOperationDirectionLabel(operation.direction)}
+                            </p>
+                            <p className='mt-0.5 text-[11px] font-bold text-slate-400'>{formatTime(operation.createdAt)}</p>
+                          </div>
+                          <Badge className='shrink-0 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800 ring-1 ring-amber-200'>
+                            pending_1c
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
 
               <Card className='bg-slate-50 p-4'>
                 <div className='mb-2.5 flex items-center justify-between gap-3'>

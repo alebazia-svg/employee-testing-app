@@ -24,6 +24,8 @@ model User {
   payrollAdjustments PayrollAdjustment[] @relation("PayrollAdjustmentCreatedBy")
   workSchedules WorkScheduleEntry[]
   workDays      WorkDayEntry[]
+  shiftControlRuns ShiftControlRun[]
+  cashOperations CashOperation[]
 }
 
 model WorkScheduleEntry {
@@ -59,11 +61,119 @@ model WorkDayEntry {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shiftControlRun   ShiftControlRun?
+  cashOperations    CashOperation[]
 
   @@unique([userId, date])
   @@index([date])
   @@index([department, date])
   @@index([status])
+}
+
+model CashOperation {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  workDayEntryId Int
+  date           String
+  department     String
+  direction      String
+  amount         Float
+  photoPath      String
+  comment        String       @default("")
+  status         String       @default("pending_1c")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workDayEntry   WorkDayEntry @relation(fields: [workDayEntryId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@index([workDayEntryId])
+  @@index([direction])
+  @@index([status])
+}
+
+model ShiftControlTemplate {
+  id         Int                        @id @default(autoincrement())
+  name       String
+  department String
+  shiftCode  String                     @default("default")
+  isActive   Boolean                    @default(true)
+  version    Int                        @default(1)
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
+  tasks      ShiftControlTemplateTask[]
+  runs       ShiftControlRun[]
+
+  @@unique([department, shiftCode, version])
+  @@index([department, shiftCode, isActive])
+}
+
+model ShiftControlTemplateTask {
+  id                 Int                  @id @default(autoincrement())
+  templateId         Int
+  title              String
+  category           String
+  sortOrder          Int
+  required           Boolean              @default(true)
+  plannedTimeMinutes Int?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  template           ShiftControlTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tasks              ShiftControlTask[]
+
+  @@index([templateId, sortOrder])
+  @@index([category])
+}
+
+model ShiftControlRun {
+  id             Int                   @id @default(autoincrement())
+  workDayEntryId Int                   @unique
+  userId         Int
+  department     String
+  date           String
+  templateId     Int?
+  status         String                @default("active")
+  startedAt      DateTime              @default(now())
+  submittedAt    DateTime?
+  completedAt    DateTime?
+  closingComment String                @default("")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  workDayEntry   WorkDayEntry          @relation(fields: [workDayEntryId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template       ShiftControlTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  tasks          ShiftControlTask[]
+
+  @@index([userId, date])
+  @@index([department, date])
+  @@index([status])
+}
+
+model ShiftControlTask {
+  id                 Int                       @id @default(autoincrement())
+  runId              Int
+  templateTaskId     Int?
+  title              String
+  category           String
+  sortOrder          Int
+  required           Boolean                   @default(true)
+  plannedTimeMinutes Int?
+  status             String                    @default("pending")
+  completedAt        DateTime?
+  numericValue        Float?
+  integerValue        Int?
+  booleanValue        Boolean?
+  textValue           String?
+  handoverData        Json?
+  comment            String                    @default("")
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  run                ShiftControlRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
+  templateTask       ShiftControlTemplateTask? @relation(fields: [templateTaskId], references: [id], onDelete: SetNull)
+
+  @@index([runId, sortOrder])
+  @@index([status])
+  @@index([category])
 }
 
 model Attestation {

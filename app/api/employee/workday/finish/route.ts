@@ -14,6 +14,18 @@ export async function POST() {
     return Response.json({ error: 'Нет активного рабочего дня' }, { status: 404 });
   }
 
+  if (user.department === 'retail' || user.department === 'wholesale') {
+    const shiftControlRun = await prisma.shiftControlRun.findUnique({
+      where: { workDayEntryId: activeWorkDay.id },
+      include: { tasks: { where: { category: 'handover' }, take: 1 } },
+    });
+    const handoverTask = shiftControlRun?.tasks[0];
+
+    if (shiftControlRun && handoverTask && handoverTask.status !== 'done') {
+      return Response.json({ error: 'Сначала сдайте смену', code: 'SHIFT_CONTROL_HANDOVER_REQUIRED' }, { status: 409 });
+    }
+  }
+
   const workDay = await prisma.workDayEntry.update({
     where: { id: activeWorkDay.id },
     data: { endedAt: new Date(), status: 'completed' },

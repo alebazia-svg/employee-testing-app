@@ -35,6 +35,87 @@ function serializeScheduleEntry(entry: {
   };
 }
 
+function serializeShiftControl(run: {
+  id: number;
+  workDayEntryId: number;
+  userId: number;
+  department: string;
+  date: string;
+  templateId: number | null;
+  status: string;
+  startedAt: Date;
+  submittedAt: Date | null;
+  completedAt: Date | null;
+  closingComment: string;
+  createdAt: Date;
+  updatedAt: Date;
+  tasks: Array<{
+    id: number;
+    runId: number;
+    templateTaskId: number | null;
+    title: string;
+    category: string;
+    sortOrder: number;
+    required: boolean;
+    plannedTimeMinutes: number | null;
+    status: string;
+    completedAt: Date | null;
+    numericValue: number | null;
+    integerValue: number | null;
+    booleanValue: boolean | null;
+    textValue: string | null;
+    handoverData: unknown;
+    comment: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }>;
+} | null) {
+  if (!run) return { run: null, tasks: [] };
+  const { tasks, ...shiftControlRun } = run;
+  return {
+    run: {
+      ...shiftControlRun,
+      startedAt: shiftControlRun.startedAt.toISOString(),
+      submittedAt: shiftControlRun.submittedAt?.toISOString() ?? null,
+      completedAt: shiftControlRun.completedAt?.toISOString() ?? null,
+      createdAt: shiftControlRun.createdAt.toISOString(),
+      updatedAt: shiftControlRun.updatedAt.toISOString(),
+    },
+    tasks: tasks.map((task) => ({
+      ...task,
+      completedAt: task.completedAt?.toISOString() ?? null,
+      createdAt: task.createdAt.toISOString(),
+      updatedAt: task.updatedAt.toISOString(),
+    })),
+  };
+}
+
+function serializeCashOperation(operation: {
+  id: number;
+  userId: number;
+  workDayEntryId: number;
+  date: string;
+  direction: string;
+  amount: number;
+  photoPath: string;
+  comment: string;
+  status: string;
+  createdAt: Date;
+}) {
+  return {
+    id: operation.id,
+    userId: operation.userId,
+    workDayEntryId: operation.workDayEntryId,
+    date: operation.date,
+    direction: operation.direction as 'phone_reserve' | 'deposit_safe',
+    amount: operation.amount,
+    photoPath: operation.photoPath,
+    comment: operation.comment,
+    status: operation.status,
+    createdAt: operation.createdAt.toISOString(),
+  };
+}
+
 export default async function Employee() {
   const user = await getCurrentUser();
   if (!user) redirect('/login');
@@ -42,7 +123,7 @@ export default async function Employee() {
   const today = getMoscowDateKey();
   const dates = buildDateRange(today, 31);
 
-  const [attestations, ownSchedule, departmentSchedule, departmentUsers, todayWorkDay, unfinishedWorkDay] = await Promise.all([
+  const [attestations, ownSchedule, departmentSchedule, departmentUsers, todayWorkDay, unfinishedWorkDay, shiftControlRun, cashOperations] = await Promise.all([
     prisma.attestation.findMany({
       where: { status: 'ACTIVE' },
       include: {
@@ -70,6 +151,23 @@ export default async function Employee() {
       where: { userId: user.id, status: { in: ['active', 'missing_checkout'] }, endedAt: null, date: { not: today } },
       orderBy: { startedAt: 'desc' },
     }),
+    user.department === 'retail' || user.department === 'wholesale'
+      ? prisma.shiftControlRun.findFirst({
+          where: {
+            userId: user.id,
+            workDayEntry: {
+              status: { in: ['active', 'missing_checkout'] },
+              endedAt: null,
+            },
+          },
+          include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
+          orderBy: { startedAt: 'desc' },
+        })
+      : null,
+    prisma.cashOperation.findMany({
+      where: { userId: user.id, date: today },
+      orderBy: { createdAt: 'desc' },
+    }),
   ]);
 
   return (
@@ -87,6 +185,8 @@ export default async function Employee() {
         resultStatus: attestation.results[0]?.status ?? null,
         hasProgress: Boolean(attestation.progresses[0]),
       }))}
+      shiftControl={serializeShiftControl(shiftControlRun)}
+      cashOperations={cashOperations.map(serializeCashOperation)}
     />
   );
 }
