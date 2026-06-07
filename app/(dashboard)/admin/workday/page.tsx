@@ -15,6 +15,8 @@ import { DevResetTodayButton } from './DevResetTodayButton';
 
 export const dynamic = 'force-dynamic';
 
+const devWorkdayToolsEnabled = process.env.ENABLE_DEV_WORKDAY_TOOLS === 'true';
+
 function statusClass(status: string) {
   if (status === 'completed') return 'bg-green-100 text-green-800';
   if (status === 'active') return 'bg-blue-100 text-blue-800';
@@ -215,7 +217,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <th className='px-4 py-3'>Контроль смены</th>
                 <th className='px-4 py-3'>Флаги</th>
                 <th className='px-4 py-3'>Комментарий</th>
-                <th className='px-4 py-3'>Dev/Test</th>
+                {devWorkdayToolsEnabled && <th className='px-4 py-3'>Dev/Test</th>}
               </tr>
             </thead>
             <tbody>
@@ -265,22 +267,24 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       )}
                     </td>
                     <td className='max-w-[280px] px-4 py-3 text-sm text-slate-600'>{workDay?.comment || '—'}</td>
-                    <td className='px-4 py-3'>
-                      <div className='flex flex-col gap-2'>
-                        {!workDay && (employee.department === 'retail' || employee.department === 'wholesale') && (
-                          <DevCreateTestShiftButtons
-                            userId={employee.id}
-                            userName={employee.name}
-                            department={employee.department}
-                            date={selectedDate}
-                          />
-                        )}
-                        {(employee.department === 'retail' || employee.department === 'wholesale') && shiftControlRun && (
-                          <DevMakeShiftTasksAvailableButton userId={employee.id} userName={employee.name} date={selectedDate} />
-                        )}
-                        <DevResetTodayButton userId={employee.id} userName={employee.name} date={selectedDate} />
-                      </div>
-                    </td>
+                    {devWorkdayToolsEnabled && (
+                      <td className='px-4 py-3'>
+                        <div className='flex flex-col gap-2'>
+                          {!workDay && (employee.department === 'retail' || employee.department === 'wholesale') && (
+                            <DevCreateTestShiftButtons
+                              userId={employee.id}
+                              userName={employee.name}
+                              department={employee.department}
+                              date={selectedDate}
+                            />
+                          )}
+                          {(employee.department === 'retail' || employee.department === 'wholesale') && shiftControlRun && (
+                            <DevMakeShiftTasksAvailableButton userId={employee.id} userName={employee.name} date={selectedDate} />
+                          )}
+                          <DevResetTodayButton userId={employee.id} userName={employee.name} date={selectedDate} />
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}

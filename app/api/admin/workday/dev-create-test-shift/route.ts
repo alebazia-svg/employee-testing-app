@@ -11,6 +11,10 @@ function canUseShiftControl(department: string) {
 }
 
 export async function POST(req: Request) {
+  if (process.env.ENABLE_DEV_WORKDAY_TOOLS !== 'true') {
+    return Response.json({ error: 'Dev workday tools are disabled' }, { status: 403 });
+  }
+
   const admin = await getCurrentUser();
   if (!admin || admin.role !== 'ADMIN') {
     return Response.json({ error: 'Forbidden' }, { status: 403 });

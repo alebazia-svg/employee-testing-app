@@ -44,6 +44,11 @@ type PhotoInfo = {
   storagePath?: unknown;
 };
 
+type PhotoPreview = {
+  href: string;
+  label: string;
+};
+
 function minutesToTime(minutes: number | null) {
   if (minutes === null) return 'без времени';
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -132,7 +137,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   );
 }
 
-function PhotoRow({ label, photo }: { label: string; photo: PhotoInfo | null }) {
+function PhotoRow({ label, photo, onPreview }: { label: string; photo: PhotoInfo | null; onPreview: (photo: PhotoPreview) => void }) {
   const href = photoHref(photo);
   return (
     <DetailRow
@@ -141,15 +146,25 @@ function PhotoRow({ label, photo }: { label: string; photo: PhotoInfo | null }) 
         <div className='flex flex-wrap items-center gap-2'>
           <span>{href ? 'Фото есть' : 'Фото нет'}</span>
           {href && (
-            <a
-              href={href}
-              target='_blank'
-              rel='noreferrer'
-              className='inline-flex h-7 items-center gap-1 rounded-md bg-white px-2 text-xs font-extrabold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100'
-            >
-              Открыть фото
-              <ExternalLink className='h-3.5 w-3.5' />
-            </a>
+            <>
+              <button
+                type='button'
+                className='group block overflow-hidden rounded-md bg-white ring-1 ring-slate-200 transition hover:ring-slate-300'
+                onClick={() => onPreview({ href, label })}
+                aria-label={`${label}: открыть фото`}
+              >
+                <img src={href} alt={label} className='h-16 w-16 object-cover transition group-hover:scale-105' />
+              </button>
+              <a
+                href={href}
+                target='_blank'
+                rel='noreferrer'
+                className='inline-flex h-7 items-center gap-1 rounded-md bg-white px-2 text-xs font-extrabold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100'
+              >
+                Открыть отдельно
+                <ExternalLink className='h-3.5 w-3.5' />
+              </a>
+            </>
           )}
         </div>
       }
@@ -157,7 +172,7 @@ function PhotoRow({ label, photo }: { label: string; photo: PhotoInfo | null }) 
   );
 }
 
-function TaskValue({ task }: { task: ShiftTask }) {
+function TaskValue({ task, onPreview }: { task: ShiftTask; onPreview: (photo: PhotoPreview) => void }) {
   if (task.category === 'cash' || task.category === 'acquiring') {
     return <span>Сумма: {formatMoney(task.numericValue)}</span>;
   }
@@ -175,15 +190,25 @@ function TaskValue({ task }: { task: ShiftTask }) {
       <span className='inline-flex flex-wrap items-center gap-2'>
         {href ? 'Фото есть' : 'Фото нет'}
         {href && (
-          <a
-            href={href}
-            target='_blank'
-            rel='noreferrer'
-            className='inline-flex h-7 items-center gap-1 rounded-md bg-white px-2 text-xs font-extrabold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100'
-          >
-            Открыть фото
-            <ExternalLink className='h-3.5 w-3.5' />
-          </a>
+          <>
+            <button
+              type='button'
+              className='group block overflow-hidden rounded-md bg-white ring-1 ring-slate-200 transition hover:ring-slate-300'
+              onClick={() => onPreview({ href, label: task.title })}
+              aria-label={`${task.title}: открыть фото`}
+            >
+              <img src={href} alt={task.title} className='h-16 w-16 object-cover transition group-hover:scale-105' />
+            </button>
+            <a
+              href={href}
+              target='_blank'
+              rel='noreferrer'
+              className='inline-flex h-7 items-center gap-1 rounded-md bg-white px-2 text-xs font-extrabold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100'
+            >
+              Открыть отдельно
+              <ExternalLink className='h-3.5 w-3.5' />
+            </a>
+          </>
         )}
       </span>
     );
@@ -192,11 +217,12 @@ function TaskValue({ task }: { task: ShiftTask }) {
   return <span>{task.comment || '—'}</span>;
 }
 
-function HandoverDetails({ data }: { data: unknown }) {
+function HandoverDetails({ data, department, onPreview }: { data: unknown; department: string; onPreview: (photo: PhotoPreview) => void }) {
   const personalCash = readRecord(data, 'personalCash');
   const storeClosing = readRecord(data, 'storeClosing');
   const photos = readPhotos(data);
   const comment = isRecord(data) ? data.comment : '';
+  const isRetail = department === 'retail';
 
   if (!personalCash && !storeClosing) return null;
 
@@ -206,21 +232,21 @@ function HandoverDetails({ data }: { data: unknown }) {
         <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
           <h4 className='text-sm font-extrabold text-slate-950'>Сдача своей кассы</h4>
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <PhotoRow label='Фото ведомости 1С' photo={readPhoto(photos, 'personalStatement')} />
+            <PhotoRow label='Фото ведомости 1С' photo={readPhoto(photos, 'personalStatement')} onPreview={onPreview} />
             <DetailRow label='Остаток наличных' value={formatMoney(Number(personalCash.cashBalance ?? 0))} />
-            <PhotoRow label='Фото чеков эквайринга' photo={readPhoto(photos, 'personalAcquiringReceipts')} />
+            {isRetail && <PhotoRow label='Фото чеков эквайринга' photo={readPhoto(photos, 'personalAcquiringReceipts')} onPreview={onPreview} />}
             <DetailRow label='Расхождение' value={discrepancyLabel(personalCash.discrepancyType)} />
             <DetailRow
               label='Сумма расхождения'
               value={personalCash.discrepancyAmount === null ? '—' : formatMoney(Number(personalCash.discrepancyAmount ?? 0))}
             />
             <DetailRow label='Комментарий' value={textValue(comment)} />
-            <DetailRow label='Выемка' value={yesNo(personalCash.hadWithdrawal)} />
-            <DetailRow label='Сумма выемки' value={personalCash.withdrawalAmount === null ? '—' : formatMoney(Number(personalCash.withdrawalAmount ?? 0))} />
-            <DetailRow label='Сумма приходника' value={personalCash.cashOrderAmount === null ? '—' : formatMoney(Number(personalCash.cashOrderAmount ?? 0))} />
+            {isRetail && <DetailRow label='Выемка' value={yesNo(personalCash.hadWithdrawal)} />}
+            {isRetail && <DetailRow label='Сумма выемки' value={personalCash.withdrawalAmount === null ? '—' : formatMoney(Number(personalCash.withdrawalAmount ?? 0))} />}
+            {isRetail && <DetailRow label='Сумма приходника' value={personalCash.cashOrderAmount === null ? '—' : formatMoney(Number(personalCash.cashOrderAmount ?? 0))} />}
             <DetailRow label='Инкассация' value={yesNo(personalCash.requiresEncashment)} />
             <DetailRow label='Сумма инкассации' value={personalCash.encashmentAmount === null ? '—' : formatMoney(Number(personalCash.encashmentAmount ?? 0))} />
-            <PhotoRow label='Фото документа инкассации' photo={readPhoto(photos, 'encashmentDocument')} />
+            <PhotoRow label='Фото документа инкассации' photo={readPhoto(photos, 'encashmentDocument')} onPreview={onPreview} />
           </div>
         </section>
       )}
@@ -229,15 +255,15 @@ function HandoverDetails({ data }: { data: unknown }) {
         <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
           <h4 className='text-sm font-extrabold text-slate-950'>Закрытие магазина</h4>
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <PhotoRow label='Фото отчёта Сбербанка' photo={readPhoto(photos, 'sberbankTerminalReport')} />
+            <PhotoRow label='Фото отчёта Сбербанка' photo={readPhoto(photos, 'sberbankTerminalReport')} onPreview={onPreview} />
             <DetailRow label='Сумма по Сбербанку' value={formatMoney(Number(storeClosing.sberbankTerminalTotal ?? 0))} />
             <DetailRow label='Кредиты через Т-Банк' value={yesNo(storeClosing.hasTbankCredit)} />
-            <PhotoRow label='Фото отчёта Т-Банка' photo={readPhoto(photos, 'tbankTerminalReport')} />
+            <PhotoRow label='Фото отчёта Т-Банка' photo={readPhoto(photos, 'tbankTerminalReport')} onPreview={onPreview} />
             <DetailRow
               label='Сумма по Т-Банку'
               value={storeClosing.tbankTerminalTotal === null ? '—' : formatMoney(Number(storeClosing.tbankTerminalTotal ?? 0))}
             />
-            <PhotoRow label='Z-отчёт / чек закрытия смены' photo={readPhoto(photos, 'zReport')} />
+            <PhotoRow label='Z-отчёт / чек закрытия смены' photo={readPhoto(photos, 'zReport')} onPreview={onPreview} />
           </div>
         </section>
       )}
@@ -247,9 +273,14 @@ function HandoverDetails({ data }: { data: unknown }) {
 
 export function AdminShiftControlDetails({ department, run, workDay, nowMinutes }: Props) {
   const [open, setOpen] = useState(false);
-  const isRetail = department === 'retail';
+  const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
+  const canUseShiftControl = department === 'retail' || department === 'wholesale';
+  function closeDetails() {
+    setSelectedPhoto(null);
+    setOpen(false);
+  }
   const summary = useMemo(() => {
-    if (!isRetail) return { status: 'none', label: '—', completed: 0, total: 0, overdue: 0, handoverDone: false };
+    if (!canUseShiftControl) return { status: 'none', label: '—', completed: 0, total: 0, overdue: 0, handoverDone: false };
     if (!run) return { status: 'none', label: 'нет контроля', completed: 0, total: 0, overdue: 0, handoverDone: false };
 
     const completed = run.tasks.filter((task) => task.status === 'done').length;
@@ -260,7 +291,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
     const label = status === 'completed' ? 'выполнено' : status === 'overdue' ? 'есть просрочки' : 'в процессе';
 
     return { status, label, completed, total, overdue, handoverDone };
-  }, [isRetail, nowMinutes, run]);
+  }, [canUseShiftControl, nowMinutes, run]);
 
   const hasZReportInHandover = useMemo(() => {
     if (!run) return false;
@@ -272,7 +303,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
     return run.tasks.filter((task) => !(task.category === 'closing' && hasZReportInHandover));
   }, [hasZReportInHandover, run]);
 
-  if (!isRetail) return <span className='text-sm font-semibold text-slate-400'>—</span>;
+  if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
 
   return (
     <div className='min-w-[220px]'>
@@ -302,7 +333,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
       </div>
 
       {open && run && (
-        <div className='fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm' onClick={() => setOpen(false)}>
+        <div className='fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm' onClick={closeDetails}>
           <aside
             className='ml-auto flex h-full w-full max-w-3xl flex-col bg-slate-50 shadow-2xl'
             onClick={(event) => event.stopPropagation()}
@@ -322,7 +353,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
               <Button
                 type='button'
                 className='h-9 w-9 shrink-0 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200'
-                onClick={() => setOpen(false)}
+                onClick={closeDetails}
                 aria-label='Закрыть'
               >
                 <X className='h-5 w-5' />
@@ -345,7 +376,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
                           <div className='mt-1 grid gap-1 text-xs font-semibold text-slate-600 md:grid-cols-3'>
                             <span>План: {minutesToTime(task.plannedTimeMinutes)}</span>
                             <span>Выполнено: {formatTime(task.completedAt)}</span>
-                            <TaskValue task={task} />
+                            <TaskValue task={task} onPreview={setSelectedPhoto} />
                           </div>
                         </div>
                       );
@@ -356,11 +387,42 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
                 {run.tasks
                   .filter((task) => task.category === 'handover')
                   .map((task) => (
-                    <HandoverDetails key={task.id} data={task.handoverData} />
+                    <HandoverDetails key={task.id} data={task.handoverData} department={department} onPreview={setSelectedPhoto} />
                   ))}
               </div>
             </div>
           </aside>
+          {selectedPhoto && (
+            <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4' onClick={() => setSelectedPhoto(null)}>
+              <div className='flex max-h-full w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl' onClick={(event) => event.stopPropagation()}>
+                <div className='flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3'>
+                  <p className='min-w-0 truncate text-sm font-extrabold text-slate-950'>{selectedPhoto.label}</p>
+                  <div className='flex shrink-0 items-center gap-2'>
+                    <a
+                      href={selectedPhoto.href}
+                      target='_blank'
+                      rel='noreferrer'
+                      className='inline-flex h-8 items-center gap-1 rounded-md bg-slate-100 px-2.5 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'
+                    >
+                      Открыть отдельно
+                      <ExternalLink className='h-3.5 w-3.5' />
+                    </a>
+                    <Button
+                      type='button'
+                      className='h-8 w-8 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200'
+                      onClick={() => setSelectedPhoto(null)}
+                      aria-label='Закрыть фото'
+                    >
+                      <X className='h-4 w-4' />
+                    </Button>
+                  </div>
+                </div>
+                <div className='flex min-h-0 flex-1 items-center justify-center overflow-auto bg-slate-100 p-3'>
+                  <img src={selectedPhoto.href} alt={selectedPhoto.label} className='max-h-[78vh] max-w-full object-contain' />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
