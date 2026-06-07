@@ -1,0 +1,51 @@
+name: offonika-portal
+
+services:
+  portal-postgres:
+    image: postgres:16-alpine
+    container_name: portal-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - portal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  portal-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: portal-app
+    restart: unless-stopped
+    depends_on:
+      portal-postgres:
+        condition: service_healthy
+    env_file:
+      - ${PORTAL_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "3000"
+    volumes:
+      - portal-uploads:/app/uploads
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.portal-app.rule=Host(`${PORTAL_DOMAIN}`)
+      - traefik.http.routers.portal-app.entrypoints=websecure
+      - traefik.http.routers.portal-app.tls.certresolver=letsencrypt
+      - traefik.http.services.portal-app.loadbalancer.server.port=3000
+      - traefik.http.routers.portal-app-http.rule=Host(`${PORTAL_DOMAIN}`)
+      - traefik.http.routers.portal-app-http.entrypoints=web
+      - traefik.http.routers.portal-app-http.middlewares=portal-app-redirect
+      - traefik.http.middlewares.portal-app-redirect.redirectscheme.scheme=https
+      - traefik.http.middlewares.portal-app-redirect.redirectscheme.permanent=true
+
+volumes:
+  portal-postgres-data:
+  portal-uploads:
