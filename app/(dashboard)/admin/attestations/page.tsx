@@ -10,6 +10,8 @@ import { Table } from '@/components/ui/table';
 import { attestationStatusLabel, attestationTypeLabel } from '@/lib/test-format';
 import CreateAttestation from './CreateAttestation';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminAttestationsPage() {
   const attestations = await prisma.attestation.findMany({
     include: { sections: { include: { questions: true } } },

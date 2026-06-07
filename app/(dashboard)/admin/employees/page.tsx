@@ -3,6 +3,8 @@ import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import EmployeesClient from './EmployeesClient';
 
+export const dynamic = 'force-dynamic';
+
 export default async function EmployeesPage() {
   const users = await prisma.user.findMany({
     orderBy: [{ isActive: 'desc' }, { role: 'asc' }, { name: 'asc' }],

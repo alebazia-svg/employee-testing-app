@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AdminResultsPage() {
   const results = await prisma.result.findMany({
     include: { user: true, attestation: true },
