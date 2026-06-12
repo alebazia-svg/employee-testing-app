@@ -1,6 +1,7 @@
 import { getAIAgentHealth } from '@/lib/one-c';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 export async function GET() {
   const health = await getAIAgentHealth();

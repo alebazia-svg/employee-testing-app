@@ -1,3 +1,5 @@
+import 'server-only';
+
 type OneCConfig = {
   baseUrl: string;
   user: string;
@@ -101,13 +103,19 @@ function readPositiveInteger(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
+function readRuntimeEnv() {
+  // Keep 1C secrets as runtime-only Node env reads, outside Next build-time env folding.
+  return Function('return globalThis.process?.env ?? {}')() as Record<string, string | undefined>;
+}
+
 function getConfig(): OneCConfig {
+  const env = readRuntimeEnv();
   return {
-    baseUrl: (process.env['1C_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
-    user: (process.env['1C_API_USER'] ?? '').trim(),
-    password: process.env['1C_API_PASSWORD'] ?? '',
-    timeoutMs: readPositiveInteger(process.env['1C_REQUEST_TIMEOUT_MS'], 5000),
-    cacheTtlSeconds: readPositiveInteger(process.env['1C_CACHE_TTL_SECONDS'], 0),
+    baseUrl: (env['1C_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
+    user: (env['1C_API_USER'] ?? '').trim(),
+    password: env['1C_API_PASSWORD'] ?? '',
+    timeoutMs: readPositiveInteger(env['1C_REQUEST_TIMEOUT_MS'], 5000),
+    cacheTtlSeconds: readPositiveInteger(env['1C_CACHE_TTL_SECONDS'], 0),
   };
 }
 

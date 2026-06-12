@@ -8,6 +8,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getAIAgentHealth, getSalesRealizations, type OneCEndpointResult, type OneCSalesRealizationDocument } from '@/lib/one-c';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 function renderValue(value: unknown) {
   if (value === null || value === undefined || value === '') return 'нет данных';
