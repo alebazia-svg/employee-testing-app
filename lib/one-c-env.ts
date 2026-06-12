@@ -20,6 +20,22 @@ const ONE_C_ENV_KEYS = [
   'NODE_ENV',
 ] as const;
 
+const RUNTIME_ENV_FILE = '/tmp/portal-one-c-runtime-env.json';
+
+function readRuntimeEnvFile(): Record<string, string> {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(RUNTIME_ENV_FILE, 'utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    return Object.entries(parsed).reduce<Record<string, string>>((env, [key, value]) => {
+      if (typeof value === 'string') env[key] = value;
+      return env;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
 function readProcEnv(path: string): Record<string, string> {
   try {
     return fs.readFileSync(path, 'utf8')
@@ -38,7 +54,7 @@ function readRuntimeValue(key: typeof ONE_C_ENV_KEYS[number]) {
   const direct = process.env[key];
   if (direct) return direct;
 
-  for (const env of [readProcEnv('/proc/self/environ'), readProcEnv('/proc/1/environ')]) {
+  for (const env of [readRuntimeEnvFile(), readProcEnv('/proc/self/environ'), readProcEnv('/proc/1/environ')]) {
     const value = env[key];
     if (value) return value;
   }

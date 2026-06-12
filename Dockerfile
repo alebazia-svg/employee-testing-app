@@ -26,9 +26,10 @@ COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/clie
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/next.config.mjs ./next.config.mjs
 
 RUN mkdir -p /app/uploads
 
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]
+CMD ["sh", "-c", "node scripts/write-one-c-runtime-env.mjs && npx prisma migrate deploy && npm run start"]
