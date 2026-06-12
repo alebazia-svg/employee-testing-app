@@ -4,7 +4,7 @@ import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { requireCurrentUser } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { getAIAgentHealth, getSalesRealizations, type OneCEndpointResult, type OneCSalesRealizationDocument } from '@/lib/one-c';
 
 export const dynamic = 'force-dynamic';
@@ -142,7 +142,8 @@ function SalesDocumentCard({ document }: { document: OneCSalesRealizationDocumen
 }
 
 export default async function AdminOneCPage() {
-  const currentUser = await requireCurrentUser();
+  const currentUser = await getCurrentUser();
+  if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');
 
   const [health, salesRealizations] = await Promise.all([getAIAgentHealth(), getSalesRealizations()]);
