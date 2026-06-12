@@ -1,4 +1,5 @@
 import 'server-only';
+import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 
 type OneCConfig = {
   baseUrl: string;
@@ -103,19 +104,14 @@ function readPositiveInteger(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-function readRuntimeEnv() {
-  // Keep 1C secrets as runtime-only Node env reads, outside Next build-time env folding.
-  return Function('return globalThis.process?.env ?? {}')() as Record<string, string | undefined>;
-}
-
 function getConfig(): OneCConfig {
-  const env = readRuntimeEnv();
+  const env = readOneCRuntimeEnv();
   return {
-    baseUrl: (env['1C_BASE_URL'] ?? '').trim().replace(/\/+$/, ''),
-    user: (env['1C_API_USER'] ?? '').trim(),
-    password: env['1C_API_PASSWORD'] ?? '',
-    timeoutMs: readPositiveInteger(env['1C_REQUEST_TIMEOUT_MS'], 5000),
-    cacheTtlSeconds: readPositiveInteger(env['1C_CACHE_TTL_SECONDS'], 0),
+    baseUrl: env.baseUrl,
+    user: env.user,
+    password: env.password,
+    timeoutMs: readPositiveInteger(env.requestTimeoutMs, 5000),
+    cacheTtlSeconds: readPositiveInteger(env.cacheTtlSeconds, 0),
   };
 }
 
@@ -446,7 +442,7 @@ export async function getAIAgentHealth(): Promise<OneCHealthResult> {
     cacheTtlSeconds: config.cacheTtlSeconds,
     cached: false,
     endpoints,
-    environment: extractEnvironment(info.data) ?? process.env.NODE_ENV ?? null,
+    environment: extractEnvironment(info.data) ?? readOneCRuntimeEnv().nodeEnv ?? null,
     errors,
   };
 
