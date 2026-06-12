@@ -32,4 +32,4 @@ COPY --from=builder /app/next.config.mjs ./next.config.mjs
 RUN mkdir -p /app/uploads
 
 EXPOSE 3000
-CMD ["sh", "-c", "node scripts/write-one-c-runtime-env.mjs && npx prisma migrate deploy && npm run start"]
+CMD ["node", "scripts/start-portal.mjs"]
