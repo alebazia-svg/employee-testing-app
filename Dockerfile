@@ -32,4 +32,5 @@ COPY --from=builder /app/next.config.mjs ./next.config.mjs
 RUN mkdir -p /app/uploads
 
 EXPOSE 3000
+ENTRYPOINT []
 CMD ["node", "scripts/start-portal.mjs"]
