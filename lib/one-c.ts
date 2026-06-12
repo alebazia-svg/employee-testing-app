@@ -46,6 +46,7 @@ export type OneCSalesRealizationLine = {
   lineNumber: string;
   productCode: string;
   productName: string;
+  productKindName: string;
   productArticle: string;
   quantity: number | null;
   price: number | null;
@@ -62,10 +63,14 @@ export type OneCSalesRealizationDocument = {
   amount: number | null;
   currency: string;
   organizationName: string;
+  organizationInn: string;
   partnerName: string;
   counterpartyName: string;
+  warehouseName: string;
   managerName: string;
+  managerSource: string;
   responsibleName: string;
+  responsibleSource: string;
   additionalManagerName: string;
   comment: string;
   lines: OneCSalesRealizationLine[];
@@ -155,6 +160,14 @@ function readFirstString(source: Record<string, unknown>, keys: string[]) {
   return '';
 }
 
+function readName(value: unknown) {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+
+  const source = readRecord(value);
+  return source ? readFirstString(source, ['name', 'Наименование']) : '';
+}
+
 function readFirstNumber(source: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = source[key];
@@ -185,7 +198,8 @@ function normalizeSalesRealizationLine(value: unknown, index: number): OneCSales
   return {
     lineNumber: readFirstString(source, ['line_number', 'lineNumber', 'number', 'n']) || String(index + 1),
     productCode: readFirstString(source, ['product_code', 'productCode', 'code', 'sku']),
-    productName: readFirstString(source, ['product_name', 'productName', 'item_name', 'itemName', 'nomenclature_name', 'nomenclatureName', 'name']),
+    productName: readFirstString(source, ['product_name', 'productName', 'item_name', 'itemName', 'nomenclature_name', 'nomenclatureName', 'name']) || readName(source.product),
+    productKindName: readFirstString(source, ['product_kind_name', 'productKindName', 'nomenclature_kind_name', 'nomenclatureKindName']) || readName(source.product_kind),
     productArticle: readFirstString(source, ['product_article', 'productArticle', 'article', 'vendor_code', 'vendorCode']),
     quantity: readFirstNumber(source, ['quantity', 'qty']),
     price: readFirstNumber(source, ['price']),
@@ -205,11 +219,15 @@ function normalizeSalesRealizationDocument(value: unknown): OneCSalesRealization
     deletionMark: readFirstBoolean(source, ['deletion_mark', 'deletionMark', 'deleted', 'is_deleted', 'isDeleted']),
     amount: readFirstNumber(source, ['amount', 'sum', 'total', 'document_amount', 'documentAmount']),
     currency: readFirstString(source, ['currency', 'currency_code', 'currencyCode']),
-    organizationName: readFirstString(source, ['organization_name', 'organizationName', 'organization']),
-    partnerName: readFirstString(source, ['partner_name', 'partnerName', 'partner']),
-    counterpartyName: readFirstString(source, ['counterparty_name', 'counterpartyName', 'counterparty', 'customer_name', 'customerName']),
-    managerName: readFirstString(source, ['manager_name', 'managerName', 'manager']),
-    responsibleName: readFirstString(source, ['responsible_name', 'responsibleName', 'responsible']),
+    organizationName: readFirstString(source, ['organization_name', 'organizationName']) || readName(source.organization),
+    organizationInn: readFirstString(source, ['organization_inn', 'organizationInn', 'inn']),
+    partnerName: readFirstString(source, ['partner_name', 'partnerName']) || readName(source.partner),
+    counterpartyName: readFirstString(source, ['counterparty_name', 'counterpartyName', 'customer_name', 'customerName']) || readName(source.counterparty),
+    warehouseName: readFirstString(source, ['warehouse_name', 'warehouseName']) || readName(source.warehouse),
+    managerName: readFirstString(source, ['manager_name', 'managerName']) || readName(source.manager),
+    managerSource: readFirstString(source, ['manager_source', 'managerSource']),
+    responsibleName: readFirstString(source, ['responsible_name', 'responsibleName']) || readName(source.responsible),
+    responsibleSource: readFirstString(source, ['responsible_source', 'responsibleSource']),
     additionalManagerName: readFirstString(source, ['additional_manager_name', 'additionalManagerName']),
     comment: readFirstString(source, ['comment', 'description']),
     lines,

@@ -121,9 +121,12 @@ function SalesDocumentCard({ document }: { document: OneCSalesRealizationDocumen
             </thead>
             <tbody>
               {document.lines.map((line) => (
-                <tr key={`${document.ref || document.number}-${line.lineNumber}-${line.productCode}-${line.productName}`} className='border-t border-slate-200/80'>
+                <tr key={`${document.ref || document.number}-${line.lineNumber}-${line.productCode}-${line.productName}-${line.productKindName}`} className='border-t border-slate-200/80'>
                   <td className='px-5 py-3 font-bold text-slate-500'>{line.lineNumber}</td>
-                  <td className='px-5 py-3 font-semibold text-slate-950'>{line.productName || 'нет данных'}</td>
+                  <td className='px-5 py-3'>
+                    <p className='font-semibold text-slate-950'>{line.productName || 'нет данных'}</p>
+                    {line.productKindName ? <p className='mt-1 text-xs font-semibold text-slate-500'>{line.productKindName}</p> : null}
+                  </td>
                   <td className='px-5 py-3 text-slate-600'>{[line.productCode, line.productArticle].filter(Boolean).join(' / ') || 'нет данных'}</td>
                   <td className='px-5 py-3 text-right font-semibold text-slate-700'>{line.quantity ?? 'нет данных'}</td>
                   <td className='px-5 py-3 text-right font-semibold text-slate-700'>{formatMoney(line.price, document.currency)}</td>
