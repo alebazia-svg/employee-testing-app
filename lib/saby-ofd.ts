@@ -840,6 +840,55 @@ function returnDiagnostics(receipts: FullReceiptProbeResult[]) {
   };
 }
 
+function receiptDiagnostics(receipts: FullReceiptProbeResult[]) {
+  const sales = receipts.filter(({ receipt }) => readAmount(receipt.operationType) === 1);
+  const returns = receipts.filter(({ receipt }) => isReturnReceipt(receipt));
+  const selected = [...returns.slice(0, 5), ...sales.slice(0, 10)].slice(0, 12);
+
+  const samples = selected.map(({ receipt, analysis, summary }) => {
+    const directLinks = isReturnReceipt(receipt) ? findDirectLinkFields(receipt) : [];
+    const possibleCandidates = isReturnReceipt(receipt) ? possibleOriginalCandidates(receipt, receipts) : [];
+    const rejectedCandidates = isReturnReceipt(receipt) ? rejectedOriginalCandidates(receipt, receipts) : [];
+
+    return {
+      fiscalDocumentNumber: summary.fiscalDocumentNumber,
+      fiscalDriveNumber: summary.fiscalDriveNumber,
+      fiscalSign: summary.fiscalSign,
+      date: summary.date,
+      totalSum: summary.totalSum,
+      cashTotalSum: summary.cashTotalSum,
+      ecashTotalSum: summary.ecashTotalSum,
+      creditSum: summary.creditSum,
+      operationType: readAmount(receipt.operationType),
+      receiptCode: readAmount(receipt.receiptCode),
+      rawPaymentTypes: summary.rawPaymentTypes,
+      normalizedPaymentTypes: summary.normalizedPaymentTypes,
+      matchedRule: summary.matchedRule,
+      issues: analysis.issues,
+      itemsPreview: itemsPreview(receipt),
+      directLinks,
+      possibleOriginalCandidates: possibleCandidates,
+      rejectedCandidates,
+      matchingStatus: isReturnReceipt(receipt)
+        ? directLinks.length > 0
+          ? 'direct_link_needs_review'
+          : possibleCandidates.length === 1
+            ? 'single_probable_candidate_needs_review'
+            : possibleCandidates.length > 1
+              ? 'multiple_candidates_needs_review'
+              : 'not_found'
+        : 'sale_receipt_needs_review',
+    };
+  });
+
+  return {
+    documentsChecked: receipts.length,
+    salesShown: samples.filter((sample) => sample.operationType === 1).length,
+    returnsShown: samples.filter((sample) => sample.operationType === 2).length,
+    samples,
+  };
+}
+
 function addIssueCounts(target: Record<string, number>, issues: ReceiptIssue[]) {
   for (const issue of issues) {
     target[issue.code] = (target[issue.code] ?? 0) + 1;
@@ -1068,10 +1117,16 @@ export async function runSabyOfdProbe(options: SabyOfdProbeOptions = {}) {
   });
 
   const returns = returnDiagnostics(fullReceipts);
+  const receiptMatches = receiptDiagnostics(fullReceipts);
   steps.push({
     name: 'ofd.return_diagnostics',
     status: 'ok',
     sample: returns,
+  });
+  steps.push({
+    name: 'ofd.receipt_match_diagnostics',
+    status: 'ok',
+    sample: receiptMatches,
   });
 
   return {
@@ -1081,6 +1136,7 @@ export async function runSabyOfdProbe(options: SabyOfdProbeOptions = {}) {
     configured: true,
     analysisSummary: receiptAnalysisAggregate(analyzedReceipts),
     returnDiagnostics: returns,
+    receiptDiagnostics: receiptMatches,
     steps,
     errors,
   };

@@ -51,7 +51,14 @@ type ReturnSample = {
   fiscalSign?: string;
   date?: string;
   totalSum?: number;
+  cashTotalSum?: number;
+  ecashTotalSum?: number;
+  creditSum?: number;
   operationType?: number;
+  receiptCode?: number;
+  rawPaymentTypes?: unknown[];
+  normalizedPaymentTypes?: unknown[];
+  issues?: Array<{ code?: string; severity?: string; message?: string; rule?: string }>;
   itemsPreview?: ItemPreview[];
   directLinks?: Array<{ path: string; value: unknown }>;
   possibleOriginalCandidates?: Candidate[];
@@ -68,6 +75,12 @@ type OfdProbeResult = {
     matchingStatuses?: Record<string, number>;
     samples?: ReturnSample[];
     conclusion?: string;
+  };
+  receiptDiagnostics?: {
+    documentsChecked?: number;
+    salesShown?: number;
+    returnsShown?: number;
+    samples?: ReturnSample[];
   };
   errors?: string[];
 };
@@ -100,12 +113,42 @@ function formatSeconds(value?: number) {
   return `${sign}${value} сек.`;
 }
 
+function primaryItemName(items?: ItemPreview[]) {
+  return items?.find((item) => item.name)?.name ?? 'Товар не найден';
+}
+
+function humanCheckType(sample: ReturnSample) {
+  return sample.operationType === 2 ? 'Возврат найден' : 'Продажа найдена';
+}
+
+function humanMatchPhrases(candidate?: OneCCandidate | null) {
+  if (!candidate) return ['Требуется ручная проверка', 'Возможная реализация 1С не найдена'];
+
+  const phrases = ['Найдена возможная реализация 1С', 'Автоматически не закрывается'];
+  if (candidate.reasons.includes('amount_close')) phrases.push('Сумма совпала');
+  if (candidate.reasons.includes('products_overlap')) phrases.push('Товар похож/совпал');
+  if (candidate.reasons.includes('same_day') || candidate.reasons.includes('nearby_date')) phrases.push('Дата близко к чеку');
+  if (candidate.rejectedReasons.includes('date_warning')) phrases.push('Дата отличается — возможно, тестовая 1С база неактуальна');
+  if (candidate.document.managerName || candidate.document.additionalManagerName || candidate.document.responsibleName) phrases.push('Менеджер определён по 1С');
+  if (candidate.rejectedReasons.includes('amount_differs')) phrases.push('Сумма не совпала');
+  if (candidate.rejectedReasons.includes('no_product_overlap')) phrases.push('Товар не совпал');
+  return phrases;
+}
+
 function reasonLabel(reason: string) {
   const labels: Record<string, string> = {
     same_fn: 'совпал ФН',
     same_total_sum: 'совпала сумма',
     same_items: 'совпали товары',
     return_after_sale: 'возврат позже прихода',
+    amount_close: 'amount matched',
+    amount_differs: 'amount differs',
+    same_day: 'date matched',
+    nearby_date: 'date nearby',
+    date_warning: 'date_warning',
+    date_far: 'date far',
+    products_overlap: 'products matched',
+    no_product_overlap: 'products differ',
   };
   return labels[reason] ?? reason;
 }
@@ -145,8 +188,8 @@ function dayDiff(left?: string, right?: string) {
   return Math.round(Math.abs(leftDay - rightDay) / (24 * 60 * 60 * 1000));
 }
 
-function matchOneCRealizations(ofdCandidate: Candidate | undefined, documents: OneCSalesRealizationDocument[]) {
-  if (!ofdCandidate) return { best: null as OneCCandidate | null, rejected: [] as OneCCandidate[] };
+function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefined, documents: OneCSalesRealizationDocument[]) {
+  if (!ofdCandidate) return { best: null as OneCCandidate | null, candidates: [] as OneCCandidate[] };
 
   const ofdAmount = typeof ofdCandidate.totalSum === 'number' ? ofdCandidate.totalSum / 100 : null;
   const ofdItems = ofdCandidate.itemsPreview ?? [];
@@ -173,6 +216,8 @@ function matchOneCRealizations(ofdCandidate: Candidate | undefined, documents: O
     } else if (diffDays !== null && diffDays <= 7) {
       score += 10;
       reasons.push('nearby_date');
+    } else if (diffDays !== null) {
+      rejectedReasons.push('date_warning');
     } else {
       rejectedReasons.push('date_far');
     }
@@ -196,9 +241,9 @@ function matchOneCRealizations(ofdCandidate: Candidate | undefined, documents: O
     };
   }).sort((a, b) => b.score - a.score);
 
-  const best = scored.find((candidate) => candidate.confidence !== 'rejected') ?? null;
-  const rejected = scored.filter((candidate) => candidate !== best).slice(0, 5);
-  return { best, rejected };
+  const candidates = scored.slice(0, 5);
+  const best = candidates.find((candidate) => candidate.confidence !== 'rejected') ?? null;
+  return { best, candidates };
 }
 
 function ItemsList({ items }: { items?: ItemPreview[] }) {
@@ -367,7 +412,11 @@ function OneCCandidateCard({ candidate, rejected = false }: { candidate: OneCCan
 
       <div className='mt-3 flex flex-wrap gap-2'>
         {candidate.reasons.map((reason) => <Badge key={reason} className='bg-white text-slate-700'>{reasonLabel(reason)}</Badge>)}
-        {rejected ? candidate.rejectedReasons.map((reason) => <Badge key={reason} className='bg-red-100 text-red-700'>{reason}</Badge>) : null}
+        {candidate.rejectedReasons.map((reason) => (
+          <Badge key={reason} className={reason === 'date_warning' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}>
+            {reasonLabel(reason)}
+          </Badge>
+        ))}
       </div>
 
       <div className='mt-4'>
@@ -378,105 +427,253 @@ function OneCCandidateCard({ candidate, rejected = false }: { candidate: OneCCan
   );
 }
 
-function OneCMatchBlock({ ofdCandidate, documents }: { ofdCandidate?: Candidate; documents: OneCSalesRealizationDocument[] }) {
+function OneCMatchBlock({ ofdCandidate, documents }: { ofdCandidate?: Candidate | ReturnSample; documents: OneCSalesRealizationDocument[] }) {
   const match = matchOneCRealizations(ofdCandidate, documents);
+  const alternatives = match.candidates.filter((candidate) => candidate !== match.best);
+  const document = match.best?.document;
+  const manager = document ? document.managerName || document.additionalManagerName || document.responsibleName || 'нет данных' : 'нет данных';
+  const counterparty = document ? document.counterpartyName || document.partnerName || 'нет данных' : 'нет данных';
+  const phrases = humanMatchPhrases(match.best);
 
   return (
     <div className='grid gap-3'>
-      <div className='flex flex-wrap items-center gap-2'>
-        <p className='text-sm font-extrabold text-slate-950'>Связка OFD ↔ 1С</p>
-        <Badge className='bg-amber-100 text-amber-800'>needs_review</Badge>
-      </div>
       {match.best ? (
-        <OneCCandidateCard candidate={match.best} />
+        <div className='rounded-lg border border-blue-200 bg-blue-50 p-4'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Badge className='bg-blue-100 text-blue-800'>Найдена возможная реализация 1С</Badge>
+            <Badge className='bg-amber-100 text-amber-800'>Требуется ручная проверка</Badge>
+          </div>
+
+          <div className='mt-3 grid gap-3 text-sm font-semibold text-slate-700 md:grid-cols-4'>
+            <div>
+              <p className='text-slate-500'>Номер реализации 1С</p>
+              <p className='mt-1 text-lg font-extrabold text-slate-950'>{document?.number || document?.ref || 'нет данных'}</p>
+            </div>
+            <div>
+              <p className='text-slate-500'>Дата реализации</p>
+              <p className='mt-1 text-slate-950'>{formatDate(document?.date)}</p>
+            </div>
+            <div>
+              <p className='text-slate-500'>Сумма реализации</p>
+              <p className='mt-1 text-slate-950'>{formatMoney(document?.amount ?? undefined)}</p>
+            </div>
+            <div>
+              <p className='text-slate-500'>Менеджер из 1С</p>
+              <p className='mt-1 text-slate-950'>{manager}</p>
+            </div>
+            <div>
+              <p className='text-slate-500'>Контрагент / партнёр</p>
+              <p className='mt-1 text-slate-950'>{counterparty}</p>
+            </div>
+            <div>
+              <p className='text-slate-500'>Разница суммы</p>
+              <p className='mt-1 text-slate-950'>{match.best.amountDiff === null ? 'нет данных' : formatMoney(match.best.amountDiff)}</p>
+            </div>
+            <div>
+              <p className='text-slate-500'>Разница дат</p>
+              <p className='mt-1 text-slate-950'>{match.best.dayDiff ?? 'нет данных'} дн.</p>
+            </div>
+            <div>
+              <p className='text-slate-500'>Совпавших товаров</p>
+              <p className='mt-1 text-slate-950'>{match.best.matchedProducts}</p>
+            </div>
+          </div>
+
+          <div className='mt-3 flex flex-wrap gap-2'>
+            {phrases.map((phrase) => (
+              <Badge key={phrase} className={phrase.includes('не совпал') || phrase.includes('не совпала') ? 'bg-red-100 text-red-700' : phrase.includes('Дата отличается') ? 'bg-amber-100 text-amber-800' : 'bg-white text-slate-700'}>
+                {phrase}
+              </Badge>
+            ))}
+          </div>
+
+          <div className='mt-4'>
+            <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары реализации 1С</p>
+            <OneCItemsList document={match.best.document} />
+          </div>
+        </div>
       ) : (
         <div className='rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900'>
-          Возможная реализация 1С не найдена в полученном read-only списке.
+          Возможная реализация 1С не найдена в полученном read-only списке. Требуется ручная проверка.
         </div>
       )}
-      {match.rejected.length ? (
-        <div className='grid gap-3'>
-          <p className='text-sm font-extrabold text-slate-950'>Отклонённые похожие 1С-кандидаты</p>
-          {match.rejected.map((candidate) => (
-            <OneCCandidateCard key={candidate.document.ref || `${candidate.document.number}-${candidate.score}`} candidate={candidate} rejected />
-          ))}
+      <details className='rounded-lg border border-slate-200 bg-white p-4 text-sm'>
+        <summary className='cursor-pointer font-extrabold text-slate-950'>Показать технические детали 1С-сопоставления</summary>
+        <div className='mt-3 grid gap-3'>
+          {match.best ? <OneCCandidateCard candidate={match.best} /> : null}
+          {alternatives.length ? (
+            <div className='grid gap-3'>
+              <p className='text-sm font-extrabold text-slate-950'>Другие похожие 1С-кандидаты</p>
+              {alternatives.map((candidate) => (
+                <OneCCandidateCard key={candidate.document.ref || `${candidate.document.number}-${candidate.score}`} candidate={candidate} rejected />
+              ))}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </details>
     </div>
   );
 }
 
 function ReturnCard({ sample, oneCDocuments }: { sample: ReturnSample; oneCDocuments: OneCSalesRealizationDocument[] }) {
   const bestCandidate = sample.possibleOriginalCandidates?.[0];
+  const isReturn = sample.operationType === 2;
+  const matchingTarget = isReturn ? bestCandidate ?? sample : sample;
+  const oneCMatch = matchOneCRealizations(matchingTarget, oneCDocuments);
+  const oneCDocument = oneCMatch.best?.document;
+  const manager = oneCDocument ? oneCDocument.managerName || oneCDocument.additionalManagerName || oneCDocument.responsibleName || 'нет данных' : 'нет данных';
+  const counterparty = oneCDocument ? oneCDocument.counterpartyName || oneCDocument.partnerName || 'нет данных' : 'нет данных';
 
   return (
     <Card className='p-0'>
       <div className='border-b border-slate-200/80 px-5 py-4'>
         <div className='flex flex-wrap items-center gap-2'>
           <ShieldAlert className='h-5 w-5 text-amber-600' />
-          <h2 className='text-xl font-extrabold text-slate-950'>Возврат прихода ФД {sample.fiscalDocumentNumber || 'нет данных'}</h2>
-          <Badge className='bg-amber-100 text-amber-800'>needs_review</Badge>
-          <Badge className='bg-slate-100 text-slate-700'>{sample.matchingStatus || 'not_found'}</Badge>
+          <h2 className='text-xl font-extrabold text-slate-950'>{humanCheckType(sample)}</h2>
+          {oneCMatch.best ? <Badge className='bg-blue-100 text-blue-800'>Найдена возможная реализация 1С</Badge> : null}
+          <Badge className='bg-amber-100 text-amber-800'>Требуется ручная проверка</Badge>
         </div>
-        <p className='mt-1 text-sm font-semibold text-slate-500'>Только диагностика. Никакого автоматического закрытия ошибок.</p>
+        <p className='mt-1 text-sm font-semibold text-slate-500'>Только диагностика. Ошибки не закрываются автоматически, данные не меняются.</p>
       </div>
 
-      <div className='grid gap-3 px-5 py-4 text-sm font-semibold text-slate-700 md:grid-cols-5'>
+      <div className='grid gap-4 px-5 py-4 md:grid-cols-4'>
         <div>
-          <p className='text-slate-500'>Дата/время возврата</p>
-          <p className='mt-1 text-slate-950'>{formatDate(sample.date)}</p>
+          <p className='text-sm font-bold text-slate-500'>Товар</p>
+          <p className='mt-1 text-lg font-extrabold text-slate-950'>{primaryItemName(sample.itemsPreview)}</p>
         </div>
         <div>
-          <p className='text-slate-500'>Сумма</p>
-          <p className='mt-1 text-slate-950'>{formatOfdMoney(sample.totalSum)}</p>
+          <p className='text-sm font-bold text-slate-500'>Сумма чека</p>
+          <p className='mt-1 text-lg font-extrabold text-slate-950'>{formatOfdMoney(sample.totalSum)}</p>
         </div>
         <div>
-          <p className='text-slate-500'>ФН</p>
-          <p className='mt-1 break-all text-slate-950'>{sample.fiscalDriveNumber || 'нет данных'}</p>
+          <p className='text-sm font-bold text-slate-500'>Дата продажи/возврата</p>
+          <p className='mt-1 text-lg font-extrabold text-slate-950'>{formatDate(sample.date)}</p>
         </div>
         <div>
-          <p className='text-slate-500'>ФПД / фискальный признак</p>
-          <p className='mt-1 break-all text-slate-950'>{sample.fiscalSign || 'нет данных'}</p>
+          <p className='text-sm font-bold text-slate-500'>Разница прихода и возврата</p>
+          <p className='mt-1 text-lg font-extrabold text-slate-950'>{isReturn && bestCandidate ? formatSeconds(bestCandidate.timeDeltaSeconds) : 'не применимо'}</p>
         </div>
         <div>
-          <p className='text-slate-500'>operationType</p>
-          <p className='mt-1 text-slate-950'>{sample.operationType ?? 'нет данных'}</p>
+          <p className='text-sm font-bold text-slate-500'>Реализация 1С</p>
+          <p className='mt-1 text-lg font-extrabold text-slate-950'>{oneCDocument?.number || oneCDocument?.ref || 'не найдена'}</p>
+        </div>
+        <div>
+          <p className='text-sm font-bold text-slate-500'>Менеджер из 1С</p>
+          <p className='mt-1 text-lg font-extrabold text-slate-950'>{manager}</p>
+        </div>
+        <div>
+          <p className='text-sm font-bold text-slate-500'>Контрагент / партнёр</p>
+          <p className='mt-1 text-lg font-extrabold text-slate-950'>{counterparty}</p>
+        </div>
+        <div>
+          <p className='text-sm font-bold text-slate-500'>Итог</p>
+          <p className='mt-1 text-lg font-extrabold text-amber-700'>Автоматически не закрывается</p>
         </div>
       </div>
 
       <div className='grid gap-5 px-5 py-4'>
         <div>
-          <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары возврата</p>
+          <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары OFD</p>
           <ItemsList items={sample.itemsPreview} />
         </div>
 
-        {bestCandidate ? (
-          <div>
-            <div className='mb-2 flex items-center gap-2 text-sm font-extrabold text-slate-950'>
+        {isReturn && bestCandidate ? (
+          <div className='rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-900'>
+            <div className='flex items-center gap-2 font-extrabold text-green-950'>
               <ArrowRight className='h-4 w-4 text-green-700' />
-              Лучший кандидат исходного прихода
+              Возврат похож на найденную продажу
             </div>
-            <CandidateCard candidate={bestCandidate} />
-            <div className='mt-4'>
-              <OneCMatchBlock ofdCandidate={bestCandidate} documents={oneCDocuments} />
-            </div>
+            <p className='mt-1'>Сумма и товар похожи, возврат позже продажи на {formatSeconds(bestCandidate.timeDeltaSeconds)}. Автоматически не закрывается.</p>
           </div>
-        ) : (
+        ) : isReturn ? (
           <div className='rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900'>
             Кандидат исходного прихода не найден. Статус остаётся needs_review.
           </div>
-        )}
-
-        {sample.rejectedCandidates?.length ? (
-          <div>
-            <p className='mb-2 text-sm font-extrabold text-slate-950'>Отклонённые похожие кандидаты</p>
-            <div className='grid gap-3'>
-              {sample.rejectedCandidates.map((candidate) => (
-                <CandidateCard key={`${candidate.fiscalDocumentNumber}-${candidate.fiscalSign}`} candidate={candidate} rejected />
-              ))}
-            </div>
-          </div>
         ) : null}
+
+        <OneCMatchBlock ofdCandidate={matchingTarget} documents={oneCDocuments} />
+
+        <details className='rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm'>
+          <summary className='cursor-pointer font-extrabold text-slate-950'>Показать технические детали</summary>
+          <div className='mt-4 grid gap-4'>
+            <div className='grid gap-3 text-sm font-semibold text-slate-700 md:grid-cols-5'>
+              <div>
+                <p className='text-slate-500'>ФД</p>
+                <p className='mt-1 text-slate-950'>{sample.fiscalDocumentNumber || 'нет данных'}</p>
+              </div>
+              <div>
+                <p className='text-slate-500'>ФН</p>
+                <p className='mt-1 break-all text-slate-950'>{sample.fiscalDriveNumber || 'нет данных'}</p>
+              </div>
+              <div>
+                <p className='text-slate-500'>ФПД / фискальный признак</p>
+                <p className='mt-1 break-all text-slate-950'>{sample.fiscalSign || 'нет данных'}</p>
+              </div>
+              <div>
+                <p className='text-slate-500'>operationType</p>
+                <p className='mt-1 text-slate-950'>{sample.operationType ?? 'нет данных'}</p>
+              </div>
+              <div>
+                <p className='text-slate-500'>raw status</p>
+                <p className='mt-1 text-slate-950'>{sample.matchingStatus || 'not_found'}</p>
+              </div>
+            </div>
+
+            <div className='grid gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700 md:grid-cols-5'>
+              <div>
+                <p className='text-slate-500'>cashTotalSum</p>
+                <p className='mt-1 text-slate-950'>{formatOfdMoney(sample.cashTotalSum)}</p>
+              </div>
+              <div>
+                <p className='text-slate-500'>ecashTotalSum</p>
+                <p className='mt-1 text-slate-950'>{formatOfdMoney(sample.ecashTotalSum)}</p>
+              </div>
+              <div>
+                <p className='text-slate-500'>creditSum</p>
+                <p className='mt-1 text-slate-950'>{formatOfdMoney(sample.creditSum)}</p>
+              </div>
+              <div>
+                <p className='text-slate-500'>paymentType raw</p>
+                <p className='mt-1 break-all text-slate-950'>{sample.rawPaymentTypes?.map((item) => String(item)).join(', ') || 'нет данных'}</p>
+              </div>
+              <div>
+                <p className='text-slate-500'>paymentType normalized</p>
+                <p className='mt-1 break-all text-slate-950'>{sample.normalizedPaymentTypes?.map((item) => String(item)).join(', ') || 'нет данных'}</p>
+              </div>
+            </div>
+
+            {sample.issues?.length ? (
+              <div className='rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900'>
+                <p className='font-extrabold text-amber-950'>OFD issues / diagnostics</p>
+                <div className='mt-2 flex flex-wrap gap-2'>
+                  {sample.issues.map((issue, index) => (
+                    <Badge key={`${issue.code}-${index}`} className='bg-white text-amber-900'>
+                      {issue.code || issue.severity || 'needs_review'}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {isReturn && bestCandidate ? (
+              <div>
+                <p className='mb-2 text-sm font-extrabold text-slate-950'>Технический кандидат исходного прихода</p>
+                <CandidateCard candidate={bestCandidate} />
+              </div>
+            ) : null}
+
+            {isReturn && sample.rejectedCandidates?.length ? (
+              <div>
+                <p className='mb-2 text-sm font-extrabold text-slate-950'>Отклонённые похожие кандидаты</p>
+                <div className='grid gap-3'>
+                  {sample.rejectedCandidates.map((candidate) => (
+                    <CandidateCard key={`${candidate.fiscalDocumentNumber}-${candidate.fiscalSign}`} candidate={candidate} rejected />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </details>
       </div>
     </Card>
   );
@@ -508,38 +705,40 @@ export default async function AdminOfdPage({
     }),
   ]);
   const diagnostics = probe.returnDiagnostics;
-  const samples = diagnostics?.samples ?? [];
+  const receiptDiagnostics = probe.receiptDiagnostics;
+  const samples = receiptDiagnostics?.samples ?? diagnostics?.samples ?? [];
   const oneCDocuments = salesRealizations.ok ? salesRealizations.documents : [];
 
   return (
     <AdminShell>
-      <AdminBreadcrumbs current='SABY OFD probe' />
+      <AdminBreadcrumbs current='Проверка OFD и 1С' />
 
       <div className='mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
         <div>
-          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>SABY OFD probe</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Read-only диагностика возвратов прихода и кандидатов исходного чека.</p>
+          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Проверка чеков SABY/OFD и реализаций 1С</h1>
+          <p className='mt-1 text-base font-medium text-slate-500'>Это только диагностика. Ошибки не закрываются автоматически, документы и база не меняются.</p>
         </div>
         <Badge className={probe.ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}>
-          {probe.ok ? 'OK' : 'диагностика'}
+          {probe.ok ? 'Диагностика работает' : 'Нужна проверка'}
         </Badge>
       </div>
 
       <section className='mb-5 grid gap-4 md:grid-cols-5'>
         <Card>
-          <p className='text-sm font-bold text-slate-500'>Период</p>
+          <p className='text-sm font-bold text-slate-500'>Проверяемый период</p>
           <p className='mt-1 text-lg font-extrabold text-slate-950'>{dateFrom} — {dateTo}</p>
         </Card>
         <Card>
-          <p className='text-sm font-bold text-slate-500'>ИНН</p>
+          <p className='text-sm font-bold text-slate-500'>Организация</p>
           <p className='mt-1 break-all text-lg font-extrabold text-slate-950'>{organizationInn}</p>
         </Card>
         <Card>
-          <p className='text-sm font-bold text-slate-500'>Возвратов проверено</p>
-          <p className='mt-1 text-lg font-extrabold text-slate-950'>{diagnostics?.returnDocumentsChecked ?? 0}</p>
+          <p className='text-sm font-bold text-slate-500'>Чеков показано</p>
+          <p className='mt-1 text-lg font-extrabold text-slate-950'>{samples.length}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>продаж {receiptDiagnostics?.salesShown ?? 0} / возвратов {receiptDiagnostics?.returnsShown ?? diagnostics?.returnDocumentsChecked ?? 0}</p>
         </Card>
         <Card>
-          <p className='text-sm font-bold text-slate-500'>Прямых ссылок</p>
+          <p className='text-sm font-bold text-slate-500'>Возвратов с прямой ссылкой</p>
           <p className='mt-1 text-lg font-extrabold text-slate-950'>{diagnostics?.foundDirectLinks ?? 0}</p>
         </Card>
       </section>
@@ -547,20 +746,20 @@ export default async function AdminOfdPage({
       <Card className='mb-5'>
         <div className='grid gap-3 text-sm font-semibold text-slate-700 md:grid-cols-4'>
           <div>
-            <p className='text-slate-500'>1C endpoint</p>
+            <p className='text-slate-500'>Источник 1С</p>
             <p className='mt-1 text-slate-950'>/sales-realizations</p>
           </div>
           <div>
-            <p className='text-slate-500'>1C documents loaded</p>
+            <p className='text-slate-500'>Реализаций 1С загружено</p>
             <p className='mt-1 text-slate-950'>{oneCDocuments.length}</p>
           </div>
           <div>
-            <p className='text-slate-500'>1C status</p>
-            <p className='mt-1 text-slate-950'>{salesRealizations.ok ? 'OK' : 'diagnostics'}</p>
+            <p className='text-slate-500'>Статус 1С</p>
+            <p className='mt-1 text-slate-950'>{salesRealizations.ok ? '1С отвечает' : 'нужна диагностика'}</p>
           </div>
           <div>
-            <p className='text-slate-500'>1C matching mode</p>
-            <p className='mt-1 text-slate-950'>amount + date + products</p>
+            <p className='text-slate-500'>Как ищем совпадение</p>
+            <p className='mt-1 text-slate-950'>по сумме, товару и дате</p>
           </div>
         </div>
       </Card>
@@ -571,7 +770,7 @@ export default async function AdminOfdPage({
           <div>
             <h2 className='font-extrabold text-amber-950'>Ручная проверка обязательна</h2>
             <p className='mt-1 text-sm font-semibold text-amber-900'>
-              Эта страница только показывает diagnostics из probe. Ошибки приходов не закрываются автоматически, БД не меняется.
+              Страница помогает понять, какой чек OFD похож на какую реализацию 1С. Даже при хорошем совпадении статус остаётся “требуется ручная проверка”.
             </p>
             {diagnostics?.conclusion ? <p className='mt-2 text-sm font-semibold text-amber-900'>{diagnostics.conclusion}</p> : null}
           </div>
