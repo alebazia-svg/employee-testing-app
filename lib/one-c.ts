@@ -92,6 +92,58 @@ export type OneCSalesRealizationsResult = {
   diagnostics: string[];
 };
 
+export type OneCLinkedDocument = {
+  documentType: string;
+  matchType: string;
+  matchReasons: string[];
+  ref: string;
+  name: string;
+  number: string;
+  date: string;
+  posted: boolean | null;
+  amount: number | null;
+  organizationName: string;
+  partnerName: string;
+  counterpartyName: string;
+  managerName: string;
+  comment: string;
+};
+
+export type OneCLinkedDocumentGroup = {
+  direct: OneCLinkedDocument[];
+  candidates: OneCLinkedDocument[];
+};
+
+export type OneCSalesRealizationLinks = {
+  realization: OneCSalesRealizationDocument | null;
+  cashReceipts: OneCLinkedDocumentGroup;
+  acquiring: OneCLinkedDocumentGroup;
+  bankReceipts: OneCLinkedDocumentGroup;
+  paymentDocuments: OneCLinkedDocumentGroup;
+  returns: OneCLinkedDocumentGroup;
+  corrections: OneCLinkedDocumentGroup;
+  checkedSources: Array<{
+    name: string;
+    matchMode: string;
+    ok: boolean | null;
+    count: number | null;
+    errorText: string;
+  }>;
+  warnings: string[];
+};
+
+export type OneCSalesRealizationLinksResult = {
+  ok: boolean;
+  path: '/sales-realization-links';
+  status?: number;
+  durationMs: number;
+  checkedAt: string;
+  realizationRef: string;
+  links: OneCSalesRealizationLinks | null;
+  error?: string;
+  diagnostics: string[];
+};
+
 let cachedHealth: { expiresAt: number; value: OneCHealthResult } | null = null;
 
 export const DEFAULT_SALES_REALIZATIONS_PARAMS: SalesRealizationsParams = {
@@ -234,6 +286,77 @@ function normalizeSalesRealizationDocument(value: unknown): OneCSalesRealization
   };
 }
 
+function normalizeLinkedDocument(value: unknown): OneCLinkedDocument {
+  const source = readRecord(value) ?? {};
+  const reasons = readArray(source.match_reasons ?? source.matchReasons ?? source.reasons)
+    .map((reason) => typeof reason === 'string' || typeof reason === 'number' ? String(reason) : '')
+    .filter(Boolean);
+
+  return {
+    documentType: readFirstString(source, ['document_type', 'documentType', 'type']),
+    matchType: readFirstString(source, ['match_type', 'matchType']),
+    matchReasons: reasons,
+    ref: readFirstString(source, ['ref', 'document_ref', 'documentRef', 'id', 'guid']),
+    name: readFirstString(source, ['name', 'presentation', 'description']),
+    number: readFirstString(source, ['number', 'doc_number', 'docNumber', 'document_number', 'documentNumber']),
+    date: readFirstString(source, ['date', 'doc_date', 'docDate', 'document_date', 'documentDate']),
+    posted: readFirstBoolean(source, ['posted', 'is_posted', 'isPosted']),
+    amount: readFirstNumber(source, ['amount', 'sum', 'total', 'document_amount', 'documentAmount']),
+    organizationName: readFirstString(source, ['organization_name', 'organizationName']) || readName(source.organization),
+    partnerName: readFirstString(source, ['partner_name', 'partnerName']) || readName(source.partner),
+    counterpartyName: readFirstString(source, ['counterparty_name', 'counterpartyName', 'customer_name', 'customerName']) || readName(source.counterparty),
+    managerName: readFirstString(source, ['manager_name', 'managerName']) || readName(source.manager),
+    comment: readFirstString(source, ['comment', 'description']),
+  };
+}
+
+function normalizeLinkedDocumentGroup(value: unknown): OneCLinkedDocumentGroup {
+  const source = readRecord(value) ?? {};
+  return {
+    direct: readArray(source.direct).map(normalizeLinkedDocument),
+    candidates: readArray(source.candidates).map(normalizeLinkedDocument),
+  };
+}
+
+function normalizeCheckedSource(value: unknown) {
+  const source = readRecord(value) ?? {};
+  return {
+    name: readFirstString(source, ['name', 'source']),
+    matchMode: readFirstString(source, ['match_mode', 'matchMode']),
+    ok: readFirstBoolean(source, ['ok', 'success']),
+    count: readFirstNumber(source, ['count', 'documents_count', 'documentsCount']),
+    errorText: readFirstString(source, ['error_text', 'errorText', 'error']),
+  };
+}
+
+function findSalesRealizationLinksPayload(data: unknown): { links: OneCSalesRealizationLinks | null; diagnostics: string[] } {
+  const root = readRecord(data);
+  if (!root) return { links: null, diagnostics: ['Ответ 1С не похож на JSON-объект.'] };
+
+  const nestedData = readRecord(root.data);
+  const payload = nestedData ?? root;
+  const linksRoot = readRecord(payload.links) ?? payload;
+  const diagnostics: string[] = [];
+
+  const links: OneCSalesRealizationLinks = {
+    realization: payload.realization ? normalizeSalesRealizationDocument(payload.realization) : null,
+    cashReceipts: normalizeLinkedDocumentGroup(linksRoot.cash_receipts ?? linksRoot.cashReceipts),
+    acquiring: normalizeLinkedDocumentGroup(linksRoot.acquiring),
+    bankReceipts: normalizeLinkedDocumentGroup(linksRoot.bank_receipts ?? linksRoot.bankReceipts),
+    paymentDocuments: normalizeLinkedDocumentGroup(linksRoot.payment_documents ?? linksRoot.paymentDocuments),
+    returns: normalizeLinkedDocumentGroup(linksRoot.returns),
+    corrections: normalizeLinkedDocumentGroup(linksRoot.corrections),
+    checkedSources: readArray(payload.checked_sources ?? payload.checkedSources).map(normalizeCheckedSource),
+    warnings: readArray(payload.warnings)
+      .map((warning) => typeof warning === 'string' || typeof warning === 'number' ? String(warning) : '')
+      .filter(Boolean),
+  };
+
+  if (!links.realization) diagnostics.push('В ответе sales-realization-links не найден блок realization.');
+
+  return { links, diagnostics };
+}
+
 function findDocumentsPayload(data: unknown) {
   const root = readRecord(data);
   if (!root) return { documents: [], diagnostics: ['Ответ 1С не похож на JSON-объект.'] };
@@ -358,6 +481,67 @@ async function requestSalesRealizations(config: OneCConfig, params: SalesRealiza
       totalAmount: null,
       hasMore: false,
       responseDocumentCount: 0,
+      error: formatError(error),
+      diagnostics: [],
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestSalesRealizationLinks(config: OneCConfig, realizationRef: string): Promise<OneCSalesRealizationLinksResult> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const path = '/sales-realization-links';
+  const query = new URLSearchParams({ realization_ref: realizationRef });
+
+  try {
+    const response = await fetch(`${config.baseUrl}${path}?${query.toString()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        Authorization: buildAuthHeader(config),
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const data = await readResponseBody(response);
+    const durationMs = Date.now() - startedAt;
+    const payload = findSalesRealizationLinksPayload(data);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        path,
+        status: response.status,
+        durationMs,
+        checkedAt: new Date().toISOString(),
+        realizationRef,
+        links: null,
+        error: `1C API returned HTTP ${response.status}`,
+        diagnostics: payload.diagnostics,
+      };
+    }
+
+    return {
+      ok: Boolean(payload.links),
+      path,
+      status: response.status,
+      durationMs,
+      checkedAt: new Date().toISOString(),
+      realizationRef,
+      links: payload.links,
+      diagnostics: payload.diagnostics,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      path,
+      durationMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString(),
+      realizationRef,
+      links: null,
       error: formatError(error),
       diagnostics: [],
     };
@@ -498,4 +682,38 @@ export async function getSalesRealizations(
   }
 
   return requestSalesRealizations(config, params);
+}
+
+export async function getSalesRealizationLinks(realizationRef: string): Promise<OneCSalesRealizationLinksResult> {
+  const normalizedRef = realizationRef.trim();
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+
+  if (!normalizedRef) {
+    return {
+      ok: false,
+      path: '/sales-realization-links',
+      durationMs: 0,
+      checkedAt: new Date().toISOString(),
+      realizationRef,
+      links: null,
+      error: 'realization_ref is required',
+      diagnostics: ['Missing realization_ref'],
+    };
+  }
+
+  if (missingConfig.length) {
+    return {
+      ok: false,
+      path: '/sales-realization-links',
+      durationMs: 0,
+      checkedAt: new Date().toISOString(),
+      realizationRef: normalizedRef,
+      links: null,
+      error: '1C API configuration is incomplete',
+      diagnostics: [`Missing env: ${missingConfig.join(', ')}`],
+    };
+  }
+
+  return requestSalesRealizationLinks(config, normalizedRef);
 }

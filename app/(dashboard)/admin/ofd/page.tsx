@@ -6,7 +6,15 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { getCurrentUser } from '@/lib/auth';
 import { runSabyOfdProbe } from '@/lib/saby-ofd';
-import { DEFAULT_SALES_REALIZATIONS_PARAMS, getSalesRealizations, type OneCSalesRealizationDocument } from '@/lib/one-c';
+import {
+  DEFAULT_SALES_REALIZATIONS_PARAMS,
+  getSalesRealizationLinks,
+  getSalesRealizations,
+  type OneCLinkedDocument,
+  type OneCLinkedDocumentGroup,
+  type OneCSalesRealizationDocument,
+  type OneCSalesRealizationLinksResult,
+} from '@/lib/one-c';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -427,13 +435,194 @@ function OneCCandidateCard({ candidate, rejected = false }: { candidate: OneCCan
   );
 }
 
-function OneCMatchBlock({ ofdCandidate, documents }: { ofdCandidate?: Candidate | ReturnSample; documents: OneCSalesRealizationDocument[] }) {
+function linkReasonLabel(reason: string) {
+  const labels: Record<string, string> = {
+    basis_is_realization: 'Основание = реализация',
+    ОснованиеРеализация: 'Основание = реализация',
+    amount_close: 'сумма похожа',
+    same_amount: 'сумма совпала',
+    same_partner: 'контрагент похож',
+    same_counterparty: 'контрагент похож',
+    nearby_date: 'дата рядом',
+    same_day: 'дата совпала',
+  };
+  return labels[reason] ?? reason;
+}
+
+function linkedDocumentTitle(document: OneCLinkedDocument) {
+  return document.number || document.name || document.ref || 'документ без номера';
+}
+
+function LinkedDocumentRows({ documents, cautious = false }: { documents: OneCLinkedDocument[]; cautious?: boolean }) {
+  if (!documents.length) return null;
+
+  return (
+    <div className='overflow-x-auto rounded-lg border border-slate-200 bg-white'>
+      <table className='min-w-full text-left text-sm'>
+        <thead className='bg-slate-50 text-xs uppercase text-slate-500'>
+          <tr>
+            <th className='px-3 py-2'>Документ</th>
+            <th className='px-3 py-2'>Дата</th>
+            <th className='px-3 py-2 text-right'>Сумма</th>
+            <th className='px-3 py-2'>Почему найден</th>
+          </tr>
+        </thead>
+        <tbody>
+          {documents.map((document, index) => (
+            <tr key={`${document.ref}-${document.number}-${document.date}-${index}`} className='border-t border-slate-200'>
+              <td className='px-3 py-2'>
+                <p className='font-extrabold text-slate-950'>{linkedDocumentTitle(document)}</p>
+                {document.documentType ? <p className='text-xs font-bold text-slate-500'>{document.documentType}</p> : null}
+                {cautious ? <p className='mt-1 text-xs font-bold text-amber-700'>похоже, требует проверки</p> : null}
+              </td>
+              <td className='px-3 py-2 font-semibold text-slate-700'>{formatDate(document.date)}</td>
+              <td className='px-3 py-2 text-right font-extrabold text-slate-950'>{formatMoney(document.amount ?? undefined)}</td>
+              <td className='px-3 py-2'>
+                <div className='flex flex-wrap gap-2'>
+                  {(document.matchReasons.length ? document.matchReasons : ['Основание = реализация']).map((reason) => (
+                    <Badge key={reason} className={cautious ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>
+                      {linkReasonLabel(reason)}
+                    </Badge>
+                  ))}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LinkedDocumentGroup({
+  title,
+  group,
+  emptyText,
+}: {
+  title: string;
+  group: OneCLinkedDocumentGroup;
+  emptyText: string;
+}) {
+  return (
+    <div className='grid gap-2'>
+      <p className='text-sm font-extrabold text-slate-950'>{title}</p>
+      {group.direct.length ? <LinkedDocumentRows documents={group.direct} /> : <p className='text-sm font-semibold text-slate-500'>{emptyText}</p>}
+      {group.candidates.length ? (
+        <div className='grid gap-2'>
+          <p className='text-sm font-bold text-amber-800'>Похожие документы, требуют проверки</p>
+          <LinkedDocumentRows documents={group.candidates} cautious />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function OneCLinkedDocumentsBlock({ result }: { result?: OneCSalesRealizationLinksResult }) {
+  const links = result?.links;
+  const directCashReceipts = links?.cashReceipts.direct ?? [];
+
+  return (
+    <div className='rounded-lg border border-indigo-200 bg-indigo-50 p-4'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <FileSearch className='h-4 w-4 text-indigo-700' />
+        <h3 className='font-extrabold text-slate-950'>Связанные документы 1С</h3>
+        <Badge className='bg-amber-100 text-amber-800'>needs_review</Badge>
+      </div>
+
+      {!result ? (
+        <p className='mt-3 text-sm font-semibold text-slate-600'>Связи не запрашивались: подходящая реализация 1С не найдена.</p>
+      ) : !result.ok || !links ? (
+        <div className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900'>
+          Не удалось получить связанные документы 1С. {result.error ?? 'Ответ 1С требует проверки.'}
+        </div>
+      ) : (
+        <div className='mt-3 grid gap-4'>
+          {directCashReceipts.length ? (
+            <div className='rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-900'>
+              <p className='font-extrabold text-green-950'>Наличная оплата / первоначальный взнос найден в 1С</p>
+              <p className='mt-1'>Связь показана как read-only диагностика. Причина связи: “Основание = реализация”.</p>
+              <div className='mt-3'>
+                <LinkedDocumentRows documents={directCashReceipts} />
+              </div>
+            </div>
+          ) : (
+            <div className='rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900'>
+              Прямой ПКО не найден. Похожие документы ниже можно использовать только как подсказки для ручной проверки.
+            </div>
+          )}
+
+          <LinkedDocumentGroup title='ПКО' group={links.cashReceipts} emptyText='Прямые ПКО не найдены.' />
+          <LinkedDocumentGroup title='Эквайринг' group={links.acquiring} emptyText='Прямые документы эквайринга не найдены.' />
+          <LinkedDocumentGroup title='Поступления' group={links.bankReceipts} emptyText='Прямые поступления не найдены.' />
+          <LinkedDocumentGroup title='Документы оплаты' group={links.paymentDocuments} emptyText='Прямые документы оплаты не найдены.' />
+          <LinkedDocumentGroup title='Возвраты' group={links.returns} emptyText='Возвраты не найдены.' />
+          <LinkedDocumentGroup title='Корректировки' group={links.corrections} emptyText='Корректировки не найдены.' />
+
+          <details className='rounded-lg border border-slate-200 bg-white p-4 text-sm'>
+            <summary className='cursor-pointer font-extrabold text-slate-950'>Показать технические детали связанных документов</summary>
+            <div className='mt-3 grid gap-3'>
+              {links.checkedSources.length ? (
+                <div className='overflow-x-auto rounded-lg border border-slate-200'>
+                  <table className='min-w-full text-left text-sm'>
+                    <thead className='bg-slate-50 text-xs uppercase text-slate-500'>
+                      <tr>
+                        <th className='px-3 py-2'>Источник</th>
+                        <th className='px-3 py-2'>Режим</th>
+                        <th className='px-3 py-2'>Статус</th>
+                        <th className='px-3 py-2'>Найдено</th>
+                        <th className='px-3 py-2'>Ошибка</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {links.checkedSources.map((source) => (
+                        <tr key={`${source.name}-${source.matchMode}`} className='border-t border-slate-200'>
+                          <td className='px-3 py-2 font-semibold text-slate-950'>{source.name || 'нет данных'}</td>
+                          <td className='px-3 py-2 font-semibold text-slate-700'>{source.matchMode || 'нет данных'}</td>
+                          <td className='px-3 py-2 font-semibold text-slate-700'>{source.ok === null ? 'нет данных' : source.ok ? 'ok' : 'error'}</td>
+                          <td className='px-3 py-2 font-semibold text-slate-700'>{source.count ?? 'нет данных'}</td>
+                          <td className='px-3 py-2 font-semibold text-slate-700'>{source.errorText || 'нет'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className='font-semibold text-slate-500'>checked_sources не пришли в ответе 1С.</p>
+              )}
+              {links.warnings.length ? (
+                <div className='rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 font-semibold text-amber-900'>
+                  {links.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                </div>
+              ) : null}
+              {result.diagnostics.length ? (
+                <div className='rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-700'>
+                  {result.diagnostics.map((diagnostic) => <p key={diagnostic}>{diagnostic}</p>)}
+                </div>
+              ) : null}
+            </div>
+          </details>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OneCMatchBlock({
+  ofdCandidate,
+  documents,
+  realizationLinksByRef,
+}: {
+  ofdCandidate?: Candidate | ReturnSample;
+  documents: OneCSalesRealizationDocument[];
+  realizationLinksByRef: Map<string, OneCSalesRealizationLinksResult>;
+}) {
   const match = matchOneCRealizations(ofdCandidate, documents);
   const alternatives = match.candidates.filter((candidate) => candidate !== match.best);
   const document = match.best?.document;
   const manager = document ? document.managerName || document.additionalManagerName || document.responsibleName || 'нет данных' : 'нет данных';
   const counterparty = document ? document.counterpartyName || document.partnerName || 'нет данных' : 'нет данных';
   const phrases = humanMatchPhrases(match.best);
+  const linkedDocuments = document?.ref ? realizationLinksByRef.get(document.ref) : undefined;
 
   return (
     <div className='grid gap-3'>
@@ -497,6 +686,7 @@ function OneCMatchBlock({ ofdCandidate, documents }: { ofdCandidate?: Candidate 
           Возможная реализация 1С не найдена в полученном read-only списке. Требуется ручная проверка.
         </div>
       )}
+      <OneCLinkedDocumentsBlock result={linkedDocuments} />
       <details className='rounded-lg border border-slate-200 bg-white p-4 text-sm'>
         <summary className='cursor-pointer font-extrabold text-slate-950'>Показать технические детали 1С-сопоставления</summary>
         <div className='mt-3 grid gap-3'>
@@ -515,7 +705,15 @@ function OneCMatchBlock({ ofdCandidate, documents }: { ofdCandidate?: Candidate 
   );
 }
 
-function ReturnCard({ sample, oneCDocuments }: { sample: ReturnSample; oneCDocuments: OneCSalesRealizationDocument[] }) {
+function ReturnCard({
+  sample,
+  oneCDocuments,
+  realizationLinksByRef,
+}: {
+  sample: ReturnSample;
+  oneCDocuments: OneCSalesRealizationDocument[];
+  realizationLinksByRef: Map<string, OneCSalesRealizationLinksResult>;
+}) {
   const bestCandidate = sample.possibleOriginalCandidates?.[0];
   const isReturn = sample.operationType === 2;
   const matchingTarget = isReturn ? bestCandidate ?? sample : sample;
@@ -591,7 +789,7 @@ function ReturnCard({ sample, oneCDocuments }: { sample: ReturnSample; oneCDocum
           </div>
         ) : null}
 
-        <OneCMatchBlock ofdCandidate={matchingTarget} documents={oneCDocuments} />
+        <OneCMatchBlock ofdCandidate={matchingTarget} documents={oneCDocuments} realizationLinksByRef={realizationLinksByRef} />
 
         <details className='rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm'>
           <summary className='cursor-pointer font-extrabold text-slate-950'>Показать технические детали</summary>
@@ -708,6 +906,15 @@ export default async function AdminOfdPage({
   const receiptDiagnostics = probe.receiptDiagnostics;
   const samples = receiptDiagnostics?.samples ?? diagnostics?.samples ?? [];
   const oneCDocuments = salesRealizations.ok ? salesRealizations.documents : [];
+  const matchedRealizationRefs = Array.from(new Set(samples
+    .map((sample) => {
+      const bestCandidate = sample.possibleOriginalCandidates?.[0];
+      const matchingTarget = sample.operationType === 2 ? bestCandidate ?? sample : sample;
+      return matchOneCRealizations(matchingTarget, oneCDocuments).best?.document.ref;
+    })
+    .filter((ref): ref is string => Boolean(ref))));
+  const realizationLinksResults = await Promise.all(matchedRealizationRefs.map((ref) => getSalesRealizationLinks(ref)));
+  const realizationLinksByRef = new Map(realizationLinksResults.map((result) => [result.realizationRef, result]));
 
   return (
     <AdminShell>
@@ -800,7 +1007,14 @@ export default async function AdminOfdPage({
 
       <section className='grid gap-5'>
         {samples.length ? (
-          samples.map((sample) => <ReturnCard key={`${sample.fiscalDocumentNumber}-${sample.fiscalSign}`} sample={sample} oneCDocuments={oneCDocuments} />)
+          samples.map((sample) => (
+            <ReturnCard
+              key={`${sample.fiscalDocumentNumber}-${sample.fiscalSign}`}
+              sample={sample}
+              oneCDocuments={oneCDocuments}
+              realizationLinksByRef={realizationLinksByRef}
+            />
+          ))
         ) : (
           <Card className='flex min-h-48 flex-col items-center justify-center text-center'>
             <FileSearch className='mb-3 h-9 w-9 text-slate-400' />
