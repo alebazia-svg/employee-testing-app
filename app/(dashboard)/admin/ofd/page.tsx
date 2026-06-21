@@ -88,6 +88,8 @@ type BusinessClassification = {
   evidence: string[];
 };
 
+type EventFilter = 'all' | BusinessEventType;
+
 type ReturnSample = {
   fiscalDocumentNumber?: string;
   fiscalDriveNumber?: string;
@@ -710,6 +712,21 @@ function businessBadgeClass(severity: BusinessSeverity) {
   if (severity === 'info') return 'bg-blue-100 text-blue-800';
   if (severity === 'critical') return 'bg-red-100 text-red-700';
   return 'bg-amber-100 text-amber-800';
+}
+
+function isBusinessEventType(value: string | undefined): value is BusinessEventType {
+  return Boolean(value && [
+    'ok',
+    'waiting_1c',
+    'missing_1c_overdue',
+    'amount_mismatch',
+    'product_mismatch',
+    'multiple_candidates',
+    'return_goods',
+    'receipt_correction',
+    'conflict',
+    'needs_review',
+  ].includes(value));
 }
 
 function BusinessClassificationBlock({ classification }: { classification: BusinessClassification }) {
@@ -1718,10 +1735,104 @@ function ReturnCard({
   );
 }
 
+const REGISTRY_GRID_CLASS =
+  'grid min-w-[1760px] grid-cols-[150px_150px_110px_120px_210px_150px_150px_130px_170px_190px_260px_260px_120px] gap-3';
+
+function linkedGroupText(group?: OneCLinkedDocumentGroup) {
+  if (!group) return 'не проверено';
+  if (group.direct.length) return 'найдено';
+  if (group.candidates.length) return 'есть варианты';
+  return 'не найдено';
+}
+
+function linkedGroupClass(group?: OneCLinkedDocumentGroup) {
+  if (!group) return 'bg-slate-100 text-slate-700';
+  if (group.direct.length) return 'bg-green-100 text-green-800';
+  if (group.candidates.length) return 'bg-amber-100 text-amber-800';
+  return 'bg-slate-100 text-slate-700';
+}
+
+function linkedDocsSummary(result?: OneCSalesRealizationLinksResult) {
+  const links = result?.links;
+  return [
+    { label: 'ПКО', group: links?.cashReceipts },
+    { label: 'Эквайринг', group: links?.acquiring },
+    { label: 'Поступление', group: links?.bankReceipts },
+    { label: 'Возврат', group: links?.returns },
+  ];
+}
+
+function EventRegistryRow({
+  sample,
+  oneCMatch,
+  classification,
+  realizationLinksByRef,
+  oneCAvailable,
+}: {
+  sample: ReturnSample;
+  oneCMatch: OneCMatch;
+  classification: BusinessClassification;
+  realizationLinksByRef: Map<string, OneCSalesRealizationLinksResult>;
+  oneCAvailable: boolean;
+}) {
+  const document = oneCMatch.best?.document;
+  const linkedDocuments = document?.ref ? realizationLinksByRef.get(document.ref) : undefined;
+  const manager = document?.managerName || document?.additionalManagerName || document?.responsibleName || 'менеджер не определён';
+  const counterparty = document?.counterpartyName || document?.partnerName || 'контрагент не определён';
+  const linkedSummary = linkedDocsSummary(linkedDocuments);
+
+  return (
+    <details className='group border-t border-slate-200 bg-white first:border-t-0'>
+      <summary className='cursor-pointer list-none px-4 py-3 transition-colors hover:bg-slate-50 [&::-webkit-details-marker]:hidden'>
+        <div className={`${REGISTRY_GRID_CLASS} items-start text-sm`}>
+          <div>
+            <Badge className={businessBadgeClass(classification.severity)}>{businessEventLabel(classification.eventType)}</Badge>
+          </div>
+          <div className='font-semibold text-slate-800'>{formatDate(sample.date)}</div>
+          <div className='font-semibold text-slate-800'>{operationLabel(sample)}</div>
+          <div className='font-extrabold text-slate-950'>{formatOfdMoney(sample.totalSum)}</div>
+          <div className='font-semibold text-slate-800'>{primaryItemName(sample.itemsPreview)}</div>
+          <div className='font-extrabold text-slate-950'>{document?.number || 'реализация не найдена'}</div>
+          <div className='font-semibold text-slate-800'>{formatDate(document?.date)}</div>
+          <div className='font-extrabold text-slate-950'>{formatMoney(document?.amount ?? undefined)}</div>
+          <div className='font-semibold text-slate-800'>{manager}</div>
+          <div className='font-semibold text-slate-800'>{counterparty}</div>
+          <div>
+            <p className='font-extrabold text-slate-950'>{classification.businessTitle}</p>
+            <p className='mt-1 line-clamp-2 text-xs font-semibold text-slate-500'>{classification.whatToCheck[0] || classification.businessMessage}</p>
+          </div>
+          <div className='flex flex-wrap gap-1'>
+            {linkedSummary.map((item) => (
+              <Badge key={item.label} className={linkedGroupClass(item.group)}>
+                {item.label}: {linkedGroupText(item.group)}
+              </Badge>
+            ))}
+          </div>
+          <div>
+            <span className='inline-flex rounded-md bg-slate-950 px-3 py-2 text-xs font-extrabold text-white group-open:bg-slate-600'>
+              Подробнее
+            </span>
+          </div>
+        </div>
+      </summary>
+
+      <div className='border-t border-slate-200 bg-slate-50 p-4'>
+        <ReturnCard
+          sample={sample}
+          oneCMatch={oneCMatch}
+          classification={classification}
+          realizationLinksByRef={realizationLinksByRef}
+          oneCAvailable={oneCAvailable}
+        />
+      </div>
+    </details>
+  );
+}
+
 export default async function AdminOfdPage({
   searchParams,
 }: {
-  searchParams?: { organizationInn?: string; dateFrom?: string; dateTo?: string; limit?: string };
+  searchParams?: { organizationInn?: string; dateFrom?: string; dateTo?: string; limit?: string; eventType?: string };
 }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
@@ -1740,6 +1851,8 @@ export default async function AdminOfdPage({
   const selectedPeriodLabel = selectedPreset?.label ?? 'Произвольный период';
   const parsedLimit = Number(searchParams?.limit ?? DEFAULT_LIMIT);
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(Math.trunc(parsedLimit), 100) : DEFAULT_LIMIT;
+  const requestedEventType = searchParams?.eventType;
+  const eventFilter: EventFilter = isBusinessEventType(requestedEventType) ? requestedEventType : 'all';
   const createPeriodHref = (period: Pick<PeriodPreset, 'dateFrom' | 'dateTo'>) => {
     const params = new URLSearchParams({
       dateFrom: period.dateFrom,
@@ -1747,6 +1860,17 @@ export default async function AdminOfdPage({
       organizationInn,
       limit: String(limit),
     });
+    if (eventFilter !== 'all') params.set('eventType', eventFilter);
+    return `/admin/ofd?${params.toString()}`;
+  };
+  const createEventFilterHref = (filter: EventFilter) => {
+    const params = new URLSearchParams({
+      dateFrom,
+      dateTo,
+      organizationInn,
+      limit: String(limit),
+    });
+    if (filter !== 'all') params.set('eventType', filter);
     return `/admin/ofd?${params.toString()}`;
   };
   const [probe, salesRealizations] = await Promise.all([
@@ -1786,6 +1910,26 @@ export default async function AdminOfdPage({
     accumulator[classification.eventType] = (accumulator[classification.eventType] ?? 0) + 1;
     return accumulator;
   }, {} as Partial<Record<BusinessEventType, number>>);
+  const eventRows = samples.map((sample, index) => ({
+    sample,
+    match: sampleMatches[index] ?? matchOneCRealizations(undefined, oneCDocuments),
+    classification: businessClassifications[index],
+  }));
+  const filteredRows = eventFilter === 'all'
+    ? eventRows
+    : eventRows.filter((row) => row.classification.eventType === eventFilter);
+  const eventFilterItems: Array<{ filter: EventFilter; label: string; count: number }> = [
+    { filter: 'all', label: 'Все', count: samples.length },
+    { filter: 'ok', label: 'Корректно', count: eventCounts.ok ?? 0 },
+    { filter: 'waiting_1c', label: 'Ожидает 1С', count: eventCounts.waiting_1c ?? 0 },
+    { filter: 'missing_1c_overdue', label: 'Нет реализации более 3 дней', count: eventCounts.missing_1c_overdue ?? 0 },
+    { filter: 'amount_mismatch', label: 'Сумма не совпала', count: eventCounts.amount_mismatch ?? 0 },
+    { filter: 'multiple_candidates', label: 'Несколько кандидатов', count: eventCounts.multiple_candidates ?? 0 },
+    { filter: 'return_goods', label: 'Возвраты', count: eventCounts.return_goods ?? 0 },
+    { filter: 'receipt_correction', label: 'Исправления чеков', count: eventCounts.receipt_correction ?? 0 },
+    { filter: 'conflict', label: 'Конфликты', count: eventCounts.conflict ?? 0 },
+    { filter: 'needs_review', label: 'Нужна проверка', count: eventCounts.needs_review ?? 0 },
+  ];
   const oneCMatchesCount = sampleMatches.filter((match) => Boolean(match.best)).length;
   const manualReviewCount = businessClassifications.filter((classification) => classification.eventType !== 'ok').length;
   const notFoundCount = samples.length - oneCMatchesCount;
@@ -1982,26 +2126,84 @@ export default async function AdminOfdPage({
         </Card>
       ) : null}
 
-      <section className='grid gap-5'>
-        {samples.length ? (
-          samples.map((sample, index) => (
-            <ReturnCard
-              key={`${sample.fiscalDocumentNumber}-${sample.fiscalSign}`}
-              sample={sample}
-              oneCMatch={sampleMatches[index] ?? matchOneCRealizations(undefined, oneCDocuments)}
-              classification={businessClassifications[index]}
-              realizationLinksByRef={realizationLinksByRef}
-              oneCAvailable={oneCAvailable}
-            />
-          ))
+      <Card className='mb-5'>
+        <div className='flex flex-col gap-3'>
+          <div className='flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between'>
+            <div>
+              <h2 className='text-xl font-extrabold text-slate-950'>Реестр событий OFD ↔ 1С</h2>
+              <p className='mt-1 text-sm font-semibold text-slate-500'>
+                Одна строка — один чек или событие. Откройте “Подробнее”, чтобы увидеть документы, кандидатов и технические детали.
+              </p>
+            </div>
+            <Badge className='w-fit bg-slate-100 text-slate-700'>
+              показано {filteredRows.length} из {samples.length}
+            </Badge>
+          </div>
+
+          <nav aria-label='Фильтр событий' className='flex flex-wrap gap-2'>
+            {eventFilterItems.map((item) => {
+              const isSelected = item.filter === eventFilter;
+              return (
+                <Link
+                  key={item.filter}
+                  href={createEventFilterHref(item.filter)}
+                  className={isSelected
+                    ? 'rounded-md bg-slate-950 px-3 py-2 text-sm font-bold text-white'
+                    : 'rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-50'}
+                >
+                  {item.label} <span className={isSelected ? 'text-white/80' : 'text-slate-400'}>{item.count}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      </Card>
+
+      {samples.length ? (
+        filteredRows.length ? (
+          <div className='overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm'>
+            <div className={`${REGISTRY_GRID_CLASS} bg-slate-50 px-4 py-3 text-xs font-extrabold uppercase text-slate-500`}>
+              <div>Статус</div>
+              <div>Дата/время OFD</div>
+              <div>Тип</div>
+              <div>Сумма OFD</div>
+              <div>Товар</div>
+              <div>Реализация 1С</div>
+              <div>Дата реализации</div>
+              <div>Сумма 1С</div>
+              <div>Менеджер</div>
+              <div>Контрагент</div>
+              <div>Проблема / что проверить</div>
+              <div>Связанные документы</div>
+              <div>Детали</div>
+            </div>
+            <div>
+              {filteredRows.map((row) => (
+                <EventRegistryRow
+                  key={`${row.sample.fiscalDocumentNumber}-${row.sample.fiscalSign}-${row.classification.eventType}`}
+                  sample={row.sample}
+                  oneCMatch={row.match}
+                  classification={row.classification}
+                  realizationLinksByRef={realizationLinksByRef}
+                  oneCAvailable={oneCAvailable}
+                />
+              ))}
+            </div>
+          </div>
         ) : (
           <Card className='flex min-h-48 flex-col items-center justify-center text-center'>
             <FileSearch className='mb-3 h-9 w-9 text-slate-400' />
-            <p className='font-extrabold text-slate-950'>За выбранный период чеки не найдены.</p>
-            <p className='mt-1 text-sm font-semibold text-slate-500'>Выберите другой период или проверьте настройки OFD в технических деталях.</p>
+            <p className='font-extrabold text-slate-950'>По выбранному фильтру событий ничего не найдено.</p>
+            <p className='mt-1 text-sm font-semibold text-slate-500'>Выберите “Все” или другой тип события.</p>
           </Card>
-        )}
-      </section>
+        )
+      ) : (
+        <Card className='flex min-h-48 flex-col items-center justify-center text-center'>
+          <FileSearch className='mb-3 h-9 w-9 text-slate-400' />
+          <p className='font-extrabold text-slate-950'>За выбранный период чеки не найдены.</p>
+          <p className='mt-1 text-sm font-semibold text-slate-500'>Выберите другой период или проверьте настройки OFD в технических деталях.</p>
+        </Card>
+      )}
     </AdminShell>
   );
 }
