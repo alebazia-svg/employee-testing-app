@@ -147,6 +147,8 @@ const DEFAULT_INN = '071306665560';
 const DEFAULT_LIMIT = 50;
 const CREDIT_CUSTOMER_REF = '537e501e-4640-11ed-8f49-0025901e48ee';
 const RETAIL_CUSTOMER_REF = '116d9993-314c-11ed-87c2-0025901e48ee';
+const ONE_C_REALIZATIONS_PAGE_LIMIT = 100;
+const ONE_C_REALIZATIONS_SAFETY_CAP = 2000;
 
 type PeriodPreset = {
   id: string;
@@ -234,6 +236,71 @@ async function safeGetSalesRealizations(
       diagnostics: [error instanceof Error ? `${error.name}: ${error.message}` : String(error)],
     };
   }
+}
+
+async function safeGetAllSalesRealizations(
+  params: Omit<NonNullable<Parameters<typeof getSalesRealizations>[0]>, 'limit' | 'offset'>,
+): Promise<OneCSalesRealizationsResult> {
+  const startedAt = Date.now();
+  const pages: OneCSalesRealizationsResult[] = [];
+  const documents = new Map<string, OneCSalesRealizationDocument>();
+  let offset = 0;
+  let reachedSafetyCap = false;
+
+  while (offset < ONE_C_REALIZATIONS_SAFETY_CAP) {
+    const page = await safeGetSalesRealizations({
+      ...params,
+      limit: ONE_C_REALIZATIONS_PAGE_LIMIT,
+      offset,
+    });
+    pages.push(page);
+
+    if (!page.ok) break;
+
+    for (const document of page.documents) {
+      const key = document.ref || `${document.number}-${document.date}-${document.amount}`;
+      if (!documents.has(key)) documents.set(key, document);
+    }
+
+    if (page.documents.length < ONE_C_REALIZATIONS_PAGE_LIMIT) break;
+
+    offset += ONE_C_REALIZATIONS_PAGE_LIMIT;
+  }
+
+  if (offset >= ONE_C_REALIZATIONS_SAFETY_CAP) {
+    reachedSafetyCap = true;
+  }
+
+  const firstPage = pages[0];
+  const lastPage = pages.at(-1);
+  const diagnostics = pages.flatMap((page) => page.diagnostics);
+  if (reachedSafetyCap) {
+    diagnostics.push(`1C sales-realizations stopped at safety cap ${ONE_C_REALIZATIONS_SAFETY_CAP}; selection may be incomplete.`);
+  }
+
+  return {
+    ok: pages.some((page) => page.ok),
+    path: '/sales-realizations',
+    status: lastPage?.status,
+    durationMs: Date.now() - startedAt,
+    checkedAt: new Date().toISOString(),
+    params: {
+      ...params,
+      limit: ONE_C_REALIZATIONS_PAGE_LIMIT,
+      offset: 0,
+    },
+    documents: Array.from(documents.values()),
+    totalDocuments: Array.from(documents.values()).length,
+    totalAmount: pages.reduce((sum, page) => sum + (page.totalAmount ?? 0), 0) || null,
+    hasMore: reachedSafetyCap,
+    responseDocumentCount: Array.from(documents.values()).length,
+    error: pages.find((page) => page.error)?.error,
+    diagnostics: [
+      `Loaded ${pages.length} sales-realizations page(s) for customer_ref ${params.customerRef}.`,
+      ...diagnostics,
+      ...(firstPage && !firstPage.ok ? [`First page failed for customer_ref ${params.customerRef}.`] : []),
+    ],
+  };
 }
 
 async function safeGetSalesRealizationLinks(realizationRef: string): Promise<OneCSalesRealizationLinksResult> {
@@ -524,6 +591,11 @@ function mergeOneCDocuments(results: OneCSalesRealizationsResult[]) {
     }
   }
   return Array.from(documents.values());
+}
+
+function loadedOneCPages(result: OneCSalesRealizationsResult) {
+  if (!result.ok) return 0;
+  return Math.max(1, Math.ceil(result.documents.length / ONE_C_REALIZATIONS_PAGE_LIMIT));
 }
 
 function combinedOneCDiagnostics(results: OneCSalesRealizationsResult[]) {
@@ -2120,26 +2192,25 @@ export default async function AdminOfdPage({
   };
   const [probe, creditSalesRealizations, retailSalesRealizations] = await Promise.all([
     safeRunSabyOfdProbe({ organizationInn, dateFrom, dateTo, limit }),
-    safeGetSalesRealizations({
+    safeGetAllSalesRealizations({
       ...DEFAULT_SALES_REALIZATIONS_PARAMS,
       customerRef: CREDIT_CUSTOMER_REF,
       dateFrom,
       dateTo,
-      limit: 100,
-      offset: 0,
       includeLines: true,
     }),
-    safeGetSalesRealizations({
+    safeGetAllSalesRealizations({
       ...DEFAULT_SALES_REALIZATIONS_PARAMS,
       customerRef: RETAIL_CUSTOMER_REF,
       dateFrom,
       dateTo,
-      limit: 100,
-      offset: 0,
       includeLines: true,
     }),
   ]);
   const oneCResults = [creditSalesRealizations, retailSalesRealizations];
+  const oneCSelectionMayBeIncomplete = oneCResults.some((result) => result.hasMore);
+  const creditSalesPagesLoaded = loadedOneCPages(creditSalesRealizations);
+  const retailSalesPagesLoaded = loadedOneCPages(retailSalesRealizations);
   const diagnostics = probe.returnDiagnostics;
   const receiptDiagnostics = probe.receiptDiagnostics;
   const samples = receiptDiagnostics?.samples ?? diagnostics?.samples ?? [];
@@ -2332,7 +2403,10 @@ export default async function AdminOfdPage({
           <div>
             <p className='text-slate-500'>Реализаций из 1С загружено</p>
             <p className='mt-1 text-slate-950'>{oneCDocuments.length}</p>
-            <p className='mt-1 text-xs text-slate-500'>Кредит/рассрочка: {creditSalesRealizations.ok ? creditSalesRealizations.documents.length : 'не загружено'} · Розничный покупатель: {retailSalesRealizations.ok ? retailSalesRealizations.documents.length : 'не загружено'}</p>
+            <p className='mt-1 text-xs text-slate-500'>Кредит/рассрочка: {creditSalesRealizations.ok ? `${creditSalesRealizations.documents.length} (${creditSalesPagesLoaded} стр.)` : 'не загружено'} · Розничный покупатель: {retailSalesRealizations.ok ? `${retailSalesRealizations.documents.length} (${retailSalesPagesLoaded} стр.)` : 'не загружено'}</p>
+            {oneCSelectionMayBeIncomplete ? (
+              <p className='mt-1 text-xs font-bold text-amber-700'>1С выборка может быть неполной: достигнут safety cap.</p>
+            ) : null}
           </div>
           <div>
             <p className='text-slate-500'>Статус 1С</p>
