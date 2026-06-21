@@ -64,6 +64,30 @@ type OneCMatch = {
   conflictCandidate: OneCCandidate | null;
 };
 
+type BusinessEventType =
+  | 'ok'
+  | 'waiting_1c'
+  | 'missing_1c_overdue'
+  | 'amount_mismatch'
+  | 'product_mismatch'
+  | 'multiple_candidates'
+  | 'return_goods'
+  | 'receipt_correction'
+  | 'conflict'
+  | 'needs_review';
+
+type BusinessSeverity = 'ok' | 'info' | 'warning' | 'critical';
+
+type BusinessClassification = {
+  eventType: BusinessEventType;
+  severity: BusinessSeverity;
+  businessTitle: string;
+  businessMessage: string;
+  whatToCheck: string[];
+  managerName?: string;
+  evidence: string[];
+};
+
 type ReturnSample = {
   fiscalDocumentNumber?: string;
   fiscalDriveNumber?: string;
@@ -440,6 +464,203 @@ function countLinkWarnings(result?: OneCSalesRealizationLinksResult) {
   return result.links.warnings.length + result.links.checkedSources.filter((source) => source.ok === false).length;
 }
 
+function daysSince(value: string | undefined, currentDate: Date) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const start = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const current = Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate());
+  return Math.floor((current - start) / (24 * 60 * 60 * 1000));
+}
+
+function hasSimilarRejectedCandidate(match: OneCMatch) {
+  return match.rejectedCandidates.some((candidate) =>
+    !candidate.amountMatches &&
+    (candidate.matchedProducts > 0 || candidate.reasons.includes('same_day') || candidate.reasons.includes('nearby_date'))
+  );
+}
+
+function hasDirectLinkedReturnOrCorrection(result?: OneCSalesRealizationLinksResult) {
+  const links = result?.links;
+  return Boolean(links?.returns.direct.length || links?.corrections.direct.length);
+}
+
+function managerFromCandidate(candidate?: OneCCandidate | null) {
+  const document = candidate?.document;
+  return document?.managerName || document?.additionalManagerName || document?.responsibleName || undefined;
+}
+
+function classifyOfdBusinessEvent({
+  sample,
+  match,
+  linkedDocuments,
+  oneCAvailable,
+  currentDate,
+}: {
+  sample: ReturnSample;
+  match: OneCMatch;
+  linkedDocuments?: OneCSalesRealizationLinksResult;
+  oneCAvailable: boolean;
+  currentDate: Date;
+}): BusinessClassification {
+  const isReturn = sample.operationType === 2;
+  const receiptAgeDays = daysSince(sample.date, currentDate);
+  const best = match.best;
+  const linkWarnings = countLinkWarnings(linkedDocuments);
+  const managerName = managerFromCandidate(best ?? match.conflictCandidate);
+  const evidence = [
+    `OFD: ${operationLabel(sample)}, ${formatOfdMoney(sample.totalSum)}, ${formatDate(sample.date)}`,
+    best
+      ? `1С: реализация ${best.document.number || best.document.ref || 'без номера'}, ${formatMoney(best.document.amount ?? undefined)}`
+      : '1С: подходящая реализация не подтверждена',
+    `Товар: ${primaryItemName(sample.itemsPreview)}`,
+  ];
+
+  if (!oneCAvailable) {
+    return {
+      eventType: 'needs_review',
+      severity: 'warning',
+      businessTitle: '1С сейчас недоступна',
+      businessMessage: 'Нельзя проверить реализацию, менеджера и связанные документы 1С.',
+      whatToCheck: ['Повторить проверку, когда 1С снова отвечает.', 'Не принимать решение только по OFD-чеку.'],
+      managerName,
+      evidence,
+    };
+  }
+
+  if (match.conflictCandidate) {
+    return {
+      eventType: 'conflict',
+      severity: 'warning',
+      businessTitle: 'Конфликт сопоставления',
+      businessMessage: 'Одна и та же реализация 1С уже подходит к другому OFD-чеку в этом списке.',
+      whatToCheck: ['Проверить оба OFD-чека рядом.', 'Подтвердить, какой чек действительно относится к реализации 1С.'],
+      managerName,
+      evidence,
+    };
+  }
+
+  if (isReturn) {
+    if (best && hasDirectLinkedReturnOrCorrection(linkedDocuments)) {
+      return {
+        eventType: 'return_goods',
+        severity: 'info',
+        businessTitle: 'Похож на возврат товара',
+        businessMessage: 'OFD-возврат сопоставлен с реализацией, и в 1С найден возврат или корректировка.',
+        whatToCheck: ['Проверить возвратный документ 1С.', 'Убедиться, что возврат относится к этому товару и сумме.'],
+        managerName,
+        evidence: [...evidence, 'Связанные документы 1С: найден возврат или корректировка.'],
+      };
+    }
+
+    if (sample.possibleOriginalCandidates?.length && best && !hasDirectLinkedReturnOrCorrection(linkedDocuments)) {
+      return {
+        eventType: 'needs_review',
+        severity: 'warning',
+        businessTitle: 'Возможное исправление ошибочного чека',
+        businessMessage: 'Недостаточно данных для уверенной классификации: виден OFD-возврат и исходный чек, но в 1С не найден возврат продажи.',
+        whatToCheck: ['Проверить, был ли после возврата пробит новый правильный приход.', 'Если возврата товара в 1С нет, рассматривать как исправление ошибочного чека.'],
+        managerName,
+        evidence: [...evidence, 'Недостаточно данных для уверенной классификации receipt_correction.'],
+      };
+    }
+  }
+
+  if (!best) {
+    if (hasSimilarRejectedCandidate(match)) {
+      return {
+        eventType: 'amount_mismatch',
+        severity: 'critical',
+        businessTitle: 'Сумма не совпала',
+        businessMessage: 'Похожая реализация 1С есть, но сумма OFD-чека и реализации отличается больше чем на 1 ₽.',
+        whatToCheck: ['Проверить сумму реализации 1С.', 'Проверить, не был ли чек пробит частично или на другой набор товаров.'],
+        managerName,
+        evidence,
+      };
+    }
+
+    if (receiptAgeDays !== null && receiptAgeDays <= 3) {
+      return {
+        eventType: 'waiting_1c',
+        severity: 'info',
+        businessTitle: 'Ожидаем оформление в 1С',
+        businessMessage: 'Чек OFD есть, но подходящая реализация 1С пока не найдена. С даты чека прошло не больше 3 дней.',
+        whatToCheck: ['Пока не считать ошибкой.', 'Вернуться к проверке после обновления/оформления документов 1С.'],
+        managerName,
+        evidence,
+      };
+    }
+
+    if (receiptAgeDays !== null && receiptAgeDays > 3) {
+      return {
+        eventType: 'missing_1c_overdue',
+        severity: 'critical',
+        businessTitle: 'Реализация 1С не найдена более 3 дней',
+        businessMessage: 'Вероятно, реализация не оформлена, не проведена или не попала в выгрузку.',
+        whatToCheck: ['Найти продажу в 1С по дате, сумме и товару.', 'Проверить, не оформлена ли реализация на другого контрагента или другой датой.'],
+        managerName,
+        evidence,
+      };
+    }
+
+    return {
+      eventType: 'needs_review',
+      severity: 'warning',
+      businessTitle: 'Нужна ручная проверка',
+      businessMessage: 'Подходящая реализация 1С не найдена, а даты недостаточно для автоматического вывода.',
+      whatToCheck: ['Проверить чек и реализацию вручную по сумме, товару и дате.'],
+      managerName,
+      evidence,
+    };
+  }
+
+  if (match.candidates.length > 1) {
+    return {
+      eventType: 'multiple_candidates',
+      severity: 'warning',
+      businessTitle: 'Несколько возможных реализаций',
+      businessMessage: 'Найдено несколько реализаций 1С с совпавшей суммой. Нужно выбрать правильную вручную.',
+      whatToCheck: ['Сравнить товары и время продажи.', 'Проверить менеджера и контрагента.'],
+      managerName,
+      evidence,
+    };
+  }
+
+  if (best.amountMatches && best.matchedProducts === 0) {
+    return {
+      eventType: 'product_mismatch',
+      severity: 'critical',
+      businessTitle: 'Товары отличаются',
+      businessMessage: 'Сумма совпала, но товары OFD-чека не похожи на товары реализации 1С.',
+      whatToCheck: ['Сверить строки товаров в OFD и 1С.', 'Проверить, не выбран ли неверный документ реализации.'],
+      managerName,
+      evidence,
+    };
+  }
+
+  if (linkWarnings > 0) {
+    return {
+      eventType: 'needs_review',
+      severity: 'warning',
+      businessTitle: 'Есть предупреждения по связанным документам',
+      businessMessage: 'Реализация найдена, но связанные документы 1С проверены не полностью.',
+      whatToCheck: ['Открыть технические детали.', 'Проверить ПКО, эквайринг, поступления, возвраты и корректировки.'],
+      managerName,
+      evidence: [...evidence, `Предупреждений по связанным документам: ${linkWarnings}.`],
+    };
+  }
+
+  return {
+    eventType: 'ok',
+    severity: 'ok',
+    businessTitle: 'Операция выглядит корректной',
+    businessMessage: 'Есть чек OFD, найдена реализация 1С, сумма совпала и явных предупреждений нет.',
+    whatToCheck: ['Дополнительных действий не требуется, если товары и связанные документы визуально подтверждены.'],
+    managerName,
+    evidence,
+  };
+}
+
 function findingStatus(hasDirect: boolean, hasCandidates: boolean, checked = true) {
   if (!checked) return { text: 'не проверено', className: 'bg-slate-100 text-slate-700' };
   if (hasDirect) return { text: 'найдено', className: 'bg-green-100 text-green-800' };
@@ -459,6 +680,72 @@ function operationLabel(sample: ReturnSample) {
   if (sample.operationType === 2) return 'Возврат прихода';
   if (sample.operationType === 1) return 'Приход';
   return sample.operationType ? `Операция ${sample.operationType}` : 'Тип операции не определён';
+}
+
+function businessEventLabel(eventType: BusinessEventType) {
+  const labels: Record<BusinessEventType, string> = {
+    ok: 'Корректно',
+    waiting_1c: 'Ожидает 1С',
+    missing_1c_overdue: 'Нет реализации более 3 дней',
+    amount_mismatch: 'Сумма не совпала',
+    product_mismatch: 'Товары отличаются',
+    multiple_candidates: 'Несколько кандидатов',
+    return_goods: 'Возврат товара',
+    receipt_correction: 'Исправление чека',
+    conflict: 'Конфликт',
+    needs_review: 'Нужна проверка',
+  };
+  return labels[eventType];
+}
+
+function businessSeverityClass(severity: BusinessSeverity) {
+  if (severity === 'ok') return 'border-green-200 bg-green-50 text-green-950';
+  if (severity === 'info') return 'border-blue-200 bg-blue-50 text-blue-950';
+  if (severity === 'critical') return 'border-red-200 bg-red-50 text-red-950';
+  return 'border-amber-200 bg-amber-50 text-amber-950';
+}
+
+function businessBadgeClass(severity: BusinessSeverity) {
+  if (severity === 'ok') return 'bg-green-100 text-green-800';
+  if (severity === 'info') return 'bg-blue-100 text-blue-800';
+  if (severity === 'critical') return 'bg-red-100 text-red-700';
+  return 'bg-amber-100 text-amber-800';
+}
+
+function BusinessClassificationBlock({ classification }: { classification: BusinessClassification }) {
+  return (
+    <div className={`border-b px-5 py-4 ${businessSeverityClass(classification.severity)}`}>
+      <div className='flex flex-wrap items-center gap-2'>
+        <ShieldAlert className='h-5 w-5' />
+        <Badge className={businessBadgeClass(classification.severity)}>{businessEventLabel(classification.eventType)}</Badge>
+        <h3 className='text-xl font-extrabold'>{classification.businessTitle}</h3>
+      </div>
+      <p className='mt-2 text-sm font-semibold'>{classification.businessMessage}</p>
+
+      <div className='mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr_1fr]'>
+        <div>
+          <p className='text-sm font-extrabold'>Что проверить</p>
+          <ul className='mt-2 grid gap-1 text-sm font-semibold'>
+            {classification.whatToCheck.map((item) => (
+              <li key={item}>• {item}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <p className='text-sm font-extrabold'>Ответственный</p>
+          <p className='mt-2 text-sm font-semibold'>{classification.managerName || 'Менеджер не определён по 1С'}</p>
+        </div>
+        <div>
+          <p className='text-sm font-extrabold'>Доказательства</p>
+          <ul className='mt-2 grid gap-1 text-sm font-semibold'>
+            {classification.evidence.map((item) => (
+              <li key={item}>• {item}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ItemsList({ items }: { items?: ItemPreview[] }) {
@@ -1175,11 +1462,13 @@ function OneCMatchBlock({
 function ReturnCard({
   sample,
   oneCMatch,
+  classification,
   realizationLinksByRef,
   oneCAvailable,
 }: {
   sample: ReturnSample;
   oneCMatch: OneCMatch;
+  classification: BusinessClassification;
   realizationLinksByRef: Map<string, OneCSalesRealizationLinksResult>;
   oneCAvailable: boolean;
 }) {
@@ -1206,6 +1495,8 @@ function ReturnCard({
 
   return (
     <Card className='p-0'>
+      <BusinessClassificationBlock classification={classification} />
+
       <div className='border-b border-slate-200/80 px-5 py-4'>
         <div className='flex flex-wrap items-center gap-2'>
           <ShieldAlert className='h-5 w-5 text-amber-600' />
@@ -1437,7 +1728,8 @@ export default async function AdminOfdPage({
   if (currentUser.role !== 'ADMIN') redirect('/employee');
 
   const organizationInn = searchParams?.organizationInn?.trim() || DEFAULT_INN;
-  const periodPresets = getPeriodPresets();
+  const currentDate = new Date();
+  const periodPresets = getPeriodPresets(currentDate);
   const defaultPeriod = periodPresets.find((preset) => preset.id === 'last-30-days')!;
   const requestedDateFrom = searchParams?.dateFrom?.trim();
   const requestedDateTo = searchParams?.dateTo?.trim();
@@ -1479,8 +1771,23 @@ export default async function AdminOfdPage({
     .filter((ref): ref is string => Boolean(ref))));
   const realizationLinksResults = await Promise.all(matchedRealizationRefs.map((ref) => safeGetSalesRealizationLinks(ref)));
   const realizationLinksByRef = new Map(realizationLinksResults.map((result) => [result.realizationRef, result]));
+  const businessClassifications = samples.map((sample, index) => {
+    const match = sampleMatches[index] ?? matchOneCRealizations(undefined, oneCDocuments);
+    const linkedDocuments = match.best?.document.ref ? realizationLinksByRef.get(match.best.document.ref) : undefined;
+    return classifyOfdBusinessEvent({
+      sample,
+      match,
+      linkedDocuments,
+      oneCAvailable,
+      currentDate,
+    });
+  });
+  const eventCounts = businessClassifications.reduce((accumulator, classification) => {
+    accumulator[classification.eventType] = (accumulator[classification.eventType] ?? 0) + 1;
+    return accumulator;
+  }, {} as Partial<Record<BusinessEventType, number>>);
   const oneCMatchesCount = sampleMatches.filter((match) => Boolean(match.best)).length;
-  const manualReviewCount = samples.length;
+  const manualReviewCount = businessClassifications.filter((classification) => classification.eventType !== 'ok').length;
   const notFoundCount = samples.length - oneCMatchesCount;
   const issueOrWarningCount =
     (probe.errors?.length ?? 0) +
@@ -1560,28 +1867,58 @@ export default async function AdminOfdPage({
         </div>
       </Card>
 
-      <section className='mb-5 grid gap-4 md:grid-cols-4'>
+      <section className='mb-5 grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
         <Card>
           <p className='text-sm font-bold text-slate-500'>Чеков проверено</p>
           <p className='mt-1 text-3xl font-extrabold text-slate-950'>{samples.length}</p>
           <p className='mt-1 text-xs font-bold text-slate-500'>период {dateFrom} — {dateTo}</p>
         </Card>
         <Card>
-          <p className='text-sm font-bold text-slate-500'>Совпадений с 1С</p>
-          <p className='mt-1 text-3xl font-extrabold text-green-700'>{oneCMatchesCount}</p>
+          <p className='text-sm font-bold text-slate-500'>Корректно</p>
+          <p className='mt-1 text-3xl font-extrabold text-green-700'>{eventCounts.ok ?? 0}</p>
           <p className='mt-1 text-xs font-bold text-slate-500'>из {oneCDocuments.length} реализаций 1С</p>
         </Card>
         <Card>
-          <p className='text-sm font-bold text-slate-500'>Ручная проверка</p>
-          <p className='mt-1 text-3xl font-extrabold text-amber-700'>{manualReviewCount}</p>
-          <p className='mt-1 text-xs font-bold text-slate-500'>автозакрытия нет</p>
+          <p className='text-sm font-bold text-slate-500'>Ожидает 1С</p>
+          <p className='mt-1 text-3xl font-extrabold text-blue-700'>{eventCounts.waiting_1c ?? 0}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>0–3 дня с даты чека</p>
         </Card>
         <Card>
-          <p className='text-sm font-bold text-slate-500'>{oneCAvailable ? 'Ошибки / предупреждения' : '1С недоступна'}</p>
-          <p className={oneCAvailable ? 'mt-1 text-3xl font-extrabold text-red-700' : 'mt-1 text-3xl font-extrabold text-amber-700'}>
-            {oneCAvailable ? issueOrWarningCount : 'нет связи'}
+          <p className='text-sm font-bold text-slate-500'>Нет реализации более 3 дней</p>
+          <p className='mt-1 text-3xl font-extrabold text-red-700'>{eventCounts.missing_1c_overdue ?? 0}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>возможна неоформленная продажа</p>
+        </Card>
+        <Card>
+          <p className='text-sm font-bold text-slate-500'>Сумма не совпала</p>
+          <p className='mt-1 text-3xl font-extrabold text-red-700'>{eventCounts.amount_mismatch ?? 0}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>похожие документы отклонены</p>
+        </Card>
+        <Card>
+          <p className='text-sm font-bold text-slate-500'>Несколько кандидатов</p>
+          <p className='mt-1 text-3xl font-extrabold text-amber-700'>{eventCounts.multiple_candidates ?? 0}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>нужно выбрать вручную</p>
+        </Card>
+        <Card>
+          <p className='text-sm font-bold text-slate-500'>Возвраты</p>
+          <p className='mt-1 text-3xl font-extrabold text-blue-700'>{eventCounts.return_goods ?? 0}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>есть возврат/корректировка 1С</p>
+        </Card>
+        <Card>
+          <p className='text-sm font-bold text-slate-500'>Исправления чеков</p>
+          <p className='mt-1 text-3xl font-extrabold text-amber-700'>{eventCounts.receipt_correction ?? 0}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>цепочка пока требует данных</p>
+        </Card>
+        <Card>
+          <p className='text-sm font-bold text-slate-500'>Конфликты</p>
+          <p className='mt-1 text-3xl font-extrabold text-amber-700'>{eventCounts.conflict ?? 0}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>реализация подходит нескольким чекам</p>
+        </Card>
+        <Card>
+          <p className='text-sm font-bold text-slate-500'>{oneCAvailable ? 'Нужна проверка' : '1С недоступна'}</p>
+          <p className={oneCAvailable ? 'mt-1 text-3xl font-extrabold text-amber-700' : 'mt-1 text-3xl font-extrabold text-red-700'}>
+            {oneCAvailable ? manualReviewCount : 'нет связи'}
           </p>
-          <p className='mt-1 text-xs font-bold text-slate-500'>{oneCAvailable ? `не найдено в 1С: ${notFoundCount}` : 'документы не проверены'}</p>
+          <p className='mt-1 text-xs font-bold text-slate-500'>{oneCAvailable ? `предупреждений: ${issueOrWarningCount}, не найдено: ${notFoundCount}` : 'документы не проверены'}</p>
         </Card>
       </section>
 
@@ -1652,6 +1989,7 @@ export default async function AdminOfdPage({
               key={`${sample.fiscalDocumentNumber}-${sample.fiscalSign}`}
               sample={sample}
               oneCMatch={sampleMatches[index] ?? matchOneCRealizations(undefined, oneCDocuments)}
+              classification={businessClassifications[index]}
               realizationLinksByRef={realizationLinksByRef}
               oneCAvailable={oneCAvailable}
             />
