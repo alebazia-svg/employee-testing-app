@@ -49,11 +49,19 @@ type OneCCandidate = {
   document: OneCSalesRealizationDocument;
   score: number;
   confidence: 'probable' | 'weak' | 'rejected';
+  amountMatches: boolean;
   reasons: string[];
   rejectedReasons: string[];
   amountDiff: number | null;
   dayDiff: number | null;
   matchedProducts: number;
+};
+
+type OneCMatch = {
+  best: OneCCandidate | null;
+  candidates: OneCCandidate[];
+  rejectedCandidates: OneCCandidate[];
+  conflictCandidate: OneCCandidate | null;
 };
 
 type ReturnSample = {
@@ -321,8 +329,10 @@ function dayDiff(left?: string, right?: string) {
   return Math.round(Math.abs(leftDay - rightDay) / (24 * 60 * 60 * 1000));
 }
 
-function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefined, documents: OneCSalesRealizationDocument[]) {
-  if (!ofdCandidate) return { best: null as OneCCandidate | null, candidates: [] as OneCCandidate[] };
+function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefined, documents: OneCSalesRealizationDocument[]): OneCMatch {
+  if (!ofdCandidate) {
+    return { best: null, candidates: [], rejectedCandidates: [], conflictCandidate: null };
+  }
 
   const ofdAmount = typeof ofdCandidate.totalSum === 'number' ? ofdCandidate.totalSum / 100 : null;
   const ofdItems = ofdCandidate.itemsPreview ?? [];
@@ -336,7 +346,8 @@ function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefine
     const rejectedReasons: string[] = [];
     let score = 0;
 
-    if (amountDiff !== null && amountDiff <= 1) {
+    const amountMatches = amountDiff !== null && amountDiff <= 1;
+    if (amountMatches) {
       score += 45;
       reasons.push('amount_close');
     } else {
@@ -366,6 +377,7 @@ function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefine
       document,
       score,
       confidence: score >= 70 ? 'probable' as const : score >= 45 ? 'weak' as const : 'rejected' as const,
+      amountMatches,
       reasons,
       rejectedReasons,
       amountDiff,
@@ -374,9 +386,48 @@ function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefine
     };
   }).sort((a, b) => b.score - a.score);
 
-  const candidates = scored.slice(0, 5);
-  const best = candidates.find((candidate) => candidate.confidence !== 'rejected') ?? null;
-  return { best, candidates };
+  const candidates = scored
+    .filter((candidate) => candidate.amountMatches && candidate.confidence !== 'rejected')
+    .slice(0, 5);
+  const rejectedCandidates = scored
+    .filter((candidate) => !candidate.amountMatches || candidate.confidence === 'rejected')
+    .slice(0, 5);
+
+  return {
+    best: candidates[0] ?? null,
+    candidates,
+    rejectedCandidates,
+    conflictCandidate: null,
+  };
+}
+
+function matchSamplesToOneC(samples: ReturnSample[], documents: OneCSalesRealizationDocument[]) {
+  const assignedRealizationRefs = new Set<string>();
+
+  return samples.map((sample) => {
+    const match = matchOneCRealizations(matchingTargetForSample(sample), documents);
+    const realizationRef = match.best?.document.ref;
+
+    if (realizationRef && assignedRealizationRefs.has(realizationRef)) {
+      return {
+        ...match,
+        best: null,
+        candidates: [],
+        conflictCandidate: match.best,
+      };
+    }
+
+    if (realizationRef) assignedRealizationRefs.add(realizationRef);
+    return match;
+  });
+}
+
+function noMatchMessage(match: OneCMatch) {
+  if (match.conflictCandidate) return 'Эта реализация уже подходит к другому чеку.';
+  if (match.rejectedCandidates.some((candidate) => !candidate.amountMatches)) {
+    return 'Подходящая реализация не найдена: сумма не совпала.';
+  }
+  return 'Подходящая реализация не найдена в полученном read-only списке.';
 }
 
 function matchingTargetForSample(sample: ReturnSample) {
@@ -396,8 +447,9 @@ function findingStatus(hasDirect: boolean, hasCandidates: boolean, checked = tru
   return { text: 'не найдено', className: 'bg-slate-100 text-slate-700' };
 }
 
-function mainCheckStatus(match: { best: OneCCandidate | null }, oneCAvailable: boolean) {
+function mainCheckStatus(match: OneCMatch, oneCAvailable: boolean) {
   if (!oneCAvailable) return { text: '1С недоступна', className: 'bg-red-100 text-red-700' };
+  if (match.conflictCandidate) return { text: 'Конфликт с другим чеком', className: 'bg-amber-100 text-amber-800' };
   if (!match.best) return { text: 'Не найдено в 1С', className: 'bg-amber-100 text-amber-800' };
   if (match.best.confidence === 'probable') return { text: 'Совпало с 1С', className: 'bg-green-100 text-green-800' };
   return { text: 'Есть кандидат в 1С', className: 'bg-blue-100 text-blue-800' };
@@ -936,12 +988,14 @@ function OneCFindingsOverview({
   linkedDocuments,
   oneCAvailable,
 }: {
-  match: ReturnType<typeof matchOneCRealizations>;
+  match: OneCMatch;
   linkedDocuments?: OneCSalesRealizationLinksResult;
   oneCAvailable: boolean;
 }) {
   const links = linkedDocuments?.links;
-  const realizationStatus = findingStatus(Boolean(match.best), Boolean(match.candidates.length), oneCAvailable);
+  const realizationStatus = match.conflictCandidate
+    ? { text: 'конфликт', className: 'bg-amber-100 text-amber-800' }
+    : findingStatus(Boolean(match.best), false, oneCAvailable);
   const unchecked = !oneCAvailable || !links;
 
   return (
@@ -964,14 +1018,8 @@ function OneCFindingsOverview({
         <FindingCard title='Реализация 1С' status={realizationStatus}>
           {match.best ? (
             <OneCRealizationMini candidate={match.best} />
-          ) : match.candidates.length ? (
-            <div className='grid gap-2'>
-              {match.candidates.slice(0, 2).map((candidate) => (
-                <OneCRealizationMini key={candidate.document.ref || `${candidate.document.number}-${candidate.score}`} candidate={candidate} />
-              ))}
-            </div>
           ) : (
-            <p className='text-sm font-semibold text-slate-500'>Подходящая реализация не найдена.</p>
+            <p className='text-sm font-semibold text-slate-500'>{noMatchMessage(match)}</p>
           )}
         </FindingCard>
 
@@ -1015,15 +1063,12 @@ function OneCFindingsOverview({
 }
 
 function OneCMatchBlock({
-  ofdCandidate,
-  documents,
+  match,
   realizationLinksByRef,
 }: {
-  ofdCandidate?: Candidate | ReturnSample;
-  documents: OneCSalesRealizationDocument[];
+  match: OneCMatch;
   realizationLinksByRef: Map<string, OneCSalesRealizationLinksResult>;
 }) {
-  const match = matchOneCRealizations(ofdCandidate, documents);
   const alternatives = match.candidates.filter((candidate) => candidate !== match.best);
   const document = match.best?.document;
   const manager = document ? document.managerName || document.additionalManagerName || document.responsibleName || 'нет данных' : 'нет данных';
@@ -1090,7 +1135,7 @@ function OneCMatchBlock({
         </div>
       ) : (
         <div className='rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900'>
-          Возможная реализация 1С не найдена в полученном read-only списке. Требуется ручная проверка.
+          {noMatchMessage(match)} Требуется ручная проверка.
         </div>
       )}
       <OneCLinkedDocumentsBlock result={linkedDocuments} />
@@ -1106,6 +1151,21 @@ function OneCMatchBlock({
               ))}
             </div>
           ) : null}
+          {match.conflictCandidate ? (
+            <div className='grid gap-2'>
+              <p className='text-sm font-extrabold text-slate-950'>Конфликтующая реализация</p>
+              <p className='text-sm font-semibold text-amber-800'>Эта реализация уже показана основным кандидатом для другого OFD-чека в текущем списке.</p>
+              <OneCCandidateCard candidate={match.conflictCandidate} rejected />
+            </div>
+          ) : null}
+          {match.rejectedCandidates.length ? (
+            <div className='grid gap-3'>
+              <p className='text-sm font-extrabold text-slate-950'>Отклонённые 1С-кандидаты</p>
+              {match.rejectedCandidates.map((candidate) => (
+                <OneCCandidateCard key={`rejected-${candidate.document.ref || candidate.document.number}-${candidate.score}`} candidate={candidate} rejected />
+              ))}
+            </div>
+          ) : null}
         </div>
       </details>
     </div>
@@ -1114,19 +1174,17 @@ function OneCMatchBlock({
 
 function ReturnCard({
   sample,
-  oneCDocuments,
+  oneCMatch,
   realizationLinksByRef,
   oneCAvailable,
 }: {
   sample: ReturnSample;
-  oneCDocuments: OneCSalesRealizationDocument[];
+  oneCMatch: OneCMatch;
   realizationLinksByRef: Map<string, OneCSalesRealizationLinksResult>;
   oneCAvailable: boolean;
 }) {
   const bestCandidate = sample.possibleOriginalCandidates?.[0];
   const isReturn = sample.operationType === 2;
-  const matchingTarget = isReturn ? bestCandidate ?? sample : sample;
-  const oneCMatch = matchOneCRealizations(matchingTarget, oneCDocuments);
   const oneCDocument = oneCMatch.best?.document;
   const manager = oneCDocument ? oneCDocument.managerName || oneCDocument.additionalManagerName || oneCDocument.responsibleName || 'нет данных' : 'нет данных';
   const counterparty = oneCDocument ? oneCDocument.counterpartyName || oneCDocument.partnerName || 'нет данных' : 'нет данных';
@@ -1139,11 +1197,12 @@ function ReturnCard({
   const hasBankReceipts = Boolean(links?.bankReceipts.direct.length);
   const hasBankReceiptCandidates = Boolean(links?.bankReceipts.candidates.length);
   const status = mainCheckStatus(oneCMatch, oneCAvailable);
+  const matchPhrases = oneCMatch.best ? simpleMatchPhrases(oneCMatch.best) : [noMatchMessage(oneCMatch)];
   const explanation = !oneCAvailable
     ? 'Сейчас 1С не подключена, поэтому документы по этому чеку не проверены.'
     : oneCMatch.best
       ? 'Портал нашёл подходящую реализацию 1С и подтянул менеджера, контрагента и товары. Проверьте связанные документы ниже.'
-      : 'Портал не нашёл подходящую реализацию 1С в загруженном списке. Оставьте чек на ручной проверке.';
+      : `${noMatchMessage(oneCMatch)} Оставьте чек на ручной проверке.`;
 
   return (
     <Card className='p-0'>
@@ -1205,7 +1264,7 @@ function ReturnCard({
             </div>
           </div>
           <div className='mt-2 flex flex-wrap gap-2'>
-            {simpleMatchPhrases(oneCMatch.best).map((phrase) => (
+            {matchPhrases.map((phrase) => (
               <Badge key={phrase} className={phrase.includes('не совпал') || phrase.includes('не найдена') || phrase.includes('сильно') ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>
                 {phrase}
               </Badge>
@@ -1284,7 +1343,7 @@ function ReturnCard({
         <details className='rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm'>
           <summary className='cursor-pointer font-extrabold text-slate-950'>Технические детали</summary>
           <div className='mt-4 grid gap-4'>
-            <OneCMatchBlock ofdCandidate={matchingTarget} documents={oneCDocuments} realizationLinksByRef={realizationLinksByRef} />
+            <OneCMatchBlock match={oneCMatch} realizationLinksByRef={realizationLinksByRef} />
             <div className='grid gap-3 text-sm font-semibold text-slate-700 md:grid-cols-5'>
               <div>
                 <p className='text-slate-500'>ФД</p>
@@ -1414,14 +1473,12 @@ export default async function AdminOfdPage({
   const samples = receiptDiagnostics?.samples ?? diagnostics?.samples ?? [];
   const oneCAvailable = salesRealizations.ok;
   const oneCDocuments = salesRealizations.ok ? salesRealizations.documents : [];
+  const sampleMatches = matchSamplesToOneC(samples, oneCDocuments);
   const matchedRealizationRefs = Array.from(new Set(samples
-    .map((sample) => {
-      return matchOneCRealizations(matchingTargetForSample(sample), oneCDocuments).best?.document.ref;
-    })
+    .map((_, index) => sampleMatches[index]?.best?.document.ref)
     .filter((ref): ref is string => Boolean(ref))));
   const realizationLinksResults = await Promise.all(matchedRealizationRefs.map((ref) => safeGetSalesRealizationLinks(ref)));
   const realizationLinksByRef = new Map(realizationLinksResults.map((result) => [result.realizationRef, result]));
-  const sampleMatches = samples.map((sample) => matchOneCRealizations(matchingTargetForSample(sample), oneCDocuments));
   const oneCMatchesCount = sampleMatches.filter((match) => Boolean(match.best)).length;
   const manualReviewCount = samples.length;
   const notFoundCount = samples.length - oneCMatchesCount;
@@ -1590,11 +1647,11 @@ export default async function AdminOfdPage({
 
       <section className='grid gap-5'>
         {samples.length ? (
-          samples.map((sample) => (
+          samples.map((sample, index) => (
             <ReturnCard
               key={`${sample.fiscalDocumentNumber}-${sample.fiscalSign}`}
               sample={sample}
-              oneCDocuments={oneCDocuments}
+              oneCMatch={sampleMatches[index] ?? matchOneCRealizations(undefined, oneCDocuments)}
               realizationLinksByRef={realizationLinksByRef}
               oneCAvailable={oneCAvailable}
             />
