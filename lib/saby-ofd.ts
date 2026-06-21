@@ -67,6 +67,28 @@ type FullReceiptProbeResult = {
   wrapperKey: string;
 };
 
+type ReturnCorrectionChain = {
+  status: 'complete' | 'original_only' | 'new_sale_only' | 'not_found';
+  source: 'fallback_signals';
+  warning: string;
+  originalReceipt: ReturnCandidate | null;
+  newSaleReceipt: ReturnCandidate | null;
+  reasons: string[];
+};
+
+type ReturnCandidate = {
+  fiscalDocumentNumber: string;
+  fiscalDriveNumber: string;
+  fiscalSign: string;
+  date: string;
+  totalSum: number;
+  itemsPreview: ReturnType<typeof itemsPreview>;
+  matchScore: number;
+  timeDeltaSeconds: number;
+  confidence: 'probable' | 'weaker' | 'needs_review';
+  reasons: string[];
+};
+
 type AuthResult = {
   step: ProbeStep;
   accessToken: string;
@@ -689,6 +711,56 @@ function itemSignature(receipt: JsonRecord) {
     .join(';');
 }
 
+function sameUtcDay(left: number, right: number) {
+  if (!left || !right) return false;
+  const leftDate = new Date(left);
+  const rightDate = new Date(right);
+  return leftDate.getUTCFullYear() === rightDate.getUTCFullYear()
+    && leftDate.getUTCMonth() === rightDate.getUTCMonth()
+    && leftDate.getUTCDate() === rightDate.getUTCDate();
+}
+
+function amountMatches(left: number, right: number) {
+  return Math.abs(left - right) <= 100;
+}
+
+function returnCandidate(returnReceipt: JsonRecord, receipt: JsonRecord, mode: 'original' | 'new_sale'): ReturnCandidate {
+  const returnFn = readStringField(returnReceipt, ['fiscalDriveNumber']);
+  const returnTotal = readAmount(returnReceipt.totalSum);
+  const returnDate = receiptTimestamp(returnReceipt);
+  const returnItems = itemSignature(returnReceipt);
+  const candidateFn = readStringField(receipt, ['fiscalDriveNumber']);
+  const candidateTotal = readAmount(receipt.totalSum);
+  const candidateDate = receiptTimestamp(receipt);
+  const candidateItems = itemSignature(receipt);
+  const timeDeltaSeconds = returnDate > 0 && candidateDate > 0 ? Math.round((candidateDate - returnDate) / 1000) : 0;
+  const sameFn = Boolean(candidateFn && candidateFn === returnFn);
+  const sameTotal = amountMatches(candidateTotal, returnTotal);
+  const sameItems = Boolean(candidateItems && candidateItems === returnItems);
+  const reasons = [
+    sameFn ? 'same_fn' : 'fn_differs_weaker_match',
+    sameTotal ? 'same_total_sum' : '',
+    sameItems ? 'same_items' : '',
+    mode === 'original' && candidateDate > 0 && returnDate > 0 && candidateDate < returnDate ? 'sale_before_return' : '',
+    mode === 'new_sale' && candidateDate > 0 && returnDate > 0 && candidateDate > returnDate ? 'sale_after_return' : '',
+    mode === 'new_sale' && sameUtcDay(candidateDate, returnDate) ? 'same_day_as_return' : '',
+  ].filter(Boolean);
+  const matchScore = reasons.filter((reason) => reason !== 'fn_differs_weaker_match').length;
+
+  return {
+    fiscalDocumentNumber: readStringField(receipt, ['fiscalDocumentNumber']),
+    fiscalDriveNumber: candidateFn,
+    fiscalSign: readStringField(receipt, ['fiscalSign']),
+    date: readStringField(receipt, ['receiveDateTime', 'dateTime']),
+    totalSum: candidateTotal,
+    itemsPreview: itemsPreview(receipt),
+    matchScore,
+    timeDeltaSeconds,
+    confidence: matchScore >= 4 && sameFn ? 'probable' : matchScore >= 3 ? 'weaker' : 'needs_review',
+    reasons,
+  };
+}
+
 function itemsPreview(receipt: JsonRecord) {
   const items = Array.isArray(receipt.items) ? receipt.items.filter(isRecord) : [];
   return items.slice(0, 12).map((item, index) => ({
@@ -748,6 +820,60 @@ function rejectedOriginalCandidates(returnReceipt: JsonRecord, receipts: FullRec
     .slice(0, 5);
 }
 
+function receiptKey(receipt: JsonRecord) {
+  return [
+    readStringField(receipt, ['fiscalDriveNumber']),
+    readStringField(receipt, ['fiscalDocumentNumber']),
+    readStringField(receipt, ['fiscalSign']),
+  ].join(':');
+}
+
+function correctionChainForReturn(returnReceipt: JsonRecord, candidateReceipts: FullReceiptProbeResult[]): ReturnCorrectionChain {
+  const returnDate = receiptTimestamp(returnReceipt);
+  const saleReceipts = candidateReceipts
+    .map(({ receipt }) => receipt)
+    .filter((receipt) => readAmount(receipt.operationType) === 1 && receiptKey(receipt) !== receiptKey(returnReceipt));
+
+  const originalCandidates = saleReceipts
+    .filter((receipt) => receiptTimestamp(receipt) > 0 && receiptTimestamp(receipt) < returnDate)
+    .map((receipt) => returnCandidate(returnReceipt, receipt, 'original'))
+    .filter((candidate) => candidate.reasons.includes('same_total_sum') && candidate.reasons.includes('same_items') && candidate.reasons.includes('sale_before_return'))
+    .sort((a, b) => b.matchScore - a.matchScore || Math.abs(a.timeDeltaSeconds) - Math.abs(b.timeDeltaSeconds));
+
+  const newSaleCandidates = saleReceipts
+    .filter((receipt) => {
+      const date = receiptTimestamp(receipt);
+      return date > returnDate && sameUtcDay(date, returnDate);
+    })
+    .map((receipt) => returnCandidate(returnReceipt, receipt, 'new_sale'))
+    .filter((candidate) => candidate.reasons.includes('same_total_sum') && candidate.reasons.includes('same_items') && candidate.reasons.includes('sale_after_return'))
+    .sort((a, b) => b.matchScore - a.matchScore || Math.abs(a.timeDeltaSeconds) - Math.abs(b.timeDeltaSeconds));
+
+  const originalReceipt = originalCandidates[0] ?? null;
+  const newSaleReceipt = newSaleCandidates[0] ?? null;
+  const status = originalReceipt && newSaleReceipt
+    ? 'complete'
+    : originalReceipt
+      ? 'original_only'
+      : newSaleReceipt
+        ? 'new_sale_only'
+        : 'not_found';
+  const reasons = [
+    originalReceipt ? 'original_sale_found_by_fallback' : '',
+    newSaleReceipt ? 'new_sale_found_by_fallback' : '',
+    originalReceipt?.confidence === 'weaker' || newSaleReceipt?.confidence === 'weaker' ? 'fn_differs_or_weak_match' : '',
+  ].filter(Boolean);
+
+  return {
+    status,
+    source: 'fallback_signals',
+    warning: 'Найдено по признакам, не по прямой ссылке SABY.',
+    originalReceipt,
+    newSaleReceipt,
+    reasons,
+  };
+}
+
 function originalCandidate(_returnReceipt: JsonRecord, receipt: JsonRecord, returnFn: string, returnTotal: number, returnDate: number, returnItems: string) {
   const candidateFn = readStringField(receipt, ['fiscalDriveNumber']);
   const candidateTotal = readAmount(receipt.totalSum);
@@ -775,12 +901,13 @@ function originalCandidate(_returnReceipt: JsonRecord, receipt: JsonRecord, retu
   };
 }
 
-function returnDiagnostics(receipts: FullReceiptProbeResult[]) {
+function returnDiagnostics(receipts: FullReceiptProbeResult[], correctionChains = new Map<string, ReturnCorrectionChain>(), ofdIncomplete = false) {
   const returns = receipts.filter(({ receipt }) => isReturnReceipt(receipt));
   const samples = returns.slice(0, 5).map(({ receipt }) => {
     const directLinks = findDirectLinkFields(receipt);
     const possibleCandidates = possibleOriginalCandidates(receipt, receipts);
     const rejectedCandidates = rejectedOriginalCandidates(receipt, receipts);
+    const correctionChain = correctionChains.get(receiptKey(receipt)) ?? correctionChainForReturn(receipt, receipts);
     return {
       fiscalDocumentNumber: readStringField(receipt, ['fiscalDocumentNumber']),
       fiscalDriveNumber: readStringField(receipt, ['fiscalDriveNumber']),
@@ -793,9 +920,17 @@ function returnDiagnostics(receipts: FullReceiptProbeResult[]) {
       directLinks,
       possibleOriginalCandidates: possibleCandidates,
       rejectedCandidates,
+      correctionChain,
+      ofdIncomplete,
       matchingStatus:
         directLinks.length > 0
           ? 'direct_link_needs_review'
+          : correctionChain.status === 'complete'
+            ? 'correction_chain_complete_needs_review'
+            : correctionChain.status === 'original_only'
+              ? 'return_original_found_new_sale_missing'
+              : correctionChain.status === 'new_sale_only'
+                ? 'return_new_sale_found_original_missing'
           : possibleCandidates.length === 1
             ? 'single_probable_candidate_needs_review'
             : possibleCandidates.length > 1
@@ -814,6 +949,7 @@ function returnDiagnostics(receipts: FullReceiptProbeResult[]) {
       return acc;
     }, {}),
     sampleReturnKeys: samples[0]?.sampleReturnKeys ?? [],
+    ofdIncomplete,
     possibleOriginalCandidates: samples.flatMap((sample) =>
       sample.possibleOriginalCandidates.map((candidate) => ({
         returnFiscalDocumentNumber: sample.fiscalDocumentNumber,
@@ -840,7 +976,7 @@ function returnDiagnostics(receipts: FullReceiptProbeResult[]) {
   };
 }
 
-function receiptDiagnostics(receipts: FullReceiptProbeResult[]) {
+function receiptDiagnostics(receipts: FullReceiptProbeResult[], correctionChains = new Map<string, ReturnCorrectionChain>(), ofdIncomplete = false) {
   const sales = receipts.filter(({ receipt }) => readAmount(receipt.operationType) === 1);
   const returns = receipts.filter(({ receipt }) => isReturnReceipt(receipt));
   const selected = [...returns.slice(0, 5), ...sales.slice(0, 10)].slice(0, 12);
@@ -849,6 +985,7 @@ function receiptDiagnostics(receipts: FullReceiptProbeResult[]) {
     const directLinks = isReturnReceipt(receipt) ? findDirectLinkFields(receipt) : [];
     const possibleCandidates = isReturnReceipt(receipt) ? possibleOriginalCandidates(receipt, receipts) : [];
     const rejectedCandidates = isReturnReceipt(receipt) ? rejectedOriginalCandidates(receipt, receipts) : [];
+    const correctionChain = isReturnReceipt(receipt) ? correctionChains.get(receiptKey(receipt)) ?? correctionChainForReturn(receipt, receipts) : null;
 
     return {
       fiscalDocumentNumber: summary.fiscalDocumentNumber,
@@ -869,9 +1006,17 @@ function receiptDiagnostics(receipts: FullReceiptProbeResult[]) {
       directLinks,
       possibleOriginalCandidates: possibleCandidates,
       rejectedCandidates,
+      correctionChain,
+      ofdIncomplete,
       matchingStatus: isReturnReceipt(receipt)
         ? directLinks.length > 0
           ? 'direct_link_needs_review'
+          : correctionChain?.status === 'complete'
+            ? 'correction_chain_complete_needs_review'
+            : correctionChain?.status === 'original_only'
+              ? 'return_original_found_new_sale_missing'
+              : correctionChain?.status === 'new_sale_only'
+                ? 'return_new_sale_found_original_missing'
           : possibleCandidates.length === 1
             ? 'single_probable_candidate_needs_review'
             : possibleCandidates.length > 1
@@ -907,6 +1052,115 @@ function receiptAnalysisAggregate(receipts: AnalyzedReceipt[]) {
     rawPaymentTypes: uniqueValues(receipts.flatMap((receipt) => receipt.rawPaymentTypes)),
     normalizedPaymentTypes: uniqueValues(receipts.flatMap((receipt) => receipt.normalizedPaymentTypes)),
     sampleIssues: withIssues.slice(0, 10),
+  };
+}
+
+function addDaysToDate(date: Date, days: number) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function isCandidateForReturnCorrection(document: JsonRecord, returns: FullReceiptProbeResult[]) {
+  if (readAmount(document.operationType) !== 1) return false;
+  const documentTotal = readAmount(document.totalSum);
+  const documentDate = receiptTimestamp(document);
+  if (!documentTotal || !documentDate) return false;
+
+  return returns.some(({ receipt }) => {
+    const returnTotal = readAmount(receipt.totalSum);
+    const returnDate = receiptTimestamp(receipt);
+    if (!amountMatches(documentTotal, returnTotal)) return false;
+    return documentDate < returnDate || (documentDate > returnDate && sameUtcDay(documentDate, returnDate));
+  });
+}
+
+async function fullReceiptProbeResult(
+  config: SabyOfdConfig,
+  auth: { sid: string; accessToken: string },
+  organizationInn: string,
+  kktRegNumber: string,
+  fn: string,
+  selectedDocument: SelectedFiscalDocument
+): Promise<FullReceiptProbeResult | null> {
+  for (const [index, path] of fullDocumentPaths(organizationInn, kktRegNumber, fn, selectedDocument.document).entries()) {
+    const result = await restProbe(config, auth, path, index === 0 ? 'ofd.document_full.lookback' : 'ofd.document_full_by_requisites.lookback');
+    if (result.step.status !== 'ok') continue;
+
+    const receipt = unwrapFiscalDocument(result.data);
+    if (!receipt) continue;
+
+    const analysis = analyzeReceiptForProbe(receipt);
+    return {
+      receipt,
+      analysis,
+      summary: analyzedReceiptSummary(receipt, analysis),
+      wrapperKey: selectedDocument.wrapperKey,
+    };
+  }
+
+  return null;
+}
+
+async function returnCorrectionLookback(
+  config: SabyOfdConfig,
+  auth: { sid: string; accessToken: string },
+  organizationInn: string,
+  kktRegNumber: string,
+  fn: string,
+  range: DateWindow,
+  returns: FullReceiptProbeResult[],
+  queryLimit: number
+) {
+  const lookbackFrom = addDaysToDate(range.dateFrom, -90);
+  const windows = dateWindows(lookbackFrom, range.dateTo);
+  const selected = new Map<string, SelectedFiscalDocument>();
+  let listedReceipts = 0;
+  let fullDocumentsChecked = 0;
+  let capped = false;
+  const maxFullDocuments = 200;
+
+  for (const window of windows) {
+    const documentsProbe = await restProbe(config, auth, documentListPath(organizationInn, kktRegNumber, fn, window, queryLimit), 'ofd.document_list.lookback');
+    const receiptDocs = documentsProbe.step.status === 'ok' ? receiptDocuments(documentsProbe.data) : [];
+    listedReceipts += receiptDocs.length;
+    if (receiptDocs.length >= queryLimit) capped = true;
+
+    for (const receipt of receiptDocs) {
+      if (!isCandidateForReturnCorrection(receipt.document, returns)) continue;
+      const key = receiptKey(receipt.document);
+      if (key) selected.set(key, receipt);
+    }
+  }
+
+  const fullCandidates: FullReceiptProbeResult[] = [];
+  for (const selectedDocument of selected.values()) {
+    if (fullCandidates.length >= maxFullDocuments) {
+      capped = true;
+      break;
+    }
+    const full = await fullReceiptProbeResult(config, auth, organizationInn, kktRegNumber, fn, selectedDocument);
+    if (!full) continue;
+    fullDocumentsChecked += 1;
+    fullCandidates.push(full);
+  }
+
+  const combined = [...fullCandidates, ...returns];
+  const chains = new Map<string, ReturnCorrectionChain>();
+  for (const { receipt } of returns) {
+    chains.set(receiptKey(receipt), correctionChainForReturn(receipt, combined));
+  }
+
+  return {
+    chains,
+    stats: {
+      requestedLookbackDays: 90,
+      dateFrom: formatSabyDate(lookbackFrom),
+      dateTo: formatSabyDate(range.dateTo),
+      windowsChecked: windows.length,
+      listedReceipts,
+      candidateReceipts: selected.size,
+      fullDocumentsChecked,
+      capped,
+    },
   };
 }
 
@@ -1015,6 +1269,8 @@ export async function runSabyOfdProbe(options: SabyOfdProbeOptions = {}) {
   const selectedReceipts: SelectedFiscalDocument[] = [];
   const queryLimit = Math.min(1000, Math.max(100, requestedLimit * 5));
   let documentListFailures = 0;
+  let selectedReceiptsLimitReached = false;
+  let documentListCapped = false;
 
   for (const window of windows) {
     const documentsProbe = await restProbe(config, auth, documentListPath(options.organizationInn, kktRegNumber, fn, window, queryLimit), 'ofd.document_list');
@@ -1033,9 +1289,14 @@ export async function runSabyOfdProbe(options: SabyOfdProbeOptions = {}) {
       continue;
     }
 
-    for (const receipt of receiptDocuments(documentsProbe.data)) {
+    const receiptsInWindow = receiptDocuments(documentsProbe.data);
+    if (receiptsInWindow.length >= queryLimit) documentListCapped = true;
+    for (const receipt of receiptsInWindow) {
       selectedReceipts.push(receipt);
-      if (selectedReceipts.length >= requestedLimit) break;
+      if (selectedReceipts.length >= requestedLimit) {
+        selectedReceiptsLimitReached = true;
+        break;
+      }
     }
     if (selectedReceipts.length >= requestedLimit) break;
   }
@@ -1116,12 +1377,20 @@ export async function runSabyOfdProbe(options: SabyOfdProbeOptions = {}) {
     },
   });
 
-  const returns = returnDiagnostics(fullReceipts);
-  const receiptMatches = receiptDiagnostics(fullReceipts);
+  const returnFullReceipts = fullReceipts.filter(({ receipt }) => isReturnReceipt(receipt));
+  const correctionLookback = returnFullReceipts.length
+    ? await returnCorrectionLookback(config, auth, options.organizationInn, kktRegNumber, fn, range, returnFullReceipts, queryLimit)
+    : { chains: new Map<string, ReturnCorrectionChain>(), stats: null };
+  const ofdIncomplete = selectedReceiptsLimitReached || documentListCapped || Boolean(correctionLookback.stats?.capped);
+  const returns = returnDiagnostics(fullReceipts, correctionLookback.chains, ofdIncomplete);
+  const receiptMatches = receiptDiagnostics(fullReceipts, correctionLookback.chains, ofdIncomplete);
   steps.push({
     name: 'ofd.return_diagnostics',
     status: 'ok',
-    sample: returns,
+    sample: {
+      ...returns,
+      correctionLookback: correctionLookback.stats,
+    },
   });
   steps.push({
     name: 'ofd.receipt_match_diagnostics',
@@ -1137,6 +1406,8 @@ export async function runSabyOfdProbe(options: SabyOfdProbeOptions = {}) {
     analysisSummary: receiptAnalysisAggregate(analyzedReceipts),
     returnDiagnostics: returns,
     receiptDiagnostics: receiptMatches,
+    correctionLookback: correctionLookback.stats,
+    ofdIncomplete,
     steps,
     errors,
   };

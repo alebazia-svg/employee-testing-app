@@ -45,6 +45,15 @@ type Candidate = {
   reasons?: string[];
 };
 
+type OfdCorrectionChain = {
+  status?: 'complete' | 'original_only' | 'new_sale_only' | 'not_found';
+  source?: string;
+  warning?: string;
+  originalReceipt?: Candidate | null;
+  newSaleReceipt?: Candidate | null;
+  reasons?: string[];
+};
+
 type OneCCandidate = {
   document: OneCSalesRealizationDocument;
   score: number;
@@ -108,6 +117,8 @@ type ReturnSample = {
   directLinks?: Array<{ path: string; value: unknown }>;
   possibleOriginalCandidates?: Candidate[];
   rejectedCandidates?: Candidate[];
+  correctionChain?: OfdCorrectionChain | null;
+  ofdIncomplete?: boolean;
   matchingStatus?: string;
 };
 
@@ -128,6 +139,8 @@ type OfdProbeResult = {
     samples?: ReturnSample[];
   };
   errors?: string[];
+  correctionLookback?: unknown;
+  ofdIncomplete?: boolean;
 };
 
 const DEFAULT_INN = '071306665560';
@@ -316,6 +329,13 @@ function reasonLabel(reason: string) {
     date_far: 'date far',
     products_overlap: 'products matched',
     no_product_overlap: 'products differ',
+    sale_before_return: 'приход раньше возврата',
+    sale_after_return: 'приход после возврата',
+    same_day_as_return: 'тот же день, что возврат',
+    original_sale_found_by_fallback: 'исходный чек найден по признакам',
+    new_sale_found_by_fallback: 'новый приход найден по признакам',
+    fn_differs_or_weak_match: 'ФН отличается или совпадение слабее',
+    fn_differs_weaker_match: 'ФН отличается, нужна проверка',
   };
   return labels[reason] ?? reason;
 }
@@ -552,6 +572,50 @@ function classifyOfdBusinessEvent({
         whatToCheck: ['Проверить возвратный документ 1С.', 'Убедиться, что возврат относится к этому товару и сумме.'],
         managerName,
         evidence: [...evidence, 'Связанные документы 1С: найден возврат или корректировка.'],
+      };
+    }
+
+    if (sample.correctionChain?.status === 'complete' && !hasDirectLinkedReturnOrCorrection(linkedDocuments)) {
+      return {
+        eventType: 'receipt_correction',
+        severity: 'warning',
+        businessTitle: 'Похоже на исправление ошибочного чека',
+        businessMessage: 'Найдена цепочка OFD: исходный приход, возврат и новый приход. Связанный возврат продажи в 1С не найден.',
+        whatToCheck: [
+          'Проверить, что это именно исправление чека, а не возврат товара.',
+          'Сверить исходный чек, возврат и новый приход по сумме и товарам.',
+          'Найдено по признакам, не по прямой ссылке SABY.',
+        ],
+        managerName,
+        evidence: [
+          ...evidence,
+          sample.correctionChain.warning || 'Найдено по признакам, не по прямой ссылке SABY.',
+          sample.ofdIncomplete ? 'Цепочка может быть неполной: OFD загружен не полностью.' : 'OFD lookback проверен для возврата.',
+        ],
+      };
+    }
+
+    if (sample.correctionChain?.status === 'original_only' && !hasDirectLinkedReturnOrCorrection(linkedDocuments)) {
+      return {
+        eventType: 'needs_review',
+        severity: 'warning',
+        businessTitle: 'Возврат найден, новый правильный чек не найден',
+        businessMessage: 'В lookback найден исходный приход, но новый приход после возврата не найден в загруженной OFD-выборке.',
+        whatToCheck: ['Проверить, был ли пробит новый правильный чек в тот же день.', 'Проверить, не обрезана ли OFD-выборка по limit.'],
+        managerName,
+        evidence: [...evidence, sample.correctionChain.warning || 'Найдено по признакам, не по прямой ссылке SABY.'],
+      };
+    }
+
+    if (sample.correctionChain?.status === 'new_sale_only' && !hasDirectLinkedReturnOrCorrection(linkedDocuments)) {
+      return {
+        eventType: 'needs_review',
+        severity: 'warning',
+        businessTitle: 'Найден новый приход после возврата',
+        businessMessage: 'Новый правильный приход найден, но исходный чек не найден в 90-дневном lookback.',
+        whatToCheck: ['Проверить исходный чек вручную по ФН/ФД/ФПД.', 'Если исходный чек старше 90 дней, расширить lookback.'],
+        managerName,
+        evidence: [...evidence, sample.correctionChain.warning || 'Найдено по признакам, не по прямой ссылке SABY.'],
       };
     }
 
@@ -1014,6 +1078,65 @@ function ActionPlanBlock({ hasMatch }: { hasMatch: boolean }) {
           ? 'Проверьте реализацию, оплату и товары. Если всё совпадает, позже этот кейс можно будет подтвердить прямо здесь.'
           : 'Сначала нужно найти подходящую реализацию или проверить, почему 1С не дала совпадение.'}
       </p>
+    </div>
+  );
+}
+
+function CorrectionChainBlock({ sample }: { sample: ReturnSample }) {
+  const chain = sample.correctionChain;
+  if (!chain || chain.status === 'not_found') return null;
+
+  return (
+    <div className='rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Badge className={chain.status === 'complete' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}>
+          {chain.status === 'complete'
+            ? 'цепочка найдена'
+            : chain.status === 'original_only'
+              ? 'найден исходный чек'
+              : 'найден новый приход'}
+        </Badge>
+        <p className='font-extrabold text-amber-950'>Цепочка исправления OFD</p>
+      </div>
+      <p className='mt-2 font-semibold text-amber-900'>{chain.warning || 'Найдено по признакам, не по прямой ссылке SABY.'}</p>
+      {sample.ofdIncomplete ? (
+        <p className='mt-1 font-semibold text-red-700'>Цепочка может быть неполной: OFD загружен не полностью.</p>
+      ) : null}
+
+      <div className='mt-3 grid gap-3 lg:grid-cols-3'>
+        <div className='rounded-lg border border-amber-200 bg-white p-3'>
+          <p className='font-extrabold text-slate-950'>Исходный чек</p>
+          {chain.originalReceipt ? (
+            <CandidateCard candidate={chain.originalReceipt} />
+          ) : (
+            <p className='mt-2 font-semibold text-slate-600'>Исходный чек не найден в lookback.</p>
+          )}
+        </div>
+        <div className='rounded-lg border border-amber-200 bg-white p-3'>
+          <p className='font-extrabold text-slate-950'>Возврат</p>
+          <div className='mt-3 grid gap-2 font-semibold text-slate-700'>
+            <p>ФД: <span className='text-slate-950'>{sample.fiscalDocumentNumber || 'нет данных'}</span></p>
+            <p>Дата: <span className='text-slate-950'>{formatDate(sample.date)}</span></p>
+            <p>Сумма: <span className='text-slate-950'>{formatOfdMoney(sample.totalSum)}</span></p>
+          </div>
+        </div>
+        <div className='rounded-lg border border-amber-200 bg-white p-3'>
+          <p className='font-extrabold text-slate-950'>Новый правильный приход</p>
+          {chain.newSaleReceipt ? (
+            <CandidateCard candidate={chain.newSaleReceipt} />
+          ) : (
+            <p className='mt-2 font-semibold text-slate-600'>Новый правильный чек не найден в тот же день после возврата.</p>
+          )}
+        </div>
+      </div>
+
+      {chain.reasons?.length ? (
+        <div className='mt-3 flex flex-wrap gap-2'>
+          {chain.reasons.map((reason) => (
+            <Badge key={reason} className='bg-white text-amber-900'>{reasonLabel(reason)}</Badge>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1631,6 +1754,8 @@ function ReturnCard({
           <OfdItemsSummary items={sample.itemsPreview} />
         </div>
 
+        <CorrectionChainBlock sample={sample} />
+
         {isReturn && bestCandidate ? (
           <div className='rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-900'>
             <div className='flex items-center gap-2 font-extrabold text-green-950'>
@@ -1800,6 +1925,9 @@ function EventRegistryRow({
           <div>
             <p className='font-extrabold text-slate-950'>{classification.businessTitle}</p>
             <p className='mt-1 line-clamp-2 text-xs font-semibold text-slate-500'>{classification.whatToCheck[0] || classification.businessMessage}</p>
+            {sample.ofdIncomplete ? (
+              <p className='mt-1 text-xs font-extrabold text-red-700'>Цепочка может быть неполной: OFD загружен не полностью</p>
+            ) : null}
           </div>
           <div className='flex flex-wrap gap-1'>
             {linkedSummary.map((item) => (
