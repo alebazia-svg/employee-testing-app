@@ -145,6 +145,8 @@ type OfdProbeResult = {
 
 const DEFAULT_INN = '071306665560';
 const DEFAULT_LIMIT = 50;
+const CREDIT_CUSTOMER_REF = '537e501e-4640-11ed-8f49-0025901e48ee';
+const RETAIL_CUSTOMER_REF = '116d9993-314c-11ed-87c2-0025901e48ee';
 
 type PeriodPreset = {
   id: string;
@@ -512,6 +514,25 @@ function managerFromCandidate(candidate?: OneCCandidate | null) {
   return document?.managerName || document?.additionalManagerName || document?.responsibleName || undefined;
 }
 
+function mergeOneCDocuments(results: OneCSalesRealizationsResult[]) {
+  const documents = new Map<string, OneCSalesRealizationDocument>();
+  for (const result of results) {
+    if (!result.ok) continue;
+    for (const document of result.documents) {
+      const key = document.ref || `${document.number}-${document.date}-${document.amount}`;
+      if (!documents.has(key)) documents.set(key, document);
+    }
+  }
+  return Array.from(documents.values());
+}
+
+function combinedOneCDiagnostics(results: OneCSalesRealizationsResult[]) {
+  return results.flatMap((result) => [
+    ...(result.error ? [`${result.params.customerRef}: ${result.error}`] : []),
+    ...result.diagnostics,
+  ]);
+}
+
 function classifyOfdBusinessEvent({
   sample,
   match,
@@ -528,7 +549,6 @@ function classifyOfdBusinessEvent({
   const isReturn = sample.operationType === 2;
   const receiptAgeDays = daysSince(sample.date, currentDate);
   const best = match.best;
-  const linkWarnings = countLinkWarnings(linkedDocuments);
   const managerName = managerFromCandidate(best ?? match.conflictCandidate);
   const evidence = [
     `OFD: ${operationLabel(sample)}, ${formatOfdMoney(sample.totalSum)}, ${formatDate(sample.date)}`,
@@ -630,6 +650,24 @@ function classifyOfdBusinessEvent({
         evidence: [...evidence, 'Недостаточно данных для уверенной классификации receipt_correction.'],
       };
     }
+
+    if (!best) {
+      return {
+        eventType: 'needs_review',
+        severity: 'warning',
+        businessTitle: 'Возврат OFD найден, реализация 1С не найдена',
+        businessMessage: 'Возврат OFD найден, но реализация 1С не найдена в загруженной выборке.',
+        whatToCheck: [
+          sample.correctionChain?.newSaleReceipt ? 'Найден новый правильный приход после возврата.' : 'Новый правильный приход после возврата не найден.',
+          'Проверить исходную реализацию и убедиться, что она попала в загруженные группы 1С.',
+        ],
+        managerName,
+        evidence: [
+          ...evidence,
+          sample.correctionChain?.warning || 'Прямой ссылки SABY на исходный чек нет.',
+        ],
+      };
+    }
   }
 
   if (!best) {
@@ -701,18 +739,6 @@ function classifyOfdBusinessEvent({
       whatToCheck: ['Сверить строки товаров в OFD и 1С.', 'Проверить, не выбран ли неверный документ реализации.'],
       managerName,
       evidence,
-    };
-  }
-
-  if (linkWarnings > 0) {
-    return {
-      eventType: 'needs_review',
-      severity: 'warning',
-      businessTitle: 'Есть предупреждения по связанным документам',
-      businessMessage: 'Реализация найдена, но связанные документы 1С проверены не полностью.',
-      whatToCheck: ['Открыть технические детали.', 'Проверить ПКО, эквайринг, поступления, возвраты и корректировки.'],
-      managerName,
-      evidence: [...evidence, `Предупреждений по связанным документам: ${linkWarnings}.`],
     };
   }
 
@@ -1887,6 +1913,98 @@ function linkedDocsSummary(result?: OneCSalesRealizationLinksResult) {
   ];
 }
 
+function firstLinkedDocumentText(label: string, group?: OneCLinkedDocumentGroup) {
+  if (!group) return `${label}: не проверялось`;
+  const direct = group.direct[0];
+  if (direct) {
+    const amount = typeof direct.amount === 'number' ? ` ${formatMoney(direct.amount)}` : '';
+    return `${label}: найден${amount}${direct.number ? ` · №${direct.number}` : ''}`;
+  }
+  if (group.candidates.length) return `${label}: есть варианты, требуют проверки`;
+  return `${label}: не найден`;
+}
+
+function compactActionText(classification: BusinessClassification) {
+  return classification.whatToCheck[0] || classification.businessMessage;
+}
+
+function oneCManagerText(document?: OneCSalesRealizationDocument) {
+  if (!document) return 'Менеджер не определён: реализация 1С не найдена в загруженной выборке.';
+  return document.managerName || document.additionalManagerName || document.responsibleName || 'Менеджер не определён в найденной реализации 1С.';
+}
+
+function CompactDetailsBlock({
+  sample,
+  oneCMatch,
+  classification,
+  realizationLinksByRef,
+}: {
+  sample: ReturnSample;
+  oneCMatch: OneCMatch;
+  classification: BusinessClassification;
+  realizationLinksByRef: Map<string, OneCSalesRealizationLinksResult>;
+}) {
+  const document = oneCMatch.best?.document;
+  const linkedDocuments = document?.ref ? realizationLinksByRef.get(document.ref) : undefined;
+  const links = linkedDocuments?.links;
+  const manager = oneCManagerText(document);
+  const ofdLine = `OFD: ${formatDate(sample.date)} · ${operationLabel(sample)} · ${formatOfdMoney(sample.totalSum)} · ${primaryItemName(sample.itemsPreview)}`;
+  const oneCLine = document
+    ? `1С: ${formatDate(document.date)} · №${document.number || document.ref || 'без номера'} · ${formatMoney(document.amount ?? undefined)} · ${manager}`
+    : '1С: реализация не найдена в загруженной выборке.';
+
+  return (
+    <div className='grid gap-4'>
+      <div className='rounded-lg border border-slate-200 bg-white p-4'>
+        <div className='grid gap-2 text-sm font-semibold text-slate-800'>
+          <p>{ofdLine}</p>
+          <p>{oneCLine}</p>
+          <p><span className='font-extrabold text-slate-950'>Итог:</span> {classification.businessTitle}</p>
+          <p><span className='font-extrabold text-slate-950'>Что делать:</span> {compactActionText(classification)}</p>
+          {sample.operationType === 2 && !document ? (
+            <p className='text-amber-800'>Возврат OFD найден, но реализация 1С не найдена в загруженной выборке.</p>
+          ) : null}
+          {sample.ofdIncomplete ? <p className='text-red-700'>Цепочка может быть неполной: OFD загружен не полностью.</p> : null}
+        </div>
+      </div>
+
+      <div className='grid gap-4 lg:grid-cols-2'>
+        <div>
+          <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары OFD</p>
+          <OfdItemsSummary items={sample.itemsPreview} />
+        </div>
+        <div>
+          <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары 1С</p>
+          {document ? <OneCItemsList document={document} /> : <p className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900'>Товары 1С не показаны: реализация не найдена в загруженной выборке.</p>}
+        </div>
+      </div>
+
+      <CorrectionChainBlock sample={sample} />
+
+      <div className='grid gap-2 rounded-lg border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-800 md:grid-cols-2'>
+        <p>{firstLinkedDocumentText('ПКО', links?.cashReceipts)}</p>
+        <p>{firstLinkedDocumentText('Эквайринг', links?.acquiring)}</p>
+        <p>{firstLinkedDocumentText('Поступление', links?.bankReceipts)}</p>
+        <p>{firstLinkedDocumentText('Возврат 1С', links?.returns)}</p>
+      </div>
+
+      <details className='rounded-lg border border-slate-200 bg-white p-4 text-sm'>
+        <summary className='cursor-pointer font-extrabold text-slate-950'>Технические детали</summary>
+        <div className='mt-4 grid gap-4'>
+          <OneCMatchBlock match={oneCMatch} realizationLinksByRef={realizationLinksByRef} />
+          <div className='grid gap-3 text-sm font-semibold text-slate-700 md:grid-cols-5'>
+            <div><p className='text-slate-500'>ФД</p><p className='mt-1 text-slate-950'>{sample.fiscalDocumentNumber || 'нет данных'}</p></div>
+            <div><p className='text-slate-500'>ФН</p><p className='mt-1 break-all text-slate-950'>{sample.fiscalDriveNumber || 'нет данных'}</p></div>
+            <div><p className='text-slate-500'>ФПД</p><p className='mt-1 break-all text-slate-950'>{sample.fiscalSign || 'нет данных'}</p></div>
+            <div><p className='text-slate-500'>operationType</p><p className='mt-1 text-slate-950'>{sample.operationType ?? 'нет данных'}</p></div>
+            <div><p className='text-slate-500'>raw status</p><p className='mt-1 text-slate-950'>{sample.matchingStatus || 'not_found'}</p></div>
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function EventRegistryRow({
   sample,
   oneCMatch,
@@ -1902,8 +2020,8 @@ function EventRegistryRow({
 }) {
   const document = oneCMatch.best?.document;
   const linkedDocuments = document?.ref ? realizationLinksByRef.get(document.ref) : undefined;
-  const manager = document?.managerName || document?.additionalManagerName || document?.responsibleName || 'менеджер не определён';
-  const counterparty = document?.counterpartyName || document?.partnerName || 'контрагент не определён';
+  const manager = oneCManagerText(document);
+  const counterparty = document ? document.counterpartyName || document.partnerName || 'Контрагент не определён в найденной реализации 1С.' : 'Контрагент не определён: реализация 1С не найдена в загруженной выборке.';
   const linkedSummary = linkedDocsSummary(linkedDocuments);
 
   return (
@@ -1945,12 +2063,11 @@ function EventRegistryRow({
       </summary>
 
       <div className='border-t border-slate-200 bg-slate-50 p-4'>
-        <ReturnCard
+        <CompactDetailsBlock
           sample={sample}
           oneCMatch={oneCMatch}
           classification={classification}
           realizationLinksByRef={realizationLinksByRef}
-          oneCAvailable={oneCAvailable}
         />
       </div>
     </details>
@@ -2001,10 +2118,20 @@ export default async function AdminOfdPage({
     if (filter !== 'all') params.set('eventType', filter);
     return `/admin/ofd?${params.toString()}`;
   };
-  const [probe, salesRealizations] = await Promise.all([
+  const [probe, creditSalesRealizations, retailSalesRealizations] = await Promise.all([
     safeRunSabyOfdProbe({ organizationInn, dateFrom, dateTo, limit }),
     safeGetSalesRealizations({
       ...DEFAULT_SALES_REALIZATIONS_PARAMS,
+      customerRef: CREDIT_CUSTOMER_REF,
+      dateFrom,
+      dateTo,
+      limit: 100,
+      offset: 0,
+      includeLines: true,
+    }),
+    safeGetSalesRealizations({
+      ...DEFAULT_SALES_REALIZATIONS_PARAMS,
+      customerRef: RETAIL_CUSTOMER_REF,
       dateFrom,
       dateTo,
       limit: 100,
@@ -2012,11 +2139,13 @@ export default async function AdminOfdPage({
       includeLines: true,
     }),
   ]);
+  const oneCResults = [creditSalesRealizations, retailSalesRealizations];
   const diagnostics = probe.returnDiagnostics;
   const receiptDiagnostics = probe.receiptDiagnostics;
   const samples = receiptDiagnostics?.samples ?? diagnostics?.samples ?? [];
-  const oneCAvailable = salesRealizations.ok;
-  const oneCDocuments = salesRealizations.ok ? salesRealizations.documents : [];
+  const oneCAvailable = oneCResults.some((result) => result.ok);
+  const retailOneCAvailable = retailSalesRealizations.ok;
+  const oneCDocuments = mergeOneCDocuments(oneCResults);
   const sampleMatches = matchSamplesToOneC(samples, oneCDocuments);
   const matchedRealizationRefs = Array.from(new Set(samples
     .map((_, index) => sampleMatches[index]?.best?.document.ref)
@@ -2203,10 +2332,11 @@ export default async function AdminOfdPage({
           <div>
             <p className='text-slate-500'>Реализаций из 1С загружено</p>
             <p className='mt-1 text-slate-950'>{oneCDocuments.length}</p>
+            <p className='mt-1 text-xs text-slate-500'>Кредит/рассрочка: {creditSalesRealizations.ok ? creditSalesRealizations.documents.length : 'не загружено'} · Розничный покупатель: {retailSalesRealizations.ok ? retailSalesRealizations.documents.length : 'не загружено'}</p>
           </div>
           <div>
             <p className='text-slate-500'>Статус 1С</p>
-            <p className='mt-1 text-slate-950'>{salesRealizations.ok ? '1С отвечает' : '1С недоступна'}</p>
+            <p className='mt-1 text-slate-950'>{oneCAvailable ? '1С отвечает' : '1С недоступна'}</p>
           </div>
           <div>
             <p className='text-slate-500'>Как ищем совпадение</p>
@@ -2227,6 +2357,15 @@ export default async function AdminOfdPage({
         </div>
       </Card>
 
+      {!retailOneCAvailable ? (
+        <Card className='mb-5 border-amber-200 bg-amber-50'>
+          <h2 className='font-extrabold text-amber-950'>Розничные реализации не проверяются полностью</h2>
+          <p className='mt-2 text-sm font-semibold text-amber-900'>
+            1С загрузила кредитные реализации, но группа “Розничный покупатель” не ответила. Для таких чеков менеджер и контрагент могут быть не определены.
+          </p>
+        </Card>
+      ) : null}
+
       {probe.errors?.length ? (
         <Card className='mb-5 border-red-200 bg-red-50'>
           <h2 className='font-extrabold text-red-950'>Ошибки probe</h2>
@@ -2236,18 +2375,17 @@ export default async function AdminOfdPage({
         </Card>
       ) : null}
 
-      {!salesRealizations.ok ? (
+      {!oneCAvailable ? (
         <Card className='mb-5 border-amber-200 bg-amber-50'>
           <h2 className='font-extrabold text-amber-950'>1С сейчас не подключена</h2>
           <p className='mt-2 text-sm font-semibold text-amber-900'>
             Реализация, ПКО, эквайринг и поступления не проверены. Можно смотреть только OFD-часть диагностики.
           </p>
-          {salesRealizations.diagnostics.length ? (
+          {combinedOneCDiagnostics(oneCResults).length ? (
             <details className='mt-3 rounded-lg border border-amber-200 bg-white p-3 text-sm'>
               <summary className='cursor-pointer font-extrabold text-amber-950'>Технические детали</summary>
               <ul className='mt-2 grid gap-1 font-semibold text-amber-900'>
-                {salesRealizations.error ? <li>{salesRealizations.error}</li> : null}
-                {salesRealizations.diagnostics.map((item) => <li key={item}>{item}</li>)}
+                {combinedOneCDiagnostics(oneCResults).map((item) => <li key={item}>{item}</li>)}
               </ul>
             </details>
           ) : null}
