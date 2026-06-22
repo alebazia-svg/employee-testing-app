@@ -82,6 +82,7 @@ type BusinessEventType =
   | 'multiple_candidates'
   | 'return_goods'
   | 'receipt_correction'
+  | 'fixed_with_discrepancies'
   | 'conflict'
   | 'needs_review';
 
@@ -670,13 +671,13 @@ function classifyOfdBusinessEvent({
     if (sample.correctionChain?.status === 'complete' && !hasDirectLinkedReturnOrCorrection(linkedDocuments)) {
       return {
         eventType: 'receipt_correction',
-        severity: 'warning',
-        businessTitle: 'Похоже на исправление ошибочного чека',
-        businessMessage: 'Найдена цепочка OFD: исходный приход, возврат и новый приход. Связанный возврат продажи в 1С не найден.',
+        severity: 'ok',
+        businessTitle: 'Ошибка исправлена',
+        businessMessage: 'Найдена цепочка OFD: исходный приход, возврат и новый приход. Для бизнеса это выглядит как исправление ошибочного чека.',
         whatToCheck: [
-          'Проверить, что это именно исправление чека, а не возврат товара.',
-          'Сверить исходный чек, возврат и новый приход по сумме и товарам.',
-          'Найдено по признакам, не по прямой ссылке SABY.',
+          'Действие менеджера обычно не требуется: чек был возвращён и пробит заново.',
+          'Бухгалтерская корректность выглядит восстановленной: есть возврат и новый приход.',
+          'Для контроля можно сверить цепочку в технических деталях.',
         ],
         managerName,
         evidence: [
@@ -689,13 +690,21 @@ function classifyOfdBusinessEvent({
 
     if (sample.correctionChain?.status === 'original_only' && !hasDirectLinkedReturnOrCorrection(linkedDocuments)) {
       return {
-        eventType: 'needs_review',
+        eventType: 'fixed_with_discrepancies',
         severity: 'warning',
-        businessTitle: 'Возврат найден, новый правильный чек не найден',
-        businessMessage: 'В lookback найден исходный приход, но новый приход после возврата не найден в загруженной OFD-выборке.',
-        whatToCheck: ['Проверить, был ли пробит новый правильный чек в тот же день.', 'Проверить, не обрезана ли OFD-выборка по limit.'],
+        businessTitle: 'Исправлено с расхождениями',
+        businessMessage: 'Найден исходный приход и возврат. Новый правильный чек не прошёл строгую автоматическую проверку товаров, поэтому это не открытая ошибка, а контроль расхождений.',
+        whatToCheck: [
+          'Сверить товарные строки между возвратом и новым приходом: чаще всего отличается аксессуар или написание товара.',
+          'Действие менеджера нужно только если товар в новом чеке действительно неверный.',
+          'Если сумма возврата и нового прихода совпадает, бухгалтерская корректность операции обычно восстановлена.',
+        ],
         managerName,
-        evidence: [...evidence, sample.correctionChain.warning || 'Найдено по признакам, не по прямой ссылке SABY.'],
+        evidence: [
+          ...evidence,
+          sample.correctionChain.warning || 'Найдено по признакам, не по прямой ссылке SABY.',
+          'Причина замечания: текущий алгоритм требует полного совпадения товарной сигнатуры.',
+        ],
       };
     }
 
@@ -856,6 +865,7 @@ function businessEventLabel(eventType: BusinessEventType) {
     multiple_candidates: 'Несколько кандидатов',
     return_goods: 'Возврат товара',
     receipt_correction: 'Исправление чека',
+    fixed_with_discrepancies: 'Исправлено с расхождениями',
     conflict: 'Конфликт',
     needs_review: 'Нужна проверка',
   };
@@ -886,6 +896,7 @@ function isBusinessEventType(value: string | undefined): value is BusinessEventT
     'multiple_candidates',
     'return_goods',
     'receipt_correction',
+    'fixed_with_discrepancies',
     'conflict',
     'needs_review',
   ].includes(value));
@@ -2255,11 +2266,22 @@ export default async function AdminOfdPage({
     { filter: 'multiple_candidates', label: 'Несколько кандидатов', count: eventCounts.multiple_candidates ?? 0 },
     { filter: 'return_goods', label: 'Возвраты', count: eventCounts.return_goods ?? 0 },
     { filter: 'receipt_correction', label: 'Исправления чеков', count: eventCounts.receipt_correction ?? 0 },
+    { filter: 'fixed_with_discrepancies', label: 'Исправлено с расхождениями', count: eventCounts.fixed_with_discrepancies ?? 0 },
     { filter: 'conflict', label: 'Конфликты', count: eventCounts.conflict ?? 0 },
     { filter: 'needs_review', label: 'Нужна проверка', count: eventCounts.needs_review ?? 0 },
   ];
   const oneCMatchesCount = sampleMatches.filter((match) => Boolean(match.best)).length;
-  const manualReviewCount = businessClassifications.filter((classification) => classification.eventType !== 'ok').length;
+  const openErrorCount = businessClassifications.filter((classification) =>
+    ['missing_1c_overdue', 'amount_mismatch', 'product_mismatch', 'conflict'].includes(classification.eventType)
+  ).length;
+  const fixedErrorCount = (eventCounts.receipt_correction ?? 0) + (eventCounts.return_goods ?? 0);
+  const fixedWithDiscrepanciesCount = eventCounts.fixed_with_discrepancies ?? 0;
+  const informationalCount = businessClassifications.filter((classification) =>
+    ['ok', 'waiting_1c'].includes(classification.eventType)
+  ).length;
+  const manualReviewCount = businessClassifications.filter((classification) =>
+    !['ok', 'receipt_correction', 'return_goods', 'fixed_with_discrepancies'].includes(classification.eventType)
+  ).length;
   const notFoundCount = samples.length - oneCMatchesCount;
   const issueOrWarningCount =
     (probe.errors?.length ?? 0) +
@@ -2279,6 +2301,29 @@ export default async function AdminOfdPage({
           {probe.ok ? 'Диагностика работает' : 'Нужна проверка'}
         </Badge>
       </div>
+
+      <section className='mb-5 grid gap-4 md:grid-cols-4'>
+        <Card className='border-red-200 bg-red-50'>
+          <p className='text-sm font-bold text-red-700'>Ошибка открыта</p>
+          <p className='mt-1 text-4xl font-extrabold text-red-800'>{openErrorCount}</p>
+          <p className='mt-1 text-xs font-bold text-red-700'>нужно исправить или найти документ</p>
+        </Card>
+        <Card className='border-green-200 bg-green-50'>
+          <p className='text-sm font-bold text-green-700'>Ошибка исправлена</p>
+          <p className='mt-1 text-4xl font-extrabold text-green-800'>{fixedErrorCount}</p>
+          <p className='mt-1 text-xs font-bold text-green-700'>есть возврат и новый корректный чек</p>
+        </Card>
+        <Card className='border-amber-200 bg-amber-50'>
+          <p className='text-sm font-bold text-amber-700'>Исправлено с расхождениями</p>
+          <p className='mt-1 text-4xl font-extrabold text-amber-800'>{fixedWithDiscrepanciesCount}</p>
+          <p className='mt-1 text-xs font-bold text-amber-700'>операция закрыта, но товарные строки надо сверить</p>
+        </Card>
+        <Card className='border-blue-200 bg-blue-50'>
+          <p className='text-sm font-bold text-blue-700'>Информационные события</p>
+          <p className='mt-1 text-4xl font-extrabold text-blue-800'>{informationalCount}</p>
+          <p className='mt-1 text-xs font-bold text-blue-700'>открытой ошибки не видно</p>
+        </Card>
+      </section>
 
       <Card className='mb-5'>
         <div className='flex flex-col gap-4'>
