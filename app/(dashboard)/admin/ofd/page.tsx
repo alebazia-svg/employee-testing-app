@@ -98,7 +98,8 @@ type BusinessClassification = {
   evidence: string[];
 };
 
-type EventFilter = 'all' | BusinessEventType;
+type BusinessUiStatus = 'open_error' | 'manager_check' | 'fixed' | 'info';
+type EventFilter = 'all' | BusinessUiStatus;
 
 type ReturnSample = {
   fiscalDocumentNumber?: string;
@@ -886,19 +887,74 @@ function businessBadgeClass(severity: BusinessSeverity) {
   return 'bg-amber-100 text-amber-800';
 }
 
-function isBusinessEventType(value: string | undefined): value is BusinessEventType {
+function businessUiStatus(classification: BusinessClassification): BusinessUiStatus {
+  if (['missing_1c_overdue', 'amount_mismatch', 'product_mismatch', 'conflict'].includes(classification.eventType)) {
+    return 'open_error';
+  }
+  if (['fixed_with_discrepancies', 'multiple_candidates', 'needs_review'].includes(classification.eventType)) {
+    return 'manager_check';
+  }
+  if (['receipt_correction', 'return_goods'].includes(classification.eventType)) {
+    return 'fixed';
+  }
+  return 'info';
+}
+
+function businessUiLabel(status: BusinessUiStatus) {
+  const labels: Record<BusinessUiStatus, string> = {
+    open_error: 'Ошибка открыта',
+    manager_check: 'Проверить менеджеру',
+    fixed: 'Ошибка исправлена',
+    info: 'Информация',
+  };
+  return labels[status];
+}
+
+function businessUiClass(status: BusinessUiStatus) {
+  const classes: Record<BusinessUiStatus, string> = {
+    open_error: 'bg-red-100 text-red-800',
+    manager_check: 'bg-amber-100 text-amber-800',
+    fixed: 'bg-green-100 text-green-800',
+    info: 'bg-blue-100 text-blue-800',
+  };
+  return classes[status];
+}
+
+function businessUiCardClass(status: BusinessUiStatus) {
+  const classes: Record<BusinessUiStatus, string> = {
+    open_error: 'border-red-200 bg-red-50 text-red-800',
+    manager_check: 'border-amber-200 bg-amber-50 text-amber-800',
+    fixed: 'border-green-200 bg-green-50 text-green-800',
+    info: 'border-blue-200 bg-blue-50 text-blue-800',
+  };
+  return classes[status];
+}
+
+function businessActionText(classification: BusinessClassification) {
+  if (classification.eventType === 'fixed_with_discrepancies') return 'Проверить товарную строку';
+  if (classification.eventType === 'amount_mismatch') return 'Исправить чек';
+  if (classification.eventType === 'missing_1c_overdue') return 'Проверить реализацию';
+  if (classification.eventType === 'product_mismatch') return 'Проверить товарную строку';
+  if (classification.eventType === 'multiple_candidates' || classification.eventType === 'conflict' || classification.eventType === 'needs_review') {
+    return 'Проверить реализацию';
+  }
+  if (classification.eventType === 'waiting_1c') return 'Вернуться позже';
+  return 'Действий не требуется';
+}
+
+function businessWhyText(classification: BusinessClassification) {
+  if (classification.eventType === 'fixed_with_discrepancies') {
+    return 'Ошибка уже исправлена возвратом/новым чеком, но товарные строки требуют сверки.';
+  }
+  return classification.businessMessage;
+}
+
+function isBusinessUiStatus(value: string | undefined): value is BusinessUiStatus {
   return Boolean(value && [
-    'ok',
-    'waiting_1c',
-    'missing_1c_overdue',
-    'amount_mismatch',
-    'product_mismatch',
-    'multiple_candidates',
-    'return_goods',
-    'receipt_correction',
-    'fixed_with_discrepancies',
-    'conflict',
-    'needs_review',
+    'open_error',
+    'manager_check',
+    'fixed',
+    'info',
   ].includes(value));
 }
 
@@ -1970,7 +2026,7 @@ function ReturnCard({
 }
 
 const REGISTRY_GRID_CLASS =
-  'grid min-w-[1760px] grid-cols-[150px_150px_110px_120px_210px_150px_150px_130px_170px_190px_260px_260px_120px] gap-3';
+  'grid min-w-[1180px] grid-cols-[180px_190px_250px_220px_210px_260px_120px] gap-3';
 
 function linkedGroupText(group?: OneCLinkedDocumentGroup) {
   if (!group) return 'не проверено';
@@ -2039,11 +2095,21 @@ function CompactDetailsBlock({
   return (
     <div className='grid gap-4'>
       <div className='rounded-lg border border-slate-200 bg-white p-4'>
-        <div className='grid gap-2 text-sm font-semibold text-slate-800'>
-          <p>{ofdLine}</p>
-          <p>{oneCLine}</p>
-          <p><span className='font-extrabold text-slate-950'>Итог:</span> {classification.businessTitle}</p>
-          <p><span className='font-extrabold text-slate-950'>Что делать:</span> {compactActionText(classification)}</p>
+        <div className='grid gap-4 md:grid-cols-3'>
+          <div>
+            <p className='text-xs font-extrabold uppercase text-slate-500'>Что произошло</p>
+            <p className='mt-1 text-sm font-semibold text-slate-800'>{ofdLine}</p>
+            <p className='mt-1 text-sm font-semibold text-slate-800'>{oneCLine}</p>
+          </div>
+          <div>
+            <p className='text-xs font-extrabold uppercase text-slate-500'>Почему система выделила событие</p>
+            <p className='mt-1 text-sm font-semibold text-slate-800'>{businessWhyText(classification)}</p>
+          </div>
+          <div>
+            <p className='text-xs font-extrabold uppercase text-slate-500'>Что нужно сделать</p>
+            <p className='mt-1 text-base font-extrabold text-slate-950'>{businessActionText(classification)}</p>
+            <p className='mt-1 text-sm font-semibold text-slate-700'>{compactActionText(classification)}</p>
+          </div>
           {sample.operationType === 2 && !document ? (
             <p className='text-amber-800'>Возврат OFD найден, но реализация 1С не найдена в загруженной выборке.</p>
           ) : null}
@@ -2051,29 +2117,29 @@ function CompactDetailsBlock({
         </div>
       </div>
 
-      <div className='grid gap-4 lg:grid-cols-2'>
-        <div>
-          <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары OFD</p>
-          <OfdItemsSummary items={sample.itemsPreview} />
-        </div>
-        <div>
-          <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары 1С</p>
-          {document ? <OneCItemsList document={document} /> : <p className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900'>Товары 1С не показаны: реализация не найдена в загруженной выборке.</p>}
-        </div>
-      </div>
-
-      <CorrectionChainBlock sample={sample} />
-
-      <div className='grid gap-2 rounded-lg border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-800 md:grid-cols-2'>
-        <p>{firstLinkedDocumentText('ПКО', links?.cashReceipts)}</p>
-        <p>{firstLinkedDocumentText('Эквайринг', links?.acquiring)}</p>
-        <p>{firstLinkedDocumentText('Поступление', links?.bankReceipts)}</p>
-        <p>{firstLinkedDocumentText('Возврат 1С', links?.returns)}</p>
-      </div>
-
       <details className='rounded-lg border border-slate-200 bg-white p-4 text-sm'>
-        <summary className='cursor-pointer font-extrabold text-slate-950'>Технические детали</summary>
+        <summary className='cursor-pointer font-extrabold text-slate-950'>Технические детали: товары, документы 1С, кандидаты и внутренние причины</summary>
         <div className='mt-4 grid gap-4'>
+          <div className='grid gap-4 lg:grid-cols-2'>
+            <div>
+              <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары OFD</p>
+              <OfdItemsSummary items={sample.itemsPreview} />
+            </div>
+            <div>
+              <p className='mb-2 text-sm font-extrabold text-slate-950'>Товары 1С</p>
+              {document ? <OneCItemsList document={document} /> : <p className='rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900'>Товары 1С не показаны: реализация не найдена в загруженной выборке.</p>}
+            </div>
+          </div>
+
+          <CorrectionChainBlock sample={sample} />
+
+          <div className='grid gap-2 rounded-lg border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-800 md:grid-cols-2'>
+            <p>{firstLinkedDocumentText('ПКО', links?.cashReceipts)}</p>
+            <p>{firstLinkedDocumentText('Эквайринг', links?.acquiring)}</p>
+            <p>{firstLinkedDocumentText('Поступление', links?.bankReceipts)}</p>
+            <p>{firstLinkedDocumentText('Возврат 1С', links?.returns)}</p>
+          </div>
+
           <OneCMatchBlock match={oneCMatch} realizationLinksByRef={realizationLinksByRef} />
           <div className='grid gap-3 text-sm font-semibold text-slate-700 md:grid-cols-5'>
             <div><p className='text-slate-500'>ФД</p><p className='mt-1 text-slate-950'>{sample.fiscalDocumentNumber || 'нет данных'}</p></div>
@@ -2102,40 +2168,41 @@ function EventRegistryRow({
   oneCAvailable: boolean;
 }) {
   const document = oneCMatch.best?.document;
-  const linkedDocuments = document?.ref ? realizationLinksByRef.get(document.ref) : undefined;
   const manager = oneCManagerText(document);
-  const counterparty = document ? document.counterpartyName || document.partnerName || 'Контрагент не определён в найденной реализации 1С.' : 'Контрагент не определён: реализация 1С не найдена в загруженной выборке.';
-  const linkedSummary = linkedDocsSummary(linkedDocuments);
+  const status = businessUiStatus(classification);
+  const saleText = document
+    ? `${document.number || document.ref || 'без номера'} · ${formatMoney(document.amount ?? undefined)}`
+    : 'Реализация 1С не найдена';
+  const ofdText = `${formatDate(sample.date)} · ${operationLabel(sample)} · ${formatOfdMoney(sample.totalSum)}`;
 
   return (
     <details className='group border-t border-slate-200 bg-white first:border-t-0'>
       <summary className='cursor-pointer list-none px-4 py-3 transition-colors hover:bg-slate-50 [&::-webkit-details-marker]:hidden'>
         <div className={`${REGISTRY_GRID_CLASS} items-start text-sm`}>
           <div>
-            <Badge className={businessBadgeClass(classification.severity)}>{businessEventLabel(classification.eventType)}</Badge>
+            <Badge className={businessUiClass(status)}>{businessUiLabel(status)}</Badge>
+            {classification.eventType === 'fixed_with_discrepancies' ? (
+              <p className='mt-1 text-xs font-bold text-amber-700'>исправлено с замечанием</p>
+            ) : null}
           </div>
-          <div className='font-semibold text-slate-800'>{formatDate(sample.date)}</div>
-          <div className='font-semibold text-slate-800'>{operationLabel(sample)}</div>
-          <div className='font-extrabold text-slate-950'>{formatOfdMoney(sample.totalSum)}</div>
-          <div className='font-semibold text-slate-800'>{primaryItemName(sample.itemsPreview)}</div>
-          <div className='font-extrabold text-slate-950'>{document?.number || 'реализация не найдена'}</div>
-          <div className='font-semibold text-slate-800'>{formatDate(document?.date)}</div>
-          <div className='font-extrabold text-slate-950'>{formatMoney(document?.amount ?? undefined)}</div>
           <div className='font-semibold text-slate-800'>{manager}</div>
-          <div className='font-semibold text-slate-800'>{counterparty}</div>
           <div>
-            <p className='font-extrabold text-slate-950'>{classification.businessTitle}</p>
-            <p className='mt-1 line-clamp-2 text-xs font-semibold text-slate-500'>{classification.whatToCheck[0] || classification.businessMessage}</p>
+            <p className='font-extrabold text-slate-950'>{ofdText}</p>
+            <p className='mt-1 line-clamp-1 text-xs font-semibold text-slate-500'>{primaryItemName(sample.itemsPreview)}</p>
+          </div>
+          <div>
+            <p className='font-extrabold text-slate-950'>{saleText}</p>
+            <p className='mt-1 line-clamp-1 text-xs font-semibold text-slate-500'>{document ? `${formatDate(document.date)} · ${document.counterpartyName || document.partnerName || 'контрагент не определён'}` : 'нет подтверждённой реализации'}</p>
+          </div>
+          <div>
+            <p className='font-extrabold text-slate-950'>{businessActionText(classification)}</p>
+            <p className='mt-1 line-clamp-1 text-xs font-semibold text-slate-500'>{status === 'fixed' || status === 'info' ? 'без срочного действия' : 'нужно проверить вручную'}</p>
+          </div>
+          <div>
+            <p className='line-clamp-2 font-semibold text-slate-800'>{businessWhyText(classification)}</p>
             {sample.ofdIncomplete ? (
               <p className='mt-1 text-xs font-extrabold text-red-700'>Цепочка может быть неполной: OFD загружен не полностью</p>
             ) : null}
-          </div>
-          <div className='flex flex-wrap gap-1'>
-            {linkedSummary.map((item) => (
-              <Badge key={item.label} className={linkedGroupClass(item.group)}>
-                {item.label}: {linkedGroupText(item.group)}
-              </Badge>
-            ))}
           </div>
           <div>
             <span className='inline-flex rounded-md bg-slate-950 px-3 py-2 text-xs font-extrabold text-white group-open:bg-slate-600'>
@@ -2180,7 +2247,7 @@ export default async function AdminOfdPage({
   const parsedLimit = Number(searchParams?.limit ?? DEFAULT_LIMIT);
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(Math.trunc(parsedLimit), 100) : DEFAULT_LIMIT;
   const requestedEventType = searchParams?.eventType;
-  const eventFilter: EventFilter = isBusinessEventType(requestedEventType) ? requestedEventType : 'all';
+  const eventFilter: EventFilter = isBusinessUiStatus(requestedEventType) ? requestedEventType : 'all';
   const createPeriodHref = (period: Pick<PeriodPreset, 'dateFrom' | 'dateTo'>) => {
     const params = new URLSearchParams({
       dateFrom: period.dateFrom,
@@ -2254,31 +2321,26 @@ export default async function AdminOfdPage({
     match: sampleMatches[index] ?? matchOneCRealizations(undefined, oneCDocuments),
     classification: businessClassifications[index],
   }));
+  const uiStatusCounts = eventRows.reduce((accumulator, row) => {
+    const status = businessUiStatus(row.classification);
+    accumulator[status] = (accumulator[status] ?? 0) + 1;
+    return accumulator;
+  }, {} as Partial<Record<BusinessUiStatus, number>>);
   const filteredRows = eventFilter === 'all'
     ? eventRows
-    : eventRows.filter((row) => row.classification.eventType === eventFilter);
+    : eventRows.filter((row) => businessUiStatus(row.classification) === eventFilter);
   const eventFilterItems: Array<{ filter: EventFilter; label: string; count: number }> = [
     { filter: 'all', label: 'Все', count: samples.length },
-    { filter: 'ok', label: 'Корректно', count: eventCounts.ok ?? 0 },
-    { filter: 'waiting_1c', label: 'Ожидает 1С', count: eventCounts.waiting_1c ?? 0 },
-    { filter: 'missing_1c_overdue', label: 'Нет реализации более 3 дней', count: eventCounts.missing_1c_overdue ?? 0 },
-    { filter: 'amount_mismatch', label: 'Сумма не совпала', count: eventCounts.amount_mismatch ?? 0 },
-    { filter: 'multiple_candidates', label: 'Несколько кандидатов', count: eventCounts.multiple_candidates ?? 0 },
-    { filter: 'return_goods', label: 'Возвраты', count: eventCounts.return_goods ?? 0 },
-    { filter: 'receipt_correction', label: 'Исправления чеков', count: eventCounts.receipt_correction ?? 0 },
-    { filter: 'fixed_with_discrepancies', label: 'Исправлено с расхождениями', count: eventCounts.fixed_with_discrepancies ?? 0 },
-    { filter: 'conflict', label: 'Конфликты', count: eventCounts.conflict ?? 0 },
-    { filter: 'needs_review', label: 'Нужна проверка', count: eventCounts.needs_review ?? 0 },
+    { filter: 'open_error', label: 'Ошибка открыта', count: uiStatusCounts.open_error ?? 0 },
+    { filter: 'manager_check', label: 'Проверить менеджеру', count: uiStatusCounts.manager_check ?? 0 },
+    { filter: 'fixed', label: 'Ошибка исправлена', count: uiStatusCounts.fixed ?? 0 },
+    { filter: 'info', label: 'Информация', count: uiStatusCounts.info ?? 0 },
   ];
   const oneCMatchesCount = sampleMatches.filter((match) => Boolean(match.best)).length;
-  const openErrorCount = businessClassifications.filter((classification) =>
-    ['missing_1c_overdue', 'amount_mismatch', 'product_mismatch', 'conflict'].includes(classification.eventType)
-  ).length;
-  const fixedErrorCount = (eventCounts.receipt_correction ?? 0) + (eventCounts.return_goods ?? 0);
-  const fixedWithDiscrepanciesCount = eventCounts.fixed_with_discrepancies ?? 0;
-  const informationalCount = businessClassifications.filter((classification) =>
-    ['ok', 'waiting_1c'].includes(classification.eventType)
-  ).length;
+  const openErrorCount = uiStatusCounts.open_error ?? 0;
+  const managerCheckCount = uiStatusCounts.manager_check ?? 0;
+  const fixedErrorCount = uiStatusCounts.fixed ?? 0;
+  const informationalCount = uiStatusCounts.info ?? 0;
   const manualReviewCount = businessClassifications.filter((classification) =>
     !['ok', 'receipt_correction', 'return_goods', 'fixed_with_discrepancies'].includes(classification.eventType)
   ).length;
@@ -2303,25 +2365,25 @@ export default async function AdminOfdPage({
       </div>
 
       <section className='mb-5 grid gap-4 md:grid-cols-4'>
-        <Card className='border-red-200 bg-red-50'>
-          <p className='text-sm font-bold text-red-700'>Ошибка открыта</p>
-          <p className='mt-1 text-4xl font-extrabold text-red-800'>{openErrorCount}</p>
+        <Card className={businessUiCardClass('open_error')}>
+          <p className='text-sm font-bold'>Открытых ошибок</p>
+          <p className='mt-1 text-4xl font-extrabold'>{openErrorCount}</p>
           <p className='mt-1 text-xs font-bold text-red-700'>нужно исправить или найти документ</p>
         </Card>
-        <Card className='border-green-200 bg-green-50'>
-          <p className='text-sm font-bold text-green-700'>Ошибка исправлена</p>
-          <p className='mt-1 text-4xl font-extrabold text-green-800'>{fixedErrorCount}</p>
-          <p className='mt-1 text-xs font-bold text-green-700'>есть возврат и новый корректный чек</p>
+        <Card className={businessUiCardClass('manager_check')}>
+          <p className='text-sm font-bold'>Требуют проверки</p>
+          <p className='mt-1 text-4xl font-extrabold'>{managerCheckCount}</p>
+          <p className='mt-1 text-xs font-bold'>не открытая ошибка, но нужен взгляд менеджера</p>
         </Card>
-        <Card className='border-amber-200 bg-amber-50'>
-          <p className='text-sm font-bold text-amber-700'>Исправлено с расхождениями</p>
-          <p className='mt-1 text-4xl font-extrabold text-amber-800'>{fixedWithDiscrepanciesCount}</p>
-          <p className='mt-1 text-xs font-bold text-amber-700'>операция закрыта, но товарные строки надо сверить</p>
+        <Card className={businessUiCardClass('fixed')}>
+          <p className='text-sm font-bold'>Исправлено</p>
+          <p className='mt-1 text-4xl font-extrabold'>{fixedErrorCount}</p>
+          <p className='mt-1 text-xs font-bold'>есть возврат и новый корректный чек</p>
         </Card>
-        <Card className='border-blue-200 bg-blue-50'>
-          <p className='text-sm font-bold text-blue-700'>Информационные события</p>
-          <p className='mt-1 text-4xl font-extrabold text-blue-800'>{informationalCount}</p>
-          <p className='mt-1 text-xs font-bold text-blue-700'>открытой ошибки не видно</p>
+        <Card className={businessUiCardClass('info')}>
+          <p className='text-sm font-bold'>Информационных событий</p>
+          <p className='mt-1 text-4xl font-extrabold'>{informationalCount}</p>
+          <p className='mt-1 text-xs font-bold'>открытой ошибки не видно</p>
         </Card>
       </section>
 
@@ -2384,7 +2446,9 @@ export default async function AdminOfdPage({
         </div>
       </Card>
 
-      <section className='mb-5 grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
+      <details className='mb-5 rounded-lg border border-slate-200 bg-white p-4'>
+        <summary className='cursor-pointer font-extrabold text-slate-950'>Техническая сводка алгоритма</summary>
+        <section className='mt-4 grid gap-4 md:grid-cols-3 xl:grid-cols-5'>
         <Card>
           <p className='text-sm font-bold text-slate-500'>Чеков проверено</p>
           <p className='mt-1 text-3xl font-extrabold text-slate-950'>{samples.length}</p>
@@ -2437,7 +2501,8 @@ export default async function AdminOfdPage({
           </p>
           <p className='mt-1 text-xs font-bold text-slate-500'>{oneCAvailable ? `предупреждений: ${issueOrWarningCount}, не найдено: ${notFoundCount}` : 'документы не проверены'}</p>
         </Card>
-      </section>
+        </section>
+      </details>
 
       <Card className='mb-5'>
         <div className='grid gap-3 text-sm font-semibold text-slate-700 md:grid-cols-4'>
@@ -2515,9 +2580,9 @@ export default async function AdminOfdPage({
         <div className='flex flex-col gap-3'>
           <div className='flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between'>
             <div>
-              <h2 className='text-xl font-extrabold text-slate-950'>Реестр событий OFD ↔ 1С</h2>
+              <h2 className='text-xl font-extrabold text-slate-950'>Реестр бизнес-событий OFD ↔ 1С</h2>
               <p className='mt-1 text-sm font-semibold text-slate-500'>
-                Одна строка — один чек или событие. Откройте “Подробнее”, чтобы увидеть документы, кандидатов и технические детали.
+                Одна строка — один чек или событие. Сразу видно бизнес-статус, ответственного менеджера и конкретное действие.
               </p>
             </div>
             <Badge className='w-fit bg-slate-100 text-slate-700'>
@@ -2548,18 +2613,12 @@ export default async function AdminOfdPage({
         filteredRows.length ? (
           <div className='overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm'>
             <div className={`${REGISTRY_GRID_CLASS} bg-slate-50 px-4 py-3 text-xs font-extrabold uppercase text-slate-500`}>
-              <div>Статус</div>
-              <div>Дата/время OFD</div>
-              <div>Тип</div>
-              <div>Сумма OFD</div>
-              <div>Товар</div>
+              <div>Бизнес-статус</div>
+              <div>Ответственный</div>
+              <div>Чек OFD</div>
               <div>Реализация 1С</div>
-              <div>Дата реализации</div>
-              <div>Сумма 1С</div>
-              <div>Менеджер</div>
-              <div>Контрагент</div>
-              <div>Проблема / что проверить</div>
-              <div>Связанные документы</div>
+              <div>Что сделать</div>
+              <div>Почему</div>
               <div>Детали</div>
             </div>
             <div>
