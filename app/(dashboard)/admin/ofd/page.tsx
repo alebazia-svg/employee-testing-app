@@ -63,6 +63,7 @@ type OneCCandidate = {
   rejectedReasons: string[];
   amountDiff: number | null;
   dayDiff: number | null;
+  timeDiffMinutes: number | null;
   matchedProducts: number;
 };
 
@@ -395,11 +396,17 @@ function reasonLabel(reason: string) {
     amount_close: 'amount matched',
     amount_differs: 'amount differs',
     same_day: 'date matched',
+    time_close: 'time close',
     nearby_date: 'date nearby',
     date_warning: 'date_warning',
     date_far: 'date far',
     products_overlap: 'products matched',
     no_product_overlap: 'products differ',
+    line_count_warning: 'line count differs',
+    credit_counterparty: 'credit counterparty',
+    retail_counterparty: 'retail counterparty',
+    comment_amount_signal: 'comment amount signal',
+    better_time_candidate: 'better time candidate found',
     sale_before_return: 'приход раньше возврата',
     sale_after_return: 'приход после возврата',
     same_day_as_return: 'тот же день, что возврат',
@@ -432,10 +439,126 @@ function hasProductOverlap(left: string, right: string) {
   return false;
 }
 
-function dateDay(value?: string) {
+const PRODUCT_GENERIC_TOKENS = new Set([
+  'apple',
+  'iphone',
+  'айфон',
+  'смартфон',
+  'телефон',
+  'оригинал',
+  'original',
+  'pro',
+  'max',
+  'plus',
+  'mini',
+  'gb',
+  'гб',
+  'esim',
+  'sim',
+  'black',
+  'blue',
+  'white',
+  'green',
+  'pink',
+  'titanium',
+]);
+
+const CASE_TOKENS = new Set(['накладка', 'чехол', 'case', 'hoco', 'silicon', 'силикон']);
+const GLASS_TOKENS = new Set(['стекло', 'glass', 'защитное']);
+const CHARGER_TOKENS = new Set(['заряд', 'зарядка', 'адаптер', 'adapter', 'кабель', 'cable', 'блок']);
+
+function filteredTokenSet(value: string) {
+  return new Set(normalizeText(value).split(/\s+/).filter((token) => token.length >= 3 && !PRODUCT_GENERIC_TOKENS.has(token)));
+}
+
+function rawTokenSet(value: string) {
+  return new Set(normalizeText(value).split(/\s+/).filter((token) => token.length >= 3));
+}
+
+function hasAnyToken(tokens: Set<string>, dictionary: Set<string>) {
+  for (const token of tokens) {
+    if (dictionary.has(token)) return true;
+  }
+  return false;
+}
+
+function productCategory(value: string) {
+  const tokens = rawTokenSet(value);
+  if (hasAnyToken(tokens, CASE_TOKENS)) return 'case';
+  if (hasAnyToken(tokens, GLASS_TOKENS)) return 'glass';
+  if (hasAnyToken(tokens, CHARGER_TOKENS)) return 'charger';
+  return 'main';
+}
+
+function productOverlapScore(left: string, right: string) {
+  const normalizedLeft = normalizeText(left);
+  const normalizedRight = normalizeText(right);
+  if (!normalizedLeft || !normalizedRight) return 0;
+  if (productCategory(left) !== productCategory(right)) return 0;
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) return 3;
+
+  const leftTokens = filteredTokenSet(left);
+  const rightTokens = filteredTokenSet(right);
+  let matches = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) matches += 1;
+  }
+  return matches >= 2 ? matches : 0;
+}
+
+function countMatchedProducts(ofdItems: ItemPreview[], document: OneCSalesRealizationDocument) {
+  const usedLineIndexes = new Set<number>();
+  let matched = 0;
+
+  for (const ofdItem of ofdItems) {
+    let bestLineIndex = -1;
+    let bestScore = 0;
+
+    document.lines.forEach((line, index) => {
+      if (usedLineIndexes.has(index)) return;
+      const score = Math.max(
+        productOverlapScore(ofdItem.name ?? '', line.productName),
+        productOverlapScore(ofdItem.name ?? '', line.productArticle),
+        productOverlapScore(ofdItem.name ?? '', line.productCode),
+      );
+      if (score > bestScore) {
+        bestScore = score;
+        bestLineIndex = index;
+      }
+    });
+
+    if (bestLineIndex >= 0) {
+      usedLineIndexes.add(bestLineIndex);
+      matched += 1;
+    }
+  }
+
+  return matched;
+}
+
+function parseDateTime(value?: string) {
   if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
+  const trimmed = value.trim();
+  const ruDate = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:[ T,]+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (ruDate) {
+    const date = new Date(
+      Number(ruDate[3]),
+      Number(ruDate[2]) - 1,
+      Number(ruDate[1]),
+      Number(ruDate[4] ?? 0),
+      Number(ruDate[5] ?? 0),
+      Number(ruDate[6] ?? 0),
+    );
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const parsedDate = new Date(trimmed);
+  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+}
+
+function dateDay(value?: string) {
+  const date = parseDateTime(value);
+  if (!date) return null;
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 }
 
@@ -444,6 +567,25 @@ function dayDiff(left?: string, right?: string) {
   const rightDay = dateDay(right);
   if (leftDay === null || rightDay === null) return null;
   return Math.round(Math.abs(leftDay - rightDay) / (24 * 60 * 60 * 1000));
+}
+
+function timeDiffMinutes(left?: string, right?: string) {
+  const leftDate = parseDateTime(left);
+  const rightDate = parseDateTime(right);
+  if (!leftDate || !rightDate) return null;
+  return Math.round(Math.abs(leftDate.getTime() - rightDate.getTime()) / (60 * 1000));
+}
+
+function isCreditRealization(document: OneCSalesRealizationDocument) {
+  const customer = `${document.partnerName ?? ''} ${document.counterpartyName ?? ''}`.toLowerCase();
+  return customer.includes('кредит') || customer.includes('рассроч');
+}
+
+function commentHasAmountSignal(comment: string | undefined, amount: number | null) {
+  if (!comment || amount === null) return false;
+  const normalizedComment = comment.replace(/\s+/g, '');
+  const amountText = Math.round(amount).toString();
+  return normalizedComment.includes(amountText);
 }
 
 function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefined, documents: OneCSalesRealizationDocument[]): OneCMatch {
@@ -456,9 +598,8 @@ function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefine
   const scored = documents.map((document) => {
     const amountDiff = typeof document.amount === 'number' && ofdAmount !== null ? Math.abs(document.amount - ofdAmount) : null;
     const diffDays = dayDiff(ofdCandidate.date, document.date);
-    const matchedProducts = ofdItems.filter((ofdItem) =>
-      document.lines.some((line) => hasProductOverlap(ofdItem.name ?? '', line.productName || line.productArticle || line.productCode))
-    ).length;
+    const diffMinutes = timeDiffMinutes(ofdCandidate.date, document.date);
+    const matchedProducts = countMatchedProducts(ofdItems, document);
     const reasons: string[] = [];
     const rejectedReasons: string[] = [];
     let score = 0;
@@ -472,10 +613,14 @@ function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefine
     }
 
     if (diffDays === 0) {
-      score += 25;
+      score += 20;
       reasons.push('same_day');
+      if (diffMinutes !== null && diffMinutes <= 60) {
+        score += 35;
+        reasons.push('time_close');
+      }
     } else if (diffDays !== null && diffDays <= 7) {
-      score += 10;
+      score += 5;
       reasons.push('nearby_date');
     } else if (diffDays !== null) {
       rejectedReasons.push('date_warning');
@@ -484,29 +629,69 @@ function matchOneCRealizations(ofdCandidate: Candidate | ReturnSample | undefine
     }
 
     if (matchedProducts > 0) {
-      score += Math.min(30, matchedProducts * 15);
+      const productCoverage = ofdItems.length ? matchedProducts / ofdItems.length : 0;
+      score += Math.min(30, matchedProducts * 12);
+      if (productCoverage >= 0.8) score += 10;
       reasons.push('products_overlap');
     } else {
       rejectedReasons.push('no_product_overlap');
     }
 
+    if (ofdItems.length >= 3 && document.lines.length <= 1) {
+      score -= 20;
+      rejectedReasons.push('line_count_warning');
+    }
+
+    if (isCreditRealization(document)) {
+      score += 15;
+      reasons.push('credit_counterparty');
+    } else {
+      rejectedReasons.push('retail_counterparty');
+    }
+
+    if (commentHasAmountSignal(document.comment, ofdAmount)) {
+      score += 5;
+      reasons.push('comment_amount_signal');
+    }
+
     return {
       document,
       score,
-      confidence: score >= 70 ? 'probable' as const : score >= 45 ? 'weak' as const : 'rejected' as const,
+      confidence: score >= 85 ? 'probable' as const : score >= 60 ? 'weak' as const : 'rejected' as const,
       amountMatches,
       reasons,
       rejectedReasons,
       amountDiff,
       dayDiff: diffDays,
+      timeDiffMinutes: diffMinutes,
       matchedProducts,
+    };
+  });
+
+  const hasCloseTimeCandidate = scored.some((candidate) =>
+    candidate.amountMatches && candidate.timeDiffMinutes !== null && candidate.timeDiffMinutes <= 60
+  );
+  const adjusted = scored.map((candidate) => {
+    if (!hasCloseTimeCandidate) return candidate;
+    if (candidate.timeDiffMinutes !== null && candidate.timeDiffMinutes <= 60) return candidate;
+
+    const score = candidate.score - 35;
+    const rejectedReasons = candidate.rejectedReasons.includes('better_time_candidate')
+      ? candidate.rejectedReasons
+      : [...candidate.rejectedReasons, 'better_time_candidate'];
+
+    return {
+      ...candidate,
+      score,
+      rejectedReasons,
+      confidence: score >= 85 ? 'probable' as const : score >= 60 ? 'weak' as const : 'rejected' as const,
     };
   }).sort((a, b) => b.score - a.score);
 
-  const candidates = scored
+  const candidates = adjusted
     .filter((candidate) => candidate.amountMatches && candidate.confidence !== 'rejected')
     .slice(0, 5);
-  const rejectedCandidates = scored
+  const rejectedCandidates = adjusted
     .filter((candidate) => !candidate.amountMatches || candidate.confidence === 'rejected')
     .slice(0, 5);
 
