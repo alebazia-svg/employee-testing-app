@@ -512,6 +512,15 @@ function shiftLabel(code: string) {
   return shift.code === 'other' ? 'Другая смена' : shift.label;
 }
 
+function supportedShiftOptions(department: string) {
+  const allowedByDepartment: Record<string, string[]> = {
+    retail: ['09_18', '11_20', '09_20'],
+    wholesale: ['09_18', '09_19', '10_19'],
+  };
+  const allowed = allowedByDepartment[department];
+  return allowed ? shiftOptions.filter((shift) => allowed.includes(shift.code)) : shiftOptions;
+}
+
 function getElapsed(workDay: WorkDayEntry | null, now: Date) {
   if (!workDay) return 0;
   const start = new Date(workDay.startedAt).getTime();
@@ -640,8 +649,9 @@ export function EmployeeTodayClient({
   const todaySchedule = ownScheduleByDate.get(today);
   const activeWorkDay = workDay && workDay.status !== 'completed' ? workDay : null;
   const isCompleted = workDay?.status === 'completed';
-  const selectedShiftOption = shiftOptions.find((shift) => shift.code === selectedShift);
-  const canStartWorkDay = Boolean(selectedShift) && !workDay && !isSaving;
+  const availableShiftOptions = supportedShiftOptions(user.department);
+  const selectedShiftOption = availableShiftOptions.find((shift) => shift.code === selectedShift);
+  const canStartWorkDay = Boolean(selectedShiftOption) && !workDay && !isSaving;
   const predictedLate =
     selectedShiftOption?.startMinutes !== null &&
     selectedShiftOption?.startMinutes !== undefined &&
@@ -869,7 +879,7 @@ export function EmployeeTodayClient({
   async function startWorkDay() {
     setError('');
     setMessage('');
-    if (!selectedShift) {
+    if (!selectedShiftOption) {
       setError('Выберите смену перед началом рабочего дня');
       return;
     }
@@ -1934,12 +1944,17 @@ export function EmployeeTodayClient({
                       className='mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                     >
                       <option value=''>Выберите смену</option>
-                      {shiftOptions.map((shift) => (
+                      {availableShiftOptions.map((shift) => (
                         <option key={shift.code} value={shift.code}>
                           {shiftLabel(shift.code)}
                         </option>
                       ))}
                     </select>
+                    {(user.department === 'retail' || user.department === 'wholesale') && (
+                      <span className='mt-1.5 block text-xs font-semibold text-slate-500'>
+                        Если вашей смены нет в списке, обратитесь к администратору.
+                      </span>
+                    )}
                   </label>
                 ) : (
                   <div className='rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/80'>

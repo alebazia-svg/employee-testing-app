@@ -2,8 +2,38 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getLateMinutes, getMoscowDateKey, getMoscowMinutes, getShiftOption } from '@/lib/workday';
 
+const noChecklistMessage = 'Для этой смены нет чек-листа, обратитесь к администратору';
+
 function canUseShiftControl(department: string) {
   return department === 'retail' || department === 'wholesale';
+}
+
+async function findShiftControlTemplate(
+  client: Pick<typeof prisma, 'shiftControlTemplate'>,
+  department: string,
+  shiftCode: string,
+) {
+  const template = await client.shiftControlTemplate.findFirst({
+    where: { department, shiftCode, isActive: true },
+    include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
+    orderBy: { version: 'desc' },
+  });
+
+  return template?.tasks.length ? template : null;
+}
+
+function createTasksFromTemplate(template: NonNullable<Awaited<ReturnType<typeof findShiftControlTemplate>>>) {
+  return {
+    create: template.tasks.map((task) => ({
+      templateTaskId: task.id,
+      title: task.title,
+      category: task.category,
+      sortOrder: task.sortOrder,
+      required: task.required,
+      plannedTimeMinutes: task.plannedTimeMinutes,
+      status: 'pending',
+    })),
+  };
 }
 
 async function ensureShiftControlRun(user: { id: number; department: string }, workDay: { id: number; date: string; shiftCode: string }, now = new Date()) {
@@ -15,11 +45,8 @@ async function ensureShiftControlRun(user: { id: number; department: string }, w
   });
   if (existingRun) return existingRun;
 
-  const template = await prisma.shiftControlTemplate.findFirst({
-    where: { department: user.department, shiftCode: workDay.shiftCode, isActive: true },
-    include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
-    orderBy: { version: 'desc' },
-  });
+  const template = await findShiftControlTemplate(prisma, user.department, workDay.shiftCode);
+  if (!template) throw new Error(noChecklistMessage);
 
   return prisma.shiftControlRun.create({
     data: {
@@ -30,19 +57,7 @@ async function ensureShiftControlRun(user: { id: number; department: string }, w
       templateId: template?.id,
       status: 'active',
       startedAt: now,
-      tasks: template
-        ? {
-            create: template.tasks.map((task) => ({
-              templateTaskId: task.id,
-              title: task.title,
-              category: task.category,
-              sortOrder: task.sortOrder,
-              required: task.required,
-              plannedTimeMinutes: task.plannedTimeMinutes,
-              status: 'pending',
-            })),
-          }
-        : undefined,
+      tasks: createTasksFromTemplate(template),
     },
     include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
   });
@@ -60,10 +75,18 @@ export async function POST(req: Request) {
 
   const existing = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });
   if (existing) {
-    const shiftControlRun =
-      existing.status !== 'completed' && !existing.endedAt
-        ? await ensureShiftControlRun({ id: user.id, department: user.department }, existing, now)
-        : null;
+    let shiftControlRun = null;
+    try {
+      shiftControlRun =
+        existing.status !== 'completed' && !existing.endedAt
+          ? await ensureShiftControlRun({ id: user.id, department: user.department }, existing, now)
+          : null;
+    } catch (error) {
+      if (error instanceof Error && error.message === noChecklistMessage) {
+        return Response.json({ error: noChecklistMessage }, { status: 400 });
+      }
+      throw error;
+    }
     return Response.json({
       workDay: existing,
       shiftControlRun,
@@ -93,42 +116,39 @@ export async function POST(req: Request) {
     return Response.json({ workDay, alreadyStarted: false });
   }
 
-  const { workDay, shiftControlRun } = await prisma.$transaction(async (tx) => {
-    const createdWorkDay = await tx.workDayEntry.create({ data: workDayData });
-    const template = await tx.shiftControlTemplate.findFirst({
-      where: { department: user.department, shiftCode: shift.code, isActive: true },
-      include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
-      orderBy: { version: 'desc' },
+  let workDay;
+  let shiftControlRun;
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const createdWorkDay = await tx.workDayEntry.create({ data: workDayData });
+      const template = await findShiftControlTemplate(tx, user.department, shift.code);
+      if (!template) throw new Error(noChecklistMessage);
+
+      const createdShiftControlRun = await tx.shiftControlRun.create({
+        data: {
+          workDayEntryId: createdWorkDay.id,
+          userId: user.id,
+          department: user.department,
+          date,
+          templateId: template?.id,
+          status: 'active',
+          startedAt: now,
+          tasks: createTasksFromTemplate(template),
+        },
+        include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
+      });
+
+      return { workDay: createdWorkDay, shiftControlRun: createdShiftControlRun };
     });
 
-    const createdShiftControlRun = await tx.shiftControlRun.create({
-      data: {
-        workDayEntryId: createdWorkDay.id,
-        userId: user.id,
-        department: user.department,
-        date,
-        templateId: template?.id,
-        status: 'active',
-        startedAt: now,
-        tasks: template
-          ? {
-              create: template.tasks.map((task) => ({
-                templateTaskId: task.id,
-                title: task.title,
-                category: task.category,
-                sortOrder: task.sortOrder,
-                required: task.required,
-                plannedTimeMinutes: task.plannedTimeMinutes,
-                status: 'pending',
-              })),
-            }
-          : undefined,
-      },
-      include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
-    });
-
-    return { workDay: createdWorkDay, shiftControlRun: createdShiftControlRun };
-  });
+    workDay = result.workDay;
+    shiftControlRun = result.shiftControlRun;
+  } catch (error) {
+    if (error instanceof Error && error.message === noChecklistMessage) {
+      return Response.json({ error: noChecklistMessage }, { status: 400 });
+    }
+    throw error;
+  }
 
   return Response.json({ workDay, shiftControlRun, alreadyStarted: false });
 }
