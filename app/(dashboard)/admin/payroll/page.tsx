@@ -487,8 +487,8 @@ const payrollEmployees: Record<string, PayrollEmployee> = {
     position: 'Менеджер по розничным продажам',
     salaryType: 'retail_sales_bonus',
   },
-  'СтажерРозница': {
-    name: 'СтажерРозница',
+  'Костеренко Магомед': {
+    name: 'Костеренко Магомед',
     department: 'Розничный отдел',
     position: 'Стажёр менеджера по продажам',
     salaryType: 'retail_sales_bonus',
@@ -569,10 +569,10 @@ const payrollAttendanceConfig: Record<string, PayrollAttendanceConfig> = {
     sourceType: 'form',
     comment: 'Дни и опоздания из Google-формы / рассчитанной посещаемости',
   },
-  'СтажерРозница': {
+  'Костеренко Магомед': {
     attendanceNames: ['Магомед', 'Косторенко Магомед', 'Магомед Косторенко', 'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'],
     sourceType: 'form',
-    comment: 'Магомед / Косторенко в посещаемости = СтажерРозница в зарплате',
+    comment: 'Варианты фамилии Магомеда считаются как Костеренко Магомед. СтажерРозница привязана к нему только для июня 2026.',
   },
   'Кумахова Диана': {
     attendanceNames: ['Диана', 'Кумахова Диана'],
@@ -700,7 +700,8 @@ const purchaseDayRate = 600;
 const purchasePercent = 0.0175;
 const agentCreditCommissionEmployee = 'Кумахова Диана';
 const asadManagerName = 'Икаев Асад';
-const retailTraineePayrollName = 'СтажерРозница';
+const retailTraineePayrollName = 'Костеренко Магомед';
+const legacyRetailTraineeSourceName = 'СтажерРозница';
 const payrollExcludedEmployeeNames = ['Кештова Аслан', 'Кештова Амир', 'Кештов Аслан', 'Кештов Амир', 'Атабиева Муслим', 'Атабиев Муслим'];
 const payrollExcludedEmployeeKeys = new Set(payrollExcludedEmployeeNames.map(normalizeText));
 const payrollManagerAliases: Record<string, string> = {
@@ -1005,6 +1006,35 @@ function getPayrollManagerName(manager: string) {
     return retailTraineePayrollName;
   }
   return payrollManagerAliases[normalized] ?? manager;
+}
+
+function isLegacyRetailTraineeSource(manager: string) {
+  const normalized = normalizeText(manager);
+  return normalized === normalizeText(legacyRetailTraineeSourceName) || normalized === normalizeText('СтажёрРозница');
+}
+
+function shouldMapLegacyRetailTraineeToMagomed(month: string, year: string) {
+  return month === '5' && year === '2026';
+}
+
+function mapLegacyRetailTraineeForPeriod(result: PayrollParseResult, month: string, year: string): PayrollParseResult {
+  if (!shouldMapLegacyRetailTraineeToMagomed(month, year)) return result;
+
+  const mapRow = (row: SalesRow): SalesRow => (
+    isLegacyRetailTraineeSource(row.manager)
+      ? { ...row, manager: retailTraineePayrollName }
+      : row
+  );
+
+  const rows = result.rows.map(mapRow);
+  const detailRows = result.detailRows.map(mapRow);
+
+  return {
+    ...result,
+    rows,
+    detailRows,
+    managers: Array.from(new Set(rows.map((row) => row.manager))),
+  };
 }
 
 function isPayrollExcludedEmployee(manager: string) {
@@ -3342,7 +3372,7 @@ export default function AdminPayrollPage() {
     setAttendanceApplyResult(null);
   }, [selectedPayrollPeriodKey]);
 
-  const parseResult = useMemo(() => parsePayrollReport(rows), [rows]);
+  const parseResult = useMemo(() => mapLegacyRetailTraineeForPeriod(parsePayrollReport(rows), month, year), [rows, month, year]);
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
   const classification = useMemo(() => classifySalesRows(parseResult.rows, classificationRules), [parseResult.rows, classificationRules]);
   // TODO: For deeper audit, add parseResult.auditRows from document-level rows when the source Excel contains per-document revenue/grossProfit. Do not use auditRows for payroll calculation.

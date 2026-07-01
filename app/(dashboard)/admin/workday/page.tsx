@@ -107,7 +107,18 @@ function normalizeSearchText(value: string) {
 }
 
 function employeeCashboxSearchKey(employeeName: string) {
-  return normalizeSearchText(employeeName).split(/\s+/).find(Boolean) ?? '';
+  const normalized = normalizeSearchText(employeeName);
+  if (
+    normalized.includes('магомед')
+    || normalized.includes('стажер')
+    || normalized.includes('костеренко')
+    || normalized.includes('костаренко')
+    || normalized.includes('косторенко')
+  ) {
+    return 'костеренко';
+  }
+
+  return normalized.split(/\s+/).find(Boolean) ?? '';
 }
 
 function cashStatementStatus(result: OneCCashStatementSummaryResult | null) {
