@@ -97,6 +97,7 @@ const wholesaleManager = 'Ахобекова Залина';
 const asadManager = 'Икаев Асад';
 const traineeManager = 'СтажерРозница';
 const traineeAlias = 'Косторенко Магомед';
+const traineeAliasVariants = ['Косторенко Магомед', 'Магомед Косторенко', 'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'];
 const creditClient = 'Кредит/рассрочка';
 const regularClient = 'Розничный покупатель';
 
@@ -211,12 +212,14 @@ describe('payroll calculation regression rules', () => {
         cost: 400,
         grossProfit: 600,
       }),
-      salesRow({
-        manager: traineeAlias,
-        revenue: 2000,
-        cost: 800,
-        grossProfit: 1200,
-      }),
+      ...traineeAliasVariants.map((manager) =>
+        salesRow({
+          manager,
+          revenue: 2000,
+          cost: 800,
+          grossProfit: 1200,
+        }),
+      ),
     ]);
 
     const traineeSummary = classification.managerSummaries.find((item) => item.manager === traineeManager);
@@ -224,8 +227,11 @@ describe('payroll calculation regression rules', () => {
 
     assert.ok(traineeSummary);
     assert.equal(aliasSummary, undefined);
-    assert.equal(traineeSummary.revenue, 3000);
-    assert.equal(traineeSummary.grossProfit, 1800);
+    for (const alias of traineeAliasVariants) {
+      assert.equal(classification.managerSummaries.find((item) => item.manager === alias), undefined);
+    }
+    assert.equal(traineeSummary.revenue, 13000);
+    assert.equal(traineeSummary.grossProfit, 7800);
   });
 
   it('calculates wholesale bonus at 1.75% of included wholesale base', () => {

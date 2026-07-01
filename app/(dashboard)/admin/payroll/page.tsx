@@ -570,9 +570,9 @@ const payrollAttendanceConfig: Record<string, PayrollAttendanceConfig> = {
     comment: 'Дни и опоздания из Google-формы / рассчитанной посещаемости',
   },
   'СтажерРозница': {
-    attendanceNames: ['Магомед'],
+    attendanceNames: ['Магомед', 'Косторенко Магомед', 'Магомед Косторенко', 'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'],
     sourceType: 'form',
-    comment: 'Магомед в посещаемости = СтажерРозница в зарплате',
+    comment: 'Магомед / Косторенко в посещаемости = СтажерРозница в зарплате',
   },
   'Кумахова Диана': {
     attendanceNames: ['Диана', 'Кумахова Диана'],
@@ -677,6 +677,22 @@ const months = [
 ];
 
 const years = Array.from({ length: 7 }, (_, index) => new Date().getFullYear() - 3 + index);
+function formatPayrollMonthKey(monthIndex: number) {
+  return String(monthIndex + 1).padStart(2, '0');
+}
+
+function getDefaultPayrollPeriod(currentDate = new Date()) {
+  const payrollDate = new Date(currentDate);
+  if (currentDate.getDate() <= 7) {
+    payrollDate.setMonth(payrollDate.getMonth() - 1);
+  }
+
+  return {
+    month: String(payrollDate.getMonth()),
+    year: String(payrollDate.getFullYear()),
+  };
+}
+
 const purchaseManagerName = 'Тохов Астемир';
 const purchaseTargetSalary = 100000;
 const purchaseStandardWorkedDays = 20;
@@ -688,6 +704,10 @@ const retailTraineePayrollName = 'СтажерРозница';
 const payrollManagerAliases: Record<string, string> = {
   [normalizeText('Косторенко Магомед')]: retailTraineePayrollName,
   [normalizeText('Магомед Косторенко')]: retailTraineePayrollName,
+  [normalizeText('Костанко Магомед')]: retailTraineePayrollName,
+  [normalizeText('Магомед Костанко')]: retailTraineePayrollName,
+  [normalizeText('Костаренко Магомед')]: retailTraineePayrollName,
+  [normalizeText('Магомед Костаренко')]: retailTraineePayrollName,
 };
 
 const headerAliases = {
@@ -708,6 +728,10 @@ const knownManagers = [
   'СтажерРозница',
   'Косторенко Магомед',
   'Магомед Косторенко',
+  'Костанко Магомед',
+  'Магомед Костанко',
+  'Костаренко Магомед',
+  'Магомед Костаренко',
   'Икаев Асад',
 ].map(normalizeText);
 
@@ -3165,9 +3189,9 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
 }
 
 export default function AdminPayrollPage() {
-  const now = new Date();
-  const [month, setMonth] = useState(String(now.getMonth()));
-  const [year, setYear] = useState(String(now.getFullYear()));
+  const defaultPayrollPeriod = getDefaultPayrollPeriod();
+  const [month, setMonth] = useState(defaultPayrollPeriod.month);
+  const [year, setYear] = useState(defaultPayrollPeriod.year);
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
   const [selectedSheet, setSelectedSheet] = useState('');
   const [error, setError] = useState('');
@@ -3220,6 +3244,7 @@ export default function AdminPayrollPage() {
 
   const rows = selectedSheet && workbook ? workbook.sheets[selectedSheet] ?? [] : [];
   const payrollManualStorageKey = `payroll-manual-${year}-${month}`;
+  const selectedPayrollPeriodKey = `${year}-${formatPayrollMonthKey(Number(month))}`;
 
   useEffect(() => {
     skipNextManualPayrollSave.current = true;
@@ -3245,6 +3270,12 @@ export default function AdminPayrollPage() {
     void loadSavedPayrollPeriods();
     void loadClassificationRules();
   }, []);
+
+  useEffect(() => {
+    setAttendancePreview(null);
+    setAttendancePreviewError('');
+    setAttendanceApplyResult(null);
+  }, [selectedPayrollPeriodKey]);
 
   const parseResult = useMemo(() => parsePayrollReport(rows), [rows]);
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
@@ -3408,6 +3439,7 @@ export default function AdminPayrollPage() {
       };
     });
   }, [attendancePreview, salesPayrollRows]);
+  const isAttendancePreviewPeriodCurrent = attendancePreview?.period.periodKey === selectedPayrollPeriodKey;
   const selectedManagerPayroll = useMemo(() => fullPayrollRows.find((summary) => summary.manager === selectedManager) ?? null, [fullPayrollRows, selectedManager]);
   const selectedManagerAttendanceNames = selectedManagerPayroll ? payrollAttendanceConfig[selectedManagerPayroll.manager]?.attendanceNames ?? [] : [];
   const payrollTotals = useMemo(
@@ -3806,6 +3838,7 @@ export default function AdminPayrollPage() {
   async function loadAttendancePreview() {
     setAttendancePreviewError('');
     setAttendanceApplyResult(null);
+    setAttendancePreview(null);
     setIsAttendancePreviewLoading(true);
 
     try {
@@ -3827,6 +3860,11 @@ export default function AdminPayrollPage() {
 
   function applyAttendancePreviewDays() {
     if (!attendancePreview) return;
+    if (attendancePreview.period.periodKey !== selectedPayrollPeriodKey) {
+      setAttendanceApplyResult(null);
+      setAttendancePreviewError(`Предпросмотр посещаемости загружен за ${attendancePreview.period.periodKey}, а выбран период ${selectedPayrollPeriodKey}. Загрузите предпросмотр заново.`);
+      return;
+    }
 
     const result: AttendanceApplyResult = {
       fullApplied: 0,
@@ -5768,7 +5806,7 @@ export default function AdminPayrollPage() {
                     <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
                       <div>
                         <h3 className='text-base font-bold text-slate-900'>Сопоставление с посещаемостью</h3>
-                        <p className='mt-1 text-sm text-slate-500'>Ручная карта имён для будущей автоподстановки дней. Дни и опоздания пока заполняются вручную.</p>
+                        <p className='mt-1 text-sm text-slate-500'>Ручная карта имён для будущей автоподстановки дней. Выбран период: {months[Number(month)]} {year}.</p>
                       </div>
                       <button
                         type='button'
@@ -5819,11 +5857,15 @@ export default function AdminPayrollPage() {
                             <Badge className={attendancePreview.scheduleMode === 'google-sheets' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
                               График: {attendancePreview.scheduleMode}
                             </Badge>
+                            <Badge className={isAttendancePreviewPeriodCurrent ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-700'}>
+                              Период посещаемости: {attendancePreview.period.periodKey}
+                            </Badge>
                           </div>
                           <button
                             type='button'
                             onClick={applyAttendancePreviewDays}
-                            className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90'
+                            disabled={!isAttendancePreviewPeriodCurrent}
+                            className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60'
                           >
                             Применить найденные дни
                           </button>
