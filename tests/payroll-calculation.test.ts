@@ -98,6 +98,7 @@ const asadManager = 'Икаев Асад';
 const traineeManager = 'СтажерРозница';
 const traineeAlias = 'Косторенко Магомед';
 const traineeAliasVariants = ['Косторенко Магомед', 'Магомед Косторенко', 'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'];
+const excludedPayrollManagers = ['Кештова Аслан', 'Кештова Амир', 'Атабиева Муслим'];
 const creditClient = 'Кредит/рассрочка';
 const regularClient = 'Розничный покупатель';
 
@@ -232,6 +233,31 @@ describe('payroll calculation regression rules', () => {
     }
     assert.equal(traineeSummary.revenue, 13000);
     assert.equal(traineeSummary.grossProfit, 7800);
+  });
+
+  it('excludes non-payroll people from payroll summaries', () => {
+    const classification = classifySalesRows([
+      salesRow({
+        manager: retailManager,
+        revenue: 1000,
+        cost: 400,
+        grossProfit: 600,
+      }),
+      ...excludedPayrollManagers.map((manager) =>
+        salesRow({
+          manager,
+          revenue: 100000,
+          cost: 1000,
+          grossProfit: 99000,
+        }),
+      ),
+    ]);
+
+    assert.ok(classification.managerSummaries.find((item) => item.manager === retailManager));
+    for (const manager of excludedPayrollManagers) {
+      assert.equal(classification.managerSummaries.find((item) => item.manager === manager), undefined);
+      assert.equal(classification.rows.find((item) => item.manager === manager), undefined);
+    }
   });
 
   it('calculates wholesale bonus at 1.75% of included wholesale base', () => {

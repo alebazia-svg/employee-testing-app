@@ -701,6 +701,8 @@ const purchasePercent = 0.0175;
 const agentCreditCommissionEmployee = 'Кумахова Диана';
 const asadManagerName = 'Икаев Асад';
 const retailTraineePayrollName = 'СтажерРозница';
+const payrollExcludedEmployeeNames = ['Кештова Аслан', 'Кештова Амир', 'Атабиева Муслим'];
+const payrollExcludedEmployeeKeys = new Set(payrollExcludedEmployeeNames.map(normalizeText));
 const payrollManagerAliases: Record<string, string> = {
   [normalizeText('Косторенко Магомед')]: retailTraineePayrollName,
   [normalizeText('Магомед Косторенко')]: retailTraineePayrollName,
@@ -732,6 +734,7 @@ const knownManagers = [
   'Магомед Костанко',
   'Костаренко Магомед',
   'Магомед Костаренко',
+  ...payrollExcludedEmployeeNames,
   'Икаев Асад',
 ].map(normalizeText);
 
@@ -990,6 +993,10 @@ function isKnownManagerName(text: string) {
 
 function getPayrollManagerName(manager: string) {
   return payrollManagerAliases[normalizeText(manager)] ?? manager;
+}
+
+function isPayrollExcludedEmployee(manager: string) {
+  return payrollExcludedEmployeeKeys.has(normalizeText(getPayrollManagerName(manager)));
 }
 
 function isTotalRow(text: string) {
@@ -2454,7 +2461,9 @@ function applyClassificationRules(
 }
 
 function classifySalesRows(rows: SalesRow[], classificationRules: PayrollClassificationRule[] = []): ClassificationResult {
-  const normalizedRows = rows.map((row) => ({ ...row, manager: getPayrollManagerName(row.manager) }));
+  const normalizedRows = rows
+    .map((row) => ({ ...row, manager: getPayrollManagerName(row.manager) }))
+    .filter((row) => !isPayrollExcludedEmployee(row.manager));
   const classifiedRows = normalizedRows.map((row) => {
     const details = getCalculationDetails(row);
     return { ...row, ...applyClassificationRules(row, details, classificationRules) };
