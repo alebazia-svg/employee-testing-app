@@ -97,8 +97,8 @@ const wholesaleManager = 'Ахобекова Залина';
 const asadManager = 'Икаев Асад';
 const traineeManager = 'СтажерРозница';
 const traineeAlias = 'Косторенко Магомед';
-const traineeAliasVariants = ['Косторенко Магомед', 'Магомед Косторенко', 'Магомед Косторенко (стажёр)', 'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'];
-const excludedPayrollManagers = ['Кештова Аслан', 'Кештова Амир', 'Атабиева Муслим'];
+const traineeAliasVariants = ['Косторенко Магомед', 'Магомед Косторенко', 'Магомед Косторенко (стажёр)', 'Костеренко Магомед', 'Магомед Костеренко', 'Костенко Магомед', 'Магомед Костенко', 'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'];
+const excludedPayrollManagers = ['Кештова Аслан', 'Кештова Амир', 'Кештов Аслан', 'Кештов Амир', 'Атабиева Муслим', 'Атабиев Муслим'];
 const creditClient = 'Кредит/рассрочка';
 const regularClient = 'Розничный покупатель';
 
@@ -231,8 +231,8 @@ describe('payroll calculation regression rules', () => {
     for (const alias of traineeAliasVariants) {
       assert.equal(classification.managerSummaries.find((item) => item.manager === alias), undefined);
     }
-    assert.equal(traineeSummary.revenue, 15000);
-    assert.equal(traineeSummary.grossProfit, 9000);
+    assert.equal(traineeSummary.revenue, 23000);
+    assert.equal(traineeSummary.grossProfit, 13800);
   });
 
   it('excludes non-payroll people from payroll summaries', () => {

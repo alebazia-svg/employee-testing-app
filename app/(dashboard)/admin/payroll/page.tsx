@@ -701,11 +701,15 @@ const purchasePercent = 0.0175;
 const agentCreditCommissionEmployee = 'Кумахова Диана';
 const asadManagerName = 'Икаев Асад';
 const retailTraineePayrollName = 'СтажерРозница';
-const payrollExcludedEmployeeNames = ['Кештова Аслан', 'Кештова Амир', 'Атабиева Муслим'];
+const payrollExcludedEmployeeNames = ['Кештова Аслан', 'Кештова Амир', 'Кештов Аслан', 'Кештов Амир', 'Атабиева Муслим', 'Атабиев Муслим'];
 const payrollExcludedEmployeeKeys = new Set(payrollExcludedEmployeeNames.map(normalizeText));
 const payrollManagerAliases: Record<string, string> = {
   [normalizeText('Косторенко Магомед')]: retailTraineePayrollName,
   [normalizeText('Магомед Косторенко')]: retailTraineePayrollName,
+  [normalizeText('Костеренко Магомед')]: retailTraineePayrollName,
+  [normalizeText('Магомед Костеренко')]: retailTraineePayrollName,
+  [normalizeText('Костенко Магомед')]: retailTraineePayrollName,
+  [normalizeText('Магомед Костенко')]: retailTraineePayrollName,
   [normalizeText('Костанко Магомед')]: retailTraineePayrollName,
   [normalizeText('Магомед Костанко')]: retailTraineePayrollName,
   [normalizeText('Костаренко Магомед')]: retailTraineePayrollName,
@@ -730,6 +734,10 @@ const knownManagers = [
   'СтажерРозница',
   'Косторенко Магомед',
   'Магомед Косторенко',
+  'Костеренко Магомед',
+  'Магомед Костеренко',
+  'Костенко Магомед',
+  'Магомед Костенко',
   'Костанко Магомед',
   'Магомед Костанко',
   'Костаренко Магомед',
@@ -993,7 +1001,7 @@ function isKnownManagerName(text: string) {
 
 function getPayrollManagerName(manager: string) {
   const normalized = normalizeText(manager);
-  if (normalized.includes('магомед') && /(косторенко|костанко|костаренко)/.test(normalized)) {
+  if (normalized.includes('магомед') && /(косторенко|костеренко|костенко|костанко|костаренко)/.test(normalized)) {
     return retailTraineePayrollName;
   }
   return payrollManagerAliases[normalized] ?? manager;
@@ -2952,6 +2960,10 @@ function getPayrollManualInput(manager: string, manualPayroll: Record<string, Pa
   return (
     manualPayroll['Магомед Косторенко'] ??
     manualPayroll['Косторенко Магомед'] ??
+    manualPayroll['Магомед Костеренко'] ??
+    manualPayroll['Костеренко Магомед'] ??
+    manualPayroll['Магомед Костенко'] ??
+    manualPayroll['Костенко Магомед'] ??
     manualPayroll['Магомед Костанко'] ??
     manualPayroll['Костанко Магомед'] ??
     manualPayroll['Магомед Костаренко'] ??
