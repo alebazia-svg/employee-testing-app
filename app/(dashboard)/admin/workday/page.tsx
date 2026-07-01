@@ -162,12 +162,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
     ?? cashStatementDimensions.organizations[0]
     ?? null;
-  const cashStatementEmployees = employees.filter((employee) => {
+  const cashStatementScheduledEmployees = employees.filter((employee) => {
     if (employee.department !== 'retail' && employee.department !== 'wholesale') return false;
     const schedule = scheduleByUser.get(employee.id);
     const workDay = workDayByUser.get(employee.id);
     return schedule?.status === 'working' || Boolean(workDay);
   });
+  const cashStatementFallbackEmployees = employees.filter((employee) => employee.department === 'retail' || employee.department === 'wholesale');
+  const cashStatementUsesFallbackEmployees = cashStatementScheduledEmployees.length === 0 && cashStatementFallbackEmployees.length > 0;
+  const cashStatementEmployees = cashStatementUsesFallbackEmployees ? cashStatementFallbackEmployees : cashStatementScheduledEmployees;
   const cashStatementRows = await Promise.all(cashStatementEmployees.map(async (employee) => {
     const searchKey = employeeCashboxSearchKey(employee.name);
     const cashbox = searchKey
@@ -271,6 +274,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               <Badge className='bg-slate-100 text-slate-700'>ведомостей получено: {cashStatementLoadedCount}/{cashStatementRows.length}</Badge>
             </div>
           </div>
+          {cashStatementUsesFallbackEmployees && (
+            <div className='border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900'>
+              График на выбранный день не заполнен, поэтому для диагностики кассы показаны все активные сотрудники розницы и опта.
+            </div>
+          )}
           {cashStatementRows.length === 0 ? (
             <div className='px-5 py-4 text-sm font-semibold text-slate-500'>За выбранный день нет розничных или оптовых сотрудников для проверки кассы.</div>
           ) : (
