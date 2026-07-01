@@ -4506,6 +4506,85 @@ export default function AdminPayrollPage() {
     );
   }
 
+  function renderProductReviewCard() {
+    return (
+      <Card>
+        <div className='mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
+          <div>
+            <h2 className='text-lg font-bold text-slate-900'>Что нужно решить по товарам</h2>
+            <p className='mt-1 text-sm text-slate-500'>Одинаковые спорные позиции сгруппированы. Решите товар один раз, и портал создаст точечное правило для следующих расчётов.</p>
+          </div>
+          <div className='grid grid-cols-2 gap-2 text-sm sm:grid-cols-4'>
+            <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
+              <p className='text-xs font-semibold uppercase text-amber-700'>Товаров решить</p>
+              <p className='text-xl font-bold text-amber-950'>{productReviewGroups.length}</p>
+            </div>
+            <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2'>
+              <p className='text-xs font-semibold uppercase text-slate-500'>Строк</p>
+              <p className='text-xl font-bold text-slate-900'>{productReviewGroups.reduce((sum, group) => sum + group.rows.length, 0)}</p>
+            </div>
+            <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2'>
+              <p className='text-xs font-semibold uppercase text-slate-500'>Выручка</p>
+              <p className='text-xl font-bold text-slate-900'>{formatMoney(productReviewGroups.reduce((sum, group) => sum + group.revenue, 0))}</p>
+            </div>
+            <div className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2'>
+              <p className='text-xs font-semibold uppercase text-emerald-700'>С правилами</p>
+              <p className='text-xl font-bold text-emerald-950'>{manualClassificationAuditRows.length}</p>
+            </div>
+          </div>
+        </div>
+
+        {productReviewGroups.length ? (
+          <div className='max-h-[520px] overflow-auto rounded-lg border border-border'>
+            <table className='w-full min-w-[1080px] text-sm'>
+              <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'>
+                <tr>
+                  <th className='px-3 py-3'>Товар</th>
+                  <th className='px-3 py-3'>Категория</th>
+                  <th className='px-3 py-3'>Менеджеры</th>
+                  <th className='px-3 py-3 text-right'>Строк</th>
+                  <th className='px-3 py-3 text-right'>Выручка</th>
+                  <th className='px-3 py-3 text-right'>ВП</th>
+                  <th className='px-3 py-3'>Почему спорно</th>
+                  <th className='px-3 py-3'>Решение</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productReviewGroups.slice(0, 30).map((group) => (
+                  <tr key={group.key} className='border-t border-border/70 align-top'>
+                    <td className='max-w-[340px] px-3 py-3'>
+                      <p className='font-semibold text-slate-900'>{group.item}</p>
+                      <p className='mt-1 text-xs text-slate-500'>Артикул: {group.article || '—'} · клиентов: {group.clients.size}</p>
+                    </td>
+                    <td className='px-3 py-3 text-slate-700'>{group.category}</td>
+                    <td className='max-w-[180px] px-3 py-3 text-slate-700'>{Array.from(group.managers).join(', ')}</td>
+                    <td className='px-3 py-3 text-right font-semibold text-slate-900'>{group.rows.length}</td>
+                    <td className='px-3 py-3 text-right text-slate-700'>{formatMoney(group.revenue)}</td>
+                    <td className='px-3 py-3 text-right text-slate-700'>{formatMoney(group.grossProfit)}</td>
+                    <td className='max-w-[260px] px-3 py-3'>
+                      <div className='flex flex-wrap gap-1'>
+                        {Array.from(group.reasons).map((reason) => (
+                          <Badge key={reason} className='bg-amber-100 text-amber-900'>{reason}</Badge>
+                        ))}
+                      </div>
+                      <p className='mt-1 text-xs text-slate-500'>{group.actionRow.calculationLabel}</p>
+                    </td>
+                    <td className='px-3 py-3'>{renderAccessoryRuleButton(group.actionRow, group.problemType)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800'>Спорных товаров для решения не найдено.</p>
+        )}
+        {productReviewGroups.length > 30 && (
+          <p className='mt-3 text-sm text-slate-500'>Показаны первые 30 групп. Остальные доступны ниже в технических блоках аудита.</p>
+        )}
+      </Card>
+    );
+  }
+
   function getPayrollExportMainAmount(row: FullPayrollRow) {
     if (row.salaryType === 'fixed_salary') return row.fixedSalary;
   if (row.salaryType === 'purchase_manager') return row.purchasePercentAmount + row.purchaseTargetAdjustment;
@@ -5439,80 +5518,25 @@ export default function AdminPayrollPage() {
                     </Card>
                   </div>
 
-                  <Card>
-                    <div className='mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
-                      <div>
-                        <h2 className='text-lg font-bold text-slate-900'>Быстрая проверка товаров</h2>
-                        <p className='mt-1 text-sm text-slate-500'>Одинаковые спорные позиции сгруппированы. Решите товар один раз, и портал создаст точечное правило для следующих расчётов.</p>
+                  {productReviewGroups.length > 0 && (
+                    <Card className='border-amber-200 bg-amber-50/70'>
+                      <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                        <div>
+                          <h2 className='text-base font-bold text-amber-950'>Есть товары для проверки</h2>
+                          <p className='mt-1 text-sm text-amber-900'>
+                            Нужно решить {productReviewGroups.length} товарных групп перед финальной выплатой. Подробная проверка находится во вкладке “Аудит расчёта”.
+                          </p>
+                        </div>
+                        <button
+                          type='button'
+                          onClick={() => setActivePayrollTab('Аудит расчёта')}
+                          className='w-fit rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-700'
+                        >
+                          Открыть аудит
+                        </button>
                       </div>
-                      <div className='grid grid-cols-2 gap-2 text-sm sm:grid-cols-4'>
-                        <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-amber-700'>Товаров решить</p>
-                          <p className='text-xl font-bold text-amber-950'>{productReviewGroups.length}</p>
-                        </div>
-                        <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Строк</p>
-                          <p className='text-xl font-bold text-slate-900'>{productReviewGroups.reduce((sum, group) => sum + group.rows.length, 0)}</p>
-                        </div>
-                        <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Выручка</p>
-                          <p className='text-xl font-bold text-slate-900'>{formatMoney(productReviewGroups.reduce((sum, group) => sum + group.revenue, 0))}</p>
-                        </div>
-                        <div className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-emerald-700'>С правилами</p>
-                          <p className='text-xl font-bold text-emerald-950'>{manualClassificationAuditRows.length}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {productReviewGroups.length ? (
-                      <div className='max-h-[520px] overflow-auto rounded-lg border border-border'>
-                        <table className='w-full min-w-[1080px] text-sm'>
-                          <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'>
-                            <tr>
-                              <th className='px-3 py-3'>Товар</th>
-                              <th className='px-3 py-3'>Категория</th>
-                              <th className='px-3 py-3'>Менеджеры</th>
-                              <th className='px-3 py-3 text-right'>Строк</th>
-                              <th className='px-3 py-3 text-right'>Выручка</th>
-                              <th className='px-3 py-3 text-right'>ВП</th>
-                              <th className='px-3 py-3'>Почему спорно</th>
-                              <th className='px-3 py-3'>Решение</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {productReviewGroups.slice(0, 30).map((group) => (
-                              <tr key={group.key} className='border-t border-border/70 align-top'>
-                                <td className='max-w-[340px] px-3 py-3'>
-                                  <p className='font-semibold text-slate-900'>{group.item}</p>
-                                  <p className='mt-1 text-xs text-slate-500'>Артикул: {group.article || '—'} · клиентов: {group.clients.size}</p>
-                                </td>
-                                <td className='px-3 py-3 text-slate-700'>{group.category}</td>
-                                <td className='max-w-[180px] px-3 py-3 text-slate-700'>{Array.from(group.managers).join(', ')}</td>
-                                <td className='px-3 py-3 text-right font-semibold text-slate-900'>{group.rows.length}</td>
-                                <td className='px-3 py-3 text-right text-slate-700'>{formatMoney(group.revenue)}</td>
-                                <td className='px-3 py-3 text-right text-slate-700'>{formatMoney(group.grossProfit)}</td>
-                                <td className='max-w-[260px] px-3 py-3'>
-                                  <div className='flex flex-wrap gap-1'>
-                                    {Array.from(group.reasons).map((reason) => (
-                                      <Badge key={reason} className='bg-amber-100 text-amber-900'>{reason}</Badge>
-                                    ))}
-                                  </div>
-                                  <p className='mt-1 text-xs text-slate-500'>{group.actionRow.calculationLabel}</p>
-                                </td>
-                                <td className='px-3 py-3'>{renderAccessoryRuleButton(group.actionRow, group.problemType)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <p className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800'>Спорных товаров для решения не найдено.</p>
-                    )}
-                    {productReviewGroups.length > 30 && (
-                      <p className='mt-3 text-sm text-slate-500'>Показаны первые 30 групп. Остальные доступны во вкладке “Аудит расчёта”.</p>
-                    )}
-                  </Card>
+                    </Card>
+                  )}
 
                   <details className='rounded-lg border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]'>
                     <summary className='group cursor-pointer list-none'>
@@ -6221,6 +6245,8 @@ export default function AdminPayrollPage() {
                       </p>
                     )}
                   </Card>
+
+                  {renderProductReviewCard()}
 
                   <Card>
                     <h3 className='mb-2 text-base font-bold text-slate-900'>Требует действия</h3>
