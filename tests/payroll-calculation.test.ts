@@ -95,6 +95,8 @@ before(async () => {
 const retailManager = 'Чеченова Милана';
 const wholesaleManager = 'Ахобекова Залина';
 const asadManager = 'Икаев Асад';
+const traineeManager = 'СтажерРозница';
+const traineeAlias = 'Косторенко Магомед';
 const creditClient = 'Кредит/рассрочка';
 const regularClient = 'Розничный покупатель';
 
@@ -199,6 +201,31 @@ describe('payroll calculation regression rules', () => {
     assert.ok(summary);
     assert.equal(summary.creditBonus, 910);
     assert.equal(summary.totalBonus, 910);
+  });
+
+  it('merges retail trainee sales aliases into one payroll employee', () => {
+    const classification = classifySalesRows([
+      salesRow({
+        manager: traineeManager,
+        revenue: 1000,
+        cost: 400,
+        grossProfit: 600,
+      }),
+      salesRow({
+        manager: traineeAlias,
+        revenue: 2000,
+        cost: 800,
+        grossProfit: 1200,
+      }),
+    ]);
+
+    const traineeSummary = classification.managerSummaries.find((item) => item.manager === traineeManager);
+    const aliasSummary = classification.managerSummaries.find((item) => item.manager === traineeAlias);
+
+    assert.ok(traineeSummary);
+    assert.equal(aliasSummary, undefined);
+    assert.equal(traineeSummary.revenue, 3000);
+    assert.equal(traineeSummary.grossProfit, 1800);
   });
 
   it('calculates wholesale bonus at 1.75% of included wholesale base', () => {

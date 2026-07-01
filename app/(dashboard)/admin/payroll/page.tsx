@@ -684,6 +684,11 @@ const purchaseDayRate = 600;
 const purchasePercent = 0.0175;
 const agentCreditCommissionEmployee = 'Кумахова Диана';
 const asadManagerName = 'Икаев Асад';
+const retailTraineePayrollName = 'СтажерРозница';
+const payrollManagerAliases: Record<string, string> = {
+  [normalizeText('Косторенко Магомед')]: retailTraineePayrollName,
+  [normalizeText('Магомед Косторенко')]: retailTraineePayrollName,
+};
 
 const headerAliases = {
   manager: ['менеджер'],
@@ -701,6 +706,8 @@ const knownManagers = [
   'Кумахова Диана',
   'Кештова Бэла',
   'СтажерРозница',
+  'Косторенко Магомед',
+  'Магомед Косторенко',
   'Икаев Асад',
 ].map(normalizeText);
 
@@ -955,6 +962,10 @@ function looksLikeManagerName(text: string) {
 
 function isKnownManagerName(text: string) {
   return knownManagers.includes(normalizeText(text));
+}
+
+function getPayrollManagerName(manager: string) {
+  return payrollManagerAliases[normalizeText(manager)] ?? manager;
 }
 
 function isTotalRow(text: string) {
@@ -1329,12 +1340,12 @@ function parseRowsWithStrategy(rows: SheetRow[], headerIndex: number, headerMap:
     }
 
     if (detectedLevel === 'manager') {
-      currentManager = text;
+      currentManager = getPayrollManagerName(text);
       currentClient = '';
       currentRegistrar = '';
       currentCategory = '';
       seenItemInClient = false;
-      managers.add(text);
+      managers.add(currentManager);
       addDiagnostic(row, text, detectedLevel);
       return;
     }
@@ -1452,11 +1463,11 @@ function parseRowsWithDocumentUnderItem(rows: SheetRow[], headerIndex: number, h
     }
 
     if (isKnownManagerName(text)) {
-      currentManager = text;
+      currentManager = getPayrollManagerName(text);
       currentClient = '';
       currentCategory = '';
       lastSalesRow = null;
-      managers.add(text);
+      managers.add(currentManager);
       addDiagnostic(row, text, 'manager');
       return;
     }
@@ -2419,7 +2430,8 @@ function applyClassificationRules(
 }
 
 function classifySalesRows(rows: SalesRow[], classificationRules: PayrollClassificationRule[] = []): ClassificationResult {
-  const classifiedRows = rows.map((row) => {
+  const normalizedRows = rows.map((row) => ({ ...row, manager: getPayrollManagerName(row.manager) }));
+  const classifiedRows = normalizedRows.map((row) => {
     const details = getCalculationDetails(row);
     return { ...row, ...applyClassificationRules(row, details, classificationRules) };
   });
