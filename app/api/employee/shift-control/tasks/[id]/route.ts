@@ -232,7 +232,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const requiresDiscrepancyComment =
       (discrepancyType === 'surplus' || discrepancyType === 'shortage') && discrepancyAmount !== null && discrepancyAmount > 300;
 
-    if (!hasSavedPhoto(handoverData, 'personalStatement')) return Response.json({ error: 'Сделайте фото моей ведомости 1С' }, { status: 400 });
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
     if (isRetail && !hasSavedPhoto(handoverData, 'personalAcquiringReceipts')) return Response.json({ error: 'Сделайте фото моих чеков оплат картой' }, { status: 400 });
     if (!['none', 'surplus', 'shortage'].includes(discrepancyType)) return Response.json({ error: 'Укажите расхождение по моей кассе' }, { status: 400 });
