@@ -144,6 +144,62 @@ export type OneCSalesRealizationLinksResult = {
   diagnostics: string[];
 };
 
+export type OneCCashStatementDimension = {
+  name: string;
+  ref: string;
+  deleted: boolean | null;
+};
+
+export type OneCCashStatementDimensionsResult = {
+  ok: boolean;
+  path: '/cash-statement-dimensions';
+  status?: number;
+  durationMs: number;
+  checkedAt: string;
+  organizations: OneCCashStatementDimension[];
+  cashboxes: OneCCashStatementDimension[];
+  error?: string;
+  diagnostics: string[];
+};
+
+export type OneCCashStatementMovement = {
+  period: string;
+  incoming: number | null;
+  outgoing: number | null;
+  document: {
+    name: string;
+    ref: string;
+  };
+  documentType: string;
+};
+
+export type OneCCashStatementSummaryParams = {
+  date: string;
+  organizationRef: string;
+  cashboxRef: string;
+};
+
+export type OneCCashStatementSummaryResult = {
+  ok: boolean;
+  path: '/cash-statement-summary';
+  status?: number;
+  durationMs: number;
+  checkedAt: string;
+  params: OneCCashStatementSummaryParams;
+  register: string;
+  date: string;
+  cashbox: OneCCashStatementDimension | null;
+  organization: OneCCashStatementDimension | null;
+  openingBalance: number | null;
+  incomingTotal: number | null;
+  outgoingTotal: number | null;
+  closingBalance: number | null;
+  movements: OneCCashStatementMovement[];
+  movementsCount: number;
+  error?: string;
+  diagnostics: string[];
+};
+
 let cachedHealth: { expiresAt: number; value: OneCHealthResult } | null = null;
 
 export const DEFAULT_SALES_REALIZATIONS_PARAMS: SalesRealizationsParams = {
@@ -329,6 +385,82 @@ function normalizeCheckedSource(value: unknown) {
   };
 }
 
+function normalizeCashStatementDimension(value: unknown): OneCCashStatementDimension {
+  const source = readRecord(value) ?? {};
+  return {
+    name: readFirstString(source, ['name', 'presentation', 'description']),
+    ref: readFirstString(source, ['ref', 'id', 'guid']),
+    deleted: readFirstBoolean(source, ['deleted', 'deletion_mark', 'deletionMark']),
+  };
+}
+
+function normalizeCashStatementMovement(value: unknown): OneCCashStatementMovement {
+  const source = readRecord(value) ?? {};
+  const document = normalizeCashStatementDimension(source.document);
+  return {
+    period: readFirstString(source, ['period', 'date']),
+    incoming: readFirstNumber(source, ['incoming', 'income', 'debit']),
+    outgoing: readFirstNumber(source, ['outgoing', 'expense', 'credit']),
+    document: {
+      name: document.name,
+      ref: document.ref,
+    },
+    documentType: readFirstString(source, ['document_type', 'documentType', 'type']),
+  };
+}
+
+function findCashStatementDimensionsPayload(data: unknown) {
+  const root = readRecord(data);
+  if (!root) {
+    return {
+      organizations: [] as OneCCashStatementDimension[],
+      cashboxes: [] as OneCCashStatementDimension[],
+      diagnostics: ['Ответ 1С не похож на JSON-объект.'],
+    };
+  }
+
+  const nestedData = readRecord(root.data);
+  const payload = nestedData ?? root;
+  const organizations = readArray(payload.organizations).map(normalizeCashStatementDimension);
+  const cashboxes = readArray(payload.cashboxes).map(normalizeCashStatementDimension);
+  const diagnostics: string[] = [];
+
+  if (organizations.length === 0) diagnostics.push('1С не вернула список организаций.');
+  if (cashboxes.length === 0) diagnostics.push('1С не вернула список касс.');
+
+  return { organizations, cashboxes, diagnostics };
+}
+
+function findCashStatementSummaryPayload(data: unknown) {
+  const root = readRecord(data);
+  if (!root) {
+    return {
+      summary: null,
+      diagnostics: ['Ответ 1С не похож на JSON-объект.'],
+    };
+  }
+
+  const nestedData = readRecord(root.data);
+  const payload = nestedData ?? root;
+  const movements = readArray(payload.movements).map(normalizeCashStatementMovement);
+
+  return {
+    summary: {
+      register: readFirstString(payload, ['register']),
+      date: readFirstString(payload, ['date']),
+      cashbox: payload.cashbox ? normalizeCashStatementDimension(payload.cashbox) : null,
+      organization: payload.organization ? normalizeCashStatementDimension(payload.organization) : null,
+      openingBalance: readFirstNumber(payload, ['opening_balance', 'openingBalance']),
+      incomingTotal: readFirstNumber(payload, ['incoming_total', 'incomingTotal']),
+      outgoingTotal: readFirstNumber(payload, ['outgoing_total', 'outgoingTotal']),
+      closingBalance: readFirstNumber(payload, ['closing_balance', 'closingBalance']),
+      movements,
+      movementsCount: readFirstNumber(payload, ['movements_count', 'movementsCount']) ?? movements.length,
+    },
+    diagnostics: [] as string[],
+  };
+}
+
 function findSalesRealizationLinksPayload(data: unknown): { links: OneCSalesRealizationLinks | null; diagnostics: string[] } {
   const root = readRecord(data);
   if (!root) return { links: null, diagnostics: ['Ответ 1С не похож на JSON-объект.'] };
@@ -405,6 +537,152 @@ function formatError(error: unknown) {
   if (error instanceof DOMException && error.name === 'AbortError') return 'Request timed out';
   if (error instanceof Error) return error.message;
   return 'Unknown request error';
+}
+
+async function requestCashStatementDimensions(config: OneCConfig): Promise<OneCCashStatementDimensionsResult> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const path = '/cash-statement-dimensions';
+
+  try {
+    const response = await fetch(`${config.baseUrl}${path}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        Authorization: buildAuthHeader(config),
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const data = await readResponseBody(response);
+    const durationMs = Date.now() - startedAt;
+    const payload = findCashStatementDimensionsPayload(data);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        path,
+        status: response.status,
+        durationMs,
+        checkedAt: new Date().toISOString(),
+        organizations: [],
+        cashboxes: [],
+        error: `1C API returned HTTP ${response.status}`,
+        diagnostics: payload.diagnostics,
+      };
+    }
+
+    return {
+      ok: payload.organizations.length > 0 && payload.cashboxes.length > 0,
+      path,
+      status: response.status,
+      durationMs,
+      checkedAt: new Date().toISOString(),
+      organizations: payload.organizations,
+      cashboxes: payload.cashboxes,
+      diagnostics: payload.diagnostics,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      path,
+      durationMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString(),
+      organizations: [],
+      cashboxes: [],
+      error: formatError(error),
+      diagnostics: [],
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestCashStatementSummary(
+  config: OneCConfig,
+  params: OneCCashStatementSummaryParams,
+): Promise<OneCCashStatementSummaryResult> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const path = '/cash-statement-summary';
+  const query = new URLSearchParams({
+    date: params.date,
+    organization_ref: params.organizationRef,
+    cashbox_ref: params.cashboxRef,
+  });
+
+  try {
+    const response = await fetch(`${config.baseUrl}${path}?${query.toString()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        Authorization: buildAuthHeader(config),
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const data = await readResponseBody(response);
+    const durationMs = Date.now() - startedAt;
+    const payload = findCashStatementSummaryPayload(data);
+
+    if (!response.ok || !payload.summary) {
+      return {
+        ok: false,
+        path,
+        status: response.status,
+        durationMs,
+        checkedAt: new Date().toISOString(),
+        params,
+        register: '',
+        date: params.date,
+        cashbox: null,
+        organization: null,
+        openingBalance: null,
+        incomingTotal: null,
+        outgoingTotal: null,
+        closingBalance: null,
+        movements: [],
+        movementsCount: 0,
+        error: response.ok ? '1C API returned an unexpected cash statement payload' : `1C API returned HTTP ${response.status}`,
+        diagnostics: payload.diagnostics,
+      };
+    }
+
+    return {
+      ok: true,
+      path,
+      status: response.status,
+      durationMs,
+      checkedAt: new Date().toISOString(),
+      params,
+      ...payload.summary,
+      diagnostics: payload.diagnostics,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      path,
+      durationMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString(),
+      params,
+      register: '',
+      date: params.date,
+      cashbox: null,
+      organization: null,
+      openingBalance: null,
+      incomingTotal: null,
+      outgoingTotal: null,
+      closingBalance: null,
+      movements: [],
+      movementsCount: 0,
+      error: formatError(error),
+      diagnostics: [],
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function requestSalesRealizations(config: OneCConfig, params: SalesRealizationsParams): Promise<OneCSalesRealizationsResult> {
@@ -716,4 +994,55 @@ export async function getSalesRealizationLinks(realizationRef: string): Promise<
   }
 
   return requestSalesRealizationLinks(config, normalizedRef);
+}
+
+export async function getCashStatementDimensions(): Promise<OneCCashStatementDimensionsResult> {
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+
+  if (missingConfig.length) {
+    return {
+      ok: false,
+      path: '/cash-statement-dimensions',
+      durationMs: 0,
+      checkedAt: new Date().toISOString(),
+      organizations: [],
+      cashboxes: [],
+      error: '1C API configuration is incomplete',
+      diagnostics: [`Missing env: ${missingConfig.join(', ')}`],
+    };
+  }
+
+  return requestCashStatementDimensions(config);
+}
+
+export async function getCashStatementSummary(
+  params: OneCCashStatementSummaryParams,
+): Promise<OneCCashStatementSummaryResult> {
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+
+  if (missingConfig.length) {
+    return {
+      ok: false,
+      path: '/cash-statement-summary',
+      durationMs: 0,
+      checkedAt: new Date().toISOString(),
+      params,
+      register: '',
+      date: params.date,
+      cashbox: null,
+      organization: null,
+      openingBalance: null,
+      incomingTotal: null,
+      outgoingTotal: null,
+      closingBalance: null,
+      movements: [],
+      movementsCount: 0,
+      error: '1C API configuration is incomplete',
+      diagnostics: [`Missing env: ${missingConfig.join(', ')}`],
+    };
+  }
+
+  return requestCashStatementSummary(config, params);
 }

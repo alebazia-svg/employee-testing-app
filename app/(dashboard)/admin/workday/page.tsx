@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, CheckCircle2, Clock, ClipboardList, UserCheck, Users } from 'lucide-react';
+import { AlertTriangle, Banknote, CheckCircle2, Clock, ClipboardList, UserCheck, Users } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { getCurrentUser } from '@/lib/auth';
+import { getCashStatementDimensions, getCashStatementSummary, type OneCCashStatementSummaryResult } from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, workDayStatusLabel } from '@/lib/workday';
 import { AdminShiftControlDetails } from './AdminShiftControlDetails';
@@ -92,6 +93,29 @@ function addDays(dateKey: string, offset: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatMoney(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)} ₽`;
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^а-яa-z0-9]+/g, ' ')
+    .trim();
+}
+
+function employeeCashboxSearchKey(employeeName: string) {
+  return normalizeSearchText(employeeName).split(/\s+/).find(Boolean) ?? '';
+}
+
+function cashStatementStatus(result: OneCCashStatementSummaryResult | null) {
+  if (!result) return { label: 'не проверено', className: 'bg-slate-100 text-slate-700' };
+  if (!result.ok) return { label: 'ошибка 1С', className: 'bg-rose-100 text-rose-800' };
+  return { label: 'получено', className: 'bg-green-100 text-green-800' };
+}
+
 export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string } }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
@@ -101,7 +125,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const selectedDate = isDateKey(searchParams?.date) ? searchParams.date : today;
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
-  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays] = await Promise.all([
+  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
@@ -118,6 +142,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       include: { user: { select: { name: true, department: true } } },
       orderBy: { startedAt: 'desc' },
     }),
+    getCashStatementDimensions(),
   ]);
 
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
@@ -133,6 +158,50 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const lateCount = workDays.filter((entry) => entry.lateMinutes > 0).length;
   const missingCheckoutSelectedDate = workDays.filter((entry) => entry.status === 'active' && !entry.endedAt).length;
   const missingCheckoutCount = unfinishedWorkDays.length + missingCheckoutSelectedDate;
+  const cashStatementOrganization =
+    cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
+    ?? cashStatementDimensions.organizations[0]
+    ?? null;
+  const cashStatementEmployees = employees.filter((employee) => {
+    if (employee.department !== 'retail' && employee.department !== 'wholesale') return false;
+    const schedule = scheduleByUser.get(employee.id);
+    const workDay = workDayByUser.get(employee.id);
+    return schedule?.status === 'working' || Boolean(workDay);
+  });
+  const cashStatementRows = await Promise.all(cashStatementEmployees.map(async (employee) => {
+    const searchKey = employeeCashboxSearchKey(employee.name);
+    const cashbox = searchKey
+      ? cashStatementDimensions.cashboxes.find((item) => normalizeSearchText(item.name).includes(searchKey)) ?? null
+      : null;
+
+    if (!cashStatementDimensions.ok || !cashStatementOrganization || !cashbox) {
+      return {
+        employee,
+        cashbox,
+        result: null,
+        note: !cashStatementDimensions.ok
+          ? cashStatementDimensions.error ?? cashStatementDimensions.diagnostics.join('; ') ?? '1С не вернула список касс'
+          : !cashStatementOrganization
+            ? 'Организация 1С не найдена'
+            : 'Касса сотрудника не найдена по фамилии',
+      };
+    }
+
+    const result = await getCashStatementSummary({
+      date: selectedDate,
+      organizationRef: cashStatementOrganization.ref,
+      cashboxRef: cashbox.ref,
+    });
+
+    return {
+      employee,
+      cashbox,
+      result,
+      note: result.ok ? '' : result.error ?? result.diagnostics.join('; ') ?? 'Не удалось получить ведомость 1С',
+    };
+  }));
+  const cashStatementLoadedCount = cashStatementRows.filter((row) => row.result?.ok).length;
+  const cashStatementMissingCashboxCount = cashStatementRows.filter((row) => !row.cashbox).length;
 
   return (
     <AdminShell>
@@ -178,6 +247,82 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           <StatCard title='Не завершили' value={missingCheckoutCount} tone='amber' icon={UserCheck} />
         </div>
 
+        <Card className='p-0'>
+          <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between'>
+            <div>
+              <div className='flex items-center gap-2'>
+                <span className='flex h-9 w-9 items-center justify-center rounded-lg bg-green-50 text-green-700'>
+                  <Banknote className='h-5 w-5' />
+                </span>
+                <div>
+                  <h2 className='text-lg font-extrabold text-slate-950'>Наличные по 1С</h2>
+                  <p className='mt-1 text-sm font-medium text-slate-500'>
+                    Read-only сверка с ведомостью денежных средств. На чек-листы и БД не влияет.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className='flex flex-wrap gap-2 text-xs font-bold'>
+              <Badge className={cashStatementDimensions.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
+                1С: {cashStatementDimensions.ok ? 'подключена' : 'ошибка'}
+              </Badge>
+              <Badge className='bg-slate-100 text-slate-700'>организация: {cashStatementOrganization?.name ?? 'не найдена'}</Badge>
+              <Badge className='bg-slate-100 text-slate-700'>касс найдено: {cashStatementDimensions.cashboxes.length}</Badge>
+              <Badge className='bg-slate-100 text-slate-700'>ведомостей получено: {cashStatementLoadedCount}/{cashStatementRows.length}</Badge>
+            </div>
+          </div>
+          {cashStatementRows.length === 0 ? (
+            <div className='px-5 py-4 text-sm font-semibold text-slate-500'>За выбранный день нет розничных или оптовых сотрудников для проверки кассы.</div>
+          ) : (
+            <div className='overflow-x-auto'>
+              <Table>
+                <thead>
+                  <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
+                    <th className='px-4 py-3'>Сотрудник</th>
+                    <th className='px-4 py-3'>Касса 1С</th>
+                    <th className='px-4 py-3'>Начало</th>
+                    <th className='px-4 py-3'>Приход</th>
+                    <th className='px-4 py-3'>Расход</th>
+                    <th className='px-4 py-3'>Конец</th>
+                    <th className='px-4 py-3'>Движения</th>
+                    <th className='px-4 py-3'>Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashStatementRows.map((row) => {
+                    const status = cashStatementStatus(row.result);
+                    return (
+                      <tr key={row.employee.id} className='border-t border-slate-100 align-top'>
+                        <td className='px-4 py-3'>
+                          <p className='font-bold text-slate-950'>{row.employee.name}</p>
+                          <p className='text-xs font-semibold text-slate-500'>{departmentLabel(row.employee.department)}</p>
+                        </td>
+                        <td className='px-4 py-3 text-sm font-semibold text-slate-700'>{row.cashbox?.name ?? 'касса не найдена'}</td>
+                        <td className='px-4 py-3 font-semibold text-slate-700'>{formatMoney(row.result?.openingBalance)}</td>
+                        <td className='px-4 py-3 font-semibold text-green-700'>{formatMoney(row.result?.incomingTotal)}</td>
+                        <td className='px-4 py-3 font-semibold text-rose-700'>{formatMoney(row.result?.outgoingTotal)}</td>
+                        <td className='px-4 py-3 font-extrabold text-slate-950'>{formatMoney(row.result?.closingBalance)}</td>
+                        <td className='px-4 py-3 text-sm font-semibold text-slate-700'>{row.result?.movementsCount ?? '—'}</td>
+                        <td className='px-4 py-3'>
+                          <div className='grid gap-1'>
+                            <Badge className={status.className}>{status.label}</Badge>
+                            {row.note && <span className='max-w-[260px] text-xs font-semibold text-slate-500'>{row.note}</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </div>
+          )}
+          {cashStatementMissingCashboxCount > 0 && (
+            <div className='border-t border-amber-100 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900'>
+              Для {cashStatementMissingCashboxCount} сотрудника касса не найдена автоматически по фамилии. Это диагностика: позже можно добавить явную привязку сотрудник → касса 1С.
+            </div>
+          )}
+        </Card>
+
         {unfinishedWorkDays.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>
             <div className='flex items-start gap-3'>
@@ -210,8 +355,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <th className='px-4 py-3'>Отдел</th>
                 <th className='px-4 py-3'>График</th>
                 <th className='px-4 py-3'>Смена</th>
-                <th className='px-4 py-3'>Начало</th>
-                <th className='px-4 py-3'>Окончание</th>
+                <th className='px-4 py-3'>Факт</th>
                 <th className='px-4 py-3'>Опоздание</th>
                 <th className='px-4 py-3'>Статус дня</th>
                 <th className='px-4 py-3'>Контроль смены</th>
@@ -239,8 +383,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       <Badge className={scheduleClass(schedule?.status)}>{scheduleStatusLabel(schedule?.status)}</Badge>
                     </td>
                     <td className='px-4 py-3 text-slate-700'>{workDay?.shiftLabel ?? '—'}</td>
-                    <td className='px-4 py-3 text-slate-700'>{formatTime(workDay?.startedAt)}</td>
-                    <td className='px-4 py-3 text-slate-700'>{formatTime(workDay?.endedAt)}</td>
+                    <td className='px-4 py-3 text-slate-700'>
+                      <div className='grid gap-0.5 leading-tight'>
+                        <span>{formatTime(workDay?.startedAt)}</span>
+                        <span className='text-xs text-slate-400'>{formatTime(workDay?.endedAt)}</span>
+                      </div>
+                    </td>
                     <td className='px-4 py-3 font-semibold text-slate-700'>
                       {workDay?.lateMinutes ? `${workDay.lateMinutes} мин` : '—'}
                     </td>
