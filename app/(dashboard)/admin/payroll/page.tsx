@@ -992,7 +992,11 @@ function isKnownManagerName(text: string) {
 }
 
 function getPayrollManagerName(manager: string) {
-  return payrollManagerAliases[normalizeText(manager)] ?? manager;
+  const normalized = normalizeText(manager);
+  if (normalized.includes('магомед') && /(косторенко|костанко|костаренко)/.test(normalized)) {
+    return retailTraineePayrollName;
+  }
+  return payrollManagerAliases[normalized] ?? manager;
 }
 
 function isPayrollExcludedEmployee(manager: string) {
@@ -2851,12 +2855,38 @@ function buildEmptyManagerSummary(employee: PayrollEmployee): BonusManagerSummar
   };
 }
 
+function mergeBonusManagerSummaries(managerSummaries: BonusManagerSummary[]) {
+  const merged = new Map<string, BonusManagerSummary>();
+
+  for (const summary of managerSummaries) {
+    const manager = getPayrollManagerName(summary.manager);
+    const current = merged.get(manager);
+    if (!current) {
+      merged.set(manager, { ...summary, manager });
+      continue;
+    }
+
+    current.revenue += summary.revenue;
+    current.grossProfit += summary.grossProfit;
+    current.creditBonus += summary.creditBonus;
+    current.filmBonus += summary.filmBonus;
+    current.plotterBonus += summary.plotterBonus;
+    current.techBonus += summary.techBonus;
+    current.accessoryBonus += summary.accessoryBonus;
+    current.wholesaleBonus += summary.wholesaleBonus;
+    current.totalBonus += summary.totalBonus;
+  }
+
+  return Array.from(merged.values());
+}
+
 function buildSalesPayrollSummaries(managerSummaries: BonusManagerSummary[]) {
-  const summariesByManager = new Map(managerSummaries.map((summary) => [summary.manager, summary]));
+  const mergedManagerSummaries = mergeBonusManagerSummaries(managerSummaries);
+  const summariesByManager = new Map(mergedManagerSummaries.map((summary) => [summary.manager, summary]));
   const payrollSalesSummaries = Object.values(payrollEmployees)
     .filter((employee) => employee.salaryType === 'vl_percent' || employee.salaryType === 'wholesale_percent' || employee.salaryType === 'retail_sales_bonus')
     .map((employee) => summariesByManager.get(employee.name) ?? buildEmptyManagerSummary(employee));
-  const reportOnlySummaries = managerSummaries.filter((summary) => !payrollEmployees[summary.manager]);
+  const reportOnlySummaries = mergedManagerSummaries.filter((summary) => !payrollEmployees[summary.manager]);
 
   return [...payrollSalesSummaries, ...reportOnlySummaries];
 }
@@ -2913,6 +2943,20 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
     payrollStatus: payrollReasons.length ? 'Проверить' : 'OK',
     payrollReasons,
   };
+}
+
+function getPayrollManualInput(manager: string, manualPayroll: Record<string, PayrollManualInput>) {
+  const direct = manualPayroll[manager];
+  if (direct || manager !== retailTraineePayrollName) return direct;
+
+  return (
+    manualPayroll['Магомед Косторенко'] ??
+    manualPayroll['Косторенко Магомед'] ??
+    manualPayroll['Магомед Костанко'] ??
+    manualPayroll['Костанко Магомед'] ??
+    manualPayroll['Магомед Костаренко'] ??
+    manualPayroll['Костаренко Магомед']
+  );
 }
 
 function applyBelaPercentRule(rows: FullPayrollRow[]): FullPayrollRow[] {
@@ -3312,7 +3356,7 @@ export default function AdminPayrollPage() {
   const totalGrossProfit = useMemo(() => classification.rows.reduce((sum, row) => sum + row.grossProfit, 0), [classification.rows]);
   const totalBonus = useMemo(() => classification.managerSummaries.reduce((sum, row) => sum + row.totalBonus, 0), [classification.managerSummaries]);
   const salesPayrollRows = useMemo(
-    () => buildSalesPayrollSummaries(classification.managerSummaries).map((summary) => buildFullPayrollRow(summary, manualPayroll[summary.manager])),
+    () => buildSalesPayrollSummaries(classification.managerSummaries).map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, manualPayroll))),
     [classification.managerSummaries, manualPayroll],
   );
   const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll), [fixedPayroll]);
