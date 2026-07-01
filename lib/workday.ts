@@ -18,6 +18,23 @@ export const shiftOptions = [
 
 export type ShiftCode = (typeof shiftOptions)[number]['code'];
 
+export const supportedShiftCodesByDepartment: Record<string, ShiftCode[]> = {
+  retail: ['09_18', '11_20', '09_20'],
+  wholesale: ['09_18', '09_19', '10_19'],
+};
+
+export function getShiftOptionsForDepartment(department: string | null | undefined) {
+  const supportedCodes = department ? supportedShiftCodesByDepartment[department] : null;
+  if (!supportedCodes) return shiftOptions;
+  return shiftOptions.filter((shift) => supportedCodes.includes(shift.code));
+}
+
+export function isShiftSupportedForDepartment(department: string | null | undefined, code: string) {
+  const supportedCodes = department ? supportedShiftCodesByDepartment[department] : null;
+  if (!supportedCodes) return true;
+  return supportedCodes.includes(code as ShiftCode);
+}
+
 export function getMoscowDateKey(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: WORKDAY_TIME_ZONE,

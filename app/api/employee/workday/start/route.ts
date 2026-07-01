@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getLateMinutes, getMoscowDateKey, getMoscowMinutes, getShiftOption } from '@/lib/workday';
+import { getLateMinutes, getMoscowDateKey, getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment } from '@/lib/workday';
 
 function canUseShiftControl(department: string) {
   return department === 'retail' || department === 'wholesale';
@@ -20,6 +20,7 @@ async function ensureShiftControlRun(user: { id: number; department: string }, w
     include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
     orderBy: { version: 'desc' },
   });
+  if (!template || template.tasks.length === 0) return null;
 
   return prisma.shiftControlRun.create({
     data: {
@@ -57,6 +58,11 @@ export async function POST(req: Request) {
   const now = new Date();
   const date = getMoscowDateKey(now);
   const lateMinutes = getLateMinutes(shift.startMinutes, getMoscowMinutes(now));
+  const hasShiftControl = canUseShiftControl(user.department);
+
+  if (hasShiftControl && !isShiftSupportedForDepartment(user.department, shift.code)) {
+    return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
+  }
 
   const existing = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });
   if (existing) {
@@ -86,20 +92,23 @@ export async function POST(req: Request) {
     status: 'active',
   };
 
-  const hasShiftControl = canUseShiftControl(user.department);
-
   if (!hasShiftControl) {
     const workDay = await prisma.workDayEntry.create({ data: workDayData });
     return Response.json({ workDay, alreadyStarted: false });
   }
 
+  const template = await prisma.shiftControlTemplate.findFirst({
+    where: { department: user.department, shiftCode: shift.code, isActive: true },
+    include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
+    orderBy: { version: 'desc' },
+  });
+
+  if (!template || template.tasks.length === 0) {
+    return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
+  }
+
   const { workDay, shiftControlRun } = await prisma.$transaction(async (tx) => {
     const createdWorkDay = await tx.workDayEntry.create({ data: workDayData });
-    const template = await tx.shiftControlTemplate.findFirst({
-      where: { department: user.department, shiftCode: shift.code, isActive: true },
-      include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
-      orderBy: { version: 'desc' },
-    });
 
     const createdShiftControlRun = await tx.shiftControlRun.create({
       data: {
@@ -107,22 +116,20 @@ export async function POST(req: Request) {
         userId: user.id,
         department: user.department,
         date,
-        templateId: template?.id,
+        templateId: template.id,
         status: 'active',
         startedAt: now,
-        tasks: template
-          ? {
-              create: template.tasks.map((task) => ({
-                templateTaskId: task.id,
-                title: task.title,
-                category: task.category,
-                sortOrder: task.sortOrder,
-                required: task.required,
-                plannedTimeMinutes: task.plannedTimeMinutes,
-                status: 'pending',
-              })),
-            }
-          : undefined,
+        tasks: {
+          create: template.tasks.map((task) => ({
+            templateTaskId: task.id,
+            title: task.title,
+            category: task.category,
+            sortOrder: task.sortOrder,
+            required: task.required,
+            plannedTimeMinutes: task.plannedTimeMinutes,
+            status: 'pending',
+          })),
+        },
       },
       include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
     });

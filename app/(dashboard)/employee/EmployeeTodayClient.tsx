@@ -29,7 +29,7 @@ import { LogoutButton } from '@/components/LogoutButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, shiftOptions } from '@/lib/workday';
+import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 
 type UserSummary = {
@@ -640,7 +640,8 @@ export function EmployeeTodayClient({
   const todaySchedule = ownScheduleByDate.get(today);
   const activeWorkDay = workDay && workDay.status !== 'completed' ? workDay : null;
   const isCompleted = workDay?.status === 'completed';
-  const selectedShiftOption = shiftOptions.find((shift) => shift.code === selectedShift);
+  const availableShiftOptions = getShiftOptionsForDepartment(user.department);
+  const selectedShiftOption = availableShiftOptions.find((shift) => shift.code === selectedShift);
   const canStartWorkDay = Boolean(selectedShift) && !workDay && !isSaving;
   const predictedLate =
     selectedShiftOption?.startMinutes !== null &&
@@ -1934,12 +1935,15 @@ export function EmployeeTodayClient({
                       className='mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                     >
                       <option value=''>Выберите смену</option>
-                      {shiftOptions.map((shift) => (
+                      {availableShiftOptions.map((shift) => (
                         <option key={shift.code} value={shift.code}>
                           {shiftLabel(shift.code)}
                         </option>
                       ))}
                     </select>
+                    <span className='mt-1.5 block text-xs font-medium leading-snug text-slate-500'>
+                      Показаны только смены, для которых настроен чек-лист контроля.
+                    </span>
                   </label>
                 ) : (
                   <div className='rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/80'>
