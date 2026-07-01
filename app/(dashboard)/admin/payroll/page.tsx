@@ -3722,6 +3722,94 @@ export default function AdminPayrollPage() {
     [payrollDiagnosticsByEmployee],
   );
   const invalidNumberRows = useMemo(() => classification.rows.filter((row) => [row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))), [classification.rows]);
+  const productReviewGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        item: string;
+        category: string;
+        article: string;
+        rows: ClassifiedSalesRow[];
+        managers: Set<string>;
+        clients: Set<string>;
+        reasons: Set<string>;
+        revenue: number;
+        grossProfit: number;
+        actionRow: ClassifiedSalesRow;
+        problemType: ProblemType;
+      }
+    >();
+    const seenRows = new Set<string>();
+    const candidateRows = [
+      ...classification.accessoryExcludedRows,
+      ...unclassifiedRows,
+      ...invalidNumberRows,
+      ...classification.expensiveReviewRows,
+      ...wholesaleReviewRows,
+      ...retailReviewRows,
+      ...creditReviewRows,
+      ...zeroBaseRows.filter(isCriticalZeroBaseRow),
+    ];
+
+    for (const row of candidateRows) {
+      const rowKey = [row.manager, row.client, row.category, row.item, row.article, row.revenue, row.grossProfit, row.matchedRule].join('\u0000');
+      if (seenRows.has(rowKey)) continue;
+      seenRows.add(rowKey);
+
+      const groupKey = [normalizeText(row.item), normalizeText(row.category), normalizeText(row.article || '-')].join('\u0000');
+      const existing =
+        groups.get(groupKey) ??
+        ({
+          key: groupKey,
+          item: row.item,
+          category: row.category,
+          article: row.article,
+          rows: [],
+          managers: new Set<string>(),
+          clients: new Set<string>(),
+          reasons: new Set<string>(),
+          revenue: 0,
+          grossProfit: 0,
+          actionRow: row,
+          problemType: row.isCreditSale ? 'credit' : row.calculationType === 'WHOLESALE_REVIEW_TECH' ? 'wholesaleReview' : row.calculationType === 'RETAIL_REVIEW_TECH' ? 'retailReview' : row.matchedRule === 'new-expensive-review' ? 'expensiveUnclassified' : 'disputed',
+        } satisfies {
+          key: string;
+          item: string;
+          category: string;
+          article: string;
+          rows: ClassifiedSalesRow[];
+          managers: Set<string>;
+          clients: Set<string>;
+          reasons: Set<string>;
+          revenue: number;
+          grossProfit: number;
+          actionRow: ClassifiedSalesRow;
+          problemType: ProblemType;
+        });
+
+      existing.rows.push(row);
+      existing.managers.add(row.manager);
+      existing.clients.add(row.client);
+      existing.revenue += row.revenue;
+      existing.grossProfit += row.grossProfit;
+      if (!existing.article && row.article) existing.article = row.article;
+      if (classification.accessoryExcludedRows.includes(row)) existing.reasons.add('аксессуар исключён из расчёта');
+      if (!row.calculationType) existing.reasons.add('нет классификации');
+      if ([row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))) existing.reasons.add('ошибка в числах');
+      if (row.matchedRule === 'new-expensive-review') existing.reasons.add('новый дорогой товар');
+      if (row.calculationType === 'WHOLESALE_REVIEW_TECH') existing.reasons.add('спорная техника опта');
+      if (row.calculationType === 'RETAIL_REVIEW_TECH') existing.reasons.add('спорная техника розницы');
+      if (row.calculationType === 'CREDIT_REVIEW_NO_BONUS') existing.reasons.add('кредитный товар требует решения');
+      if (isCriticalZeroBaseRow(row)) existing.reasons.add('нулевая база без понятного расчёта');
+      if (!getManualRuleId(existing.actionRow) && getManualRuleId(row)) {
+        existing.actionRow = row;
+      }
+      groups.set(groupKey, existing);
+    }
+
+    return Array.from(groups.values()).sort((left, right) => right.rows.length - left.rows.length || Math.abs(right.revenue) - Math.abs(left.revenue));
+  }, [classification.accessoryExcludedRows, classification.expensiveReviewRows, creditReviewRows, invalidNumberRows, retailReviewRows, unclassifiedRows, wholesaleReviewRows, zeroBaseRows]);
   const problemDefinitions = useMemo(
     () => [
       { type: 'disputed' as const, label: 'Спорные товары', rows: classification.disputedRows },
@@ -5350,6 +5438,81 @@ export default function AdminPayrollPage() {
                       </div>
                     </Card>
                   </div>
+
+                  <Card>
+                    <div className='mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
+                      <div>
+                        <h2 className='text-lg font-bold text-slate-900'>Быстрая проверка товаров</h2>
+                        <p className='mt-1 text-sm text-slate-500'>Одинаковые спорные позиции сгруппированы. Решите товар один раз, и портал создаст точечное правило для следующих расчётов.</p>
+                      </div>
+                      <div className='grid grid-cols-2 gap-2 text-sm sm:grid-cols-4'>
+                        <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-amber-700'>Товаров решить</p>
+                          <p className='text-xl font-bold text-amber-950'>{productReviewGroups.length}</p>
+                        </div>
+                        <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Строк</p>
+                          <p className='text-xl font-bold text-slate-900'>{productReviewGroups.reduce((sum, group) => sum + group.rows.length, 0)}</p>
+                        </div>
+                        <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-slate-500'>Выручка</p>
+                          <p className='text-xl font-bold text-slate-900'>{formatMoney(productReviewGroups.reduce((sum, group) => sum + group.revenue, 0))}</p>
+                        </div>
+                        <div className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2'>
+                          <p className='text-xs font-semibold uppercase text-emerald-700'>С правилами</p>
+                          <p className='text-xl font-bold text-emerald-950'>{manualClassificationAuditRows.length}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {productReviewGroups.length ? (
+                      <div className='max-h-[520px] overflow-auto rounded-lg border border-border'>
+                        <table className='w-full min-w-[1080px] text-sm'>
+                          <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'>
+                            <tr>
+                              <th className='px-3 py-3'>Товар</th>
+                              <th className='px-3 py-3'>Категория</th>
+                              <th className='px-3 py-3'>Менеджеры</th>
+                              <th className='px-3 py-3 text-right'>Строк</th>
+                              <th className='px-3 py-3 text-right'>Выручка</th>
+                              <th className='px-3 py-3 text-right'>ВП</th>
+                              <th className='px-3 py-3'>Почему спорно</th>
+                              <th className='px-3 py-3'>Решение</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {productReviewGroups.slice(0, 30).map((group) => (
+                              <tr key={group.key} className='border-t border-border/70 align-top'>
+                                <td className='max-w-[340px] px-3 py-3'>
+                                  <p className='font-semibold text-slate-900'>{group.item}</p>
+                                  <p className='mt-1 text-xs text-slate-500'>Артикул: {group.article || '—'} · клиентов: {group.clients.size}</p>
+                                </td>
+                                <td className='px-3 py-3 text-slate-700'>{group.category}</td>
+                                <td className='max-w-[180px] px-3 py-3 text-slate-700'>{Array.from(group.managers).join(', ')}</td>
+                                <td className='px-3 py-3 text-right font-semibold text-slate-900'>{group.rows.length}</td>
+                                <td className='px-3 py-3 text-right text-slate-700'>{formatMoney(group.revenue)}</td>
+                                <td className='px-3 py-3 text-right text-slate-700'>{formatMoney(group.grossProfit)}</td>
+                                <td className='max-w-[260px] px-3 py-3'>
+                                  <div className='flex flex-wrap gap-1'>
+                                    {Array.from(group.reasons).map((reason) => (
+                                      <Badge key={reason} className='bg-amber-100 text-amber-900'>{reason}</Badge>
+                                    ))}
+                                  </div>
+                                  <p className='mt-1 text-xs text-slate-500'>{group.actionRow.calculationLabel}</p>
+                                </td>
+                                <td className='px-3 py-3'>{renderAccessoryRuleButton(group.actionRow, group.problemType)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800'>Спорных товаров для решения не найдено.</p>
+                    )}
+                    {productReviewGroups.length > 30 && (
+                      <p className='mt-3 text-sm text-slate-500'>Показаны первые 30 групп. Остальные доступны во вкладке “Аудит расчёта”.</p>
+                    )}
+                  </Card>
 
                   <details className='rounded-lg border border-slate-200/80 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)]'>
                     <summary className='group cursor-pointer list-none'>
