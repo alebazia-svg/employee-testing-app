@@ -667,10 +667,12 @@ export function EmployeeTodayClient({
   const workingColleagues = colleagueUsers.filter((person) => todayEntryByUser.get(person.id)?.status === 'working');
   const offColleagues = colleagueUsers.filter((person) => todayEntryByUser.get(person.id)?.status === 'off');
   const missingColleagues = colleagueUsers.filter((person) => !todayEntryByUser.has(person.id));
+  const shiftControlBelongsToToday = shiftControlState.run?.date === today;
   const shiftControlCompleted = shiftControlState.run?.status === 'completed' || shiftControlState.run?.completedAt;
   const showShiftControl =
     (user.department === 'retail' || user.department === 'wholesale') &&
     Boolean(shiftControlState.run) &&
+    shiftControlBelongsToToday &&
     !(isCompleted && shiftControlCompleted);
   const shiftControlTasks = shiftControlState.tasks;
   const completedShiftControlCount = shiftControlTasks.filter((task) => task.status === 'done').length;
@@ -917,6 +919,29 @@ export function EmployeeTodayClient({
       setMessage('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить рабочий день');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function finishUnfinishedWorkDay() {
+    if (!unfinished) return;
+    setError('');
+    setMessage('');
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/workday/finish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workDayId: unfinished.id, closeStale: true }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось завершить предыдущий рабочий день');
+      setUnfinished(null);
+      setNow(new Date());
+      setMessage(payload.staleClosed ? 'Предыдущий рабочий день закрыт' : 'Рабочий день завершён');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось завершить предыдущий рабочий день');
     } finally {
       setIsSaving(false);
     }
@@ -1890,10 +1915,12 @@ export function EmployeeTodayClient({
               <div className='flex items-start gap-3'>
                 <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' />
                 <div className='flex-1'>
-                  <p className='font-extrabold text-amber-950'>Есть незавершенный рабочий день</p>
-                  <p className='mt-1 text-sm font-medium text-amber-900'>Завершите предыдущую отметку, чтобы статус был корректным.</p>
-                  <Button className='mt-3 w-full bg-amber-600 hover:bg-amber-700' onClick={finishWorkDay} disabled={isSaving}>
-                    Завершить
+                  <p className='font-extrabold text-amber-950'>Есть незавершённый рабочий день</p>
+                  <p className='mt-1 text-sm font-medium text-amber-900'>
+                    Если вчера забыли нажать завершение, закройте старую отметку здесь. В админке будет видно, что день закрыт позже.
+                  </p>
+                  <Button className='mt-3 w-full bg-amber-600 hover:bg-amber-700' onClick={finishUnfinishedWorkDay} disabled={isSaving}>
+                    Закрыть предыдущий день
                   </Button>
                 </div>
               </div>
