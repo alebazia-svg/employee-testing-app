@@ -121,6 +121,11 @@ function employeeCashboxSearchKey(employeeName: string) {
   return normalized.split(/\s+/).find(Boolean) ?? '';
 }
 
+function hasStaleCloseViolation(workDay: { comment: string } | null | undefined, shiftControlRun: { closingComment?: string | null } | null | undefined) {
+  const text = `${workDay?.comment ?? ''}\n${shiftControlRun?.closingComment ?? ''}`.toLowerCase();
+  return text.includes('закрыт без сдачи смены') || text.includes('закрыт позже без сдачи смены');
+}
+
 function cashStatementStatus(result: OneCCashStatementSummaryResult | null) {
   if (!result) return { label: 'не проверено', className: 'bg-slate-100 text-slate-700' };
   if (!result.ok) return { label: 'ошибка 1С', className: 'bg-rose-100 text-rose-800' };
@@ -392,6 +397,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 const flags = [
                   schedule?.status === 'working' && !workDay ? 'ещё не начал' : null,
                   workDay?.status === 'active' && !workDay.endedAt ? 'не завершил' : null,
+                  hasStaleCloseViolation(workDay, shiftControlRun) ? 'закрыто без сдачи смены' : null,
                   workDay?.lateMinutes ? 'опоздал' : null,
                 ].filter(Boolean);
                 return (

@@ -9,6 +9,8 @@ export async function POST(req: Request) {
   const payload = await req.json().catch(() => ({}));
   const requestedWorkDayId = typeof payload?.workDayId === 'number' ? payload.workDayId : null;
   const closeStale = payload?.closeStale === true;
+  const staleCloseReason = typeof payload?.staleCloseReason === 'string' ? payload.staleCloseReason.trim() : '';
+  const staleCloseComment = typeof payload?.staleCloseComment === 'string' ? payload.staleCloseComment.trim() : '';
   const today = getMoscowDateKey();
 
   const activeWorkDay = requestedWorkDayId
@@ -26,6 +28,15 @@ export async function POST(req: Request) {
 
   const isStaleWorkDay = activeWorkDay.date < today;
 
+  if (closeStale && isStaleWorkDay) {
+    if (!staleCloseReason) {
+      return Response.json({ error: 'Выберите причину закрытия предыдущего дня без сдачи смены' }, { status: 400 });
+    }
+    if (!staleCloseComment) {
+      return Response.json({ error: 'Напишите комментарий для администратора' }, { status: 400 });
+    }
+  }
+
   if (user.department === 'retail' || user.department === 'wholesale') {
     const shiftControlRun = await prisma.shiftControlRun.findUnique({
       where: { workDayEntryId: activeWorkDay.id },
@@ -39,7 +50,13 @@ export async function POST(req: Request) {
   }
 
   const now = new Date();
-  const staleCloseComment = 'Зависший рабочий день закрыт позже без сдачи смены.';
+  const staleCloseViolationComment = closeStale && isStaleWorkDay
+    ? [
+        'НАРУШЕНИЕ: предыдущий рабочий день закрыт без сдачи смены.',
+        `Причина: ${staleCloseReason}`,
+        `Комментарий сотрудника: ${staleCloseComment}`,
+      ].join('\n')
+    : '';
   const workDay = await prisma.$transaction(async (tx) => {
     const updatedWorkDay = await tx.workDayEntry.update({
       where: { id: activeWorkDay.id },
@@ -47,7 +64,7 @@ export async function POST(req: Request) {
         endedAt: now,
         status: 'completed',
         comment: closeStale && isStaleWorkDay
-          ? [activeWorkDay.comment, staleCloseComment].filter(Boolean).join('\n')
+          ? [activeWorkDay.comment, staleCloseViolationComment].filter(Boolean).join('\n')
           : activeWorkDay.comment,
       },
     });
@@ -58,7 +75,7 @@ export async function POST(req: Request) {
         data: {
           status: 'completed',
           completedAt: now,
-          closingComment: staleCloseComment,
+          closingComment: staleCloseViolationComment,
         },
       });
     }

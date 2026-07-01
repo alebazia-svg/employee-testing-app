@@ -175,6 +175,15 @@ type CashOperationDraft = {
   comment: string;
 };
 
+const staleCloseReasons = [
+  'Забыл закрыть день',
+  'Нет фото ведомости / отчёта',
+  'Чек / отчёт выброшен или утерян',
+  'Касса фактически не закрывалась',
+  'Техническая проблема',
+  'Другое',
+];
+
 const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: 'day', label: 'Рабочий день', icon: Home },
   { id: 'schedule', label: 'График', icon: CalendarDays },
@@ -598,6 +607,8 @@ export function EmployeeTodayClient({
   const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '' });
   const [selectedShift, setSelectedShift] = useState('');
   const [comment, setComment] = useState('');
+  const [staleCloseReason, setStaleCloseReason] = useState('');
+  const [staleCloseComment, setStaleCloseComment] = useState('');
   const [showLateComment, setShowLateComment] = useState(false);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('list');
@@ -928,16 +939,31 @@ export function EmployeeTodayClient({
     if (!unfinished) return;
     setError('');
     setMessage('');
+    if (!staleCloseReason) {
+      setError('Выберите причину закрытия предыдущего дня без сдачи смены');
+      return;
+    }
+    if (!staleCloseComment.trim()) {
+      setError('Напишите комментарий, чтобы администратор понял ситуацию');
+      return;
+    }
     setIsSaving(true);
     try {
       const response = await fetch('/api/employee/workday/finish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workDayId: unfinished.id, closeStale: true }),
+        body: JSON.stringify({
+          workDayId: unfinished.id,
+          closeStale: true,
+          staleCloseReason,
+          staleCloseComment,
+        }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось завершить предыдущий рабочий день');
       setUnfinished(null);
+      setStaleCloseReason('');
+      setStaleCloseComment('');
       setNow(new Date());
       setMessage(payload.staleClosed ? 'Предыдущий рабочий день закрыт' : 'Рабочий день завершён');
     } catch (reason) {
@@ -1917,8 +1943,35 @@ export function EmployeeTodayClient({
                 <div className='flex-1'>
                   <p className='font-extrabold text-amber-950'>Есть незавершённый рабочий день</p>
                   <p className='mt-1 text-sm font-medium text-amber-900'>
-                    Если вчера забыли нажать завершение, закройте старую отметку здесь. В админке будет видно, что день закрыт позже.
+                    Если вчера забыли нажать завершение, закройте старую отметку здесь. Это будет отмечено как нарушение для проверки администратором.
                   </p>
+                  <div className='mt-3 grid gap-2'>
+                    <label className='block text-sm font-bold text-amber-950'>
+                      Причина
+                      <select
+                        value={staleCloseReason}
+                        onChange={(event) => setStaleCloseReason(event.target.value)}
+                        className='mt-1.5 w-full rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200'
+                      >
+                        <option value=''>Выберите причину</option>
+                        {staleCloseReasons.map((reason) => (
+                          <option key={reason} value={reason}>{reason}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className='block text-sm font-bold text-amber-950'>
+                      Комментарий
+                      <textarea
+                        value={staleCloseComment}
+                        onChange={(event) => setStaleCloseComment(event.target.value)}
+                        className='mt-1.5 min-h-16 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200'
+                        placeholder='Например: Z-отчёт выбросила, фото сделать уже не могу'
+                      />
+                    </label>
+                    <p className='rounded-lg bg-white/70 px-3 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
+                      Закрытие без сдачи смены не считается нормальной сдачей. Администратор увидит причину и комментарий.
+                    </p>
+                  </div>
                   <Button className='mt-3 w-full bg-amber-600 hover:bg-amber-700' onClick={finishUnfinishedWorkDay} disabled={isSaving}>
                     Закрыть предыдущий день
                   </Button>
