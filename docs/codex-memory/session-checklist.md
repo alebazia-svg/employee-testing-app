@@ -73,3 +73,6 @@ Report:
 - deploy result if deployed;
 - remaining dirty files when relevant;
 - what was intentionally not touched.
+- whether this task changed architecture, workflow, development rules or made
+  Codex memory stale. If yes, propose a memory update and wait for user
+  confirmation before editing/committing docs.

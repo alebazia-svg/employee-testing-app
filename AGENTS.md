@@ -93,6 +93,11 @@ Before final response:
 - Show exact changed files when code was edited.
 - Mention anything not tested.
 - Confirm unrelated dirty files were left alone.
+- If the task introduced an architecture decision, workflow change, new
+  playbook, development rule, or made existing Codex memory stale, say in the
+  final report that the memory should be updated. Update `AGENTS.md`, decision
+  log or playbooks only after user confirmation, and commit those docs in a
+  separate docs-only commit.
 
 ## Deployment Rules
 
