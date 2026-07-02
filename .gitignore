@@ -12,6 +12,7 @@ server.env.*
 *.production.env
 uploads/
 *.log
+tmp-*
 tsconfig.tsbuildinfo
 tests/.generated/
 prisma/dev.db
