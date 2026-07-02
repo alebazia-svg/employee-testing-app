@@ -1,4 +1,4 @@
-# Portal Decision Log
+﻿# Portal Decision Log
 
 ## 2026-07-02 - Codex Memory Split
 
@@ -66,3 +66,20 @@ The portal memory should encode repeated mistakes as prevention rules:
 
 Future sessions should update these playbooks when a workflow changes or a
 mistake repeats.
+
+## 2026-07-02 - Trust But Verify
+
+The portal should not make employees copy 1C data or fill long forms for the
+appearance of control. Employees confirm facts that need human action; the portal
+uses 1C/OFD/other sources for automatic checks where possible.
+
+If an employee marks "everything is OK" and later automation finds a mismatch,
+that mismatch becomes a separate control event that can request re-check,
+comment, manager notification, violation journal entry and future discipline or
+bonus impact.
+
+## 2026-07-02 - Mobile Experience Is P0 For Launch
+
+Before employees use the portal daily, the mobile experience must feel like an
+app: proper PWA icon/name/splash, login form visible without large scrolling,
+short mobile intro, and actual iPhone/Android verification of Workday flows.

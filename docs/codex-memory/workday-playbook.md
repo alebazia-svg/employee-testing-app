@@ -1,4 +1,4 @@
-# Workday / Shift Control Playbook
+﻿# Workday / Shift Control Playbook
 
 ## Current Purpose
 
@@ -63,6 +63,27 @@ Do not turn the employee checklist into a second 1C. The employee should confirm
 real-world control and report discrepancies; the portal/admin side can compare
 against 1C where available.
 
+
+## Trust But Verify
+
+Workday checklists should not ask employees to copy 1C values into the portal.
+Employees should confirm only what requires human participation: physical cash
+recounts, task completion, exception comments and temporary proof photos.
+
+If 1C/OFD can verify something automatically, the portal should verify it on the
+admin/system side. If an employee marks "everything is OK" and automatic data
+later disagrees, create or show a control event for follow-up instead of adding
+more manual fields to the employee form.
+
+For cash specifically: the employee enters the real counted amount first. The
+expected 1C cash balance should not be shown in a way that encourages copying
+instead of counting.
+
+## Mobile Launch Requirements
+
+The employee Workday flow must be tested as a mobile app experience before
+launch. Confirm PWA icon/name/splash, mobile login without excessive scrolling,
+and the full Workday path on iPhone and Android.
 ## Stale Unfinished Workday
 
 Employees can have an unfinished previous workday. The UI was adjusted so a
@@ -101,3 +122,4 @@ Ask:
 
 If adding reminders, prefer push notifications for checklist timing; Telegram is
 not the preferred first channel for this pilot.
+

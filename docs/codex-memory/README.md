@@ -1,4 +1,4 @@
-# Codex Memory For Offonika Portal
+﻿# Codex Memory For Offonika Portal
 
 This folder stores durable, practical context for future Codex sessions working
 in the portal repository. It should prevent repeated mistakes and repeated
@@ -14,6 +14,8 @@ re-discovery of already-known architecture.
 ## Files
 
 - `portal-map.md` - modules, routes, data sources and ownership boundaries.
+- `product-vision.md` - product principles such as trust-but-verify.
+- `launch-checklist.md` - practical launch gates for employee rollout.
 - `deploy-playbook.md` - concise deployment memory and command pitfalls.
 - `git-worktree-playbook.md` - dirty-tree, staging and commit hygiene.
 - `agentapi-boundary.md` - how portal work depends on AIAgentAPI/1C releases.
@@ -31,3 +33,4 @@ re-discovery of already-known architecture.
 - Mark dated observations as stale-prone.
 - When a mistake repeats twice, add the prevention rule here instead of relying
   on memory.
+
