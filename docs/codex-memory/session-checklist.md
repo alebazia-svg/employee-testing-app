@@ -10,6 +10,11 @@ Ask:
 - Are there unrelated dirty files?
 - Does this require DB migration, 1C change, env change or deploy approval?
 - Can this be solved by extending existing helpers/components?
+- Before proposing a new architecture, screen, endpoint, service or mechanism:
+  is there an existing implementation that can be extended instead?
+- If proposing a large change, can I clearly explain why the current solution is
+  insufficient, what alternatives exist, why this path is best, and what risks
+  it introduces?
 
 If the answer depends on current production state, verify it instead of relying
 on memory.
@@ -68,4 +73,3 @@ Report:
 - deploy result if deployed;
 - remaining dirty files when relevant;
 - what was intentionally not touched.
-

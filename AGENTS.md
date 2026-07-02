@@ -18,6 +18,14 @@ making changes here. The 1C/AIAgentAPI workspace is a separate repository.
   components, route handlers, tests and playbooks before proposing new shape.
 - Prefer extending current architecture over replacing it. Large refactors need
   an explicit user request and a concrete migration reason.
+- Before proposing a new architecture, screen, endpoint, service or mechanism,
+  first check whether the project already has a solution that can be extended.
+- For any large change, explain why the existing solution is insufficient, what
+  alternatives were considered, why the proposed path is best, and what risks it
+  carries.
+- Do not suggest refactoring only because the code could be "cleaner". If the
+  current implementation fits the project architecture and solves the task,
+  prefer the smallest useful change.
 - When the task is ambiguous, investigate code and runtime state first; do not
   guess from memory.
 - Keep business domains isolated. A payroll task should not touch OFD/workday;
