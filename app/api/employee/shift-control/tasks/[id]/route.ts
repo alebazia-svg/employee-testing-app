@@ -396,23 +396,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     data.numericValue = numericValue;
   } else if (task.category === 'credit') {
-    const integerValue = readInteger(payload.integerValue);
-    const numericValue = readNumber(payload.numericValue);
-    const booleanValue = readBoolean(payload.booleanValue);
+    const checkStatus = readInteger(payload.integerValue);
+    const hasDiscrepancy = checkStatus === 2;
 
-    if (integerValue === null) {
-      return Response.json({ error: 'Укажите количество кредитов/рассрочек' }, { status: 400 });
+    if (checkStatus === null || ![1, 2].includes(checkStatus)) {
+      return Response.json({ error: 'Выберите результат сверки кредитов/рассрочек' }, { status: 400 });
     }
-    if (numericValue === null) {
-      return Response.json({ error: 'Укажите общую сумму кредитов/рассрочек' }, { status: 400 });
+    if (hasDiscrepancy && !commentSource.trim()) {
+      return Response.json({ error: 'Опишите расхождение по кредитам/рассрочкам' }, { status: 400 });
     }
-    if (booleanValue !== true) {
-      return Response.json({ error: 'Подтвердите проверку контрагентов' }, { status: 400 });
-    }
-
-    data.integerValue = integerValue;
-    data.numericValue = numericValue;
-    data.booleanValue = booleanValue;
+    data.integerValue = checkStatus;
+    data.numericValue = null;
+    data.booleanValue = !hasDiscrepancy;
   } else {
     data.textValue = textValue;
   }

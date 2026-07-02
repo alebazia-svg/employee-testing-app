@@ -350,12 +350,12 @@ function shiftTaskIcon(task: ShiftControlTask) {
 
 function shiftTaskTitle(task: ShiftControlTask) {
   if (task.category === 'cash') {
-    return task.title
-      .replace('Проверить наличные при входе в смену', 'Проверить наличные в кассе при входе в смену')
-      .replace('Проверить наличные в кассе', 'Проверить наличные в кассе');
+    if (task.title.includes('Финальная')) return 'Финально пересчитать наличные';
+    if (task.title.includes('при входе')) return 'Пересчитать наличные при входе';
+    return 'Пересчитать наличные в кассе';
   }
-  if (task.category === 'acquiring') return task.title.replace('Проверить эквайринг', 'Проверить оплаты картой').replace('эквайринг', 'оплаты картой');
-  if (task.category === 'credit') return task.title.replace('кредиты и рассрочки', 'кредиты / рассрочки').replace('Кредиты', 'Кредиты / рассрочки');
+  if (task.category === 'acquiring') return task.title.replace('Проверить эквайринг', 'Сверить оплаты по терминалу').replace('Повторно проверить эквайринг', 'Повторно сверить оплаты по терминалу').replace('эквайринг', 'оплаты по терминалу');
+  if (task.category === 'credit') return task.title.replace('Проверить кредиты и рассрочки', 'Сверить кредиты / рассрочки').replace('Повторно проверить кредиты и рассрочки', 'Повторно сверить кредиты / рассрочки').replace('кредиты и рассрочки', 'кредиты / рассрочки').replace('Кредиты', 'Кредиты / рассрочки');
   return task.title;
 }
 
@@ -495,15 +495,6 @@ function readIntegerFromDraft(value: string) {
 
 function isClosingShift(shiftCode: string | null | undefined) {
   return shiftCode === '11_20';
-}
-
-function creditCountLabel(count: number | null | undefined) {
-  const safeCount = count ?? 0;
-  const mod10 = safeCount % 10;
-  const mod100 = safeCount % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${safeCount} кредит`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${safeCount} кредита`;
-  return `${safeCount} кредитов`;
 }
 
 function cashOperationDirectionLabel(direction: CashOperation['direction']) {
@@ -1156,16 +1147,16 @@ export function EmployeeTodayClient({
 
     if (task.category === 'cash' || task.category === 'acquiring') {
       if (parseMoneyInput(draft.numericValue) === null) {
-        localErrors.numericValue = task.category === 'cash' ? 'Укажите сумму наличных в кассе' : 'Укажите сумму оплат картой по чекам';
+        localErrors.numericValue = task.category === 'cash' ? 'Введите фактически пересчитанную сумму наличных' : 'Укажите сумму оплат по терминалу';
       }
       payload.numericValue = draft.numericValue;
+      if (task.category === 'acquiring') payload.comment = draft.comment;
     } else if (task.category === 'credit') {
-      if (readIntegerFromDraft(draft.integerValue) === null) localErrors.integerValue = 'Укажите количество кредитов / рассрочек';
-      if (parseMoneyInput(draft.numericValue) === null) localErrors.numericValue = 'Укажите общую сумму кредитов / рассрочек';
-      if (!draft.booleanValue) localErrors.booleanValue = 'Подтвердите проверку контрагентов';
+      const creditCheckStatus = readIntegerFromDraft(draft.integerValue);
+      if (creditCheckStatus === null || ![1, 2].includes(creditCheckStatus)) localErrors.integerValue = 'Выберите результат сверки';
+      if (creditCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите расхождение по кредитам / рассрочкам';
       payload.integerValue = draft.integerValue;
-      payload.numericValue = draft.numericValue;
-      payload.booleanValue = draft.booleanValue;
+      payload.booleanValue = creditCheckStatus === 1;
       payload.comment = draft.comment;
     } else if (task.category === 'opening') {
       if (!openingPhotoFile) {
@@ -1237,11 +1228,10 @@ export function EmployeeTodayClient({
     if (compact) {
       const parts: string[] = [];
       if (task.category === 'cash' || task.category === 'acquiring') {
-        if (money) parts.push(`${money} ₽`);
+        if (money) parts.push(`${task.category === 'cash' ? 'факт наличных' : 'по терминалу'}: ${money} ₽`);
+        if (task.category === 'acquiring' && task.comment) parts.push(task.comment);
       } else if (task.category === 'credit') {
-        parts.push(creditCountLabel(task.integerValue));
-        if (money) parts.push(`${money} ₽`);
-        if (task.booleanValue) parts.push('контрагенты проверены');
+        parts.push(task.integerValue === 2 ? 'кредиты: есть расхождение' : 'кредиты: всё в порядке');
         if (task.comment) parts.push(task.comment);
       } else if (task.comment) {
         parts.push(task.comment);
@@ -1253,12 +1243,12 @@ export function EmployeeTodayClient({
 
     return (
       <div className='mt-2 rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold leading-snug text-green-900 ring-1 ring-green-100'>
-        {(task.category === 'cash' || task.category === 'acquiring') && money && <p>Сумма: {money} ₽</p>}
+        {task.category === 'cash' && money && <p>Факт наличных: {money} ₽</p>}
+        {task.category === 'acquiring' && money && <p>По терминалу: {money} ₽</p>}
+        {task.category === 'acquiring' && task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
         {task.category === 'credit' && (
           <div className='grid gap-0.5'>
-            <p>Количество: {task.integerValue ?? 0}</p>
-            {money && <p>Сумма: {money} ₽</p>}
-            {task.booleanValue && <p>Контрагенты проверены</p>}
+            <p>{task.integerValue === 2 ? 'Кредиты сверены: есть расхождение' : 'Кредиты сверены: всё в порядке'}</p>
             {task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
           </div>
         )}
@@ -1325,7 +1315,7 @@ export function EmployeeTodayClient({
           onClick={() => openShiftTaskForm(task)}
           disabled={isSaving}
         >
-          {isCredit ? 'Заполнить проверку' : 'Внести сумму'}
+          {isCredit ? 'Сверить' : isAcquiring ? 'Сверить терминал' : 'Ввести факт'}
         </Button>
       );
     }
@@ -1334,10 +1324,15 @@ export function EmployeeTodayClient({
       <div className='mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
         {(isCash || isAcquiring) && (
           <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-            {isCash ? 'Остаток наличных в кассе' : 'Сумма оплат картой по чекам'}
+            {isCash ? 'Фактически пересчитано наличных' : 'Сумма оплат по терминалу'}
+            {isCash && (
+              <span className='text-[11px] font-semibold leading-snug text-slate-500'>
+                Пересчитайте реальные деньги в своей кассе и внесите фактическую сумму. Не переписывайте остаток из 1С без пересчёта.
+              </span>
+            )}
             {isAcquiring && (
               <span className='text-[11px] font-semibold leading-snug text-slate-500'>
-                Сложите чеки оплаты картой за текущую смену. Не вводите сумму наличных.
+                Введите итоговую сумму по терминалу. Если заметили расхождение, напишите комментарий.
               </span>
             )}
             <input
@@ -1354,54 +1349,52 @@ export function EmployeeTodayClient({
           </label>
         )}
 
+        {isAcquiring && (
+          <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+            Что не сошлось?
+            <textarea
+              value={draft.comment}
+              onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
+              className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+              placeholder='Если сумма не сходится, коротко напишите причину'
+            />
+          </label>
+        )}
+
         {isCredit && (
           <>
-            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Количество кредитов / рассрочек
-              <input
-                type='number'
-                inputMode='numeric'
-                min='0'
-                step='1'
-                value={draft.integerValue}
-                onChange={(event) => updateShiftTaskDraft(task.id, { integerValue: event.target.value })}
-                className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                placeholder='0'
-              />
+            <div className='grid gap-2'>
+              <p className='text-xs font-extrabold text-slate-700'>Результат сверки кредитов / рассрочек</p>
+              <p className='text-[11px] font-semibold leading-snug text-slate-500'>
+                Проверьте, что кредитные продажи оформлены правильно. Если что-то не сходится, выберите расхождение.
+              </p>
+              <div className='grid grid-cols-2 gap-2'>
+                <Button
+                  type='button'
+                  className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '1' ? '' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
+                  onClick={() => updateShiftTaskDraft(task.id, { integerValue: '1', booleanValue: true, comment: '' })}
+                >
+                  Всё в порядке
+                </Button>
+                <Button
+                  type='button'
+                  className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '2' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
+                  onClick={() => updateShiftTaskDraft(task.id, { integerValue: '2', booleanValue: false })}
+                >
+                  Есть расхождение
+                </Button>
+              </div>
               {errors.integerValue && <span className='text-[11px] font-bold text-amber-700'>{errors.integerValue}</span>}
-            </label>
+            </div>
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Общая сумма кредитов / рассрочек
-              <input
-                type='number'
-                inputMode='decimal'
-                min='0'
-                step='0.01'
-                value={draft.numericValue}
-                onChange={(event) => updateShiftTaskDraft(task.id, { numericValue: event.target.value })}
-                className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                placeholder='0'
-              />
-              {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
-            </label>
-            <label className='flex items-start gap-2 rounded-lg bg-white px-2.5 py-2 text-xs font-bold leading-snug text-slate-700 ring-1 ring-slate-200/80'>
-              <input
-                type='checkbox'
-                checked={draft.booleanValue}
-                onChange={(event) => updateShiftTaskDraft(task.id, { booleanValue: event.target.checked })}
-                className='mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary'
-              />
-              <span>Проверено: реализации оформлены на кредитных контрагентов, не на Розничного покупателя</span>
-            </label>
-            {errors.booleanValue && <p className='text-[11px] font-bold text-amber-700'>{errors.booleanValue}</p>}
-            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Комментарий
+              Комментарий {draft.integerValue === '2' ? '(обязательно)' : '(если нужно)'}
               <textarea
                 value={draft.comment}
                 onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
                 className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                placeholder='Необязательно'
+                placeholder={draft.integerValue === '2' ? 'Что именно не сходится?' : 'Необязательно'}
               />
+              {errors.comment && <span className='text-[11px] font-bold text-amber-700'>{errors.comment}</span>}
             </label>
           </>
         )}
@@ -1674,7 +1667,7 @@ export function EmployeeTodayClient({
           <div className='grid gap-3'>
             <p className='text-sm font-extrabold text-slate-800'>Расхождение по моей кассе</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Сравните фактический остаток с тем, что должно быть по ведомости. Если есть излишек или недостача, укажите сумму и причину.
+              Если после пересчёта есть излишек или недостача, укажите сумму и причину. Администратор сверит факт с данными 1С.
             </p>
             <div className='grid grid-cols-3 gap-2'>
               {[
