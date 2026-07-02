@@ -17,6 +17,13 @@ sudo env PORTAL_ENV_FILE=server.env docker compose --env-file server.env -f dock
 sudo docker ps --filter name=portal-app --format "CONTAINER name={{.Names}} status={{.Status}} image={{.Image}} created={{.CreatedAt}}"
 ```
 
+Before building, confirm the checkout really moved:
+
+```sh
+echo SERVER_COMMIT=$(git rev-parse HEAD)
+git log -1 --oneline
+```
+
 Only run migrations when the task explicitly includes a migration:
 
 ```sh
@@ -73,3 +80,14 @@ If Git refuses checkout because a production migration file is untracked and
 root-owned, remove only that exact known file/directory after confirming it is in
 the target commit or already applied. Do not run broad `git clean`.
 
+## When User Says "Nothing Changed"
+
+Check in this order:
+
+1. server commit equals requested commit;
+2. `docker compose` used `--env-file server.env` and rebuilt `portal-app`;
+3. container creation time changed;
+4. built bundle contains the expected text;
+5. browser/cache/session is not showing old state;
+6. route is protected and unauthenticated `404/307` is not being mistaken for UI
+   failure.

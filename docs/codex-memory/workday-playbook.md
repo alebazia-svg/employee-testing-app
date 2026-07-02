@@ -59,6 +59,10 @@ Business direction:
   copying instead of recounting;
 - photos should be required only when they are useful evidence.
 
+Do not turn the employee checklist into a second 1C. The employee should confirm
+real-world control and report discrepancies; the portal/admin side can compare
+against 1C where available.
+
 ## Stale Unfinished Workday
 
 Employees can have an unfinished previous workday. The UI was adjusted so a
@@ -84,3 +88,16 @@ Before expanding features, make sure:
   issues;
 - uploads persist across deploy.
 
+## Before Changing Workday
+
+Ask:
+
+- Can the employee complete the happy path on mobile?
+- Can a stale previous day be closed without impossible proof steps?
+- Could this create an empty `ShiftControlRun`?
+- Does this require a migration or only UI/API logic?
+- Will admins see enough context to understand the exception?
+- Are uploaded photos still stored in the Docker volume after deploy?
+
+If adding reminders, prefer push notifications for checklist timing; Telegram is
+not the preferred first channel for this pilot.

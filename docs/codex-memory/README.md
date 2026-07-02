@@ -15,6 +15,9 @@ re-discovery of already-known architecture.
 
 - `portal-map.md` - modules, routes, data sources and ownership boundaries.
 - `deploy-playbook.md` - concise deployment memory and command pitfalls.
+- `git-worktree-playbook.md` - dirty-tree, staging and commit hygiene.
+- `agentapi-boundary.md` - how portal work depends on AIAgentAPI/1C releases.
+- `session-checklist.md` - self-checks before coding, deploy and final answer.
 - `ofd-one-c-playbook.md` - OFD/SABY/1C rules and current direction.
 - `workday-playbook.md` - workday pilot, shift control and cash statement notes.
 - `payroll-playbook.md` - payroll calculation constraints and alias decisions.
@@ -26,4 +29,5 @@ re-discovery of already-known architecture.
 - Prefer exact file paths and commands.
 - Do not store secrets, env values, passwords, personal tokens or report dumps.
 - Mark dated observations as stale-prone.
-
+- When a mistake repeats twice, add the prevention rule here instead of relying
+  on memory.

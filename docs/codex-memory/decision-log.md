@@ -54,3 +54,15 @@ Checklist timing notifications are important for pilot usability. The preferred
 direction discussed was push notifications rather than Telegram as the first
 channel.
 
+## 2026-07-02 - Codex Operating Memory
+
+The portal memory should encode repeated mistakes as prevention rules:
+
+- stage exact files, never `git add .`;
+- separate portal and AIAgentAPI release work;
+- verify deploy by server commit, container rebuild and route behavior;
+- park future Prisma/OFD database work in `.wip/` until explicitly started;
+- investigate existing implementation before proposing new architecture.
+
+Future sessions should update these playbooks when a workflow changes or a
+mistake repeats.

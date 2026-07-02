@@ -40,6 +40,10 @@ Future direction:
 - permanent employee identity should not rely only on display name matching;
 - a stable alias/identity mapping model would be safer than more string cases.
 
+Before adding another name case, check whether it should be a temporary alias or
+part of a future explicit identity mapping. Do not let the reusable trainee
+account permanently merge with future unrelated trainees.
+
 ## UI Direction
 
 The audit/review block is meant for review workflows, not the final payroll
@@ -54,3 +58,13 @@ the pay result harder to understand.
   selected payroll period drives day counting, not today's month.
 - Keep salary formulas and manual adjustments separate from 1C data-source work.
 
+## Before Changing Payroll
+
+Ask:
+
+- Is this formula logic, identity/name matching, source parsing, UI/audit, or
+  period selection?
+- Does it affect historical runs or only the current import?
+- Is the payroll period driving the attendance days, not today's calendar month?
+- Are excluded employees still excluded in all summary/audit views?
+- Do tests cover the behavior?

@@ -12,6 +12,20 @@ making changes here. The 1C/AIAgentAPI workspace is a separate repository.
    in the separate `ai-business-os` repository, not here.
 5. Keep edits scoped. Do not include old dirty files in commits.
 
+## Development Posture
+
+- First understand the existing implementation. Search for local helpers,
+  components, route handlers, tests and playbooks before proposing new shape.
+- Prefer extending current architecture over replacing it. Large refactors need
+  an explicit user request and a concrete migration reason.
+- When the task is ambiguous, investigate code and runtime state first; do not
+  guess from memory.
+- Keep business domains isolated. A payroll task should not touch OFD/workday;
+  a workday task should not touch payroll/OFD.
+- Never use `git add .` in this repo. Stage exact files.
+- Treat dirty files as user or prior-session work. Do not revert them unless the
+  user confirms.
+
 ## Repo Map
 
 - `app/(dashboard)/employee/` - employee mobile workday UI.
@@ -29,6 +43,9 @@ making changes here. The 1C/AIAgentAPI workspace is a separate repository.
   of the task.
 - `docs/ops/vps-deploy-runbook.md` - safe VPS deployment flow.
 - `docs/codex-memory/` - durable Codex playbooks for this portal.
+- `docs/codex-memory/git-worktree-playbook.md` - dirty tree and commit hygiene.
+- `docs/codex-memory/agentapi-boundary.md` - portal vs AIAgentAPI release rules.
+- `docs/codex-memory/session-checklist.md` - self-checks before coding/finishing.
 
 ## Guardrails
 
@@ -41,6 +58,9 @@ making changes here. The 1C/AIAgentAPI workspace is a separate repository.
 - Do not run Prisma migrations in production unless the user explicitly asks and
   the commit contains the migration.
 - Do not clean uploads. Production uploads are mounted at `/app/uploads`.
+- Do not introduce Prisma schema changes as "prep" unless the current task is a
+  database task. Park future DB work in `.wip/` or a separate branch.
+- Do not add AIAgentAPI release files or 1C extension source to this repo.
 
 ## Standard Verification
 
@@ -58,6 +78,13 @@ npm run test:payroll
 ```
 
 For docs-only Codex memory changes, no app build is required.
+
+Before final response:
+
+- Run or state the relevant checks.
+- Show exact changed files when code was edited.
+- Mention anything not tested.
+- Confirm unrelated dirty files were left alone.
 
 ## Deployment Rules
 
@@ -82,6 +109,13 @@ For docs-only Codex memory changes, no app build is required.
 - Workday checklist runs must not be created empty.
 - `StazherRoznica` and Magomed Kosterenko payroll/name handling has special
   alias history; check payroll memory before editing.
+- PowerShell may execute local `curl`, `head`, `sed`, `&&`, `||` differently
+  than Linux. Put Linux commands inside SSH.
+- AIAgentAPI `has_more` has been unreliable in at least one endpoint; verify
+  pagination behavior before trusting flags.
+- If a user says a deployed change is not visible, check server commit, built
+  bundle text and whether the checkout was blocked by untracked/root-owned
+  files.
 
 ## External Repositories And Systems
 

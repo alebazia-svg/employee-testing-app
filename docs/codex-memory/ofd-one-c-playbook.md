@@ -68,6 +68,34 @@ Current simplified statuses should stay business-facing:
 
 Technical algorithm terms belong in collapsible technical details.
 
+## Architecture Direction
+
+Do not keep solving OFD control with only server-rendered diagnostics forever.
+The agreed next serious step is a database-backed `OfdControlEvent V1`:
+
+- detected event;
+- business status;
+- assigned manager;
+- evidence snapshot;
+- deadline;
+- notification state;
+- resolution/confirmation state.
+
+Until that model exists, `/admin/ofd` should stay read-only and avoid pretending
+that temporary classifications are permanent case management.
+
+## Before Changing Matching
+
+Ask:
+
+- Are we changing data loading, candidate scoring or only presentation?
+- Does the issue come from missing OFD rows, missing 1C pages, weak product
+  matching, date parsing, amount mismatch, or AIAgentAPI data quality?
+- Are returns being treated as real товарный возврат or receipt correction
+  `приход -> возврат -> новый приход`?
+- Is the selected period hiding old original receipts? Lookback may be needed.
+- Is 1C production endpoint version current enough for the portal expectation?
+
 ## Guardrails
 
 - Do not change backend, database, SABY API or AIAgentAPI from an OFD UI task.
@@ -75,4 +103,5 @@ Technical algorithm terms belong in collapsible technical details.
 - Do not write to 1C or OFD.
 - Keep all OFD/1C actions read-only until `OfdControlEvent V1` is designed and
   implemented.
-
+- Do not add Prisma OFD models casually. If future DB work appears early, park
+  it in `.wip/` until the user explicitly starts `OfdControlEvent`.
