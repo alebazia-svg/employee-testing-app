@@ -13,6 +13,7 @@ import { AdminShiftControlDetails } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
 import { DevMakeShiftTasksAvailableButton } from './DevMakeShiftTasksAvailableButton';
 import { DevResetTodayButton } from './DevResetTodayButton';
+import { WorkdayQrCodes } from './WorkdayQrCodes';
 
 export const dynamic = 'force-dynamic';
 
@@ -265,6 +266,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           <StatCard title='Опоздали' value={lateCount} tone='amber' icon={AlertTriangle} />
           <StatCard title='Не завершили' value={missingCheckoutCount} tone='amber' icon={UserCheck} />
         </div>
+
+        <WorkdayQrCodes />
 
         <Card className='p-0'>
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between'>

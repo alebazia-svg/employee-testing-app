@@ -1,11 +1,13 @@
 'use client';
 
+import jsQR from 'jsqr';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Banknote,
   CalendarDays,
+  Camera,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -17,12 +19,10 @@ import {
   CreditCard,
   GraduationCap,
   Home,
-  MessageSquare,
-  Play,
-  Power,
   ReceiptText,
-  Store,
+  RefreshCw,
   Users,
+  X,
 } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
 import { LogoutButton } from '@/components/LogoutButton';
@@ -132,6 +132,7 @@ type Props = {
 
 type Tab = 'day' | 'schedule' | 'attestations';
 type ScheduleMode = 'list' | 'month';
+type QrScannerState = 'idle' | 'starting' | 'scanning' | 'found' | 'error';
 type ShiftTaskDraft = {
   numericValue: string;
   integerValue: string;
@@ -189,6 +190,183 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: 'schedule', label: 'График', icon: CalendarDays },
   { id: 'attestations', label: 'Аттестации', icon: GraduationCap },
 ];
+
+function parseWorkdayQrDepartment(value: string) {
+  const text = value.trim();
+  if (!text) return null;
+
+  const directMatch = text.match(/^offonika-workday-start:(retail|wholesale)$/i);
+  if (directMatch) return directMatch[1].toLowerCase();
+
+  return null;
+}
+
+function cameraErrorMessage(error: unknown) {
+  if (!(error instanceof DOMException)) return 'Не удалось открыть камеру. Попробуйте ещё раз.';
+  if (error.name === 'NotAllowedError' || error.name === 'SecurityError') return 'Доступ к камере запрещён. Разрешите камеру для портала и попробуйте снова.';
+  if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') return 'Камера не найдена на этом устройстве.';
+  if (error.name === 'NotReadableError' || error.name === 'TrackStartError') return 'Камера занята другим приложением или временно недоступна.';
+  if (error.name === 'OverconstrainedError') return 'Не удалось выбрать заднюю камеру. Попробуйте ещё раз.';
+  if (error.name === 'AbortError') return 'Запуск камеры был прерван. Попробуйте ещё раз.';
+  return `Камера недоступна: ${error.name}`;
+}
+
+function WorkdayQrScanner({
+  userDepartment,
+  onCancel,
+  onAccepted,
+}: {
+  userDepartment: string;
+  onCancel: () => void;
+  onAccepted: (department: string) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const [state, setState] = useState<QrScannerState>('idle');
+  const [error, setError] = useState('');
+
+  function stopCamera() {
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }
+
+  function scanFrame() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_ENOUGH_DATA) {
+      frameRef.current = window.requestAnimationFrame(scanFrame);
+      return;
+    }
+
+    const width = video.videoWidth;
+    const height = video.videoHeight;
+    if (!width || !height) {
+      frameRef.current = window.requestAnimationFrame(scanFrame);
+      return;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) {
+      setError('Не удалось подготовить изображение с камеры.');
+      setState('error');
+      stopCamera();
+      return;
+    }
+
+    context.drawImage(video, 0, 0, width, height);
+    const imageData = context.getImageData(0, 0, width, height);
+    const code = jsQR(imageData.data, width, height, { inversionAttempts: 'attemptBoth' });
+
+    if (code?.data) {
+      const department = parseWorkdayQrDepartment(code.data);
+      if (!department) {
+        setError('Это не QR-код начала рабочего дня. Отсканируйте QR-код отдела в магазине.');
+        setState('error');
+        stopCamera();
+        return;
+      }
+      if (department !== userDepartment) {
+        setError(department === 'retail' ? 'Этот QR-код для розницы. Отсканируйте QR своего отдела.' : 'Этот QR-код для опта. Отсканируйте QR своего отдела.');
+        setState('error');
+        stopCamera();
+        return;
+      }
+      setState('found');
+      stopCamera();
+      window.setTimeout(() => onAccepted(department), 350);
+      return;
+    }
+
+    frameRef.current = window.requestAnimationFrame(scanFrame);
+  }
+
+  async function startCamera() {
+    setError('');
+    setState('starting');
+    stopCamera();
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new DOMException('getUserMedia is not available', 'NotSupportedError');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setState('scanning');
+      frameRef.current = window.requestAnimationFrame(scanFrame);
+    } catch (reason) {
+      stopCamera();
+      setError(cameraErrorMessage(reason));
+      setState('error');
+    }
+  }
+
+  useEffect(() => {
+    startCamera();
+    return () => stopCamera();
+  }, []);
+
+  return (
+    <div className='fixed inset-0 z-50 bg-slate-950 text-white'>
+      <div className='mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-5'>
+        <div className='mb-4 flex items-center justify-between gap-3'>
+          <div>
+            <p className='text-xs font-black uppercase tracking-[0.22em] text-green-300'>Начало дня</p>
+            <h2 className='mt-1 text-2xl font-black leading-tight'>Отсканируйте QR отдела</h2>
+          </div>
+          <button type='button' onClick={onCancel} className='flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white'>
+            <X className='h-6 w-6' />
+          </button>
+        </div>
+
+        <div className='relative flex-1 overflow-hidden rounded-3xl bg-black shadow-2xl shadow-black/40'>
+          <video ref={videoRef} className='h-full w-full object-cover' muted playsInline autoPlay />
+          <canvas ref={canvasRef} className='hidden' />
+          <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
+            <div className='h-56 w-56 rounded-3xl border-4 border-green-300 shadow-[0_0_0_999px_rgba(2,6,23,0.42)]' />
+          </div>
+          <div className='absolute inset-x-4 top-4 rounded-2xl bg-slate-950/70 px-4 py-3 text-center backdrop-blur'>
+            <p className='text-sm font-extrabold'>Наведите камеру на QR-код на рабочем месте</p>
+          </div>
+          {state === 'starting' && (
+            <div className='absolute inset-x-4 bottom-4 rounded-2xl bg-slate-950/80 px-4 py-3 text-center text-sm font-extrabold backdrop-blur'>
+              <RefreshCw className='mx-auto mb-2 h-5 w-5 animate-spin text-green-300' />
+              Открываю камеру
+            </div>
+          )}
+          {state === 'found' && (
+            <div className='absolute inset-4 flex items-center justify-center rounded-3xl bg-green-500/90 text-center backdrop-blur'>
+              <div>
+                <CheckCircle2 className='mx-auto h-14 w-14' />
+                <p className='mt-3 text-2xl font-black'>QR принят</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className='mt-4 rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-50'>
+            {error}
+            <button type='button' onClick={startCamera} className='mt-3 flex min-h-11 w-full items-center justify-center rounded-xl bg-amber-400 px-3 font-black text-slate-950'>
+              Попробовать ещё раз
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function scheduleTone(status: string | null | undefined) {
   if (status === 'working') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
@@ -332,19 +510,13 @@ function shiftTaskStatusLabel(status: string) {
   return 'ожидает';
 }
 
-function shiftTaskStatusClass(status: string) {
-  if (status === 'done') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
-  if (status === 'overdue') return 'bg-amber-100 text-amber-800 ring-1 ring-amber-200';
-  return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
-}
-
 function shiftTaskIcon(task: ShiftControlTask) {
   if (task.category === 'cash') return Banknote;
   if (task.category === 'credit') return ReceiptText;
   if (task.category === 'acquiring') return CreditCard;
-  if (task.category === 'opening') return Store;
+  if (task.category === 'opening') return Camera;
   if (task.category === 'handover') return ClipboardCheck;
-  if (task.category === 'closing') return ReceiptText;
+  if (task.category === 'closing') return Camera;
   return Clock;
 }
 
@@ -519,24 +691,6 @@ function getElapsed(workDay: WorkDayEntry | null, now: Date) {
   return Math.max(0, end - start);
 }
 
-function getShiftProgress(workDay: WorkDayEntry | null, selectedShift: string, now: Date) {
-  const shift =
-    workDay?.shiftStartMinutes !== undefined
-      ? { startMinutes: workDay.shiftStartMinutes, endMinutes: workDay.shiftEndMinutes }
-      : shiftOptions.find((option) => option.code === selectedShift);
-
-  if (!shift) return 0;
-  if (shift.startMinutes === null || shift.endMinutes === null || shift.startMinutes === undefined || shift.endMinutes === undefined) {
-    return workDay?.status === 'completed' ? 100 : 0;
-  }
-  if (workDay?.status === 'completed') return 100;
-
-  const currentMinutes = getMoscowMinutes(now);
-  const duration = Math.max(1, shift.endMinutes - shift.startMinutes);
-  const progress = ((currentMinutes - shift.startMinutes) / duration) * 100;
-  return Math.min(100, Math.max(0, progress));
-}
-
 function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className='rounded-lg bg-white/80 px-2.5 py-1.5 ring-1 ring-slate-200/80'>
@@ -597,10 +751,12 @@ export function EmployeeTodayClient({
   const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
   const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '' });
   const [selectedShift, setSelectedShift] = useState('');
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [qrDepartmentConfirmed, setQrDepartmentConfirmed] = useState<string | null>(null);
+  const [shiftPickerOpen, setShiftPickerOpen] = useState(false);
   const [comment, setComment] = useState('');
   const [staleCloseReason, setStaleCloseReason] = useState('');
   const [staleCloseComment, setStaleCloseComment] = useState('');
-  const [showLateComment, setShowLateComment] = useState(false);
   const [showFullSchedule, setShowFullSchedule] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('list');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
@@ -639,25 +795,13 @@ export function EmployeeTodayClient({
     return groups;
   }, [departmentScheduleState]);
 
-  const todaySchedule = ownScheduleByDate.get(today);
   const activeWorkDay = workDay && workDay.status !== 'completed' ? workDay : null;
   const isCompleted = workDay?.status === 'completed';
   const availableShiftOptions = getShiftOptionsForDepartment(user.department);
   const selectedShiftOption = availableShiftOptions.find((shift) => shift.code === selectedShift);
-  const canStartWorkDay = Boolean(selectedShift) && !workDay && !isSaving;
-  const predictedLate =
-    selectedShiftOption?.startMinutes !== null &&
-    selectedShiftOption?.startMinutes !== undefined &&
-    getMoscowMinutes(now) > selectedShiftOption.startMinutes &&
-    !workDay;
   const elapsedMs = getElapsed(workDay, now);
   const elapsedLabel = formatDuration(elapsedMs);
   const activeElapsedLabel = formatDurationWithSeconds(elapsedMs);
-  const progress = getShiftProgress(workDay, selectedShift, now);
-  const ringProgress = !workDay && selectedShift ? 100 : progress;
-  const ringStyle = {
-    background: `conic-gradient(#51b411 ${ringProgress * 3.6}deg, #dfe6e1 0deg)`,
-  };
   const shiftStart = workDay ? workDay.shiftStartMinutes : selectedShiftOption?.startMinutes;
   const shiftEnd = workDay ? workDay.shiftEndMinutes : selectedShiftOption?.endMinutes;
   const canUseCashOperations = user.department === 'retail' || user.department === 'wholesale';
@@ -677,7 +821,6 @@ export function EmployeeTodayClient({
     shiftControlBelongsToToday &&
     !(isCompleted && shiftControlCompleted);
   const shiftControlTasks = shiftControlState.tasks;
-  const completedShiftControlCount = shiftControlTasks.filter((task) => task.status === 'done').length;
   const hiddenDuringHandoverCategories = new Set(['handover', 'closing']);
   const visibleShiftControlTasks = activeHandoverTaskId
     ? shiftControlTasks.filter((task) => task.status === 'done' || !hiddenDuringHandoverCategories.has(task.category))
@@ -693,7 +836,8 @@ export function EmployeeTodayClient({
       ? pendingShiftControlTasks.find((task) => task.id !== actionableShiftControlTask.id) ?? null
       : pendingShiftControlTasks[0] ?? null;
   const primaryShiftControlTask = actionableShiftControlTask ?? nextShiftControlTask;
-  const previewShiftControlTasks = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).slice(0, 2);
+  const remainingShiftControlCount = pendingShiftControlTasks.length;
+  const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
   const handoverPersonalCashBalance = parseMoneyInput(handoverDraft.personalCashBalance);
   const handoverDiscrepancyAmount = parseMoneyInput(handoverDraft.discrepancyAmount);
   const handoverIsClosingEmployee = isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode);
@@ -870,10 +1014,49 @@ export function EmployeeTodayClient({
     }
   }
 
-  async function startWorkDay() {
+  function openQrStart() {
     setError('');
     setMessage('');
-    if (!selectedShift) {
+    if (workDay) return;
+    if (unfinished) {
+      setError('Сначала закройте предыдущий рабочий день');
+      return;
+    }
+    if (user.department !== 'retail' && user.department !== 'wholesale') {
+      setError('QR-старт доступен только для розницы и опта');
+      return;
+    }
+    setQrScannerOpen(true);
+  }
+
+  async function handleQrAccepted(department: string) {
+    setQrScannerOpen(false);
+    setQrDepartmentConfirmed(department);
+    setMessage('');
+    setError('');
+    setShiftPickerOpen(true);
+  }
+
+  async function chooseShiftAfterQr(value: string) {
+    setSelectedShift(value);
+    if (value && qrDepartmentConfirmed && !workDay && !isSaving) {
+      setShiftPickerOpen(false);
+      await startWorkDay(value, qrDepartmentConfirmed);
+    }
+  }
+
+  async function startWorkDay(shiftCodeOverride = selectedShift, qrDepartmentOverride = qrDepartmentConfirmed) {
+    setError('');
+    setMessage('');
+    if (!qrDepartmentOverride) {
+      setError('Сначала отсканируйте QR-код отдела');
+      return;
+    }
+    if (qrDepartmentOverride !== user.department) {
+      setError('QR-код не совпадает с вашим отделом');
+      return;
+    }
+    if (!shiftCodeOverride) {
       setError('Выберите смену перед началом рабочего дня');
       return;
     }
@@ -882,7 +1065,7 @@ export function EmployeeTodayClient({
       const response = await fetch('/api/employee/workday/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shiftCode: selectedShift, comment }),
+        body: JSON.stringify({ shiftCode: shiftCodeOverride, comment }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось начать рабочий день');
@@ -893,6 +1076,7 @@ export function EmployeeTodayClient({
       }
       setNow(new Date());
       setMessage('');
+      setQrDepartmentConfirmed(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
     } finally {
@@ -1275,7 +1459,7 @@ export function EmployeeTodayClient({
 
     if (isOpening) {
       return (
-        <label className={cn('mt-2 flex w-full cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-9 text-sm' : 'min-h-8 text-xs')}>
+        <label className={cn('mt-2 flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-12 text-base' : 'min-h-8 text-xs')}>
           {isSaving && openingPhotoTaskId === task.id ? 'Сохраняем фото...' : 'Сделать фото'}
           <input
             type='file'
@@ -1299,7 +1483,7 @@ export function EmployeeTodayClient({
     if (!isCash && !isAcquiring && !isCredit) {
       return (
         <Button
-          className={cn('mt-2 w-full font-extrabold', compact ? 'h-9 text-sm' : 'h-8 text-xs')}
+          className={cn('mt-2 w-full font-extrabold', compact ? 'h-12 rounded-xl text-base' : 'h-8 text-xs')}
           onClick={() => completeShiftControlTask(task)}
           disabled={isSaving}
         >
@@ -1311,7 +1495,7 @@ export function EmployeeTodayClient({
     if (!isOpen) {
       return (
         <Button
-          className={cn('mt-2 w-full font-extrabold', compact ? 'h-9 text-sm' : 'h-8 bg-slate-100 text-xs text-slate-800 shadow-none hover:bg-green-100 hover:text-green-800')}
+          className={cn('mt-2 w-full font-extrabold', compact ? 'h-12 rounded-xl text-base' : 'h-8 bg-slate-100 text-xs text-slate-800 shadow-none hover:bg-green-100 hover:text-green-800')}
           onClick={() => openShiftTaskForm(task)}
           disabled={isSaving}
         >
@@ -1933,6 +2117,48 @@ export function EmployeeTodayClient({
 
   return (
     <main className='min-h-screen overflow-x-hidden bg-[#111821] text-slate-950 md:px-6 md:py-6'>
+      {qrScannerOpen && (
+        <WorkdayQrScanner
+          userDepartment={user.department}
+          onCancel={() => setQrScannerOpen(false)}
+          onAccepted={handleQrAccepted}
+        />
+      )}
+      {shiftPickerOpen && !workDay && (
+        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]'>
+          <div className='w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
+            <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+            <div className='flex items-start justify-between gap-3'>
+              <div>
+                <p className='text-xs font-black uppercase tracking-[0.18em] text-green-700'>QR подтверждён</p>
+                <h2 className='mt-1 text-2xl font-black text-slate-950'>Выберите смену</h2>
+                <p className='mt-1 text-sm font-semibold text-slate-500'>Рабочий день начнётся сразу после выбора.</p>
+              </div>
+              <button
+                type='button'
+                onClick={() => setShiftPickerOpen(false)}
+                className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600'
+              >
+                <ChevronDown className='h-5 w-5' />
+              </button>
+            </div>
+            <div className='mt-5 grid gap-2'>
+              {availableShiftOptions.map((shift) => (
+                <button
+                  key={shift.code}
+                  type='button'
+                  disabled={isSaving}
+                  onClick={() => void chooseShiftAfterQr(shift.code)}
+                  className='flex min-h-14 items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 text-left text-base font-black text-slate-950 transition active:scale-[0.99] disabled:opacity-60'
+                >
+                  <span>{shiftLabel(shift.code)}</span>
+                  <span className='text-xs font-extrabold uppercase text-green-700'>Начать</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <div className='mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[24px]'>
         <header className='bg-[#111821] px-4 pb-4 pt-4 text-white'>
           <div className='flex items-center justify-between gap-3'>
@@ -2009,176 +2235,78 @@ export function EmployeeTodayClient({
 
           {activeTab === 'day' && (
             <div className='space-y-3'>
-              <Card className='space-y-2 p-3.5'>
-                <div className='flex items-start justify-between gap-3'>
-                  <div>
-                    <h2 className='text-base font-extrabold text-slate-950'>Смена</h2>
-                    <p className='mt-0.5 text-xs font-medium leading-snug text-slate-500'>
-                      {workDay ? 'Смена зафиксирована.' : 'Выберите смену.'}
-                    </p>
-                  </div>
-                  <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px]', scheduleTone(todaySchedule?.status))}>
-                    {scheduleLabel(todaySchedule?.status)}
-                  </Badge>
-                </div>
-
-                {!workDay ? (
-                  <label className='block text-sm font-bold text-slate-700'>
-                    Фактическая смена
-                    <select
-                      value={selectedShift}
-                      onChange={(event) => setSelectedShift(event.target.value)}
-                      className='mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base font-semibold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                    >
-                      <option value=''>Выберите смену</option>
-                      {availableShiftOptions.map((shift) => (
-                        <option key={shift.code} value={shift.code}>
-                          {shiftLabel(shift.code)}
-                        </option>
-                      ))}
-                    </select>
-                    <span className='mt-1.5 block text-xs font-medium leading-snug text-slate-500'>
-                      Показаны только смены, для которых настроен чек-лист контроля.
-                    </span>
-                  </label>
-                ) : (
-                  <div className='rounded-lg bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/80'>
-                    <p className='text-xs font-extrabold uppercase text-slate-400'>Выбранная смена</p>
-                    <p className='mt-1 text-base font-extrabold text-slate-950'>{workDay.shiftLabel}</p>
-                  </div>
-                )}
-
-                {!workDay && (
-                  <>
-                    {predictedLate && !showLateComment && (
-                      <div className='flex items-center justify-between gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
-                        <span>Поздняя отметка</span>
-                        <button type='button' className='text-primary hover:text-green-800' onClick={() => setShowLateComment(true)}>
-                          + Комментарий
-                        </button>
-                      </div>
-                    )}
-                    {showLateComment ? (
-                      <label className='block text-sm font-bold text-slate-700'>
-                        Комментарий
-                        {predictedLate && (
-                          <span className='mt-1 block text-xs font-medium leading-snug text-slate-500'>
-                            Комментарий не отменяет опоздание, но поможет объяснить причину.
-                          </span>
-                        )}
-                        <textarea
-                          value={comment}
-                          onChange={(event) => setComment(event.target.value)}
-                          className='mt-1.5 min-h-14 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                          placeholder='Например: задержал транспорт'
-                        />
-                      </label>
-                    ) : !predictedLate ? (
-                      <button type='button' className='inline-flex items-center gap-2 text-sm font-bold text-slate-600 hover:text-primary' onClick={() => setShowLateComment(true)}>
-                        <MessageSquare className='h-4 w-4' />
-                        Добавить комментарий
-                      </button>
-                    ) : null}
-                  </>
-                )}
-              </Card>
-
-              <Card className='p-3.5 text-center'>
-                <div
-                  className={cn(
-                    'mx-auto flex h-[178px] w-[178px] items-center justify-center rounded-full p-1.5 transition',
-                    canStartWorkDay && 'shadow-[0_0_28px_rgba(81,180,17,0.14)]',
-                  )}
-                  style={ringStyle}
-                >
-                  <div className='flex h-full w-full items-center justify-center rounded-full bg-white ring-1 ring-slate-200/90'>
-                    {!workDay && (
-                      <button
-                        type='button'
-                        onClick={startWorkDay}
-                        disabled={!canStartWorkDay}
-                        className={cn(
-                          'flex h-[7.5rem] w-[7.5rem] items-center justify-center rounded-full text-white transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-200',
-                          canStartWorkDay
-                            ? 'bg-[linear-gradient(145deg,#6bd730,#28ad22_54%,#128b2d)] shadow-[0_14px_26px_rgba(81,180,17,0.32),inset_0_3px_8px_rgba(255,255,255,0.42),inset_0_-8px_14px_rgba(5,92,36,0.26),0_0_0_9px_rgba(81,180,17,0.08)] ring-1 ring-green-700/30'
-                            : 'cursor-not-allowed bg-[linear-gradient(145deg,#eef2f5,#cfd6dc_58%,#aeb7c0)] text-white shadow-[0_12px_22px_rgba(15,23,42,0.14),inset_0_3px_8px_rgba(255,255,255,0.55),inset_0_-7px_13px_rgba(71,85,105,0.18)] ring-1 ring-slate-300',
-                        )}
-                        title='Начать'
-                      >
-                        <Play className='ml-1 h-11 w-11 fill-current drop-shadow-[0_2px_4px_rgba(15,23,42,0.22)]' />
-                      </button>
-                    )}
-
-                    {activeWorkDay && (
-                      <button
-                        type='button'
-                        onClick={finishWorkDay}
-                        disabled={isSaving}
-                        className='flex h-[7.5rem] w-[7.5rem] flex-col items-center justify-center rounded-full bg-[linear-gradient(145deg,#465160,#17212b_58%,#0d141c)] text-white shadow-[0_14px_26px_rgba(15,23,42,0.32),inset_0_3px_8px_rgba(255,255,255,0.18),inset_0_-8px_14px_rgba(0,0,0,0.34)] ring-1 ring-slate-950/40 transition disabled:opacity-60'
-                        title='Завершить'
-                      >
-                        <Power className='h-8 w-8 text-white/90' />
-                        <span className='mt-2 text-xl font-extrabold tabular-nums'>{activeElapsedLabel}</span>
-                        <span className='mt-0.5 text-xs font-extrabold text-primary'>Идёт</span>
-                      </button>
-                    )}
-
-                    {isCompleted && (
-                      <div className='flex h-[7.5rem] w-[7.5rem] items-center justify-center rounded-full bg-[linear-gradient(145deg,#a8e7b8,#55bc72_58%,#2d8b52)] text-white shadow-[0_13px_24px_rgba(45,139,82,0.26),inset_0_3px_8px_rgba(255,255,255,0.36),inset_0_-8px_14px_rgba(21,94,50,0.22)] ring-1 ring-green-700/20'>
-                        <Check className='h-[3.25rem] w-[3.25rem] drop-shadow-[0_2px_4px_rgba(15,23,42,0.24)]' />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {!workDay && (
-                  <>
-                    <p className={cn('mt-3 text-2xl font-extrabold leading-tight', canStartWorkDay ? 'text-slate-950' : 'text-slate-400')}>Начать</p>
-                    <p className={cn('mt-1 text-sm font-medium leading-snug', selectedShift ? 'text-slate-500' : 'text-slate-400')}>
-                      {selectedShift ? 'Рабочий день' : 'Сначала выберите смену'}
-                    </p>
-                  </>
-                )}
-
-                {activeWorkDay && (
-                  <>
-                    <p className='mt-3 text-2xl font-extrabold leading-tight text-slate-950'>Завершить</p>
-                    <p className='mt-1 text-sm font-medium leading-snug text-slate-500'>Рабочий день</p>
-                  </>
-                )}
-
-                {isCompleted && (
-                  <>
-                    <p className='mt-3 text-2xl font-extrabold leading-tight text-slate-950'>Завершён</p>
-                    <p className='mt-1 text-sm font-medium leading-snug text-slate-500'>Рабочий день</p>
-                    <p className='mt-1 text-xs font-bold leading-snug text-slate-500'>
-                      {formatTime(workDay?.startedAt)}–{formatTime(workDay?.endedAt)} ({elapsedLabel})
-                    </p>
-                  </>
-                )}
-              </Card>
-
-              {showShiftControl && (
+              {!workDay && (
                 <Card className='space-y-3 p-4'>
-                  <div className='flex items-start justify-between gap-3'>
-                    <div>
-                      <h2 className='text-base font-extrabold text-slate-950'>Контроль смены</h2>
-                      <p className='mt-0.5 text-xs font-bold text-slate-500'>
-                        Выполнено {completedShiftControlCount} / {shiftControlTasks.length}
+                  <div className='flex items-start gap-3'>
+                    <span className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
+                      <Camera className='h-6 w-6' />
+                    </span>
+                    <div className='min-w-0'>
+                      <h2 className='text-xl font-black leading-tight text-slate-950'>Начать рабочий день</h2>
+                      <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
+                        Отсканируйте QR-код отдела на рабочем месте.
                       </p>
                     </div>
-                    <Badge className='shrink-0 bg-green-100 text-green-800 ring-1 ring-green-200'>
+                  </div>
+                  <Button
+                    type='button'
+                    className='h-14 w-full rounded-xl text-base font-black'
+                    onClick={openQrStart}
+                    disabled={isSaving || Boolean(unfinished)}
+                  >
+                    <Camera className='mr-2 h-5 w-5' />
+                    Сканировать QR
+                  </Button>
+                  {unfinished && (
+                    <p className='text-xs font-bold text-amber-700'>Сначала закройте предыдущий рабочий день.</p>
+                  )}
+                </Card>
+              )}
+
+              {activeWorkDay && (
+                <div className='flex items-center gap-2 rounded-full bg-green-50 px-3 py-2 text-sm font-extrabold text-green-900 ring-1 ring-green-100'>
+                  <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-green-700 ring-1 ring-green-100'>
+                    <CheckCircle2 className='h-4 w-4' />
+                  </span>
+                  <span className='min-w-0 truncate'>Рабочий день · {workDay?.shiftLabel} · {activeElapsedLabel}</span>
+                </div>
+              )}
+
+              {isCompleted && (
+                <Card className='flex items-center gap-3 p-3.5'>
+                  <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-100 text-green-700'>
+                    <Check className='h-5 w-5' />
+                  </span>
+                  <div className='min-w-0'>
+                    <p className='text-sm font-black text-slate-950'>Рабочий день завершён</p>
+                    <p className='mt-0.5 text-xs font-bold text-slate-500'>
+                      {formatTime(workDay?.startedAt)}–{formatTime(workDay?.endedAt)} · {elapsedLabel}
+                    </p>
+                  </div>
+                </Card>
+              )}
+
+              {showShiftControl && (
+                <Card className='space-y-3 bg-white p-4'>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div>
+                      <h2 className='text-xl font-black text-slate-950'>Сейчас нужно</h2>
+                      <p className='mt-0.5 text-xs font-bold text-slate-500'>
+                        Осталось: {remainingShiftControlCount} задач
+                      </p>
+                    </div>
+                    <Badge className='shrink-0 bg-slate-100 text-slate-700 ring-1 ring-slate-200'>
                       {user.department === 'wholesale' ? 'wholesale' : 'retail'}
                     </Badge>
                   </div>
 
                   {activeHandoverTask ? (
-                    <div className='rounded-lg bg-green-50 px-3 py-2.5 ring-1 ring-green-100'>
+                    <div className='rounded-2xl bg-green-50 px-3.5 py-3 ring-1 ring-green-200 shadow-[0_10px_24px_rgba(34,197,94,0.08)]'>
                       <p className='text-[11px] font-extrabold uppercase text-green-700'>Идёт сдача смены</p>
                       <p className='mt-1 text-base font-extrabold leading-tight text-slate-950'>Заполните шаги мастера ниже</p>
                     </div>
                   ) : (
-                    <div className={cn('rounded-lg px-3 py-2.5 ring-1', actionableShiftControlTask ? 'bg-green-50 ring-green-100' : 'bg-slate-50 ring-slate-200/80')}>
+                    <div className={cn('rounded-2xl px-3.5 py-3 ring-1', actionableShiftControlTask ? 'bg-green-50 ring-green-200 shadow-[0_10px_24px_rgba(34,197,94,0.08)]' : 'bg-slate-50 ring-slate-200')}>
                       <p className={cn('text-[11px] font-extrabold uppercase', actionableShiftControlTask ? 'text-green-700' : 'text-slate-400')}>
                         {actionableShiftControlTask ? 'Сейчас нужно выполнить' : 'Следующая проверка'}
                       </p>
@@ -2186,20 +2314,20 @@ export function EmployeeTodayClient({
                         {primaryShiftControlTask && (() => {
                           const Icon = shiftTaskIcon(primaryShiftControlTask);
                           return (
-                            <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1', shiftTaskIconClass(primaryShiftControlTask.category))}>
-                              <Icon className='h-4 w-4' />
+                            <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1', shiftTaskIconClass(primaryShiftControlTask.category))}>
+                              <Icon className='h-6 w-6' />
                             </span>
                           );
                         })()}
-                        <p className='min-w-0 text-base font-extrabold leading-tight text-slate-950'>
+                        <p className='min-w-0 text-lg font-black leading-tight text-slate-950'>
                           {primaryShiftControlTask ? shiftTaskTitle(primaryShiftControlTask) : 'Все задачи выполнены'}
                         </p>
                       </div>
                       {primaryShiftControlTask && (
                         <div className='mt-2 flex flex-wrap items-center gap-2'>
-                          <Badge className={cn('px-2 py-0.5 text-[10px]', shiftTaskStatusClass(shiftTaskStatus(primaryShiftControlTask, now)))}>
+                          <span className='text-xs font-bold text-slate-500'>
                             {shiftTaskStatusLabel(shiftTaskStatus(primaryShiftControlTask, now))}
-                          </Badge>
+                          </span>
                           <span className='text-xs font-bold text-slate-500'>
                             {plannedTimeLabel(primaryShiftControlTask.plannedTimeMinutes)}
                           </span>
@@ -2214,52 +2342,33 @@ export function EmployeeTodayClient({
 
                   {activeHandoverTask && renderHandoverStep(activeHandoverTask)}
 
-                  {previewShiftControlTasks.length > 0 && (
-                    <div className='grid gap-1.5'>
-                      {previewShiftControlTasks.map((task) => {
-                        const uiStatus = shiftTaskStatus(task, now);
-                        return (
-                          <div key={task.id} className='flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-200/80'>
-                            <div className='min-w-0'>
-                              <p className='truncate text-xs font-extrabold text-slate-800'>{shiftTaskTitle(task)}</p>
-                              <p className='mt-0.5 text-[11px] font-bold text-slate-400'>{plannedTimeLabel(task.plannedTimeMinutes)}</p>
-                            </div>
-                            <Badge className={cn('shrink-0 px-2 py-0.5 text-[10px]', shiftTaskStatusClass(uiStatus))}>
-                              {shiftTaskStatusLabel(uiStatus)}
-                            </Badge>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {!activeHandoverTask && (
+                  {!activeHandoverTask && otherShiftControlTaskCount > 0 && (
                     <Button
                       type='button'
                       className='h-9 w-full bg-slate-100 text-xs font-extrabold text-slate-800 shadow-none hover:bg-slate-200'
                       onClick={() => setShowFullShiftPlan((current) => !current)}
                     >
-                      {showFullShiftPlan ? 'Скрыть план смены' : 'Показать весь план смены'}
+                      {showFullShiftPlan ? 'Скрыть план смены' : `Показать остальные задачи (${otherShiftControlTaskCount})`}
                     </Button>
                   )}
 
                   {!activeHandoverTask && showFullShiftPlan && (
                     <div className='grid gap-2'>
-                      {visibleShiftControlTasks.map((task) => {
+                      {visibleShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).map((task) => {
                       const uiStatus = shiftTaskStatus(task, now);
                       const Icon = shiftTaskIcon(task);
                       return (
-                        <div key={task.id} className={cn('flex gap-2 rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-200/80', uiStatus === 'done' && 'bg-slate-50')}>
+                        <div key={task.id} className={cn('flex gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-slate-600 ring-1 ring-slate-200/80', uiStatus === 'done' && 'opacity-75')}>
                           <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1', shiftTaskIconClass(task.category))}>
                             {uiStatus === 'done' ? <CheckCircle2 className='h-4 w-4' /> : <Icon className='h-4 w-4' />}
                           </div>
                           <div className='min-w-0 flex-1'>
                             <div className='flex items-start justify-between gap-2'>
                               <div className='min-w-0'>
-                                <p className='text-sm font-extrabold leading-tight text-slate-950'>{shiftTaskTitle(task)}</p>
+                                <p className='text-sm font-extrabold leading-tight text-slate-700'>{shiftTaskTitle(task)}</p>
                                 <p className='mt-1 text-xs font-bold text-slate-500'>План: {plannedTimeLabel(task.plannedTimeMinutes)}</p>
                               </div>
-                              <Badge className={cn('shrink-0 px-2 py-0.5 text-[10px]', shiftTaskStatusClass(uiStatus))}>
+                              <Badge className='shrink-0 bg-white px-2 py-0.5 text-[10px] text-slate-500 ring-1 ring-slate-200'>
                                 {shiftTaskStatusLabel(uiStatus)}
                               </Badge>
                             </div>
@@ -2278,11 +2387,11 @@ export function EmployeeTodayClient({
               )}
 
               {canUseCashOperations && activeWorkDay && !activeHandoverTask && (
-                <Card className='space-y-3 p-4'>
+                <Card className='space-y-2.5 bg-white/80 p-3.5'>
                   <div className='flex items-start justify-between gap-3'>
                     <div>
-                      <h2 className='text-base font-extrabold text-slate-950'>Инкассация сегодня</h2>
-                      <p className='mt-0.5 text-xs font-semibold leading-snug text-slate-500'>Фиксируйте только если переложили деньги</p>
+                      <h2 className='text-base font-extrabold text-slate-950'>Инкассация</h2>
+                      <p className='mt-0.5 text-xs font-semibold leading-snug text-slate-500'>Только если переложили деньги</p>
                       <p className='mt-0.5 text-xs font-bold text-slate-500'>
                         {cashOperationsState.length} операций · {formatCashOperationAmount(cashOperationTotal)}
                       </p>
