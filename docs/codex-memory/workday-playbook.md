@@ -84,6 +84,36 @@ instead of counting.
 The employee Workday flow must be tested as a mobile app experience before
 launch. Confirm PWA icon/name/splash, mobile login without excessive scrolling,
 and the full Workday path on iPhone and Android.
+
+## QR Start
+
+The accepted MVP for starting a workday is QR inside the employee web app, not
+an external camera link as the main path.
+
+Current flow:
+
+- employee opens `/employee` while already logged in;
+- taps `Сканировать QR`;
+- scans one of the department QR payloads:
+  - `offonika-workday-start:retail`;
+  - `offonika-workday-start:wholesale`;
+- portal verifies the QR department matches the employee department;
+- employee chooses one of the supported department shifts in a bottom sheet;
+- workday starts and the screen focuses on `Сейчас нужно`.
+
+The first employee screen is intentionally mobile-first and action-first:
+
+- no large circular start/finish button;
+- no separate "shift fixed" card after start;
+- active status is compact: workday, shift and timer;
+- only the current checklist task gets the strong visual highlight;
+- other shift tasks stay secondary behind `Показать остальные задачи`;
+- normal active workday should not show a separate `Завершить` button.
+
+Admin QR codes live in `/admin/workday`. The diagnostic camera/QR page is
+`/admin/dev/qr-test` and should stay a technical tool for checking iPhone/PWA
+camera behavior separately from Workday logic.
+
 ## Stale Unfinished Workday
 
 Employees can have an unfinished previous workday. The UI was adjusted so a

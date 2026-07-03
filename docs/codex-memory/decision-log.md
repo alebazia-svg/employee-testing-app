@@ -83,3 +83,23 @@ bonus impact.
 Before employees use the portal daily, the mobile experience must feel like an
 app: proper PWA icon/name/splash, login form visible without large scrolling,
 short mobile intro, and actual iPhone/Android verification of Workday flows.
+
+## 2026-07-04 - Workday QR Start UX
+
+The Workday start flow should use in-app QR scanning as workplace confirmation.
+The main path is not an external QR link opened by the phone camera.
+
+Accepted MVP:
+
+- department QR payloads are `offonika-workday-start:retail` and
+  `offonika-workday-start:wholesale`;
+- employee taps `Сканировать QR` inside `/employee`;
+- after a valid scan, shift selection opens as a bottom sheet;
+- after shift selection, the workday starts immediately and the first checklist
+  action is the main focus;
+- `/admin/workday` shows QR codes for printing/opening;
+- `/admin/dev/qr-test` remains available as a diagnostic camera test.
+
+The first employee screen should now be considered closed for this phase unless
+testing finds a concrete usability problem. Avoid reintroducing the old large
+circular start/finish control or a separate active-day finish button.
