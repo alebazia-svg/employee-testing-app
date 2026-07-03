@@ -2185,7 +2185,9 @@ export function EmployeeTodayClient({
                 <div className='flex-1'>
                   <p className='font-extrabold text-amber-950'>Есть незавершённый рабочий день</p>
                   <p className='mt-1 text-sm font-medium text-amber-900'>
-                    Если вчера забыли нажать завершение, закройте старую отметку здесь. Это будет отмечено как нарушение для проверки администратором.
+                    Предыдущая смена не была завершена.
+                    Чтобы начать новый рабочий день, укажите причину и закройте предыдущий.
+                    Администратор увидит причину и комментарий.
                   </p>
                   <div className='mt-3 grid gap-2'>
                     <label className='block text-sm font-bold text-amber-950'>
@@ -2202,7 +2204,7 @@ export function EmployeeTodayClient({
                       </select>
                     </label>
                     <label className='block text-sm font-bold text-amber-950'>
-                      Комментарий
+                      Комментарий (если нужен)
                       <textarea
                         value={staleCloseComment}
                         onChange={(event) => setStaleCloseComment(event.target.value)}
@@ -2210,12 +2212,9 @@ export function EmployeeTodayClient({
                         placeholder='Например: Z-отчёт выбросила, фото сделать уже не могу'
                       />
                     </label>
-                    <p className='rounded-lg bg-white/70 px-3 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
-                      Закрытие без сдачи смены не считается нормальной сдачей. Администратор увидит причину и комментарий.
-                    </p>
                   </div>
                   <Button className='mt-3 w-full bg-amber-600 hover:bg-amber-700' onClick={finishUnfinishedWorkDay} disabled={isSaving}>
-                    Закрыть предыдущий день
+                    Закрыть незавершённый день
                   </Button>
                 </div>
               </div>
