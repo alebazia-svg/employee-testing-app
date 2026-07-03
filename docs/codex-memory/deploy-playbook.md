@@ -44,6 +44,27 @@ SSH:
 
 Use SSH and quote the remote command so Linux receives it.
 
+For sudo deploys from Windows, do not run a long nested SSH command with docker,
+curl, grep, quoting and command substitutions inline. This has repeatedly split
+and executed pieces in local PowerShell.
+
+Preferred pattern:
+
+1. Upload/write a small script on the VPS, for example
+   `/tmp/deploy-workday-v1.sh`.
+2. Open an interactive terminal with only:
+
+```powershell
+ssh -t bela@portal.alebazia.xyz "sh /tmp/deploy-workday-v1.sh"
+```
+
+3. Let the user type the sudo password there.
+4. Read the script output and verify commit, container, route and bundle text.
+
+If sudo is needed, assume a non-interactive SSH command with `sudo -n` may fail.
+Do not keep retrying variants that let local PowerShell interpret remote Linux
+commands.
+
 ## Env Pitfalls
 
 - Compose expects `server.env`; without it, deploy may warn that PostgreSQL/env

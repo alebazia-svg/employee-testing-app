@@ -76,3 +76,14 @@ Report:
 - whether this task changed architecture, workflow, development rules or made
   Codex memory stale. If yes, propose a memory update and wait for user
   confirmation before editing/committing docs.
+
+## Before VPS Deploy From Windows
+
+- Read `docs/codex-memory/deploy-playbook.md`.
+- Do not send long nested SSH commands containing `sudo docker`, `curl`, `grep`,
+  command substitutions or heavy quoting from PowerShell.
+- If sudo password entry is needed, first create a small script on the VPS, then
+  open only `ssh -t bela@portal.alebazia.xyz "sh /tmp/<script>.sh"` for the
+  user to type the password.
+- After the user sends output, verify server commit, container restart, route
+  status and expected bundle text.
