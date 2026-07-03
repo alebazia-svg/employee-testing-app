@@ -13,6 +13,7 @@ server.env.*
 uploads/
 *.log
 tmp-*
+.tmp-*
 .wip/
 tsconfig.tsbuildinfo
 tests/.generated/
