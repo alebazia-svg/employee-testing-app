@@ -19,6 +19,8 @@ re-discovery of already-known architecture.
 - `deploy-playbook.md` - concise deployment memory and command pitfalls.
 - `git-worktree-playbook.md` - dirty-tree, staging and commit hygiene.
 - `agentapi-boundary.md` - how portal work depends on AIAgentAPI/1C releases.
+- `one-c-workday-audit.md` - current 1C read-only data useful for Workday
+  automation and cash control.
 - `session-checklist.md` - self-checks before coding, deploy and final answer.
 - `ofd-one-c-playbook.md` - OFD/SABY/1C rules and current direction.
 - `workday-playbook.md` - workday pilot, shift control and cash statement notes.
