@@ -177,11 +177,10 @@ type CashOperationDraft = {
 };
 
 const staleCloseReasons = [
-  'Забыл закрыть день',
-  'Нет фото ведомости / отчёта',
-  'Чек / отчёт выброшен или утерян',
-  'Касса фактически не закрывалась',
+  'Забыл закрыть рабочий день',
+  'Не удалось закончить сдачу смены',
   'Техническая проблема',
+  'По указанию администратора',
   'Другое',
 ];
 
@@ -1118,7 +1117,7 @@ export function EmployeeTodayClient({
       return;
     }
     if (!staleCloseComment.trim()) {
-      setError('Напишите комментарий, чтобы администратор понял ситуацию');
+      setError('Добавьте комментарий. Он поможет администратору разобраться в ситуации.');
       return;
     }
     setIsSaving(true);
@@ -2204,7 +2203,7 @@ export function EmployeeTodayClient({
                       </select>
                     </label>
                     <label className='block text-sm font-bold text-amber-950'>
-                      Комментарий (если нужен)
+                      Комментарий
                       <textarea
                         value={staleCloseComment}
                         onChange={(event) => setStaleCloseComment(event.target.value)}
