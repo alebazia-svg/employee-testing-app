@@ -55,6 +55,9 @@ Business direction:
 
 - employees should confirm real-world cash recounts;
 - admins can compare with 1C cash statement balances;
+- `Наличные по 1С` in `/admin/workday` must use an explicit portal mapping
+  `employee -> 1C cashbox`; surname matching is only allowed as an admin
+  suggestion and must not be used as the source for cash statement checks;
 - do not show 1C expected cash too prominently to employees if it encourages
   copying instead of recounting;
 - photos should be required only when they are useful evidence.
