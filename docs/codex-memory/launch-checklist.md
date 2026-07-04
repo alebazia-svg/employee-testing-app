@@ -50,3 +50,6 @@ Required checks:
 - Payroll identity mapping instead of hard-coded aliases.
 - Employee-facing salary explanation after payroll sources are stable.
 - Banking statement automation and deeper financial reconciliation.
+- AI Enhancement starts only after the employee launch is stable. Product
+  direction is described in `product-vision.md`; do not turn this launch
+  checklist into a separate AI roadmap.

@@ -120,3 +120,18 @@ when no explicit mapping exists.
 This decision supports Workday cash reconciliation and the Trust But Verify
 principle: employees count real cash, while the portal compares against the
 correct 1C cashbox selected by admin-controlled mapping.
+
+## 2026-07-04 - AI Direction For Portal
+
+AI should be layered on top of deterministic business control, not built as a
+separate product or a replacement for rules.
+
+Accepted direction:
+
+- first create reliable source-backed control events and evidence snapshots;
+- use rules, 1C, OFD/SABY and PostgreSQL as the factual base;
+- use AI for explanations, daily briefs, grouping, drafts and investigation
+  support;
+- keep financial, payroll, discipline and 1C-changing actions human-in-the-loop;
+- treat AI Operations Copilot as a long-term evolution of the portal after the
+  employee launch and business control platform are stable.
