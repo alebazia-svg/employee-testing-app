@@ -6,11 +6,13 @@ making changes here. The 1C/AIAgentAPI workspace is a separate repository.
 ## First Five Minutes
 
 1. Run `git status --short` and identify unrelated dirty files.
-2. Read the relevant file in `docs/codex-memory/`.
-3. If the task touches deploy, read `docs/ops/vps-deploy-runbook.md`.
-4. If the task touches 1C data, remember: AIAgentAPI source/release work belongs
+2. Read `docs/codex-memory/project-index.md`, then the relevant playbook.
+3. If the task touches commands, deploy, Prisma, 1C or smoke checks, read
+   `docs/codex-memory/tool-registry.md` and `docs/codex-memory/error-playbook.md`.
+4. If the task touches deploy, read `docs/ops/vps-deploy-runbook.md`.
+5. If the task touches 1C data, remember: AIAgentAPI source/release work belongs
    in the separate `ai-business-os` repository, not here.
-5. Keep edits scoped. Do not include old dirty files in commits.
+6. Keep edits scoped. Do not include old dirty files in commits.
 
 ## Development Posture
 
@@ -51,6 +53,11 @@ making changes here. The 1C/AIAgentAPI workspace is a separate repository.
   of the task.
 - `docs/ops/vps-deploy-runbook.md` - safe VPS deployment flow.
 - `docs/codex-memory/` - durable Codex playbooks for this portal.
+- `docs/codex-memory/project-index.md` - fast map of modules, systems and
+  task-specific memory.
+- `docs/codex-memory/tool-registry.md` - local/VPS/Prisma/1C/smoke command
+  registry.
+- `docs/codex-memory/error-playbook.md` - repeated mistakes and recovery steps.
 - `docs/codex-memory/git-worktree-playbook.md` - dirty tree and commit hygiene.
 - `docs/codex-memory/agentapi-boundary.md` - portal vs AIAgentAPI release rules.
 - `docs/codex-memory/session-checklist.md` - self-checks before coding/finishing.

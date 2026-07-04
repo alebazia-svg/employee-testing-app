@@ -13,6 +13,11 @@ re-discovery of already-known architecture.
 
 ## Files
 
+- `project-index.md` - fast orientation map across portal modules, 1C,
+  deployment, Prisma and memory files.
+- `tool-registry.md` - which commands/tools run locally, on VPS, in Prisma, in
+  1C/AIAgentAPI and in smoke checks.
+- `error-playbook.md` - repeated failures and exact prevention/fix patterns.
 - `portal-map.md` - modules, routes, data sources and ownership boundaries.
 - `product-vision.md` - product principles such as trust-but-verify.
 - `launch-checklist.md` - practical launch gates for employee rollout.

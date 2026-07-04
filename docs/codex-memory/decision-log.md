@@ -103,3 +103,20 @@ Accepted MVP:
 The first employee screen should now be considered closed for this phase unless
 testing finds a concrete usability problem. Avoid reintroducing the old large
 circular start/finish control or a separate active-day finish button.
+
+## 2026-07-04 - Workday Cashbox Mapping
+
+`Наличные по 1С` in `/admin/workday` must use the explicit
+`UserOneCCashboxMapping` relation:
+
+```text
+portal userId -> oneCCashboxRef / oneCCashboxName
+```
+
+Do not use surname/family-name matching as the source of truth for 1C cashbox
+checks. Name-based matching may appear only as an admin suggestion/diagnostic
+when no explicit mapping exists.
+
+This decision supports Workday cash reconciliation and the Trust But Verify
+principle: employees count real cash, while the portal compares against the
+correct 1C cashbox selected by admin-controlled mapping.
