@@ -128,9 +128,15 @@ function hasStaleCloseViolation(workDay: { comment: string } | null | undefined,
 }
 
 function cashStatementStatus(result: OneCCashStatementSummaryResult | null) {
-  if (!result) return { label: 'не проверено', className: 'bg-slate-100 text-slate-700' };
+  if (!result) return { label: 'не получено', className: 'bg-slate-100 text-slate-700' };
   if (!result.ok) return { label: 'ошибка 1С', className: 'bg-rose-100 text-rose-800' };
   return { label: 'получено', className: 'bg-green-100 text-green-800' };
+}
+
+function cashStatementScheduleLabel(status: string | undefined) {
+  if (status === 'working') return { label: 'работает сегодня', className: 'bg-green-100 text-green-800' };
+  if (status === 'off') return { label: 'не по графику', className: 'bg-slate-100 text-slate-700' };
+  return { label: 'график не заполнен', className: 'bg-amber-100 text-amber-800' };
 }
 
 function cashboxMappingStatusMessage(status?: string, error?: string) {
@@ -193,20 +199,14 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
     ?? cashStatementDimensions.organizations[0]
     ?? null;
-  const cashStatementScheduledEmployees = employees.filter((employee) => {
-    if (employee.department !== 'retail' && employee.department !== 'wholesale') return false;
-    const schedule = scheduleByUser.get(employee.id);
-    const workDay = workDayByUser.get(employee.id);
-    return schedule?.status === 'working' || Boolean(workDay);
-  });
-  const cashStatementFallbackEmployees = employees.filter((employee) => employee.department === 'retail' || employee.department === 'wholesale');
-  const cashStatementUsesFallbackEmployees = cashStatementScheduledEmployees.length === 0 && cashStatementFallbackEmployees.length > 0;
-  const cashStatementEmployees = cashStatementUsesFallbackEmployees ? cashStatementFallbackEmployees : cashStatementScheduledEmployees;
+  const cashStatementEmployees = employees.filter((employee) => employee.department === 'retail' || employee.department === 'wholesale');
   const cashStatementRows = await Promise.all(cashStatementEmployees.map(async (employee) => {
     const searchKey = employeeCashboxSearchKey(employee.name);
     const suggestedCashbox = searchKey
       ? cashStatementDimensions.cashboxes.find((item) => normalizeSearchText(item.name).includes(searchKey)) ?? null
       : null;
+    const schedule = scheduleByUser.get(employee.id);
+    const scheduleInfo = cashStatementScheduleLabel(schedule?.status);
     const mapping = employee.oneCCashboxMapping?.isActive ? employee.oneCCashboxMapping : null;
     const mappedCashbox = mapping
       ? cashStatementDimensions.cashboxes.find((item) => item.ref === mapping.oneCCashboxRef)
@@ -216,6 +216,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     if (!mapping) {
       return {
         employee,
+        scheduleInfo,
         cashbox: null,
         suggestedCashbox,
         result: null,
@@ -226,6 +227,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     if (!cashStatementDimensions.ok || !cashStatementOrganization || !mappedCashbox) {
       return {
         employee,
+        scheduleInfo,
         cashbox: mappedCashbox,
         suggestedCashbox,
         result: null,
@@ -245,6 +247,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
 
     return {
       employee,
+      scheduleInfo,
       cashbox: mappedCashbox,
       suggestedCashbox,
       result,
@@ -419,19 +422,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               <Badge className='bg-slate-100 text-slate-700'>ведомостей получено: {cashStatementLoadedCount}/{cashStatementRows.length}</Badge>
             </div>
           </div>
-          {cashStatementUsesFallbackEmployees && (
-            <div className='border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900'>
-              График на выбранный день не заполнен, поэтому для диагностики кассы показаны все активные сотрудники розницы и опта.
-            </div>
-          )}
           {cashStatementRows.length === 0 ? (
-            <div className='px-5 py-4 text-sm font-semibold text-slate-500'>За выбранный день нет розничных или оптовых сотрудников для проверки кассы.</div>
+            <div className='px-5 py-4 text-sm font-semibold text-slate-500'>Нет активных сотрудников розницы или опта для проверки кассы.</div>
           ) : (
             <div className='overflow-x-auto'>
               <Table>
                 <thead>
                   <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
                     <th className='px-4 py-3'>Сотрудник</th>
+                    <th className='px-4 py-3'>График</th>
                     <th className='px-4 py-3'>Касса 1С</th>
                     <th className='px-4 py-3'>Начало</th>
                     <th className='px-4 py-3'>Приход</th>
@@ -449,6 +448,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                         <td className='px-4 py-3'>
                           <p className='font-bold text-slate-950'>{row.employee.name}</p>
                           <p className='text-xs font-semibold text-slate-500'>{departmentLabel(row.employee.department)}</p>
+                        </td>
+                        <td className='px-4 py-3'>
+                          <Badge className={row.scheduleInfo.className}>{row.scheduleInfo.label}</Badge>
                         </td>
                         <td className='px-4 py-3 text-sm font-semibold text-slate-700'>
                           {row.cashbox?.name ?? 'Касса 1С не привязана'}
