@@ -26,6 +26,21 @@ model User {
   workDays      WorkDayEntry[]
   shiftControlRuns ShiftControlRun[]
   cashOperations CashOperation[]
+  oneCCashboxMapping UserOneCCashboxMapping?
+}
+
+model UserOneCCashboxMapping {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  oneCCashboxRef  String
+  oneCCashboxName String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([oneCCashboxRef])
+  @@index([isActive])
 }
 
 model WorkScheduleEntry {

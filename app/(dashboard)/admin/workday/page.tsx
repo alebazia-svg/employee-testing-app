@@ -133,7 +133,16 @@ function cashStatementStatus(result: OneCCashStatementSummaryResult | null) {
   return { label: 'получено', className: 'bg-green-100 text-green-800' };
 }
 
-export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string } }) {
+function cashboxMappingStatusMessage(status?: string, error?: string) {
+  if (status === 'saved') return { tone: 'green', text: 'Привязка кассы 1С сохранена.' };
+  if (status === 'cleared') return { tone: 'amber', text: 'Привязка кассы 1С очищена.' };
+  if (error === 'invalid-user') return { tone: 'rose', text: 'Не удалось сохранить: сотрудник не найден.' };
+  if (error === 'unsupported-user') return { tone: 'rose', text: 'Кассы 1С привязываются только для розницы и опта.' };
+  if (error === 'cashbox-not-found') return { tone: 'rose', text: 'Не удалось сохранить: касса 1С не найдена в текущем списке.' };
+  return null;
+}
+
+export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string } }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');
@@ -146,7 +155,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, department: true },
+      select: {
+        id: true,
+        name: true,
+        department: true,
+        oneCCashboxMapping: true,
+      },
     }),
     prisma.workScheduleEntry.findMany({ where: { date: selectedDate } }),
     prisma.workDayEntry.findMany({ where: { date: selectedDate } }),
@@ -190,38 +204,58 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const cashStatementEmployees = cashStatementUsesFallbackEmployees ? cashStatementFallbackEmployees : cashStatementScheduledEmployees;
   const cashStatementRows = await Promise.all(cashStatementEmployees.map(async (employee) => {
     const searchKey = employeeCashboxSearchKey(employee.name);
-    const cashbox = searchKey
+    const suggestedCashbox = searchKey
       ? cashStatementDimensions.cashboxes.find((item) => normalizeSearchText(item.name).includes(searchKey)) ?? null
       : null;
+    const mapping = employee.oneCCashboxMapping?.isActive ? employee.oneCCashboxMapping : null;
+    const mappedCashbox = mapping
+      ? cashStatementDimensions.cashboxes.find((item) => item.ref === mapping.oneCCashboxRef)
+        ?? { ref: mapping.oneCCashboxRef, name: mapping.oneCCashboxName, deleted: false }
+      : null;
 
-    if (!cashStatementDimensions.ok || !cashStatementOrganization || !cashbox) {
+    if (!mapping) {
       return {
         employee,
-        cashbox,
+        cashbox: null,
+        suggestedCashbox,
+        result: null,
+        note: 'Касса 1С не привязана',
+      };
+    }
+
+    if (!cashStatementDimensions.ok || !cashStatementOrganization || !mappedCashbox) {
+      return {
+        employee,
+        cashbox: mappedCashbox,
+        suggestedCashbox,
         result: null,
         note: !cashStatementDimensions.ok
           ? cashStatementDimensions.error ?? cashStatementDimensions.diagnostics.join('; ') ?? '1С не вернула список касс'
           : !cashStatementOrganization
             ? 'Организация 1С не найдена'
-            : 'Касса сотрудника не найдена по фамилии',
+            : 'Привязанная касса 1С не найдена',
       };
     }
 
     const result = await getCashStatementSummary({
       date: selectedDate,
       organizationRef: cashStatementOrganization.ref,
-      cashboxRef: cashbox.ref,
+      cashboxRef: mappedCashbox.ref,
     });
 
     return {
       employee,
-      cashbox,
+      cashbox: mappedCashbox,
+      suggestedCashbox,
       result,
       note: result.ok ? '' : result.error ?? result.diagnostics.join('; ') ?? 'Не удалось получить ведомость 1С',
     };
   }));
   const cashStatementLoadedCount = cashStatementRows.filter((row) => row.result?.ok).length;
   const cashStatementMissingCashboxCount = cashStatementRows.filter((row) => !row.cashbox).length;
+  const cashboxMappingMessage = cashboxMappingStatusMessage(searchParams?.cashboxMapping, searchParams?.cashboxMappingError);
+  const cashboxMappingEmployees = employees.filter((employee) => employee.department === 'retail' || employee.department === 'wholesale');
+  const cashboxMappingRedirectTo = `/admin/workday?date=${selectedDate}`;
 
   return (
     <AdminShell>
@@ -268,6 +302,98 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         </div>
 
         <WorkdayQrCodes />
+
+        <Card className='p-0'>
+          <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between'>
+            <div>
+              <h2 className='text-lg font-extrabold text-slate-950'>Привязка касс 1С</h2>
+              <p className='mt-1 text-sm font-medium text-slate-500'>
+                Настройте явную связку сотрудник → касса 1С. Эта привязка используется для ведомости наличных вместо поиска по фамилии.
+              </p>
+            </div>
+            <Badge className='w-fit bg-slate-100 text-slate-700'>касс 1С: {cashStatementDimensions.cashboxes.length}</Badge>
+          </div>
+          {cashboxMappingMessage ? (
+            <div className={`border-b px-5 py-3 text-sm font-semibold ${
+              cashboxMappingMessage.tone === 'green'
+                ? 'border-green-100 bg-green-50 text-green-900'
+                : cashboxMappingMessage.tone === 'rose'
+                  ? 'border-rose-100 bg-rose-50 text-rose-900'
+                  : 'border-amber-100 bg-amber-50 text-amber-900'
+            }`}>
+              {cashboxMappingMessage.text}
+            </div>
+          ) : null}
+          {cashboxMappingEmployees.length === 0 ? (
+            <div className='px-5 py-4 text-sm font-semibold text-slate-500'>Нет активных сотрудников розницы или опта для привязки касс.</div>
+          ) : (
+            <div className='overflow-x-auto'>
+              <Table>
+                <thead>
+                  <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
+                    <th className='px-4 py-3'>Сотрудник</th>
+                    <th className='px-4 py-3'>Отдел</th>
+                    <th className='px-4 py-3'>Касса 1С</th>
+                    <th className='px-4 py-3'>Подсказка</th>
+                    <th className='px-4 py-3'>Действие</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashboxMappingEmployees.map((employee) => {
+                    const searchKey = employeeCashboxSearchKey(employee.name);
+                    const suggestedCashbox = searchKey
+                      ? cashStatementDimensions.cashboxes.find((item) => normalizeSearchText(item.name).includes(searchKey)) ?? null
+                      : null;
+                    const mapping = employee.oneCCashboxMapping?.isActive ? employee.oneCCashboxMapping : null;
+                    return (
+                      <tr key={employee.id} className='border-t border-slate-100 align-top'>
+                        <td className='px-4 py-3'>
+                          <p className='font-bold text-slate-950'>{employee.name}</p>
+                          {!mapping ? <p className='text-xs font-semibold text-amber-700'>Касса 1С не привязана</p> : null}
+                        </td>
+                        <td className='px-4 py-3 text-sm font-semibold text-slate-600'>{departmentLabel(employee.department)}</td>
+                        <td className='px-4 py-3'>
+                          <form action='/api/admin/workday/cashbox-mapping' method='post' className='flex min-w-[320px] flex-col gap-2 sm:flex-row'>
+                            <input type='hidden' name='userId' value={employee.id} />
+                            <input type='hidden' name='redirectTo' value={cashboxMappingRedirectTo} />
+                            <select
+                              name='oneCCashboxRef'
+                              defaultValue={mapping?.oneCCashboxRef ?? ''}
+                              className='min-h-10 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
+                              disabled={!cashStatementDimensions.ok}
+                            >
+                              <option value=''>Не привязана</option>
+                              {cashStatementDimensions.cashboxes.map((cashbox) => (
+                                <option key={cashbox.ref} value={cashbox.ref}>
+                                  {cashbox.name}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type='submit'
+                              className='rounded-lg bg-slate-950 px-3 py-2 text-sm font-extrabold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300'
+                              disabled={!cashStatementDimensions.ok}
+                            >
+                              Сохранить
+                            </button>
+                          </form>
+                        </td>
+                        <td className='px-4 py-3 text-sm font-semibold text-slate-500'>
+                          {suggestedCashbox ? `Похоже: ${suggestedCashbox.name}` : '—'}
+                        </td>
+                        <td className='px-4 py-3'>
+                          <Badge className={mapping ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+                            {mapping ? 'привязана' : 'нужно настроить'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </div>
+          )}
+        </Card>
 
         <Card className='p-0'>
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between'>
@@ -324,7 +450,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                           <p className='font-bold text-slate-950'>{row.employee.name}</p>
                           <p className='text-xs font-semibold text-slate-500'>{departmentLabel(row.employee.department)}</p>
                         </td>
-                        <td className='px-4 py-3 text-sm font-semibold text-slate-700'>{row.cashbox?.name ?? 'касса не найдена'}</td>
+                        <td className='px-4 py-3 text-sm font-semibold text-slate-700'>
+                          {row.cashbox?.name ?? 'Касса 1С не привязана'}
+                          {!row.cashbox && row.suggestedCashbox ? (
+                            <p className='mt-1 text-xs font-semibold text-slate-400'>Подсказка: {row.suggestedCashbox.name}</p>
+                          ) : null}
+                        </td>
                         <td className='px-4 py-3 font-semibold text-slate-700'>{formatMoney(row.result?.openingBalance)}</td>
                         <td className='px-4 py-3 font-semibold text-green-700'>{formatMoney(row.result?.incomingTotal)}</td>
                         <td className='px-4 py-3 font-semibold text-rose-700'>{formatMoney(row.result?.outgoingTotal)}</td>
@@ -345,7 +476,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           )}
           {cashStatementMissingCashboxCount > 0 && (
             <div className='border-t border-amber-100 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900'>
-              Для {cashStatementMissingCashboxCount} сотрудника касса не найдена автоматически по фамилии. Это диагностика: позже можно добавить явную привязку сотрудник → касса 1С.
+              Для {cashStatementMissingCashboxCount} сотрудника касса 1С не привязана. Ведомость наличных считается только по явной привязке; подсказки по фамилии не используются как источник данных.
             </div>
           )}
         </Card>
