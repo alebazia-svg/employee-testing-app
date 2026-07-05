@@ -1781,7 +1781,7 @@ export function EmployeeTodayClient({
     const isLastStep = handoverStep === handoverSteps.length - 1;
     const stepError = handoverAttemptedStep === step ? getHandoverStepError() : '';
     const sectionTitle = ['sberbankTerminal', 'tbankQuestion', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
-    const reportMissingHint = 'Если отчёт не получается получить или фото сделать невозможно, не закрывайте смену молча: напишите комментарий администратору и сообщите о проблеме.';
+    const reportMissingHint = 'Если фото или отчёт не получается, сообщите администратору.';
     const handoverStepTitle: Record<string, string> = {
       personalCashBalance: 'Пересчитайте наличные',
       personalAcquiringReceiptsPhoto: 'Подтвердите оплаты картой',
@@ -1816,21 +1816,21 @@ export function EmployeeTodayClient({
               <p className='text-[11px] font-extrabold uppercase text-green-700'>{sectionTitle}</p>
               <h3 className='mt-0.5 text-base font-extrabold text-slate-950'>{handoverStepTitle[step] ?? `Шаг ${handoverStep + 1} из ${handoverSteps.length}`}</h3>
               <p className='mt-1 text-xs font-semibold leading-snug text-slate-500'>
-                Шаг {handoverStep + 1} из {handoverSteps.length}. Заполняйте только данные по своей кассе: это сохранится как доказательство сдачи смены.
+                Шаг {handoverStep + 1} из {handoverSteps.length} · только ваша касса
               </p>
             </div>
           </div>
           <Badge className='bg-green-100 text-green-800 ring-1 ring-green-200'>{workDay?.shiftLabel}</Badge>
         </div>
 
-        {step === 'personalAcquiringReceiptsPhoto' && renderPhotoInput('Фото сверки оплат картой по моей кассе', 'personalAcquiringReceiptsPhoto', task, `Сфотографируйте чеки/сверку эквайринга за смену по своей кассе. Это нужно, чтобы быстро найти расхождение с банком. ${reportMissingHint}`, stepError)}
-        {step === 'zReportPhoto' && renderPhotoInput('Фото Z-отчёта / чека закрытия кассы', 'zReportPhoto', task, `Сфотографируйте итоговый Z-отчёт или чек закрытия кассовой смены. ${reportMissingHint}`, stepError)}
+        {step === 'personalAcquiringReceiptsPhoto' && renderPhotoInput('Оплаты картой', 'personalAcquiringReceiptsPhoto', task, `Фото сверки эквайринга по вашей кассе. ${reportMissingHint}`, stepError)}
+        {step === 'zReportPhoto' && renderPhotoInput('Z-отчёт', 'zReportPhoto', task, `Сфотографируйте Z-отчёт закрытия кассы. ${reportMissingHint}`, stepError)}
 
         {step === 'personalCashBalance' && (
           <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
-            Остаток наличных в моей кассе
+            Наличные в кассе
             <span className='text-xs font-semibold leading-snug text-slate-500'>
-              Пересчитайте реальные деньги в своей кассе и внесите фактический остаток. Не переписывайте сумму из 1С без пересчёта.
+              Пересчитайте кассу и внесите фактический остаток.
             </span>
             <input
               type='number'
@@ -1848,9 +1848,9 @@ export function EmployeeTodayClient({
 
         {step === 'discrepancy' && (
           <div className='grid gap-3'>
-            <p className='text-sm font-extrabold text-slate-800'>Расхождение по моей кассе</p>
+            <p className='text-sm font-extrabold text-slate-800'>Расхождение</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Если после пересчёта есть излишек или недостача, укажите сумму и причину. Администратор сверит факт с данными 1С.
+              Есть излишек или недостача? Укажите сумму.
             </p>
             <div className='grid grid-cols-3 gap-2'>
               {[
@@ -1902,7 +1902,7 @@ export function EmployeeTodayClient({
           <div className='grid gap-3'>
             <p className='text-sm font-extrabold text-slate-800'>Была выемка?</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Если деньги забирали из кассы, внесите сумму выемки и сумму приходника. Если выемки не было, выберите “Не было”.
+              Если деньги забирали из кассы, укажите суммы.
             </p>
             <div className='grid grid-cols-2 gap-2'>
               <Button
@@ -1985,10 +1985,10 @@ export function EmployeeTodayClient({
               {stepError && parseMoneyInput(handoverDraft.encashmentAmount) === null && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
             </label>
             {renderPhotoInput(
-              'Фото денег для инкассации',
+              'Инкассация',
               'encashmentDocumentPhoto',
               task,
-              'Сфотографируйте деньги перед помещением в резерв или депозитный сейф. Фото нужно только как подтверждение факта инкассации.',
+              'Сфотографируйте деньги перед помещением в сейф.',
               stepError && parseMoneyInput(handoverDraft.encashmentAmount) !== null ? stepError : undefined,
             )}
           </div>
@@ -1996,9 +1996,9 @@ export function EmployeeTodayClient({
 
         {step === 'sberbankTerminal' && (
           <div className='grid gap-3'>
-            {renderPhotoInput('Фото итогового отчёта терминала Сбербанка', 'sberbankTerminalReportPhoto', task, `Сфотографируйте итоговый отчёт терминала за смену, затем внесите сумму из этого отчёта. ${reportMissingHint}`, stepError && !hasHandoverPhoto(handoverDraft.sberbankTerminalReportPhoto) ? stepError : undefined)}
+            {renderPhotoInput('Отчёт Сбербанка', 'sberbankTerminalReportPhoto', task, `Фото отчёта терминала. ${reportMissingHint}`, stepError && !hasHandoverPhoto(handoverDraft.sberbankTerminalReportPhoto) ? stepError : undefined)}
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Итоговая сумма по отчёту терминала Сбербанка
+              Сумма по отчёту Сбербанка
               <input
                 type='number'
                 inputMode='decimal'
@@ -2007,7 +2007,7 @@ export function EmployeeTodayClient({
                 value={handoverDraft.sberbankTerminalTotal}
                 onChange={(event) => updateHandoverDraft({ sberbankTerminalTotal: event.target.value })}
                 className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                placeholder='Введите итоговую сумму с отчёта терминала'
+                placeholder='0'
               />
               {stepError && hasHandoverPhoto(handoverDraft.sberbankTerminalReportPhoto) && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
             </label>
@@ -2018,7 +2018,7 @@ export function EmployeeTodayClient({
           <div className='grid gap-3'>
             <p className='text-sm font-extrabold text-slate-800'>Были операции через терминал Т-Банка?</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Отметьте “Да”, только если за смену были операции через терминал Т-Банка. Тогда портал попросит фото отчёта и сумму.
+              Если были оплаты через Т-Банк, выберите “Да”.
             </p>
             <div className='grid grid-cols-2 gap-2'>
               <Button
@@ -2042,9 +2042,9 @@ export function EmployeeTodayClient({
 
         {step === 'tbankTerminal' && (
           <div className='grid gap-3'>
-            {renderPhotoInput('Фото итогового отчёта терминала Т-Банка', 'tbankTerminalReportPhoto', task, `Сфотографируйте итоговый отчёт терминала Т-Банка и внесите сумму из отчёта. ${reportMissingHint}`, stepError && !hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) ? stepError : undefined)}
+            {renderPhotoInput('Отчёт Т-Банка', 'tbankTerminalReportPhoto', task, `Фото отчёта терминала. ${reportMissingHint}`, stepError && !hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) ? stepError : undefined)}
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Сумма по отчёту терминала Т-Банка
+              Сумма по отчёту Т-Банка
               <input
                 type='number'
                 inputMode='decimal'
@@ -2053,7 +2053,7 @@ export function EmployeeTodayClient({
                 value={handoverDraft.tbankTerminalTotal}
                 onChange={(event) => updateHandoverDraft({ tbankTerminalTotal: event.target.value })}
                 className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                placeholder='Введите итоговую сумму с отчёта терминала'
+                placeholder='0'
               />
               {stepError && hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
             </label>
