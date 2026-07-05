@@ -2340,20 +2340,17 @@ export function EmployeeTodayClient({
 
               {showShiftControl && (
                 <Card className='space-y-3 bg-white p-4'>
-                  <div className='flex items-start justify-between gap-3'>
+                  <div>
                     <div>
                       <h2 className='text-xl font-black text-slate-950'>Сейчас нужно</h2>
                       <p className='mt-0.5 text-xs font-bold text-slate-500'>
                         {activeHandoverTask ? `Сдача смены: шаг ${handoverStep + 1} из ${handoverSteps.length}` : remainingTasksLabel(remainingShiftControlCount, primaryShiftControlTask?.category)}
                       </p>
                     </div>
-                    <Badge className='shrink-0 bg-slate-100 text-slate-700 ring-1 ring-slate-200'>
-                      {departmentLabel(user.department)}
-                    </Badge>
                   </div>
 
                   {activeHandoverTask ? null : (
-                    <div className={cn('rounded-2xl px-3.5 py-3 ring-1', actionableShiftControlTask ? 'bg-green-50 ring-green-200 shadow-[0_10px_24px_rgba(34,197,94,0.08)]' : 'bg-slate-50 ring-slate-200')}>
+                    <div className={cn('rounded-2xl border-l-4 px-3.5 py-3 ring-1', actionableShiftControlTask ? 'border-green-500 bg-white ring-green-200 shadow-sm' : 'border-transparent bg-slate-50 ring-slate-200')}>
                       <p className={cn('text-[11px] font-extrabold uppercase', actionableShiftControlTask ? 'text-green-700' : 'text-slate-400')}>
                         {actionableShiftControlTask ? 'Текущий шаг' : 'Следующая проверка'}
                       </p>
