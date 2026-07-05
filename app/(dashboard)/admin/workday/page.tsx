@@ -99,6 +99,36 @@ function formatMoney(value: number | null | undefined) {
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)} ₽`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readHandoverCashBalance(run: { tasks?: Array<{ category: string; handoverData: unknown }> } | null | undefined) {
+  const handoverTask = run?.tasks?.find((task) => task.category === 'handover') ?? null;
+  if (!handoverTask || !isRecord(handoverTask.handoverData)) return { value: null, isDraft: false };
+
+  const personalCash = isRecord(handoverTask.handoverData.personalCash) ? handoverTask.handoverData.personalCash : null;
+  return {
+    value: personalCash ? readNumber(personalCash.cashBalance) : null,
+    isDraft: handoverTask.handoverData.draft !== false,
+  };
+}
+
+function cashDifferenceStatus(employeeCashBalance: number | null, oneCClosingBalance: number | null | undefined) {
+  if (employeeCashBalance === null) return { label: 'факт не введён', className: 'bg-slate-100 text-slate-700' };
+  if (oneCClosingBalance === null || oneCClosingBalance === undefined || !Number.isFinite(oneCClosingBalance)) {
+    return { label: 'ждёт 1С', className: 'bg-slate-100 text-slate-700' };
+  }
+
+  const difference = Math.abs(employeeCashBalance - oneCClosingBalance);
+  if (difference <= 1) return { label: 'совпало', className: 'bg-green-100 text-green-800' };
+  return { label: 'расхождение', className: 'bg-amber-100 text-amber-800' };
+}
+
 function normalizeSearchText(value: string) {
   return value
     .toLowerCase()
@@ -208,6 +238,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     const schedule = scheduleByUser.get(employee.id);
     const scheduleInfo = cashStatementScheduleLabel(schedule?.status);
     const mapping = employee.oneCCashboxMapping?.isActive ? employee.oneCCashboxMapping : null;
+    const employeeCash = readHandoverCashBalance(shiftControlRunByUser.get(employee.id));
     const mappedCashbox = mapping
       ? cashStatementDimensions.cashboxes.find((item) => item.ref === mapping.oneCCashboxRef)
         ?? { ref: mapping.oneCCashboxRef, name: mapping.oneCCashboxName, deleted: false }
@@ -219,6 +250,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         scheduleInfo,
         cashbox: null,
         suggestedCashbox,
+        employeeCash,
         result: null,
         note: 'Касса 1С не привязана',
       };
@@ -230,6 +262,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         scheduleInfo,
         cashbox: mappedCashbox,
         suggestedCashbox,
+        employeeCash,
         result: null,
         note: !cashStatementDimensions.ok
           ? cashStatementDimensions.error ?? cashStatementDimensions.diagnostics.join('; ') ?? '1С не вернула список касс'
@@ -250,6 +283,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       scheduleInfo,
       cashbox: mappedCashbox,
       suggestedCashbox,
+      employeeCash,
       result,
       note: result.ok ? '' : result.error ?? result.diagnostics.join('; ') ?? 'Не удалось получить ведомость 1С',
     };
@@ -408,7 +442,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <div>
                   <h2 className='text-lg font-extrabold text-slate-950'>Наличные по 1С</h2>
                   <p className='mt-1 text-sm font-medium text-slate-500'>
-                    Read-only сверка с ведомостью денежных средств. На чек-листы и БД не влияет.
+                    Сверка фактического остатка из сдачи смены с ведомостью денежных средств 1С. Ожидаемый остаток сотруднику не показывается.
                   </p>
                 </div>
               </div>
@@ -436,6 +470,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                     <th className='px-4 py-3'>Приход</th>
                     <th className='px-4 py-3'>Расход</th>
                     <th className='px-4 py-3'>Конец</th>
+                    <th className='px-4 py-3'>Факт сотрудника</th>
+                    <th className='px-4 py-3'>Расхождение</th>
                     <th className='px-4 py-3'>Движения</th>
                     <th className='px-4 py-3'>Статус</th>
                   </tr>
@@ -443,6 +479,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <tbody>
                   {cashStatementRows.map((row) => {
                     const status = cashStatementStatus(row.result);
+                    const difference =
+                      row.employeeCash.value !== null && row.result?.ok && row.result.closingBalance !== null
+                        ? row.employeeCash.value - row.result.closingBalance
+                        : null;
+                    const differenceStatus = cashDifferenceStatus(row.employeeCash.value, row.result?.ok ? row.result.closingBalance : null);
                     return (
                       <tr key={row.employee.id} className='border-t border-slate-100 align-top'>
                         <td className='px-4 py-3'>
@@ -462,6 +503,20 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                         <td className='px-4 py-3 font-semibold text-green-700'>{formatMoney(row.result?.incomingTotal)}</td>
                         <td className='px-4 py-3 font-semibold text-rose-700'>{formatMoney(row.result?.outgoingTotal)}</td>
                         <td className='px-4 py-3 font-extrabold text-slate-950'>{formatMoney(row.result?.closingBalance)}</td>
+                        <td className='px-4 py-3 font-extrabold text-slate-950'>
+                          {formatMoney(row.employeeCash.value)}
+                          {row.employeeCash.isDraft && row.employeeCash.value !== null ? (
+                            <p className='mt-1 text-xs font-semibold text-amber-700'>черновик сдачи</p>
+                          ) : null}
+                        </td>
+                        <td className='px-4 py-3'>
+                          <div className='grid gap-1'>
+                            <span className={`text-sm font-extrabold ${difference !== null && Math.abs(difference) > 1 ? 'text-amber-700' : 'text-slate-700'}`}>
+                              {formatMoney(difference)}
+                            </span>
+                            <Badge className={differenceStatus.className}>{differenceStatus.label}</Badge>
+                          </div>
+                        </td>
                         <td className='px-4 py-3 text-sm font-semibold text-slate-700'>{row.result?.movementsCount ?? '—'}</td>
                         <td className='px-4 py-3'>
                           <div className='grid gap-1'>
