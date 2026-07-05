@@ -2266,8 +2266,11 @@ export function EmployeeTodayClient({
           )}
 
           {message && (
-            <div className='fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto max-w-[488px] rounded-2xl bg-green-600 px-4 py-3 text-sm font-extrabold text-white shadow-2xl ring-1 ring-green-400/40'>
-              {message}
+            <div className='fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-[488px] items-center gap-2.5 rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-slate-950 shadow-2xl ring-1 ring-green-200'>
+              <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-50 text-green-700 ring-1 ring-green-100'>
+                <CheckCircle2 className='h-4 w-4' />
+              </span>
+              <span className='min-w-0'>{message}</span>
             </div>
           )}
 
