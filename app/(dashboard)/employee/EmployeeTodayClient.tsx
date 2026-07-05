@@ -2209,7 +2209,7 @@ export function EmployeeTodayClient({
 
           <div className='mt-3 flex items-end justify-between gap-3'>
             <p className='min-w-0 truncate text-sm font-bold text-slate-100'>{user.name} · {departmentLabel(user.department)}</p>
-            <p className='shrink-0 text-xs font-semibold text-green-300'>{formatDateLabel(today)}</p>
+            <p className='shrink-0 text-xs font-semibold text-slate-300'>{formatDateLabel(today)}</p>
           </div>
         </header>
 
