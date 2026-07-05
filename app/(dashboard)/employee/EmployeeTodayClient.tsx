@@ -686,6 +686,20 @@ function shiftLabel(code: string) {
   return shift.code === 'other' ? 'Другая смена' : shift.label;
 }
 
+function taskCountWord(count: number) {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return 'задач';
+  if (last === 1) return 'задача';
+  if (last >= 2 && last <= 4) return 'задачи';
+  return 'задач';
+}
+
+function remainingTasksLabel(count: number, primaryCategory?: string | null) {
+  if (count === 1 && primaryCategory === 'handover') return 'Осталось: сдать смену';
+  return `Осталось: ${count} ${taskCountWord(count)}`;
+}
+
 function getElapsed(workDay: WorkDayEntry | null, now: Date) {
   if (!workDay) return 0;
   const start = new Date(workDay.startedAt).getTime();
@@ -2330,18 +2344,18 @@ export function EmployeeTodayClient({
                     <div>
                       <h2 className='text-xl font-black text-slate-950'>Сейчас нужно</h2>
                       <p className='mt-0.5 text-xs font-bold text-slate-500'>
-                        {activeHandoverTask ? `Сдача смены: шаг ${handoverStep + 1} из ${handoverSteps.length}` : `Осталось: ${remainingShiftControlCount} задач`}
+                        {activeHandoverTask ? `Сдача смены: шаг ${handoverStep + 1} из ${handoverSteps.length}` : remainingTasksLabel(remainingShiftControlCount, primaryShiftControlTask?.category)}
                       </p>
                     </div>
                     <Badge className='shrink-0 bg-slate-100 text-slate-700 ring-1 ring-slate-200'>
-                      {user.department === 'wholesale' ? 'wholesale' : 'retail'}
+                      {departmentLabel(user.department)}
                     </Badge>
                   </div>
 
                   {activeHandoverTask ? null : (
                     <div className={cn('rounded-2xl px-3.5 py-3 ring-1', actionableShiftControlTask ? 'bg-green-50 ring-green-200 shadow-[0_10px_24px_rgba(34,197,94,0.08)]' : 'bg-slate-50 ring-slate-200')}>
                       <p className={cn('text-[11px] font-extrabold uppercase', actionableShiftControlTask ? 'text-green-700' : 'text-slate-400')}>
-                        {actionableShiftControlTask ? 'Сейчас нужно выполнить' : 'Следующая проверка'}
+                        {actionableShiftControlTask ? 'Текущий шаг' : 'Следующая проверка'}
                       </p>
                       <div className='mt-1 flex items-center gap-2'>
                         {primaryShiftControlTask && (() => {
@@ -2531,7 +2545,7 @@ export function EmployeeTodayClient({
                             <p className='mt-0.5 text-[11px] font-bold text-slate-400'>{formatTime(operation.createdAt)}</p>
                           </div>
                           <Badge className='shrink-0 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800 ring-1 ring-amber-200'>
-                            pending_1c
+                            ожидает 1С
                           </Badge>
                         </div>
                       ))}
