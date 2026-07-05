@@ -853,7 +853,6 @@ export function EmployeeTodayClient({
     const isClosingEmployee = isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode);
     return [
       'personalCashBalance',
-      ...(user.department === 'retail' ? ['personalAcquiringReceiptsPhoto'] : []),
       'discrepancy',
       ...(user.department === 'retail' ? ['withdrawal'] : []),
       ...(draftRequiresEncashment ? ['encashment'] : []),
@@ -1411,7 +1410,7 @@ export function EmployeeTodayClient({
     if (compact) {
       const parts: string[] = [];
       if (task.category === 'cash' || task.category === 'acquiring') {
-        if (money) parts.push(`${task.category === 'cash' ? 'факт наличных' : 'по терминалу'}: ${money} ₽`);
+        if (money) parts.push(`${task.category === 'cash' ? 'факт наличных' : 'чеки картой'}: ${money} ₽`);
         if (task.category === 'acquiring' && task.comment) parts.push(task.comment);
       } else if (task.category === 'credit') {
         parts.push(task.integerValue === 2 ? 'кредиты: есть расхождение' : 'кредиты: всё в порядке');
@@ -1427,7 +1426,7 @@ export function EmployeeTodayClient({
     return (
       <div className='mt-2 rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold leading-snug text-green-900 ring-1 ring-green-100'>
         {task.category === 'cash' && money && <p>Факт наличных: {money} ₽</p>}
-        {task.category === 'acquiring' && money && <p>По терминалу: {money} ₽</p>}
+        {task.category === 'acquiring' && money && <p>Чеки картой: {money} ₽</p>}
         {task.category === 'acquiring' && task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
         {task.category === 'credit' && (
           <div className='grid gap-0.5'>
@@ -1507,7 +1506,7 @@ export function EmployeeTodayClient({
       <div className='mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
         {(isCash || isAcquiring) && (
           <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-            {isCash ? 'Фактически пересчитано наличных' : 'Сумма оплат по терминалу'}
+            {isCash ? 'Фактически пересчитано наличных' : 'Сумма чеков картой на сейчас'}
             {isCash && (
               <span className='text-[11px] font-semibold leading-snug text-slate-500'>
                 Пересчитайте реальные деньги в своей кассе и внесите фактическую сумму. Не переписывайте остаток из 1С без пересчёта.
@@ -1515,7 +1514,7 @@ export function EmployeeTodayClient({
             )}
             {isAcquiring && (
               <span className='text-[11px] font-semibold leading-snug text-slate-500'>
-                Введите итоговую сумму по терминалу. Если заметили расхождение, напишите комментарий.
+                Сложите чеки оплат картой, которые сейчас у вас по кассе, и сверьте с 1С.
               </span>
             )}
             <input
@@ -1534,7 +1533,7 @@ export function EmployeeTodayClient({
 
         {isAcquiring && (
           <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-            Что не сошлось?
+            Комментарий, если не сходится
             <textarea
               value={draft.comment}
               onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
@@ -1615,7 +1614,6 @@ export function EmployeeTodayClient({
         : 0;
 
     if (step === 'personalCashBalance' && draftCashBalance === null) return 'Укажите остаток наличных в моей кассе';
-    if (step === 'personalAcquiringReceiptsPhoto' && !hasHandoverPhoto(draft.personalAcquiringReceiptsPhoto)) return 'Сделайте фото моих чеков оплат картой';
     if (step === 'discrepancy') {
       if (!draft.discrepancyType) return 'Укажите расхождение по моей кассе';
       if (draft.discrepancyType !== 'none') {
@@ -1727,7 +1725,6 @@ export function EmployeeTodayClient({
       const nextSteps = buildHandoverSteps(nextDraft);
       const isFinalStep = handoverStep >= nextSteps.length - 1;
       const purePhotoStep =
-        field === 'personalAcquiringReceiptsPhoto' ||
         field === 'zReportPhoto' ||
         (field === 'encashmentDocumentPhoto' && isFinalStep);
       if (purePhotoStep) {
@@ -1823,7 +1820,6 @@ export function EmployeeTodayClient({
           <Badge className='bg-green-100 text-green-800 ring-1 ring-green-200'>{workDay?.shiftLabel}</Badge>
         </div>
 
-        {step === 'personalAcquiringReceiptsPhoto' && renderPhotoInput('Оплаты картой', 'personalAcquiringReceiptsPhoto', task, `Фото сверки эквайринга по вашей кассе. ${reportMissingHint}`, stepError)}
         {step === 'zReportPhoto' && renderPhotoInput('Z-отчёт', 'zReportPhoto', task, `Сфотографируйте Z-отчёт закрытия кассы. ${reportMissingHint}`, stepError)}
 
         {step === 'personalCashBalance' && (
@@ -2290,7 +2286,7 @@ export function EmployeeTodayClient({
                     <div>
                       <h2 className='text-xl font-black text-slate-950'>Сейчас нужно</h2>
                       <p className='mt-0.5 text-xs font-bold text-slate-500'>
-                        Осталось: {remainingShiftControlCount} задач
+                        {activeHandoverTask ? `Сдача смены: шаг ${handoverStep + 1} из ${handoverSteps.length}` : `Осталось: ${remainingShiftControlCount} задач`}
                       </p>
                     </div>
                     <Badge className='shrink-0 bg-slate-100 text-slate-700 ring-1 ring-slate-200'>
