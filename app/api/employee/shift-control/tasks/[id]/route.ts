@@ -102,6 +102,7 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
   const hadWithdrawal = readFormBoolean(formData, 'hadWithdrawal');
   const withdrawalAmount = readFormNumber(formData, 'withdrawalAmount');
   const cashOrderAmount = readFormNumber(formData, 'cashOrderAmount');
+  const hasSberbankAcquiring = readFormBoolean(formData, 'hasSberbankAcquiring');
   const sberbankTerminalTotal = readFormNumber(formData, 'sberbankTerminalTotal');
   const hasTbankCredit = readFormBoolean(formData, 'hasTbankCredit');
   const tbankTerminalTotal = readFormNumber(formData, 'tbankTerminalTotal');
@@ -148,7 +149,8 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
     storeClosing: isClosingShift(task.run.workDayEntry.shiftCode)
       ? {
           ...existingStoreClosing,
-          sberbankTerminalTotal,
+          hasSberbankAcquiring: hasSberbankAcquiring ?? existingStoreClosing.hasSberbankAcquiring ?? null,
+          sberbankTerminalTotal: hasSberbankAcquiring === false ? 0 : sberbankTerminalTotal,
           hasTbankCredit: hasTbankCredit ?? existingStoreClosing.hasTbankCredit ?? null,
           tbankTerminalTotal: hasTbankCredit ? tbankTerminalTotal : null,
           zReportRequired: true,
@@ -219,6 +221,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const hadWithdrawal = readBoolean(personalCash.hadWithdrawal);
     const withdrawalAmount = readNumber(personalCash.withdrawalAmount);
     const cashOrderAmount = readNumber(personalCash.cashOrderAmount);
+    const hasSberbankAcquiring = readBoolean(storeClosing.hasSberbankAcquiring);
     const sberbankTerminalTotal = readNumber(storeClosing.sberbankTerminalTotal);
     const hasTbankCredit = readBoolean(storeClosing.hasTbankCredit);
     const tbankTerminalTotal = readNumber(storeClosing.tbankTerminalTotal);
@@ -249,8 +252,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
     if (isClosingEmployee) {
-      if (!hasSavedPhoto(handoverData, 'sberbankTerminalReport')) return Response.json({ error: 'Сделайте фото отчёта терминала Сбербанка' }, { status: 400 });
-      if (sberbankTerminalTotal === null) return Response.json({ error: 'Укажите итоговую сумму по отчёту терминала Сбербанка' }, { status: 400 });
+      if (hasSberbankAcquiring === null) return Response.json({ error: 'Укажите, были ли оплаты через Сбербанк' }, { status: 400 });
+      if (hasSberbankAcquiring) {
+        if (!hasSavedPhoto(handoverData, 'sberbankTerminalReport')) return Response.json({ error: 'Сделайте фото отчёта терминала Сбербанка' }, { status: 400 });
+        if (sberbankTerminalTotal === null) return Response.json({ error: 'Укажите итоговую сумму по отчёту терминала Сбербанка' }, { status: 400 });
+      }
       if (hasTbankCredit === null) return Response.json({ error: 'Укажите, были ли кредиты/рассрочки через Т-Банк' }, { status: 400 });
       if (hasTbankCredit) {
         if (!hasSavedPhoto(handoverData, 'tbankTerminalReport')) return Response.json({ error: 'Сделайте фото отчёта терминала Т-Банка' }, { status: 400 });
@@ -263,7 +269,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const photos = {
         personalStatement: savedPhoto(handoverData, 'personalStatement'),
         personalAcquiringReceipts: isRetail ? savedPhoto(handoverData, 'personalAcquiringReceipts') : null,
-        sberbankTerminalReport: isClosingEmployee ? savedPhoto(handoverData, 'sberbankTerminalReport') : null,
+        sberbankTerminalReport: isClosingEmployee && hasSberbankAcquiring ? savedPhoto(handoverData, 'sberbankTerminalReport') : null,
         tbankTerminalReport: isClosingEmployee && hasTbankCredit ? savedPhoto(handoverData, 'tbankTerminalReport') : null,
         zReport: isClosingEmployee ? savedPhoto(handoverData, 'zReport') : null,
         encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
@@ -290,6 +296,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         },
         storeClosing: isClosingEmployee
           ? {
+              hasSberbankAcquiring,
               sberbankTerminalTotal,
               hasTbankCredit,
               tbankTerminalTotal: hasTbankCredit ? tbankTerminalTotal : null,

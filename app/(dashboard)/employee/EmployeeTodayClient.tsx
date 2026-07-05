@@ -161,6 +161,7 @@ type HandoverDraft = {
   withdrawalAmount: string;
   cashOrderAmount: string;
   sberbankTerminalReportPhoto: HandoverPhotoValue;
+  hasSberbankAcquiring: '' | 'yes' | 'no';
   sberbankTerminalTotal: string;
   hasTbankCredit: '' | 'yes' | 'no';
   tbankTerminalReportPhoto: HandoverPhotoValue;
@@ -581,6 +582,7 @@ function emptyHandoverDraft(): HandoverDraft {
     withdrawalAmount: '',
     cashOrderAmount: '',
     sberbankTerminalReportPhoto: null,
+    hasSberbankAcquiring: '',
     sberbankTerminalTotal: '',
     hasTbankCredit: '',
     tbankTerminalReportPhoto: null,
@@ -638,6 +640,7 @@ function draftFromHandoverData(data: unknown): HandoverDraft {
     draft.encashmentAmount = stringFromUnknown(personalCash.encashmentAmount);
   }
   if (storeClosing) {
+    draft.hasSberbankAcquiring = booleanDraftValue(storeClosing.hasSberbankAcquiring);
     draft.sberbankTerminalTotal = stringFromUnknown(storeClosing.sberbankTerminalTotal);
     draft.hasTbankCredit = booleanDraftValue(storeClosing.hasTbankCredit);
     draft.tbankTerminalTotal = stringFromUnknown(storeClosing.tbankTerminalTotal);
@@ -856,7 +859,9 @@ export function EmployeeTodayClient({
       'discrepancy',
       ...(user.department === 'retail' ? ['withdrawal'] : []),
       ...(draftRequiresEncashment ? ['encashment'] : []),
-      ...(isClosingEmployee ? ['sberbankTerminal', 'tbankQuestion'] : []),
+      ...(isClosingEmployee ? ['sberbankQuestion'] : []),
+      ...(isClosingEmployee && draft.hasSberbankAcquiring === 'yes' ? ['sberbankTerminal'] : []),
+      ...(isClosingEmployee ? ['tbankQuestion'] : []),
       ...(isClosingEmployee && draft.hasTbankCredit === 'yes' ? ['tbankTerminal'] : []),
       ...(isClosingEmployee ? ['zReportPhoto'] : []),
     ] as const;
@@ -1245,6 +1250,7 @@ export function EmployeeTodayClient({
     formData.append('hadWithdrawal', draft.hadWithdrawal ? String(draft.hadWithdrawal === 'yes') : '');
     formData.append('withdrawalAmount', draft.withdrawalAmount);
     formData.append('cashOrderAmount', draft.cashOrderAmount);
+    formData.append('hasSberbankAcquiring', draft.hasSberbankAcquiring ? String(draft.hasSberbankAcquiring === 'yes') : '');
     formData.append('sberbankTerminalTotal', draft.sberbankTerminalTotal);
     formData.append('hasTbankCredit', draft.hasTbankCredit ? String(draft.hasTbankCredit === 'yes') : '');
     formData.append('tbankTerminalTotal', draft.tbankTerminalTotal);
@@ -1621,6 +1627,7 @@ export function EmployeeTodayClient({
         if (draftDiscrepancyAmount > 300 && !draft.comment.trim()) return 'Комментарий обязателен: расхождение больше 300 ₽';
       }
     }
+    if (step === 'sberbankQuestion' && !draft.hasSberbankAcquiring) return 'Укажите, были ли оплаты через Сбербанк';
     if (step === 'sberbankTerminal') {
       if (!hasHandoverPhoto(draft.sberbankTerminalReportPhoto)) return 'Сделайте фото отчёта терминала Сбербанка';
       if (parseMoneyInput(draft.sberbankTerminalTotal) === null) return 'Укажите итоговую сумму по отчёту терминала Сбербанка';
@@ -1674,6 +1681,7 @@ export function EmployeeTodayClient({
     formData.append('hadWithdrawal', draft.hadWithdrawal ? String(draft.hadWithdrawal === 'yes') : '');
     formData.append('withdrawalAmount', draft.withdrawalAmount);
     formData.append('cashOrderAmount', draft.cashOrderAmount);
+    formData.append('hasSberbankAcquiring', draft.hasSberbankAcquiring ? String(draft.hasSberbankAcquiring === 'yes') : '');
     formData.append('sberbankTerminalTotal', draft.sberbankTerminalTotal);
     formData.append('hasTbankCredit', draft.hasTbankCredit ? String(draft.hasTbankCredit === 'yes') : '');
     formData.append('tbankTerminalTotal', draft.tbankTerminalTotal);
@@ -1777,7 +1785,7 @@ export function EmployeeTodayClient({
     const step = handoverSteps[handoverStep];
     const isLastStep = handoverStep === handoverSteps.length - 1;
     const stepError = handoverAttemptedStep === step ? getHandoverStepError() : '';
-    const sectionTitle = ['sberbankTerminal', 'tbankQuestion', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
+    const sectionTitle = ['sberbankQuestion', 'sberbankTerminal', 'tbankQuestion', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
     const reportMissingHint = 'Если фото или отчёт не получается, сообщите администратору.';
     const handoverStepTitle: Record<string, string> = {
       personalCashBalance: 'Пересчитайте наличные',
@@ -1785,6 +1793,7 @@ export function EmployeeTodayClient({
       discrepancy: 'Укажите расхождение',
       withdrawal: 'Проверьте выемку',
       encashment: 'Оформите инкассацию',
+      sberbankQuestion: 'Проверьте терминал Сбербанка',
       sberbankTerminal: 'Сверьте терминал Сбербанка',
       tbankQuestion: 'Проверьте терминал Т-Банка',
       tbankTerminal: 'Сверьте терминал Т-Банка',
@@ -1793,7 +1802,7 @@ export function EmployeeTodayClient({
     const handoverIcon =
       step === 'personalCashBalance' || step === 'withdrawal' || step === 'encashment'
         ? Banknote
-        : step === 'personalAcquiringReceiptsPhoto' || step === 'sberbankTerminal'
+        : step === 'personalAcquiringReceiptsPhoto' || step === 'sberbankQuestion' || step === 'sberbankTerminal'
           ? CreditCard
           : step === 'tbankQuestion' || step === 'tbankTerminal'
             ? ReceiptText
@@ -1987,6 +1996,32 @@ export function EmployeeTodayClient({
               'Сфотографируйте деньги перед помещением в сейф.',
               stepError && parseMoneyInput(handoverDraft.encashmentAmount) !== null ? stepError : undefined,
             )}
+          </div>
+        )}
+
+        {step === 'sberbankQuestion' && (
+          <div className='grid gap-3'>
+            <p className='text-sm font-extrabold text-slate-800'>Были оплаты через Сбербанк?</p>
+            <p className='text-xs font-semibold leading-snug text-slate-500'>
+              Если оплат не было, выберите “Нет” и идите дальше.
+            </p>
+            <div className='grid grid-cols-2 gap-2'>
+              <Button
+                type='button'
+                className={cn('h-10 shadow-none', handoverDraft.hasSberbankAcquiring === 'yes' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                onClick={() => updateHandoverDraft({ hasSberbankAcquiring: 'yes' })}
+              >
+                Да
+              </Button>
+              <Button
+                type='button'
+                className={cn('h-10 shadow-none', handoverDraft.hasSberbankAcquiring === 'no' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                onClick={() => updateHandoverDraft({ hasSberbankAcquiring: 'no', sberbankTerminalReportPhoto: null, sberbankTerminalTotal: '0' })}
+              >
+                Нет
+              </Button>
+            </div>
+            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
           </div>
         )}
 
