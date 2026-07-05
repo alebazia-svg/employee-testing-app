@@ -1827,12 +1827,9 @@ export function EmployeeTodayClient({
             <div>
               <p className='text-[11px] font-extrabold uppercase text-green-700'>{sectionTitle}</p>
               <h3 className='mt-0.5 text-base font-extrabold text-slate-950'>{handoverStepTitle[step] ?? `Шаг ${handoverStep + 1} из ${handoverSteps.length}`}</h3>
-              <p className='mt-1 text-xs font-semibold leading-snug text-slate-500'>
-                Шаг {handoverStep + 1} из {handoverSteps.length} · только ваша касса
-              </p>
+              <p className='mt-1 text-xs font-semibold leading-snug text-slate-500'>Только ваша касса</p>
             </div>
           </div>
-          <Badge className='bg-green-100 text-green-800 ring-1 ring-green-200'>{workDay?.shiftLabel}</Badge>
         </div>
 
         {step === 'zReportPhoto' && renderPhotoInput('Z-отчёт', 'zReportPhoto', task, `Сфотографируйте Z-отчёт закрытия кассы. ${reportMissingHint}`, stepError)}
@@ -2341,12 +2338,7 @@ export function EmployeeTodayClient({
                     </Badge>
                   </div>
 
-                  {activeHandoverTask ? (
-                    <div className='rounded-2xl bg-green-50 px-3.5 py-3 ring-1 ring-green-200 shadow-[0_10px_24px_rgba(34,197,94,0.08)]'>
-                      <p className='text-[11px] font-extrabold uppercase text-green-700'>Идёт сдача смены</p>
-                      <p className='mt-1 text-base font-extrabold leading-tight text-slate-950'>Заполните шаги мастера ниже</p>
-                    </div>
-                  ) : (
+                  {activeHandoverTask ? null : (
                     <div className={cn('rounded-2xl px-3.5 py-3 ring-1', actionableShiftControlTask ? 'bg-green-50 ring-green-200 shadow-[0_10px_24px_rgba(34,197,94,0.08)]' : 'bg-slate-50 ring-slate-200')}>
                       <p className={cn('text-[11px] font-extrabold uppercase', actionableShiftControlTask ? 'text-green-700' : 'text-slate-400')}>
                         {actionableShiftControlTask ? 'Сейчас нужно выполнить' : 'Следующая проверка'}
