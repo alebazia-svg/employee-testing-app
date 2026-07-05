@@ -783,6 +783,12 @@ export function EmployeeTodayClient({
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
   const dates = useMemo(() => buildDateRange(today, 31), [today]);
   const previewDates = dates.slice(0, 7);
   const visibleDates = showFullSchedule ? dates : previewDates;
@@ -2251,14 +2257,17 @@ export function EmployeeTodayClient({
             </Card>
           )}
 
-          {(message || error) && (
+          {error && (
             <div
-              className={cn(
-                'mb-4 rounded-lg px-4 py-3 text-sm font-semibold',
-                error ? 'bg-red-50 text-red-800 ring-1 ring-red-200' : 'bg-green-50 text-green-800 ring-1 ring-green-200',
-              )}
+              className='mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 ring-1 ring-red-200'
             >
-              {error || message}
+              {error}
+            </div>
+          )}
+
+          {message && (
+            <div className='fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto max-w-[488px] rounded-2xl bg-green-600 px-4 py-3 text-sm font-extrabold text-white shadow-2xl ring-1 ring-green-400/40'>
+              {message}
             </div>
           )}
 
