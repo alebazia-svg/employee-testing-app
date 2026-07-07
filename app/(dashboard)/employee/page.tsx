@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { EmployeeTodayClient } from './EmployeeTodayClient';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { buildDateRange, getMoscowDateKey } from '@/lib/workday';
+import { buildDateRange, getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,6 +122,7 @@ export default async function Employee() {
 
   const today = getMoscowDateKey();
   const dates = buildDateRange(today, 31);
+  const shiftControlEnabled = usesWorkdayShiftControl(user);
 
   const [attestations, ownSchedule, departmentSchedule, departmentUsers, todayWorkDay, unfinishedWorkDay, shiftControlRun, cashOperations] = await Promise.all([
     prisma.attestation.findMany({
@@ -151,7 +152,7 @@ export default async function Employee() {
       where: { userId: user.id, status: { in: ['active', 'missing_checkout'] }, endedAt: null, date: { not: today } },
       orderBy: { startedAt: 'desc' },
     }),
-    user.department === 'retail' || user.department === 'wholesale'
+    shiftControlEnabled
       ? prisma.shiftControlRun.findFirst({
           where: {
             userId: user.id,

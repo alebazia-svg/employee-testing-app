@@ -29,7 +29,7 @@ import { LogoutButton } from '@/components/LogoutButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions } from '@/lib/workday';
+import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 
 type UserSummary = {
@@ -826,7 +826,8 @@ export function EmployeeTodayClient({
   const activeElapsedLabel = formatDurationWithSeconds(elapsedMs);
   const shiftStart = workDay ? workDay.shiftStartMinutes : selectedShiftOption?.startMinutes;
   const shiftEnd = workDay ? workDay.shiftEndMinutes : selectedShiftOption?.endMinutes;
-  const canUseCashOperations = user.department === 'retail' || user.department === 'wholesale';
+  const shiftControlEnabled = usesWorkdayShiftControl(user);
+  const canUseCashOperations = shiftControlEnabled;
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
   const todayDepartmentEntries = departmentScheduleByDate.get(today) ?? [];
@@ -838,7 +839,7 @@ export function EmployeeTodayClient({
   const shiftControlBelongsToToday = shiftControlState.run?.date === today;
   const shiftControlCompleted = shiftControlState.run?.status === 'completed' || shiftControlState.run?.completedAt;
   const showShiftControl =
-    (user.department === 'retail' || user.department === 'wholesale') &&
+    shiftControlEnabled &&
     Boolean(shiftControlState.run) &&
     shiftControlBelongsToToday &&
     !(isCompleted && shiftControlCompleted);
@@ -1110,7 +1111,7 @@ export function EmployeeTodayClient({
   async function finishWorkDay() {
     setError('');
     setMessage('');
-    if ((user.department === 'retail' || user.department === 'wholesale') && showShiftControl && handoverTask && !isHandoverDone) {
+    if (shiftControlEnabled && showShiftControl && handoverTask && !isHandoverDone) {
       setError('Сначала сдайте смену');
       setShowFullShiftPlan(false);
       if (canActOnShiftTask(handoverTask)) startHandoverWizard(handoverTask);
@@ -2322,6 +2323,30 @@ export function EmployeeTodayClient({
                   </span>
                   <span className='min-w-0 truncate'>Рабочий день · {workDay?.shiftLabel} · {activeElapsedLabel}</span>
                 </div>
+              )}
+
+              {activeWorkDay && !showShiftControl && (
+                <Card className='space-y-3 border-green-100 bg-white p-4'>
+                  <div className='flex items-start gap-3'>
+                    <span className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
+                      <Clock className='h-5 w-5' />
+                    </span>
+                    <div className='min-w-0'>
+                      <h2 className='text-lg font-black leading-tight text-slate-950'>Отметка рабочего дня</h2>
+                      <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
+                        Для вашей роли сегодня нужен только старт и конец рабочего дня.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type='button'
+                    className='h-12 w-full rounded-xl bg-slate-950 text-sm font-black hover:bg-slate-800'
+                    onClick={finishWorkDay}
+                    disabled={isSaving}
+                  >
+                    Завершить рабочий день
+                  </Button>
+                </Card>
               )}
 
               {isCompleted && (

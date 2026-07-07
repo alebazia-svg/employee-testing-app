@@ -23,6 +23,33 @@ export const supportedShiftCodesByDepartment: Record<string, ShiftCode[]> = {
   wholesale: ['09_18', '09_19', '10_19'],
 };
 
+type WorkdayControlUser = {
+  department?: string | null;
+  name?: string | null;
+  login?: string | null;
+};
+
+function normalizeWorkdayControlText(value: string | null | undefined) {
+  return (value ?? '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^а-яa-z0-9]+/g, ' ')
+    .trim();
+}
+
+// Pilot exception: senior retail manager currently needs only start/end marks.
+// Later this should become an admin-configured workday control mode in the DB.
+function isCashControlExcludedUser(user: WorkdayControlUser) {
+  const name = normalizeWorkdayControlText(user.name);
+  const login = normalizeWorkdayControlText(user.login);
+  return name === 'кумахова диана' || login === 'кумахова' || login === 'kumakhova';
+}
+
+export function usesWorkdayShiftControl(user: WorkdayControlUser) {
+  if (user.department !== 'retail' && user.department !== 'wholesale') return false;
+  return !isCashControlExcludedUser(user);
+}
+
 export function getShiftOptionsForDepartment(department: string | null | undefined) {
   const supportedCodes = department ? supportedShiftCodesByDepartment[department] : null;
   if (!supportedCodes) return shiftOptions;

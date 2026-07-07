@@ -8,7 +8,7 @@ import { Table } from '@/components/ui/table';
 import { getCurrentUser } from '@/lib/auth';
 import { getCashStatementDimensions, getCashStatementSummary, type OneCCashStatementSummaryResult } from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
-import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, workDayStatusLabel } from '@/lib/workday';
+import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl, workDayStatusLabel } from '@/lib/workday';
 import { AdminShiftControlDetails } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
 import { DevMakeShiftTasksAvailableButton } from './DevMakeShiftTasksAvailableButton';
@@ -244,7 +244,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
     ?? cashStatementDimensions.organizations[0]
     ?? null;
-  const cashStatementEmployees = employees.filter((employee) => employee.department === 'retail' || employee.department === 'wholesale');
+  const cashStatementEmployees = employees.filter((employee) => usesWorkdayShiftControl(employee));
   const cashStatementRows = await Promise.all(cashStatementEmployees.map(async (employee) => {
     const searchKey = employeeCashboxSearchKey(employee.name);
     const suggestedCashbox = searchKey
@@ -306,7 +306,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const cashStatementLoadedCount = cashStatementRows.filter((row) => row.result?.ok).length;
   const cashStatementMissingCashboxCount = cashStatementRows.filter((row) => !row.cashbox).length;
   const cashboxMappingMessage = cashboxMappingStatusMessage(searchParams?.cashboxMapping, searchParams?.cashboxMappingError);
-  const cashboxMappingEmployees = employees.filter((employee) => employee.department === 'retail' || employee.department === 'wholesale');
+  const cashboxMappingEmployees = employees.filter((employee) => usesWorkdayShiftControl(employee));
   const cashboxMappingRedirectTo = `/admin/workday?date=${selectedDate}`;
 
   return (
@@ -616,6 +616,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 const schedule = scheduleByUser.get(employee.id);
                 const workDay = workDayByUser.get(employee.id);
                 const shiftControlRun = shiftControlRunByUser.get(employee.id);
+                const shiftControlRequired = usesWorkdayShiftControl(employee);
                 const status = workDay?.status ?? 'not_started';
                 const flags = [
                   schedule?.status === 'working' && !workDay ? 'ещё не начал' : null,
@@ -644,12 +645,16 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       <Badge className={statusClass(status)}>{workDayStatusLabel(status)}</Badge>
                     </td>
                     <td className='px-4 py-3'>
-                      <AdminShiftControlDetails
-                        department={employee.department}
-                        run={serializeShiftControlRun(shiftControlRun)}
-                        workDay={workDay ? { status: workDay.status, endedAt: workDay.endedAt?.toISOString() ?? null } : null}
-                        nowMinutes={nowMinutes}
-                      />
+                      {shiftControlRequired ? (
+                        <AdminShiftControlDetails
+                          department={employee.department}
+                          run={serializeShiftControlRun(shiftControlRun)}
+                          workDay={workDay ? { status: workDay.status, endedAt: workDay.endedAt?.toISOString() ?? null } : null}
+                          nowMinutes={nowMinutes}
+                        />
+                      ) : (
+                        <span className='text-sm font-semibold text-slate-500'>Чек-лист не требуется</span>
+                      )}
                     </td>
                     <td className='px-4 py-3'>
                       {flags.length ? (
@@ -666,7 +671,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                     {devWorkdayToolsEnabled && (
                       <td className='px-4 py-3'>
                         <div className='flex flex-col gap-2'>
-                          {!workDay && (employee.department === 'retail' || employee.department === 'wholesale') && (
+                          {!workDay && shiftControlRequired && (
                             <DevCreateTestShiftButtons
                               userId={employee.id}
                               userName={employee.name}
@@ -674,7 +679,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                               date={selectedDate}
                             />
                           )}
-                          {(employee.department === 'retail' || employee.department === 'wholesale') && shiftControlRun && (
+                          {shiftControlRequired && shiftControlRun && (
                             <DevMakeShiftTasksAvailableButton userId={employee.id} userName={employee.name} date={selectedDate} />
                           )}
                           <DevResetTodayButton userId={employee.id} userName={employee.name} date={selectedDate} />

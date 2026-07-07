@@ -1,11 +1,12 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { usesWorkdayShiftControl } from '@/lib/workday';
 
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (user.department !== 'retail' && user.department !== 'wholesale') {
+  if (!usesWorkdayShiftControl(user)) {
     return Response.json({ run: null, tasks: [] });
   }
 

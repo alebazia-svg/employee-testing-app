@@ -1,13 +1,9 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getLateMinutes, getMoscowDateKey, getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment } from '@/lib/workday';
+import { getLateMinutes, getMoscowDateKey, getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl } from '@/lib/workday';
 
-function canUseShiftControl(department: string) {
-  return department === 'retail' || department === 'wholesale';
-}
-
-async function ensureShiftControlRun(user: { id: number; department: string }, workDay: { id: number; date: string; shiftCode: string }, now = new Date()) {
-  if (!canUseShiftControl(user.department)) return null;
+async function ensureShiftControlRun(user: { id: number; name: string; login: string; department: string }, workDay: { id: number; date: string; shiftCode: string }, now = new Date()) {
+  if (!usesWorkdayShiftControl(user)) return null;
 
   const existingRun = await prisma.shiftControlRun.findUnique({
     where: { workDayEntryId: workDay.id },
@@ -58,7 +54,7 @@ export async function POST(req: Request) {
   const now = new Date();
   const date = getMoscowDateKey(now);
   const lateMinutes = getLateMinutes(shift.startMinutes, getMoscowMinutes(now));
-  const hasShiftControl = canUseShiftControl(user.department);
+  const hasShiftControl = usesWorkdayShiftControl(user);
 
   if (hasShiftControl && !isShiftSupportedForDepartment(user.department, shift.code)) {
     return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
@@ -68,7 +64,7 @@ export async function POST(req: Request) {
   if (existing) {
     const shiftControlRun =
       existing.status !== 'completed' && !existing.endedAt
-        ? await ensureShiftControlRun({ id: user.id, department: user.department }, existing, now)
+        ? await ensureShiftControlRun({ id: user.id, name: user.name, login: user.login, department: user.department }, existing, now)
         : null;
     return Response.json({
       workDay: existing,

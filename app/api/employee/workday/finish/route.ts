@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateKey } from '@/lib/workday';
+import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     }
   }
 
-  if (user.department === 'retail' || user.department === 'wholesale') {
+  if (usesWorkdayShiftControl(user)) {
     const shiftControlRun = await prisma.shiftControlRun.findUnique({
       where: { workDayEntryId: activeWorkDay.id },
       include: { tasks: { where: { category: 'handover' }, take: 1 } },

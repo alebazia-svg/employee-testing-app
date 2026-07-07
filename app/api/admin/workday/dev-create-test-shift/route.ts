@@ -1,13 +1,9 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateKey, getMoscowMinutes, getShiftOption } from '@/lib/workday';
+import { getMoscowDateKey, getMoscowMinutes, getShiftOption, usesWorkdayShiftControl } from '@/lib/workday';
 
 function isDateKey(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function canUseShiftControl(department: string) {
-  return department === 'retail' || department === 'wholesale';
 }
 
 export async function POST(req: Request) {
@@ -40,8 +36,8 @@ export async function POST(req: Request) {
   if (!user || user.role !== 'EMPLOYEE' || !user.isActive) {
     return Response.json({ error: 'Employee not found' }, { status: 404 });
   }
-  if (!canUseShiftControl(user.department)) {
-    return Response.json({ error: 'Dev/Test shift control is only available for retail and wholesale employees' }, { status: 400 });
+  if (!usesWorkdayShiftControl(user)) {
+    return Response.json({ error: 'Dev/Test shift control is not required for this employee' }, { status: 400 });
   }
 
   const template = await prisma.shiftControlTemplate.findFirst({

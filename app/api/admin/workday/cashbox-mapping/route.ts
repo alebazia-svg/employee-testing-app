@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getCashStatementDimensions } from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
+import { usesWorkdayShiftControl } from '@/lib/workday';
 
 function redirectWithStatus(req: Request, redirectTo: string | null, key: 'cashboxMapping' | 'cashboxMappingError', value: string) {
   const target = new URL(redirectTo?.startsWith('/admin/workday') ? redirectTo : '/admin/workday', req.url);
@@ -24,10 +25,10 @@ export async function POST(req: Request) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, department: true },
+    select: { id: true, name: true, department: true },
   });
 
-  if (!user || (user.department !== 'retail' && user.department !== 'wholesale')) {
+  if (!user || !usesWorkdayShiftControl(user)) {
     return redirectWithStatus(req, typeof redirectTo === 'string' ? redirectTo : null, 'cashboxMappingError', 'unsupported-user');
   }
 

@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
+import { usesWorkdayShiftControl } from '@/lib/workday';
 
 function readNumber(value: unknown) {
   if (value === null || value === undefined || value === '') return null;
@@ -39,10 +40,6 @@ function readFormString(formData: FormData, key: string) {
 
 function isClosingShift(shiftCode: string | null | undefined) {
   return shiftCode === '11_20';
-}
-
-function canUseShiftControl(department: string) {
-  return department === 'retail' || department === 'wholesale';
 }
 
 function isPhoto(value: FormDataEntryValue | null): value is File {
@@ -171,7 +168,7 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!canUseShiftControl(user.department)) return Response.json({ error: 'Shift control is only available for retail and wholesale' }, { status: 403 });
+  if (!usesWorkdayShiftControl(user)) return Response.json({ error: 'Shift control is not required for this employee' }, { status: 403 });
 
   const taskId = Number(params.id);
   if (!Number.isInteger(taskId) || taskId <= 0) {

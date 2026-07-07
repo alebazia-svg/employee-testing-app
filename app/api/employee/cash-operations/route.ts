@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateKey } from '@/lib/workday';
+import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 
 function readNumber(value: FormDataEntryValue | null) {
   if (value === null || value === '') return null;
@@ -19,9 +19,10 @@ function isPhoto(value: FormDataEntryValue | null): value is File {
   return value instanceof File && value.size > 0;
 }
 
-function canUseDirection(department: string, direction: string) {
-  if (direction === 'deposit_safe') return department === 'retail' || department === 'wholesale';
-  if (direction === 'phone_reserve') return department === 'retail';
+function canUseDirection(user: { department: string; name?: string | null; login?: string | null }, direction: string) {
+  if (!usesWorkdayShiftControl(user)) return false;
+  if (direction === 'deposit_safe') return user.department === 'retail' || user.department === 'wholesale';
+  if (direction === 'phone_reserve') return user.department === 'retail';
   return false;
 }
 
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
   if (!formData) return Response.json({ error: 'Invalid form data' }, { status: 400 });
 
   const direction = readString(formData.get('direction'));
-  if (!canUseDirection(user.department, direction)) {
+  if (!canUseDirection(user, direction)) {
     return Response.json({ error: 'Недоступное направление кассовой операции' }, { status: 403 });
   }
 
