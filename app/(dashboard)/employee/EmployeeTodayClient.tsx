@@ -667,6 +667,14 @@ function readIntegerFromDraft(value: string) {
   return Number.isInteger(number) && number >= 0 ? number : null;
 }
 
+function acquiringResultLabel(integerValue: number | null | undefined, numericValue: number | null | undefined) {
+  if (integerValue === 0) return 'оплат картой не было';
+  if (integerValue === 1) return 'оплаты картой сверены';
+  if (integerValue === 2) return 'есть расхождение по оплатам картой';
+  if (numericValue !== null && numericValue !== undefined) return 'оплаты картой сверены';
+  return 'результат сверки не указан';
+}
+
 function isClosingShift(shiftCode: string | null | undefined) {
   return shiftCode === '11_20';
 }
@@ -1354,12 +1362,20 @@ export function EmployeeTodayClient({
       textValue?: string;
     } = { status: 'done' };
 
-    if (task.category === 'cash' || task.category === 'acquiring') {
+    if (task.category === 'cash') {
       if (parseMoneyInput(draft.numericValue) === null) {
-        localErrors.numericValue = task.category === 'cash' ? 'Введите фактически пересчитанную сумму наличных' : 'Укажите сумму оплат по терминалу';
+        localErrors.numericValue = 'Введите фактически пересчитанную сумму наличных';
       }
       payload.numericValue = draft.numericValue;
-      if (task.category === 'acquiring') payload.comment = draft.comment;
+    } else if (task.category === 'acquiring') {
+      const acquiringCheckStatus = readIntegerFromDraft(draft.integerValue);
+      if (acquiringCheckStatus === null || ![0, 1, 2].includes(acquiringCheckStatus)) localErrors.integerValue = 'Выберите результат сверки оплат картой';
+      if ((acquiringCheckStatus === 1 || acquiringCheckStatus === 2) && parseMoneyInput(draft.numericValue) === null) localErrors.numericValue = 'Укажите сумму оплат по терминалу';
+      if (acquiringCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите расхождение по оплатам картой';
+      payload.integerValue = draft.integerValue;
+      payload.booleanValue = acquiringCheckStatus !== 2;
+      payload.numericValue = acquiringCheckStatus === 0 ? '0' : draft.numericValue;
+      payload.comment = acquiringCheckStatus === 0 ? '' : draft.comment;
     } else if (task.category === 'credit') {
       const creditCheckStatus = readIntegerFromDraft(draft.integerValue);
       if (creditCheckStatus === null || ![1, 2].includes(creditCheckStatus)) localErrors.integerValue = 'Выберите результат сверки';
@@ -1436,8 +1452,11 @@ export function EmployeeTodayClient({
 
     if (compact) {
       const parts: string[] = [];
-      if (task.category === 'cash' || task.category === 'acquiring') {
-        if (money) parts.push(`${task.category === 'cash' ? 'факт наличных' : 'чеки картой'}: ${money} ₽`);
+      if (task.category === 'cash') {
+        if (money) parts.push(`факт наличных: ${money} ₽`);
+      } else if (task.category === 'acquiring') {
+        parts.push(acquiringResultLabel(task.integerValue, task.numericValue));
+        if (money && task.integerValue !== 0) parts.push(`сумма: ${money} ₽`);
         if (task.category === 'acquiring' && task.comment) parts.push(task.comment);
       } else if (task.category === 'credit') {
         parts.push(task.integerValue === 2 ? 'кредиты: есть расхождение' : 'кредиты: всё в порядке');
@@ -1453,8 +1472,13 @@ export function EmployeeTodayClient({
     return (
       <div className='mt-2 rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold leading-snug text-green-900 ring-1 ring-green-100'>
         {task.category === 'cash' && money && <p>Факт наличных: {money} ₽</p>}
-        {task.category === 'acquiring' && money && <p>Чеки картой: {money} ₽</p>}
-        {task.category === 'acquiring' && task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
+        {task.category === 'acquiring' && (
+          <div className='grid gap-0.5'>
+            <p>{acquiringResultLabel(task.integerValue, task.numericValue)}</p>
+            {money && task.integerValue !== 0 && <p>Сумма оплат картой: {money} ₽</p>}
+            {task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
+          </div>
+        )}
         {task.category === 'credit' && (
           <div className='grid gap-0.5'>
             <p>{task.integerValue === 2 ? 'Кредиты сверены: есть расхождение' : 'Кредиты сверены: всё в порядке'}</p>
@@ -1481,6 +1505,7 @@ export function EmployeeTodayClient({
     const isOpening = task.category === 'opening';
     const simpleLabel = task.category === 'handover' ? 'Начать сдачу смены' : 'Подтвердить';
     const errors = shiftTaskErrors[task.id] ?? {};
+    const showAcquiringAmount = isAcquiring && ['1', '2'].includes(draft.integerValue);
 
     if (isOpening) {
       return (
@@ -1531,19 +1556,12 @@ export function EmployeeTodayClient({
 
     return (
       <div className='mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
-        {(isCash || isAcquiring) && (
+        {isCash && (
           <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-            {isCash ? 'Фактически пересчитано наличных' : 'Сумма чеков картой на сейчас'}
-            {isCash && (
-              <span className='text-[11px] font-semibold leading-snug text-slate-500'>
-                Пересчитайте реальные деньги в своей кассе и внесите фактическую сумму. Не переписывайте остаток из 1С без пересчёта.
-              </span>
-            )}
-            {isAcquiring && (
-              <span className='text-[11px] font-semibold leading-snug text-slate-500'>
-                Сложите чеки оплат картой, которые сейчас у вас по кассе, и сверьте с 1С.
-              </span>
-            )}
+            Фактически пересчитано наличных
+            <span className='text-[11px] font-semibold leading-snug text-slate-500'>
+              Пересчитайте реальные деньги в своей кассе и внесите фактическую сумму. Не переписывайте остаток из 1С без пересчёта.
+            </span>
             <input
               type='number'
               inputMode='decimal'
@@ -1559,15 +1577,68 @@ export function EmployeeTodayClient({
         )}
 
         {isAcquiring && (
-          <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-            Комментарий, если не сходится
-            <textarea
-              value={draft.comment}
-              onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
-              className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-              placeholder='Если сумма не сходится, коротко напишите причину'
-            />
-          </label>
+          <>
+            <div className='grid gap-2'>
+              <p className='text-xs font-extrabold text-slate-700'>Результат сверки оплат картой</p>
+              <p className='text-[11px] font-semibold leading-snug text-slate-500'>
+                Проверьте чеки оплат картой по своей кассе. Сумму вводите только если оплаты были.
+              </p>
+              <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
+                <Button
+                  type='button'
+                  className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '0' ? '' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
+                  onClick={() => updateShiftTaskDraft(task.id, { integerValue: '0', numericValue: '0', booleanValue: true, comment: '' })}
+                >
+                  Оплат не было
+                </Button>
+                <Button
+                  type='button'
+                  className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '1' ? '' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
+                  onClick={() => updateShiftTaskDraft(task.id, { integerValue: '1', numericValue: draft.numericValue === '0' ? '' : draft.numericValue, booleanValue: true, comment: '' })}
+                >
+                  Сверено
+                </Button>
+                <Button
+                  type='button'
+                  className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '2' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
+                  onClick={() => updateShiftTaskDraft(task.id, { integerValue: '2', numericValue: draft.numericValue === '0' ? '' : draft.numericValue, booleanValue: false })}
+                >
+                  Есть расхождение
+                </Button>
+              </div>
+              {errors.integerValue && <span className='text-[11px] font-bold text-amber-700'>{errors.integerValue}</span>}
+            </div>
+
+            {showAcquiringAmount && (
+              <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                Сумма оплат картой
+                <input
+                  type='number'
+                  inputMode='decimal'
+                  min='0'
+                  step='0.01'
+                  value={draft.numericValue}
+                  onChange={(event) => updateShiftTaskDraft(task.id, { numericValue: event.target.value })}
+                  className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                  placeholder='0'
+                />
+                {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
+              </label>
+            )}
+
+            {draft.integerValue === '2' && (
+              <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+                Комментарий
+                <textarea
+                  value={draft.comment}
+                  onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
+                  className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                  placeholder='Что именно не сходится?'
+                />
+                {errors.comment && <span className='text-[11px] font-bold text-amber-700'>{errors.comment}</span>}
+              </label>
+            )}
+          </>
         )}
 
         {isCredit && (

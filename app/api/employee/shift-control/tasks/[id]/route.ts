@@ -392,12 +392,31 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     comment: commentSource.trim(),
   };
 
-  if (task.category === 'cash' || task.category === 'acquiring') {
+  if (task.category === 'cash') {
     const numericValue = readNumber(payload.numericValue);
     if (numericValue === null) {
       return Response.json({ error: 'Укажите сумму' }, { status: 400 });
     }
     data.numericValue = numericValue;
+  } else if (task.category === 'acquiring') {
+    const numericValue = readNumber(payload.numericValue);
+    const providedCheckStatus = readInteger(payload.integerValue);
+    const checkStatus = providedCheckStatus ?? (numericValue !== null ? 1 : null);
+    const hasDiscrepancy = checkStatus === 2;
+
+    if (checkStatus === null || ![0, 1, 2].includes(checkStatus)) {
+      return Response.json({ error: 'Выберите результат сверки оплат картой' }, { status: 400 });
+    }
+    if ((checkStatus === 1 || checkStatus === 2) && numericValue === null) {
+      return Response.json({ error: 'Укажите сумму оплат по терминалу' }, { status: 400 });
+    }
+    if (hasDiscrepancy && !commentSource.trim()) {
+      return Response.json({ error: 'Опишите расхождение по оплатам картой' }, { status: 400 });
+    }
+    data.integerValue = checkStatus;
+    data.numericValue = checkStatus === 0 ? 0 : numericValue;
+    data.booleanValue = !hasDiscrepancy;
+    data.comment = checkStatus === 0 ? '' : commentSource.trim();
   } else if (task.category === 'credit') {
     const checkStatus = readInteger(payload.integerValue);
     const hasDiscrepancy = checkStatus === 2;

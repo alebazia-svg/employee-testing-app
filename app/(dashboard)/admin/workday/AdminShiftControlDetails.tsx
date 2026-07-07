@@ -98,6 +98,16 @@ function textValue(value: unknown) {
   return String(value);
 }
 
+function acquiringResult(task: ShiftTask) {
+  if (task.integerValue === 0) return { label: 'Оплат не было', problem: false, legacy: false };
+  if (task.integerValue === 1) return { label: 'Сверено', problem: false, legacy: false };
+  if (task.integerValue === 2) return { label: 'Есть расхождение', problem: true, legacy: false };
+  if (task.numericValue !== null && task.numericValue !== undefined) {
+    return { label: 'Сумма введена по старой версии', problem: false, legacy: true };
+  }
+  return { label: 'Результат не указан', problem: false, legacy: false };
+}
+
 function discrepancyLabel(value: unknown) {
   if (value === 'surplus') return 'излишек';
   if (value === 'shortage') return 'недостача';
@@ -173,8 +183,20 @@ function PhotoRow({ label, photo, onPreview }: { label: string; photo: PhotoInfo
 }
 
 function TaskValue({ task, onPreview }: { task: ShiftTask; onPreview: (photo: PhotoPreview) => void }) {
-  if (task.category === 'cash' || task.category === 'acquiring') {
+  if (task.category === 'cash') {
     return <span>Сумма: {formatMoney(task.numericValue)}</span>;
+  }
+  if (task.category === 'acquiring') {
+    const result = acquiringResult(task);
+    return (
+      <span className='inline-flex flex-wrap items-center gap-1.5'>
+        <span className={result.problem ? 'font-extrabold text-amber-800' : result.legacy ? 'font-extrabold text-slate-500' : ''}>
+          {result.label}
+        </span>
+        {task.numericValue !== null && task.numericValue !== undefined && <span>· сумма: {formatMoney(task.numericValue)}</span>}
+        {task.comment && <span>· {task.comment}</span>}
+      </span>
+    );
   }
   if (task.category === 'credit') {
     return (
