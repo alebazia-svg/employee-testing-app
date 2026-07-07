@@ -129,6 +129,21 @@ function cashDifferenceStatus(employeeCashBalance: number | null, oneCClosingBal
   return { label: 'расхождение', className: 'bg-amber-100 text-amber-800' };
 }
 
+function cashBusinessStatus({
+  hasCashbox,
+  result,
+  employeeCashBalance,
+}: {
+  hasCashbox: boolean;
+  result: OneCCashStatementSummaryResult | null;
+  employeeCashBalance: number | null;
+}) {
+  if (!hasCashbox) return { label: 'касса не привязана', className: 'bg-amber-100 text-amber-800' };
+  if (!result) return { label: 'не получено', className: 'bg-slate-100 text-slate-700' };
+  if (!result.ok) return { label: 'ошибка 1С', className: 'bg-rose-100 text-rose-800' };
+  return cashDifferenceStatus(employeeCashBalance, result.closingBalance);
+}
+
 function normalizeSearchText(value: string) {
   return value
     .toLowerCase()
@@ -341,95 +356,106 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         <WorkdayQrCodes />
 
         <Card className='p-0'>
-          <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between'>
-            <div>
-              <h2 className='text-lg font-extrabold text-slate-950'>Привязка касс 1С</h2>
-              <p className='mt-1 text-sm font-medium text-slate-500'>
-                Настройте явную связку сотрудник → касса 1С. Эта привязка используется для ведомости наличных вместо поиска по фамилии.
-              </p>
-            </div>
-            <Badge className='w-fit bg-slate-100 text-slate-700'>касс 1С: {cashStatementDimensions.cashboxes.length}</Badge>
-          </div>
-          {cashboxMappingMessage ? (
-            <div className={`border-b px-5 py-3 text-sm font-semibold ${
-              cashboxMappingMessage.tone === 'green'
-                ? 'border-green-100 bg-green-50 text-green-900'
-                : cashboxMappingMessage.tone === 'rose'
-                  ? 'border-rose-100 bg-rose-50 text-rose-900'
-                  : 'border-amber-100 bg-amber-50 text-amber-900'
-            }`}>
-              {cashboxMappingMessage.text}
-            </div>
-          ) : null}
-          {cashboxMappingEmployees.length === 0 ? (
-            <div className='px-5 py-4 text-sm font-semibold text-slate-500'>Нет активных сотрудников розницы или опта для привязки касс.</div>
-          ) : (
-            <div className='overflow-x-auto'>
-              <Table>
-                <thead>
-                  <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
-                    <th className='px-4 py-3'>Сотрудник</th>
-                    <th className='px-4 py-3'>Отдел</th>
-                    <th className='px-4 py-3'>Касса 1С</th>
-                    <th className='px-4 py-3'>Подсказка</th>
-                    <th className='px-4 py-3'>Действие</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cashboxMappingEmployees.map((employee) => {
-                    const searchKey = employeeCashboxSearchKey(employee.name);
-                    const suggestedCashbox = searchKey
-                      ? cashStatementDimensions.cashboxes.find((item) => normalizeSearchText(item.name).includes(searchKey)) ?? null
-                      : null;
-                    const mapping = employee.oneCCashboxMapping?.isActive ? employee.oneCCashboxMapping : null;
-                    return (
-                      <tr key={employee.id} className='border-t border-slate-100 align-top'>
-                        <td className='px-4 py-3'>
-                          <p className='font-bold text-slate-950'>{employee.name}</p>
-                          {!mapping ? <p className='text-xs font-semibold text-amber-700'>Касса 1С не привязана</p> : null}
-                        </td>
-                        <td className='px-4 py-3 text-sm font-semibold text-slate-600'>{departmentLabel(employee.department)}</td>
-                        <td className='px-4 py-3'>
-                          <form action='/api/admin/workday/cashbox-mapping' method='post' className='flex min-w-[320px] flex-col gap-2 sm:flex-row'>
-                            <input type='hidden' name='userId' value={employee.id} />
-                            <input type='hidden' name='redirectTo' value={cashboxMappingRedirectTo} />
-                            <select
-                              name='oneCCashboxRef'
-                              defaultValue={mapping?.oneCCashboxRef ?? ''}
-                              className='min-h-10 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
-                              disabled={!cashStatementDimensions.ok}
-                            >
-                              <option value=''>Не привязана</option>
-                              {cashStatementDimensions.cashboxes.map((cashbox) => (
-                                <option key={cashbox.ref} value={cashbox.ref}>
-                                  {cashbox.name}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type='submit'
-                              className='rounded-lg bg-slate-950 px-3 py-2 text-sm font-extrabold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300'
-                              disabled={!cashStatementDimensions.ok}
-                            >
-                              Сохранить
-                            </button>
-                          </form>
-                        </td>
-                        <td className='px-4 py-3 text-sm font-semibold text-slate-500'>
-                          {suggestedCashbox ? `Похоже: ${suggestedCashbox.name}` : '—'}
-                        </td>
-                        <td className='px-4 py-3'>
-                          <Badge className={mapping ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
-                            {mapping ? 'привязана' : 'нужно настроить'}
-                          </Badge>
-                        </td>
+          <details className='group' open={cashStatementMissingCashboxCount > 0 || Boolean(cashboxMappingMessage)}>
+            <summary className='flex cursor-pointer list-none flex-col gap-3 px-5 py-4 transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between'>
+              <div>
+                <h2 className='text-lg font-extrabold text-slate-950'>Привязка касс 1С</h2>
+                <p className='mt-1 text-sm font-medium text-slate-500'>
+                  Настройка связки сотрудник → касса 1С. Открывайте только когда нужно поправить привязку.
+                </p>
+              </div>
+              <div className='flex flex-wrap items-center gap-2'>
+                <Badge className='w-fit bg-slate-100 text-slate-700'>касс 1С: {cashStatementDimensions.cashboxes.length}</Badge>
+                <Badge className={cashStatementMissingCashboxCount > 0 ? 'w-fit bg-amber-100 text-amber-800' : 'w-fit bg-green-100 text-green-800'}>
+                  {cashStatementMissingCashboxCount > 0 ? `не привязано: ${cashStatementMissingCashboxCount}` : 'все привязаны'}
+                </Badge>
+                <span className='text-sm font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
+                <span className='hidden text-sm font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
+              </div>
+            </summary>
+            <div className='border-t border-slate-200'>
+              {cashboxMappingMessage ? (
+                <div className={`border-b px-5 py-3 text-sm font-semibold ${
+                  cashboxMappingMessage.tone === 'green'
+                    ? 'border-green-100 bg-green-50 text-green-900'
+                    : cashboxMappingMessage.tone === 'rose'
+                      ? 'border-rose-100 bg-rose-50 text-rose-900'
+                      : 'border-amber-100 bg-amber-50 text-amber-900'
+                }`}>
+                  {cashboxMappingMessage.text}
+                </div>
+              ) : null}
+              {cashboxMappingEmployees.length === 0 ? (
+                <div className='px-5 py-4 text-sm font-semibold text-slate-500'>Нет активных сотрудников розницы или опта для привязки касс.</div>
+              ) : (
+                <div className='overflow-x-auto'>
+                  <Table>
+                    <thead>
+                      <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
+                        <th className='px-4 py-3'>Сотрудник</th>
+                        <th className='px-4 py-3'>Отдел</th>
+                        <th className='px-4 py-3'>Касса 1С</th>
+                        <th className='px-4 py-3'>Подсказка</th>
+                        <th className='px-4 py-3'>Действие</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
+                    </thead>
+                    <tbody>
+                      {cashboxMappingEmployees.map((employee) => {
+                        const searchKey = employeeCashboxSearchKey(employee.name);
+                        const suggestedCashbox = searchKey
+                          ? cashStatementDimensions.cashboxes.find((item) => normalizeSearchText(item.name).includes(searchKey)) ?? null
+                          : null;
+                        const mapping = employee.oneCCashboxMapping?.isActive ? employee.oneCCashboxMapping : null;
+                        return (
+                          <tr key={employee.id} className='border-t border-slate-100 align-top'>
+                            <td className='px-4 py-3'>
+                              <p className='font-bold text-slate-950'>{employee.name}</p>
+                              {!mapping ? <p className='text-xs font-semibold text-amber-700'>Касса 1С не привязана</p> : null}
+                            </td>
+                            <td className='px-4 py-3 text-sm font-semibold text-slate-600'>{departmentLabel(employee.department)}</td>
+                            <td className='px-4 py-3'>
+                              <form action='/api/admin/workday/cashbox-mapping' method='post' className='flex min-w-[320px] flex-col gap-2 sm:flex-row'>
+                                <input type='hidden' name='userId' value={employee.id} />
+                                <input type='hidden' name='redirectTo' value={cashboxMappingRedirectTo} />
+                                <select
+                                  name='oneCCashboxRef'
+                                  defaultValue={mapping?.oneCCashboxRef ?? ''}
+                                  className='min-h-10 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
+                                  disabled={!cashStatementDimensions.ok}
+                                >
+                                  <option value=''>Не привязана</option>
+                                  {cashStatementDimensions.cashboxes.map((cashbox) => (
+                                    <option key={cashbox.ref} value={cashbox.ref}>
+                                      {cashbox.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type='submit'
+                                  className='rounded-lg bg-slate-950 px-3 py-2 text-sm font-extrabold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300'
+                                  disabled={!cashStatementDimensions.ok}
+                                >
+                                  Сохранить
+                                </button>
+                              </form>
+                            </td>
+                            <td className='px-4 py-3 text-sm font-semibold text-slate-500'>
+                              {suggestedCashbox ? `Похоже: ${suggestedCashbox.name}` : '—'}
+                            </td>
+                            <td className='px-4 py-3'>
+                              <Badge className={mapping ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+                                {mapping ? 'привязана' : 'нужно настроить'}
+                              </Badge>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </Table>
+                </div>
+              )}
             </div>
-          )}
+          </details>
         </Card>
 
         <Card className='p-0'>
@@ -464,34 +490,30 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <thead>
                   <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
                     <th className='px-4 py-3'>Сотрудник</th>
-                    <th className='px-4 py-3'>График</th>
                     <th className='px-4 py-3'>Касса 1С</th>
-                    <th className='px-4 py-3'>Начало</th>
-                    <th className='px-4 py-3'>Приход</th>
-                    <th className='px-4 py-3'>Расход</th>
-                    <th className='px-4 py-3'>Конец</th>
                     <th className='px-4 py-3'>Факт сотрудника</th>
-                    <th className='px-4 py-3'>Расхождение</th>
-                    <th className='px-4 py-3'>Движения</th>
-                    <th className='px-4 py-3'>Статус</th>
+                    <th className='px-4 py-3'>Остаток 1С</th>
+                    <th className='px-4 py-3'>Разница</th>
+                    <th className='px-4 py-3'>Итог</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cashStatementRows.map((row) => {
-                    const status = cashStatementStatus(row.result);
                     const difference =
                       row.employeeCash.value !== null && row.result?.ok && row.result.closingBalance !== null
                         ? row.employeeCash.value - row.result.closingBalance
                         : null;
-                    const differenceStatus = cashDifferenceStatus(row.employeeCash.value, row.result?.ok ? row.result.closingBalance : null);
+                    const businessStatus = cashBusinessStatus({
+                      hasCashbox: Boolean(row.cashbox),
+                      result: row.result,
+                      employeeCashBalance: row.employeeCash.value,
+                    });
                     return (
                       <tr key={row.employee.id} className='border-t border-slate-100 align-top'>
                         <td className='px-4 py-3'>
                           <p className='font-bold text-slate-950'>{row.employee.name}</p>
                           <p className='text-xs font-semibold text-slate-500'>{departmentLabel(row.employee.department)}</p>
-                        </td>
-                        <td className='px-4 py-3'>
-                          <Badge className={row.scheduleInfo.className}>{row.scheduleInfo.label}</Badge>
+                          <Badge className={`mt-2 ${row.scheduleInfo.className}`}>{row.scheduleInfo.label}</Badge>
                         </td>
                         <td className='px-4 py-3 text-sm font-semibold text-slate-700'>
                           {row.cashbox?.name ?? 'Касса 1С не привязана'}
@@ -510,17 +532,27 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                           ) : null}
                         </td>
                         <td className='px-4 py-3'>
-                          <div className='grid gap-1'>
-                            <span className={`text-sm font-extrabold ${difference !== null && Math.abs(difference) > 1 ? 'text-amber-700' : 'text-slate-700'}`}>
-                              {formatMoney(difference)}
-                            </span>
-                            <Badge className={differenceStatus.className}>{differenceStatus.label}</Badge>
-                          </div>
+                          <p className='font-extrabold text-slate-950'>{formatMoney(row.result?.closingBalance)}</p>
+                          <p className='mt-1 max-w-[360px] text-xs font-semibold leading-relaxed text-slate-500'>
+                            начало {formatMoney(row.result?.openingBalance)}
+                            <span className='px-1 text-slate-300'>·</span>
+                            приход <span className='text-green-700'>{formatMoney(row.result?.incomingTotal)}</span>
+                            <span className='px-1 text-slate-300'>·</span>
+                            расход <span className='text-rose-700'>{formatMoney(row.result?.outgoingTotal)}</span>
+                            <span className='px-1 text-slate-300'>·</span>
+                            движений {row.result?.movementsCount ?? '—'}
+                          </p>
                         </td>
-                        <td className='px-4 py-3 text-sm font-semibold text-slate-700'>{row.result?.movementsCount ?? '—'}</td>
                         <td className='px-4 py-3'>
                           <div className='grid gap-1'>
-                            <Badge className={status.className}>{status.label}</Badge>
+                            <span className={`text-base font-extrabold ${difference !== null && Math.abs(difference) > 1 ? 'text-amber-700' : 'text-slate-700'}`}>
+                              {formatMoney(difference)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className='px-4 py-3'>
+                          <div className='grid gap-1'>
+                            <Badge className={businessStatus.className}>{businessStatus.label}</Badge>
                             {row.note && <span className='max-w-[260px] text-xs font-semibold text-slate-500'>{row.note}</span>}
                           </div>
                         </td>

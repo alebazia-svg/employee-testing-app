@@ -1,7 +1,7 @@
 'use client';
 
 import QRCode from 'qrcode';
-import { Download, Maximize2, Printer, QrCode, X } from 'lucide-react';
+import { ChevronDown, Download, Maximize2, Printer, QrCode, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 
@@ -25,6 +25,7 @@ type WorkdayQrCode = (typeof workdayQrCodes)[number];
 export function WorkdayQrCodes() {
   const [images, setImages] = useState<Record<string, string>>({});
   const [activeQr, setActiveQr] = useState<WorkdayQrCode | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,7 +94,11 @@ export function WorkdayQrCodes() {
   return (
     <>
       <Card className='p-0'>
-        <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-start sm:justify-between'>
+        <button
+          type='button'
+          onClick={() => setExpanded((value) => !value)}
+          className='flex w-full flex-col gap-3 px-5 py-4 text-left transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between'
+        >
           <div className='flex items-start gap-3'>
             <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700'>
               <QrCode className='h-5 w-5' />
@@ -105,65 +110,65 @@ export function WorkdayQrCodes() {
               </p>
             </div>
           </div>
-          <span className='w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-extrabold text-slate-600'>
-            MVP: розница и опт
+          <span className='inline-flex w-fit items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-extrabold text-slate-600'>
+            Розница / Опт
+            <ChevronDown className={`h-4 w-4 transition ${expanded ? 'rotate-180' : ''}`} />
           </span>
-        </div>
+        </button>
 
-        <div className='grid gap-4 p-5 md:grid-cols-2'>
-          {workdayQrCodes.map((item) => {
-            const image = images[item.id];
-            return (
-              <div key={item.id} className='rounded-xl border border-slate-200 bg-slate-50 p-4'>
-                <div className='flex items-start justify-between gap-3'>
-                  <div>
-                    <p className='text-base font-extrabold text-slate-950'>{item.title}</p>
-                    <p className='mt-1 text-sm font-medium text-slate-500'>{item.description}</p>
-                    <p className='mt-2 break-all rounded-lg bg-white px-2.5 py-2 font-mono text-xs font-bold text-slate-600 ring-1 ring-slate-200'>
-                      {item.value}
-                    </p>
+        {expanded ? (
+          <div className='grid gap-4 border-t border-slate-200 p-5 md:grid-cols-2'>
+            {workdayQrCodes.map((item) => {
+              const image = images[item.id];
+              return (
+                <div key={item.id} className='rounded-xl border border-slate-200 bg-slate-50 p-4'>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div>
+                      <p className='text-base font-extrabold text-slate-950'>{item.title}</p>
+                      <p className='mt-1 text-sm font-medium text-slate-500'>{item.description}</p>
+                    </div>
                   </div>
-                </div>
 
-                <div className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-center'>
-                  <button
-                    type='button'
-                    onClick={() => setActiveQr(item)}
-                    className='flex h-36 w-36 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200 transition hover:ring-green-300'
-                  >
-                    {image ? <img src={image} alt={`QR ${item.title}`} className='h-32 w-32' /> : <QrCode className='h-12 w-12 text-slate-300' />}
-                  </button>
-                  <div className='grid flex-1 gap-2'>
+                  <div className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-center'>
                     <button
                       type='button'
                       onClick={() => setActiveQr(item)}
-                      className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
+                      className='flex h-28 w-28 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200 transition hover:ring-green-300'
                     >
-                      <Maximize2 className='h-4 w-4' />
-                      Открыть крупно
+                      {image ? <img src={image} alt={`QR ${item.title}`} className='h-24 w-24' /> : <QrCode className='h-12 w-12 text-slate-300' />}
                     </button>
-                    <a
-                      href={image || '#'}
-                      download={`offonika-workday-${item.id}-qr.png`}
-                      className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
-                    >
-                      <Download className='h-4 w-4' />
-                      Скачать PNG
-                    </a>
-                    <button
-                      type='button'
-                      onClick={() => printQr(item)}
-                      className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-3 text-sm font-extrabold text-white hover:bg-green-700'
-                    >
-                      <Printer className='h-4 w-4' />
-                      Печать
-                    </button>
+                    <div className='grid flex-1 gap-2'>
+                      <button
+                        type='button'
+                        onClick={() => setActiveQr(item)}
+                        className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
+                      >
+                        <Maximize2 className='h-4 w-4' />
+                        Открыть крупно
+                      </button>
+                      <a
+                        href={image || '#'}
+                        download={`offonika-workday-${item.id}-qr.png`}
+                        className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
+                      >
+                        <Download className='h-4 w-4' />
+                        Скачать PNG
+                      </a>
+                      <button
+                        type='button'
+                        onClick={() => printQr(item)}
+                        className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-3 text-sm font-extrabold text-white hover:bg-green-700'
+                      >
+                        <Printer className='h-4 w-4' />
+                        Печать
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : null}
       </Card>
 
       {activeQr && (
