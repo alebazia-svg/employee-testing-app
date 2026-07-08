@@ -2,6 +2,7 @@
 
 import jsQR from 'jsqr';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -766,6 +767,7 @@ export function EmployeeTodayClient({
   shiftControl,
   cashOperations,
 }: Props) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('day');
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -1038,6 +1040,7 @@ export function EmployeeTodayClient({
       if (!response.ok) throw new Error(payload.error || 'Не удалось обновить график');
       setOwnScheduleState(payload.ownSchedule);
       setDepartmentScheduleState(payload.departmentSchedule);
+      router.refresh();
       setMessage('График обновлен');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить график');
@@ -1109,6 +1112,7 @@ export function EmployeeTodayClient({
       setNow(new Date());
       setMessage('');
       setQrDepartmentConfirmed(null);
+      router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
     } finally {
@@ -1133,6 +1137,7 @@ export function EmployeeTodayClient({
       if (payload.workDay.date === today) setWorkDay(payload.workDay);
       setUnfinished(null);
       setNow(new Date());
+      router.refresh();
       setMessage('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить рабочий день');
@@ -1171,6 +1176,7 @@ export function EmployeeTodayClient({
       setStaleCloseReason('');
       setStaleCloseComment('');
       setNow(new Date());
+      router.refresh();
       setMessage(payload.staleClosed ? 'Предыдущий рабочий день закрыт' : 'Рабочий день завершён');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить предыдущий рабочий день');
@@ -1251,6 +1257,7 @@ export function EmployeeTodayClient({
 
       setCashOperationsState((current) => [result.operation, ...current]);
       setCashOperationDraft({ direction: null, amount: '', comment: '' });
+      router.refresh();
       setMessage(`Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
@@ -1337,6 +1344,7 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
+      router.refresh();
       setMessage(shiftControlPhotoMessage(nextTasks, result.task.id));
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Не удалось обновить задачу';
@@ -1432,6 +1440,7 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
+      router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
     } finally {
@@ -1804,6 +1813,7 @@ export function EmployeeTodayClient({
       setHandoverDraft(emptyHandoverDraft());
       setMessage(result.message || 'Смена сдана, рабочий день завершён');
       setNow(new Date());
+      router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
     } finally {
