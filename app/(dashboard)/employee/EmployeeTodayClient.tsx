@@ -841,13 +841,8 @@ export function EmployeeTodayClient({
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
   const syncCurrentWorkdayState = useCallback(async () => {
-    if (!shiftControlEnabled) {
-      router.refresh();
-      return;
-    }
-
     try {
-      const response = await fetch('/api/employee/shift-control/current', { cache: 'no-store' });
+      const response = await fetch('/api/employee/workday/today', { cache: 'no-store' });
       if (!response.ok) {
         router.refresh();
         return;
@@ -859,29 +854,23 @@ export function EmployeeTodayClient({
         return;
       }
 
-      const tasks = Array.isArray(payload.tasks) ? (payload.tasks as ShiftControlTask[]) : [];
-      const runPayload = isRecord(payload.run) ? payload.run : null;
-
-      if (!runPayload) {
-        setShiftControlState({ run: null, tasks: [] });
-        router.refresh();
-        return;
+      setWorkDay(isRecord(payload.workDay) ? (payload.workDay as WorkDayEntry) : null);
+      setUnfinished(isRecord(payload.unfinishedWorkDay) ? (payload.unfinishedWorkDay as WorkDayEntry) : null);
+      if (isRecord(payload.shiftControl)) {
+        setShiftControlState({
+          run: isRecord(payload.shiftControl.run) ? (payload.shiftControl.run as ShiftControlRun) : null,
+          tasks: Array.isArray(payload.shiftControl.tasks) ? (payload.shiftControl.tasks as ShiftControlTask[]) : [],
+        });
       }
-
-      const workDayEntry = isRecord(runPayload.workDayEntry) ? (runPayload.workDayEntry as WorkDayEntry) : null;
-      const { workDayEntry: _workDayEntry, template: _template, ...run } = runPayload;
-      setShiftControlState({ run: run as ShiftControlRun, tasks });
-      if (workDayEntry?.date === today) setWorkDay(workDayEntry);
+      if (Array.isArray(payload.cashOperations)) setCashOperationsState(payload.cashOperations as CashOperation[]);
     } catch {
       // Keep the optimistic UI state, but still ask Next to refresh server props.
     } finally {
       router.refresh();
     }
-  }, [router, shiftControlEnabled, today]);
+  }, [router]);
 
   useEffect(() => {
-    if (!shiftControlEnabled) return;
-
     const syncWhenVisible = () => {
       if (document.visibilityState === 'visible') void syncCurrentWorkdayState();
     };
@@ -892,7 +881,7 @@ export function EmployeeTodayClient({
       window.removeEventListener('focus', syncWhenVisible);
       document.removeEventListener('visibilitychange', syncWhenVisible);
     };
-  }, [shiftControlEnabled, syncCurrentWorkdayState]);
+  }, [syncCurrentWorkdayState]);
 
   const todayDepartmentEntries = departmentScheduleByDate.get(today) ?? [];
   const todayEntryByUser = new Map(todayDepartmentEntries.map((entry) => [entry.userId, entry]));
