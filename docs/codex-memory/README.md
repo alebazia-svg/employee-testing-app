@@ -40,4 +40,8 @@ re-discovery of already-known architecture.
 - Mark dated observations as stale-prone.
 - When a mistake repeats twice, add the prevention rule here instead of relying
   on memory.
+- Update memory when the project actually evolves: roadmap/maturity status,
+  meaningful phase start/finish, architecture decision, workflow, persistent
+  rule or Definition of Done. Do not turn memory into a log of every small
+  bugfix, UI patch or refactor.
 

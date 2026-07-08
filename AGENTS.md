@@ -100,11 +100,18 @@ Before final response:
 - Show exact changed files when code was edited.
 - Mention anything not tested.
 - Confirm unrelated dirty files were left alone.
-- If the task introduced an architecture decision, workflow change, new
-  playbook, development rule, or made existing Codex memory stale, say in the
-  final report that the memory should be updated. Update `AGENTS.md`, decision
-  log or playbooks only after user confirmation, and commit those docs in a
-  separate docs-only commit.
+- Update project memory only when the task changes actual project state:
+  roadmap or maturity status, start/finish of a meaningful phase, architecture
+  decisions, development workflow, persistent project rules, Definition of Done
+  or stale Codex memory. Use `AGENTS.md`,
+  `docs/codex-memory/decision-log.md`, playbooks, roadmap/vision docs or
+  launch/maturity checklists as appropriate.
+- Do not update docs for local bugfixes, small UI patches, refactors or
+  technical changes that do not affect architecture/roadmap. In that case,
+  report: "Документация не обновлялась, так как задача не изменила состояние
+  проекта".
+- Keep documentation updates scoped. Commit docs separately from code unless the
+  user explicitly asks for a combined commit.
 
 ## Deployment Rules
 

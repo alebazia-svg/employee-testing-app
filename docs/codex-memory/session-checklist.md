@@ -73,9 +73,17 @@ Report:
 - deploy result if deployed;
 - remaining dirty files when relevant;
 - what was intentionally not touched.
-- whether this task changed architecture, workflow, development rules or made
-  Codex memory stale. If yes, propose a memory update and wait for user
-  confirmation before editing/committing docs.
+- whether this task changed actual project state: roadmap or maturity status,
+  start/finish of a meaningful phase, architecture decisions, workflow,
+  persistent development rules, Definition of Done or stale Codex memory.
+- if yes, update the relevant docs before calling the task complete:
+  `AGENTS.md`, `decision-log.md`, task playbooks, product vision, launch
+  checklist or maturity/roadmap docs.
+- if this was only a local bugfix, small UI patch, refactor or technical change
+  without architecture/roadmap impact, do not update docs. Report:
+  "Документация не обновлялась, так как задача не изменила состояние проекта".
+- keep docs commits separate from code commits unless the user explicitly asks
+  for one combined commit.
 
 ## Before VPS Deploy From Windows
 
