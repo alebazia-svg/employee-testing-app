@@ -3,7 +3,7 @@
 import jsQR from 'jsqr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Banknote,
@@ -840,6 +840,60 @@ export function EmployeeTodayClient({
   const canUseCashOperations = shiftControlEnabled;
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
+  const syncCurrentWorkdayState = useCallback(async () => {
+    if (!shiftControlEnabled) {
+      router.refresh();
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/employee/shift-control/current', { cache: 'no-store' });
+      if (!response.ok) {
+        router.refresh();
+        return;
+      }
+
+      const payload: unknown = await response.json();
+      if (!isRecord(payload)) {
+        router.refresh();
+        return;
+      }
+
+      const tasks = Array.isArray(payload.tasks) ? (payload.tasks as ShiftControlTask[]) : [];
+      const runPayload = isRecord(payload.run) ? payload.run : null;
+
+      if (!runPayload) {
+        setShiftControlState({ run: null, tasks: [] });
+        router.refresh();
+        return;
+      }
+
+      const workDayEntry = isRecord(runPayload.workDayEntry) ? (runPayload.workDayEntry as WorkDayEntry) : null;
+      const { workDayEntry: _workDayEntry, template: _template, ...run } = runPayload;
+      setShiftControlState({ run: run as ShiftControlRun, tasks });
+      if (workDayEntry?.date === today) setWorkDay(workDayEntry);
+    } catch {
+      // Keep the optimistic UI state, but still ask Next to refresh server props.
+    } finally {
+      router.refresh();
+    }
+  }, [router, shiftControlEnabled, today]);
+
+  useEffect(() => {
+    if (!shiftControlEnabled) return;
+
+    const syncWhenVisible = () => {
+      if (document.visibilityState === 'visible') void syncCurrentWorkdayState();
+    };
+
+    window.addEventListener('focus', syncWhenVisible);
+    document.addEventListener('visibilitychange', syncWhenVisible);
+    return () => {
+      window.removeEventListener('focus', syncWhenVisible);
+      document.removeEventListener('visibilitychange', syncWhenVisible);
+    };
+  }, [shiftControlEnabled, syncCurrentWorkdayState]);
+
   const todayDepartmentEntries = departmentScheduleByDate.get(today) ?? [];
   const todayEntryByUser = new Map(todayDepartmentEntries.map((entry) => [entry.userId, entry]));
   const colleagueUsers = departmentUsers.filter((person) => person.id !== user.id).sort(byName);
@@ -1112,7 +1166,7 @@ export function EmployeeTodayClient({
       setNow(new Date());
       setMessage('');
       setQrDepartmentConfirmed(null);
-      router.refresh();
+      void syncCurrentWorkdayState();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
     } finally {
@@ -1137,7 +1191,7 @@ export function EmployeeTodayClient({
       if (payload.workDay.date === today) setWorkDay(payload.workDay);
       setUnfinished(null);
       setNow(new Date());
-      router.refresh();
+      void syncCurrentWorkdayState();
       setMessage('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить рабочий день');
@@ -1176,7 +1230,7 @@ export function EmployeeTodayClient({
       setStaleCloseReason('');
       setStaleCloseComment('');
       setNow(new Date());
-      router.refresh();
+      void syncCurrentWorkdayState();
       setMessage(payload.staleClosed ? 'Предыдущий рабочий день закрыт' : 'Рабочий день завершён');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить предыдущий рабочий день');
@@ -1257,7 +1311,7 @@ export function EmployeeTodayClient({
 
       setCashOperationsState((current) => [result.operation, ...current]);
       setCashOperationDraft({ direction: null, amount: '', comment: '' });
-      router.refresh();
+      void syncCurrentWorkdayState();
       setMessage(`Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
@@ -1344,7 +1398,7 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
-      router.refresh();
+      void syncCurrentWorkdayState();
       setMessage(shiftControlPhotoMessage(nextTasks, result.task.id));
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Не удалось обновить задачу';
@@ -1440,7 +1494,7 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
-      router.refresh();
+      void syncCurrentWorkdayState();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
     } finally {
@@ -1813,7 +1867,7 @@ export function EmployeeTodayClient({
       setHandoverDraft(emptyHandoverDraft());
       setMessage(result.message || 'Смена сдана, рабочий день завершён');
       setNow(new Date());
-      router.refresh();
+      void syncCurrentWorkdayState();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
     } finally {
