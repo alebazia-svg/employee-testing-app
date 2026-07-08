@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, Banknote, CheckCircle2, Clock, ClipboardList, UserCheck, Users } from 'lucide-react';
+import { AlertTriangle, Banknote, CheckCircle2, Clock, ClipboardList, CreditCard, UserCheck, Users } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -184,6 +184,16 @@ function cashStatementScheduleLabel(status: string | undefined) {
   return { label: 'график не заполнен', className: 'bg-amber-100 text-amber-800' };
 }
 
+function acquiringControlStatus(task: { status: string; integerValue: number | null; numericValue: number | null } | null | undefined) {
+  if (!task) return { label: 'нет задачи', className: 'bg-slate-100 text-slate-700', problem: false };
+  if (task.status !== 'done') return { label: 'не выполнено', className: 'bg-amber-100 text-amber-800', problem: true };
+  if (task.integerValue === 0) return { label: 'оплат не было', className: 'bg-slate-100 text-slate-700', problem: false };
+  if (task.integerValue === 1) return { label: 'сверено', className: 'bg-green-100 text-green-800', problem: false };
+  if (task.integerValue === 2) return { label: 'есть расхождение', className: 'bg-rose-100 text-rose-800', problem: true };
+  if (task.numericValue !== null) return { label: 'старая версия', className: 'bg-blue-100 text-blue-800', problem: false };
+  return { label: 'нет результата', className: 'bg-amber-100 text-amber-800', problem: true };
+}
+
 function cashboxMappingStatusMessage(status?: string, error?: string) {
   if (status === 'saved') return { tone: 'green', text: 'Привязка кассы 1С сохранена.' };
   if (status === 'cleared') return { tone: 'amber', text: 'Привязка кассы 1С очищена.' };
@@ -305,6 +315,23 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   }));
   const cashStatementLoadedCount = cashStatementRows.filter((row) => row.result?.ok).length;
   const cashStatementMissingCashboxCount = cashStatementRows.filter((row) => !row.cashbox).length;
+  const acquiringControlRows = employees
+    .filter((employee) => usesWorkdayShiftControl(employee))
+    .map((employee) => {
+      const run = shiftControlRunByUser.get(employee.id);
+      const task = run?.tasks.find((item) => item.category === 'acquiring') ?? null;
+      return {
+        employee,
+        schedule: scheduleByUser.get(employee.id),
+        workDay: workDayByUser.get(employee.id),
+        task,
+        status: acquiringControlStatus(task),
+      };
+    });
+  const acquiringDoneCount = acquiringControlRows.filter((row) => row.task?.status === 'done').length;
+  const acquiringPendingCount = acquiringControlRows.filter((row) => row.status.problem && row.task?.integerValue !== 2).length;
+  const acquiringDiscrepancyCount = acquiringControlRows.filter((row) => row.task?.integerValue === 2).length;
+  const acquiringNoPaymentsCount = acquiringControlRows.filter((row) => row.task?.integerValue === 0).length;
   const cashboxMappingMessage = cashboxMappingStatusMessage(searchParams?.cashboxMapping, searchParams?.cashboxMappingError);
   const cashboxMappingEmployees = employees.filter((employee) => usesWorkdayShiftControl(employee));
   const cashboxMappingRedirectTo = `/admin/workday?date=${selectedDate}`;
@@ -566,6 +593,76 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           {cashStatementMissingCashboxCount > 0 && (
             <div className='border-t border-amber-100 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-900'>
               Для {cashStatementMissingCashboxCount} сотрудника касса 1С не привязана. Ведомость наличных считается только по явной привязке; подсказки по фамилии не используются как источник данных.
+            </div>
+          )}
+        </Card>
+
+        <Card className='p-0'>
+          <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between'>
+            <div className='flex items-center gap-2'>
+              <span className='flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700'>
+                <CreditCard className='h-5 w-5' />
+              </span>
+              <div>
+                <h2 className='text-lg font-extrabold text-slate-950'>Эквайринг</h2>
+                <p className='mt-1 text-sm font-medium text-slate-500'>
+                  Сводка по чек-листам оплат картой. Показывает, кто сверил терминал, где оплат не было и где есть расхождение.
+                </p>
+              </div>
+            </div>
+            <div className='flex flex-wrap gap-2 text-xs font-bold'>
+              <Badge className='bg-green-100 text-green-800'>выполнено: {acquiringDoneCount}/{acquiringControlRows.length}</Badge>
+              <Badge className='bg-slate-100 text-slate-700'>оплат не было: {acquiringNoPaymentsCount}</Badge>
+              <Badge className={acquiringDiscrepancyCount > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'}>
+                расхождений: {acquiringDiscrepancyCount}
+              </Badge>
+              <Badge className={acquiringPendingCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'}>
+                проверить: {acquiringPendingCount}
+              </Badge>
+            </div>
+          </div>
+          {acquiringControlRows.length === 0 ? (
+            <div className='px-5 py-4 text-sm font-semibold text-slate-500'>Нет сотрудников с чек-листом смены для контроля эквайринга.</div>
+          ) : (
+            <div className='overflow-x-auto'>
+              <Table>
+                <thead>
+                  <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
+                    <th className='px-4 py-3'>Сотрудник</th>
+                    <th className='px-4 py-3'>График</th>
+                    <th className='px-4 py-3'>Смена</th>
+                    <th className='px-4 py-3'>Результат</th>
+                    <th className='px-4 py-3'>Сумма</th>
+                    <th className='px-4 py-3'>Комментарий</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {acquiringControlRows.map((row) => (
+                    <tr key={row.employee.id} className='border-t border-slate-100 align-top'>
+                      <td className='px-4 py-3'>
+                        <p className='font-bold text-slate-950'>{row.employee.name}</p>
+                        <p className='text-xs font-semibold text-slate-500'>{departmentLabel(row.employee.department)}</p>
+                      </td>
+                      <td className='px-4 py-3'>
+                        <Badge className={scheduleClass(row.schedule?.status)}>{scheduleStatusLabel(row.schedule?.status)}</Badge>
+                      </td>
+                      <td className='px-4 py-3 text-sm font-semibold text-slate-700'>{row.workDay?.shiftLabel ?? '—'}</td>
+                      <td className='px-4 py-3'>
+                        <Badge className={row.status.className}>{row.status.label}</Badge>
+                        {row.task?.status === 'done' && row.task.completedAt ? (
+                          <p className='mt-1 text-xs font-semibold text-slate-400'>выполнено {formatTime(row.task.completedAt)}</p>
+                        ) : null}
+                      </td>
+                      <td className='px-4 py-3 font-semibold text-slate-700'>
+                        {row.task?.integerValue === 0 ? '0 ₽' : formatMoney(row.task?.numericValue)}
+                      </td>
+                      <td className='max-w-[320px] px-4 py-3 text-sm font-semibold text-slate-600'>
+                        {row.task?.comment || (row.status.problem ? 'Нужно проверить' : '—')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
             </div>
           )}
         </Card>
