@@ -78,6 +78,18 @@ admin/system side. If an employee marks "everything is OK" and automatic data
 later disagrees, create or show a control event for follow-up instead of adding
 more manual fields to the employee form.
 
+Treat every checklist answer as the employee's declaration, not as final truth.
+Keep the manual answer separate from future automatic verification results. A
+task may be completed while 1C/OFD checks are unavailable, delayed or
+contradictory; the contradiction should surface as an admin warning/control
+event rather than blocking the employee from finishing the day.
+
+When adding new checklist flows, do not encode "truth" into fields such as
+`integerValue`. For example, `0` on a credit/acquiring task should mean "the
+employee declared there were no operations", not "the system proved there were
+no operations". Future 1C/OFD checks should attach their own result and evidence
+beside the manual response.
+
 For cash specifically: the employee enters the real counted amount first. The
 expected 1C cash balance should not be shown in a way that encourages copying
 instead of counting.

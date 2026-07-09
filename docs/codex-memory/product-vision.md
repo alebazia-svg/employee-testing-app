@@ -13,6 +13,13 @@ If a check can be performed automatically through 1C, OFD/SABY, banking data or
 another reliable source, the portal should perform that check itself. Manual
 input should be reduced to the minimum needed to capture the real-world fact.
 
+An employee checklist answer is a manual declaration, not the source of truth.
+The system's control result should be formed separately from all available
+evidence: portal data, 1C, OFD/SABY, photos, cash operations and future trusted
+sources. The employee can complete the checklist even when automatic checks are
+pending or contradictory; contradictions become warnings or control events for
+admin review instead of hard blockers.
+
 If an employee marks "everything is OK" and a later automatic check finds a
 mismatch, that mismatch is a separate control event, not just a UI validation
 error. Future control events may:

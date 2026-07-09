@@ -78,6 +78,31 @@ that mismatch becomes a separate control event that can request re-check,
 comment, manager notification, violation journal entry and future discipline or
 bonus impact.
 
+## 2026-07-09 - Workday Manual Answers Are Declarations
+
+Accepted target architecture for Workday Control:
+
+- an employee checklist answer is only a manual declaration;
+- the system truth/control result is built separately from portal data, 1C,
+  OFD/SABY, photos and other trusted evidence;
+- automatic verification must not block checklist completion by default;
+- contradictions between the manual declaration and system evidence become
+  warnings/control events for admin review;
+- future integrations should keep manual response, system evidence, system
+  check result and admin review status as separate concepts.
+
+Examples to preserve in future design:
+
+- employee declares no T-Bank/acquiring operation, but 1C or OFD finds one;
+- employee declares "verified", but 1C and OFD amounts or receipts differ;
+- OFD receipt exists without a matching 1C document;
+- 1C document exists without a matching OFD receipt;
+- source data is unavailable or delayed, so the task is completed but marked
+  as pending/needs review when evidence arrives.
+
+Do not retrofit employee-facing checklist fields into sources of truth. They
+remain inputs for later verification.
+
 ## 2026-07-02 - Mobile Experience Is P0 For Launch
 
 Before employees use the portal daily, the mobile experience must feel like an
