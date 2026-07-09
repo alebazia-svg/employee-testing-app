@@ -144,6 +144,7 @@ type HandoverPhotoKey =
   | 'personalStatementPhoto'
   | 'personalAcquiringReceiptsPhoto'
   | 'sberbankTerminalReportPhoto'
+  | 'tbankReceiptsPhoto'
   | 'tbankTerminalReportPhoto'
   | 'zReportPhoto'
   | 'encashmentDocumentPhoto';
@@ -165,6 +166,7 @@ type HandoverDraft = {
   hasSberbankAcquiring: '' | 'yes' | 'no';
   sberbankTerminalTotal: string;
   hasTbankCredit: '' | 'yes' | 'no';
+  tbankReceiptsPhoto: HandoverPhotoValue;
   tbankTerminalReportPhoto: HandoverPhotoValue;
   tbankTerminalTotal: string;
   zReportPhoto: HandoverPhotoValue;
@@ -586,6 +588,7 @@ function emptyHandoverDraft(): HandoverDraft {
     hasSberbankAcquiring: '',
     sberbankTerminalTotal: '',
     hasTbankCredit: '',
+    tbankReceiptsPhoto: null,
     tbankTerminalReportPhoto: null,
     tbankTerminalTotal: '',
     zReportPhoto: null,
@@ -650,6 +653,7 @@ function draftFromHandoverData(data: unknown): HandoverDraft {
   draft.personalStatementPhoto = readSavedPhoto(data, 'personalStatement');
   draft.personalAcquiringReceiptsPhoto = readSavedPhoto(data, 'personalAcquiringReceipts');
   draft.sberbankTerminalReportPhoto = readSavedPhoto(data, 'sberbankTerminalReport');
+  draft.tbankReceiptsPhoto = readSavedPhoto(data, 'tbankReceipts');
   draft.tbankTerminalReportPhoto = readSavedPhoto(data, 'tbankTerminalReport');
   draft.zReportPhoto = readSavedPhoto(data, 'zReport');
   draft.encashmentDocumentPhoto = readSavedPhoto(data, 'encashmentDocument');
@@ -925,18 +929,29 @@ export function EmployeeTodayClient({
     handoverDraft.hadWithdrawal === 'yes' && handoverWithdrawalAmount !== null && handoverCashOrderAmount !== null
       ? Math.abs(handoverWithdrawalAmount - handoverCashOrderAmount)
       : 0;
+  const handoverHasDaytimeAcquiringPayments =
+    user.department === 'retail' &&
+    shiftControlState.tasks.some((task) => {
+      if (task.category !== 'acquiring') return false;
+      if (task.integerValue === 1 || task.integerValue === 2) return true;
+      return task.integerValue === null && task.numericValue !== null && task.numericValue > 0;
+    });
   function buildHandoverSteps(draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
     const draftRequiresEncashment = draftCashBalance !== null && draftCashBalance > 50000;
     const isClosingEmployee = isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode);
+    const requiresAcquiringReceiptsPhoto = handoverHasDaytimeAcquiringPayments || draft.hasSberbankAcquiring === 'yes';
     return [
       'personalCashBalance',
       'discrepancy',
+      ...(!isClosingEmployee && requiresAcquiringReceiptsPhoto ? ['personalAcquiringReceiptsPhoto'] : []),
       ...(user.department === 'retail' ? ['withdrawal'] : []),
       ...(draftRequiresEncashment ? ['encashment'] : []),
       ...(isClosingEmployee ? ['sberbankQuestion'] : []),
+      ...(isClosingEmployee && requiresAcquiringReceiptsPhoto ? ['personalAcquiringReceiptsPhoto'] : []),
       ...(isClosingEmployee && draft.hasSberbankAcquiring === 'yes' ? ['sberbankTerminal'] : []),
       ...(isClosingEmployee ? ['tbankQuestion'] : []),
+      ...(isClosingEmployee && draft.hasTbankCredit === 'yes' ? ['tbankReceipts'] : []),
       ...(isClosingEmployee && draft.hasTbankCredit === 'yes' ? ['tbankTerminal'] : []),
       ...(isClosingEmployee ? ['zReportPhoto'] : []),
     ] as const;
@@ -1317,6 +1332,7 @@ export function EmployeeTodayClient({
       'personalStatementPhoto',
       'personalAcquiringReceiptsPhoto',
       'sberbankTerminalReportPhoto',
+      'tbankReceiptsPhoto',
       'tbankTerminalReportPhoto',
       'zReportPhoto',
       'encashmentDocumentPhoto',
@@ -1772,12 +1788,14 @@ export function EmployeeTodayClient({
         if (draftDiscrepancyAmount > 300 && !draft.comment.trim()) return 'Комментарий обязателен: расхождение больше 300 ₽';
       }
     }
-    if (step === 'sberbankQuestion' && !draft.hasSberbankAcquiring) return 'Укажите, были ли оплаты через Сбербанк';
+    if (step === 'personalAcquiringReceiptsPhoto' && !hasHandoverPhoto(draft.personalAcquiringReceiptsPhoto)) return 'Сделайте фото чеков оплат картой за смену';
+    if (step === 'sberbankQuestion' && !draft.hasSberbankAcquiring) return 'Укажите, были ли операции по терминалу Сбербанка';
     if (step === 'sberbankTerminal') {
       if (!hasHandoverPhoto(draft.sberbankTerminalReportPhoto)) return 'Сделайте фото отчёта терминала Сбербанка';
       if (parseMoneyInput(draft.sberbankTerminalTotal) === null) return 'Укажите итоговую сумму по отчёту терминала Сбербанка';
     }
     if (step === 'tbankQuestion' && !draft.hasTbankCredit) return 'Укажите, были ли операции через терминал Т-Банка';
+    if (step === 'tbankReceipts' && !hasHandoverPhoto(draft.tbankReceiptsPhoto)) return 'Сделайте фото чеков / слипов Т-Банка за смену';
     if (step === 'tbankTerminal') {
       if (!hasHandoverPhoto(draft.tbankTerminalReportPhoto)) return 'Сделайте фото отчёта терминала Т-Банка';
       if (parseMoneyInput(draft.tbankTerminalTotal) === null) return 'Укажите итоговую сумму по отчёту терминала Т-Банка';
@@ -1813,6 +1831,7 @@ export function EmployeeTodayClient({
       'personalStatementPhoto',
       'personalAcquiringReceiptsPhoto',
       'sberbankTerminalReportPhoto',
+      'tbankReceiptsPhoto',
       'tbankTerminalReportPhoto',
       'zReportPhoto',
       'encashmentDocumentPhoto',
@@ -1931,7 +1950,7 @@ export function EmployeeTodayClient({
     const step = handoverSteps[handoverStep];
     const isLastStep = handoverStep === handoverSteps.length - 1;
     const stepError = handoverAttemptedStep === step ? getHandoverStepError() : '';
-    const sectionTitle = ['sberbankQuestion', 'sberbankTerminal', 'tbankQuestion', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
+    const sectionTitle = ['sberbankQuestion', 'sberbankTerminal', 'tbankQuestion', 'tbankReceipts', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
     const reportMissingHint = 'Если фото или отчёт не получается, сообщите администратору.';
     const handoverStepTitle: Record<string, string> = {
       personalCashBalance: 'Пересчитайте наличные',
@@ -1942,6 +1961,7 @@ export function EmployeeTodayClient({
       sberbankQuestion: 'Проверьте терминал Сбербанка',
       sberbankTerminal: 'Сверьте терминал Сбербанка',
       tbankQuestion: 'Проверьте терминал Т-Банка',
+      tbankReceipts: 'Подтвердите операции Т-Банка',
       tbankTerminal: 'Сверьте терминал Т-Банка',
       zReportPhoto: 'Закройте кассовую смену',
     };
@@ -1950,7 +1970,7 @@ export function EmployeeTodayClient({
         ? Banknote
         : step === 'personalAcquiringReceiptsPhoto' || step === 'sberbankQuestion' || step === 'sberbankTerminal'
           ? CreditCard
-          : step === 'tbankQuestion' || step === 'tbankTerminal'
+          : step === 'tbankQuestion' || step === 'tbankReceipts' || step === 'tbankTerminal'
             ? ReceiptText
             : step === 'discrepancy'
               ? AlertTriangle
@@ -2043,6 +2063,18 @@ export function EmployeeTodayClient({
               </div>
             )}
             {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+          </div>
+        )}
+
+        {step === 'personalAcquiringReceiptsPhoto' && (
+          <div className='grid gap-3'>
+            {renderPhotoInput(
+              'Чеки оплат картой',
+              'personalAcquiringReceiptsPhoto',
+              task,
+              'Сфотографируйте все чеки оплат картой по вашей кассе за смену.',
+              stepError,
+            )}
           </div>
         )}
 
@@ -2144,9 +2176,9 @@ export function EmployeeTodayClient({
 
         {step === 'sberbankQuestion' && (
           <div className='grid gap-3'>
-            <p className='text-sm font-extrabold text-slate-800'>Были оплаты через Сбербанк?</p>
+            <p className='text-sm font-extrabold text-slate-800'>Были операции по терминалу Сбербанка?</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Если оплат не было, выберите “Нет” и идите дальше.
+              Если операций не было, выберите “Нет” и идите дальше.
             </p>
             <div className='grid grid-cols-2 gap-2'>
               <Button
@@ -2192,7 +2224,7 @@ export function EmployeeTodayClient({
           <div className='grid gap-3'>
             <p className='text-sm font-extrabold text-slate-800'>Были операции через терминал Т-Банка?</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Если были оплаты через Т-Банк, выберите “Да”.
+              Кредиты, первоначальные взносы и полные оплаты через Т-Банк — это “Да”.
             </p>
             <div className='grid grid-cols-2 gap-2'>
               <Button
@@ -2205,12 +2237,24 @@ export function EmployeeTodayClient({
               <Button
                 type='button'
                 className={cn('h-10 shadow-none', handoverDraft.hasTbankCredit === 'no' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
-                onClick={() => updateHandoverDraft({ hasTbankCredit: 'no', tbankTerminalReportPhoto: null, tbankTerminalTotal: '' })}
+                onClick={() => updateHandoverDraft({ hasTbankCredit: 'no', tbankReceiptsPhoto: null, tbankTerminalReportPhoto: null, tbankTerminalTotal: '' })}
               >
                 Нет
               </Button>
             </div>
             {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+          </div>
+        )}
+
+        {step === 'tbankReceipts' && (
+          <div className='grid gap-3'>
+            {renderPhotoInput(
+              'Чеки / слипы Т-Банка',
+              'tbankReceiptsPhoto',
+              task,
+              'Сфотографируйте чеки и слипы Т-Банка за смену: кредиты, первоначальные взносы и полные оплаты.',
+              stepError,
+            )}
           </div>
         )}
 

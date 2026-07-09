@@ -64,6 +64,17 @@ function savedPhoto(handoverData: unknown, key: string) {
   return photos?.[key] ?? null;
 }
 
+async function runHasAcquiringPayments(runId: number) {
+  const acquiringTasks = await prisma.shiftControlTask.findMany({
+    where: { runId, category: 'acquiring', status: 'done' },
+    select: { integerValue: true, numericValue: true },
+  });
+  return acquiringTasks.some((task) => {
+    if (task.integerValue === 1 || task.integerValue === 2) return true;
+    return task.integerValue === null && task.numericValue !== null && Number(task.numericValue) > 0;
+  });
+}
+
 async function savePhoto(file: File, runId: number, taskId: number, key: string) {
   if (!file.type.startsWith('image/')) {
     throw new Error('Добавьте фото');
@@ -114,6 +125,7 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
     ['personalStatementPhoto', 'personalStatement', 'personal-statement'],
     ['personalAcquiringReceiptsPhoto', 'personalAcquiringReceipts', 'personal-acquiring-receipts'],
     ['sberbankTerminalReportPhoto', 'sberbankTerminalReport', 'sberbank-terminal-report'],
+    ['tbankReceiptsPhoto', 'tbankReceipts', 'tbank-receipts'],
     ['tbankTerminalReportPhoto', 'tbankTerminalReport', 'tbank-terminal-report'],
     ['zReportPhoto', 'zReport', 'z-report'],
     ['encashmentDocumentPhoto', 'encashmentDocument', 'encashment-document'],
@@ -231,11 +243,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       hadWithdrawal === true && withdrawalAmount !== null && cashOrderAmount !== null ? Math.abs(withdrawalAmount - cashOrderAmount) : 0;
     const requiresDiscrepancyComment =
       (discrepancyType === 'surplus' || discrepancyType === 'shortage') && discrepancyAmount !== null && discrepancyAmount > 300;
+    const requiresAcquiringReceiptsPhoto = isRetail && (hasSberbankAcquiring === true || await runHasAcquiringPayments(task.runId));
 
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
     if (!['none', 'surplus', 'shortage'].includes(discrepancyType)) return Response.json({ error: 'Укажите расхождение по моей кассе' }, { status: 400 });
     if (discrepancyType !== 'none' && discrepancyAmount === null) return Response.json({ error: 'Укажите сумму расхождения' }, { status: 400 });
     if (requiresDiscrepancyComment && !comment) return Response.json({ error: 'Добавьте комментарий: расхождение больше 300 ₽' }, { status: 400 });
+    if (requiresAcquiringReceiptsPhoto && !hasSavedPhoto(handoverData, 'personalAcquiringReceipts')) {
+      return Response.json({ error: 'Сделайте фото чеков оплат картой за смену' }, { status: 400 });
+    }
     if (isRetail && hadWithdrawal === null) return Response.json({ error: 'Укажите, была ли выемка' }, { status: 400 });
     if (isRetail && hadWithdrawal) {
       if (withdrawalAmount === null) return Response.json({ error: 'Укажите сумму выемки' }, { status: 400 });
@@ -249,13 +265,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
     if (isClosingEmployee) {
-      if (hasSberbankAcquiring === null) return Response.json({ error: 'Укажите, были ли оплаты через Сбербанк' }, { status: 400 });
+      if (hasSberbankAcquiring === null) return Response.json({ error: 'Укажите, были ли операции по терминалу Сбербанка' }, { status: 400 });
       if (hasSberbankAcquiring) {
         if (!hasSavedPhoto(handoverData, 'sberbankTerminalReport')) return Response.json({ error: 'Сделайте фото отчёта терминала Сбербанка' }, { status: 400 });
         if (sberbankTerminalTotal === null) return Response.json({ error: 'Укажите итоговую сумму по отчёту терминала Сбербанка' }, { status: 400 });
       }
-      if (hasTbankCredit === null) return Response.json({ error: 'Укажите, были ли кредиты/рассрочки через Т-Банк' }, { status: 400 });
+      if (hasTbankCredit === null) return Response.json({ error: 'Укажите, были ли операции по терминалу Т-Банка' }, { status: 400 });
       if (hasTbankCredit) {
+        if (!hasSavedPhoto(handoverData, 'tbankReceipts')) return Response.json({ error: 'Сделайте фото чеков / слипов Т-Банка за смену' }, { status: 400 });
         if (!hasSavedPhoto(handoverData, 'tbankTerminalReport')) return Response.json({ error: 'Сделайте фото отчёта терминала Т-Банка' }, { status: 400 });
         if (tbankTerminalTotal === null) return Response.json({ error: 'Укажите итоговую сумму по отчёту терминала Т-Банка' }, { status: 400 });
       }
@@ -265,8 +282,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     try {
       const photos = {
         personalStatement: savedPhoto(handoverData, 'personalStatement'),
-        personalAcquiringReceipts: isRetail ? savedPhoto(handoverData, 'personalAcquiringReceipts') : null,
+        personalAcquiringReceipts: requiresAcquiringReceiptsPhoto ? savedPhoto(handoverData, 'personalAcquiringReceipts') : null,
         sberbankTerminalReport: isClosingEmployee && hasSberbankAcquiring ? savedPhoto(handoverData, 'sberbankTerminalReport') : null,
+        tbankReceipts: isClosingEmployee && hasTbankCredit ? savedPhoto(handoverData, 'tbankReceipts') : null,
         tbankTerminalReport: isClosingEmployee && hasTbankCredit ? savedPhoto(handoverData, 'tbankTerminalReport') : null,
         zReport: isClosingEmployee ? savedPhoto(handoverData, 'zReport') : null,
         encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,

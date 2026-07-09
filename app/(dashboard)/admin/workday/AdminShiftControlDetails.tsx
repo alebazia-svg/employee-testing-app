@@ -279,7 +279,8 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
             <PhotoRow label='Фото отчёта Сбербанка' photo={readPhoto(photos, 'sberbankTerminalReport')} onPreview={onPreview} />
             <DetailRow label='Сумма по Сбербанку' value={formatMoney(Number(storeClosing.sberbankTerminalTotal ?? 0))} />
-            <DetailRow label='Кредиты через Т-Банк' value={yesNo(storeClosing.hasTbankCredit)} />
+            <DetailRow label='Операции Т-Банка' value={yesNo(storeClosing.hasTbankCredit)} />
+            <PhotoRow label='Фото чеков / слипов Т-Банка' photo={readPhoto(photos, 'tbankReceipts')} onPreview={onPreview} />
             <PhotoRow label='Фото отчёта Т-Банка' photo={readPhoto(photos, 'tbankTerminalReport')} onPreview={onPreview} />
             <DetailRow
               label='Сумма по Т-Банку'
