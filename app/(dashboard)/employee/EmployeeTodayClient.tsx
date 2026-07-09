@@ -2332,7 +2332,7 @@ export function EmployeeTodayClient({
           </div>
         </div>
       )}
-      <div className='mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[24px]'>
+      <div className='relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[24px]'>
         <header className='bg-[#111821] px-4 pb-4 pt-4 text-white'>
           <div className='flex items-center justify-between gap-3'>
             <BrandBlock size='header' />
@@ -2350,7 +2350,7 @@ export function EmployeeTodayClient({
           </div>
         </header>
 
-        <div className='flex-1 px-4 pb-4 pt-4'>
+        <div className='flex-1 px-4 pb-[calc(8.75rem+env(safe-area-inset-bottom))] pt-4'>
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
             <Card className='mb-4 border-amber-200 bg-amber-50'>
               <div className='flex items-start gap-3'>
@@ -2889,7 +2889,7 @@ export function EmployeeTodayClient({
           )}
         </div>
 
-        <nav className='sticky bottom-0 z-40 mx-auto w-full max-w-[520px] shrink-0 border-t border-slate-200 bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)] backdrop-blur'>
+        <nav className='fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] border-t border-slate-200 bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)] backdrop-blur md:absolute'>
           <div className='grid grid-cols-3 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
