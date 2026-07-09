@@ -439,15 +439,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const checkStatus = readInteger(payload.integerValue);
     const hasDiscrepancy = checkStatus === 2;
 
-    if (checkStatus === null || ![1, 2].includes(checkStatus)) {
-      return Response.json({ error: 'Выберите результат сверки кредитов/рассрочек' }, { status: 400 });
+    if (checkStatus === null || ![0, 1, 2].includes(checkStatus)) {
+      return Response.json({ error: 'Выберите результат сверки операций Т-Банка' }, { status: 400 });
     }
     if (hasDiscrepancy && !commentSource.trim()) {
-      return Response.json({ error: 'Опишите расхождение по кредитам/рассрочкам' }, { status: 400 });
+      return Response.json({ error: 'Опишите расхождение по операциям Т-Банка' }, { status: 400 });
     }
     data.integerValue = checkStatus;
     data.numericValue = null;
     data.booleanValue = !hasDiscrepancy;
+    data.comment = checkStatus === 0 ? '' : commentSource.trim();
   } else {
     data.textValue = textValue;
   }

@@ -108,6 +108,13 @@ function acquiringResult(task: ShiftTask) {
   return { label: 'Результат не указан', problem: false, legacy: false };
 }
 
+function creditResult(task: ShiftTask) {
+  if (task.integerValue === 0) return { label: 'Операций Т-Банка не было', problem: false };
+  if (task.integerValue === 1) return { label: 'Сверено', problem: false };
+  if (task.integerValue === 2) return { label: 'Есть расхождение', problem: true };
+  return { label: 'Результат не указан', problem: true };
+}
+
 function discrepancyLabel(value: unknown) {
   if (value === 'surplus') return 'излишек';
   if (value === 'shortage') return 'недостача';
@@ -199,10 +206,11 @@ function TaskValue({ task, onPreview }: { task: ShiftTask; onPreview: (photo: Ph
     );
   }
   if (task.category === 'credit') {
+    const result = creditResult(task);
     return (
-      <span>
-        {task.integerValue ?? 0} кредитов · {formatMoney(task.numericValue)} · контрагенты проверены: {yesNo(task.booleanValue)}
-        {task.comment ? ` · ${task.comment}` : ''}
+      <span className='inline-flex flex-wrap items-center gap-1.5'>
+        <span className={result.problem ? 'font-extrabold text-amber-800' : ''}>{result.label}</span>
+        {task.comment && <span>· {task.comment}</span>}
       </span>
     );
   }

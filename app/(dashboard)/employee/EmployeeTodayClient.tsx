@@ -680,6 +680,13 @@ function acquiringResultLabel(integerValue: number | null | undefined, numericVa
   return 'результат сверки не указан';
 }
 
+function creditResultLabel(integerValue: number | null | undefined) {
+  if (integerValue === 0) return 'операций Т-Банка не было';
+  if (integerValue === 1) return 'операции Т-Банка сверены';
+  if (integerValue === 2) return 'есть расхождение по операциям Т-Банка';
+  return 'результат сверки не указан';
+}
+
 function isClosingShift(shiftCode: string | null | undefined) {
   return shiftCode === '11_20';
 }
@@ -1446,11 +1453,11 @@ export function EmployeeTodayClient({
       payload.comment = acquiringCheckStatus === 0 ? '' : draft.comment;
     } else if (task.category === 'credit') {
       const creditCheckStatus = readIntegerFromDraft(draft.integerValue);
-      if (creditCheckStatus === null || ![1, 2].includes(creditCheckStatus)) localErrors.integerValue = 'Выберите результат сверки';
-      if (creditCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите расхождение по кредитам / рассрочкам';
+      if (creditCheckStatus === null || ![0, 1, 2].includes(creditCheckStatus)) localErrors.integerValue = 'Выберите результат сверки';
+      if (creditCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите расхождение по операциям Т-Банка';
       payload.integerValue = draft.integerValue;
-      payload.booleanValue = creditCheckStatus === 1;
-      payload.comment = draft.comment;
+      payload.booleanValue = creditCheckStatus !== 2;
+      payload.comment = creditCheckStatus === 0 ? '' : draft.comment;
     } else if (task.category === 'opening') {
       if (!openingPhotoFile) {
         setError('Сделайте фото X-отчёта / чека открытия смены');
@@ -1528,7 +1535,7 @@ export function EmployeeTodayClient({
         if (money && task.integerValue !== 0) parts.push(`сумма: ${money} ₽`);
         if (task.category === 'acquiring' && task.comment) parts.push(task.comment);
       } else if (task.category === 'credit') {
-        parts.push(task.integerValue === 2 ? 'кредиты: есть расхождение' : 'кредиты: всё в порядке');
+        parts.push(creditResultLabel(task.integerValue));
         if (task.comment) parts.push(task.comment);
       } else if (task.comment) {
         parts.push(task.comment);
@@ -1550,7 +1557,7 @@ export function EmployeeTodayClient({
         )}
         {task.category === 'credit' && (
           <div className='grid gap-0.5'>
-            <p>{task.integerValue === 2 ? 'Кредиты сверены: есть расхождение' : 'Кредиты сверены: всё в порядке'}</p>
+            <p>{creditResultLabel(task.integerValue)}</p>
             {task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
           </div>
         )}
@@ -1713,17 +1720,24 @@ export function EmployeeTodayClient({
         {isCredit && (
           <>
             <div className='grid gap-2'>
-              <p className='text-xs font-extrabold text-slate-700'>Результат сверки кредитов / рассрочек</p>
+              <p className='text-xs font-extrabold text-slate-700'>Результат сверки операций Т-Банка</p>
               <p className='text-[11px] font-semibold leading-snug text-slate-500'>
-                Проверьте, что кредитные продажи оформлены правильно. Если что-то не сходится, выберите расхождение.
+                Проверьте кредиты, первоначальные взносы и полные оплаты через Т-Банк. Если операций не было, так и отметьте.
               </p>
-              <div className='grid grid-cols-2 gap-2'>
+              <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
+                <Button
+                  type='button'
+                  className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '0' ? '' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
+                  onClick={() => updateShiftTaskDraft(task.id, { integerValue: '0', booleanValue: true, comment: '' })}
+                >
+                  Операций не было
+                </Button>
                 <Button
                   type='button'
                   className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '1' ? '' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
                   onClick={() => updateShiftTaskDraft(task.id, { integerValue: '1', booleanValue: true, comment: '' })}
                 >
-                  Всё в порядке
+                  Сверено
                 </Button>
                 <Button
                   type='button'
