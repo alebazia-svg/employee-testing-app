@@ -827,8 +827,9 @@ export function EmployeeTodayClient({
     return groups;
   }, [departmentScheduleState]);
 
-  const activeWorkDay = workDay && workDay.status !== 'completed' ? workDay : null;
-  const isCompleted = workDay?.status === 'completed';
+  const isCompleted = workDay?.status === 'completed' || Boolean(workDay?.endedAt);
+  const activeWorkDay = workDay && !isCompleted ? workDay : null;
+  const displayedWorkDayStatus = isCompleted ? 'completed' : workDay?.status;
   const availableShiftOptions = getShiftOptionsForDepartment(user.department);
   const selectedShiftOption = availableShiftOptions.find((shift) => shift.code === selectedShift);
   const elapsedMs = getElapsed(workDay, now);
@@ -1155,7 +1156,7 @@ export function EmployeeTodayClient({
       setNow(new Date());
       setMessage('');
       setQrDepartmentConfirmed(null);
-      void syncCurrentWorkdayState();
+      await syncCurrentWorkdayState();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
     } finally {
@@ -1180,7 +1181,7 @@ export function EmployeeTodayClient({
       if (payload.workDay.date === today) setWorkDay(payload.workDay);
       setUnfinished(null);
       setNow(new Date());
-      void syncCurrentWorkdayState();
+      await syncCurrentWorkdayState();
       setMessage('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить рабочий день');
@@ -1219,7 +1220,7 @@ export function EmployeeTodayClient({
       setStaleCloseReason('');
       setStaleCloseComment('');
       setNow(new Date());
-      void syncCurrentWorkdayState();
+      await syncCurrentWorkdayState();
       setMessage(payload.staleClosed ? 'Предыдущий рабочий день закрыт' : 'Рабочий день завершён');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить предыдущий рабочий день');
@@ -1300,7 +1301,7 @@ export function EmployeeTodayClient({
 
       setCashOperationsState((current) => [result.operation, ...current]);
       setCashOperationDraft({ direction: null, amount: '', comment: '' });
-      void syncCurrentWorkdayState();
+      await syncCurrentWorkdayState();
       setMessage(`Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
@@ -1387,7 +1388,7 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
-      void syncCurrentWorkdayState();
+      await syncCurrentWorkdayState();
       setMessage(shiftControlPhotoMessage(nextTasks, result.task.id));
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Не удалось обновить задачу';
@@ -1483,7 +1484,7 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
-      void syncCurrentWorkdayState();
+      await syncCurrentWorkdayState();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
     } finally {
@@ -1856,7 +1857,7 @@ export function EmployeeTodayClient({
       setHandoverDraft(emptyHandoverDraft());
       setMessage(result.message || 'Смена сдана, рабочий день завершён');
       setNow(new Date());
-      void syncCurrentWorkdayState();
+      await syncCurrentWorkdayState();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
     } finally {
@@ -2349,7 +2350,7 @@ export function EmployeeTodayClient({
           </div>
         </header>
 
-        <div className='flex-1 px-4 pb-[calc(8.75rem+env(safe-area-inset-bottom))] pt-4'>
+        <div className='flex-1 px-4 pb-4 pt-4'>
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
             <Card className='mb-4 border-amber-200 bg-amber-50'>
               <div className='flex items-start gap-3'>
@@ -2703,14 +2704,14 @@ export function EmployeeTodayClient({
               <Card className='bg-slate-50 p-4'>
                 <div className='mb-2.5 flex items-center justify-between gap-3'>
                   <h2 className='text-base font-extrabold text-slate-950'>Детали смены</h2>
-                  <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px]', factTone(workDay?.status))}>
-                    {factLabel(workDay?.status)}
+                  <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px]', factTone(displayedWorkDayStatus))}>
+                    {factLabel(displayedWorkDayStatus)}
                   </Badge>
                 </div>
                 <div className='grid grid-cols-2 gap-1.5'>
                   <DetailItem label='Смена' value={workDay ? workDay.shiftLabel : selectedShift ? shiftLabel(selectedShift) : 'не выбрана'} />
                   <DetailItem label='Начало' value={workDay ? formatTime(workDay.startedAt) : minutesToTime(shiftStart)} />
-                  <DetailItem label='Окончание' value={workDay?.endedAt ? formatTime(workDay.endedAt) : minutesToTime(shiftEnd)} />
+                  <DetailItem label='Окончание' value={workDay?.endedAt ? formatTime(workDay.endedAt) : 'не указано'} />
                   <DetailItem label='Опоздание' value={workDay?.lateMinutes ? `${workDay.lateMinutes} мин` : 'нет'} />
                 </div>
               </Card>
@@ -2888,7 +2889,7 @@ export function EmployeeTodayClient({
           )}
         </div>
 
-        <nav className='fixed inset-x-0 bottom-0 z-40 mx-auto max-w-[520px] border-t border-slate-200 bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)] backdrop-blur md:bottom-6'>
+        <nav className='sticky bottom-0 z-40 mx-auto w-full max-w-[520px] shrink-0 border-t border-slate-200 bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)] backdrop-blur'>
           <div className='grid grid-cols-3 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
