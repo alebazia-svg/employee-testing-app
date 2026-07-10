@@ -634,6 +634,8 @@ function draftFromHandoverData(data: unknown): HandoverDraft {
     draft.personalCashBalance = stringFromUnknown(personalCash.cashBalance);
     draft.discrepancyType = ['none', 'surplus', 'shortage'].includes(String(personalCash.discrepancyType)) ? String(personalCash.discrepancyType) as HandoverDraft['discrepancyType'] : '';
     draft.discrepancyAmount = stringFromUnknown(personalCash.discrepancyAmount);
+    draft.hasSberbankAcquiring = booleanDraftValue(personalCash.hasSberbankAcquiring);
+    draft.hasTbankCredit = booleanDraftValue(personalCash.hasTbankCredit);
     draft.encashmentAmount = stringFromUnknown(personalCash.encashmentAmount);
   }
   if (storeClosing) {
@@ -666,10 +668,10 @@ function readIntegerFromDraft(value: string) {
 }
 
 function acquiringResultLabel(integerValue: number | null | undefined, numericValue: number | null | undefined) {
-  if (integerValue === 0) return 'оплат картой не было';
-  if (integerValue === 1) return 'оплаты картой сверены';
-  if (integerValue === 2) return 'есть расхождение по оплатам картой';
-  if (numericValue !== null && numericValue !== undefined) return 'оплаты картой сверены';
+  if (integerValue === 0) return 'оплат Сбербанка не было';
+  if (integerValue === 1) return 'оплаты Сбербанка сверены';
+  if (integerValue === 2) return 'есть расхождение по оплатам Сбербанка';
+  if (numericValue !== null && numericValue !== undefined) return 'оплаты Сбербанка сверены';
   return 'результат сверки не указан';
 }
 
@@ -934,17 +936,17 @@ export function EmployeeTodayClient({
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
     const draftRequiresEncashment = draftCashBalance !== null && draftCashBalance > 50000;
     const isClosingEmployee = isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode);
+    const isRetailEmployee = user.department === 'retail';
     const requiresAcquiringReceiptsPhoto = handoverHasDaytimeAcquiringPayments || draft.hasSberbankAcquiring === 'yes';
     return [
       'personalCashBalance',
       'discrepancy',
-      ...(!isClosingEmployee && requiresAcquiringReceiptsPhoto ? ['personalAcquiringReceiptsPhoto'] : []),
+      ...(isRetailEmployee ? ['sberbankQuestion'] : []),
+      ...(isRetailEmployee && requiresAcquiringReceiptsPhoto ? ['personalAcquiringReceiptsPhoto'] : []),
+      ...(isRetailEmployee ? ['tbankQuestion'] : []),
+      ...(isRetailEmployee && draft.hasTbankCredit === 'yes' ? ['tbankReceipts'] : []),
       ...(draftRequiresEncashment ? ['encashment'] : []),
-      ...(isClosingEmployee ? ['sberbankQuestion'] : []),
-      ...(isClosingEmployee && requiresAcquiringReceiptsPhoto ? ['personalAcquiringReceiptsPhoto'] : []),
       ...(isClosingEmployee && draft.hasSberbankAcquiring === 'yes' ? ['sberbankTerminal'] : []),
-      ...(isClosingEmployee ? ['tbankQuestion'] : []),
-      ...(isClosingEmployee && draft.hasTbankCredit === 'yes' ? ['tbankReceipts'] : []),
       ...(isClosingEmployee && draft.hasTbankCredit === 'yes' ? ['tbankTerminal'] : []),
       ...(isClosingEmployee ? ['zReportPhoto'] : []),
     ] as const;
@@ -1427,9 +1429,9 @@ export function EmployeeTodayClient({
       payload.numericValue = draft.numericValue;
     } else if (task.category === 'acquiring') {
       const acquiringCheckStatus = readIntegerFromDraft(draft.integerValue);
-      if (acquiringCheckStatus === null || ![0, 1, 2].includes(acquiringCheckStatus)) localErrors.integerValue = 'Выберите результат сверки оплат картой';
-      if ((acquiringCheckStatus === 1 || acquiringCheckStatus === 2) && parseMoneyInput(draft.numericValue) === null) localErrors.numericValue = 'Укажите сумму оплат по терминалу';
-      if (acquiringCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите расхождение по оплатам картой';
+      if (acquiringCheckStatus === null || ![0, 1, 2].includes(acquiringCheckStatus)) localErrors.integerValue = 'Выберите результат сверки оплат Сбербанка';
+      if ((acquiringCheckStatus === 1 || acquiringCheckStatus === 2) && parseMoneyInput(draft.numericValue) === null) localErrors.numericValue = 'Укажите сумму оплат Сбербанка';
+      if (acquiringCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите расхождение по оплатам Сбербанка';
       payload.integerValue = draft.integerValue;
       payload.booleanValue = acquiringCheckStatus !== 2;
       payload.numericValue = acquiringCheckStatus === 0 ? '0' : draft.numericValue;
@@ -1534,7 +1536,7 @@ export function EmployeeTodayClient({
         {task.category === 'acquiring' && (
           <div className='grid gap-0.5'>
             <p>{acquiringResultLabel(task.integerValue, task.numericValue)}</p>
-            {money && task.integerValue !== 0 && <p>Сумма оплат картой: {money} ₽</p>}
+            {money && task.integerValue !== 0 && <p>Сумма оплат Сбербанка: {money} ₽</p>}
             {task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
           </div>
         )}
@@ -1643,9 +1645,9 @@ export function EmployeeTodayClient({
         {isAcquiring && (
           <>
             <div className='grid gap-2'>
-              <p className='text-xs font-extrabold text-slate-700'>Оплаты картой</p>
+              <p className='text-xs font-extrabold text-slate-700'>Оплаты Сбербанка</p>
               <p className='text-[11px] font-semibold leading-snug text-slate-500'>
-                Проверьте чеки и выберите результат.
+                Проверьте чеки оплат через терминал Сбербанка.
               </p>
               <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
                 <Button
@@ -1675,7 +1677,7 @@ export function EmployeeTodayClient({
 
             {showAcquiringAmount && (
               <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-                Сумма оплат картой
+                Сумма оплат Сбербанка
                 <input
                   type='number'
                   inputMode='decimal'
@@ -1784,8 +1786,8 @@ export function EmployeeTodayClient({
         if (draftDiscrepancyAmount > 300 && !draft.comment.trim()) return 'Комментарий обязателен: расхождение больше 300 ₽';
       }
     }
-    if (step === 'personalAcquiringReceiptsPhoto' && !hasHandoverPhoto(draft.personalAcquiringReceiptsPhoto)) return 'Сделайте фото чеков оплат картой за смену';
-    if (step === 'sberbankQuestion' && !draft.hasSberbankAcquiring) return 'Укажите, были ли операции по терминалу Сбербанка';
+    if (step === 'personalAcquiringReceiptsPhoto' && !hasHandoverPhoto(draft.personalAcquiringReceiptsPhoto)) return 'Сделайте фото чеков Сбербанка за смену';
+    if (step === 'sberbankQuestion' && !draft.hasSberbankAcquiring) return 'Укажите, были ли оплаты через терминал Сбербанка';
     if (step === 'sberbankTerminal') {
       if (!hasHandoverPhoto(draft.sberbankTerminalReportPhoto)) return 'Сделайте фото сверки итогов Сбербанка';
       if (parseMoneyInput(draft.sberbankTerminalTotal) === null) return 'Укажите сумму по сверке итогов Сбербанка';
@@ -1938,10 +1940,10 @@ export function EmployeeTodayClient({
     const sectionTitle = ['sberbankQuestion', 'sberbankTerminal', 'tbankQuestion', 'tbankReceipts', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
     const handoverStepTitle: Record<string, string> = {
       personalCashBalance: 'Пересчитайте наличные',
-      personalAcquiringReceiptsPhoto: 'Подтвердите оплаты картой',
+      personalAcquiringReceiptsPhoto: 'Чеки Сбербанка',
       discrepancy: 'Укажите расхождение',
       encashment: 'Оформите инкассацию',
-      sberbankQuestion: 'Проверьте терминал Сбербанка',
+      sberbankQuestion: 'Терминал Сбербанка',
       sberbankTerminal: 'Сверка итогов Сбербанка',
       tbankQuestion: 'Проверьте терминал Т-Банка',
       tbankReceipts: 'Подтвердите операции Т-Банка',
@@ -2052,10 +2054,10 @@ export function EmployeeTodayClient({
         {step === 'personalAcquiringReceiptsPhoto' && (
           <div className='grid gap-3'>
             {renderPhotoInput(
-              'Чеки оплат картой',
+              'Чеки Сбербанка',
               'personalAcquiringReceiptsPhoto',
               task,
-              'Сфотографируйте все чеки оплат картой за смену.',
+              'Сфотографируйте все чеки Сбербанка за смену.',
               stepError,
             )}
           </div>
@@ -2092,9 +2094,9 @@ export function EmployeeTodayClient({
 
         {step === 'sberbankQuestion' && (
           <div className='grid gap-3'>
-            <p className='text-sm font-extrabold text-slate-800'>Операции Сбербанка</p>
+            <p className='text-sm font-extrabold text-slate-800'>Терминал Сбербанка</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Выберите “Да”, если были оплаты через терминал.
+              Выберите “Да”, если были оплаты картой через терминал Сбербанка.
             </p>
             <div className='grid grid-cols-2 gap-2'>
               <Button

@@ -106,6 +106,11 @@ is ambiguous. The employee declares `no operations`, `check completed`, or
 T-Bank receipts remain in shift handover when operations happened. Objective
 matching should come later from 1C/OFD/AQSI/control events.
 
+For regular card sales in retail, use employee-facing Sberbank wording instead
+of generic acquiring wording. In the current store process, ordinary card sales
+go through the Sberbank terminal; T-Bank/AQSI is a separate control path for
+credits, initial payments and exceptional full payments.
+
 ## Checklist Copy Style
 
 Workday is mobile-first. Employee checklist copy should follow "one screen, one

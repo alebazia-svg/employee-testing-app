@@ -145,6 +145,8 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
       withdrawalAmount: null,
       cashOrderAmount: null,
       withdrawalDifference: null,
+      hasSberbankAcquiring: hasSberbankAcquiring ?? existingPersonalCash.hasSberbankAcquiring ?? null,
+      hasTbankCredit: hasTbankCredit ?? existingPersonalCash.hasTbankCredit ?? null,
       requiresEncashment: personalCashBalance !== null ? personalCashBalance > 50000 : Boolean(existingPersonalCash.requiresEncashment),
       encashmentAmount,
     },
@@ -220,9 +222,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const personalCashBalance = readNumber(personalCash.cashBalance);
     const discrepancyType = typeof personalCash.discrepancyType === 'string' ? personalCash.discrepancyType : '';
     const discrepancyAmount = readNumber(personalCash.discrepancyAmount);
-    const hasSberbankAcquiring = readBoolean(storeClosing.hasSberbankAcquiring);
+    const hasSberbankAcquiring = readBoolean(personalCash.hasSberbankAcquiring ?? storeClosing.hasSberbankAcquiring);
     const sberbankTerminalTotal = readNumber(storeClosing.sberbankTerminalTotal);
-    const hasTbankCredit = readBoolean(storeClosing.hasTbankCredit);
+    const hasTbankCredit = readBoolean(personalCash.hasTbankCredit ?? storeClosing.hasTbankCredit);
     const tbankTerminalTotal = readNumber(storeClosing.tbankTerminalTotal);
     const encashmentAmount = readNumber(personalCash.encashmentAmount);
     const comment = isRecord(handoverData) && typeof handoverData.comment === 'string' ? handoverData.comment.trim() : '';
@@ -238,7 +240,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (discrepancyType !== 'none' && discrepancyAmount === null) return Response.json({ error: 'Укажите сумму расхождения' }, { status: 400 });
     if (requiresDiscrepancyComment && !comment) return Response.json({ error: 'Добавьте комментарий: расхождение больше 300 ₽' }, { status: 400 });
     if (requiresAcquiringReceiptsPhoto && !hasSavedPhoto(handoverData, 'personalAcquiringReceipts')) {
-      return Response.json({ error: 'Сделайте фото чеков оплат картой за смену' }, { status: 400 });
+      return Response.json({ error: 'Сделайте фото чеков Сбербанка за смену' }, { status: 400 });
+    }
+    if (isRetail) {
+      if (hasSberbankAcquiring === null) return Response.json({ error: 'Укажите, были ли оплаты через терминал Сбербанка' }, { status: 400 });
+      if (hasTbankCredit === null) return Response.json({ error: 'Укажите, были ли операции через терминал Т-Банка' }, { status: 400 });
+      if (hasTbankCredit && !hasSavedPhoto(handoverData, 'tbankReceipts')) {
+        return Response.json({ error: 'Сделайте фото чеков Т-Банка за смену' }, { status: 400 });
+      }
     }
     if (requiresEncashment) {
       if (encashmentAmount === null) return Response.json({ error: 'Укажите сумму инкассации' }, { status: 400 });
@@ -247,14 +256,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
     if (isClosingEmployee) {
-      if (hasSberbankAcquiring === null) return Response.json({ error: 'Укажите, были ли операции по терминалу Сбербанка' }, { status: 400 });
       if (hasSberbankAcquiring) {
         if (!hasSavedPhoto(handoverData, 'sberbankTerminalReport')) return Response.json({ error: 'Сделайте фото сверки итогов Сбербанка' }, { status: 400 });
         if (sberbankTerminalTotal === null) return Response.json({ error: 'Укажите сумму по сверке итогов Сбербанка' }, { status: 400 });
       }
-      if (hasTbankCredit === null) return Response.json({ error: 'Укажите, были ли операции по терминалу Т-Банка' }, { status: 400 });
       if (hasTbankCredit) {
-        if (!hasSavedPhoto(handoverData, 'tbankReceipts')) return Response.json({ error: 'Сделайте фото чеков Т-Банка за смену' }, { status: 400 });
         if (!hasSavedPhoto(handoverData, 'tbankTerminalReport')) return Response.json({ error: 'Сделайте фото сверки итогов Т-Банка' }, { status: 400 });
         if (tbankTerminalTotal === null) return Response.json({ error: 'Укажите сумму по сверке итогов Т-Банка' }, { status: 400 });
       }
@@ -266,7 +272,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         personalStatement: savedPhoto(handoverData, 'personalStatement'),
         personalAcquiringReceipts: requiresAcquiringReceiptsPhoto ? savedPhoto(handoverData, 'personalAcquiringReceipts') : null,
         sberbankTerminalReport: isClosingEmployee && hasSberbankAcquiring ? savedPhoto(handoverData, 'sberbankTerminalReport') : null,
-        tbankReceipts: isClosingEmployee && hasTbankCredit ? savedPhoto(handoverData, 'tbankReceipts') : null,
+        tbankReceipts: isRetail && hasTbankCredit ? savedPhoto(handoverData, 'tbankReceipts') : null,
         tbankTerminalReport: isClosingEmployee && hasTbankCredit ? savedPhoto(handoverData, 'tbankTerminalReport') : null,
         zReport: isClosingEmployee ? savedPhoto(handoverData, 'zReport') : null,
         encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
@@ -288,6 +294,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           withdrawalAmount: null,
           cashOrderAmount: null,
           withdrawalDifference: null,
+          hasSberbankAcquiring,
+          hasTbankCredit,
           requiresEncashment,
           encashmentAmount: requiresEncashment ? encashmentAmount : null,
         },
@@ -405,7 +413,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const hasDiscrepancy = checkStatus === 2;
 
     if (checkStatus === null || ![0, 1, 2].includes(checkStatus)) {
-      return Response.json({ error: 'Выберите результат сверки оплат картой' }, { status: 400 });
+      return Response.json({ error: 'Выберите результат сверки оплат Сбербанка' }, { status: 400 });
     }
     if ((checkStatus === 1 || checkStatus === 2) && numericValue === null) {
       return Response.json({ error: 'Укажите сумму оплат по терминалу' }, { status: 400 });

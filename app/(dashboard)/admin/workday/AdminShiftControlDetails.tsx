@@ -264,7 +264,9 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
             <PhotoRow label='Фото ведомости 1С' photo={readPhoto(photos, 'personalStatement')} onPreview={onPreview} />
             <DetailRow label='Остаток наличных' value={formatMoney(Number(personalCash.cashBalance ?? 0))} />
-            {isRetail && <PhotoRow label='Фото чеков эквайринга' photo={readPhoto(photos, 'personalAcquiringReceipts')} onPreview={onPreview} />}
+            {isRetail && <DetailRow label='Оплаты Сбербанка' value={yesNo(personalCash.hasSberbankAcquiring)} />}
+            {isRetail && <PhotoRow label='Фото чеков Сбербанка' photo={readPhoto(photos, 'personalAcquiringReceipts')} onPreview={onPreview} />}
+            {isRetail && <DetailRow label='Операции Т-Банка' value={yesNo(personalCash.hasTbankCredit)} />}
             <DetailRow label='Расхождение' value={discrepancyLabel(personalCash.discrepancyType)} />
             <DetailRow
               label='Сумма расхождения'
