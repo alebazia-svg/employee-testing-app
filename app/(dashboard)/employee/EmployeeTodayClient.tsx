@@ -159,9 +159,6 @@ type HandoverDraft = {
   personalCashBalance: string;
   discrepancyType: '' | 'none' | 'surplus' | 'shortage';
   discrepancyAmount: string;
-  hadWithdrawal: '' | 'yes' | 'no';
-  withdrawalAmount: string;
-  cashOrderAmount: string;
   sberbankTerminalReportPhoto: HandoverPhotoValue;
   hasSberbankAcquiring: '' | 'yes' | 'no';
   sberbankTerminalTotal: string;
@@ -531,6 +528,8 @@ function shiftTaskTitle(task: ShiftControlTask) {
   }
   if (task.category === 'acquiring') return task.title.replace('Проверить эквайринг', 'Сверить оплаты по терминалу').replace('Повторно проверить эквайринг', 'Повторно сверить оплаты по терминалу').replace('эквайринг', 'оплаты по терминалу');
   if (task.category === 'credit') return task.title.replace('Проверить кредиты и рассрочки', 'Сверить кредиты / рассрочки').replace('Повторно проверить кредиты и рассрочки', 'Повторно сверить кредиты / рассрочки').replace('кредиты и рассрочки', 'кредиты / рассрочки').replace('Кредиты', 'Кредиты / рассрочки');
+  if (task.category === 'opening') return 'Чек открытия смены';
+  if (task.category === 'closing') return 'Чек закрытия смены';
   return task.title;
 }
 
@@ -581,9 +580,6 @@ function emptyHandoverDraft(): HandoverDraft {
     personalCashBalance: '',
     discrepancyType: '',
     discrepancyAmount: '',
-    hadWithdrawal: '',
-    withdrawalAmount: '',
-    cashOrderAmount: '',
     sberbankTerminalReportPhoto: null,
     hasSberbankAcquiring: '',
     sberbankTerminalTotal: '',
@@ -638,9 +634,6 @@ function draftFromHandoverData(data: unknown): HandoverDraft {
     draft.personalCashBalance = stringFromUnknown(personalCash.cashBalance);
     draft.discrepancyType = ['none', 'surplus', 'shortage'].includes(String(personalCash.discrepancyType)) ? String(personalCash.discrepancyType) as HandoverDraft['discrepancyType'] : '';
     draft.discrepancyAmount = stringFromUnknown(personalCash.discrepancyAmount);
-    draft.hadWithdrawal = booleanDraftValue(personalCash.hadWithdrawal);
-    draft.withdrawalAmount = stringFromUnknown(personalCash.withdrawalAmount);
-    draft.cashOrderAmount = stringFromUnknown(personalCash.cashOrderAmount);
     draft.encashmentAmount = stringFromUnknown(personalCash.encashmentAmount);
   }
   if (storeClosing) {
@@ -682,8 +675,8 @@ function acquiringResultLabel(integerValue: number | null | undefined, numericVa
 
 function creditResultLabel(integerValue: number | null | undefined) {
   if (integerValue === 0) return 'операций Т-Банка не было';
-  if (integerValue === 1) return 'операции Т-Банка сверены';
-  if (integerValue === 2) return 'есть расхождение по операциям Т-Банка';
+  if (integerValue === 1) return 'проверка Т-Банка выполнена';
+  if (integerValue === 2) return 'есть проблема по операциям Т-Банка';
   return 'результат сверки не указан';
 }
 
@@ -930,12 +923,6 @@ export function EmployeeTodayClient({
   const handoverDiscrepancyAmount = parseMoneyInput(handoverDraft.discrepancyAmount);
   const handoverIsClosingEmployee = isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode);
   const handoverRequiresEncashment = handoverPersonalCashBalance !== null && handoverPersonalCashBalance > 50000;
-  const handoverWithdrawalAmount = parseMoneyInput(handoverDraft.withdrawalAmount);
-  const handoverCashOrderAmount = parseMoneyInput(handoverDraft.cashOrderAmount);
-  const handoverWithdrawalDifference =
-    handoverDraft.hadWithdrawal === 'yes' && handoverWithdrawalAmount !== null && handoverCashOrderAmount !== null
-      ? Math.abs(handoverWithdrawalAmount - handoverCashOrderAmount)
-      : 0;
   const handoverHasDaytimeAcquiringPayments =
     user.department === 'retail' &&
     shiftControlState.tasks.some((task) => {
@@ -952,7 +939,6 @@ export function EmployeeTodayClient({
       'personalCashBalance',
       'discrepancy',
       ...(!isClosingEmployee && requiresAcquiringReceiptsPhoto ? ['personalAcquiringReceiptsPhoto'] : []),
-      ...(user.department === 'retail' ? ['withdrawal'] : []),
       ...(draftRequiresEncashment ? ['encashment'] : []),
       ...(isClosingEmployee ? ['sberbankQuestion'] : []),
       ...(isClosingEmployee && requiresAcquiringReceiptsPhoto ? ['personalAcquiringReceiptsPhoto'] : []),
@@ -1350,9 +1336,6 @@ export function EmployeeTodayClient({
     formData.append('personalCashBalance', draft.personalCashBalance);
     formData.append('discrepancyType', draft.discrepancyType);
     formData.append('discrepancyAmount', draft.discrepancyAmount);
-    formData.append('hadWithdrawal', draft.hadWithdrawal ? String(draft.hadWithdrawal === 'yes') : '');
-    formData.append('withdrawalAmount', draft.withdrawalAmount);
-    formData.append('cashOrderAmount', draft.cashOrderAmount);
     formData.append('hasSberbankAcquiring', draft.hasSberbankAcquiring ? String(draft.hasSberbankAcquiring === 'yes') : '');
     formData.append('sberbankTerminalTotal', draft.sberbankTerminalTotal);
     formData.append('hasTbankCredit', draft.hasTbankCredit ? String(draft.hasTbankCredit === 'yes') : '');
@@ -1454,13 +1437,13 @@ export function EmployeeTodayClient({
     } else if (task.category === 'credit') {
       const creditCheckStatus = readIntegerFromDraft(draft.integerValue);
       if (creditCheckStatus === null || ![0, 1, 2].includes(creditCheckStatus)) localErrors.integerValue = 'Выберите результат сверки';
-      if (creditCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите расхождение по операциям Т-Банка';
+      if (creditCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите проблему по операциям Т-Банка';
       payload.integerValue = draft.integerValue;
       payload.booleanValue = creditCheckStatus !== 2;
       payload.comment = creditCheckStatus === 0 ? '' : draft.comment;
     } else if (task.category === 'opening') {
       if (!openingPhotoFile) {
-        setError('Сделайте фото X-отчёта / чека открытия смены');
+        setError('Сделайте фото чека открытия смены');
         return;
       }
     } else if (task.category === 'handover') {
@@ -1585,24 +1568,29 @@ export function EmployeeTodayClient({
 
     if (isOpening) {
       return (
-        <label className={cn('mt-2 flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-12 text-base' : 'min-h-8 text-xs')}>
-          {isSaving && openingPhotoTaskId === task.id ? 'Сохраняем фото...' : 'Сделать фото'}
-          <input
-            type='file'
-            accept='image/*'
-            capture='environment'
-            className='sr-only'
-            disabled={isSaving}
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              event.currentTarget.value = '';
-              if (!file) return;
-              setOpeningPhotoTaskId(task.id);
-              setOpeningPhotoFile(file);
-              completeOpeningPhotoTask(task, file);
-            }}
-          />
-        </label>
+        <div className='mt-2 grid gap-2'>
+          <p className={cn('font-semibold leading-snug text-slate-500', compact ? 'text-sm' : 'text-xs')}>
+            Откройте смену на кассе и сфотографируйте распечатанный чек.
+          </p>
+          <label className={cn('flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-12 text-base' : 'min-h-8 text-xs')}>
+            {isSaving && openingPhotoTaskId === task.id ? 'Сохраняем фото...' : 'Сделать фото'}
+            <input
+              type='file'
+              accept='image/*'
+              capture='environment'
+              className='sr-only'
+              disabled={isSaving}
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null;
+                event.currentTarget.value = '';
+                if (!file) return;
+                setOpeningPhotoTaskId(task.id);
+                setOpeningPhotoFile(file);
+                completeOpeningPhotoTask(task, file);
+              }}
+            />
+          </label>
+        </div>
       );
     }
 
@@ -1634,9 +1622,9 @@ export function EmployeeTodayClient({
       <div className='mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
         {isCash && (
           <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-            Фактически пересчитано наличных
+            Наличные в кассе
             <span className='text-[11px] font-semibold leading-snug text-slate-500'>
-              Пересчитайте реальные деньги в своей кассе и внесите фактическую сумму. Не переписывайте остаток из 1С без пересчёта.
+              Пересчитайте деньги и внесите фактическую сумму.
             </span>
             <input
               type='number'
@@ -1655,9 +1643,9 @@ export function EmployeeTodayClient({
         {isAcquiring && (
           <>
             <div className='grid gap-2'>
-              <p className='text-xs font-extrabold text-slate-700'>Результат сверки оплат картой</p>
+              <p className='text-xs font-extrabold text-slate-700'>Оплаты картой</p>
               <p className='text-[11px] font-semibold leading-snug text-slate-500'>
-                Проверьте чеки оплат картой по своей кассе. Сумму вводите только если оплаты были.
+                Проверьте чеки и выберите результат.
               </p>
               <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
                 <Button
@@ -1720,9 +1708,9 @@ export function EmployeeTodayClient({
         {isCredit && (
           <>
             <div className='grid gap-2'>
-              <p className='text-xs font-extrabold text-slate-700'>Результат сверки операций Т-Банка</p>
+              <p className='text-xs font-extrabold text-slate-700'>Операции Т-Банка</p>
               <p className='text-[11px] font-semibold leading-snug text-slate-500'>
-                Проверьте кредиты, первоначальные взносы и полные оплаты через Т-Банк. Если операций не было, так и отметьте.
+                Проверьте, что операции оформлены в 1С.
               </p>
               <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
                 <Button
@@ -1737,14 +1725,14 @@ export function EmployeeTodayClient({
                   className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '1' ? '' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
                   onClick={() => updateShiftTaskDraft(task.id, { integerValue: '1', booleanValue: true, comment: '' })}
                 >
-                  Сверено
+                  Проверка выполнена
                 </Button>
                 <Button
                   type='button'
                   className={cn('h-9 px-2 text-xs shadow-none', draft.integerValue === '2' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100')}
                   onClick={() => updateShiftTaskDraft(task.id, { integerValue: '2', booleanValue: false })}
                 >
-                  Есть расхождение
+                  Есть проблема
                 </Button>
               </div>
               {errors.integerValue && <span className='text-[11px] font-bold text-amber-700'>{errors.integerValue}</span>}
@@ -1755,7 +1743,7 @@ export function EmployeeTodayClient({
                 value={draft.comment}
                 onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
                 className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                placeholder={draft.integerValue === '2' ? 'Что именно не сходится?' : 'Необязательно'}
+                placeholder={draft.integerValue === '2' ? 'Что именно не получилось?' : 'Необязательно'}
               />
               {errors.comment && <span className='text-[11px] font-bold text-amber-700'>{errors.comment}</span>}
             </label>
@@ -1787,12 +1775,6 @@ export function EmployeeTodayClient({
   function getHandoverStepError(step = handoverSteps[handoverStep], draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
     const draftDiscrepancyAmount = parseMoneyInput(draft.discrepancyAmount);
-    const draftWithdrawalAmount = parseMoneyInput(draft.withdrawalAmount);
-    const draftCashOrderAmount = parseMoneyInput(draft.cashOrderAmount);
-    const draftWithdrawalDifference =
-      draft.hadWithdrawal === 'yes' && draftWithdrawalAmount !== null && draftCashOrderAmount !== null
-        ? Math.abs(draftWithdrawalAmount - draftCashOrderAmount)
-        : 0;
 
     if (step === 'personalCashBalance' && draftCashBalance === null) return 'Укажите остаток наличных в моей кассе';
     if (step === 'discrepancy') {
@@ -1805,24 +1787,16 @@ export function EmployeeTodayClient({
     if (step === 'personalAcquiringReceiptsPhoto' && !hasHandoverPhoto(draft.personalAcquiringReceiptsPhoto)) return 'Сделайте фото чеков оплат картой за смену';
     if (step === 'sberbankQuestion' && !draft.hasSberbankAcquiring) return 'Укажите, были ли операции по терминалу Сбербанка';
     if (step === 'sberbankTerminal') {
-      if (!hasHandoverPhoto(draft.sberbankTerminalReportPhoto)) return 'Сделайте фото отчёта терминала Сбербанка';
-      if (parseMoneyInput(draft.sberbankTerminalTotal) === null) return 'Укажите итоговую сумму по отчёту терминала Сбербанка';
+      if (!hasHandoverPhoto(draft.sberbankTerminalReportPhoto)) return 'Сделайте фото сверки итогов Сбербанка';
+      if (parseMoneyInput(draft.sberbankTerminalTotal) === null) return 'Укажите сумму по сверке итогов Сбербанка';
     }
     if (step === 'tbankQuestion' && !draft.hasTbankCredit) return 'Укажите, были ли операции через терминал Т-Банка';
-    if (step === 'tbankReceipts' && !hasHandoverPhoto(draft.tbankReceiptsPhoto)) return 'Сделайте фото чеков / слипов Т-Банка за смену';
+    if (step === 'tbankReceipts' && !hasHandoverPhoto(draft.tbankReceiptsPhoto)) return 'Сделайте фото чеков Т-Банка за смену';
     if (step === 'tbankTerminal') {
-      if (!hasHandoverPhoto(draft.tbankTerminalReportPhoto)) return 'Сделайте фото отчёта терминала Т-Банка';
-      if (parseMoneyInput(draft.tbankTerminalTotal) === null) return 'Укажите итоговую сумму по отчёту терминала Т-Банка';
+      if (!hasHandoverPhoto(draft.tbankTerminalReportPhoto)) return 'Сделайте фото сверки итогов Т-Банка';
+      if (parseMoneyInput(draft.tbankTerminalTotal) === null) return 'Укажите сумму по сверке итогов Т-Банка';
     }
-    if (step === 'zReportPhoto' && !hasHandoverPhoto(draft.zReportPhoto)) return 'Сделайте фото Z-отчёта / чека закрытия смены';
-    if (step === 'withdrawal') {
-      if (!draft.hadWithdrawal) return 'Укажите, была ли выемка';
-      if (draft.hadWithdrawal === 'yes') {
-        if (draftWithdrawalAmount === null) return 'Укажите сумму выемки';
-        if (draftCashOrderAmount === null) return 'Укажите сумму приходника';
-        if (draftWithdrawalDifference > 0 && !draft.comment.trim()) return 'Добавьте комментарий к расхождению выемки';
-      }
-    }
+    if (step === 'zReportPhoto' && !hasHandoverPhoto(draft.zReportPhoto)) return 'Сделайте фото чека закрытия смены';
     if (step === 'encashment') {
       if (parseMoneyInput(draft.encashmentAmount) === null) return 'Укажите сумму инкассации';
       if (!hasHandoverPhoto(draft.encashmentDocumentPhoto)) return 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.';
@@ -1856,9 +1830,6 @@ export function EmployeeTodayClient({
     formData.append('personalCashBalance', draft.personalCashBalance);
     formData.append('discrepancyType', draft.discrepancyType);
     formData.append('discrepancyAmount', draft.discrepancyAmount);
-    formData.append('hadWithdrawal', draft.hadWithdrawal ? String(draft.hadWithdrawal === 'yes') : '');
-    formData.append('withdrawalAmount', draft.withdrawalAmount);
-    formData.append('cashOrderAmount', draft.cashOrderAmount);
     formData.append('hasSberbankAcquiring', draft.hasSberbankAcquiring ? String(draft.hasSberbankAcquiring === 'yes') : '');
     formData.append('sberbankTerminalTotal', draft.sberbankTerminalTotal);
     formData.append('hasTbankCredit', draft.hasTbankCredit ? String(draft.hasTbankCredit === 'yes') : '');
@@ -1965,22 +1936,20 @@ export function EmployeeTodayClient({
     const isLastStep = handoverStep === handoverSteps.length - 1;
     const stepError = handoverAttemptedStep === step ? getHandoverStepError() : '';
     const sectionTitle = ['sberbankQuestion', 'sberbankTerminal', 'tbankQuestion', 'tbankReceipts', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
-    const reportMissingHint = 'Если фото или отчёт не получается, сообщите администратору.';
     const handoverStepTitle: Record<string, string> = {
       personalCashBalance: 'Пересчитайте наличные',
       personalAcquiringReceiptsPhoto: 'Подтвердите оплаты картой',
       discrepancy: 'Укажите расхождение',
-      withdrawal: 'Проверьте выемку',
       encashment: 'Оформите инкассацию',
       sberbankQuestion: 'Проверьте терминал Сбербанка',
-      sberbankTerminal: 'Сверьте терминал Сбербанка',
+      sberbankTerminal: 'Сверка итогов Сбербанка',
       tbankQuestion: 'Проверьте терминал Т-Банка',
       tbankReceipts: 'Подтвердите операции Т-Банка',
-      tbankTerminal: 'Сверьте терминал Т-Банка',
-      zReportPhoto: 'Закройте кассовую смену',
+      tbankTerminal: 'Сверка итогов Т-Банка',
+      zReportPhoto: 'Чек закрытия смены',
     };
     const handoverIcon =
-      step === 'personalCashBalance' || step === 'withdrawal' || step === 'encashment'
+      step === 'personalCashBalance' || step === 'encashment'
         ? Banknote
         : step === 'personalAcquiringReceiptsPhoto' || step === 'sberbankQuestion' || step === 'sberbankTerminal'
           ? CreditCard
@@ -2006,7 +1975,7 @@ export function EmployeeTodayClient({
           </div>
         </div>
 
-        {step === 'zReportPhoto' && renderPhotoInput('Z-отчёт', 'zReportPhoto', task, `Сфотографируйте Z-отчёт закрытия кассы. ${reportMissingHint}`, stepError)}
+        {step === 'zReportPhoto' && renderPhotoInput('Чек закрытия смены', 'zReportPhoto', task, 'Закройте смену на кассе и сфотографируйте распечатанный чек.', stepError)}
 
         {step === 'personalCashBalance' && (
           <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
@@ -2032,7 +2001,7 @@ export function EmployeeTodayClient({
           <div className='grid gap-3'>
             <p className='text-sm font-extrabold text-slate-800'>Расхождение</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Есть излишек или недостача? Укажите сумму.
+              Укажите, есть ли излишек или недостача.
             </p>
             <div className='grid grid-cols-3 gap-2'>
               {[
@@ -2086,76 +2055,9 @@ export function EmployeeTodayClient({
               'Чеки оплат картой',
               'personalAcquiringReceiptsPhoto',
               task,
-              'Сфотографируйте все чеки оплат картой по вашей кассе за смену.',
+              'Сфотографируйте все чеки оплат картой за смену.',
               stepError,
             )}
-          </div>
-        )}
-
-        {step === 'withdrawal' && (
-          <div className='grid gap-3'>
-            <p className='text-sm font-extrabold text-slate-800'>Была выемка?</p>
-            <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Если деньги забирали из кассы, укажите суммы.
-            </p>
-            <div className='grid grid-cols-2 gap-2'>
-              <Button
-                type='button'
-                className={cn('h-10 shadow-none', handoverDraft.hadWithdrawal === 'yes' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
-                onClick={() => updateHandoverDraft({ hadWithdrawal: 'yes' })}
-              >
-                Была
-              </Button>
-              <Button
-                type='button'
-                className={cn('h-10 shadow-none', handoverDraft.hadWithdrawal === 'no' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
-                onClick={() => updateHandoverDraft({ hadWithdrawal: 'no', withdrawalAmount: '', cashOrderAmount: '' })}
-              >
-                Не было
-              </Button>
-            </div>
-            {handoverDraft.hadWithdrawal === 'yes' && (
-              <div className='grid gap-2'>
-                <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-                  Сумма выемки
-                  <input
-                    type='number'
-                    inputMode='decimal'
-                    min='0'
-                    step='0.01'
-                    value={handoverDraft.withdrawalAmount}
-                    onChange={(event) => updateHandoverDraft({ withdrawalAmount: event.target.value })}
-                    className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                    placeholder='0'
-                  />
-                </label>
-                <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-                  Сумма приходника
-                  <input
-                    type='number'
-                    inputMode='decimal'
-                    min='0'
-                    step='0.01'
-                    value={handoverDraft.cashOrderAmount}
-                    onChange={(event) => updateHandoverDraft({ cashOrderAmount: event.target.value })}
-                    className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                    placeholder='0'
-                  />
-                </label>
-                {handoverWithdrawalDifference > 0 && (
-                  <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-                    Комментарий к расхождению выемки
-                    <textarea
-                      value={handoverDraft.comment}
-                      onChange={(event) => updateHandoverDraft({ comment: event.target.value })}
-                      className='min-h-16 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                      placeholder={`Расхождение ${formatShiftMoney(handoverWithdrawalDifference)} ₽`}
-                    />
-                  </label>
-                )}
-              </div>
-            )}
-            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
           </div>
         )}
 
@@ -2190,9 +2092,9 @@ export function EmployeeTodayClient({
 
         {step === 'sberbankQuestion' && (
           <div className='grid gap-3'>
-            <p className='text-sm font-extrabold text-slate-800'>Были операции по терминалу Сбербанка?</p>
+            <p className='text-sm font-extrabold text-slate-800'>Операции Сбербанка</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Если операций не было, выберите “Нет” и идите дальше.
+              Выберите “Да”, если были оплаты через терминал.
             </p>
             <div className='grid grid-cols-2 gap-2'>
               <Button
@@ -2216,9 +2118,9 @@ export function EmployeeTodayClient({
 
         {step === 'sberbankTerminal' && (
           <div className='grid gap-3'>
-            {renderPhotoInput('Отчёт Сбербанка', 'sberbankTerminalReportPhoto', task, `Фото отчёта терминала. ${reportMissingHint}`, stepError && !hasHandoverPhoto(handoverDraft.sberbankTerminalReportPhoto) ? stepError : undefined)}
+            {renderPhotoInput('Сверка итогов Сбербанка', 'sberbankTerminalReportPhoto', task, 'Выполните «Сверку итогов» и сфотографируйте чек.', stepError && !hasHandoverPhoto(handoverDraft.sberbankTerminalReportPhoto) ? stepError : undefined)}
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Сумма по отчёту Сбербанка
+              Сумма по сверке итогов Сбербанка
               <input
                 type='number'
                 inputMode='decimal'
@@ -2236,9 +2138,9 @@ export function EmployeeTodayClient({
 
         {step === 'tbankQuestion' && (
           <div className='grid gap-3'>
-            <p className='text-sm font-extrabold text-slate-800'>Были операции через терминал Т-Банка?</p>
+            <p className='text-sm font-extrabold text-slate-800'>Операции Т-Банка</p>
             <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Кредиты, первоначальные взносы и полные оплаты через Т-Банк — это “Да”.
+              Выберите “Да” для кредитов, взносов или оплат.
             </p>
             <div className='grid grid-cols-2 gap-2'>
               <Button
@@ -2263,10 +2165,10 @@ export function EmployeeTodayClient({
         {step === 'tbankReceipts' && (
           <div className='grid gap-3'>
             {renderPhotoInput(
-              'Чеки / слипы Т-Банка',
+              'Чеки Т-Банка',
               'tbankReceiptsPhoto',
               task,
-              'Сфотографируйте чеки и слипы Т-Банка за смену: кредиты, первоначальные взносы и полные оплаты.',
+              'Сфотографируйте все чеки Т-Банка за смену.',
               stepError,
             )}
           </div>
@@ -2274,9 +2176,9 @@ export function EmployeeTodayClient({
 
         {step === 'tbankTerminal' && (
           <div className='grid gap-3'>
-            {renderPhotoInput('Отчёт Т-Банка', 'tbankTerminalReportPhoto', task, `Фото отчёта терминала. ${reportMissingHint}`, stepError && !hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) ? stepError : undefined)}
+            {renderPhotoInput('Сверка итогов Т-Банка', 'tbankTerminalReportPhoto', task, 'Выполните «Сверку итогов» и сфотографируйте чек.', stepError && !hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) ? stepError : undefined)}
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Сумма по отчёту Т-Банка
+              Сумма по сверке итогов Т-Банка
               <input
                 type='number'
                 inputMode='decimal'
@@ -2440,7 +2342,7 @@ export function EmployeeTodayClient({
                         value={staleCloseComment}
                         onChange={(event) => setStaleCloseComment(event.target.value)}
                         className='mt-1.5 min-h-16 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200'
-                        placeholder='Например: Z-отчёт выбросила, фото сделать уже не могу'
+                        placeholder='Например: чек закрытия смены потеряла, фото сделать уже не могу'
                       />
                     </label>
                   </div>

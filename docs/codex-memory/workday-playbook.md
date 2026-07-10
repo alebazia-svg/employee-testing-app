@@ -94,6 +94,44 @@ For cash specifically: the employee enters the real counted amount first. The
 expected 1C cash balance should not be shown in a way that encourages copying
 instead of counting.
 
+Do not ask the employee to confirm a formal KKM cash withdrawal when no physical
+cash movement happens. In Offonika's current process, the money is physically in
+one main cashbox; KKM cash movements in 1C are formal accounting cleanup and
+should become a system/admin control, not an employee checklist step.
+
+For daily T-Bank checks, do not ask for a manual amount. T-Bank can include
+credits, initial payments and full payments, so a single employee-entered amount
+is ambiguous. The employee declares `no operations`, `check completed`, or
+`problem`; this is a procedure declaration, not objective truth. Photos of
+T-Bank receipts remain in shift handover when operations happened. Objective
+matching should come later from 1C/OFD/AQSI/control events.
+
+## Checklist Copy Style
+
+Workday is mobile-first. Employee checklist copy should follow "one screen, one
+thought":
+
+- title: short, ideally 3-4 words;
+- hint: one short line;
+- hint starts with an action verb such as "Откройте", "Закройте", "Выполните",
+  "Сфотографируйте", "Проверьте";
+- avoid internal terms such as X-report, Z-report or slip when a plain action
+  works better;
+- if a term is needed, prefer the exact label an employee sees on the cash
+  register, terminal or program;
+- do not explain policy in the employee checklist unless it changes what the
+  employee must do right now.
+
+Examples:
+
+- `Чек открытия смены` - `Откройте смену на кассе и сфотографируйте
+  распечатанный чек.`
+- `Чек закрытия смены` - `Закройте смену на кассе и сфотографируйте
+  распечатанный чек.`
+- `Сверка итогов Сбербанка` - `Выполните "Сверку итогов" и сфотографируйте чек.`
+- `Сверка итогов Т-Банка` - `Выполните "Сверку итогов" и сфотографируйте чек.`
+- `Чеки Т-Банка` - `Сфотографируйте все чеки Т-Банка за смену.`
+
 ## Mobile Launch Requirements
 
 The employee Workday flow must be tested as a mobile app experience before

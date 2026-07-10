@@ -110,8 +110,8 @@ function acquiringResult(task: ShiftTask) {
 
 function creditResult(task: ShiftTask) {
   if (task.integerValue === 0) return { label: 'Операций Т-Банка не было', problem: false };
-  if (task.integerValue === 1) return { label: 'Сверено', problem: false };
-  if (task.integerValue === 2) return { label: 'Есть расхождение', problem: true };
+  if (task.integerValue === 1) return { label: 'Проверка выполнена', problem: false };
+  if (task.integerValue === 2) return { label: 'Есть проблема', problem: true };
   return { label: 'Результат не указан', problem: true };
 }
 
@@ -271,9 +271,6 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
               value={personalCash.discrepancyAmount === null ? '—' : formatMoney(Number(personalCash.discrepancyAmount ?? 0))}
             />
             <DetailRow label='Комментарий' value={textValue(comment)} />
-            {isRetail && <DetailRow label='Выемка' value={yesNo(personalCash.hadWithdrawal)} />}
-            {isRetail && <DetailRow label='Сумма выемки' value={personalCash.withdrawalAmount === null ? '—' : formatMoney(Number(personalCash.withdrawalAmount ?? 0))} />}
-            {isRetail && <DetailRow label='Сумма приходника' value={personalCash.cashOrderAmount === null ? '—' : formatMoney(Number(personalCash.cashOrderAmount ?? 0))} />}
             <DetailRow label='Инкассация' value={yesNo(personalCash.requiresEncashment)} />
             <DetailRow label='Сумма инкассации' value={personalCash.encashmentAmount === null ? '—' : formatMoney(Number(personalCash.encashmentAmount ?? 0))} />
             <PhotoRow label='Фото документа инкассации' photo={readPhoto(photos, 'encashmentDocument')} onPreview={onPreview} />
@@ -285,16 +282,16 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
         <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
           <h4 className='text-sm font-extrabold text-slate-950'>Закрытие магазина</h4>
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <PhotoRow label='Фото отчёта Сбербанка' photo={readPhoto(photos, 'sberbankTerminalReport')} onPreview={onPreview} />
-            <DetailRow label='Сумма по Сбербанку' value={formatMoney(Number(storeClosing.sberbankTerminalTotal ?? 0))} />
+            <PhotoRow label='Фото сверки итогов Сбербанка' photo={readPhoto(photos, 'sberbankTerminalReport')} onPreview={onPreview} />
+            <DetailRow label='Сумма сверки Сбербанка' value={formatMoney(Number(storeClosing.sberbankTerminalTotal ?? 0))} />
             <DetailRow label='Операции Т-Банка' value={yesNo(storeClosing.hasTbankCredit)} />
-            <PhotoRow label='Фото чеков / слипов Т-Банка' photo={readPhoto(photos, 'tbankReceipts')} onPreview={onPreview} />
-            <PhotoRow label='Фото отчёта Т-Банка' photo={readPhoto(photos, 'tbankTerminalReport')} onPreview={onPreview} />
+            <PhotoRow label='Фото чеков Т-Банка' photo={readPhoto(photos, 'tbankReceipts')} onPreview={onPreview} />
+            <PhotoRow label='Фото сверки итогов Т-Банка' photo={readPhoto(photos, 'tbankTerminalReport')} onPreview={onPreview} />
             <DetailRow
-              label='Сумма по Т-Банку'
+              label='Сумма сверки Т-Банка'
               value={storeClosing.tbankTerminalTotal === null ? '—' : formatMoney(Number(storeClosing.tbankTerminalTotal ?? 0))}
             />
-            <PhotoRow label='Z-отчёт / чек закрытия смены' photo={readPhoto(photos, 'zReport')} onPreview={onPreview} />
+            <PhotoRow label='Фото чека закрытия смены' photo={readPhoto(photos, 'zReport')} onPreview={onPreview} />
           </div>
         </section>
       )}

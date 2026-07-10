@@ -107,19 +107,12 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
   const personalCashBalance = readFormNumber(formData, 'personalCashBalance');
   const discrepancyType = readFormString(formData, 'discrepancyType');
   const discrepancyAmount = readFormNumber(formData, 'discrepancyAmount');
-  const hadWithdrawal = readFormBoolean(formData, 'hadWithdrawal');
-  const withdrawalAmount = readFormNumber(formData, 'withdrawalAmount');
-  const cashOrderAmount = readFormNumber(formData, 'cashOrderAmount');
   const hasSberbankAcquiring = readFormBoolean(formData, 'hasSberbankAcquiring');
   const sberbankTerminalTotal = readFormNumber(formData, 'sberbankTerminalTotal');
   const hasTbankCredit = readFormBoolean(formData, 'hasTbankCredit');
   const tbankTerminalTotal = readFormNumber(formData, 'tbankTerminalTotal');
   const encashmentAmount = readFormNumber(formData, 'encashmentAmount');
   const comment = readFormString(formData, 'comment');
-  const hadWithdrawalValue = hadWithdrawal ?? existingPersonalCash.hadWithdrawal ?? null;
-  const withdrawalDifference =
-    hadWithdrawalValue === true && withdrawalAmount !== null && cashOrderAmount !== null ? Math.abs(withdrawalAmount - cashOrderAmount) : 0;
-
   const photos = { ...existingPhotos };
   const photoFields = [
     ['personalStatementPhoto', 'personalStatement', 'personal-statement'],
@@ -148,10 +141,10 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
       cashBalance: personalCashBalance,
       discrepancyType: discrepancyType || existingPersonalCash.discrepancyType || '',
       discrepancyAmount: discrepancyType === 'none' ? null : discrepancyAmount,
-      hadWithdrawal: hadWithdrawalValue,
-      withdrawalAmount: hadWithdrawalValue ? withdrawalAmount : null,
-      cashOrderAmount: hadWithdrawalValue ? cashOrderAmount : null,
-      withdrawalDifference,
+      hadWithdrawal: null,
+      withdrawalAmount: null,
+      cashOrderAmount: null,
+      withdrawalDifference: null,
       requiresEncashment: personalCashBalance !== null ? personalCashBalance > 50000 : Boolean(existingPersonalCash.requiresEncashment),
       encashmentAmount,
     },
@@ -227,9 +220,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const personalCashBalance = readNumber(personalCash.cashBalance);
     const discrepancyType = typeof personalCash.discrepancyType === 'string' ? personalCash.discrepancyType : '';
     const discrepancyAmount = readNumber(personalCash.discrepancyAmount);
-    const hadWithdrawal = readBoolean(personalCash.hadWithdrawal);
-    const withdrawalAmount = readNumber(personalCash.withdrawalAmount);
-    const cashOrderAmount = readNumber(personalCash.cashOrderAmount);
     const hasSberbankAcquiring = readBoolean(storeClosing.hasSberbankAcquiring);
     const sberbankTerminalTotal = readNumber(storeClosing.sberbankTerminalTotal);
     const hasTbankCredit = readBoolean(storeClosing.hasTbankCredit);
@@ -239,8 +229,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const isRetail = user.department === 'retail';
     const isClosingEmployee = isRetail && isClosingShift(task.run.workDayEntry.shiftCode);
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
-    const withdrawalDifference =
-      hadWithdrawal === true && withdrawalAmount !== null && cashOrderAmount !== null ? Math.abs(withdrawalAmount - cashOrderAmount) : 0;
     const requiresDiscrepancyComment =
       (discrepancyType === 'surplus' || discrepancyType === 'shortage') && discrepancyAmount !== null && discrepancyAmount > 300;
     const requiresAcquiringReceiptsPhoto = isRetail && (hasSberbankAcquiring === true || await runHasAcquiringPayments(task.runId));
@@ -252,12 +240,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (requiresAcquiringReceiptsPhoto && !hasSavedPhoto(handoverData, 'personalAcquiringReceipts')) {
       return Response.json({ error: 'Сделайте фото чеков оплат картой за смену' }, { status: 400 });
     }
-    if (isRetail && hadWithdrawal === null) return Response.json({ error: 'Укажите, была ли выемка' }, { status: 400 });
-    if (isRetail && hadWithdrawal) {
-      if (withdrawalAmount === null) return Response.json({ error: 'Укажите сумму выемки' }, { status: 400 });
-      if (cashOrderAmount === null) return Response.json({ error: 'Укажите сумму приходника' }, { status: 400 });
-      if (withdrawalDifference > 0 && !comment) return Response.json({ error: 'Добавьте комментарий к расхождению выемки' }, { status: 400 });
-    }
     if (requiresEncashment) {
       if (encashmentAmount === null) return Response.json({ error: 'Укажите сумму инкассации' }, { status: 400 });
       if (!hasSavedPhoto(handoverData, 'encashmentDocument')) {
@@ -267,16 +249,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (isClosingEmployee) {
       if (hasSberbankAcquiring === null) return Response.json({ error: 'Укажите, были ли операции по терминалу Сбербанка' }, { status: 400 });
       if (hasSberbankAcquiring) {
-        if (!hasSavedPhoto(handoverData, 'sberbankTerminalReport')) return Response.json({ error: 'Сделайте фото отчёта терминала Сбербанка' }, { status: 400 });
-        if (sberbankTerminalTotal === null) return Response.json({ error: 'Укажите итоговую сумму по отчёту терминала Сбербанка' }, { status: 400 });
+        if (!hasSavedPhoto(handoverData, 'sberbankTerminalReport')) return Response.json({ error: 'Сделайте фото сверки итогов Сбербанка' }, { status: 400 });
+        if (sberbankTerminalTotal === null) return Response.json({ error: 'Укажите сумму по сверке итогов Сбербанка' }, { status: 400 });
       }
       if (hasTbankCredit === null) return Response.json({ error: 'Укажите, были ли операции по терминалу Т-Банка' }, { status: 400 });
       if (hasTbankCredit) {
-        if (!hasSavedPhoto(handoverData, 'tbankReceipts')) return Response.json({ error: 'Сделайте фото чеков / слипов Т-Банка за смену' }, { status: 400 });
-        if (!hasSavedPhoto(handoverData, 'tbankTerminalReport')) return Response.json({ error: 'Сделайте фото отчёта терминала Т-Банка' }, { status: 400 });
-        if (tbankTerminalTotal === null) return Response.json({ error: 'Укажите итоговую сумму по отчёту терминала Т-Банка' }, { status: 400 });
+        if (!hasSavedPhoto(handoverData, 'tbankReceipts')) return Response.json({ error: 'Сделайте фото чеков Т-Банка за смену' }, { status: 400 });
+        if (!hasSavedPhoto(handoverData, 'tbankTerminalReport')) return Response.json({ error: 'Сделайте фото сверки итогов Т-Банка' }, { status: 400 });
+        if (tbankTerminalTotal === null) return Response.json({ error: 'Укажите сумму по сверке итогов Т-Банка' }, { status: 400 });
       }
-      if (!hasSavedPhoto(handoverData, 'zReport')) return Response.json({ error: 'Сделайте фото Z-отчёта / чека закрытия смены' }, { status: 400 });
+      if (!hasSavedPhoto(handoverData, 'zReport')) return Response.json({ error: 'Сделайте фото чека закрытия смены' }, { status: 400 });
     }
 
     try {
@@ -302,10 +284,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           cashBalance: personalCashBalance,
           discrepancyType,
           discrepancyAmount: discrepancyType === 'none' ? null : discrepancyAmount,
-          hadWithdrawal,
-          withdrawalAmount: hadWithdrawal ? withdrawalAmount : null,
-          cashOrderAmount: hadWithdrawal ? cashOrderAmount : null,
-          withdrawalDifference,
+          hadWithdrawal: null,
+          withdrawalAmount: null,
+          cashOrderAmount: null,
+          withdrawalDifference: null,
           requiresEncashment,
           encashmentAmount: requiresEncashment ? encashmentAmount : null,
         },
@@ -329,7 +311,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             status: 'done',
             completedAt: now,
             numericValue: personalCashBalance,
-            booleanValue: hadWithdrawal,
+            booleanValue: null,
             comment,
             handoverData: finalHandoverData as Prisma.InputJsonValue,
           },
@@ -343,7 +325,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           data: {
             status: 'done',
             completedAt: now,
-            comment: 'Z-отчёт загружен в мастере сдачи смены',
+            comment: 'Фото чека закрытия смены загружено в мастере сдачи смены',
           },
         });
         const updatedRun = await tx.shiftControlRun.update({
@@ -371,7 +353,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const formData = await req.formData().catch(() => null);
     const photo = formData?.get('openingReportPhoto') ?? null;
     if (!formData || !isPhoto(photo)) {
-      return Response.json({ error: 'Сделайте фото X-отчёта / чека открытия смены' }, { status: 400 });
+      return Response.json({ error: 'Сделайте фото чека открытия смены' }, { status: 400 });
     }
 
     try {
@@ -382,13 +364,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           status: 'done',
           completedAt: new Date(),
           textValue: savedPhoto.storagePath,
-          comment: 'Фото X-отчёта прикреплено',
+          comment: 'Фото чека открытия смены прикреплено',
         },
       });
 
       return Response.json({ task: updatedTask });
     } catch (error) {
-      return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить X-отчёт' }, { status: 400 });
+      return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить фото чека открытия смены' }, { status: 400 });
     }
   }
 
@@ -443,7 +425,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return Response.json({ error: 'Выберите результат сверки операций Т-Банка' }, { status: 400 });
     }
     if (hasDiscrepancy && !commentSource.trim()) {
-      return Response.json({ error: 'Опишите расхождение по операциям Т-Банка' }, { status: 400 });
+      return Response.json({ error: 'Опишите проблему по операциям Т-Банка' }, { status: 400 });
     }
     data.integerValue = checkStatus;
     data.numericValue = null;
