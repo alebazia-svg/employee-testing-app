@@ -38,6 +38,14 @@ type SabyOfdProbeOptions = {
   limit?: number;
 };
 
+type SabyOfdReceiptExportOptions = {
+  organizationInn?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  queryLimit?: number;
+  maxDocuments?: number;
+};
+
 type DateWindow = {
   dateFrom: Date;
   dateTo: Date;
@@ -529,6 +537,10 @@ function readAmount(value: unknown) {
   return 0;
 }
 
+function readFiscalRubles(value: unknown) {
+  return Math.round((readAmount(value) / 100) * 100) / 100;
+}
+
 function normalizePaymentType(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return PAYMENT_TYPE_LABELS[String(value)] ?? String(value);
   if (typeof value !== 'string') return '';
@@ -758,6 +770,237 @@ function returnCandidate(returnReceipt: JsonRecord, receipt: JsonRecord, mode: '
     timeDeltaSeconds,
     confidence: matchScore >= 4 && sameFn ? 'probable' : matchScore >= 3 ? 'weaker' : 'needs_review',
     reasons,
+  };
+}
+
+function receiptOperationLabel(receipt: JsonRecord) {
+  const operationType = readAmount(receipt.operationType);
+  if (operationType === 1) return 'Приход';
+  if (operationType === 2) return 'Возврат прихода';
+  if (operationType === 3) return 'Расход';
+  if (operationType === 4) return 'Возврат расхода';
+  return operationType ? String(operationType) : '';
+}
+
+function normalizedReceiptItems(receipt: JsonRecord) {
+  const items = Array.isArray(receipt.items) ? receipt.items.filter(isRecord) : [];
+  return items.map((item) => ({
+    name: readStringField(item, ['name', 'productName', 'text']),
+    quantity: readAmount(item.quantity),
+    price: readFiscalRubles(item.price),
+    sum: readFiscalRubles(item.sum),
+    paymentType: normalizePaymentType(item.paymentType),
+    rawPaymentType: item.paymentType ?? null,
+  }));
+}
+
+function normalizedReceiptForExport(receipt: JsonRecord, analysis: ReceiptAnalysisResult, kktRegNumber: string, fn: string) {
+  return {
+    fiscalDocumentNumber: readStringField(receipt, ['fiscalDocumentNumber']),
+    fiscalDriveNumber: readStringField(receipt, ['fiscalDriveNumber']) || fn,
+    fiscalSign: readStringField(receipt, ['fiscalSign']),
+    kktRegistrationNumber: kktRegNumber,
+    date: readStringField(receipt, ['receiveDateTime', 'dateTime']),
+    operationType: readAmount(receipt.operationType),
+    operationLabel: receiptOperationLabel(receipt),
+    receiptCode: readAmount(receipt.receiptCode),
+    amountUnit: 'RUB',
+    totalSum: readFiscalRubles(receipt.totalSum),
+    cashTotalSum: readFiscalRubles(receipt.cashTotalSum),
+    ecashTotalSum: readFiscalRubles(receipt.ecashTotalSum),
+    creditSum: readFiscalRubles(receipt.creditSum),
+    prepaidSum: readFiscalRubles(receipt.prepaidSum),
+    provisionSum: readFiscalRubles(receipt.provisionSum),
+    considerationSum: readFiscalRubles(receipt.considerationSum),
+    counterofferSum: readFiscalRubles(receipt.counterofferSum),
+    paymentTypes: analysis.normalizedPaymentTypes,
+    matchedRule: analysis.matchedRule,
+    issues: analysis.issues,
+    items: normalizedReceiptItems(receipt),
+  };
+}
+
+export async function exportSabyOfdReceipts(options: SabyOfdReceiptExportOptions = {}) {
+  const config = readConfig();
+  const missing = missingConfig(config);
+  const steps: ProbeStep[] = [];
+  const errors: string[] = [];
+  const queryLimit = Math.min(1000, Math.max(100, Math.trunc(options.queryLimit ?? 1000)));
+  const maxDocuments = Math.min(20000, Math.max(1, Math.trunc(options.maxDocuments ?? 10000)));
+
+  if (missing.length) {
+    return {
+      ok: false,
+      checkedAt: new Date().toISOString(),
+      enabled: config.enabled,
+      configured: false,
+      missing,
+      steps,
+      errors: [`Missing or disabled env: ${missing.join(', ')}`],
+    };
+  }
+
+  if (!options.organizationInn) {
+    errors.push('organizationInn query parameter is required for Saby OFD receipt export');
+    return {
+      ok: false,
+      checkedAt: new Date().toISOString(),
+      enabled: config.enabled,
+      configured: true,
+      steps,
+      errors,
+    };
+  }
+
+  const auth = await getAccessToken(config);
+  steps.push(auth.step);
+  if (!auth.sid && !auth.accessToken) {
+    errors.push(auth.step.error ?? 'Saby service auth failed');
+    return {
+      ok: false,
+      checkedAt: new Date().toISOString(),
+      enabled: config.enabled,
+      configured: true,
+      steps,
+      errors,
+    };
+  }
+
+  let kktProbe = await restProbe(config, auth, `/ofd/v1/orgs/${encodeURIComponent(options.organizationInn)}/kkts?status=2`, 'ofd.kkt_list');
+  steps.push(kktProbe.step);
+
+  if (kktProbe.step.status === 'ok' && listItems(kktProbe.data).length === 0) {
+    kktProbe = await restProbe(config, auth, `/ofd/v1/orgs/${encodeURIComponent(options.organizationInn)}/kkts`, 'ofd.kkt_list_all_statuses');
+    steps.push(kktProbe.step);
+  }
+
+  const kkt = firstItem(kktProbe.data);
+  const kktRegNumber = readStringField(kkt, ['regId', 'registrationNumber', 'kktRegId']) || findFirstString(kkt, [/reg/i, /registration/i]);
+  const fn = readStringField(kkt, ['fsNumber', 'storageId', 'fn', 'fiscalDriveNumber']) || findFirstString(kkt, [/fsNumber/i, /storage/i, /fn/i, /fiscal/i]);
+
+  if (kktProbe.step.status !== 'ok' || !kktRegNumber || !fn) {
+    errors.push('KKT REST response did not expose KKT registration number and fiscal drive number');
+    return {
+      ok: false,
+      checkedAt: new Date().toISOString(),
+      enabled: config.enabled,
+      configured: true,
+      steps,
+      errors,
+    };
+  }
+
+  const range = probeDateRange(options);
+  const windows = dateWindows(range.dateFrom, range.dateTo);
+  const selected = new Map<string, SelectedFiscalDocument>();
+  const duplicateKeys = new Set<string>();
+  let documentListFailures = 0;
+  let documentListCapped = false;
+  let maxDocumentsReached = false;
+
+  for (const window of windows) {
+    const listPath = documentListPath(options.organizationInn, kktRegNumber, fn, window, queryLimit);
+    const documentsProbe = await restProbe(config, auth, listPath, 'ofd.document_list');
+    const receiptsInWindow = documentsProbe.step.status === 'ok' ? receiptDocuments(documentsProbe.data) : [];
+    steps.push({
+      ...documentsProbe.step,
+      sample: {
+        dateFrom: formatSabyDate(window.dateFrom),
+        dateTo: formatSabyDate(window.dateTo),
+        receiptCount: receiptsInWindow.length,
+      },
+    });
+
+    if (documentsProbe.step.status !== 'ok') {
+      documentListFailures += 1;
+      continue;
+    }
+
+    if (receiptsInWindow.length >= queryLimit) documentListCapped = true;
+    for (const receipt of receiptsInWindow) {
+      const key = receiptKey(receipt.document) || `${receipt.wrapperKey}:${JSON.stringify(sanitizeSample(receipt.document, 1))}`;
+      if (selected.has(key)) {
+        duplicateKeys.add(key);
+        continue;
+      }
+      selected.set(key, receipt);
+      if (selected.size >= maxDocuments) {
+        maxDocumentsReached = true;
+        break;
+      }
+    }
+    if (maxDocumentsReached) break;
+  }
+
+  if (documentListFailures === windows.length) {
+    errors.push('Fiscal document list export failed for every requested date window');
+  }
+
+  const receipts = [];
+  const fullDocumentFailures = [];
+  for (const selectedDocument of selected.values()) {
+    const paths = fullDocumentPaths(options.organizationInn, kktRegNumber, fn, selectedDocument.document);
+    let fullDocumentData: unknown = null;
+    let lastError = '';
+
+    for (const [index, path] of paths.entries()) {
+      const result = await restProbe(config, auth, path, index === 0 ? 'ofd.document_full' : 'ofd.document_full_by_requisites');
+      if (result.step.status === 'ok') {
+        fullDocumentData = result.data;
+        break;
+      }
+      lastError = result.step.error ?? 'full fiscal document request failed';
+    }
+
+    const receipt = fullDocumentData ? unwrapFiscalDocument(fullDocumentData) : null;
+    if (!receipt) {
+      fullDocumentFailures.push({
+        fiscalDocumentNumber: readStringField(selectedDocument.document, ['fiscalDocumentNumber']),
+        fiscalDriveNumber: readStringField(selectedDocument.document, ['fiscalDriveNumber']) || fn,
+        fiscalSign: readStringField(selectedDocument.document, ['fiscalSign']),
+        error: lastError || 'full fiscal document response did not contain a receipt',
+      });
+      continue;
+    }
+
+    const analysis = analyzeReceiptForProbe(receipt);
+    receipts.push(normalizedReceiptForExport(receipt, analysis, kktRegNumber, fn));
+  }
+
+  const complete = errors.length === 0 && documentListFailures === 0 && !documentListCapped && !maxDocumentsReached && fullDocumentFailures.length === 0;
+
+  return {
+    ok: errors.length === 0,
+    checkedAt: new Date().toISOString(),
+    enabled: config.enabled,
+    configured: true,
+    source: 'saby_ofd',
+    organizationInn: options.organizationInn,
+    period: {
+      dateFrom: formatSabyDate(range.dateFrom),
+      dateTo: formatSabyDate(range.dateTo),
+    },
+    kkt: {
+      registrationNumber: kktRegNumber,
+      fiscalDriveNumber: fn,
+    },
+    completeness: {
+      complete,
+      windowsChecked: windows.length,
+      listedDocuments: selected.size,
+      exportedReceipts: receipts.length,
+      duplicateDocuments: duplicateKeys.size,
+      documentListFailures,
+      fullDocumentFailures: fullDocumentFailures.length,
+      documentListCapped,
+      maxDocumentsReached,
+      queryLimit,
+      maxDocuments,
+    },
+    receipts,
+    fullDocumentFailures,
+    steps,
+    errors,
   };
 }
 
