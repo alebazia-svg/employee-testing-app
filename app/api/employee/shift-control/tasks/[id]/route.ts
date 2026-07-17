@@ -101,10 +101,12 @@ async function savePhoto(file: File, runId: number, taskId: number, key: string)
 async function saveHandoverDraft(formData: FormData, task: { id: number; runId: number; handoverData: unknown; run: { workDayEntry: { shiftCode: string } } }) {
   const existing = isRecord(task.handoverData) ? task.handoverData : {};
   const existingPersonalCash = readRecord(existing, 'personalCash') ?? {};
+  const existingReserveCash = readRecord(existing, 'reserveCash') ?? {};
   const existingStoreClosing = readRecord(existing, 'storeClosing') ?? {};
   const existingPhotos = readRecord(existing, 'photos') ?? {};
 
   const personalCashBalance = readFormNumber(formData, 'personalCashBalance');
+  const reserveCashBalance = readFormNumber(formData, 'reserveCashBalance');
   const discrepancyType = readFormString(formData, 'discrepancyType');
   const discrepancyAmount = readFormNumber(formData, 'discrepancyAmount');
   const hasSberbankAcquiring = readFormBoolean(formData, 'hasSberbankAcquiring');
@@ -149,6 +151,10 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
       hasTbankCredit: hasTbankCredit ?? existingPersonalCash.hasTbankCredit ?? null,
       requiresEncashment: personalCashBalance !== null ? personalCashBalance > 50000 : Boolean(existingPersonalCash.requiresEncashment),
       encashmentAmount,
+    },
+    reserveCash: {
+      ...existingReserveCash,
+      cashBalance: reserveCashBalance,
     },
     storeClosing: isClosingShift(task.run.workDayEntry.shiftCode)
       ? {
@@ -218,8 +224,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const draftPayload = await draftResponse.json();
     const handoverData = draftPayload.task.handoverData;
     const personalCash = readRecord(handoverData, 'personalCash') ?? {};
+    const reserveCash = readRecord(handoverData, 'reserveCash') ?? {};
     const storeClosing = readRecord(handoverData, 'storeClosing') ?? {};
     const personalCashBalance = readNumber(personalCash.cashBalance);
+    const reserveCashBalance = readNumber(reserveCash.cashBalance);
     const discrepancyType = typeof personalCash.discrepancyType === 'string' ? personalCash.discrepancyType : '';
     const discrepancyAmount = readNumber(personalCash.discrepancyAmount);
     const hasSberbankAcquiring = readBoolean(personalCash.hasSberbankAcquiring ?? storeClosing.hasSberbankAcquiring);
@@ -236,6 +244,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const requiresAcquiringReceiptsPhoto = isRetail && (hasSberbankAcquiring === true || await runHasAcquiringPayments(task.runId));
 
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
+    if (reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
     if (!['none', 'surplus', 'shortage'].includes(discrepancyType)) return Response.json({ error: 'Укажите расхождение по моей кассе' }, { status: 400 });
     if (discrepancyType !== 'none' && discrepancyAmount === null) return Response.json({ error: 'Укажите сумму расхождения' }, { status: 400 });
     if (requiresDiscrepancyComment && !comment) return Response.json({ error: 'Добавьте комментарий: расхождение больше 300 ₽' }, { status: 400 });
@@ -284,6 +293,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         submittedAt: now.toISOString(),
         scope: {
           personalCash: true,
+          reserveCash: true,
           storeClosing: isClosingEmployee,
         },
         personalCash: {
@@ -298,6 +308,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           hasTbankCredit,
           requiresEncashment,
           encashmentAmount: requiresEncashment ? encashmentAmount : null,
+        },
+        reserveCash: {
+          cashBalance: reserveCashBalance,
         },
         storeClosing: isClosingEmployee
           ? {

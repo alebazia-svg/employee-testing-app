@@ -249,12 +249,13 @@ function TaskValue({ task, onPreview }: { task: ShiftTask; onPreview: (photo: Ph
 
 function HandoverDetails({ data, department, onPreview }: { data: unknown; department: string; onPreview: (photo: PhotoPreview) => void }) {
   const personalCash = readRecord(data, 'personalCash');
+  const reserveCash = readRecord(data, 'reserveCash');
   const storeClosing = readRecord(data, 'storeClosing');
   const photos = readPhotos(data);
   const comment = isRecord(data) ? data.comment : '';
   const isRetail = department === 'retail';
 
-  if (!personalCash && !storeClosing) return null;
+  if (!personalCash && !reserveCash && !storeClosing) return null;
 
   return (
     <div className='grid gap-4'>
@@ -276,6 +277,18 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
             <DetailRow label='Инкассация' value={yesNo(personalCash.requiresEncashment)} />
             <DetailRow label='Сумма инкассации' value={personalCash.encashmentAmount === null ? '—' : formatMoney(Number(personalCash.encashmentAmount ?? 0))} />
             <PhotoRow label='Фото документа инкассации' photo={readPhoto(photos, 'encashmentDocument')} onPreview={onPreview} />
+          </div>
+        </section>
+      )}
+
+      {reserveCash && (
+        <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
+          <h4 className='text-sm font-extrabold text-slate-950'>Резерв</h4>
+          <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+            <DetailRow
+              label='Наличные в резерве'
+              value={reserveCash.cashBalance === null || reserveCash.cashBalance === undefined ? '—' : formatMoney(Number(reserveCash.cashBalance))}
+            />
           </div>
         </section>
       )}

@@ -157,6 +157,7 @@ type HandoverDraft = {
   personalStatementPhoto: HandoverPhotoValue;
   personalAcquiringReceiptsPhoto: HandoverPhotoValue;
   personalCashBalance: string;
+  reserveCashBalance: string;
   discrepancyType: '' | 'none' | 'surplus' | 'shortage';
   discrepancyAmount: string;
   sberbankTerminalReportPhoto: HandoverPhotoValue;
@@ -578,6 +579,7 @@ function emptyHandoverDraft(): HandoverDraft {
     personalStatementPhoto: null,
     personalAcquiringReceiptsPhoto: null,
     personalCashBalance: '',
+    reserveCashBalance: '',
     discrepancyType: '',
     discrepancyAmount: '',
     sberbankTerminalReportPhoto: null,
@@ -629,6 +631,7 @@ function booleanDraftValue(value: unknown): '' | 'yes' | 'no' {
 function draftFromHandoverData(data: unknown): HandoverDraft {
   const draft = emptyHandoverDraft();
   const personalCash = readRecord(data, 'personalCash');
+  const reserveCash = readRecord(data, 'reserveCash');
   const storeClosing = readRecord(data, 'storeClosing');
   if (personalCash) {
     draft.personalCashBalance = stringFromUnknown(personalCash.cashBalance);
@@ -637,6 +640,9 @@ function draftFromHandoverData(data: unknown): HandoverDraft {
     draft.hasSberbankAcquiring = booleanDraftValue(personalCash.hasSberbankAcquiring);
     draft.hasTbankCredit = booleanDraftValue(personalCash.hasTbankCredit);
     draft.encashmentAmount = stringFromUnknown(personalCash.encashmentAmount);
+  }
+  if (reserveCash) {
+    draft.reserveCashBalance = stringFromUnknown(reserveCash.cashBalance);
   }
   if (storeClosing) {
     draft.hasSberbankAcquiring = booleanDraftValue(storeClosing.hasSberbankAcquiring);
@@ -940,6 +946,7 @@ export function EmployeeTodayClient({
     const requiresAcquiringReceiptsPhoto = handoverHasDaytimeAcquiringPayments || draft.hasSberbankAcquiring === 'yes';
     return [
       'personalCashBalance',
+      'reserveCashBalance',
       'discrepancy',
       ...(isRetailEmployee ? ['sberbankQuestion'] : []),
       ...(isRetailEmployee && requiresAcquiringReceiptsPhoto ? ['personalAcquiringReceiptsPhoto'] : []),
@@ -1336,6 +1343,7 @@ export function EmployeeTodayClient({
       if (isHandoverFile(file)) formData.append(key, file);
     });
     formData.append('personalCashBalance', draft.personalCashBalance);
+    formData.append('reserveCashBalance', draft.reserveCashBalance);
     formData.append('discrepancyType', draft.discrepancyType);
     formData.append('discrepancyAmount', draft.discrepancyAmount);
     formData.append('hasSberbankAcquiring', draft.hasSberbankAcquiring ? String(draft.hasSberbankAcquiring === 'yes') : '');
@@ -1776,9 +1784,11 @@ export function EmployeeTodayClient({
 
   function getHandoverStepError(step = handoverSteps[handoverStep], draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
+    const draftReserveCashBalance = parseMoneyInput(draft.reserveCashBalance);
     const draftDiscrepancyAmount = parseMoneyInput(draft.discrepancyAmount);
 
     if (step === 'personalCashBalance' && draftCashBalance === null) return 'Укажите остаток наличных в моей кассе';
+    if (step === 'reserveCashBalance' && draftReserveCashBalance === null) return 'Укажите остаток наличных в резерве';
     if (step === 'discrepancy') {
       if (!draft.discrepancyType) return 'Укажите расхождение по моей кассе';
       if (draft.discrepancyType !== 'none') {
@@ -1830,6 +1840,7 @@ export function EmployeeTodayClient({
       if (isHandoverFile(file)) formData.append(key, file);
     });
     formData.append('personalCashBalance', draft.personalCashBalance);
+    formData.append('reserveCashBalance', draft.reserveCashBalance);
     formData.append('discrepancyType', draft.discrepancyType);
     formData.append('discrepancyAmount', draft.discrepancyAmount);
     formData.append('hasSberbankAcquiring', draft.hasSberbankAcquiring ? String(draft.hasSberbankAcquiring === 'yes') : '');
@@ -1940,6 +1951,7 @@ export function EmployeeTodayClient({
     const sectionTitle = ['sberbankQuestion', 'sberbankTerminal', 'tbankQuestion', 'tbankReceipts', 'tbankTerminal', 'zReportPhoto'].includes(step) ? 'Закрытие магазина' : 'Сдача своей кассы';
     const handoverStepTitle: Record<string, string> = {
       personalCashBalance: 'Пересчитайте наличные',
+      reserveCashBalance: 'Пересчитайте резерв',
       personalAcquiringReceiptsPhoto: 'Чеки Сбербанка',
       discrepancy: 'Укажите расхождение',
       encashment: 'Оформите инкассацию',
@@ -1951,7 +1963,7 @@ export function EmployeeTodayClient({
       zReportPhoto: 'Чек закрытия смены',
     };
     const handoverIcon =
-      step === 'personalCashBalance' || step === 'encashment'
+      step === 'personalCashBalance' || step === 'reserveCashBalance' || step === 'encashment'
         ? Banknote
         : step === 'personalAcquiringReceiptsPhoto' || step === 'sberbankQuestion' || step === 'sberbankTerminal'
           ? CreditCard
@@ -1972,7 +1984,9 @@ export function EmployeeTodayClient({
             <div>
               <p className='text-[11px] font-extrabold uppercase text-green-700'>{sectionTitle}</p>
               <h3 className='mt-0.5 text-base font-extrabold text-slate-950'>{handoverStepTitle[step] ?? `Шаг ${handoverStep + 1} из ${handoverSteps.length}`}</h3>
-              <p className='mt-1 text-xs font-semibold leading-snug text-slate-500'>Только ваша касса</p>
+              <p className='mt-1 text-xs font-semibold leading-snug text-slate-500'>
+                {step === 'reserveCashBalance' ? 'Общий резерв' : 'Только ваша касса'}
+              </p>
             </div>
           </div>
         </div>
@@ -1992,6 +2006,26 @@ export function EmployeeTodayClient({
               step='0.01'
               value={handoverDraft.personalCashBalance}
               onChange={(event) => updateHandoverDraft({ personalCashBalance: event.target.value })}
+              className='h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+              placeholder='0'
+            />
+            {stepError && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+          </label>
+        )}
+
+        {step === 'reserveCashBalance' && (
+          <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
+            Наличные в резерве
+            <span className='text-xs font-semibold leading-snug text-slate-500'>
+              Пересчитайте резерв и внесите фактический остаток.
+            </span>
+            <input
+              type='number'
+              inputMode='decimal'
+              min='0'
+              step='0.01'
+              value={handoverDraft.reserveCashBalance}
+              onChange={(event) => updateHandoverDraft({ reserveCashBalance: event.target.value })}
               className='h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
               placeholder='0'
             />
