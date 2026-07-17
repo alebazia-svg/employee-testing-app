@@ -94,6 +94,11 @@ For cash specifically: the employee enters the real counted amount first. The
 expected 1C cash balance should not be shown in a way that encourages copying
 instead of counting.
 
+Shift handover records two separate cash facts in sequence: the employee first
+enters the counted balance of their own cashbox, then the counted balance of the
+shared reserve. Reserve entry is a single amount without denomination breakdown
+or a required photo.
+
 Do not ask the employee to confirm a formal KKM cash withdrawal when no physical
 cash movement happens. In Offonika's current process, the money is physically in
 one main cashbox; KKM cash movements in 1C are formal accounting cleanup and
