@@ -4,7 +4,8 @@ Purpose: deploy one already-created commit to `portal.alebazia.xyz` without touc
 
 ## Constants
 
-- VPS SSH user: `bela`
+- VPS SSH alias: `hostinger-vps`
+- VPS SSH user behind the alias: `codex-vps`
 - App directory on VPS: `/docker/employee-testing-app`
 - Main branch used for deployment: `origin/design-local-updates`
 - App service/container: `portal-app`
@@ -13,6 +14,12 @@ Purpose: deploy one already-created commit to `portal.alebazia.xyz` without touc
 - Uploads must stay mounted as Docker volume at `/app/uploads`.
 
 ## Safe deploy flow
+
+Connect only through the supported SSH alias:
+
+```bash
+ssh -t hostinger-vps
+```
 
 Run on VPS:
 
@@ -91,6 +98,7 @@ If grep finds a huge minified JS line, that means the text is in the deployed bu
 ## Common mistakes to avoid
 
 - Do not run Linux commands such as `cd /docker/...`, `head`, `sed`, `&&`, `||` in local Windows PowerShell unless they are inside SSH.
+- Do not connect to the VPS through personal accounts and do not retry failed SSH with another user. The only supported automation route is `hostinger-vps`, which must map to `codex-vps` with key-only auth.
 - Do not run Docker commands locally by accident; `dockerDesktopLinuxEngine` errors mean the command ran on Windows, not VPS.
 - Do not build before confirming `git rev-parse HEAD`.
 - Do not omit `--env-file server.env`; otherwise Compose may warn that PostgreSQL/env variables are blank.

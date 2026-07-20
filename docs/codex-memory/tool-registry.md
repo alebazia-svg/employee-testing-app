@@ -32,8 +32,11 @@ Do not use `git add .`.
 Run Linux commands only on the VPS:
 
 ```powershell
-ssh -t bela@portal.alebazia.xyz
+ssh -t hostinger-vps
 ```
+
+`hostinger-vps` must resolve locally to `codex-vps@portal.alebazia.xyz` with
+key-only authentication. Do not use or retry personal VPS accounts.
 
 Then on the VPS:
 
