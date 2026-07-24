@@ -4,7 +4,12 @@ import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
+import { getCashStatementDimensions, getCashStatementSummary } from '@/lib/one-c';
+import { shiftControlOneCAuditKey, stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { usesWorkdayShiftControl } from '@/lib/workday';
+
+const cashStatementOrganizationSearchName = 'оффоника';
+const reserveCashboxSearchName = 'резерв под телефоны';
 
 function readNumber(value: unknown) {
   if (value === null || value === undefined || value === '') return null;
@@ -62,6 +67,114 @@ function hasSavedPhoto(handoverData: unknown, key: string) {
 function savedPhoto(handoverData: unknown, key: string) {
   const photos = readRecord(handoverData, 'photos');
   return photos?.[key] ?? null;
+}
+
+function normalizeSearchText(value: string) {
+  return value.trim().toLowerCase().replace(/ё/g, 'е');
+}
+
+function taskForEmployee<T extends { handoverData: unknown }>(task: T) {
+  return {
+    ...task,
+    handoverData: stripShiftControlOneCAudit(task.handoverData),
+  };
+}
+
+async function captureOneCCashAudit({
+  userId,
+  date,
+  includeReserve,
+  capturedAt,
+}: {
+  userId: number;
+  date: string;
+  includeReserve: boolean;
+  capturedAt: Date;
+}) {
+  const unavailable = (cashboxName: string, error: string) => ({
+    status: 'unavailable',
+    cashboxName,
+    balance: null,
+    oneCCheckedAt: null,
+    error,
+  });
+
+  try {
+    const [mapping, dimensions] = await Promise.all([
+      prisma.userOneCCashboxMapping.findUnique({ where: { userId } }),
+      getCashStatementDimensions(),
+    ]);
+    if (!dimensions.ok) {
+      const error = dimensions.error || dimensions.diagnostics.join('; ') || '1С не вернула список касс.';
+      return {
+        version: 1,
+        capturedAt: capturedAt.toISOString(),
+        personalCash: unavailable(mapping?.oneCCashboxName ?? '', error),
+        reserveCash: includeReserve ? unavailable('', error) : null,
+      };
+    }
+
+    const organization = dimensions.organizations.find((item) => (
+      normalizeSearchText(item.name) === cashStatementOrganizationSearchName
+    ));
+    if (!organization) {
+      return {
+        version: 1,
+        capturedAt: capturedAt.toISOString(),
+        personalCash: unavailable(mapping?.oneCCashboxName ?? '', 'Организация ОФФОНИКА не найдена в 1С.'),
+        reserveCash: includeReserve ? unavailable('', 'Организация ОФФОНИКА не найдена в 1С.') : null,
+      };
+    }
+
+    const personalCashbox = mapping?.isActive
+      ? dimensions.cashboxes.find((item) => item.ref === mapping.oneCCashboxRef)
+        ?? { ref: mapping.oneCCashboxRef, name: mapping.oneCCashboxName, deleted: false }
+      : null;
+    const reserveCashbox = includeReserve
+      ? dimensions.cashboxes.find((item) => normalizeSearchText(item.name) === reserveCashboxSearchName) ?? null
+      : null;
+
+    const readBalance = async (cashbox: { ref: string; name: string } | null, missingError: string) => {
+      if (!cashbox) return unavailable('', missingError);
+      const statement = await getCashStatementSummary({
+        date,
+        organizationRef: organization.ref,
+        cashboxRef: cashbox.ref,
+      });
+      if (!statement.ok || statement.closingBalance === null) {
+        return unavailable(
+          cashbox.name,
+          statement.error || statement.diagnostics.join('; ') || 'Текущий остаток кассы 1С не получен.',
+        );
+      }
+      return {
+        status: 'captured',
+        cashboxName: cashbox.name,
+        balance: statement.closingBalance,
+        oneCCheckedAt: statement.checkedAt,
+        error: null,
+      };
+    };
+
+    const [personalCash, reserveCash] = await Promise.all([
+      readBalance(personalCashbox, 'Касса сотрудника не привязана к 1С.'),
+      includeReserve ? readBalance(reserveCashbox, 'Касса резерва не найдена в 1С.') : Promise.resolve(null),
+    ]);
+    return {
+      version: 1,
+      capturedAt: capturedAt.toISOString(),
+      personalCash,
+      reserveCash,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Не удалось получить текущий остаток 1С.';
+    return {
+      version: 1,
+      capturedAt: capturedAt.toISOString(),
+      personalCash: unavailable('', message),
+      reserveCash: includeReserve ? unavailable('', message) : null,
+    };
+  }
 }
 
 async function runHasAcquiringPayments(runId: number) {
@@ -287,10 +400,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
       };
       const now = new Date();
+      const oneCAudit = await captureOneCCashAudit({
+        userId: user.id,
+        date: task.run.date,
+        includeReserve: true,
+        capturedAt: now,
+      });
       const finalHandoverData = {
         draft: false,
         shiftCode: task.run.workDayEntry.shiftCode,
         submittedAt: now.toISOString(),
+        [shiftControlOneCAuditKey]: oneCAudit,
         scope: {
           personalCash: true,
           reserveCash: true,
@@ -364,7 +484,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         return { task: updatedTask, tasks, run: updatedRun, workDay };
       });
 
-      return Response.json({ ...result, message: 'Смена сдана, рабочий день завершён' });
+      return Response.json({
+        ...result,
+        task: taskForEmployee(result.task),
+        tasks: result.tasks.map(taskForEmployee),
+        message: 'Смена сдана, рабочий день завершён',
+      });
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить сдачу смены' }, { status: 400 });
     }
@@ -398,6 +523,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const payload = await req.json().catch(() => ({}));
   const commentSource = typeof payload.comment === 'string' ? payload.comment : typeof payload.textValue === 'string' ? payload.textValue : '';
   const textValue = typeof payload.textValue === 'string' ? payload.textValue.trim() : null;
+  const completedAt = new Date();
 
   const data: {
     status: 'done';
@@ -407,9 +533,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     integerValue?: number | null;
     booleanValue?: boolean | null;
     textValue?: string | null;
+    handoverData?: Prisma.InputJsonValue;
   } = {
     status: 'done',
-    completedAt: new Date(),
+    completedAt,
     comment: commentSource.trim(),
   };
 
@@ -418,7 +545,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (numericValue === null) {
       return Response.json({ error: 'Укажите сумму' }, { status: 400 });
     }
+    const oneCAudit = await captureOneCCashAudit({
+      userId: user.id,
+      date: task.run.date,
+      includeReserve: false,
+      capturedAt: completedAt,
+    });
+    const existingData = isRecord(task.handoverData) ? task.handoverData : {};
     data.numericValue = numericValue;
+    data.handoverData = {
+      ...existingData,
+      [shiftControlOneCAuditKey]: oneCAudit,
+    } as Prisma.InputJsonValue;
   } else if (task.category === 'acquiring') {
     const numericValue = readNumber(payload.numericValue);
     const providedCheckStatus = readInteger(payload.integerValue);
@@ -461,5 +599,5 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     data,
   });
 
-  return Response.json({ task: updatedTask });
+  return Response.json({ task: taskForEmployee(updatedTask) });
 }

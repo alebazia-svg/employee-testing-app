@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 
 type WorkDayForSnapshot = Awaited<ReturnType<typeof prisma.workDayEntry.findFirst>>;
@@ -28,6 +29,7 @@ export function serializeShiftControlForEmployee(run: Awaited<ReturnType<typeof 
     },
     tasks: tasks.map((task) => ({
       ...task,
+      handoverData: stripShiftControlOneCAudit(task.handoverData),
       completedAt: task.completedAt?.toISOString() ?? null,
       createdAt: task.createdAt.toISOString(),
       updatedAt: task.updatedAt.toISOString(),

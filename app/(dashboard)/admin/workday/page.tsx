@@ -17,6 +17,7 @@ import {
   type OneCSalesRealizationDocument,
 } from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
+import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl, workDayStatusLabel } from '@/lib/workday';
 import { AdminShiftControlDetails, type ShiftAutoCheck } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
@@ -142,6 +143,22 @@ function readText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
+function readTaskCashAudit(task: AutoCheckTask, key: 'personalCash' | 'reserveCash') {
+  const handoverData = isRecord(task.handoverData) ? task.handoverData : null;
+  const audit = handoverData && isRecord(handoverData[shiftControlOneCAuditKey])
+    ? handoverData[shiftControlOneCAuditKey]
+    : null;
+  const snapshot = audit && isRecord(audit[key]) ? audit[key] : null;
+  if (!audit || !snapshot) return null;
+  return {
+    capturedAt: readText(audit.capturedAt),
+    status: readText(snapshot.status),
+    balance: readNumber(snapshot.balance),
+    cashboxName: readText(snapshot.cashboxName),
+    error: readText(snapshot.error),
+  };
+}
+
 function parseOneCDateTime(value: string | null | undefined) {
   if (!value) return null;
   const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
@@ -149,26 +166,6 @@ function parseOneCDateTime(value: string | null | undefined) {
     : value;
   const timestamp = Date.parse(normalized);
   return Number.isFinite(timestamp) ? timestamp : null;
-}
-
-function cashBalanceAt(result: OneCCashStatementSummaryResult | null, cutoff: Date | null) {
-  if (!result?.ok || result.openingBalance === null) return null;
-  if (!cutoff) return result.closingBalance;
-
-  const cutoffTimestamp = cutoff.getTime();
-  return result.movements.reduce((balance, movement) => {
-    const movementTimestamp = parseOneCDateTime(movement.period);
-    if (movementTimestamp === null || movementTimestamp > cutoffTimestamp) return balance;
-    return balance + (movement.incoming ?? 0) - (movement.outgoing ?? 0);
-  }, result.openingBalance);
-}
-
-function hasOnlyLaterCashMovements(result: OneCCashStatementSummaryResult | null, cutoff: Date | null) {
-  if (!result?.ok || !cutoff || result.movements.length === 0) return false;
-  const timestamps = result.movements
-    .map((movement) => parseOneCDateTime(movement.period))
-    .filter((timestamp): timestamp is number => timestamp !== null);
-  return timestamps.length > 0 && timestamps.every((timestamp) => timestamp > cutoff.getTime());
 }
 
 function taskCutoff(task: AutoCheckTask) {
@@ -453,22 +450,30 @@ function buildEmployeeAutoChecks({
     ? kkmUsageForEmployee(kkmDiagnostics, cashboxName)
     : [];
   const kkmMappingObserved = kkmUsage.length > 0 || (terminalTotals?.matchedRows ?? 0) > 0;
-  const firstCashTaskId = tasks.find((task) => task.category === 'cash')?.id ?? null;
 
   for (const task of tasks) {
     const cutoff = taskCutoff(task);
 
     if (task.category === 'cash') {
-      if (task.id !== firstCashTaskId && hasOnlyLaterCashMovements(cashStatement, cutoff)) {
+      if (task.status !== 'done') {
         checks.push({
           id: `cash-${task.id}`,
           taskId: task.id,
           label: 'Наличные в кассе',
-          status: 'partial',
-          summary: `Движения 1С за день проведены после пересчёта${cutoff ? ` в ${formatTime(cutoff)}` : ''}; точный остаток на эту минуту не подтверждается.`,
-          evidence: cashStatement?.closingBalance === null || cashStatement?.closingBalance === undefined
-            ? 'Просрочка выполнения шага учитывается отдельно и сохраняется.'
-            : `Итоговый остаток 1С за день: ${formatMoney(cashStatement.closingBalance)}. Просрочка выполнения шага учитывается отдельно и сохраняется.`,
+          status: 'waiting',
+          summary: 'Сотрудник ещё не указал фактическую сумму.',
+        });
+        continue;
+      }
+      const snapshot = readTaskCashAudit(task, 'personalCash');
+      if (!snapshot || snapshot.status !== 'captured' || snapshot.balance === null) {
+        checks.push({
+          id: `cash-${task.id}`,
+          taskId: task.id,
+          label: 'Наличные в кассе',
+          status: 'unavailable',
+          summary: snapshot?.error || 'Снимок текущего остатка 1С не был сохранён в момент выполнения этого шага.',
+          evidence: 'Исторический остаток не реконструируется по движениям задним числом.',
         });
         continue;
       }
@@ -476,15 +481,9 @@ function buildEmployeeAutoChecks({
         id: `cash-${task.id}`,
         taskId: task.id,
         label: 'Наличные в кассе',
-        actual: task.status === 'done' ? task.numericValue : null,
-        expected: task.id === firstCashTaskId
-          ? cashStatement?.ok ? cashStatement.openingBalance : null
-          : cashBalanceAt(cashStatement, cutoff),
-        evidence: task.id === firstCashTaskId
-          ? 'Сверка с начальным остатком 1С за день.'
-          : cutoff
-            ? `Остаток 1С рассчитан по движениям на ${formatTime(cutoff)}.`
-            : 'Ожидается время выполнения шага.',
+        actual: task.numericValue,
+        expected: snapshot.balance,
+        evidence: `Текущий остаток кассы 1С сохранён при отправке шага${snapshot.capturedAt ? ` в ${formatTime(new Date(snapshot.capturedAt))}` : ''}.`,
       }));
       continue;
     }
@@ -622,7 +621,14 @@ function buildEmployeeAutoChecks({
     const reserveCash = handoverData && isRecord(handoverData.reserveCash) ? handoverData.reserveCash : null;
     const storeClosing = handoverData && isRecord(handoverData.storeClosing) ? handoverData.storeClosing : null;
     const personalCashBalance = personalCash ? readNumber(personalCash.cashBalance) : null;
-    const expectedPersonalCash = cashStatement?.ok ? cashStatement.closingBalance : null;
+    const personalCashAudit = readTaskCashAudit(task, 'personalCash');
+    const reserveCashAudit = readTaskCashAudit(task, 'reserveCash');
+    const expectedPersonalCash = personalCashAudit?.status === 'captured' && personalCashAudit.balance !== null
+      ? personalCashAudit.balance
+      : cashStatement?.ok ? cashStatement.closingBalance : null;
+    const expectedReserveCash = reserveCashAudit?.status === 'captured' && reserveCashAudit.balance !== null
+      ? reserveCashAudit.balance
+      : reserveStatement?.ok ? reserveStatement.closingBalance : null;
 
     checks.push(moneyAutoCheck({
       id: `handover-cash-${task.id}`,
@@ -630,16 +636,20 @@ function buildEmployeeAutoChecks({
       label: 'Пересчёт своей кассы',
       actual: personalCashBalance,
       expected: expectedPersonalCash,
-      evidence: 'Сверка с конечным остатком 1С за день.',
+      evidence: personalCashAudit?.status === 'captured'
+        ? `Текущий остаток кассы 1С сохранён при сдаче смены${personalCashAudit.capturedAt ? ` в ${formatTime(new Date(personalCashAudit.capturedAt))}` : ''}.`
+        : 'Снимок при сдаче смены отсутствует; используется конечный остаток 1С за день.',
     }));
     checks.push(moneyAutoCheck({
       id: `handover-reserve-${task.id}`,
       taskId: task.id,
       label: 'Пересчёт резерва',
       actual: reserveCash ? readNumber(reserveCash.cashBalance) : null,
-      expected: reserveStatement?.ok ? reserveStatement.closingBalance : null,
-      evidence: reserveCashboxName
-        ? `Сверка полного фактического остатка с конечным остатком кассы 1С «${reserveCashboxName}» за день.`
+      expected: expectedReserveCash,
+      evidence: reserveCashAudit?.status === 'captured'
+        ? `Текущий полный остаток резерва 1С сохранён при сдаче смены${reserveCashAudit.capturedAt ? ` в ${formatTime(new Date(reserveCashAudit.capturedAt))}` : ''}.`
+        : reserveCashboxName
+          ? `Снимок при сдаче смены отсутствует; используется конечный остаток кассы 1С «${reserveCashboxName}» за день.`
         : 'Касса резерва 1С не найдена.',
     }));
 
