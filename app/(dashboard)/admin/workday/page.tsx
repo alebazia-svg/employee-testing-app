@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, Banknote, CheckCircle2, Clock, ClipboardList, CreditCard, UserCheck, Users } from 'lucide-react';
+import { AlertTriangle, Banknote, CheckCircle2, ClipboardList, CreditCard, UserCheck, Users } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -34,6 +34,7 @@ const oneCMoneyTolerance = 1;
 type AutoCheckTask = {
   id: number;
   category: string;
+  plannedTimeMinutes: number | null;
   status: string;
   completedAt: Date | null;
   numericValue: number | null;
@@ -64,26 +65,50 @@ function StatCard({
   title,
   value,
   tone,
+  caption,
   icon: Icon,
 }: {
   title: string;
   value: number;
-  tone: 'green' | 'blue' | 'amber' | 'slate';
+  tone: 'green' | 'blue' | 'amber' | 'rose';
+  caption: string;
   icon: typeof Users;
 }) {
   const colors = {
-    green: 'text-green-700 bg-green-50',
-    blue: 'text-blue-700 bg-blue-50',
-    amber: 'text-amber-700 bg-amber-50',
-    slate: 'text-slate-700 bg-slate-50',
+    green: {
+      card: 'border-t-green-500',
+      icon: 'bg-green-100 text-green-800',
+      caption: 'text-green-700',
+    },
+    blue: {
+      card: 'border-t-blue-500',
+      icon: 'bg-blue-100 text-blue-800',
+      caption: 'text-blue-700',
+    },
+    amber: {
+      card: 'border-t-amber-500',
+      icon: 'bg-amber-100 text-amber-800',
+      caption: 'text-amber-700',
+    },
+    rose: {
+      card: 'border-t-rose-500',
+      icon: 'bg-rose-100 text-rose-800',
+      caption: 'text-rose-700',
+    },
   };
+  const color = colors[tone];
   return (
-    <Card className='p-4'>
-      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-lg ${colors[tone]}`}>
-        <Icon className='h-5 w-5' />
+    <Card className={`border-t-4 p-4 ${color.card}`}>
+      <div className='flex items-start justify-between gap-3'>
+        <div>
+          <p className='text-sm font-extrabold text-slate-700'>{title}</p>
+          <p className='mt-2 text-3xl font-extrabold text-slate-950'>{value}</p>
+        </div>
+        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${color.icon}`}>
+          <Icon className='h-5 w-5' />
+        </div>
       </div>
-      <p className='text-2xl font-extrabold text-slate-950'>{value}</p>
-      <p className='text-sm font-semibold text-slate-500'>{title}</p>
+      <p className={`mt-2 text-xs font-bold ${color.caption}`}>{caption}</p>
     </Card>
   );
 }
@@ -120,6 +145,40 @@ function addDays(dateKey: string, offset: number) {
   const [year, month, day] = dateKey.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + offset));
   return date.toISOString().slice(0, 10);
+}
+
+type ControlFilter = 'all' | 'attention' | 'unverified' | 'normal';
+
+function controlFilter(value: string | undefined): ControlFilter {
+  if (value === 'attention' || value === 'unverified' || value === 'normal') return value;
+  return 'all';
+}
+
+function moscowDateAndMinutes(value: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(value);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    dateKey: `${values.year}-${values.month}-${values.day}`,
+    minutes: Number(values.hour) * 60 + Number(values.minute),
+  };
+}
+
+function hasTaskTimingViolation(task: AutoCheckTask, dateKey: string, nowMinutes: number) {
+  if (task.plannedTimeMinutes === null) return false;
+  if (task.status === 'done' && task.completedAt) {
+    const completed = moscowDateAndMinutes(task.completedAt);
+    return completed.dateKey > dateKey
+      || (completed.dateKey === dateKey && completed.minutes > task.plannedTimeMinutes);
+  }
+  return nowMinutes > task.plannedTimeMinutes;
 }
 
 function formatMoney(value: number | null | undefined) {
@@ -851,13 +910,14 @@ function buildEmployeeAutoChecks({
   return checks;
 }
 
-export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string } }) {
+export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string; control?: string } }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');
 
   const today = getMoscowDateKey();
   const selectedDate = isDateKey(searchParams?.date) ? searchParams.date : today;
+  const selectedControlFilter = controlFilter(searchParams?.control);
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
   const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions] = await Promise.all([
@@ -1016,6 +1076,117 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const acquiringPendingCount = acquiringControlRows.filter((row) => row.status.problem && row.task?.integerValue !== 2).length;
   const acquiringDiscrepancyCount = acquiringControlRows.filter((row) => row.task?.integerValue === 2).length;
   const acquiringNoPaymentsCount = acquiringControlRows.filter((row) => row.task?.integerValue === 0).length;
+  const acquiringControlRowByUser = new Map(acquiringControlRows.map((row) => [row.employee.id, row]));
+  const criticalSystemErrorCount = [
+    cashStatementDimensions.ok,
+    kkmDiagnostics.ok,
+    tbankSales.ok,
+    Boolean(reserveStatement?.ok),
+  ].filter((ok) => !ok).length;
+  const employeeControlRows = employees
+    .map((employee) => {
+      const schedule = scheduleByUser.get(employee.id);
+      const workDay = workDayByUser.get(employee.id);
+      const run = shiftControlRunByUser.get(employee.id);
+      const shiftControlRequired = usesWorkdayShiftControl(employee);
+      const autoChecks = autoChecksByUser.get(employee.id) ?? [];
+      const acquiringRow = acquiringControlRowByUser.get(employee.id);
+      const timingViolationCount = shiftControlRequired
+        ? ((run?.tasks ?? []) as AutoCheckTask[]).filter((task) => hasTaskTimingViolation(task, selectedDate, nowMinutes)).length
+        : 0;
+      const mismatchCount = autoChecks.filter((check) => check.status === 'mismatch').length;
+      const incompleteCount = autoChecks.filter((check) => (
+        check.status === 'partial'
+        || check.status === 'waiting'
+        || check.status === 'unavailable'
+      )).length;
+      const matchedCount = autoChecks.filter((check) => check.status === 'matched').length;
+      const attentionReasons = [
+        !schedule ? 'График не заполнен' : null,
+        schedule?.status === 'working' && selectedDate <= today && !workDay ? 'Рабочий день не начат' : null,
+        workDay?.status === 'active' && !workDay.endedAt ? 'Рабочий день не завершён' : null,
+        hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
+        mismatchCount > 0 ? `Расхождений по 1С: ${mismatchCount}` : null,
+        acquiringRow?.status.problem ? `Эквайринг: ${acquiringRow.status.label}` : null,
+        timingViolationCount > 0 ? `Нарушений времени: ${timingViolationCount}` : null,
+      ].filter((reason): reason is string => Boolean(reason));
+      const needsAttention = attentionReasons.length > 0;
+      const cannotVerify = !needsAttention && shiftControlRequired && (
+        incompleteCount > 0
+        || (Boolean(run) && autoChecks.length === 0)
+        || (schedule?.status === 'working' && !run)
+      );
+      const category: Exclude<ControlFilter, 'all'> = needsAttention
+        ? 'attention'
+        : cannotVerify
+          ? 'unverified'
+          : 'normal';
+      const reviewText = needsAttention
+        ? `${attentionReasons.slice(0, 2).join(' · ')}${attentionReasons.length > 2 ? ` · ещё ${attentionReasons.length - 2}` : ''}`
+        : cannotVerify
+          ? incompleteCount > 0
+            ? `Автопроверка не полная: ${incompleteCount}`
+            : 'Недостаточно данных для проверки'
+          : 'Действий не требуется';
+      const oneCStatus = mismatchCount > 0
+        ? { label: `Расхождений ${mismatchCount}`, className: 'bg-rose-100 text-rose-800' }
+        : incompleteCount > 0
+          ? { label: `Не полностью ${incompleteCount}`, className: 'bg-blue-100 text-blue-800' }
+          : matchedCount > 0
+            ? { label: `Совпало ${matchedCount}`, className: 'bg-green-100 text-green-800' }
+            : { label: 'Нет проверок', className: 'bg-slate-100 text-slate-700' };
+      const timeStatus = timingViolationCount > 0
+        ? `${timingViolationCount} опозданий`
+        : workDay?.startedAt
+          ? `${formatTime(workDay.startedAt)}–${formatTime(workDay.endedAt)}`
+          : '—';
+
+      return {
+        employee,
+        schedule,
+        workDay,
+        run,
+        autoChecks,
+        shiftControlRequired,
+        timingViolationCount,
+        category,
+        reviewText,
+        oneCStatus,
+        timeStatus,
+      };
+    })
+    .sort((left, right) => {
+      const rank = { attention: 0, unverified: 1, normal: 2 };
+      return rank[left.category] - rank[right.category]
+        || left.employee.department.localeCompare(right.employee.department, 'ru')
+        || left.employee.name.localeCompare(right.employee.name, 'ru');
+    });
+  const attentionEmployeeCount = employeeControlRows.filter((row) => row.category === 'attention').length;
+  const unverifiedEmployeeCount = employeeControlRows.filter((row) => row.category === 'unverified').length;
+  const normalEmployeeCount = employeeControlRows.filter((row) => row.category === 'normal').length;
+  const filteredEmployeeControlRows = selectedControlFilter === 'all'
+    ? employeeControlRows
+    : employeeControlRows.filter((row) => row.category === selectedControlFilter);
+  const controlFilterHref = (filter: ControlFilter) => `/admin/workday?date=${selectedDate}&control=${filter}#employees-control`;
+  const overallSummary = criticalSystemErrorCount > 0
+    ? {
+      title: 'Есть критичные ошибки автоматических проверок',
+      description: `Недоступных источников: ${criticalSystemErrorCount}. Сначала восстановите подключения 1С.`,
+      className: 'border-rose-200 bg-rose-50 text-rose-950',
+    }
+    : attentionEmployeeCount > 0
+      ? {
+        title: 'Есть сотрудники, требующие проверки',
+        description: `Критичных ошибок системы нет. Требуют внимания: ${attentionEmployeeCount}.`,
+        className: 'border-amber-200 bg-amber-50 text-amber-950',
+      }
+      : {
+        title: 'Критичных ошибок нет',
+        description: unverifiedEmployeeCount > 0
+          ? `Действий по сотрудникам не требуется. Не удалось полностью проверить: ${unverifiedEmployeeCount}.`
+          : 'Все доступные проверки завершены без замечаний.',
+        className: 'border-green-200 bg-green-50 text-green-950',
+      };
   const cashboxMappingMessage = cashboxMappingStatusMessage(searchParams?.cashboxMapping, searchParams?.cashboxMappingError);
   const cashboxMappingEmployees = employees.filter((employee) => usesWorkdayShiftControl(employee));
   const cashboxMappingRedirectTo = `/admin/workday?date=${selectedDate}`;
@@ -1051,20 +1222,57 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             >
               Сегодня
             </Link>
+            <WorkdayQrCodes />
           </div>
         </div>
 
-        <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7'>
-          <StatCard title='Работают по графику' value={scheduledWorking} tone='green' icon={ClipboardList} />
-          <StatCard title='Выходной' value={scheduledOff} tone='slate' icon={Users} />
-          <StatCard title='Не заполнили график' value={scheduleMissing} tone='amber' icon={AlertTriangle} />
-          <StatCard title='Начали день' value={startedCount} tone='blue' icon={Clock} />
-          <StatCard title='Завершили' value={completedCount} tone='green' icon={CheckCircle2} />
-          <StatCard title='Опоздали' value={lateCount} tone='amber' icon={AlertTriangle} />
-          <StatCard title='Не завершили' value={missingCheckoutCount} tone='amber' icon={UserCheck} />
+        <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
+          <StatCard
+            title='Ошибки системы'
+            value={criticalSystemErrorCount}
+            tone={criticalSystemErrorCount > 0 ? 'rose' : 'green'}
+            caption={criticalSystemErrorCount > 0 ? 'нужно восстановить подключения' : 'критичных ошибок нет'}
+            icon={AlertTriangle}
+          />
+          <StatCard
+            title='Требуют внимания'
+            value={attentionEmployeeCount}
+            tone='amber'
+            caption={attentionEmployeeCount > 0 ? 'нужно проверить сотрудников' : 'действий не требуется'}
+            icon={UserCheck}
+          />
+          <StatCard
+            title='Нельзя проверить'
+            value={unverifiedEmployeeCount}
+            tone='blue'
+            caption='нет данных или полной автопроверки'
+            icon={ClipboardList}
+          />
+          <StatCard
+            title='Без замечаний'
+            value={normalEmployeeCount}
+            tone='green'
+            caption='по доступным данным всё нормально'
+            icon={CheckCircle2}
+          />
         </div>
 
-        <WorkdayQrCodes />
+        <Card className={`border ${overallSummary.className}`}>
+          <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+            <div>
+              <p className='text-base font-extrabold'>{overallSummary.title}</p>
+              <p className='mt-1 text-sm font-semibold opacity-80'>{overallSummary.description}</p>
+            </div>
+            {attentionEmployeeCount > 0 ? (
+              <Link
+                href={controlFilterHref('attention')}
+                className='inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-950 px-4 text-sm font-extrabold text-white transition hover:bg-slate-800'
+              >
+                Показать сотрудников
+              </Link>
+            ) : null}
+          </div>
+        </Card>
 
         <Card className='p-5'>
           <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
@@ -1073,13 +1281,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <ClipboardList className='h-5 w-5' />
               </span>
               <div>
-                <h2 className='text-lg font-extrabold text-slate-950'>Автопроверка чек-листов по 1С</h2>
+                <h2 className='text-lg font-extrabold text-slate-950'>Состояние автоматических проверок</h2>
                 <p className='mt-1 max-w-3xl text-sm font-medium leading-relaxed text-slate-500'>
-                  Ручной ответ сотрудника сохраняется отдельно. Система проверяет остаток кассы на момент выполнения, общий резерв,
-                  операции Сбербанка и Т-Банка, а при инкассации ищет парное движение касса → резерв.
-                </p>
-                <p className='mt-2 text-xs font-semibold text-slate-400'>
-                  Результаты видны в «Подробнее» у каждого сотрудника. X/Z-отчёты и промежуточный итог терминала пока отмечаются как частичная проверка.
+                  Сверка касс, резерва, Сбербанка и Т-Банка. Ограничения автоматизации не считаются ошибкой сотрудника.
                 </p>
               </div>
             </div>
@@ -1093,16 +1297,155 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               <Badge className={tbankSales.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
                 Т-Банк: {tbankSales.ok ? 'доступен' : 'ошибка'}
               </Badge>
-              <Badge className={reserveStatement?.ok ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
-                резерв: {reserveStatement?.ok ? reserveCashbox?.name : 'не получен'}
+              <Badge className={reserveStatement?.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
+                резерв: {reserveStatement?.ok ? reserveCashbox?.name : 'ошибка'}
               </Badge>
               <Badge className='bg-green-100 text-green-800'>совпало: {autoMatchedCount}</Badge>
               <Badge className={autoMismatchCount > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'}>
                 расхождения: {autoMismatchCount}
               </Badge>
-              <Badge className='bg-blue-100 text-blue-800'>частично: {autoPartialCount}</Badge>
+              <Badge className='bg-blue-100 text-blue-800'>не полностью: {autoPartialCount}</Badge>
             </div>
           </div>
+          <div className='mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-200 pt-4 text-sm font-semibold text-slate-600'>
+            <span>По графику: <strong className='text-slate-950'>{scheduledWorking}</strong></span>
+            <span>Выходной: <strong className='text-slate-950'>{scheduledOff}</strong></span>
+            <span>Без графика: <strong className={scheduleMissing > 0 ? 'text-amber-700' : 'text-slate-950'}>{scheduleMissing}</strong></span>
+            <span>Начали: <strong className='text-slate-950'>{startedCount}</strong></span>
+            <span>Завершили: <strong className='text-slate-950'>{completedCount}</strong></span>
+            <span>Опоздали: <strong className={lateCount > 0 ? 'text-amber-700' : 'text-slate-950'}>{lateCount}</strong></span>
+            <span>Не завершили: <strong className={missingCheckoutCount > 0 ? 'text-amber-700' : 'text-slate-950'}>{missingCheckoutCount}</strong></span>
+          </div>
+        </Card>
+
+        <Card className='p-0' id='employees-control'>
+          <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between'>
+            <div>
+              <h2 className='text-lg font-extrabold text-slate-950'>Сотрудники</h2>
+              <p className='mt-1 text-sm font-medium text-slate-500'>
+                Сначала показаны сотрудники, которым требуется внимание. Статусы времени и сверки 1С разделены.
+              </p>
+            </div>
+            <div className='flex flex-wrap gap-2 text-xs font-extrabold'>
+              {([
+                ['attention', `Требуют внимания · ${attentionEmployeeCount}`],
+                ['unverified', `Нельзя проверить · ${unverifiedEmployeeCount}`],
+                ['normal', `Без замечаний · ${normalEmployeeCount}`],
+                ['all', `Все · ${employeeControlRows.length}`],
+              ] as Array<[ControlFilter, string]>).map(([filter, label]) => (
+                <Link
+                  key={filter}
+                  href={controlFilterHref(filter)}
+                  className={`rounded-lg px-3 py-2 ring-1 transition ${
+                    selectedControlFilter === filter
+                      ? 'bg-slate-950 text-white ring-slate-950'
+                      : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
+          {filteredEmployeeControlRows.length === 0 ? (
+            <div className='px-5 py-5 text-sm font-semibold text-slate-500'>В этой категории сотрудников нет.</div>
+          ) : (
+            <div className='overflow-x-auto'>
+              <Table>
+                <thead>
+                  <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
+                    <th className='px-4 py-2.5'>Сотрудник</th>
+                    <th className='px-4 py-2.5'>Статус дня</th>
+                    <th className='px-4 py-2.5'>Время</th>
+                    <th className='px-4 py-2.5'>Сверка 1С</th>
+                    <th className='px-4 py-2.5'>Что требует внимания</th>
+                    <th className='px-4 py-2.5'>Действие</th>
+                    {devWorkdayToolsEnabled && <th className='px-4 py-2.5'>Dev/Test</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEmployeeControlRows.map((row) => {
+                    const status = row.workDay?.status ?? 'not_started';
+                    return (
+                      <tr key={row.employee.id} className='border-t border-slate-100 align-middle'>
+                        <td className='px-4 py-2.5'>
+                          <p className='font-bold text-slate-950'>
+                            {row.employee.name}
+                            <span className='ml-2 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</span>
+                          </p>
+                          <p className='mt-0.5 text-xs font-semibold text-slate-500'>
+                            {scheduleStatusLabel(row.schedule?.status)} · {row.workDay?.shiftLabel ?? 'смена не задана'}
+                          </p>
+                        </td>
+                        <td className='px-4 py-2.5'>
+                          <Badge className={statusClass(status)}>{workDayStatusLabel(status)}</Badge>
+                        </td>
+                        <td className={`whitespace-nowrap px-4 py-2.5 text-sm font-semibold ${
+                          row.timingViolationCount > 0 ? 'text-amber-700' : 'text-slate-700'
+                        }`}>
+                          {row.timeStatus}
+                        </td>
+                        <td className='px-4 py-2.5'>
+                          <Badge className={row.oneCStatus.className}>{row.oneCStatus.label}</Badge>
+                        </td>
+                        <td className={`max-w-[360px] px-4 py-2.5 text-sm font-semibold ${
+                          row.category === 'attention'
+                            ? 'text-amber-800'
+                            : row.category === 'unverified'
+                              ? 'text-blue-700'
+                              : 'text-green-700'
+                        }`}>
+                          {row.reviewText}
+                        </td>
+                        <td className='whitespace-nowrap px-4 py-2.5'>
+                          {row.shiftControlRequired ? (
+                            <AdminShiftControlDetails
+                              employeeName={row.employee.name}
+                              department={row.employee.department}
+                              departmentName={departmentLabel(row.employee.department)}
+                              scheduleLabel={scheduleStatusLabel(row.schedule?.status)}
+                              run={serializeShiftControlRun(row.run)}
+                              workDay={row.workDay ? {
+                                status: row.workDay.status,
+                                startedAt: row.workDay.startedAt.toISOString(),
+                                endedAt: row.workDay.endedAt?.toISOString() ?? null,
+                                shiftLabel: row.workDay.shiftLabel,
+                                lateMinutes: row.workDay.lateMinutes,
+                                comment: row.workDay.comment,
+                              } : null}
+                              dateKey={selectedDate}
+                              nowMinutes={nowMinutes}
+                              autoChecks={row.autoChecks}
+                            />
+                          ) : (
+                            <span className='text-xs font-semibold text-slate-400'>Не требуется</span>
+                          )}
+                        </td>
+                        {devWorkdayToolsEnabled && (
+                          <td className='px-4 py-2.5'>
+                            <div className='flex flex-col gap-2'>
+                              {!row.workDay && row.shiftControlRequired && (
+                                <DevCreateTestShiftButtons
+                                  userId={row.employee.id}
+                                  userName={row.employee.name}
+                                  department={row.employee.department}
+                                  date={selectedDate}
+                                />
+                              )}
+                              {row.shiftControlRequired && row.run && (
+                                <DevMakeShiftTasksAvailableButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />
+                              )}
+                              <DevResetTodayButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </div>
+          )}
         </Card>
 
         <Card className='p-0'>
@@ -1239,16 +1582,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               <Table>
                 <thead>
                   <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
-                    <th className='px-4 py-3'>Сотрудник</th>
-                    <th className='px-4 py-3'>Касса 1С</th>
-                    <th className='px-4 py-3'>На начало</th>
-                    <th className='px-4 py-3'>Приход</th>
-                    <th className='px-4 py-3'>Расход</th>
-                    <th className='px-4 py-3'>На конец</th>
-                    <th className='px-4 py-3'>Факт сотрудника</th>
-                    <th className='px-4 py-3'>Расшифровка 1С</th>
-                    <th className='px-4 py-3'>Разница</th>
-                    <th className='px-4 py-3'>Итог</th>
+                    <th className='px-4 py-2.5'>Сотрудник</th>
+                    <th className='px-4 py-2.5'>Факт</th>
+                    <th className='px-4 py-2.5'>1С</th>
+                    <th className='px-4 py-2.5'>Разница</th>
+                    <th className='px-4 py-2.5'>Статус</th>
+                    <th className='px-4 py-2.5'>Расчёт</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1263,52 +1602,50 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       employeeCashBalance: row.employeeCash.value,
                     });
                     return (
-                      <tr key={row.employee.id} className='border-t border-slate-100 align-top'>
-                        <td className='px-4 py-3'>
-                          <p className='font-bold text-slate-950'>{row.employee.name}</p>
-                          <p className='text-xs font-semibold text-slate-500'>{departmentLabel(row.employee.department)}</p>
-                          <Badge className={`mt-2 ${row.scheduleInfo.className}`}>{row.scheduleInfo.label}</Badge>
-                        </td>
-                        <td className='px-4 py-3 text-sm font-semibold text-slate-700'>
-                          {row.cashbox?.name ?? 'Касса 1С не привязана'}
+                      <tr key={row.employee.id} className='border-t border-slate-100 align-middle'>
+                        <td className='px-4 py-2.5'>
+                          <p className='font-bold text-slate-950'>
+                            {row.employee.name}
+                            <span className='ml-2 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</span>
+                          </p>
+                          <p className='mt-0.5 text-xs font-semibold text-slate-500'>
+                            {row.cashbox?.name ?? 'Касса 1С не привязана'} · {row.scheduleInfo.label}
+                          </p>
                           {!row.cashbox && row.suggestedCashbox ? (
-                            <p className='mt-1 text-xs font-semibold text-slate-400'>Подсказка: {row.suggestedCashbox.name}</p>
+                            <p className='mt-0.5 text-xs font-semibold text-amber-700'>Возможная касса: {row.suggestedCashbox.name}</p>
                           ) : null}
                         </td>
-                        <td className='px-4 py-3 font-semibold text-slate-700'>{formatMoney(row.result?.openingBalance)}</td>
-                        <td className='px-4 py-3 font-semibold text-green-700'>{formatMoney(row.result?.incomingTotal)}</td>
-                        <td className='px-4 py-3 font-semibold text-rose-700'>{formatMoney(row.result?.outgoingTotal)}</td>
-                        <td className='px-4 py-3 font-extrabold text-slate-950'>{formatMoney(row.result?.closingBalance)}</td>
-                        <td className='px-4 py-3 font-extrabold text-slate-950'>
+                        <td className='whitespace-nowrap px-4 py-2.5 font-extrabold text-slate-950'>
                           {formatMoney(row.employeeCash.value)}
                           {row.employeeCash.isDraft && row.employeeCash.value !== null ? (
-                            <p className='mt-1 text-xs font-semibold text-amber-700'>черновик сдачи</p>
+                            <p className='mt-0.5 text-xs font-semibold text-amber-700'>черновик</p>
                           ) : null}
                         </td>
-                        <td className='px-4 py-3'>
-                          <p className='font-extrabold text-slate-950'>{formatMoney(row.result?.closingBalance)}</p>
-                          <p className='mt-1 max-w-[360px] text-xs font-semibold leading-relaxed text-slate-500'>
-                            начало {formatMoney(row.result?.openingBalance)}
-                            <span className='px-1 text-slate-300'>·</span>
-                            приход <span className='text-green-700'>{formatMoney(row.result?.incomingTotal)}</span>
-                            <span className='px-1 text-slate-300'>·</span>
-                            расход <span className='text-rose-700'>{formatMoney(row.result?.outgoingTotal)}</span>
-                            <span className='px-1 text-slate-300'>·</span>
-                            движений {row.result?.movementsCount ?? '—'}
-                          </p>
+                        <td className='whitespace-nowrap px-4 py-2.5 font-extrabold text-slate-950'>
+                          {formatMoney(row.result?.closingBalance)}
+                          {row.note ? <p className='mt-0.5 max-w-[220px] whitespace-normal text-xs font-semibold text-slate-500'>{row.note}</p> : null}
                         </td>
-                        <td className='px-4 py-3'>
-                          <div className='grid gap-1'>
-                            <span className={`text-base font-extrabold ${difference !== null && Math.abs(difference) > 1 ? 'text-amber-700' : 'text-slate-700'}`}>
-                              {formatMoney(difference)}
-                            </span>
-                          </div>
+                        <td className={`whitespace-nowrap px-4 py-2.5 font-extrabold ${
+                          difference !== null && Math.abs(difference) > 1 ? 'text-amber-700' : 'text-slate-700'
+                        }`}>
+                          {formatMoney(difference)}
                         </td>
-                        <td className='px-4 py-3'>
-                          <div className='grid gap-1'>
-                            <Badge className={businessStatus.className}>{businessStatus.label}</Badge>
-                            {row.note && <span className='max-w-[260px] text-xs font-semibold text-slate-500'>{row.note}</span>}
-                          </div>
+                        <td className='px-4 py-2.5'>
+                          <Badge className={businessStatus.className}>{businessStatus.label}</Badge>
+                        </td>
+                        <td className='px-4 py-2.5'>
+                          <details className='group min-w-[220px]'>
+                            <summary className='cursor-pointer list-none text-sm font-extrabold text-slate-700 hover:text-slate-950'>
+                              <span className='group-open:hidden'>Расшифровка</span>
+                              <span className='hidden group-open:inline'>Скрыть расчёт</span>
+                            </summary>
+                            <div className='mt-2 grid gap-1 text-xs font-semibold text-slate-600'>
+                              <span>На начало: {formatMoney(row.result?.openingBalance)}</span>
+                              <span>Приход: <strong className='text-green-700'>{formatMoney(row.result?.incomingTotal)}</strong></span>
+                              <span>Расход: <strong className='text-rose-700'>{formatMoney(row.result?.outgoingTotal)}</strong></span>
+                              <span>Движений: {row.result?.movementsCount ?? '—'}</span>
+                            </div>
+                          </details>
                         </td>
                       </tr>
                     );
@@ -1355,35 +1692,36 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               <Table>
                 <thead>
                   <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
-                    <th className='px-4 py-3'>Сотрудник</th>
-                    <th className='px-4 py-3'>График</th>
-                    <th className='px-4 py-3'>Смена</th>
-                    <th className='px-4 py-3'>Результат</th>
-                    <th className='px-4 py-3'>Сумма</th>
-                    <th className='px-4 py-3'>Комментарий</th>
+                    <th className='px-4 py-2.5'>Сотрудник</th>
+                    <th className='px-4 py-2.5'>График и смена</th>
+                    <th className='px-4 py-2.5'>Результат</th>
+                    <th className='px-4 py-2.5'>Сумма</th>
+                    <th className='px-4 py-2.5'>Что проверить</th>
                   </tr>
                 </thead>
                 <tbody>
                   {acquiringControlRows.map((row) => (
-                    <tr key={row.employee.id} className='border-t border-slate-100 align-top'>
-                      <td className='px-4 py-3'>
-                        <p className='font-bold text-slate-950'>{row.employee.name}</p>
-                        <p className='text-xs font-semibold text-slate-500'>{departmentLabel(row.employee.department)}</p>
+                    <tr key={row.employee.id} className='border-t border-slate-100 align-middle'>
+                      <td className='px-4 py-2.5'>
+                        <p className='font-bold text-slate-950'>
+                          {row.employee.name}
+                          <span className='ml-2 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</span>
+                        </p>
                       </td>
-                      <td className='px-4 py-3'>
+                      <td className='px-4 py-2.5'>
                         <Badge className={scheduleClass(row.schedule?.status)}>{scheduleStatusLabel(row.schedule?.status)}</Badge>
+                        <span className='ml-2 text-sm font-semibold text-slate-600'>{row.workDay?.shiftLabel ?? '—'}</span>
                       </td>
-                      <td className='px-4 py-3 text-sm font-semibold text-slate-700'>{row.workDay?.shiftLabel ?? '—'}</td>
-                      <td className='px-4 py-3'>
+                      <td className='px-4 py-2.5'>
                         <Badge className={row.status.className}>{row.status.label}</Badge>
                         {row.task?.status === 'done' && row.task.completedAt ? (
-                          <p className='mt-1 text-xs font-semibold text-slate-400'>выполнено {formatTime(row.task.completedAt)}</p>
+                          <span className='ml-2 text-xs font-semibold text-slate-400'>{formatTime(row.task.completedAt)}</span>
                         ) : null}
                       </td>
-                      <td className='px-4 py-3 font-semibold text-slate-700'>
+                      <td className='whitespace-nowrap px-4 py-2.5 font-semibold text-slate-700'>
                         {row.task?.integerValue === 0 ? '0 ₽' : formatMoney(row.task?.numericValue)}
                       </td>
-                      <td className='max-w-[320px] px-4 py-3 text-sm font-semibold text-slate-600'>
+                      <td className={`max-w-[360px] px-4 py-2.5 text-sm font-semibold ${row.status.problem ? 'text-amber-800' : 'text-slate-600'}`}>
                         {row.task?.comment || (row.status.problem ? 'Нужно проверить' : '—')}
                       </td>
                     </tr>
@@ -1412,112 +1750,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           </Card>
         )}
 
-        <Card className='p-0'>
-          <div className='border-b border-slate-200 px-5 py-4'>
-            <h2 className='text-lg font-extrabold text-slate-950'>Сотрудники за выбранный день</h2>
-            <p className='mt-1 text-sm font-medium text-slate-500'>
-              План из нового графика, факт начала/окончания дня, опоздание и комментарий к поздней отметке.
-            </p>
-          </div>
-          <Table>
-            <thead>
-              <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
-                <th className='px-4 py-3'>Сотрудник</th>
-                <th className='px-4 py-3'>Отдел</th>
-                <th className='px-4 py-3'>График</th>
-                <th className='px-4 py-3'>Смена</th>
-                <th className='px-4 py-3'>Факт</th>
-                <th className='px-4 py-3'>Опоздание</th>
-                <th className='px-4 py-3'>Статус дня</th>
-                <th className='px-4 py-3'>Контроль смены</th>
-                <th className='px-4 py-3'>Флаги</th>
-                <th className='px-4 py-3'>Комментарий</th>
-                {devWorkdayToolsEnabled && <th className='px-4 py-3'>Dev/Test</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((employee) => {
-                const schedule = scheduleByUser.get(employee.id);
-                const workDay = workDayByUser.get(employee.id);
-                const shiftControlRun = shiftControlRunByUser.get(employee.id);
-                const shiftControlRequired = usesWorkdayShiftControl(employee);
-                const status = workDay?.status ?? 'not_started';
-                const flags = [
-                  schedule?.status === 'working' && !workDay ? 'ещё не начал' : null,
-                  workDay?.status === 'active' && !workDay.endedAt ? 'не завершил' : null,
-                  hasStaleCloseViolation(workDay, shiftControlRun) ? 'закрыто без сдачи смены' : null,
-                  workDay?.lateMinutes ? 'опоздал' : null,
-                ].filter(Boolean);
-                return (
-                  <tr key={employee.id} className='border-t border-slate-100 align-top'>
-                    <td className='px-4 py-3 font-bold text-slate-950'>{employee.name}</td>
-                    <td className='px-4 py-3 text-slate-600'>{departmentLabel(employee.department)}</td>
-                    <td className='px-4 py-3'>
-                      <Badge className={scheduleClass(schedule?.status)}>{scheduleStatusLabel(schedule?.status)}</Badge>
-                    </td>
-                    <td className='px-4 py-3 text-slate-700'>{workDay?.shiftLabel ?? '—'}</td>
-                    <td className='px-4 py-3 text-slate-700'>
-                      <div className='grid gap-0.5 leading-tight'>
-                        <span>{formatTime(workDay?.startedAt)}</span>
-                        <span className='text-xs text-slate-400'>{formatTime(workDay?.endedAt)}</span>
-                      </div>
-                    </td>
-                    <td className='px-4 py-3 font-semibold text-slate-700'>
-                      {workDay?.lateMinutes ? `${workDay.lateMinutes} мин` : '—'}
-                    </td>
-                    <td className='px-4 py-3'>
-                      <Badge className={statusClass(status)}>{workDayStatusLabel(status)}</Badge>
-                    </td>
-                    <td className='px-4 py-3'>
-                      {shiftControlRequired ? (
-                        <AdminShiftControlDetails
-                          department={employee.department}
-                          run={serializeShiftControlRun(shiftControlRun)}
-                          workDay={workDay ? { status: workDay.status, endedAt: workDay.endedAt?.toISOString() ?? null } : null}
-                          dateKey={selectedDate}
-                          nowMinutes={nowMinutes}
-                          autoChecks={autoChecksByUser.get(employee.id) ?? []}
-                        />
-                      ) : (
-                        <span className='text-sm font-semibold text-slate-500'>Чек-лист не требуется</span>
-                      )}
-                    </td>
-                    <td className='px-4 py-3'>
-                      {flags.length ? (
-                        <div className='flex flex-wrap gap-1.5'>
-                          {flags.map((flag) => (
-                            <Badge key={flag} className='bg-amber-100 text-amber-800'>{flag}</Badge>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className='text-slate-400'>—</span>
-                      )}
-                    </td>
-                    <td className='max-w-[280px] px-4 py-3 text-sm text-slate-600'>{workDay?.comment || '—'}</td>
-                    {devWorkdayToolsEnabled && (
-                      <td className='px-4 py-3'>
-                        <div className='flex flex-col gap-2'>
-                          {!workDay && shiftControlRequired && (
-                            <DevCreateTestShiftButtons
-                              userId={employee.id}
-                              userName={employee.name}
-                              department={employee.department}
-                              date={selectedDate}
-                            />
-                          )}
-                          {shiftControlRequired && shiftControlRun && (
-                            <DevMakeShiftTasksAvailableButton userId={employee.id} userName={employee.name} date={selectedDate} />
-                          )}
-                          <DevResetTodayButton userId={employee.id} userName={employee.name} date={selectedDate} />
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        </Card>
       </div>
     </AdminShell>
   );

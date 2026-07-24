@@ -30,11 +30,18 @@ type ShiftRun = {
 
 type WorkDayInfo = {
   status: string;
+  startedAt: string;
   endedAt: string | null;
+  shiftLabel: string;
+  lateMinutes: number;
+  comment: string;
 } | null;
 
 type Props = {
+  employeeName: string;
   department: string;
+  departmentName: string;
+  scheduleLabel: string;
   run: ShiftRun | null;
   workDay: WorkDayInfo;
   dateKey: string;
@@ -383,7 +390,114 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
   );
 }
 
-export function AdminShiftControlDetails({ department, run, workDay, dateKey, nowMinutes, autoChecks = [] }: Props) {
+type ReviewedTask = {
+  task: ShiftTask;
+  status: string;
+  autoChecks: ShiftAutoCheck[];
+};
+
+function TaskDetailCard({
+  item,
+  tone,
+  onPreview,
+}: {
+  item: ReviewedTask;
+  tone: 'attention' | 'unverified' | 'normal' | 'planned';
+  onPreview: (photo: PhotoPreview) => void;
+}) {
+  const toneClass = {
+    attention: 'border-amber-200 bg-amber-50/60',
+    unverified: 'border-blue-200 bg-blue-50/50',
+    normal: 'border-green-200 bg-green-50/40',
+    planned: 'border-slate-200 bg-white',
+  }[tone];
+  const hasMismatch = item.autoChecks.some((check) => check.status === 'mismatch');
+  const needsTimingReview = item.status === 'late' || item.status === 'overdue';
+
+  return (
+    <div className={`rounded-xl border p-3 ${toneClass}`}>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <p className='text-sm font-extrabold text-slate-950'>{item.task.title}</p>
+        <Badge className={badgeClass(item.status)}>{taskStatusLabel(item.status)}</Badge>
+      </div>
+      <div className='mt-2 grid gap-1 text-xs font-semibold text-slate-600 sm:grid-cols-3'>
+        <span>План: {minutesToTime(item.task.plannedTimeMinutes)}</span>
+        <span>Выполнено: {formatTime(item.task.completedAt)}</span>
+        <TaskValue task={item.task} onPreview={onPreview} />
+      </div>
+      {item.autoChecks.length > 0 ? (
+        <div className='mt-3 grid gap-2'>
+          {item.autoChecks.map((check) => {
+            const badge = autoCheckBadge(check.status);
+            return (
+              <div key={check.id} className='rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Badge className={badge.className}>{badge.label}</Badge>
+                  <span className='text-xs font-extrabold text-slate-800'>{check.label}</span>
+                </div>
+                <p className='mt-1 text-xs font-semibold leading-relaxed text-slate-600'>{check.summary}</p>
+                {check.evidence ? (
+                  <details className='mt-1'>
+                    <summary className='cursor-pointer text-[11px] font-bold text-slate-500'>Технические детали</summary>
+                    <p className='mt-1 text-[11px] font-semibold leading-relaxed text-slate-500'>{check.evidence}</p>
+                  </details>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {tone === 'attention' ? (
+        <p className='mt-2 text-xs font-extrabold text-amber-800'>
+          Что сделать: {hasMismatch ? 'сверить данные сотрудника с 1С и подтверждающими материалами.' : needsTimingReview ? 'проверить причину нарушения времени.' : 'проверить выполнение шага.'}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function TaskGroup({
+  title,
+  items,
+  tone,
+  defaultOpen,
+  onPreview,
+}: {
+  title: string;
+  items: ReviewedTask[];
+  tone: 'attention' | 'unverified' | 'normal' | 'planned';
+  defaultOpen: boolean;
+  onPreview: (photo: PhotoPreview) => void;
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <details open={defaultOpen} className='group rounded-xl bg-white ring-1 ring-slate-200'>
+      <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3'>
+        <span className='text-sm font-extrabold text-slate-950'>{title} · {items.length}</span>
+        <span className='text-xs font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
+        <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
+      </summary>
+      <div className='grid gap-2 border-t border-slate-200 p-3'>
+        {items.map((item) => (
+          <TaskDetailCard key={item.task.id} item={item} tone={tone} onPreview={onPreview} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+export function AdminShiftControlDetails({
+  employeeName,
+  department,
+  departmentName,
+  scheduleLabel,
+  run,
+  workDay,
+  dateKey,
+  nowMinutes,
+  autoChecks = [],
+}: Props) {
   const [open, setOpen] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
   const canUseShiftControl = department === 'retail' || department === 'wholesale';
@@ -424,60 +538,70 @@ export function AdminShiftControlDetails({ department, run, workDay, dateKey, no
     }
     return result;
   }, [autoChecks]);
+  const taskGroups = useMemo(() => {
+    const groups: Record<'attention' | 'unverified' | 'normal' | 'planned', ReviewedTask[]> = {
+      attention: [],
+      unverified: [],
+      normal: [],
+      planned: [],
+    };
+
+    for (const task of detailTasks) {
+      const status = taskStatus(task, dateKey, nowMinutes);
+      const taskAutoChecks = autoChecksByTask.get(task.id) ?? [];
+      const item = { task, status, autoChecks: taskAutoChecks };
+      if (status === 'late' || status === 'overdue' || taskAutoChecks.some((check) => check.status === 'mismatch')) {
+        groups.attention.push(item);
+      } else if (taskAutoChecks.some((check) => (
+        check.status === 'partial'
+        || check.status === 'waiting'
+        || check.status === 'unavailable'
+      ))) {
+        groups.unverified.push(item);
+      } else if (status === 'done') {
+        groups.normal.push(item);
+      } else {
+        groups.planned.push(item);
+      }
+    }
+
+    return groups;
+  }, [autoChecksByTask, dateKey, detailTasks, nowMinutes]);
   const autoSummary = autoCheckSummary(autoChecks);
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
 
   return (
-    <div className='min-w-[220px]'>
-      <div className='flex flex-wrap items-center gap-2'>
-        <Badge className={badgeClass(summary.status)}>{summary.label}</Badge>
-        {run && (
-          <Button
-            type='button'
-            className='h-8 bg-slate-100 px-2.5 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
-            onClick={() => setOpen(true)}
-          >
-            Подробнее
-          </Button>
-        )}
-      </div>
-      <div className='mt-1 grid gap-0.5 text-xs font-semibold text-slate-500'>
-        {run ? (
-          <>
-            <span>Прогресс: {summary.completed}/{summary.total}</span>
-            <span>Нарушения времени: {summary.overdue}</span>
-            <span>День завершён: {workDay?.status === 'completed' || workDay?.endedAt ? 'да' : 'нет'}</span>
-            <span>Смена сдана: {summary.handoverDone ? 'да' : 'нет'}</span>
-            <span className={autoSummary.problem ? 'font-extrabold text-rose-700' : ''}>
-              Автопроверка 1С: {autoSummary.label}
-            </span>
-          </>
-        ) : (
-          <span>Нет ShiftControlRun за день</span>
-        )}
-      </div>
+    <div>
+      {run ? (
+        <Button
+          type='button'
+          className={`h-8 px-3 text-xs font-extrabold shadow-none ${
+            taskGroups.attention.length > 0
+              ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+          }`}
+          onClick={() => setOpen(true)}
+        >
+          {taskGroups.attention.length > 0 ? 'Проверить' : 'Подробнее'}
+        </Button>
+      ) : (
+        <span className='text-xs font-semibold text-slate-400'>Нет чек-листа</span>
+      )}
 
       {open && run && (
-        <div className='fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm' onClick={closeDetails}>
-          <aside
-            className='ml-auto flex h-full w-full max-w-3xl flex-col bg-slate-50 shadow-2xl'
+        <div className='fixed inset-0 z-50 bg-slate-950/50 p-2 backdrop-blur-sm sm:p-5' onClick={closeDetails}>
+          <div
+            className='mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl'
             onClick={(event) => event.stopPropagation()}
           >
-            <header className='flex items-start justify-between gap-4 border-b border-slate-200 bg-white p-5'>
+            <header className='flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4'>
               <div>
-                <p className='text-sm font-semibold text-primary'>Контроль смены</p>
-                <h3 className='mt-1 text-xl font-extrabold text-slate-950'>Детали контроля смены</h3>
-                <div className='mt-2 flex flex-wrap gap-2'>
-                  <Badge className={badgeClass(summary.status)}>{summary.label}</Badge>
-                  <Badge className='bg-slate-100 text-slate-700'>Прогресс {summary.completed}/{summary.total}</Badge>
-                  <Badge className={summary.overdue > 0 ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>
-                    Нарушения времени {summary.overdue}
-                  </Badge>
-                  <Badge className={autoSummary.className}>
-                    1С: {autoSummary.label}
-                  </Badge>
-                </div>
+                <p className='text-sm font-semibold text-primary'>Контроль смены · {dateKey}</p>
+                <h3 className='mt-1 text-2xl font-extrabold text-slate-950'>{employeeName}</h3>
+                <p className='mt-1 text-sm font-semibold text-slate-500'>
+                  {departmentName} · {scheduleLabel} · {workDay?.shiftLabel ?? 'смена не задана'}
+                </p>
               </div>
               <Button
                 type='button'
@@ -489,58 +613,131 @@ export function AdminShiftControlDetails({ department, run, workDay, dateKey, no
               </Button>
             </header>
 
-            <div className='flex-1 overflow-y-auto p-5'>
-              <div className='grid gap-5'>
-                <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
-                  <h4 className='text-sm font-extrabold text-slate-950'>Список задач</h4>
-                  <div className='mt-3 grid gap-2'>
-                    {detailTasks.map((task) => {
-                      const status = taskStatus(task, dateKey, nowMinutes);
-                      const taskAutoChecks = autoChecksByTask.get(task.id) ?? [];
-                      return (
-                        <div key={task.id} className='rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200/80'>
-                          <div className='flex flex-wrap items-center justify-between gap-2'>
-                            <p className='text-sm font-extrabold text-slate-950'>{task.title}</p>
-                            <Badge className={badgeClass(status)}>{taskStatusLabel(status)}</Badge>
-                          </div>
-                          <div className='mt-1 grid gap-1 text-xs font-semibold text-slate-600 md:grid-cols-3'>
-                            <span>План: {minutesToTime(task.plannedTimeMinutes)}</span>
-                            <span>Выполнено: {formatTime(task.completedAt)}</span>
-                            <TaskValue task={task} onPreview={setSelectedPhoto} />
-                          </div>
-                          {taskAutoChecks.length > 0 && (
-                            <div className='mt-2 grid gap-1.5'>
-                              {taskAutoChecks.map((check) => {
-                                const badge = autoCheckBadge(check.status);
-                                return (
-                                  <div key={check.id} className='rounded-md bg-white px-2.5 py-2 ring-1 ring-slate-200'>
-                                    <div className='flex flex-wrap items-center gap-2'>
-                                      <Badge className={badge.className}>{badge.label}</Badge>
-                                      <span className='text-xs font-extrabold text-slate-800'>{check.label}</span>
-                                    </div>
-                                    <p className='mt-1 text-xs font-semibold leading-relaxed text-slate-600'>{check.summary}</p>
-                                    {check.evidence && <p className='mt-0.5 text-[11px] font-semibold text-slate-400'>{check.evidence}</p>}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-
-                {run.tasks
-                  .filter((task) => task.category === 'handover')
-                  .map((task) => (
-                    <HandoverDetails key={task.id} data={task.handoverData} department={department} onPreview={setSelectedPhoto} />
-                  ))}
+            <div className='grid gap-3 border-b border-slate-200 bg-white px-5 py-4 sm:grid-cols-2 xl:grid-cols-4'>
+              <div className={`rounded-xl border-t-4 bg-white p-3 ring-1 ring-slate-200 ${
+                workDay?.status === 'completed' ? 'border-t-green-500' : 'border-t-amber-500'
+              }`}>
+                <p className='text-xs font-bold uppercase text-slate-400'>День</p>
+                <p className='mt-1 text-lg font-extrabold text-slate-950'>
+                  {workDay?.status === 'completed' || workDay?.endedAt ? 'Завершён' : workDay ? 'Идёт' : 'Не начат'}
+                </p>
+                <p className='mt-1 text-xs font-semibold text-slate-500'>
+                  {workDay ? `${formatTime(workDay.startedAt)}–${formatTime(workDay.endedAt)}` : 'Нет отметок'}
+                </p>
+              </div>
+              <div className={`rounded-xl border-t-4 bg-white p-3 ring-1 ring-slate-200 ${
+                summary.overdue > 0 ? 'border-t-amber-500' : 'border-t-green-500'
+              }`}>
+                <p className='text-xs font-bold uppercase text-slate-400'>Время</p>
+                <p className='mt-1 text-lg font-extrabold text-slate-950'>{summary.overdue}</p>
+                <p className='mt-1 text-xs font-semibold text-slate-500'>нарушений времени</p>
+              </div>
+              <div className={`rounded-xl border-t-4 bg-white p-3 ring-1 ring-slate-200 ${
+                summary.completed === summary.total && summary.total > 0 ? 'border-t-green-500' : 'border-t-amber-500'
+              }`}>
+                <p className='text-xs font-bold uppercase text-slate-400'>Чек-лист</p>
+                <p className='mt-1 text-lg font-extrabold text-slate-950'>{summary.completed}/{summary.total}</p>
+                <p className='mt-1 text-xs font-semibold text-slate-500'>{summary.handoverDone ? 'смена сдана' : 'смена не сдана'}</p>
+              </div>
+              <div className={`rounded-xl border-t-4 bg-white p-3 ring-1 ring-slate-200 ${
+                autoSummary.problem
+                  ? 'border-t-rose-500'
+                  : autoChecks.length === 0
+                    ? 'border-t-slate-400'
+                    : autoChecks.some((check) => check.status !== 'matched')
+                      ? 'border-t-blue-500'
+                      : 'border-t-green-500'
+              }`}>
+                <p className='text-xs font-bold uppercase text-slate-400'>Сверка 1С</p>
+                <p className='mt-1 text-lg font-extrabold text-slate-950'>{autoSummary.label}</p>
+                <p className='mt-1 text-xs font-semibold text-slate-500'>автоматические проверки</p>
               </div>
             </div>
-          </aside>
+
+            <div className='min-h-0 flex-1 overflow-y-auto p-5'>
+              <div className='grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]'>
+                <main className='grid content-start gap-4'>
+                  {taskGroups.attention.length === 0 ? (
+                    <div className='rounded-xl border border-green-200 bg-green-50 px-4 py-3'>
+                      <p className='text-sm font-extrabold text-green-950'>Действий по чек-листу не требуется</p>
+                      <p className='mt-1 text-xs font-semibold text-green-800'>Критичных расхождений и просроченных шагов нет.</p>
+                    </div>
+                  ) : null}
+                  <TaskGroup title='Требует действия' items={taskGroups.attention} tone='attention' defaultOpen onPreview={setSelectedPhoto} />
+                  <TaskGroup title='Нельзя проверить автоматически' items={taskGroups.unverified} tone='unverified' defaultOpen onPreview={setSelectedPhoto} />
+                  <TaskGroup title='По плану' items={taskGroups.planned} tone='planned' defaultOpen onPreview={setSelectedPhoto} />
+                  <TaskGroup title='Выполнено нормально' items={taskGroups.normal} tone='normal' defaultOpen={false} onPreview={setSelectedPhoto} />
+                </main>
+
+                <aside className='grid content-start gap-4'>
+                  <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
+                    <div className='flex flex-wrap items-center justify-between gap-2'>
+                      <h4 className='text-sm font-extrabold text-slate-950'>Итог смены</h4>
+                      <Badge className={badgeClass(summary.status)}>{summary.label}</Badge>
+                    </div>
+                    <dl className='mt-3 grid gap-2 text-sm'>
+                      <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
+                        <dt className='font-semibold text-slate-500'>График</dt>
+                        <dd className='font-extrabold text-slate-900'>{scheduleLabel}</dd>
+                      </div>
+                      <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
+                        <dt className='font-semibold text-slate-500'>Смена</dt>
+                        <dd className='font-extrabold text-slate-900'>{workDay?.shiftLabel ?? '—'}</dd>
+                      </div>
+                      <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
+                        <dt className='font-semibold text-slate-500'>Опоздание на входе</dt>
+                        <dd className={workDay?.lateMinutes ? 'font-extrabold text-amber-700' : 'font-extrabold text-slate-900'}>
+                          {workDay?.lateMinutes ? `${workDay.lateMinutes} мин` : 'нет'}
+                        </dd>
+                      </div>
+                      <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
+                        <dt className='font-semibold text-slate-500'>День завершён</dt>
+                        <dd className='font-extrabold text-slate-900'>{workDay?.status === 'completed' || workDay?.endedAt ? 'да' : 'нет'}</dd>
+                      </div>
+                      <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
+                        <dt className='font-semibold text-slate-500'>Смена сдана</dt>
+                        <dd className='font-extrabold text-slate-900'>{summary.handoverDone ? 'да' : 'нет'}</dd>
+                      </div>
+                    </dl>
+                    {workDay?.comment ? (
+                      <div className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600'>
+                        Комментарий: {workDay.comment}
+                      </div>
+                    ) : null}
+                  </section>
+
+                  {run.tasks
+                    .filter((task) => task.category === 'handover')
+                    .map((task) => (
+                      <HandoverDetails key={task.id} data={task.handoverData} department={department} onPreview={setSelectedPhoto} />
+                    ))}
+
+                  <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
+                    <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3'>
+                      <span className='text-sm font-extrabold text-slate-950'>Технический журнал</span>
+                      <span className='text-xs font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
+                      <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
+                    </summary>
+                    <div className='grid gap-1 border-t border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600'>
+                      <span>Run ID: {run.id}</span>
+                      <span>Статус: {run.status}</span>
+                      <span>Отправлено: {formatTime(run.submittedAt)}</span>
+                      <span>Завершено: {formatTime(run.completedAt)}</span>
+                      <span>Автопроверок: {autoChecks.length}</span>
+                    </div>
+                  </details>
+                </aside>
+              </div>
+            </div>
+          </div>
           {selectedPhoto && (
-            <div className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4' onClick={() => setSelectedPhoto(null)}>
+            <div
+              className='fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4'
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelectedPhoto(null);
+              }}
+            >
               <div className='flex max-h-full w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl' onClick={(event) => event.stopPropagation()}>
                 <div className='flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3'>
                   <p className='min-w-0 truncate text-sm font-extrabold text-slate-950'>{selectedPhoto.label}</p>
