@@ -1464,6 +1464,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                           department={employee.department}
                           run={serializeShiftControlRun(shiftControlRun)}
                           workDay={workDay ? { status: workDay.status, endedAt: workDay.endedAt?.toISOString() ?? null } : null}
+                          dateKey={selectedDate}
                           nowMinutes={nowMinutes}
                           autoChecks={autoChecksByUser.get(employee.id) ?? []}
                         />

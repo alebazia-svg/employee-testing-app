@@ -37,6 +37,7 @@ type Props = {
   department: string;
   run: ShiftRun | null;
   workDay: WorkDayInfo;
+  dateKey: string;
   nowMinutes: number;
   autoChecks?: ShiftAutoCheck[];
 };
@@ -78,21 +79,46 @@ function formatMoney(value: number | null | undefined) {
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)} ₽`;
 }
 
-function taskStatus(task: ShiftTask, nowMinutes: number) {
-  if (task.status === 'done') return 'done';
+function moscowDateAndMinutes(value: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(value));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    dateKey: `${values.year}-${values.month}-${values.day}`,
+    minutes: Number(values.hour) * 60 + Number(values.minute),
+  };
+}
+
+function taskStatus(task: ShiftTask, dateKey: string, nowMinutes: number) {
+  if (task.status === 'done') {
+    if (task.plannedTimeMinutes === null || !task.completedAt) return 'done';
+    const completed = moscowDateAndMinutes(task.completedAt);
+    if (completed.dateKey > dateKey || (completed.dateKey === dateKey && completed.minutes > task.plannedTimeMinutes)) {
+      return 'late';
+    }
+    return 'done';
+  }
   if (task.plannedTimeMinutes !== null && nowMinutes > task.plannedTimeMinutes) return 'overdue';
   return 'pending';
 }
 
 function taskStatusLabel(status: string) {
   if (status === 'done') return 'выполнено';
+  if (status === 'late') return 'выполнено с опозданием';
   if (status === 'overdue') return 'просрочено';
   return 'ожидает';
 }
 
 function badgeClass(status: string) {
   if (status === 'done' || status === 'completed') return 'bg-green-100 text-green-800';
-  if (status === 'overdue' || status === 'not_submitted') return 'bg-amber-100 text-amber-800';
+  if (status === 'late' || status === 'overdue' || status === 'not_submitted') return 'bg-amber-100 text-amber-800';
   if (status === 'none') return 'bg-slate-100 text-slate-600';
   return 'bg-blue-100 text-blue-800';
 }
@@ -357,7 +383,7 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
   );
 }
 
-export function AdminShiftControlDetails({ department, run, workDay, nowMinutes, autoChecks = [] }: Props) {
+export function AdminShiftControlDetails({ department, run, workDay, dateKey, nowMinutes, autoChecks = [] }: Props) {
   const [open, setOpen] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
   const canUseShiftControl = department === 'retail' || department === 'wholesale';
@@ -370,14 +396,17 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes,
     if (!run) return { status: 'none', label: 'нет контроля', completed: 0, total: 0, overdue: 0, handoverDone: false };
 
     const completed = run.tasks.filter((task) => task.status === 'done').length;
-    const overdue = run.tasks.filter((task) => taskStatus(task, nowMinutes) === 'overdue').length;
+    const overdue = run.tasks.filter((task) => {
+      const status = taskStatus(task, dateKey, nowMinutes);
+      return status === 'overdue' || status === 'late';
+    }).length;
     const handoverDone = run.tasks.some((task) => task.category === 'handover' && task.status === 'done');
     const total = run.tasks.length;
-    const status = completed === total && total > 0 ? 'completed' : overdue > 0 ? 'overdue' : handoverDone ? 'completed' : 'in_progress';
-    const label = status === 'completed' ? 'выполнено' : status === 'overdue' ? 'есть просрочки' : 'в процессе';
+    const status = overdue > 0 ? 'overdue' : completed === total && total > 0 ? 'completed' : handoverDone ? 'completed' : 'in_progress';
+    const label = status === 'completed' ? 'выполнено' : status === 'overdue' ? 'есть нарушения времени' : 'в процессе';
 
     return { status, label, completed, total, overdue, handoverDone };
-  }, [canUseShiftControl, nowMinutes, run]);
+  }, [canUseShiftControl, dateKey, nowMinutes, run]);
 
   const hasZReportInHandover = useMemo(() => {
     if (!run) return false;
@@ -417,7 +446,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes,
         {run ? (
           <>
             <span>Прогресс: {summary.completed}/{summary.total}</span>
-            <span>Просрочено: {summary.overdue}</span>
+            <span>Нарушения времени: {summary.overdue}</span>
             <span>День завершён: {workDay?.status === 'completed' || workDay?.endedAt ? 'да' : 'нет'}</span>
             <span>Смена сдана: {summary.handoverDone ? 'да' : 'нет'}</span>
             <span className={autoSummary.problem ? 'font-extrabold text-rose-700' : ''}>
@@ -443,7 +472,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes,
                   <Badge className={badgeClass(summary.status)}>{summary.label}</Badge>
                   <Badge className='bg-slate-100 text-slate-700'>Прогресс {summary.completed}/{summary.total}</Badge>
                   <Badge className={summary.overdue > 0 ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>
-                    Просрочки {summary.overdue}
+                    Нарушения времени {summary.overdue}
                   </Badge>
                   <Badge className={autoSummary.className}>
                     1С: {autoSummary.label}
@@ -466,7 +495,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes,
                   <h4 className='text-sm font-extrabold text-slate-950'>Список задач</h4>
                   <div className='mt-3 grid gap-2'>
                     {detailTasks.map((task) => {
-                      const status = taskStatus(task, nowMinutes);
+                      const status = taskStatus(task, dateKey, nowMinutes);
                       const taskAutoChecks = autoChecksByTask.get(task.id) ?? [];
                       return (
                         <div key={task.id} className='rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200/80'>
