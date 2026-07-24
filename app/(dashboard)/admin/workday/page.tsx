@@ -163,6 +163,14 @@ function cashBalanceAt(result: OneCCashStatementSummaryResult | null, cutoff: Da
   }, result.openingBalance);
 }
 
+function hasOnlyLaterCashMovements(result: OneCCashStatementSummaryResult | null, cutoff: Date | null) {
+  if (!result?.ok || !cutoff || result.movements.length === 0) return false;
+  const timestamps = result.movements
+    .map((movement) => parseOneCDateTime(movement.period))
+    .filter((timestamp): timestamp is number => timestamp !== null);
+  return timestamps.length > 0 && timestamps.every((timestamp) => timestamp > cutoff.getTime());
+}
+
 function taskCutoff(task: AutoCheckTask) {
   if (task.completedAt) return task.completedAt;
   if (!isRecord(task.handoverData)) return null;
@@ -297,6 +305,25 @@ function findEncashmentPair({
   return timeMatched ? 'time' : null;
 }
 
+function findExactEncashmentAmounts({
+  personal,
+  reserve,
+}: {
+  personal: OneCCashStatementSummaryResult;
+  reserve: OneCCashStatementSummaryResult;
+}) {
+  const amounts = personal.movements.flatMap((outgoingMovement) => {
+    const amount = outgoingMovement.outgoing ?? 0;
+    if (amount <= oneCMoneyTolerance || !outgoingMovement.document.ref) return [];
+    const matchingIncoming = reserve.movements.some((incomingMovement) => (
+      incomingMovement.document.ref === outgoingMovement.document.ref
+      && Math.abs((incomingMovement.incoming ?? 0) - amount) <= oneCMoneyTolerance
+    ));
+    return matchingIncoming ? [amount] : [];
+  });
+  return [...new Set(amounts)];
+}
+
 function readHandoverCashBalance(run: { tasks?: Array<{ category: string; handoverData: unknown }> } | null | undefined) {
   const handoverTask = run?.tasks?.find((task) => task.category === 'handover') ?? null;
   if (!handoverTask || !isRecord(handoverTask.handoverData)) return { value: null, isDraft: false };
@@ -426,18 +453,38 @@ function buildEmployeeAutoChecks({
     ? kkmUsageForEmployee(kkmDiagnostics, cashboxName)
     : [];
   const kkmMappingObserved = kkmUsage.length > 0 || (terminalTotals?.matchedRows ?? 0) > 0;
+  const firstCashTaskId = tasks.find((task) => task.category === 'cash')?.id ?? null;
 
   for (const task of tasks) {
     const cutoff = taskCutoff(task);
 
     if (task.category === 'cash') {
+      if (task.id !== firstCashTaskId && hasOnlyLaterCashMovements(cashStatement, cutoff)) {
+        checks.push({
+          id: `cash-${task.id}`,
+          taskId: task.id,
+          label: 'Наличные в кассе',
+          status: 'partial',
+          summary: `Движения 1С за день проведены после пересчёта${cutoff ? ` в ${formatTime(cutoff)}` : ''}; точный остаток на эту минуту не подтверждается.`,
+          evidence: cashStatement?.closingBalance === null || cashStatement?.closingBalance === undefined
+            ? 'Просрочка выполнения шага учитывается отдельно и сохраняется.'
+            : `Итоговый остаток 1С за день: ${formatMoney(cashStatement.closingBalance)}. Просрочка выполнения шага учитывается отдельно и сохраняется.`,
+        });
+        continue;
+      }
       checks.push(moneyAutoCheck({
         id: `cash-${task.id}`,
         taskId: task.id,
         label: 'Наличные в кассе',
         actual: task.status === 'done' ? task.numericValue : null,
-        expected: cashBalanceAt(cashStatement, cutoff),
-        evidence: cutoff ? `Остаток 1С рассчитан по движениям на ${formatTime(cutoff)}.` : 'Ожидается время выполнения шага.',
+        expected: task.id === firstCashTaskId
+          ? cashStatement?.ok ? cashStatement.openingBalance : null
+          : cashBalanceAt(cashStatement, cutoff),
+        evidence: task.id === firstCashTaskId
+          ? 'Сверка с начальным остатком 1С за день.'
+          : cutoff
+            ? `Остаток 1С рассчитан по движениям на ${formatTime(cutoff)}.`
+            : 'Ожидается время выполнения шага.',
       }));
       continue;
     }
@@ -575,7 +622,7 @@ function buildEmployeeAutoChecks({
     const reserveCash = handoverData && isRecord(handoverData.reserveCash) ? handoverData.reserveCash : null;
     const storeClosing = handoverData && isRecord(handoverData.storeClosing) ? handoverData.storeClosing : null;
     const personalCashBalance = personalCash ? readNumber(personalCash.cashBalance) : null;
-    const expectedPersonalCash = cashBalanceAt(cashStatement, cutoff);
+    const expectedPersonalCash = cashStatement?.ok ? cashStatement.closingBalance : null;
 
     checks.push(moneyAutoCheck({
       id: `handover-cash-${task.id}`,
@@ -583,15 +630,17 @@ function buildEmployeeAutoChecks({
       label: 'Пересчёт своей кассы',
       actual: personalCashBalance,
       expected: expectedPersonalCash,
-      evidence: cutoff ? `Остаток 1С рассчитан по движениям на ${formatTime(cutoff)}.` : 'Ожидается время сдачи смены.',
+      evidence: 'Сверка с конечным остатком 1С за день.',
     }));
     checks.push(moneyAutoCheck({
       id: `handover-reserve-${task.id}`,
       taskId: task.id,
       label: 'Пересчёт резерва',
       actual: reserveCash ? readNumber(reserveCash.cashBalance) : null,
-      expected: cashBalanceAt(reserveStatement, cutoff),
-      evidence: reserveCashboxName ? `Касса 1С: ${reserveCashboxName}.` : 'Касса резерва 1С не найдена.',
+      expected: reserveStatement?.ok ? reserveStatement.closingBalance : null,
+      evidence: reserveCashboxName
+        ? `Сверка полного фактического остатка с конечным остатком кассы 1С «${reserveCashboxName}» за день.`
+        : 'Касса резерва 1С не найдена.',
     }));
 
     const discrepancyType = personalCash ? readText(personalCash.discrepancyType) : '';
@@ -712,7 +761,31 @@ function buildEmployeeAutoChecks({
 
     const requiresEncashment = personalCash ? readBoolean(personalCash.requiresEncashment) : null;
     const encashmentAmount = personalCash ? readNumber(personalCash.encashmentAmount) : null;
-    if (requiresEncashment) {
+    if (requiresEncashment === false) {
+      if (!cashStatement?.ok || !reserveStatement?.ok) {
+        checks.push({
+          id: `handover-encashment-${task.id}`,
+          taskId: task.id,
+          label: 'Инкассация в резерв',
+          status: 'unavailable',
+          summary: 'Движения своей кассы или резерва 1С не получены.',
+        });
+      } else {
+        const exactAmounts = findExactEncashmentAmounts({
+          personal: cashStatement,
+          reserve: reserveStatement,
+        });
+        checks.push({
+          id: `handover-encashment-${task.id}`,
+          taskId: task.id,
+          label: 'Инкассация в резерв',
+          status: exactAmounts.length > 0 ? 'mismatch' : 'matched',
+          summary: exactAmounts.length > 0
+            ? `Сотрудник указал, что инкассации не было, но в 1С найдено парное движение касса → резерв на ${exactAmounts.map(formatMoney).join(', ')}.`
+            : 'Сотрудник указал, что инкассации не было; парных движений касса → резерв в 1С не найдено.',
+        });
+      }
+    } else if (requiresEncashment) {
       if (encashmentAmount === null) {
         checks.push({
           id: `handover-encashment-${task.id}`,
@@ -734,7 +807,7 @@ function buildEmployeeAutoChecks({
           personal: cashStatement,
           reserve: reserveStatement,
           amount: encashmentAmount,
-          cutoff,
+          cutoff: null,
         });
         checks.push({
           id: `handover-encashment-${task.id}`,
