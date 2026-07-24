@@ -200,6 +200,61 @@ export type OneCCashStatementSummaryResult = {
   diagnostics: string[];
 };
 
+export type OneCKkmEquipmentDiagnosticsParams = {
+  dateFrom: string;
+  dateTo: string;
+  limit?: number;
+};
+
+export type OneCKkmReference = {
+  name: string;
+  ref: string;
+};
+
+export type OneCKkmRecentCheck = {
+  ref: string;
+  number: string;
+  datetime: string;
+  amount: number | null;
+  organization: OneCKkmReference;
+  cashRegister: OneCKkmReference;
+  cashier: OneCKkmReference;
+  paymentForm: string;
+  cashReceived: number | null;
+};
+
+export type OneCKkmCashRegisterUsage = {
+  organization: OneCKkmReference;
+  cashRegister: OneCKkmReference;
+  checks: number | null;
+  amount: number | null;
+  lastCheckDatetime: string;
+};
+
+export type OneCKkmAcquiringTerminalUsage = {
+  organization: OneCKkmReference;
+  cashRegister: OneCKkmReference;
+  acquiringTerminal: OneCKkmReference;
+  checks: number | null;
+  amount: number | null;
+  lastCheckDatetime: string;
+};
+
+export type OneCKkmEquipmentDiagnosticsResult = {
+  ok: boolean;
+  path: '/kkm-equipment-diagnostics';
+  status?: number;
+  durationMs: number;
+  checkedAt: string;
+  params: OneCKkmEquipmentDiagnosticsParams;
+  recentChecks: OneCKkmRecentCheck[];
+  cashRegisterUsage: OneCKkmCashRegisterUsage[];
+  acquiringTerminalUsage: OneCKkmAcquiringTerminalUsage[];
+  warnings: string[];
+  error?: string;
+  diagnostics: string[];
+};
+
 let cachedHealth: { expiresAt: number; value: OneCHealthResult } | null = null;
 
 export const DEFAULT_SALES_REALIZATIONS_PARAMS: SalesRealizationsParams = {
@@ -406,6 +461,74 @@ function normalizeCashStatementMovement(value: unknown): OneCCashStatementMoveme
       ref: document.ref,
     },
     documentType: readFirstString(source, ['document_type', 'documentType', 'type']),
+  };
+}
+
+function normalizeKkmReference(value: unknown): OneCKkmReference {
+  const source = readRecord(value) ?? {};
+  return {
+    name: readFirstString(source, ['name', 'presentation', 'description']),
+    ref: readFirstString(source, ['ref', 'id', 'guid']),
+  };
+}
+
+function normalizeKkmRecentCheck(value: unknown): OneCKkmRecentCheck {
+  const source = readRecord(value) ?? {};
+  return {
+    ref: readFirstString(source, ['ref', 'id', 'guid']),
+    number: readFirstString(source, ['number', 'document_number', 'documentNumber']),
+    datetime: readFirstString(source, ['datetime', 'date']),
+    amount: readFirstNumber(source, ['amount', 'sum', 'total']),
+    organization: normalizeKkmReference(source.organization),
+    cashRegister: normalizeKkmReference(source.cash_register ?? source.cashRegister),
+    cashier: normalizeKkmReference(source.cashier ?? source.responsible),
+    paymentForm: readFirstString(source, ['payment_form', 'paymentForm']),
+    cashReceived: readFirstNumber(source, ['cash_received', 'cashReceived']),
+  };
+}
+
+function normalizeKkmCashRegisterUsage(value: unknown): OneCKkmCashRegisterUsage {
+  const source = readRecord(value) ?? {};
+  return {
+    organization: normalizeKkmReference(source.organization),
+    cashRegister: normalizeKkmReference(source.cash_register ?? source.cashRegister),
+    checks: readFirstNumber(source, ['checks', 'checks_count', 'checksCount']),
+    amount: readFirstNumber(source, ['amount', 'sum', 'total']),
+    lastCheckDatetime: readFirstString(source, ['last_check_datetime', 'lastCheckDatetime']),
+  };
+}
+
+function normalizeKkmAcquiringTerminalUsage(value: unknown): OneCKkmAcquiringTerminalUsage {
+  const source = readRecord(value) ?? {};
+  return {
+    organization: normalizeKkmReference(source.organization),
+    cashRegister: normalizeKkmReference(source.cash_register ?? source.cashRegister),
+    acquiringTerminal: normalizeKkmReference(source.acquiring_terminal ?? source.acquiringTerminal),
+    checks: readFirstNumber(source, ['checks', 'checks_count', 'checksCount']),
+    amount: readFirstNumber(source, ['amount', 'sum', 'total']),
+    lastCheckDatetime: readFirstString(source, ['last_check_datetime', 'lastCheckDatetime']),
+  };
+}
+
+function findKkmEquipmentDiagnosticsPayload(data: unknown) {
+  const root = readRecord(data);
+  if (!root) {
+    return {
+      recentChecks: [] as OneCKkmRecentCheck[],
+      cashRegisterUsage: [] as OneCKkmCashRegisterUsage[],
+      acquiringTerminalUsage: [] as OneCKkmAcquiringTerminalUsage[],
+      warnings: [] as string[],
+      diagnostics: ['Ответ 1С не похож на JSON-объект.'],
+    };
+  }
+
+  const payload = readRecord(root.data) ?? root;
+  return {
+    recentChecks: readArray(payload.recent_checks ?? payload.recentChecks).map(normalizeKkmRecentCheck),
+    cashRegisterUsage: readArray(payload.cash_register_usage ?? payload.cashRegisterUsage).map(normalizeKkmCashRegisterUsage),
+    acquiringTerminalUsage: readArray(payload.acquiring_terminal_usage ?? payload.acquiringTerminalUsage).map(normalizeKkmAcquiringTerminalUsage),
+    warnings: readArray(payload.warnings).map((warning) => String(warning)),
+    diagnostics: [] as string[],
   };
 }
 
@@ -677,6 +800,80 @@ async function requestCashStatementSummary(
       closingBalance: null,
       movements: [],
       movementsCount: 0,
+      error: formatError(error),
+      diagnostics: [],
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestKkmEquipmentDiagnostics(
+  config: OneCConfig,
+  params: OneCKkmEquipmentDiagnosticsParams,
+): Promise<OneCKkmEquipmentDiagnosticsResult> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const path = '/kkm-equipment-diagnostics';
+  const query = new URLSearchParams({
+    date_from: params.dateFrom,
+    date_to: params.dateTo,
+    limit: String(params.limit ?? 300),
+    catalog_limit: '1',
+  });
+
+  try {
+    const response = await fetch(`${config.baseUrl}${path}?${query.toString()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        Authorization: buildAuthHeader(config),
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const data = await readResponseBody(response);
+    const durationMs = Date.now() - startedAt;
+    const payload = findKkmEquipmentDiagnosticsPayload(data);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        path,
+        status: response.status,
+        durationMs,
+        checkedAt: new Date().toISOString(),
+        params,
+        recentChecks: [],
+        cashRegisterUsage: [],
+        acquiringTerminalUsage: [],
+        warnings: payload.warnings,
+        error: `1C API returned HTTP ${response.status}`,
+        diagnostics: payload.diagnostics,
+      };
+    }
+
+    return {
+      ok: true,
+      path,
+      status: response.status,
+      durationMs,
+      checkedAt: new Date().toISOString(),
+      params,
+      ...payload,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      path,
+      durationMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString(),
+      params,
+      recentChecks: [],
+      cashRegisterUsage: [],
+      acquiringTerminalUsage: [],
+      warnings: [],
       error: formatError(error),
       diagnostics: [],
     };
@@ -1045,4 +1242,29 @@ export async function getCashStatementSummary(
   }
 
   return requestCashStatementSummary(config, params);
+}
+
+export async function getKkmEquipmentDiagnostics(
+  params: OneCKkmEquipmentDiagnosticsParams,
+): Promise<OneCKkmEquipmentDiagnosticsResult> {
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+
+  if (missingConfig.length) {
+    return {
+      ok: false,
+      path: '/kkm-equipment-diagnostics',
+      durationMs: 0,
+      checkedAt: new Date().toISOString(),
+      params,
+      recentChecks: [],
+      cashRegisterUsage: [],
+      acquiringTerminalUsage: [],
+      warnings: [],
+      error: '1C API configuration is incomplete',
+      diagnostics: [`Missing env: ${missingConfig.join(', ')}`],
+    };
+  }
+
+  return requestKkmEquipmentDiagnostics(config, params);
 }

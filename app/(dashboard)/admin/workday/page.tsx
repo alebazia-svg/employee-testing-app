@@ -6,10 +6,19 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { getCurrentUser } from '@/lib/auth';
-import { getCashStatementDimensions, getCashStatementSummary, type OneCCashStatementSummaryResult } from '@/lib/one-c';
+import {
+  DEFAULT_SALES_REALIZATIONS_PARAMS,
+  getCashStatementDimensions,
+  getCashStatementSummary,
+  getKkmEquipmentDiagnostics,
+  getSalesRealizations,
+  type OneCCashStatementSummaryResult,
+  type OneCKkmEquipmentDiagnosticsResult,
+  type OneCSalesRealizationDocument,
+} from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl, workDayStatusLabel } from '@/lib/workday';
-import { AdminShiftControlDetails } from './AdminShiftControlDetails';
+import { AdminShiftControlDetails, type ShiftAutoCheck } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
 import { DevMakeShiftTasksAvailableButton } from './DevMakeShiftTasksAvailableButton';
 import { DevResetTodayButton } from './DevResetTodayButton';
@@ -18,6 +27,24 @@ import { WorkdayQrCodes } from './WorkdayQrCodes';
 export const dynamic = 'force-dynamic';
 
 const devWorkdayToolsEnabled = process.env.ENABLE_DEV_WORKDAY_TOOLS === 'true';
+const reserveCashboxSearchName = 'резерв под телефоны';
+const oneCMoneyTolerance = 1;
+
+type AutoCheckTask = {
+  id: number;
+  category: string;
+  status: string;
+  completedAt: Date | null;
+  numericValue: number | null;
+  integerValue: number | null;
+  handoverData: unknown;
+};
+
+type TbankSalesForDate = {
+  ok: boolean;
+  documents: OneCSalesRealizationDocument[];
+  error?: string;
+};
 
 function statusClass(status: string) {
   if (status === 'completed') return 'bg-green-100 text-green-800';
@@ -105,6 +132,169 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function readNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : null;
+}
+
+function readText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : '';
+}
+
+function parseOneCDateTime(value: string | null | undefined) {
+  if (!value) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? `${value.replace(' ', 'T')}+03:00`
+    : value;
+  const timestamp = Date.parse(normalized);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function cashBalanceAt(result: OneCCashStatementSummaryResult | null, cutoff: Date | null) {
+  if (!result?.ok || result.openingBalance === null) return null;
+  if (!cutoff) return result.closingBalance;
+
+  const cutoffTimestamp = cutoff.getTime();
+  return result.movements.reduce((balance, movement) => {
+    const movementTimestamp = parseOneCDateTime(movement.period);
+    if (movementTimestamp === null || movementTimestamp > cutoffTimestamp) return balance;
+    return balance + (movement.incoming ?? 0) - (movement.outgoing ?? 0);
+  }, result.openingBalance);
+}
+
+function taskCutoff(task: AutoCheckTask) {
+  if (task.completedAt) return task.completedAt;
+  if (!isRecord(task.handoverData)) return null;
+  const updatedAt = readText(task.handoverData.updatedAt);
+  const timestamp = Date.parse(updatedAt);
+  return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+}
+
+function moneyAutoCheck({
+  id,
+  taskId,
+  label,
+  actual,
+  expected,
+  evidence,
+}: {
+  id: string;
+  taskId: number;
+  label: string;
+  actual: number | null;
+  expected: number | null;
+  evidence?: string;
+}): ShiftAutoCheck {
+  if (actual === null) {
+    return { id, taskId, label, status: 'waiting', summary: 'Сотрудник ещё не указал фактическую сумму.', evidence };
+  }
+  if (expected === null) {
+    return { id, taskId, label, status: 'unavailable', summary: 'Остаток 1С для этой проверки не получен.', evidence };
+  }
+
+  const difference = actual - expected;
+  return {
+    id,
+    taskId,
+    label,
+    status: Math.abs(difference) <= oneCMoneyTolerance ? 'matched' : 'mismatch',
+    summary: `Факт ${formatMoney(actual)} · 1С ${formatMoney(expected)} · разница ${formatMoney(difference)}.`,
+    evidence,
+  };
+}
+
+function employeeOneCSearchKey(employeeName: string) {
+  return employeeCashboxSearchKey(employeeName);
+}
+
+function matchesExplicitCashbox(cashboxName: string, cashRegisterName: string) {
+  const cashbox = normalizeSearchText(cashboxName);
+  const cashRegister = normalizeSearchText(cashRegisterName);
+  return Boolean(cashbox) && (cashRegister === cashbox || cashRegister.includes(cashbox));
+}
+
+function matchesEmployeeManager(employeeName: string, managerName: string) {
+  const employeeKey = employeeOneCSearchKey(employeeName);
+  return Boolean(employeeKey) && normalizeSearchText(managerName).includes(employeeKey);
+}
+
+async function getTbankSalesForDate(date: string): Promise<TbankSalesForDate> {
+  const limit = 100;
+  const documents: OneCSalesRealizationDocument[] = [];
+
+  for (let offset = 0; offset < 1000; offset += limit) {
+    const result = await getSalesRealizations({
+      ...DEFAULT_SALES_REALIZATIONS_PARAMS,
+      dateFrom: date,
+      dateTo: date,
+      posted: 'true',
+      limit,
+      offset,
+      includeLines: false,
+    });
+    if (!result.ok) return { ok: false, documents, error: result.error ?? result.diagnostics.join('; ') };
+
+    documents.push(...result.documents);
+    if (result.responseDocumentCount < limit) break;
+  }
+
+  return { ok: true, documents };
+}
+
+function terminalTotalsForEmployee(
+  result: OneCKkmEquipmentDiagnosticsResult,
+  cashboxName: string,
+) {
+  const rows = result.acquiringTerminalUsage.filter((row) => (
+    matchesExplicitCashbox(cashboxName, row.cashRegister.name)
+    && normalizeSearchText(row.acquiringTerminal.name).includes('сбербанк')
+  ));
+  return {
+    matchedRows: rows.length,
+    checks: rows.reduce((sum, row) => sum + (row.checks ?? 0), 0),
+    amount: rows.reduce((sum, row) => sum + (row.amount ?? 0), 0),
+  };
+}
+
+function kkmUsageForEmployee(result: OneCKkmEquipmentDiagnosticsResult, cashboxName: string) {
+  return result.cashRegisterUsage.filter((row) => matchesExplicitCashbox(cashboxName, row.cashRegister.name));
+}
+
+function findEncashmentPair({
+  personal,
+  reserve,
+  amount,
+  cutoff,
+}: {
+  personal: OneCCashStatementSummaryResult | null;
+  reserve: OneCCashStatementSummaryResult | null;
+  amount: number;
+  cutoff: Date | null;
+}) {
+  if (!personal?.ok || !reserve?.ok) return null;
+  const cutoffTimestamp = cutoff?.getTime() ?? Number.POSITIVE_INFINITY;
+  const outgoing = personal.movements.filter((movement) => {
+    const timestamp = parseOneCDateTime(movement.period);
+    return timestamp !== null && timestamp <= cutoffTimestamp && Math.abs((movement.outgoing ?? 0) - amount) <= oneCMoneyTolerance;
+  });
+  const incoming = reserve.movements.filter((movement) => {
+    const timestamp = parseOneCDateTime(movement.period);
+    return timestamp !== null && timestamp <= cutoffTimestamp && Math.abs((movement.incoming ?? 0) - amount) <= oneCMoneyTolerance;
+  });
+
+  let timeMatched = false;
+  for (const expense of outgoing) {
+    for (const receipt of incoming) {
+      if (expense.document.ref && receipt.document.ref && expense.document.ref === receipt.document.ref) return 'exact';
+      const expenseTimestamp = parseOneCDateTime(expense.period);
+      const receiptTimestamp = parseOneCDateTime(receipt.period);
+      if (expenseTimestamp !== null && receiptTimestamp !== null && Math.abs(expenseTimestamp - receiptTimestamp) <= 10 * 60 * 1000) {
+        timeMatched = true;
+      }
+    }
+  }
+  return timeMatched ? 'time' : null;
 }
 
 function readHandoverCashBalance(run: { tasks?: Array<{ category: string; handoverData: unknown }> } | null | undefined) {
@@ -203,6 +393,381 @@ function cashboxMappingStatusMessage(status?: string, error?: string) {
   return null;
 }
 
+function buildEmployeeAutoChecks({
+  employeeName,
+  tasks,
+  cashboxName,
+  cashStatement,
+  reserveCashboxName,
+  reserveStatement,
+  kkmDiagnostics,
+  tbankSales,
+}: {
+  employeeName: string;
+  tasks: AutoCheckTask[];
+  cashboxName: string | null;
+  cashStatement: OneCCashStatementSummaryResult | null;
+  reserveCashboxName: string | null;
+  reserveStatement: OneCCashStatementSummaryResult | null;
+  kkmDiagnostics: OneCKkmEquipmentDiagnosticsResult;
+  tbankSales: TbankSalesForDate;
+}) {
+  const checks: ShiftAutoCheck[] = [];
+  const handoverHasStoreClosing = tasks.some((task) => (
+    task.category === 'handover'
+    && isRecord(task.handoverData)
+    && isRecord(task.handoverData.storeClosing)
+  ));
+  const employeeTbankDocuments = tbankSales.documents.filter((document) => matchesEmployeeManager(employeeName, document.managerName));
+  const terminalTotals = cashboxName && kkmDiagnostics.ok
+    ? terminalTotalsForEmployee(kkmDiagnostics, cashboxName)
+    : null;
+  const kkmUsage = cashboxName && kkmDiagnostics.ok
+    ? kkmUsageForEmployee(kkmDiagnostics, cashboxName)
+    : [];
+  const kkmMappingObserved = kkmUsage.length > 0 || (terminalTotals?.matchedRows ?? 0) > 0;
+
+  for (const task of tasks) {
+    const cutoff = taskCutoff(task);
+
+    if (task.category === 'cash') {
+      checks.push(moneyAutoCheck({
+        id: `cash-${task.id}`,
+        taskId: task.id,
+        label: 'Наличные в кассе',
+        actual: task.status === 'done' ? task.numericValue : null,
+        expected: cashBalanceAt(cashStatement, cutoff),
+        evidence: cutoff ? `Остаток 1С рассчитан по движениям на ${formatTime(cutoff)}.` : 'Ожидается время выполнения шага.',
+      }));
+      continue;
+    }
+
+    if (task.category === 'credit') {
+      if (task.status !== 'done') {
+        checks.push({
+          id: `credit-${task.id}`,
+          taskId: task.id,
+          label: 'Операции Т-Банка',
+          status: 'waiting',
+          summary: 'Сотрудник ещё не завершил проверку.',
+        });
+        continue;
+      }
+      if (!tbankSales.ok) {
+        checks.push({
+          id: `credit-${task.id}`,
+          taskId: task.id,
+          label: 'Операции Т-Банка',
+          status: 'unavailable',
+          summary: tbankSales.error || 'Реализации 1С не получены.',
+        });
+        continue;
+      }
+
+      const cutoffTimestamp = cutoff?.getTime() ?? Number.POSITIVE_INFINITY;
+      const matchedDocuments = employeeTbankDocuments.filter((document) => {
+        const timestamp = parseOneCDateTime(document.date);
+        return timestamp !== null && timestamp <= cutoffTimestamp;
+      });
+      const declaredOperations = task.integerValue === 1 || task.integerValue === 2;
+      const oneCHasOperations = matchedDocuments.length > 0;
+
+      if (!oneCHasOperations && tbankSales.documents.length > 0) {
+        checks.push({
+          id: `credit-${task.id}`,
+          taskId: task.id,
+          label: 'Операции Т-Банка',
+          status: 'partial',
+          summary: `По имени сотрудника документы не найдены; всего по партнёру Т-Банка за день: ${tbankSales.documents.length}.`,
+          evidence: 'Сопоставление выполняется по имени менеджера в реализации 1С.',
+        });
+        continue;
+      }
+
+      const matchedAmount = matchedDocuments.reduce((sum, document) => sum + (document.amount ?? 0), 0);
+      checks.push({
+        id: `credit-${task.id}`,
+        taskId: task.id,
+        label: 'Операции Т-Банка',
+        status: declaredOperations === oneCHasOperations ? 'matched' : 'mismatch',
+        summary: oneCHasOperations
+          ? `1С: ${matchedDocuments.length} реализаций на ${formatMoney(matchedAmount)}; сотрудник ${declaredOperations ? 'подтвердил операции' : 'указал, что операций не было'}.`
+          : `В 1С операций до момента проверки нет; сотрудник ${declaredOperations ? 'подтвердил операции' : 'указал, что операций не было'}.`,
+        evidence: 'Сопоставление по партнёру Т-Банка, дате и имени менеджера 1С.',
+      });
+      continue;
+    }
+
+    if (task.category === 'acquiring') {
+      if (task.status !== 'done') {
+        checks.push({
+          id: `acquiring-${task.id}`,
+          taskId: task.id,
+          label: 'Оплаты Сбербанка',
+          status: 'waiting',
+          summary: 'Сотрудник ещё не завершил сверку терминала.',
+        });
+      } else if (!kkmDiagnostics.ok || !cashboxName || !terminalTotals || !kkmMappingObserved) {
+        checks.push({
+          id: `acquiring-${task.id}`,
+          taskId: task.id,
+          label: 'Оплаты Сбербанка',
+          status: 'unavailable',
+          summary: !cashboxName
+            ? 'Касса сотрудника не привязана.'
+            : !kkmMappingObserved
+              ? 'Для привязанной кассы не найдено использование ККМ за выбранный день.'
+              : kkmDiagnostics.error || 'Данные ККМ 1С не получены.',
+        });
+      } else {
+        checks.push({
+          id: `acquiring-${task.id}`,
+          taskId: task.id,
+          label: 'Оплаты Сбербанка',
+          status: 'partial',
+          summary: `За день в 1С: ${terminalTotals.checks} оплат на ${formatMoney(terminalTotals.amount)}. Промежуточный итог на конкретную минуту 1С пока не отдаёт.`,
+          evidence: 'Дневной итог по явно привязанной кассе ККМ и терминалу Сбербанка.',
+        });
+      }
+      continue;
+    }
+
+    if (task.category === 'opening' || task.category === 'closing') {
+      if (task.category === 'closing' && handoverHasStoreClosing) continue;
+      const label = task.category === 'opening' ? 'Открытие смены ККМ' : 'Закрытие смены ККМ';
+      if (task.status !== 'done') {
+        checks.push({
+          id: `${task.category}-${task.id}`,
+          taskId: task.id,
+          label,
+          status: 'waiting',
+          summary: task.category === 'opening'
+            ? 'Сотрудник ещё не завершил открытие смены.'
+            : 'Сотрудник ещё не завершил закрытие смены.',
+        });
+      } else if (!kkmDiagnostics.ok || !cashboxName) {
+        checks.push({
+          id: `${task.category}-${task.id}`,
+          taskId: task.id,
+          label,
+          status: 'unavailable',
+          summary: !cashboxName ? 'Касса сотрудника не привязана.' : kkmDiagnostics.error || 'Данные ККМ 1С не получены.',
+        });
+      } else {
+        const checksCount = kkmUsage.reduce((sum, row) => sum + (row.checks ?? 0), 0);
+        checks.push({
+          id: `${task.category}-${task.id}`,
+          taskId: task.id,
+          label,
+          status: 'partial',
+          summary: checksCount > 0
+            ? `ККМ активна: в 1С за день найдено чеков ${checksCount}. Сам X/Z-отчёт текущий endpoint не подтверждает.`
+            : 'Чеки ККМ за день не найдены. Сам X/Z-отчёт текущий endpoint не подтверждает.',
+        });
+      }
+      continue;
+    }
+
+    if (task.category !== 'handover') continue;
+
+    const handoverData = isRecord(task.handoverData) ? task.handoverData : null;
+    const personalCash = handoverData && isRecord(handoverData.personalCash) ? handoverData.personalCash : null;
+    const reserveCash = handoverData && isRecord(handoverData.reserveCash) ? handoverData.reserveCash : null;
+    const storeClosing = handoverData && isRecord(handoverData.storeClosing) ? handoverData.storeClosing : null;
+    const personalCashBalance = personalCash ? readNumber(personalCash.cashBalance) : null;
+    const expectedPersonalCash = cashBalanceAt(cashStatement, cutoff);
+
+    checks.push(moneyAutoCheck({
+      id: `handover-cash-${task.id}`,
+      taskId: task.id,
+      label: 'Пересчёт своей кассы',
+      actual: personalCashBalance,
+      expected: expectedPersonalCash,
+      evidence: cutoff ? `Остаток 1С рассчитан по движениям на ${formatTime(cutoff)}.` : 'Ожидается время сдачи смены.',
+    }));
+    checks.push(moneyAutoCheck({
+      id: `handover-reserve-${task.id}`,
+      taskId: task.id,
+      label: 'Пересчёт резерва',
+      actual: reserveCash ? readNumber(reserveCash.cashBalance) : null,
+      expected: cashBalanceAt(reserveStatement, cutoff),
+      evidence: reserveCashboxName ? `Касса 1С: ${reserveCashboxName}.` : 'Касса резерва 1С не найдена.',
+    }));
+
+    const discrepancyType = personalCash ? readText(personalCash.discrepancyType) : '';
+    const discrepancyAmount = personalCash ? readNumber(personalCash.discrepancyAmount) : null;
+    if (personalCashBalance === null) {
+      checks.push({
+        id: `handover-discrepancy-${task.id}`,
+        taskId: task.id,
+        label: 'Расхождение по кассе',
+        status: 'waiting',
+        summary: 'Сначала нужен фактический пересчёт кассы.',
+      });
+    } else if (expectedPersonalCash === null) {
+      checks.push({
+        id: `handover-discrepancy-${task.id}`,
+        taskId: task.id,
+        label: 'Расхождение по кассе',
+        status: 'unavailable',
+        summary: 'Остаток 1С для расчёта расхождения не получен.',
+      });
+    } else {
+      const difference = personalCashBalance - expectedPersonalCash;
+      const expectedType = Math.abs(difference) <= oneCMoneyTolerance ? 'none' : difference > 0 ? 'surplus' : 'shortage';
+      const typeMatches = discrepancyType === expectedType;
+      const amountMatches = expectedType === 'none'
+        ? discrepancyAmount === null || Math.abs(discrepancyAmount) <= oneCMoneyTolerance
+        : discrepancyAmount !== null && Math.abs(discrepancyAmount - Math.abs(difference)) <= oneCMoneyTolerance;
+      checks.push({
+        id: `handover-discrepancy-${task.id}`,
+        taskId: task.id,
+        label: 'Расхождение по кассе',
+        status: typeMatches && amountMatches ? 'matched' : 'mismatch',
+        summary: `Расчёт 1С: ${formatMoney(difference)}; заявление сотрудника: ${discrepancyType || 'не заполнено'}${discrepancyAmount === null ? '' : `, ${formatMoney(discrepancyAmount)}`}.`,
+      });
+    }
+
+    const declaredSber = personalCash ? readBoolean(personalCash.hasSberbankAcquiring) : null;
+    if (!kkmDiagnostics.ok || !cashboxName || !terminalTotals || !kkmMappingObserved) {
+      checks.push({
+        id: `handover-sber-${task.id}`,
+        taskId: task.id,
+        label: 'Итог Сбербанка',
+        status: 'unavailable',
+        summary: !cashboxName
+          ? 'Касса сотрудника не привязана.'
+          : !kkmMappingObserved
+            ? 'Для привязанной кассы не найдено использование ККМ за выбранный день.'
+            : kkmDiagnostics.error || 'Данные терминала 1С не получены.',
+      });
+    } else if (declaredSber === null) {
+      checks.push({
+        id: `handover-sber-${task.id}`,
+        taskId: task.id,
+        label: 'Итог Сбербанка',
+        status: 'waiting',
+        summary: 'Сотрудник ещё не указал, были ли оплаты.',
+      });
+    } else {
+      const oneCHasSber = terminalTotals.checks > 0;
+      const reportedTotal = storeClosing ? readNumber(storeClosing.sberbankTerminalTotal) : null;
+      const booleanMatches = declaredSber === oneCHasSber;
+      const totalMatches = !oneCHasSber
+        || reportedTotal === null
+        || Math.abs(reportedTotal - terminalTotals.amount) <= oneCMoneyTolerance;
+      checks.push({
+        id: `handover-sber-${task.id}`,
+        taskId: task.id,
+        label: 'Итог Сбербанка',
+        status: booleanMatches && totalMatches ? 'matched' : 'mismatch',
+        summary: `1С: ${terminalTotals.checks} оплат на ${formatMoney(terminalTotals.amount)}; сотрудник указал ${declaredSber ? 'оплаты были' : 'оплат не было'}${reportedTotal === null ? '' : `, итог ${formatMoney(reportedTotal)}`}.`,
+      });
+    }
+
+    const declaredTbank = personalCash
+      ? readBoolean(personalCash.hasTbankCredit)
+      : storeClosing
+        ? readBoolean(storeClosing.hasTbankCredit)
+        : null;
+    if (!tbankSales.ok) {
+      checks.push({
+        id: `handover-tbank-${task.id}`,
+        taskId: task.id,
+        label: 'Операции Т-Банка',
+        status: 'unavailable',
+        summary: tbankSales.error || 'Реализации 1С не получены.',
+      });
+    } else if (declaredTbank === null) {
+      checks.push({
+        id: `handover-tbank-${task.id}`,
+        taskId: task.id,
+        label: 'Операции Т-Банка',
+        status: 'waiting',
+        summary: 'Сотрудник ещё не указал, были ли операции.',
+      });
+    } else if (employeeTbankDocuments.length === 0 && tbankSales.documents.length > 0) {
+      checks.push({
+        id: `handover-tbank-${task.id}`,
+        taskId: task.id,
+        label: 'Операции Т-Банка',
+        status: 'partial',
+        summary: `По имени сотрудника документы не найдены; всего по партнёру Т-Банка за день: ${tbankSales.documents.length}.`,
+        evidence: 'Сумма терминального отчёта не сравнивается: реализации 1С и операции терминала имеют разный состав.',
+      });
+    } else {
+      const oneCHasTbank = employeeTbankDocuments.length > 0;
+      const amount = employeeTbankDocuments.reduce((sum, document) => sum + (document.amount ?? 0), 0);
+      checks.push({
+        id: `handover-tbank-${task.id}`,
+        taskId: task.id,
+        label: 'Операции Т-Банка',
+        status: declaredTbank === oneCHasTbank ? 'matched' : 'mismatch',
+        summary: oneCHasTbank
+          ? `1С: ${employeeTbankDocuments.length} реализаций на ${formatMoney(amount)}; сотрудник указал ${declaredTbank ? 'операции были' : 'операций не было'}.`
+          : `В 1С операций по сотруднику нет; сотрудник указал ${declaredTbank ? 'операции были' : 'операций не было'}.`,
+        evidence: 'Сумма терминального отчёта не сравнивается: реализации 1С и операции терминала имеют разный состав.',
+      });
+    }
+
+    const requiresEncashment = personalCash ? readBoolean(personalCash.requiresEncashment) : null;
+    const encashmentAmount = personalCash ? readNumber(personalCash.encashmentAmount) : null;
+    if (requiresEncashment) {
+      if (encashmentAmount === null) {
+        checks.push({
+          id: `handover-encashment-${task.id}`,
+          taskId: task.id,
+          label: 'Инкассация в резерв',
+          status: 'waiting',
+          summary: 'Сумма инкассации не указана.',
+        });
+      } else if (!cashStatement?.ok || !reserveStatement?.ok) {
+        checks.push({
+          id: `handover-encashment-${task.id}`,
+          taskId: task.id,
+          label: 'Инкассация в резерв',
+          status: 'unavailable',
+          summary: 'Движения своей кассы или резерва 1С не получены.',
+        });
+      } else {
+        const pairMatch = findEncashmentPair({
+          personal: cashStatement,
+          reserve: reserveStatement,
+          amount: encashmentAmount,
+          cutoff,
+        });
+        checks.push({
+          id: `handover-encashment-${task.id}`,
+          taskId: task.id,
+          label: 'Инкассация в резерв',
+          status: pairMatch === 'exact' ? 'matched' : pairMatch === 'time' ? 'partial' : 'mismatch',
+          summary: pairMatch === 'exact'
+            ? `В 1С один документ отражает расход из кассы и приход в резерв на ${formatMoney(encashmentAmount)}.`
+            : pairMatch === 'time'
+              ? `Найдены расход и приход на ${formatMoney(encashmentAmount)} рядом по времени, но документы 1С различаются.`
+              : `Парное движение касса → резерв на ${formatMoney(encashmentAmount)} в 1С не найдено.`,
+          evidence: 'Проверяется учётное движение; физическое помещение денег подтверждается сотрудником и фото.',
+        });
+      }
+    }
+
+    if (storeClosing) {
+      const checksCount = kkmUsage.reduce((sum, row) => sum + (row.checks ?? 0), 0);
+      checks.push({
+        id: `handover-z-report-${task.id}`,
+        taskId: task.id,
+        label: 'Закрытие смены ККМ',
+        status: kkmDiagnostics.ok && cashboxName ? 'partial' : 'unavailable',
+        summary: kkmDiagnostics.ok && cashboxName
+          ? `В 1С за день найдено чеков ККМ: ${checksCount}. Факт формирования Z-отчёта текущий endpoint не подтверждает.`
+          : 'Данные ККМ 1С не получены или касса не привязана.',
+      });
+    }
+  }
+
+  return checks;
+}
+
 export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string } }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
@@ -254,6 +819,20 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
     ?? cashStatementDimensions.organizations[0]
     ?? null;
+  const reserveCashbox =
+    cashStatementDimensions.cashboxes.find((cashbox) => normalizeSearchText(cashbox.name) === reserveCashboxSearchName)
+    ?? null;
+  const [kkmDiagnostics, tbankSales, reserveStatement] = await Promise.all([
+    getKkmEquipmentDiagnostics({ dateFrom: selectedDate, dateTo: selectedDate, limit: 300 }),
+    getTbankSalesForDate(selectedDate),
+    cashStatementDimensions.ok && cashStatementOrganization && reserveCashbox
+      ? getCashStatementSummary({
+        date: selectedDate,
+        organizationRef: cashStatementOrganization.ref,
+        cashboxRef: reserveCashbox.ref,
+      })
+      : Promise.resolve(null),
+  ]);
   const cashStatementEmployees = employees.filter((employee) => usesWorkdayShiftControl(employee));
   const cashStatementRows = await Promise.all(cashStatementEmployees.map(async (employee) => {
     const searchKey = employeeCashboxSearchKey(employee.name);
@@ -315,6 +894,28 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   }));
   const cashStatementLoadedCount = cashStatementRows.filter((row) => row.result?.ok).length;
   const cashStatementMissingCashboxCount = cashStatementRows.filter((row) => !row.cashbox).length;
+  const cashStatementRowByUser = new Map(cashStatementRows.map((row) => [row.employee.id, row]));
+  const autoChecksByUser = new Map(cashStatementEmployees.map((employee) => {
+    const run = shiftControlRunByUser.get(employee.id);
+    const cashRow = cashStatementRowByUser.get(employee.id);
+    return [
+      employee.id,
+      buildEmployeeAutoChecks({
+        employeeName: employee.name,
+        tasks: (run?.tasks ?? []) as AutoCheckTask[],
+        cashboxName: cashRow?.cashbox?.name ?? null,
+        cashStatement: cashRow?.result ?? null,
+        reserveCashboxName: reserveCashbox?.name ?? null,
+        reserveStatement,
+        kkmDiagnostics,
+        tbankSales,
+      }),
+    ] as const;
+  }));
+  const autoCheckTotals = [...autoChecksByUser.values()].flat();
+  const autoMatchedCount = autoCheckTotals.filter((check) => check.status === 'matched').length;
+  const autoMismatchCount = autoCheckTotals.filter((check) => check.status === 'mismatch').length;
+  const autoPartialCount = autoCheckTotals.filter((check) => check.status === 'partial').length;
   const acquiringControlRows = employees
     .filter((employee) => usesWorkdayShiftControl(employee))
     .map((employee) => {
@@ -381,6 +982,45 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         </div>
 
         <WorkdayQrCodes />
+
+        <Card className='p-5'>
+          <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+            <div className='flex items-start gap-3'>
+              <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700'>
+                <ClipboardList className='h-5 w-5' />
+              </span>
+              <div>
+                <h2 className='text-lg font-extrabold text-slate-950'>Автопроверка чек-листов по 1С</h2>
+                <p className='mt-1 max-w-3xl text-sm font-medium leading-relaxed text-slate-500'>
+                  Ручной ответ сотрудника сохраняется отдельно. Система проверяет остаток кассы на момент выполнения, общий резерв,
+                  операции Сбербанка и Т-Банка, а при инкассации ищет парное движение касса → резерв.
+                </p>
+                <p className='mt-2 text-xs font-semibold text-slate-400'>
+                  Результаты видны в «Подробнее» у каждого сотрудника. X/Z-отчёты и промежуточный итог терминала пока отмечаются как частичная проверка.
+                </p>
+              </div>
+            </div>
+            <div className='flex max-w-xl flex-wrap gap-2 text-xs font-bold'>
+              <Badge className={cashStatementDimensions.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
+                кассы 1С: {cashStatementDimensions.ok ? 'доступны' : 'ошибка'}
+              </Badge>
+              <Badge className={kkmDiagnostics.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
+                ККМ/Сбербанк: {kkmDiagnostics.ok ? 'доступны' : 'ошибка'}
+              </Badge>
+              <Badge className={tbankSales.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
+                Т-Банк: {tbankSales.ok ? 'доступен' : 'ошибка'}
+              </Badge>
+              <Badge className={reserveStatement?.ok ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+                резерв: {reserveStatement?.ok ? reserveCashbox?.name : 'не получен'}
+              </Badge>
+              <Badge className='bg-green-100 text-green-800'>совпало: {autoMatchedCount}</Badge>
+              <Badge className={autoMismatchCount > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'}>
+                расхождения: {autoMismatchCount}
+              </Badge>
+              <Badge className='bg-blue-100 text-blue-800'>частично: {autoPartialCount}</Badge>
+            </div>
+          </div>
+        </Card>
 
         <Card className='p-0'>
           <details className='group' open={cashStatementMissingCashboxCount > 0 || Boolean(cashboxMappingMessage)}>
@@ -518,8 +1158,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                   <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
                     <th className='px-4 py-3'>Сотрудник</th>
                     <th className='px-4 py-3'>Касса 1С</th>
+                    <th className='px-4 py-3'>На начало</th>
+                    <th className='px-4 py-3'>Приход</th>
+                    <th className='px-4 py-3'>Расход</th>
+                    <th className='px-4 py-3'>На конец</th>
                     <th className='px-4 py-3'>Факт сотрудника</th>
-                    <th className='px-4 py-3'>Остаток 1С</th>
+                    <th className='px-4 py-3'>Расшифровка 1С</th>
                     <th className='px-4 py-3'>Разница</th>
                     <th className='px-4 py-3'>Итог</th>
                   </tr>
@@ -748,6 +1392,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                           run={serializeShiftControlRun(shiftControlRun)}
                           workDay={workDay ? { status: workDay.status, endedAt: workDay.endedAt?.toISOString() ?? null } : null}
                           nowMinutes={nowMinutes}
+                          autoChecks={autoChecksByUser.get(employee.id) ?? []}
                         />
                       ) : (
                         <span className='text-sm font-semibold text-slate-500'>Чек-лист не требуется</span>

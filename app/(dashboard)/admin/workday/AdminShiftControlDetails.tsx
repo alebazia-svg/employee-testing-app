@@ -38,6 +38,16 @@ type Props = {
   run: ShiftRun | null;
   workDay: WorkDayInfo;
   nowMinutes: number;
+  autoChecks?: ShiftAutoCheck[];
+};
+
+export type ShiftAutoCheck = {
+  id: string;
+  taskId: number;
+  label: string;
+  status: 'matched' | 'mismatch' | 'partial' | 'waiting' | 'unavailable';
+  summary: string;
+  evidence?: string;
 };
 
 type PhotoInfo = {
@@ -85,6 +95,39 @@ function badgeClass(status: string) {
   if (status === 'overdue' || status === 'not_submitted') return 'bg-amber-100 text-amber-800';
   if (status === 'none') return 'bg-slate-100 text-slate-600';
   return 'bg-blue-100 text-blue-800';
+}
+
+function autoCheckBadge(status: ShiftAutoCheck['status']) {
+  if (status === 'matched') return { label: '1С: совпало', className: 'bg-green-100 text-green-800' };
+  if (status === 'mismatch') return { label: '1С: расхождение', className: 'bg-rose-100 text-rose-800' };
+  if (status === 'partial') return { label: '1С: частично', className: 'bg-blue-100 text-blue-800' };
+  if (status === 'waiting') return { label: '1С: ожидает', className: 'bg-slate-100 text-slate-700' };
+  return { label: '1С: недоступна', className: 'bg-amber-100 text-amber-800' };
+}
+
+function autoCheckSummary(autoChecks: ShiftAutoCheck[]) {
+  const mismatchCount = autoChecks.filter((check) => check.status === 'mismatch').length;
+  const matchedCount = autoChecks.filter((check) => check.status === 'matched').length;
+  const incompleteCount = autoChecks.filter((check) => (
+    check.status === 'partial'
+    || check.status === 'waiting'
+    || check.status === 'unavailable'
+  )).length;
+
+  if (mismatchCount > 0) {
+    return { label: `расхождений ${mismatchCount}`, className: 'bg-rose-100 text-rose-800', problem: true };
+  }
+  if (autoChecks.length === 0) {
+    return { label: 'нет проверок', className: 'bg-slate-100 text-slate-700', problem: false };
+  }
+  if (incompleteCount > 0) {
+    return {
+      label: `совпало ${matchedCount}, не полностью ${incompleteCount}`,
+      className: 'bg-blue-100 text-blue-800',
+      problem: false,
+    };
+  }
+  return { label: `совпало ${matchedCount}`, className: 'bg-green-100 text-green-800', problem: false };
 }
 
 function yesNo(value: unknown) {
@@ -314,7 +357,7 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
   );
 }
 
-export function AdminShiftControlDetails({ department, run, workDay, nowMinutes }: Props) {
+export function AdminShiftControlDetails({ department, run, workDay, nowMinutes, autoChecks = [] }: Props) {
   const [open, setOpen] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
   const canUseShiftControl = department === 'retail' || department === 'wholesale';
@@ -345,6 +388,14 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
     if (!run) return [];
     return run.tasks.filter((task) => !(task.category === 'closing' && hasZReportInHandover));
   }, [hasZReportInHandover, run]);
+  const autoChecksByTask = useMemo(() => {
+    const result = new Map<number, ShiftAutoCheck[]>();
+    for (const check of autoChecks) {
+      result.set(check.taskId, [...(result.get(check.taskId) ?? []), check]);
+    }
+    return result;
+  }, [autoChecks]);
+  const autoSummary = autoCheckSummary(autoChecks);
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
 
@@ -369,6 +420,9 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
             <span>Просрочено: {summary.overdue}</span>
             <span>День завершён: {workDay?.status === 'completed' || workDay?.endedAt ? 'да' : 'нет'}</span>
             <span>Смена сдана: {summary.handoverDone ? 'да' : 'нет'}</span>
+            <span className={autoSummary.problem ? 'font-extrabold text-rose-700' : ''}>
+              Автопроверка 1С: {autoSummary.label}
+            </span>
           </>
         ) : (
           <span>Нет ShiftControlRun за день</span>
@@ -391,6 +445,9 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
                   <Badge className={summary.overdue > 0 ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>
                     Просрочки {summary.overdue}
                   </Badge>
+                  <Badge className={autoSummary.className}>
+                    1С: {autoSummary.label}
+                  </Badge>
                 </div>
               </div>
               <Button
@@ -410,6 +467,7 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
                   <div className='mt-3 grid gap-2'>
                     {detailTasks.map((task) => {
                       const status = taskStatus(task, nowMinutes);
+                      const taskAutoChecks = autoChecksByTask.get(task.id) ?? [];
                       return (
                         <div key={task.id} className='rounded-lg bg-slate-50 px-3 py-2 ring-1 ring-slate-200/80'>
                           <div className='flex flex-wrap items-center justify-between gap-2'>
@@ -421,6 +479,23 @@ export function AdminShiftControlDetails({ department, run, workDay, nowMinutes 
                             <span>Выполнено: {formatTime(task.completedAt)}</span>
                             <TaskValue task={task} onPreview={setSelectedPhoto} />
                           </div>
+                          {taskAutoChecks.length > 0 && (
+                            <div className='mt-2 grid gap-1.5'>
+                              {taskAutoChecks.map((check) => {
+                                const badge = autoCheckBadge(check.status);
+                                return (
+                                  <div key={check.id} className='rounded-md bg-white px-2.5 py-2 ring-1 ring-slate-200'>
+                                    <div className='flex flex-wrap items-center gap-2'>
+                                      <Badge className={badge.className}>{badge.label}</Badge>
+                                      <span className='text-xs font-extrabold text-slate-800'>{check.label}</span>
+                                    </div>
+                                    <p className='mt-1 text-xs font-semibold leading-relaxed text-slate-600'>{check.summary}</p>
+                                    {check.evidence && <p className='mt-0.5 text-[11px] font-semibold text-slate-400'>{check.evidence}</p>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
