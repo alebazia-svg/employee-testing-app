@@ -55,7 +55,7 @@ Preferred pattern:
 2. Open an interactive terminal with only:
 
 ```powershell
-ssh -t hostinger-vps "sh /tmp/deploy-workday-v1.sh"
+ssh -t bela@portal.alebazia.xyz "sh /tmp/deploy-workday-v1.sh"
 ```
 
 3. Let the user type the sudo password there.
@@ -64,9 +64,6 @@ ssh -t hostinger-vps "sh /tmp/deploy-workday-v1.sh"
 If sudo is needed, assume a non-interactive SSH command with `sudo -n` may fail.
 Do not keep retrying variants that let local PowerShell interpret remote Linux
 commands.
-Do not retry through personal VPS accounts; the supported VPS route is only
-`hostinger-vps`, configured locally as `codex-vps` with key-only auth.
-
 ## Env Pitfalls
 
 - Compose expects `server.env`; without it, deploy may warn that PostgreSQL/env

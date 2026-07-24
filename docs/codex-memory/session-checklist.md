@@ -91,9 +91,7 @@ Report:
 - Do not send long nested SSH commands containing `sudo docker`, `curl`, `grep`,
   command substitutions or heavy quoting from PowerShell.
 - If sudo password entry is needed, first create a small script on the VPS, then
-  open only `ssh -t hostinger-vps "sh /tmp/<script>.sh"` for the user to type
-  the password.
-- Never retry VPS access through another user; `hostinger-vps` must resolve to
-  `codex-vps` with key-only auth.
+  open only `ssh -t bela@portal.alebazia.xyz "sh /tmp/<script>.sh"` for the
+  user to type the password.
 - After the user sends output, verify server commit, container restart, route
   status and expected bundle text.

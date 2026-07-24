@@ -18,16 +18,12 @@ Fix:
 1. Open SSH first:
 
 ```powershell
-ssh -t hostinger-vps
+ssh -t bela@portal.alebazia.xyz
 ```
 
 2. Run Linux commands only after the prompt is on the VPS.
 3. For complex deploys, create/run a small VPS script instead of a long nested
    one-liner.
-
-Do not connect through personal VPS accounts and do not retry SSH with another
-user after a failure. `hostinger-vps` is the only supported alias and must
-resolve to the technical user `codex-vps` with key-only auth.
 
 ## Docker Env File Problems
 
