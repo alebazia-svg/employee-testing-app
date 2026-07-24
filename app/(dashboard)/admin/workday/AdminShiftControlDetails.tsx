@@ -1,7 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
@@ -47,6 +50,15 @@ type Props = {
   dateKey: string;
   nowMinutes: number;
   autoChecks?: ShiftAutoCheck[];
+  initialOpen?: boolean;
+  closeHref?: string;
+  previousEmployee?: EmployeeNavigation | null;
+  nextEmployee?: EmployeeNavigation | null;
+};
+
+type EmployeeNavigation = {
+  name: string;
+  href: string;
 };
 
 export type ShiftAutoCheck = {
@@ -390,6 +402,45 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
   );
 }
 
+function HandoverOverview({ data, department }: { data: unknown; department: string }) {
+  const personalCash = readRecord(data, 'personalCash');
+  const reserveCash = readRecord(data, 'reserveCash');
+  const storeClosing = readRecord(data, 'storeClosing');
+  const photos = readPhotos(data);
+  const photoKeys = department === 'retail'
+    ? ['personalStatement', 'personalAcquiringReceipts', 'encashmentDocument', 'sberbankTerminalReport', 'tbankReceipts', 'tbankTerminalReport', 'zReport']
+    : ['personalStatement', 'encashmentDocument', 'sberbankTerminalReport', 'tbankReceipts', 'tbankTerminalReport', 'zReport'];
+  const photoCount = photoKeys.filter((key) => Boolean(photoHref(readPhoto(photos, key)))).length;
+
+  if (!personalCash && !reserveCash && !storeClosing) return null;
+
+  return (
+    <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
+      <h4 className='text-sm font-extrabold text-slate-950'>Сдача смены</h4>
+      <div className='mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2'>
+        <DetailRow
+          label='Своя касса'
+          value={personalCash?.cashBalance === null || personalCash?.cashBalance === undefined
+            ? '—'
+            : formatMoney(Number(personalCash.cashBalance))}
+        />
+        <DetailRow
+          label='Резерв'
+          value={reserveCash?.cashBalance === null || reserveCash?.cashBalance === undefined
+            ? '—'
+            : formatMoney(Number(reserveCash.cashBalance))}
+        />
+        {department === 'retail' ? (
+          <DetailRow label='Сбербанк' value={yesNo(personalCash?.hasSberbankAcquiring)} />
+        ) : null}
+        <DetailRow label='Т-Банк' value={yesNo(storeClosing?.hasTbankCredit ?? personalCash?.hasTbankCredit)} />
+        <DetailRow label='Инкассация' value={yesNo(personalCash?.requiresEncashment)} />
+        <DetailRow label='Фото приложено' value={photoCount} />
+      </div>
+    </section>
+  );
+}
+
 type ReviewedTask = {
   task: ShiftTask;
   status: string;
@@ -497,14 +548,38 @@ export function AdminShiftControlDetails({
   dateKey,
   nowMinutes,
   autoChecks = [],
+  initialOpen = false,
+  closeHref,
+  previousEmployee,
+  nextEmployee,
 }: Props) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
   const canUseShiftControl = department === 'retail' || department === 'wholesale';
-  function closeDetails() {
+  const closeDetails = useCallback(() => {
     setSelectedPhoto(null);
     setOpen(false);
-  }
+    if (initialOpen && closeHref) {
+      router.replace(closeHref, { scroll: false });
+    }
+  }, [closeHref, initialOpen, router]);
+  useEffect(() => {
+    if (initialOpen) setOpen(true);
+  }, [initialOpen]);
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDetails();
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeDetails, open]);
   const summary = useMemo(() => {
     if (!canUseShiftControl) return { status: 'none', label: '—', completed: 0, total: 0, overdue: 0, handoverDone: false };
     if (!run) return { status: 'none', label: 'нет контроля', completed: 0, total: 0, overdue: 0, handoverDone: false };
@@ -568,6 +643,7 @@ export function AdminShiftControlDetails({
     return groups;
   }, [autoChecksByTask, dateKey, detailTasks, nowMinutes]);
   const autoSummary = autoCheckSummary(autoChecks);
+  const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
 
@@ -589,73 +665,126 @@ export function AdminShiftControlDetails({
         <span className='text-xs font-semibold text-slate-400'>Нет чек-листа</span>
       )}
 
-      {open && run && (
-        <div className='fixed inset-0 z-50 bg-slate-950/50 p-2 backdrop-blur-sm sm:p-5' onClick={closeDetails}>
+      {open && run && typeof document !== 'undefined' ? createPortal(
+        <div className='fixed inset-0 z-[100] bg-slate-950/55 p-0 backdrop-blur-sm sm:p-3' onClick={closeDetails}>
           <div
-            className='mx-auto flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl'
+            className='mx-auto flex h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:rounded-2xl'
             onClick={(event) => event.stopPropagation()}
+            role='dialog'
+            aria-modal='true'
+            aria-label={`Контроль смены: ${employeeName}`}
           >
-            <header className='flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4'>
-              <div>
+            <header className='flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 sm:px-6'>
+              <div className='min-w-0'>
                 <p className='text-sm font-semibold text-primary'>Контроль смены · {dateKey}</p>
-                <h3 className='mt-1 text-2xl font-extrabold text-slate-950'>{employeeName}</h3>
-                <p className='mt-1 text-sm font-semibold text-slate-500'>
+                <h3 className='mt-0.5 truncate text-xl font-extrabold text-slate-950 sm:text-2xl'>{employeeName}</h3>
+                <p className='mt-0.5 truncate text-xs font-semibold text-slate-500 sm:text-sm'>
                   {departmentName} · {scheduleLabel} · {workDay?.shiftLabel ?? 'смена не задана'}
                 </p>
               </div>
-              <Button
-                type='button'
-                className='h-9 w-9 shrink-0 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200'
-                onClick={closeDetails}
-                aria-label='Закрыть'
-              >
-                <X className='h-5 w-5' />
-              </Button>
+              <div className='flex shrink-0 items-center gap-2'>
+                <div className='hidden items-center gap-2 md:flex'>
+                  {previousEmployee ? (
+                    <Link
+                      href={previousEmployee.href}
+                      className='inline-flex h-9 items-center gap-1 rounded-lg bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'
+                      title={previousEmployee.name}
+                    >
+                      <ChevronLeft className='h-4 w-4' />
+                      Предыдущий
+                    </Link>
+                  ) : (
+                    <span className='inline-flex h-9 items-center gap-1 rounded-lg bg-slate-50 px-3 text-xs font-extrabold text-slate-300'>
+                      <ChevronLeft className='h-4 w-4' />
+                      Предыдущий
+                    </span>
+                  )}
+                  {nextEmployee ? (
+                    <Link
+                      href={nextEmployee.href}
+                      className='inline-flex h-9 items-center gap-1 rounded-lg bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'
+                      title={nextEmployee.name}
+                    >
+                      Следующий
+                      <ChevronRight className='h-4 w-4' />
+                    </Link>
+                  ) : (
+                    <span className='inline-flex h-9 items-center gap-1 rounded-lg bg-slate-50 px-3 text-xs font-extrabold text-slate-300'>
+                      Следующий
+                      <ChevronRight className='h-4 w-4' />
+                    </span>
+                  )}
+                </div>
+                <Button
+                  type='button'
+                  className='h-9 w-9 shrink-0 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200'
+                  onClick={closeDetails}
+                  aria-label='Закрыть'
+                >
+                  <X className='h-5 w-5' />
+                </Button>
+              </div>
             </header>
+            {(previousEmployee || nextEmployee) ? (
+              <div className='flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 md:hidden'>
+                {previousEmployee ? (
+                  <Link href={previousEmployee.href} className='inline-flex min-w-0 items-center gap-1 text-xs font-extrabold text-slate-700'>
+                    <ChevronLeft className='h-4 w-4 shrink-0' />
+                    <span className='truncate'>{previousEmployee.name}</span>
+                  </Link>
+                ) : <span />}
+                {nextEmployee ? (
+                  <Link href={nextEmployee.href} className='inline-flex min-w-0 items-center gap-1 text-xs font-extrabold text-slate-700'>
+                    <span className='truncate'>{nextEmployee.name}</span>
+                    <ChevronRight className='h-4 w-4 shrink-0' />
+                  </Link>
+                ) : <span />}
+              </div>
+            ) : null}
 
-            <div className='grid gap-3 border-b border-slate-200 bg-white px-5 py-4 sm:grid-cols-2 xl:grid-cols-4'>
-              <div className={`rounded-xl border-t-4 bg-white p-3 ring-1 ring-slate-200 ${
-                workDay?.status === 'completed' ? 'border-t-green-500' : 'border-t-amber-500'
+            <div className='grid gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:grid-cols-2 sm:px-6 xl:grid-cols-4'>
+              <div className={`rounded-xl border-l-4 bg-slate-50 px-3 py-2 ring-1 ring-slate-200 ${
+                workDay?.status === 'completed' ? 'border-l-green-500' : 'border-l-amber-500'
               }`}>
                 <p className='text-xs font-bold uppercase text-slate-400'>День</p>
-                <p className='mt-1 text-lg font-extrabold text-slate-950'>
+                <p className='mt-0.5 text-base font-extrabold text-slate-950'>
                   {workDay?.status === 'completed' || workDay?.endedAt ? 'Завершён' : workDay ? 'Идёт' : 'Не начат'}
                 </p>
-                <p className='mt-1 text-xs font-semibold text-slate-500'>
+                <p className='text-xs font-semibold text-slate-500'>
                   {workDay ? `${formatTime(workDay.startedAt)}–${formatTime(workDay.endedAt)}` : 'Нет отметок'}
                 </p>
               </div>
-              <div className={`rounded-xl border-t-4 bg-white p-3 ring-1 ring-slate-200 ${
-                summary.overdue > 0 ? 'border-t-amber-500' : 'border-t-green-500'
+              <div className={`rounded-xl border-l-4 bg-slate-50 px-3 py-2 ring-1 ring-slate-200 ${
+                summary.overdue > 0 ? 'border-l-amber-500' : 'border-l-green-500'
               }`}>
                 <p className='text-xs font-bold uppercase text-slate-400'>Время</p>
-                <p className='mt-1 text-lg font-extrabold text-slate-950'>{summary.overdue}</p>
-                <p className='mt-1 text-xs font-semibold text-slate-500'>нарушений времени</p>
+                <p className='mt-0.5 text-base font-extrabold text-slate-950'>{summary.overdue}</p>
+                <p className='text-xs font-semibold text-slate-500'>нарушений времени</p>
               </div>
-              <div className={`rounded-xl border-t-4 bg-white p-3 ring-1 ring-slate-200 ${
-                summary.completed === summary.total && summary.total > 0 ? 'border-t-green-500' : 'border-t-amber-500'
+              <div className={`rounded-xl border-l-4 bg-slate-50 px-3 py-2 ring-1 ring-slate-200 ${
+                summary.completed === summary.total && summary.total > 0 ? 'border-l-green-500' : 'border-l-amber-500'
               }`}>
                 <p className='text-xs font-bold uppercase text-slate-400'>Чек-лист</p>
-                <p className='mt-1 text-lg font-extrabold text-slate-950'>{summary.completed}/{summary.total}</p>
-                <p className='mt-1 text-xs font-semibold text-slate-500'>{summary.handoverDone ? 'смена сдана' : 'смена не сдана'}</p>
+                <p className='mt-0.5 text-base font-extrabold text-slate-950'>{summary.completed}/{summary.total}</p>
+                <p className='text-xs font-semibold text-slate-500'>{summary.handoverDone ? 'смена сдана' : 'смена не сдана'}</p>
               </div>
-              <div className={`rounded-xl border-t-4 bg-white p-3 ring-1 ring-slate-200 ${
+              <div className={`rounded-xl border-l-4 bg-slate-50 px-3 py-2 ring-1 ring-slate-200 ${
                 autoSummary.problem
-                  ? 'border-t-rose-500'
+                  ? 'border-l-rose-500'
                   : autoChecks.length === 0
-                    ? 'border-t-slate-400'
+                    ? 'border-l-slate-400'
                     : autoChecks.some((check) => check.status !== 'matched')
-                      ? 'border-t-blue-500'
-                      : 'border-t-green-500'
+                      ? 'border-l-blue-500'
+                      : 'border-l-green-500'
               }`}>
                 <p className='text-xs font-bold uppercase text-slate-400'>Сверка 1С</p>
-                <p className='mt-1 text-lg font-extrabold text-slate-950'>{autoSummary.label}</p>
-                <p className='mt-1 text-xs font-semibold text-slate-500'>автоматические проверки</p>
+                <p className='mt-0.5 text-base font-extrabold text-slate-950'>{autoSummary.label}</p>
+                <p className='text-xs font-semibold text-slate-500'>автоматические проверки</p>
               </div>
             </div>
 
-            <div className='min-h-0 flex-1 overflow-y-auto p-5'>
-              <div className='grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]'>
+            <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
+              <div className='grid items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(380px,0.8fr)]'>
                 <main className='grid content-start gap-4'>
                   {taskGroups.attention.length === 0 ? (
                     <div className='rounded-xl border border-green-200 bg-green-50 px-4 py-3'>
@@ -706,28 +835,38 @@ export function AdminShiftControlDetails({
                     ) : null}
                   </section>
 
-                  {run.tasks
-                    .filter((task) => task.category === 'handover')
-                    .map((task) => (
-                      <HandoverDetails key={task.id} data={task.handoverData} department={department} onPreview={setSelectedPhoto} />
-                    ))}
+                  {handoverTask ? (
+                    <>
+                      <HandoverOverview data={handoverTask.handoverData} department={department} />
+                      <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
+                        <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3'>
+                          <span className='text-sm font-extrabold text-slate-950'>Все данные и фото</span>
+                          <span className='text-xs font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
+                          <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
+                        </summary>
+                        <div className='border-t border-slate-200 bg-slate-50 p-3'>
+                          <HandoverDetails data={handoverTask.handoverData} department={department} onPreview={setSelectedPhoto} />
+                        </div>
+                      </details>
+                    </>
+                  ) : null}
 
-                  <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
-                    <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3'>
-                      <span className='text-sm font-extrabold text-slate-950'>Технический журнал</span>
-                      <span className='text-xs font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
-                      <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
-                    </summary>
-                    <div className='grid gap-1 border-t border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600'>
-                      <span>Run ID: {run.id}</span>
-                      <span>Статус: {run.status}</span>
-                      <span>Отправлено: {formatTime(run.submittedAt)}</span>
-                      <span>Завершено: {formatTime(run.completedAt)}</span>
-                      <span>Автопроверок: {autoChecks.length}</span>
-                    </div>
-                  </details>
                 </aside>
               </div>
+              <details className='group mt-5 rounded-xl bg-white ring-1 ring-slate-200'>
+                <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3'>
+                  <span className='text-sm font-extrabold text-slate-950'>Технический журнал</span>
+                  <span className='text-xs font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
+                  <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
+                </summary>
+                <div className='grid gap-2 border-t border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600 sm:grid-cols-2 xl:grid-cols-5'>
+                  <span>Run ID: {run.id}</span>
+                  <span>Статус: {run.status}</span>
+                  <span>Отправлено: {formatTime(run.submittedAt)}</span>
+                  <span>Завершено: {formatTime(run.completedAt)}</span>
+                  <span>Автопроверок: {autoChecks.length}</span>
+                </div>
+              </details>
             </div>
           </div>
           {selectedPhoto && (
@@ -767,8 +906,9 @@ export function AdminShiftControlDetails({
               </div>
             </div>
           )}
-        </div>
-      )}
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 }

@@ -910,7 +910,7 @@ function buildEmployeeAutoChecks({
   return checks;
 }
 
-export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string; control?: string } }) {
+export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string; control?: string; employee?: string } }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');
@@ -1167,7 +1167,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const filteredEmployeeControlRows = selectedControlFilter === 'all'
     ? employeeControlRows
     : employeeControlRows.filter((row) => row.category === selectedControlFilter);
+  const reviewableEmployeeRows = filteredEmployeeControlRows.filter((row) => row.shiftControlRequired && row.run);
   const controlFilterHref = (filter: ControlFilter) => `/admin/workday?date=${selectedDate}&control=${filter}#employees-control`;
+  const employeeDetailHref = (employeeId: number) => (
+    `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}&employee=${employeeId}#employees-control`
+  );
+  const employeeDetailCloseHref = `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}#employees-control`;
   const overallSummary = criticalSystemErrorCount > 0
     ? {
       title: 'Есть критичные ошибки автоматических проверок',
@@ -1366,6 +1371,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <tbody>
                   {filteredEmployeeControlRows.map((row) => {
                     const status = row.workDay?.status ?? 'not_started';
+                    const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
+                    const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
+                    const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
+                      ? reviewableEmployeeRows[reviewableIndex + 1]
+                      : null;
                     return (
                       <tr key={row.employee.id} className='border-t border-slate-100 align-middle'>
                         <td className='px-4 py-2.5'>
@@ -1416,6 +1426,16 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                               dateKey={selectedDate}
                               nowMinutes={nowMinutes}
                               autoChecks={row.autoChecks}
+                              initialOpen={searchParams?.employee === String(row.employee.id)}
+                              closeHref={employeeDetailCloseHref}
+                              previousEmployee={previousEmployeeRow ? {
+                                name: previousEmployeeRow.employee.name,
+                                href: employeeDetailHref(previousEmployeeRow.employee.id),
+                              } : null}
+                              nextEmployee={nextEmployeeRow ? {
+                                name: nextEmployeeRow.employee.name,
+                                href: employeeDetailHref(nextEmployeeRow.employee.id),
+                              } : null}
                             />
                           ) : (
                             <span className='text-xs font-semibold text-slate-400'>Не требуется</span>
