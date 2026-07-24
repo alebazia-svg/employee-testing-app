@@ -72,8 +72,12 @@ may be absent or experimental; verify each endpoint before use.
 - chooses the Offonika organization if found;
 - uses the saved explicit portal mapping from employee to 1C cashbox;
 - calls `/cash-statement-summary` per employee/cashbox;
-- reconstructs the cash balance at the checklist completion time from opening
-  balance and movements;
+- captures the current 1C closing balance server-side when an employee submits
+  a cash checklist step or handover, and stores the snapshot in the task audit
+  JSON without returning the expected amount through employee APIs;
+- does not reconstruct old point-in-time balances from movement timestamps when
+  a historical task predates snapshot capture; those checks are marked
+  unavailable instead of showing a false financial mismatch;
 - loads the shared cashbox `Резерв под телефоны`;
 - uses `/kkm-equipment-diagnostics` for daily KKM and Sberbank acquiring
   evidence;
