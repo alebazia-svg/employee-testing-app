@@ -160,3 +160,23 @@ Accepted direction:
 - keep financial, payroll, discipline and 1C-changing actions human-in-the-loop;
 - treat AI Operations Copilot as a long-term evolution of the portal after the
   employee launch and business control platform are stable.
+
+## 2026-07-24 - Workday Automatic 1C Checks
+
+The first Workday automatic-verification layer is calculated read-only in the
+admin portal without changing employee checklist answers or writing to 1C.
+
+Accepted scope:
+
+- cash is checked at the actual task completion time from 1C cash-register
+  movements;
+- the shared reserve uses the exact 1C cashbox `Резерв под телефоны`;
+- Sberbank uses KKM/acquiring usage tied to the employee's explicitly mapped
+  cashbox;
+- T-Bank uses posted realizations and manager-name matching;
+- encashment requires paired accounting movements between the employee cashbox
+  and reserve.
+
+The current KKM contract is not sufficient to prove X/Z reports or reconstruct
+an intermediate terminal total. Those checks remain explicitly partial instead
+of being presented as confirmed facts.

@@ -66,6 +66,36 @@ Do not turn the employee checklist into a second 1C. The employee should confirm
 real-world control and report discrepancies; the portal/admin side can compare
 against 1C where available.
 
+## Automatic 1C Verification
+
+`/admin/workday` now calculates read-only 1C verification separately from the
+employee answers:
+
+- cash checklist amounts are compared with the 1C cash balance reconstructed
+  from register movements at the task completion time;
+- handover compares the employee cashbox and the shared 1C cashbox named
+  `Резерв под телефоны`;
+- Sberbank checks use daily KKM/acquiring-terminal usage for the explicitly
+  mapped employee cashbox;
+- T-Bank declarations use posted realizations for the controlled partner and
+  match the 1C manager name to the employee;
+- encashment checks look for a paired outgoing movement from the employee
+  cashbox and incoming movement to the reserve for the declared amount.
+
+These checks are admin-side evidence. They do not overwrite manual answers and
+do not block task completion.
+
+Current limitations must stay visible:
+
+- the KKM diagnostics endpoint gives a daily acquiring total, not a historical
+  total at each intermediate checklist minute;
+- current KKM endpoints show receipt activity but do not prove that an X-report
+  or Z-report was generated;
+- T-Bank terminal totals are not compared with realization totals because the
+  two sources can have different business composition;
+- physical placement of cash in the reserve remains a human fact; 1C verifies
+  only the accounting movement.
+
 
 ## Trust But Verify
 

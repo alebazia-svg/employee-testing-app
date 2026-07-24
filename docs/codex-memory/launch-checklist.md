@@ -41,8 +41,10 @@ Required checks:
   day, cash discrepancy and stale-day closure.
 - Daily shift report V1 that summarizes cash, acquiring, credits, photos,
   comments and discrepancies in one card.
-- 1C read-only endpoints for KKM shift summary, acquiring summary and credit
-  sales summary.
+- Stabilize a read-only KKM shift endpoint that proves X/Z shift state and
+  provides an acquiring total at a requested cutoff time. The portal already
+  consumes current cash, daily KKM/acquiring and credit-sales data, but marks
+  these two KKM limitations as partial checks.
 
 ## P2 - After Launch
 

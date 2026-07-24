@@ -1,15 +1,16 @@
 # 1C Workday Automation Audit
 
-Last reviewed: 2026-07-04.
+Last reviewed: 2026-07-24.
 
 This note captures the current read-only AIAgentAPI surface that can support
 Workday automation. It is stale-prone: always verify live `/hs/agent/version`
 before relying on it because AIAgentAPI can be updated from the separate
 `ai-business-os` workspace by more than one person/Codex session.
 
-## Live Production Snapshot
+## Historical Production Snapshot
 
-Observed live package:
+The package below was observed during the original audit and is no longer
+current release truth:
 
 ```text
 AIAgentAPI-v0.15.68-money-balances-2026-07-02
@@ -37,6 +38,10 @@ Currently used by the portal:
 - `/cash-statement-summary` - cash statement analogue for one date,
   organization and cashbox. Source: `РегистрНакопления.ДенежныеСредстваНаличные`.
   Returns opening balance, incoming, outgoing, closing balance and movements.
+- `/kkm-equipment-diagnostics` - daily recent checks, KKM cash-register usage
+  and acquiring-terminal usage. Workday uses it as partial evidence for KKM and
+  Sberbank checks; it does not prove X/Z report generation or a historical
+  terminal total at an intermediate minute.
 - `/sales-realizations` - 1C sales realizations with manager, counterparty,
   warehouse, amount and lines. Used by OFD matching.
 - `/sales-realization-links` - linked cash receipts, acquiring, bank receipts,
@@ -65,13 +70,16 @@ may be absent or experimental; verify each endpoint before use.
 
 - loads `/cash-statement-dimensions`;
 - chooses the Offonika organization if found;
-- matches employee to cashbox by normalized employee surname in the cashbox
-  name;
+- uses the saved explicit portal mapping from employee to 1C cashbox;
 - calls `/cash-statement-summary` per employee/cashbox;
-- shows opening, incoming, outgoing, closing, movement count and status.
-
-This is useful diagnostics, but surname matching is not stable enough for
-automation.
+- reconstructs the cash balance at the checklist completion time from opening
+  balance and movements;
+- loads the shared cashbox `Резерв под телефоны`;
+- uses `/kkm-equipment-diagnostics` for daily KKM and Sberbank acquiring
+  evidence;
+- uses posted `/sales-realizations` for the controlled T-Bank partner and
+  matches the 1C manager to the employee;
+- shows automatic results separately from employee declarations.
 
 `/employee` currently keeps employee cash recount manual. This is intentional:
 do not show expected 1C cash to employees before they enter the physical amount,
@@ -111,8 +119,9 @@ Recommended next read-only endpoints:
   cashboxes, KKM cash registers and terminals with refs and likely ownership.
 - `cash-statement-summary-batch`: same cash statement data for many cashboxes in
   one request.
-- `kkm-shift-summary`: date + KKM cash register, returning opening/closing,
-  shift number, totals and X/Z availability.
+- `kkm-shift-summary`: date + KKM cash register + optional cutoff time,
+  returning opening/closing, shift number, acquiring totals and X/Z
+  availability.
 
 Recommended portal data:
 
