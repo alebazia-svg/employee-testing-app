@@ -94,6 +94,28 @@ npm run test:payroll
 
 For docs-only Codex memory changes, no app build is required.
 
+## UX/UI Definition Of Done
+
+- Every new or materially changed page, section, form, table, modal or other
+  interface element requires a short UX/UI review after functional
+  implementation.
+- Review the interface as a senior product designer for an internal CRM/ERP
+  system. Prioritize daily operational clarity over novelty or decoration.
+- Within 5-10 seconds, an administrator should be able to understand:
+  what works normally, what needs attention, what is broken, how critical it is
+  and what action to take.
+- Propose changes only when they reduce actions, clarify information, lower the
+  risk of mistakes or make system state faster to understand.
+- For each meaningful proposal, state:
+  the current issue, why it is inconvenient, the proposed change and the
+  practical benefit.
+- Do not implement large interface changes without user approval. Present
+  options first, agree on the target interface, then implement the selected
+  solution.
+- Small corrections required for accessibility, obvious ambiguity or safe
+  consistency may be included with the feature when they do not change the
+  approved workflow.
+
 Before final response:
 
 - Run or state the relevant checks.
