@@ -84,6 +84,10 @@ may be absent or experimental; verify each endpoint before use.
 - uses posted `/sales-realizations` for the controlled T-Bank partner and
   matches the 1C manager to the employee;
 - shows automatic results separately from employee declarations.
+- shows `Нельзя проверить автоматически` when the current source cannot prove
+  the result reliably; it does not use `Частично` as a final control status;
+- stores administrator manual decisions separately with decision, author,
+  timestamp and required comment.
 
 `/employee` currently keeps employee cash recount manual. This is intentional:
 do not show expected 1C cash to employees before they enter the physical amount,

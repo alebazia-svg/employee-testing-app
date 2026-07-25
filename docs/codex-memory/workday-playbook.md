@@ -96,6 +96,20 @@ Current limitations must stay visible:
 - physical placement of cash in the reserve remains a human fact; 1C verifies
   only the accounting movement.
 
+If the available source cannot prove a result reliably, the admin status must
+be `Нельзя проверить автоматически`. Do not use an ambiguous `Частично`
+status for these cases.
+
+An administrator may complete a manual review without changing the employee
+answer or the automatic evidence. Every manual decision is append-only and
+stores:
+
+- the exact automatic check;
+- whether the data was confirmed or a problem was confirmed;
+- the administrator;
+- the decision time;
+- a required comment.
+
 
 ## Trust But Verify
 

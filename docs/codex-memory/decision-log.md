@@ -178,5 +178,19 @@ Accepted scope:
   and reserve.
 
 The current KKM contract is not sufficient to prove X/Z reports or reconstruct
-an intermediate terminal total. Those checks remain explicitly partial instead
-of being presented as confirmed facts.
+an intermediate terminal total. Those checks must be shown as
+`Нельзя проверить автоматически` instead of being presented as confirmed facts.
+
+## 2026-07-25 - Workday Manual Review Audit
+
+Automatic evidence and administrator decisions remain separate.
+
+- unreliable automation uses `Нельзя проверить автоматически`; the ambiguous
+  status `Частично` is not used;
+- a manual review records either `данные подтверждены` or
+  `проблема подтверждена`;
+- every manual review is append-only and stores the administrator, exact time
+  and required comment;
+- confirming data manually resolves only that automatic check;
+- confirming a problem keeps the employee in the attention workflow;
+- employee answers and original 1C evidence are never overwritten.
