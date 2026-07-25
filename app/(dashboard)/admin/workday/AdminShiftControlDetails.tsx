@@ -65,10 +65,31 @@ export type ShiftAutoCheck = {
   id: string;
   taskId: number;
   label: string;
-  status: 'matched' | 'mismatch' | 'partial' | 'waiting' | 'unavailable';
+  status: 'matched' | 'mismatch' | 'waiting' | 'unavailable';
   summary: string;
   evidence?: string;
+  manualReview?: ShiftAutoCheckManualReview | null;
 };
+
+export type ShiftAutoCheckManualReview = {
+  id: number;
+  decision: 'confirmed_ok' | 'confirmed_issue';
+  comment: string;
+  reviewedAt: string;
+  reviewedBy: {
+    id: number;
+    name: string;
+    login: string;
+  };
+};
+
+function manualReviewResolves(check: ShiftAutoCheck) {
+  return check.manualReview?.decision === 'confirmed_ok';
+}
+
+function manualReviewConfirmsIssue(check: ShiftAutoCheck) {
+  return check.manualReview?.decision === 'confirmed_issue';
+}
 
 type PhotoInfo = {
   storagePath?: unknown;
@@ -115,6 +136,17 @@ function moscowDateAndMinutes(value: string) {
   };
 }
 
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 function taskStatus(task: ShiftTask, dateKey: string, nowMinutes: number) {
   if (task.status === 'done') {
     if (task.plannedTimeMinutes === null || !task.completedAt) return 'done';
@@ -145,34 +177,44 @@ function badgeClass(status: string) {
 function autoCheckBadge(status: ShiftAutoCheck['status']) {
   if (status === 'matched') return { label: '1С: совпало', className: 'bg-green-100 text-green-800' };
   if (status === 'mismatch') return { label: '1С: расхождение', className: 'bg-rose-100 text-rose-800' };
-  if (status === 'partial') return { label: '1С: частично', className: 'bg-blue-100 text-blue-800' };
   if (status === 'waiting') return { label: '1С: ожидает', className: 'bg-slate-100 text-slate-700' };
-  return { label: '1С: недоступна', className: 'bg-amber-100 text-amber-800' };
+  return { label: 'Нельзя проверить автоматически', className: 'bg-blue-100 text-blue-800' };
 }
 
 function autoCheckSummary(autoChecks: ShiftAutoCheck[]) {
-  const mismatchCount = autoChecks.filter((check) => check.status === 'mismatch').length;
-  const matchedCount = autoChecks.filter((check) => check.status === 'matched').length;
-  const incompleteCount = autoChecks.filter((check) => (
-    check.status === 'partial'
-    || check.status === 'waiting'
-    || check.status === 'unavailable'
+  const unresolvedChecks = autoChecks.filter((check) => !manualReviewResolves(check));
+  const manualOkCount = autoChecks.filter(manualReviewResolves).length;
+  const manualIssueCount = autoChecks.filter(manualReviewConfirmsIssue).length;
+  const mismatchCount = unresolvedChecks.filter((check) => check.status === 'mismatch' || manualReviewConfirmsIssue(check)).length;
+  const matchedCount = unresolvedChecks.filter((check) => (
+    check.status === 'matched' && !manualReviewConfirmsIssue(check)
+  )).length;
+  const incompleteCount = unresolvedChecks.filter((check) => (
+    !manualReviewConfirmsIssue(check) && (check.status === 'waiting' || check.status === 'unavailable')
   )).length;
 
   if (mismatchCount > 0) {
-    return { label: `расхождений ${mismatchCount}`, className: 'bg-rose-100 text-rose-800', problem: true };
+    return {
+      label: `расхождений ${mismatchCount}${manualIssueCount > 0 ? `, подтверждено вручную ${manualIssueCount}` : ''}`,
+      className: 'bg-rose-100 text-rose-800',
+      problem: true,
+    };
   }
   if (autoChecks.length === 0) {
     return { label: 'нет проверок', className: 'bg-slate-100 text-slate-700', problem: false };
   }
   if (incompleteCount > 0) {
     return {
-      label: `совпало ${matchedCount}, не полностью ${incompleteCount}`,
+      label: `авто ${matchedCount}, нельзя проверить ${incompleteCount}${manualOkCount > 0 ? `, вручную ${manualOkCount}` : ''}`,
       className: 'bg-blue-100 text-blue-800',
       problem: false,
     };
   }
-  return { label: `совпало ${matchedCount}`, className: 'bg-green-100 text-green-800', problem: false };
+  return {
+    label: manualOkCount > 0 ? `авто ${matchedCount}, вручную ${manualOkCount}` : `совпало ${matchedCount}`,
+    className: 'bg-green-100 text-green-800',
+    problem: false,
+  };
 }
 
 function yesNo(value: unknown) {
@@ -451,10 +493,12 @@ function TaskDetailCard({
   item,
   tone,
   onPreview,
+  onManualReview,
 }: {
   item: ReviewedTask;
   tone: 'attention' | 'unverified' | 'normal' | 'planned';
   onPreview: (photo: PhotoPreview) => void;
+  onManualReview: (check: ShiftAutoCheck) => void;
 }) {
   const toneClass = {
     attention: 'border-amber-200 bg-amber-50/60',
@@ -462,7 +506,9 @@ function TaskDetailCard({
     normal: 'border-green-200 bg-green-50/40',
     planned: 'border-slate-200 bg-white',
   }[tone];
-  const hasMismatch = item.autoChecks.some((check) => check.status === 'mismatch');
+  const hasMismatch = item.autoChecks.some((check) => (
+    manualReviewConfirmsIssue(check) || (check.status === 'mismatch' && !manualReviewResolves(check))
+  ));
   const needsTimingReview = item.status === 'late' || item.status === 'overdue';
 
   return (
@@ -493,6 +539,42 @@ function TaskDetailCard({
                     <p className='mt-1 text-[11px] font-semibold leading-relaxed text-slate-500'>{check.evidence}</p>
                   </details>
                 ) : null}
+                {check.manualReview ? (
+                  <div className={`mt-2 rounded-lg border px-3 py-2 ${
+                    check.manualReview.decision === 'confirmed_issue'
+                      ? 'border-rose-200 bg-rose-50'
+                      : 'border-green-200 bg-green-50'
+                  }`}>
+                    <p className={`text-xs font-extrabold ${
+                      check.manualReview.decision === 'confirmed_issue' ? 'text-rose-900' : 'text-green-900'
+                    }`}>
+                      {check.manualReview.decision === 'confirmed_issue' ? 'Проблема подтверждена вручную' : 'Данные подтверждены вручную'}
+                      {' · '}{check.manualReview.reviewedBy.name} · {formatDateTime(check.manualReview.reviewedAt)}
+                    </p>
+                    <p className={`mt-1 text-xs font-semibold leading-relaxed ${
+                      check.manualReview.decision === 'confirmed_issue' ? 'text-rose-800' : 'text-green-800'
+                    }`}>{check.manualReview.comment}</p>
+                    <button
+                      type='button'
+                      className={`mt-2 text-xs font-extrabold underline underline-offset-2 ${
+                        check.manualReview.decision === 'confirmed_issue'
+                          ? 'text-rose-900 decoration-rose-400'
+                          : 'text-green-900 decoration-green-400'
+                      }`}
+                      onClick={() => onManualReview(check)}
+                    >
+                      Добавить новое подтверждение
+                    </button>
+                  </div>
+                ) : check.status === 'mismatch' || check.status === 'unavailable' ? (
+                  <button
+                    type='button'
+                    className='mt-2 inline-flex min-h-8 items-center rounded-lg bg-slate-950 px-3 text-xs font-extrabold text-white transition hover:bg-slate-800'
+                    onClick={() => onManualReview(check)}
+                  >
+                    Подтвердить вручную
+                  </button>
+                ) : null}
               </div>
             );
           })}
@@ -513,12 +595,14 @@ function TaskGroup({
   tone,
   defaultOpen,
   onPreview,
+  onManualReview,
 }: {
   title: string;
   items: ReviewedTask[];
   tone: 'attention' | 'unverified' | 'normal' | 'planned';
   defaultOpen: boolean;
   onPreview: (photo: PhotoPreview) => void;
+  onManualReview: (check: ShiftAutoCheck) => void;
 }) {
   if (items.length === 0) return null;
 
@@ -531,7 +615,7 @@ function TaskGroup({
       </summary>
       <div className='grid gap-2 border-t border-slate-200 p-3'>
         {items.map((item) => (
-          <TaskDetailCard key={item.task.id} item={item} tone={tone} onPreview={onPreview} />
+          <TaskDetailCard key={item.task.id} item={item} tone={tone} onPreview={onPreview} onManualReview={onManualReview} />
         ))}
       </div>
     </details>
@@ -556,14 +640,61 @@ export function AdminShiftControlDetails({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
+  const [manualReviewTarget, setManualReviewTarget] = useState<ShiftAutoCheck | null>(null);
+  const [manualReviewDecision, setManualReviewDecision] = useState<'confirmed_ok' | 'confirmed_issue'>('confirmed_ok');
+  const [manualReviewComment, setManualReviewComment] = useState('');
+  const [manualReviewError, setManualReviewError] = useState('');
+  const [manualReviewSaving, setManualReviewSaving] = useState(false);
   const canUseShiftControl = department === 'retail' || department === 'wholesale';
   const closeDetails = useCallback(() => {
     setSelectedPhoto(null);
+    setManualReviewTarget(null);
     setOpen(false);
     if (initialOpen && closeHref) {
       router.replace(closeHref, { scroll: false });
     }
   }, [closeHref, initialOpen, router]);
+  function openManualReview(check: ShiftAutoCheck) {
+    setManualReviewTarget(check);
+    setManualReviewDecision(check.manualReview?.decision ?? 'confirmed_ok');
+    setManualReviewComment('');
+    setManualReviewError('');
+  }
+  async function submitManualReview() {
+    if (!manualReviewTarget || manualReviewSaving) return;
+    const comment = manualReviewComment.trim();
+    if (!comment) {
+      setManualReviewError('Комментарий обязателен.');
+      return;
+    }
+
+    setManualReviewSaving(true);
+    setManualReviewError('');
+    try {
+      const response = await fetch('/api/admin/workday/manual-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskId: manualReviewTarget.taskId,
+          checkId: manualReviewTarget.id,
+          checkLabel: manualReviewTarget.label,
+          decision: manualReviewDecision,
+          comment,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(typeof payload.error === 'string' ? payload.error : 'Не удалось сохранить подтверждение.');
+      }
+      setManualReviewTarget(null);
+      setManualReviewComment('');
+      router.refresh();
+    } catch (error) {
+      setManualReviewError(error instanceof Error ? error.message : 'Не удалось сохранить подтверждение.');
+    } finally {
+      setManualReviewSaving(false);
+    }
+  }
   useEffect(() => {
     if (initialOpen) setOpen(true);
   }, [initialOpen]);
@@ -571,7 +702,14 @@ export function AdminShiftControlDetails({
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDetails();
+      if (event.key !== 'Escape') return;
+      if (manualReviewTarget && !manualReviewSaving) {
+        setManualReviewTarget(null);
+      } else if (selectedPhoto) {
+        setSelectedPhoto(null);
+      } else {
+        closeDetails();
+      }
     };
     document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', handleKeyDown);
@@ -579,7 +717,7 @@ export function AdminShiftControlDetails({
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [closeDetails, open]);
+  }, [closeDetails, manualReviewSaving, manualReviewTarget, open, selectedPhoto]);
   const summary = useMemo(() => {
     if (!canUseShiftControl) return { status: 'none', label: '—', completed: 0, total: 0, overdue: 0, handoverDone: false };
     if (!run) return { status: 'none', label: 'нет контроля', completed: 0, total: 0, overdue: 0, handoverDone: false };
@@ -625,12 +763,15 @@ export function AdminShiftControlDetails({
       const status = taskStatus(task, dateKey, nowMinutes);
       const taskAutoChecks = autoChecksByTask.get(task.id) ?? [];
       const item = { task, status, autoChecks: taskAutoChecks };
-      if (status === 'late' || status === 'overdue' || taskAutoChecks.some((check) => check.status === 'mismatch')) {
+      const unresolvedAutoChecks = taskAutoChecks.filter((check) => !manualReviewResolves(check));
+      if (
+        status === 'late'
+        || status === 'overdue'
+        || unresolvedAutoChecks.some((check) => check.status === 'mismatch' || manualReviewConfirmsIssue(check))
+      ) {
         groups.attention.push(item);
-      } else if (taskAutoChecks.some((check) => (
-        check.status === 'partial'
-        || check.status === 'waiting'
-        || check.status === 'unavailable'
+      } else if (unresolvedAutoChecks.some((check) => (
+        !manualReviewConfirmsIssue(check) && (check.status === 'waiting' || check.status === 'unavailable')
       ))) {
         groups.unverified.push(item);
       } else if (status === 'done') {
@@ -773,7 +914,7 @@ export function AdminShiftControlDetails({
                   ? 'border-l-rose-500'
                   : autoChecks.length === 0
                     ? 'border-l-slate-400'
-                    : autoChecks.some((check) => check.status !== 'matched')
+                    : autoChecks.some((check) => !manualReviewResolves(check) && check.status !== 'matched')
                       ? 'border-l-blue-500'
                       : 'border-l-green-500'
               }`}>
@@ -792,10 +933,10 @@ export function AdminShiftControlDetails({
                       <p className='mt-1 text-xs font-semibold text-green-800'>Критичных расхождений и просроченных шагов нет.</p>
                     </div>
                   ) : null}
-                  <TaskGroup title='Требует действия' items={taskGroups.attention} tone='attention' defaultOpen onPreview={setSelectedPhoto} />
-                  <TaskGroup title='Нельзя проверить автоматически' items={taskGroups.unverified} tone='unverified' defaultOpen onPreview={setSelectedPhoto} />
-                  <TaskGroup title='По плану' items={taskGroups.planned} tone='planned' defaultOpen onPreview={setSelectedPhoto} />
-                  <TaskGroup title='Выполнено нормально' items={taskGroups.normal} tone='normal' defaultOpen={false} onPreview={setSelectedPhoto} />
+                  <TaskGroup title='Требует действия' items={taskGroups.attention} tone='attention' defaultOpen onPreview={setSelectedPhoto} onManualReview={openManualReview} />
+                  <TaskGroup title='Нельзя проверить автоматически' items={taskGroups.unverified} tone='unverified' defaultOpen onPreview={setSelectedPhoto} onManualReview={openManualReview} />
+                  <TaskGroup title='По плану' items={taskGroups.planned} tone='planned' defaultOpen onPreview={setSelectedPhoto} onManualReview={openManualReview} />
+                  <TaskGroup title='Выполнено нормально' items={taskGroups.normal} tone='normal' defaultOpen={false} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
                 </main>
 
                 <aside className='grid content-start gap-4'>
@@ -906,6 +1047,111 @@ export function AdminShiftControlDetails({
               </div>
             </div>
           )}
+          {manualReviewTarget ? (
+            <div
+              className='fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/70 p-4'
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!manualReviewSaving) setManualReviewTarget(null);
+              }}
+            >
+              <div
+                className='w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl'
+                onClick={(event) => event.stopPropagation()}
+                role='dialog'
+                aria-modal='true'
+                aria-label={`Ручное подтверждение: ${manualReviewTarget.label}`}
+              >
+                <div className='flex items-start justify-between gap-4'>
+                  <div>
+                    <p className='text-xs font-extrabold uppercase text-primary'>Ручное подтверждение</p>
+                    <h4 className='mt-1 text-lg font-extrabold text-slate-950'>{manualReviewTarget.label}</h4>
+                    <p className='mt-2 text-sm font-semibold leading-relaxed text-slate-600'>{manualReviewTarget.summary}</p>
+                  </div>
+                  <Button
+                    type='button'
+                    className='h-9 w-9 shrink-0 bg-slate-100 p-0 text-slate-700 shadow-none hover:bg-slate-200'
+                    onClick={() => setManualReviewTarget(null)}
+                    disabled={manualReviewSaving}
+                    aria-label='Закрыть ручное подтверждение'
+                  >
+                    <X className='h-5 w-5' />
+                  </Button>
+                </div>
+                <fieldset className='mt-4'>
+                  <legend className='text-sm font-extrabold text-slate-900'>Результат ручной проверки</legend>
+                  <div className='mt-2 grid gap-2 sm:grid-cols-2'>
+                    <label className={`cursor-pointer rounded-xl border px-3 py-3 transition ${
+                      manualReviewDecision === 'confirmed_ok'
+                        ? 'border-green-400 bg-green-50 ring-2 ring-green-100'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}>
+                      <input
+                        type='radio'
+                        name='manual-review-decision'
+                        value='confirmed_ok'
+                        checked={manualReviewDecision === 'confirmed_ok'}
+                        onChange={() => setManualReviewDecision('confirmed_ok')}
+                        className='sr-only'
+                      />
+                      <span className='block text-sm font-extrabold text-green-900'>Данные подтверждены</span>
+                      <span className='mt-1 block text-xs font-semibold text-slate-600'>Ручная проверка не выявила проблему.</span>
+                    </label>
+                    <label className={`cursor-pointer rounded-xl border px-3 py-3 transition ${
+                      manualReviewDecision === 'confirmed_issue'
+                        ? 'border-rose-400 bg-rose-50 ring-2 ring-rose-100'
+                        : 'border-slate-200 bg-white hover:bg-slate-50'
+                    }`}>
+                      <input
+                        type='radio'
+                        name='manual-review-decision'
+                        value='confirmed_issue'
+                        checked={manualReviewDecision === 'confirmed_issue'}
+                        onChange={() => setManualReviewDecision('confirmed_issue')}
+                        className='sr-only'
+                      />
+                      <span className='block text-sm font-extrabold text-rose-900'>Проблема подтверждена</span>
+                      <span className='mt-1 block text-xs font-semibold text-slate-600'>Проверка должна остаться в блоке внимания.</span>
+                    </label>
+                  </div>
+                </fieldset>
+                <label className='mt-4 block'>
+                  <span className='text-sm font-extrabold text-slate-900'>Комментарий администратора</span>
+                  <textarea
+                    value={manualReviewComment}
+                    onChange={(event) => setManualReviewComment(event.target.value)}
+                    maxLength={1000}
+                    rows={5}
+                    className='mt-2 w-full resize-y rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
+                    placeholder='Что проверено вручную и на основании каких данных?'
+                    autoFocus
+                  />
+                </label>
+                <div className='mt-1 flex items-center justify-between gap-3 text-xs font-semibold text-slate-500'>
+                  <span>Подтверждение сохранит автора и точное время.</span>
+                  <span>{manualReviewComment.length}/1000</span>
+                </div>
+                {manualReviewError ? (
+                  <p className='mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800'>
+                    {manualReviewError}
+                  </p>
+                ) : null}
+                <div className='mt-5 flex justify-end gap-2'>
+                  <Button
+                    type='button'
+                    className='bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200'
+                    onClick={() => setManualReviewTarget(null)}
+                    disabled={manualReviewSaving}
+                  >
+                    Отмена
+                  </Button>
+                  <Button type='button' onClick={submitManualReview} disabled={manualReviewSaving}>
+                    {manualReviewSaving ? 'Сохраняю…' : 'Сохранить решение'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>,
         document.body,
       ) : null}

@@ -19,7 +19,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl, workDayStatusLabel } from '@/lib/workday';
-import { AdminShiftControlDetails, type ShiftAutoCheck } from './AdminShiftControlDetails';
+import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
 import { DevMakeShiftTasksAvailableButton } from './DevMakeShiftTasksAvailableButton';
 import { DevResetTodayButton } from './DevResetTodayButton';
@@ -582,7 +582,7 @@ function buildEmployeeAutoChecks({
           id: `credit-${task.id}`,
           taskId: task.id,
           label: 'Операции Т-Банка',
-          status: 'partial',
+          status: 'unavailable',
           summary: `По имени сотрудника документы не найдены; всего по партнёру Т-Банка за день: ${tbankSales.documents.length}.`,
           evidence: 'Сопоставление выполняется по имени менеджера в реализации 1С.',
         });
@@ -629,7 +629,7 @@ function buildEmployeeAutoChecks({
           id: `acquiring-${task.id}`,
           taskId: task.id,
           label: 'Оплаты Сбербанка',
-          status: 'partial',
+          status: 'unavailable',
           summary: `За день в 1С: ${terminalTotals.checks} оплат на ${formatMoney(terminalTotals.amount)}. Промежуточный итог на конкретную минуту 1С пока не отдаёт.`,
           evidence: 'Дневной итог по явно привязанной кассе ККМ и терминалу Сбербанка.',
         });
@@ -664,7 +664,7 @@ function buildEmployeeAutoChecks({
           id: `${task.category}-${task.id}`,
           taskId: task.id,
           label,
-          status: 'partial',
+          status: 'unavailable',
           summary: checksCount > 0
             ? `ККМ активна: в 1С за день найдено чеков ${checksCount}. Сам X/Z-отчёт текущий endpoint не подтверждает.`
             : 'Чеки ККМ за день не найдены. Сам X/Z-отчёт текущий endpoint не подтверждает.',
@@ -809,7 +809,7 @@ function buildEmployeeAutoChecks({
         id: `handover-tbank-${task.id}`,
         taskId: task.id,
         label: 'Операции Т-Банка',
-        status: 'partial',
+        status: 'unavailable',
         summary: `По имени сотрудника документы не найдены; всего по партнёру Т-Банка за день: ${tbankSales.documents.length}.`,
         evidence: 'Сумма терминального отчёта не сравнивается: реализации 1С и операции терминала имеют разный состав.',
       });
@@ -882,7 +882,7 @@ function buildEmployeeAutoChecks({
           id: `handover-encashment-${task.id}`,
           taskId: task.id,
           label: 'Инкассация в резерв',
-          status: pairMatch === 'exact' ? 'matched' : pairMatch === 'time' ? 'partial' : 'mismatch',
+          status: pairMatch === 'exact' ? 'matched' : pairMatch === 'time' ? 'unavailable' : 'mismatch',
           summary: pairMatch === 'exact'
             ? `В 1С один документ отражает расход из кассы и приход в резерв на ${formatMoney(encashmentAmount)}.`
             : pairMatch === 'time'
@@ -899,7 +899,7 @@ function buildEmployeeAutoChecks({
         id: `handover-z-report-${task.id}`,
         taskId: task.id,
         label: 'Закрытие смены ККМ',
-        status: kkmDiagnostics.ok && cashboxName ? 'partial' : 'unavailable',
+        status: 'unavailable',
         summary: kkmDiagnostics.ok && cashboxName
           ? `В 1С за день найдено чеков ККМ: ${checksCount}. Факт формирования Z-отчёта текущий endpoint не подтверждает.`
           : 'Данные ККМ 1С не получены или касса не привязана.',
@@ -935,7 +935,25 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     prisma.workDayEntry.findMany({ where: { date: selectedDate } }),
     prisma.shiftControlRun.findMany({
       where: { date: selectedDate },
-      include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
+      include: {
+        tasks: {
+          orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+          include: {
+            manualReviews: {
+              orderBy: [{ reviewedAt: 'desc' }, { id: 'desc' }],
+              include: {
+                reviewedBy: {
+                  select: {
+                    id: true,
+                    name: true,
+                    login: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     }),
     prisma.workDayEntry.findMany({
       where: { status: { in: ['active', 'missing_checkout'] }, endedAt: null, date: { lt: selectedDate } },
@@ -1041,24 +1059,48 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const autoChecksByUser = new Map(cashStatementEmployees.map((employee) => {
     const run = shiftControlRunByUser.get(employee.id);
     const cashRow = cashStatementRowByUser.get(employee.id);
+    const latestManualReviewByCheckId = new Map<string, ShiftAutoCheckManualReview>();
+    for (const task of run?.tasks ?? []) {
+      for (const review of task.manualReviews) {
+        if (latestManualReviewByCheckId.has(review.checkId)) continue;
+        latestManualReviewByCheckId.set(review.checkId, {
+          id: review.id,
+          decision: review.decision === 'confirmed_issue' ? 'confirmed_issue' : 'confirmed_ok',
+          comment: review.comment,
+          reviewedAt: review.reviewedAt.toISOString(),
+          reviewedBy: review.reviewedBy,
+        });
+      }
+    }
+    const checks = buildEmployeeAutoChecks({
+      employeeName: employee.name,
+      tasks: (run?.tasks ?? []) as AutoCheckTask[],
+      cashboxName: cashRow?.cashbox?.name ?? null,
+      cashStatement: cashRow?.result ?? null,
+      reserveCashboxName: reserveCashbox?.name ?? null,
+      reserveStatement,
+      kkmDiagnostics,
+      tbankSales,
+    }).map((check) => ({
+      ...check,
+      manualReview: latestManualReviewByCheckId.get(check.id) ?? null,
+    }));
     return [
       employee.id,
-      buildEmployeeAutoChecks({
-        employeeName: employee.name,
-        tasks: (run?.tasks ?? []) as AutoCheckTask[],
-        cashboxName: cashRow?.cashbox?.name ?? null,
-        cashStatement: cashRow?.result ?? null,
-        reserveCashboxName: reserveCashbox?.name ?? null,
-        reserveStatement,
-        kkmDiagnostics,
-        tbankSales,
-      }),
+      checks,
     ] as const;
   }));
   const autoCheckTotals = [...autoChecksByUser.values()].flat();
-  const autoMatchedCount = autoCheckTotals.filter((check) => check.status === 'matched').length;
-  const autoMismatchCount = autoCheckTotals.filter((check) => check.status === 'mismatch').length;
-  const autoPartialCount = autoCheckTotals.filter((check) => check.status === 'partial').length;
+  const autoMatchedCount = autoCheckTotals.filter((check) => check.status === 'matched' && !check.manualReview).length;
+  const autoMismatchCount = autoCheckTotals.filter((check) => (
+    check.manualReview?.decision === 'confirmed_issue'
+    || (check.status === 'mismatch' && check.manualReview?.decision !== 'confirmed_ok')
+  )).length;
+  const autoUnavailableCount = autoCheckTotals.filter((check) => (
+    check.status === 'unavailable' && !check.manualReview
+  )).length;
+  const autoManualReviewCount = autoCheckTotals.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
+  const autoManualIssueCount = autoCheckTotals.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
   const acquiringControlRows = employees
     .filter((employee) => usesWorkdayShiftControl(employee))
     .map((employee) => {
@@ -1094,19 +1136,29 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const timingViolationCount = shiftControlRequired
         ? ((run?.tasks ?? []) as AutoCheckTask[]).filter((task) => hasTaskTimingViolation(task, selectedDate, nowMinutes)).length
         : 0;
-      const mismatchCount = autoChecks.filter((check) => check.status === 'mismatch').length;
-      const incompleteCount = autoChecks.filter((check) => (
-        check.status === 'partial'
-        || check.status === 'waiting'
-        || check.status === 'unavailable'
+      const manualReviewCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
+      const manualIssueCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
+      const unresolvedAutoChecks = autoChecks.filter((check) => check.manualReview?.decision !== 'confirmed_ok');
+      const mismatchCount = unresolvedAutoChecks.filter((check) => (
+        check.status === 'mismatch' || check.manualReview?.decision === 'confirmed_issue'
       )).length;
-      const matchedCount = autoChecks.filter((check) => check.status === 'matched').length;
+      const incompleteCount = unresolvedAutoChecks.filter((check) => (
+        check.manualReview?.decision !== 'confirmed_issue'
+        && (check.status === 'waiting' || check.status === 'unavailable')
+      )).length;
+      const matchedCount = unresolvedAutoChecks.filter((check) => (
+        check.status === 'matched' && check.manualReview?.decision !== 'confirmed_issue'
+      )).length;
       const attentionReasons = [
         !schedule ? 'График не заполнен' : null,
         schedule?.status === 'working' && selectedDate <= today && !workDay ? 'Рабочий день не начат' : null,
         workDay?.status === 'active' && !workDay.endedAt ? 'Рабочий день не завершён' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
-        mismatchCount > 0 ? `Расхождений по 1С: ${mismatchCount}` : null,
+        mismatchCount > 0
+          ? manualIssueCount > 0
+            ? `Подтверждённых проблем: ${manualIssueCount}`
+            : `Расхождений по 1С: ${mismatchCount}`
+          : null,
         acquiringRow?.status.problem ? `Эквайринг: ${acquiringRow.status.label}` : null,
         timingViolationCount > 0 ? `Нарушений времени: ${timingViolationCount}` : null,
       ].filter((reason): reason is string => Boolean(reason));
@@ -1125,13 +1177,20 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         ? `${attentionReasons.slice(0, 2).join(' · ')}${attentionReasons.length > 2 ? ` · ещё ${attentionReasons.length - 2}` : ''}`
         : cannotVerify
           ? incompleteCount > 0
-            ? `Автопроверка не полная: ${incompleteCount}`
+            ? `Нельзя проверить автоматически: ${incompleteCount}`
             : 'Недостаточно данных для проверки'
-          : 'Действий не требуется';
+          : manualReviewCount > 0
+            ? `Проверено вручную: ${manualReviewCount}`
+            : 'Действий не требуется';
       const oneCStatus = mismatchCount > 0
-        ? { label: `Расхождений ${mismatchCount}`, className: 'bg-rose-100 text-rose-800' }
+        ? {
+          label: manualIssueCount > 0 ? `Подтверждено проблем ${manualIssueCount}` : `Расхождений ${mismatchCount}`,
+          className: 'bg-rose-100 text-rose-800',
+        }
         : incompleteCount > 0
-          ? { label: `Не полностью ${incompleteCount}`, className: 'bg-blue-100 text-blue-800' }
+          ? { label: `Нельзя проверить автоматически: ${incompleteCount}`, className: 'bg-blue-100 text-blue-800' }
+          : manualReviewCount > 0
+            ? { label: `Вручную ${manualReviewCount}`, className: 'bg-green-100 text-green-800' }
           : matchedCount > 0
             ? { label: `Совпало ${matchedCount}`, className: 'bg-green-100 text-green-800' }
             : { label: 'Нет проверок', className: 'bg-slate-100 text-slate-700' };
@@ -1247,7 +1306,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             icon={UserCheck}
           />
           <StatCard
-            title='Нельзя проверить'
+            title='Нельзя проверить автоматически'
             value={unverifiedEmployeeCount}
             tone='blue'
             caption='нет данных или полной автопроверки'
@@ -1309,7 +1368,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               <Badge className={autoMismatchCount > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'}>
                 расхождения: {autoMismatchCount}
               </Badge>
-              <Badge className='bg-blue-100 text-blue-800'>не полностью: {autoPartialCount}</Badge>
+              <Badge className='bg-blue-100 text-blue-800'>нельзя проверить автоматически: {autoUnavailableCount}</Badge>
+              <Badge className='bg-green-100 text-green-800'>проверено вручную: {autoManualReviewCount}</Badge>
+              {autoManualIssueCount > 0 ? (
+                <Badge className='bg-rose-100 text-rose-800'>проблем подтверждено вручную: {autoManualIssueCount}</Badge>
+              ) : null}
             </div>
           </div>
           <div className='mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-200 pt-4 text-sm font-semibold text-slate-600'>
@@ -1334,7 +1397,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             <div className='flex flex-wrap gap-2 text-xs font-extrabold'>
               {([
                 ['attention', `Требуют внимания · ${attentionEmployeeCount}`],
-                ['unverified', `Нельзя проверить · ${unverifiedEmployeeCount}`],
+                ['unverified', `Нельзя проверить автоматически · ${unverifiedEmployeeCount}`],
                 ['normal', `Без замечаний · ${normalEmployeeCount}`],
                 ['all', `Все · ${employeeControlRows.length}`],
               ] as Array<[ControlFilter, string]>).map(([filter, label]) => (

@@ -25,6 +25,7 @@ model User {
   workSchedules WorkScheduleEntry[]
   workDays      WorkDayEntry[]
   shiftControlRuns ShiftControlRun[]
+  shiftControlManualReviews ShiftControlManualReview[] @relation("ShiftControlManualReviewReviewedBy")
   cashOperations CashOperation[]
   oneCCashboxMapping UserOneCCashboxMapping?
 }
@@ -185,10 +186,28 @@ model ShiftControlTask {
   updatedAt          DateTime                  @updatedAt
   run                ShiftControlRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
   templateTask       ShiftControlTemplateTask? @relation(fields: [templateTaskId], references: [id], onDelete: SetNull)
+  manualReviews     ShiftControlManualReview[]
 
   @@index([runId, sortOrder])
   @@index([status])
   @@index([category])
+}
+
+model ShiftControlManualReview {
+  id           Int              @id @default(autoincrement())
+  taskId       Int
+  checkId      String
+  checkLabel   String
+  decision     String
+  comment      String
+  reviewedById Int
+  reviewedAt   DateTime         @default(now())
+  createdAt    DateTime         @default(now())
+  task         ShiftControlTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  reviewedBy   User             @relation("ShiftControlManualReviewReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@index([taskId, checkId, reviewedAt])
+  @@index([reviewedById, reviewedAt])
 }
 
 model Attestation {
