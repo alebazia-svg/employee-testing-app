@@ -194,3 +194,19 @@ Automatic evidence and administrator decisions remain separate.
 - confirming data manually resolves only that automatic check;
 - confirming a problem keeps the employee in the attention workflow;
 - employee answers and original 1C evidence are never overwritten.
+
+## 2026-07-25 - Workday Time Violations
+
+Workday time status is calculated by one shared rule set for the admin table and
+employee detail card.
+
+- late start, late checklist completion and overdue pending tasks are separate
+  violations;
+- an active day is not treated as unfinished until its selected shift end;
+- a missing same-day start becomes a violation only after the latest supported
+  department shift start;
+- if a department has no fixed supported shifts, the portal does not invent a
+  start deadline;
+- completion after midnight remains a real late completion for the original
+  workday;
+- test data follows the same timing rules as production data.

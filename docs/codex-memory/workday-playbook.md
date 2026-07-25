@@ -110,6 +110,32 @@ stores:
 - the decision time;
 - a required comment.
 
+## Time Violations
+
+Admin Workday uses one Moscow-time calculation for the employee table and the
+employee detail card.
+
+Reliable violations are:
+
+- the employee started after the selected shift start;
+- a checklist task was completed after its planned minute;
+- a checklist task is still pending after its planned minute;
+- a scheduled retail/wholesale employee did not start after the latest
+  supported shift start for that department;
+- an active workday remains unfinished after its selected shift end or on a
+  later date.
+
+The exact planned minute is still on time. A task entered after midnight belongs
+to the original workday and is late by the full elapsed interval.
+
+Do not mark an active workday as unfinished before its shift end. Do not infer a
+same-day start violation for departments without a fixed supported shift set;
+show that the time cannot yet be checked automatically.
+
+Dev/test entries use the same timing rules as production. Late test data may
+therefore show violations; do not add a hidden test exemption to production
+logic.
+
 
 ## Trust But Verify
 
