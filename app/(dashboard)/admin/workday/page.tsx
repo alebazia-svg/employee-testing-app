@@ -18,6 +18,7 @@ import {
 } from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
+import { evaluateWorkdayTiming } from '@/lib/workday-timing';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl, workDayStatusLabel } from '@/lib/workday';
 import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
@@ -33,6 +34,7 @@ const oneCMoneyTolerance = 1;
 
 type AutoCheckTask = {
   id: number;
+  title: string;
   category: string;
   plannedTimeMinutes: number | null;
   status: string;
@@ -152,33 +154,6 @@ type ControlFilter = 'all' | 'attention' | 'unverified' | 'normal';
 function controlFilter(value: string | undefined): ControlFilter {
   if (value === 'attention' || value === 'unverified' || value === 'normal') return value;
   return 'all';
-}
-
-function moscowDateAndMinutes(value: Date) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Moscow',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(value);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return {
-    dateKey: `${values.year}-${values.month}-${values.day}`,
-    minutes: Number(values.hour) * 60 + Number(values.minute),
-  };
-}
-
-function hasTaskTimingViolation(task: AutoCheckTask, dateKey: string, nowMinutes: number) {
-  if (task.plannedTimeMinutes === null) return false;
-  if (task.status === 'done' && task.completedAt) {
-    const completed = moscowDateAndMinutes(task.completedAt);
-    return completed.dateKey > dateKey
-      || (completed.dateKey === dateKey && completed.minutes > task.plannedTimeMinutes);
-  }
-  return nowMinutes > task.plannedTimeMinutes;
 }
 
 function formatMoney(value: number | null | undefined) {
@@ -974,7 +949,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const completedCount = workDays.filter((entry) => entry.status === 'completed').length;
   const startedCount = workDays.length;
   const lateCount = workDays.filter((entry) => entry.lateMinutes > 0).length;
-  const missingCheckoutSelectedDate = workDays.filter((entry) => entry.status === 'active' && !entry.endedAt).length;
+  const missingCheckoutSelectedDate = workDays.filter((entry) => (
+    evaluateWorkdayTiming({
+      dateKey: selectedDate,
+      todayDateKey: today,
+      nowMinutes,
+      department: entry.department,
+      workDay: entry,
+    }).some((violation) => violation.kind === 'missing_checkout')
+  )).length;
   const missingCheckoutCount = unfinishedWorkDays.length + missingCheckoutSelectedDate;
   const cashStatementOrganization =
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
@@ -1133,9 +1116,16 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const shiftControlRequired = usesWorkdayShiftControl(employee);
       const autoChecks = autoChecksByUser.get(employee.id) ?? [];
       const acquiringRow = acquiringControlRowByUser.get(employee.id);
-      const timingViolationCount = shiftControlRequired
-        ? ((run?.tasks ?? []) as AutoCheckTask[]).filter((task) => hasTaskTimingViolation(task, selectedDate, nowMinutes)).length
-        : 0;
+      const timingViolations = evaluateWorkdayTiming({
+        dateKey: selectedDate,
+        todayDateKey: today,
+        nowMinutes,
+        department: employee.department,
+        scheduleStatus: schedule?.status,
+        workDay,
+        tasks: (run?.tasks ?? []) as AutoCheckTask[],
+      });
+      const timingViolationCount = timingViolations.length;
       const manualReviewCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
       const manualIssueCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
       const unresolvedAutoChecks = autoChecks.filter((check) => check.manualReview?.decision !== 'confirmed_ok');
@@ -1151,8 +1141,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       )).length;
       const attentionReasons = [
         !schedule ? 'График не заполнен' : null,
-        schedule?.status === 'working' && selectedDate <= today && !workDay ? 'Рабочий день не начат' : null,
-        workDay?.status === 'active' && !workDay.endedAt ? 'Рабочий день не завершён' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
         mismatchCount > 0
           ? manualIssueCount > 0
@@ -1160,13 +1148,24 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             : `Расхождений по 1С: ${mismatchCount}`
           : null,
         acquiringRow?.status.problem ? `Эквайринг: ${acquiringRow.status.label}` : null,
-        timingViolationCount > 0 ? `Нарушений времени: ${timingViolationCount}` : null,
+        timingViolationCount > 0
+          ? timingViolationCount === 1
+            ? timingViolations[0].label
+            : `Нарушений времени: ${timingViolationCount} · ${timingViolations[0].label}`
+          : null,
       ].filter((reason): reason is string => Boolean(reason));
       const needsAttention = attentionReasons.length > 0;
-      const cannotVerify = !needsAttention && shiftControlRequired && (
-        incompleteCount > 0
-        || (Boolean(run) && autoChecks.length === 0)
-        || (schedule?.status === 'working' && !run)
+      const waitingForWorkdayStart = schedule?.status === 'working' && selectedDate === today && !workDay;
+      const cannotVerify = !needsAttention && (
+        waitingForWorkdayStart
+        || (
+          shiftControlRequired
+          && (
+            incompleteCount > 0
+            || (Boolean(run) && autoChecks.length === 0)
+            || (schedule?.status === 'working' && !run)
+          )
+        )
       );
       const category: Exclude<ControlFilter, 'all'> = needsAttention
         ? 'attention'
@@ -1176,9 +1175,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const reviewText = needsAttention
         ? `${attentionReasons.slice(0, 2).join(' · ')}${attentionReasons.length > 2 ? ` · ещё ${attentionReasons.length - 2}` : ''}`
         : cannotVerify
-          ? incompleteCount > 0
-            ? `Нельзя проверить автоматически: ${incompleteCount}`
-            : 'Недостаточно данных для проверки'
+          ? waitingForWorkdayStart
+            ? 'Нельзя проверить время автоматически: рабочий день ещё не начат'
+            : incompleteCount > 0
+              ? `Нельзя проверить автоматически: ${incompleteCount}`
+              : 'Недостаточно данных для проверки'
           : manualReviewCount > 0
             ? `Проверено вручную: ${manualReviewCount}`
             : 'Действий не требуется';
@@ -1195,7 +1196,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             ? { label: `Совпало ${matchedCount}`, className: 'bg-green-100 text-green-800' }
             : { label: 'Нет проверок', className: 'bg-slate-100 text-slate-700' };
       const timeStatus = timingViolationCount > 0
-        ? `${timingViolationCount} опозданий`
+        ? `${timingViolationCount} нарушений`
         : workDay?.startedAt
           ? `${formatTime(workDay.startedAt)}–${formatTime(workDay.endedAt)}`
           : '—';
@@ -1206,6 +1207,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         workDay,
         run,
         autoChecks,
+        timingViolations,
         shiftControlRequired,
         timingViolationCount,
         category,
@@ -1487,8 +1489,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                                 comment: row.workDay.comment,
                               } : null}
                               dateKey={selectedDate}
-                              nowMinutes={nowMinutes}
                               autoChecks={row.autoChecks}
+                              timingViolations={row.timingViolations}
                               initialOpen={searchParams?.employee === String(row.employee.id)}
                               closeHref={employeeDetailCloseHref}
                               previousEmployee={previousEmployeeRow ? {

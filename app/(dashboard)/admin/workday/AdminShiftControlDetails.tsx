@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 
 type ShiftTask = {
   id: number;
@@ -48,8 +49,8 @@ type Props = {
   run: ShiftRun | null;
   workDay: WorkDayInfo;
   dateKey: string;
-  nowMinutes: number;
   autoChecks?: ShiftAutoCheck[];
+  timingViolations?: WorkdayTimingViolation[];
   initialOpen?: boolean;
   closeHref?: string;
   previousEmployee?: EmployeeNavigation | null;
@@ -119,23 +120,6 @@ function formatMoney(value: number | null | undefined) {
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)} ₽`;
 }
 
-function moscowDateAndMinutes(value: string) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Moscow',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(value));
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return {
-    dateKey: `${values.year}-${values.month}-${values.day}`,
-    minutes: Number(values.hour) * 60 + Number(values.minute),
-  };
-}
-
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('ru-RU', {
     timeZone: 'Europe/Moscow',
@@ -147,17 +131,11 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function taskStatus(task: ShiftTask, dateKey: string, nowMinutes: number) {
+function taskStatus(task: ShiftTask, timingViolation?: WorkdayTimingViolation) {
   if (task.status === 'done') {
-    if (task.plannedTimeMinutes === null || !task.completedAt) return 'done';
-    const completed = moscowDateAndMinutes(task.completedAt);
-    if (completed.dateKey > dateKey || (completed.dateKey === dateKey && completed.minutes > task.plannedTimeMinutes)) {
-      return 'late';
-    }
-    return 'done';
+    return timingViolation?.kind === 'task_late' ? 'late' : 'done';
   }
-  if (task.plannedTimeMinutes !== null && nowMinutes > task.plannedTimeMinutes) return 'overdue';
-  return 'pending';
+  return timingViolation?.kind === 'task_overdue' ? 'overdue' : 'pending';
 }
 
 function taskStatusLabel(status: string) {
@@ -630,8 +608,8 @@ export function AdminShiftControlDetails({
   run,
   workDay,
   dateKey,
-  nowMinutes,
   autoChecks = [],
+  timingViolations = [],
   initialOpen = false,
   closeHref,
   previousEmployee,
@@ -720,20 +698,21 @@ export function AdminShiftControlDetails({
   }, [closeDetails, manualReviewSaving, manualReviewTarget, open, selectedPhoto]);
   const summary = useMemo(() => {
     if (!canUseShiftControl) return { status: 'none', label: '—', completed: 0, total: 0, overdue: 0, handoverDone: false };
-    if (!run) return { status: 'none', label: 'нет контроля', completed: 0, total: 0, overdue: 0, handoverDone: false };
+    if (!run) {
+      return timingViolations.length > 0
+        ? { status: 'overdue', label: 'есть нарушения времени', completed: 0, total: 0, overdue: timingViolations.length, handoverDone: false }
+        : { status: 'none', label: 'нет контроля', completed: 0, total: 0, overdue: 0, handoverDone: false };
+    }
 
     const completed = run.tasks.filter((task) => task.status === 'done').length;
-    const overdue = run.tasks.filter((task) => {
-      const status = taskStatus(task, dateKey, nowMinutes);
-      return status === 'overdue' || status === 'late';
-    }).length;
+    const overdue = timingViolations.length;
     const handoverDone = run.tasks.some((task) => task.category === 'handover' && task.status === 'done');
     const total = run.tasks.length;
     const status = overdue > 0 ? 'overdue' : completed === total && total > 0 ? 'completed' : handoverDone ? 'completed' : 'in_progress';
     const label = status === 'completed' ? 'выполнено' : status === 'overdue' ? 'есть нарушения времени' : 'в процессе';
 
     return { status, label, completed, total, overdue, handoverDone };
-  }, [canUseShiftControl, dateKey, nowMinutes, run]);
+  }, [canUseShiftControl, run, timingViolations.length]);
 
   const hasZReportInHandover = useMemo(() => {
     if (!run) return false;
@@ -751,6 +730,11 @@ export function AdminShiftControlDetails({
     }
     return result;
   }, [autoChecks]);
+  const timingViolationByTaskId = useMemo(() => (
+    new Map(timingViolations.flatMap((violation) => (
+      violation.taskId === null ? [] : [[violation.taskId, violation] as const]
+    )))
+  ), [timingViolations]);
   const taskGroups = useMemo(() => {
     const groups: Record<'attention' | 'unverified' | 'normal' | 'planned', ReviewedTask[]> = {
       attention: [],
@@ -760,7 +744,7 @@ export function AdminShiftControlDetails({
     };
 
     for (const task of detailTasks) {
-      const status = taskStatus(task, dateKey, nowMinutes);
+      const status = taskStatus(task, timingViolationByTaskId.get(task.id));
       const taskAutoChecks = autoChecksByTask.get(task.id) ?? [];
       const item = { task, status, autoChecks: taskAutoChecks };
       const unresolvedAutoChecks = taskAutoChecks.filter((check) => !manualReviewResolves(check));
@@ -782,8 +766,10 @@ export function AdminShiftControlDetails({
     }
 
     return groups;
-  }, [autoChecksByTask, dateKey, detailTasks, nowMinutes]);
+  }, [autoChecksByTask, detailTasks, timingViolationByTaskId]);
   const autoSummary = autoCheckSummary(autoChecks);
+  const workdayTimingViolations = timingViolations.filter((violation) => violation.taskId === null);
+  const taskTimingViolationCount = timingViolations.length - workdayTimingViolations.length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
@@ -927,7 +913,26 @@ export function AdminShiftControlDetails({
             <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
               <div className='grid items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(380px,0.8fr)]'>
                 <main className='grid content-start gap-4'>
-                  {taskGroups.attention.length === 0 ? (
+                  {timingViolations.length > 0 ? (
+                    <section className='rounded-xl border border-amber-200 bg-amber-50 px-4 py-3'>
+                      <p className='text-sm font-extrabold text-amber-950'>
+                        Нарушения времени: {timingViolations.length}
+                      </p>
+                      <div className='mt-2 grid gap-1.5'>
+                        {workdayTimingViolations.map((violation) => (
+                          <div key={violation.id} className='text-xs font-semibold leading-relaxed text-amber-900'>
+                            <span className='font-extrabold'>{violation.label}.</span> {violation.detail}
+                          </div>
+                        ))}
+                        {taskTimingViolationCount > 0 ? (
+                          <p className='text-xs font-semibold leading-relaxed text-amber-900'>
+                            Шагов чек-листа не в срок: <span className='font-extrabold'>{taskTimingViolationCount}</span>. Подробности показаны в карточках ниже.
+                          </p>
+                        ) : null}
+                      </div>
+                    </section>
+                  ) : null}
+                  {taskGroups.attention.length === 0 && timingViolations.length === 0 ? (
                     <div className='rounded-xl border border-green-200 bg-green-50 px-4 py-3'>
                       <p className='text-sm font-extrabold text-green-950'>Действий по чек-листу не требуется</p>
                       <p className='mt-1 text-xs font-semibold text-green-800'>Критичных расхождений и просроченных шагов нет.</p>
