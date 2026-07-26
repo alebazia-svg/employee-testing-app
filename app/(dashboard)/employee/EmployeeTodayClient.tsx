@@ -30,6 +30,7 @@ import { LogoutButton } from '@/components/LogoutButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { startVisibleSync } from '@/lib/visible-sync';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 
@@ -131,6 +132,13 @@ type Props = {
   cashOperations: CashOperation[];
 };
 
+type EmployeeWorkdaySnapshot = {
+  workDay: WorkDayEntry | null;
+  unfinishedWorkDay: WorkDayEntry | null;
+  shiftControl: ShiftControlState;
+  cashOperations: CashOperation[];
+};
+
 type Tab = 'day' | 'schedule' | 'attestations';
 type ScheduleMode = 'list' | 'month';
 type QrScannerState = 'idle' | 'starting' | 'scanning' | 'found' | 'error';
@@ -191,6 +199,8 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: 'schedule', label: 'График', icon: CalendarDays },
   { id: 'attestations', label: 'Аттестации', icon: GraduationCap },
 ];
+
+const workdaySyncIntervalMs = 5_000;
 
 function parseWorkdayQrDepartment(value: string) {
   const text = value.trim();
@@ -600,6 +610,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | null {
+  if (!isRecord(value)) return null;
+
+  const workDay = value.workDay === null ? null : isRecord(value.workDay) ? (value.workDay as WorkDayEntry) : undefined;
+  const unfinishedWorkDay =
+    value.unfinishedWorkDay === null ? null : isRecord(value.unfinishedWorkDay) ? (value.unfinishedWorkDay as WorkDayEntry) : undefined;
+  const shiftControl = value.shiftControl;
+
+  if (workDay === undefined || unfinishedWorkDay === undefined || !isRecord(shiftControl) || !Array.isArray(shiftControl.tasks) || !Array.isArray(value.cashOperations)) {
+    return null;
+  }
+
+  const run = shiftControl.run === null ? null : isRecord(shiftControl.run) ? (shiftControl.run as ShiftControlRun) : undefined;
+  if (run === undefined) return null;
+
+  return {
+    workDay,
+    unfinishedWorkDay,
+    shiftControl: {
+      run,
+      tasks: shiftControl.tasks as ShiftControlTask[],
+    },
+    cashOperations: value.cashOperations as CashOperation[],
+  };
+}
+
 function readRecord(value: unknown, key: string) {
   return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
 }
@@ -813,6 +849,7 @@ export function EmployeeTodayClient({
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [now, setNow] = useState(new Date());
+  const workdaySyncAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -854,45 +891,37 @@ export function EmployeeTodayClient({
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
   const syncCurrentWorkdayState = useCallback(async () => {
+    workdaySyncAbortRef.current?.abort();
+    const controller = new AbortController();
+    workdaySyncAbortRef.current = controller;
+
     try {
-      const response = await fetch('/api/employee/workday/today', { cache: 'no-store' });
-      if (!response.ok) {
-        router.refresh();
-        return;
-      }
-
+      const response = await fetch('/api/employee/workday/today', {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      if (!response.ok) return;
       const payload: unknown = await response.json();
-      if (!isRecord(payload)) {
-        router.refresh();
-        return;
-      }
+      const snapshot = readEmployeeWorkdaySnapshot(payload);
+      if (!snapshot || controller.signal.aborted) return;
 
-      setWorkDay(isRecord(payload.workDay) ? (payload.workDay as WorkDayEntry) : null);
-      setUnfinished(isRecord(payload.unfinishedWorkDay) ? (payload.unfinishedWorkDay as WorkDayEntry) : null);
-      if (isRecord(payload.shiftControl)) {
-        setShiftControlState({
-          run: isRecord(payload.shiftControl.run) ? (payload.shiftControl.run as ShiftControlRun) : null,
-          tasks: Array.isArray(payload.shiftControl.tasks) ? (payload.shiftControl.tasks as ShiftControlTask[]) : [],
-        });
-      }
-      if (Array.isArray(payload.cashOperations)) setCashOperationsState(payload.cashOperations as CashOperation[]);
+      setWorkDay(snapshot.workDay);
+      setUnfinished(snapshot.unfinishedWorkDay);
+      setShiftControlState(snapshot.shiftControl);
+      setCashOperationsState(snapshot.cashOperations);
     } catch {
-      // Keep the optimistic UI state, but still ask Next to refresh server props.
+      // Keep the last valid snapshot and retry on the next scheduled sync.
     } finally {
-      router.refresh();
+      if (workdaySyncAbortRef.current === controller) workdaySyncAbortRef.current = null;
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
-    const syncWhenVisible = () => {
-      if (document.visibilityState === 'visible') void syncCurrentWorkdayState();
-    };
-
-    window.addEventListener('focus', syncWhenVisible);
-    document.addEventListener('visibilitychange', syncWhenVisible);
+    const stopVisibleSync = startVisibleSync(syncCurrentWorkdayState, workdaySyncIntervalMs);
     return () => {
-      window.removeEventListener('focus', syncWhenVisible);
-      document.removeEventListener('visibilitychange', syncWhenVisible);
+      stopVisibleSync();
+      workdaySyncAbortRef.current?.abort();
+      workdaySyncAbortRef.current = null;
     };
   }, [syncCurrentWorkdayState]);
 
