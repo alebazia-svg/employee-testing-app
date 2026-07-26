@@ -5,6 +5,7 @@ import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
+import { getAdminWorkdayRevision } from '@/lib/admin-workday-revision';
 import { getCurrentUser } from '@/lib/auth';
 import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
@@ -20,6 +21,7 @@ import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
 import { evaluateWorkdayTiming } from '@/lib/workday-timing';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl, workDayStatusLabel } from '@/lib/workday';
+import { AdminWorkdayAutoRefresh } from './AdminWorkdayAutoRefresh';
 import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
 import { DevMakeShiftTasksAvailableButton } from './DevMakeShiftTasksAvailableButton';
@@ -895,7 +897,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const selectedControlFilter = controlFilter(searchParams?.control);
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
-  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions] = await Promise.all([
+  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
@@ -936,6 +938,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       orderBy: { startedAt: 'desc' },
     }),
     getCashStatementDimensions(),
+    getAdminWorkdayRevision(selectedDate),
   ]);
 
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
@@ -1259,6 +1262,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
 
   return (
     <AdminShell>
+      <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
       <div className='space-y-6'>
         <div className='flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
           <div>
