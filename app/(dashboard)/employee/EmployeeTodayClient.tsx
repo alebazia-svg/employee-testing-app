@@ -850,6 +850,7 @@ export function EmployeeTodayClient({
   const [isSaving, setIsSaving] = useState(false);
   const [now, setNow] = useState(new Date());
   const workdaySyncAbortRef = useRef<AbortController | null>(null);
+  const workdaySyncRequestRef = useRef(0);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -891,25 +892,57 @@ export function EmployeeTodayClient({
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
   const syncCurrentWorkdayState = useCallback(async () => {
-    workdaySyncAbortRef.current?.abort();
+    const requestId = ++workdaySyncRequestRef.current;
+    if (workdaySyncAbortRef.current) {
+      console.info('[employee-workday-sync] abort-previous', { requestId });
+      workdaySyncAbortRef.current.abort();
+    }
     const controller = new AbortController();
+    const startedAt = performance.now();
     workdaySyncAbortRef.current = controller;
+    console.info('[employee-workday-sync] start', { requestId });
 
     try {
       const response = await fetch('/api/employee/workday/today', {
         cache: 'no-store',
         signal: controller.signal,
       });
+      console.info('[employee-workday-sync] response', {
+        requestId,
+        durationMs: Math.round(performance.now() - startedAt),
+        status: response.status,
+      });
       if (!response.ok) return;
       const payload: unknown = await response.json();
       const snapshot = readEmployeeWorkdaySnapshot(payload);
-      if (!snapshot || controller.signal.aborted) return;
+      if (!snapshot || controller.signal.aborted) {
+        console.info('[employee-workday-sync] ignored', {
+          requestId,
+          aborted: controller.signal.aborted,
+          validSnapshot: Boolean(snapshot),
+        });
+        return;
+      }
 
       setWorkDay(snapshot.workDay);
       setUnfinished(snapshot.unfinishedWorkDay);
       setShiftControlState(snapshot.shiftControl);
       setCashOperationsState(snapshot.cashOperations);
-    } catch {
+      console.info('[employee-workday-sync] applied', {
+        requestId,
+        durationMs: Math.round(performance.now() - startedAt),
+        workDayId: snapshot.workDay?.id ?? null,
+        workDayStatus: snapshot.workDay?.status ?? null,
+        lateMinutes: snapshot.workDay?.lateMinutes ?? null,
+        taskCount: snapshot.shiftControl.tasks.length,
+      });
+    } catch (syncError) {
+      console.info('[employee-workday-sync] failed', {
+        requestId,
+        durationMs: Math.round(performance.now() - startedAt),
+        aborted: controller.signal.aborted,
+        errorName: syncError instanceof Error ? syncError.name : 'UnknownError',
+      });
       // Keep the last valid snapshot and retry on the next scheduled sync.
     } finally {
       if (workdaySyncAbortRef.current === controller) workdaySyncAbortRef.current = null;
