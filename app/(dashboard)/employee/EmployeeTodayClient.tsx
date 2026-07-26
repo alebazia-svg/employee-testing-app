@@ -636,6 +636,38 @@ function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | 
   };
 }
 
+function workDayDiagnostic(value: unknown) {
+  if (!isRecord(value)) return null;
+  return {
+    id: typeof value.id === 'number' ? value.id : null,
+    date: typeof value.date === 'string' ? value.date : null,
+    status: typeof value.status === 'string' ? value.status : null,
+    startedAt: typeof value.startedAt === 'string' ? value.startedAt : null,
+    lateMinutes: typeof value.lateMinutes === 'number' ? value.lateMinutes : null,
+    shiftCode: typeof value.shiftCode === 'string' ? value.shiftCode : null,
+  };
+}
+
+function employeeWorkdayPayloadDiagnostic(value: unknown) {
+  const payload = isRecord(value) ? value : null;
+  const shiftControl = payload && isRecord(payload.shiftControl) ? payload.shiftControl : null;
+  const run = shiftControl && isRecord(shiftControl.run) ? shiftControl.run : null;
+  return {
+    validEnvelope: Boolean(payload),
+    today: payload && typeof payload.today === 'string' ? payload.today : null,
+    workDay: workDayDiagnostic(payload?.workDay),
+    unfinishedWorkDay: workDayDiagnostic(payload?.unfinishedWorkDay),
+    shiftControlRun: run
+      ? {
+          id: typeof run.id === 'number' ? run.id : null,
+          status: typeof run.status === 'string' ? run.status : null,
+        }
+      : null,
+    shiftTaskCount: shiftControl && Array.isArray(shiftControl.tasks) ? shiftControl.tasks.length : null,
+    cashOperationCount: payload && Array.isArray(payload.cashOperations) ? payload.cashOperations.length : null,
+  };
+}
+
 function readRecord(value: unknown, key: string) {
   return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
 }
@@ -914,7 +946,9 @@ export function EmployeeTodayClient({
       });
       if (!response.ok) return;
       const payload: unknown = await response.json();
+      console.info(`[employee-workday-sync] api ${JSON.stringify(employeeWorkdayPayloadDiagnostic(payload))}`);
       const snapshot = readEmployeeWorkdaySnapshot(payload);
+      console.info(`[employee-workday-sync] parsed ${JSON.stringify(employeeWorkdayPayloadDiagnostic(snapshot))}`);
       if (!snapshot || controller.signal.aborted) {
         console.info('[employee-workday-sync] ignored', {
           requestId,
@@ -957,6 +991,24 @@ export function EmployeeTodayClient({
       workdaySyncAbortRef.current = null;
     };
   }, [syncCurrentWorkdayState]);
+
+  useEffect(() => {
+    console.info(
+      `[employee-workday-sync] react-state ${JSON.stringify({
+        today,
+        workDay: workDayDiagnostic(workDay),
+        unfinishedWorkDay: workDayDiagnostic(unfinished),
+        shiftControlRun: shiftControlState.run
+          ? {
+              id: shiftControlState.run.id,
+              status: shiftControlState.run.status,
+            }
+          : null,
+        shiftTaskCount: shiftControlState.tasks.length,
+        cashOperationCount: cashOperationsState.length,
+      })}`,
+    );
+  }, [cashOperationsState, shiftControlState, today, unfinished, workDay]);
 
   const todayDepartmentEntries = departmentScheduleByDate.get(today) ?? [];
   const todayEntryByUser = new Map(todayDepartmentEntries.map((entry) => [entry.userId, entry]));
@@ -2348,6 +2400,18 @@ export function EmployeeTodayClient({
 
   return (
     <main className='min-h-screen overflow-x-hidden bg-[#111821] text-slate-950 md:px-6 md:py-6'>
+      <span
+        hidden
+        aria-hidden='true'
+        data-testid='employee-workday-diagnostic'
+        data-today={today}
+        data-work-day-id={workDay?.id ?? ''}
+        data-work-day-date={workDay?.date ?? ''}
+        data-work-day-status={workDay?.status ?? ''}
+        data-started-at={workDay?.startedAt ? String(workDay.startedAt) : ''}
+        data-late-minutes={workDay?.lateMinutes ?? ''}
+        data-date-matches={workDay ? String(workDay.date === today) : ''}
+      />
       {qrScannerOpen && (
         <WorkdayQrScanner
           userDepartment={user.department}
