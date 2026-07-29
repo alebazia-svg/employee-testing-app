@@ -144,6 +144,13 @@ Before final response:
 - Use `docs/ops/vps-deploy-runbook.md`.
 - If running commands from Windows, put Linux commands inside SSH. Do not let
   PowerShell interpret `&&`, `||`, `sed`, `head`, or `/docker/...`.
+- If a deploy requires an interactive `sudo` password and Codex cannot supply
+  it non-interactively, do not ask for or accept the password in chat. With
+  the user's explicit authorization, create a narrowly scoped executable
+  script in `/tmp` that connects to the VPS, runs the approved deploy command,
+  prints its exit code and `portal-app` status, keeps the Terminal open, and
+  opens it with `open -a Terminal`. The user enters the password only in that
+  visible Terminal window; Codex then performs read-only VPS verification.
 
 ## Known Gotchas
 
