@@ -201,6 +201,7 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
 ];
 
 const workdaySyncIntervalMs = 5_000;
+const workdaySyncTimeoutMs = 15_000;
 
 function parseWorkdayQrDepartment(value: string) {
   const text = value.trim();
@@ -850,6 +851,7 @@ export function EmployeeTodayClient({
   const [isSaving, setIsSaving] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
   const workdaySyncAbortRef = useRef<AbortController | null>(null);
+  const workdaySyncInFlightRef = useRef(false);
   const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
   const displayNow = now ?? initialRenderNow;
 
@@ -893,9 +895,16 @@ export function EmployeeTodayClient({
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
   const syncCurrentWorkdayState = useCallback(async () => {
-    workdaySyncAbortRef.current?.abort();
+    // iOS standalone web apps can leave a fetch pending while resuming. Do not
+    // abort it on the next interval: that would keep the UI on its initial
+    // server snapshot forever. Keep one request in flight and give it a
+    // bounded timeout instead.
+    if (workdaySyncInFlightRef.current) return;
+
     const controller = new AbortController();
     workdaySyncAbortRef.current = controller;
+    workdaySyncInFlightRef.current = true;
+    const timeout = window.setTimeout(() => controller.abort(), workdaySyncTimeoutMs);
 
     try {
       const response = await fetch('/api/employee/workday/today', {
@@ -914,7 +923,9 @@ export function EmployeeTodayClient({
     } catch {
       // Keep the last valid snapshot and retry on the next scheduled sync.
     } finally {
+      window.clearTimeout(timeout);
       if (workdaySyncAbortRef.current === controller) workdaySyncAbortRef.current = null;
+      workdaySyncInFlightRef.current = false;
     }
   }, []);
 
@@ -924,6 +935,7 @@ export function EmployeeTodayClient({
       stopVisibleSync();
       workdaySyncAbortRef.current?.abort();
       workdaySyncAbortRef.current = null;
+      workdaySyncInFlightRef.current = false;
     };
   }, [syncCurrentWorkdayState]);
 
