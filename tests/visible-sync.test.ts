@@ -8,9 +8,11 @@ test('syncs immediately and repeatedly while the page stays visible', () => {
   let intervalCallback: () => void = () => assert.fail('Interval callback was not registered');
   let focusListener: () => void = () => assert.fail('Focus listener was not registered');
   let visibilityListener: () => void = () => assert.fail('Visibility listener was not registered');
+  let pageShowListener: () => void = () => assert.fail('Page show listener was not registered');
   let clearedTimerId: number | null = null;
   let focusListenerRemoved = false;
   let visibilityListenerRemoved = false;
+  let pageShowListenerRemoved = false;
 
   const environment: VisibleSyncEnvironment = {
     isVisible: () => visible,
@@ -33,6 +35,12 @@ test('syncs immediately and repeatedly while the page stays visible', () => {
     removeVisibilityListener: (listener) => {
       visibilityListenerRemoved = visibilityListener === listener;
     },
+    addPageShowListener: (listener) => {
+      pageShowListener = listener;
+    },
+    removePageShowListener: (listener) => {
+      pageShowListenerRemoved = pageShowListener === listener;
+    },
   };
 
   const stop = startVisibleSync(() => {
@@ -53,10 +61,18 @@ test('syncs immediately and repeatedly while the page stays visible', () => {
   focusListener();
   assert.equal(syncCount, 4);
 
+  visible = false;
+  pageShowListener();
+  assert.equal(syncCount, 5);
+
+  focusListener();
+  assert.equal(syncCount, 6);
+
   stop();
   assert.equal(clearedTimerId, 42);
   assert.equal(focusListenerRemoved, true);
   assert.equal(visibilityListenerRemoved, true);
+  assert.equal(pageShowListenerRemoved, true);
 });
 
 test('refreshes workday timing and checklist state without focus events', () => {
@@ -89,6 +105,8 @@ test('refreshes workday timing and checklist state without focus events', () => 
     removeFocusListener: () => undefined,
     addVisibilityListener: () => undefined,
     removeVisibilityListener: () => undefined,
+    addPageShowListener: () => undefined,
+    removePageShowListener: () => undefined,
   };
 
   const stop = startVisibleSync(() => {

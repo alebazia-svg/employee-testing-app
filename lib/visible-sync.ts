@@ -6,6 +6,8 @@ export type VisibleSyncEnvironment = {
   removeFocusListener: (listener: () => void) => void;
   addVisibilityListener: (listener: () => void) => void;
   removeVisibilityListener: (listener: () => void) => void;
+  addPageShowListener: (listener: () => void) => void;
+  removePageShowListener: (listener: () => void) => void;
 };
 
 function browserVisibleSyncEnvironment(): VisibleSyncEnvironment {
@@ -17,22 +19,29 @@ function browserVisibleSyncEnvironment(): VisibleSyncEnvironment {
     removeFocusListener: (listener) => window.removeEventListener('focus', listener),
     addVisibilityListener: (listener) => document.addEventListener('visibilitychange', listener),
     removeVisibilityListener: (listener) => document.removeEventListener('visibilitychange', listener),
+    addPageShowListener: (listener) => window.addEventListener('pageshow', listener),
+    removePageShowListener: (listener) => window.removeEventListener('pageshow', listener),
   };
 }
 
 export function startVisibleSync(sync: () => void | Promise<void>, intervalMs: number, environment = browserVisibleSyncEnvironment()) {
+  const syncNow = () => void sync();
   const syncWhenVisible = () => {
-    if (environment.isVisible()) void sync();
+    if (environment.isVisible()) syncNow();
   };
 
-  syncWhenVisible();
+  // iOS standalone web apps can resume before WebKit updates visibilityState.
+  // Start and resume snapshots must not be skipped because of that stale flag.
+  syncNow();
   const timer = environment.setInterval(syncWhenVisible, intervalMs);
-  environment.addFocusListener(syncWhenVisible);
+  environment.addFocusListener(syncNow);
   environment.addVisibilityListener(syncWhenVisible);
+  environment.addPageShowListener(syncNow);
 
   return () => {
     environment.clearInterval(timer);
-    environment.removeFocusListener(syncWhenVisible);
+    environment.removeFocusListener(syncNow);
     environment.removeVisibilityListener(syncWhenVisible);
+    environment.removePageShowListener(syncNow);
   };
 }

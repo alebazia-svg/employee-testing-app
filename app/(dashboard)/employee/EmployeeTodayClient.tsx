@@ -848,8 +848,10 @@ export function EmployeeTodayClient({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
   const workdaySyncAbortRef = useRef<AbortController | null>(null);
+  const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
+  const displayNow = now ?? initialRenderNow;
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -881,7 +883,7 @@ export function EmployeeTodayClient({
   const displayedWorkDayStatus = isCompleted ? 'completed' : workDay?.status;
   const availableShiftOptions = getShiftOptionsForDepartment(user.department);
   const selectedShiftOption = availableShiftOptions.find((shift) => shift.code === selectedShift);
-  const elapsedMs = getElapsed(workDay, now);
+  const elapsedMs = getElapsed(workDay, displayNow);
   const elapsedLabel = formatDuration(elapsedMs);
   const activeElapsedLabel = formatDurationWithSeconds(elapsedMs);
   const shiftStart = workDay ? workDay.shiftStartMinutes : selectedShiftOption?.startMinutes;
@@ -945,7 +947,7 @@ export function EmployeeTodayClient({
     : shiftControlTasks;
   const pendingShiftControlTasks = visibleShiftControlTasks.filter((task) => task.status !== 'done');
   const actionableShiftControlTask =
-    pendingShiftControlTasks.find((task) => task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(now) >= task.plannedTimeMinutes) ?? null;
+    pendingShiftControlTasks.find((task) => task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(displayNow) >= task.plannedTimeMinutes) ?? null;
   const handoverTask = shiftControlTasks.find((task) => task.category === 'handover') ?? null;
   const isHandoverDone = handoverTask?.status === 'done';
   const activeHandoverTask = activeHandoverTaskId ? shiftControlTasks.find((task) => task.id === activeHandoverTaskId) ?? null : null;
@@ -1539,7 +1541,7 @@ export function EmployeeTodayClient({
 
   function canActOnShiftTask(task: ShiftControlTask) {
     if (task.status === 'done') return false;
-    return task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(now) >= task.plannedTimeMinutes;
+    return task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(displayNow) >= task.plannedTimeMinutes;
   }
 
   function renderShiftTaskAnswer(task: ShiftControlTask, compact = false) {
@@ -2545,13 +2547,13 @@ export function EmployeeTodayClient({
                       {primaryShiftControlTask && (
                         <div className='mt-2 flex flex-wrap items-center gap-2'>
                           <span className='text-xs font-bold text-slate-500'>
-                            {shiftTaskStatusLabel(shiftTaskStatus(primaryShiftControlTask, now))}
+                            {shiftTaskStatusLabel(shiftTaskStatus(primaryShiftControlTask, displayNow))}
                           </span>
                           <span className='text-xs font-bold text-slate-500'>
                             {plannedTimeLabel(primaryShiftControlTask.plannedTimeMinutes)}
                           </span>
                           {!actionableShiftControlTask && (
-                            <span className='text-xs font-bold text-slate-500'>{timeUntilLabel(primaryShiftControlTask.plannedTimeMinutes, now)}</span>
+                            <span className='text-xs font-bold text-slate-500'>{timeUntilLabel(primaryShiftControlTask.plannedTimeMinutes, displayNow)}</span>
                           )}
                         </div>
                       )}
@@ -2574,7 +2576,7 @@ export function EmployeeTodayClient({
                   {!activeHandoverTask && showFullShiftPlan && (
                     <div className='grid gap-2'>
                       {visibleShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).map((task) => {
-                      const uiStatus = shiftTaskStatus(task, now);
+                      const uiStatus = shiftTaskStatus(task, displayNow);
                       const Icon = shiftTaskIcon(task);
                       return (
                         <div key={task.id} className={cn('flex gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-slate-600 ring-1 ring-slate-200/80', uiStatus === 'done' && 'opacity-75')}>
