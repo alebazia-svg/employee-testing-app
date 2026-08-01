@@ -170,6 +170,7 @@ type PayrollEmployee = {
   position: string;
   salaryType: SalaryType;
   salary?: number;
+  activeThroughPeriod?: string;
 };
 
 type FixedPayrollInput = {
@@ -525,6 +526,7 @@ const payrollEmployees: Record<string, PayrollEmployee> = {
     position: 'Помощник менеджера по закупкам',
     salaryType: 'fixed_salary',
     salary: 40000,
+    activeThroughPeriod: '2026-06',
   },
   'Атабиева Марианна': {
     name: 'Атабиева Марианна',
@@ -1018,7 +1020,17 @@ function shouldMapLegacyRetailTraineeToMagomed(month: string, year: string) {
 }
 
 function mapLegacyRetailTraineeForPeriod(result: PayrollParseResult, month: string, year: string): PayrollParseResult {
-  if (!shouldMapLegacyRetailTraineeToMagomed(month, year)) return result;
+  if (!shouldMapLegacyRetailTraineeToMagomed(month, year)) {
+    const rows = result.rows.filter((row) => !isLegacyRetailTraineeSource(row.manager));
+    const detailRows = result.detailRows.filter((row) => !isLegacyRetailTraineeSource(row.manager));
+
+    return {
+      ...result,
+      rows,
+      detailRows,
+      managers: Array.from(new Set(rows.map((row) => row.manager))),
+    };
+  }
 
   const mapRow = (row: SalesRow): SalesRow => (
     isLegacyRetailTraineeSource(row.manager)
@@ -2877,6 +2889,10 @@ function getDefaultPayrollDepartment(employee: PayrollEmployee): Department {
   return employee.salaryType === 'wholesale_percent' ? 'Опт' : 'Розница';
 }
 
+function isPayrollEmployeeActiveForPeriod(employee: PayrollEmployee, periodKey: string) {
+  return !employee.activeThroughPeriod || periodKey <= employee.activeThroughPeriod;
+}
+
 function buildEmptyManagerSummary(employee: PayrollEmployee): BonusManagerSummary {
   return {
     manager: employee.name,
@@ -3020,9 +3036,9 @@ function applyBelaPercentRule(rows: FullPayrollRow[]): FullPayrollRow[] {
   });
 }
 
-function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>): FullPayrollRow[] {
+function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>, periodKey: string): FullPayrollRow[] {
   return Object.values(payrollEmployees)
-    .filter((employee) => employee.salaryType === 'fixed_salary')
+    .filter((employee) => employee.salaryType === 'fixed_salary' && isPayrollEmployeeActiveForPeriod(employee, periodKey))
     .map((employee) => {
       const input = inputs[employee.name];
       const fixedSalary = employee.salary ?? 0;
@@ -3401,7 +3417,7 @@ export default function AdminPayrollPage() {
     () => buildSalesPayrollSummaries(classification.managerSummaries).map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, manualPayroll))),
     [classification.managerSummaries, manualPayroll],
   );
-  const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll), [fixedPayroll]);
+  const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll, selectedPayrollPeriodKey), [fixedPayroll, selectedPayrollPeriodKey]);
   const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport), [purchasePayroll, purchaseReport]);
   const fullPayrollRows = useMemo(() => applyBelaPercentRule([...salesPayrollRows, ...fixedPayrollRows, purchasePayrollRow]), [salesPayrollRows, fixedPayrollRows, purchasePayrollRow]);
   const purchaseTargetBase = purchaseTargetSalary / purchasePercent;
