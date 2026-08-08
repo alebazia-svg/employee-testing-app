@@ -86,6 +86,28 @@ employee answers:
 These checks are admin-side evidence. They do not overwrite manual answers and
 do not block task completion.
 
+## T-Bank Acquiring Shadow Integration
+
+The first read-only T-Bank acquiring integration stage is implemented without
+changing employee checklist behavior:
+
+- `lib/tbank-acquiring.ts` reads active terminals and terminal operations from
+  the official T-API trading acquiring endpoints;
+- `/admin/workday/tbank` is an admin-only diagnostic page for selecting a
+  terminal and viewing its operations for the last 24 hours;
+- `/api/admin/workday/tbank-probe` exposes the same diagnostic data to an
+  authenticated administrator;
+- card numbers are reduced to a masked last-four display and amounts are
+  normalized from kopecks to rubles;
+- no T-Bank data is persisted yet and no employee declaration is overwritten or
+  automatically completed.
+
+Keep this integration in shadow mode until production credentials, terminal
+mapping and real operation latency have been verified. T-API documents that
+terminal operations can arrive with a delay of up to two hours, so absence of a
+fresh operation must not yet be treated as proof that an employee made an
+incorrect declaration.
+
 Current limitations must stay visible:
 
 - the current terminal source does not yet prove all operations inside each
