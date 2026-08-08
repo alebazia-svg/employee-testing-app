@@ -674,10 +674,11 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
   if (item.status === 'late') return { tone: 'attention', label: 'Требует внимания', result: 'Проверка выполнена с опозданием' };
   if (item.status === 'overdue') return { tone: 'attention', label: 'Требует внимания', result: 'Обязательная проверка просрочена' };
 
-  const unavailable = unresolvedChecks.find((check) => check.status === 'unavailable');
-  if (unavailable) return { tone: 'attention', label: 'Требует внимания', result: unavailable.summary };
-
   if (item.task.status !== 'done') return { tone: 'pending', label: 'Не выполнено', result: 'Срок ещё не наступил' };
+
+  const unavailable = unresolvedChecks.find((check) => check.status === 'unavailable');
+  if (unavailable) return { tone: 'attention', label: 'Требует внимания', result: 'Автоматическая проверка недоступна' };
+
   if (item.task.category === 'acquiring') return { tone: 'normal', label: 'Всё нормально', result: acquiringResult(item.task).label };
   if (item.task.category === 'credit') return { tone: 'normal', label: 'Всё нормально', result: creditResult(item.task).label };
 
@@ -926,7 +927,9 @@ export function AdminShiftControlDetails({
   const workdayTimingViolations = timingViolations.filter((violation) => violation.taskId === null);
   const taskTimingViolationCount = timingViolations.length - workdayTimingViolations.length;
   const hasError = keyProblems.some((item) => taskBusinessState(item).tone === 'error');
-  const keyProblemCount = keyProblems.length + workdayTimingViolations.length;
+  const scheduleNeedsAttention = scheduleLabel === 'не заполнено';
+  const keyProblemCount = keyProblems.length + workdayTimingViolations.length + (scheduleNeedsAttention ? 1 : 0);
+  const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
@@ -1183,11 +1186,15 @@ export function AdminShiftControlDetails({
                   ? 'bg-rose-100 text-rose-800'
                   : keyProblemCount > 0
                     ? 'bg-amber-100 text-amber-800'
+                    : pendingOverviewCount > 0
+                      ? 'bg-slate-100 text-slate-700'
                     : 'bg-green-100 text-green-800'}>
                   {hasError
                     ? 'Есть ошибка'
                     : keyProblemCount > 0
                       ? 'Требует внимания'
+                      : pendingOverviewCount > 0
+                        ? 'Не выполнено'
                       : 'Всё нормально'}
                 </Badge>
               </div>
@@ -1202,6 +1209,9 @@ export function AdminShiftControlDetails({
                     hasError ? 'text-rose-950' : 'text-amber-950'
                   }`}>Ключевые проблемы</h4>
                   <div className='mt-2 grid gap-1.5'>
+                    {scheduleNeedsAttention ? (
+                      <p className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>График:</span> рабочий график сотрудника не заполнен</p>
+                    ) : null}
                     {workdayTimingViolations.map((violation) => (
                       <p key={violation.id} className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>{violation.label}:</span> {violation.detail}</p>
                     ))}
@@ -1212,9 +1222,9 @@ export function AdminShiftControlDetails({
                   </div>
                 </section>
               ) : (
-                <section className='mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3'>
-                  <h4 className='text-sm font-extrabold text-green-950'>Ключевых проблем нет</h4>
-                  <p className='mt-1 text-xs font-semibold text-green-800'>По выполненным и доступным проверкам замечаний не найдено.</p>
+                <section className='mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3'>
+                  <h4 className='text-sm font-extrabold text-slate-950'>Ключевых проблем нет</h4>
+                  <p className='mt-1 text-xs font-semibold text-slate-600'>По выполненным и доступным проверкам замечаний не найдено.</p>
                 </section>
               )}
 

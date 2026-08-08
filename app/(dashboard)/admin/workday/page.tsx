@@ -962,22 +962,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       checks,
     ] as const;
   }));
-  const acquiringControlRows = employees
-    .filter((employee) => usesWorkdayShiftControl(employee))
-    .map((employee) => {
-      const run = shiftControlRunByUser.get(employee.id);
-      const tasks = run?.tasks.filter((item) => item.category === 'acquiring') ?? [];
-      const task = [...tasks].reverse().find((item) => acquiringControlStatus(item).problem)
-        ?? tasks.at(-1)
-        ?? null;
-      return {
-        employee,
-        schedule: scheduleByUser.get(employee.id),
-        workDay: workDayByUser.get(employee.id),
-        task,
-        status: acquiringControlStatus(task),
-      };
-    });
   const acquiringTaskRows = employees
     .filter((employee) => usesWorkdayShiftControl(employee))
     .flatMap((employee) => {
@@ -996,7 +980,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const acquiringPendingCount = acquiringTaskRows.filter((row) => row.status.problem && row.task.integerValue !== 2).length;
   const acquiringDiscrepancyCount = acquiringTaskRows.filter((row) => row.task.integerValue === 2).length;
   const acquiringNoPaymentsCount = acquiringTaskRows.filter((row) => row.task.integerValue === 0).length;
-  const acquiringControlRowByUser = new Map(acquiringControlRows.map((row) => [row.employee.id, row]));
   const employeeControlRows = employees
     .map((employee) => {
       const schedule = scheduleByUser.get(employee.id);
@@ -1004,7 +987,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const run = shiftControlRunByUser.get(employee.id);
       const shiftControlRequired = usesWorkdayShiftControl(employee);
       const autoChecks = autoChecksByUser.get(employee.id) ?? [];
-      const acquiringRow = acquiringControlRowByUser.get(employee.id);
       const timingViolations = evaluateWorkdayTiming({
         dateKey: selectedDate,
         todayDateKey: today,
@@ -1033,7 +1015,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             ? `Подтверждённых проблем: ${manualIssueCount}`
             : `Расхождений по 1С: ${mismatchCount}`
           : null,
-        acquiringRow?.status.problem ? `Операции терминала: ${acquiringRow.status.label}` : null,
         timingViolationCount > 0
           ? timingViolationCount === 1
             ? timingViolations[0].label
