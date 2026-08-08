@@ -226,7 +226,8 @@ const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: 'attestations', label: 'Аттестации', icon: GraduationCap },
 ];
 
-const workdaySyncIntervalMs = 5_000;
+const workdaySyncIntervalMs = 60_000;
+const scheduleSyncIntervalMs = 30_000;
 const workdaySyncTimeoutMs = 15_000;
 
 function parseWorkdayQrDepartment(value: string) {
@@ -899,9 +900,12 @@ export function EmployeeTodayClient({
   const displayNow = now ?? initialRenderNow;
 
   useEffect(() => {
+    const hasActiveWorkDay = Boolean(workDay && workDay.status !== 'completed' && !workDay.endedAt);
+    if (activeTab !== 'day' || !hasActiveWorkDay) return;
+    setNow(new Date());
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [activeTab, workDay]);
 
   useEffect(() => {
     if (!message) return;
@@ -978,6 +982,7 @@ export function EmployeeTodayClient({
   }, []);
 
   useEffect(() => {
+    if (activeTab !== 'day') return;
     const stopVisibleSync = startVisibleSync(syncCurrentWorkdayState, workdaySyncIntervalMs);
     return () => {
       stopVisibleSync();
@@ -985,7 +990,25 @@ export function EmployeeTodayClient({
       workdaySyncAbortRef.current = null;
       workdaySyncInFlightRef.current = false;
     };
-  }, [syncCurrentWorkdayState]);
+  }, [activeTab, syncCurrentWorkdayState]);
+
+  const syncScheduleState = useCallback(async () => {
+    try {
+      const response = await fetch('/api/employee/workday/schedule', { cache: 'no-store' });
+      if (!response.ok) return;
+      const payload: unknown = await response.json();
+      if (!isRecord(payload) || !Array.isArray(payload.ownSchedule) || !Array.isArray(payload.departmentSchedule)) return;
+      setOwnScheduleState(payload.ownSchedule as ScheduleEntry[]);
+      setDepartmentScheduleState(payload.departmentSchedule as ScheduleEntry[]);
+    } catch {
+      // Keep the last valid schedule and retry on the next visible sync.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'schedule') return;
+    return startVisibleSync(syncScheduleState, scheduleSyncIntervalMs);
+  }, [activeTab, syncScheduleState]);
 
   const todayDepartmentEntries = departmentScheduleByDate.get(today) ?? [];
   const todayEntryByUser = new Map(todayDepartmentEntries.map((entry) => [entry.userId, entry]));
