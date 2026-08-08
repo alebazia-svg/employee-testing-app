@@ -6,7 +6,9 @@ import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { getCurrentUser } from '@/lib/auth';
+import { getKkmEquipmentDiagnostics } from '@/lib/one-c';
 import { getTBankTerminalOperations, getTBankTerminals } from '@/lib/tbank-acquiring';
+import { reconcileTerminalOperations, tBankTerminalOneCMapping } from '@/lib/terminal-reconciliation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,10 +26,25 @@ function formatOperationType(value: 'Debit' | 'Credit' | 'Other') {
   return 'Другая';
 }
 
+function isDateKey(value: string | undefined): value is string {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
+function moscowDayBounds(dateKey: string) {
+  return {
+    from: new Date(`${dateKey}T00:00:00+03:00`),
+    till: new Date(`${dateKey}T23:59:59+03:00`),
+  };
+}
+
+function formatMoney(value: number) {
+  return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+}
+
 export default async function AdminTBankAcquiringPage({
   searchParams,
 }: {
-  searchParams: { terminalKey?: string };
+  searchParams: { terminalKey?: string; date?: string };
 }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
@@ -35,14 +52,25 @@ export default async function AdminTBankAcquiringPage({
 
   const terminalsResult = await getTBankTerminals();
   const selectedTerminal = searchParams.terminalKey?.trim() || '';
-  const tillDate = new Date();
-  // T-Bank rejects an interval equal to exactly 24 hours as exceeding one day.
-  const fromDate = new Date(tillDate.getTime() - (24 * 60 - 1) * 60 * 1000);
-  const operationsResult = selectedTerminal
-    ? await getTBankTerminalOperations({
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
+  const selectedDate = isDateKey(searchParams.date) ? searchParams.date : today;
+  const { from: fromDate, till: tillDate } = moscowDayBounds(selectedDate);
+  const oneCMapping = tBankTerminalOneCMapping[selectedTerminal] ?? null;
+  const [operationsResult, oneCResult] = await Promise.all([
+    selectedTerminal ? getTBankTerminalOperations({
         terminalKey: selectedTerminal,
         from: fromDate.toISOString(),
         till: tillDate.toISOString(),
+      }) : Promise.resolve(null),
+    selectedTerminal && oneCMapping
+      ? getKkmEquipmentDiagnostics({ dateFrom: selectedDate, dateTo: selectedDate, limit: 1000 })
+      : Promise.resolve(null),
+  ]);
+  const reconciliation = operationsResult?.ok && oneCResult?.ok && oneCMapping
+    ? reconcileTerminalOperations({
+        operations: operationsResult.operations,
+        checks: oneCResult.recentChecks,
+        cashRegisterName: oneCMapping.cashRegisterName,
       })
     : null;
 
@@ -97,7 +125,7 @@ export default async function AdminTBankAcquiringPage({
             {terminalsResult.terminals.map((terminal) => (
               <Link
                 key={terminal.key}
-                href={`/admin/workday/tbank?terminalKey=${encodeURIComponent(terminal.key)}`}
+                href={`/admin/workday/tbank?terminalKey=${encodeURIComponent(terminal.key)}&date=${selectedDate}`}
                 className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm font-bold transition ${selectedTerminal === terminal.key ? 'border-green-300 bg-green-50 text-green-900' : 'border-slate-200 bg-white text-slate-800 hover:border-green-200 hover:bg-green-50/60'}`}
               >
                 <span className='flex items-center gap-2'><CreditCard className='h-4 w-4' />{terminal.key}</span>
@@ -114,10 +142,10 @@ export default async function AdminTBankAcquiringPage({
           <div className='flex items-start justify-between gap-3 border-b border-slate-200/80 px-5 py-4'>
             <div>
               <h2 className='text-xl font-extrabold text-slate-950'>Операции</h2>
-              <p className='mt-1 text-sm font-semibold text-slate-500'>{selectedTerminal ? `Терминал ${selectedTerminal}` : 'Терминал не выбран'}</p>
+              <p className='mt-1 text-sm font-semibold text-slate-500'>{selectedTerminal ? `Терминал ${selectedTerminal} · ${selectedDate}` : 'Терминал не выбран'}</p>
             </div>
             {selectedTerminal ? (
-              <Link href={`/admin/workday/tbank?terminalKey=${encodeURIComponent(selectedTerminal)}`} title='Обновить' className='flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'>
+              <Link href={`/admin/workday/tbank?terminalKey=${encodeURIComponent(selectedTerminal)}&date=${selectedDate}`} title='Обновить' className='flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'>
                 <RefreshCw className='h-4 w-4' />
               </Link>
             ) : null}
@@ -151,6 +179,51 @@ export default async function AdminTBankAcquiringPage({
           )}
         </Card>
       </section>
+
+      {selectedTerminal ? (
+        <Card className='mb-5 p-0'>
+          <div className='flex flex-col gap-3 border-b border-slate-200/80 px-5 py-4 sm:flex-row sm:items-end sm:justify-between'>
+            <div>
+              <h2 className='text-xl font-extrabold text-slate-950'>Теневая сверка с 1С</h2>
+              <p className='mt-1 text-sm font-semibold text-slate-500'>Сотруднику результат не показывается и задания автоматически не закрываются.</p>
+            </div>
+            <form className='flex items-end gap-2' action='/admin/workday/tbank'>
+              <input type='hidden' name='terminalKey' value={selectedTerminal} />
+              <label className='text-xs font-bold text-slate-600'>Дата<input className='mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-sm' type='date' name='date' defaultValue={selectedDate} /></label>
+              <button className='rounded-lg bg-slate-950 px-4 py-2 text-sm font-extrabold text-white' type='submit'>Проверить</button>
+            </form>
+          </div>
+          {!oneCMapping ? (
+            <p className='px-5 py-4 text-sm font-semibold text-amber-800'>Для этого терминала ещё не подтверждена касса 1С.</p>
+          ) : !operationsResult?.ok || !oneCResult?.ok ? (
+            <p className='px-5 py-4 text-sm font-semibold text-red-800'>Сверка недоступна: {operationsResult?.error || oneCResult?.error || 'источник данных не ответил'}.</p>
+          ) : reconciliation ? (
+            <div>
+              <div className='grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-4'>
+                <div className='rounded-lg bg-green-50 p-4'><p className='text-xs font-bold uppercase text-green-700'>Совпало</p><p className='mt-1 text-2xl font-extrabold text-green-950'>{reconciliation.matched.length}</p></div>
+                <div className='rounded-lg bg-rose-50 p-4'><p className='text-xs font-bold uppercase text-rose-700'>Только Т‑Банк</p><p className='mt-1 text-2xl font-extrabold text-rose-950'>{reconciliation.onlyTBank.length}</p></div>
+                <div className='rounded-lg bg-rose-50 p-4'><p className='text-xs font-bold uppercase text-rose-700'>Только 1С</p><p className='mt-1 text-2xl font-extrabold text-rose-950'>{reconciliation.onlyOneC.length}</p></div>
+                <div className='rounded-lg bg-blue-50 p-4'><p className='text-xs font-bold uppercase text-blue-700'>Возвраты</p><p className='mt-1 text-2xl font-extrabold text-blue-950'>{reconciliation.unsupportedReturns.length}</p></div>
+              </div>
+              <div className='border-t border-slate-200 px-5 py-4 text-sm font-semibold text-slate-600'>
+                Касса 1С: <strong>{oneCMapping.cashRegisterName}</strong>. Сопоставление оплат выполняется по сумме и времени с допуском 5 минут.
+                {reconciliation.unsupportedReturns.length > 0 ? ' Возвраты пока не считаются расхождением: текущий ответ 1С не подтверждает их полный состав.' : ''}
+              </div>
+              {(reconciliation.onlyTBank.length > 0 || reconciliation.onlyOneC.length > 0) ? (
+                <div className='overflow-x-auto border-t border-slate-200'>
+                  <table className='min-w-full text-left text-sm'>
+                    <thead className='bg-slate-50 text-xs uppercase text-slate-500'><tr><th className='px-5 py-3'>Источник</th><th className='px-5 py-3'>Время</th><th className='px-5 py-3'>Документ</th><th className='px-5 py-3 text-right'>Сумма</th></tr></thead>
+                    <tbody>
+                      {reconciliation.onlyTBank.map((operation, index) => <tr key={`bank-${operation.rrn}-${index}`} className='border-t border-slate-200/80'><td className='px-5 py-3 font-bold text-rose-800'>Только Т‑Банк</td><td className='px-5 py-3'>{formatDate(operation.transactionDate)}</td><td className='px-5 py-3 font-mono text-xs'>{operation.rrn || '—'}</td><td className='px-5 py-3 text-right font-extrabold'>{formatMoney(operation.amountRubles)}</td></tr>)}
+                      {reconciliation.onlyOneC.map((check) => <tr key={`onec-${check.ref}`} className='border-t border-slate-200/80'><td className='px-5 py-3 font-bold text-rose-800'>Только 1С</td><td className='px-5 py-3'>{formatDate(check.datetime)}</td><td className='px-5 py-3 font-semibold'>{check.number || check.ref}</td><td className='px-5 py-3 text-right font-extrabold'>{formatMoney(check.amount ?? 0)}</td></tr>)}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Card className='text-sm font-semibold text-slate-600'>
         Данные используются только для диагностики. Они пока не изменяют ответы сотрудников и не закрывают задания автоматически. Операции T‑Bank могут появляться с задержкой до двух часов.
