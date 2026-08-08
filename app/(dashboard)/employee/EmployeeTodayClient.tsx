@@ -34,6 +34,32 @@ import { startVisibleSync } from '@/lib/visible-sync';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 
+function uploadFormData<T>(url: string, method: 'POST' | 'PATCH', formData: FormData, fallbackError: string) {
+  return new Promise<T>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(method, url);
+    request.timeout = 120_000;
+    request.onload = () => {
+      let result: unknown = null;
+      try {
+        result = request.responseText ? JSON.parse(request.responseText) : null;
+      } catch {
+        reject(new Error(fallbackError));
+        return;
+      }
+      if (request.status >= 200 && request.status < 300) {
+        resolve(result as T);
+        return;
+      }
+      const error = isRecord(result) && typeof result.error === 'string' ? result.error : fallbackError;
+      reject(new Error(error));
+    };
+    request.onerror = () => reject(new Error('Связь прервалась при загрузке фото. Проверьте интернет и повторите.'));
+    request.ontimeout = () => reject(new Error('Фото загружается слишком долго. Проверьте интернет и повторите.'));
+    request.send(formData);
+  });
+}
+
 type UserSummary = {
   id: number;
   name: string;
@@ -1351,12 +1377,12 @@ export function EmployeeTodayClient({
     setError('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/cash-operations', {
-        method: 'POST',
-        body: formData,
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Не удалось сохранить кассовую операцию');
+      const result = await uploadFormData<{ operation: CashOperation }>(
+        '/api/employee/cash-operations',
+        'POST',
+        formData,
+        'Не удалось сохранить кассовую операцию',
+      );
 
       setCashOperationsState((current) => [result.operation, ...current]);
       setCashOperationDraft({ direction: null, amount: '', comment: '' });
@@ -1395,12 +1421,12 @@ export function EmployeeTodayClient({
     formData.append('encashmentAmount', draft.encashmentAmount);
     formData.append('comment', draft.comment);
 
-    const response = await fetch('/api/employee/shift-control/tasks/' + task.id, {
-      method: 'PATCH',
-      body: formData,
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Не удалось сохранить шаг');
+    const result = await uploadFormData<{ task: ShiftControlTask }>(
+      '/api/employee/shift-control/tasks/' + task.id,
+      'PATCH',
+      formData,
+      'Не удалось сохранить шаг',
+    );
     setShiftControlState((current) => ({
       ...current,
       tasks: current.tasks.map((item) => (item.id === result.task.id ? result.task : item)),
@@ -1421,18 +1447,17 @@ export function EmployeeTodayClient({
   }
 
   async function completeOpeningPhotoTask(task: ShiftControlTask, file: File) {
-    const formData = new FormData();
-    formData.append('openingReportPhoto', file);
-
     setError('');
     setIsSaving(true);
     try {
-      const response = await fetch(`/api/employee/shift-control/tasks/${task.id}`, {
-        method: 'PATCH',
-        body: formData,
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Не удалось обновить задачу');
+      const formData = new FormData();
+      formData.append('openingReportPhoto', file);
+      const result = await uploadFormData<{ task: ShiftControlTask }>(
+        `/api/employee/shift-control/tasks/${task.id}`,
+        'PATCH',
+        formData,
+        'Не удалось обновить задачу',
+      );
 
       const nextTasks = shiftControlState.tasks.map((item) => (item.id === result.task.id ? result.task : item));
       setShiftControlState((current) => ({
@@ -1530,13 +1555,23 @@ export function EmployeeTodayClient({
                 return formData;
               })()
           : JSON.stringify(payload);
-      const response = await fetch(`/api/employee/shift-control/tasks/${task.id}`, {
-        method: 'PATCH',
-        headers: task.category === 'opening' || task.category === 'acquiring' ? undefined : { 'Content-Type': 'application/json' },
-        body: requestBody,
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Не удалось обновить задачу');
+      const result = requestBody instanceof FormData
+        ? await uploadFormData<{ task: ShiftControlTask }>(
+            `/api/employee/shift-control/tasks/${task.id}`,
+            'PATCH',
+            requestBody,
+            'Не удалось обновить задачу',
+          )
+        : await (async () => {
+            const response = await fetch(`/api/employee/shift-control/tasks/${task.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: requestBody,
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Не удалось обновить задачу');
+            return payload as { task: ShiftControlTask };
+          })();
 
       setShiftControlState((current) => ({
         ...current,
@@ -1929,12 +1964,18 @@ export function EmployeeTodayClient({
     setError('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/shift-control/tasks/' + task.id, {
-        method: 'PATCH',
-        body: formData,
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Не удалось сдать смену');
+      const result = await uploadFormData<{
+        task: ShiftControlTask;
+        tasks?: ShiftControlTask[];
+        run?: ShiftControlRun | null;
+        workDay?: WorkDayEntry;
+        message?: string;
+      }>(
+        '/api/employee/shift-control/tasks/' + task.id,
+        'PATCH',
+        formData,
+        'Не удалось сдать смену',
+      );
 
       setShiftControlState((current) => ({
         run: result.run ?? current.run,
@@ -1960,14 +2001,13 @@ export function EmployeeTodayClient({
 
   async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
     if (!file) return;
-
-    const nextDraft = { ...handoverDraft, [field]: file };
-    setHandoverDraft(nextDraft);
     setHandoverAttemptedStep(null);
     setError('');
 
     try {
       setIsSaving(true);
+      const nextDraft = { ...handoverDraft, [field]: file };
+      setHandoverDraft(nextDraft);
       const savedTask = await saveHandoverDraft(task, nextDraft);
       const savedDraft = isRecord(savedTask.handoverData) ? draftFromHandoverData(savedTask.handoverData) : nextDraft;
       setHandoverDraft(savedDraft);
