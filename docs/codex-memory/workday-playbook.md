@@ -149,6 +149,7 @@ employee detail card.
 Reliable violations are:
 
 - the employee started after the selected shift start;
+- the employee completed the workday before the selected shift end;
 - a checklist task was completed after its planned minute;
 - a checklist task is still pending after its planned minute;
 - a scheduled retail/wholesale employee did not start after the latest
@@ -158,6 +159,9 @@ Reliable violations are:
 
 The exact planned minute is still on time. A task entered after midnight belongs
 to the original workday and is late by the full elapsed interval.
+
+An employee without a workday on a scheduled day off is shown neutrally as
+`Выходной`, not as `Не начал`.
 
 Do not mark an active workday as unfinished before its shift end. Do not infer a
 same-day start violation for departments without a fixed supported shift set;
