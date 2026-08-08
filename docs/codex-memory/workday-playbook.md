@@ -256,6 +256,22 @@ Examples:
 - `Сверка итогов Т-Банка` - `Выполните "Сверку итогов" и сфотографируйте чек.`
 - `Чеки Т-Банка` - `Сфотографируйте все чеки Т-Банка за смену.`
 
+## Admin Control UX
+
+Workday Control follows the hierarchy `employee overview -> specific check ->
+details`. The first level must show the business problem and the action to take,
+not integration diagnostics.
+
+- The main page uses one compact employee list with four business statuses:
+  `Всё нормально`, `Требует внимания`, `Есть ошибка`, `Не выполнено`.
+- A required task that is not yet due stays neutral as `Не выполнено`; once its
+  deadline passes it becomes `Требует внимания`.
+- The employee view starts with key problems and a compact list of checks.
+- Employee answers, comments, photos, automatic evidence, 1C data and action
+  history appear only after the administrator opens the relevant check.
+- Connection state, mappings and technical tables live under diagnostics and
+  must not compete with business results on the main screen.
+
 ## Mobile Launch Requirements
 
 The employee Workday flow must be tested as a mobile app experience before
