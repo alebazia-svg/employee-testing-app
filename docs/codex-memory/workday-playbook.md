@@ -195,10 +195,11 @@ For cash specifically: the employee enters the real counted amount first. The
 expected 1C cash balance should not be shown in a way that encourages copying
 instead of counting.
 
-Shift handover records two separate cash facts in sequence: the employee first
-enters the counted balance of their own cashbox, then the counted balance of the
-shared reserve. Reserve entry is a single amount without denomination breakdown
-or a required photo.
+Retail shift handover records two separate cash facts in sequence: the employee
+first enters the counted balance of their own cashbox, then the counted balance
+of the shared reserve. Reserve entry is a single amount without denomination
+breakdown or a required photo. Wholesale employees record only their own cashbox;
+the retail reserve does not belong to their checklist or 1C verification scope.
 
 Do not ask the employee to confirm a formal KKM cash withdrawal when no physical
 cash movement happens. In Offonika's current process, the money is physically in
@@ -227,7 +228,9 @@ simple concrete boundary time when available and falls back to `после пр�
 
 The same terminal flow is used during shift handover. Credit/instalment tasks
 remain a separate process until their document-specific business rules are
-redesigned; they must not advance the terminal-check interval.
+redesigned; they must not advance the terminal-check interval. Shift handover
+must not add a second bank-specific T-Bank question after the neutral terminal
+flow.
 
 ## Checklist Copy Style
 
