@@ -181,3 +181,24 @@ test('does not flag checkout when the workday is completed', () => {
 
   assert.deepEqual(violations, []);
 });
+
+test('flags an early checkout on the workday date', () => {
+  const violations = evaluateWorkdayTiming({
+    dateKey: todayDateKey,
+    todayDateKey,
+    nowMinutes: 23 * 60,
+    workDay: {
+      status: 'completed',
+      shiftStartMinutes: 9 * 60,
+      shiftEndMinutes: 18 * 60,
+      startedAt: '2026-07-25T06:00:00.000Z',
+      endedAt: '2026-07-25T14:40:00.000Z',
+      lateMinutes: 0,
+    },
+  });
+
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].kind, 'early_checkout');
+  assert.equal(violations[0].minutesLate, 20);
+  assert.equal(violations[0].label, 'Ранний уход на 20 мин');
+});

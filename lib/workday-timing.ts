@@ -19,7 +19,7 @@ export type WorkdayTimingEntry = {
 
 export type WorkdayTimingViolation = {
   id: string;
-  kind: 'workday_not_started' | 'late_start' | 'missing_checkout' | 'task_late' | 'task_overdue';
+  kind: 'workday_not_started' | 'late_start' | 'early_checkout' | 'missing_checkout' | 'task_late' | 'task_overdue';
   label: string;
   detail: string;
   minutesLate: number | null;
@@ -117,6 +117,22 @@ export function evaluateWorkdayTiming({
         minutesLate: workDay.lateMinutes,
         taskId: null,
       });
+    }
+
+    if (workDay.endedAt && workDay.shiftEndMinutes !== null) {
+      const ended = moscowDateAndMinutes(workDay.endedAt);
+      const endedDayDifference = dateKeyDifferenceInDays(dateKey, ended.dateKey);
+      if (endedDayDifference === 0 && ended.minutes < workDay.shiftEndMinutes) {
+        const minutesEarly = workDay.shiftEndMinutes - ended.minutes;
+        violations.push({
+          id: 'early-checkout',
+          kind: 'early_checkout',
+          label: `Ранний уход на ${minutesEarly} мин`,
+          detail: `Завершение ${minutesToTime(ended.minutes)} при плане ${minutesToTime(workDay.shiftEndMinutes)} · −${minutesEarly} мин.`,
+          minutesLate: minutesEarly,
+          taskId: null,
+        });
+      }
     }
 
     const checkoutOverdue = !workDay.endedAt && (
