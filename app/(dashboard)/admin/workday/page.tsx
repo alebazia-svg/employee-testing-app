@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, Banknote, CheckCircle2, ClipboardList, CreditCard, UserCheck, Users } from 'lucide-react';
+import { AlertTriangle, Banknote, CreditCard } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -20,7 +20,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
 import { evaluateWorkdayTiming } from '@/lib/workday-timing';
-import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl, workDayStatusLabel } from '@/lib/workday';
+import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
 import { AdminWorkdayAutoRefresh } from './AdminWorkdayAutoRefresh';
 import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
@@ -52,69 +52,10 @@ type TbankSalesForDate = {
   error?: string;
 };
 
-function statusClass(status: string) {
-  if (status === 'completed') return 'bg-green-100 text-green-800';
-  if (status === 'active') return 'bg-blue-100 text-blue-800';
-  if (status === 'missing_checkout') return 'bg-amber-100 text-amber-800';
-  return 'bg-slate-100 text-slate-700';
-}
-
 function scheduleClass(status: string | undefined) {
   if (status === 'working') return 'bg-green-100 text-green-800';
   if (status === 'off') return 'bg-slate-100 text-slate-700';
   return 'bg-amber-100 text-amber-800';
-}
-
-function StatCard({
-  title,
-  value,
-  tone,
-  caption,
-  icon: Icon,
-}: {
-  title: string;
-  value: number;
-  tone: 'green' | 'blue' | 'amber' | 'rose';
-  caption: string;
-  icon: typeof Users;
-}) {
-  const colors = {
-    green: {
-      card: 'border-t-green-500',
-      icon: 'bg-green-100 text-green-800',
-      caption: 'text-green-700',
-    },
-    blue: {
-      card: 'border-t-blue-500',
-      icon: 'bg-blue-100 text-blue-800',
-      caption: 'text-blue-700',
-    },
-    amber: {
-      card: 'border-t-amber-500',
-      icon: 'bg-amber-100 text-amber-800',
-      caption: 'text-amber-700',
-    },
-    rose: {
-      card: 'border-t-rose-500',
-      icon: 'bg-rose-100 text-rose-800',
-      caption: 'text-rose-700',
-    },
-  };
-  const color = colors[tone];
-  return (
-    <Card className={`border-t-4 p-4 ${color.card}`}>
-      <div className='flex items-start justify-between gap-3'>
-        <div>
-          <p className='text-sm font-extrabold text-slate-700'>{title}</p>
-          <p className='mt-2 text-3xl font-extrabold text-slate-950'>{value}</p>
-        </div>
-        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${color.icon}`}>
-          <Icon className='h-5 w-5' />
-        </div>
-      </div>
-      <p className={`mt-2 text-xs font-bold ${color.caption}`}>{caption}</p>
-    </Card>
-  );
 }
 
 function serializeShiftControlRun(run: any) {
@@ -151,10 +92,10 @@ function addDays(dateKey: string, offset: number) {
   return date.toISOString().slice(0, 10);
 }
 
-type ControlFilter = 'all' | 'attention' | 'unverified' | 'normal';
+type ControlFilter = 'all' | 'error' | 'attention' | 'pending' | 'normal';
 
 function controlFilter(value: string | undefined): ControlFilter {
-  if (value === 'attention' || value === 'unverified' || value === 'normal') return value;
+  if (value === 'error' || value === 'attention' || value === 'pending' || value === 'normal') return value;
   return 'all';
 }
 
@@ -907,23 +848,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const workDayByUser = new Map(workDays.map((entry) => [entry.userId, entry]));
   const shiftControlRunByUser = new Map(shiftControlRuns.map((run) => [run.userId, run]));
   const nowMinutes = selectedDate === today ? getMoscowMinutes() : selectedDate < today ? 24 * 60 : 0;
-  const scheduledWorking = employees.filter((employee) => scheduleByUser.get(employee.id)?.status === 'working').length;
-  const scheduledOff = employees.filter((employee) => scheduleByUser.get(employee.id)?.status === 'off').length;
-  const scheduleMissing = employees.length - scheduledWorking - scheduledOff;
-  const activeCount = workDays.filter((entry) => entry.status === 'active').length;
-  const completedCount = workDays.filter((entry) => entry.status === 'completed').length;
-  const startedCount = workDays.length;
-  const lateCount = workDays.filter((entry) => entry.lateMinutes > 0).length;
-  const missingCheckoutSelectedDate = workDays.filter((entry) => (
-    evaluateWorkdayTiming({
-      dateKey: selectedDate,
-      todayDateKey: today,
-      nowMinutes,
-      department: entry.department,
-      workDay: entry,
-    }).some((violation) => violation.kind === 'missing_checkout')
-  )).length;
-  const missingCheckoutCount = unfinishedWorkDays.length + missingCheckoutSelectedDate;
   const cashStatementOrganization =
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
     ?? cashStatementDimensions.organizations[0]
@@ -1038,17 +962,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       checks,
     ] as const;
   }));
-  const autoCheckTotals = [...autoChecksByUser.values()].flat();
-  const autoMatchedCount = autoCheckTotals.filter((check) => check.status === 'matched' && !check.manualReview).length;
-  const autoMismatchCount = autoCheckTotals.filter((check) => (
-    check.manualReview?.decision === 'confirmed_issue'
-    || (check.status === 'mismatch' && check.manualReview?.decision !== 'confirmed_ok')
-  )).length;
-  const autoUnavailableCount = autoCheckTotals.filter((check) => (
-    check.status === 'unavailable' && !check.manualReview
-  )).length;
-  const autoManualReviewCount = autoCheckTotals.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
-  const autoManualIssueCount = autoCheckTotals.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
   const acquiringControlRows = employees
     .filter((employee) => usesWorkdayShiftControl(employee))
     .map((employee) => {
@@ -1084,12 +997,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const acquiringDiscrepancyCount = acquiringTaskRows.filter((row) => row.task.integerValue === 2).length;
   const acquiringNoPaymentsCount = acquiringTaskRows.filter((row) => row.task.integerValue === 0).length;
   const acquiringControlRowByUser = new Map(acquiringControlRows.map((row) => [row.employee.id, row]));
-  const criticalSystemErrorCount = [
-    cashStatementDimensions.ok,
-    kkmDiagnostics.ok,
-    tbankSales.ok,
-    Boolean(reserveStatement?.ok),
-  ].filter((ok) => !ok).length;
   const employeeControlRows = employees
     .map((employee) => {
       const schedule = scheduleByUser.get(employee.id);
@@ -1118,9 +1025,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         check.manualReview?.decision !== 'confirmed_issue'
         && (check.status === 'waiting' || check.status === 'unavailable')
       )).length;
-      const matchedCount = unresolvedAutoChecks.filter((check) => (
-        check.status === 'matched' && check.manualReview?.decision !== 'confirmed_issue'
-      )).length;
       const attentionReasons = [
         !schedule ? 'График не заполнен' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
@@ -1136,52 +1040,61 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             : `Нарушений времени: ${timingViolationCount} · ${timingViolations[0].label}`
           : null,
       ].filter((reason): reason is string => Boolean(reason));
-      const needsAttention = attentionReasons.length > 0;
+      const employeeReportedProblem = (run?.tasks ?? []).some((task) => (
+        (task.category === 'acquiring' || task.category === 'credit')
+        && task.status === 'done'
+        && task.integerValue === 2
+      ));
+      const hasError = mismatchCount > 0 || manualIssueCount > 0 || employeeReportedProblem;
+      const needsAttention = !hasError && attentionReasons.length > 0;
       const waitingForWorkdayStart = schedule?.status === 'working' && selectedDate === today && !workDay;
-      const cannotVerify = !needsAttention && (
+      const pendingTaskCount = (run?.tasks ?? []).filter((task) => (
+        task.status !== 'done'
+        && !timingViolations.some((violation) => violation.taskId === task.id && violation.kind === 'task_overdue')
+      )).length;
+      const cannotVerify = incompleteCount > 0 || (Boolean(run) && autoChecks.length === 0);
+      const isPending = !hasError && !needsAttention && (
         waitingForWorkdayStart
-        || (
-          shiftControlRequired
-          && (
-            incompleteCount > 0
-            || (Boolean(run) && autoChecks.length === 0)
-            || (schedule?.status === 'working' && !run)
-          )
-        )
+        || pendingTaskCount > 0
+        || (shiftControlRequired && schedule?.status === 'working' && !run)
       );
       const category: Exclude<ControlFilter, 'all'> = needsAttention
         ? 'attention'
-        : cannotVerify
-          ? 'unverified'
-          : 'normal';
-      const reviewText = needsAttention
+        : hasError
+          ? 'error'
+          : cannotVerify
+            ? 'attention'
+            : isPending
+              ? 'pending'
+              : 'normal';
+      const reviewText = hasError
+        ? manualIssueCount > 0
+          ? `Подтверждённых проблем: ${manualIssueCount}`
+          : employeeReportedProblem
+            ? 'Сотрудник сообщил о расхождении'
+            : `Расхождений с учётными данными: ${mismatchCount}`
+        : needsAttention
         ? `${attentionReasons.slice(0, 2).join(' · ')}${attentionReasons.length > 2 ? ` · ещё ${attentionReasons.length - 2}` : ''}`
         : cannotVerify
-          ? waitingForWorkdayStart
-            ? 'Нельзя проверить время автоматически: рабочий день ещё не начат'
-            : incompleteCount > 0
-              ? `Нельзя проверить автоматически: ${incompleteCount}`
-              : 'Недостаточно данных для проверки'
+          ? `Автоматическая проверка недоступна: ${Math.max(incompleteCount, 1)}`
+          : isPending
+            ? waitingForWorkdayStart
+              ? 'Рабочий день ещё не начат'
+              : pendingTaskCount > 0
+                ? `Ожидается проверок: ${pendingTaskCount}`
+                : 'Чек-лист ещё не создан'
           : manualReviewCount > 0
             ? `Проверено вручную: ${manualReviewCount}`
-            : 'Действий не требуется';
-      const oneCStatus = mismatchCount > 0
-        ? {
-          label: manualIssueCount > 0 ? `Подтверждено проблем ${manualIssueCount}` : `Расхождений ${mismatchCount}`,
-          className: 'bg-rose-100 text-rose-800',
-        }
-        : incompleteCount > 0
-          ? { label: `Нельзя проверить автоматически: ${incompleteCount}`, className: 'bg-blue-100 text-blue-800' }
-          : manualReviewCount > 0
-            ? { label: `Вручную ${manualReviewCount}`, className: 'bg-green-100 text-green-800' }
-          : matchedCount > 0
-            ? { label: `Совпало ${matchedCount}`, className: 'bg-green-100 text-green-800' }
-            : { label: 'Нет проверок', className: 'bg-slate-100 text-slate-700' };
-      const timeStatus = timingViolationCount > 0
-        ? `${timingViolationCount} нарушений`
-        : workDay?.startedAt
-          ? `${formatTime(workDay.startedAt)}–${formatTime(workDay.endedAt)}`
-          : '—';
+            : 'Замечаний нет';
+      const completedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'done').length;
+      const totalTaskCount = run?.tasks.length ?? 0;
+      const businessStatus = category === 'error'
+        ? { label: 'Есть ошибка', className: 'bg-rose-100 text-rose-800' }
+        : category === 'attention'
+          ? { label: 'Требует внимания', className: 'bg-amber-100 text-amber-800' }
+          : category === 'pending'
+            ? { label: 'Не выполнено', className: 'bg-slate-100 text-slate-700' }
+            : { label: 'Всё нормально', className: 'bg-green-100 text-green-800' };
 
       return {
         employee,
@@ -1194,18 +1107,20 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         timingViolationCount,
         category,
         reviewText,
-        oneCStatus,
-        timeStatus,
+        completedTaskCount,
+        totalTaskCount,
+        businessStatus,
       };
     })
     .sort((left, right) => {
-      const rank = { attention: 0, unverified: 1, normal: 2 };
+      const rank = { error: 0, attention: 1, pending: 2, normal: 3 };
       return rank[left.category] - rank[right.category]
         || left.employee.department.localeCompare(right.employee.department, 'ru')
         || left.employee.name.localeCompare(right.employee.name, 'ru');
     });
+  const errorEmployeeCount = employeeControlRows.filter((row) => row.category === 'error').length;
   const attentionEmployeeCount = employeeControlRows.filter((row) => row.category === 'attention').length;
-  const unverifiedEmployeeCount = employeeControlRows.filter((row) => row.category === 'unverified').length;
+  const pendingEmployeeCount = employeeControlRows.filter((row) => row.category === 'pending').length;
   const normalEmployeeCount = employeeControlRows.filter((row) => row.category === 'normal').length;
   const filteredEmployeeControlRows = selectedControlFilter === 'all'
     ? employeeControlRows
@@ -1216,25 +1131,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}&employee=${employeeId}#employees-control`
   );
   const employeeDetailCloseHref = `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}#employees-control`;
-  const overallSummary = criticalSystemErrorCount > 0
-    ? {
-      title: 'Есть критичные ошибки автоматических проверок',
-      description: `Недоступных источников: ${criticalSystemErrorCount}. Сначала восстановите подключения 1С.`,
-      className: 'border-rose-200 bg-rose-50 text-rose-950',
-    }
-    : attentionEmployeeCount > 0
-      ? {
-        title: 'Есть сотрудники, требующие проверки',
-        description: `Критичных ошибок системы нет. Требуют внимания: ${attentionEmployeeCount}.`,
-        className: 'border-amber-200 bg-amber-50 text-amber-950',
-      }
-      : {
-        title: 'Критичных ошибок нет',
-        description: unverifiedEmployeeCount > 0
-          ? `Действий по сотрудникам не требуется. Не удалось полностью проверить: ${unverifiedEmployeeCount}.`
-          : 'Все доступные проверки завершены без замечаний.',
-        className: 'border-green-200 bg-green-50 text-green-950',
-      };
   const cashboxMappingMessage = cashboxMappingStatusMessage(searchParams?.cashboxMapping, searchParams?.cashboxMappingError);
   const cashboxMappingEmployees = employees.filter((employee) => usesWorkdayShiftControl(employee));
   const cashboxMappingRedirectTo = `/admin/workday?date=${selectedDate}`;
@@ -1248,7 +1144,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             <p className='text-sm font-semibold text-primary'>Рабочий день</p>
             <h1 className='mt-1 text-3xl font-extrabold text-slate-950'>Контроль рабочего дня</h1>
             <p className='mt-2 text-sm font-medium text-slate-500'>
-              Новый модуль отметок внутри портала. Старая посещаемость Google Sheets остаётся отдельной страницей.
+              Ошибки и просроченные проверки показаны первыми. Откройте сотрудника, чтобы увидеть конкретные детали.
             </p>
           </div>
           <div className='flex flex-wrap items-center gap-2'>
@@ -1275,115 +1171,20 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           </div>
         </div>
 
-        <div className='grid gap-4 sm:grid-cols-2 xl:grid-cols-4'>
-          <StatCard
-            title='Ошибки системы'
-            value={criticalSystemErrorCount}
-            tone={criticalSystemErrorCount > 0 ? 'rose' : 'green'}
-            caption={criticalSystemErrorCount > 0 ? 'нужно восстановить подключения' : 'критичных ошибок нет'}
-            icon={AlertTriangle}
-          />
-          <StatCard
-            title='Требуют внимания'
-            value={attentionEmployeeCount}
-            tone='amber'
-            caption={attentionEmployeeCount > 0 ? 'нужно проверить сотрудников' : 'действий не требуется'}
-            icon={UserCheck}
-          />
-          <StatCard
-            title='Нельзя проверить автоматически'
-            value={unverifiedEmployeeCount}
-            tone='blue'
-            caption='нет данных или полной автопроверки'
-            icon={ClipboardList}
-          />
-          <StatCard
-            title='Без замечаний'
-            value={normalEmployeeCount}
-            tone='green'
-            caption='по доступным данным всё нормально'
-            icon={CheckCircle2}
-          />
-        </div>
-
-        <Card className={`border ${overallSummary.className}`}>
-          <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-            <div>
-              <p className='text-base font-extrabold'>{overallSummary.title}</p>
-              <p className='mt-1 text-sm font-semibold opacity-80'>{overallSummary.description}</p>
-            </div>
-            {attentionEmployeeCount > 0 ? (
-              <Link
-                href={controlFilterHref('attention')}
-                className='inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-950 px-4 text-sm font-extrabold text-white transition hover:bg-slate-800'
-              >
-                Показать сотрудников
-              </Link>
-            ) : null}
-          </div>
-        </Card>
-
-        <Card className='p-5'>
-          <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
-            <div className='flex items-start gap-3'>
-              <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-700'>
-                <ClipboardList className='h-5 w-5' />
-              </span>
-              <div>
-                <h2 className='text-lg font-extrabold text-slate-950'>Состояние автоматических проверок</h2>
-                <p className='mt-1 max-w-3xl text-sm font-medium leading-relaxed text-slate-500'>
-                  Сверка касс, резерва, операций терминала и кредитных документов. Ограничения автоматизации не считаются ошибкой сотрудника.
-                </p>
-              </div>
-            </div>
-            <div className='flex max-w-xl flex-wrap gap-2 text-xs font-bold'>
-              <Badge className={cashStatementDimensions.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
-                кассы 1С: {cashStatementDimensions.ok ? 'доступны' : 'ошибка'}
-              </Badge>
-              <Badge className={kkmDiagnostics.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
-                ККМ: {kkmDiagnostics.ok ? 'доступна' : 'ошибка'}
-              </Badge>
-              <Badge className={tbankSales.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
-                Т-Банк: {tbankSales.ok ? 'доступен' : 'ошибка'}
-              </Badge>
-              <Badge className={reserveStatement?.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
-                резерв: {reserveStatement?.ok ? reserveCashbox?.name : 'ошибка'}
-              </Badge>
-              <Badge className='bg-green-100 text-green-800'>совпало: {autoMatchedCount}</Badge>
-              <Badge className={autoMismatchCount > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'}>
-                расхождения: {autoMismatchCount}
-              </Badge>
-              <Badge className='bg-blue-100 text-blue-800'>нельзя проверить автоматически: {autoUnavailableCount}</Badge>
-              <Badge className='bg-green-100 text-green-800'>проверено вручную: {autoManualReviewCount}</Badge>
-              {autoManualIssueCount > 0 ? (
-                <Badge className='bg-rose-100 text-rose-800'>проблем подтверждено вручную: {autoManualIssueCount}</Badge>
-              ) : null}
-            </div>
-          </div>
-          <div className='mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-200 pt-4 text-sm font-semibold text-slate-600'>
-            <span>По графику: <strong className='text-slate-950'>{scheduledWorking}</strong></span>
-            <span>Выходной: <strong className='text-slate-950'>{scheduledOff}</strong></span>
-            <span>Без графика: <strong className={scheduleMissing > 0 ? 'text-amber-700' : 'text-slate-950'}>{scheduleMissing}</strong></span>
-            <span>Начали: <strong className='text-slate-950'>{startedCount}</strong></span>
-            <span>Завершили: <strong className='text-slate-950'>{completedCount}</strong></span>
-            <span>Опоздали: <strong className={lateCount > 0 ? 'text-amber-700' : 'text-slate-950'}>{lateCount}</strong></span>
-            <span>Не завершили: <strong className={missingCheckoutCount > 0 ? 'text-amber-700' : 'text-slate-950'}>{missingCheckoutCount}</strong></span>
-          </div>
-        </Card>
-
         <Card className='p-0' id='employees-control'>
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between'>
             <div>
               <h2 className='text-lg font-extrabold text-slate-950'>Сотрудники</h2>
               <p className='mt-1 text-sm font-medium text-slate-500'>
-                Сначала показаны сотрудники, которым требуется внимание. Статусы времени и сверки 1С разделены.
+                Сначала показаны ошибки и просроченные проверки. Технические данные доступны только внутри конкретной проверки.
               </p>
             </div>
             <div className='flex flex-wrap gap-2 text-xs font-extrabold'>
               {([
+                ['error', `Ошибки · ${errorEmployeeCount}`],
                 ['attention', `Требуют внимания · ${attentionEmployeeCount}`],
-                ['unverified', `Нельзя проверить автоматически · ${unverifiedEmployeeCount}`],
-                ['normal', `Без замечаний · ${normalEmployeeCount}`],
+                ['pending', `Не выполнено · ${pendingEmployeeCount}`],
+                ['normal', `Всё нормально · ${normalEmployeeCount}`],
                 ['all', `Все · ${employeeControlRows.length}`],
               ] as Array<[ControlFilter, string]>).map(([filter, label]) => (
                 <Link
@@ -1408,17 +1209,16 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <thead>
                   <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
                     <th className='px-4 py-2.5'>Сотрудник</th>
-                    <th className='px-4 py-2.5'>Статус дня</th>
-                    <th className='px-4 py-2.5'>Время</th>
-                    <th className='px-4 py-2.5'>Сверка 1С</th>
-                    <th className='px-4 py-2.5'>Что требует внимания</th>
+                    <th className='px-4 py-2.5'>Смена</th>
+                    <th className='px-4 py-2.5'>Проверки</th>
+                    <th className='px-4 py-2.5'>Статус</th>
+                    <th className='px-4 py-2.5'>Главное</th>
                     <th className='px-4 py-2.5'>Действие</th>
                     {devWorkdayToolsEnabled && <th className='px-4 py-2.5'>Dev/Test</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredEmployeeControlRows.map((row) => {
-                    const status = row.workDay?.status ?? 'not_started';
                     const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
                     const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
                     const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
@@ -1432,26 +1232,19 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                             <span className='ml-2 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</span>
                           </p>
                           <p className='mt-0.5 text-xs font-semibold text-slate-500'>
-                            {scheduleStatusLabel(row.schedule?.status)} · {row.workDay?.shiftLabel ?? 'смена не задана'}
+                            {departmentLabel(row.employee.department)}
                           </p>
                         </td>
-                        <td className='px-4 py-2.5'>
-                          <Badge className={statusClass(status)}>{workDayStatusLabel(status)}</Badge>
+                        <td className='whitespace-nowrap px-4 py-2.5 text-sm font-semibold text-slate-700'>
+                          {row.workDay?.shiftLabel ?? '—'}
+                          <p className='mt-0.5 text-xs font-semibold text-slate-400'>{scheduleStatusLabel(row.schedule?.status)}</p>
                         </td>
-                        <td className={`whitespace-nowrap px-4 py-2.5 text-sm font-semibold ${
-                          row.timingViolationCount > 0 ? 'text-amber-700' : 'text-slate-700'
-                        }`}>
-                          {row.timeStatus}
+                        <td className='whitespace-nowrap px-4 py-2.5 text-sm font-extrabold text-slate-800'>
+                          {row.totalTaskCount > 0 ? `${row.completedTaskCount} из ${row.totalTaskCount}` : '—'}
                         </td>
-                        <td className='px-4 py-2.5'>
-                          <Badge className={row.oneCStatus.className}>{row.oneCStatus.label}</Badge>
-                        </td>
-                        <td className={`max-w-[360px] px-4 py-2.5 text-sm font-semibold ${
-                          row.category === 'attention'
-                            ? 'text-amber-800'
-                            : row.category === 'unverified'
-                              ? 'text-blue-700'
-                              : 'text-green-700'
+                        <td className='px-4 py-2.5'><Badge className={row.businessStatus.className}>{row.businessStatus.label}</Badge></td>
+                        <td className={`max-w-[380px] px-4 py-2.5 text-sm font-semibold ${
+                          row.category === 'error' ? 'text-rose-800' : row.category === 'attention' ? 'text-amber-800' : row.category === 'pending' ? 'text-slate-600' : 'text-green-700'
                         }`}>
                           {row.reviewText}
                         </td>
@@ -1516,6 +1309,16 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           )}
         </Card>
 
+        <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
+          <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 transition hover:bg-slate-50'>
+            <div>
+              <h2 className='text-base font-extrabold text-slate-950'>Диагностика и настройки</h2>
+              <p className='mt-1 text-sm font-medium text-slate-500'>Подключения, привязки касс и технические таблицы.</p>
+            </div>
+            <span className='text-sm font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
+            <span className='hidden text-sm font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
+          </summary>
+          <div className='grid gap-6 border-t border-slate-200 bg-slate-50 p-4 sm:p-5'>
         <Card className='p-0'>
           <details className='group' open={cashStatementMissingCashboxCount > 0 || Boolean(cashboxMappingMessage)}>
             <summary className='flex cursor-pointer list-none flex-col gap-3 px-5 py-4 transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between'>
@@ -1795,6 +1598,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             </div>
           )}
         </Card>
+
+          </div>
+        </details>
 
         {unfinishedWorkDays.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>

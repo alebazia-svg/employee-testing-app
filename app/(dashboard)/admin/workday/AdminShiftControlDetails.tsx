@@ -652,6 +652,93 @@ function TaskGroup({
   );
 }
 
+type TaskBusinessState = {
+  tone: 'error' | 'attention' | 'normal' | 'pending';
+  label: string;
+  result: string;
+};
+
+function taskBusinessState(item: ReviewedTask): TaskBusinessState {
+  const unresolvedChecks = item.autoChecks.filter((check) => !manualReviewResolves(check));
+  const mismatch = unresolvedChecks.find((check) => check.status === 'mismatch' || manualReviewConfirmsIssue(check));
+  if (mismatch) return { tone: 'error', label: 'Есть ошибка', result: mismatch.summary };
+
+  if (
+    (item.task.category === 'acquiring' || item.task.category === 'credit')
+    && item.task.status === 'done'
+    && item.task.integerValue === 2
+  ) {
+    return { tone: 'error', label: 'Есть ошибка', result: item.task.comment || 'Сотрудник сообщил о расхождении' };
+  }
+
+  if (item.status === 'late') return { tone: 'attention', label: 'Требует внимания', result: 'Проверка выполнена с опозданием' };
+  if (item.status === 'overdue') return { tone: 'attention', label: 'Требует внимания', result: 'Обязательная проверка просрочена' };
+
+  const unavailable = unresolvedChecks.find((check) => check.status === 'unavailable');
+  if (unavailable) return { tone: 'attention', label: 'Требует внимания', result: unavailable.summary };
+
+  if (item.task.status !== 'done') return { tone: 'pending', label: 'Не выполнено', result: 'Срок ещё не наступил' };
+  if (item.task.category === 'acquiring') return { tone: 'normal', label: 'Всё нормально', result: acquiringResult(item.task).label };
+  if (item.task.category === 'credit') return { tone: 'normal', label: 'Всё нормально', result: creditResult(item.task).label };
+
+  const matched = item.autoChecks.find((check) => check.status === 'matched');
+  return { tone: 'normal', label: 'Всё нормально', result: matched?.summary || 'Выполнено без замечаний' };
+}
+
+function TaskOverviewRow({
+  item,
+  department,
+  run,
+  onPreview,
+  onManualReview,
+}: {
+  item: ReviewedTask;
+  department: string;
+  run: ShiftRun;
+  onPreview: (photo: PhotoPreview) => void;
+  onManualReview: (check: ShiftAutoCheck) => void;
+}) {
+  const state = taskBusinessState(item);
+  const statusClassName = {
+    error: 'bg-rose-100 text-rose-800',
+    attention: 'bg-amber-100 text-amber-800',
+    normal: 'bg-green-100 text-green-800',
+    pending: 'bg-slate-100 text-slate-700',
+  }[state.tone];
+  const detailTone = state.tone === 'error' || state.tone === 'attention'
+    ? 'attention'
+    : state.tone === 'pending'
+      ? 'planned'
+      : 'normal';
+
+  return (
+    <details className='group border-t border-slate-200 first:border-t-0'>
+      <summary className='grid cursor-pointer list-none gap-2 px-4 py-3 transition hover:bg-slate-50 md:grid-cols-[minmax(210px,1.3fr)_90px_150px_minmax(220px,1.5fr)_72px] md:items-center'>
+        <span className='font-extrabold text-slate-950'>{taskDisplayTitle(item.task)}</span>
+        <span className='text-sm font-semibold text-slate-600'>{minutesToTime(item.task.plannedTimeMinutes)}</span>
+        <Badge className={`w-fit ${statusClassName}`}>{state.label}</Badge>
+        <span className={`text-sm font-semibold ${state.tone === 'error' ? 'text-rose-800' : state.tone === 'attention' ? 'text-amber-800' : 'text-slate-600'}`}>{state.result}</span>
+        <span className='text-sm font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
+        <span className='hidden text-sm font-extrabold text-slate-500 group-open:inline'>Скрыть</span>
+      </summary>
+      <div className='border-t border-slate-200 bg-slate-50 p-3'>
+        <TaskDetailCard item={item} tone={detailTone} onPreview={onPreview} onManualReview={onManualReview} />
+        {item.task.category === 'handover' ? (
+          <div className='mt-3'><HandoverDetails data={item.task.handoverData} department={department} onPreview={onPreview} /></div>
+        ) : null}
+        <details className='mt-3 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200'>
+          <summary className='cursor-pointer text-xs font-extrabold text-slate-600'>Технический журнал проверки</summary>
+          <div className='mt-2 grid gap-1 text-xs font-semibold text-slate-500 sm:grid-cols-3'>
+            <span>Task ID: {item.task.id}</span>
+            <span>Run ID: {run.id}</span>
+            <span>Завершено: {formatTime(item.task.completedAt)}</span>
+          </div>
+        </details>
+      </div>
+    </details>
+  );
+}
+
 export function AdminShiftControlDetails({
   employeeName,
   department,
@@ -819,9 +906,27 @@ export function AdminShiftControlDetails({
 
     return groups;
   }, [autoChecksByTask, detailTasks, timingViolationByTaskId]);
+  const overviewTasks = useMemo(() => {
+    const items = detailTasks.map((task) => ({
+      task,
+      status: taskStatus(task, timingViolationByTaskId.get(task.id)),
+      autoChecks: autoChecksByTask.get(task.id) ?? [],
+    }));
+    const rank = { error: 0, attention: 1, pending: 2, normal: 3 };
+    return items.sort((left, right) => (
+      rank[taskBusinessState(left).tone] - rank[taskBusinessState(right).tone]
+      || (left.task.plannedTimeMinutes ?? Number.MAX_SAFE_INTEGER) - (right.task.plannedTimeMinutes ?? Number.MAX_SAFE_INTEGER)
+    ));
+  }, [autoChecksByTask, detailTasks, timingViolationByTaskId]);
+  const keyProblems = overviewTasks.filter((item) => {
+    const tone = taskBusinessState(item).tone;
+    return tone === 'error' || tone === 'attention';
+  });
   const autoSummary = autoCheckSummary(autoChecks);
   const workdayTimingViolations = timingViolations.filter((violation) => violation.taskId === null);
   const taskTimingViolationCount = timingViolations.length - workdayTimingViolations.length;
+  const hasError = keyProblems.some((item) => taskBusinessState(item).tone === 'error');
+  const keyProblemCount = keyProblems.length + workdayTimingViolations.length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
@@ -832,13 +937,15 @@ export function AdminShiftControlDetails({
         <Button
           type='button'
           className={`h-8 px-3 text-xs font-extrabold shadow-none ${
-            taskGroups.attention.length > 0
-              ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+            hasError
+              ? 'bg-rose-100 text-rose-900 hover:bg-rose-200'
+              : keyProblemCount > 0
+                ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
           }`}
           onClick={() => setOpen(true)}
         >
-          {taskGroups.attention.length > 0 ? 'Проверить' : 'Подробнее'}
+          {keyProblemCount > 0 ? 'Проверить' : 'Подробнее'}
         </Button>
       ) : (
         <span className='text-xs font-semibold text-slate-400'>Нет чек-листа</span>
@@ -921,7 +1028,7 @@ export function AdminShiftControlDetails({
               </div>
             ) : null}
 
-            <div className='grid gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:grid-cols-2 sm:px-6 xl:grid-cols-4'>
+            {false && (<><div className='hidden'>
               <div className={`rounded-xl border-l-4 bg-slate-50 px-3 py-2 ring-1 ring-slate-200 ${
                 workDay?.status === 'completed' ? 'border-l-green-500' : 'border-l-amber-500'
               }`}>
@@ -930,7 +1037,7 @@ export function AdminShiftControlDetails({
                   {workDay?.status === 'completed' || workDay?.endedAt ? 'Завершён' : workDay ? 'Идёт' : 'Не начат'}
                 </p>
                 <p className='text-xs font-semibold text-slate-500'>
-                  {workDay ? `${formatTime(workDay.startedAt)}–${formatTime(workDay.endedAt)}` : 'Нет отметок'}
+                  {workDay ? `${formatTime(workDay!.startedAt)}–${formatTime(workDay!.endedAt)}` : 'Нет отметок'}
                 </p>
               </div>
               <div className={`rounded-xl border-l-4 bg-slate-50 px-3 py-2 ring-1 ring-slate-200 ${
@@ -962,7 +1069,7 @@ export function AdminShiftControlDetails({
               </div>
             </div>
 
-            <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
+            <div className='hidden'>
               <div className='grid items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(380px,0.8fr)]'>
                 <main className='grid content-start gap-4'>
                   {timingViolations.length > 0 ? (
@@ -1014,7 +1121,7 @@ export function AdminShiftControlDetails({
                       <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
                         <dt className='font-semibold text-slate-500'>Опоздание на входе</dt>
                         <dd className={workDay?.lateMinutes ? 'font-extrabold text-amber-700' : 'font-extrabold text-slate-900'}>
-                          {workDay?.lateMinutes ? `${workDay.lateMinutes} мин` : 'нет'}
+                          {workDay?.lateMinutes ? `${workDay!.lateMinutes} мин` : 'нет'}
                         </dd>
                       </div>
                       <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
@@ -1028,14 +1135,14 @@ export function AdminShiftControlDetails({
                     </dl>
                     {workDay?.comment ? (
                       <div className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600'>
-                        Комментарий: {workDay.comment}
+                        Комментарий: {workDay!.comment}
                       </div>
                     ) : null}
                   </section>
 
                   {handoverTask ? (
                     <>
-                      <HandoverOverview data={handoverTask.handoverData} department={department} />
+                      <HandoverOverview data={handoverTask!.handoverData} department={department} />
                       <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
                         <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3'>
                           <span className='text-sm font-extrabold text-slate-950'>Все данные и фото</span>
@@ -1043,7 +1150,7 @@ export function AdminShiftControlDetails({
                           <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
                         </summary>
                         <div className='border-t border-slate-200 bg-slate-50 p-3'>
-                          <HandoverDetails data={handoverTask.handoverData} department={department} onPreview={setSelectedPhoto} />
+                          <HandoverDetails data={handoverTask!.handoverData} department={department} onPreview={setSelectedPhoto} />
                         </div>
                       </details>
                     </>
@@ -1058,13 +1165,67 @@ export function AdminShiftControlDetails({
                   <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
                 </summary>
                 <div className='grid gap-2 border-t border-slate-200 px-4 py-3 text-xs font-semibold text-slate-600 sm:grid-cols-2 xl:grid-cols-5'>
-                  <span>Run ID: {run.id}</span>
-                  <span>Статус: {run.status}</span>
-                  <span>Отправлено: {formatTime(run.submittedAt)}</span>
-                  <span>Завершено: {formatTime(run.completedAt)}</span>
+                  <span>Run ID: {run!.id}</span>
+                  <span>Статус: {run!.status}</span>
+                  <span>Отправлено: {formatTime(run!.submittedAt)}</span>
+                  <span>Завершено: {formatTime(run!.completedAt)}</span>
                   <span>Автопроверок: {autoChecks.length}</span>
                 </div>
               </details>
+            </div></>)}
+            <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
+              <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
+                <div>
+                  <p className='text-sm font-extrabold text-slate-950'>Проверки: {summary.completed} из {summary.total} выполнено</p>
+                  <p className='mt-0.5 text-xs font-semibold text-slate-500'>Откройте только ту проверку, по которой нужны подробности.</p>
+                </div>
+                <Badge className={hasError
+                  ? 'bg-rose-100 text-rose-800'
+                  : keyProblemCount > 0
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-green-100 text-green-800'}>
+                  {hasError
+                    ? 'Есть ошибка'
+                    : keyProblemCount > 0
+                      ? 'Требует внимания'
+                      : 'Всё нормально'}
+                </Badge>
+              </div>
+
+              {keyProblemCount > 0 ? (
+                <section className={`mb-4 rounded-xl border px-4 py-3 ${
+                  hasError
+                    ? 'border-rose-200 bg-rose-50'
+                    : 'border-amber-200 bg-amber-50'
+                }`}>
+                  <h4 className={`text-sm font-extrabold ${
+                    hasError ? 'text-rose-950' : 'text-amber-950'
+                  }`}>Ключевые проблемы</h4>
+                  <div className='mt-2 grid gap-1.5'>
+                    {workdayTimingViolations.map((violation) => (
+                      <p key={violation.id} className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>{violation.label}:</span> {violation.detail}</p>
+                    ))}
+                    {keyProblems.slice(0, 3).map((item) => {
+                      const state = taskBusinessState(item);
+                      return <p key={item.task.id} className={`text-sm font-semibold ${state.tone === 'error' ? 'text-rose-800' : 'text-amber-800'}`}><span className='font-extrabold'>{taskDisplayTitle(item.task)}:</span> {state.result}</p>;
+                    })}
+                  </div>
+                </section>
+              ) : (
+                <section className='mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3'>
+                  <h4 className='text-sm font-extrabold text-green-950'>Ключевых проблем нет</h4>
+                  <p className='mt-1 text-xs font-semibold text-green-800'>По выполненным и доступным проверкам замечаний не найдено.</p>
+                </section>
+              )}
+
+              <section className='overflow-hidden rounded-xl bg-white ring-1 ring-slate-200'>
+                <div className='hidden grid-cols-[minmax(210px,1.3fr)_90px_150px_minmax(220px,1.5fr)_72px] gap-2 bg-slate-50 px-4 py-2 text-xs font-bold uppercase text-slate-400 md:grid'>
+                  <span>Проверка</span><span>Время</span><span>Статус</span><span>Результат</span><span></span>
+                </div>
+                {overviewTasks.map((item) => (
+                  <TaskOverviewRow key={item.task.id} item={item} department={department} run={run} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
+                ))}
+              </section>
             </div>
           </div>
           {selectedPhoto && (
