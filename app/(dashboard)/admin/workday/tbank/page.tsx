@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { getCurrentUser } from '@/lib/auth';
 import { getKkmEquipmentDiagnostics } from '@/lib/one-c';
 import { getTBankTerminalOperations, getTBankTerminals } from '@/lib/tbank-acquiring';
-import { reconcileTerminalOperations, tBankTerminalOneCMapping } from '@/lib/terminal-reconciliation';
+import { normalizeOneCDateTime, reconcileTerminalOperations, tBankTerminalOneCMapping } from '@/lib/terminal-reconciliation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -215,7 +215,7 @@ export default async function AdminTBankAcquiringPage({
                     <thead className='bg-slate-50 text-xs uppercase text-slate-500'><tr><th className='px-5 py-3'>Источник</th><th className='px-5 py-3'>Время</th><th className='px-5 py-3'>Документ</th><th className='px-5 py-3 text-right'>Сумма</th></tr></thead>
                     <tbody>
                       {reconciliation.onlyTBank.map((operation, index) => <tr key={`bank-${operation.rrn}-${index}`} className='border-t border-slate-200/80'><td className='px-5 py-3 font-bold text-rose-800'>Только Т‑Банк</td><td className='px-5 py-3'>{formatDate(operation.transactionDate)}</td><td className='px-5 py-3 font-mono text-xs'>{operation.rrn || '—'}</td><td className='px-5 py-3 text-right font-extrabold'>{formatMoney(operation.amountRubles)}</td></tr>)}
-                      {reconciliation.onlyOneC.map((check) => <tr key={`onec-${check.ref}`} className='border-t border-slate-200/80'><td className='px-5 py-3 font-bold text-rose-800'>Только 1С</td><td className='px-5 py-3'>{formatDate(check.datetime)}</td><td className='px-5 py-3 font-semibold'>{check.number || check.ref}</td><td className='px-5 py-3 text-right font-extrabold'>{formatMoney(check.amount ?? 0)}</td></tr>)}
+                      {reconciliation.onlyOneC.map((check) => <tr key={`onec-${check.ref}`} className='border-t border-slate-200/80'><td className='px-5 py-3 font-bold text-rose-800'>Только 1С</td><td className='px-5 py-3'>{formatDate(normalizeOneCDateTime(check.datetime))}</td><td className='px-5 py-3 font-semibold'>{check.number || check.ref}</td><td className='px-5 py-3 text-right font-extrabold'>{formatMoney(check.amount ?? 0)}</td></tr>)}
                     </tbody>
                   </table>
                 </div>

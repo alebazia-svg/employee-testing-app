@@ -24,9 +24,18 @@ export type TerminalReconciliation = {
   unsupportedReturns: TBankTerminalOperation[];
 };
 
-function timestamp(value: string) {
-  const parsed = new Date(value).getTime();
+function timestamp(value: string, assumeMoscow = false) {
+  const hasExplicitTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value);
+  const normalized = assumeMoscow && !hasExplicitTimeZone && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/.test(value)
+    ? `${value.replace(' ', 'T')}+03:00`
+    : value;
+  const parsed = new Date(normalized).getTime();
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function normalizeOneCDateTime(value: string) {
+  const parsed = timestamp(value, true);
+  return parsed === null ? value : new Date(parsed).toISOString();
 }
 
 function isCardCheck(check: OneCKkmRecentCheck) {
@@ -64,7 +73,7 @@ export function reconcileTerminalOperations({
     availableChecks.forEach((check, index) => {
       if (usedCheckIndexes.has(index) || check.amount === null || operationTimestamp === null) return;
       if (Math.abs(check.amount - operation.amountRubles) > MONEY_TOLERANCE_RUBLES) return;
-      const checkTimestamp = timestamp(check.datetime);
+      const checkTimestamp = timestamp(check.datetime, true);
       if (checkTimestamp === null) return;
       const difference = Math.abs(checkTimestamp - operationTimestamp);
       if (difference <= TIME_TOLERANCE_MS && difference < bestDifference) {
