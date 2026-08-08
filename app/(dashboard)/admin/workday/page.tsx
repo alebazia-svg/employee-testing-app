@@ -430,7 +430,7 @@ function buildEmployeeAutoChecks({
           taskId: task.id,
           label: 'Наличные в кассе',
           status: 'unavailable',
-          summary: snapshot?.error || 'Снимок текущего остатка 1С не был сохранён в момент выполнения этого шага.',
+          summary: snapshot?.error || 'Остаток 1С на момент проверки не был сохранён.',
           evidence: 'Исторический остаток не реконструируется по движениям задним числом.',
         });
         continue;
@@ -441,7 +441,7 @@ function buildEmployeeAutoChecks({
         label: 'Наличные в кассе',
         actual: task.numericValue,
         expected: snapshot.balance,
-        evidence: `Текущий остаток кассы 1С сохранён при отправке шага${snapshot.capturedAt ? ` в ${formatTime(new Date(snapshot.capturedAt))}` : ''}.`,
+        evidence: `Остаток 1С на момент проверки: ${formatMoney(snapshot.balance)}${snapshot.capturedAt ? ` · зафиксирован в ${formatTime(new Date(snapshot.capturedAt))}` : ''}.`,
       }));
       continue;
     }
@@ -590,7 +590,7 @@ function buildEmployeeAutoChecks({
       actual: personalCashBalance,
       expected: expectedPersonalCash,
       evidence: personalCashAudit?.status === 'captured'
-        ? `Текущий остаток кассы 1С сохранён при сдаче смены${personalCashAudit.capturedAt ? ` в ${formatTime(new Date(personalCashAudit.capturedAt))}` : ''}.`
+        ? `Остаток 1С на момент проверки: ${formatMoney(personalCashAudit.balance)}${personalCashAudit.capturedAt ? ` · зафиксирован в ${formatTime(new Date(personalCashAudit.capturedAt))}` : ''}.`
         : 'Снимок при сдаче смены отсутствует; используется конечный остаток 1С за день.',
     }));
     checks.push(moneyAutoCheck({
@@ -600,7 +600,7 @@ function buildEmployeeAutoChecks({
       actual: reserveCash ? readNumber(reserveCash.cashBalance) : null,
       expected: expectedReserveCash,
       evidence: reserveCashAudit?.status === 'captured'
-        ? `Текущий полный остаток резерва 1С сохранён при сдаче смены${reserveCashAudit.capturedAt ? ` в ${formatTime(new Date(reserveCashAudit.capturedAt))}` : ''}.`
+        ? `Остаток резерва 1С на момент проверки: ${formatMoney(reserveCashAudit.balance)}${reserveCashAudit.capturedAt ? ` · зафиксирован в ${formatTime(new Date(reserveCashAudit.capturedAt))}` : ''}.`
         : reserveCashboxName
           ? `Снимок при сдаче смены отсутствует; используется конечный остаток кассы 1С «${reserveCashboxName}» за день.`
         : 'Касса резерва 1С не найдена.',
@@ -996,7 +996,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         workDay,
         tasks: (run?.tasks ?? []) as AutoCheckTask[],
       });
-      const timingViolationCount = timingViolations.length;
+      const actionableTimingViolations = timingViolations.filter((violation) => (
+        violation.kind === 'task_overdue'
+        || violation.kind === 'missing_checkout'
+        || violation.kind === 'workday_not_started'
+      ));
       const manualReviewCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
       const manualIssueCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
       const unresolvedAutoChecks = autoChecks.filter((check) => check.manualReview?.decision !== 'confirmed_ok');
@@ -1015,10 +1019,10 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             ? `Подтверждённых проблем: ${manualIssueCount}`
             : `Расхождений по 1С: ${mismatchCount}`
           : null,
-        timingViolationCount > 0
-          ? timingViolationCount === 1
-            ? timingViolations[0].label
-            : `Нарушений времени: ${timingViolationCount} · ${timingViolations[0].label}`
+        actionableTimingViolations.length > 0
+          ? actionableTimingViolations.length === 1
+            ? actionableTimingViolations[0].label
+            : `Требуют действия: ${actionableTimingViolations.length} · ${actionableTimingViolations[0].label}`
           : null,
       ].filter((reason): reason is string => Boolean(reason));
       const employeeReportedProblem = (run?.tasks ?? []).some((task) => (
@@ -1057,7 +1061,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         : needsAttention
         ? `${attentionReasons.slice(0, 2).join(' · ')}${attentionReasons.length > 2 ? ` · ещё ${attentionReasons.length - 2}` : ''}`
         : cannotVerify
-          ? `Автоматическая проверка недоступна: ${Math.max(incompleteCount, 1)}`
+          ? `Нужно проверить вручную: ${Math.max(incompleteCount, 1)}`
           : isPending
             ? waitingForWorkdayStart
               ? 'Рабочий день ещё не начат'
@@ -1085,7 +1089,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         autoChecks,
         timingViolations,
         shiftControlRequired,
-        timingViolationCount,
         category,
         reviewText,
         completedTaskCount,

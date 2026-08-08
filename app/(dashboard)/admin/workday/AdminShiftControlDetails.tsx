@@ -671,13 +671,12 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
     return { tone: 'error', label: 'Есть ошибка', result: item.task.comment || 'Сотрудник сообщил о расхождении' };
   }
 
-  if (item.status === 'late') return { tone: 'attention', label: 'Требует внимания', result: 'Проверка выполнена с опозданием' };
   if (item.status === 'overdue') return { tone: 'attention', label: 'Требует внимания', result: 'Обязательная проверка просрочена' };
 
   if (item.task.status !== 'done') return { tone: 'pending', label: 'Не выполнено', result: 'Срок ещё не наступил' };
 
   const unavailable = unresolvedChecks.find((check) => check.status === 'unavailable');
-  if (unavailable) return { tone: 'attention', label: 'Требует внимания', result: 'Автоматическая проверка недоступна' };
+  if (unavailable) return { tone: 'attention', label: 'Требует внимания', result: 'Нужно проверить вручную' };
 
   if (item.task.category === 'acquiring') return { tone: 'normal', label: 'Всё нормально', result: acquiringResult(item.task).label };
   if (item.task.category === 'credit') return { tone: 'normal', label: 'Всё нормально', result: creditResult(item.task).label };
@@ -919,16 +918,18 @@ export function AdminShiftControlDetails({
       || (left.task.plannedTimeMinutes ?? Number.MAX_SAFE_INTEGER) - (right.task.plannedTimeMinutes ?? Number.MAX_SAFE_INTEGER)
     ));
   }, [autoChecksByTask, detailTasks, timingViolationByTaskId]);
-  const keyProblems = overviewTasks.filter((item) => {
-    const tone = taskBusinessState(item).tone;
-    return tone === 'error' || tone === 'attention';
-  });
+  const keyProblems = overviewTasks.filter((item) => (
+    taskBusinessState(item).tone === 'error' || item.status === 'overdue'
+  ));
   const autoSummary = autoCheckSummary(autoChecks);
   const workdayTimingViolations = timingViolations.filter((violation) => violation.taskId === null);
+  const activeWorkdayProblems = workdayTimingViolations.filter((violation) => (
+    violation.kind === 'missing_checkout' || violation.kind === 'workday_not_started'
+  ));
   const taskTimingViolationCount = timingViolations.length - workdayTimingViolations.length;
   const hasError = keyProblems.some((item) => taskBusinessState(item).tone === 'error');
   const scheduleNeedsAttention = scheduleLabel === 'не заполнено';
-  const keyProblemCount = keyProblems.length + workdayTimingViolations.length + (scheduleNeedsAttention ? 1 : 0);
+  const keyProblemCount = keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0);
   const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
 
@@ -1212,7 +1213,7 @@ export function AdminShiftControlDetails({
                     {scheduleNeedsAttention ? (
                       <p className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>График:</span> рабочий график сотрудника не заполнен</p>
                     ) : null}
-                    {workdayTimingViolations.map((violation) => (
+                    {activeWorkdayProblems.map((violation) => (
                       <p key={violation.id} className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>{violation.label}:</span> {violation.detail}</p>
                     ))}
                     {keyProblems.slice(0, 3).map((item) => {
