@@ -177,17 +177,6 @@ async function captureOneCCashAudit({
   }
 }
 
-async function runHasAcquiringPayments(runId: number) {
-  const acquiringTasks = await prisma.shiftControlTask.findMany({
-    where: { runId, category: 'acquiring', status: 'done' },
-    select: { integerValue: true, numericValue: true },
-  });
-  return acquiringTasks.some((task) => {
-    if (task.integerValue === 1 || task.integerValue === 2) return true;
-    return task.integerValue === null && task.numericValue !== null && Number(task.numericValue) > 0;
-  });
-}
-
 async function savePhoto(file: File, runId: number, taskId: number, key: string) {
   if (!file.type.startsWith('image/')) {
     throw new Error('Добавьте фото');
@@ -222,8 +211,9 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
   const reserveCashBalance = readFormNumber(formData, 'reserveCashBalance');
   const discrepancyType = readFormString(formData, 'discrepancyType');
   const discrepancyAmount = readFormNumber(formData, 'discrepancyAmount');
-  const hasSberbankAcquiring = readFormBoolean(formData, 'hasSberbankAcquiring');
-  const sberbankTerminalTotal = readFormNumber(formData, 'sberbankTerminalTotal');
+  const terminalHadOperations = readFormBoolean(formData, 'terminalHadOperations');
+  const terminalReconciliation = readFormString(formData, 'terminalReconciliation');
+  const terminalComment = readFormString(formData, 'terminalComment');
   const hasTbankCredit = readFormBoolean(formData, 'hasTbankCredit');
   const tbankTerminalTotal = readFormNumber(formData, 'tbankTerminalTotal');
   const encashmentAmount = readFormNumber(formData, 'encashmentAmount');
@@ -231,8 +221,7 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
   const photos = { ...existingPhotos };
   const photoFields = [
     ['personalStatementPhoto', 'personalStatement', 'personal-statement'],
-    ['personalAcquiringReceiptsPhoto', 'personalAcquiringReceipts', 'personal-acquiring-receipts'],
-    ['sberbankTerminalReportPhoto', 'sberbankTerminalReport', 'sberbank-terminal-report'],
+    ['terminalReceiptsPhoto', 'terminalReceipts', 'terminal-receipts'],
     ['tbankReceiptsPhoto', 'tbankReceipts', 'tbank-receipts'],
     ['tbankTerminalReportPhoto', 'tbankTerminalReport', 'tbank-terminal-report'],
     ['zReportPhoto', 'zReport', 'z-report'],
@@ -260,7 +249,6 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
       withdrawalAmount: null,
       cashOrderAmount: null,
       withdrawalDifference: null,
-      hasSberbankAcquiring: hasSberbankAcquiring ?? existingPersonalCash.hasSberbankAcquiring ?? null,
       hasTbankCredit: hasTbankCredit ?? existingPersonalCash.hasTbankCredit ?? null,
       requiresEncashment: personalCashBalance !== null ? personalCashBalance > 50000 : Boolean(existingPersonalCash.requiresEncashment),
       encashmentAmount,
@@ -269,11 +257,14 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
       ...existingReserveCash,
       cashBalance: reserveCashBalance,
     },
+    terminalCheck: {
+      hadOperations: terminalHadOperations,
+      reconciliation: terminalHadOperations ? terminalReconciliation : 'not_required',
+      comment: terminalReconciliation === 'discrepancy' ? terminalComment : '',
+    },
     storeClosing: isClosingShift(task.run.workDayEntry.shiftCode)
       ? {
           ...existingStoreClosing,
-          hasSberbankAcquiring: hasSberbankAcquiring ?? existingStoreClosing.hasSberbankAcquiring ?? null,
-          sberbankTerminalTotal: hasSberbankAcquiring === false ? 0 : sberbankTerminalTotal,
           hasTbankCredit: hasTbankCredit ?? existingStoreClosing.hasTbankCredit ?? null,
           tbankTerminalTotal: hasTbankCredit ? tbankTerminalTotal : null,
           zReportRequired: true,
@@ -343,8 +334,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const reserveCashBalance = readNumber(reserveCash.cashBalance);
     const discrepancyType = typeof personalCash.discrepancyType === 'string' ? personalCash.discrepancyType : '';
     const discrepancyAmount = readNumber(personalCash.discrepancyAmount);
-    const hasSberbankAcquiring = readBoolean(personalCash.hasSberbankAcquiring ?? storeClosing.hasSberbankAcquiring);
-    const sberbankTerminalTotal = readNumber(storeClosing.sberbankTerminalTotal);
+    const terminalCheck = readRecord(handoverData, 'terminalCheck') ?? {};
+    const terminalHadOperations = readBoolean(terminalCheck.hadOperations);
+    const terminalReconciliation = typeof terminalCheck.reconciliation === 'string' ? terminalCheck.reconciliation : '';
+    const terminalComment = typeof terminalCheck.comment === 'string' ? terminalCheck.comment.trim() : '';
     const hasTbankCredit = readBoolean(personalCash.hasTbankCredit ?? storeClosing.hasTbankCredit);
     const tbankTerminalTotal = readNumber(storeClosing.tbankTerminalTotal);
     const encashmentAmount = readNumber(personalCash.encashmentAmount);
@@ -354,18 +347,23 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
     const requiresDiscrepancyComment =
       (discrepancyType === 'surplus' || discrepancyType === 'shortage') && discrepancyAmount !== null && discrepancyAmount > 300;
-    const requiresAcquiringReceiptsPhoto = isRetail && (hasSberbankAcquiring === true || await runHasAcquiringPayments(task.runId));
 
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
     if (reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
     if (!['none', 'surplus', 'shortage'].includes(discrepancyType)) return Response.json({ error: 'Укажите расхождение по моей кассе' }, { status: 400 });
     if (discrepancyType !== 'none' && discrepancyAmount === null) return Response.json({ error: 'Укажите сумму расхождения' }, { status: 400 });
     if (requiresDiscrepancyComment && !comment) return Response.json({ error: 'Добавьте комментарий: расхождение больше 300 ₽' }, { status: 400 });
-    if (requiresAcquiringReceiptsPhoto && !hasSavedPhoto(handoverData, 'personalAcquiringReceipts')) {
-      return Response.json({ error: 'Сделайте фото чеков Сбербанка за смену' }, { status: 400 });
-    }
     if (isRetail) {
-      if (hasSberbankAcquiring === null) return Response.json({ error: 'Укажите, были ли оплаты через терминал Сбербанка' }, { status: 400 });
+      if (terminalHadOperations === null) return Response.json({ error: 'Укажите, были ли новые операции терминала' }, { status: 400 });
+      if (terminalHadOperations && !['matched', 'discrepancy'].includes(terminalReconciliation)) {
+        return Response.json({ error: 'Укажите результат сверки терминала с 1С' }, { status: 400 });
+      }
+      if (terminalHadOperations && terminalReconciliation === 'discrepancy' && !terminalComment) {
+        return Response.json({ error: 'Опишите расхождение по операциям терминала' }, { status: 400 });
+      }
+      if (terminalHadOperations && !hasSavedPhoto(handoverData, 'terminalReceipts')) {
+        return Response.json({ error: 'Сфотографируйте новые чеки терминала' }, { status: 400 });
+      }
       if (hasTbankCredit === null) return Response.json({ error: 'Укажите, были ли операции через терминал Т-Банка' }, { status: 400 });
       if (hasTbankCredit && !hasSavedPhoto(handoverData, 'tbankReceipts')) {
         return Response.json({ error: 'Сделайте фото чеков Т-Банка за смену' }, { status: 400 });
@@ -378,10 +376,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
     if (isClosingEmployee) {
-      if (hasSberbankAcquiring) {
-        if (!hasSavedPhoto(handoverData, 'sberbankTerminalReport')) return Response.json({ error: 'Сделайте фото сверки итогов Сбербанка' }, { status: 400 });
-        if (sberbankTerminalTotal === null) return Response.json({ error: 'Укажите сумму по сверке итогов Сбербанка' }, { status: 400 });
-      }
       if (hasTbankCredit) {
         if (!hasSavedPhoto(handoverData, 'tbankTerminalReport')) return Response.json({ error: 'Сделайте фото сверки итогов Т-Банка' }, { status: 400 });
         if (tbankTerminalTotal === null) return Response.json({ error: 'Укажите сумму по сверке итогов Т-Банка' }, { status: 400 });
@@ -390,10 +384,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     try {
+      const previousTerminalTask = await prisma.shiftControlTask.findFirst({
+        where: {
+          runId: task.runId,
+          category: 'acquiring',
+          status: 'done',
+          completedAt: { not: null },
+        },
+        orderBy: { completedAt: 'desc' },
+      });
       const photos = {
         personalStatement: savedPhoto(handoverData, 'personalStatement'),
-        personalAcquiringReceipts: requiresAcquiringReceiptsPhoto ? savedPhoto(handoverData, 'personalAcquiringReceipts') : null,
-        sberbankTerminalReport: isClosingEmployee && hasSberbankAcquiring ? savedPhoto(handoverData, 'sberbankTerminalReport') : null,
+        terminalReceipts: isRetail && terminalHadOperations ? savedPhoto(handoverData, 'terminalReceipts') : null,
         tbankReceipts: isRetail && hasTbankCredit ? savedPhoto(handoverData, 'tbankReceipts') : null,
         tbankTerminalReport: isClosingEmployee && hasTbankCredit ? savedPhoto(handoverData, 'tbankTerminalReport') : null,
         zReport: isClosingEmployee ? savedPhoto(handoverData, 'zReport') : null,
@@ -424,7 +426,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           withdrawalAmount: null,
           cashOrderAmount: null,
           withdrawalDifference: null,
-          hasSberbankAcquiring,
           hasTbankCredit,
           requiresEncashment,
           encashmentAmount: requiresEncashment ? encashmentAmount : null,
@@ -432,10 +433,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         reserveCash: {
           cashBalance: reserveCashBalance,
         },
+        terminalCheck: isRetail ? {
+          intervalFrom: previousTerminalTask?.completedAt?.toISOString() ?? task.run.workDayEntry.startedAt.toISOString(),
+          intervalTo: now.toISOString(),
+          previousTaskId: previousTerminalTask?.id ?? null,
+          hadOperations: terminalHadOperations,
+          reconciliation: terminalHadOperations ? terminalReconciliation : 'not_required',
+          comment: terminalReconciliation === 'discrepancy' ? terminalComment : '',
+        } : null,
         storeClosing: isClosingEmployee
           ? {
-              hasSberbankAcquiring,
-              sberbankTerminalTotal,
               hasTbankCredit,
               tbankTerminalTotal: hasTbankCredit ? tbankTerminalTotal : null,
               zReportRequired: true,
@@ -520,6 +527,63 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
   }
 
+  if (task.category === 'acquiring') {
+    const formData = await req.formData().catch(() => null);
+    if (!formData) return Response.json({ error: 'Заполните проверку операций терминала' }, { status: 400 });
+
+    const checkStatus = readInteger(formData.get('integerValue'));
+    const comment = readFormString(formData, 'comment');
+    const photo = formData.get('terminalReceiptsPhoto');
+    if (checkStatus === null || ![0, 1, 2].includes(checkStatus)) {
+      return Response.json({ error: 'Ответьте на вопросы проверки терминала' }, { status: 400 });
+    }
+    if (checkStatus === 2 && !comment) {
+      return Response.json({ error: 'Опишите расхождение по операциям терминала' }, { status: 400 });
+    }
+    if ((checkStatus === 1 || checkStatus === 2) && !isPhoto(photo)) {
+      return Response.json({ error: 'Сфотографируйте новые чеки терминала' }, { status: 400 });
+    }
+
+    try {
+      const previousTask = await prisma.shiftControlTask.findFirst({
+        where: {
+          runId: task.runId,
+          category: 'acquiring',
+          status: 'done',
+          completedAt: { not: null },
+        },
+        orderBy: { completedAt: 'desc' },
+      });
+      const completedAt = new Date();
+      const receiptsPhoto = isPhoto(photo) ? await savePhoto(photo, task.runId, task.id, 'terminal-receipts') : null;
+      const updatedTask = await prisma.shiftControlTask.update({
+        where: { id: task.id },
+        data: {
+          status: 'done',
+          completedAt,
+          integerValue: checkStatus,
+          numericValue: null,
+          booleanValue: checkStatus !== 2,
+          comment: checkStatus === 2 ? comment : '',
+          handoverData: {
+            terminalCheck: {
+              intervalFrom: previousTask?.completedAt?.toISOString() ?? task.run.workDayEntry.startedAt.toISOString(),
+              intervalTo: completedAt.toISOString(),
+              previousTaskId: previousTask?.id ?? null,
+              hadOperations: checkStatus !== 0,
+              reconciliation: checkStatus === 0 ? 'not_required' : checkStatus === 1 ? 'matched' : 'discrepancy',
+              comment: checkStatus === 2 ? comment : '',
+            },
+            photos: { terminalReceipts: receiptsPhoto },
+          } as Prisma.InputJsonValue,
+        },
+      });
+      return Response.json({ task: taskForEmployee(updatedTask) });
+    } catch (error) {
+      return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить проверку операций терминала' }, { status: 400 });
+    }
+  }
+
   const payload = await req.json().catch(() => ({}));
   const commentSource = typeof payload.comment === 'string' ? payload.comment : typeof payload.textValue === 'string' ? payload.textValue : '';
   const textValue = typeof payload.textValue === 'string' ? payload.textValue.trim() : null;
@@ -557,25 +621,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       ...existingData,
       [shiftControlOneCAuditKey]: oneCAudit,
     } as Prisma.InputJsonValue;
-  } else if (task.category === 'acquiring') {
-    const numericValue = readNumber(payload.numericValue);
-    const providedCheckStatus = readInteger(payload.integerValue);
-    const checkStatus = providedCheckStatus ?? (numericValue !== null ? 1 : null);
-    const hasDiscrepancy = checkStatus === 2;
-
-    if (checkStatus === null || ![0, 1, 2].includes(checkStatus)) {
-      return Response.json({ error: 'Выберите результат сверки оплат Сбербанка' }, { status: 400 });
-    }
-    if ((checkStatus === 1 || checkStatus === 2) && numericValue === null) {
-      return Response.json({ error: 'Укажите сумму оплат по терминалу' }, { status: 400 });
-    }
-    if (hasDiscrepancy && !commentSource.trim()) {
-      return Response.json({ error: 'Опишите расхождение по оплатам картой' }, { status: 400 });
-    }
-    data.integerValue = checkStatus;
-    data.numericValue = checkStatus === 0 ? 0 : numericValue;
-    data.booleanValue = !hasDiscrepancy;
-    data.comment = checkStatus === 0 ? '' : commentSource.trim();
   } else if (task.category === 'credit') {
     const checkStatus = readInteger(payload.integerValue);
     const hasDiscrepancy = checkStatus === 2;

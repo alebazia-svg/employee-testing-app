@@ -283,21 +283,6 @@ async function getTbankSalesForDate(date: string): Promise<TbankSalesForDate> {
   return { ok: true, documents };
 }
 
-function terminalTotalsForEmployee(
-  result: OneCKkmEquipmentDiagnosticsResult,
-  cashboxName: string,
-) {
-  const rows = result.acquiringTerminalUsage.filter((row) => (
-    matchesExplicitCashbox(cashboxName, row.cashRegister.name)
-    && normalizeSearchText(row.acquiringTerminal.name).includes('сбербанк')
-  ));
-  return {
-    matchedRows: rows.length,
-    checks: rows.reduce((sum, row) => sum + (row.checks ?? 0), 0),
-    amount: rows.reduce((sum, row) => sum + (row.amount ?? 0), 0),
-  };
-}
-
 function kkmUsageForEmployee(result: OneCKkmEquipmentDiagnosticsResult, cashboxName: string) {
   return result.cashRegisterUsage.filter((row) => matchesExplicitCashbox(cashboxName, row.cashRegister.name));
 }
@@ -437,8 +422,8 @@ function cashStatementScheduleLabel(status: string | undefined) {
 function acquiringControlStatus(task: { status: string; integerValue: number | null; numericValue: number | null } | null | undefined) {
   if (!task) return { label: 'нет задачи', className: 'bg-slate-100 text-slate-700', problem: false };
   if (task.status !== 'done') return { label: 'не выполнено', className: 'bg-amber-100 text-amber-800', problem: true };
-  if (task.integerValue === 0) return { label: 'оплат не было', className: 'bg-slate-100 text-slate-700', problem: false };
-  if (task.integerValue === 1) return { label: 'сверено', className: 'bg-green-100 text-green-800', problem: false };
+  if (task.integerValue === 0) return { label: 'новых операций не было', className: 'bg-slate-100 text-slate-700', problem: false };
+  if (task.integerValue === 1) return { label: 'всё совпадает', className: 'bg-green-100 text-green-800', problem: false };
   if (task.integerValue === 2) return { label: 'есть расхождение', className: 'bg-rose-100 text-rose-800', problem: true };
   if (task.numericValue !== null) return { label: 'старая версия', className: 'bg-blue-100 text-blue-800', problem: false };
   return { label: 'нет результата', className: 'bg-amber-100 text-amber-800', problem: true };
@@ -479,13 +464,9 @@ function buildEmployeeAutoChecks({
     && isRecord(task.handoverData.storeClosing)
   ));
   const employeeTbankDocuments = tbankSales.documents.filter((document) => matchesEmployeeManager(employeeName, document.managerName));
-  const terminalTotals = cashboxName && kkmDiagnostics.ok
-    ? terminalTotalsForEmployee(kkmDiagnostics, cashboxName)
-    : null;
   const kkmUsage = cashboxName && kkmDiagnostics.ok
     ? kkmUsageForEmployee(kkmDiagnostics, cashboxName)
     : [];
-  const kkmMappingObserved = kkmUsage.length > 0 || (terminalTotals?.matchedRows ?? 0) > 0;
 
   for (const task of tasks) {
     const cutoff = taskCutoff(task);
@@ -585,30 +566,25 @@ function buildEmployeeAutoChecks({
         checks.push({
           id: `acquiring-${task.id}`,
           taskId: task.id,
-          label: 'Оплаты Сбербанка',
+          label: 'Операции терминала',
           status: 'waiting',
-          summary: 'Сотрудник ещё не завершил сверку терминала.',
-        });
-      } else if (!kkmDiagnostics.ok || !cashboxName || !terminalTotals || !kkmMappingObserved) {
-        checks.push({
-          id: `acquiring-${task.id}`,
-          taskId: task.id,
-          label: 'Оплаты Сбербанка',
-          status: 'unavailable',
-          summary: !cashboxName
-            ? 'Касса сотрудника не привязана.'
-            : !kkmMappingObserved
-              ? 'Для привязанной кассы не найдено использование ККМ за выбранный день.'
-              : kkmDiagnostics.error || 'Данные ККМ 1С не получены.',
+          summary: 'Сотрудник ещё не завершил проверку операций терминала.',
         });
       } else {
+        const terminalCheck = isRecord(task.handoverData) && isRecord(task.handoverData.terminalCheck) ? task.handoverData.terminalCheck : null;
+        const hadOperations = task.integerValue === 1 || task.integerValue === 2;
+        const intervalFrom = terminalCheck ? readText(terminalCheck.intervalFrom) : '';
         checks.push({
           id: `acquiring-${task.id}`,
           taskId: task.id,
-          label: 'Оплаты Сбербанка',
+          label: 'Операции терминала',
           status: 'unavailable',
-          summary: `За день в 1С: ${terminalTotals.checks} оплат на ${formatMoney(terminalTotals.amount)}. Промежуточный итог на конкретную минуту 1С пока не отдаёт.`,
-          evidence: 'Дневной итог по явно привязанной кассе ККМ и терминалу Сбербанка.',
+          summary: hadOperations
+            ? `Сотрудник указал, что новые операции были и сверка ${task.integerValue === 2 ? 'выявила расхождение' : 'совпала'}.`
+            : 'Сотрудник указал, что новых операций не было.',
+          evidence: intervalFrom
+            ? `Проверяемый интервал начинается ${formatTime(new Date(intervalFrom))}. Источник всех операций единого терминала пока не подключён к этой автопроверке.`
+            : 'Источник всех операций единого терминала пока не подключён к этой автопроверке.',
         });
       }
       continue;
@@ -723,40 +699,26 @@ function buildEmployeeAutoChecks({
       });
     }
 
-    const declaredSber = personalCash ? readBoolean(personalCash.hasSberbankAcquiring) : null;
-    if (!kkmDiagnostics.ok || !cashboxName || !terminalTotals || !kkmMappingObserved) {
+    const terminalCheck = handoverData && isRecord(handoverData.terminalCheck) ? handoverData.terminalCheck : null;
+    const declaredTerminalOperations = terminalCheck ? readBoolean(terminalCheck.hadOperations) : null;
+    if (declaredTerminalOperations === null) {
       checks.push({
-        id: `handover-sber-${task.id}`,
+        id: `handover-terminal-${task.id}`,
         taskId: task.id,
-        label: 'Итог Сбербанка',
-        status: 'unavailable',
-        summary: !cashboxName
-          ? 'Касса сотрудника не привязана.'
-          : !kkmMappingObserved
-            ? 'Для привязанной кассы не найдено использование ККМ за выбранный день.'
-            : kkmDiagnostics.error || 'Данные терминала 1С не получены.',
-      });
-    } else if (declaredSber === null) {
-      checks.push({
-        id: `handover-sber-${task.id}`,
-        taskId: task.id,
-        label: 'Итог Сбербанка',
+        label: 'Операции терминала при сдаче',
         status: 'waiting',
-        summary: 'Сотрудник ещё не указал, были ли оплаты.',
+        summary: 'Сотрудник ещё не указал, были ли новые операции терминала.',
       });
     } else {
-      const oneCHasSber = terminalTotals.checks > 0;
-      const reportedTotal = storeClosing ? readNumber(storeClosing.sberbankTerminalTotal) : null;
-      const booleanMatches = declaredSber === oneCHasSber;
-      const totalMatches = !oneCHasSber
-        || reportedTotal === null
-        || Math.abs(reportedTotal - terminalTotals.amount) <= oneCMoneyTolerance;
       checks.push({
-        id: `handover-sber-${task.id}`,
+        id: `handover-terminal-${task.id}`,
         taskId: task.id,
-        label: 'Итог Сбербанка',
-        status: booleanMatches && totalMatches ? 'matched' : 'mismatch',
-        summary: `1С: ${terminalTotals.checks} оплат на ${formatMoney(terminalTotals.amount)}; сотрудник указал ${declaredSber ? 'оплаты были' : 'оплат не было'}${reportedTotal === null ? '' : `, итог ${formatMoney(reportedTotal)}`}.`,
+        label: 'Операции терминала при сдаче',
+        status: 'unavailable',
+        summary: declaredTerminalOperations
+          ? `Сотрудник указал, что новые операции были; результат сверки: ${readText(terminalCheck?.reconciliation) === 'discrepancy' ? 'есть расхождение' : 'всё совпадает'}.`
+          : 'Сотрудник указал, что новых операций не было.',
+        evidence: 'Источник всех операций единого терминала пока не подключён к этой автопроверке.',
       });
     }
 
@@ -1091,7 +1053,10 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     .filter((employee) => usesWorkdayShiftControl(employee))
     .map((employee) => {
       const run = shiftControlRunByUser.get(employee.id);
-      const task = run?.tasks.find((item) => item.category === 'acquiring') ?? null;
+      const tasks = run?.tasks.filter((item) => item.category === 'acquiring') ?? [];
+      const task = [...tasks].reverse().find((item) => acquiringControlStatus(item).problem)
+        ?? tasks.at(-1)
+        ?? null;
       return {
         employee,
         schedule: scheduleByUser.get(employee.id),
@@ -1100,10 +1065,24 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         status: acquiringControlStatus(task),
       };
     });
-  const acquiringDoneCount = acquiringControlRows.filter((row) => row.task?.status === 'done').length;
-  const acquiringPendingCount = acquiringControlRows.filter((row) => row.status.problem && row.task?.integerValue !== 2).length;
-  const acquiringDiscrepancyCount = acquiringControlRows.filter((row) => row.task?.integerValue === 2).length;
-  const acquiringNoPaymentsCount = acquiringControlRows.filter((row) => row.task?.integerValue === 0).length;
+  const acquiringTaskRows = employees
+    .filter((employee) => usesWorkdayShiftControl(employee))
+    .flatMap((employee) => {
+      const run = shiftControlRunByUser.get(employee.id);
+      return (run?.tasks ?? [])
+        .filter((task) => task.category === 'acquiring')
+        .map((task) => ({
+          employee,
+          schedule: scheduleByUser.get(employee.id),
+          workDay: workDayByUser.get(employee.id),
+          task,
+          status: acquiringControlStatus(task),
+        }));
+    });
+  const acquiringDoneCount = acquiringTaskRows.filter((row) => row.task.status === 'done').length;
+  const acquiringPendingCount = acquiringTaskRows.filter((row) => row.status.problem && row.task.integerValue !== 2).length;
+  const acquiringDiscrepancyCount = acquiringTaskRows.filter((row) => row.task.integerValue === 2).length;
+  const acquiringNoPaymentsCount = acquiringTaskRows.filter((row) => row.task.integerValue === 0).length;
   const acquiringControlRowByUser = new Map(acquiringControlRows.map((row) => [row.employee.id, row]));
   const criticalSystemErrorCount = [
     cashStatementDimensions.ok,
@@ -1150,7 +1129,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             ? `Подтверждённых проблем: ${manualIssueCount}`
             : `Расхождений по 1С: ${mismatchCount}`
           : null,
-        acquiringRow?.status.problem ? `Эквайринг: ${acquiringRow.status.label}` : null,
+        acquiringRow?.status.problem ? `Операции терминала: ${acquiringRow.status.label}` : null,
         timingViolationCount > 0
           ? timingViolationCount === 1
             ? timingViolations[0].label
@@ -1353,7 +1332,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               <div>
                 <h2 className='text-lg font-extrabold text-slate-950'>Состояние автоматических проверок</h2>
                 <p className='mt-1 max-w-3xl text-sm font-medium leading-relaxed text-slate-500'>
-                  Сверка касс, резерва, Сбербанка и Т-Банка. Ограничения автоматизации не считаются ошибкой сотрудника.
+                  Сверка касс, резерва, операций терминала и кредитных документов. Ограничения автоматизации не считаются ошибкой сотрудника.
                 </p>
               </div>
             </div>
@@ -1362,7 +1341,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 кассы 1С: {cashStatementDimensions.ok ? 'доступны' : 'ошибка'}
               </Badge>
               <Badge className={kkmDiagnostics.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
-                ККМ/Сбербанк: {kkmDiagnostics.ok ? 'доступны' : 'ошибка'}
+                ККМ: {kkmDiagnostics.ok ? 'доступна' : 'ошибка'}
               </Badge>
               <Badge className={tbankSales.ok ? 'bg-green-100 text-green-800' : 'bg-rose-100 text-rose-800'}>
                 Т-Банк: {tbankSales.ok ? 'доступен' : 'ошибка'}
@@ -1757,15 +1736,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 <CreditCard className='h-5 w-5' />
               </span>
               <div>
-                <h2 className='text-lg font-extrabold text-slate-950'>Эквайринг</h2>
+                <h2 className='text-lg font-extrabold text-slate-950'>Операции терминала</h2>
                 <p className='mt-1 text-sm font-medium text-slate-500'>
-                  Сводка по чек-листам оплат картой. Показывает, кто сверил терминал, где оплат не было и где есть расхождение.
+                  Все проверки операций терминала за день: без новых операций, успешные сверки и обнаруженные расхождения.
                 </p>
               </div>
             </div>
             <div className='flex flex-wrap gap-2 text-xs font-bold'>
-              <Badge className='bg-green-100 text-green-800'>выполнено: {acquiringDoneCount}/{acquiringControlRows.length}</Badge>
-              <Badge className='bg-slate-100 text-slate-700'>оплат не было: {acquiringNoPaymentsCount}</Badge>
+              <Badge className='bg-green-100 text-green-800'>выполнено: {acquiringDoneCount}/{acquiringTaskRows.length}</Badge>
+              <Badge className='bg-slate-100 text-slate-700'>новых операций не было: {acquiringNoPaymentsCount}</Badge>
               <Badge className={acquiringDiscrepancyCount > 0 ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'}>
                 расхождений: {acquiringDiscrepancyCount}
               </Badge>
@@ -1774,8 +1753,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               </Badge>
             </div>
           </div>
-          {acquiringControlRows.length === 0 ? (
-            <div className='px-5 py-4 text-sm font-semibold text-slate-500'>Нет сотрудников с чек-листом смены для контроля эквайринга.</div>
+          {acquiringTaskRows.length === 0 ? (
+            <div className='px-5 py-4 text-sm font-semibold text-slate-500'>Нет сотрудников с чек-листом смены для контроля операций терминала.</div>
           ) : (
             <div className='overflow-x-auto'>
               <Table>
@@ -1784,13 +1763,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                     <th className='px-4 py-2.5'>Сотрудник</th>
                     <th className='px-4 py-2.5'>График и смена</th>
                     <th className='px-4 py-2.5'>Результат</th>
-                    <th className='px-4 py-2.5'>Сумма</th>
                     <th className='px-4 py-2.5'>Что проверить</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {acquiringControlRows.map((row) => (
-                    <tr key={row.employee.id} className='border-t border-slate-100 align-middle'>
+                  {acquiringTaskRows.map((row) => (
+                    <tr key={row.task.id} className='border-t border-slate-100 align-middle'>
                       <td className='px-4 py-2.5'>
                         <p className='font-bold text-slate-950'>
                           {row.employee.name}
@@ -1806,9 +1784,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                         {row.task?.status === 'done' && row.task.completedAt ? (
                           <span className='ml-2 text-xs font-semibold text-slate-400'>{formatTime(row.task.completedAt)}</span>
                         ) : null}
-                      </td>
-                      <td className='whitespace-nowrap px-4 py-2.5 font-semibold text-slate-700'>
-                        {row.task?.integerValue === 0 ? '0 ₽' : formatMoney(row.task?.numericValue)}
                       </td>
                       <td className={`max-w-[360px] px-4 py-2.5 text-sm font-semibold ${row.status.problem ? 'text-amber-800' : 'text-slate-600'}`}>
                         {row.task?.comment || (row.status.problem ? 'Нужно проверить' : '—')}

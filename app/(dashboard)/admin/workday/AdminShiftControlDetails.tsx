@@ -207,13 +207,17 @@ function textValue(value: unknown) {
 }
 
 function acquiringResult(task: ShiftTask) {
-  if (task.integerValue === 0) return { label: 'Оплат не было', problem: false, legacy: false };
-  if (task.integerValue === 1) return { label: 'Сверено', problem: false, legacy: false };
+  if (task.integerValue === 0) return { label: 'Новых операций не было', problem: false, legacy: false };
+  if (task.integerValue === 1) return { label: 'Всё совпадает', problem: false, legacy: false };
   if (task.integerValue === 2) return { label: 'Есть расхождение', problem: true, legacy: false };
   if (task.numericValue !== null && task.numericValue !== undefined) {
     return { label: 'Сумма введена по старой версии', problem: false, legacy: true };
   }
   return { label: 'Результат не указан', problem: false, legacy: false };
+}
+
+function taskDisplayTitle(task: ShiftTask) {
+  return task.category === 'acquiring' ? 'Проверка операций терминала' : task.title;
 }
 
 function creditResult(task: ShiftTask) {
@@ -303,14 +307,18 @@ function TaskValue({ task, onPreview }: { task: ShiftTask; onPreview: (photo: Ph
   }
   if (task.category === 'acquiring') {
     const result = acquiringResult(task);
+    const photo = readPhoto(readPhotos(task.handoverData), 'terminalReceipts');
     return (
-      <span className='inline-flex flex-wrap items-center gap-1.5'>
-        <span className={result.problem ? 'font-extrabold text-amber-800' : result.legacy ? 'font-extrabold text-slate-500' : ''}>
-          {result.label}
+      <div className='grid gap-2'>
+        <span className='inline-flex flex-wrap items-center gap-1.5'>
+          <span className={result.problem ? 'font-extrabold text-amber-800' : result.legacy ? 'font-extrabold text-slate-500' : ''}>
+            {result.label}
+          </span>
+          {result.legacy && task.numericValue !== null && task.numericValue !== undefined && <span>· сумма: {formatMoney(task.numericValue)}</span>}
+          {task.comment && <span>· {task.comment}</span>}
         </span>
-        {task.numericValue !== null && task.numericValue !== undefined && <span>· сумма: {formatMoney(task.numericValue)}</span>}
-        {task.comment && <span>· {task.comment}</span>}
-      </span>
+        {photo && <PhotoRow label='Чеки терминала' photo={photo} onPreview={onPreview} />}
+      </div>
     );
   }
   if (task.category === 'credit') {
@@ -359,6 +367,7 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
   const personalCash = readRecord(data, 'personalCash');
   const reserveCash = readRecord(data, 'reserveCash');
   const storeClosing = readRecord(data, 'storeClosing');
+  const terminalCheck = readRecord(data, 'terminalCheck');
   const photos = readPhotos(data);
   const comment = isRecord(data) ? data.comment : '';
   const isRetail = department === 'retail';
@@ -373,8 +382,9 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
             <PhotoRow label='Фото ведомости 1С' photo={readPhoto(photos, 'personalStatement')} onPreview={onPreview} />
             <DetailRow label='Остаток наличных' value={formatMoney(Number(personalCash.cashBalance ?? 0))} />
-            {isRetail && <DetailRow label='Оплаты Сбербанка' value={yesNo(personalCash.hasSberbankAcquiring)} />}
-            {isRetail && <PhotoRow label='Фото чеков Сбербанка' photo={readPhoto(photos, 'personalAcquiringReceipts')} onPreview={onPreview} />}
+            {isRetail && <DetailRow label='Операции терминала' value={yesNo(terminalCheck?.hadOperations)} />}
+            {isRetail && <DetailRow label='Результат сверки терминала' value={terminalCheck?.reconciliation === 'discrepancy' ? 'Есть расхождение' : terminalCheck?.reconciliation === 'matched' ? 'Всё совпадает' : '—'} />}
+            {isRetail && <PhotoRow label='Чеки терминала' photo={readPhoto(photos, 'terminalReceipts') ?? readPhoto(photos, 'personalAcquiringReceipts')} onPreview={onPreview} />}
             {isRetail && <DetailRow label='Операции Т-Банка' value={yesNo(personalCash.hasTbankCredit)} />}
             <DetailRow label='Расхождение' value={discrepancyLabel(personalCash.discrepancyType)} />
             <DetailRow
@@ -405,8 +415,6 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
         <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
           <h4 className='text-sm font-extrabold text-slate-950'>Закрытие магазина</h4>
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <PhotoRow label='Фото сверки итогов Сбербанка' photo={readPhoto(photos, 'sberbankTerminalReport')} onPreview={onPreview} />
-            <DetailRow label='Сумма сверки Сбербанка' value={formatMoney(Number(storeClosing.sberbankTerminalTotal ?? 0))} />
             <DetailRow label='Операции Т-Банка' value={yesNo(storeClosing.hasTbankCredit)} />
             <PhotoRow label='Фото чеков Т-Банка' photo={readPhoto(photos, 'tbankReceipts')} onPreview={onPreview} />
             <PhotoRow label='Фото сверки итогов Т-Банка' photo={readPhoto(photos, 'tbankTerminalReport')} onPreview={onPreview} />
@@ -426,10 +434,11 @@ function HandoverOverview({ data, department }: { data: unknown; department: str
   const personalCash = readRecord(data, 'personalCash');
   const reserveCash = readRecord(data, 'reserveCash');
   const storeClosing = readRecord(data, 'storeClosing');
+  const terminalCheck = readRecord(data, 'terminalCheck');
   const photos = readPhotos(data);
   const photoKeys = department === 'retail'
-    ? ['personalStatement', 'personalAcquiringReceipts', 'encashmentDocument', 'sberbankTerminalReport', 'tbankReceipts', 'tbankTerminalReport', 'zReport']
-    : ['personalStatement', 'encashmentDocument', 'sberbankTerminalReport', 'tbankReceipts', 'tbankTerminalReport', 'zReport'];
+    ? ['personalStatement', 'terminalReceipts', 'personalAcquiringReceipts', 'encashmentDocument', 'tbankReceipts', 'tbankTerminalReport', 'zReport']
+    : ['personalStatement', 'encashmentDocument', 'tbankReceipts', 'tbankTerminalReport', 'zReport'];
   const photoCount = photoKeys.filter((key) => Boolean(photoHref(readPhoto(photos, key)))).length;
 
   if (!personalCash && !reserveCash && !storeClosing) return null;
@@ -451,7 +460,7 @@ function HandoverOverview({ data, department }: { data: unknown; department: str
             : formatMoney(Number(reserveCash.cashBalance))}
         />
         {department === 'retail' ? (
-          <DetailRow label='Сбербанк' value={yesNo(personalCash?.hasSberbankAcquiring)} />
+          <DetailRow label='Операции терминала' value={yesNo(terminalCheck?.hadOperations)} />
         ) : null}
         <DetailRow label='Т-Банк' value={yesNo(storeClosing?.hasTbankCredit ?? personalCash?.hasTbankCredit)} />
         <DetailRow label='Инкассация' value={yesNo(personalCash?.requiresEncashment)} />
@@ -492,7 +501,7 @@ function TaskDetailCard({
   return (
     <div className={`rounded-xl border p-3 ${toneClass}`}>
       <div className='flex flex-wrap items-center justify-between gap-2'>
-        <p className='text-sm font-extrabold text-slate-950'>{item.task.title}</p>
+        <p className='text-sm font-extrabold text-slate-950'>{taskDisplayTitle(item.task)}</p>
         <Badge className={badgeClass(item.status)}>{taskStatusLabel(item.status)}</Badge>
       </div>
       <div className='mt-2 grid gap-1 text-xs font-semibold text-slate-600 sm:grid-cols-3'>
