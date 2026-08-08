@@ -58,6 +58,14 @@ function scheduleClass(status: string | undefined) {
   return 'bg-amber-100 text-amber-800';
 }
 
+function shiftState(workDay: { status: string; endedAt: Date | null } | null | undefined) {
+  if (workDay?.endedAt || workDay?.status === 'completed') {
+    return { label: 'Завершил смену', className: 'bg-slate-100 text-slate-700' };
+  }
+  if (workDay) return { label: 'Работает', className: 'bg-green-100 text-green-800' };
+  return { label: 'Не начал', className: 'bg-white text-slate-600 ring-1 ring-slate-200' };
+}
+
 function serializeShiftControlRun(run: any) {
   if (!run) return null;
   return {
@@ -1203,6 +1211,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 </thead>
                 <tbody>
                   {filteredEmployeeControlRows.map((row) => {
+                    const currentShiftState = shiftState(row.workDay);
                     const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
                     const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
                     const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
@@ -1221,7 +1230,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                         </td>
                         <td className='whitespace-nowrap px-4 py-2.5 text-sm font-semibold text-slate-700'>
                           {row.workDay?.shiftLabel ?? '—'}
-                          <p className='mt-0.5 text-xs font-semibold text-slate-400'>{scheduleStatusLabel(row.schedule?.status)}</p>
+                          <div className='mt-1'>
+                            <Badge className={currentShiftState.className}>{currentShiftState.label}</Badge>
+                          </div>
                         </td>
                         <td className='whitespace-nowrap px-4 py-2.5 text-sm font-extrabold text-slate-800'>
                           {row.totalTaskCount > 0 ? `${row.completedTaskCount} из ${row.totalTaskCount}` : '—'}
