@@ -210,3 +210,20 @@ employee detail card.
 - completion after midnight remains a real late completion for the original
   workday;
 - test data follows the same timing rules as production data.
+
+## 2026-08-08 - Employee Checklist Corrections
+
+Employees may correct a completed checklist answer while the workday is still
+active. Corrections are controlled rather than destructive:
+
+- navigation inside an unfinished checklist remains freely reversible;
+- a completed task exposes `Исправить ответ` until shift handover;
+- the original answer, correction time and prior evidence are appended to the
+  task revision history and remain visible to administrators;
+- the original task `completedAt` remains unchanged, so terminal intervals do
+  not move or overlap after a correction;
+- a cash correction keeps the 1C snapshot captured at original completion;
+- changing a conditional answer clears data that is no longer applicable;
+- an existing required photo may be retained or replaced, but not silently
+  removed while the corrected answer still requires it;
+- after shift handover, employees cannot edit the completed workday.
