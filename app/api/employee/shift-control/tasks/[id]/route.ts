@@ -252,8 +252,10 @@ async function savePhoto(file: File, runId: number, taskId: number, key: string)
 
 async function saveHandoverDraft(
   formData: FormData,
-  task: { id: number; runId: number; handoverData: unknown; run: { workDayEntry: { shiftCode: string } } },
+  task: { id: number; runId: number; handoverData: unknown; run: { date: string; workDayEntry: { shiftCode: string } } },
   isRetail: boolean,
+  userId: number,
+  date: string,
 ) {
   const existing = isRecord(task.handoverData) ? task.handoverData : {};
   const existingPersonalCash = readRecord(existing, 'personalCash') ?? {};
@@ -262,8 +264,6 @@ async function saveHandoverDraft(
 
   const personalCashBalance = readFormNumber(formData, 'personalCashBalance');
   const reserveCashBalance = readFormNumber(formData, 'reserveCashBalance');
-  const discrepancyType = readFormString(formData, 'discrepancyType');
-  const discrepancyAmount = readFormNumber(formData, 'discrepancyAmount');
   const terminalHadOperations = readFormBoolean(formData, 'terminalHadOperations');
   const terminalReconciliation = readFormString(formData, 'terminalReconciliation');
   const terminalComment = readFormString(formData, 'terminalComment');
@@ -286,16 +286,36 @@ async function saveHandoverDraft(
     }
   }
 
+  const existingAudit = isRecord(existing[shiftControlOneCAuditKey])
+    ? existing[shiftControlOneCAuditKey] as Record<string, unknown>
+    : null;
+  const auditFactBalance = existingAudit ? readNumber(existingAudit.factCashBalance) : null;
+  const oneCAudit = personalCashBalance !== null && (!existingAudit || auditFactBalance !== personalCashBalance)
+    ? {
+        ...await captureOneCCashAudit({ userId, date, includeReserve: isRetail, capturedAt: new Date() }),
+        factCashBalance: personalCashBalance,
+      }
+    : existingAudit;
+  const personalAudit = oneCAudit ? readRecord(oneCAudit, 'personalCash') : null;
+  const expectedCash = personalAudit?.status === 'captured' ? readNumber(personalAudit.balance) : null;
+  const cashDifference = personalCashBalance !== null && expectedCash !== null ? personalCashBalance - expectedCash : null;
+  const discrepancyMagnitude = cashDifference === null ? null : Math.abs(cashDifference);
+  const calculatedDiscrepancyType = discrepancyMagnitude === null || discrepancyMagnitude <= 1
+    ? 'none'
+    : cashDifference! > 0 ? 'surplus' : 'shortage';
+  const calculatedDiscrepancyAmount = discrepancyMagnitude !== null && discrepancyMagnitude > 1 ? discrepancyMagnitude : null;
+
   const nextData = {
     ...existing,
     draft: true,
     shiftCode: task.run.workDayEntry.shiftCode,
     updatedAt: new Date().toISOString(),
+    [shiftControlOneCAuditKey]: oneCAudit,
     personalCash: {
       ...existingPersonalCash,
       cashBalance: personalCashBalance,
-      discrepancyType: discrepancyType || existingPersonalCash.discrepancyType || '',
-      discrepancyAmount: discrepancyType === 'none' ? null : discrepancyAmount,
+      discrepancyType: expectedCash === null ? '' : calculatedDiscrepancyType,
+      discrepancyAmount: expectedCash === null ? null : calculatedDiscrepancyAmount,
       hadWithdrawal: null,
       withdrawalAmount: null,
       cashOrderAmount: null,
@@ -329,7 +349,7 @@ async function saveHandoverDraft(
     data: { handoverData: nextData as Prisma.InputJsonValue, comment },
   });
 
-  return Response.json({ task: updatedTask });
+  return Response.json({ task: taskForEmployee(updatedTask) });
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -368,14 +388,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (readFormString(formData, 'intent') === 'draft') {
       try {
-        return await saveHandoverDraft(formData, task, user.department === 'retail');
+        return await saveHandoverDraft(formData, task, user.department === 'retail', user.id, task.run.date);
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить шаг сдачи смены' }, { status: 400 });
       }
     }
 
     const isRetail = user.department === 'retail';
-    const draftResponse = await saveHandoverDraft(formData, task, isRetail);
+    const draftResponse = await saveHandoverDraft(formData, task, isRetail, user.id, task.run.date);
     const draftPayload = await draftResponse.json();
     const handoverData = draftPayload.task.handoverData;
     const personalCash = readRecord(handoverData, 'personalCash') ?? {};
@@ -397,8 +417,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
     if (isRetail && reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
-    if (!['none', 'surplus', 'shortage'].includes(discrepancyType)) return Response.json({ error: 'Укажите расхождение по моей кассе' }, { status: 400 });
-    if (discrepancyType !== 'none' && discrepancyAmount === null) return Response.json({ error: 'Укажите сумму расхождения' }, { status: 400 });
+    if (discrepancyType && !['none', 'surplus', 'shortage'].includes(discrepancyType)) {
+      return Response.json({ error: 'Не удалось определить расхождение по кассе' }, { status: 400 });
+    }
     if (requiresDiscrepancyComment && !comment) return Response.json({ error: 'Добавьте комментарий: расхождение больше 300 ₽' }, { status: 400 });
     if (isRetail) {
       if (terminalHadOperations === null) return Response.json({ error: 'Укажите, были ли новые операции терминала' }, { status: 400 });
@@ -439,17 +460,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
       };
       const now = new Date();
-      const oneCAudit = await captureOneCCashAudit({
-        userId: user.id,
-        date: task.run.date,
-        includeReserve: isRetail,
-        capturedAt: now,
-      });
+      const savedOneCAudit = isRecord(handoverData[shiftControlOneCAuditKey])
+        ? handoverData[shiftControlOneCAuditKey]
+        : await captureOneCCashAudit({ userId: user.id, date: task.run.date, includeReserve: isRetail, capturedAt: now });
       const finalHandoverData = {
         draft: false,
         shiftCode: task.run.workDayEntry.shiftCode,
         submittedAt: now.toISOString(),
-        [shiftControlOneCAuditKey]: oneCAudit,
+        [shiftControlOneCAuditKey]: savedOneCAudit,
         scope: {
           personalCash: true,
           reserveCash: isRetail,

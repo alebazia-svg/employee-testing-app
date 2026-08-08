@@ -1045,11 +1045,12 @@ export function EmployeeTodayClient({
   function buildHandoverSteps(draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
     const draftRequiresEncashment = draftCashBalance !== null && draftCashBalance > 50000;
+    const draftDiscrepancyAmount = parseMoneyInput(draft.discrepancyAmount);
     const isRetailEmployee = user.department === 'retail';
     return [
       'personalCashBalance',
+      ...(draftDiscrepancyAmount !== null && draftDiscrepancyAmount > 300 ? ['discrepancy'] : []),
       ...(isRetailEmployee ? ['reserveCashBalance'] : []),
-      'discrepancy',
       ...(isRetailEmployee ? ['terminalQuestion'] : []),
       ...(isRetailEmployee && draft.terminalHadOperations === 'yes' ? ['terminalReconciliation', 'terminalReceipts'] : []),
       ...(draftRequiresEncashment ? ['encashment'] : []),
@@ -1980,16 +1981,11 @@ export function EmployeeTodayClient({
   function getHandoverStepError(step = handoverSteps[handoverStep], draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
     const draftReserveCashBalance = parseMoneyInput(draft.reserveCashBalance);
-    const draftDiscrepancyAmount = parseMoneyInput(draft.discrepancyAmount);
 
     if (step === 'personalCashBalance' && draftCashBalance === null) return 'Укажите остаток наличных в моей кассе';
     if (step === 'reserveCashBalance' && draftReserveCashBalance === null) return 'Укажите остаток наличных в резерве';
     if (step === 'discrepancy') {
-      if (!draft.discrepancyType) return 'Укажите расхождение по моей кассе';
-      if (draft.discrepancyType !== 'none') {
-        if (draftDiscrepancyAmount === null) return 'Укажите сумму расхождения';
-        if (draftDiscrepancyAmount > 300 && !draft.comment.trim()) return 'Комментарий обязателен: расхождение больше 300 ₽';
-      }
+      if (!draft.comment.trim()) return 'Добавьте комментарий к расхождению';
     }
     if (step === 'terminalQuestion' && !draft.terminalHadOperations) return 'Укажите, были ли новые операции терминала';
     if (step === 'terminalReconciliation') {
@@ -2252,52 +2248,18 @@ export function EmployeeTodayClient({
 
         {step === 'discrepancy' && (
           <div className='grid gap-3'>
-            <p className='text-sm font-extrabold text-slate-800'>Расхождение</p>
-            <p className='text-xs font-semibold leading-snug text-slate-500'>
-              Укажите, есть ли излишек или недостача.
+            <p className='rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
+              {handoverDraft.discrepancyType === 'surplus' ? 'Излишек' : 'Недостача'}: {formatCashOperationAmount(handoverDiscrepancyAmount ?? 0)}
             </p>
-            <div className='grid grid-cols-3 gap-2'>
-              {[
-                ['none', 'Нет'],
-                ['surplus', 'Излишек'],
-                ['shortage', 'Недостача'],
-              ].map(([value, label]) => (
-                <Button
-                  key={value}
-                  type='button'
-                  className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.discrepancyType === value ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
-                  onClick={() => updateHandoverDraft({ discrepancyType: value as HandoverDraft['discrepancyType'], discrepancyAmount: value === 'none' ? '' : handoverDraft.discrepancyAmount, comment: value === 'none' ? '' : handoverDraft.comment })}
-                >
-                  {label}
-                </Button>
-              ))}
-            </div>
-            {handoverDraft.discrepancyType && handoverDraft.discrepancyType !== 'none' && (
-              <div className='grid gap-2'>
-                <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-                  {handoverDraft.discrepancyType === 'surplus' ? 'Сумма излишка' : 'Сумма недостачи'}
-                  <input
-                    type='number'
-                    inputMode='decimal'
-                    min='0'
-                    step='0.01'
-                    value={handoverDraft.discrepancyAmount}
-                    onChange={(event) => updateHandoverDraft({ discrepancyAmount: event.target.value })}
-                    className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                    placeholder='0'
-                  />
-                </label>
-                <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-                  Комментарий к расхождению {handoverDiscrepancyAmount !== null && handoverDiscrepancyAmount > 300 ? '(обязательно)' : '(необязательно)'}
-                  <textarea
-                    value={handoverDraft.comment}
-                    onChange={(event) => updateHandoverDraft({ comment: event.target.value })}
-                    className='min-h-16 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                    placeholder='Причина расхождения'
-                  />
-                </label>
-              </div>
-            )}
+            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+              Комментарий к расхождению
+              <textarea
+                value={handoverDraft.comment}
+                onChange={(event) => updateHandoverDraft({ comment: event.target.value })}
+                className='min-h-16 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                placeholder='Кратко укажите причину'
+              />
+            </label>
             {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
           </div>
         )}
@@ -2478,10 +2440,12 @@ export function EmployeeTodayClient({
               try {
                 setIsSaving(true);
                 const nextDraft = handoverDraft;
-                await saveHandoverDraft(task, nextDraft);
-                const nextSteps = buildHandoverSteps(nextDraft);
+                const savedTask = await saveHandoverDraft(task, nextDraft);
+                const savedDraft = isRecord(savedTask.handoverData) ? draftFromHandoverData(savedTask.handoverData) : nextDraft;
+                setHandoverDraft(savedDraft);
+                const nextSteps = buildHandoverSteps(savedDraft);
                 if (handoverStep >= nextSteps.length - 1) {
-                  await submitHandover(task, nextDraft, nextSteps);
+                  await submitHandover(task, savedDraft, nextSteps);
                   return;
                 }
                 setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
