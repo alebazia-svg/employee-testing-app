@@ -310,6 +310,14 @@ The first employee screen is intentionally mobile-first and action-first:
 - other shift tasks stay secondary behind `Показать остальные задачи`;
 - normal active workday should not show a separate `Завершить` button.
 
+Employee synchronization is event-first. QR start, checklist answers, photo
+uploads, cash operations and shift handover refresh workday state immediately.
+While the Workday tab is visible, a 60-second snapshot is only a safety net and
+the elapsed timer runs once per second only for an active shift. The Schedule
+tab uses its own lightweight snapshot on open/focus and every 30 seconds while
+visible, so colleague changes appear without reloading and the schedule is not
+rerendered by the workday timer.
+
 Admin QR codes live in `/admin/workday`. The diagnostic camera/QR page is
 `/admin/dev/qr-test` and should stay a technical tool for checking iPhone/PWA
 camera behavior separately from Workday logic.
