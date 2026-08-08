@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   const tillDate = new Date(till);
   const defaultFrom = Number.isNaN(tillDate.getTime())
     ? till
-    : new Date(tillDate.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    : new Date(tillDate.getTime() - (24 * 60 - 1) * 60 * 1000).toISOString();
   const from = url.searchParams.get('from')?.trim() || defaultFrom;
   const limitParam = Number(url.searchParams.get('limit') ?? 1000);
   const limit = Number.isFinite(limitParam) ? limitParam : 1000;

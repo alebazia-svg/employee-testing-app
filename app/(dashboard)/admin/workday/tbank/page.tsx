@@ -36,7 +36,8 @@ export default async function AdminTBankAcquiringPage({
   const terminalsResult = await getTBankTerminals();
   const selectedTerminal = searchParams.terminalKey?.trim() || '';
   const tillDate = new Date();
-  const fromDate = new Date(tillDate.getTime() - 24 * 60 * 60 * 1000);
+  // T-Bank rejects an interval equal to exactly 24 hours as exceeding one day.
+  const fromDate = new Date(tillDate.getTime() - (24 * 60 - 1) * 60 * 1000);
   const operationsResult = selectedTerminal
     ? await getTBankTerminalOperations({
         terminalKey: selectedTerminal,
@@ -80,7 +81,7 @@ export default async function AdminTBankAcquiringPage({
             <CheckCircle2 className='mt-0.5 h-5 w-5 shrink-0 text-green-700' />
             <div>
               <h2 className='font-extrabold text-green-950'>Соединение работает</h2>
-              <p className='mt-1 text-sm font-semibold text-green-800'>Найдено терминалов: {terminalsResult.totalElements ?? terminalsResult.terminals.length}. Ответ за {terminalsResult.durationMs} мс.</p>
+              <p className='mt-1 text-sm font-semibold text-green-800'>Получено активных терминалов: {terminalsResult.terminals.length}. Ответ за {terminalsResult.durationMs} мс.</p>
             </div>
           </div>
         </Card>
