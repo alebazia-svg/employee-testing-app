@@ -199,6 +199,14 @@ For cash specifically: the employee enters the real counted amount first. The
 expected 1C cash balance should not be shown in a way that encourages copying
 instead of counting.
 
+At shift handover the portal captures the 1C cash balance when the employee
+saves the counted fact and calculates surplus/shortage itself. A difference up
+to 1 RUB is treated as matched. A difference above 1 RUB is retained for admin
+control; an employee comment is required only when the absolute difference is
+above 300 RUB. If 1C is unavailable, handover is not blocked and the check is
+left for manual admin review. The employee is never asked to choose surplus or
+shortage or enter the difference manually.
+
 Retail shift handover records two separate cash facts in sequence: the employee
 first enters the counted balance of their own cashbox, then the counted balance
 of the shared reserve. Reserve entry is a single amount without denomination
