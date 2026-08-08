@@ -2077,19 +2077,12 @@ export function EmployeeTodayClient({
       setHandoverDraft(savedDraft);
       const nextSteps = buildHandoverSteps(savedDraft);
       const isFinalStep = handoverStep >= nextSteps.length - 1;
-      const purePhotoStep =
-        field === 'zReportPhoto' ||
-        (field === 'encashmentDocumentPhoto' && isFinalStep);
-      if (purePhotoStep) {
-        if (isFinalStep) {
-          await submitHandover(task, savedDraft, nextSteps);
-          return;
-        }
-        setMessage('Фото прикреплено');
-        setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
-      } else {
-        setMessage('Фото прикреплено');
+      if (isFinalStep) {
+        await submitHandover(task, savedDraft, nextSteps);
+        return;
       }
+      setMessage('Фото прикреплено');
+      setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить фото');
     } finally {
@@ -2097,15 +2090,18 @@ export function EmployeeTodayClient({
     }
   }
 
-  function renderPhotoInput(label: string, field: HandoverPhotoKey, task: ShiftControlTask, hint?: string, fieldError?: string) {
+  function renderPhotoInput(label: string, field: HandoverPhotoKey, task: ShiftControlTask, hint?: string, fieldError?: string, disabledReason?: string) {
     const file = handoverDraft[field];
     return (
       <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
         {label}
         {hint && <span className='text-xs font-semibold leading-snug text-slate-500'>{hint}</span>}
         {!file && (
-          <span className='flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 text-sm font-extrabold text-white shadow-sm'>
-            Сделать фото
+          <span className={cn(
+            'flex min-h-11 items-center justify-center rounded-lg px-3 text-sm font-extrabold shadow-sm',
+            disabledReason ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'cursor-pointer bg-[#111821] text-white',
+          )}>
+            {isSaving ? 'Сохраняем фото...' : 'Сделать фото'}
           </span>
         )}
         <input
@@ -2113,7 +2109,7 @@ export function EmployeeTodayClient({
           accept='image/*'
           capture='environment'
           className='sr-only'
-          disabled={isSaving}
+          disabled={isSaving || Boolean(disabledReason)}
           onChange={(event) => {
             const file = event.target.files?.[0] ?? null;
             event.currentTarget.value = '';
@@ -2121,6 +2117,7 @@ export function EmployeeTodayClient({
           }}
         />
         {file && <span className='rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold text-green-700 ring-1 ring-green-100'>Фото прикреплено</span>}
+        {disabledReason && <span className='text-[11px] font-semibold text-amber-700'>{disabledReason}</span>}
         {fieldError && <span className='text-[11px] font-bold text-amber-700'>{fieldError}</span>}
       </label>
     );
@@ -2164,6 +2161,15 @@ export function EmployeeTodayClient({
               ? AlertTriangle
               : ReceiptText;
     const HandoverIcon = handoverIcon;
+    const photoFieldForStep: Partial<Record<string, HandoverPhotoKey>> = {
+      encashment: 'encashmentDocumentPhoto',
+      terminalReceipts: 'terminalReceiptsPhoto',
+      tbankReceipts: 'tbankReceiptsPhoto',
+      tbankTerminal: 'tbankTerminalReportPhoto',
+      zReportPhoto: 'zReportPhoto',
+    };
+    const currentPhotoField = photoFieldForStep[step];
+    const photoCompletesHandoverStep = Boolean(currentPhotoField && !hasHandoverPhoto(handoverDraft[currentPhotoField]));
 
     return (
       <div className='rounded-xl bg-white p-3 ring-1 ring-slate-200/80'>
@@ -2301,6 +2307,7 @@ export function EmployeeTodayClient({
               task,
               'Сфотографируйте деньги перед помещением в сейф.',
               stepError && parseMoneyInput(handoverDraft.encashmentAmount) !== null ? stepError : undefined,
+              parseMoneyInput(handoverDraft.encashmentAmount) === null ? 'Сначала укажите сумму инкассации' : undefined,
             )}
           </div>
         )}
@@ -2394,7 +2401,6 @@ export function EmployeeTodayClient({
 
         {step === 'tbankTerminal' && (
           <div className='grid gap-3'>
-            {renderPhotoInput('Сверка итогов Т-Банка', 'tbankTerminalReportPhoto', task, 'Выполните «Сверку итогов» и сфотографируйте чек.', stepError && !hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) ? stepError : undefined)}
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
               Сумма по сверке итогов Т-Банка
               <input
@@ -2409,10 +2415,18 @@ export function EmployeeTodayClient({
               />
               {stepError && hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
             </label>
+            {renderPhotoInput(
+              'Сверка итогов Т-Банка',
+              'tbankTerminalReportPhoto',
+              task,
+              'Выполните «Сверку итогов» и сфотографируйте чек.',
+              stepError && parseMoneyInput(handoverDraft.tbankTerminalTotal) !== null ? stepError : undefined,
+              parseMoneyInput(handoverDraft.tbankTerminalTotal) === null ? 'Сначала укажите сумму по сверке итогов' : undefined,
+            )}
           </div>
         )}
 
-        <div className='mt-4 grid grid-cols-2 gap-2'>
+        <div className={cn('mt-4 grid gap-2', photoCompletesHandoverStep ? 'grid-cols-1' : 'grid-cols-2')}>
           <Button
             type='button'
             className='h-10 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
@@ -2430,7 +2444,7 @@ export function EmployeeTodayClient({
           >
             {handoverStep === 0 ? 'Отмена' : 'Назад'}
           </Button>
-          <Button
+          {!photoCompletesHandoverStep && <Button
             type='button'
             className='h-10 text-xs font-extrabold'
             onClick={async () => {
@@ -2460,7 +2474,7 @@ export function EmployeeTodayClient({
             disabled={isSaving}
           >
             {isLastStep ? 'Сдать смену' : 'Далее'}
-          </Button>
+          </Button>}
         </div>
       </div>
     );
