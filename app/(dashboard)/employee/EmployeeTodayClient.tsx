@@ -1212,10 +1212,9 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось начать рабочий день');
       // Safari/PWA can retain pre-start values in part of the React tree even
-      // after the workday response is applied. A fresh server render is the
-      // reliable boundary after QR start and keeps timer, start and lateness
-      // based on the same saved WorkDayEntry.
-      window.location.replace(`/employee?workdayStarted=${Date.now()}`);
+      // after the workday response is applied. Use the same full reload that
+      // reliably refreshes these values when the employee does it manually.
+      window.location.reload();
       return;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
