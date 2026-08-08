@@ -242,6 +242,26 @@ function readRecord(value: unknown, key: string) {
   return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
 }
 
+function employeeRevisions(task: ShiftTask) {
+  if (!isRecord(task.handoverData) || !Array.isArray(task.handoverData._employeeRevisionHistory)) return [];
+  return task.handoverData._employeeRevisionHistory.filter(isRecord);
+}
+
+function previousTaskFromRevision(task: ShiftTask, revision: Record<string, unknown>): ShiftTask | null {
+  const previous = isRecord(revision.previous) ? revision.previous : null;
+  if (!previous) return null;
+  return {
+    ...task,
+    completedAt: typeof previous.completedAt === 'string' ? previous.completedAt : task.completedAt,
+    numericValue: typeof previous.numericValue === 'number' ? previous.numericValue : null,
+    integerValue: typeof previous.integerValue === 'number' ? previous.integerValue : null,
+    booleanValue: typeof previous.booleanValue === 'boolean' ? previous.booleanValue : null,
+    textValue: typeof previous.textValue === 'string' ? previous.textValue : null,
+    comment: typeof previous.comment === 'string' ? previous.comment : '',
+    handoverData: previous.handoverData,
+  };
+}
+
 function readPhotos(value: unknown) {
   return readRecord(value, 'photos');
 }
@@ -497,6 +517,7 @@ function TaskDetailCard({
     manualReviewConfirmsIssue(check) || (check.status === 'mismatch' && !manualReviewResolves(check))
   ));
   const needsTimingReview = item.status === 'late' || item.status === 'overdue';
+  const revisions = employeeRevisions(item.task);
 
   return (
     <div className={`rounded-xl border p-3 ${toneClass}`}>
@@ -509,6 +530,28 @@ function TaskDetailCard({
         <span>Выполнено: {formatTime(item.task.completedAt)}</span>
         <TaskValue task={item.task} onPreview={onPreview} />
       </div>
+      {revisions.length > 0 && (
+        <details className='mt-2 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200'>
+          <summary className='cursor-pointer text-xs font-extrabold text-slate-700'>Исправления сотрудника: {revisions.length}</summary>
+          <div className='mt-2 grid gap-2'>
+            {revisions.map((revision, index) => {
+              const previousTask = previousTaskFromRevision(item.task, revision);
+              const editedAt = typeof revision.editedAt === 'string' ? revision.editedAt : null;
+              return (
+                <div key={`${editedAt ?? 'revision'}-${index}`} className='rounded-md bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-600'>
+                  <p className='font-bold text-slate-700'>Исправлено: {formatTime(editedAt)}</p>
+                  {previousTask && (
+                    <div className='mt-1'>
+                      <span className='text-slate-500'>Предыдущий ответ: </span>
+                      <TaskValue task={previousTask} onPreview={onPreview} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      )}
       {item.autoChecks.length > 0 ? (
         <div className='mt-3 grid gap-2'>
           {item.autoChecks.map((check) => {

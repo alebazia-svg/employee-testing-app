@@ -5,11 +5,12 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { getCashStatementDimensions, getCashStatementSummary } from '@/lib/one-c';
-import { shiftControlOneCAuditKey, stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
+import { shiftControlEmployeeRevisionHistoryKey, shiftControlOneCAuditKey, stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { usesWorkdayShiftControl } from '@/lib/workday';
 
 const cashStatementOrganizationSearchName = 'оффоника';
 const reserveCashboxSearchName = 'резерв под телефоны';
+const employeeRevisionHistoryKey = shiftControlEmployeeRevisionHistoryKey;
 
 function readNumber(value: unknown) {
   if (value === null || value === undefined || value === '') return null;
@@ -74,10 +75,59 @@ function normalizeSearchText(value: string) {
 }
 
 function taskForEmployee<T extends { handoverData: unknown }>(task: T) {
+  const handoverData = stripShiftControlOneCAudit(task.handoverData);
+  const visibleHandoverData = isRecord(handoverData) ? { ...handoverData } : handoverData;
+  if (isRecord(visibleHandoverData)) delete visibleHandoverData[employeeRevisionHistoryKey];
   return {
     ...task,
-    handoverData: stripShiftControlOneCAudit(task.handoverData),
+    handoverData: visibleHandoverData,
   };
+}
+
+function revisionHistory(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value[employeeRevisionHistoryKey])) return [];
+  return value[employeeRevisionHistoryKey] as unknown[];
+}
+
+function withoutRevisionHistory(value: unknown) {
+  if (!isRecord(value)) return value;
+  const result = { ...value };
+  delete result[employeeRevisionHistoryKey];
+  return result;
+}
+
+function withEmployeeRevision(
+  task: {
+    status: string;
+    completedAt: Date | null;
+    numericValue: number | null;
+    integerValue: number | null;
+    booleanValue: boolean | null;
+    textValue: string | null;
+    comment: string;
+    handoverData: unknown;
+  },
+  nextData: unknown,
+  editedAt: Date,
+) {
+  if (task.status !== 'done') return nextData;
+  const base = isRecord(nextData) ? { ...nextData } : {};
+  base[employeeRevisionHistoryKey] = [
+    ...revisionHistory(task.handoverData),
+    {
+      editedAt: editedAt.toISOString(),
+      previous: {
+        completedAt: task.completedAt?.toISOString() ?? null,
+        numericValue: task.numericValue,
+        integerValue: task.integerValue,
+        booleanValue: task.booleanValue,
+        textValue: task.textValue,
+        comment: task.comment,
+        handoverData: withoutRevisionHistory(task.handoverData),
+      },
+    },
+  ];
+  return base;
 }
 
 async function captureOneCCashAudit({
@@ -511,13 +561,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     try {
       const savedPhoto = await savePhoto(photo, task.runId, task.id, 'opening-report');
+      const editedAt = new Date();
       const updatedTask = await prisma.shiftControlTask.update({
         where: { id: task.id },
         data: {
           status: 'done',
-          completedAt: new Date(),
+          completedAt: task.completedAt ?? editedAt,
           textValue: savedPhoto.storagePath,
           comment: 'Фото чека открытия смены прикреплено',
+          handoverData: withEmployeeRevision(task, {
+            photo: savedPhoto,
+          }, editedAt) as Prisma.InputJsonValue,
         },
       });
 
@@ -534,13 +588,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const checkStatus = readInteger(formData.get('integerValue'));
     const comment = readFormString(formData, 'comment');
     const photo = formData.get('terminalReceiptsPhoto');
+    const existingPhoto = savedPhoto(task.handoverData, 'terminalReceipts');
     if (checkStatus === null || ![0, 1, 2].includes(checkStatus)) {
       return Response.json({ error: 'Ответьте на вопросы проверки терминала' }, { status: 400 });
     }
     if (checkStatus === 2 && !comment) {
       return Response.json({ error: 'Опишите расхождение по операциям терминала' }, { status: 400 });
     }
-    if ((checkStatus === 1 || checkStatus === 2) && !isPhoto(photo)) {
+    if ((checkStatus === 1 || checkStatus === 2) && !isPhoto(photo) && !existingPhoto) {
       return Response.json({ error: 'Сфотографируйте новые чеки терминала' }, { status: 400 });
     }
 
@@ -551,11 +606,26 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           category: 'acquiring',
           status: 'done',
           completedAt: { not: null },
+          id: { not: task.id },
         },
         orderBy: { completedAt: 'desc' },
       });
-      const completedAt = new Date();
-      const receiptsPhoto = isPhoto(photo) ? await savePhoto(photo, task.runId, task.id, 'terminal-receipts') : null;
+      const editedAt = new Date();
+      const completedAt = task.completedAt ?? editedAt;
+      const receiptsPhoto = isPhoto(photo)
+        ? await savePhoto(photo, task.runId, task.id, 'terminal-receipts')
+        : existingPhoto;
+      const nextHandoverData = {
+        terminalCheck: {
+          intervalFrom: previousTask?.completedAt?.toISOString() ?? task.run.workDayEntry.startedAt.toISOString(),
+          intervalTo: completedAt.toISOString(),
+          previousTaskId: previousTask?.id ?? null,
+          hadOperations: checkStatus !== 0,
+          reconciliation: checkStatus === 0 ? 'not_required' : checkStatus === 1 ? 'matched' : 'discrepancy',
+          comment: checkStatus === 2 ? comment : '',
+        },
+        photos: { terminalReceipts: checkStatus === 0 ? null : receiptsPhoto },
+      };
       const updatedTask = await prisma.shiftControlTask.update({
         where: { id: task.id },
         data: {
@@ -565,17 +635,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           numericValue: null,
           booleanValue: checkStatus !== 2,
           comment: checkStatus === 2 ? comment : '',
-          handoverData: {
-            terminalCheck: {
-              intervalFrom: previousTask?.completedAt?.toISOString() ?? task.run.workDayEntry.startedAt.toISOString(),
-              intervalTo: completedAt.toISOString(),
-              previousTaskId: previousTask?.id ?? null,
-              hadOperations: checkStatus !== 0,
-              reconciliation: checkStatus === 0 ? 'not_required' : checkStatus === 1 ? 'matched' : 'discrepancy',
-              comment: checkStatus === 2 ? comment : '',
-            },
-            photos: { terminalReceipts: receiptsPhoto },
-          } as Prisma.InputJsonValue,
+          handoverData: withEmployeeRevision(task, nextHandoverData, editedAt) as Prisma.InputJsonValue,
         },
       });
       return Response.json({ task: taskForEmployee(updatedTask) });
@@ -587,7 +647,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const payload = await req.json().catch(() => ({}));
   const commentSource = typeof payload.comment === 'string' ? payload.comment : typeof payload.textValue === 'string' ? payload.textValue : '';
   const textValue = typeof payload.textValue === 'string' ? payload.textValue.trim() : null;
-  const completedAt = new Date();
+  const editedAt = new Date();
+  const completedAt = task.completedAt ?? editedAt;
 
   const data: {
     status: 'done';
@@ -609,18 +670,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (numericValue === null) {
       return Response.json({ error: 'Укажите сумму' }, { status: 400 });
     }
-    const oneCAudit = await captureOneCCashAudit({
-      userId: user.id,
-      date: task.run.date,
-      includeReserve: false,
-      capturedAt: completedAt,
-    });
     const existingData = isRecord(task.handoverData) ? task.handoverData : {};
+    const existingAudit = existingData[shiftControlOneCAuditKey];
+    const oneCAudit = task.status === 'done' && existingAudit
+      ? existingAudit
+      : await captureOneCCashAudit({
+          userId: user.id,
+          date: task.run.date,
+          includeReserve: false,
+          capturedAt: completedAt,
+        });
     data.numericValue = numericValue;
-    data.handoverData = {
+    data.handoverData = withEmployeeRevision(task, {
       ...existingData,
       [shiftControlOneCAuditKey]: oneCAudit,
-    } as Prisma.InputJsonValue;
+    }, editedAt) as Prisma.InputJsonValue;
   } else if (task.category === 'credit') {
     const checkStatus = readInteger(payload.integerValue);
     const hasDiscrepancy = checkStatus === 2;
@@ -635,8 +699,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     data.numericValue = null;
     data.booleanValue = !hasDiscrepancy;
     data.comment = checkStatus === 0 ? '' : commentSource.trim();
+    data.handoverData = withEmployeeRevision(task, withoutRevisionHistory(task.handoverData), editedAt) as Prisma.InputJsonValue;
   } else {
     data.textValue = textValue;
+    data.handoverData = withEmployeeRevision(task, withoutRevisionHistory(task.handoverData), editedAt) as Prisma.InputJsonValue;
   }
 
   const updatedTask = await prisma.shiftControlTask.update({

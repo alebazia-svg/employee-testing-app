@@ -674,6 +674,11 @@ function readRecord(value: unknown, key: string) {
   return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
 }
 
+function hasTaskPhoto(task: ShiftControlTask, key: string) {
+  const photos = readRecord(task.handoverData, 'photos');
+  return Boolean(photos?.[key]);
+}
+
 function readSavedPhoto(value: unknown, key: string): HandoverSavedPhoto | null {
   const photos = readRecord(value, 'photos');
   const photo = photos?.[key];
@@ -874,6 +879,7 @@ export function EmployeeTodayClient({
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
   const [openShiftTaskId, setOpenShiftTaskId] = useState<number | null>(null);
+  const [editingShiftTaskId, setEditingShiftTaskId] = useState<number | null>(null);
   const [shiftTaskDrafts, setShiftTaskDrafts] = useState<Record<number, ShiftTaskDraft>>({});
   const [shiftTaskErrors, setShiftTaskErrors] = useState<Record<number, Record<string, string>>>({});
   const [showFullShiftPlan, setShowFullShiftPlan] = useState(false);
@@ -1331,6 +1337,17 @@ export function EmployeeTodayClient({
     setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
   }
 
+  function editCompletedShiftTask(task: ShiftControlTask) {
+    if (!activeWorkDay || task.category === 'handover' || task.category === 'closing') return;
+    setEditingShiftTaskId(task.id);
+    setOpenShiftTaskId(task.id);
+    setShiftTaskDrafts((current) => ({ ...current, [task.id]: emptyShiftTaskDraft(task) }));
+    setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
+    setShowFullShiftPlan(true);
+    setError('');
+    setMessage('');
+  }
+
   function firstIncompleteHandoverStep(draft: HandoverDraft) {
     const steps = buildHandoverSteps(draft);
     const index = steps.findIndex((step) => getHandoverStepError(step, draft));
@@ -1467,6 +1484,7 @@ export function EmployeeTodayClient({
       setOpenShiftTaskId(null);
       setOpeningPhotoTaskId(null);
       setOpeningPhotoFile(null);
+      setEditingShiftTaskId(null);
       setShiftTaskDrafts((current) => ({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
@@ -1505,7 +1523,9 @@ export function EmployeeTodayClient({
     } else if (task.category === 'acquiring') {
       const acquiringCheckStatus = readIntegerFromDraft(draft.integerValue);
       if (acquiringCheckStatus === null || ![0, 1, 2].includes(acquiringCheckStatus)) localErrors.integerValue = 'Ответьте на вопросы проверки терминала';
-      if ((acquiringCheckStatus === 1 || acquiringCheckStatus === 2) && !draft.terminalReceiptsPhoto) localErrors.form = 'Сфотографируйте новые чеки терминала';
+      if ((acquiringCheckStatus === 1 || acquiringCheckStatus === 2) && !draft.terminalReceiptsPhoto && !hasTaskPhoto(task, 'terminalReceipts')) {
+        localErrors.form = 'Сфотографируйте новые чеки терминала';
+      }
       if (acquiringCheckStatus === 2 && !draft.comment.trim()) localErrors.comment = 'Опишите расхождение по операциям терминала';
       payload.integerValue = draft.integerValue;
       payload.booleanValue = acquiringCheckStatus !== 2;
@@ -1580,6 +1600,7 @@ export function EmployeeTodayClient({
       setOpenShiftTaskId(null);
       setOpeningPhotoTaskId(null);
       setOpeningPhotoFile(null);
+      setEditingShiftTaskId(null);
       setShiftTaskErrors((current) => ({ ...current, [result.task.id]: {} }));
       setShiftTaskDrafts((current) => ({
         ...current,
@@ -1594,7 +1615,7 @@ export function EmployeeTodayClient({
   }
 
   function canActOnShiftTask(task: ShiftControlTask) {
-    if (task.status === 'done') return false;
+    if (task.status === 'done') return editingShiftTaskId === task.id;
     return task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(displayNow) >= task.plannedTimeMinutes;
   }
 
@@ -1619,7 +1640,16 @@ export function EmployeeTodayClient({
       }
       if (completedAt) parts.push(`выполнено ${completedAt}`);
 
-      return <p className='mt-1 text-xs font-bold leading-snug text-slate-500'>{parts.join(' · ')}</p>;
+      return (
+        <div className='mt-1 grid gap-1.5'>
+          <p className='text-xs font-bold leading-snug text-slate-500'>{parts.join(' · ')}</p>
+          {activeWorkDay && task.category !== 'handover' && task.category !== 'closing' && (
+            <button type='button' className='w-fit text-xs font-extrabold text-primary underline-offset-2 hover:underline' onClick={() => editCompletedShiftTask(task)}>
+              Исправить ответ
+            </button>
+          )}
+        </div>
+      );
     }
 
     return (
@@ -1641,12 +1671,18 @@ export function EmployeeTodayClient({
           <p>Комментарий: {task.comment}</p>
         )}
         {completedAt && <p className='mt-1 text-green-800/70'>Выполнено: {completedAt}</p>}
+        {activeWorkDay && task.category !== 'handover' && task.category !== 'closing' && (
+          <button type='button' className='mt-1 text-xs font-extrabold text-primary underline-offset-2 hover:underline' onClick={() => editCompletedShiftTask(task)}>
+            Исправить ответ
+          </button>
+        )}
       </div>
     );
   }
 
   function renderShiftTaskAction(task: ShiftControlTask, compact = false) {
-    if (task.status === 'done') return renderShiftTaskAnswer(task);
+    const isEditing = editingShiftTaskId === task.id;
+    if (task.status === 'done' && !isEditing) return renderShiftTaskAnswer(task);
     if (!canActOnShiftTask(task)) return null;
 
     const draft = shiftTaskDrafts[task.id] ?? emptyShiftTaskDraft(task);
@@ -1678,7 +1714,7 @@ export function EmployeeTodayClient({
             Откройте смену на кассе и сфотографируйте распечатанный чек.
           </p>
           <label className={cn('flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-12 text-base' : 'min-h-8 text-xs')}>
-            {isSaving && openingPhotoTaskId === task.id ? 'Сохраняем фото...' : 'Сделать фото'}
+            {isSaving && openingPhotoTaskId === task.id ? 'Сохраняем фото...' : isEditing ? 'Заменить фото' : 'Сделать фото'}
             <input
               type='file'
               accept='image/*'
@@ -1811,8 +1847,11 @@ export function EmployeeTodayClient({
                 Чеки терминала
                 <span className='text-[11px] font-semibold leading-snug text-slate-500'>{terminalPhotoHint}</span>
                 <span className='flex min-h-10 cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 text-xs font-extrabold text-white'>
-                  {draft.terminalReceiptsPhoto ? 'Фото выбрано' : 'Сделать фото'}
+                  {draft.terminalReceiptsPhoto ? 'Новое фото выбрано' : hasTaskPhoto(task, 'terminalReceipts') ? 'Заменить фото' : 'Сделать фото'}
                 </span>
+                {!draft.terminalReceiptsPhoto && hasTaskPhoto(task, 'terminalReceipts') && (
+                  <span className='text-[11px] font-semibold text-green-700'>Текущее фото сохранено</span>
+                )}
                 <input
                   type='file'
                   accept='image/*'
@@ -1879,6 +1918,7 @@ export function EmployeeTodayClient({
             className='h-9 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
             onClick={() => {
               setOpenShiftTaskId(null);
+              setEditingShiftTaskId(null);
               setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
             }}
             disabled={isSaving}
@@ -1886,7 +1926,7 @@ export function EmployeeTodayClient({
             Назад
           </Button>
           <Button type='button' className='h-9 text-xs font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
-            Сохранить
+            {isEditing ? 'Сохранить исправление' : 'Сохранить'}
           </Button>
         </div>
       </div>
@@ -2680,7 +2720,7 @@ export function EmployeeTodayClient({
                                 {shiftTaskStatusLabel(uiStatus)}
                               </Badge>
                             </div>
-                            {uiStatus === 'done'
+                            {uiStatus === 'done' && editingShiftTaskId !== task.id
                               ? renderShiftTaskAnswer(task, true)
                               : task.id === actionableShiftControlTask?.id
                                 ? null
