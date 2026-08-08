@@ -1005,7 +1005,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         tasks: (run?.tasks ?? []) as AutoCheckTask[],
       });
       const actionableTimingViolations = timingViolations.filter((violation) => (
-        violation.kind === 'task_overdue'
+        violation.kind === 'late_start'
+        || violation.kind === 'task_overdue'
         || violation.kind === 'missing_checkout'
         || violation.kind === 'workday_not_started'
       ));
