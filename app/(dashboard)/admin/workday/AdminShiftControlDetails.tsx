@@ -405,7 +405,6 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
             {isRetail && <DetailRow label='Операции терминала' value={yesNo(terminalCheck?.hadOperations)} />}
             {isRetail && <DetailRow label='Результат сверки терминала' value={terminalCheck?.reconciliation === 'discrepancy' ? 'Есть расхождение' : terminalCheck?.reconciliation === 'matched' ? 'Всё совпадает' : '—'} />}
             {isRetail && <PhotoRow label='Чеки терминала' photo={readPhoto(photos, 'terminalReceipts') ?? readPhoto(photos, 'personalAcquiringReceipts')} onPreview={onPreview} />}
-            {isRetail && <DetailRow label='Операции Т-Банка' value={yesNo(personalCash.hasTbankCredit)} />}
             <DetailRow label='Расхождение' value={discrepancyLabel(personalCash.discrepancyType)} />
             <DetailRow
               label='Сумма расхождения'
@@ -435,13 +434,6 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
         <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
           <h4 className='text-sm font-extrabold text-slate-950'>Закрытие магазина</h4>
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <DetailRow label='Операции Т-Банка' value={yesNo(storeClosing.hasTbankCredit)} />
-            <PhotoRow label='Фото чеков Т-Банка' photo={readPhoto(photos, 'tbankReceipts')} onPreview={onPreview} />
-            <PhotoRow label='Фото сверки итогов Т-Банка' photo={readPhoto(photos, 'tbankTerminalReport')} onPreview={onPreview} />
-            <DetailRow
-              label='Сумма сверки Т-Банка'
-              value={storeClosing.tbankTerminalTotal === null ? '—' : formatMoney(Number(storeClosing.tbankTerminalTotal ?? 0))}
-            />
             <PhotoRow label='Фото чека закрытия смены' photo={readPhoto(photos, 'zReport')} onPreview={onPreview} />
           </div>
         </section>
@@ -457,8 +449,8 @@ function HandoverOverview({ data, department }: { data: unknown; department: str
   const terminalCheck = readRecord(data, 'terminalCheck');
   const photos = readPhotos(data);
   const photoKeys = department === 'retail'
-    ? ['personalStatement', 'terminalReceipts', 'personalAcquiringReceipts', 'encashmentDocument', 'tbankReceipts', 'tbankTerminalReport', 'zReport']
-    : ['personalStatement', 'encashmentDocument', 'tbankReceipts', 'tbankTerminalReport', 'zReport'];
+    ? ['personalStatement', 'terminalReceipts', 'personalAcquiringReceipts', 'encashmentDocument', 'zReport']
+    : ['personalStatement', 'encashmentDocument', 'zReport'];
   const photoCount = photoKeys.filter((key) => Boolean(photoHref(readPhoto(photos, key)))).length;
 
   if (!personalCash && !reserveCash && !storeClosing) return null;
@@ -473,16 +465,17 @@ function HandoverOverview({ data, department }: { data: unknown; department: str
             ? '—'
             : formatMoney(Number(personalCash.cashBalance))}
         />
-        <DetailRow
-          label='Резерв'
-          value={reserveCash?.cashBalance === null || reserveCash?.cashBalance === undefined
-            ? '—'
-            : formatMoney(Number(reserveCash.cashBalance))}
-        />
+        {department === 'retail' ? (
+          <DetailRow
+            label='Резерв'
+            value={reserveCash?.cashBalance === null || reserveCash?.cashBalance === undefined
+              ? '—'
+              : formatMoney(Number(reserveCash.cashBalance))}
+          />
+        ) : null}
         {department === 'retail' ? (
           <DetailRow label='Операции терминала' value={yesNo(terminalCheck?.hadOperations)} />
         ) : null}
-        <DetailRow label='Т-Банк' value={yesNo(storeClosing?.hasTbankCredit ?? personalCash?.hasTbankCredit)} />
         <DetailRow label='Инкассация' value={yesNo(personalCash?.requiresEncashment)} />
         <DetailRow label='Фото приложено' value={photoCount} />
       </div>

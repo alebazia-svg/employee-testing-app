@@ -1025,14 +1025,11 @@ export function EmployeeTodayClient({
     const isRetailEmployee = user.department === 'retail';
     return [
       'personalCashBalance',
-      'reserveCashBalance',
+      ...(isRetailEmployee ? ['reserveCashBalance'] : []),
       'discrepancy',
       ...(isRetailEmployee ? ['terminalQuestion'] : []),
       ...(isRetailEmployee && draft.terminalHadOperations === 'yes' ? ['terminalReconciliation', 'terminalReceipts'] : []),
-      ...(isRetailEmployee ? ['tbankQuestion'] : []),
-      ...(isRetailEmployee && draft.hasTbankCredit === 'yes' ? ['tbankReceipts'] : []),
       ...(draftRequiresEncashment ? ['encashment'] : []),
-      ...(isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode) && draft.hasTbankCredit === 'yes' ? ['tbankTerminal'] : []),
       ...(isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode) ? ['zReportPhoto'] : []),
     ] as const;
   }

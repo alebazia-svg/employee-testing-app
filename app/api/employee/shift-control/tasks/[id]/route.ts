@@ -250,11 +250,14 @@ async function savePhoto(file: File, runId: number, taskId: number, key: string)
   };
 }
 
-async function saveHandoverDraft(formData: FormData, task: { id: number; runId: number; handoverData: unknown; run: { workDayEntry: { shiftCode: string } } }) {
+async function saveHandoverDraft(
+  formData: FormData,
+  task: { id: number; runId: number; handoverData: unknown; run: { workDayEntry: { shiftCode: string } } },
+  isRetail: boolean,
+) {
   const existing = isRecord(task.handoverData) ? task.handoverData : {};
   const existingPersonalCash = readRecord(existing, 'personalCash') ?? {};
   const existingReserveCash = readRecord(existing, 'reserveCash') ?? {};
-  const existingStoreClosing = readRecord(existing, 'storeClosing') ?? {};
   const existingPhotos = readRecord(existing, 'photos') ?? {};
 
   const personalCashBalance = readFormNumber(formData, 'personalCashBalance');
@@ -264,8 +267,6 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
   const terminalHadOperations = readFormBoolean(formData, 'terminalHadOperations');
   const terminalReconciliation = readFormString(formData, 'terminalReconciliation');
   const terminalComment = readFormString(formData, 'terminalComment');
-  const hasTbankCredit = readFormBoolean(formData, 'hasTbankCredit');
-  const tbankTerminalTotal = readFormNumber(formData, 'tbankTerminalTotal');
   const encashmentAmount = readFormNumber(formData, 'encashmentAmount');
   const comment = readFormString(formData, 'comment');
   const photos = { ...existingPhotos };
@@ -299,14 +300,16 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
       withdrawalAmount: null,
       cashOrderAmount: null,
       withdrawalDifference: null,
-      hasTbankCredit: hasTbankCredit ?? existingPersonalCash.hasTbankCredit ?? null,
+      hasTbankCredit: null,
       requiresEncashment: personalCashBalance !== null ? personalCashBalance > 50000 : Boolean(existingPersonalCash.requiresEncashment),
       encashmentAmount,
     },
-    reserveCash: {
-      ...existingReserveCash,
-      cashBalance: reserveCashBalance,
-    },
+    reserveCash: isRetail
+      ? {
+          ...existingReserveCash,
+          cashBalance: reserveCashBalance,
+        }
+      : null,
     terminalCheck: {
       hadOperations: terminalHadOperations,
       reconciliation: terminalHadOperations ? terminalReconciliation : 'not_required',
@@ -314,9 +317,6 @@ async function saveHandoverDraft(formData: FormData, task: { id: number; runId: 
     },
     storeClosing: isClosingShift(task.run.workDayEntry.shiftCode)
       ? {
-          ...existingStoreClosing,
-          hasTbankCredit: hasTbankCredit ?? existingStoreClosing.hasTbankCredit ?? null,
-          tbankTerminalTotal: hasTbankCredit ? tbankTerminalTotal : null,
           zReportRequired: true,
         }
       : null,
@@ -368,18 +368,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (readFormString(formData, 'intent') === 'draft') {
       try {
-        return await saveHandoverDraft(formData, task);
+        return await saveHandoverDraft(formData, task, user.department === 'retail');
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить шаг сдачи смены' }, { status: 400 });
       }
     }
 
-    const draftResponse = await saveHandoverDraft(formData, task);
+    const isRetail = user.department === 'retail';
+    const draftResponse = await saveHandoverDraft(formData, task, isRetail);
     const draftPayload = await draftResponse.json();
     const handoverData = draftPayload.task.handoverData;
     const personalCash = readRecord(handoverData, 'personalCash') ?? {};
     const reserveCash = readRecord(handoverData, 'reserveCash') ?? {};
-    const storeClosing = readRecord(handoverData, 'storeClosing') ?? {};
     const personalCashBalance = readNumber(personalCash.cashBalance);
     const reserveCashBalance = readNumber(reserveCash.cashBalance);
     const discrepancyType = typeof personalCash.discrepancyType === 'string' ? personalCash.discrepancyType : '';
@@ -388,18 +388,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const terminalHadOperations = readBoolean(terminalCheck.hadOperations);
     const terminalReconciliation = typeof terminalCheck.reconciliation === 'string' ? terminalCheck.reconciliation : '';
     const terminalComment = typeof terminalCheck.comment === 'string' ? terminalCheck.comment.trim() : '';
-    const hasTbankCredit = readBoolean(personalCash.hasTbankCredit ?? storeClosing.hasTbankCredit);
-    const tbankTerminalTotal = readNumber(storeClosing.tbankTerminalTotal);
     const encashmentAmount = readNumber(personalCash.encashmentAmount);
     const comment = isRecord(handoverData) && typeof handoverData.comment === 'string' ? handoverData.comment.trim() : '';
-    const isRetail = user.department === 'retail';
     const isClosingEmployee = isRetail && isClosingShift(task.run.workDayEntry.shiftCode);
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
     const requiresDiscrepancyComment =
       (discrepancyType === 'surplus' || discrepancyType === 'shortage') && discrepancyAmount !== null && discrepancyAmount > 300;
 
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
-    if (reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
+    if (isRetail && reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
     if (!['none', 'surplus', 'shortage'].includes(discrepancyType)) return Response.json({ error: 'Укажите расхождение по моей кассе' }, { status: 400 });
     if (discrepancyType !== 'none' && discrepancyAmount === null) return Response.json({ error: 'Укажите сумму расхождения' }, { status: 400 });
     if (requiresDiscrepancyComment && !comment) return Response.json({ error: 'Добавьте комментарий: расхождение больше 300 ₽' }, { status: 400 });
@@ -414,10 +411,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (terminalHadOperations && !hasSavedPhoto(handoverData, 'terminalReceipts')) {
         return Response.json({ error: 'Сфотографируйте новые чеки терминала' }, { status: 400 });
       }
-      if (hasTbankCredit === null) return Response.json({ error: 'Укажите, были ли операции через терминал Т-Банка' }, { status: 400 });
-      if (hasTbankCredit && !hasSavedPhoto(handoverData, 'tbankReceipts')) {
-        return Response.json({ error: 'Сделайте фото чеков Т-Банка за смену' }, { status: 400 });
-      }
     }
     if (requiresEncashment) {
       if (encashmentAmount === null) return Response.json({ error: 'Укажите сумму инкассации' }, { status: 400 });
@@ -426,10 +419,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
     if (isClosingEmployee) {
-      if (hasTbankCredit) {
-        if (!hasSavedPhoto(handoverData, 'tbankTerminalReport')) return Response.json({ error: 'Сделайте фото сверки итогов Т-Банка' }, { status: 400 });
-        if (tbankTerminalTotal === null) return Response.json({ error: 'Укажите сумму по сверке итогов Т-Банка' }, { status: 400 });
-      }
       if (!hasSavedPhoto(handoverData, 'zReport')) return Response.json({ error: 'Сделайте фото чека закрытия смены' }, { status: 400 });
     }
 
@@ -446,8 +435,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const photos = {
         personalStatement: savedPhoto(handoverData, 'personalStatement'),
         terminalReceipts: isRetail && terminalHadOperations ? savedPhoto(handoverData, 'terminalReceipts') : null,
-        tbankReceipts: isRetail && hasTbankCredit ? savedPhoto(handoverData, 'tbankReceipts') : null,
-        tbankTerminalReport: isClosingEmployee && hasTbankCredit ? savedPhoto(handoverData, 'tbankTerminalReport') : null,
         zReport: isClosingEmployee ? savedPhoto(handoverData, 'zReport') : null,
         encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
       };
@@ -455,7 +442,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const oneCAudit = await captureOneCCashAudit({
         userId: user.id,
         date: task.run.date,
-        includeReserve: true,
+        includeReserve: isRetail,
         capturedAt: now,
       });
       const finalHandoverData = {
@@ -465,7 +452,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         [shiftControlOneCAuditKey]: oneCAudit,
         scope: {
           personalCash: true,
-          reserveCash: true,
+          reserveCash: isRetail,
           storeClosing: isClosingEmployee,
         },
         personalCash: {
@@ -476,13 +463,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           withdrawalAmount: null,
           cashOrderAmount: null,
           withdrawalDifference: null,
-          hasTbankCredit,
+          hasTbankCredit: null,
           requiresEncashment,
           encashmentAmount: requiresEncashment ? encashmentAmount : null,
         },
-        reserveCash: {
-          cashBalance: reserveCashBalance,
-        },
+        reserveCash: isRetail ? { cashBalance: reserveCashBalance } : null,
         terminalCheck: isRetail ? {
           intervalFrom: previousTerminalTask?.completedAt?.toISOString() ?? task.run.workDayEntry.startedAt.toISOString(),
           intervalTo: now.toISOString(),
@@ -493,8 +478,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         } : null,
         storeClosing: isClosingEmployee
           ? {
-              hasTbankCredit,
-              tbankTerminalTotal: hasTbankCredit ? tbankTerminalTotal : null,
               zReportRequired: true,
             }
           : null,
