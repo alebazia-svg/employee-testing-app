@@ -20,6 +20,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
 import { evaluateWorkdayTiming } from '@/lib/workday-timing';
+import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
 import { AdminWorkdayAutoRefresh } from './AdminWorkdayAutoRefresh';
 import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
@@ -65,6 +66,22 @@ function shiftState(workDay: { status: string; endedAt: Date | null } | null | u
   if (workDay) return { label: 'Работает', className: 'bg-green-100 text-green-800' };
   if (scheduleStatus === 'off') return { label: 'Выходной', className: 'bg-slate-50 text-slate-500 ring-1 ring-slate-200' };
   return { label: 'Не начал', className: 'bg-white text-slate-600 ring-1 ring-slate-200' };
+}
+
+function timingSummary(violations: WorkdayTimingViolation[]) {
+  const parts: string[] = [];
+  const lateStart = violations.find((violation) => violation.kind === 'late_start');
+  const earlyCheckout = violations.find((violation) => violation.kind === 'early_checkout');
+  const missingCheckout = violations.find((violation) => violation.kind === 'missing_checkout');
+  const workdayNotStarted = violations.find((violation) => violation.kind === 'workday_not_started');
+  const taskViolationCount = violations.filter((violation) => violation.kind === 'task_late' || violation.kind === 'task_overdue').length;
+  if (lateStart?.minutesLate) parts.push(`Вход +${lateStart.minutesLate} мин`);
+  if (earlyCheckout?.minutesLate) parts.push(`Уход −${earlyCheckout.minutesLate} мин`);
+  if (missingCheckout) parts.push('Смена не завершена');
+  if (workdayNotStarted) parts.push('Рабочий день не начат');
+  if (taskViolationCount > 0) parts.push(`${taskViolationCount} проверок не в срок`);
+  if (parts.length === 0) return 'Без нарушений';
+  return `${parts.slice(0, 2).join(' · ')}${parts.length > 2 ? ` · ещё ${parts.length - 2}` : ''}`;
 }
 
 function serializeShiftControlRun(run: any) {
@@ -1022,9 +1039,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         check.manualReview?.decision !== 'confirmed_issue'
         && (check.status === 'waiting' || check.status === 'unavailable')
       )).length;
+      const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed').length;
       const attentionReasons = [
         !schedule ? 'График не заполнен' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
+        missedTaskCount > 0 ? `Пропущено проверок: ${missedTaskCount}` : null,
         mismatchCount > 0
           ? manualIssueCount > 0
             ? `Подтверждённых проблем: ${manualIssueCount}`
@@ -1046,6 +1065,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const waitingForWorkdayStart = schedule?.status === 'working' && selectedDate === today && !workDay;
       const pendingTaskCount = (run?.tasks ?? []).filter((task) => (
         task.status !== 'done'
+        && task.status !== 'missed'
         && !timingViolations.some((violation) => violation.taskId === task.id && violation.kind === 'task_overdue')
       )).length;
       const cannotVerify = incompleteCount > 0 || (Boolean(run) && autoChecks.length === 0);
@@ -1120,7 +1140,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const filteredEmployeeControlRows = selectedControlFilter === 'all'
     ? employeeControlRows
     : employeeControlRows.filter((row) => row.category === selectedControlFilter);
-  const reviewableEmployeeRows = filteredEmployeeControlRows.filter((row) => row.shiftControlRequired && row.run);
+  const reviewableEmployeeRows = filteredEmployeeControlRows.filter((row) => row.run || row.workDay || row.timingViolations.length > 0);
   const controlFilterHref = (filter: ControlFilter) => `/admin/workday?date=${selectedDate}&control=${filter}#employees-control`;
   const employeeDetailHref = (employeeId: number) => (
     `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}&employee=${employeeId}#employees-control`
@@ -1205,6 +1225,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                   <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
                     <th className='px-4 py-2.5'>Сотрудник</th>
                     <th className='px-4 py-2.5'>Смена</th>
+                    <th className='px-4 py-2.5'>По времени</th>
                     <th className='px-4 py-2.5'>Проверки</th>
                     <th className='px-4 py-2.5'>Статус</th>
                     <th className='px-4 py-2.5'>Главное</th>
@@ -1227,15 +1248,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                             {row.employee.name}
                             <span className='ml-2 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</span>
                           </p>
-                          <p className='mt-0.5 text-xs font-semibold text-slate-500'>
-                            {departmentLabel(row.employee.department)}
-                          </p>
                         </td>
                         <td className='whitespace-nowrap px-4 py-2.5 text-sm font-semibold text-slate-700'>
                           {row.workDay?.shiftLabel ?? '—'}
                           <div className='mt-1'>
                             <Badge className={currentShiftState.className}>{currentShiftState.label}</Badge>
                           </div>
+                        </td>
+                        <td className={`max-w-[230px] px-4 py-2.5 text-xs font-bold ${row.timingViolations.length > 0 ? 'text-amber-800' : 'text-slate-500'}`}>
+                          {timingSummary(row.timingViolations)}
                         </td>
                         <td className='whitespace-nowrap px-4 py-2.5 text-sm font-extrabold text-slate-800'>
                           {row.totalTaskCount > 0 ? `${row.completedTaskCount} из ${row.totalTaskCount}` : '—'}
@@ -1247,7 +1268,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                           {row.reviewText}
                         </td>
                         <td className='whitespace-nowrap px-4 py-2.5'>
-                          {row.shiftControlRequired ? (
+                          {row.run || row.workDay || row.timingViolations.length > 0 ? (
                             <AdminShiftControlDetails
                               employeeName={row.employee.name}
                               department={row.employee.department}
@@ -1277,7 +1298,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                               } : null}
                             />
                           ) : (
-                            <span className='text-xs font-semibold text-slate-400'>Не требуется</span>
+                            <span className='text-xs font-semibold text-slate-400'>Нет данных</span>
                           )}
                         </td>
                         {devWorkdayToolsEnabled && (

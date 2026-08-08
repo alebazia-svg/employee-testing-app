@@ -504,6 +504,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       };
 
       const result = await prisma.$transaction(async (tx) => {
+        await tx.shiftControlTask.updateMany({
+          where: {
+            runId: task.runId,
+            required: true,
+            category: { notIn: ['handover', 'closing'] },
+            status: { not: 'done' },
+          },
+          data: {
+            status: 'missed',
+            comment: 'Не выполнено до сдачи смены',
+          },
+        });
         const updatedTask = await tx.shiftControlTask.update({
           where: { id: task.id },
           data: {

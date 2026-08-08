@@ -135,6 +135,7 @@ function taskStatus(task: ShiftTask, timingViolation?: WorkdayTimingViolation) {
   if (task.status === 'done') {
     return timingViolation?.kind === 'task_late' ? 'late' : 'done';
   }
+  if (task.status === 'missed') return 'missed';
   return timingViolation?.kind === 'task_overdue' ? 'overdue' : 'pending';
 }
 
@@ -142,12 +143,13 @@ function taskStatusLabel(status: string) {
   if (status === 'done') return 'выполнено';
   if (status === 'late') return 'выполнено с опозданием';
   if (status === 'overdue') return 'просрочено';
+  if (status === 'missed') return 'пропущено';
   return 'ожидает';
 }
 
 function badgeClass(status: string) {
   if (status === 'done' || status === 'completed') return 'bg-green-100 text-green-800';
-  if (status === 'late' || status === 'overdue' || status === 'not_submitted') return 'bg-amber-100 text-amber-800';
+  if (status === 'late' || status === 'overdue' || status === 'missed' || status === 'not_submitted') return 'bg-amber-100 text-amber-800';
   if (status === 'none') return 'bg-slate-100 text-slate-600';
   return 'bg-blue-100 text-blue-800';
 }
@@ -665,6 +667,7 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
   }
 
   if (item.status === 'overdue') return { tone: 'attention', label: 'Требует внимания', result: 'Обязательная проверка просрочена' };
+  if (item.status === 'missed') return { tone: 'attention', label: 'Требует внимания', result: 'Не выполнено до сдачи смены' };
 
   if (item.task.status !== 'done') return { tone: 'pending', label: 'Не выполнено', result: 'Срок ещё не наступил' };
 
@@ -883,6 +886,7 @@ export function AdminShiftControlDetails({
       if (
         status === 'late'
         || status === 'overdue'
+        || status === 'missed'
         || unresolvedAutoChecks.some((check) => check.status === 'mismatch' || manualReviewConfirmsIssue(check))
       ) {
         groups.attention.push(item);
@@ -923,32 +927,34 @@ export function AdminShiftControlDetails({
   const hasError = keyProblems.some((item) => taskBusinessState(item).tone === 'error');
   const scheduleNeedsAttention = scheduleLabel === 'не заполнено';
   const keyProblemCount = keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0);
+  const hasTimingViolations = timingViolations.length > 0;
   const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
+  const hasDetails = Boolean(run || workDay || timingViolations.length > 0);
 
   return (
     <div>
-      {run ? (
+      {hasDetails ? (
         <Button
           type='button'
           className={`h-8 px-3 text-xs font-extrabold shadow-none ${
             hasError
               ? 'bg-rose-100 text-rose-900 hover:bg-rose-200'
-              : keyProblemCount > 0
+              : keyProblemCount > 0 || hasTimingViolations
                 ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
           }`}
           onClick={() => setOpen(true)}
         >
-          {keyProblemCount > 0 ? 'Проверить' : 'Подробнее'}
+          {keyProblemCount > 0 || hasTimingViolations ? 'Проверить' : 'Подробнее'}
         </Button>
       ) : (
-        <span className='text-xs font-semibold text-slate-400'>Нет чек-листа</span>
+        <span className='text-xs font-semibold text-slate-400'>Нет данных</span>
       )}
 
-      {open && run && typeof document !== 'undefined' ? createPortal(
+      {open && hasDetails && typeof document !== 'undefined' ? createPortal(
         <div className='fixed inset-0 z-[100] bg-slate-950/55 p-0 backdrop-blur-sm sm:p-3' onClick={closeDetails}>
           <div
             className='mx-auto flex h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:rounded-2xl'
@@ -1178,14 +1184,14 @@ export function AdminShiftControlDetails({
                 </div>
                 <Badge className={hasError
                   ? 'bg-rose-100 text-rose-800'
-                  : keyProblemCount > 0
+                  : keyProblemCount > 0 || hasTimingViolations
                     ? 'bg-amber-100 text-amber-800'
                     : pendingOverviewCount > 0
                       ? 'bg-slate-100 text-slate-700'
                     : 'bg-green-100 text-green-800'}>
                   {hasError
                     ? 'Есть ошибка'
-                    : keyProblemCount > 0
+                    : keyProblemCount > 0 || hasTimingViolations
                       ? 'Требует внимания'
                       : pendingOverviewCount > 0
                         ? 'Не выполнено'
@@ -1222,12 +1228,25 @@ export function AdminShiftControlDetails({
                 </section>
               )}
 
+              {workdayTimingViolations.length > 0 ? (
+                <section className='mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3'>
+                  <h4 className='text-sm font-extrabold text-amber-950'>Нарушения времени</h4>
+                  <div className='mt-2 grid gap-1.5'>
+                    {workdayTimingViolations.map((violation) => (
+                      <p key={violation.id} className='text-sm font-semibold text-amber-800'>
+                        <span className='font-extrabold'>{violation.label}:</span> {violation.detail}
+                      </p>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               <section className='overflow-hidden rounded-xl bg-white ring-1 ring-slate-200'>
                 <div className='hidden grid-cols-[minmax(210px,1.3fr)_90px_150px_minmax(220px,1.5fr)_72px] gap-2 bg-slate-50 px-4 py-2 text-xs font-bold uppercase text-slate-400 md:grid'>
                   <span>Проверка</span><span>Время</span><span>Статус</span><span>Результат</span><span></span>
                 </div>
                 {overviewTasks.map((item) => (
-                  <TaskOverviewRow key={item.task.id} item={item} department={department} run={run} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
+                  <TaskOverviewRow key={item.task.id} item={item} department={department} run={run!} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
                 ))}
               </section>
             </div>
