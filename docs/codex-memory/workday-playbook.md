@@ -75,8 +75,9 @@ employee answers:
   from register movements at the task completion time;
 - handover compares the employee cashbox and the shared 1C cashbox named
   `Резерв под телефоны`;
-- Sberbank checks use daily KKM/acquiring-terminal usage for the explicitly
-  mapped employee cashbox;
+- terminal-operation declarations are stored by interval, but remain
+  unavailable for objective automatic verification until a reliable source for
+  all operations of the current terminal is connected;
 - T-Bank declarations use posted realizations for the controlled partner and
   match the 1C manager name to the employee;
 - encashment checks look for a paired outgoing movement from the employee
@@ -87,8 +88,8 @@ do not block task completion.
 
 Current limitations must stay visible:
 
-- the KKM diagnostics endpoint gives a daily acquiring total, not a historical
-  total at each intermediate checklist minute;
+- the current terminal source does not yet prove all operations inside each
+  employee checklist interval;
 - current KKM endpoints show receipt activity but do not prove that an X-report
   or Z-report was generated;
 - T-Bank terminal totals are not compared with realization totals because the
@@ -181,10 +182,22 @@ is ambiguous. The employee declares `no operations`, `check completed`, or
 T-Bank receipts remain in shift handover when operations happened. Objective
 matching should come later from 1C/OFD/AQSI/control events.
 
-For regular card sales in retail, use employee-facing Sberbank wording instead
-of generic acquiring wording. In the current store process, ordinary card sales
-go through the Sberbank terminal; T-Bank/AQSI is a separate control path for
-credits, initial payments and exceptional full payments.
+Terminal-operation checks use bank-neutral employee copy: `Проверка операций
+терминала`, `Операции терминала`, and `Чеки терминала`. The employee first says
+whether new operations occurred since the last successfully completed terminal
+check. If not, the step ends. If yes, the employee records whether reconciliation
+with 1C matched, adds a required comment for a discrepancy, and attaches a photo
+of only the new receipts. No manual terminal total is collected.
+
+The next interval starts at `completedAt` of the last successfully completed
+terminal check. A missed or unfinished check does not advance the boundary, so
+the next completed check covers the accumulated interval. Employee copy shows a
+simple concrete boundary time when available and falls back to `после предыдущей
+проверки`; it never explains the calculation.
+
+The same terminal flow is used during shift handover. Credit/instalment tasks
+remain a separate process until their document-specific business rules are
+redesigned; they must not advance the terminal-check interval.
 
 ## Checklist Copy Style
 
@@ -208,7 +221,8 @@ Examples:
   распечатанный чек.`
 - `Чек закрытия смены` - `Закройте смену на кассе и сфотографируйте
   распечатанный чек.`
-- `Сверка итогов Сбербанка` - `Выполните "Сверку итогов" и сфотографируйте чек.`
+- `Проверка операций терминала` - `Были новые операции после предыдущей проверки?`
+- `Чеки терминала` - `Сфотографируйте чеки после 13:30.`
 - `Сверка итогов Т-Банка` - `Выполните "Сверку итогов" и сфотографируйте чек.`
 - `Чеки Т-Банка` - `Сфотографируйте все чеки Т-Банка за смену.`
 
@@ -285,4 +299,3 @@ Ask:
 
 If adding reminders, prefer push notifications for checklist timing; Telegram is
 not the preferred first channel for this pilot.
-
