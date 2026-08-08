@@ -163,6 +163,16 @@ to the original workday and is late by the full elapsed interval.
 An employee without a workday on a scheduled day off is shown neutrally as
 `Выходной`, not as `Не начал`.
 
+When an employee submits shift handover with earlier required checks still
+unfinished, those checks become `missed` (`пропущено`) instead of remaining
+ordinary pending tasks. Handover is not blocked, but the admin overview must
+show that the shift requires attention.
+
+Workday Control shows operational timing from portal records for the selected
+day: QR entry, shift completion and checklist deadlines. The separate
+Attendance module remains a historical Google Sheets-backed report until a
+future explicitly planned source migration to portal `WorkDayEntry` data.
+
 Do not mark an active workday as unfinished before its shift end. Do not infer a
 same-day start violation for departments without a fixed supported shift set;
 show that the time cannot yet be checked automatically.
