@@ -1503,8 +1503,8 @@ export function EmployeeTodayClient({
     }
   }
 
-  async function completeShiftControlTask(task: ShiftControlTask) {
-    const draft = shiftTaskDrafts[task.id] ?? emptyShiftTaskDraft(task);
+  async function completeShiftControlTask(task: ShiftControlTask, draftOverride?: ShiftTaskDraft) {
+    const draft = draftOverride ?? shiftTaskDrafts[task.id] ?? emptyShiftTaskDraft(task);
     const localErrors: Record<string, string> = {};
     const payload: {
       status: 'done';
@@ -1695,6 +1695,7 @@ export function EmployeeTodayClient({
     const errors = shiftTaskErrors[task.id] ?? {};
     const showTerminalReconciliation = isAcquiring && draft.integerValue !== '' && draft.integerValue !== '0';
     const showTerminalPhoto = isAcquiring && ['1', '2'].includes(draft.integerValue);
+    const photoCompletesTaskAutomatically = showTerminalPhoto && !hasTaskPhoto(task, 'terminalReceipts');
     const previousTerminalTask = isAcquiring
       ? shiftControlState.tasks
           .filter((item) => item.category === 'acquiring' && item.status === 'done' && item.id !== task.id && item.completedAt)
@@ -1846,19 +1847,40 @@ export function EmployeeTodayClient({
               <label className='grid gap-2 text-xs font-extrabold text-slate-700'>
                 Чеки терминала
                 <span className='text-[11px] font-semibold leading-snug text-slate-500'>{terminalPhotoHint}</span>
-                <span className='flex min-h-10 cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 text-xs font-extrabold text-white'>
-                  {draft.terminalReceiptsPhoto ? 'Новое фото выбрано' : hasTaskPhoto(task, 'terminalReceipts') ? 'Заменить фото' : 'Сделать фото'}
+                <span className={cn(
+                  'flex min-h-10 items-center justify-center rounded-lg px-3 text-xs font-extrabold',
+                  draft.integerValue === '2' && !draft.comment.trim()
+                    ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+                    : 'cursor-pointer bg-[#111821] text-white',
+                )}>
+                  {isSaving
+                    ? 'Сохраняем фото...'
+                    : draft.terminalReceiptsPhoto
+                      ? 'Новое фото выбрано'
+                      : hasTaskPhoto(task, 'terminalReceipts')
+                        ? 'Заменить фото'
+                        : 'Сделать фото'}
                 </span>
                 {!draft.terminalReceiptsPhoto && hasTaskPhoto(task, 'terminalReceipts') && (
                   <span className='text-[11px] font-semibold text-green-700'>Текущее фото сохранено</span>
+                )}
+                {draft.integerValue === '2' && !draft.comment.trim() && (
+                  <span className='text-[11px] font-semibold text-amber-700'>Сначала опишите расхождение</span>
                 )}
                 <input
                   type='file'
                   accept='image/*'
                   capture='environment'
                   className='sr-only'
-                  disabled={isSaving}
-                  onChange={(event) => updateShiftTaskDraft(task.id, { terminalReceiptsPhoto: event.target.files?.[0] ?? null })}
+                  disabled={isSaving || (draft.integerValue === '2' && !draft.comment.trim())}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    event.currentTarget.value = '';
+                    if (!file) return;
+                    const nextDraft = { ...draft, terminalReceiptsPhoto: file };
+                    updateShiftTaskDraft(task.id, { terminalReceiptsPhoto: file });
+                    completeShiftControlTask(task, nextDraft);
+                  }}
                 />
               </label>
             )}
@@ -1912,7 +1934,7 @@ export function EmployeeTodayClient({
 
         {errors.form && <p className='rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200'>{errors.form}</p>}
 
-        <div className='grid grid-cols-2 gap-2'>
+        <div className={cn('grid gap-2', photoCompletesTaskAutomatically ? 'grid-cols-1' : 'grid-cols-2')}>
           <Button
             type='button'
             className='h-9 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
@@ -1925,9 +1947,11 @@ export function EmployeeTodayClient({
           >
             Назад
           </Button>
-          <Button type='button' className='h-9 text-xs font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
-            {isEditing ? 'Сохранить исправление' : 'Сохранить'}
-          </Button>
+          {!photoCompletesTaskAutomatically && (
+            <Button type='button' className='h-9 text-xs font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
+              {isEditing ? 'Сохранить исправление' : 'Сохранить'}
+            </Button>
+          )}
         </div>
       </div>
     );
