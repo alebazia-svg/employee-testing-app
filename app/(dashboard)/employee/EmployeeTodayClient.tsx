@@ -905,12 +905,15 @@ export function EmployeeTodayClient({
   const canUseCashOperations = shiftControlEnabled;
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
-  const syncCurrentWorkdayState = useCallback(async () => {
+  const syncCurrentWorkdayState = useCallback(async (replaceInFlight = false) => {
     // iOS standalone web apps can leave a fetch pending while resuming. Do not
     // abort it on the next interval: that would keep the UI on its initial
-    // server snapshot forever. Keep one request in flight and give it a
-    // bounded timeout instead.
-    if (workdaySyncInFlightRef.current) return;
+    // server snapshot forever. A sync after a user action is different: it must
+    // replace an older background request so the UI cannot keep stale fields.
+    if (workdaySyncInFlightRef.current) {
+      if (!replaceInFlight) return;
+      workdaySyncAbortRef.current?.abort();
+    }
 
     const controller = new AbortController();
     workdaySyncAbortRef.current = controller;
@@ -935,8 +938,10 @@ export function EmployeeTodayClient({
       // Keep the last valid snapshot and retry on the next scheduled sync.
     } finally {
       window.clearTimeout(timeout);
-      if (workdaySyncAbortRef.current === controller) workdaySyncAbortRef.current = null;
-      workdaySyncInFlightRef.current = false;
+      if (workdaySyncAbortRef.current === controller) {
+        workdaySyncAbortRef.current = null;
+        workdaySyncInFlightRef.current = false;
+      }
     }
   }, []);
 
@@ -1214,7 +1219,7 @@ export function EmployeeTodayClient({
       setNow(new Date());
       setMessage('');
       setQrDepartmentConfirmed(null);
-      await syncCurrentWorkdayState();
+      await syncCurrentWorkdayState(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось начать рабочий день');
     } finally {
@@ -1239,7 +1244,7 @@ export function EmployeeTodayClient({
       if (payload.workDay.date === today) setWorkDay(payload.workDay);
       setUnfinished(null);
       setNow(new Date());
-      await syncCurrentWorkdayState();
+      await syncCurrentWorkdayState(true);
       setMessage('');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить рабочий день');
@@ -1278,7 +1283,7 @@ export function EmployeeTodayClient({
       setStaleCloseReason('');
       setStaleCloseComment('');
       setNow(new Date());
-      await syncCurrentWorkdayState();
+      await syncCurrentWorkdayState(true);
       setMessage(payload.staleClosed ? 'Предыдущий рабочий день закрыт' : 'Рабочий день завершён');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить предыдущий рабочий день');
@@ -1359,7 +1364,7 @@ export function EmployeeTodayClient({
 
       setCashOperationsState((current) => [result.operation, ...current]);
       setCashOperationDraft({ direction: null, amount: '', comment: '' });
-      await syncCurrentWorkdayState();
+      await syncCurrentWorkdayState(true);
       setMessage(`Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
@@ -1445,7 +1450,7 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
-      await syncCurrentWorkdayState();
+      await syncCurrentWorkdayState(true);
       setMessage(shiftControlPhotoMessage(nextTasks, result.task.id));
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Не удалось обновить задачу';
@@ -1549,7 +1554,7 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
-      await syncCurrentWorkdayState();
+      await syncCurrentWorkdayState(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
     } finally {
@@ -1949,7 +1954,7 @@ export function EmployeeTodayClient({
       setHandoverDraft(emptyHandoverDraft());
       setMessage(result.message || 'Смена сдана, рабочий день завершён');
       setNow(new Date());
-      await syncCurrentWorkdayState();
+      await syncCurrentWorkdayState(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
     } finally {
