@@ -102,6 +102,14 @@ changing employee checklist behavior:
 - no T-Bank data is persisted yet and no employee declaration is overwritten or
   automatically completed.
 
+The admin diagnostic page also has a date-based shadow comparison for confirmed
+terminal-to-1C cash-register mappings. It matches each T-Bank payment to no more
+than one 1C card check by exact amount and a five-minute time window, and shows
+payments found only in T-Bank or only in 1C. Returns stay outside the mismatch
+count until the 1C source proves their complete composition. The comparison is
+currently day-based; checklist-interval statuses are a later step after the
+shadow results and source latency are validated.
+
 Keep this integration in shadow mode until production credentials, terminal
 mapping and real operation latency have been verified. T-API documents that
 terminal operations can arrive with a delay of up to two hours, so absence of a
