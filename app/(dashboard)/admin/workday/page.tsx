@@ -79,7 +79,12 @@ function timingSummary(violations: WorkdayTimingViolation[]) {
   if (earlyCheckout?.minutesLate) parts.push(`Уход −${earlyCheckout.minutesLate} мин`);
   if (missingCheckout) parts.push('Смена не завершена');
   if (workdayNotStarted) parts.push('Рабочий день не начат');
-  if (taskViolationCount > 0) parts.push(`${taskViolationCount} проверок не в срок`);
+  if (taskViolationCount > 0) {
+    const lastTwo = taskViolationCount % 100;
+    const last = taskViolationCount % 10;
+    const noun = lastTwo >= 11 && lastTwo <= 14 ? 'проверок' : last === 1 ? 'проверка' : last >= 2 && last <= 4 ? 'проверки' : 'проверок';
+    parts.push(`${taskViolationCount} ${noun} не в срок`);
+  }
   if (parts.length === 0) return 'Без нарушений';
   return `${parts.slice(0, 2).join(' · ')}${parts.length > 2 ? ` · ещё ${parts.length - 2}` : ''}`;
 }

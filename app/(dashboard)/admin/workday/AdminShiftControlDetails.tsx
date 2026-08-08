@@ -1179,8 +1179,12 @@ export function AdminShiftControlDetails({
             <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
               <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
                 <div>
-                  <p className='text-sm font-extrabold text-slate-950'>Проверки: {summary.completed} из {summary.total} выполнено</p>
-                  <p className='mt-0.5 text-xs font-semibold text-slate-500'>Откройте только ту проверку, по которой нужны подробности.</p>
+                  <p className='text-sm font-extrabold text-slate-950'>
+                    {run ? `Проверки: ${summary.completed} из ${summary.total} выполнено` : 'Чек-лист не используется'}
+                  </p>
+                  <p className='mt-0.5 text-xs font-semibold text-slate-500'>
+                    {run ? 'Откройте только ту проверку, по которой нужны подробности.' : 'Ниже показаны нарушения рабочего времени.'}
+                  </p>
                 </div>
                 <Badge className={hasError
                   ? 'bg-rose-100 text-rose-800'
@@ -1221,12 +1225,12 @@ export function AdminShiftControlDetails({
                     })}
                   </div>
                 </section>
-              ) : (
+              ) : !hasTimingViolations ? (
                 <section className='mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3'>
                   <h4 className='text-sm font-extrabold text-slate-950'>Ключевых проблем нет</h4>
                   <p className='mt-1 text-xs font-semibold text-slate-600'>По выполненным и доступным проверкам замечаний не найдено.</p>
                 </section>
-              )}
+              ) : null}
 
               {workdayTimingViolations.length > 0 ? (
                 <section className='mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3'>
@@ -1241,14 +1245,14 @@ export function AdminShiftControlDetails({
                 </section>
               ) : null}
 
-              <section className='overflow-hidden rounded-xl bg-white ring-1 ring-slate-200'>
+              {overviewTasks.length > 0 ? <section className='overflow-hidden rounded-xl bg-white ring-1 ring-slate-200'>
                 <div className='hidden grid-cols-[minmax(210px,1.3fr)_90px_150px_minmax(220px,1.5fr)_72px] gap-2 bg-slate-50 px-4 py-2 text-xs font-bold uppercase text-slate-400 md:grid'>
                   <span>Проверка</span><span>Время</span><span>Статус</span><span>Результат</span><span></span>
                 </div>
                 {overviewTasks.map((item) => (
                   <TaskOverviewRow key={item.task.id} item={item} department={department} run={run!} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
                 ))}
-              </section>
+              </section> : null}
             </div>
           </div>
           {selectedPhoto && (
