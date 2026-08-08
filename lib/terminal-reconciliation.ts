@@ -29,9 +29,12 @@ function timestamp(value: string, assumeMoscow = false) {
   // while its clock value is Moscow local time. Preserve the clock portion and
   // attach the real source timezone before comparing it with T-Bank UTC dates.
   const oneCClock = value.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
+  const oneCRussianClock = value.match(/^(\d{2})\.(\d{2})\.(\d{4})[ T](\d{2}:\d{2}:\d{2})/);
   const normalized = assumeMoscow && oneCClock
     ? `${oneCClock[1]}T${oneCClock[2]}+03:00`
-    : value;
+    : assumeMoscow && oneCRussianClock
+      ? `${oneCRussianClock[3]}-${oneCRussianClock[2]}-${oneCRussianClock[1]}T${oneCRussianClock[4]}+03:00`
+      : value;
   const parsed = new Date(normalized).getTime();
   return Number.isFinite(parsed) ? parsed : null;
 }
