@@ -86,7 +86,7 @@ function timingSummary(violations: WorkdayTimingViolation[]) {
     parts.push(`${taskViolationCount} ${noun} не в срок`);
   }
   if (parts.length === 0) return 'Без нарушений';
-  return `${parts.slice(0, 2).join(' · ')}${parts.length > 2 ? ` · ещё ${parts.length - 2}` : ''}`;
+  return `${parts.slice(0, 2).join(' · ')}${parts.length > 2 ? ` · всего ${parts.length}` : ''}`;
 }
 
 function serializeShiftControlRun(run: any) {
@@ -1045,7 +1045,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         && (check.status === 'waiting' || check.status === 'unavailable')
       )).length;
       const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed').length;
-      const attentionReasons = [
+      const businessAttentionReasons = [
         !schedule ? 'График не заполнен' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
         missedTaskCount > 0 ? `Пропущено проверок: ${missedTaskCount}` : null,
@@ -1054,6 +1054,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             ? `Подтверждённых проблем: ${manualIssueCount}`
             : `Расхождений по 1С: ${mismatchCount}`
           : null,
+      ].filter((reason): reason is string => Boolean(reason));
+      const attentionReasons = [
+        ...businessAttentionReasons,
         actionableTimingViolations.length > 0
           ? actionableTimingViolations.length === 1
             ? actionableTimingViolations[0].label
@@ -1095,7 +1098,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             ? 'Сотрудник сообщил о расхождении'
             : `Расхождений с учётными данными: ${mismatchCount}`
         : needsAttention
-        ? `${attentionReasons.slice(0, 2).join(' · ')}${attentionReasons.length > 2 ? ` · ещё ${attentionReasons.length - 2}` : ''}`
+        ? businessAttentionReasons.length > 0
+          ? `${businessAttentionReasons.slice(0, 2).join(' · ')}${businessAttentionReasons.length > 2 ? ` · ещё ${businessAttentionReasons.length - 2}` : ''}`
+          : '—'
         : cannotVerify
           ? `Нужно проверить вручную: ${Math.max(incompleteCount, 1)}`
           : isPending
