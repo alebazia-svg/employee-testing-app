@@ -8,40 +8,80 @@ datasource db {
 }
 
 model User {
-  id            Int               @id @default(autoincrement())
-  name          String
-  login         String            @unique
-  passwordHash  String
-  role          String
-  department    String            @default("retail")
-  isActive      Boolean           @default(true)
-  payrollName   String?
-  results       Result[]
-  progresses    AttemptProgress[]
-  resetTargets  AttemptReset[]    @relation("ResetTarget")
-  resetByActions AttemptReset[]    @relation("ResetBy")
-  payrollRuns   PayrollRun[]      @relation("PayrollRunCreatedBy")
-  payrollAdjustments PayrollAdjustment[] @relation("PayrollAdjustmentCreatedBy")
-  workSchedules WorkScheduleEntry[]
-  workDays      WorkDayEntry[]
-  shiftControlRuns ShiftControlRun[]
+  id                        Int                        @id @default(autoincrement())
+  name                      String
+  login                     String                     @unique
+  passwordHash              String
+  role                      String
+  department                String                     @default("retail")
+  isActive                  Boolean                    @default(true)
+  payrollName               String?
+  results                   Result[]
+  progresses                AttemptProgress[]
+  resetTargets              AttemptReset[]             @relation("ResetTarget")
+  resetByActions            AttemptReset[]             @relation("ResetBy")
+  payrollRuns               PayrollRun[]               @relation("PayrollRunCreatedBy")
+  payrollAdjustments        PayrollAdjustment[]        @relation("PayrollAdjustmentCreatedBy")
+  workSchedules             WorkScheduleEntry[]
+  workDays                  WorkDayEntry[]
+  shiftControlRuns          ShiftControlRun[]
   shiftControlManualReviews ShiftControlManualReview[] @relation("ShiftControlManualReviewReviewedBy")
-  cashOperations CashOperation[]
-  oneCCashboxMapping UserOneCCashboxMapping?
+  cashOperations            CashOperation[]
+  oneCCashboxMapping        UserOneCCashboxMapping?
+  pushSubscriptions         WorkdayPushSubscription[]
+  workdayNotifications      WorkdayNotification[]
+  workdayControlIssues      WorkdayControlIssue[]
+  kkmAssignments            WorkdayKkmAssignment[]     @relation("WorkdayKkmAssignmentEmployee")
+  assignedKkmAssignments    WorkdayKkmAssignment[]     @relation("WorkdayKkmAssignmentAssignedBy")
 }
 
 model UserOneCCashboxMapping {
-  id              Int      @id @default(autoincrement())
-  userId          Int      @unique
-  oneCCashboxRef  String
-  oneCCashboxName String
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                        Int      @id @default(autoincrement())
+  userId                    Int      @unique
+  oneCCashboxRef            String
+  oneCCashboxName           String
+  oneCCashRegisterRef       String?
+  oneCCashRegisterName      String?
+  oneCAcquiringTerminalRef  String?
+  oneCAcquiringTerminalName String?
+  tbankTerminalId           String?
+  kkmMode                   String   @default("personal")
+  isActive                  Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([oneCCashboxRef])
+  @@index([oneCCashRegisterRef])
+  @@index([tbankTerminalId])
   @@index([isActive])
+}
+
+model WorkdayKkmAssignment {
+  id                   Int           @id @default(autoincrement())
+  userId               Int
+  date                 String
+  plannedShiftCode     String?
+  oneCCashRegisterRef  String
+  oneCCashRegisterName String
+  kkmMode              String        @default("personal")
+  source               String        @default("manual")
+  note                 String        @default("")
+  effectiveFrom        DateTime
+  effectiveTo          DateTime?
+  changeReason         String        @default("")
+  assignedById         Int
+  assignedAt           DateTime      @default(now())
+  workDayEntryId       Int?
+  updatedAt            DateTime      @updatedAt
+  user                 User          @relation("WorkdayKkmAssignmentEmployee", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy           User          @relation("WorkdayKkmAssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  workDayEntry         WorkDayEntry? @relation(fields: [workDayEntryId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date, effectiveFrom])
+  @@index([date, effectiveFrom, effectiveTo])
+  @@index([oneCCashRegisterRef, date])
+  @@index([assignedById, assignedAt])
 }
 
 model WorkScheduleEntry {
@@ -61,7 +101,7 @@ model WorkScheduleEntry {
 }
 
 model WorkDayEntry {
-  id                Int       @id @default(autoincrement())
+  id                Int                    @id @default(autoincrement())
   userId            Int
   date              String
   department        String
@@ -69,16 +109,17 @@ model WorkDayEntry {
   shiftLabel        String
   shiftStartMinutes Int?
   shiftEndMinutes   Int?
-  startedAt         DateTime  @default(now())
+  startedAt         DateTime               @default(now())
   endedAt           DateTime?
-  lateMinutes       Int       @default(0)
-  comment           String    @default("")
-  status            String    @default("active")
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lateMinutes       Int                    @default(0)
+  comment           String                 @default("")
+  status            String                 @default("active")
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   shiftControlRun   ShiftControlRun?
   cashOperations    CashOperation[]
+  kkmAssignments    WorkdayKkmAssignment[]
 
   @@unique([userId, date])
   @@index([date])
@@ -87,25 +128,31 @@ model WorkDayEntry {
 }
 
 model CashOperation {
-  id             Int          @id @default(autoincrement())
-  userId         Int
-  workDayEntryId Int
-  date           String
-  department     String
-  direction      String
-  amount         Float
-  photoPath      String
-  comment        String       @default("")
-  status         String       @default("pending_1c")
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workDayEntry   WorkDayEntry @relation(fields: [workDayEntryId], references: [id], onDelete: Cascade)
+  id                 Int          @id @default(autoincrement())
+  userId             Int
+  workDayEntryId     Int
+  date               String
+  department         String
+  direction          String
+  amount             Float
+  photoPath          String
+  comment            String       @default("")
+  status             String       @default("pending_1c")
+  idempotencyKey     String       @unique
+  oneCDocumentRef    String?
+  oneCDocumentNumber String?
+  oneCError          String       @default("")
+  oneCCreatedAt      DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workDayEntry       WorkDayEntry @relation(fields: [workDayEntryId], references: [id], onDelete: Cascade)
 
   @@index([userId, date])
   @@index([workDayEntryId])
   @@index([direction])
   @@index([status])
+  @@index([oneCDocumentRef])
 }
 
 model ShiftControlTemplate {
@@ -166,31 +213,100 @@ model ShiftControlRun {
 }
 
 model ShiftControlTask {
-  id                 Int                       @id @default(autoincrement())
+  id                 Int                        @id @default(autoincrement())
   runId              Int
   templateTaskId     Int?
   title              String
   category           String
   sortOrder          Int
-  required           Boolean                   @default(true)
+  required           Boolean                    @default(true)
   plannedTimeMinutes Int?
-  status             String                    @default("pending")
+  status             String                     @default("pending")
   completedAt        DateTime?
-  numericValue        Float?
-  integerValue        Int?
-  booleanValue        Boolean?
-  textValue           String?
-  handoverData        Json?
-  comment            String                    @default("")
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
-  run                ShiftControlRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
-  templateTask       ShiftControlTemplateTask? @relation(fields: [templateTaskId], references: [id], onDelete: SetNull)
-  manualReviews     ShiftControlManualReview[]
+  numericValue       Float?
+  integerValue       Int?
+  booleanValue       Boolean?
+  textValue          String?
+  handoverData       Json?
+  comment            String                     @default("")
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  run                ShiftControlRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  templateTask       ShiftControlTemplateTask?  @relation(fields: [templateTaskId], references: [id], onDelete: SetNull)
+  manualReviews      ShiftControlManualReview[]
+  notifications      WorkdayNotification[]
+  controlIssues      WorkdayControlIssue[]
 
   @@index([runId, sortOrder])
   @@index([status])
   @@index([category])
+}
+
+model WorkdayPushSubscription {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String    @default("")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  disabledAt DateTime?
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, disabledAt])
+}
+
+model WorkdayControlIssue {
+  id             Int                   @id @default(autoincrement())
+  userId         Int
+  taskId         Int?
+  fingerprint    String                @unique
+  ruleKey        String
+  severity       String
+  status         String                @default("open")
+  title          String
+  detail         String
+  sourceData     Json?
+  detectedAt     DateTime              @default(now())
+  lastDetectedAt DateTime              @default(now())
+  nextReminderAt DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task           ShiftControlTask?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  notifications  WorkdayNotification[]
+
+  @@index([userId, status])
+  @@index([taskId, status])
+  @@index([status, nextReminderAt])
+}
+
+model WorkdayNotification {
+  id           Int                  @id @default(autoincrement())
+  userId       Int
+  taskId       Int?
+  issueId      Int?
+  fingerprint  String               @unique
+  kind         String
+  title        String
+  body         String
+  status       String               @default("pending")
+  scheduledAt  DateTime
+  sentAt       DateTime?
+  readAt       DateTime?
+  attemptCount Int                  @default(0)
+  lastError    String               @default("")
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task         ShiftControlTask?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  issue        WorkdayControlIssue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, scheduledAt])
+  @@index([taskId, kind])
+  @@index([issueId, kind])
 }
 
 model ShiftControlManualReview {
@@ -256,18 +372,18 @@ model AttemptProgress {
 }
 
 model Result {
-  id            Int         @id @default(autoincrement())
-  userId        Int
-  attestationId Int
-  date          DateTime    @default(now())
-  percent       Int
-  status        String
-  correctCount  Int
+  id             Int         @id @default(autoincrement())
+  userId         Int
+  attestationId  Int
+  date           DateTime    @default(now())
+  percent        Int
+  status         String
+  correctCount   Int
   totalQuestions Int
-  mistakes      Int
-  details       String
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  attestation   Attestation @relation(fields: [attestationId], references: [id], onDelete: Cascade)
+  mistakes       Int
+  details        String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attestation    Attestation @relation(fields: [attestationId], references: [id], onDelete: Cascade)
 }
 
 model AttemptReset {
@@ -296,33 +412,33 @@ model PayrollPeriod {
 }
 
 model PayrollRun {
-  id                  Int                      @id @default(autoincrement())
-  periodId            Int
-  runNumber           Int
-  status              String                   @default("DRAFT")
-  rulesVersion        String                   @default("client-snapshot-v1")
-  employeeCount       Int                      @default(0)
-  reviewCount         Int                      @default(0)
-  grossPay            Float                    @default(0)
-  netPay              Float                    @default(0)
-  advance             Float                    @default(0)
-  deductions          Float                    @default(0)
-  dayPay              Float                    @default(0)
-  salesBonus          Float                    @default(0)
-  disciplineBonus     Float                    @default(0)
-  sourceSummary       Json?
-  createdByUserId     Int?
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
-  checkedAt           DateTime?
-  closedAt            DateTime?
-  period              PayrollPeriod            @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  createdBy           User?                    @relation("PayrollRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  employeeResults     PayrollEmployeeResult[]
-  sourceFiles         PayrollSourceFile[]
-  manualInputs        PayrollManualInput[]
-  adjustments         PayrollAdjustment[]
-  analyticsRows       PayrollAnalyticsRow[]
+  id              Int                     @id @default(autoincrement())
+  periodId        Int
+  runNumber       Int
+  status          String                  @default("DRAFT")
+  rulesVersion    String                  @default("client-snapshot-v1")
+  employeeCount   Int                     @default(0)
+  reviewCount     Int                     @default(0)
+  grossPay        Float                   @default(0)
+  netPay          Float                   @default(0)
+  advance         Float                   @default(0)
+  deductions      Float                   @default(0)
+  dayPay          Float                   @default(0)
+  salesBonus      Float                   @default(0)
+  disciplineBonus Float                   @default(0)
+  sourceSummary   Json?
+  createdByUserId Int?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  checkedAt       DateTime?
+  closedAt        DateTime?
+  period          PayrollPeriod           @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  createdBy       User?                   @relation("PayrollRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  employeeResults PayrollEmployeeResult[]
+  sourceFiles     PayrollSourceFile[]
+  manualInputs    PayrollManualInput[]
+  adjustments     PayrollAdjustment[]
+  analyticsRows   PayrollAnalyticsRow[]
 
   @@unique([periodId, runNumber])
 }
@@ -378,7 +494,7 @@ model PayrollEmployeeResult {
 }
 
 model PayrollSourceFile {
-  id             Int        @id @default(autoincrement())
+  id             Int                   @id @default(autoincrement())
   runId          Int
   type           String
   originalName   String
@@ -386,14 +502,14 @@ model PayrollSourceFile {
   mimeType       String?
   sizeBytes      Int?
   sha256         String?
-  uploadedAt     DateTime   @default(now())
+  uploadedAt     DateTime              @default(now())
   selectedSheet  String?
   rowCount       Int?
   parsedRowCount Int?
-  status         String     @default("UPLOADED")
+  status         String                @default("UPLOADED")
   warnings       Json?
   metadata       Json?
-  run            PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  run            PayrollRun            @relation(fields: [runId], references: [id], onDelete: Cascade)
   analyticsRows  PayrollAnalyticsRow[]
 
   @@index([runId])
@@ -417,18 +533,18 @@ model PayrollAnalyticsRow {
   itemName            String
   article             String?
   quantity            Float?
-  revenue             Float             @default(0)
-  cost                Float             @default(0)
-  grossProfit         Float             @default(0)
+  revenue             Float              @default(0)
+  cost                Float              @default(0)
+  grossProfit         Float              @default(0)
   marginPercent       Float?
   markupPercent       Float?
   calculationType     String
   componentType       String?
-  commissionAmount    Float             @default(0)
-  isCredit            Boolean           @default(false)
-  isReturn            Boolean           @default(false)
-  isNegative          Boolean           @default(false)
-  isManualRuleApplied Boolean           @default(false)
+  commissionAmount    Float              @default(0)
+  isCredit            Boolean            @default(false)
+  isReturn            Boolean            @default(false)
+  isNegative          Boolean            @default(false)
+  isManualRuleApplied Boolean            @default(false)
   manualRuleLabel     String?
   problemFlags        Json?
   checkReason         String?
@@ -461,37 +577,37 @@ model SalesAnalyticsReport {
 }
 
 model SalesAnalyticsRow {
-  id                  Int                  @id @default(autoincrement())
-  reportId            Int
-  sourceReportType    String               @default("extended_vgp")
-  employeeName        String
-  department          String?
-  location            String?
-  client              String?
-  category            String?
-  nomenclatureType    String?
-  itemName            String
-  article             String?
-  quantity            Float?
-  revenue             Float                @default(0)
-  cost                Float                @default(0)
-  grossProfit         Float                @default(0)
-  marginPercent       Float?
-  markupPercent       Float?
-  documentName        String?
-  documentType        String               @default("UNKNOWN")
-  documentDate        DateTime?
-  unitRevenue         Float?
-  unitCost            Float?
-  unitGrossProfit     Float?
-  isCredit            Boolean              @default(false)
-  isReturn            Boolean              @default(false)
-  isRealReturn        Boolean              @default(false)
-  isNegative          Boolean              @default(false)
-  problemFlags        Json?
-  checkReason         String?
-  createdAt           DateTime             @default(now())
-  report              SalesAnalyticsReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  id               Int                  @id @default(autoincrement())
+  reportId         Int
+  sourceReportType String               @default("extended_vgp")
+  employeeName     String
+  department       String?
+  location         String?
+  client           String?
+  category         String?
+  nomenclatureType String?
+  itemName         String
+  article          String?
+  quantity         Float?
+  revenue          Float                @default(0)
+  cost             Float                @default(0)
+  grossProfit      Float                @default(0)
+  marginPercent    Float?
+  markupPercent    Float?
+  documentName     String?
+  documentType     String               @default("UNKNOWN")
+  documentDate     DateTime?
+  unitRevenue      Float?
+  unitCost         Float?
+  unitGrossProfit  Float?
+  isCredit         Boolean              @default(false)
+  isReturn         Boolean              @default(false)
+  isRealReturn     Boolean              @default(false)
+  isNegative       Boolean              @default(false)
+  problemFlags     Json?
+  checkReason      String?
+  createdAt        DateTime             @default(now())
+  report           SalesAnalyticsReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
   @@index([reportId])
   @@index([sourceReportType])
@@ -515,7 +631,7 @@ model PayrollManualInput {
   fixedDeduction        String?
   purchaseAdvance       String?
   purchaseDeduction     String?
-  comment               String    @default("")
+  comment               String     @default("")
   source                String?
   updatedAt             DateTime   @default(now())
   run                   PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)

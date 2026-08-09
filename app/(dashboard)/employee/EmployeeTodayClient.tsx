@@ -33,6 +33,7 @@ import { Card } from '@/components/ui/card';
 import { startVisibleSync } from '@/lib/visible-sync';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
+import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
 
 function uploadFormData<T>(url: string, method: 'POST' | 'PATCH', formData: FormData, fallbackError: string) {
   return new Promise<T>((resolve, reject) => {
@@ -203,6 +204,7 @@ type HandoverDraft = {
   tbankTerminalTotal: string;
   zReportPhoto: HandoverPhotoValue;
   encashmentAmount: string;
+  encashmentDirection: '' | 'phone_reserve' | 'deposit_safe';
   encashmentDocumentPhoto: HandoverPhotoValue;
   comment: string;
 };
@@ -210,7 +212,12 @@ type CashOperationDraft = {
   direction: CashOperation['direction'] | null;
   amount: string;
   comment: string;
+  idempotencyKey: string;
 };
+
+function createOperationKey() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(16).padStart(12, '0')}-0000-4000-8000-${Math.random().toString(16).slice(2).padEnd(12, '0').slice(0, 12)}`;
+}
 
 const staleCloseReasons = [
   'Забыл закрыть рабочий день',
@@ -636,6 +643,7 @@ function emptyHandoverDraft(): HandoverDraft {
     tbankTerminalTotal: '',
     zReportPhoto: null,
     encashmentAmount: '',
+    encashmentDirection: '',
     encashmentDocumentPhoto: null,
     comment: '',
   };
@@ -715,6 +723,9 @@ function draftFromHandoverData(data: unknown): HandoverDraft {
     draft.discrepancyAmount = stringFromUnknown(personalCash.discrepancyAmount);
     draft.hasTbankCredit = booleanDraftValue(personalCash.hasTbankCredit);
     draft.encashmentAmount = stringFromUnknown(personalCash.encashmentAmount);
+    draft.encashmentDirection = personalCash.encashmentDirection === 'phone_reserve' || personalCash.encashmentDirection === 'deposit_safe'
+      ? personalCash.encashmentDirection
+      : '';
   }
   if (reserveCash) {
     draft.reserveCashBalance = stringFromUnknown(reserveCash.cashBalance);
@@ -769,7 +780,7 @@ function creditResultLabel(integerValue: number | null | undefined) {
 }
 
 function isClosingShift(shiftCode: string | null | undefined) {
-  return shiftCode === '11_20';
+  return shiftCode === '11_20' || shiftCode === '09_20';
 }
 
 function cashOperationDirectionLabel(direction: CashOperation['direction']) {
@@ -867,7 +878,7 @@ export function EmployeeTodayClient({
   const [unfinished, setUnfinished] = useState(unfinishedWorkDay);
   const [shiftControlState, setShiftControlState] = useState(shiftControl);
   const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
-  const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '' });
+  const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '', idempotencyKey: '' });
   const [selectedShift, setSelectedShift] = useState('');
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const [qrDepartmentConfirmed, setQrDepartmentConfirmed] = useState<string | null>(null);
@@ -898,6 +909,14 @@ export function EmployeeTodayClient({
   const workdaySyncInFlightRef = useRef(false);
   const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
   const displayNow = now ?? initialRenderNow;
+
+  useEffect(() => {
+    const startNotice = window.sessionStorage.getItem('workdayStartNotice');
+    if (startNotice) {
+      window.sessionStorage.removeItem('workdayStartNotice');
+      setMessage(startNotice);
+    }
+  }, []);
 
   useEffect(() => {
     const hasActiveWorkDay = Boolean(workDay && workDay.status !== 'completed' && !workDay.endedAt);
@@ -1391,7 +1410,7 @@ export function EmployeeTodayClient({
   }
 
   function openCashOperation(direction: CashOperation['direction']) {
-    setCashOperationDraft({ direction, amount: '', comment: '' });
+    setCashOperationDraft({ direction, amount: '', comment: '', idempotencyKey: createOperationKey() });
     setError('');
     setMessage('');
   }
@@ -1410,6 +1429,7 @@ export function EmployeeTodayClient({
     formData.append('direction', cashOperationDraft.direction);
     formData.append('amount', cashOperationDraft.amount);
     formData.append('comment', cashOperationDraft.comment);
+    formData.append('idempotencyKey', cashOperationDraft.idempotencyKey);
     formData.append('photo', file);
 
     setError('');
@@ -1423,7 +1443,7 @@ export function EmployeeTodayClient({
       );
 
       setCashOperationsState((current) => [result.operation, ...current]);
-      setCashOperationDraft({ direction: null, amount: '', comment: '' });
+      setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
       await syncCurrentWorkdayState(true);
       setMessage(`Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
@@ -1457,6 +1477,7 @@ export function EmployeeTodayClient({
     formData.append('hasTbankCredit', draft.hasTbankCredit ? String(draft.hasTbankCredit === 'yes') : '');
     formData.append('tbankTerminalTotal', draft.tbankTerminalTotal);
     formData.append('encashmentAmount', draft.encashmentAmount);
+    formData.append('encashmentDirection', draft.encashmentDirection);
     formData.append('comment', draft.comment);
 
     const result = await uploadFormData<{ task: ShiftControlTask }>(
@@ -2002,6 +2023,7 @@ export function EmployeeTodayClient({
     if (step === 'zReportPhoto' && !hasHandoverPhoto(draft.zReportPhoto)) return 'Сделайте фото чека закрытия смены';
     if (step === 'encashment') {
       if (parseMoneyInput(draft.encashmentAmount) === null) return 'Укажите сумму инкассации';
+      if (!draft.encashmentDirection) return 'Выберите направление инкассации';
       if (!hasHandoverPhoto(draft.encashmentDocumentPhoto)) return 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.';
     }
     return '';
@@ -2039,6 +2061,7 @@ export function EmployeeTodayClient({
     formData.append('hasTbankCredit', draft.hasTbankCredit ? String(draft.hasTbankCredit === 'yes') : '');
     formData.append('tbankTerminalTotal', draft.tbankTerminalTotal);
     formData.append('encashmentAmount', draft.encashmentAmount);
+    formData.append('encashmentDirection', draft.encashmentDirection);
     formData.append('comment', draft.comment);
 
     setError('');
@@ -2283,6 +2306,22 @@ export function EmployeeTodayClient({
               />
               {stepError && parseMoneyInput(handoverDraft.encashmentAmount) === null && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
             </label>
+            <div className='grid grid-cols-2 gap-2'>
+              <Button
+                type='button'
+                className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.encashmentDirection === 'phone_reserve' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                onClick={() => updateHandoverDraft({ encashmentDirection: 'phone_reserve' })}
+              >
+                Резерв на телефоны
+              </Button>
+              <Button
+                type='button'
+                className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.encashmentDirection === 'deposit_safe' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                onClick={() => updateHandoverDraft({ encashmentDirection: 'deposit_safe' })}
+              >
+                Депозитный сейф
+              </Button>
+            </div>
             {renderPhotoInput(
               'Инкассация',
               'encashmentDocumentPhoto',
@@ -2527,6 +2566,7 @@ export function EmployeeTodayClient({
         </header>
 
         <div className='flex-1 px-4 pb-[calc(8.75rem+env(safe-area-inset-bottom))] pt-4'>
+          <WorkdayNotificationsClient />
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
             <Card className='mb-4 border-amber-200 bg-amber-50'>
               <div className='flex items-start gap-3'>
@@ -2805,7 +2845,7 @@ export function EmployeeTodayClient({
                         <button
                           type='button'
                           className='text-xs font-extrabold text-slate-400 hover:text-slate-700'
-                          onClick={() => setCashOperationDraft({ direction: null, amount: '', comment: '' })}
+                          onClick={() => setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' })}
                         >
                           Отмена
                         </button>

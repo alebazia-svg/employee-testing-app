@@ -11,10 +11,13 @@ import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
   getCashStatementDimensions,
   getCashStatementSummary,
+  getCashShifts,
   getKkmEquipmentDiagnostics,
   getSalesRealizationFiscalOperations,
   getSalesRealizations,
   type OneCCashStatementSummaryResult,
+  type OneCCashShift,
+  type OneCCashShiftsResult,
   type OneCKkmEquipmentDiagnosticsResult,
   type OneCSalesRealizationDocument,
   type OneCSalesRealizationFiscalOperationsResult,
@@ -23,7 +26,7 @@ import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
 import { evaluateWorkdayTiming } from '@/lib/workday-timing';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
-import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
+import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, getShiftOptionsForDepartment, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
 import { AdminWorkdayAutoRefresh } from './AdminWorkdayAutoRefresh';
 import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
@@ -48,6 +51,25 @@ type AutoCheckTask = {
   integerValue: number | null;
   handoverData: unknown;
 };
+
+type KkmAssignmentInterval = {
+  oneCCashRegisterRef: string;
+  oneCCashRegisterName: string;
+  effectiveFrom: Date;
+  effectiveTo: Date | null;
+};
+
+function parseOneCDatetime(value: string) {
+  const ru = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})/);
+  if (ru) return new Date(`${ru[3]}-${ru[2].padStart(2, '0')}-${ru[1].padStart(2, '0')}T${ru[4].padStart(2, '0')}:${ru[5]}:${ru[6]}+03:00`);
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function assignmentAt(assignments: KkmAssignmentInterval[], moment: Date | null) {
+  if (!moment) return assignments.at(-1) ?? null;
+  return assignments.find((assignment) => assignment.effectiveFrom <= moment && (!assignment.effectiveTo || assignment.effectiveTo > moment)) ?? null;
+}
 
 type TbankSalesForDate = {
   ok: boolean;
@@ -249,6 +271,22 @@ function matchesEmployeeManager(employeeName: string, managerName: string) {
   return Boolean(employeeKey) && normalizeSearchText(managerName).includes(employeeKey);
 }
 
+function cashShiftMatchesEmployee(shift: OneCCashShift, employeeName: string) {
+  const employeeKey = employeeOneCSearchKey(employeeName);
+  return Boolean(employeeKey) && shift.cashiers.some((item) => (
+    normalizeSearchText(item.cashier.name).includes(employeeKey)
+  ));
+}
+
+function factualCashRegisterRefs(shifts: OneCCashShift[], employeeName: string) {
+  return [...new Set(
+    shifts
+      .filter((shift) => cashShiftMatchesEmployee(shift, employeeName))
+      .map((shift) => shift.cashRegister.ref)
+      .filter(Boolean),
+  )];
+}
+
 async function getTbankSalesForDate(date: string): Promise<TbankSalesForDate> {
   const limit = 100;
   const documents: OneCSalesRealizationDocument[] = [];
@@ -281,8 +319,44 @@ async function getTbankSalesForDate(date: string): Promise<TbankSalesForDate> {
   return { ok: true, documents, fiscalByRealization };
 }
 
-function kkmUsageForEmployee(result: OneCKkmEquipmentDiagnosticsResult, cashboxName: string) {
+function kkmUsageForEmployee({
+  result,
+  cashboxName,
+  cashRegisterRef,
+  kkmMode,
+}: {
+  result: OneCKkmEquipmentDiagnosticsResult;
+  cashboxName: string;
+  cashRegisterRef: string | null;
+  kkmMode: string;
+}) {
+  if (kkmMode === 'personal') {
+    if (!cashRegisterRef) return [];
+    return result.cashRegisterUsage.filter((row) => row.cashRegister.ref === cashRegisterRef);
+  }
   return result.cashRegisterUsage.filter((row) => matchesExplicitCashbox(cashboxName, row.cashRegister.name));
+}
+
+function selectPersonalCashShift(shifts: OneCCashShift[], task: AutoCheckTask) {
+  const taskTime = task.completedAt?.getTime() ?? null;
+  const eventTime = (shift: OneCCashShift) => {
+    const value = task.category === 'closing'
+      ? shift.closedAt || shift.datetime
+      : shift.openedAt || shift.datetime;
+    const parsed = value ? new Date(value).getTime() : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  return [...shifts].sort((left, right) => {
+    const leftTime = eventTime(left);
+    const rightTime = eventTime(right);
+    if (taskTime !== null) {
+      const leftDistance = leftTime === null ? Number.POSITIVE_INFINITY : Math.abs(leftTime - taskTime);
+      const rightDistance = rightTime === null ? Number.POSITIVE_INFINITY : Math.abs(rightTime - taskTime);
+      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+    }
+    return (rightTime ?? 0) - (leftTime ?? 0);
+  })[0] ?? null;
 }
 
 function findEncashmentPair({
@@ -433,6 +507,8 @@ function cashboxMappingStatusMessage(status?: string, error?: string) {
   if (error === 'invalid-user') return { tone: 'rose', text: 'Не удалось сохранить: сотрудник не найден.' };
   if (error === 'unsupported-user') return { tone: 'rose', text: 'Кассы 1С привязываются только для розницы и опта.' };
   if (error === 'cashbox-not-found') return { tone: 'rose', text: 'Не удалось сохранить: касса 1С не найдена в текущем списке.' };
+  if (error === 'kkm-not-found') return { tone: 'rose', text: 'Не удалось сохранить: ККМ не найдена в текущих данных 1С.' };
+  if (error === 'terminal-not-found') return { tone: 'rose', text: 'Не удалось сохранить: терминал 1С не найден в текущих данных.' };
   return null;
 }
 
@@ -440,19 +516,27 @@ function buildEmployeeAutoChecks({
   employeeName,
   tasks,
   cashboxName,
+  cashRegisterRef,
+  kkmAssignments,
+  kkmMode,
   cashStatement,
   reserveCashboxName,
   reserveStatement,
   kkmDiagnostics,
+  cashShifts,
   tbankSales,
 }: {
   employeeName: string;
   tasks: AutoCheckTask[];
   cashboxName: string | null;
+  cashRegisterRef: string | null;
+  kkmAssignments: KkmAssignmentInterval[];
+  kkmMode: string;
   cashStatement: OneCCashStatementSummaryResult | null;
   reserveCashboxName: string | null;
   reserveStatement: OneCCashStatementSummaryResult | null;
   kkmDiagnostics: OneCKkmEquipmentDiagnosticsResult;
+  cashShifts: OneCCashShiftsResult;
   tbankSales: TbankSalesForDate;
 }) {
   const checks: ShiftAutoCheck[] = [];
@@ -463,7 +547,7 @@ function buildEmployeeAutoChecks({
   ));
   const employeeTbankDocuments = tbankSales.documents.filter((document) => matchesEmployeeManager(employeeName, document.managerName));
   const kkmUsage = cashboxName && kkmDiagnostics.ok
-    ? kkmUsageForEmployee(kkmDiagnostics, cashboxName)
+    ? kkmUsageForEmployee({ result: kkmDiagnostics, cashboxName, cashRegisterRef, kkmMode })
     : [];
 
   for (const task of tasks) {
@@ -677,13 +761,55 @@ function buildEmployeeAutoChecks({
             ? 'Сотрудник ещё не завершил открытие смены.'
             : 'Сотрудник ещё не завершил закрытие смены.',
         });
+      } else if (kkmMode === 'personal' && cashShifts.ok) {
+        const taskAssignment = assignmentAt(kkmAssignments, task.completedAt)
+          ?? (task.category === 'opening' ? kkmAssignments[0] : kkmAssignments.at(-1))
+          ?? null;
+        const taskCashRegisterRef = taskAssignment?.oneCCashRegisterRef ?? cashRegisterRef;
+        const factualRefs = factualCashRegisterRefs(cashShifts.shifts, employeeName);
+        const personalShifts = cashShifts.shifts.filter((shift) => (
+          (taskCashRegisterRef
+            ? shift.cashRegister.ref === taskCashRegisterRef
+            : factualRefs.includes(shift.cashRegister.ref) && cashShiftMatchesEmployee(shift, employeeName))
+          && shift.posted !== false
+          && shift.deletionMark !== true
+        ));
+        const cashShift = selectPersonalCashShift(personalShifts, task);
+        const opened = Boolean(cashShift?.openedAt) && Boolean(cashShift?.status);
+        const closed = Boolean(cashShift?.closedAt) && normalizeSearchText(cashShift?.status).includes('закрыт');
+        const matched = task.category === 'opening' ? opened : closed;
+        const canIdentifyKkm = Boolean(taskCashRegisterRef) || factualRefs.length > 0;
+        checks.push({
+          id: `${task.category}-${task.id}`,
+          taskId: task.id,
+          label,
+          status: matched ? 'matched' : canIdentifyKkm ? 'mismatch' : 'unavailable',
+          summary: matched
+            ? task.category === 'opening'
+              ? `Персональная смена ККМ открыта ${formatTime(cashShift?.openedAt)} · ККМ ${cashShift?.cashRegister.name}.`
+              : `Персональная смена ККМ закрыта ${formatTime(cashShift?.closedAt)} · статус «${cashShift?.status}».`
+            : task.category === 'opening'
+              ? taskCashRegisterRef || factualRefs.length > 0
+                ? 'Для определённой ККМ сотрудника открытая кассовая смена не найдена.'
+                : 'До первого чека ККМ сотрудника автоматически определить нельзя.'
+              : taskCashRegisterRef || factualRefs.length > 0
+                ? 'Для определённой ККМ сотрудника закрытие смены не подтверждено.'
+                : 'ККМ сотрудника по фактическим чекам не определена.',
+          evidence: cashShift
+            ? `Смена ${cashShift.number || cashShift.ref} · статус регламентных операций: ${cashShift.regulatoryStatus || 'не указан'} · кассиры по чекам: ${cashShift.cashiers.map((item) => item.cashier.name).filter(Boolean).join(', ') || 'чеков ещё нет'}.`
+            : taskCashRegisterRef
+              ? 'Проверка выполнена по резервному назначению ККМ на смену.'
+              : 'Фактическая ККМ определяется по кассиру в чеках 1С.',
+        });
       } else if (!kkmDiagnostics.ok || !cashboxName) {
         checks.push({
           id: `${task.category}-${task.id}`,
           taskId: task.id,
           label,
           status: 'unavailable',
-          summary: !cashboxName ? 'Касса сотрудника не привязана.' : kkmDiagnostics.error || 'Данные ККМ 1С не получены.',
+          summary: !cashboxName
+            ? 'Касса сотрудника не привязана.'
+            : kkmDiagnostics.error || 'Данные ККМ 1С не получены.',
         });
       } else {
         const checksCount = kkmUsage.reduce((sum, row) => sum + (row.checks ?? 0), 0);
@@ -962,23 +1088,70 @@ function buildEmployeeAutoChecks({
     }
 
     if (storeClosing) {
+      const closingAssignment = assignmentAt(kkmAssignments, task.completedAt) ?? kkmAssignments.at(-1) ?? null;
+      const closingCashRegisterRef = closingAssignment?.oneCCashRegisterRef ?? cashRegisterRef;
+      const factualRefs = factualCashRegisterRefs(cashShifts.shifts, employeeName);
+      const assignedShift = kkmMode === 'personal' && cashShifts.ok
+        ? selectPersonalCashShift(cashShifts.shifts.filter((shift) => (
+          (closingCashRegisterRef
+            ? shift.cashRegister.ref === closingCashRegisterRef
+            : factualRefs.includes(shift.cashRegister.ref) && cashShiftMatchesEmployee(shift, employeeName))
+          && shift.posted !== false
+          && shift.deletionMark !== true
+        )), task)
+        : null;
+      const closed = Boolean(assignedShift?.closedAt) && normalizeSearchText(assignedShift?.status ?? '').includes('закрыт');
       const checksCount = kkmUsage.reduce((sum, row) => sum + (row.checks ?? 0), 0);
       checks.push({
         id: `handover-z-report-${task.id}`,
         taskId: task.id,
         label: 'Закрытие смены ККМ',
-        status: 'unavailable',
-        summary: kkmDiagnostics.ok && cashboxName
-          ? `В 1С за день найдено чеков ККМ: ${checksCount}. Факт формирования Z-отчёта текущий endpoint не подтверждает.`
-          : 'Данные ККМ 1С не получены или касса не привязана.',
+        status: assignedShift ? (closed ? 'matched' : 'mismatch') : 'unavailable',
+        summary: assignedShift
+          ? closed
+            ? `Назначенная ККМ закрыта ${formatTime(assignedShift.closedAt || assignedShift.datetime)} · статус «${assignedShift.status}».`
+            : `Смена назначенной ККМ не закрыта · статус «${assignedShift.status || 'не указан'}».`
+          : kkmMode === 'personal'
+            ? 'Фактическая ККМ по чекам ещё не определена или данные её смены недоступны.'
+            : kkmDiagnostics.ok && cashboxName
+              ? `Серверная ККМ: в 1С за день найдено чеков ${checksCount}; прямое подтверждение закрытия недоступно.`
+              : 'Данные серверной ККМ 1С не получены.',
+        evidence: assignedShift ? `Смена ${assignedShift.number || assignedShift.ref} · ККМ ${assignedShift.cashRegister.name} · регламентные операции: ${assignedShift.regulatoryStatus || 'не указаны'}.` : undefined,
       });
     }
+  }
+
+  if (kkmMode === 'personal' && kkmAssignments.length > 0 && tasks[0] && kkmDiagnostics.ok) {
+    const employeeKey = employeeOneCSearchKey(employeeName);
+    const isEmployee = (cashierName: string) => Boolean(employeeKey) && normalizeSearchText(cashierName).includes(employeeKey);
+    const employeeChecks = kkmDiagnostics.recentChecks.filter((check) => isEmployee(check.cashier.name));
+    const employeeChecksOnOtherKkm = employeeChecks.filter((check) => {
+      const assigned = assignmentAt(kkmAssignments, parseOneCDatetime(check.datetime));
+      return Boolean(assigned) && check.cashRegister.ref !== assigned?.oneCCashRegisterRef;
+    });
+    const otherCashiersOnAssignedKkm = kkmDiagnostics.recentChecks.filter((check) => {
+      const assigned = assignmentAt(kkmAssignments, parseOneCDatetime(check.datetime));
+      return Boolean(assigned) && check.cashRegister.ref === assigned?.oneCCashRegisterRef && !isEmployee(check.cashier.name);
+    });
+    const hasConflict = employeeChecksOnOtherKkm.length > 0 || otherCashiersOnAssignedKkm.length > 0;
+    checks.push({
+      id: `kkm-assignment-${tasks[0].id}`,
+      taskId: tasks[0].id,
+      label: 'Фактическая работа на ККМ',
+      status: hasConflict ? 'mismatch' : employeeChecks.length > 0 ? 'matched' : 'waiting',
+      summary: hasConflict
+        ? `Нарушена сменная привязка: чеков сотрудника на другой ККМ — ${employeeChecksOnOtherKkm.length}; чеков других кассиров на назначенной ККМ — ${otherCashiersOnAssignedKkm.length}.`
+        : employeeChecks.length > 0
+          ? `Сотрудник пробил ${employeeChecks.length} чеков только на назначенной ККМ.`
+          : 'Чеков сотрудника пока нет; назначение проверится после первой фискальной операции.',
+      evidence: `Интервалов назначения за день: ${kkmAssignments.length}. Проверка выполнена по времени чека, UUID ККМ и кассиру.`,
+    });
   }
 
   return checks;
 }
 
-export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string; control?: string; employee?: string } }) {
+export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string; kkmAssignment?: string; kkmAssignmentError?: string; control?: string; employee?: string } }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');
@@ -988,7 +1161,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const selectedControlFilter = controlFilter(searchParams?.control);
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
-  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision] = await Promise.all([
+  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
@@ -1030,11 +1203,18 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     }),
     getCashStatementDimensions(),
     getAdminWorkdayRevision(selectedDate),
+    prisma.workdayKkmAssignment.findMany({
+      where: { date: selectedDate },
+      include: { assignedBy: { select: { name: true } } },
+      orderBy: { effectiveFrom: 'asc' },
+    }),
   ]);
 
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
   const workDayByUser = new Map(workDays.map((entry) => [entry.userId, entry]));
   const shiftControlRunByUser = new Map(shiftControlRuns.map((run) => [run.userId, run]));
+  const activeKkmAssignments = kkmAssignments.filter((assignment) => !assignment.effectiveTo);
+  const kkmAssignmentByUser = new Map(activeKkmAssignments.map((assignment) => [assignment.userId, assignment]));
   const nowMinutes = selectedDate === today ? getMoscowMinutes() : selectedDate < today ? 24 * 60 : 0;
   const cashStatementOrganization =
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
@@ -1043,8 +1223,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const reserveCashbox =
     cashStatementDimensions.cashboxes.find((cashbox) => normalizeSearchText(cashbox.name) === reserveCashboxSearchName)
     ?? null;
-  const [kkmDiagnostics, tbankSales, reserveStatement] = await Promise.all([
+  const [kkmDiagnostics, cashShifts, tbankSales, reserveStatement] = await Promise.all([
     getKkmEquipmentDiagnostics({ dateFrom: selectedDate, dateTo: selectedDate, limit: 300 }),
+    getCashShifts(selectedDate),
     getTbankSalesForDate(selectedDate),
     cashStatementDimensions.ok && cashStatementOrganization && reserveCashbox
       ? getCashStatementSummary({
@@ -1136,10 +1317,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       employeeName: employee.name,
       tasks: (run?.tasks ?? []) as AutoCheckTask[],
       cashboxName: cashRow?.cashbox?.name ?? null,
+      cashRegisterRef: kkmAssignmentByUser.get(employee.id)?.oneCCashRegisterRef
+        ?? (employee.oneCCashboxMapping?.kkmMode === 'server' ? employee.oneCCashboxMapping.oneCCashRegisterRef : null),
+      kkmAssignments: kkmAssignments.filter((assignment) => assignment.userId === employee.id),
+      kkmMode: kkmAssignmentByUser.get(employee.id)?.kkmMode ?? employee.oneCCashboxMapping?.kkmMode ?? 'personal',
       cashStatement: cashRow?.result ?? null,
       reserveCashboxName: reserveCashbox?.name ?? null,
       reserveStatement,
       kkmDiagnostics,
+      cashShifts,
       tbankSales,
     }).map((check) => ({
       ...check,
@@ -1314,8 +1500,26 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   );
   const employeeDetailCloseHref = `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}#employees-control`;
   const cashboxMappingMessage = cashboxMappingStatusMessage(searchParams?.cashboxMapping, searchParams?.cashboxMappingError);
+  const kkmAssignmentMessage = searchParams?.kkmAssignment === 'saved'
+    ? { tone: 'green', text: 'ККМ назначена на смену.' }
+    : searchParams?.kkmAssignment === 'removed'
+      ? { tone: 'amber', text: 'Назначение ККМ удалено.' }
+      : searchParams?.kkmAssignment === 'error'
+        ? { tone: 'rose', text: searchParams.kkmAssignmentError || 'Не удалось сохранить назначение ККМ.' }
+        : null;
   const cashboxMappingEmployees = employees.filter((employee) => usesWorkdayShiftControl(employee));
   const cashboxMappingRedirectTo = `/admin/workday?date=${selectedDate}`;
+  const cashRegisterOptions = Array.from(new Map([
+    ...kkmDiagnostics.catalogCashRegisters.map((item) => [item.ref, item] as const),
+    ...kkmDiagnostics.cashRegisterUsage.map((item) => [item.cashRegister.ref, item.cashRegister] as const),
+    ...kkmDiagnostics.recentChecks.map((item) => [item.cashRegister.ref, item.cashRegister] as const),
+  ]).values()).filter((item) => item.ref);
+  const acquiringTerminalOptions = Array.from(new Map(
+    [
+      ...kkmDiagnostics.catalogAcquiringTerminals.map((item) => [item.ref, item] as const),
+      ...kkmDiagnostics.acquiringTerminalUsage.map((item) => [item.acquiringTerminal.ref, item.acquiringTerminal] as const),
+    ],
+  ).values()).filter((item) => item.ref);
 
   return (
     <AdminShell>
@@ -1505,6 +1709,72 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             <span className='hidden text-sm font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
           </summary>
           <div className='grid gap-6 border-t border-slate-200 bg-slate-50 p-4 sm:p-5'>
+        <Card id='kkm-assignments' className='p-0'>
+          <details className='group' open={Boolean(kkmAssignmentMessage) || selectedDate === today}>
+            <summary className='flex cursor-pointer list-none flex-col gap-3 px-5 py-4 transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between'>
+              <div>
+                <h2 className='text-lg font-extrabold text-slate-950'>ККМ на рабочую смену</h2>
+                <p className='mt-1 text-sm font-medium text-slate-500'>Касса 1С остаётся персональной. Здесь назначается только физическая ККМ на {formatDateLabel(selectedDate)}.</p>
+              </div>
+              <Badge className='w-fit bg-slate-100 text-slate-700'>назначено сейчас: {activeKkmAssignments.length}</Badge>
+            </summary>
+            <div className='border-t border-slate-200'>
+              {kkmAssignmentMessage ? (
+                <div className={`m-4 rounded-lg px-3 py-2 text-sm font-bold ${kkmAssignmentMessage.tone === 'green' ? 'bg-green-50 text-green-800' : kkmAssignmentMessage.tone === 'rose' ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-800'}`}>
+                  {kkmAssignmentMessage.text}
+                </div>
+              ) : null}
+              <div className='overflow-x-auto'>
+                <Table>
+                  <thead>
+                    <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
+                      <th className='px-4 py-3'>Сотрудник</th>
+                      <th className='px-4 py-3'>Персональная касса 1С</th>
+                      <th className='px-4 py-3'>ККМ на день</th>
+                      <th className='px-4 py-3'>Состояние</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {employees.filter((employee) => employee.department === 'retail').map((employee) => {
+                      const assignment = kkmAssignmentByUser.get(employee.id);
+                      const mapping = employee.oneCCashboxMapping?.isActive ? employee.oneCCashboxMapping : null;
+                      return (
+                        <tr key={employee.id} className='border-t border-slate-100 align-top'>
+                          <td className='px-4 py-3 font-bold text-slate-950'>{employee.name}</td>
+                          <td className='px-4 py-3 text-sm font-semibold text-slate-600'>{mapping?.oneCCashboxName || 'Не привязана'}</td>
+                          <td className='px-4 py-3'>
+                            <form action='/api/admin/workday/kkm-assignment' method='post' className='grid min-w-[330px] gap-2'>
+                              <input type='hidden' name='date' value={selectedDate} />
+                              <input type='hidden' name='userId' value={employee.id} />
+                              <select name='oneCCashRegisterRef' defaultValue={assignment?.oneCCashRegisterRef ?? ''} className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800'>
+                                <option value=''>Не назначена</option>
+                                {cashRegisterOptions.map((cashRegister) => <option key={cashRegister.ref} value={cashRegister.ref}>{cashRegister.name}</option>)}
+                              </select>
+                              <select name='plannedShiftCode' defaultValue={assignment?.plannedShiftCode ?? ''} className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800'>
+                                <option value=''>Любая выбранная смена</option>
+                                {getShiftOptionsForDepartment('retail').map((shift) => <option key={shift.code} value={shift.code}>{shift.label}</option>)}
+                              </select>
+                              <input name='note' defaultValue={assignment?.note ?? ''} placeholder='Комментарий при необходимости' className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold' />
+                              <input name='changeReason' placeholder={assignment ? 'Причина замены или отключения ККМ' : 'Причина — только при замене'} className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold' />
+                              <button type='submit' disabled={!kkmDiagnostics.ok} className='rounded-lg bg-slate-950 px-3 py-2 text-sm font-extrabold text-white disabled:bg-slate-300'>Сохранить назначение</button>
+                            </form>
+                          </td>
+                          <td className='px-4 py-3'>
+                            <Badge className={assignment ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}>
+                              {assignment ? 'Действует' : 'Не назначено'}
+                            </Badge>
+                            {assignment ? <p className='mt-1 text-xs font-semibold text-slate-500'>{assignment.oneCCashRegisterName}</p> : null}
+                            {kkmAssignments.filter((item) => item.userId === employee.id).length > 1 ? <p className='mt-1 text-xs font-semibold text-slate-500'>смен ККМ за день: {kkmAssignments.filter((item) => item.userId === employee.id).length}</p> : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              </div>
+            </div>
+          </details>
+        </Card>
         <Card className='p-0'>
           <details className='group' open={cashStatementMissingCashboxCount > 0 || Boolean(cashboxMappingMessage)}>
             <summary className='flex cursor-pointer list-none flex-col gap-3 px-5 py-4 transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between'>
@@ -1544,7 +1814,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
                         <th className='px-4 py-3'>Сотрудник</th>
                         <th className='px-4 py-3'>Отдел</th>
-                        <th className='px-4 py-3'>Касса 1С</th>
+                        <th className='px-4 py-3'>Постоянные настройки 1С</th>
                         <th className='px-4 py-3'>Подсказка</th>
                         <th className='px-4 py-3'>Действие</th>
                       </tr>
@@ -1564,7 +1834,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                             </td>
                             <td className='px-4 py-3 text-sm font-semibold text-slate-600'>{departmentLabel(employee.department)}</td>
                             <td className='px-4 py-3'>
-                              <form action='/api/admin/workday/cashbox-mapping' method='post' className='flex min-w-[320px] flex-col gap-2 sm:flex-row'>
+                              <form action='/api/admin/workday/cashbox-mapping' method='post' className='grid min-w-[360px] gap-2'>
                                 <input type='hidden' name='userId' value={employee.id} />
                                 <input type='hidden' name='redirectTo' value={cashboxMappingRedirectTo} />
                                 <select
@@ -1580,6 +1850,42 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                                     </option>
                                   ))}
                                 </select>
+                                <select
+                                  name='kkmMode'
+                                  defaultValue={mapping?.kkmMode ?? 'personal'}
+                                  className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
+                                >
+                                  <option value='personal'>Персональная ККМ — пилот</option>
+                                  <option value='server'>Серверная ККМ — резервный режим</option>
+                                </select>
+                                <select
+                                  name='oneCCashRegisterRef'
+                                  defaultValue={mapping?.oneCCashRegisterRef ?? ''}
+                                  className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
+                                  disabled={!kkmDiagnostics.ok}
+                                >
+                                  <option value=''>ККМ по умолчанию не задана</option>
+                                  {cashRegisterOptions.map((cashRegister) => (
+                                    <option key={cashRegister.ref} value={cashRegister.ref}>{cashRegister.name}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  name='oneCAcquiringTerminalRef'
+                                  defaultValue={mapping?.oneCAcquiringTerminalRef ?? ''}
+                                  className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
+                                  disabled={!kkmDiagnostics.ok}
+                                >
+                                  <option value=''>Терминал 1С не привязан</option>
+                                  {acquiringTerminalOptions.map((terminal) => (
+                                    <option key={terminal.ref} value={terminal.ref}>{terminal.name}</option>
+                                  ))}
+                                </select>
+                                <input
+                                  name='tbankTerminalId'
+                                  defaultValue={mapping?.tbankTerminalId ?? ''}
+                                  className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
+                                  placeholder='ID физического терминала Т-Банка'
+                                />
                                 <button
                                   type='submit'
                                   className='rounded-lg bg-slate-950 px-3 py-2 text-sm font-extrabold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300'
@@ -1594,7 +1900,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                             </td>
                             <td className='px-4 py-3'>
                               <Badge className={mapping ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
-                                {mapping ? 'привязана' : 'нужно настроить'}
+                                {mapping ? 'касса привязана' : 'нужно настроить кассу'}
                               </Badge>
                             </td>
                           </tr>

@@ -1,6 +1,11 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getLateMinutes, getMoscowDateKey, getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl } from '@/lib/workday';
+import { scheduleTaskNotifications } from '@/lib/workday-notifications';
+
+async function ensureTaskNotifications(userId: number, date: string, tasks: Array<{ id: number; title: string; category: string; plannedTimeMinutes: number | null }>) {
+  await scheduleTaskNotifications(prisma, tasks.map((task) => ({ ...task, userId, run: { date } })));
+}
 
 async function ensureShiftControlRun(user: { id: number; name: string; login: string; department: string }, workDay: { id: number; date: string; shiftCode: string }, now = new Date()) {
   if (!usesWorkdayShiftControl(user)) return null;
@@ -66,6 +71,7 @@ export async function POST(req: Request) {
       existing.status !== 'completed' && !existing.endedAt
         ? await ensureShiftControlRun({ id: user.id, name: user.name, login: user.login, department: user.department }, existing, now)
         : null;
+    if (shiftControlRun) await ensureTaskNotifications(user.id, existing.date, shiftControlRun.tasks);
     return Response.json({
       workDay: existing,
       shiftControlRun,
@@ -73,6 +79,10 @@ export async function POST(req: Request) {
       message: 'Рабочий день уже начат',
     });
   }
+
+  const kkmAssignment = user.department === 'retail'
+    ? await prisma.workdayKkmAssignment.findFirst({ where: { userId: user.id, date, effectiveTo: null }, orderBy: { effectiveFrom: 'desc' } })
+    : null;
 
   const workDayData = {
     userId: user.id,
@@ -89,7 +99,13 @@ export async function POST(req: Request) {
   };
 
   if (!hasShiftControl) {
-    const workDay = await prisma.workDayEntry.create({ data: workDayData });
+    const workDay = await prisma.$transaction(async (tx) => {
+      const created = await tx.workDayEntry.create({ data: workDayData });
+      if (kkmAssignment) {
+        await tx.workdayKkmAssignment.update({ where: { id: kkmAssignment.id }, data: { workDayEntryId: created.id } });
+      }
+      return created;
+    });
     return Response.json({ workDay, alreadyStarted: false });
   }
 
@@ -105,6 +121,9 @@ export async function POST(req: Request) {
 
   const { workDay, shiftControlRun } = await prisma.$transaction(async (tx) => {
     const createdWorkDay = await tx.workDayEntry.create({ data: workDayData });
+    if (kkmAssignment) {
+      await tx.workdayKkmAssignment.update({ where: { id: kkmAssignment.id }, data: { workDayEntryId: createdWorkDay.id } });
+    }
 
     const createdShiftControlRun = await tx.shiftControlRun.create({
       data: {
@@ -132,6 +151,8 @@ export async function POST(req: Request) {
 
     return { workDay: createdWorkDay, shiftControlRun: createdShiftControlRun };
   });
+
+  await ensureTaskNotifications(user.id, workDay.date, shiftControlRun.tasks);
 
   return Response.json({ workDay, shiftControlRun, alreadyStarted: false });
 }

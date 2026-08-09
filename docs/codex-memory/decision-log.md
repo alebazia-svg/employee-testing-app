@@ -227,3 +227,35 @@ active. Corrections are controlled rather than destructive:
 - an existing required photo may be retained or replaced, but not silently
   removed while the corrected answer still requires it;
 - after shift handover, employees cannot edit the completed workday.
+
+## 2026-08-09 - Personal 1C Cashbox And Shift KKM Are Separate
+
+The retail pilot must not model an employee's 1C cashbox and physical KKM as
+one permanent workplace binding.
+
+- the 1C cashbox remains a persistent employee-controlled financial dimension
+  and is used for cash balances, recounts, PKO/RKO and encashment;
+- the physical KKM is determined primarily from the cashier and KKM recorded in
+  actual 1C checks for that day and cash shift;
+- an administrator may assign an expected KKM for a particular date and work
+  shift, but this is an optional fallback for opening control and diagnostics,
+  not a prerequisite for work;
+- a missing or unavailable KKM assignment never blocks the employee, never
+  creates an employee error and remains neutral until factual KKM data appears;
+- KKM assignments are append-only time intervals within a workday, so an
+  emergency replacement closes the previous interval and opens a new one with
+  an administrator-supplied reason;
+- one physical KKM cannot be assigned to two employees during the same active
+  interval in the current two-workstation pilot;
+- KKM shift, check, return and fiscal controls use the exact factual KKM UUID,
+  check cashier and workday time interval; an explicit assignment is used only
+  while no reliable factual operation is available;
+- a default KKM may remain in persistent employee settings only as an admin
+  convenience, not as the source of truth for a started workday;
+- historical/server KKM mode remains supported explicitly and must never be an
+  automatic fallback from personal mode.
+
+Production evidence for this decision: across 24 audited workdays Kosterenko's
+checks used `Касса Чеченова ККМ`, while his own `Касса Костеренко` had cash
+movements on all 24 dates. Therefore his personal 1C cashbox stays constant
+while the physical KKM can change by day.

@@ -287,9 +287,83 @@ export type OneCKkmEquipmentDiagnosticsResult = {
   recentChecks: OneCKkmRecentCheck[];
   cashRegisterUsage: OneCKkmCashRegisterUsage[];
   acquiringTerminalUsage: OneCKkmAcquiringTerminalUsage[];
+  catalogCashRegisters: OneCKkmReference[];
+  catalogAcquiringTerminals: OneCKkmReference[];
   warnings: string[];
   error?: string;
   diagnostics: string[];
+};
+
+export type OneCCashShiftCashier = {
+  cashier: OneCKkmReference;
+  firstCheckAt: string;
+  lastCheckAt: string;
+  checksCount: number | null;
+};
+
+export type OneCCashShift = {
+  ref: string;
+  number: string;
+  datetime: string;
+  organization: OneCKkmReference;
+  cashRegister: OneCKkmReference;
+  posted: boolean | null;
+  deletionMark: boolean | null;
+  openedAt: string;
+  closedAt: string;
+  fiscalShiftDate: string;
+  fiscalShiftNumber: string;
+  status: string;
+  regulatoryStatus: string;
+  checksCount: number | null;
+  unsentFiscalDocumentsCount: number | null;
+  ofdResponseTimeout: boolean | null;
+  cashiers: OneCCashShiftCashier[];
+};
+
+export type OneCCashShiftsResult = {
+  ok: boolean;
+  path: '/cash-shifts';
+  status?: number;
+  durationMs: number;
+  checkedAt: string;
+  dateFrom: string;
+  dateTo: string;
+  shifts: OneCCashShift[];
+  warnings: string[];
+  error?: string;
+  diagnostics: string[];
+};
+
+export type OneCCashExpenseOrderDocument = {
+  ref: string;
+  number: string;
+  datetime: string;
+  posted: boolean | null;
+  cashbox: OneCKkmReference;
+  targetCashbox: OneCKkmReference;
+  amount: number | null;
+  operation: string;
+};
+
+export type CreateOneCCashExpenseOrderParams = {
+  idempotencyKey: string;
+  organizationRef: string;
+  cashboxRef: string;
+  targetCashboxRef: string;
+  employeeName: string;
+  amount: number;
+  direction: 'phone_reserve' | 'deposit_safe';
+  employeeComment: string;
+};
+
+export type CreateOneCCashExpenseOrderResult = {
+  ok: boolean;
+  path: '/cash-expense-order-create';
+  durationMs: number;
+  document: OneCCashExpenseOrderDocument | null;
+  idempotentReplay: boolean;
+  error?: string;
 };
 
 let cachedHealth: { expiresAt: number; value: OneCHealthResult } | null = null;
@@ -391,6 +465,13 @@ function readFirstBoolean(source: Record<string, unknown>, keys: string[]) {
     }
   }
   return null;
+}
+
+function normalizeOneCDateTime(value: string) {
+  const match = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
+  if (!match) return value;
+  const [, day, month, year, hour, minute, second] = match;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute}:${second}+03:00`;
 }
 
 function normalizeSalesRealizationLine(value: unknown, index: number): OneCSalesRealizationLine {
@@ -514,7 +595,7 @@ function normalizeKkmRecentCheck(value: unknown): OneCKkmRecentCheck {
   return {
     ref: readFirstString(source, ['ref', 'id', 'guid']),
     number: readFirstString(source, ['number', 'document_number', 'documentNumber']),
-    datetime: readFirstString(source, ['datetime', 'date']),
+    datetime: normalizeOneCDateTime(readFirstString(source, ['datetime', 'date'])),
     amount: readFirstNumber(source, ['amount', 'sum', 'total']),
     organization: normalizeKkmReference(source.organization),
     cashRegister: normalizeKkmReference(source.cash_register ?? source.cashRegister),
@@ -547,6 +628,63 @@ function normalizeKkmAcquiringTerminalUsage(value: unknown): OneCKkmAcquiringTer
   };
 }
 
+function normalizeCashShift(value: unknown): OneCCashShift {
+  const source = readRecord(value) ?? {};
+  return {
+    ref: readFirstString(source, ['ref', 'id', 'guid']),
+    number: readFirstString(source, ['number', 'document_number']),
+    datetime: normalizeOneCDateTime(readFirstString(source, ['datetime', 'date'])),
+    organization: normalizeKkmReference(source.organization),
+    cashRegister: normalizeKkmReference(source.cash_register ?? source.cashRegister),
+    posted: readFirstBoolean(source, ['posted']),
+    deletionMark: readFirstBoolean(source, ['deletion_mark', 'deletionMark']),
+    openedAt: normalizeOneCDateTime(readFirstString(source, ['opened_at', 'openedAt'])),
+    closedAt: normalizeOneCDateTime(readFirstString(source, ['closed_at', 'closedAt'])),
+    fiscalShiftDate: normalizeOneCDateTime(readFirstString(source, ['fiscal_shift_date', 'fiscalShiftDate'])),
+    fiscalShiftNumber: readFirstString(source, ['fiscal_shift_number', 'fiscalShiftNumber']),
+    status: readFirstString(source, ['status']),
+    regulatoryStatus: readFirstString(source, ['regulatory_status', 'regulatoryStatus']),
+    checksCount: readFirstNumber(source, ['checks_count', 'checksCount']),
+    unsentFiscalDocumentsCount: readFirstNumber(source, ['unsent_fiscal_documents_count', 'unsentFiscalDocumentsCount']),
+    ofdResponseTimeout: readFirstBoolean(source, ['ofd_response_timeout', 'ofdResponseTimeout']),
+    cashiers: readArray(source.cashiers).map((value) => {
+      const cashier = readRecord(value) ?? {};
+      return {
+        cashier: normalizeKkmReference(cashier.cashier),
+        firstCheckAt: normalizeOneCDateTime(readFirstString(cashier, ['first_check_at', 'firstCheckAt'])),
+        lastCheckAt: normalizeOneCDateTime(readFirstString(cashier, ['last_check_at', 'lastCheckAt'])),
+        checksCount: readFirstNumber(cashier, ['checks_count', 'checksCount']),
+      };
+    }),
+  };
+}
+
+function findCashShiftsPayload(data: unknown) {
+  const root = readRecord(data);
+  if (!root) return { shifts: [] as OneCCashShift[], warnings: [] as string[], diagnostics: ['Ответ 1С не похож на JSON-объект.'] };
+  const payload = readRecord(root.data) ?? root;
+  return {
+    shifts: readArray(payload.shifts).map(normalizeCashShift),
+    warnings: readArray(payload.warnings).map(String),
+    diagnostics: [] as string[],
+  };
+}
+
+function normalizeCashExpenseOrderDocument(value: unknown): OneCCashExpenseOrderDocument | null {
+  const source = readRecord(value);
+  if (!source) return null;
+  return {
+    ref: readFirstString(source, ['ref']),
+    number: readFirstString(source, ['number']),
+    datetime: readFirstString(source, ['datetime']),
+    posted: readFirstBoolean(source, ['posted']),
+    cashbox: normalizeKkmReference(source.cashbox),
+    targetCashbox: normalizeKkmReference(source.target_cashbox ?? source.targetCashbox),
+    amount: readFirstNumber(source, ['amount']),
+    operation: readFirstString(source, ['operation']),
+  };
+}
+
 function findKkmEquipmentDiagnosticsPayload(data: unknown) {
   const root = readRecord(data);
   if (!root) {
@@ -554,16 +692,21 @@ function findKkmEquipmentDiagnosticsPayload(data: unknown) {
       recentChecks: [] as OneCKkmRecentCheck[],
       cashRegisterUsage: [] as OneCKkmCashRegisterUsage[],
       acquiringTerminalUsage: [] as OneCKkmAcquiringTerminalUsage[],
+      catalogCashRegisters: [] as OneCKkmReference[],
+      catalogAcquiringTerminals: [] as OneCKkmReference[],
       warnings: [] as string[],
       diagnostics: ['Ответ 1С не похож на JSON-объект.'],
     };
   }
 
   const payload = readRecord(root.data) ?? root;
+  const catalogs = readRecord(payload.catalogs) ?? {};
   return {
     recentChecks: readArray(payload.recent_checks ?? payload.recentChecks).map(normalizeKkmRecentCheck),
     cashRegisterUsage: readArray(payload.cash_register_usage ?? payload.cashRegisterUsage).map(normalizeKkmCashRegisterUsage),
     acquiringTerminalUsage: readArray(payload.acquiring_terminal_usage ?? payload.acquiringTerminalUsage).map(normalizeKkmAcquiringTerminalUsage),
+    catalogCashRegisters: readArray(catalogs.cash_registers ?? catalogs.cashRegisters).map(normalizeKkmReference),
+    catalogAcquiringTerminals: readArray(catalogs.acquiring_terminals ?? catalogs.acquiringTerminals).map(normalizeKkmReference),
     warnings: readArray(payload.warnings).map((warning) => String(warning)),
     diagnostics: [] as string[],
   };
@@ -933,6 +1076,8 @@ async function requestKkmEquipmentDiagnostics(
         recentChecks: [],
         cashRegisterUsage: [],
         acquiringTerminalUsage: [],
+        catalogCashRegisters: [],
+        catalogAcquiringTerminals: [],
         warnings: payload.warnings,
         error: `1C API returned HTTP ${response.status}`,
         diagnostics: payload.diagnostics,
@@ -958,12 +1103,104 @@ async function requestKkmEquipmentDiagnostics(
       recentChecks: [],
       cashRegisterUsage: [],
       acquiringTerminalUsage: [],
+      catalogCashRegisters: [],
+      catalogAcquiringTerminals: [],
       warnings: [],
       error: formatError(error),
       diagnostics: [],
     };
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+async function requestCashShifts(config: OneCConfig, dateFrom: string, dateTo: string): Promise<OneCCashShiftsResult> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const path = '/cash-shifts';
+  const query = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, limit: '300' });
+  try {
+    const response = await fetch(`${config.baseUrl}${path}?${query}`, {
+      headers: { Accept: 'application/json', Authorization: buildAuthHeader(config) },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const data = await readResponseBody(response);
+    const payload = findCashShiftsPayload(data);
+    return {
+      ok: response.ok && payload.diagnostics.length === 0,
+      path,
+      status: response.status,
+      durationMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString(),
+      dateFrom,
+      dateTo,
+      shifts: response.ok ? payload.shifts : [],
+      warnings: payload.warnings,
+      error: response.ok ? undefined : `1C API returned HTTP ${response.status}`,
+      diagnostics: payload.diagnostics,
+    };
+  } catch (error) {
+    return { ok: false, path, durationMs: Date.now() - startedAt, checkedAt: new Date().toISOString(), dateFrom, dateTo, shifts: [], warnings: [], error: formatError(error), diagnostics: [] };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestCashExpenseOrder(config: OneCConfig, params: CreateOneCCashExpenseOrderParams): Promise<CreateOneCCashExpenseOrderResult> {
+  const startedAt = Date.now();
+  const path = '/cash-expense-order-create';
+  const request = async (payload: Record<string, unknown>) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Math.max(config.timeoutMs, 15_000));
+    try {
+      const response = await fetch(`${config.baseUrl}${path}`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: buildAuthHeader(config) },
+        body: JSON.stringify(payload),
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      return { response, data: readRecord(await readResponseBody(response)) ?? {} };
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+  const basePayload = {
+    idempotency_key: params.idempotencyKey,
+    organization_ref: params.organizationRef,
+    cashbox_ref: params.cashboxRef,
+    target_cashbox_ref: params.targetCashboxRef,
+    employee_name: params.employeeName,
+    amount: params.amount,
+    direction: params.direction,
+    employee_comment: params.employeeComment,
+  };
+
+  try {
+    const preview = await request({ ...basePayload, confirm: false });
+    if (!preview.response.ok || preview.data.ok !== true) {
+      return { ok: false, path, durationMs: Date.now() - startedAt, document: null, idempotentReplay: false, error: readFirstString(preview.data, ['error_text', 'error']) || `1C API returned HTTP ${preview.response.status}` };
+    }
+    const existingDocument = normalizeCashExpenseOrderDocument(preview.data.document);
+    if (preview.data.idempotent_replay === true && existingDocument) {
+      return { ok: true, path, durationMs: Date.now() - startedAt, document: existingDocument, idempotentReplay: true };
+    }
+    const previewToken = readFirstString(preview.data, ['preview_token']);
+    if (!previewToken) return { ok: false, path, durationMs: Date.now() - startedAt, document: null, idempotentReplay: false, error: '1C preview did not return a confirmation token' };
+    const confirmed = await request({ ...basePayload, confirm: true, preview_token: previewToken });
+    const document = normalizeCashExpenseOrderDocument(confirmed.data.document);
+    return {
+      ok: confirmed.response.ok && confirmed.data.ok === true && Boolean(document) && document?.posted !== true,
+      path,
+      durationMs: Date.now() - startedAt,
+      document,
+      idempotentReplay: confirmed.data.idempotent_replay === true,
+      error: confirmed.response.ok && confirmed.data.ok === true ? undefined : readFirstString(confirmed.data, ['error_text', 'error']) || `1C API returned HTTP ${confirmed.response.status}`,
+    };
+  } catch (error) {
+    return { ok: false, path, durationMs: Date.now() - startedAt, document: null, idempotentReplay: false, error: formatError(error) };
   }
 }
 
@@ -1437,6 +1674,8 @@ export async function getKkmEquipmentDiagnostics(
       recentChecks: [],
       cashRegisterUsage: [],
       acquiringTerminalUsage: [],
+      catalogCashRegisters: [],
+      catalogAcquiringTerminals: [],
       warnings: [],
       error: '1C API configuration is incomplete',
       diagnostics: [`Missing env: ${missingConfig.join(', ')}`],
@@ -1444,4 +1683,31 @@ export async function getKkmEquipmentDiagnostics(
   }
 
   return requestKkmEquipmentDiagnostics(config, params);
+}
+
+export async function getCashShifts(dateFrom: string, dateTo = dateFrom): Promise<OneCCashShiftsResult> {
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+  if (missingConfig.length) {
+    return {
+      ok: false,
+      path: '/cash-shifts',
+      durationMs: 0,
+      checkedAt: new Date().toISOString(),
+      dateFrom,
+      dateTo,
+      shifts: [],
+      warnings: [],
+      error: '1C API configuration is incomplete',
+      diagnostics: [`Missing env: ${missingConfig.join(', ')}`],
+    };
+  }
+  return requestCashShifts(config, dateFrom, dateTo);
+}
+
+export async function createOneCCashExpenseOrder(params: CreateOneCCashExpenseOrderParams): Promise<CreateOneCCashExpenseOrderResult> {
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+  if (missingConfig.length) return { ok: false, path: '/cash-expense-order-create', durationMs: 0, document: null, idempotentReplay: false, error: '1C API configuration is incomplete' };
+  return requestCashExpenseOrder(config, params);
 }

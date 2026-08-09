@@ -4,12 +4,13 @@ import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
-import { getCashStatementDimensions, getCashStatementSummary } from '@/lib/one-c';
+import { createOneCCashExpenseOrder, getCashStatementDimensions, getCashStatementSummary } from '@/lib/one-c';
 import { shiftControlEmployeeRevisionHistoryKey, shiftControlOneCAuditKey, stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { usesWorkdayShiftControl } from '@/lib/workday';
 
 const cashStatementOrganizationSearchName = 'оффоника';
 const reserveCashboxSearchName = 'резерв под телефоны';
+const depositSafeCashboxSearchName = 'сейф депозитный';
 const employeeRevisionHistoryKey = shiftControlEmployeeRevisionHistoryKey;
 
 function readNumber(value: unknown) {
@@ -45,7 +46,7 @@ function readFormString(formData: FormData, key: string) {
 }
 
 function isClosingShift(shiftCode: string | null | undefined) {
-  return shiftCode === '11_20';
+  return shiftCode === '11_20' || shiftCode === '09_20';
 }
 
 function isPhoto(value: FormDataEntryValue | null): value is File {
@@ -268,6 +269,7 @@ async function saveHandoverDraft(
   const terminalReconciliation = readFormString(formData, 'terminalReconciliation');
   const terminalComment = readFormString(formData, 'terminalComment');
   const encashmentAmount = readFormNumber(formData, 'encashmentAmount');
+  const encashmentDirection = readFormString(formData, 'encashmentDirection');
   const comment = readFormString(formData, 'comment');
   const photos = { ...existingPhotos };
   const photoFields = [
@@ -323,6 +325,7 @@ async function saveHandoverDraft(
       hasTbankCredit: null,
       requiresEncashment: personalCashBalance !== null ? personalCashBalance > 50000 : Boolean(existingPersonalCash.requiresEncashment),
       encashmentAmount,
+      encashmentDirection,
     },
     reserveCash: isRetail
       ? {
@@ -409,6 +412,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const terminalReconciliation = typeof terminalCheck.reconciliation === 'string' ? terminalCheck.reconciliation : '';
     const terminalComment = typeof terminalCheck.comment === 'string' ? terminalCheck.comment.trim() : '';
     const encashmentAmount = readNumber(personalCash.encashmentAmount);
+    const encashmentDirection = typeof personalCash.encashmentDirection === 'string' ? personalCash.encashmentDirection : '';
     const comment = isRecord(handoverData) && typeof handoverData.comment === 'string' ? handoverData.comment.trim() : '';
     const isClosingEmployee = isRetail && isClosingShift(task.run.workDayEntry.shiftCode);
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
@@ -435,6 +439,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     if (requiresEncashment) {
       if (encashmentAmount === null) return Response.json({ error: 'Укажите сумму инкассации' }, { status: 400 });
+      if (!['phone_reserve', 'deposit_safe'].includes(encashmentDirection)) {
+        return Response.json({ error: 'Выберите направление инкассации' }, { status: 400 });
+      }
       if (!hasSavedPhoto(handoverData, 'encashmentDocument')) {
         return Response.json({ error: 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.' }, { status: 400 });
       }
@@ -444,6 +451,84 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     try {
+      if (requiresEncashment && encashmentAmount !== null) {
+        const idempotencyKey = `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`;
+        const [mapping, dimensions] = await Promise.all([
+          prisma.userOneCCashboxMapping.findUnique({ where: { userId: user.id } }),
+          getCashStatementDimensions(),
+        ]);
+        const organization = dimensions.organizations.find((item) => normalizeSearchText(item.name).includes(cashStatementOrganizationSearchName))
+          ?? dimensions.organizations[0]
+          ?? null;
+        const targetCashboxName = encashmentDirection === 'phone_reserve' ? reserveCashboxSearchName : depositSafeCashboxSearchName;
+        const targetCashbox = dimensions.cashboxes.find((item) => normalizeSearchText(item.name) === targetCashboxName) ?? null;
+        if (!mapping?.isActive) throw new Error('Касса сотрудника не привязана к 1С. Смена не завершена.');
+        if (!dimensions.ok || !organization) throw new Error('Организация или справочник касс 1С недоступны. Смена не завершена.');
+        if (!targetCashbox) throw new Error('Касса-получатель для инкассации не найдена в 1С. Смена не завершена.');
+        const encashmentPhoto = savedPhoto(handoverData, 'encashmentDocument');
+        const photoPath = isRecord(encashmentPhoto) && typeof encashmentPhoto.storagePath === 'string' ? encashmentPhoto.storagePath : '';
+        let cashOperation = await prisma.cashOperation.findUnique({ where: { idempotencyKey } });
+        cashOperation ??= await prisma.cashOperation.create({
+          data: {
+            userId: user.id,
+            workDayEntryId: task.run.workDayEntryId,
+            date: task.run.date,
+            department: user.department,
+            direction: encashmentDirection,
+            amount: encashmentAmount,
+            photoPath,
+            comment,
+            status: 'pending_1c',
+            idempotencyKey,
+          },
+        });
+        if (cashOperation.amount !== encashmentAmount || cashOperation.direction !== encashmentDirection) {
+          throw new Error('Параметры повторной инкассации не совпадают. Смена не завершена.');
+        }
+        if (!cashOperation.oneCDocumentRef) {
+          const oneCResult = await createOneCCashExpenseOrder({
+            idempotencyKey,
+            organizationRef: organization.ref,
+            cashboxRef: mapping.oneCCashboxRef,
+            targetCashboxRef: targetCashbox.ref,
+            employeeName: user.name,
+            amount: encashmentAmount,
+            direction: encashmentDirection as 'phone_reserve' | 'deposit_safe',
+            employeeComment: comment,
+          });
+          if (!oneCResult.ok || !oneCResult.document) {
+            const oneCError = oneCResult.error || '1С не создала РКО.';
+            await prisma.cashOperation.update({ where: { id: cashOperation.id }, data: { status: 'one_c_error', oneCError } });
+            throw new Error(`РКО не создан: ${oneCError}. Смена не завершена.`);
+          }
+          cashOperation = await prisma.cashOperation.update({
+            where: { id: cashOperation.id },
+            data: {
+              status: 'created_1c',
+              oneCDocumentRef: oneCResult.document.ref,
+              oneCDocumentNumber: oneCResult.document.number,
+              oneCError: '',
+              oneCCreatedAt: new Date(),
+            },
+          });
+        }
+        const admins = await prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
+        for (const admin of admins) {
+          await prisma.workdayNotification.upsert({
+            where: { fingerprint: `cash-operation:${cashOperation.id}:admin:${admin.id}` },
+            create: {
+              userId: admin.id,
+              fingerprint: `cash-operation:${cashOperation.id}:admin:${admin.id}`,
+              kind: 'cash_operation_created',
+              title: 'Инкассация',
+              body: `${user.name} · ${mapping.oneCCashboxName} · ${encashmentAmount.toLocaleString('ru-RU')} ₽ · ${encashmentDirection === 'phone_reserve' ? 'Резерв на телефоны' : 'Депозитный сейф'} · РКО №${cashOperation.oneCDocumentNumber}`,
+              scheduledAt: new Date(),
+            },
+            update: {},
+          });
+        }
+      }
+
       const previousTerminalTask = await prisma.shiftControlTask.findFirst({
         where: {
           runId: task.runId,
@@ -484,6 +569,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           hasTbankCredit: null,
           requiresEncashment,
           encashmentAmount: requiresEncashment ? encashmentAmount : null,
+          encashmentDirection: requiresEncashment ? encashmentDirection : null,
         },
         reserveCash: isRetail ? { cashBalance: reserveCashBalance } : null,
         terminalCheck: isRetail ? {

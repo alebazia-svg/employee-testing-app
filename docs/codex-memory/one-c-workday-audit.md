@@ -51,6 +51,12 @@ Currently used by the portal:
   number, shift, amount, calculation/document types, KKT/FN fiscal identifiers,
   payment composition including `postpayment`, and whether fiscal XML exists.
   Workday uses it to verify credit/installment realizations.
+- `/cash-shifts` - exact KKM cash-shift documents with opening/closing times,
+  KKM, status and regulatory status. Cashiers are derived from linked posted
+  KKM checks because the cash-shift document itself does not identify who
+  physically opened it. Production also showed that the header check counter
+  can remain zero while linked checks exist, so Workday uses the linked-check
+  aggregation instead of that counter.
 
 Available but not yet used for Workday:
 
