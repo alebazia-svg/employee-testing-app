@@ -78,8 +78,12 @@ employee answers:
 - terminal-operation declarations are stored by interval, but remain
   unavailable for objective automatic verification until a reliable source for
   all operations of the current terminal is connected;
-- T-Bank declarations use posted realizations for the controlled partner and
-  match the 1C manager name to the employee;
+- credit/installment declarations use posted realizations for the controlled
+  partner, match the 1C manager name to the employee, and require an exact
+  fiscal-operation record for each realization;
+- the credit/installment check compares the realization amount with both the
+  fiscal check amount and its `postpayment` amount; a missing, ambiguous or
+  mismatched fiscal operation is shown as an admin-side error;
 - encashment checks look for a paired outgoing movement from the employee
   cashbox and incoming movement to the reserve for the declared amount.
 
@@ -253,6 +257,13 @@ remain a separate process until their document-specific business rules are
 redesigned; they must not advance the terminal-check interval. Shift handover
 must not add a second bank-specific T-Bank question after the neutral terminal
 flow.
+
+Credit/installment checklist answers are still employee declarations, but the
+admin result now has objective read-only 1C evidence. The portal follows each
+posted realization to `РегистрСведений.ФискальныеОперации` through its exact
+document reference and verifies the fiscal check amount and `postpayment`.
+This proves that 1C registered the linked fiscal operation; independent OFD
+confirmation remains a separate future control.
 
 ## Checklist Copy Style
 

@@ -1,6 +1,6 @@
 # 1C Workday Automation Audit
 
-Last reviewed: 2026-07-24.
+Last reviewed: 2026-08-09.
 
 This note captures the current read-only AIAgentAPI surface that can support
 Workday automation. It is stale-prone: always verify live `/hs/agent/version`
@@ -46,6 +46,11 @@ Currently used by the portal:
   warehouse, amount and lines. Used by OFD matching.
 - `/sales-realization-links` - linked cash receipts, acquiring, bank receipts,
   returns and corrections for a realization. Used by OFD matching.
+- `/sales-realization-fiscal-operations` - exact read-only lookup in
+  `РегистрСведений.ФискальныеОперации` by realization reference. Returns check
+  number, shift, amount, calculation/document types, KKT/FN fiscal identifiers,
+  payment composition including `postpayment`, and whether fiscal XML exists.
+  Workday uses it to verify credit/installment realizations.
 
 Available but not yet used for Workday:
 
@@ -81,8 +86,12 @@ may be absent or experimental; verify each endpoint before use.
 - loads the shared cashbox `Резерв под телефоны`;
 - uses `/kkm-equipment-diagnostics` for daily KKM and Sberbank acquiring
   evidence;
-- uses posted `/sales-realizations` for the controlled T-Bank partner and
-  matches the 1C manager to the employee;
+- uses posted `/sales-realizations` for the controlled credit/installment
+  partner and matches the 1C manager to the employee;
+- resolves every matched realization through
+  `/sales-realization-fiscal-operations`; the automatic result is an error when
+  the fiscal record is missing or ambiguous, or when its check amount or
+  `postpayment` differs from the realization amount by more than 1 RUB;
 - shows automatic results separately from employee declarations.
 - shows `Нельзя проверить автоматически` when the current source cannot prove
   the result reliably; it does not use `Частично` as a final control status;
@@ -99,8 +108,15 @@ Can be automated or compared now:
 
 - Admin-side expected cash balance by employee cashbox, after a mapping exists.
 - Cash movements/PКО/RКО style evidence via cash statement movements.
-- OFD/1C sales realization checks for retail and credit/installment documents.
+- Exact 1C fiscal-operation verification for credit/installment realizations,
+  including check number, amount and postpayment composition.
+- OFD/1C sales realization checks for retail documents.
 - Some KKM receipt evidence through `/last-kkm-check`.
+
+The fiscal-operation register proves the link inside 1C, but it is not an
+independent OFD confirmation. OFD API data is still required to prove that the
+fiscal document was accepted externally and to reconcile its authoritative
+fiscal status independently of 1C.
 
 Should stay manual for now:
 
@@ -137,4 +153,3 @@ Recommended portal data:
 - Keep a confidence/source flag if any mapping was imported or suggested from
   names.
 - Allow admin to update mapping without changing 1C data.
-
