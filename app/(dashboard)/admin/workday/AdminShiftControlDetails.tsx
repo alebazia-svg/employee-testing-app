@@ -675,9 +675,11 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
   if (unavailable) return { tone: 'attention', label: 'Требует внимания', result: 'Нужно проверить вручную' };
 
   if (item.task.category === 'acquiring') return { tone: 'normal', label: 'Всё нормально', result: acquiringResult(item.task).label };
-  if (item.task.category === 'credit') return { tone: 'normal', label: 'Всё нормально', result: creditResult(item.task).label };
-
   const matched = item.autoChecks.find((check) => check.status === 'matched');
+  if (item.task.category === 'credit') {
+    return { tone: 'normal', label: 'Всё нормально', result: matched?.summary || creditResult(item.task).label };
+  }
+
   return { tone: 'normal', label: 'Всё нормально', result: matched?.summary || 'Выполнено без замечаний' };
 }
 

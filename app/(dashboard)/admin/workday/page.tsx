@@ -12,10 +12,12 @@ import {
   getCashStatementDimensions,
   getCashStatementSummary,
   getKkmEquipmentDiagnostics,
+  getSalesRealizationFiscalOperations,
   getSalesRealizations,
   type OneCCashStatementSummaryResult,
   type OneCKkmEquipmentDiagnosticsResult,
   type OneCSalesRealizationDocument,
+  type OneCSalesRealizationFiscalOperationsResult,
 } from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
@@ -50,6 +52,7 @@ type AutoCheckTask = {
 type TbankSalesForDate = {
   ok: boolean;
   documents: OneCSalesRealizationDocument[];
+  fiscalByRealization: Record<string, OneCSalesRealizationFiscalOperationsResult>;
   error?: string;
 };
 
@@ -133,6 +136,20 @@ function controlFilter(value: string | undefined): ControlFilter {
 function formatMoney(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   return `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value)} ₽`;
+}
+
+function formatRealizationCount(count: number) {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const noun = mod100 >= 11 && mod100 <= 14
+    ? 'реализаций'
+    : mod10 === 1
+      ? 'реализация'
+      : mod10 >= 2 && mod10 <= 4
+        ? 'реализации'
+        : 'реализаций';
+
+  return `${count} ${noun}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -246,13 +263,22 @@ async function getTbankSalesForDate(date: string): Promise<TbankSalesForDate> {
       offset,
       includeLines: false,
     });
-    if (!result.ok) return { ok: false, documents, error: result.error ?? result.diagnostics.join('; ') };
+    if (!result.ok) return { ok: false, documents, fiscalByRealization: {}, error: result.error ?? result.diagnostics.join('; ') };
 
     documents.push(...result.documents);
     if (result.responseDocumentCount < limit) break;
   }
 
-  return { ok: true, documents };
+  const fiscalByRealization: Record<string, OneCSalesRealizationFiscalOperationsResult> = {};
+  for (let index = 0; index < documents.length; index += 4) {
+    const batch = documents.slice(index, index + 4);
+    const results = await Promise.all(batch.map((document) => getSalesRealizationFiscalOperations(document.ref)));
+    results.forEach((result) => {
+      fiscalByRealization[result.realizationRef] = result;
+    });
+  }
+
+  return { ok: true, documents, fiscalByRealization };
 }
 
 function kkmUsageForEmployee(result: OneCKkmEquipmentDiagnosticsResult, cashboxName: string) {
@@ -482,7 +508,7 @@ function buildEmployeeAutoChecks({
         checks.push({
           id: `credit-${task.id}`,
           taskId: task.id,
-          label: 'Операции Т-Банка',
+          label: 'Кредиты и рассрочки',
           status: 'waiting',
           summary: 'Сотрудник ещё не завершил проверку.',
         });
@@ -492,7 +518,7 @@ function buildEmployeeAutoChecks({
         checks.push({
           id: `credit-${task.id}`,
           taskId: task.id,
-          label: 'Операции Т-Банка',
+          label: 'Кредиты и рассрочки',
           status: 'unavailable',
           summary: tbankSales.error || 'Реализации 1С не получены.',
         });
@@ -511,7 +537,7 @@ function buildEmployeeAutoChecks({
         checks.push({
           id: `credit-${task.id}`,
           taskId: task.id,
-          label: 'Операции Т-Банка',
+          label: 'Кредиты и рассрочки',
           status: 'unavailable',
           summary: `По имени сотрудника документы не найдены; всего по партнёру Т-Банка за день: ${tbankSales.documents.length}.`,
           evidence: 'Сопоставление выполняется по имени менеджера в реализации 1С.',
@@ -520,15 +546,91 @@ function buildEmployeeAutoChecks({
       }
 
       const matchedAmount = matchedDocuments.reduce((sum, document) => sum + (document.amount ?? 0), 0);
+
+      if (oneCHasOperations) {
+        const fiscalResults = matchedDocuments.map((document) => ({
+          document,
+          result: tbankSales.fiscalByRealization[document.ref],
+        }));
+        const unavailableFiscal = fiscalResults.find(({ result }) => !result?.ok);
+        if (unavailableFiscal) {
+          checks.push({
+            id: `credit-${task.id}`,
+            taskId: task.id,
+            label: 'Кредиты и рассрочки',
+            status: 'unavailable',
+            summary: `Реализации найдены, но фискальные операции 1С не получены для ${unavailableFiscal.document.number || 'одного документа'}.`,
+            evidence: unavailableFiscal.result?.error || 'Нет ответа нового read-only endpoint 1С.',
+          });
+          continue;
+        }
+
+        const withoutCheck = fiscalResults.filter(({ result }) => !result.fiscalized);
+        if (withoutCheck.length > 0) {
+          checks.push({
+            id: `credit-${task.id}`,
+            taskId: task.id,
+            label: 'Кредиты и рассрочки',
+            status: 'mismatch',
+            summary: `Фискальный чек не найден: ${withoutCheck.map(({ document }) => document.number).join(', ')}.`,
+            evidence: 'Проверено по прямой связи реализации с регистром ФискальныеОперации 1С.',
+          });
+          continue;
+        }
+
+        const ambiguousFiscal = fiscalResults.find(({ result }) => result.operations.filter((operation) => operation.fiscalized).length !== 1);
+        if (ambiguousFiscal) {
+          checks.push({
+            id: `credit-${task.id}`,
+            taskId: task.id,
+            label: 'Кредиты и рассрочки',
+            status: 'unavailable',
+            summary: `По реализации ${ambiguousFiscal.document.number} найдено несколько фискальных операций — требуется проверка.`,
+            evidence: 'Автоматическая сверка не выбирает чек при неоднозначной прямой связи.',
+          });
+          continue;
+        }
+
+        const fiscalMismatch = fiscalResults.find(({ document, result }) => {
+          const operation = result.operations.find((item) => item.fiscalized);
+          const realizationAmount = document.amount ?? 0;
+          return !operation
+            || operation.amount === null
+            || Math.abs(operation.amount - realizationAmount) > oneCMoneyTolerance
+            || operation.postpayment === null
+            || Math.abs(operation.postpayment - realizationAmount) > oneCMoneyTolerance;
+        });
+        if (fiscalMismatch) {
+          const operation = fiscalMismatch.result.operations.find((item) => item.fiscalized);
+          checks.push({
+            id: `credit-${task.id}`,
+            taskId: task.id,
+            label: 'Кредиты и рассрочки',
+            status: 'mismatch',
+            summary: `Реализация ${formatMoney(fiscalMismatch.document.amount)} · чек ${formatMoney(operation?.amount)} · постоплата ${formatMoney(operation?.postpayment)}.`,
+            evidence: `Реализация ${fiscalMismatch.document.number} · чек №${operation?.checkNumber || '—'} · прямая связь 1С.`,
+          });
+          continue;
+        }
+      }
+
+      const checkNumbers = matchedDocuments.flatMap((document) => (
+        tbankSales.fiscalByRealization[document.ref]?.operations
+          .filter((operation) => operation.fiscalized)
+          .map((operation) => operation.checkNumber)
+          ?? []
+      ));
       checks.push({
         id: `credit-${task.id}`,
         taskId: task.id,
-        label: 'Операции Т-Банка',
+        label: 'Кредиты и рассрочки',
         status: declaredOperations === oneCHasOperations ? 'matched' : 'mismatch',
         summary: oneCHasOperations
-          ? `1С: ${matchedDocuments.length} реализаций на ${formatMoney(matchedAmount)}; сотрудник ${declaredOperations ? 'подтвердил операции' : 'указал, что операций не было'}.`
+          ? `1С: ${formatRealizationCount(matchedDocuments.length)} на ${formatMoney(matchedAmount)} · чеки ${checkNumbers.map((number) => `№${number}`).join(', ')}; сотрудник ${declaredOperations ? 'подтвердил операции' : 'указал, что операций не было'}.`
           : `В 1С операций до момента проверки нет; сотрудник ${declaredOperations ? 'подтвердил операции' : 'указал, что операций не было'}.`,
-        evidence: 'Сопоставление по партнёру Т-Банка, дате и имени менеджера 1С.',
+        evidence: oneCHasOperations
+          ? 'Реализации сопоставлены по партнёру, дате и менеджеру; чеки — по прямой связи с регистром ФискальныеОперации 1С.'
+          : 'Сопоставление по партнёру, дате и имени менеджера 1С.',
       });
       continue;
     }
@@ -703,7 +805,7 @@ function buildEmployeeAutoChecks({
       checks.push({
         id: `handover-tbank-${task.id}`,
         taskId: task.id,
-        label: 'Операции Т-Банка',
+        label: 'Кредиты и рассрочки',
         status: 'unavailable',
         summary: tbankSales.error || 'Реализации 1С не получены.',
       });
@@ -711,7 +813,7 @@ function buildEmployeeAutoChecks({
       checks.push({
         id: `handover-tbank-${task.id}`,
         taskId: task.id,
-        label: 'Операции Т-Банка',
+        label: 'Кредиты и рассрочки',
         status: 'waiting',
         summary: 'Сотрудник ещё не указал, были ли операции.',
       });
@@ -719,7 +821,7 @@ function buildEmployeeAutoChecks({
       checks.push({
         id: `handover-tbank-${task.id}`,
         taskId: task.id,
-        label: 'Операции Т-Банка',
+        label: 'Кредиты и рассрочки',
         status: 'unavailable',
         summary: `По имени сотрудника документы не найдены; всего по партнёру Т-Банка за день: ${tbankSales.documents.length}.`,
         evidence: 'Сумма терминального отчёта не сравнивается: реализации 1С и операции терминала имеют разный состав.',
@@ -727,15 +829,70 @@ function buildEmployeeAutoChecks({
     } else {
       const oneCHasTbank = employeeTbankDocuments.length > 0;
       const amount = employeeTbankDocuments.reduce((sum, document) => sum + (document.amount ?? 0), 0);
+      const fiscalResults = employeeTbankDocuments.map((document) => ({
+        document,
+        result: tbankSales.fiscalByRealization[document.ref],
+      }));
+      const unavailableFiscal = fiscalResults.find(({ result }) => !result?.ok);
+      const missingFiscal = fiscalResults.filter(({ result }) => !result?.fiscalized);
+      const invalidFiscal = fiscalResults.find(({ document, result }) => {
+        const operations = result?.operations.filter((operation) => operation.fiscalized) ?? [];
+        if (operations.length !== 1) return operations.length > 1;
+        const operation = operations[0];
+        return operation.amount === null
+          || Math.abs(operation.amount - (document.amount ?? 0)) > oneCMoneyTolerance
+          || operation.postpayment === null
+          || Math.abs(operation.postpayment - (document.amount ?? 0)) > oneCMoneyTolerance;
+      });
+
+      if (oneCHasTbank && unavailableFiscal) {
+        checks.push({
+          id: `handover-tbank-${task.id}`,
+          taskId: task.id,
+          label: 'Кредиты и рассрочки',
+          status: 'unavailable',
+          summary: `Реализации найдены, но фискальные операции 1С не получены для ${unavailableFiscal.document.number || 'одного документа'}.`,
+        });
+        continue;
+      }
+      if (oneCHasTbank && missingFiscal.length > 0) {
+        checks.push({
+          id: `handover-tbank-${task.id}`,
+          taskId: task.id,
+          label: 'Кредиты и рассрочки',
+          status: 'mismatch',
+          summary: `Фискальный чек не найден: ${missingFiscal.map(({ document }) => document.number).join(', ')}.`,
+          evidence: 'Проверено по прямой связи реализации с регистром ФискальныеОперации 1С.',
+        });
+        continue;
+      }
+      if (oneCHasTbank && invalidFiscal) {
+        const operation = invalidFiscal.result?.operations.find((item) => item.fiscalized);
+        checks.push({
+          id: `handover-tbank-${task.id}`,
+          taskId: task.id,
+          label: 'Кредиты и рассрочки',
+          status: 'mismatch',
+          summary: `Реализация ${formatMoney(invalidFiscal.document.amount)} · чек ${formatMoney(operation?.amount)} · постоплата ${formatMoney(operation?.postpayment)}.`,
+          evidence: `Реализация ${invalidFiscal.document.number} · чек №${operation?.checkNumber || '—'} · прямая связь 1С.`,
+        });
+        continue;
+      }
+
+      const checkNumbers = fiscalResults.flatMap(({ result }) => result?.operations
+        .filter((operation) => operation.fiscalized)
+        .map((operation) => operation.checkNumber) ?? []);
       checks.push({
         id: `handover-tbank-${task.id}`,
         taskId: task.id,
-        label: 'Операции Т-Банка',
+        label: 'Кредиты и рассрочки',
         status: declaredTbank === oneCHasTbank ? 'matched' : 'mismatch',
         summary: oneCHasTbank
-          ? `1С: ${employeeTbankDocuments.length} реализаций на ${formatMoney(amount)}; сотрудник указал ${declaredTbank ? 'операции были' : 'операций не было'}.`
+          ? `1С: ${formatRealizationCount(employeeTbankDocuments.length)} на ${formatMoney(amount)} · чеки ${checkNumbers.map((number) => `№${number}`).join(', ')}; сотрудник указал ${declaredTbank ? 'операции были' : 'операций не было'}.`
           : `В 1С операций по сотруднику нет; сотрудник указал ${declaredTbank ? 'операции были' : 'операций не было'}.`,
-        evidence: 'Сумма терминального отчёта не сравнивается: реализации 1С и операции терминала имеют разный состав.',
+        evidence: oneCHasTbank
+          ? 'Реализации и фискальные чеки подтверждены прямой связью в 1С.'
+          : 'Кредитные реализации по сотруднику за день не найдены.',
       });
     }
 

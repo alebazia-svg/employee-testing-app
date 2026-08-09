@@ -144,6 +144,43 @@ export type OneCSalesRealizationLinksResult = {
   diagnostics: string[];
 };
 
+export type OneCSalesRealizationFiscalOperation = {
+  recordId: string;
+  datetime: string;
+  checkNumber: string;
+  shiftNumber: string;
+  amount: number | null;
+  documentType: string;
+  calculationType: string;
+  organizationName: string;
+  retailLocationName: string;
+  kktRegistrationNumber: string;
+  fiscalDriveNumber: string;
+  fiscalSign: string;
+  cashPayment: number | null;
+  electronicPayment: number | null;
+  prepayment: number | null;
+  postpayment: number | null;
+  counterProvision: number | null;
+  unifiedCheck: boolean | null;
+  hasXmlData: boolean | null;
+  fiscalized: boolean;
+};
+
+export type OneCSalesRealizationFiscalOperationsResult = {
+  ok: boolean;
+  path: '/sales-realization-fiscal-operations';
+  status?: number;
+  durationMs: number;
+  checkedAt: string;
+  realizationRef: string;
+  found: boolean;
+  fiscalized: boolean;
+  operations: OneCSalesRealizationFiscalOperation[];
+  error?: string;
+  diagnostics: string[];
+};
+
 export type OneCCashStatementDimension = {
   name: string;
   ref: string;
@@ -612,6 +649,54 @@ function findSalesRealizationLinksPayload(data: unknown): { links: OneCSalesReal
   return { links, diagnostics };
 }
 
+function normalizeSalesRealizationFiscalOperation(value: unknown): OneCSalesRealizationFiscalOperation {
+  const source = readRecord(value) ?? {};
+  const organization = readRecord(source.organization) ?? {};
+  const retailLocation = readRecord(source.retail_location ?? source.retailLocation) ?? {};
+  return {
+    recordId: readFirstString(source, ['record_id', 'recordId']),
+    datetime: readFirstString(source, ['datetime', 'date']),
+    checkNumber: readFirstString(source, ['check_number', 'checkNumber']),
+    shiftNumber: readFirstString(source, ['shift_number', 'shiftNumber']),
+    amount: readFirstNumber(source, ['amount', 'sum']),
+    documentType: readFirstString(source, ['document_type', 'documentType']),
+    calculationType: readFirstString(source, ['calculation_type', 'calculationType']),
+    organizationName: readFirstString(organization, ['name', 'presentation']),
+    retailLocationName: readFirstString(retailLocation, ['name', 'presentation']),
+    kktRegistrationNumber: readFirstString(source, ['kkt_registration_number', 'kktRegistrationNumber']),
+    fiscalDriveNumber: readFirstString(source, ['fiscal_drive_number', 'fiscalDriveNumber']),
+    fiscalSign: readFirstString(source, ['fiscal_sign', 'fiscalSign']),
+    cashPayment: readFirstNumber(source, ['cash_payment', 'cashPayment']),
+    electronicPayment: readFirstNumber(source, ['electronic_payment', 'electronicPayment']),
+    prepayment: readFirstNumber(source, ['prepayment']),
+    postpayment: readFirstNumber(source, ['postpayment']),
+    counterProvision: readFirstNumber(source, ['counter_provision', 'counterProvision']),
+    unifiedCheck: readFirstBoolean(source, ['unified_check', 'unifiedCheck']),
+    hasXmlData: readFirstBoolean(source, ['has_xml_data', 'hasXmlData']),
+    fiscalized: readFirstBoolean(source, ['fiscalized']) === true,
+  };
+}
+
+function findSalesRealizationFiscalOperationsPayload(data: unknown) {
+  const root = readRecord(data);
+  if (!root) {
+    return {
+      found: false,
+      fiscalized: false,
+      operations: [] as OneCSalesRealizationFiscalOperation[],
+      diagnostics: ['Ответ 1С не похож на JSON-объект.'],
+    };
+  }
+  const payload = readRecord(root.data) ?? root;
+  const operations = readArray(payload.operations).map(normalizeSalesRealizationFiscalOperation);
+  return {
+    found: readFirstBoolean(payload, ['found']) ?? operations.length > 0,
+    fiscalized: readFirstBoolean(payload, ['fiscalized']) ?? operations.some((operation) => operation.fiscalized),
+    operations,
+    diagnostics: [] as string[],
+  };
+}
+
 function findDocumentsPayload(data: unknown) {
   const root = readRecord(data);
   if (!root) return { documents: [], diagnostics: ['Ответ 1С не похож на JSON-объект.'] };
@@ -1025,6 +1110,73 @@ async function requestSalesRealizationLinks(config: OneCConfig, realizationRef: 
   }
 }
 
+async function requestSalesRealizationFiscalOperations(
+  config: OneCConfig,
+  realizationRef: string,
+): Promise<OneCSalesRealizationFiscalOperationsResult> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+  const path = '/sales-realization-fiscal-operations';
+  const query = new URLSearchParams({ realization_ref: realizationRef });
+
+  try {
+    const response = await fetch(`${config.baseUrl}${path}?${query.toString()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        Authorization: buildAuthHeader(config),
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const data = await readResponseBody(response);
+    const durationMs = Date.now() - startedAt;
+    const payload = findSalesRealizationFiscalOperationsPayload(data);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        path,
+        status: response.status,
+        durationMs,
+        checkedAt: new Date().toISOString(),
+        realizationRef,
+        found: false,
+        fiscalized: false,
+        operations: [],
+        error: `1C API returned HTTP ${response.status}`,
+        diagnostics: payload.diagnostics,
+      };
+    }
+
+    return {
+      ok: true,
+      path,
+      status: response.status,
+      durationMs,
+      checkedAt: new Date().toISOString(),
+      realizationRef,
+      ...payload,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      path,
+      durationMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString(),
+      realizationRef,
+      found: false,
+      fiscalized: false,
+      operations: [],
+      error: formatError(error),
+      diagnostics: [],
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function requestEndpoint(config: OneCConfig, endpoint: OneCEndpoint): Promise<OneCEndpointResult> {
   const startedAt = Date.now();
   const controller = new AbortController();
@@ -1191,6 +1343,31 @@ export async function getSalesRealizationLinks(realizationRef: string): Promise<
   }
 
   return requestSalesRealizationLinks(config, normalizedRef);
+}
+
+export async function getSalesRealizationFiscalOperations(
+  realizationRef: string,
+): Promise<OneCSalesRealizationFiscalOperationsResult> {
+  const normalizedRef = realizationRef.trim();
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+
+  if (!normalizedRef || missingConfig.length) {
+    return {
+      ok: false,
+      path: '/sales-realization-fiscal-operations',
+      durationMs: 0,
+      checkedAt: new Date().toISOString(),
+      realizationRef: normalizedRef,
+      found: false,
+      fiscalized: false,
+      operations: [],
+      error: !normalizedRef ? 'realization_ref is required' : '1C API configuration is incomplete',
+      diagnostics: !normalizedRef ? ['Missing realization_ref'] : [`Missing env: ${missingConfig.join(', ')}`],
+    };
+  }
+
+  return requestSalesRealizationFiscalOperations(config, normalizedRef);
 }
 
 export async function getCashStatementDimensions(): Promise<OneCCashStatementDimensionsResult> {
