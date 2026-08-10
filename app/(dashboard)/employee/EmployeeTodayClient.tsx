@@ -2552,6 +2552,7 @@ export function EmployeeTodayClient({
           <div className='flex items-center justify-between gap-3'>
             <BrandBlock size='header' />
             <div className='flex items-center gap-2'>
+              <WorkdayNotificationsClient />
               <div className='flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-xs font-extrabold text-white ring-1 ring-white/10'>
                 {initials(user.name)}
               </div>
@@ -2566,7 +2567,6 @@ export function EmployeeTodayClient({
         </header>
 
         <div className='flex-1 px-4 pb-[calc(8.75rem+env(safe-area-inset-bottom))] pt-4'>
-          <WorkdayNotificationsClient />
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
             <Card className='mb-4 border-amber-200 bg-amber-50'>
               <div className='flex items-start gap-3'>

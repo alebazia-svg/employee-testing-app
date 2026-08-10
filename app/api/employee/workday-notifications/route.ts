@@ -4,12 +4,37 @@ import { prisma } from '@/lib/prisma';
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  const notifications = await prisma.workdayNotification.findMany({
-    where: { userId: user.id, status: 'sent' },
-    orderBy: [{ readAt: 'asc' }, { sentAt: 'desc' }],
+  const rows = await prisma.workdayNotification.findMany({
+    where: { userId: user.id, status: 'sent', readAt: null },
+    orderBy: { sentAt: 'desc' },
     take: 30,
-    select: { id: true, kind: true, title: true, body: true, sentAt: true, readAt: true, taskId: true, issueId: true },
+    select: {
+      id: true,
+      kind: true,
+      title: true,
+      body: true,
+      sentAt: true,
+      readAt: true,
+      taskId: true,
+      issueId: true,
+      task: { select: { status: true, run: { select: { status: true } } } },
+      issue: { select: { status: true } },
+    },
   });
+  const seenTargets = new Set<string>();
+  const notifications = rows
+    .filter((notification) => {
+      if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
+      if (notification.issue) return notification.issue.status === 'open';
+      return true;
+    })
+    .filter((notification) => {
+      const target = notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : `notification:${notification.id}`;
+      if (seenTargets.has(target)) return false;
+      seenTargets.add(target);
+      return true;
+    })
+    .map(({ task: _task, issue: _issue, ...notification }) => notification);
   return Response.json({ notifications });
 }
 

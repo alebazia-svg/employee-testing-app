@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Bell, BellOff, X } from 'lucide-react';
+import { Bell, X } from 'lucide-react';
 
 type WorkdayNotification = {
   id: number;
@@ -17,9 +17,10 @@ function urlBase64ToUint8Array(value: string) {
 }
 
 export function WorkdayNotificationsClient() {
-  const [notification, setNotification] = useState<WorkdayNotification | null>(null);
+  const [notifications, setNotifications] = useState<WorkdayNotification[]>([]);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const [pushConnected, setPushConnected] = useState(false);
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -27,10 +28,9 @@ export function WorkdayNotificationsClient() {
     const response = await fetch('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
     if (!response?.ok) return;
     const payload = await response.json();
-    const unread = Array.isArray(payload.notifications)
-      ? payload.notifications.find((item: WorkdayNotification) => !item.readAt) ?? null
-      : null;
-    setNotification(unread);
+    setNotifications(Array.isArray(payload.notifications)
+      ? payload.notifications.filter((item: WorkdayNotification) => !item.readAt)
+      : []);
   }, []);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
@@ -71,14 +71,12 @@ export function WorkdayNotificationsClient() {
     setPermission(currentPermission);
     if (currentPermission === 'granted') void connectPush(false);
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
+    const timer = window.setInterval(() => void refresh(), 10_000);
     return () => window.clearInterval(timer);
   }, [connectPush, refresh]);
 
-  async function dismiss() {
-    if (!notification) return;
-    const id = notification.id;
-    setNotification(null);
+  async function dismiss(id: number) {
+    setNotifications((current) => current.filter((notification) => notification.id !== id));
     await fetch('/api/employee/workday-notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -87,34 +85,58 @@ export function WorkdayNotificationsClient() {
   }
 
   return (
-    <>
-      {!pushConnected && (
-        <div className='mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-950'>
-          <div className='flex items-start gap-2'>
-            <BellOff className='mt-0.5 h-4 w-4 shrink-0' />
-            <div className='min-w-0 flex-1'>
-              <p className='text-sm font-extrabold'>Включите напоминания</p>
-              <p className='mt-0.5 text-xs font-semibold leading-snug text-blue-800'>Портал напомнит о проверках вашей смены. На iPhone откройте установленное приложение OFFONIKA.</p>
+    <div className='relative'>
+      <button
+        type='button'
+        onClick={() => setOpen((current) => !current)}
+        className='relative flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white ring-1 ring-white/10 hover:bg-white/[0.12]'
+        aria-label='Уведомления'
+        aria-expanded={open}
+      >
+        <Bell className='h-[18px] w-[18px]' />
+        {notifications.length > 0 && (
+          <span className='absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-slate-950 ring-2 ring-[#111821]'>
+            {notifications.length > 9 ? '9+' : notifications.length}
+          </span>
+        )}
+        {!pushConnected && notifications.length === 0 && <span className='absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-[#111821]' />}
+      </button>
+
+      {open && (
+        <div className='absolute right-0 top-12 z-50 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl'>
+          <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3'>
+            <p className='text-sm font-black'>Уведомления</p>
+            <button type='button' onClick={() => setOpen(false)} className='rounded-md p-1 text-slate-500' aria-label='Закрыть уведомления'><X className='h-4 w-4' /></button>
+          </div>
+
+          {!pushConnected && (
+            <div className='border-b border-blue-100 bg-blue-50 px-4 py-3'>
+              <p className='text-xs font-bold text-blue-950'>Включите системные напоминания на этом устройстве.</p>
               <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='mt-2 rounded-lg bg-blue-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
                 {busy ? 'Подключаем…' : permission === 'granted' ? 'Подключить уведомления' : 'Разрешить уведомления'}
               </button>
               {error && <p className='mt-2 text-xs font-bold text-rose-700'>{error}</p>}
             </div>
-          </div>
-        </div>
-      )}
-      {notification && (
-        <div className='mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950'>
-          <div className='flex items-start gap-2'>
-            <Bell className='mt-0.5 h-4 w-4 shrink-0' />
-            <div className='min-w-0 flex-1'>
-              <p className='text-sm font-extrabold'>{notification.title}</p>
-              <p className='mt-0.5 text-xs font-semibold leading-snug text-amber-900'>{notification.body}</p>
+          )}
+
+          {notifications.length === 0 ? (
+            <p className='px-4 py-5 text-center text-xs font-semibold text-slate-500'>Нет актуальных уведомлений</p>
+          ) : (
+            <div className='max-h-80 overflow-y-auto'>
+              {notifications.map((notification) => (
+                <div key={notification.id} className='flex items-start gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0'>
+                  <Bell className='mt-0.5 h-4 w-4 shrink-0 text-amber-600' />
+                  <div className='min-w-0 flex-1'>
+                    <p className='text-sm font-extrabold'>{notification.title}</p>
+                    <p className='mt-0.5 text-xs font-semibold leading-snug text-slate-600'>{notification.body}</p>
+                  </div>
+                  <button type='button' onClick={() => void dismiss(notification.id)} aria-label='Скрыть уведомление' className='rounded-md p-1 text-slate-400'><X className='h-4 w-4' /></button>
+                </div>
+              ))}
             </div>
-            <button type='button' onClick={() => void dismiss()} aria-label='Закрыть уведомление' className='rounded-md p-1 text-amber-800'><X className='h-4 w-4' /></button>
-          </div>
+          )}
         </div>
       )}
-    </>
+    </div>
   );
 }
