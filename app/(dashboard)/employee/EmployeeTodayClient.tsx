@@ -595,9 +595,9 @@ function timeUntilLabel(minutes: number | null | undefined, now: Date) {
   if (diff <= 0) return 'пора выполнить';
   const hours = Math.floor(diff / 60);
   const restMinutes = diff % 60;
-  if (hours > 0 && restMinutes > 0) return `примерно через ${hours} ч ${restMinutes} мин`;
-  if (hours > 0) return `примерно через ${hours} ч`;
-  return `примерно через ${restMinutes} мин`;
+  if (hours > 0 && restMinutes > 0) return `через ${hours} ч ${restMinutes} мин`;
+  if (hours > 0) return `через ${hours} ч`;
+  return `через ${restMinutes} мин`;
 }
 
 function formatShiftMoney(value: number | null | undefined) {
@@ -2708,7 +2708,9 @@ export function EmployeeTodayClient({
                 <Card className='space-y-3 bg-white p-4'>
                   <div>
                     <div>
-                      <h2 className='text-xl font-black text-slate-950'>Сейчас нужно</h2>
+                      <h2 className='text-xl font-black text-slate-950'>
+                        {activeHandoverTask || actionableShiftControlTask ? 'Сейчас нужно' : 'Следующая проверка'}
+                      </h2>
                       <p className='mt-0.5 text-xs font-bold text-slate-500'>
                         {activeHandoverTask ? `Сдача смены: шаг ${handoverStep + 1} из ${handoverSteps.length}` : remainingTasksLabel(remainingShiftControlCount, primaryShiftControlTask?.category)}
                       </p>
