@@ -19,6 +19,7 @@ function urlBase64ToUint8Array(value: string) {
 export function WorkdayNotificationsClient() {
   const [notification, setNotification] = useState<WorkdayNotification | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
+  const [pushConnected, setPushConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -32,19 +33,12 @@ export function WorkdayNotificationsClient() {
     setNotification(unread);
   }, []);
 
-  useEffect(() => {
-    setPermission('Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window ? Notification.permission : 'unsupported');
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 30_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
-
-  async function enablePush() {
+  const connectPush = useCallback(async (requestPermission: boolean) => {
     setBusy(true);
     setError('');
     try {
       if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Уведомления не поддерживаются на этом устройстве.');
-      const nextPermission = await Notification.requestPermission();
+      const nextPermission = requestPermission ? await Notification.requestPermission() : Notification.permission;
       setPermission(nextPermission);
       if (nextPermission !== 'granted') throw new Error('Разрешите уведомления в настройках устройства.');
       const configResponse = await fetch('/api/employee/push-subscription', { cache: 'no-store' });
@@ -62,12 +56,24 @@ export function WorkdayNotificationsClient() {
         body: JSON.stringify(subscription),
       });
       if (!response.ok) throw new Error('Не удалось сохранить разрешение на уведомления.');
+      setPushConnected(true);
     } catch (caught) {
+      setPushConnected(false);
       setError(caught instanceof Error ? caught.message : 'Не удалось включить уведомления.');
     } finally {
       setBusy(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const supported = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
+    const currentPermission = supported ? Notification.permission : 'unsupported';
+    setPermission(currentPermission);
+    if (currentPermission === 'granted') void connectPush(false);
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [connectPush, refresh]);
 
   async function dismiss() {
     if (!notification) return;
@@ -82,15 +88,15 @@ export function WorkdayNotificationsClient() {
 
   return (
     <>
-      {permission !== 'granted' && (
+      {!pushConnected && (
         <div className='mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-950'>
           <div className='flex items-start gap-2'>
             <BellOff className='mt-0.5 h-4 w-4 shrink-0' />
             <div className='min-w-0 flex-1'>
               <p className='text-sm font-extrabold'>Включите напоминания</p>
               <p className='mt-0.5 text-xs font-semibold leading-snug text-blue-800'>Портал напомнит о проверках вашей смены. На iPhone откройте установленное приложение OFFONIKA.</p>
-              <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void enablePush()} className='mt-2 rounded-lg bg-blue-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
-                {busy ? 'Подключаем…' : 'Разрешить уведомления'}
+              <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='mt-2 rounded-lg bg-blue-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
+                {busy ? 'Подключаем…' : permission === 'granted' ? 'Подключить уведомления' : 'Разрешить уведомления'}
               </button>
               {error && <p className='mt-2 text-xs font-bold text-rose-700'>{error}</p>}
             </div>
