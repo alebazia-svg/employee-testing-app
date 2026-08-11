@@ -175,6 +175,22 @@ test('builds fiscal identity from normalized components rather than provider key
   });
   assert.equal(result.status, 'confirmed');
   assert.equal(canonicalFiscalKey({ fiscalDriveNumber: 'fn', fiscalDocumentNumber: '', fiscalSign: 'fp' }), null);
+  assert.equal(
+    canonicalFiscalKey({ fiscalDriveNumber: 'fn', fiscalDocumentNumber: 'fd', fiscalSign: '000123' }),
+    canonicalFiscalKey({ fiscalDriveNumber: 'fn', fiscalDocumentNumber: 'fd', fiscalSign: '123' }),
+  );
+  assert.notEqual(
+    canonicalFiscalKey({ fiscalDriveNumber: '001', fiscalDocumentNumber: 'fd', fiscalSign: '123' }),
+    canonicalFiscalKey({ fiscalDriveNumber: '1', fiscalDocumentNumber: 'fd', fiscalSign: '123' }),
+  );
+  assert.notEqual(
+    canonicalFiscalKey({ fiscalDriveNumber: 'fn', fiscalDocumentNumber: '001', fiscalSign: '123' }),
+    canonicalFiscalKey({ fiscalDriveNumber: 'fn', fiscalDocumentNumber: '1', fiscalSign: '123' }),
+  );
+  assert.notEqual(
+    canonicalFiscalKey({ fiscalDriveNumber: 'fn', fiscalDocumentNumber: 'fd', fiscalSign: '00ABC' }),
+    canonicalFiscalKey({ fiscalDriveNumber: 'fn', fiscalDocumentNumber: 'fd', fiscalSign: 'ABC' }),
+  );
 });
 
 test('normalizes only safe typography and yo/e in item names', () => {
@@ -187,6 +203,31 @@ test('normalizes only safe typography and yo/e in item names', () => {
     items: [{ ...check.items[0], name: 'чехол - тест' }],
   };
   assert.equal(only({ oneCChecks: [oneCWithTypography], ofdReceipts: [typographic] }).status, 'confirmed');
+});
+
+test('accepts only deterministic nonnumeric OFD name extensions with exact line values', () => {
+  const oneCItems = [
+    { name: 'Модель 15 Pro', quantity: 1, priceKopecks: 100, sumKopecks: 100 },
+    { name: 'Чехол синий', quantity: 2, priceKopecks: 50, sumKopecks: 100 },
+  ];
+  const safeOfdItems = [
+    { name: 'Фирменный Модель 15 Pro новый', quantity: 1, priceKopecks: 100, sumKopecks: 100 },
+    { name: 'Чехол защитный синий', quantity: 2, priceKopecks: 50, sumKopecks: 100 },
+  ];
+  assert.equal(only({ oneCChecks: [{ ...check, items: oneCItems }], ofdReceipts: [{ ...receipt, items: safeOfdItems }] }).status, 'confirmed');
+
+  const unsafeNames = [
+    [{ ...safeOfdItems[0], name: 'Фирменный Модель 16 Pro новый' }, safeOfdItems[1]],
+    [{ ...safeOfdItems[0], name: 'Pro Модель 15 новый' }, safeOfdItems[1]],
+    [{ ...safeOfdItems[0], name: 'Фирменный устройство 15 Pro' }, safeOfdItems[1]],
+  ];
+  for (const items of unsafeNames) {
+    assert.equal(only({ oneCChecks: [{ ...check, items: oneCItems }], ofdReceipts: [{ ...receipt, items }] }).reasonCode, 'OFD_ITEMS_MISMATCH');
+  }
+  assert.equal(only({
+    oneCChecks: [{ ...check, items: oneCItems }],
+    ofdReceipts: [{ ...receipt, items: [{ ...safeOfdItems[0], sumKopecks: 101 }, safeOfdItems[1]] }],
+  }).reasonCode, 'OFD_ITEMS_MISMATCH');
 });
 
 test('appends history only when status or reason changes', () => {

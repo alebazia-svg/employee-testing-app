@@ -35,6 +35,125 @@ model User {
   assignedKkmAssignments    WorkdayKkmAssignment[]     @relation("WorkdayKkmAssignmentAssignedBy")
 }
 
+model TerminalFiscalMapping {
+  id                       String                   @id @default(cuid())
+  label                    String                   @default("")
+  terminalKey              String
+  tbankTerminalId          String?
+  oneCAcquiringTerminalRef String
+  oneCCashRegisterRef      String
+  kktRegistrationNumber    String
+  effectiveFrom            DateTime
+  effectiveTo              DateTime?
+  source                   String                   @default("manual")
+  isActive                 Boolean                  @default(true)
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  runs                     TerminalFiscalMatchRun[]
+  matches                  TerminalFiscalMatch[]
+
+  @@index([terminalKey, effectiveFrom, effectiveTo])
+  @@index([oneCAcquiringTerminalRef, effectiveFrom, effectiveTo])
+  @@index([oneCCashRegisterRef, effectiveFrom, effectiveTo])
+  @@index([kktRegistrationNumber, effectiveFrom, effectiveTo])
+  @@index([isActive, effectiveFrom, effectiveTo])
+}
+
+model TerminalFiscalMatchRun {
+  id               String                          @id @default(cuid())
+  runKey           String                          @unique
+  algorithmVersion String
+  mappingId        String
+  periodFrom       DateTime
+  periodTo         DateTime
+  status           String                          @default("pending")
+  cycleKey         String?
+  leaseToken       String?
+  leaseUntil       DateTime?
+  attemptCount     Int                             @default(0)
+  tbankComplete    Boolean                         @default(false)
+  oneCComplete     Boolean                         @default(false)
+  ofdComplete      Boolean                         @default(false)
+  tbankCheckedAt   DateTime?
+  oneCCheckedAt    DateTime?
+  ofdCheckedAt     DateTime?
+  lastErrorCode    String?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @updatedAt
+  mapping          TerminalFiscalMapping           @relation(fields: [mappingId], references: [id], onDelete: Restrict)
+  matches          TerminalFiscalMatch[]
+  evaluations      TerminalFiscalMatchEvaluation[]
+
+  @@index([mappingId, periodFrom, periodTo])
+  @@index([status, leaseUntil])
+  @@index([cycleKey])
+}
+
+model TerminalFiscalMatch {
+  id                    String                          @id @default(cuid())
+  matchingId            String                          @unique
+  runId                 String
+  mappingId             String?
+  algorithmVersion      String
+  status                String
+  reasonCode            String
+  operationType         String?
+  bankOperationHash     String
+  oneCSourceRef         String?
+  oneCSourceHash        String?
+  ofdFiscalKeyHash      String?
+  candidateCount        Int                             @default(0)
+  timeDifferenceSeconds Int?
+  graceUntil            DateTime
+  tbankComplete         Boolean
+  oneCComplete          Boolean
+  ofdComplete           Boolean
+  checkedAt             DateTime
+  createdAt             DateTime                        @default(now())
+  updatedAt             DateTime                        @updatedAt
+  run                   TerminalFiscalMatchRun          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  mapping               TerminalFiscalMapping?          @relation(fields: [mappingId], references: [id], onDelete: Restrict)
+  evaluations           TerminalFiscalMatchEvaluation[]
+
+  @@index([runId, status])
+  @@index([mappingId, checkedAt])
+  @@index([reasonCode, checkedAt])
+  @@index([bankOperationHash])
+  @@index([oneCSourceRef])
+  @@index([ofdFiscalKeyHash])
+}
+
+model TerminalFiscalMatchEvaluation {
+  id                    String                 @id @default(cuid())
+  matchId               String
+  runId                 String
+  cycleKey              String
+  algorithmVersion      String
+  status                String
+  reasonCode            String
+  mappingId             String?
+  bankOperationHash     String
+  oneCSourceRef         String?
+  oneCSourceHash        String?
+  ofdFiscalKeyHash      String?
+  candidateCount        Int                    @default(0)
+  timeDifferenceSeconds Int?
+  graceUntil            DateTime
+  tbankComplete         Boolean
+  oneCComplete          Boolean
+  ofdComplete           Boolean
+  evaluatedAt           DateTime
+  createdAt             DateTime               @default(now())
+  match                 TerminalFiscalMatch    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  run                   TerminalFiscalMatchRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, cycleKey])
+  @@index([runId, evaluatedAt])
+  @@index([status, reasonCode, evaluatedAt])
+}
+
 model UserOneCCashboxMapping {
   id                        Int      @id @default(autoincrement())
   userId                    Int      @unique

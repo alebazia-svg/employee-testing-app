@@ -281,12 +281,22 @@ function normalizeFiscalComponent(value: string | undefined) {
   return value?.normalize('NFKC').trim() ?? '';
 }
 
+function normalizeFiscalSign(value: string | undefined) {
+  const normalized = normalizeFiscalComponent(value);
+  if (!/^\d+$/.test(normalized)) return normalized;
+  return normalized.replace(/^0+(?=\d)/, '');
+}
+
 export function canonicalFiscalKey(value: {
   fiscalDriveNumber?: string;
   fiscalDocumentNumber?: string;
   fiscalSign?: string;
 }) {
-  const parts = [value.fiscalDriveNumber, value.fiscalDocumentNumber, value.fiscalSign].map(normalizeFiscalComponent);
+  const parts = [
+    normalizeFiscalComponent(value.fiscalDriveNumber),
+    normalizeFiscalComponent(value.fiscalDocumentNumber),
+    normalizeFiscalSign(value.fiscalSign),
+  ];
   return parts.every(Boolean) ? parts.map((part) => `${part.length}:${part}`).join('|') : null;
 }
 
@@ -300,7 +310,44 @@ function normalizedItems(items: MatchingItem[]) {
 }
 
 function sameItems(left: MatchingItem[], right: MatchingItem[]) {
-  return JSON.stringify(normalizedItems(left)) === JSON.stringify(normalizedItems(right));
+  if (JSON.stringify(normalizedItems(left)) === JSON.stringify(normalizedItems(right))) return true;
+  if (left.length !== right.length) return false;
+
+  const nameTokens = (value: string) => normalizeMatchingItemName(value).match(/[\p{L}\p{N}]+(?:[.,]\p{N}+)*/gu) ?? [];
+  const numericParts = (value: string) => normalizeMatchingItemName(value).match(/\d+(?:[.,]\d+)*/g) ?? [];
+  const safeExtendedName = (oneCName: string, ofdName: string) => {
+    if (JSON.stringify(numericParts(oneCName)) !== JSON.stringify(numericParts(ofdName))) return false;
+    const oneC = nameTokens(oneCName);
+    const ofd = nameTokens(ofdName);
+    if (oneC.length > ofd.length) return false;
+    let oneCIndex = 0;
+    for (const token of ofd) {
+      if (oneCIndex < oneC.length && token === oneC[oneCIndex]) {
+        oneCIndex += 1;
+      } else if (/\d/.test(token)) {
+        return false;
+      }
+    }
+    return oneCIndex === oneC.length;
+  };
+  const compatible = (oneC: MatchingItem, ofd: MatchingItem) => (
+    oneC.quantity === ofd.quantity
+    && oneC.priceKopecks === ofd.priceKopecks
+    && oneC.sumKopecks === ofd.sumKopecks
+    && safeExtendedName(oneC.name, ofd.name)
+  );
+  const used = new Set<number>();
+  const assign = (index: number): boolean => {
+    if (index === left.length) return true;
+    for (let candidate = 0; candidate < right.length; candidate += 1) {
+      if (used.has(candidate) || !compatible(left[index], right[candidate])) continue;
+      used.add(candidate);
+      if (assign(index + 1)) return true;
+      used.delete(candidate);
+    }
+    return false;
+  };
+  return assign(0);
 }
 
 function withHistory(record: Omit<MatchingAuditRecord, 'history'>, previous: Map<string, MatchingAuditRecord>) {

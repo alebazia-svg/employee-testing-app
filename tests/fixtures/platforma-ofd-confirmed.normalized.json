@@ -1,0 +1,24 @@
+{
+  "fiscal": {
+    "driveNumber": "TEST_FN_001",
+    "documentNumber": "12345",
+    "sign": "000987654"
+  },
+  "kkt": {
+    "registrationNumber": "TEST_KKT_001"
+  },
+  "money": {
+    "totalKopecks": 125000,
+    "electronicKopecks": 125000
+  },
+  "operationType": 1,
+  "receiptAt": "2026-08-09T09:15:00.000Z",
+  "items": [
+    {
+      "name": "Тестовый товар модель 15",
+      "quantity": 1,
+      "priceKopecks": 125000,
+      "sumKopecks": 125000
+    }
+  ]
+}
