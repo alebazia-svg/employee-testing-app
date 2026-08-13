@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { collectCompleteTBankWindow, splitIntoFixedWindows, TBANK_MATCHING_PAGE_LIMIT } from '../lib/tbank-complete-window';
+import { loadCompleteTBankOperations, TBANK_MAX_WINDOW_MS } from '../lib/terminal-fiscal-sources';
 
 test('pre-splits long source periods into fixed provider windows', () => {
   assert.deepEqual(splitIntoFixedWindows(0, 25, 10), [
@@ -46,4 +47,23 @@ test('fails closed on an upstream page error', async () => {
     loadPage: async () => ({ ok: false, operations: [] }),
   });
   assert.equal(result.complete, false);
+});
+
+test('splits a complete calendar day below the provider 24-hour boundary', async () => {
+  const calls: Array<{ from: string; till: string }> = [];
+  const result = await loadCompleteTBankOperations({
+    terminalKey: 'masked-test-terminal',
+    from: '2026-08-12T21:00:00.000Z',
+    to: '2026-08-13T21:00:00.000Z',
+    loadPage: async ({ from, till }) => {
+      calls.push({ from, till });
+      return { ok: true, operations: [] } as never;
+    },
+  });
+  assert.equal(TBANK_MAX_WINDOW_MS, 12 * 60 * 60 * 1000);
+  assert.equal(result.complete, true);
+  assert.deepEqual(calls, [
+    { from: '2026-08-12T21:00:00.000Z', till: '2026-08-13T09:00:00.000Z' },
+    { from: '2026-08-13T09:00:00.000Z', till: '2026-08-13T21:00:00.000Z' },
+  ]);
 });

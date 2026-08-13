@@ -22,7 +22,7 @@ type TBankPageLoader = (input: { terminalKey: string; from: string; till: string
 
 const ONE_C_PAGE_LIMIT = 500;
 const ONE_C_MAX_OFFSET = 5000;
-const TBANK_MAX_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const TBANK_MAX_WINDOW_MS = 12 * 60 * 60 * 1000;
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
