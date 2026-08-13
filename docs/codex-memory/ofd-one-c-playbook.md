@@ -105,3 +105,23 @@ Ask:
   implemented.
 - Do not add Prisma OFD models casually. If future DB work appears early, park
   it in `.wip/` until the user explicitly starts `OfdControlEvent`.
+
+## Terminal Fiscal Matching Production Runtime
+
+The isolated read-only `T-Bank -> 1C -> Platforma OFD` matching audit runs in
+production without employee UI, notifications or incidents.
+
+- `portal-app` and `agentapi-read-proxy` share the internal Docker network
+  `offonika-agentapi-read`; no proxy port is published externally.
+- `PLATFORMA_OFD_PROXY_BASE_URL` in portal `server.env` contains only the
+  internal proxy URL. The Platforma OFD token remains inside AgentAPI.
+- The proxy's `agentapi-read-proxy.service` has a systemd drop-in that restores
+  the network attachment whenever the proxy container is recreated.
+- `offonika-terminal-fiscal-current.timer` runs every 15 minutes using a
+  completed bucket with a source delay.
+- `offonika-terminal-fiscal-final.timer` finalizes the previous Moscow day at
+  00:14.
+- T-Bank calendar-day reads are split into windows no longer than 12 hours to
+  avoid the provider's exact 24-hour boundary behavior.
+- `pending`, `unavailable` and `needs_review` stay non-accusatory. Source delay
+  alone must not convert them to `mismatch`.
