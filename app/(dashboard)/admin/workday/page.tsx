@@ -24,6 +24,7 @@ import {
 } from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
+import { getTerminalFiscalWorkdaySummary } from '@/lib/terminal-fiscal-summary';
 import { evaluateWorkdayTiming } from '@/lib/workday-timing';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, getShiftOptionsForDepartment, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
@@ -32,6 +33,7 @@ import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManua
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
 import { DevMakeShiftTasksAvailableButton } from './DevMakeShiftTasksAvailableButton';
 import { DevResetTodayButton } from './DevResetTodayButton';
+import { TerminalFiscalAdminSummary } from './TerminalFiscalAdminSummary';
 import { WorkdayQrCodes } from './WorkdayQrCodes';
 
 export const dynamic = 'force-dynamic';
@@ -146,6 +148,13 @@ function addDays(dateKey: string, offset: number) {
   const [year, month, day] = dateKey.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + offset));
   return date.toISOString().slice(0, 10);
+}
+
+function moscowDayRange(dateKey: string) {
+  return {
+    periodFrom: new Date(`${dateKey}T00:00:00+03:00`),
+    periodTo: new Date(`${addDays(dateKey, 1)}T00:00:00+03:00`),
+  };
 }
 
 type ControlFilter = 'all' | 'error' | 'attention' | 'pending' | 'normal';
@@ -1161,7 +1170,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const selectedControlFilter = controlFilter(searchParams?.control);
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
-  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments] = await Promise.all([
+  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
@@ -1208,6 +1217,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       include: { assignedBy: { select: { name: true } } },
       orderBy: { effectiveFrom: 'asc' },
     }),
+    getTerminalFiscalWorkdaySummary(moscowDayRange(selectedDate)),
   ]);
 
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
@@ -1556,6 +1566,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             <WorkdayQrCodes />
           </div>
         </div>
+
+        <TerminalFiscalAdminSummary summary={terminalFiscalSummary} />
 
         <Card className='p-0' id='employees-control'>
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between'>
