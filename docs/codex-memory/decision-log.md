@@ -259,3 +259,17 @@ Production evidence for this decision: across 24 audited workdays Kosterenko's
 checks used `Касса Чеченова ККМ`, while his own `Касса Костеренко` had cash
 movements on all 24 dates. Therefore his personal 1C cashbox stays constant
 while the physical KKM can change by day.
+
+## 2026-08-14 - AUSN Uses A Unified Multi-OFD Source
+
+The internal AUSN OFD export keeps SABY and Platforma OFD as simultaneous
+read-only sources. It does not use one global transition date.
+
+- fiscal documents are merged by normalized FN + FD + FP;
+- equal facts are counted once and retain both source labels;
+- conflicting facts block completeness instead of selecting one source;
+- different KKT/FN histories coexist in the same requested period;
+- SABY remains an active connector; its available 2026 history is also stored
+  as a protected evidence archive outside Git;
+- historical monthly AUSN reports calculate annual turnover only through the
+  selected month's cutoff.
