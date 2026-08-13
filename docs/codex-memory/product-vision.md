@@ -103,3 +103,16 @@ payroll, database state or discipline outcomes.
 The mature product coordinates daily work, controls, exceptions, notifications,
 analytics and AI-assisted decision support in one operating layer for the
 business.
+
+## Future AUSN Reporting Boundary
+
+The existing AUSN report should eventually use the same server-side read-only
+sources as terminal fiscal control: 1C, OFD and T-Bank. This reporting path must
+remain independent of the portal UI and be callable by Aslan from his own
+computer through an authenticated ordinary read-only request, without SSH and
+without routing through Bela's computer.
+
+Internal Docker networking for the portal must not make these sources private
+to the portal application. The external reporting contract should be exposed by
+the server-side read API with its own authentication, rate limits and audit,
+while OFD and bank secrets remain on the server and never reach clients.
