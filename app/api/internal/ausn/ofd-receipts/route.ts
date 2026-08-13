@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { getCurrentUser } from '@/lib/auth';
-import { exportSabyOfdReceipts } from '@/lib/saby-ofd';
+import { exportUnifiedAusnOfdReceipts } from '@/lib/ausn-ofd';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -68,7 +68,7 @@ export async function GET(req: Request) {
   const queryLimit = intParam(url, 'queryLimit', 1000, 100, 1000);
   const maxDocuments = intParam(url, 'maxDocuments', 10000, 1, 20000);
 
-  const result = await exportSabyOfdReceipts({
+  const result = await exportUnifiedAusnOfdReceipts({
     organizationInn,
     dateFrom,
     dateTo,
