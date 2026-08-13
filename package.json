@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:payroll": "node --import tsx --test tests/payroll-calculation.test.ts",
-    "test:terminal-fiscal": "node --conditions=react-server --import tsx --test tests/terminal-fiscal-matching.test.ts tests/terminal-fiscal-ofd-adapter.test.ts tests/terminal-fiscal-one-c-adapter.test.ts tests/terminal-fiscal-summary.test.ts tests/terminal-fiscal-summary-api.test.ts tests/terminal-fiscal-admin-summary.test.tsx tests/terminal-fiscal-cli.test.ts tests/tbank-complete-window.test.ts tests/terminal-fiscal-live-fixture-dry-run.test.ts",
+    "test:terminal-fiscal": "node --conditions=react-server --import tsx --test tests/terminal-fiscal-matching.test.ts tests/terminal-fiscal-ofd-adapter.test.ts tests/terminal-fiscal-one-c-adapter.test.ts tests/terminal-fiscal-summary.test.ts tests/terminal-fiscal-summary-api.test.ts tests/terminal-fiscal-admin-summary.test.tsx tests/terminal-fiscal-cli.test.ts tests/terminal-fiscal-auto-run.test.ts tests/tbank-complete-window.test.ts tests/terminal-fiscal-live-fixture-dry-run.test.ts",
     "test:terminal-fiscal:db": "node --conditions=react-server --env-file=.env --import tsx --test tests/terminal-fiscal-persistence.integration.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -17,7 +17,8 @@
     "db:seed:demo": "tsx prisma/seed.ts",
     "matching:mapping:preview": "node --env-file=.env --import tsx scripts/terminal-fiscal-mapping-preview.ts",
     "matching:mapping:configure": "node --env-file=.env --import tsx scripts/terminal-fiscal-mapping-configure.ts",
-    "matching:run": "node --conditions=react-server --env-file=.env --import tsx scripts/terminal-fiscal-run.ts"
+    "matching:run": "node --conditions=react-server --env-file=.env --import tsx scripts/terminal-fiscal-run.ts",
+    "matching:auto-run": "node --conditions=react-server --env-file=.env --import tsx scripts/terminal-fiscal-auto-run.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

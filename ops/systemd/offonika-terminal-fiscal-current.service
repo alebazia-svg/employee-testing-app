@@ -1,0 +1,12 @@
+[Unit]
+Description=OFFONIKA terminal fiscal audit for the current Moscow day
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n -E 0 /run/lock/offonika-terminal-fiscal.lock /usr/bin/docker exec portal-app node --conditions=react-server --import tsx scripts/terminal-fiscal-auto-run.ts --mode current --confirm-audit-write
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=multi-user.target

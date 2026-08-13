@@ -1,0 +1,11 @@
+[Unit]
+Description=Run OFFONIKA terminal fiscal audit every 15 minutes
+
+[Timer]
+OnCalendar=*-*-* *:12/15:00 Europe/Moscow
+Persistent=false
+AccuracySec=30s
+Unit=offonika-terminal-fiscal-current.service
+
+[Install]
+WantedBy=timers.target
