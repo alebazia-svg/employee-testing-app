@@ -34,6 +34,9 @@ services:
       PORT: "3000"
     volumes:
       - portal-uploads:/app/uploads
+    networks:
+      - default
+      - agentapi-read
     labels:
       - traefik.enable=true
       - traefik.http.routers.portal-app.rule=Host(`${PORTAL_DOMAIN}`)
@@ -49,3 +52,8 @@ services:
 volumes:
   portal-postgres-data:
   portal-uploads:
+
+networks:
+  agentapi-read:
+    external: true
+    name: offonika-agentapi-read
