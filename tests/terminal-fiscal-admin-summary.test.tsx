@@ -41,3 +41,14 @@ test('ADMIN Workday terminal summary has a neutral no-run state', () => {
   assert.match(result.detail, /сверка ещё не запускалась/);
   assert.equal(result.label, 'Нет данных');
 });
+
+test('ADMIN Workday treats a bank operation without a 1C check as an admin-only acquiring problem', () => {
+  const result = presentTerminalFiscalWorkdaySummary({
+    ...base,
+    statuses: { confirmed: 3, pending: 0, mismatch: 0, unavailable: 0, needs_review: 1 },
+    reasonCodes: { MATCH_CONFIRMED: 3, ONE_C_CANDIDATE_NOT_FOUND: 1 },
+  });
+  assert.equal(result.status, 'mismatch');
+  assert.equal(result.label, 'Есть проблема эквайринга');
+  assert.match(result.detail, /оплат без чека 1С 1/);
+});

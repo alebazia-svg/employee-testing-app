@@ -3,6 +3,7 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, TerminalFiscalMatchingOutput } from '@/lib/terminal-fiscal-matching';
+import { attributeTerminalFiscalEmployee } from '@/lib/terminal-fiscal-attribution';
 
 const REMINDER_MS = 60 * 60 * 1000;
 
@@ -87,21 +88,36 @@ export async function syncTerminalFiscalWorkdayControl(
       unassigned += 1;
       continue;
     }
-    const assignments = await prisma.workdayKkmAssignment.findMany({
-      where: {
-        oneCCashRegisterRef: mapping.oneCCashRegisterRef,
-        effectiveFrom: { lte: operationAt },
-        OR: [{ effectiveTo: null }, { effectiveTo: { gt: operationAt } }],
-      },
-      select: { userId: true },
-      take: 2,
-    });
-    if (assignments.length !== 1) {
+    const [assignments, cashierMappings] = await Promise.all([
+      prisma.workdayKkmAssignment.findMany({
+        where: {
+          date: moscowDateKey(operationAt),
+          oneCCashRegisterRef: mapping.oneCCashRegisterRef,
+          effectiveFrom: { lte: operationAt },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gt: operationAt } }],
+        },
+        select: { userId: true, oneCCashRegisterRef: true, effectiveFrom: true, effectiveTo: true },
+        take: 2,
+      }),
+      record.oneCCashierRef ? prisma.userOneCCashboxMapping.findMany({
+        where: { oneCCashierRef: record.oneCCashierRef, isActive: true },
+        select: { userId: true, oneCCashierRef: true },
+        take: 2,
+      }) : Promise.resolve([]),
+    ]);
+    const attribution = attributeTerminalFiscalEmployee({
+      status: record.status,
+      reasonCode: record.reasonCode,
+      bankOperationAt: operationAt,
+      oneCCashRegisterRef: mapping.oneCCashRegisterRef,
+      oneCCashierRef: record.oneCCashierRef ?? null,
+    }, cashierMappings.flatMap((row) => row.oneCCashierRef ? [{ userId: row.userId, oneCCashierRef: row.oneCCashierRef }] : []), assignments);
+    if (attribution.employeeId === null || attribution.effectiveStatus !== 'mismatch') {
       unassigned += 1;
       continue;
     }
 
-    const userId = assignments[0].userId;
+    const userId = attribution.employeeId;
     const lifecycle = await prisma.$transaction(async (tx) => {
       const existing = await tx.workdayControlIssue.findUnique({ where: { fingerprint } });
       const reopening = Boolean(existing && existing.status !== 'open');

@@ -2,6 +2,11 @@ import 'server-only';
 
 import { prisma } from '@/lib/prisma';
 import type { MatchingReasonCode, MatchingStatus, TerminalFiscalMatchingOutput } from '@/lib/terminal-fiscal-matching';
+import {
+  attributeTerminalFiscalEmployee,
+  type TerminalFiscalAssignmentInterval,
+  type TerminalFiscalCashierEmployeeMapping,
+} from '@/lib/terminal-fiscal-attribution';
 
 const STATUSES: MatchingStatus[] = ['confirmed', 'pending', 'mismatch', 'unavailable', 'needs_review'];
 
@@ -26,13 +31,7 @@ export type TerminalFiscalAttributionRecord = {
   candidateCount: number;
   bankOperationAt: Date | null;
   oneCCashRegisterRef: string | null;
-};
-
-export type TerminalFiscalAssignmentInterval = {
-  userId: number;
-  oneCCashRegisterRef: string;
-  effectiveFrom: Date;
-  effectiveTo: Date | null;
+  oneCCashierRef: string | null;
 };
 
 export type TerminalFiscalEmployeeControl = TerminalFiscalAggregate & {
@@ -53,27 +52,20 @@ export function presentTerminalFiscalEmployeeControl(control: TerminalFiscalEmpl
 export function attributeTerminalFiscalRecordsToEmployees(
   records: TerminalFiscalAttributionRecord[],
   assignments: TerminalFiscalAssignmentInterval[],
+  cashierMappings: TerminalFiscalCashierEmployeeMapping[] = [],
 ) {
   const attributed = new Map<number, TerminalFiscalAttributionRecord[]>();
   const unassigned: TerminalFiscalAttributionRecord[] = [];
   for (const record of records) {
-    if (!record.bankOperationAt || !record.oneCCashRegisterRef) {
-      unassigned.push(record);
+    const attribution = attributeTerminalFiscalEmployee(record, cashierMappings, assignments);
+    const effectiveRecord = attribution.effectiveStatus === record.status ? record : { ...record, status: attribution.effectiveStatus };
+    if (attribution.employeeId === null) {
+      unassigned.push(effectiveRecord);
       continue;
     }
-    const operationAt = record.bankOperationAt.getTime();
-    const candidates = assignments.filter((assignment) => (
-      assignment.oneCCashRegisterRef === record.oneCCashRegisterRef
-      && assignment.effectiveFrom.getTime() <= operationAt
-      && (!assignment.effectiveTo || operationAt < assignment.effectiveTo.getTime())
-    ));
-    if (candidates.length !== 1) {
-      unassigned.push(record);
-      continue;
-    }
-    const rows = attributed.get(candidates[0].userId) ?? [];
-    rows.push(record);
-    attributed.set(candidates[0].userId, rows);
+    const rows = attributed.get(attribution.employeeId) ?? [];
+    rows.push(effectiveRecord);
+    attributed.set(attribution.employeeId, rows);
   }
   const byUser = new Map<number, TerminalFiscalEmployeeControl>();
   for (const [userId, rows] of attributed) {
@@ -99,7 +91,8 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
     return { status: 'not_run', label: 'Нет данных', detail: 'За выбранный день сверка ещё не запускалась.' };
   }
   const sourcesComplete = summary.completeness.tbank && summary.completeness.oneC && summary.completeness.ofd;
-  const status = summary.statuses.mismatch > 0
+  const missingOneCChecks = summary.reasonCodes.ONE_C_CANDIDATE_NOT_FOUND ?? 0;
+  const status = summary.statuses.mismatch > 0 || missingOneCChecks > 0
     ? 'mismatch'
     : summary.statuses.needs_review > 0
       ? 'needs_review'
@@ -122,7 +115,12 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
     summary.statuses.mismatch > 0 ? `расхождений ${summary.statuses.mismatch}` : '',
     summary.statuses.unavailable > 0 ? `недоступно ${summary.statuses.unavailable}` : '',
   ].filter(Boolean);
-  return { status, label: labels[status], detail: `Т-Банк → 1С → ОФД: ${parts.join(' · ')}.` };
+  if (missingOneCChecks > 0) parts.push(`оплат без чека 1С ${missingOneCChecks}`);
+  return {
+    status,
+    label: missingOneCChecks > 0 && summary.statuses.mismatch === 0 ? 'Есть проблема эквайринга' : labels[status],
+    detail: `Т-Банк → 1С → ОФД: ${parts.join(' · ')}.`,
+  };
 }
 
 export function aggregateTerminalFiscalRecords(records: Array<{ status: string; reasonCode: string; candidateCount: number }>): TerminalFiscalAggregate {
@@ -200,6 +198,7 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
       reasonCode: true,
       candidateCount: true,
       bankOperationAt: true,
+      oneCCashierRef: true,
       mapping: { select: { oneCCashRegisterRef: true } },
     },
   });
@@ -209,6 +208,7 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
     candidateCount: match.candidateCount,
     bankOperationAt: match.bankOperationAt,
     oneCCashRegisterRef: match.mapping?.oneCCashRegisterRef ?? null,
+    oneCCashierRef: match.oneCCashierRef,
   }));
   return {
     runs: latestByMapping.length,

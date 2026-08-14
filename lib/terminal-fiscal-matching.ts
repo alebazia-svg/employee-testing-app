@@ -108,6 +108,11 @@ export type MatchingItem = {
   sumKopecks: number;
 };
 
+export type OneCCashier = {
+  ref: string;
+  name: string;
+};
+
 export type OneCCheck = {
   sourceRef: string;
   sourceType: 'sale_check' | 'refund_check' | 'correction' | 'credit_realization';
@@ -117,6 +122,7 @@ export type OneCCheck = {
   kktRegistrationNumber: string;
   totalKopecks: number;
   electronicKopecks: number;
+  cashier: OneCCashier;
   cardPayments: OneCCardPayment[];
   items: MatchingItem[];
   fiscalState: 'confirmed' | 'incomplete' | 'unconfirmed';
@@ -155,6 +161,8 @@ export type MatchingAuditRecord = {
   mappingId?: string;
   bankOperationKey: string;
   oneCCheckKey?: string;
+  oneCCashierRef?: string;
+  oneCCashierName?: string;
   ofdReceiptKey?: string;
   operationType?: MatchingOperationType;
   amountKopecks: number;
@@ -539,6 +547,8 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       mappingId: context.mapping?.id,
       bankOperationKey: bankOperationKey(operation),
       oneCCheckKey: oneCCheck?.sourceRef,
+      oneCCashierRef: oneCCheck?.cashier.ref || undefined,
+      oneCCashierName: oneCCheck?.cashier.name || undefined,
       ofdReceiptKey: ofdReceipt ? canonicalFiscalKey(ofdReceipt) ?? undefined : undefined,
       operationType: context.operationType ?? undefined,
       amountKopecks: operation.amountKopecks,

@@ -57,6 +57,11 @@ function metadataRef(value: unknown) {
   return source ? text(source.ref) || text(source.id) || text(source.value) : '';
 }
 
+function metadataName(value: unknown) {
+  const source = record(value);
+  return source ? text(source.name) || text(source.presentation) || text(source.description) : '';
+}
+
 export function technicalHash(value: string) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -139,7 +144,7 @@ function normalizeItems(value: unknown): MatchingItem[] {
   });
 }
 
-function normalizeOneCCheck(value: unknown, fiscalFacts: Map<string, Record<string, unknown>>): OneCCheck | null {
+export function normalizeOneCCheck(value: unknown, fiscalFacts: Map<string, Record<string, unknown>>): OneCCheck | null {
   const source = record(value);
   if (!source) return null;
   const sourceTypeValue = text(source.sourceDocumentType || source.sourceType);
@@ -176,6 +181,10 @@ function normalizeOneCCheck(value: unknown, fiscalFacts: Map<string, Record<stri
     kktRegistrationNumber: text(fact?.kktRegistrationNumber) || text(source.kktRegistrationNumber),
     totalKopecks: integer(source.amountKopecks ?? source.totalKopecks),
     electronicKopecks: integer(source.electronicKopecks),
+    cashier: {
+      ref: metadataRef(source.cashier),
+      name: metadataName(source.cashier),
+    },
     cardPayments: payments,
     items: normalizeItems(source.items),
     fiscalState: (['confirmed', 'incomplete', 'unconfirmed'].includes(text(source.fiscalState)) ? text(source.fiscalState) : 'unconfirmed') as OneCCheck['fiscalState'],

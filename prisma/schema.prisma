@@ -104,6 +104,7 @@ model TerminalFiscalMatch {
   bankOperationHash     String
   oneCSourceRef         String?
   oneCSourceHash        String?
+  oneCCashierRef        String?
   ofdFiscalKeyHash      String?
   candidateCount        Int                             @default(0)
   timeDifferenceSeconds Int?
@@ -124,6 +125,7 @@ model TerminalFiscalMatch {
   @@index([reasonCode, checkedAt])
   @@index([bankOperationHash])
   @@index([oneCSourceRef])
+  @@index([oneCCashierRef])
   @@index([ofdFiscalKeyHash])
 }
 
@@ -140,6 +142,7 @@ model TerminalFiscalMatchEvaluation {
   bankOperationHash     String
   oneCSourceRef         String?
   oneCSourceHash        String?
+  oneCCashierRef        String?
   ofdFiscalKeyHash      String?
   candidateCount        Int                    @default(0)
   timeDifferenceSeconds Int?
@@ -166,6 +169,8 @@ model UserOneCCashboxMapping {
   oneCCashRegisterName      String?
   oneCAcquiringTerminalRef  String?
   oneCAcquiringTerminalName String?
+  oneCCashierRef             String?  @unique
+  oneCCashierName            String?
   tbankTerminalId           String?
   kkmMode                   String   @default("personal")
   isActive                  Boolean  @default(true)

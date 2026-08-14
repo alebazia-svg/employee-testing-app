@@ -17,6 +17,7 @@ const bank: BankOperation = {
 const check: OneCCheck = {
   sourceRef: 'check-1', sourceType: 'sale_check', operationType: 'sale', dateTime: '2026-08-10T07:02:00.000Z',
   cashRegisterRef: 'cash-1', kktRegistrationNumber: 'kkt-1', totalKopecks: 140000, electronicKopecks: 140000,
+  cashier: { ref: 'cashier-zukhra', name: 'Абшаева Зухра' },
   cardPayments: [{ lineNumber: '1', amountKopecks: 140000, acquiringTerminalRef: 'acq-1', referenceNumber: 'not-an-rrn', authorizationCode: 'auth', terminalReceiptNumber: 'receipt' }],
   items: [{ name: 'Чехол', quantity: 1, priceKopecks: 140000, sumKopecks: 140000 }],
   fiscalState: 'confirmed', fiscalStateMeaning: 'data_state_only', fiscalDriveNumber: 'fn', fiscalDocumentNumber: 'fd', fiscalSign: 'fp',
@@ -52,6 +53,18 @@ test('confirms a unique sale and does not treat referenceNumber as RRN', () => {
   assert.equal(result.reasonCode, 'MATCH_CONFIRMED');
   assert.equal(result.timeDifferenceSeconds, 120);
   assert.equal(result.bankOperationKey.includes('not-an-rrn'), false);
+  assert.equal(result.oneCCashierRef, 'cashier-zukhra');
+  assert.equal(result.oneCCashierName, 'Абшаева Зухра');
+});
+
+test('carries the 1C cashier and ignores an OFD operator identity', () => {
+  const milanaCheck = { ...check, cashier: { ref: 'cashier-milana', name: 'Чеченова Милана' } };
+  const receiptWithDifferentOperator = { ...receipt, operator: 'Абшаева Зухра' } as OfdReceipt & { operator: string };
+  const result = only({ oneCChecks: [milanaCheck], ofdReceipts: [receiptWithDifferentOperator] });
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.oneCCashierRef, 'cashier-milana');
+  assert.equal(result.oneCCashierName, 'Чеченова Милана');
+  assert.equal('ofdOperator' in result, false);
 });
 
 test('confirms a refund only against refund documents and OFD operation type 2', () => {

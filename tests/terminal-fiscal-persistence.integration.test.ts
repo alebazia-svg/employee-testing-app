@@ -63,6 +63,7 @@ test('database lease is exclusive, expirable and cycle persistence is idempotent
       matchingKey: `${marker}-match`, version: 'mvp-1', status: 'confirmed', reasonCode: 'MATCH_CONFIRMED',
       evaluatedAt, graceUntil: '2026-08-10T09:00:00.000Z', mappingId: mapping.id,
       bankOperationKey: `${marker}-bank`, oneCCheckKey: `${marker}-check`, ofdReceiptKey: `${marker}-ofd`,
+      oneCCashierRef: `${marker}-cashier`, oneCCashierName: 'Тестовый кассир',
       operationType: 'sale', amountKopecks: 100, timeDifferenceSeconds: 5, candidateCount: 1,
       evidence: { bankTransactionDate: evaluatedAt }, sourceCheckedAt: checkedAt,
       sourceCompleteness: { tbank: true, oneC: true, ofd: true },
@@ -94,6 +95,8 @@ test('database lease is exclusive, expirable and cycle persistence is idempotent
   const persistedEvaluation = await prisma.terminalFiscalMatchEvaluation.findFirstOrThrow({ where: { runId: winner.runId } });
   assert.equal(persistedMatch.bankOperationAt?.toISOString(), evaluatedAt);
   assert.equal(persistedEvaluation.bankOperationAt?.toISOString(), evaluatedAt);
+  assert.equal(persistedMatch.oneCCashierRef, `${marker}-cashier`);
+  assert.equal(persistedEvaluation.oneCCashierRef, `${marker}-cashier`);
 
   const held = await acquireTerminalFiscalRunLease(prisma, leaseInput);
   assert.ok(held);

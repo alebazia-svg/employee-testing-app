@@ -37,6 +37,7 @@ test('local dry-run accepts a live OFD receipt fixture without persisting source
       operationType: Number(source.operationType) === 2 ? 'refund' : 'sale', dateTime: receiptAt,
       cashRegisterRef: 'cash', kktRegistrationNumber: String(source.kktRegId), totalKopecks,
       electronicKopecks: Number(source.ecashTotalSum),
+      cashier: { ref: 'synthetic-cashier', name: 'Тестовый кассир' },
       cardPayments: [{ lineNumber: '1', amountKopecks: totalKopecks, acquiringTerminalRef: 'acquiring', referenceNumber: '', authorizationCode: '', terminalReceiptNumber: '' }],
       items, fiscalState: 'confirmed', fiscalStateMeaning: 'data_state_only', ...fiscal,
     }],

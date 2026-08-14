@@ -518,6 +518,7 @@ function cashboxMappingStatusMessage(status?: string, error?: string) {
   if (error === 'cashbox-not-found') return { tone: 'rose', text: 'Не удалось сохранить: касса 1С не найдена в текущем списке.' };
   if (error === 'kkm-not-found') return { tone: 'rose', text: 'Не удалось сохранить: ККМ не найдена в текущих данных 1С.' };
   if (error === 'terminal-not-found') return { tone: 'rose', text: 'Не удалось сохранить: терминал 1С не найден в текущих данных.' };
+  if (error === 'cashier-not-found') return { tone: 'rose', text: 'Не удалось сохранить: кассир 1С не найден в чеках выбранного дня.' };
   return null;
 }
 
@@ -1233,6 +1234,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       effectiveFrom: assignment.effectiveFrom,
       effectiveTo: assignment.effectiveTo,
     })),
+    employees.flatMap((employee) => employee.oneCCashboxMapping?.isActive && employee.oneCCashboxMapping.oneCCashierRef
+      ? [{ userId: employee.id, oneCCashierRef: employee.oneCCashboxMapping.oneCCashierRef }]
+      : []),
   );
   const nowMinutes = selectedDate === today ? getMoscowMinutes() : selectedDate < today ? 24 * 60 : 0;
   const cashStatementOrganization =
@@ -1546,6 +1550,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       ...kkmDiagnostics.acquiringTerminalUsage.map((item) => [item.acquiringTerminal.ref, item.acquiringTerminal] as const),
     ],
   ).values()).filter((item) => item.ref);
+  const cashierOptions = Array.from(new Map([
+    ...kkmDiagnostics.recentChecks.map((check) => [check.cashier.ref, check.cashier] as const),
+    ...employees.flatMap((employee) => employee.oneCCashboxMapping?.oneCCashierRef
+      ? [[employee.oneCCashboxMapping.oneCCashierRef, { ref: employee.oneCCashboxMapping.oneCCashierRef, name: employee.oneCCashboxMapping.oneCCashierName ?? '' }] as const]
+      : []),
+  ]).values()).filter((item) => item.ref);
 
   return (
     <AdminShell>
@@ -1870,6 +1880,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                               <form action='/api/admin/workday/cashbox-mapping' method='post' className='grid min-w-[360px] gap-2'>
                                 <input type='hidden' name='userId' value={employee.id} />
                                 <input type='hidden' name='redirectTo' value={cashboxMappingRedirectTo} />
+                                <input type='hidden' name='mappingDate' value={selectedDate} />
                                 <select
                                   name='oneCCashboxRef'
                                   defaultValue={mapping?.oneCCashboxRef ?? ''}
@@ -1911,6 +1922,17 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                                   <option value=''>Терминал 1С не привязан</option>
                                   {acquiringTerminalOptions.map((terminal) => (
                                     <option key={terminal.ref} value={terminal.ref}>{terminal.name}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  name='oneCCashierRef'
+                                  defaultValue={mapping?.oneCCashierRef ?? ''}
+                                  className='min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'
+                                  disabled={!kkmDiagnostics.ok}
+                                >
+                                  <option value=''>Кассир 1С не сопоставлен</option>
+                                  {cashierOptions.map((cashier) => (
+                                    <option key={cashier.ref} value={cashier.ref}>{cashier.name || 'Кассир без наименования'}</option>
                                   ))}
                                 </select>
                                 <input

@@ -20,6 +20,8 @@ export async function POST(req: Request) {
   const oneCCashboxRef = String(formData.get('oneCCashboxRef') ?? '').trim();
   const oneCCashRegisterRef = String(formData.get('oneCCashRegisterRef') ?? '').trim();
   const oneCAcquiringTerminalRef = String(formData.get('oneCAcquiringTerminalRef') ?? '').trim();
+  const oneCCashierRef = String(formData.get('oneCCashierRef') ?? '').trim();
+  const mappingDateValue = String(formData.get('mappingDate') ?? '').trim();
   const tbankTerminalId = String(formData.get('tbankTerminalId') ?? '').trim();
   const kkmModeValue = String(formData.get('kkmMode') ?? 'personal').trim();
   const kkmMode = kkmModeValue === 'server' ? 'server' : 'personal';
@@ -30,7 +32,7 @@ export async function POST(req: Request) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, department: true },
+    select: { id: true, name: true, department: true, oneCCashboxMapping: true },
   });
 
   if (!user || !usesWorkdayShiftControl(user)) {
@@ -42,7 +44,7 @@ export async function POST(req: Request) {
     return redirectWithStatus(req, typeof redirectTo === 'string' ? redirectTo : null, 'cashboxMapping', 'cleared');
   }
 
-  const today = getMoscowDateKey();
+  const today = /^\d{4}-\d{2}-\d{2}$/.test(mappingDateValue) ? mappingDateValue : getMoscowDateKey();
   const [dimensions, kkmDiagnostics] = await Promise.all([
     getCashStatementDimensions(),
     getKkmEquipmentDiagnostics({ dateFrom: today, dateTo: today, limit: 300 }),
@@ -60,11 +62,21 @@ export async function POST(req: Request) {
   for (const item of kkmDiagnostics.acquiringTerminalUsage) acquiringTerminals.set(item.acquiringTerminal.ref, item.acquiringTerminal);
   const cashRegister = oneCCashRegisterRef ? cashRegisters.get(oneCCashRegisterRef) ?? null : null;
   const acquiringTerminal = oneCAcquiringTerminalRef ? acquiringTerminals.get(oneCAcquiringTerminalRef) ?? null : null;
+  const cashiers = new Map(kkmDiagnostics.recentChecks.filter((check) => check.cashier.ref).map((check) => [check.cashier.ref, check.cashier]));
+  const cashier = oneCCashierRef
+    ? cashiers.get(oneCCashierRef)
+      ?? (user.oneCCashboxMapping?.oneCCashierRef === oneCCashierRef
+        ? { ref: oneCCashierRef, name: user.oneCCashboxMapping.oneCCashierName ?? '' }
+        : null)
+    : null;
   if (oneCCashRegisterRef && !cashRegister) {
     return redirectWithStatus(req, typeof redirectTo === 'string' ? redirectTo : null, 'cashboxMappingError', 'kkm-not-found');
   }
   if (oneCAcquiringTerminalRef && !acquiringTerminal) {
     return redirectWithStatus(req, typeof redirectTo === 'string' ? redirectTo : null, 'cashboxMappingError', 'terminal-not-found');
+  }
+  if (oneCCashierRef && !cashier) {
+    return redirectWithStatus(req, typeof redirectTo === 'string' ? redirectTo : null, 'cashboxMappingError', 'cashier-not-found');
   }
 
   await prisma.userOneCCashboxMapping.upsert({
@@ -77,6 +89,8 @@ export async function POST(req: Request) {
       oneCCashRegisterName: cashRegister?.name ?? null,
       oneCAcquiringTerminalRef: acquiringTerminal?.ref ?? null,
       oneCAcquiringTerminalName: acquiringTerminal?.name ?? null,
+      oneCCashierRef: cashier?.ref ?? null,
+      oneCCashierName: cashier?.name ?? null,
       tbankTerminalId: tbankTerminalId || null,
       kkmMode,
       isActive: true,
@@ -88,6 +102,8 @@ export async function POST(req: Request) {
       oneCCashRegisterName: cashRegister?.name ?? null,
       oneCAcquiringTerminalRef: acquiringTerminal?.ref ?? null,
       oneCAcquiringTerminalName: acquiringTerminal?.name ?? null,
+      oneCCashierRef: cashier?.ref ?? null,
+      oneCCashierName: cashier?.name ?? null,
       tbankTerminalId: tbankTerminalId || null,
       kkmMode,
       isActive: true,

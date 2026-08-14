@@ -97,6 +97,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
           status: record.status,
           reasonCode: record.reasonCode,
           oneCCheckKey: record.oneCCheckKey ?? null,
+          oneCCashierRef: record.oneCCashierRef ?? null,
           ofdReceiptKey: record.ofdReceiptKey ?? null,
         }))),
       });
