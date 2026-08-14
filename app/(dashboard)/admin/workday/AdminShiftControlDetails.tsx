@@ -51,6 +51,11 @@ type Props = {
   dateKey: string;
   autoChecks?: ShiftAutoCheck[];
   timingViolations?: WorkdayTimingViolation[];
+  terminalFiscalControl?: {
+    total: number;
+    statuses: { confirmed: number; pending: number; mismatch: number; unavailable: number; needs_review: number };
+    lastOperationAt: string | null;
+  } | null;
   initialOpen?: boolean;
   closeHref?: string;
   previousEmployee?: EmployeeNavigation | null;
@@ -747,6 +752,7 @@ export function AdminShiftControlDetails({
   dateKey,
   autoChecks = [],
   timingViolations = [],
+  terminalFiscalControl = null,
   initialOpen = false,
   closeHref,
   previousEmployee,
@@ -926,9 +932,13 @@ export function AdminShiftControlDetails({
     violation.kind === 'missing_checkout' || violation.kind === 'workday_not_started'
   ));
   const taskTimingViolationCount = timingViolations.length - workdayTimingViolations.length;
-  const hasError = keyProblems.some((item) => taskBusinessState(item).tone === 'error');
+  const terminalFiscalHasError = (terminalFiscalControl?.statuses.mismatch ?? 0) > 0;
+  const terminalFiscalNeedsAttention = (terminalFiscalControl?.statuses.needs_review ?? 0) > 0
+    || (terminalFiscalControl?.statuses.unavailable ?? 0) > 0;
+  const hasError = keyProblems.some((item) => taskBusinessState(item).tone === 'error') || terminalFiscalHasError;
   const scheduleNeedsAttention = scheduleLabel === 'не заполнено';
-  const keyProblemCount = keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0);
+  const keyProblemCount = keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0)
+    + (terminalFiscalHasError || terminalFiscalNeedsAttention ? 1 : 0);
   const hasTimingViolations = timingViolations.length > 0;
   const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
@@ -1221,6 +1231,15 @@ export function AdminShiftControlDetails({
                     {activeWorkdayProblems.map((violation) => (
                       <p key={violation.id} className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>{violation.label}:</span> {violation.detail}</p>
                     ))}
+                    {terminalFiscalHasError ? (
+                      <p className='text-sm font-semibold text-rose-800'>
+                        <span className='font-extrabold'>Операции терминала:</span> автоматическая сверка обнаружила расхождений: {terminalFiscalControl!.statuses.mismatch}
+                      </p>
+                    ) : terminalFiscalNeedsAttention ? (
+                      <p className='text-sm font-semibold text-amber-800'>
+                        <span className='font-extrabold'>Операции терминала:</span> требуется проверка администратора: {(terminalFiscalControl?.statuses.needs_review ?? 0) + (terminalFiscalControl?.statuses.unavailable ?? 0)}
+                      </p>
+                    ) : null}
                     {keyProblems.slice(0, 3).map((item) => {
                       const state = taskBusinessState(item);
                       return <p key={item.task.id} className={`text-sm font-semibold ${state.tone === 'error' ? 'text-rose-800' : 'text-amber-800'}`}><span className='font-extrabold'>{taskDisplayTitle(item.task)}:</span> {state.result}</p>;
@@ -1244,6 +1263,33 @@ export function AdminShiftControlDetails({
                       </p>
                     ))}
                   </div>
+                </section>
+              ) : null}
+
+              {terminalFiscalControl && terminalFiscalControl.total > 0 ? (
+                <section className={`mb-4 rounded-xl border px-4 py-3 ${
+                  terminalFiscalHasError
+                    ? 'border-rose-200 bg-rose-50'
+                    : terminalFiscalNeedsAttention
+                      ? 'border-amber-200 bg-amber-50'
+                      : terminalFiscalControl.statuses.pending > 0
+                        ? 'border-blue-200 bg-blue-50'
+                        : 'border-green-200 bg-green-50'
+                }`}>
+                  <div className='flex flex-wrap items-center justify-between gap-2'>
+                    <h4 className='text-sm font-extrabold text-slate-950'>Автоматическая сверка терминала</h4>
+                    <span className='text-xs font-extrabold text-slate-600'>Т-Банк → 1С → ОФД</span>
+                  </div>
+                  <p className='mt-1 text-sm font-semibold text-slate-700'>
+                    Подтверждено {terminalFiscalControl.statuses.confirmed} из {terminalFiscalControl.total}
+                    {terminalFiscalControl.statuses.mismatch > 0 ? ` · расхождений ${terminalFiscalControl.statuses.mismatch}` : ''}
+                    {terminalFiscalControl.statuses.needs_review > 0 ? ` · проверить ${terminalFiscalControl.statuses.needs_review}` : ''}
+                    {terminalFiscalControl.statuses.unavailable > 0 ? ` · источник недоступен ${terminalFiscalControl.statuses.unavailable}` : ''}
+                    {terminalFiscalControl.statuses.pending > 0 ? ` · ожидают данных ${terminalFiscalControl.statuses.pending}` : ''}.
+                  </p>
+                  <p className='mt-1 text-xs font-semibold text-slate-500'>
+                    К сотруднику относятся только результаты с однозначным назначением ККМ; ожидание и технические состояния не считаются его ошибкой.
+                  </p>
                 </section>
               ) : null}
 

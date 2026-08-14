@@ -24,7 +24,7 @@ import {
 } from '@/lib/one-c';
 import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
-import { getTerminalFiscalWorkdaySummary } from '@/lib/terminal-fiscal-summary';
+import { attributeTerminalFiscalRecordsToEmployees, getTerminalFiscalWorkdaySummary, presentTerminalFiscalEmployeeControl } from '@/lib/terminal-fiscal-summary';
 import { evaluateWorkdayTiming } from '@/lib/workday-timing';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, getShiftOptionsForDepartment, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
@@ -1225,6 +1225,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const shiftControlRunByUser = new Map(shiftControlRuns.map((run) => [run.userId, run]));
   const activeKkmAssignments = kkmAssignments.filter((assignment) => !assignment.effectiveTo);
   const kkmAssignmentByUser = new Map(activeKkmAssignments.map((assignment) => [assignment.userId, assignment]));
+  const terminalFiscalAttribution = attributeTerminalFiscalRecordsToEmployees(
+    terminalFiscalSummary?.attributionRecords ?? [],
+    kkmAssignments.map((assignment) => ({
+      userId: assignment.userId,
+      oneCCashRegisterRef: assignment.oneCCashRegisterRef,
+      effectiveFrom: assignment.effectiveFrom,
+      effectiveTo: assignment.effectiveTo,
+    })),
+  );
   const nowMinutes = selectedDate === today ? getMoscowMinutes() : selectedDate < today ? 24 * 60 : 0;
   const cashStatementOrganization =
     cashStatementDimensions.organizations.find((organization) => normalizeSearchText(organization.name).includes('оффоника'))
@@ -1371,6 +1380,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const run = shiftControlRunByUser.get(employee.id);
       const shiftControlRequired = usesWorkdayShiftControl(employee);
       const autoChecks = autoChecksByUser.get(employee.id) ?? [];
+      const terminalFiscalControl = terminalFiscalAttribution.byUser.get(employee.id) ?? null;
+      const terminalFiscalPresentation = presentTerminalFiscalEmployeeControl(terminalFiscalControl);
       const timingViolations = evaluateWorkdayTiming({
         dateKey: selectedDate,
         todayDateKey: today,
@@ -1421,8 +1432,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         && task.status === 'done'
         && task.integerValue === 2
       ));
-      const hasError = mismatchCount > 0 || manualIssueCount > 0 || employeeReportedProblem;
-      const needsAttention = !hasError && attentionReasons.length > 0;
+      const hasError = mismatchCount > 0 || manualIssueCount > 0 || employeeReportedProblem || terminalFiscalPresentation.tone === 'error';
+      const needsAttention = !hasError && (attentionReasons.length > 0 || terminalFiscalPresentation.tone === 'attention');
       const waitingForWorkdayStart = schedule?.status === 'working' && selectedDate === today && !workDay;
       const pendingTaskCount = (run?.tasks ?? []).filter((task) => (
         task.status !== 'done'
@@ -1445,13 +1456,17 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               ? 'pending'
               : 'normal';
       const reviewText = hasError
-        ? manualIssueCount > 0
+        ? terminalFiscalPresentation.tone === 'error'
+          ? terminalFiscalPresentation.text
+          : manualIssueCount > 0
           ? `Подтверждённых проблем: ${manualIssueCount}`
           : employeeReportedProblem
             ? 'Сотрудник сообщил о расхождении'
             : `Расхождений с учётными данными: ${mismatchCount}`
         : needsAttention
-        ? businessAttentionReasons.length > 0
+        ? terminalFiscalPresentation.tone === 'attention'
+          ? terminalFiscalPresentation.text
+          : businessAttentionReasons.length > 0
           ? `${businessAttentionReasons.slice(0, 2).join(' · ')}${businessAttentionReasons.length > 2 ? ` · ещё ${businessAttentionReasons.length - 2}` : ''}`
           : '—'
         : cannotVerify
@@ -1481,6 +1496,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         workDay,
         run,
         autoChecks,
+        terminalFiscalControl,
         timingViolations,
         shiftControlRequired,
         category,
@@ -1669,6 +1685,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                               dateKey={selectedDate}
                               autoChecks={row.autoChecks}
                               timingViolations={row.timingViolations}
+                              terminalFiscalControl={row.terminalFiscalControl ? {
+                                total: row.terminalFiscalControl.total,
+                                statuses: row.terminalFiscalControl.statuses,
+                                lastOperationAt: row.terminalFiscalControl.lastOperationAt?.toISOString() ?? null,
+                              } : null}
                               initialOpen={searchParams?.employee === String(row.employee.id)}
                               closeHref={employeeDetailCloseHref}
                               previousEmployee={previousEmployeeRow ? {

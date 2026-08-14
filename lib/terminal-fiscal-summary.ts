@@ -17,7 +17,76 @@ export type TerminalFiscalWorkdaySummary = TerminalFiscalAggregate & {
   attempts: number;
   completeness: { tbank: boolean; oneC: boolean; ofd: boolean };
   lastCompletedAt: Date | null;
+  attributionRecords?: TerminalFiscalAttributionRecord[];
 };
+
+export type TerminalFiscalAttributionRecord = {
+  status: MatchingStatus;
+  reasonCode: MatchingReasonCode;
+  candidateCount: number;
+  bankOperationAt: Date | null;
+  oneCCashRegisterRef: string | null;
+};
+
+export type TerminalFiscalAssignmentInterval = {
+  userId: number;
+  oneCCashRegisterRef: string;
+  effectiveFrom: Date;
+  effectiveTo: Date | null;
+};
+
+export type TerminalFiscalEmployeeControl = TerminalFiscalAggregate & {
+  userId: number;
+  lastOperationAt: Date | null;
+};
+
+export function presentTerminalFiscalEmployeeControl(control: TerminalFiscalEmployeeControl | null) {
+  const mismatch = control?.statuses.mismatch ?? 0;
+  const review = (control?.statuses.needs_review ?? 0) + (control?.statuses.unavailable ?? 0);
+  if (mismatch > 0) return { tone: 'error' as const, text: `Автосверка терминала: расхождений ${mismatch}` };
+  if (review > 0) return { tone: 'attention' as const, text: `Автосверка терминала: проверить ${review}` };
+  if ((control?.statuses.pending ?? 0) > 0) return { tone: 'pending' as const, text: 'Автосверка терминала ожидает данные' };
+  if (control && control.total > 0) return { tone: 'normal' as const, text: `Операции терминала подтверждены: ${control.statuses.confirmed}` };
+  return { tone: 'none' as const, text: '' };
+}
+
+export function attributeTerminalFiscalRecordsToEmployees(
+  records: TerminalFiscalAttributionRecord[],
+  assignments: TerminalFiscalAssignmentInterval[],
+) {
+  const attributed = new Map<number, TerminalFiscalAttributionRecord[]>();
+  const unassigned: TerminalFiscalAttributionRecord[] = [];
+  for (const record of records) {
+    if (!record.bankOperationAt || !record.oneCCashRegisterRef) {
+      unassigned.push(record);
+      continue;
+    }
+    const operationAt = record.bankOperationAt.getTime();
+    const candidates = assignments.filter((assignment) => (
+      assignment.oneCCashRegisterRef === record.oneCCashRegisterRef
+      && assignment.effectiveFrom.getTime() <= operationAt
+      && (!assignment.effectiveTo || operationAt < assignment.effectiveTo.getTime())
+    ));
+    if (candidates.length !== 1) {
+      unassigned.push(record);
+      continue;
+    }
+    const rows = attributed.get(candidates[0].userId) ?? [];
+    rows.push(record);
+    attributed.set(candidates[0].userId, rows);
+  }
+  const byUser = new Map<number, TerminalFiscalEmployeeControl>();
+  for (const [userId, rows] of attributed) {
+    byUser.set(userId, {
+      userId,
+      lastOperationAt: rows.reduce<Date | null>((latest, row) => (
+        row.bankOperationAt && (!latest || row.bankOperationAt > latest) ? row.bankOperationAt : latest
+      ), null),
+      ...aggregateTerminalFiscalRecords(rows),
+    });
+  }
+  return { byUser, recordsByUser: attributed, unassigned: aggregateTerminalFiscalRecords(unassigned) };
+}
 
 export type TerminalFiscalWorkdayPresentation = {
   status: 'confirmed' | 'pending' | 'mismatch' | 'unavailable' | 'needs_review' | 'not_run';
@@ -126,8 +195,21 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
   const latestByMapping = [...latestRunByMapping.values()];
   const matches = await prisma.terminalFiscalMatch.findMany({
     where: { runId: { in: latestByMapping.map((run) => run.id) } },
-    select: { status: true, reasonCode: true, candidateCount: true },
+    select: {
+      status: true,
+      reasonCode: true,
+      candidateCount: true,
+      bankOperationAt: true,
+      mapping: { select: { oneCCashRegisterRef: true } },
+    },
   });
+  const attributionRecords: TerminalFiscalAttributionRecord[] = matches.map((match) => ({
+    status: match.status as MatchingStatus,
+    reasonCode: match.reasonCode as MatchingReasonCode,
+    candidateCount: match.candidateCount,
+    bankOperationAt: match.bankOperationAt,
+    oneCCashRegisterRef: match.mapping?.oneCCashRegisterRef ?? null,
+  }));
   return {
     runs: latestByMapping.length,
     attempts: latestByMapping.reduce((sum, run) => sum + run.attemptCount, 0),
@@ -139,6 +221,7 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
     lastCompletedAt: latestByMapping.reduce<Date | null>((latest, run) => (
       run.completedAt && (!latest || run.completedAt > latest) ? run.completedAt : latest
     ), null),
+    attributionRecords,
     ...aggregateTerminalFiscalRecords(matches),
   };
 }

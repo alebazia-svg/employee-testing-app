@@ -17,6 +17,7 @@ import {
 import { loadCompleteTBankOperations, loadOneCKkmChecks, loadPlatformaOfdReceipts, technicalHash } from '@/lib/terminal-fiscal-sources';
 import { getMoscowDateKey } from '@/lib/workday';
 import { summarizeTerminalFiscalOutput } from '@/lib/terminal-fiscal-summary';
+import { syncTerminalFiscalWorkdayControl } from '@/lib/terminal-fiscal-workday-control';
 
 function dateOnly(value: Date) {
   return getMoscowDateKey(value);
@@ -33,6 +34,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   periodFrom: Date;
   periodTo: Date;
   persist?: boolean;
+  syncWorkdayControl?: boolean;
 }, dependencies: {
   loadTbank?: typeof loadCompleteTBankOperations;
   loadOneC?: typeof loadOneCKkmChecks;
@@ -105,8 +107,16 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
         sourceCheckedAt: { tbank: tbank.checkedAt, oneC: oneC.checkedAt, ofd: ofd.checkedAt },
         sourceCompleteness: { tbank: tbank.complete, oneC: oneC.complete, ofd: ofd.complete },
       });
+      if (input.syncWorkdayControl === true) await syncTerminalFiscalWorkdayControl(prisma, output);
     }
-    return { acquired: true as const, persisted: Boolean(lease), summary: summarizeTerminalFiscalOutput(output) };
+    const summary = summarizeTerminalFiscalOutput(output);
+    return {
+      acquired: true as const,
+      persisted: Boolean(lease),
+      summary: input.syncWorkdayControl === true
+        ? { ...summary, safety: { employeeVisible: true, incidentCreation: true, notifications: true } as const }
+        : summary,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     const errorCode = /^[A-Z0-9_]{1,100}$/.test(message) ? message : 'TERMINAL_FISCAL_RUN_FAILED';

@@ -25,6 +25,7 @@ async function main() {
       periodFrom: period.periodFrom,
       periodTo: period.periodTo,
       persist: options.persist,
+      syncWorkdayControl: options.persist && process.env.TERMINAL_FISCAL_WORKDAY_CONTROL_ENABLED === 'true',
     });
     results.push({
       acquired: result.acquired,

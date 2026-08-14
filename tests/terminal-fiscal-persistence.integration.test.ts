@@ -90,6 +90,10 @@ test('database lease is exclusive, expirable and cycle persistence is idempotent
   assert.deepEqual(retried, { evaluationsCreated: 0, records: 1 });
   assert.equal(await prisma.terminalFiscalMatch.count({ where: { mappingId: mapping.id } }), 1);
   assert.equal(await prisma.terminalFiscalMatchEvaluation.count({ where: { runId: winner.runId } }), 1);
+  const persistedMatch = await prisma.terminalFiscalMatch.findFirstOrThrow({ where: { mappingId: mapping.id } });
+  const persistedEvaluation = await prisma.terminalFiscalMatchEvaluation.findFirstOrThrow({ where: { runId: winner.runId } });
+  assert.equal(persistedMatch.bankOperationAt?.toISOString(), evaluatedAt);
+  assert.equal(persistedEvaluation.bankOperationAt?.toISOString(), evaluatedAt);
 
   const held = await acquireTerminalFiscalRunLease(prisma, leaseInput);
   assert.ok(held);

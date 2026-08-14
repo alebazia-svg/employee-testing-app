@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     orderBy: { checkedAt: 'desc' },
     select: {
       id: true, matchingId: true, runId: true, mappingId: true, algorithmVersion: true, status: true,
-      reasonCode: true, operationType: true, bankOperationHash: true, oneCSourceRef: true,
+      reasonCode: true, operationType: true, bankOperationAt: true, bankOperationHash: true, oneCSourceRef: true,
       oneCSourceHash: true, ofdFiscalKeyHash: true, candidateCount: true, timeDifferenceSeconds: true,
       graceUntil: true, tbankComplete: true, oneCComplete: true, ofdComplete: true, checkedAt: true,
       createdAt: true, updatedAt: true,
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
         orderBy: { evaluatedAt: 'desc' },
         select: {
           id: true, cycleKey: true, algorithmVersion: true, status: true, reasonCode: true,
-          candidateCount: true, timeDifferenceSeconds: true, graceUntil: true,
+          bankOperationAt: true, candidateCount: true, timeDifferenceSeconds: true, graceUntil: true,
           tbankComplete: true, oneCComplete: true, ofdComplete: true, evaluatedAt: true,
         },
       },

@@ -1,11 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, TerminalFiscalMatchingOutput } from '@/lib/terminal-fiscal-matching';
 
 export const TERMINAL_FISCAL_LEASE_MS = 15 * 60 * 1000;
 
 function digest(parts: string[]) {
   return createHash('sha256').update(parts.join('|')).digest('hex');
+}
+
+function optionalDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function terminalFiscalRunKey(input: {
@@ -42,18 +47,25 @@ export async function acquireTerminalFiscalRunLease(prisma: PrismaClient, input:
   const runKey = terminalFiscalRunKey(input);
   const leaseToken = randomUUID();
   const leaseUntil = new Date(now.getTime() + TERMINAL_FISCAL_LEASE_MS);
-  const run = await prisma.terminalFiscalMatchRun.upsert({
-    where: { runKey },
-    create: {
-      runKey,
-      algorithmVersion: input.algorithmVersion,
-      mappingId: input.mappingId,
-      periodFrom: input.periodFrom,
-      periodTo: input.periodTo,
-    },
-    update: {},
-    select: { id: true },
-  });
+  let run: { id: string } | null = null;
+  try {
+    run = await prisma.terminalFiscalMatchRun.upsert({
+      where: { runKey },
+      create: {
+        runKey,
+        algorithmVersion: input.algorithmVersion,
+        mappingId: input.mappingId,
+        periodFrom: input.periodFrom,
+        periodTo: input.periodTo,
+      },
+      update: {},
+      select: { id: true },
+    });
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
+    run = await prisma.terminalFiscalMatchRun.findUnique({ where: { runKey }, select: { id: true } });
+  }
+  if (!run) throw new Error('TERMINAL_FISCAL_RUN_CREATE_RACE');
   const claimed = await prisma.terminalFiscalMatchRun.updateMany({
     where: {
       id: run.id,
@@ -94,6 +106,7 @@ function matchPersistenceData(record: MatchingAuditRecord, runId: string) {
     status: record.status,
     reasonCode: record.reasonCode,
     operationType: record.operationType ?? null,
+    bankOperationAt: optionalDate(record.evidence.bankTransactionDate),
     bankOperationHash,
     oneCSourceRef,
     oneCSourceHash: record.oneCCheckKey ? digest([record.oneCCheckKey]) : null,
@@ -150,6 +163,7 @@ export async function persistTerminalFiscalCycle(prisma: PrismaClient, input: {
           status: record.status,
           reasonCode: record.reasonCode,
           mappingId: record.mappingId ?? null,
+          bankOperationAt: data.bankOperationAt,
           bankOperationHash: data.bankOperationHash,
           oneCSourceRef: data.oneCSourceRef,
           oneCSourceHash: data.oneCSourceHash,
