@@ -7,6 +7,14 @@ import { Prisma } from '@prisma/client';
 import { createOneCCashExpenseOrder, getCashStatementDimensions, getCashStatementSummary } from '@/lib/one-c';
 import { shiftControlEmployeeRevisionHistoryKey, shiftControlOneCAuditKey, stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { usesWorkdayShiftControl } from '@/lib/workday';
+import {
+  appendCashRecountInputHistory,
+  buildCashRecountComparison,
+  decideCashRecountAction,
+  syncCashRecountWorkdayControl,
+  type CashRecountComparison,
+  type CashRecountStage,
+} from '@/lib/cash-recount-control';
 
 const cashStatementOrganizationSearchName = 'оффоника';
 const reserveCashboxSearchName = 'резерв под телефоны';
@@ -763,6 +771,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     completedAt,
     comment: commentSource.trim(),
   };
+  let cashComparison: CashRecountComparison | null = null;
 
   if (task.category === 'cash') {
     const numericValue = readNumber(payload.numericValue);
@@ -770,20 +779,87 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return Response.json({ error: 'Укажите сумму' }, { status: 400 });
     }
     const existingData = isRecord(task.handoverData) ? task.handoverData : {};
-    const existingAudit = existingData[shiftControlOneCAuditKey];
-    const oneCAudit = task.status === 'done' && existingAudit
+    const existingStage = existingData.cashRecountStage === 'result_ready' || existingData.cashRecountStage === 'comment_required'
+      ? existingData.cashRecountStage as CashRecountStage
+      : 'initial';
+    const existingAudit = isRecord(existingData[shiftControlOneCAuditKey])
+      ? existingData[shiftControlOneCAuditKey] as Record<string, unknown>
+      : null;
+    const existingFact = existingAudit ? readNumber(existingAudit.factCashBalance) : null;
+    const decisionStage = existingStage !== 'initial' && existingFact !== null && existingFact !== numericValue
+      ? 'initial'
+      : existingStage;
+    const oneCAudit = existingStage === 'comment_required' && existingAudit && existingFact === numericValue
       ? existingAudit
-      : await captureOneCCashAudit({
+      : {
+          ...await captureOneCCashAudit({
           userId: user.id,
           date: task.run.date,
           includeReserve: false,
           capturedAt: completedAt,
-        });
-    data.numericValue = numericValue;
-    data.handoverData = withEmployeeRevision(task, {
+          }),
+          factCashBalance: numericValue,
+        };
+    const personalAudit = readRecord(oneCAudit, 'personalCash');
+    const expected = personalAudit?.status === 'captured' ? readNumber(personalAudit.balance) : null;
+    cashComparison = buildCashRecountComparison({
+      actual: numericValue,
+      expected,
+      capturedAt: typeof oneCAudit.capturedAt === 'string' ? oneCAudit.capturedAt : editedAt.toISOString(),
+      oneCCheckedAt: personalAudit && typeof personalAudit.oneCCheckedAt === 'string' ? personalAudit.oneCCheckedAt : null,
+      cashboxName: personalAudit && typeof personalAudit.cashboxName === 'string' ? personalAudit.cashboxName : '',
+      sourceError: personalAudit && typeof personalAudit.error === 'string' ? personalAudit.error : null,
+    });
+    let nextHandoverData: Record<string, unknown> = {
       ...existingData,
       [shiftControlOneCAuditKey]: oneCAudit,
-    }, editedAt) as Prisma.InputJsonValue;
+      cashComparison,
+      cashRecountInputHistory: appendCashRecountInputHistory(
+        existingData.cashRecountInputHistory,
+        numericValue,
+        editedAt.toISOString(),
+      ),
+    };
+    const decision = decideCashRecountAction({
+      comparison: cashComparison,
+      stage: decisionStage,
+      hasComment: Boolean(commentSource.trim()),
+    });
+    if (decision === 'require_result_save') {
+      nextHandoverData = { ...nextHandoverData, cashRecountStage: 'result_ready', cashRecountAttempt: 1 };
+      const draftTask = await prisma.shiftControlTask.update({
+        where: { id: task.id },
+        data: { handoverData: nextHandoverData as Prisma.InputJsonValue },
+      });
+      return Response.json({
+        error: 'Обнаружено расхождение. Измените сумму или сохраните результат пересчёта.',
+        requiresResultSave: true,
+        cashComparison,
+        task: taskForEmployee(draftTask),
+      }, { status: 409 });
+    }
+    if (decision === 'require_comment') {
+      nextHandoverData = { ...nextHandoverData, cashRecountStage: 'comment_required', cashRecountAttempt: 2 };
+      const draftTask = await prisma.shiftControlTask.update({
+        where: { id: task.id },
+        data: { handoverData: nextHandoverData as Prisma.InputJsonValue },
+      });
+      return Response.json({
+        error: 'Добавьте комментарий: расхождение больше 300 ₽',
+        requiresComment: true,
+        cashComparison,
+        task: taskForEmployee(draftTask),
+      }, { status: 409 });
+    }
+    const completedWithDiscrepancy = decision === 'complete_mismatch';
+    nextHandoverData = {
+      ...nextHandoverData,
+      cashRecountStage: completedWithDiscrepancy ? 'completed_with_discrepancy' : 'completed',
+      cashRecountAttempt: decisionStage === 'initial' ? 1 : 2,
+    };
+    data.numericValue = numericValue;
+    data.comment = completedWithDiscrepancy && cashComparison.requiresComment ? commentSource.trim() : '';
+    data.handoverData = withEmployeeRevision(task, nextHandoverData, editedAt) as Prisma.InputJsonValue;
   } else if (task.category === 'credit') {
     const checkStatus = readInteger(payload.integerValue);
     const hasDiscrepancy = checkStatus === 2;
@@ -804,10 +880,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     data.handoverData = withEmployeeRevision(task, withoutRevisionHistory(task.handoverData), editedAt) as Prisma.InputJsonValue;
   }
 
-  const updatedTask = await prisma.shiftControlTask.update({
-    where: { id: task.id },
-    data,
-  });
+  const updatedTask = cashComparison
+    ? await prisma.$transaction(async (tx) => {
+        const updated = await tx.shiftControlTask.update({ where: { id: task.id }, data });
+        await syncCashRecountWorkdayControl(tx, {
+          userId: user.id,
+          taskId: task.id,
+          runId: task.runId,
+          date: task.run.date,
+          comment: data.comment,
+          comparison: cashComparison!,
+          now: editedAt,
+        });
+        return updated;
+      })
+    : await prisma.shiftControlTask.update({ where: { id: task.id }, data });
 
-  return Response.json({ task: taskForEmployee(updatedTask) });
+  return Response.json({ task: taskForEmployee(updatedTask), cashComparison });
 }

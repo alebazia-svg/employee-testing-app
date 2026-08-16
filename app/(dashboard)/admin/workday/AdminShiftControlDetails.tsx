@@ -249,6 +249,14 @@ function readRecord(value: unknown, key: string) {
   return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
 }
 
+function cashRecountInputHistory(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.cashRecountInputHistory)) return [];
+  return value.cashRecountInputHistory.flatMap((entry) => {
+    if (!isRecord(entry) || typeof entry.value !== 'number' || typeof entry.enteredAt !== 'string') return [];
+    return [{ value: entry.value, enteredAt: entry.enteredAt, kind: entry.kind === 'corrected' ? 'corrected' : 'initial' }];
+  });
+}
+
 function employeeRevisions(task: ShiftTask) {
   if (!isRecord(task.handoverData) || !Array.isArray(task.handoverData._employeeRevisionHistory)) return [];
   return task.handoverData._employeeRevisionHistory.filter(isRecord);
@@ -330,7 +338,21 @@ function PhotoRow({ label, photo, onPreview }: { label: string; photo: PhotoInfo
 
 function TaskValue({ task, onPreview }: { task: ShiftTask; onPreview: (photo: PhotoPreview) => void }) {
   if (task.category === 'cash') {
-    return <span>Сумма: {formatMoney(task.numericValue)}</span>;
+    const history = cashRecountInputHistory(task.handoverData);
+    return (
+      <div className='grid gap-1'>
+        <span>Сумма: {formatMoney(task.numericValue)}</span>
+        {history.length > 0 && (
+          <div className='grid gap-0.5 text-xs font-semibold text-slate-500'>
+            {history.map((entry, index) => (
+              <span key={`${entry.enteredAt}-${index}`}>
+                {entry.kind === 'initial' ? 'Первоначальный ввод' : 'Исправленный ввод'}: {formatMoney(entry.value)} · {formatTime(entry.enteredAt)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
   if (task.category === 'acquiring') {
     const result = acquiringResult(task);

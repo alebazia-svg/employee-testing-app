@@ -133,6 +133,19 @@ type ShiftControlState = {
   tasks: ShiftControlTask[];
 };
 
+type CashRecountComparison = {
+  status: 'matched' | 'mismatch' | 'unavailable';
+  actual: number;
+  expected: number | null;
+  difference: number | null;
+  discrepancyType: 'none' | 'surplus' | 'shortage' | 'unavailable';
+  requiresComment: boolean;
+  capturedAt: string;
+  oneCCheckedAt: string | null;
+  cashboxName: string;
+  sourceError: string | null;
+};
+
 type CashOperation = {
   id: number;
   userId: number;
@@ -683,6 +696,17 @@ function readRecord(value: unknown, key: string) {
   return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
 }
 
+function readCashComparison(value: unknown): CashRecountComparison | null {
+  const comparison = readRecord(value, 'cashComparison');
+  if (!comparison || !['matched', 'mismatch', 'unavailable'].includes(String(comparison.status))) return null;
+  return comparison as CashRecountComparison;
+}
+
+function readCashRecountStage(value: unknown) {
+  if (!isRecord(value)) return null;
+  return typeof value.cashRecountStage === 'string' ? value.cashRecountStage : null;
+}
+
 function hasTaskPhoto(task: ShiftControlTask, key: string) {
   const photos = readRecord(task.handoverData, 'photos');
   return Boolean(photos?.[key]);
@@ -894,6 +918,7 @@ export function EmployeeTodayClient({
   const [editingShiftTaskId, setEditingShiftTaskId] = useState<number | null>(null);
   const [shiftTaskDrafts, setShiftTaskDrafts] = useState<Record<number, ShiftTaskDraft>>({});
   const [shiftTaskErrors, setShiftTaskErrors] = useState<Record<number, Record<string, string>>>({});
+  const [cashComparisons, setCashComparisons] = useState<Record<number, CashRecountComparison | null>>({});
   const [showFullShiftPlan, setShowFullShiftPlan] = useState(false);
   const [activeHandoverTaskId, setActiveHandoverTaskId] = useState<number | null>(null);
   const [handoverStep, setHandoverStep] = useState(0);
@@ -1562,6 +1587,7 @@ export function EmployeeTodayClient({
         localErrors.numericValue = 'Введите фактически пересчитанную сумму наличных';
       }
       payload.numericValue = draft.numericValue;
+      payload.comment = draft.comment;
     } else if (task.category === 'acquiring') {
       const acquiringCheckStatus = readIntegerFromDraft(draft.integerValue);
       if (acquiringCheckStatus === null || ![0, 1, 2].includes(acquiringCheckStatus)) localErrors.integerValue = 'Ответьте на вопросы проверки терминала';
@@ -1630,10 +1656,31 @@ export function EmployeeTodayClient({
               headers: { 'Content-Type': 'application/json' },
               body: requestBody,
             });
-            const payload = await response.json();
-            if (!response.ok) throw new Error(payload.error || 'Не удалось обновить задачу');
-            return payload as { task: ShiftControlTask };
+            const responsePayload = await response.json();
+            if (response.status === 409 && responsePayload.cashComparison && (responsePayload.requiresResultSave || responsePayload.requiresComment)) {
+              setCashComparisons((current) => ({ ...current, [task.id]: responsePayload.cashComparison as CashRecountComparison }));
+              if (responsePayload.task) {
+                setShiftControlState((current) => ({
+                  ...current,
+                  tasks: current.tasks.map((item) => (item.id === responsePayload.task.id ? responsePayload.task as ShiftControlTask : item)),
+                }));
+              }
+              setShiftTaskErrors((current) => ({
+                ...current,
+                [task.id]: responsePayload.requiresComment
+                  ? { comment: String(responsePayload.error || 'Добавьте комментарий') }
+                  : {} as Record<string, string>,
+              }));
+              return null;
+            }
+            if (!response.ok) throw new Error(responsePayload.error || 'Не удалось обновить задачу');
+            return responsePayload as { task: ShiftControlTask; cashComparison?: CashRecountComparison | null };
           })();
+
+      if (!result) return;
+      if ('cashComparison' in result && result.cashComparison) {
+        setCashComparisons((current) => ({ ...current, [result.task.id]: result.cashComparison as CashRecountComparison }));
+      }
 
       setShiftControlState((current) => ({
         ...current,
@@ -1648,6 +1695,12 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
+      const completedCashComparison = 'cashComparison' in result
+        ? result.cashComparison as CashRecountComparison | null | undefined
+        : null;
+      if (completedCashComparison?.status === 'mismatch') {
+        setMessage('Выполнено с расхождением. Проблема зафиксирована.');
+      }
       await syncCurrentWorkdayState(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
@@ -1666,11 +1719,17 @@ export function EmployeeTodayClient({
 
     const completedAt = formatTaskCompletedAt(task.completedAt);
     const money = formatShiftMoney(task.numericValue);
+    const cashComparison = cashComparisons[task.id] !== undefined ? cashComparisons[task.id] : readCashComparison(task.handoverData);
 
     if (compact) {
       const parts: string[] = [];
       if (task.category === 'cash') {
         if (money) parts.push(`факт наличных: ${money} ₽`);
+        if (cashComparison?.status === 'matched') parts.push('совпало с 1С');
+        if (cashComparison?.status === 'mismatch' && cashComparison.difference !== null) {
+          parts.push(`разница: ${cashComparison.difference > 0 ? '+' : ''}${formatShiftMoney(cashComparison.difference)} ₽`);
+        }
+        if (cashComparison?.status === 'unavailable') parts.push('сверка с 1С недоступна');
       } else if (task.category === 'acquiring') {
         parts.push(acquiringResultLabel(task.integerValue, task.numericValue));
         if (task.category === 'acquiring' && task.comment) parts.push(task.comment);
@@ -1696,7 +1755,27 @@ export function EmployeeTodayClient({
 
     return (
       <div className='mt-2 rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold leading-snug text-green-900 ring-1 ring-green-100'>
-        {task.category === 'cash' && money && <p>Факт наличных: {money} ₽</p>}
+        {task.category === 'cash' && money && (
+          <div className='grid gap-1'>
+            {cashComparison?.expected !== null && cashComparison?.expected !== undefined && (
+              <p>Остаток 1С на момент проверки: {formatShiftMoney(cashComparison.expected)} ₽</p>
+            )}
+            <p>Фактически: {money} ₽</p>
+            {cashComparison?.status === 'matched' && (
+              <p className='text-green-800'>Разница: {formatShiftMoney(cashComparison.difference ?? 0)} ₽ · всё совпало</p>
+            )}
+            {cashComparison?.status === 'mismatch' && cashComparison.difference !== null && (
+              <>
+                <p className='text-amber-900'>Выполнено с расхождением</p>
+                <p className='text-amber-800'>
+                  Разница: {cashComparison.difference > 0 ? '+' : ''}{formatShiftMoney(cashComparison.difference)} ₽ · {cashComparison.discrepancyType === 'surplus' ? 'излишек' : 'недостача'}
+                </p>
+              </>
+            )}
+            {cashComparison?.status === 'unavailable' && <p className='text-slate-600'>Сверка с 1С временно недоступна</p>}
+            {task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
+          </div>
+        )}
         {task.category === 'acquiring' && (
           <div className='grid gap-0.5'>
             <p>{acquiringResultLabel(task.integerValue, task.numericValue)}</p>
@@ -1735,6 +1814,8 @@ export function EmployeeTodayClient({
     const isOpening = task.category === 'opening';
     const simpleLabel = task.category === 'handover' ? 'Начать сдачу смены' : 'Подтвердить';
     const errors = shiftTaskErrors[task.id] ?? {};
+    const cashComparison = cashComparisons[task.id] !== undefined ? cashComparisons[task.id] : readCashComparison(task.handoverData);
+    const cashRecountStage = readCashRecountStage(task.handoverData);
     const showTerminalReconciliation = isAcquiring && draft.integerValue !== '' && draft.integerValue !== '0';
     const showTerminalPhoto = isAcquiring && ['1', '2'].includes(draft.integerValue);
     const photoCompletesTaskAutomatically = showTerminalPhoto && !hasTaskPhoto(task, 'terminalReceipts');
@@ -1805,23 +1886,49 @@ export function EmployeeTodayClient({
     return (
       <div className='mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
         {isCash && (
-          <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-            Наличные в кассе
-            <span className='text-[11px] font-semibold leading-snug text-slate-500'>
-              Пересчитайте деньги и внесите фактическую сумму.
-            </span>
-            <input
-              type='number'
-              inputMode='decimal'
-              min='0'
-              step='0.01'
-              value={draft.numericValue}
-              onChange={(event) => updateShiftTaskDraft(task.id, { numericValue: event.target.value })}
-              className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-              placeholder='0'
-            />
-            {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
-          </label>
+          <div className='grid gap-2'>
+            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
+              Наличные в кассе
+              <span className='text-[11px] font-semibold leading-snug text-slate-500'>
+                Пересчитайте деньги и внесите фактическую сумму.
+              </span>
+              <input
+                type='number'
+                inputMode='decimal'
+                min='0'
+                step='0.01'
+                value={draft.numericValue}
+                onChange={(event) => {
+                  updateShiftTaskDraft(task.id, { numericValue: event.target.value });
+                  setCashComparisons((current) => ({ ...current, [task.id]: null }));
+                }}
+                className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                placeholder='0'
+              />
+              {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
+            </label>
+            {cashComparison?.status === 'mismatch' && (
+              <div className='grid gap-2 rounded-lg bg-amber-50 p-2.5 text-xs ring-1 ring-amber-200'>
+                <p className='font-extrabold text-amber-950'>Обнаружено расхождение</p>
+                <p className='font-semibold text-amber-900'>
+                  Остаток 1С: {formatShiftMoney(cashComparison.expected)} ₽ · факт: {formatShiftMoney(cashComparison.actual)} ₽ · разница: {cashComparison.difference !== null && cashComparison.difference > 0 ? '+' : ''}{formatShiftMoney(cashComparison.difference)} ₽
+                </p>
+                <p className='font-semibold text-amber-900'>Если сумма введена неверно — измените её. Если факт указан верно — сохраните результат пересчёта.</p>
+                {cashComparison.requiresComment && (
+                  <label className='grid gap-1 font-extrabold text-amber-950'>
+                    Что произошло? (обязательно при расхождении больше 300 ₽)
+                    <textarea
+                      value={draft.comment}
+                      onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
+                      className='min-h-20 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                      placeholder='Кратко опишите причину расхождения'
+                    />
+                  </label>
+                )}
+                {errors.comment && <span className='text-[11px] font-bold text-amber-800'>{errors.comment}</span>}
+              </div>
+            )}
+          </div>
         )}
 
         {isAcquiring && (
@@ -1981,17 +2088,24 @@ export function EmployeeTodayClient({
             type='button'
             className='h-9 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
             onClick={() => {
+              if (isCash && cashComparison?.status === 'mismatch') {
+                setCashComparisons((current) => ({ ...current, [task.id]: null }));
+                setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
+                return;
+              }
               setOpenShiftTaskId(null);
               setEditingShiftTaskId(null);
               setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
             }}
             disabled={isSaving}
           >
-            Назад
+            {isCash && cashComparison?.status === 'mismatch' ? 'Исправить ввод' : 'Назад'}
           </Button>
           {!photoCompletesTaskAutomatically && (
             <Button type='button' className='h-9 text-xs font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
-              {isEditing ? 'Сохранить исправление' : 'Сохранить'}
+              {isCash && (cashRecountStage === 'result_ready' || cashRecountStage === 'comment_required')
+                ? 'Сохранить результат'
+                : isEditing ? 'Сохранить исправление' : 'Сохранить'}
             </Button>
           )}
         </div>
