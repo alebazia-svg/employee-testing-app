@@ -50,6 +50,13 @@ project from scratch.
 - Prisma schema changes require an explicit migration task and deploy note.
 - Future large OFD work should move toward `OfdControlEvent V1`, not endless UI
   polishing.
+- Production expense-request ADMIN sync runs every three minutes through
+  `offonika-expense-request-sync.timer`. It reads a rolling Moscow-calendar
+  period from 1C, creates one inbox event per new live `not_approved` cycle and
+  uses the existing Offonika Control token through an isolated one-shot sender.
+  The historical Telegram bot service and its drifted production file are not
+  overwritten or restarted by this flow; employee notifications and 1C writes
+  remain disabled.
 
 ## Known Dirty-Tree Context
 
