@@ -18,6 +18,21 @@ export type EmployeeReviewDecision =
   | { action: 'wait' | 'resolve' | 'admin_only'; reason: string }
   | { action: 'notify'; employeeId: number; cashierRef: string };
 
+export type EmployeeReviewCoverageDecision = {
+  state: 'covered' | 'uncovered' | 'ambiguous' | 'incomplete';
+  reason:
+    | 'PERIOD_OPERATION_COVERED'
+    | 'PERIOD_OPERATION_UNCOVERED'
+    | 'PERIOD_SOURCE_INCOMPLETE'
+    | 'PERIOD_COVERAGE_CONFLICT'
+    | 'PERIOD_PARTIAL_BUCKET_COVERAGE'
+    | 'PERIOD_REVERSAL_PAIR';
+  bankCount: number;
+  bankSumKopecks: number;
+  oneCCount: number;
+  oneCSumKopecks: number;
+};
+
 function digest(value: string) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -31,8 +46,112 @@ function timestamp(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export function oneCChecksAvailableForEmployeeReview(input: {
+  checks: OneCCheck[];
+  periodFrom: Date;
+  sourceCheckedAt: string;
+}) {
+  const checkedAt = timestamp(input.sourceCheckedAt);
+  if (checkedAt === null) return [];
+  return input.checks.filter((check) => {
+    const checkAt = timestamp(check.dateTime);
+    return checkAt !== null && checkAt >= input.periodFrom.getTime() && checkAt <= checkedAt;
+  });
+}
+
+function coverageBucket(type: string, amountKopecks: number) {
+  return `${type}:${amountKopecks}`;
+}
+
+function eligibleOneCOperationType(check: OneCCheck) {
+  if (check.sourceType === 'sale_check' && check.operationType === 'sale') return 'sale';
+  if (check.sourceType === 'refund_check' && check.operationType === 'refund') return 'refund';
+  return null;
+}
+
+/**
+ * Employee-notification guard only. It never confirms a fiscal match and never
+ * changes mvp-1. It asks a narrower, directional question: is this bank
+ * operation already covered by a distinct eligible 1C card check somewhere in
+ * the complete run period for the same physical chain?
+ */
+export function evaluateTerminalFiscalPeriodCoverage(input: {
+  record: MatchingAuditRecord;
+  periodRecords: MatchingAuditRecord[];
+  mapping: TerminalMapping;
+  oneCChecks: OneCCheck[];
+}): EmployeeReviewCoverageDecision {
+  const relevantRecords = input.periodRecords.filter((item) => (
+    item.mappingId === input.mapping.id
+    && (item.operationType === 'sale' || item.operationType === 'refund')
+    && item.amountKopecks > 0
+  ));
+  const base = {
+    bankCount: relevantRecords.length,
+    bankSumKopecks: relevantRecords.reduce((sum, item) => sum + item.amountKopecks, 0),
+  };
+  if (relevantRecords.some((item) => !item.sourceCompleteness.tbank || !item.sourceCompleteness.oneC)) {
+    return { state: 'incomplete', reason: 'PERIOD_SOURCE_INCOMPLETE', ...base, oneCCount: 0, oneCSumKopecks: 0 };
+  }
+
+  const eligibleChecks = input.oneCChecks.filter((check) => {
+    const type = eligibleOneCOperationType(check);
+    return type !== null
+      && check.cashRegisterRef === input.mapping.oneCCashRegisterRef
+      && check.cardPayments.length === 1
+      && check.cardPayments[0]?.acquiringTerminalRef === input.mapping.oneCAcquiringTerminalRef
+      && check.cardPayments[0].amountKopecks > 0;
+  });
+  const oneCBase = {
+    oneCCount: eligibleChecks.length,
+    oneCSumKopecks: eligibleChecks.reduce((sum, check) => sum + check.cardPayments[0].amountKopecks, 0),
+  };
+  if (relevantRecords.some((item) => ['BANK_OPERATION_DUPLICATE', 'BANK_OPERATION_INVALID', 'ONE_C_CHECK_REUSED'].includes(item.reasonCode))) {
+    return { state: 'ambiguous', reason: 'PERIOD_COVERAGE_CONFLICT', ...base, ...oneCBase };
+  }
+  if (new Set(eligibleChecks.map((check) => check.sourceRef)).size !== eligibleChecks.length) {
+    return { state: 'ambiguous', reason: 'PERIOD_COVERAGE_CONFLICT', ...base, ...oneCBase };
+  }
+
+  const assignedRefs = relevantRecords.flatMap((item) => item.oneCCheckKey ? [item.oneCCheckKey] : []);
+  if (new Set(assignedRefs).size !== assignedRefs.length) {
+    return { state: 'ambiguous', reason: 'PERIOD_COVERAGE_CONFLICT', ...base, ...oneCBase };
+  }
+  const assigned = new Set(assignedRefs);
+  const unmatchedRecords = relevantRecords.filter((item) => !item.oneCCheckKey);
+  const availableChecks = eligibleChecks.filter((check) => !assigned.has(check.sourceRef));
+  const targetBucket = coverageBucket(input.record.operationType ?? '', input.record.amountKopecks);
+  const sameBank = unmatchedRecords.filter((item) => coverageBucket(item.operationType ?? '', item.amountKopecks) === targetBucket);
+  const sameOneC = availableChecks.filter((check) => (
+    coverageBucket(eligibleOneCOperationType(check) ?? '', check.cardPayments[0].amountKopecks) === targetBucket
+  ));
+
+  if (!sameBank.some((item) => item.matchingKey === input.record.matchingKey)) {
+    return { state: 'ambiguous', reason: 'PERIOD_COVERAGE_CONFLICT', ...base, ...oneCBase };
+  }
+
+  if (sameOneC.length >= sameBank.length) {
+    return { state: 'covered', reason: 'PERIOD_OPERATION_COVERED', ...base, ...oneCBase };
+  }
+  if (sameOneC.length > 0) {
+    return { state: 'ambiguous', reason: 'PERIOD_PARTIAL_BUCKET_COVERAGE', ...base, ...oneCBase };
+  }
+
+  const oppositeType = input.record.operationType === 'sale' ? 'refund' : 'sale';
+  const oppositeBucket = coverageBucket(oppositeType, input.record.amountKopecks);
+  const oppositeBank = unmatchedRecords.filter((item) => coverageBucket(item.operationType ?? '', item.amountKopecks) === oppositeBucket);
+  const oppositeOneC = availableChecks.filter((check) => (
+    coverageBucket(eligibleOneCOperationType(check) ?? '', check.cardPayments[0].amountKopecks) === oppositeBucket
+  ));
+  if (oppositeBank.length > 0 && oppositeOneC.length === 0) {
+    return { state: 'ambiguous', reason: 'PERIOD_REVERSAL_PAIR', ...base, ...oneCBase };
+  }
+  return { state: 'uncovered', reason: 'PERIOD_OPERATION_UNCOVERED', ...base, ...oneCBase };
+}
+
 export function evaluateTerminalFiscalEmployeeReview(input: {
   record: MatchingAuditRecord;
+  periodRecords: MatchingAuditRecord[];
   mapping: TerminalMapping;
   oneCChecks: OneCCheck[];
   cashierMappings: CashierMapping[];
@@ -54,6 +173,16 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
   if (operationAt === null || oneCCheckedAt === null || oneCCheckedAt < operationAt + TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS) {
     return { action: 'wait', reason: 'FIRST_SAFE_READ_NOT_REACHED' };
   }
+
+  const coverage = evaluateTerminalFiscalPeriodCoverage({
+    record,
+    periodRecords: input.periodRecords,
+    mapping,
+    oneCChecks: input.oneCChecks,
+  });
+  if (coverage.state === 'incomplete') return { action: 'wait', reason: coverage.reason };
+  if (coverage.state === 'covered') return { action: 'resolve', reason: coverage.reason };
+  if (coverage.state === 'ambiguous') return { action: 'admin_only', reason: coverage.reason };
 
   const nearby = input.oneCChecks.filter((check) => {
     const checkAt = timestamp(check.dateTime);
@@ -99,6 +228,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     output: TerminalFiscalMatchingOutput;
     mapping: TerminalMapping;
     oneCChecks: OneCCheck[];
+    mode?: 'notify' | 'shadow';
   },
 ) {
   const refs = [...new Set(input.oneCChecks.map((check) => check.cashier.ref).filter(Boolean))];
@@ -109,11 +239,14 @@ export async function syncTerminalFiscalEmployeeReviews(
   let opened = 0;
   let resolved = 0;
   let adminOnly = 0;
+  let shadowed = 0;
+  const mode = input.mode ?? 'notify';
 
   for (const record of input.output.records) {
     const reviewKey = terminalFiscalEmployeeReviewKey(record);
     const decision = evaluateTerminalFiscalEmployeeReview({
       record,
+      periodRecords: input.output.records,
       mapping: input.mapping,
       oneCChecks: input.oneCChecks,
       cashierMappings: cashierMappings.flatMap((item) => item.oneCCashierRef
@@ -124,7 +257,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     if (decision.action === 'resolve') {
       const count = await prisma.$transaction(async (tx) => {
         const result = await tx.terminalFiscalEmployeeReview.updateMany({
-          where: { reviewKey, status: { in: ['open', 'admin_review'] } },
+          where: { reviewKey, status: { in: ['open', 'admin_review', 'shadow_candidate'] } },
           data: { status: 'resolved', resolvedAt: new Date(input.output.evaluatedAt), lastCheckedAt: new Date(input.output.evaluatedAt) },
         });
         if (result.count) await tx.workdayNotification.updateMany({
@@ -139,7 +272,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     if (decision.action === 'admin_only') {
       const changed = await prisma.$transaction(async (tx) => {
         const result = await tx.terminalFiscalEmployeeReview.updateMany({
-          where: { reviewKey, status: 'open' },
+          where: { reviewKey, status: { in: ['open', 'shadow_candidate'] } },
           data: { status: 'admin_review', lastCheckedAt: new Date(input.output.evaluatedAt) },
         });
         if (result.count) await tx.workdayNotification.updateMany({
@@ -159,6 +292,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     const cashierRef = decision.cashierRef;
     const created = await prisma.$transaction(async (tx) => {
       const existing = await tx.terminalFiscalEmployeeReview.findUnique({ where: { reviewKey } });
+      if (existing && !['open', 'shadow_candidate'].includes(existing.status)) return false;
       const review = await tx.terminalFiscalEmployeeReview.upsert({
         where: { reviewKey },
         create: {
@@ -166,6 +300,7 @@ export async function syncTerminalFiscalEmployeeReviews(
           matchingHash: digest(record.matchingKey),
           mappingId: record.mappingId ?? null,
           employeeId,
+          status: mode === 'shadow' ? 'shadow_candidate' : 'open',
           reasonCode: record.reasonCode,
           bankOperationAt: operationAt,
           amountKopecks: record.amountKopecks,
@@ -173,9 +308,12 @@ export async function syncTerminalFiscalEmployeeReviews(
           detectedAt: new Date(input.output.evaluatedAt),
           lastCheckedAt: new Date(input.output.evaluatedAt),
         },
-        update: { lastCheckedAt: new Date(input.output.evaluatedAt) },
+        update: {
+          lastCheckedAt: new Date(input.output.evaluatedAt),
+          ...(mode === 'shadow' ? { status: 'shadow_candidate' } : {}),
+        },
       });
-      if (review.status === 'open') await tx.workdayNotification.upsert({
+      if (mode === 'notify' && review.status === 'open') await tx.workdayNotification.upsert({
         where: { fingerprint: `${reviewKey}:created` },
         create: {
           userId: employeeId,
@@ -190,7 +328,8 @@ export async function syncTerminalFiscalEmployeeReviews(
       });
       return existing === null;
     });
-    if (created) opened += 1;
+    if (created && mode === 'notify') opened += 1;
+    if (created && mode === 'shadow') shadowed += 1;
   }
-  return { opened, resolved, adminOnly };
+  return { opened, resolved, adminOnly, shadowed };
 }

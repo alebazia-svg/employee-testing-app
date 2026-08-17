@@ -18,7 +18,7 @@ import { loadCompleteTBankOperations, loadOneCKkmChecks, loadPlatformaOfdReceipt
 import { getMoscowDateKey } from '@/lib/workday';
 import { summarizeTerminalFiscalOutput } from '@/lib/terminal-fiscal-summary';
 import { syncTerminalFiscalWorkdayControl } from '@/lib/terminal-fiscal-workday-control';
-import { syncTerminalFiscalEmployeeReviews } from '@/lib/terminal-fiscal-employee-review';
+import { oneCChecksAvailableForEmployeeReview, syncTerminalFiscalEmployeeReviews } from '@/lib/terminal-fiscal-employee-review';
 
 function dateOnly(value: Date) {
   return getMoscowDateKey(value);
@@ -72,6 +72,11 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       const at = new Date(check.dateTime).getTime();
       return Number.isFinite(at) && at >= input.periodFrom.getTime() && at < input.periodTo.getTime();
     });
+    const employeeReviewOneCChecks = oneCChecksAvailableForEmployeeReview({
+      checks: oneC.data,
+      periodFrom: input.periodFrom,
+      sourceCheckedAt: oneC.checkedAt,
+    });
     const output = reconcileTerminalFiscalMvp({
       now,
       sources: {
@@ -111,8 +116,18 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       });
       if (input.syncWorkdayControl === true) {
         await syncTerminalFiscalWorkdayControl(prisma, output);
-        if (process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED === 'true') {
-          await syncTerminalFiscalEmployeeReviews(prisma, { output, mapping, oneCChecks: periodOneCChecks });
+        const employeeReviewMode = process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED === 'true'
+          ? 'notify'
+          : process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_SHADOW_ENABLED === 'true'
+            ? 'shadow'
+            : null;
+        if (employeeReviewMode) {
+          await syncTerminalFiscalEmployeeReviews(prisma, {
+            output,
+            mapping,
+            oneCChecks: employeeReviewOneCChecks,
+            mode: employeeReviewMode,
+          });
         }
       }
     }

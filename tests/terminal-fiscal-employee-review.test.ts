@@ -4,6 +4,8 @@ import type { PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, OneCCheck, TerminalMapping } from '../lib/terminal-fiscal-matching';
 import {
   evaluateTerminalFiscalEmployeeReview,
+  evaluateTerminalFiscalPeriodCoverage,
+  oneCChecksAvailableForEmployeeReview,
   syncTerminalFiscalEmployeeReviews,
   terminalFiscalEmployeeReviewText,
 } from '../lib/terminal-fiscal-employee-review';
@@ -30,20 +32,29 @@ function record(overrides: Partial<MatchingAuditRecord> = {}): MatchingAuditReco
   };
 }
 
-function check(input: { ref?: string; cashierRef?: string; cashRegisterRef?: string; dateTime?: string } = {}): OneCCheck {
+function check(input: {
+  ref?: string;
+  cashierRef?: string;
+  cashRegisterRef?: string;
+  dateTime?: string;
+  amountKopecks?: number;
+  operationType?: 'sale' | 'refund';
+} = {}): OneCCheck {
+  const operationType = input.operationType ?? 'sale';
   return {
-    sourceRef: input.ref ?? 'check-nearby', sourceType: 'sale_check', operationType: 'sale',
+    sourceRef: input.ref ?? 'check-nearby', sourceType: operationType === 'sale' ? 'sale_check' : 'refund_check', operationType,
     dateTime: input.dateTime ?? '2026-08-17T16:30:00.000Z', cashRegisterRef: input.cashRegisterRef ?? 'kkm-1',
     kktRegistrationNumber: 'kkt-1', totalKopecks: 100, electronicKopecks: 100,
     cashier: { ref: input.cashierRef ?? 'cashier-magomed', name: 'Костеренко Магомед' },
-    cardPayments: [{ lineNumber: '1', amountKopecks: 100, acquiringTerminalRef: 'acquiring-1', referenceNumber: '', authorizationCode: '', terminalReceiptNumber: '' }],
+    cardPayments: [{ lineNumber: '1', amountKopecks: input.amountKopecks ?? 100, acquiringTerminalRef: 'acquiring-1', referenceNumber: '', authorizationCode: '', terminalReceiptNumber: '' }],
     items: [], fiscalState: 'confirmed', fiscalStateMeaning: 'data_state_only', fiscalConflict: false,
   };
 }
 
 test('first complete 1C read after ten minutes is enough when one nearby mapped cashier exists', () => {
+  const target = record();
   assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
-    record: record(), mapping, oneCChecks: [check()],
+    record: target, periodRecords: [target], mapping, oneCChecks: [check()],
     cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
   }), { action: 'notify', employeeId: 5, cashierRef: 'cashier-magomed' });
   assert.equal(terminalFiscalEmployeeReviewText({ operationAt: new Date('2026-08-17T16:32:00.000Z'), amountKopecks: 1_250_000 }),
@@ -52,15 +63,18 @@ test('first complete 1C read after ten minutes is enough when one nearby mapped 
 
 test('does not notify before the safe read, with incomplete 1C, or with ambiguous cashier evidence', () => {
   const args = { mapping, oneCChecks: [check()], cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }] };
-  assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: record({ sourceCheckedAt: { tbank: '2026-08-17T16:39:00.000Z', oneC: '2026-08-17T16:39:00.000Z', ofd: '2026-08-17T16:39:00.000Z' } }) }).action, 'wait');
-  assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: record({ sourceCompleteness: { tbank: true, oneC: false, ofd: true } }) }).action, 'wait');
-  assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: record(), oneCChecks: [check(), check({ ref: 'check-2', cashierRef: 'cashier-milana' })] }).action, 'admin_only');
-  assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: record(), oneCChecks: [check({ cashierRef: '' })] }).action, 'admin_only');
+  const early = record({ sourceCheckedAt: { tbank: '2026-08-17T16:39:00.000Z', oneC: '2026-08-17T16:39:00.000Z', ofd: '2026-08-17T16:39:00.000Z' } });
+  const incomplete = record({ sourceCompleteness: { tbank: true, oneC: false, ofd: true } });
+  const normal = record();
+  assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: early, periodRecords: [early] }).action, 'wait');
+  assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: incomplete, periodRecords: [incomplete] }).action, 'wait');
+  assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: normal, periodRecords: [normal], oneCChecks: [check(), check({ ref: 'check-2', cashierRef: 'cashier-milana' })] }).action, 'admin_only');
+  assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: normal, periodRecords: [normal], oneCChecks: [check({ cashierRef: '' })] }).action, 'admin_only');
 });
 
 test('uses the mapped KKM only and never workstation or OFD operator evidence', () => {
   const result = evaluateTerminalFiscalEmployeeReview({
-    record: record(), mapping,
+    record: record(), periodRecords: [record()], mapping,
     oneCChecks: [
       check({ cashierRef: 'cashier-magomed' }),
       check({ ref: 'other-kkm', cashierRef: 'cashier-milana', cashRegisterRef: 'kkm-2' }),
@@ -71,6 +85,96 @@ test('uses the mapped KKM only and never workstation or OFD operator evidence', 
     ],
   });
   assert.deepEqual(result, { action: 'notify', employeeId: 5, cashierRef: 'cashier-magomed' });
+});
+
+test('period coverage suppresses a false employee notification outside the strict five-minute match window', () => {
+  const target = record({
+    matchingKey: 'late-bank-operation',
+    amountKopecks: 50_000,
+    evidence: { bankTransactionDate: '2026-08-17T16:26:00.000Z' },
+  });
+  const strict = record({
+    matchingKey: 'strict-bank-operation', status: 'confirmed', reasonCode: 'MATCH_CONFIRMED',
+    amountKopecks: 75_000, oneCCheckKey: 'strict-check', candidateCount: 1,
+  });
+  const checks = [
+    check({ ref: 'strict-check', amountKopecks: 75_000 }),
+    check({ ref: 'late-check', amountKopecks: 50_000, dateTime: '2026-08-17T16:33:18.000Z' }),
+  ];
+  assert.deepEqual(evaluateTerminalFiscalPeriodCoverage({
+    record: target, periodRecords: [strict, target], mapping, oneCChecks: checks,
+  }).state, 'covered');
+  assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
+    record: target, periodRecords: [strict, target], mapping, oneCChecks: checks,
+    cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
+  }), { action: 'resolve', reason: 'PERIOD_OPERATION_COVERED' });
+});
+
+test('employee guard sees a later 1C check already present at source read time without widening matching input', () => {
+  const checks = [
+    check({ ref: 'inside-matching-period', dateTime: '2026-08-17T16:29:00.000Z' }),
+    check({ ref: 'after-matching-period', dateTime: '2026-08-17T16:33:18.000Z' }),
+    check({ ref: 'after-source-read', dateTime: '2026-08-17T16:46:00.000Z' }),
+  ];
+  assert.deepEqual(oneCChecksAvailableForEmployeeReview({
+    checks,
+    periodFrom: new Date('2026-08-16T21:00:00.000Z'),
+    sourceCheckedAt: '2026-08-17T16:45:00.000Z',
+  }).map((item) => item.sourceRef), ['inside-matching-period', 'after-matching-period']);
+});
+
+test('equal period counts and totals do not cover different type-and-amount buckets', () => {
+  const target = record({ matchingKey: 'bank-100', amountKopecks: 10_000 });
+  const peer = record({ matchingKey: 'bank-200', amountKopecks: 20_000 });
+  const checks = [
+    check({ ref: 'check-150-a', amountKopecks: 15_000 }),
+    check({ ref: 'check-150-b', amountKopecks: 15_000 }),
+  ];
+  const coverage = evaluateTerminalFiscalPeriodCoverage({ record: target, periodRecords: [target, peer], mapping, oneCChecks: checks });
+  assert.equal(coverage.bankCount, coverage.oneCCount);
+  assert.equal(coverage.bankSumKopecks, coverage.oneCSumKopecks);
+  assert.deepEqual({ state: coverage.state, reason: coverage.reason }, {
+    state: 'uncovered', reason: 'PERIOD_OPERATION_UNCOVERED',
+  });
+});
+
+test('partial one-to-one coverage of identical operations stays ADMIN-only', () => {
+  const target = record({ matchingKey: 'bank-500-a', amountKopecks: 50_000 });
+  const peer = record({ matchingKey: 'bank-500-b', amountKopecks: 50_000 });
+  const checks = [check({ ref: 'only-check-500', amountKopecks: 50_000 })];
+  assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
+    record: target, periodRecords: [target, peer], mapping, oneCChecks: checks,
+    cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
+  }), { action: 'admin_only', reason: 'PERIOD_PARTIAL_BUCKET_COVERAGE' });
+});
+
+test('uncovered equal sale and refund movements remain ADMIN-only, including the two 1-ruble tests', () => {
+  const sale = record({ matchingKey: 'test-sale', amountKopecks: 100 });
+  const refund = record({
+    matchingKey: 'test-refund', operationType: 'refund', amountKopecks: 100,
+    evidence: { bankTransactionDate: '2026-08-17T17:27:00.000Z' },
+  });
+  assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
+    record: sale, periodRecords: [sale, refund], mapping, oneCChecks: [],
+    cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
+  }), { action: 'admin_only', reason: 'PERIOD_REVERSAL_PAIR' });
+});
+
+test('a check already consumed by another bank operation cannot cover the missing operation again', () => {
+  const target = record({ matchingKey: 'missing-500', amountKopecks: 50_000 });
+  const strict = record({
+    matchingKey: 'strict-500', status: 'confirmed', reasonCode: 'MATCH_CONFIRMED',
+    amountKopecks: 50_000, oneCCheckKey: 'single-check-500', candidateCount: 1,
+  });
+  const coverage = evaluateTerminalFiscalPeriodCoverage({
+    record: target,
+    periodRecords: [strict, target],
+    mapping,
+    oneCChecks: [check({ ref: 'single-check-500', amountKopecks: 50_000 })],
+  });
+  assert.deepEqual({ state: coverage.state, reason: coverage.reason }, {
+    state: 'uncovered', reason: 'PERIOD_OPERATION_UNCOVERED',
+  });
 });
 
 test('one review and notification are created without duplicates and a later 1C check resolves them', async () => {
@@ -109,16 +213,62 @@ test('one review and notification are created without duplicates and a later 1C 
     $transaction: async (callback: any) => callback(db),
   };
   const output = { version: 'mvp-1', evaluatedAt: record().evaluatedAt, records: [record()] };
-  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()] }), { opened: 1, resolved: 0, adminOnly: 0 });
-  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()] }), { opened: 0, resolved: 0, adminOnly: 0 });
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()] }), { opened: 1, resolved: 0, adminOnly: 0, shadowed: 0 });
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()] }), { opened: 0, resolved: 0, adminOnly: 0, shadowed: 0 });
   assert.equal(reviews.length, 1);
   assert.equal(notifications.length, 1);
   assert.equal(JSON.stringify(reviews).includes('secret-operation'), false);
 
   const found = record({ status: 'confirmed', reasonCode: 'MATCH_CONFIRMED', candidateCount: 1, oneCCheckKey: 'check-found' });
-  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output: { ...output, records: [found] }, mapping, oneCChecks: [check()] }), { opened: 0, resolved: 1, adminOnly: 0 });
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output: { ...output, records: [found] }, mapping, oneCChecks: [check()] }), { opened: 0, resolved: 1, adminOnly: 0, shadowed: 0 });
   assert.equal(reviews[0].status, 'resolved');
   assert.equal(notifications[0].status, 'cancelled');
+});
+
+test('shadow mode records one would-notify candidate without creating an employee notification', async () => {
+  const reviews: any[] = [];
+  const notifications: any[] = [];
+  const db: any = {
+    userOneCCashboxMapping: { findMany: async () => [{ userId: 5, oneCCashierRef: 'cashier-magomed' }] },
+    terminalFiscalEmployeeReview: {
+      findUnique: async ({ where }: any) => reviews.find((row) => row.reviewKey === where.reviewKey) ?? null,
+      upsert: async ({ where, create, update }: any) => {
+        const existing = reviews.find((row) => row.reviewKey === where.reviewKey);
+        if (existing) return Object.assign(existing, update);
+        const row = { id: `review-${reviews.length + 1}`, ...create };
+        reviews.push(row);
+        return row;
+      },
+      updateMany: async ({ where, data }: any) => {
+        const rows = reviews.filter((row) => row.reviewKey === where.reviewKey && (Array.isArray(where.status?.in) ? where.status.in.includes(row.status) : row.status === where.status));
+        rows.forEach((row) => Object.assign(row, data));
+        return { count: rows.length };
+      },
+    },
+    workdayNotification: {
+      upsert: async ({ create }: any) => { notifications.push(create); return create; },
+      updateMany: async () => ({ count: 0 }),
+    },
+    $transaction: async (callback: any) => callback(db),
+  };
+  const target = record();
+  const output = { version: 'mvp-1', evaluatedAt: target.evaluatedAt, records: [target] };
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, {
+    output, mapping, oneCChecks: [check()], mode: 'shadow',
+  }), { opened: 0, resolved: 0, adminOnly: 0, shadowed: 1 });
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, {
+    output, mapping, oneCChecks: [check()], mode: 'shadow',
+  }), { opened: 0, resolved: 0, adminOnly: 0, shadowed: 0 });
+  assert.equal(reviews.length, 1);
+  assert.equal(reviews[0].status, 'shadow_candidate');
+  assert.equal(reviews[0].employeeId, 5);
+  assert.equal(notifications.length, 0);
+
+  const found = record({ status: 'confirmed', reasonCode: 'MATCH_CONFIRMED', candidateCount: 1, oneCCheckKey: 'check-found' });
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, {
+    output: { ...output, records: [found] }, mapping, oneCChecks: [check()], mode: 'shadow',
+  }), { opened: 0, resolved: 1, adminOnly: 0, shadowed: 0 });
+  assert.equal(reviews[0].status, 'resolved');
 });
 
 test('review messages are short plain text and cannot be empty', () => {
