@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { PrismaClient } from '@prisma/client';
 import { syncExpenseRequestAdminAudit } from '../lib/expense-request-admin-sync';
+import { claimAdminInboxTelegramDelivery, markAdminInboxTelegramDeliverySent } from '../lib/admin-inbox-delivery';
 import type { ExpenseRequestSnapshot, ExpenseRequestSourceRow } from '../lib/expense-request-source';
 
 function sourceRow(statusKey = 'not_approved'): ExpenseRequestSourceRow {
@@ -24,6 +25,7 @@ function fakeDb() {
   const evaluations = new Map<string, Record<string, any>>();
   const inboxEvents = new Map<string, Record<string, any>>();
   const inboxReceipts = new Map<string, Record<string, any>>();
+  const inboxDeliveries = new Map<string, Record<string, any>>();
   let runSequence = 0;
   let caseSequence = 0;
   let evaluationSequence = 0;
@@ -51,6 +53,29 @@ function fakeDb() {
         return { count };
       },
     },
+    adminInboxDelivery: {
+      upsert: async ({ where, create }: any) => {
+        const input = where.eventId_channel_recipientKey;
+        const key = `${input.eventId}:${input.channel}:${input.recipientKey}`;
+        const value = inboxDeliveries.get(key) ?? { id: `delivery-${inboxDeliveries.size + 1}`, status: 'pending', ...create };
+        inboxDeliveries.set(key, value);
+        return value;
+      },
+      findFirst: async ({ where }: any) => {
+        const value = [...inboxDeliveries.values()].find((row) => row.channel === where.channel && row.recipientKey === where.recipientKey && row.status === where.status);
+        if (!value) return null;
+        const event = [...inboxEvents.values()].find((row) => row.id === value.eventId);
+        return { ...value, event };
+      },
+      updateMany: async ({ where, data }: any) => {
+        const entry = [...inboxDeliveries.entries()].find(([, value]) => value.id === where.id && (!where.status || value.status === where.status) && (!where.leaseToken || value.leaseToken === where.leaseToken));
+        if (!entry) return { count: 0 };
+        const next = { ...entry[1], ...data };
+        if (data.attemptCount?.increment) next.attemptCount = Number(entry[1].attemptCount ?? 0) + data.attemptCount.increment;
+        inboxDeliveries.set(entry[0], next);
+        return { count: 1 };
+      },
+    },
     expenseRequestSyncRun: {
       findUnique: async ({ where }: any) => runs.get(where.runKey) ?? null,
       findUniqueOrThrow: async ({ where }: any) => { const value = runs.get(where.runKey); if (!value) throw new Error('missing'); return value; },
@@ -75,10 +100,11 @@ function fakeDb() {
         evaluations.set(key, value);
         return value;
       },
+      findFirst: async ({ where }: any) => [...evaluations.values()].filter((value) => value.caseId === where.caseId).at(-1) ?? null,
     },
   } as unknown as PrismaClient;
   return {
-    state: { runs, cases, evaluations, inboxEvents, inboxReceipts },
+    state: { runs, cases, evaluations, inboxEvents, inboxReceipts, inboxDeliveries },
     client,
   };
 }
@@ -153,4 +179,43 @@ test('baseline cycle stays historical until status leaves and returns during liv
   assert.equal(db.state.cases.get('request-1')?.currentCycleOrigin, 'live');
   assert.equal(db.state.cases.get('request-1')?.notApprovedCycle, 2);
   assert.equal(db.state.inboxEvents.size, 1);
+});
+
+test('telegram delivery is queued once only for a new live cycle when explicitly enabled', async () => {
+  const db = fakeDb();
+  const period = { from: new Date('2026-08-17T00:00:00Z'), to: new Date('2026-08-18T00:00:00Z') };
+  await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(sourceRow()), queueTelegramDelivery: true, now: new Date('2026-08-17T10:00:00Z'), db: db.client });
+  await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(sourceRow(), '2026-08-17T10:01:00Z'), queueTelegramDelivery: true, now: new Date('2026-08-17T10:01:00Z'), db: db.client });
+  assert.equal(db.state.inboxEvents.size, 1);
+  assert.equal(db.state.inboxDeliveries.size, 1);
+});
+
+test('incomplete source records the run but never creates, closes or notifies cases', async () => {
+  const db = fakeDb();
+  const period = { from: new Date('2026-08-17T00:00:00Z'), to: new Date('2026-08-18T00:00:00Z') };
+  const incomplete = { ...snapshot(sourceRow()), complete: false, errors: ['SOURCE_UNAVAILABLE'] };
+  const result = await syncExpenseRequestAdminAudit({ ...period, snapshot: incomplete, queueTelegramDelivery: true, now: new Date('2026-08-17T10:00:00Z'), db: db.client });
+  assert.equal(result.sourceComplete, false);
+  assert.equal(result.createdCases, 0);
+  assert.equal(result.updatedCases, 0);
+  assert.equal(result.newNotApproved, 0);
+  assert.equal(db.state.cases.size, 0);
+  assert.equal(db.state.inboxEvents.size, 0);
+  assert.equal(db.state.inboxDeliveries.size, 0);
+  assert.equal([...db.state.runs.values()][0]?.status, 'incomplete');
+});
+
+test('telegram claim is leased once and sent state is independent from inbox read state', async () => {
+  const db = fakeDb();
+  const period = { from: new Date('2026-08-17T00:00:00Z'), to: new Date('2026-08-18T00:00:00Z') };
+  await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(sourceRow()), queueTelegramDelivery: true, now: new Date('2026-08-17T10:00:00Z'), db: db.client });
+  const claim = await claimAdminInboxTelegramDelivery(db.client, new Date('2026-08-17T10:01:00Z'));
+  assert.ok(claim);
+  assert.match(claim.text, /Новая заявка на расход\nЗаявитель: Менеджер\nСумма: 1 000 ₽/);
+  assert.match(claim.text, /Комментарий: Доставка товара/);
+  assert.match(claim.href, /^\/admin\/expense-requests\//);
+  assert.equal(await claimAdminInboxTelegramDelivery(db.client, new Date('2026-08-17T10:02:00Z')), null);
+  await markAdminInboxTelegramDeliverySent({ db: db.client, deliveryId: claim.deliveryId, leaseToken: claim.leaseToken, externalMessageId: '123' });
+  assert.equal([...db.state.inboxDeliveries.values()][0]?.status, 'sent');
+  assert.equal([...db.state.inboxReceipts.values()][0]?.readAt, null);
 });

@@ -25,6 +25,7 @@ async function main() {
   const from = option('--from') ? new Date(option('--from')) : new Date(to.getTime() - 7 * DAY_MS);
   const persist = process.argv.includes('--confirm-audit-write');
   const baseline = process.argv.includes('--baseline');
+  const queueTelegramDelivery = process.argv.includes('--queue-telegram');
   const snapshot = process.argv.includes('--snapshot-stdin')
     ? await snapshotFromStdin()
     : await fetchExpenseRequestSnapshot({ from, to });
@@ -32,7 +33,7 @@ async function main() {
     process.stdout.write(`${JSON.stringify({ ok: true, persisted: false, sourceComplete: snapshot.complete, sourceRows: snapshot.rows.length, pageCount: snapshot.pageCount, errors: snapshot.errors })}\n`);
     return;
   }
-  const result = await syncExpenseRequestAdminAudit({ snapshot, from, to, baseline });
+  const result = await syncExpenseRequestAdminAudit({ snapshot, from, to, baseline, queueTelegramDelivery });
   process.stdout.write(`${JSON.stringify({ ok: true, persisted: true, ...result })}\n`);
 }
 

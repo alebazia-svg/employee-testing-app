@@ -166,9 +166,30 @@ model AdminInboxEvent {
   occurredAt DateTime
   createdAt  DateTime            @default(now())
   receipts   AdminInboxReceipt[]
+  deliveries AdminInboxDelivery[]
 
   @@index([type, occurredAt])
   @@index([sourceType, sourceId, occurredAt])
+}
+
+model AdminInboxDelivery {
+  id                String          @id @default(cuid())
+  eventId           String
+  channel           String
+  recipientKey      String
+  status            String          @default("pending")
+  attemptCount      Int             @default(0)
+  leaseToken        String?
+  leaseUntil        DateTime?
+  sentAt            DateTime?
+  externalMessageId String?
+  lastErrorCode     String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  event             AdminInboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, channel, recipientKey])
+  @@index([channel, status, createdAt])
 }
 
 model AdminInboxReceipt {

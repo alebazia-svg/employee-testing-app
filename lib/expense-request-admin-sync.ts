@@ -47,6 +47,7 @@ export async function syncExpenseRequestAdminAudit(input: {
   from: Date;
   to: Date;
   baseline?: boolean;
+  queueTelegramDelivery?: boolean;
   now?: Date;
   db?: SyncDb;
 }): Promise<ExpenseRequestAdminSyncResult> {
@@ -85,6 +86,18 @@ export async function syncExpenseRequestAdminAudit(input: {
       };
     }
     throw error;
+  }
+
+  if (!input.snapshot.complete) {
+    await db.expenseRequestSyncRun.update({
+      where: { id: run.id },
+      data: { status: 'incomplete', completedAt: now, sourceComplete: false, sourceRowCount: input.snapshot.rows.length, errorCode: 'EXPENSE_REQUEST_SOURCE_INCOMPLETE' },
+    });
+    return {
+      runId: run.id, runKey, idempotentReplay: false, sourceComplete: false,
+      sourceRowCount: input.snapshot.rows.length, createdCases: 0, updatedCases: 0,
+      evaluations: 0, newNotApproved: 0,
+    };
   }
 
   let createdCases = 0;
@@ -154,6 +167,7 @@ export async function syncExpenseRequestAdminAudit(input: {
             amount: row.amount,
             operation: businessOperation.name || evaluation.category,
             comment: row.comment,
+            queueTelegramDelivery: input.queueTelegramDelivery === true,
           });
         }
         const normalizedSource = normalizeExpenseRequestForAudit(row) as Prisma.InputJsonValue;

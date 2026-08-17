@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Prisma } from '@prisma/client';
 
-type AdminInboxDb = Pick<Prisma.TransactionClient, 'user' | 'adminInboxEvent' | 'adminInboxReceipt'>;
+type AdminInboxDb = Pick<Prisma.TransactionClient, 'user' | 'adminInboxEvent' | 'adminInboxReceipt' | 'adminInboxDelivery'>;
 
 function text(value: unknown) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -50,6 +50,7 @@ export async function createExpenseRequestAdminInboxEvent(input: {
   amount: unknown;
   operation: string;
   comment: unknown;
+  queueTelegramDelivery?: boolean;
 }) {
   const admins = await input.db.user.findMany({
     where: { role: 'ADMIN', isActive: true },
@@ -73,6 +74,13 @@ export async function createExpenseRequestAdminInboxEvent(input: {
     await input.db.adminInboxReceipt.createMany({
       data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })),
       skipDuplicates: true,
+    });
+  }
+  if (input.queueTelegramDelivery) {
+    await input.db.adminInboxDelivery.upsert({
+      where: { eventId_channel_recipientKey: { eventId: event.id, channel: 'telegram', recipientKey: 'offonika_control_owner' } },
+      create: { eventId: event.id, channel: 'telegram', recipientKey: 'offonika_control_owner' },
+      update: {},
     });
   }
   return { eventId: event.id, recipientCount: admins.length };
