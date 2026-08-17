@@ -115,11 +115,15 @@ The integration provides:
 - no employee attribution from OFD operator, workstation or employee-to-device
   assignment. Ambiguous or incomplete cases remain ADMIN-only.
 
-The neutral missing-check employee-review branch is temporarily disabled in
-production. It must not be re-enabled until an aggregate per-terminal guard
-proves that the T-Bank operation is not already covered by a 1C card check
-outside the strict five-minute matching window. Core matching, hard mismatch
-control and ADMIN visibility stay enabled.
+Employee delivery for the neutral missing-check review is disabled while the
+production runner operates in shadow mode. The shadow path records a candidate
+only after an aggregate per-terminal/KKM guard proves that the bank operation is
+not covered by a distinct eligible 1C card check of the same operation type and
+amount. It never reuses a 1C check; incomplete, partial, conflicting and paired
+sale/refund evidence remains ADMIN-only. Checks already available at the actual
+1C read time can suppress a notification even when their document time falls
+just outside the matching period. Core `mvp-1`, its strict five-minute window,
+hard mismatch control and ADMIN visibility stay unchanged.
 
 The 120-minute matching grace remains the final technical classification
 boundary. It is not the employee-notification delay and does not turn a neutral
