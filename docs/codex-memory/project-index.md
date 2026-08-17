@@ -60,7 +60,10 @@ project from scratch.
 - Retail workstations are equipment-topology labels only. They group versioned
   `TerminalFiscalMapping` chains, but are never assigned to employees or shifts.
   Terminal-fiscal employee attribution uses only a confirmed 1C `cashier.ref`;
-  operations without a mapped 1C cashier remain ADMIN-only.
+  hard mismatches without a mapped 1C cashier remain ADMIN-only. A missing 1C
+  check may create a neutral employee review only after a complete read at least
+  ten minutes after payment and only when nearby checks of the same KKM identify
+  one mapped cashier; ambiguity remains ADMIN-only.
 
 ## Known Dirty-Tree Context
 

@@ -75,9 +75,8 @@ employee answers:
   from register movements at the task completion time;
 - handover compares the employee cashbox and the shared 1C cashbox named
   `Резерв под телефоны`;
-- terminal-operation declarations are stored by interval, but remain
-  unavailable for objective automatic verification until a reliable source for
-  all operations of the current terminal is connected;
+- terminal operations are checked through the automatic T-Bank -> 1C -> OFD
+  matching lifecycle described below;
 - credit/installment declarations use posted realizations for the controlled
   partner, match the 1C manager name to the employee, and require an exact
   fiscal-operation record for each realization;
@@ -90,10 +89,14 @@ employee answers:
 These checks are admin-side evidence. They do not overwrite manual answers and
 do not block task completion.
 
-## T-Bank Acquiring Shadow Integration
+## Automated T-Bank Acquiring Control
 
-The first read-only T-Bank acquiring integration stage is implemented without
-changing employee checklist behavior:
+Both retail terminal chains are reconciled automatically through T-Bank -> 1C
+-> OFD. Manual acquiring checks and terminal-receipt photos are no longer part
+of active retail templates or shift handover. Completed historical answers and
+photos remain available as audit history.
+
+The integration provides:
 
 - `lib/tbank-acquiring.ts` reads active terminals and terminal operations from
   the official T-API trading acquiring endpoints;
@@ -103,27 +106,21 @@ changing employee checklist behavior:
   authenticated administrator;
 - card numbers are reduced to a masked last-four display and amounts are
   normalized from kopecks to rubles;
-- no T-Bank data is persisted yet and no employee declaration is overwritten or
-  automatically completed.
+- idempotent matching audit and a hard-mismatch lifecycle;
+- a neutral missing-check review after the first complete T-Bank/1C read at
+  least ten minutes after payment, only when nearby checks on the same KKM have
+  exactly one mapped `cashier.ref`;
+- one employee notification per operation, automatic closure when the 1C check
+  later appears, and a small operation-specific employee/ADMIN discussion;
+- no employee attribution from OFD operator, workstation or employee-to-device
+  assignment. Ambiguous or incomplete cases remain ADMIN-only.
 
-The admin diagnostic page also has a date-based shadow comparison for confirmed
-terminal-to-1C cash-register mappings. It matches each T-Bank payment to no more
-than one 1C card check by exact amount and a five-minute time window, and shows
-payments found only in T-Bank or only in 1C. Returns stay outside the mismatch
-count until the 1C source proves their complete composition. The comparison is
-currently day-based; checklist-interval statuses are a later step after the
-shadow results and source latency are validated.
-
-Keep this integration in shadow mode until production credentials, terminal
-mapping and real operation latency have been verified. T-API documents that
-terminal operations can arrive with a delay of up to two hours, so absence of a
-fresh operation must not yet be treated as proof that an employee made an
-incorrect declaration.
+The 120-minute matching grace remains the final technical classification
+boundary. It is not the employee-notification delay and does not turn a neutral
+missing-check review into an accusation or a hard mismatch.
 
 Current limitations must stay visible:
 
-- the current terminal source does not yet prove all operations inside each
-  employee checklist interval;
 - current KKM endpoints show receipt activity but do not prove that an X-report
   or Z-report was generated;
 - T-Bank terminal totals are not compared with realization totals because the
@@ -204,10 +201,8 @@ contradictory; the contradiction should surface as an admin warning/control
 event rather than blocking the employee from finishing the day.
 
 When adding new checklist flows, do not encode "truth" into fields such as
-`integerValue`. For example, `0` on a credit/acquiring task should mean "the
-employee declared there were no operations", not "the system proved there were
-no operations". Future 1C/OFD checks should attach their own result and evidence
-beside the manual response.
+`integerValue`. Employee declarations and automatic 1C/OFD evidence must remain
+separate.
 
 For cash specifically: the employee enters the real counted amount first. The
 expected 1C cash balance should not be shown in a way that encourages copying
@@ -232,31 +227,11 @@ cash movement happens. In Offonika's current process, the money is physically in
 one main cashbox; KKM cash movements in 1C are formal accounting cleanup and
 should become a system/admin control, not an employee checklist step.
 
-For daily T-Bank checks, do not ask for a manual amount. T-Bank can include
-credits, initial payments and full payments, so a single employee-entered amount
-is ambiguous. The employee declares `no operations`, `check completed`, or
-`problem`; this is a procedure declaration, not objective truth. Photos of
-T-Bank receipts remain in shift handover when operations happened. Objective
-matching should come later from 1C/OFD/AQSI/control events.
-
-Terminal-operation checks use bank-neutral employee copy: `Проверка операций
-терминала`, `Операции терминала`, and `Чеки терминала`. The employee first says
-whether new operations occurred since the last successfully completed terminal
-check. If not, the step ends. If yes, the employee records whether reconciliation
-with 1C matched, adds a required comment for a discrepancy, and attaches a photo
-of only the new receipts. No manual terminal total is collected.
-
-The next interval starts at `completedAt` of the last successfully completed
-terminal check. A missed or unfinished check does not advance the boundary, so
-the next completed check covers the accumulated interval. Employee copy shows a
-simple concrete boundary time when available and falls back to `после предыдущей
-проверки`; it never explains the calculation.
-
-The same terminal flow is used during shift handover. Credit/instalment tasks
-remain a separate process until their document-specific business rules are
-redesigned; they must not advance the terminal-check interval. Shift handover
-must not add a second bank-specific T-Bank question after the neutral terminal
-flow.
+Do not reintroduce manual terminal reconciliation, manual totals or receipt
+photos into retail checklists. Confirmed operations require no employee action.
+A hard mismatch follows its existing addressed lifecycle. A missing 1C check is
+shown with neutral copy (`Чек <время> — <сумма> в 1С не найден. Проверьте
+продажу.`) only after the safe-read and unique-cashier conditions above.
 
 Credit/installment checklist answers are still employee declarations, but the
 admin result now has objective read-only 1C evidence. The portal follows each
@@ -287,10 +262,6 @@ Examples:
   распечатанный чек.`
 - `Чек закрытия смены` - `Закройте смену на кассе и сфотографируйте
   распечатанный чек.`
-- `Проверка операций терминала` - `Были новые операции после предыдущей проверки?`
-- `Чеки терминала` - `Сфотографируйте чеки после 13:30.`
-- `Сверка итогов Т-Банка` - `Выполните "Сверку итогов" и сфотографируйте чек.`
-- `Чеки Т-Банка` - `Сфотографируйте все чеки Т-Банка за смену.`
 
 ## Admin Control UX
 
