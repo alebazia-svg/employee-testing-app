@@ -63,7 +63,9 @@ project from scratch.
   hard mismatches without a mapped 1C cashier remain ADMIN-only. A missing 1C
   check may create a neutral employee review only after a complete read at least
   ten minutes after payment and only when nearby checks of the same KKM identify
-  one mapped cashier; ambiguity remains ADMIN-only.
+  one mapped cashier; ambiguity remains ADMIN-only. This employee-review branch
+  is temporarily disabled in production pending an aggregate terminal/1C
+  coverage guard; matching and ADMIN control remain active.
 
 ## Known Dirty-Tree Context
 

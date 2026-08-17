@@ -115,6 +115,12 @@ The integration provides:
 - no employee attribution from OFD operator, workstation or employee-to-device
   assignment. Ambiguous or incomplete cases remain ADMIN-only.
 
+The neutral missing-check employee-review branch is temporarily disabled in
+production. It must not be re-enabled until an aggregate per-terminal guard
+proves that the T-Bank operation is not already covered by a 1C card check
+outside the strict five-minute matching window. Core matching, hard mismatch
+control and ADMIN visibility stay enabled.
+
 The 120-minute matching grace remains the final technical classification
 boundary. It is not the employee-notification delay and does not turn a neutral
 missing-check review into an accusation or a hard mismatch.
