@@ -111,7 +111,9 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       });
       if (input.syncWorkdayControl === true) {
         await syncTerminalFiscalWorkdayControl(prisma, output);
-        await syncTerminalFiscalEmployeeReviews(prisma, { output, mapping, oneCChecks: periodOneCChecks });
+        if (process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED === 'true') {
+          await syncTerminalFiscalEmployeeReviews(prisma, { output, mapping, oneCChecks: periodOneCChecks });
+        }
       }
     }
     const summary = summarizeTerminalFiscalOutput(output);
