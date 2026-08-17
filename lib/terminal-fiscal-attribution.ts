@@ -3,9 +3,6 @@ import type { MatchingReasonCode, MatchingStatus } from '@/lib/terminal-fiscal-m
 export type TerminalFiscalAttributionInput = {
   status: MatchingStatus;
   reasonCode: MatchingReasonCode;
-  bankOperationAt: Date | null;
-  oneCCashRegisterRef: string | null;
-  workstationId?: string | null;
   oneCCashierRef: string | null;
 };
 
@@ -14,19 +11,10 @@ export type TerminalFiscalCashierEmployeeMapping = {
   oneCCashierRef: string;
 };
 
-export type TerminalFiscalAssignmentInterval = {
-  userId: number;
-  oneCCashRegisterRef: string | null;
-  workstationId?: string | null;
-  source?: string;
-  effectiveFrom: Date;
-  effectiveTo: Date | null;
-};
-
 export type TerminalFiscalAttributionResult = {
   employeeId: number | null;
   effectiveStatus: MatchingStatus;
-  source: 'one_c_cashier' | 'workstation_context' | 'kkm_assignment' | 'conflict' | 'none';
+  source: 'one_c_cashier' | 'conflict' | 'none';
   adminProblem: boolean;
 };
 
@@ -55,64 +43,24 @@ export function suggestTerminalFiscalCashierMappings(
 export function attributeTerminalFiscalEmployee(
   record: TerminalFiscalAttributionInput,
   cashierMappings: TerminalFiscalCashierEmployeeMapping[],
-  assignments: TerminalFiscalAssignmentInterval[],
 ): TerminalFiscalAttributionResult {
   const adminProblem = record.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND';
-  const operationAt = record.bankOperationAt?.getTime();
-  const assignmentCandidates = operationAt === undefined ? [] : assignments.filter((assignment) => (
-    (record.workstationId
-      ? assignment.workstationId === record.workstationId
-      : Boolean(record.oneCCashRegisterRef) && assignment.oneCCashRegisterRef === record.oneCCashRegisterRef)
-    && assignment.effectiveFrom.getTime() <= operationAt
-    && (!assignment.effectiveTo || operationAt < assignment.effectiveTo.getTime())
-  ));
   const cashierCandidates = record.oneCCashierRef
     ? cashierMappings.filter((mapping) => mapping.oneCCashierRef === record.oneCCashierRef)
     : [];
 
   if (cashierCandidates.length === 1) {
-    const cashierUserId = cashierCandidates[0].userId;
-    if (assignmentCandidates.length === 1 && assignmentCandidates[0].userId !== cashierUserId) {
-      return { employeeId: null, effectiveStatus: 'needs_review', source: 'conflict', adminProblem: true };
-    }
-    if (assignmentCandidates.length > 1) {
-      return { employeeId: null, effectiveStatus: 'needs_review', source: 'conflict', adminProblem: true };
-    }
-    return { employeeId: cashierUserId, effectiveStatus: record.status, source: 'one_c_cashier', adminProblem };
+    return { employeeId: cashierCandidates[0].userId, effectiveStatus: record.status, source: 'one_c_cashier', adminProblem };
   }
 
   if (cashierCandidates.length > 1) {
     return { employeeId: null, effectiveStatus: 'needs_review', source: 'conflict', adminProblem: true };
   }
 
-  if (adminProblem) {
-    const workstationCandidates = assignmentCandidates.filter((assignment) => (
-      Boolean(assignment.workstationId) && ['device_login', 'manual_select'].includes(assignment.source ?? '')
-    ));
-    if (workstationCandidates.length === 1) {
-      return {
-        employeeId: workstationCandidates[0].userId,
-        effectiveStatus: record.status,
-        source: 'workstation_context',
-        adminProblem: true,
-      };
-    }
-    return { employeeId: null, effectiveStatus: record.status, source: 'none', adminProblem: true };
-  }
-
-  if (assignmentCandidates.length === 1) {
-    return {
-      employeeId: assignmentCandidates[0].userId,
-      effectiveStatus: record.status,
-      source: assignmentCandidates[0].workstationId ? 'workstation_context' : 'kkm_assignment',
-      adminProblem,
-    };
-  }
-
   return {
     employeeId: null,
-    effectiveStatus: assignmentCandidates.length > 1 ? 'needs_review' : record.status,
-    source: assignmentCandidates.length > 1 ? 'conflict' : 'none',
-    adminProblem: adminProblem || assignmentCandidates.length > 1,
+    effectiveStatus: record.status,
+    source: 'none',
+    adminProblem,
   };
 }

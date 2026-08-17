@@ -1228,14 +1228,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const kkmAssignmentByUser = new Map(activeKkmAssignments.map((assignment) => [assignment.userId, assignment]));
   const terminalFiscalAttribution = attributeTerminalFiscalRecordsToEmployees(
     terminalFiscalSummary?.attributionRecords ?? [],
-    kkmAssignments.map((assignment) => ({
-      userId: assignment.userId,
-      oneCCashRegisterRef: assignment.oneCCashRegisterRef,
-      workstationId: assignment.workstationId,
-      source: assignment.source,
-      effectiveFrom: assignment.effectiveFrom,
-      effectiveTo: assignment.effectiveTo,
-    })),
     employees.flatMap((employee) => employee.oneCCashboxMapping?.isActive && employee.oneCCashboxMapping.oneCCashierRef
       ? [{ userId: employee.id, oneCCashierRef: employee.oneCCashboxMapping.oneCCashierRef }]
       : []),

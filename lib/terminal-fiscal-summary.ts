@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import type { MatchingReasonCode, MatchingStatus, TerminalFiscalMatchingOutput } from '@/lib/terminal-fiscal-matching';
 import {
   attributeTerminalFiscalEmployee,
-  type TerminalFiscalAssignmentInterval,
   type TerminalFiscalCashierEmployeeMapping,
 } from '@/lib/terminal-fiscal-attribution';
 
@@ -30,8 +29,6 @@ export type TerminalFiscalAttributionRecord = {
   reasonCode: MatchingReasonCode;
   candidateCount: number;
   bankOperationAt: Date | null;
-  oneCCashRegisterRef: string | null;
-  workstationId?: string | null;
   oneCCashierRef: string | null;
 };
 
@@ -52,13 +49,12 @@ export function presentTerminalFiscalEmployeeControl(control: TerminalFiscalEmpl
 
 export function attributeTerminalFiscalRecordsToEmployees(
   records: TerminalFiscalAttributionRecord[],
-  assignments: TerminalFiscalAssignmentInterval[],
   cashierMappings: TerminalFiscalCashierEmployeeMapping[] = [],
 ) {
   const attributed = new Map<number, TerminalFiscalAttributionRecord[]>();
   const unassigned: TerminalFiscalAttributionRecord[] = [];
   for (const record of records) {
-    const attribution = attributeTerminalFiscalEmployee(record, cashierMappings, assignments);
+    const attribution = attributeTerminalFiscalEmployee(record, cashierMappings);
     const effectiveRecord = attribution.effectiveStatus === record.status ? record : { ...record, status: attribution.effectiveStatus };
     if (attribution.employeeId === null) {
       unassigned.push(effectiveRecord);
@@ -200,7 +196,6 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
       candidateCount: true,
       bankOperationAt: true,
       oneCCashierRef: true,
-      mapping: { select: { oneCCashRegisterRef: true, workstationId: true } },
     },
   });
   const attributionRecords: TerminalFiscalAttributionRecord[] = matches.map((match) => ({
@@ -208,8 +203,6 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
     reasonCode: match.reasonCode as MatchingReasonCode,
     candidateCount: match.candidateCount,
     bankOperationAt: match.bankOperationAt,
-    oneCCashRegisterRef: match.mapping?.oneCCashRegisterRef ?? null,
-    workstationId: match.mapping?.workstationId ?? null,
     oneCCashierRef: match.oneCCashierRef,
   }));
   return {

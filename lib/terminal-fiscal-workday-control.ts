@@ -76,45 +76,20 @@ export async function syncTerminalFiscalWorkdayControl(
     }
 
     const operationAt = new Date(record.evidence.bankTransactionDate);
-    if (Number.isNaN(operationAt.getTime()) || !record.mappingId) {
+    if (Number.isNaN(operationAt.getTime())) {
       unassigned += 1;
       continue;
     }
-    const mapping = await prisma.terminalFiscalMapping.findUnique({
-      where: { id: record.mappingId },
-      select: { oneCCashRegisterRef: true, workstationId: true },
-    });
-    if (!mapping) {
-      unassigned += 1;
-      continue;
-    }
-    const [assignments, cashierMappings] = await Promise.all([
-      prisma.workdayKkmAssignment.findMany({
-        where: {
-          date: moscowDateKey(operationAt),
-          ...(mapping.workstationId
-            ? { workstationId: mapping.workstationId }
-            : { oneCCashRegisterRef: mapping.oneCCashRegisterRef }),
-          effectiveFrom: { lte: operationAt },
-          OR: [{ effectiveTo: null }, { effectiveTo: { gt: operationAt } }],
-        },
-        select: { userId: true, oneCCashRegisterRef: true, workstationId: true, source: true, effectiveFrom: true, effectiveTo: true },
-        take: 2,
-      }),
-      record.oneCCashierRef ? prisma.userOneCCashboxMapping.findMany({
+    const cashierMappings = record.oneCCashierRef ? await prisma.userOneCCashboxMapping.findMany({
         where: { oneCCashierRef: record.oneCCashierRef, isActive: true },
         select: { userId: true, oneCCashierRef: true },
         take: 2,
-      }) : Promise.resolve([]),
-    ]);
+      }) : [];
     const attribution = attributeTerminalFiscalEmployee({
       status: record.status,
       reasonCode: record.reasonCode,
-      bankOperationAt: operationAt,
-      oneCCashRegisterRef: mapping.oneCCashRegisterRef,
-      workstationId: mapping.workstationId,
       oneCCashierRef: record.oneCCashierRef ?? null,
-    }, cashierMappings.flatMap((row) => row.oneCCashierRef ? [{ userId: row.userId, oneCCashierRef: row.oneCCashierRef }] : []), assignments);
+    }, cashierMappings.flatMap((row) => row.oneCCashierRef ? [{ userId: row.userId, oneCCashierRef: row.oneCCashierRef }] : []));
     if (attribution.employeeId === null || attribution.effectiveStatus !== 'mismatch') {
       unassigned += 1;
       continue;

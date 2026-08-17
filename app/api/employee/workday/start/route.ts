@@ -1,9 +1,7 @@
-import { cookies } from 'next/headers';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getLateMinutes, getMoscowDateKey, getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl } from '@/lib/workday';
 import { scheduleTaskNotifications } from '@/lib/workday-notifications';
-import { openWorkstationAssignment, resolveWorkstationContext, WORKSTATION_COOKIE_NAME } from '@/lib/workstation-context';
 
 async function ensureTaskNotifications(userId: number, date: string, tasks: Array<{ id: number; title: string; category: string; plannedTimeMinutes: number | null }>) {
   await scheduleTaskNotifications(prisma, tasks.map((task) => ({ ...task, userId, run: { date } })));
@@ -55,60 +53,13 @@ async function ensureShiftControlRun(user: { id: number; name: string; login: st
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  const currentUser = user;
-
   const payload = await req.json().catch(() => ({}));
   const { shiftCode, comment } = payload;
-  const manualWorkstationCode = typeof payload.workstationCode === 'string' ? payload.workstationCode : null;
   const shift = getShiftOption(typeof shiftCode === 'string' ? shiftCode : '');
   const now = new Date();
   const date = getMoscowDateKey(now);
   const lateMinutes = getLateMinutes(shift.startMinutes, getMoscowMinutes(now));
   const hasShiftControl = usesWorkdayShiftControl(user);
-
-  async function attachWorkstationContext(workDay: { id: number; date: string; shiftCode: string; endedAt?: Date | null }) {
-    if (currentUser.department !== 'retail' || workDay.endedAt) return { status: 'not_applicable' as const };
-    try {
-      const context = await resolveWorkstationContext(prisma, {
-        token: cookies().get(WORKSTATION_COOKIE_NAME)?.value,
-        manualCode: manualWorkstationCode,
-      });
-      if (context.status !== 'resolved') return { status: context.status };
-      const activeEquipmentMappings = await prisma.terminalFiscalMapping.findMany({
-        where: {
-          workstationId: context.workstation.id,
-          isActive: true,
-          effectiveFrom: { lte: now },
-          OR: [{ effectiveTo: null }, { effectiveTo: { gt: now } }],
-        },
-        select: { oneCCashRegisterRef: true },
-        take: 2,
-      });
-      const equipment = activeEquipmentMappings.length === 1
-        ? {
-            oneCCashRegisterRef: activeEquipmentMappings[0].oneCCashRegisterRef,
-            oneCCashRegisterName: null,
-          }
-        : null;
-      const assignment = await openWorkstationAssignment(prisma, {
-        userId: currentUser.id,
-        date: workDay.date,
-        workDayEntryId: workDay.id,
-        shiftCode: workDay.shiftCode,
-        workstation: context.workstation,
-        equipment,
-        deviceBindingId: context.deviceBindingId,
-        source: context.source,
-        now,
-      });
-      return assignment.action === 'conflict'
-        ? { status: 'conflict' as const }
-        : { status: 'assigned' as const, workstationCode: context.workstation.code };
-    } catch {
-      // Workstation context is a safe fallback and must never prevent a shift start.
-      return { status: 'unavailable' as const };
-    }
-  }
 
   if (hasShiftControl && !isShiftSupportedForDepartment(user.department, shift.code)) {
     return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
@@ -121,18 +72,16 @@ export async function POST(req: Request) {
         ? await ensureShiftControlRun({ id: user.id, name: user.name, login: user.login, department: user.department }, existing, now)
         : null;
     if (shiftControlRun) await ensureTaskNotifications(user.id, existing.date, shiftControlRun.tasks);
-    const workstationContext = await attachWorkstationContext(existing);
     return Response.json({
       workDay: existing,
       shiftControlRun,
       alreadyStarted: true,
       message: 'Рабочий день уже начат',
-      workstationContext,
     });
   }
 
   const kkmAssignment = user.department === 'retail'
-    ? await prisma.workdayKkmAssignment.findFirst({ where: { userId: user.id, date, effectiveTo: null, workstationId: null }, orderBy: { effectiveFrom: 'desc' } })
+    ? await prisma.workdayKkmAssignment.findFirst({ where: { userId: user.id, date, effectiveTo: null }, orderBy: { effectiveFrom: 'desc' } })
     : null;
 
   const workDayData = {
@@ -157,8 +106,7 @@ export async function POST(req: Request) {
       }
       return created;
     });
-    const workstationContext = await attachWorkstationContext(workDay);
-    return Response.json({ workDay, workstationContext, alreadyStarted: false });
+    return Response.json({ workDay, alreadyStarted: false });
   }
 
   const template = await prisma.shiftControlTemplate.findFirst({
@@ -205,7 +153,5 @@ export async function POST(req: Request) {
   });
 
   await ensureTaskNotifications(user.id, workDay.date, shiftControlRun.tasks);
-  const workstationContext = await attachWorkstationContext(workDay);
-
-  return Response.json({ workDay, shiftControlRun, workstationContext, alreadyStarted: false });
+  return Response.json({ workDay, shiftControlRun, alreadyStarted: false });
 }

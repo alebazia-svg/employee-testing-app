@@ -91,30 +91,6 @@ test('issue lifecycle is idempotent and resolves only after confirmed matching',
   assert.equal(notifications[0].status, 'cancelled');
 });
 
-test('cashier and assignment conflict never creates an employee issue', async () => {
-  let issues = 0;
-  let notifications = 0;
-  const db: any = {
-    terminalFiscalMapping: { findUnique: async () => ({ oneCCashRegisterRef: 'kkm-1' }) },
-    workdayKkmAssignment: { findMany: async () => [{ userId: 7, oneCCashRegisterRef: 'kkm-1', effectiveFrom: new Date('2026-08-09T06:00:00.000Z'), effectiveTo: null }] },
-    userOneCCashboxMapping: { findMany: async () => [{ userId: 8, oneCCashierRef: 'cashier-milana' }] },
-    workdayControlIssue: { upsert: async () => { issues += 1; } },
-    workdayNotification: { create: async () => { notifications += 1; } },
-  };
-  const record: TerminalFiscalMatchingOutput['records'][number] = {
-    matchingKey: 'conflict', version: 'mvp-1', status: 'mismatch', reasonCode: 'OFD_TOTAL_AMOUNT_MISMATCH',
-    evaluatedAt: '2026-08-09T10:00:00.000Z', graceUntil: '2026-08-09T09:00:00.000Z', mappingId: 'mapping-1',
-    bankOperationKey: 'private', operationType: 'sale', amountKopecks: 100, candidateCount: 1,
-    oneCCashierRef: 'cashier-milana', oneCCashierName: 'Чеченова Милана',
-    evidence: { bankTransactionDate: '2026-08-09T07:30:00.000Z' },
-    sourceCheckedAt: { tbank: '2026-08-09T10:00:00.000Z', oneC: '2026-08-09T10:00:00.000Z', ofd: '2026-08-09T10:00:00.000Z' },
-    sourceCompleteness: { tbank: true, oneC: true, ofd: true }, history: [],
-  };
-  assert.deepEqual(await syncTerminalFiscalWorkdayControl(db as PrismaClient, { version: 'mvp-1', evaluatedAt: record.evaluatedAt, records: [record] }), { opened: 0, resolved: 0, reminders: 0, unassigned: 1 });
-  assert.equal(issues, 0);
-  assert.equal(notifications, 0);
-});
-
 test('missing 1C check stays admin-only and creates no employee side effects', async () => {
   const record: TerminalFiscalMatchingOutput['records'][number] = {
     matchingKey: 'missing-check', version: 'mvp-1', status: 'needs_review', reasonCode: 'ONE_C_CANDIDATE_NOT_FOUND',

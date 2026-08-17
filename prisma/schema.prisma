@@ -155,8 +155,8 @@ model ExpenseRequestAdminFeedback {
 }
 
 model AdminInboxEvent {
-  id         String              @id @default(cuid())
-  eventKey   String              @unique
+  id         String               @id @default(cuid())
+  eventKey   String               @unique
   type       String
   title      String
   body       String
@@ -164,7 +164,7 @@ model AdminInboxEvent {
   sourceType String
   sourceId   String
   occurredAt DateTime
-  createdAt  DateTime            @default(now())
+  createdAt  DateTime             @default(now())
   receipts   AdminInboxReceipt[]
   deliveries AdminInboxDelivery[]
 
@@ -234,34 +234,15 @@ model TerminalFiscalMapping {
 }
 
 model RetailWorkstation {
-  id                     String                     @id @default(cuid())
-  code                   String                     @unique
+  id                     String                  @id @default(cuid())
+  code                   String                  @unique
   label                  String
-  isActive               Boolean                    @default(true)
-  createdAt              DateTime                   @default(now())
-  updatedAt              DateTime                   @updatedAt
-  deviceBindings         WorkstationDeviceBinding[]
-  kkmAssignments         WorkdayKkmAssignment[]
+  isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
   terminalFiscalMappings TerminalFiscalMapping[]
 
   @@index([isActive, code])
-}
-
-model WorkstationDeviceBinding {
-  id                    String                 @id @default(cuid())
-  workstationId         String
-  tokenHash             String                 @unique
-  label                 String                 @default("")
-  isActive              Boolean                @default(true)
-  provisioningExpiresAt DateTime?
-  boundAt               DateTime?
-  revokedAt             DateTime?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  workstation           RetailWorkstation      @relation(fields: [workstationId], references: [id], onDelete: Cascade)
-  assignments           WorkdayKkmAssignment[]
-
-  @@index([workstationId, isActive, revokedAt])
 }
 
 model TerminalFiscalMatchRun {
@@ -374,8 +355,8 @@ model UserOneCCashboxMapping {
   oneCCashRegisterName      String?
   oneCAcquiringTerminalRef  String?
   oneCAcquiringTerminalName String?
-  oneCCashierRef             String?  @unique
-  oneCCashierName            String?
+  oneCCashierRef            String?  @unique
+  oneCCashierName           String?
   tbankTerminalId           String?
   kkmMode                   String   @default("personal")
   isActive                  Boolean  @default(true)
@@ -390,36 +371,30 @@ model UserOneCCashboxMapping {
 }
 
 model WorkdayKkmAssignment {
-  id                   Int                       @id @default(autoincrement())
+  id                   Int           @id @default(autoincrement())
   userId               Int
   date                 String
   plannedShiftCode     String?
   oneCCashRegisterRef  String?
   oneCCashRegisterName String?
-  kkmMode              String                    @default("personal")
-  source               String                    @default("manual")
-  note                 String                    @default("")
+  kkmMode              String        @default("personal")
+  source               String        @default("manual")
+  note                 String        @default("")
   effectiveFrom        DateTime
   effectiveTo          DateTime?
-  changeReason         String                    @default("")
+  changeReason         String        @default("")
   assignedById         Int?
-  assignedAt           DateTime                  @default(now())
+  assignedAt           DateTime      @default(now())
   workDayEntryId       Int?
-  workstationId        String?
-  deviceBindingId      String?
-  updatedAt            DateTime                  @updatedAt
-  user                 User                      @relation("WorkdayKkmAssignmentEmployee", fields: [userId], references: [id], onDelete: Cascade)
-  assignedBy           User?                     @relation("WorkdayKkmAssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
-  workDayEntry         WorkDayEntry?             @relation(fields: [workDayEntryId], references: [id], onDelete: SetNull)
-  workstation          RetailWorkstation?        @relation(fields: [workstationId], references: [id], onDelete: SetNull)
-  deviceBinding        WorkstationDeviceBinding? @relation(fields: [deviceBindingId], references: [id], onDelete: SetNull)
+  updatedAt            DateTime      @updatedAt
+  user                 User          @relation("WorkdayKkmAssignmentEmployee", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy           User?         @relation("WorkdayKkmAssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  workDayEntry         WorkDayEntry? @relation(fields: [workDayEntryId], references: [id], onDelete: SetNull)
 
   @@index([userId, date, effectiveFrom])
   @@index([date, effectiveFrom, effectiveTo])
   @@index([oneCCashRegisterRef, date])
   @@index([assignedById, assignedAt])
-  @@index([workstationId, date, effectiveFrom, effectiveTo])
-  @@index([deviceBindingId, effectiveFrom, effectiveTo])
 }
 
 model WorkScheduleEntry {
