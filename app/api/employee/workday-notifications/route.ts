@@ -17,8 +17,10 @@ export async function GET() {
       readAt: true,
       taskId: true,
       issueId: true,
+      reviewId: true,
       task: { select: { status: true, run: { select: { status: true } } } },
       issue: { select: { status: true } },
+      review: { select: { status: true } },
     },
   });
   const seenTargets = new Set<string>();
@@ -26,15 +28,19 @@ export async function GET() {
     .filter((notification) => {
       if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
       if (notification.issue) return notification.issue.status === 'open';
+      if (notification.review) return notification.review.status === 'open';
       return true;
     })
     .filter((notification) => {
-      const target = notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : `notification:${notification.id}`;
+      const target = notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : `notification:${notification.id}`;
       if (seenTargets.has(target)) return false;
       seenTargets.add(target);
       return true;
     })
-    .map(({ task: _task, issue: _issue, ...notification }) => notification);
+    .map(({ task: _task, issue: _issue, review: _review, ...notification }) => ({
+      ...notification,
+      href: notification.reviewId ? `/employee/payment-checks/${notification.reviewId}` : '/employee',
+    }));
   return Response.json({ notifications });
 }
 

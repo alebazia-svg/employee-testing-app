@@ -118,6 +118,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     include: {
       task: { include: { run: { select: { status: true } } } },
       issue: true,
+      review: true,
       user: { include: { pushSubscriptions: { where: { disabledAt: null } } } },
     },
     orderBy: { scheduledAt: 'asc' },
@@ -129,7 +130,8 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   for (const notification of due) {
     const taskFinished = notification.task && (notification.task.status === 'done' || notification.task.status === 'missed' || notification.task.run.status !== 'active');
     const issueFinished = notification.issue && notification.issue.status !== 'open';
-    if (taskFinished || issueFinished) {
+    const reviewFinished = notification.review && notification.review.status !== 'open';
+    if (taskFinished || issueFinished || reviewFinished) {
       await prisma.workdayNotification.update({ where: { id: notification.id }, data: { status: 'cancelled' } });
       results.push({ id: notification.id, status: 'cancelled' });
       continue;
@@ -140,7 +142,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         title: notification.title,
         body: notification.body,
-        url: '/employee',
+        url: notification.reviewId ? `/employee/payment-checks/${notification.reviewId}` : '/employee',
         notificationId: notification.id,
       });
       for (const subscription of notification.user.pushSubscriptions) {

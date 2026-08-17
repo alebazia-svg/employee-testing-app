@@ -8,35 +8,37 @@ datasource db {
 }
 
 model User {
-  id                          Int                           @id @default(autoincrement())
-  name                        String
-  login                       String                        @unique
-  passwordHash                String
-  role                        String
-  department                  String                        @default("retail")
-  isActive                    Boolean                       @default(true)
-  payrollName                 String?
-  results                     Result[]
-  progresses                  AttemptProgress[]
-  resetTargets                AttemptReset[]                @relation("ResetTarget")
-  resetByActions              AttemptReset[]                @relation("ResetBy")
-  payrollRuns                 PayrollRun[]                  @relation("PayrollRunCreatedBy")
-  payrollAdjustments          PayrollAdjustment[]           @relation("PayrollAdjustmentCreatedBy")
-  workSchedules               WorkScheduleEntry[]
-  workDays                    WorkDayEntry[]
-  shiftControlRuns            ShiftControlRun[]
-  shiftControlManualReviews   ShiftControlManualReview[]    @relation("ShiftControlManualReviewReviewedBy")
-  cashOperations              CashOperation[]
-  oneCCashboxMapping          UserOneCCashboxMapping?
-  pushSubscriptions           WorkdayPushSubscription[]
-  workdayNotifications        WorkdayNotification[]
-  workdayControlIssues        WorkdayControlIssue[]
-  kkmAssignments              WorkdayKkmAssignment[]        @relation("WorkdayKkmAssignmentEmployee")
-  assignedKkmAssignments      WorkdayKkmAssignment[]        @relation("WorkdayKkmAssignmentAssignedBy")
-  expenseRequestCasesSeen     ExpenseRequestAdminCase[]     @relation("ExpenseRequestCaseSeenBy")
-  expenseRequestCasesReviewed ExpenseRequestAdminCase[]     @relation("ExpenseRequestCaseReviewedBy")
-  expenseRequestFeedback      ExpenseRequestAdminFeedback[]
-  adminInboxReceipts          AdminInboxReceipt[]
+  id                           Int                            @id @default(autoincrement())
+  name                         String
+  login                        String                         @unique
+  passwordHash                 String
+  role                         String
+  department                   String                         @default("retail")
+  isActive                     Boolean                        @default(true)
+  payrollName                  String?
+  results                      Result[]
+  progresses                   AttemptProgress[]
+  resetTargets                 AttemptReset[]                 @relation("ResetTarget")
+  resetByActions               AttemptReset[]                 @relation("ResetBy")
+  payrollRuns                  PayrollRun[]                   @relation("PayrollRunCreatedBy")
+  payrollAdjustments           PayrollAdjustment[]            @relation("PayrollAdjustmentCreatedBy")
+  workSchedules                WorkScheduleEntry[]
+  workDays                     WorkDayEntry[]
+  shiftControlRuns             ShiftControlRun[]
+  shiftControlManualReviews    ShiftControlManualReview[]     @relation("ShiftControlManualReviewReviewedBy")
+  cashOperations               CashOperation[]
+  oneCCashboxMapping           UserOneCCashboxMapping?
+  pushSubscriptions            WorkdayPushSubscription[]
+  workdayNotifications         WorkdayNotification[]
+  workdayControlIssues         WorkdayControlIssue[]
+  kkmAssignments               WorkdayKkmAssignment[]         @relation("WorkdayKkmAssignmentEmployee")
+  assignedKkmAssignments       WorkdayKkmAssignment[]         @relation("WorkdayKkmAssignmentAssignedBy")
+  expenseRequestCasesSeen      ExpenseRequestAdminCase[]      @relation("ExpenseRequestCaseSeenBy")
+  expenseRequestCasesReviewed  ExpenseRequestAdminCase[]      @relation("ExpenseRequestCaseReviewedBy")
+  expenseRequestFeedback       ExpenseRequestAdminFeedback[]
+  adminInboxReceipts           AdminInboxReceipt[]
+  terminalFiscalReviews        TerminalFiscalEmployeeReview[] @relation("TerminalFiscalReviewEmployee")
+  terminalFiscalReviewMessages TerminalFiscalReviewMessage[]  @relation("TerminalFiscalReviewMessageAuthor")
 }
 
 model ExpenseRequestSyncRun {
@@ -207,8 +209,8 @@ model AdminInboxReceipt {
 }
 
 model TerminalFiscalMapping {
-  id                       String                   @id @default(cuid())
-  label                    String                   @default("")
+  id                       String                         @id @default(cuid())
+  label                    String                         @default("")
   terminalKey              String
   tbankTerminalId          String?
   oneCAcquiringTerminalRef String
@@ -216,14 +218,15 @@ model TerminalFiscalMapping {
   kktRegistrationNumber    String
   effectiveFrom            DateTime
   effectiveTo              DateTime?
-  source                   String                   @default("manual")
-  isActive                 Boolean                  @default(true)
-  createdAt                DateTime                 @default(now())
-  updatedAt                DateTime                 @updatedAt
+  source                   String                         @default("manual")
+  isActive                 Boolean                        @default(true)
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
   workstationId            String?
-  workstation              RetailWorkstation?       @relation(fields: [workstationId], references: [id], onDelete: SetNull)
+  workstation              RetailWorkstation?             @relation(fields: [workstationId], references: [id], onDelete: SetNull)
   runs                     TerminalFiscalMatchRun[]
   matches                  TerminalFiscalMatch[]
+  employeeReviews          TerminalFiscalEmployeeReview[]
 
   @@index([terminalKey, effectiveFrom, effectiveTo])
   @@index([oneCAcquiringTerminalRef, effectiveFrom, effectiveTo])
@@ -344,6 +347,46 @@ model TerminalFiscalMatchEvaluation {
   @@unique([matchId, cycleKey])
   @@index([runId, evaluatedAt])
   @@index([status, reasonCode, evaluatedAt])
+}
+
+model TerminalFiscalEmployeeReview {
+  id                       String                        @id @default(cuid())
+  reviewKey                String                        @unique
+  matchingHash             String                        @unique
+  mappingId                String?
+  employeeId               Int
+  status                   String                        @default("open")
+  reasonCode               String
+  bankOperationAt          DateTime
+  amountKopecks            Int
+  cashierRefHash           String
+  attributionWindowMinutes Int                           @default(15)
+  detectedAt               DateTime                      @default(now())
+  lastCheckedAt            DateTime                      @default(now())
+  resolvedAt               DateTime?
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+  mapping                  TerminalFiscalMapping?        @relation(fields: [mappingId], references: [id], onDelete: Restrict)
+  employee                 User                          @relation("TerminalFiscalReviewEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  messages                 TerminalFiscalReviewMessage[]
+  notifications            WorkdayNotification[]
+
+  @@index([employeeId, status, bankOperationAt])
+  @@index([status, lastCheckedAt])
+  @@index([mappingId, bankOperationAt])
+}
+
+model TerminalFiscalReviewMessage {
+  id        String                       @id @default(cuid())
+  reviewId  String
+  authorId  Int
+  body      String
+  createdAt DateTime                     @default(now())
+  review    TerminalFiscalEmployeeReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  author    User                         @relation("TerminalFiscalReviewMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([reviewId, createdAt])
+  @@index([authorId, createdAt])
 }
 
 model UserOneCCashboxMapping {
@@ -597,29 +640,32 @@ model WorkdayControlIssue {
 }
 
 model WorkdayNotification {
-  id           Int                  @id @default(autoincrement())
+  id           Int                           @id @default(autoincrement())
   userId       Int
   taskId       Int?
   issueId      Int?
-  fingerprint  String               @unique
+  reviewId     String?
+  fingerprint  String                        @unique
   kind         String
   title        String
   body         String
-  status       String               @default("pending")
+  status       String                        @default("pending")
   scheduledAt  DateTime
   sentAt       DateTime?
   readAt       DateTime?
-  attemptCount Int                  @default(0)
-  lastError    String               @default("")
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  task         ShiftControlTask?    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  issue        WorkdayControlIssue? @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  attemptCount Int                           @default(0)
+  lastError    String                        @default("")
+  createdAt    DateTime                      @default(now())
+  updatedAt    DateTime                      @updatedAt
+  user         User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task         ShiftControlTask?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  issue        WorkdayControlIssue?          @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  review       TerminalFiscalEmployeeReview? @relation(fields: [reviewId], references: [id], onDelete: Cascade)
 
   @@index([userId, status, scheduledAt])
   @@index([taskId, kind])
   @@index([issueId, kind])
+  @@index([reviewId, kind])
 }
 
 model ShiftControlManualReview {

@@ -17,7 +17,10 @@ function when(value: string) {
   }).format(date);
 }
 function eventType(value: string) {
-  return ({ 'expense_request.created': 'Новая заявка на расход' } as Record<string, string>)[value] ?? value;
+  return ({
+    'expense_request.created': 'Новая заявка на расход',
+    'terminal_fiscal_review.employee_message': 'Сообщение по проверке продажи',
+  } as Record<string, string>)[value] ?? value;
 }
 
 export function AdminInboxListClient({ initialItems }: { initialItems: Item[] }) {

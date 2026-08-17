@@ -18,6 +18,7 @@ import { loadCompleteTBankOperations, loadOneCKkmChecks, loadPlatformaOfdReceipt
 import { getMoscowDateKey } from '@/lib/workday';
 import { summarizeTerminalFiscalOutput } from '@/lib/terminal-fiscal-summary';
 import { syncTerminalFiscalWorkdayControl } from '@/lib/terminal-fiscal-workday-control';
+import { syncTerminalFiscalEmployeeReviews } from '@/lib/terminal-fiscal-employee-review';
 
 function dateOnly(value: Date) {
   return getMoscowDateKey(value);
@@ -108,7 +109,10 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
         sourceCheckedAt: { tbank: tbank.checkedAt, oneC: oneC.checkedAt, ofd: ofd.checkedAt },
         sourceCompleteness: { tbank: tbank.complete, oneC: oneC.complete, ofd: ofd.complete },
       });
-      if (input.syncWorkdayControl === true) await syncTerminalFiscalWorkdayControl(prisma, output);
+      if (input.syncWorkdayControl === true) {
+        await syncTerminalFiscalWorkdayControl(prisma, output);
+        await syncTerminalFiscalEmployeeReviews(prisma, { output, mapping, oneCChecks: periodOneCChecks });
+      }
     }
     const summary = summarizeTerminalFiscalOutput(output);
     return {

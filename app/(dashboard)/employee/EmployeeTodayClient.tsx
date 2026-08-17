@@ -1095,8 +1095,6 @@ export function EmployeeTodayClient({
       'personalCashBalance',
       ...(draftDiscrepancyAmount !== null && draftDiscrepancyAmount > 300 ? ['discrepancy'] : []),
       ...(isRetailEmployee ? ['reserveCashBalance'] : []),
-      ...(isRetailEmployee ? ['terminalQuestion'] : []),
-      ...(isRetailEmployee && draft.terminalHadOperations === 'yes' ? ['terminalReconciliation', 'terminalReceipts'] : []),
       ...(draftRequiresEncashment ? ['encashment'] : []),
       ...(isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode) ? ['zReportPhoto'] : []),
     ] as const;

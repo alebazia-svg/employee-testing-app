@@ -415,10 +415,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const reserveCashBalance = readNumber(reserveCash.cashBalance);
     const discrepancyType = typeof personalCash.discrepancyType === 'string' ? personalCash.discrepancyType : '';
     const discrepancyAmount = readNumber(personalCash.discrepancyAmount);
-    const terminalCheck = readRecord(handoverData, 'terminalCheck') ?? {};
-    const terminalHadOperations = readBoolean(terminalCheck.hadOperations);
-    const terminalReconciliation = typeof terminalCheck.reconciliation === 'string' ? terminalCheck.reconciliation : '';
-    const terminalComment = typeof terminalCheck.comment === 'string' ? terminalCheck.comment.trim() : '';
     const encashmentAmount = readNumber(personalCash.encashmentAmount);
     const encashmentDirection = typeof personalCash.encashmentDirection === 'string' ? personalCash.encashmentDirection : '';
     const comment = isRecord(handoverData) && typeof handoverData.comment === 'string' ? handoverData.comment.trim() : '';
@@ -433,18 +429,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return Response.json({ error: 'Не удалось определить расхождение по кассе' }, { status: 400 });
     }
     if (requiresDiscrepancyComment && !comment) return Response.json({ error: 'Добавьте комментарий: расхождение больше 300 ₽' }, { status: 400 });
-    if (isRetail) {
-      if (terminalHadOperations === null) return Response.json({ error: 'Укажите, были ли новые операции терминала' }, { status: 400 });
-      if (terminalHadOperations && !['matched', 'discrepancy'].includes(terminalReconciliation)) {
-        return Response.json({ error: 'Укажите результат сверки терминала с 1С' }, { status: 400 });
-      }
-      if (terminalHadOperations && terminalReconciliation === 'discrepancy' && !terminalComment) {
-        return Response.json({ error: 'Опишите расхождение по операциям терминала' }, { status: 400 });
-      }
-      if (terminalHadOperations && !hasSavedPhoto(handoverData, 'terminalReceipts')) {
-        return Response.json({ error: 'Сфотографируйте новые чеки терминала' }, { status: 400 });
-      }
-    }
     if (requiresEncashment) {
       if (encashmentAmount === null) return Response.json({ error: 'Укажите сумму инкассации' }, { status: 400 });
       if (!['phone_reserve', 'deposit_safe'].includes(encashmentDirection)) {
@@ -537,18 +521,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         }
       }
 
-      const previousTerminalTask = await prisma.shiftControlTask.findFirst({
-        where: {
-          runId: task.runId,
-          category: 'acquiring',
-          status: 'done',
-          completedAt: { not: null },
-        },
-        orderBy: { completedAt: 'desc' },
-      });
       const photos = {
         personalStatement: savedPhoto(handoverData, 'personalStatement'),
-        terminalReceipts: isRetail && terminalHadOperations ? savedPhoto(handoverData, 'terminalReceipts') : null,
         zReport: isClosingEmployee ? savedPhoto(handoverData, 'zReport') : null,
         encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
       };
@@ -580,14 +554,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           encashmentDirection: requiresEncashment ? encashmentDirection : null,
         },
         reserveCash: isRetail ? { cashBalance: reserveCashBalance } : null,
-        terminalCheck: isRetail ? {
-          intervalFrom: previousTerminalTask?.completedAt?.toISOString() ?? task.run.workDayEntry.startedAt.toISOString(),
-          intervalTo: now.toISOString(),
-          previousTaskId: previousTerminalTask?.id ?? null,
-          hadOperations: terminalHadOperations,
-          reconciliation: terminalHadOperations ? terminalReconciliation : 'not_required',
-          comment: terminalReconciliation === 'discrepancy' ? terminalComment : '',
-        } : null,
+        terminalCheck: null,
         storeClosing: isClosingEmployee
           ? {
               zReportRequired: true,
