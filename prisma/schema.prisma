@@ -8,31 +8,179 @@ datasource db {
 }
 
 model User {
-  id                        Int                        @id @default(autoincrement())
-  name                      String
-  login                     String                     @unique
-  passwordHash              String
-  role                      String
-  department                String                     @default("retail")
-  isActive                  Boolean                    @default(true)
-  payrollName               String?
-  results                   Result[]
-  progresses                AttemptProgress[]
-  resetTargets              AttemptReset[]             @relation("ResetTarget")
-  resetByActions            AttemptReset[]             @relation("ResetBy")
-  payrollRuns               PayrollRun[]               @relation("PayrollRunCreatedBy")
-  payrollAdjustments        PayrollAdjustment[]        @relation("PayrollAdjustmentCreatedBy")
-  workSchedules             WorkScheduleEntry[]
-  workDays                  WorkDayEntry[]
-  shiftControlRuns          ShiftControlRun[]
-  shiftControlManualReviews ShiftControlManualReview[] @relation("ShiftControlManualReviewReviewedBy")
-  cashOperations            CashOperation[]
-  oneCCashboxMapping        UserOneCCashboxMapping?
-  pushSubscriptions         WorkdayPushSubscription[]
-  workdayNotifications      WorkdayNotification[]
-  workdayControlIssues      WorkdayControlIssue[]
-  kkmAssignments            WorkdayKkmAssignment[]     @relation("WorkdayKkmAssignmentEmployee")
-  assignedKkmAssignments    WorkdayKkmAssignment[]     @relation("WorkdayKkmAssignmentAssignedBy")
+  id                          Int                           @id @default(autoincrement())
+  name                        String
+  login                       String                        @unique
+  passwordHash                String
+  role                        String
+  department                  String                        @default("retail")
+  isActive                    Boolean                       @default(true)
+  payrollName                 String?
+  results                     Result[]
+  progresses                  AttemptProgress[]
+  resetTargets                AttemptReset[]                @relation("ResetTarget")
+  resetByActions              AttemptReset[]                @relation("ResetBy")
+  payrollRuns                 PayrollRun[]                  @relation("PayrollRunCreatedBy")
+  payrollAdjustments          PayrollAdjustment[]           @relation("PayrollAdjustmentCreatedBy")
+  workSchedules               WorkScheduleEntry[]
+  workDays                    WorkDayEntry[]
+  shiftControlRuns            ShiftControlRun[]
+  shiftControlManualReviews   ShiftControlManualReview[]    @relation("ShiftControlManualReviewReviewedBy")
+  cashOperations              CashOperation[]
+  oneCCashboxMapping          UserOneCCashboxMapping?
+  pushSubscriptions           WorkdayPushSubscription[]
+  workdayNotifications        WorkdayNotification[]
+  workdayControlIssues        WorkdayControlIssue[]
+  kkmAssignments              WorkdayKkmAssignment[]        @relation("WorkdayKkmAssignmentEmployee")
+  assignedKkmAssignments      WorkdayKkmAssignment[]        @relation("WorkdayKkmAssignmentAssignedBy")
+  expenseRequestCasesSeen     ExpenseRequestAdminCase[]     @relation("ExpenseRequestCaseSeenBy")
+  expenseRequestCasesReviewed ExpenseRequestAdminCase[]     @relation("ExpenseRequestCaseReviewedBy")
+  expenseRequestFeedback      ExpenseRequestAdminFeedback[]
+  adminInboxReceipts          AdminInboxReceipt[]
+}
+
+model ExpenseRequestSyncRun {
+  id                  String                          @id @default(cuid())
+  runKey              String                          @unique
+  periodFrom          DateTime
+  periodTo            DateTime
+  status              String
+  sourceComplete      Boolean                         @default(false)
+  sourceRowCount      Int                             @default(0)
+  createdCaseCount    Int                             @default(0)
+  updatedCaseCount    Int                             @default(0)
+  evaluationCount     Int                             @default(0)
+  newNotApprovedCount Int                             @default(0)
+  errorCode           String?
+  startedAt           DateTime                        @default(now())
+  completedAt         DateTime?
+  createdAt           DateTime                        @default(now())
+  evaluations         ExpenseRequestAdminEvaluation[]
+
+  @@index([periodFrom, periodTo])
+  @@index([status, startedAt])
+}
+
+model ExpenseRequestAdminCase {
+  id                      String                          @id @default(cuid())
+  oneCRequestRef          String                          @unique
+  oneCNumber              String                          @default("")
+  oneCDate                DateTime?
+  posted                  Boolean?
+  deletionMark            Boolean?
+  currentStatusKey        String                          @default("")
+  currentStatusName       String                          @default("")
+  isNotApproved           Boolean                         @default(false)
+  notApprovedCycle        Int                             @default(0)
+  enteredNotApprovedAt    DateTime?
+  firstSeenAt             DateTime                        @default(now())
+  lastSeenAt              DateTime                        @default(now())
+  seenAt                  DateTime?
+  seenById                Int?
+  reviewedAt              DateTime?
+  reviewedById            Int?
+  latestSourceHash        String                          @default("")
+  latestRuleVersion       String                          @default("")
+  latestCategory          String                          @default("")
+  latestCompletenessState String                          @default("")
+  requestedByRef          String                          @default("")
+  requestedByName         String                          @default("")
+  amount                  Decimal?                        @db.Decimal(18, 2)
+  businessOperationName   String                          @default("")
+  counterpartyName        String                          @default("")
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
+  seenBy                  User?                           @relation("ExpenseRequestCaseSeenBy", fields: [seenById], references: [id], onDelete: SetNull)
+  reviewedBy              User?                           @relation("ExpenseRequestCaseReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  evaluations             ExpenseRequestAdminEvaluation[]
+  feedback                ExpenseRequestAdminFeedback[]
+
+  @@index([isNotApproved, seenAt, oneCDate])
+  @@index([currentStatusKey, oneCDate])
+  @@index([requestedByRef, oneCDate])
+  @@index([latestCompletenessState, oneCDate])
+}
+
+model ExpenseRequestAdminEvaluation {
+  id                 String                        @id @default(cuid())
+  caseId             String
+  syncRunId          String
+  notApprovedCycle   Int
+  sourceHash         String
+  ruleVersion        String
+  category           String
+  categoryCandidates Json
+  completenessState  String
+  evidenceState      String
+  reasonCodes        Json
+  missingInformation Json
+  suggestedQuestion  String?
+  decisionSources    Json
+  confidence         String
+  ambiguous          Boolean
+  sourceComplete     Boolean
+  normalizedSource   Json
+  evaluatedAt        DateTime                      @default(now())
+  createdAt          DateTime                      @default(now())
+  case               ExpenseRequestAdminCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  syncRun            ExpenseRequestSyncRun         @relation(fields: [syncRunId], references: [id], onDelete: Restrict)
+  feedback           ExpenseRequestAdminFeedback[]
+
+  @@unique([caseId, notApprovedCycle, sourceHash, ruleVersion])
+  @@index([caseId, evaluatedAt])
+  @@index([completenessState, evaluatedAt])
+  @@index([syncRunId])
+}
+
+model ExpenseRequestAdminFeedback {
+  id           String                         @id @default(cuid())
+  caseId       String
+  evaluationId String?
+  scope        String                         @default("overall")
+  reasonCode   String?
+  decision     String
+  comment      String                         @default("")
+  reviewedById Int
+  createdAt    DateTime                       @default(now())
+  case         ExpenseRequestAdminCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  evaluation   ExpenseRequestAdminEvaluation? @relation(fields: [evaluationId], references: [id], onDelete: SetNull)
+  reviewedBy   User                           @relation(fields: [reviewedById], references: [id], onDelete: Restrict)
+
+  @@index([caseId, createdAt])
+  @@index([evaluationId, reasonCode, createdAt])
+  @@index([decision, createdAt])
+  @@index([reviewedById, createdAt])
+}
+
+model AdminInboxEvent {
+  id         String              @id @default(cuid())
+  eventKey   String              @unique
+  type       String
+  title      String
+  body       String
+  href       String
+  sourceType String
+  sourceId   String
+  occurredAt DateTime
+  createdAt  DateTime            @default(now())
+  receipts   AdminInboxReceipt[]
+
+  @@index([type, occurredAt])
+  @@index([sourceType, sourceId, occurredAt])
+}
+
+model AdminInboxReceipt {
+  id        String          @id @default(cuid())
+  eventId   String
+  userId    Int
+  readAt    DateTime?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  event     AdminInboxEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([userId, readAt, createdAt])
 }
 
 model TerminalFiscalMapping {

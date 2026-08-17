@@ -4,8 +4,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BarChart3, BriefcaseBusiness, CalendarCheck, GraduationCap, Home, LineChart, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
+import { Banknote, BarChart3, BriefcaseBusiness, CalendarCheck, FileClock, GraduationCap, Home, LineChart, PanelLeftClose, PanelLeftOpen, Users } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
+import { AdminInboxBell } from '@/components/AdminInboxBell';
 import { LogoutButton } from '@/components/LogoutButton';
 import { cn } from '@/lib/utils';
 
@@ -16,6 +17,7 @@ const navigation = [
   { href: '/admin/results', label: 'Результаты', icon: BarChart3 },
   { href: '/admin/attendance', label: 'Посещаемость', icon: CalendarCheck },
   { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness },
+  { href: '/admin/expense-requests', label: 'Заявки', icon: FileClock },
   { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
   { href: '/admin/analytics', label: 'Аналитика', icon: LineChart },
 ];
@@ -105,7 +107,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
       <section className={cn('min-w-0 bg-[#f7faf8] p-4 transition-[margin] duration-200 md:min-h-screen md:rounded-l-[20px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[236px]')}>
         <div className='flex min-h-[calc(100vh-4rem)] w-full max-w-none flex-col'>
-          <div className='mb-3 flex justify-end'>
+          <div className='mb-3 flex items-center justify-end gap-3'>
+            <AdminInboxBell />
             <div className='flex items-center gap-3 rounded-full bg-white px-4 py-2 shadow-sm ring-1 ring-slate-200/80'>
               <div className='flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-primary'>АД</div>
               <div>

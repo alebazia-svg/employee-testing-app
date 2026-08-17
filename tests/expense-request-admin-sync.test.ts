@@ -1,0 +1,140 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import type { PrismaClient } from '@prisma/client';
+import { syncExpenseRequestAdminAudit } from '../lib/expense-request-admin-sync';
+import type { ExpenseRequestSnapshot, ExpenseRequestSourceRow } from '../lib/expense-request-source';
+
+function sourceRow(statusKey = 'not_approved'): ExpenseRequestSourceRow {
+  return {
+    ref: 'request-1', number: 'REQ-1', date: '2026-08-17T10:00:00+03:00', amount: 1000,
+    status: { key: statusKey, name: statusKey === 'not_approved' ? 'Не согласована' : 'К оплате' },
+    requested_by: { ref: 'manager-1', name: 'Менеджер' }, comment: 'Доставка товара',
+    completeness: { complete: true }, supporting_documents: { complete: true, rows: [] },
+    attached_files: { complete: true, rows: [] }, execution: { complete: true, state: 'not_executed' },
+  };
+}
+
+function snapshot(row: ExpenseRequestSourceRow, checkedAt = '2026-08-17T07:00:00Z'): ExpenseRequestSnapshot {
+  return { rows: [row], complete: true, checkedAt, pageCount: 1, errors: [] };
+}
+
+function fakeDb() {
+  const runs = new Map<string, Record<string, any>>();
+  const cases = new Map<string, Record<string, any>>();
+  const evaluations = new Map<string, Record<string, any>>();
+  const inboxEvents = new Map<string, Record<string, any>>();
+  const inboxReceipts = new Map<string, Record<string, any>>();
+  let runSequence = 0;
+  let caseSequence = 0;
+  let evaluationSequence = 0;
+  let client: PrismaClient;
+  client = {
+    $transaction: async (callback: any) => callback(client),
+    user: {
+      findMany: async () => [{ id: 1 }],
+    },
+    adminInboxEvent: {
+      upsert: async ({ where, create }: any) => {
+        const prior = inboxEvents.get(where.eventKey);
+        const value = prior ?? { id: `event-${inboxEvents.size + 1}`, ...create };
+        inboxEvents.set(where.eventKey, value);
+        return value;
+      },
+    },
+    adminInboxReceipt: {
+      createMany: async ({ data }: any) => {
+        let count = 0;
+        for (const row of data) {
+          const key = `${row.eventId}:${row.userId}`;
+          if (!inboxReceipts.has(key)) { inboxReceipts.set(key, { id: `receipt-${inboxReceipts.size + 1}`, ...row, readAt: null }); count += 1; }
+        }
+        return { count };
+      },
+    },
+    expenseRequestSyncRun: {
+      findUnique: async ({ where }: any) => runs.get(where.runKey) ?? null,
+      findUniqueOrThrow: async ({ where }: any) => { const value = runs.get(where.runKey); if (!value) throw new Error('missing'); return value; },
+      create: async ({ data }: any) => { const value = { id: `run-${++runSequence}`, createdCaseCount: 0, updatedCaseCount: 0, evaluationCount: 0, newNotApprovedCount: 0, ...data }; runs.set(data.runKey, value); return value; },
+      update: async ({ where, data }: any) => { const entry = [...runs.entries()].find(([, value]) => value.id === where.id); if (!entry) throw new Error('missing run'); const value = { ...entry[1], ...data }; runs.set(entry[0], value); return value; },
+    },
+    expenseRequestAdminCase: {
+      findUnique: async ({ where }: any) => cases.get(where.oneCRequestRef) ?? null,
+      upsert: async ({ where, create, update }: any) => {
+        const prior = cases.get(where.oneCRequestRef);
+        const value = prior ? { ...prior, ...update } : { id: `case-${++caseSequence}`, ...create };
+        cases.set(where.oneCRequestRef, value);
+        return value;
+      },
+    },
+    expenseRequestAdminEvaluation: {
+      findUnique: async ({ where }: any) => { const key = where.caseId_notApprovedCycle_sourceHash_ruleVersion; return evaluations.get(`${key.caseId}:${key.notApprovedCycle}:${key.sourceHash}:${key.ruleVersion}`) ?? null; },
+      upsert: async ({ where, create }: any) => {
+        const input = where.caseId_notApprovedCycle_sourceHash_ruleVersion;
+        const key = `${input.caseId}:${input.notApprovedCycle}:${input.sourceHash}:${input.ruleVersion}`;
+        const value = evaluations.get(key) ?? { id: `evaluation-${++evaluationSequence}`, createdAt: new Date(), ...create };
+        evaluations.set(key, value);
+        return value;
+      },
+    },
+  } as unknown as PrismaClient;
+  return {
+    state: { runs, cases, evaluations, inboxEvents, inboxReceipts },
+    client,
+  };
+}
+
+test('sync is idempotent and reopens one unread cycle after returning to not_approved', async () => {
+  const db = fakeDb();
+  const firstPeriod = { from: new Date('2026-08-17T00:00:00Z'), to: new Date('2026-08-17T08:00:00Z') };
+  const first = await syncExpenseRequestAdminAudit({ ...firstPeriod, snapshot: snapshot(sourceRow()), now: new Date('2026-08-17T07:00:00Z'), db: db.client });
+  assert.equal(first.createdCases, 1);
+  assert.equal(first.newNotApproved, 1);
+  assert.equal(db.state.cases.size, 1);
+  assert.equal(db.state.evaluations.size, 1);
+  assert.equal(db.state.inboxEvents.size, 1);
+  assert.equal(db.state.inboxReceipts.size, 1);
+
+  const replay = await syncExpenseRequestAdminAudit({ ...firstPeriod, snapshot: snapshot(sourceRow()), now: new Date('2026-08-17T07:01:00Z'), db: db.client });
+  assert.equal(replay.idempotentReplay, true);
+  assert.equal(db.state.cases.size, 1);
+  assert.equal(db.state.evaluations.size, 1);
+  assert.equal(db.state.inboxEvents.size, 1);
+
+  const caseRow = db.state.cases.get('request-1')!;
+  caseRow.seenAt = new Date('2026-08-17T07:02:00Z'); caseRow.seenById = 1;
+  caseRow.reviewedAt = new Date('2026-08-17T07:03:00Z'); caseRow.reviewedById = 1;
+  const payable = await syncExpenseRequestAdminAudit({
+    ...firstPeriod, snapshot: snapshot(sourceRow('payable'), '2026-08-17T08:10:00Z'),
+    now: new Date('2026-08-17T08:10:00Z'), db: db.client,
+  });
+  assert.equal(payable.newNotApproved, 0);
+  assert.equal(db.state.cases.get('request-1')?.isNotApproved, false);
+
+  const returned = await syncExpenseRequestAdminAudit({
+    ...firstPeriod, snapshot: snapshot(sourceRow('not_approved'), '2026-08-17T09:10:00Z'),
+    now: new Date('2026-08-17T09:10:00Z'), db: db.client,
+  });
+  assert.equal(returned.newNotApproved, 1);
+  assert.equal(db.state.cases.get('request-1')?.notApprovedCycle, 2);
+  assert.equal(db.state.cases.get('request-1')?.seenAt, null);
+  assert.equal(db.state.cases.get('request-1')?.reviewedAt, null);
+  assert.equal(db.state.cases.size, 1);
+  assert.equal(db.state.evaluations.size, 3);
+  assert.equal(db.state.inboxEvents.size, 2);
+  assert.equal(db.state.inboxReceipts.size, 2);
+});
+
+test('baseline creates cases and evaluations without inbox events', async () => {
+  const db = fakeDb();
+  const result = await syncExpenseRequestAdminAudit({
+    from: new Date('2026-01-01T00:00:00Z'), to: new Date('2026-01-31T00:00:00Z'),
+    snapshot: snapshot(sourceRow(), '2026-08-17T10:00:00Z'), baseline: true,
+    now: new Date('2026-08-17T10:00:00Z'), db: db.client,
+  });
+  assert.equal(result.createdCases, 1);
+  assert.equal(result.newNotApproved, 0);
+  assert.equal(db.state.cases.size, 1);
+  assert.equal(db.state.evaluations.size, 1);
+  assert.equal(db.state.inboxEvents.size, 0);
+  assert.ok(db.state.cases.get('request-1')?.seenAt);
+});
