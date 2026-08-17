@@ -116,6 +116,7 @@ test('sync is idempotent and reopens one unread cycle after returning to not_app
   });
   assert.equal(returned.newNotApproved, 1);
   assert.equal(db.state.cases.get('request-1')?.notApprovedCycle, 2);
+  assert.equal(db.state.cases.get('request-1')?.currentCycleOrigin, 'live');
   assert.equal(db.state.cases.get('request-1')?.seenAt, null);
   assert.equal(db.state.cases.get('request-1')?.reviewedAt, null);
   assert.equal(db.state.cases.size, 1);
@@ -137,4 +138,19 @@ test('baseline creates cases and evaluations without inbox events', async () => 
   assert.equal(db.state.evaluations.size, 1);
   assert.equal(db.state.inboxEvents.size, 0);
   assert.ok(db.state.cases.get('request-1')?.seenAt);
+  assert.equal(db.state.cases.get('request-1')?.currentCycleOrigin, 'baseline');
+});
+
+test('baseline cycle stays historical until status leaves and returns during live sync', async () => {
+  const db = fakeDb();
+  const period = { from: new Date('2026-02-01T00:00:00Z'), to: new Date('2026-03-01T00:00:00Z') };
+  await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(sourceRow(), '2026-08-17T10:00:00Z'), baseline: true, now: new Date('2026-08-17T10:00:00Z'), db: db.client });
+  await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(sourceRow(), '2026-08-17T10:01:00Z'), now: new Date('2026-08-17T10:01:00Z'), db: db.client });
+  assert.equal(db.state.cases.get('request-1')?.currentCycleOrigin, 'baseline');
+  assert.equal(db.state.inboxEvents.size, 0);
+  await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(sourceRow('payable'), '2026-08-17T10:02:00Z'), now: new Date('2026-08-17T10:02:00Z'), db: db.client });
+  await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(sourceRow(), '2026-08-17T10:03:00Z'), now: new Date('2026-08-17T10:03:00Z'), db: db.client });
+  assert.equal(db.state.cases.get('request-1')?.currentCycleOrigin, 'live');
+  assert.equal(db.state.cases.get('request-1')?.notApprovedCycle, 2);
+  assert.equal(db.state.inboxEvents.size, 1);
 });

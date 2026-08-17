@@ -72,6 +72,7 @@ model ExpenseRequestAdminCase {
   currentStatusName       String                          @default("")
   isNotApproved           Boolean                         @default(false)
   notApprovedCycle        Int                             @default(0)
+  currentCycleOrigin      String                          @default("")
   enteredNotApprovedAt    DateTime?
   firstSeenAt             DateTime                        @default(now())
   lastSeenAt              DateTime                        @default(now())
@@ -96,6 +97,7 @@ model ExpenseRequestAdminCase {
   feedback                ExpenseRequestAdminFeedback[]
 
   @@index([isNotApproved, seenAt, oneCDate])
+  @@index([isNotApproved, currentCycleOrigin, deletionMark, oneCDate])
   @@index([currentStatusKey, oneCDate])
   @@index([requestedByRef, oneCDate])
   @@index([latestCompletenessState, oneCDate])

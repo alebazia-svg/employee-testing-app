@@ -5,6 +5,7 @@ import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycle';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +33,7 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');
   const view = searchParams?.view === 'all' || searchParams?.view === 'reviewed' ? searchParams.view : 'current';
-  const caseWhere = view === 'all' ? {} : view === 'reviewed' ? { reviewedAt: { not: null } } : { isNotApproved: true };
+  const caseWhere = view === 'all' ? {} : view === 'reviewed' ? { reviewedAt: { not: null } } : expenseRequestCurrentWhere;
   const [cases, unreadCount, reviewedCount] = await Promise.all([
     prisma.expenseRequestAdminCase.findMany({
       where: caseWhere,
@@ -43,8 +44,8 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
         feedback: { where: { scope: 'overall' }, orderBy: { createdAt: 'desc' }, take: 1 },
       },
     }),
-    prisma.expenseRequestAdminCase.count({ where: { isNotApproved: true, seenAt: null } }),
-    prisma.expenseRequestAdminCase.count({ where: { isNotApproved: true, reviewedAt: { not: null } } }),
+    prisma.expenseRequestAdminCase.count({ where: { ...expenseRequestCurrentWhere, seenAt: null } }),
+    prisma.expenseRequestAdminCase.count({ where: { ...expenseRequestCurrentWhere, reviewedAt: { not: null } } }),
   ]);
   const withHints = cases.filter((item) => item.latestCompletenessState !== 'complete').length;
 
@@ -96,6 +97,7 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
                   <div className='min-w-0'>
                     <div className='flex flex-wrap items-center gap-2'>
                       {!item.seenAt && <span className='rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-extrabold text-slate-950'>Новая</span>}
+                      {item.deletionMark && <span className='rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-extrabold text-red-800'>Удалена в 1С</span>}
                       <span className='font-extrabold text-slate-950'>{item.requestedByName || 'КтоЗаявил не указан'}</span>
                       <span className='text-sm font-bold text-slate-900'>{money(item.amount)}</span>
                     </div>

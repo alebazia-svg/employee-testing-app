@@ -109,10 +109,12 @@ export async function syncExpenseRequestAdminAudit(input: {
         const lifecycle = deriveExpenseRequestLifecycle({
           existing: existing ? {
             isNotApproved: existing.isNotApproved, notApprovedCycle: existing.notApprovedCycle,
+            currentCycleOrigin: existing.currentCycleOrigin,
             enteredNotApprovedAt: existing.enteredNotApprovedAt, seenAt: existing.seenAt, seenById: existing.seenById,
             reviewedAt: existing.reviewedAt, reviewedById: existing.reviewedById,
           } : null,
           statusKey,
+          deletionMark: row.deletion_mark,
           now,
           baseline: input.baseline === true,
         });
@@ -122,6 +124,7 @@ export async function syncExpenseRequestAdminAudit(input: {
             oneCRequestRef: ref, oneCNumber: text(row.number), oneCDate: expenseRequestDateOrNull(row.date), posted: row.posted ?? null,
             deletionMark: row.deletion_mark ?? null, currentStatusKey: statusKey, currentStatusName: status.name,
             isNotApproved: lifecycle.isNotApproved, notApprovedCycle: lifecycle.notApprovedCycle,
+            currentCycleOrigin: lifecycle.currentCycleOrigin,
             enteredNotApprovedAt: lifecycle.enteredNotApprovedAt, firstSeenAt: now, lastSeenAt: now,
             seenAt: lifecycle.seenAt, seenById: lifecycle.seenById, reviewedAt: lifecycle.reviewedAt, reviewedById: lifecycle.reviewedById,
             latestSourceHash: sourceHash, latestRuleVersion: evaluation.version, latestCategory: evaluation.category,
@@ -132,6 +135,7 @@ export async function syncExpenseRequestAdminAudit(input: {
             oneCNumber: text(row.number), oneCDate: expenseRequestDateOrNull(row.date), posted: row.posted ?? null,
             deletionMark: row.deletion_mark ?? null, currentStatusKey: statusKey, currentStatusName: status.name,
             isNotApproved: lifecycle.isNotApproved, notApprovedCycle: lifecycle.notApprovedCycle,
+            currentCycleOrigin: lifecycle.currentCycleOrigin,
             enteredNotApprovedAt: lifecycle.enteredNotApprovedAt, lastSeenAt: now,
             seenAt: lifecycle.seenAt, seenById: lifecycle.seenById, reviewedAt: lifecycle.reviewedAt, reviewedById: lifecycle.reviewedById,
             latestSourceHash: sourceHash, latestRuleVersion: evaluation.version, latestCategory: evaluation.category,

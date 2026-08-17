@@ -57,6 +57,16 @@ export type ExpenseRequestSnapshot = {
 const MAX_PERIOD_MS = 31 * 24 * 60 * 60 * 1000;
 const PAGE_LIMIT = 100;
 const MAX_ROWS = 10_000;
+const MOSCOW_TIME_ZONE = 'Europe/Moscow';
+
+export function expenseRequestMoscowCalendarDate(value: Date) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: MOSCOW_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(value);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 
 function readPositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number(value);
@@ -81,8 +91,8 @@ export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date 
 
   for (let offset = 0; offset <= MAX_ROWS; offset += PAGE_LIMIT) {
     const query = new URLSearchParams({
-      from: input.from.toISOString(),
-      to: input.to.toISOString(),
+      from: expenseRequestMoscowCalendarDate(input.from),
+      to: expenseRequestMoscowCalendarDate(input.to),
       limit: String(PAGE_LIMIT),
       offset: String(offset),
     });

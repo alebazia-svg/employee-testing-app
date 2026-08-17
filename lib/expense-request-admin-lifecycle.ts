@@ -3,10 +3,18 @@ import type { ExpenseRequestCompletenessEvaluation, OneCNamedRef } from '@/lib/e
 import type { ExpenseRequestSourceRow } from '@/lib/expense-request-source';
 
 export const EXPENSE_REQUEST_NOT_APPROVED_STATUS = 'not_approved';
+export const EXPENSE_REQUEST_CYCLE_BASELINE = 'baseline';
+export const EXPENSE_REQUEST_CYCLE_LIVE = 'live';
+export const expenseRequestCurrentWhere = {
+  isNotApproved: true,
+  currentCycleOrigin: EXPENSE_REQUEST_CYCLE_LIVE,
+  deletionMark: false,
+} as const;
 
 export type ExpenseRequestCaseLifecycle = {
   isNotApproved: boolean;
   notApprovedCycle: number;
+  currentCycleOrigin: string;
   enteredNotApprovedAt: Date | null;
   seenAt: Date | null;
   seenById: number | null;
@@ -72,14 +80,16 @@ export function expenseRequestSyncRunKey(input: { from: Date; to: Date; checkedA
 export function deriveExpenseRequestLifecycle(input: {
   existing: ExistingExpenseRequestCaseLifecycle | null;
   statusKey: string;
+  deletionMark?: boolean | null;
   now: Date;
   baseline: boolean;
 }): ExpenseRequestCaseLifecycle {
-  const isNotApproved = text(input.statusKey).toLowerCase() === EXPENSE_REQUEST_NOT_APPROVED_STATUS;
+  const isNotApproved = text(input.statusKey).toLowerCase() === EXPENSE_REQUEST_NOT_APPROVED_STATUS && input.deletionMark !== true;
   if (!input.existing) {
     return {
       isNotApproved,
       notApprovedCycle: isNotApproved ? 1 : 0,
+      currentCycleOrigin: isNotApproved ? (input.baseline ? EXPENSE_REQUEST_CYCLE_BASELINE : EXPENSE_REQUEST_CYCLE_LIVE) : '',
       enteredNotApprovedAt: isNotApproved ? input.now : null,
       seenAt: input.baseline || !isNotApproved ? input.now : null,
       seenById: null,
@@ -92,12 +102,13 @@ export function deriveExpenseRequestLifecycle(input: {
     return {
       isNotApproved: true,
       notApprovedCycle: input.existing.notApprovedCycle + 1,
+      currentCycleOrigin: input.baseline ? EXPENSE_REQUEST_CYCLE_BASELINE : EXPENSE_REQUEST_CYCLE_LIVE,
       enteredNotApprovedAt: input.now,
-      seenAt: null,
+      seenAt: input.baseline ? input.now : null,
       seenById: null,
       reviewedAt: null,
       reviewedById: null,
-      newlyEnteredNotApproved: true,
+      newlyEnteredNotApproved: !input.baseline,
     };
   }
   return { ...input.existing, isNotApproved, newlyEnteredNotApproved: false };

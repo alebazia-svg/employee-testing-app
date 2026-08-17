@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   deriveExpenseRequestLifecycle,
+  expenseRequestCurrentWhere,
   expenseRequestSourceHash,
   expenseRequestSyncRunKey,
   normalizeExpenseRequestForAudit,
@@ -11,11 +12,12 @@ import { validateExpenseRequestFeedback } from '../lib/expense-request-admin-fee
 import { expenseRequestInboxBody, expenseRequestInboxEventKey } from '../lib/admin-inbox';
 import { expenseRequestDateOrNull } from '../lib/expense-request-admin-sync';
 import type { ExpenseRequestSourceRow } from '../lib/expense-request-source';
+import { expenseRequestMoscowCalendarDate } from '../lib/expense-request-source';
 import { lifecycleFixture } from './fixtures/expense-request-admin-lifecycle';
 
 function existing(overrides: Partial<ExistingExpenseRequestCaseLifecycle> = {}): ExistingExpenseRequestCaseLifecycle {
   return {
-    isNotApproved: true, notApprovedCycle: 1, enteredNotApprovedAt: new Date(lifecycleFixture.created.at),
+    isNotApproved: true, notApprovedCycle: 1, currentCycleOrigin: 'live', enteredNotApprovedAt: new Date(lifecycleFixture.created.at),
     seenAt: null, seenById: null, reviewedAt: null, reviewedById: null, ...overrides,
   };
 }
@@ -34,6 +36,7 @@ test('new live not_approved is detected once and starts unread cycle 1', () => {
   const first = deriveExpenseRequestLifecycle({ existing: null, statusKey: 'not_approved', now: new Date(lifecycleFixture.created.at), baseline: false });
   assert.equal(first.notApprovedCycle, 1);
   assert.equal(first.newlyEnteredNotApproved, true);
+  assert.equal(first.currentCycleOrigin, 'live');
   assert.equal(first.seenAt, null);
   const repeated = deriveExpenseRequestLifecycle({ existing: first, statusKey: 'not_approved', now: new Date('2026-08-17T07:01:00Z'), baseline: false });
   assert.equal(repeated.notApprovedCycle, 1);
@@ -44,6 +47,7 @@ test('baseline import does not create a false unread notification', () => {
   const value = deriveExpenseRequestLifecycle({ existing: null, statusKey: 'not_approved', now: new Date(lifecycleFixture.created.at), baseline: true });
   assert.equal(value.notApprovedCycle, 1);
   assert.equal(value.newlyEnteredNotApproved, false);
+  assert.equal(value.currentCycleOrigin, 'baseline');
   assert.ok(value.seenAt);
 });
 
@@ -62,6 +66,7 @@ test('return from payable to not_approved opens exactly one new unread cycle', (
   const returned = deriveExpenseRequestLifecycle({ existing: payable, statusKey: lifecycleFixture.returned.statusKey, now: new Date(lifecycleFixture.returned.at), baseline: false });
   assert.equal(returned.notApprovedCycle, 2);
   assert.equal(returned.newlyEnteredNotApproved, true);
+  assert.equal(returned.currentCycleOrigin, 'live');
   assert.equal(returned.seenAt, null);
   assert.equal(returned.reviewedAt, null);
   const repeated = deriveExpenseRequestLifecycle({ existing: returned, statusKey: 'not_approved', now: new Date('2026-08-17T07:21:00Z'), baseline: false });
@@ -110,4 +115,25 @@ test('1C date in DD.MM.YYYY format is interpreted as Moscow time', () => {
   assert.equal(expenseRequestDateOrNull('16.08.2026 23:08:07')?.toISOString(), '2026-08-16T20:08:07.000Z');
   assert.equal(expenseRequestDateOrNull('2026-08-17T09:15:00+03:00')?.toISOString(), '2026-08-17T06:15:00.000Z');
   assert.equal(expenseRequestDateOrNull('not-a-date'), null);
+});
+
+test('expense request boundaries are sent as Moscow calendar dates without UTC day shift', () => {
+  assert.equal(expenseRequestMoscowCalendarDate(new Date('2026-08-16T21:00:00.000Z')), '2026-08-17');
+  assert.equal(expenseRequestMoscowCalendarDate(new Date('2026-08-17T21:00:00.000Z')), '2026-08-18');
+});
+
+test('deletion mark leaves audit lifecycle but removes request from current live state', () => {
+  const deleted = deriveExpenseRequestLifecycle({ existing: existing(), statusKey: 'not_approved', deletionMark: true, now: new Date('2026-08-17T08:00:00Z'), baseline: false });
+  assert.equal(deleted.isNotApproved, false);
+  assert.equal(deleted.currentCycleOrigin, 'live');
+  assert.equal(deleted.newlyEnteredNotApproved, false);
+  const restored = deriveExpenseRequestLifecycle({ existing: deleted, statusKey: 'not_approved', deletionMark: false, now: new Date('2026-08-17T09:00:00Z'), baseline: false });
+  assert.equal(restored.isNotApproved, true);
+  assert.equal(restored.currentCycleOrigin, 'live');
+  assert.equal(restored.notApprovedCycle, 2);
+  assert.equal(restored.newlyEnteredNotApproved, true);
+});
+
+test('current queue requires a live non-deleted not_approved cycle', () => {
+  assert.deepEqual(expenseRequestCurrentWhere, { isNotApproved: true, currentCycleOrigin: 'live', deletionMark: false });
 });

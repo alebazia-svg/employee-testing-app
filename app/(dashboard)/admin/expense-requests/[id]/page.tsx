@@ -77,6 +77,7 @@ export default async function ExpenseRequestDetailPage({ params }: { params: { i
           <div className='flex flex-wrap items-center gap-2'>
             <h1 className='text-2xl font-extrabold text-slate-950'>Заявка {item.oneCNumber || 'без номера'}</h1>
             {!item.seenAt && <span className='rounded-full bg-amber-400 px-2.5 py-1 text-xs font-extrabold text-slate-950'>Новая</span>}
+            {item.deletionMark && <span className='rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800'>Помечена на удаление в 1С</span>}
           </div>
           <p className='mt-1 text-sm font-medium text-slate-500'>{dateTime(item.oneCDate)} · появление в очереди №{item.notApprovedCycle}</p>
         </div>
