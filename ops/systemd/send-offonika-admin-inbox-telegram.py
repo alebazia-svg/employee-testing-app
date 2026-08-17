@@ -7,7 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ENV_PATH = "/home/codex-vps/apps/ai-business-os/.env"
+ENV_PATH = "/home/codex-vps/.config/ai-business-os/owner-bot.env"
 MAX_INPUT_BYTES = 16_384
 
 
@@ -40,8 +40,8 @@ def fail(code, exit_code):
 def main():
     if sys.argv[1:] == ["--probe"]:
         env = load_env(ENV_PATH)
-        token = env.get("TELEGRAM_BOT_TOKEN", "").strip()
-        chat_id = os.environ.get("EXPENSE_REQUEST_ADMIN_CHAT_ID", env.get("EXPENSE_REQUEST_ADMIN_CHAT_ID", "")).strip()
+        token = env.get("OWNER_TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = env.get("OWNER_TELEGRAM_CHAT_ID", "").strip()
         if not token or not chat_id:
             fail("TELEGRAM_RUNTIME_CONFIG_MISSING", 1)
         force_ipv4()
@@ -70,8 +70,8 @@ def main():
         fail("HREF_INVALID", 1)
 
     env = load_env(ENV_PATH)
-    token = env.get("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.environ.get("EXPENSE_REQUEST_ADMIN_CHAT_ID", env.get("EXPENSE_REQUEST_ADMIN_CHAT_ID", "")).strip()
+    token = env.get("OWNER_TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = env.get("OWNER_TELEGRAM_CHAT_ID", "").strip()
     if not token or not chat_id:
         fail("TELEGRAM_RUNTIME_CONFIG_MISSING", 1)
     base_url = os.environ.get("PORTAL_PUBLIC_BASE_URL", "https://portal.alebazia.xyz").rstrip("/")

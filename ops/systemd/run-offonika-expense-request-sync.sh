@@ -3,7 +3,6 @@ set -euo pipefail
 
 APP_CONTAINER=portal-app
 PORTAL_PUBLIC_BASE_URL=https://portal.alebazia.xyz
-: "${EXPENSE_REQUEST_ADMIN_CHAT_ID:?EXPENSE_REQUEST_ADMIN_CHAT_ID is required}"
 FROM_DATE=$(TZ=Europe/Moscow date -d '30 days ago' +%F)
 TO_DATE=$(TZ=Europe/Moscow date -d 'tomorrow' +%F)
 
@@ -28,7 +27,6 @@ for _ in $(seq 1 20); do
 
   set +e
   sender_result=$(printf '%s' "$claim" | /usr/sbin/runuser -u codex-vps -- env PORTAL_PUBLIC_BASE_URL="$PORTAL_PUBLIC_BASE_URL" \
-    EXPENSE_REQUEST_ADMIN_CHAT_ID="$EXPENSE_REQUEST_ADMIN_CHAT_ID" \
     /usr/bin/python3 /docker/employee-testing-app/ops/systemd/send-offonika-admin-inbox-telegram.py)
   sender_status=$?
   set -e
