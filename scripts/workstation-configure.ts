@@ -27,16 +27,31 @@ async function main() {
       const mappingId = input.terminalFiscalMappingId?.trim() || null;
       if (mappingId) {
         const mapping = await tx.terminalFiscalMapping.findUnique({ where: { id: mappingId }, select: { isActive: true, workstationId: true } });
-        if (!mapping?.isActive || mapping.workstationId) throw new Error('Terminal mapping is unavailable or already attached');
+        if (!mapping?.isActive) throw new Error('Terminal mapping is unavailable');
       }
-      const workstation = await tx.retailWorkstation.create({
-        data: {
+      const workstation = await tx.retailWorkstation.upsert({
+        where: { code: input.code },
+        create: {
           code: input.code,
           label: input.label.trim(),
-          deviceBindings: { create: { tokenHash: hashWorkstationToken(token), label: input.deviceLabel.trim() } },
         },
+        update: { label: input.label.trim(), isActive: true },
         select: { id: true, code: true },
       });
+      const activeBinding = await tx.workstationDeviceBinding.findFirst({
+        where: { workstationId: workstation.id, revokedAt: null },
+        select: { id: true },
+      });
+      if (activeBinding) throw new Error('Workstation already has an active device token');
+      await tx.workstationDeviceBinding.create({
+        data: { workstationId: workstation.id, tokenHash: hashWorkstationToken(token), label: input.deviceLabel.trim() },
+      });
+      if (mappingId) {
+        const mapping = await tx.terminalFiscalMapping.findUnique({ where: { id: mappingId }, select: { workstationId: true } });
+        if (mapping?.workstationId && mapping.workstationId !== workstation.id) {
+          throw new Error('Terminal mapping is already attached to another workstation');
+        }
+      }
       const attachedMapping = mappingId
         ? await tx.terminalFiscalMapping.update({ where: { id: mappingId }, data: { workstationId: workstation.id }, select: { id: true } })
         : null;
