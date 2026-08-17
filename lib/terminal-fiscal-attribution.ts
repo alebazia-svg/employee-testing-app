@@ -5,6 +5,7 @@ export type TerminalFiscalAttributionInput = {
   reasonCode: MatchingReasonCode;
   bankOperationAt: Date | null;
   oneCCashRegisterRef: string | null;
+  workstationId?: string | null;
   oneCCashierRef: string | null;
 };
 
@@ -15,7 +16,9 @@ export type TerminalFiscalCashierEmployeeMapping = {
 
 export type TerminalFiscalAssignmentInterval = {
   userId: number;
-  oneCCashRegisterRef: string;
+  oneCCashRegisterRef: string | null;
+  workstationId?: string | null;
+  source?: string;
   effectiveFrom: Date;
   effectiveTo: Date | null;
 };
@@ -23,7 +26,7 @@ export type TerminalFiscalAssignmentInterval = {
 export type TerminalFiscalAttributionResult = {
   employeeId: number | null;
   effectiveStatus: MatchingStatus;
-  source: 'one_c_cashier' | 'kkm_assignment' | 'conflict' | 'none';
+  source: 'one_c_cashier' | 'workstation_context' | 'kkm_assignment' | 'conflict' | 'none';
   adminProblem: boolean;
 };
 
@@ -56,8 +59,10 @@ export function attributeTerminalFiscalEmployee(
 ): TerminalFiscalAttributionResult {
   const adminProblem = record.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND';
   const operationAt = record.bankOperationAt?.getTime();
-  const assignmentCandidates = operationAt === undefined || !record.oneCCashRegisterRef ? [] : assignments.filter((assignment) => (
-    assignment.oneCCashRegisterRef === record.oneCCashRegisterRef
+  const assignmentCandidates = operationAt === undefined ? [] : assignments.filter((assignment) => (
+    (record.workstationId
+      ? assignment.workstationId === record.workstationId
+      : Boolean(record.oneCCashRegisterRef) && assignment.oneCCashRegisterRef === record.oneCCashRegisterRef)
     && assignment.effectiveFrom.getTime() <= operationAt
     && (!assignment.effectiveTo || operationAt < assignment.effectiveTo.getTime())
   ));
@@ -80,14 +85,28 @@ export function attributeTerminalFiscalEmployee(
     return { employeeId: null, effectiveStatus: 'needs_review', source: 'conflict', adminProblem: true };
   }
 
-  // A bank operation without a 1C check has no independent employee identity.
-  // A terminal/workplace assignment alone must not personalize this admin problem.
   if (adminProblem) {
+    const workstationCandidates = assignmentCandidates.filter((assignment) => (
+      Boolean(assignment.workstationId) && ['device_login', 'manual_select'].includes(assignment.source ?? '')
+    ));
+    if (workstationCandidates.length === 1) {
+      return {
+        employeeId: workstationCandidates[0].userId,
+        effectiveStatus: record.status,
+        source: 'workstation_context',
+        adminProblem: true,
+      };
+    }
     return { employeeId: null, effectiveStatus: record.status, source: 'none', adminProblem: true };
   }
 
   if (assignmentCandidates.length === 1) {
-    return { employeeId: assignmentCandidates[0].userId, effectiveStatus: record.status, source: 'kkm_assignment', adminProblem };
+    return {
+      employeeId: assignmentCandidates[0].userId,
+      effectiveStatus: record.status,
+      source: assignmentCandidates[0].workstationId ? 'workstation_context' : 'kkm_assignment',
+      adminProblem,
+    };
   }
 
   return {

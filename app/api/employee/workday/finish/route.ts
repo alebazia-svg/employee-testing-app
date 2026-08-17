@@ -69,6 +69,11 @@ export async function POST(req: Request) {
       },
     });
 
+    await tx.workdayKkmAssignment.updateMany({
+      where: { workDayEntryId: activeWorkDay.id, workstationId: { not: null }, effectiveTo: null },
+      data: { effectiveTo: now, changeReason: 'workday_completed' },
+    });
+
     if (closeStale && isStaleWorkDay) {
       await tx.shiftControlRun.updateMany({
         where: { workDayEntryId: activeWorkDay.id, status: { not: 'completed' } },

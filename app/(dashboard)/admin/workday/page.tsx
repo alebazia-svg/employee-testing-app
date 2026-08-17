@@ -55,8 +55,8 @@ type AutoCheckTask = {
 };
 
 type KkmAssignmentInterval = {
-  oneCCashRegisterRef: string;
-  oneCCashRegisterName: string;
+  oneCCashRegisterRef: string | null;
+  oneCCashRegisterName: string | null;
   effectiveFrom: Date;
   effectiveTo: Date | null;
 };
@@ -1231,6 +1231,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     kkmAssignments.map((assignment) => ({
       userId: assignment.userId,
       oneCCashRegisterRef: assignment.oneCCashRegisterRef,
+      workstationId: assignment.workstationId,
+      source: assignment.source,
       effectiveFrom: assignment.effectiveFrom,
       effectiveTo: assignment.effectiveTo,
     })),

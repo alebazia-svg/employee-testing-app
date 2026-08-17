@@ -220,6 +220,8 @@ model TerminalFiscalMapping {
   isActive                 Boolean                  @default(true)
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
+  workstationId            String?
+  workstation              RetailWorkstation?       @relation(fields: [workstationId], references: [id], onDelete: SetNull)
   runs                     TerminalFiscalMatchRun[]
   matches                  TerminalFiscalMatch[]
 
@@ -228,6 +230,36 @@ model TerminalFiscalMapping {
   @@index([oneCCashRegisterRef, effectiveFrom, effectiveTo])
   @@index([kktRegistrationNumber, effectiveFrom, effectiveTo])
   @@index([isActive, effectiveFrom, effectiveTo])
+  @@index([workstationId, effectiveFrom, effectiveTo])
+}
+
+model RetailWorkstation {
+  id                     String                     @id @default(cuid())
+  code                   String                     @unique
+  label                  String
+  isActive               Boolean                    @default(true)
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  deviceBindings         WorkstationDeviceBinding[]
+  kkmAssignments         WorkdayKkmAssignment[]
+  terminalFiscalMappings TerminalFiscalMapping[]
+
+  @@index([isActive, code])
+}
+
+model WorkstationDeviceBinding {
+  id            String                 @id @default(cuid())
+  workstationId String
+  tokenHash     String                 @unique
+  label         String                 @default("")
+  isActive      Boolean                @default(true)
+  revokedAt     DateTime?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  workstation   RetailWorkstation      @relation(fields: [workstationId], references: [id], onDelete: Cascade)
+  assignments   WorkdayKkmAssignment[]
+
+  @@index([workstationId, isActive, revokedAt])
 }
 
 model TerminalFiscalMatchRun {
@@ -356,30 +388,36 @@ model UserOneCCashboxMapping {
 }
 
 model WorkdayKkmAssignment {
-  id                   Int           @id @default(autoincrement())
+  id                   Int                       @id @default(autoincrement())
   userId               Int
   date                 String
   plannedShiftCode     String?
-  oneCCashRegisterRef  String
-  oneCCashRegisterName String
-  kkmMode              String        @default("personal")
-  source               String        @default("manual")
-  note                 String        @default("")
+  oneCCashRegisterRef  String?
+  oneCCashRegisterName String?
+  kkmMode              String                    @default("personal")
+  source               String                    @default("manual")
+  note                 String                    @default("")
   effectiveFrom        DateTime
   effectiveTo          DateTime?
-  changeReason         String        @default("")
-  assignedById         Int
-  assignedAt           DateTime      @default(now())
+  changeReason         String                    @default("")
+  assignedById         Int?
+  assignedAt           DateTime                  @default(now())
   workDayEntryId       Int?
-  updatedAt            DateTime      @updatedAt
-  user                 User          @relation("WorkdayKkmAssignmentEmployee", fields: [userId], references: [id], onDelete: Cascade)
-  assignedBy           User          @relation("WorkdayKkmAssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
-  workDayEntry         WorkDayEntry? @relation(fields: [workDayEntryId], references: [id], onDelete: SetNull)
+  workstationId        String?
+  deviceBindingId      String?
+  updatedAt            DateTime                  @updatedAt
+  user                 User                      @relation("WorkdayKkmAssignmentEmployee", fields: [userId], references: [id], onDelete: Cascade)
+  assignedBy           User?                     @relation("WorkdayKkmAssignmentAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  workDayEntry         WorkDayEntry?             @relation(fields: [workDayEntryId], references: [id], onDelete: SetNull)
+  workstation          RetailWorkstation?        @relation(fields: [workstationId], references: [id], onDelete: SetNull)
+  deviceBinding        WorkstationDeviceBinding? @relation(fields: [deviceBindingId], references: [id], onDelete: SetNull)
 
   @@index([userId, date, effectiveFrom])
   @@index([date, effectiveFrom, effectiveTo])
   @@index([oneCCashRegisterRef, date])
   @@index([assignedById, assignedAt])
+  @@index([workstationId, date, effectiveFrom, effectiveTo])
+  @@index([deviceBindingId, effectiveFrom, effectiveTo])
 }
 
 model WorkScheduleEntry {

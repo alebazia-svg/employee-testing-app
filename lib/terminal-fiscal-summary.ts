@@ -31,6 +31,7 @@ export type TerminalFiscalAttributionRecord = {
   candidateCount: number;
   bankOperationAt: Date | null;
   oneCCashRegisterRef: string | null;
+  workstationId?: string | null;
   oneCCashierRef: string | null;
 };
 
@@ -199,7 +200,7 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
       candidateCount: true,
       bankOperationAt: true,
       oneCCashierRef: true,
-      mapping: { select: { oneCCashRegisterRef: true } },
+      mapping: { select: { oneCCashRegisterRef: true, workstationId: true } },
     },
   });
   const attributionRecords: TerminalFiscalAttributionRecord[] = matches.map((match) => ({
@@ -208,6 +209,7 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
     candidateCount: match.candidateCount,
     bankOperationAt: match.bankOperationAt,
     oneCCashRegisterRef: match.mapping?.oneCCashRegisterRef ?? null,
+    workstationId: match.mapping?.workstationId ?? null,
     oneCCashierRef: match.oneCCashierRef,
   }));
   return {

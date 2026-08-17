@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { terminalFiscalMappingConflictFields } from '../lib/terminal-fiscal-mapping-validation';
 
 type Input = {
   label: string;
@@ -8,6 +9,7 @@ type Input = {
   oneCCashRegisterRef: string;
   kktRegistrationNumber: string;
   effectiveFrom: string;
+  workstationCode?: string;
 };
 
 function mask(value: string) {
@@ -29,19 +31,38 @@ async function main() {
   if (Number.isNaN(effectiveFrom.getTime())) throw new Error('Invalid effectiveFrom');
   const prisma = new PrismaClient();
   try {
-    const conflict = await prisma.terminalFiscalMapping.findFirst({
+    const workstationCode = input.workstationCode?.trim() || null;
+    const workstation = workstationCode
+      ? await prisma.retailWorkstation.findUnique({ where: { code: workstationCode }, select: { id: true, isActive: true } })
+      : null;
+    if (workstationCode && !workstation?.isActive) throw new Error('Active workstation not found');
+    const possibleConflicts = await prisma.terminalFiscalMapping.findMany({
       where: {
         isActive: true,
-        effectiveTo: null,
-        OR: [
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: effectiveFrom } }],
+        AND: [{ OR: [
           { terminalKey: input.terminalKey.trim() },
-          { oneCAcquiringTerminalRef: input.oneCAcquiringTerminalRef.trim() },
+          { oneCCashRegisterRef: input.oneCCashRegisterRef.trim() },
           { kktRegistrationNumber: input.kktRegistrationNumber.trim() },
-        ],
+        ] }],
       },
-      select: { id: true },
+      select: {
+        id: true, terminalKey: true, oneCAcquiringTerminalRef: true, oneCCashRegisterRef: true,
+        kktRegistrationNumber: true, effectiveFrom: true, effectiveTo: true,
+      },
     });
-    if (conflict) throw new Error('Active mapping conflict');
+    const candidate = {
+      terminalKey: input.terminalKey.trim(),
+      oneCAcquiringTerminalRef: input.oneCAcquiringTerminalRef.trim(),
+      oneCCashRegisterRef: input.oneCCashRegisterRef.trim(),
+      kktRegistrationNumber: input.kktRegistrationNumber.trim(),
+      effectiveFrom,
+      effectiveTo: null,
+    };
+    const conflict = possibleConflicts.find((row) => terminalFiscalMappingConflictFields(candidate, row).length > 0);
+    if (conflict) {
+      throw new Error(`Active mapping conflict: ${terminalFiscalMappingConflictFields(candidate, conflict).join(',')}`);
+    }
     const mapping = await prisma.terminalFiscalMapping.create({
       data: {
         label: input.label.trim(),
@@ -51,6 +72,7 @@ async function main() {
         oneCCashRegisterRef: input.oneCCashRegisterRef.trim(),
         kktRegistrationNumber: input.kktRegistrationNumber.trim(),
         effectiveFrom,
+        workstationId: workstation?.id ?? null,
         source: 'confirmed_live_preview',
       },
       select: { id: true, terminalKey: true, kktRegistrationNumber: true, label: true, effectiveFrom: true },

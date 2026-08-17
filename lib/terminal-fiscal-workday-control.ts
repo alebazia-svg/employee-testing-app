@@ -82,7 +82,7 @@ export async function syncTerminalFiscalWorkdayControl(
     }
     const mapping = await prisma.terminalFiscalMapping.findUnique({
       where: { id: record.mappingId },
-      select: { oneCCashRegisterRef: true },
+      select: { oneCCashRegisterRef: true, workstationId: true },
     });
     if (!mapping) {
       unassigned += 1;
@@ -92,11 +92,13 @@ export async function syncTerminalFiscalWorkdayControl(
       prisma.workdayKkmAssignment.findMany({
         where: {
           date: moscowDateKey(operationAt),
-          oneCCashRegisterRef: mapping.oneCCashRegisterRef,
+          ...(mapping.workstationId
+            ? { workstationId: mapping.workstationId }
+            : { oneCCashRegisterRef: mapping.oneCCashRegisterRef }),
           effectiveFrom: { lte: operationAt },
           OR: [{ effectiveTo: null }, { effectiveTo: { gt: operationAt } }],
         },
-        select: { userId: true, oneCCashRegisterRef: true, effectiveFrom: true, effectiveTo: true },
+        select: { userId: true, oneCCashRegisterRef: true, workstationId: true, source: true, effectiveFrom: true, effectiveTo: true },
         take: 2,
       }),
       record.oneCCashierRef ? prisma.userOneCCashboxMapping.findMany({
@@ -110,6 +112,7 @@ export async function syncTerminalFiscalWorkdayControl(
       reasonCode: record.reasonCode,
       bankOperationAt: operationAt,
       oneCCashRegisterRef: mapping.oneCCashRegisterRef,
+      workstationId: mapping.workstationId,
       oneCCashierRef: record.oneCCashierRef ?? null,
     }, cashierMappings.flatMap((row) => row.oneCCashierRef ? [{ userId: row.userId, oneCCashierRef: row.oneCCashierRef }] : []), assignments);
     if (attribution.employeeId === null || attribution.effectiveStatus !== 'mismatch') {
