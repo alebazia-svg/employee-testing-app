@@ -2,7 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { attributeTerminalFiscalEmployee, suggestTerminalFiscalCashierMappings } from '../lib/terminal-fiscal-attribution';
 import { terminalFiscalMappingConflictFields } from '../lib/terminal-fiscal-mapping-validation';
-import { hashWorkstationToken, isWorkstationAssignmentRace, openWorkstationAssignment, planWorkstationAssignment, resolveWorkstationContext } from '../lib/workstation-context';
+import {
+  claimWorkstationDevice,
+  createWorkstationProvisioningCode,
+  hashWorkstationToken,
+  isWorkstationAssignmentRace,
+  normalizeWorkstationProvisioningCode,
+  openWorkstationAssignment,
+  planWorkstationAssignment,
+  resolveWorkstationContext,
+} from '../lib/workstation-context';
 
 const from = new Date('2026-08-17T06:00:00.000Z');
 
@@ -34,6 +43,57 @@ test('workstation token is stored as a deterministic hash, not as raw credential
   const digest = hashWorkstationToken(token);
   assert.match(digest, /^[a-f0-9]{64}$/);
   assert.notEqual(digest, token);
+});
+
+test('workstation provisioning code is human-readable, normalized and sufficiently random in shape', () => {
+  const code = createWorkstationProvisioningCode();
+  assert.match(code, /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
+  assert.equal(normalizeWorkstationProvisioningCode(code.toLowerCase()), code.replaceAll('-', ''));
+});
+
+test('single-use workstation provisioning atomically rotates to a persistent device credential', async () => {
+  const code = 'ABCD-EFGH-JKLM';
+  const now = new Date('2026-08-17T18:00:00.000Z');
+  const updates: any[] = [];
+  const db: any = {
+    workstationDeviceBinding: {
+      findUnique: async ({ where }: any) => where.tokenHash === hashWorkstationToken('ABCDEFGHJKLM') ? {
+        id: 'binding-1', isActive: true, revokedAt: null, boundAt: null,
+        provisioningExpiresAt: new Date('2026-08-17T18:30:00.000Z'),
+        workstation: { id: 'ws-1', code: 'retail-1', label: 'Розница 1', isActive: true },
+      } : null,
+      updateMany: async (input: any) => { updates.push(input); return { count: 1 }; },
+    },
+  };
+  const result = await claimWorkstationDevice(db, { code, now });
+  assert.equal(result.status, 'bound');
+  if (result.status !== 'bound') return;
+  assert.notEqual(result.deviceToken, code);
+  assert.equal(updates[0].data.boundAt, now);
+  assert.equal(updates[0].data.tokenHash, hashWorkstationToken(result.deviceToken));
+  assert.notEqual(updates[0].data.tokenHash, hashWorkstationToken('ABCDEFGHJKLM'));
+});
+
+test('expired or concurrently consumed workstation provisioning code fails closed', async () => {
+  const code = 'ABCD-EFGH-JKLM';
+  const base = {
+    id: 'binding-1', isActive: true, revokedAt: null, boundAt: null,
+    workstation: { id: 'ws-1', code: 'retail-1', label: 'Розница 1', isActive: true },
+  };
+  const expired: any = {
+    workstationDeviceBinding: {
+      findUnique: async () => ({ ...base, provisioningExpiresAt: new Date('2026-08-17T17:59:59.000Z') }),
+      updateMany: async () => ({ count: 1 }),
+    },
+  };
+  assert.deepEqual(await claimWorkstationDevice(expired, { code, now: new Date('2026-08-17T18:00:00.000Z') }), { status: 'invalid' });
+  const raced: any = {
+    workstationDeviceBinding: {
+      findUnique: async () => ({ ...base, provisioningExpiresAt: new Date('2026-08-17T18:30:00.000Z') }),
+      updateMany: async () => ({ count: 0 }),
+    },
+  };
+  assert.deepEqual(await claimWorkstationDevice(raced, { code, now: new Date('2026-08-17T18:00:00.000Z') }), { status: 'invalid' });
 });
 
 test('only a database uniqueness race is eligible for safe assignment retry', () => {
@@ -109,7 +169,7 @@ test('runtime context resolves only an active hashed device binding', async () =
   const db: any = {
     workstationDeviceBinding: {
       findUnique: async ({ where }: any) => where.tokenHash === hashWorkstationToken(token)
-        ? { id: 'binding-1', isActive: true, revokedAt: null, workstation: { id: 'ws-1', code: 'retail-1', isActive: true } }
+        ? { id: 'binding-1', isActive: true, boundAt: new Date(), revokedAt: null, workstation: { id: 'ws-1', code: 'retail-1', isActive: true } }
         : null,
     },
     retailWorkstation: { findUnique: async () => null },

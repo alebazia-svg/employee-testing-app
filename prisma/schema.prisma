@@ -248,16 +248,18 @@ model RetailWorkstation {
 }
 
 model WorkstationDeviceBinding {
-  id            String                 @id @default(cuid())
-  workstationId String
-  tokenHash     String                 @unique
-  label         String                 @default("")
-  isActive      Boolean                @default(true)
-  revokedAt     DateTime?
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
-  workstation   RetailWorkstation      @relation(fields: [workstationId], references: [id], onDelete: Cascade)
-  assignments   WorkdayKkmAssignment[]
+  id                    String                 @id @default(cuid())
+  workstationId         String
+  tokenHash             String                 @unique
+  label                 String                 @default("")
+  isActive              Boolean                @default(true)
+  provisioningExpiresAt DateTime?
+  boundAt               DateTime?
+  revokedAt             DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  workstation           RetailWorkstation      @relation(fields: [workstationId], references: [id], onDelete: Cascade)
+  assignments           WorkdayKkmAssignment[]
 
   @@index([workstationId, isActive, revokedAt])
 }

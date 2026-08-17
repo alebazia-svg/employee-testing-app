@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 
 export const WORKSTATION_COOKIE_NAME = 'offonika_workstation';
+export const WORKSTATION_PROVISIONING_TTL_MINUTES = 30;
 
 export type WorkstationContextSource = 'device_login' | 'manual_select';
 
@@ -11,6 +12,45 @@ export function hashWorkstationToken(token: string) {
 
 export function createWorkstationToken() {
   return randomBytes(32).toString('base64url');
+}
+
+const PROVISIONING_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function normalizeWorkstationProvisioningCode(value: string) {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+export function createWorkstationProvisioningCode() {
+  const bytes = randomBytes(12);
+  const raw = [...bytes].map((value) => PROVISIONING_ALPHABET[value % PROVISIONING_ALPHABET.length]).join('');
+  return raw.match(/.{1,4}/g)!.join('-');
+}
+
+export async function claimWorkstationDevice(prisma: PrismaClient, input: { code: string; now?: Date }) {
+  const now = input.now ?? new Date();
+  const code = normalizeWorkstationProvisioningCode(input.code);
+  if (code.length !== 12) return { status: 'invalid' as const };
+  const binding = await prisma.workstationDeviceBinding.findUnique({
+    where: { tokenHash: hashWorkstationToken(code) },
+    include: { workstation: { select: { code: true, label: true, isActive: true } } },
+  });
+  if (!binding?.isActive || binding.revokedAt || binding.boundAt || !binding.provisioningExpiresAt
+    || binding.provisioningExpiresAt <= now || !binding.workstation.isActive) {
+    return { status: 'invalid' as const };
+  }
+  const deviceToken = createWorkstationToken();
+  const claimed = await prisma.workstationDeviceBinding.updateMany({
+    where: {
+      id: binding.id,
+      isActive: true,
+      revokedAt: null,
+      boundAt: null,
+      provisioningExpiresAt: { gt: now },
+    },
+    data: { tokenHash: hashWorkstationToken(deviceToken), boundAt: now },
+  });
+  if (claimed.count !== 1) return { status: 'invalid' as const };
+  return { status: 'bound' as const, deviceToken, bindingId: binding.id, workstation: binding.workstation };
 }
 
 export function isWorkstationAssignmentRace(error: unknown) {
@@ -56,7 +96,7 @@ export async function resolveWorkstationContext(prisma: PrismaClient, input: { t
     where: { tokenHash: hashWorkstationToken(token) },
     include: { workstation: true },
   }) : null;
-  const deviceWorkstation = binding?.isActive && !binding.revokedAt && binding.workstation.isActive ? binding.workstation : null;
+  const deviceWorkstation = binding?.isActive && Boolean(binding.boundAt) && !binding.revokedAt && binding.workstation.isActive ? binding.workstation : null;
   const manualWorkstation = manualCode ? await prisma.retailWorkstation.findUnique({ where: { code: manualCode } }) : null;
   if (deviceWorkstation && manualWorkstation && deviceWorkstation.id !== manualWorkstation.id) {
     return { status: 'conflict' as const, workstation: null, deviceBindingId: binding!.id, source: null };
