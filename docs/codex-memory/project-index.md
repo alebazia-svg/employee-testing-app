@@ -57,6 +57,10 @@ project from scratch.
   The historical Telegram bot service and its drifted production file are not
   overwritten or restarted by this flow; employee notifications and 1C writes
   remain disabled.
+- Retail workstations are equipment-topology labels only. They group versioned
+  `TerminalFiscalMapping` chains, but are never assigned to employees or shifts.
+  Terminal-fiscal employee attribution uses only a confirmed 1C `cashier.ref`;
+  operations without a mapped 1C cashier remain ADMIN-only.
 
 ## Known Dirty-Tree Context
 
