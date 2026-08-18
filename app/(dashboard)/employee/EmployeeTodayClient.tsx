@@ -33,6 +33,7 @@ import { Card } from '@/components/ui/card';
 import { startVisibleSync } from '@/lib/visible-sync';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
+import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
 
 function uploadFormData<T>(url: string, method: 'POST' | 'PATCH', formData: FormData, fallbackError: string) {
@@ -133,19 +134,6 @@ type ShiftControlState = {
   tasks: ShiftControlTask[];
 };
 
-type CashRecountComparison = {
-  status: 'matched' | 'mismatch' | 'unavailable';
-  actual: number;
-  expected: number | null;
-  difference: number | null;
-  discrepancyType: 'none' | 'surplus' | 'shortage' | 'unavailable';
-  requiresComment: boolean;
-  capturedAt: string;
-  oneCCheckedAt: string | null;
-  cashboxName: string;
-  sourceError: string | null;
-};
-
 type CashOperation = {
   id: number;
   userId: number;
@@ -208,6 +196,7 @@ type HandoverDraft = {
   reserveCashBalance: string;
   discrepancyType: '' | 'none' | 'surplus' | 'shortage';
   discrepancyAmount: string;
+  cashCommentRequired: boolean;
   terminalHadOperations: '' | 'yes' | 'no';
   terminalReconciliation: '' | 'matched' | 'discrepancy';
   terminalComment: string;
@@ -647,6 +636,7 @@ function emptyHandoverDraft(): HandoverDraft {
     reserveCashBalance: '',
     discrepancyType: '',
     discrepancyAmount: '',
+    cashCommentRequired: false,
     terminalHadOperations: '',
     terminalReconciliation: '',
     terminalComment: '',
@@ -696,12 +686,6 @@ function readRecord(value: unknown, key: string) {
   return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
 }
 
-function readCashComparison(value: unknown): CashRecountComparison | null {
-  const comparison = readRecord(value, 'cashComparison');
-  if (!comparison || !['matched', 'mismatch', 'unavailable'].includes(String(comparison.status))) return null;
-  return comparison as CashRecountComparison;
-}
-
 function readCashRecountStage(value: unknown) {
   if (!isRecord(value)) return null;
   return typeof value.cashRecountStage === 'string' ? value.cashRecountStage : null;
@@ -745,6 +729,7 @@ function draftFromHandoverData(data: unknown): HandoverDraft {
     draft.personalCashBalance = stringFromUnknown(personalCash.cashBalance);
     draft.discrepancyType = ['none', 'surplus', 'shortage'].includes(String(personalCash.discrepancyType)) ? String(personalCash.discrepancyType) as HandoverDraft['discrepancyType'] : '';
     draft.discrepancyAmount = stringFromUnknown(personalCash.discrepancyAmount);
+    draft.cashCommentRequired = personalCash.requiresComment === true;
     draft.hasTbankCredit = booleanDraftValue(personalCash.hasTbankCredit);
     draft.encashmentAmount = stringFromUnknown(personalCash.encashmentAmount);
     draft.encashmentDirection = personalCash.encashmentDirection === 'phone_reserve' || personalCash.encashmentDirection === 'deposit_safe'
@@ -918,7 +903,6 @@ export function EmployeeTodayClient({
   const [editingShiftTaskId, setEditingShiftTaskId] = useState<number | null>(null);
   const [shiftTaskDrafts, setShiftTaskDrafts] = useState<Record<number, ShiftTaskDraft>>({});
   const [shiftTaskErrors, setShiftTaskErrors] = useState<Record<number, Record<string, string>>>({});
-  const [cashComparisons, setCashComparisons] = useState<Record<number, CashRecountComparison | null>>({});
   const [showFullShiftPlan, setShowFullShiftPlan] = useState(false);
   const [activeHandoverTaskId, setActiveHandoverTaskId] = useState<number | null>(null);
   const [handoverStep, setHandoverStep] = useState(0);
@@ -1085,19 +1069,14 @@ export function EmployeeTodayClient({
   const primaryShiftControlTask = actionableShiftControlTask ?? nextShiftControlTask;
   const remainingShiftControlCount = pendingShiftControlTasks.length;
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
-  const handoverDiscrepancyAmount = parseMoneyInput(handoverDraft.discrepancyAmount);
   function buildHandoverSteps(draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
-    const draftRequiresEncashment = draftCashBalance !== null && draftCashBalance > 50000;
-    const draftDiscrepancyAmount = parseMoneyInput(draft.discrepancyAmount);
-    const isRetailEmployee = user.department === 'retail';
-    return [
-      'personalCashBalance',
-      ...(draftDiscrepancyAmount !== null && draftDiscrepancyAmount > 300 ? ['discrepancy'] : []),
-      ...(isRetailEmployee ? ['reserveCashBalance'] : []),
-      ...(draftRequiresEncashment ? ['encashment'] : []),
-      ...(isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode) ? ['zReportPhoto'] : []),
-    ] as const;
+    return buildShiftHandoverSteps({
+      personalCashBalance: draftCashBalance,
+      cashCommentRequired: draft.cashCommentRequired,
+      isRetail: user.department === 'retail',
+      isClosingShift: isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode),
+    });
   }
   const handoverSteps = buildHandoverSteps(handoverDraft);
   const calendarDays = useMemo(() => buildCalendarMonth(calendarMonth), [calendarMonth]);
@@ -1655,8 +1634,7 @@ export function EmployeeTodayClient({
               body: requestBody,
             });
             const responsePayload = await response.json();
-            if (response.status === 409 && responsePayload.cashComparison && (responsePayload.requiresResultSave || responsePayload.requiresComment)) {
-              setCashComparisons((current) => ({ ...current, [task.id]: responsePayload.cashComparison as CashRecountComparison }));
+            if (response.status === 409 && responsePayload.requiresComment) {
               if (responsePayload.task) {
                 setShiftControlState((current) => ({
                   ...current,
@@ -1665,20 +1643,15 @@ export function EmployeeTodayClient({
               }
               setShiftTaskErrors((current) => ({
                 ...current,
-                [task.id]: responsePayload.requiresComment
-                  ? { comment: String(responsePayload.error || 'Добавьте комментарий') }
-                  : {} as Record<string, string>,
+                [task.id]: { comment: String(responsePayload.error || 'Добавьте короткий комментарий') },
               }));
               return null;
             }
             if (!response.ok) throw new Error(responsePayload.error || 'Не удалось обновить задачу');
-            return responsePayload as { task: ShiftControlTask; cashComparison?: CashRecountComparison | null };
+            return responsePayload as { task: ShiftControlTask };
           })();
 
       if (!result) return;
-      if ('cashComparison' in result && result.cashComparison) {
-        setCashComparisons((current) => ({ ...current, [result.task.id]: result.cashComparison as CashRecountComparison }));
-      }
 
       setShiftControlState((current) => ({
         ...current,
@@ -1693,12 +1666,6 @@ export function EmployeeTodayClient({
         ...current,
         [result.task.id]: emptyShiftTaskDraft(result.task),
       }));
-      const completedCashComparison = 'cashComparison' in result
-        ? result.cashComparison as CashRecountComparison | null | undefined
-        : null;
-      if (completedCashComparison?.status === 'mismatch') {
-        setMessage('Выполнено с расхождением. Проблема зафиксирована.');
-      }
       await syncCurrentWorkdayState(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
@@ -1717,17 +1684,11 @@ export function EmployeeTodayClient({
 
     const completedAt = formatTaskCompletedAt(task.completedAt);
     const money = formatShiftMoney(task.numericValue);
-    const cashComparison = cashComparisons[task.id] !== undefined ? cashComparisons[task.id] : readCashComparison(task.handoverData);
 
     if (compact) {
       const parts: string[] = [];
       if (task.category === 'cash') {
         if (money) parts.push(`факт наличных: ${money} ₽`);
-        if (cashComparison?.status === 'matched') parts.push('совпало с 1С');
-        if (cashComparison?.status === 'mismatch' && cashComparison.difference !== null) {
-          parts.push(`разница: ${cashComparison.difference > 0 ? '+' : ''}${formatShiftMoney(cashComparison.difference)} ₽`);
-        }
-        if (cashComparison?.status === 'unavailable') parts.push('сверка с 1С недоступна');
       } else if (task.category === 'acquiring') {
         parts.push(acquiringResultLabel(task.integerValue, task.numericValue));
         if (task.category === 'acquiring' && task.comment) parts.push(task.comment);
@@ -1744,7 +1705,7 @@ export function EmployeeTodayClient({
           <p className='text-xs font-bold leading-snug text-slate-500'>{parts.join(' · ')}</p>
           {activeWorkDay && task.category !== 'handover' && task.category !== 'closing' && (
             <button type='button' className='w-fit text-xs font-extrabold text-primary underline-offset-2 hover:underline' onClick={() => editCompletedShiftTask(task)}>
-              Исправить ответ
+              {task.category === 'cash' ? 'Исправить ввод' : 'Исправить ответ'}
             </button>
           )}
         </div>
@@ -1755,22 +1716,7 @@ export function EmployeeTodayClient({
       <div className='mt-2 rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold leading-snug text-green-900 ring-1 ring-green-100'>
         {task.category === 'cash' && money && (
           <div className='grid gap-1'>
-            {cashComparison?.expected !== null && cashComparison?.expected !== undefined && (
-              <p>Остаток 1С на момент проверки: {formatShiftMoney(cashComparison.expected)} ₽</p>
-            )}
             <p>Фактически: {money} ₽</p>
-            {cashComparison?.status === 'matched' && (
-              <p className='text-green-800'>Разница: {formatShiftMoney(cashComparison.difference ?? 0)} ₽ · всё совпало</p>
-            )}
-            {cashComparison?.status === 'mismatch' && cashComparison.difference !== null && (
-              <>
-                <p className='text-amber-900'>Выполнено с расхождением</p>
-                <p className='text-amber-800'>
-                  Разница: {cashComparison.difference > 0 ? '+' : ''}{formatShiftMoney(cashComparison.difference)} ₽ · {cashComparison.discrepancyType === 'surplus' ? 'излишек' : 'недостача'}
-                </p>
-              </>
-            )}
-            {cashComparison?.status === 'unavailable' && <p className='text-slate-600'>Сверка с 1С временно недоступна</p>}
             {task.comment && <p className='text-green-800/80'>Комментарий: {task.comment}</p>}
           </div>
         )}
@@ -1792,7 +1738,7 @@ export function EmployeeTodayClient({
         {completedAt && <p className='mt-1 text-green-800/70'>Выполнено: {completedAt}</p>}
         {activeWorkDay && task.category !== 'handover' && task.category !== 'closing' && (
           <button type='button' className='mt-1 text-xs font-extrabold text-primary underline-offset-2 hover:underline' onClick={() => editCompletedShiftTask(task)}>
-            Исправить ответ
+            {task.category === 'cash' ? 'Исправить ввод' : 'Исправить ответ'}
           </button>
         )}
       </div>
@@ -1812,7 +1758,6 @@ export function EmployeeTodayClient({
     const isOpening = task.category === 'opening';
     const simpleLabel = task.category === 'handover' ? 'Начать сдачу смены' : 'Подтвердить';
     const errors = shiftTaskErrors[task.id] ?? {};
-    const cashComparison = cashComparisons[task.id] !== undefined ? cashComparisons[task.id] : readCashComparison(task.handoverData);
     const cashRecountStage = readCashRecountStage(task.handoverData);
     const showTerminalReconciliation = isAcquiring && draft.integerValue !== '' && draft.integerValue !== '0';
     const showTerminalPhoto = isAcquiring && ['1', '2'].includes(draft.integerValue);
@@ -1896,33 +1841,25 @@ export function EmployeeTodayClient({
                 min='0'
                 step='0.01'
                 value={draft.numericValue}
-                onChange={(event) => {
-                  updateShiftTaskDraft(task.id, { numericValue: event.target.value });
-                  setCashComparisons((current) => ({ ...current, [task.id]: null }));
-                }}
+                onChange={(event) => updateShiftTaskDraft(task.id, { numericValue: event.target.value })}
                 className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                 placeholder='0'
               />
               {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
             </label>
-            {cashComparison?.status === 'mismatch' && (
+            {cashRecountStage === 'comment_required' && (
               <div className='grid gap-2 rounded-lg bg-amber-50 p-2.5 text-xs ring-1 ring-amber-200'>
-                <p className='font-extrabold text-amber-950'>Обнаружено расхождение</p>
-                <p className='font-semibold text-amber-900'>
-                  Остаток 1С: {formatShiftMoney(cashComparison.expected)} ₽ · факт: {formatShiftMoney(cashComparison.actual)} ₽ · разница: {cashComparison.difference !== null && cashComparison.difference > 0 ? '+' : ''}{formatShiftMoney(cashComparison.difference)} ₽
-                </p>
-                <p className='font-semibold text-amber-900'>Если сумма введена неверно — измените её. Если факт указан верно — сохраните результат пересчёта.</p>
-                {cashComparison.requiresComment && (
-                  <label className='grid gap-1 font-extrabold text-amber-950'>
-                    Что произошло? (обязательно при расхождении больше 300 ₽)
-                    <textarea
-                      value={draft.comment}
-                      onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
-                      className='min-h-20 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                      placeholder='Кратко опишите причину расхождения'
-                    />
-                  </label>
-                )}
+                <p className='font-extrabold text-amber-950'>Добавьте короткий комментарий</p>
+                <p className='font-semibold text-amber-900'>Комментарий нужен для дополнительной проверки результата.</p>
+                <label className='grid gap-1 font-extrabold text-amber-950'>
+                  Комментарий
+                  <textarea
+                    value={draft.comment}
+                    onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
+                    className='min-h-20 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                    placeholder='Коротко укажите обстоятельства'
+                  />
+                </label>
                 {errors.comment && <span className='text-[11px] font-bold text-amber-800'>{errors.comment}</span>}
               </div>
             )}
@@ -2086,23 +2023,18 @@ export function EmployeeTodayClient({
             type='button'
             className='h-9 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
             onClick={() => {
-              if (isCash && cashComparison?.status === 'mismatch') {
-                setCashComparisons((current) => ({ ...current, [task.id]: null }));
-                setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
-                return;
-              }
               setOpenShiftTaskId(null);
               setEditingShiftTaskId(null);
               setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
             }}
             disabled={isSaving}
           >
-            {isCash && cashComparison?.status === 'mismatch' ? 'Исправить ввод' : 'Назад'}
+            Назад
           </Button>
           {!photoCompletesTaskAutomatically && (
             <Button type='button' className='h-9 text-xs font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
-              {isCash && (cashRecountStage === 'result_ready' || cashRecountStage === 'comment_required')
-                ? 'Сохранить результат'
+              {isCash && cashRecountStage === 'comment_required'
+                ? 'Сохранить с комментарием'
                 : isEditing ? 'Сохранить исправление' : 'Сохранить'}
             </Button>
           )}
@@ -2294,7 +2226,7 @@ export function EmployeeTodayClient({
       terminalQuestion: 'Проверка операций терминала',
       terminalReconciliation: 'Сверка терминала с 1С',
       terminalReceipts: 'Чеки терминала',
-      discrepancy: 'Укажите расхождение',
+      discrepancy: 'Добавьте комментарий',
       encashment: 'Оформите инкассацию',
       tbankQuestion: 'Проверьте терминал Т-Банка',
       tbankReceipts: 'Подтвердите операции Т-Банка',
@@ -2383,11 +2315,9 @@ export function EmployeeTodayClient({
 
         {step === 'discrepancy' && (
           <div className='grid gap-3'>
-            <p className='rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
-              {handoverDraft.discrepancyType === 'surplus' ? 'Излишек' : 'Недостача'}: {formatCashOperationAmount(handoverDiscrepancyAmount ?? 0)}
-            </p>
+            <p className='rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>Комментарий нужен для дополнительной проверки результата.</p>
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Комментарий к расхождению
+              Короткий комментарий
               <textarea
                 value={handoverDraft.comment}
                 onChange={(event) => updateHandoverDraft({ comment: event.target.value })}

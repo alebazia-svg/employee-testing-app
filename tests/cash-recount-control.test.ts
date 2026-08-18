@@ -41,19 +41,18 @@ test('only exact zero matches and comment threshold is strictly above 300 rubles
   assert.equal(comparison(1000, null).status, 'unavailable');
 });
 
-test('one task shows comparison, allows correction, and only saves a mismatch after final action', () => {
+test('cash recount completes without exposing a comparison unless a comment is required', () => {
   const values = [0.5, 1, 2, 100, 300, 301];
   for (const difference of values) {
     const result = comparison(1000 + difference, 1000);
-    assert.equal(decideCashRecountAction({ comparison: result, stage: 'initial', hasComment: false }), 'require_result_save');
     assert.equal(
-      decideCashRecountAction({ comparison: result, stage: 'result_ready', hasComment: false }),
+      decideCashRecountAction({ comparison: result, hasComment: false }),
       difference > 300 ? 'require_comment' : 'complete_mismatch',
     );
   }
-  assert.equal(decideCashRecountAction({ comparison: comparison(1000, 1000), stage: 'result_ready', hasComment: false }), 'complete_matched');
-  assert.equal(decideCashRecountAction({ comparison: comparison(1301, 1000), stage: 'comment_required', hasComment: true }), 'complete_mismatch');
-  assert.equal(decideCashRecountAction({ comparison: comparison(1000, null), stage: 'initial', hasComment: false }), 'complete_unavailable');
+  assert.equal(decideCashRecountAction({ comparison: comparison(1000, 1000), hasComment: false }), 'complete_matched');
+  assert.equal(decideCashRecountAction({ comparison: comparison(1301, 1000), hasComment: true }), 'complete_mismatch');
+  assert.equal(decideCashRecountAction({ comparison: comparison(1000, null), hasComment: false }), 'complete_unavailable');
 });
 
 test('fingerprint is stable and does not expose cashbox name', () => {
@@ -137,6 +136,10 @@ test('mismatch above 300 rubles is elevated and receives a reminder', async () =
   assert.deepEqual(result, { opened: 1, resolved: 0, notifications: 2 });
   assert.equal(issues[0].severity, 'error');
   assert.equal(notifications.length, 2);
+  for (const notification of notifications) {
+    assert.equal(notification.title, 'Контроль наличных');
+    assert.doesNotMatch(notification.body, /300|301|1000|1301|излиш|недост|расхожд/i);
+  }
 });
 
 test('unavailable source creates and resolves nothing', async () => {

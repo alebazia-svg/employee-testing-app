@@ -419,6 +419,7 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
   const terminalCheck = readRecord(data, 'terminalCheck');
   const photos = readPhotos(data);
   const comment = isRecord(data) ? data.comment : '';
+  const recountHistory = cashRecountInputHistory(data);
   const isRetail = department === 'retail';
 
   if (!personalCash && !reserveCash && !storeClosing) return null;
@@ -431,6 +432,15 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
             <PhotoRow label='Фото ведомости 1С' photo={readPhoto(photos, 'personalStatement')} onPreview={onPreview} />
             <DetailRow label='Остаток наличных' value={formatMoney(Number(personalCash.cashBalance ?? 0))} />
+            {recountHistory.length > 0 && (
+              <div className='grid gap-0.5 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 sm:col-span-2'>
+                {recountHistory.map((entry, index) => (
+                  <span key={`${entry.enteredAt}-${index}`}>
+                    {entry.kind === 'initial' ? 'Первоначальный ввод' : 'Исправленный ввод'}: {formatMoney(entry.value)} · {formatTime(entry.enteredAt)}
+                  </span>
+                ))}
+              </div>
+            )}
             {isRetail && <DetailRow label='Операции терминала' value={yesNo(terminalCheck?.hadOperations)} />}
             {isRetail && <DetailRow label='Результат сверки терминала' value={terminalCheck?.reconciliation === 'discrepancy' ? 'Есть расхождение' : terminalCheck?.reconciliation === 'matched' ? 'Всё совпадает' : '—'} />}
             {isRetail && <PhotoRow label='Чеки терминала' photo={readPhoto(photos, 'terminalReceipts') ?? readPhoto(photos, 'personalAcquiringReceipts')} onPreview={onPreview} />}
@@ -463,7 +473,9 @@ function HandoverDetails({ data, department, onPreview }: { data: unknown; depar
         <section className='rounded-xl bg-white p-4 ring-1 ring-slate-200'>
           <h4 className='text-sm font-extrabold text-slate-950'>Закрытие магазина</h4>
           <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-            <PhotoRow label='Фото чека закрытия смены' photo={readPhoto(photos, 'zReport')} onPreview={onPreview} />
+            {readPhoto(photos, 'zReport')
+              ? <PhotoRow label='Историческое фото чека закрытия смены' photo={readPhoto(photos, 'zReport')} onPreview={onPreview} />
+              : <DetailRow label='Закрытие ККМ' value='Проверяется автоматически по данным 1С' />}
           </div>
         </section>
       )}

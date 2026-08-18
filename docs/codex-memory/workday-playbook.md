@@ -131,8 +131,11 @@ missing-check review into an accusation or a hard mismatch.
 
 Current limitations must stay visible:
 
-- current KKM endpoints show receipt activity but do not prove that an X-report
-  or Z-report was generated;
+- current KKM endpoints do not prove that a paper X-report or Z-report was
+  printed, but `/cash-shifts` does prove the operational opening/closing state;
+- paper KKM report photos are not required from employees. Opening and closing
+  are verified automatically from the 1C cash-shift state; historical photos
+  remain available as audit;
 - T-Bank terminal totals are not compared with realization totals because the
   two sources can have different business composition;
 - physical placement of cash in the reserve remains a human fact; 1C verifies
@@ -214,17 +217,19 @@ When adding new checklist flows, do not encode "truth" into fields such as
 `integerValue`. Employee declarations and automatic 1C/OFD evidence must remain
 separate.
 
-For cash specifically: the employee enters the real counted amount first. The
-expected 1C cash balance should not be shown in a way that encourages copying
-instead of counting.
+For cash specifically: the employee sees only the counted fact that they enter
+and save. Employee APIs and notifications must not expose the expected 1C cash
+balance, difference, surplus/shortage or the automatic comparison result. The
+server retains that evidence and the initial/corrected input history for ADMIN
+control.
 
 At shift handover the portal captures the 1C cash balance when the employee
-saves the counted fact and calculates surplus/shortage itself. A difference up
-to 1 RUB is treated as matched. A difference above 1 RUB is retained for admin
-control; an employee comment is required only when the absolute difference is
-above 300 RUB. If 1C is unavailable, handover is not blocked and the check is
-left for manual admin review. The employee is never asked to choose surplus or
-shortage or enter the difference manually.
+saves the counted fact and calculates surplus/shortage itself. Only an exact
+zero difference is treated as matched. Every non-zero difference is retained
+for admin control; an employee sees only a neutral request for a short comment
+when the hidden absolute difference is above 300 RUB. If 1C is unavailable,
+handover is not blocked and no false issue is created. The employee is never
+asked to choose surplus or shortage or enter the difference manually.
 
 Retail shift handover records two separate cash facts in sequence: the employee
 first enters the counted balance of their own cashbox, then the counted balance
@@ -266,12 +271,9 @@ thought":
 - do not explain policy in the employee checklist unless it changes what the
   employee must do right now.
 
-Examples:
-
-- `Чек открытия смены` - `Откройте смену на кассе и сфотографируйте
-  распечатанный чек.`
-- `Чек закрытия смены` - `Закройте смену на кассе и сфотографируйте
-  распечатанный чек.`
+Opening and closing the KKM remain real employee actions, but they are not
+employee checklist confirmations. The portal verifies their result through
+`/cash-shifts` and keeps failures on the system/admin side.
 
 ## Admin Control UX
 

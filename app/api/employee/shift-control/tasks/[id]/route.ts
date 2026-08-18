@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { createOneCCashExpenseOrder, getCashStatementDimensions, getCashStatementSummary } from '@/lib/one-c';
 import { shiftControlEmployeeRevisionHistoryKey, shiftControlOneCAuditKey, stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
+import { employeeKkmReportPhotosRequired } from '@/lib/shift-control-policy';
 import { usesWorkdayShiftControl } from '@/lib/workday';
 import {
   appendCashRecountInputHistory,
@@ -310,10 +311,10 @@ async function saveHandoverDraft(
   const expectedCash = personalAudit?.status === 'captured' ? readNumber(personalAudit.balance) : null;
   const cashDifference = personalCashBalance !== null && expectedCash !== null ? personalCashBalance - expectedCash : null;
   const discrepancyMagnitude = cashDifference === null ? null : Math.abs(cashDifference);
-  const calculatedDiscrepancyType = discrepancyMagnitude === null || discrepancyMagnitude <= 1
+  const calculatedDiscrepancyType = discrepancyMagnitude === null || discrepancyMagnitude === 0
     ? 'none'
     : cashDifference! > 0 ? 'surplus' : 'shortage';
-  const calculatedDiscrepancyAmount = discrepancyMagnitude !== null && discrepancyMagnitude > 1 ? discrepancyMagnitude : null;
+  const calculatedDiscrepancyAmount = discrepancyMagnitude !== null && discrepancyMagnitude > 0 ? discrepancyMagnitude : null;
 
   const nextData = {
     ...existing,
@@ -326,6 +327,7 @@ async function saveHandoverDraft(
       cashBalance: personalCashBalance,
       discrepancyType: expectedCash === null ? '' : calculatedDiscrepancyType,
       discrepancyAmount: expectedCash === null ? null : calculatedDiscrepancyAmount,
+      requiresComment: discrepancyMagnitude !== null && discrepancyMagnitude > 300,
       hadWithdrawal: null,
       withdrawalAmount: null,
       cashOrderAmount: null,
@@ -348,11 +350,15 @@ async function saveHandoverDraft(
     },
     storeClosing: isClosingShift(task.run.workDayEntry.shiftCode)
       ? {
-          zReportRequired: true,
+          zReportRequired: employeeKkmReportPhotosRequired,
+          verification: 'one_c_cash_shift',
         }
       : null,
     comment,
     photos,
+    cashRecountInputHistory: personalCashBalance === null
+      ? existing.cashRecountInputHistory
+      : appendCashRecountInputHistory(existing.cashRecountInputHistory, personalCashBalance, new Date().toISOString()),
   };
 
   const updatedTask = await prisma.shiftControlTask.update({
@@ -406,9 +412,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     const isRetail = user.department === 'retail';
-    const draftResponse = await saveHandoverDraft(formData, task, isRetail, user.id, task.run.date);
-    const draftPayload = await draftResponse.json();
-    const handoverData = draftPayload.task.handoverData;
+    await saveHandoverDraft(formData, task, isRetail, user.id, task.run.date);
+    const savedDraftTask = await prisma.shiftControlTask.findUnique({ where: { id: task.id }, select: { handoverData: true } });
+    if (!savedDraftTask) return Response.json({ error: 'Задача сдачи смены не найдена' }, { status: 404 });
+    const handoverData = savedDraftTask.handoverData;
     const personalCash = readRecord(handoverData, 'personalCash') ?? {};
     const reserveCash = readRecord(handoverData, 'reserveCash') ?? {};
     const personalCashBalance = readNumber(personalCash.cashBalance);
@@ -438,7 +445,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         return Response.json({ error: 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.' }, { status: 400 });
       }
     }
-    if (isClosingEmployee) {
+    if (isClosingEmployee && employeeKkmReportPhotosRequired) {
       if (!hasSavedPhoto(handoverData, 'zReport')) return Response.json({ error: 'Сделайте фото чека закрытия смены' }, { status: 400 });
     }
 
@@ -527,8 +534,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
       };
       const now = new Date();
-      const savedOneCAudit = isRecord(handoverData[shiftControlOneCAuditKey])
-        ? handoverData[shiftControlOneCAuditKey]
+      const handoverRecord = isRecord(handoverData) ? handoverData : {};
+      const savedOneCAudit = isRecord(handoverRecord[shiftControlOneCAuditKey])
+        ? handoverRecord[shiftControlOneCAuditKey]
         : await captureOneCCashAudit({ userId: user.id, date: task.run.date, includeReserve: isRetail, capturedAt: now });
       const finalHandoverData = {
         draft: false,
@@ -544,6 +552,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           cashBalance: personalCashBalance,
           discrepancyType,
           discrepancyAmount: discrepancyType === 'none' ? null : discrepancyAmount,
+          requiresComment: requiresDiscrepancyComment,
           hadWithdrawal: null,
           withdrawalAmount: null,
           cashOrderAmount: null,
@@ -557,11 +566,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         terminalCheck: null,
         storeClosing: isClosingEmployee
           ? {
-              zReportRequired: true,
+              zReportRequired: employeeKkmReportPhotosRequired,
+              verification: 'one_c_cash_shift',
             }
           : null,
         comment,
         photos,
+        cashRecountInputHistory: handoverRecord.cashRecountInputHistory ?? [],
       };
 
       const result = await prisma.$transaction(async (tx) => {
@@ -789,32 +800,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     };
     const decision = decideCashRecountAction({
       comparison: cashComparison,
-      stage: decisionStage,
       hasComment: Boolean(commentSource.trim()),
     });
-    if (decision === 'require_result_save') {
-      nextHandoverData = { ...nextHandoverData, cashRecountStage: 'result_ready', cashRecountAttempt: 1 };
-      const draftTask = await prisma.shiftControlTask.update({
-        where: { id: task.id },
-        data: { handoverData: nextHandoverData as Prisma.InputJsonValue },
-      });
-      return Response.json({
-        error: 'Обнаружено расхождение. Измените сумму или сохраните результат пересчёта.',
-        requiresResultSave: true,
-        cashComparison,
-        task: taskForEmployee(draftTask),
-      }, { status: 409 });
-    }
     if (decision === 'require_comment') {
-      nextHandoverData = { ...nextHandoverData, cashRecountStage: 'comment_required', cashRecountAttempt: 2 };
+      nextHandoverData = { ...nextHandoverData, cashRecountStage: 'comment_required', cashRecountAttempt: 1 };
       const draftTask = await prisma.shiftControlTask.update({
         where: { id: task.id },
         data: { handoverData: nextHandoverData as Prisma.InputJsonValue },
       });
       return Response.json({
-        error: 'Добавьте комментарий: расхождение больше 300 ₽',
+        error: 'Добавьте короткий комментарий для дополнительной проверки результата.',
         requiresComment: true,
-        cashComparison,
         task: taskForEmployee(draftTask),
       }, { status: 409 });
     }
@@ -863,5 +859,5 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       })
     : await prisma.shiftControlTask.update({ where: { id: task.id }, data });
 
-  return Response.json({ task: taskForEmployee(updatedTask), cashComparison });
+  return Response.json({ task: taskForEmployee(updatedTask) });
 }

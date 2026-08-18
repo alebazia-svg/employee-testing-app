@@ -11,7 +11,6 @@ export type CashRecountStage = 'initial' | 'result_ready' | 'comment_required';
 export type CashRecountDecision =
   | 'complete_matched'
   | 'complete_unavailable'
-  | 'require_result_save'
   | 'require_comment'
   | 'complete_mismatch';
 
@@ -111,12 +110,10 @@ export function cashRecountIssueFingerprint(runId: number, cashboxName: string) 
 
 export function decideCashRecountAction(input: {
   comparison: CashRecountComparison;
-  stage?: CashRecountStage | null;
   hasComment: boolean;
 }): CashRecountDecision {
   if (input.comparison.status === 'unavailable') return 'complete_unavailable';
   if (input.comparison.status === 'matched') return 'complete_matched';
-  if (!input.stage || input.stage === 'initial') return 'require_result_save';
   if (input.comparison.requiresComment && !input.hasComment) return 'require_comment';
   return 'complete_mismatch';
 }
@@ -219,8 +216,8 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
         issueId: issue.id,
         fingerprint: `cash-recount:${issue.id}:detected:${input.taskId}`,
         kind: 'issue_detected',
-        title: issue.title,
-        body: `${issue.detail} Пересчитайте кассу и проверьте движения в 1С.`,
+        title: 'Контроль наличных',
+        body: 'Результат пересчёта сохранён для контроля. Следующий пересчёт выполните по графику.',
         scheduledAt: input.now,
       },
       update: {},
@@ -234,8 +231,8 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
           issueId: issue.id,
           fingerprint: `cash-recount:${issue.id}:reminder:${input.taskId}`,
           kind: 'issue_reminder',
-          title: issue.title,
-          body: `Расхождение наличных ещё не закрыто. ${issue.detail}`,
+          title: 'Контроль наличных',
+          body: 'Вопрос по наличным остаётся открытым. Если нужна помощь, обратитесь к администратору.',
           scheduledAt: new Date(input.now.getTime() + reminderDelayMs),
         },
         update: {},
@@ -252,8 +249,8 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
         issueId: issue.id,
         fingerprint: `cash-recount:${issue.id}:reminder:${input.taskId}`,
         kind: 'issue_reminder',
-        title: issue.title,
-        body: `Расхождение наличных больше 300 ₽ и ещё не закрыто. ${issue.detail}`,
+        title: 'Контроль наличных',
+        body: 'Вопрос по наличным остаётся открытым. Если нужна помощь, обратитесь к администратору.',
         scheduledAt: nextReminderAt!,
       },
       update: {},
