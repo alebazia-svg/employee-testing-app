@@ -112,6 +112,35 @@ function configureWebPush() {
   return true;
 }
 
+function notificationTargetKey(notification: { id: number; taskId: number | null; issueId: number | null; reviewId: string | null }) {
+  if (notification.taskId) return `task:${notification.taskId}`;
+  if (notification.issueId) return `issue:${notification.issueId}`;
+  if (notification.reviewId) return `review:${notification.reviewId}`;
+  return `notification:${notification.id}`;
+}
+
+async function activeUnreadNotificationTargets(userId: number) {
+  const rows = await prisma.workdayNotification.findMany({
+    where: { userId, status: 'sent', readAt: null },
+    select: {
+      id: true,
+      taskId: true,
+      issueId: true,
+      reviewId: true,
+      task: { select: { status: true, run: { select: { status: true } } } },
+      issue: { select: { status: true } },
+      review: { select: { status: true } },
+    },
+  });
+  const active = rows.filter((notification) => {
+    if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
+    if (notification.issue) return notification.issue.status === 'open';
+    if (notification.review) return notification.review.status === 'open';
+    return true;
+  });
+  return new Set(active.map(notificationTargetKey));
+}
+
 export async function dispatchDueWorkdayNotifications(now = new Date()) {
   const due = await prisma.workdayNotification.findMany({
     where: { status: 'pending', scheduledAt: { lte: now } },
@@ -139,11 +168,15 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
 
     let lastError = '';
     if (pushConfigured) {
+      const unreadTargets = await activeUnreadNotificationTargets(notification.userId);
+      unreadTargets.add(notificationTargetKey(notification));
+      const badgeCount = unreadTargets.size;
       const payload = JSON.stringify({
         title: notification.title,
         body: notification.body,
         url: notification.reviewId ? `/employee/payment-checks/${notification.reviewId}` : '/employee',
         notificationId: notification.id,
+        badgeCount,
       });
       for (const subscription of notification.user.pushSubscriptions) {
         try {

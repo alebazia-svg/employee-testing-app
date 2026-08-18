@@ -52,7 +52,7 @@ test('lifecycle creates one issue and notification, then resolves without duplic
           ? [where.status]
           : where.status?.in ?? [];
         const rows = notifications.filter((row) => (
-          (where.fingerprint ? row.fingerprint === where.fingerprint : row.issueId === issue?.id)
+          (where.id ? row.id === where.id : where.fingerprint ? row.fingerprint === where.fingerprint : row.issueId === issue?.id)
           && allowedStatuses.includes(row.status)
         ));
         rows.forEach((row) => Object.assign(row, data));
@@ -77,6 +77,14 @@ test('lifecycle creates one issue and notification, then resolves without duplic
   assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T21:18:00Z')), { reminded: 0, opened: 0, resolved: 1, unassigned: 0 });
   assert.equal(issues[0].status, 'resolved');
   assert.equal(notifications[0].status, 'cancelled');
+
+  cases[0].realizationAt = new Date('2026-08-19T08:00:00Z');
+  cases[0].status = 'mismatch';
+  cases[0].employeeActionCandidate = true;
+  assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-19T10:30:00Z')), { reminded: 1, opened: 0, resolved: 0, unassigned: 0 });
+  assert.equal(notifications.length, 2);
+  assert.equal(notifications[0].status, 'pending');
+  assert.equal(notifications[0].readAt, null);
 });
 
 test('unmapped cases never create employee side effects', async () => {

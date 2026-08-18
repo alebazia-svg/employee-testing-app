@@ -110,7 +110,21 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
         const existingIssue = await tx.workdayControlIssue.findUnique({ where: { fingerprint } });
         if (existingIssue?.status === 'open') return false;
         const existing = await tx.workdayNotification.findUnique({ where: { fingerprint: reminderFingerprint } });
-        if (existing) return false;
+        if (existing) {
+          if (existing.status !== 'cancelled') return false;
+          const reactivated = await tx.workdayNotification.updateMany({
+            where: { id: existing.id, status: 'cancelled' },
+            data: {
+              userId,
+              status: 'pending',
+              scheduledAt: now,
+              sentAt: null,
+              readAt: null,
+              lastError: '',
+            },
+          });
+          return reactivated.count === 1;
+        }
         await tx.workdayNotification.create({
           data: {
             userId,

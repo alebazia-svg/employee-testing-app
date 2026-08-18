@@ -5,7 +5,11 @@ self.addEventListener('push', (event) => {
   } catch {
     data = {};
   }
-  event.waitUntil(self.registration.showNotification(data.title || 'OFFONIKA', {
+  const actions = [];
+  if ('setAppBadge' in self.navigator && Number.isFinite(Number(data.badgeCount))) {
+    actions.push(self.navigator.setAppBadge(Math.max(0, Number(data.badgeCount))));
+  }
+  actions.push(self.registration.showNotification(data.title || 'OFFONIKA', {
     body: data.body || 'Откройте портал, чтобы продолжить рабочий день.',
     icon: '/pwa-icon-192.png',
     badge: '/favicon-32x32.png',
@@ -13,6 +17,7 @@ self.addEventListener('push', (event) => {
     tag: data.notificationId ? `workday-${data.notificationId}` : 'workday',
     renotify: false,
   }));
+  event.waitUntil(Promise.all(actions));
 });
 
 self.addEventListener('notificationclick', (event) => {

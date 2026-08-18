@@ -18,6 +18,17 @@ function urlBase64ToUint8Array(value: string) {
   return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
 }
 
+type BadgeNavigator = Navigator & {
+  setAppBadge?: (count?: number) => Promise<void>;
+  clearAppBadge?: () => Promise<void>;
+};
+
+function syncAppBadge(count: number) {
+  const badgeNavigator = navigator as BadgeNavigator;
+  if (count > 0) void badgeNavigator.setAppBadge?.(count).catch(() => undefined);
+  else void badgeNavigator.clearAppBadge?.().catch(() => undefined);
+}
+
 export function WorkdayNotificationsClient() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<WorkdayNotification[]>([]);
@@ -31,9 +42,11 @@ export function WorkdayNotificationsClient() {
     const response = await fetch('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
     if (!response?.ok) return;
     const payload = await response.json();
-    setNotifications(Array.isArray(payload.notifications)
+    const nextNotifications = Array.isArray(payload.notifications)
       ? payload.notifications.filter((item: WorkdayNotification) => !item.readAt)
-      : []);
+      : [];
+    setNotifications(nextNotifications);
+    syncAppBadge(nextNotifications.length);
   }, []);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
@@ -79,7 +92,11 @@ export function WorkdayNotificationsClient() {
   }, [connectPush, refresh]);
 
   async function dismiss(id: number) {
-    setNotifications((current) => current.filter((notification) => notification.id !== id));
+    setNotifications((current) => {
+      const next = current.filter((notification) => notification.id !== id);
+      syncAppBadge(next.length);
+      return next;
+    });
     await fetch('/api/employee/workday-notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
