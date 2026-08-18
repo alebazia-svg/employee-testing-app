@@ -1,0 +1,11 @@
+[Unit]
+Description=Offonika daily terminal fiscal owner report timer
+
+[Timer]
+OnCalendar=*-*-* 09:50:00 UTC
+Persistent=true
+RandomizedDelaySec=60
+Unit=offonika-terminal-fiscal-owner-report.service
+
+[Install]
+WantedBy=timers.target

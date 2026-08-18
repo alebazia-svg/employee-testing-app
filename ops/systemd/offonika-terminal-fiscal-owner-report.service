@@ -1,0 +1,8 @@
+[Unit]
+Description=Offonika daily terminal fiscal owner report
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/docker/employee-testing-app/ops/systemd/run-offonika-terminal-fiscal-owner-report.sh
