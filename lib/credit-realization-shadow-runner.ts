@@ -16,8 +16,10 @@ import {
   type OneCSalesRealizationDocument,
   type OneCSalesRealizationLinks,
 } from '@/lib/one-c';
+import { syncCreditRealizationWorkdayControl } from '@/lib/credit-realization-workday-control';
 
 export const CREDIT_REALIZATION_CONTROL_VERSION = 'credit-shadow-v1';
+export const CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED = process.env.CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED === 'true';
 export const CREDIT_REALIZATION_CUSTOMER_REF = '537e501e-4640-11ed-8f49-0025901e48ee';
 const PAGE_LIMIT = 500;
 const MAX_OFFSET = 5_000;
@@ -229,6 +231,7 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
   const run = await prisma.creditRealizationControlRun.create({
     data: {
       runKey,
+      mode: CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED ? 'live' : 'shadow',
       algorithmVersion: CREDIT_REALIZATION_CONTROL_VERSION,
       periodFrom: snapshot.periodFrom,
       periodTo: snapshot.periodTo,
@@ -310,7 +313,10 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
       },
     });
   });
-  return { acquired: true, runId: run.id, persisted: true, counts };
+  const lifecycle = CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED
+    ? await syncCreditRealizationWorkdayControl(prisma, snapshot.checkedAt)
+    : null;
+  return { acquired: true, runId: run.id, persisted: true, counts, lifecycle };
 }
 
 export function automaticCreditShadowPeriod(now = new Date(), days = 14) {
