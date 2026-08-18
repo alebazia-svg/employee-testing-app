@@ -117,8 +117,9 @@ production without employee UI, notifications or incidents.
   internal proxy URL. The Platforma OFD token remains inside AgentAPI.
 - The proxy's `agentapi-read-proxy.service` has a systemd drop-in that restores
   the network attachment whenever the proxy container is recreated.
-- `offonika-terminal-fiscal-current.timer` runs every 15 minutes using a
-  completed bucket with a source delay.
+- `offonika-terminal-fiscal-current.timer` runs every 5 minutes using a
+  completed bucket with a 10-minute source delay. The practical first complete
+  check therefore happens about 10-15 minutes after a bank operation.
 - `offonika-terminal-fiscal-final.timer` finalizes the previous Moscow day at
   00:14.
 - T-Bank calendar-day reads are split into windows no longer than 12 hours to

@@ -63,7 +63,11 @@ project from scratch.
   hard mismatches without a mapped 1C cashier remain ADMIN-only. A missing 1C
   check may create a neutral employee review only after a complete read at least
   ten minutes after payment and only when nearby checks of the same KKM identify
-  one mapped cashier; ambiguity remains ADMIN-only. Employee delivery remains
+  one mapped cashier. When strict time matching misses delayed checks, the
+  runner may add only cashier attribution from unused 1C checks that fully cover
+  the unmatched bank operations by operation type and amount; it does not turn
+  such a row into an exact match. Partial coverage or mixed cashiers remains
+  ADMIN-only. Employee delivery remains
   disabled while a production shadow mode records only candidates that survive
   the aggregate terminal/1C coverage guard. The guard uses one-to-one exact
   operation-type/amount coverage and keeps incomplete, partial, conflicting and
