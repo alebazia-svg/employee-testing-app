@@ -57,10 +57,23 @@ function uploadFormData<T>(url: string, method: 'POST' | 'PATCH', formData: Form
       const error = isRecord(result) && typeof result.error === 'string' ? result.error : fallbackError;
       reject(new EmployeeApiError(error, isRecord(result) && typeof result.code === 'string' ? result.code : '', result));
     };
-    request.onerror = () => reject(new Error('Связь прервалась при загрузке фото. Проверьте интернет и повторите.'));
-    request.ontimeout = () => reject(new Error('Фото загружается слишком долго. Проверьте интернет и повторите.'));
+    request.onerror = () => reject(new Error('Связь прервалась при сохранении. Проверьте интернет и повторите.'));
+    request.ontimeout = () => reject(new Error('Сохранение занимает слишком долго. Проверьте интернет и повторите.'));
     request.send(formData);
   });
+}
+
+async function submitFormData<T>(url: string, method: 'POST' | 'PATCH', formData: FormData, fallbackError: string) {
+  const containsPhoto = Array.from(formData.values()).some((value) => value instanceof File && value.size > 0);
+  if (containsPhoto) return uploadFormData<T>(url, method, formData, fallbackError);
+
+  const response = await fetch(url, { method, body: formData });
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = isRecord(result) && typeof result.error === 'string' ? result.error : fallbackError;
+    throw new EmployeeApiError(error, isRecord(result) && typeof result.code === 'string' ? result.code : '', result);
+  }
+  return result as T;
 }
 
 class EmployeeApiError extends Error {
@@ -946,6 +959,7 @@ export function EmployeeTodayClient({
   const [activeHandoverTaskId, setActiveHandoverTaskId] = useState<number | null>(null);
   const [handoverStep, setHandoverStep] = useState(0);
   const [handoverAttemptedStep, setHandoverAttemptedStep] = useState<string | null>(null);
+  const [handoverSaveError, setHandoverSaveError] = useState('');
   const [handoverDraft, setHandoverDraft] = useState<HandoverDraft>(() => emptyHandoverDraft());
   const [openingPhotoTaskId, setOpeningPhotoTaskId] = useState<number | null>(null);
   const [openingPhotoFile, setOpeningPhotoFile] = useState<File | null>(null);
@@ -1481,6 +1495,7 @@ export function EmployeeTodayClient({
     setHandoverDraft(restoredDraft);
     setHandoverStep(firstIncompleteHandoverStep(restoredDraft));
     setHandoverAttemptedStep(null);
+    setHandoverSaveError('');
     setShowFullShiftPlan(false);
     setError('');
     setMessage('');
@@ -1488,6 +1503,7 @@ export function EmployeeTodayClient({
 
   function updateHandoverDraft(patch: Partial<HandoverDraft>) {
     setHandoverDraft((current) => ({ ...current, ...patch }));
+    setHandoverSaveError('');
   }
 
   function openCashOperation(direction: CashOperation['direction']) {
@@ -1561,7 +1577,7 @@ export function EmployeeTodayClient({
     formData.append('encashmentDirection', draft.encashmentDirection);
     formData.append('comment', draft.comment);
 
-    const result = await uploadFormData<{ task: ShiftControlTask }>(
+    const result = await submitFormData<{ task: ShiftControlTask }>(
       '/api/employee/shift-control/tasks/' + task.id,
       'PATCH',
       formData,
@@ -2156,9 +2172,10 @@ export function EmployeeTodayClient({
     formData.append('comment', draft.comment);
 
     setError('');
+    setHandoverSaveError('');
     setIsSaving(true);
     try {
-      const result = await uploadFormData<{
+      const result = await submitFormData<{
         task: ShiftControlTask;
         tasks?: ShiftControlTask[];
         run?: ShiftControlRun | null;
@@ -2181,6 +2198,7 @@ export function EmployeeTodayClient({
       }
       setActiveHandoverTaskId(null);
       setHandoverAttemptedStep(null);
+      setHandoverSaveError('');
       setHandoverStep(0);
       setHandoverDraft(emptyHandoverDraft());
       setMessage(result.message || 'Смена сдана, рабочий день завершён');
@@ -2188,7 +2206,7 @@ export function EmployeeTodayClient({
       await syncCurrentWorkdayState(true);
     } catch (reason) {
       if (reason instanceof EmployeeApiError && reason.code === 'OPEN_REQUIRED_ISSUES') setCloseBlocked(true);
-      setError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
+      setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
     } finally {
       setIsSaving(false);
     }
@@ -2197,7 +2215,7 @@ export function EmployeeTodayClient({
   async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
     if (!file) return;
     setHandoverAttemptedStep(null);
-    setError('');
+    setHandoverSaveError('');
 
     try {
       setIsSaving(true);
@@ -2215,7 +2233,7 @@ export function EmployeeTodayClient({
       setMessage('Фото прикреплено');
       setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить фото');
+      setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сохранить фото');
     } finally {
       setIsSaving(false);
     }
@@ -2537,6 +2555,12 @@ export function EmployeeTodayClient({
           </div>
         )}
 
+        {handoverSaveError && (
+          <p className='mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-bold leading-snug text-red-800 ring-1 ring-red-200'>
+            {handoverSaveError}
+          </p>
+        )}
+
         <div className={cn('mt-4 grid gap-2', photoCompletesHandoverStep ? 'grid-cols-1' : 'grid-cols-2')}>
           <Button
             type='button'
@@ -2545,10 +2569,12 @@ export function EmployeeTodayClient({
               if (handoverStep === 0) {
                 setActiveHandoverTaskId(null);
                 setHandoverAttemptedStep(null);
+                setHandoverSaveError('');
                 return;
               }
               setHandoverStep((current) => Math.max(0, current - 1));
               setHandoverAttemptedStep(null);
+              setHandoverSaveError('');
               setError('');
             }}
             disabled={isSaving}
@@ -2565,6 +2591,7 @@ export function EmployeeTodayClient({
                 return;
               }
               setHandoverAttemptedStep(null);
+              setHandoverSaveError('');
               setError('');
               try {
                 setIsSaving(true);
@@ -2579,7 +2606,7 @@ export function EmployeeTodayClient({
                 }
                 setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
               } catch (reason) {
-                setError(reason instanceof Error ? reason.message : 'Не удалось сохранить шаг');
+                setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сохранить шаг');
               } finally {
                 setIsSaving(false);
               }
@@ -2702,9 +2729,19 @@ export function EmployeeTodayClient({
 
           {error && (
             <div
-              className='mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 ring-1 ring-red-200'
+              role='alert'
+              className='fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-[488px] items-start gap-2.5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-extrabold leading-snug text-red-900 shadow-2xl ring-1 ring-red-200'
             >
-              {error}
+              <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-red-700' />
+              <span className='min-w-0 flex-1'>{error}</span>
+              <button
+                type='button'
+                className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-red-600 hover:bg-red-100'
+                aria-label='Закрыть сообщение об ошибке'
+                onClick={() => setError('')}
+              >
+                <X className='h-4 w-4' />
+              </button>
             </div>
           )}
 
