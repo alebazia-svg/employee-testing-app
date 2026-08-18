@@ -328,7 +328,7 @@ async function saveHandoverDraft(
       cashBalance: personalCashBalance,
       discrepancyType: expectedCash === null ? '' : calculatedDiscrepancyType,
       discrepancyAmount: expectedCash === null ? null : calculatedDiscrepancyAmount,
-      requiresComment: discrepancyMagnitude !== null && discrepancyMagnitude > 300,
+      requiresComment: false,
       hadWithdrawal: null,
       withdrawalAmount: null,
       cashOrderAmount: null,
@@ -428,15 +428,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const comment = isRecord(handoverData) && typeof handoverData.comment === 'string' ? handoverData.comment.trim() : '';
     const isClosingEmployee = isRetail && isClosingShift(task.run.workDayEntry.shiftCode);
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
-    const requiresDiscrepancyComment =
-      (discrepancyType === 'surplus' || discrepancyType === 'shortage') && discrepancyAmount !== null && discrepancyAmount > 300;
+    const requiresDiscrepancyComment = false;
 
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
     if (isRetail && reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
     if (discrepancyType && !['none', 'surplus', 'shortage'].includes(discrepancyType)) {
       return Response.json({ error: 'Не удалось определить расхождение по кассе' }, { status: 400 });
     }
-    if (requiresDiscrepancyComment && !comment) return Response.json({ error: 'Добавьте комментарий: расхождение больше 300 ₽' }, { status: 400 });
     if (requiresEncashment) {
       if (encashmentAmount === null) return Response.json({ error: 'Укажите сумму инкассации' }, { status: 400 });
       if (!['phone_reserve', 'deposit_safe'].includes(encashmentDirection)) {
@@ -819,18 +817,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       comparison: cashComparison,
       hasComment: Boolean(commentSource.trim()),
     });
-    if (decision === 'require_comment') {
-      nextHandoverData = { ...nextHandoverData, cashRecountStage: 'comment_required', cashRecountAttempt: 1 };
-      const draftTask = await prisma.shiftControlTask.update({
-        where: { id: task.id },
-        data: { handoverData: nextHandoverData as Prisma.InputJsonValue },
-      });
-      return Response.json({
-        error: 'Добавьте короткий комментарий для дополнительной проверки результата.',
-        requiresComment: true,
-        task: taskForEmployee(draftTask),
-      }, { status: 409 });
-    }
     const completedWithDiscrepancy = decision === 'complete_mismatch';
     nextHandoverData = {
       ...nextHandoverData,
@@ -838,7 +824,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       cashRecountAttempt: decisionStage === 'initial' ? 1 : 2,
     };
     data.numericValue = numericValue;
-    data.comment = completedWithDiscrepancy && cashComparison.requiresComment ? commentSource.trim() : '';
+    data.comment = '';
     data.handoverData = withEmployeeRevision(task, nextHandoverData, editedAt) as Prisma.InputJsonValue;
   } else if (task.category === 'credit') {
     const checkStatus = readInteger(payload.integerValue);

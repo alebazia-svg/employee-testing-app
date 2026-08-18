@@ -5,13 +5,11 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 
 export const cashRecountToleranceRub = 0;
 export const cashRecountCommentThresholdRub = 300;
-const reminderDelayMs = 30 * 60 * 1000;
 
 export type CashRecountStage = 'initial' | 'result_ready' | 'comment_required';
 export type CashRecountDecision =
   | 'complete_matched'
   | 'complete_unavailable'
-  | 'require_comment'
   | 'complete_mismatch';
 
 export type CashRecountComparison = {
@@ -96,7 +94,7 @@ export function buildCashRecountComparison(input: {
     expected: money(input.expected),
     difference,
     discrepancyType: matched ? 'none' : difference > 0 ? 'surplus' : 'shortage',
-    requiresComment: magnitude > cashRecountCommentThresholdRub,
+    requiresComment: false,
     capturedAt: input.capturedAt,
     oneCCheckedAt: input.oneCCheckedAt ?? null,
     cashboxName: input.cashboxName ?? '',
@@ -114,7 +112,6 @@ export function decideCashRecountAction(input: {
 }): CashRecountDecision {
   if (input.comparison.status === 'unavailable') return 'complete_unavailable';
   if (input.comparison.status === 'matched') return 'complete_matched';
-  if (input.comparison.requiresComment && !input.hasComment) return 'require_comment';
   return 'complete_mismatch';
 }
 
@@ -158,7 +155,7 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
   const elevated = Math.abs(input.comparison.difference ?? 0) > cashRecountCommentThresholdRub;
   const escalating = Boolean(existing?.status === 'open' && existing.severity !== 'error' && elevated);
   const severity = elevated || existing?.severity === 'error' ? 'error' : 'warning';
-  const nextReminderAt = elevated ? new Date(input.now.getTime() + reminderDelayMs) : null;
+  const nextReminderAt = null;
   const issue = await db.workdayControlIssue.upsert({
     where: { fingerprint },
     create: {
@@ -203,59 +200,16 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
       },
       lastDetectedAt: input.now,
       resolvedAt: null,
-      ...(reopening ? { detectedAt: input.now, nextReminderAt } : elevated ? { nextReminderAt } : {}),
+      nextReminderAt: null,
+      ...(reopening ? { detectedAt: input.now } : {}),
     },
   });
 
-  if (!existing || reopening) {
-    await db.workdayNotification.upsert({
-      where: { fingerprint: `cash-recount:${issue.id}:detected:${input.taskId}` },
-      create: {
-        userId: input.userId,
-        taskId: input.taskId,
-        issueId: issue.id,
-        fingerprint: `cash-recount:${issue.id}:detected:${input.taskId}`,
-        kind: 'issue_detected',
-        title: 'Контроль наличных',
-        body: 'Результат пересчёта сохранён для контроля. Следующий пересчёт выполните по графику.',
-        scheduledAt: input.now,
-      },
-      update: {},
-    });
-    if (elevated) {
-      await db.workdayNotification.upsert({
-        where: { fingerprint: `cash-recount:${issue.id}:reminder:${input.taskId}` },
-        create: {
-          userId: input.userId,
-          taskId: input.taskId,
-          issueId: issue.id,
-          fingerprint: `cash-recount:${issue.id}:reminder:${input.taskId}`,
-          kind: 'issue_reminder',
-          title: 'Контроль наличных',
-          body: 'Вопрос по наличным остаётся открытым. Если нужна помощь, обратитесь к администратору.',
-          scheduledAt: new Date(input.now.getTime() + reminderDelayMs),
-        },
-        update: {},
-      });
-    }
-    return { opened: 1, resolved: 0, notifications: elevated ? 2 : 1 };
-  }
-  if (escalating) {
-    await db.workdayNotification.upsert({
-      where: { fingerprint: `cash-recount:${issue.id}:reminder:${input.taskId}` },
-      create: {
-        userId: input.userId,
-        taskId: input.taskId,
-        issueId: issue.id,
-        fingerprint: `cash-recount:${issue.id}:reminder:${input.taskId}`,
-        kind: 'issue_reminder',
-        title: 'Контроль наличных',
-        body: 'Вопрос по наличным остаётся открытым. Если нужна помощь, обратитесь к администратору.',
-        scheduledAt: nextReminderAt!,
-      },
-      update: {},
-    });
-    return { opened: 0, resolved: 0, notifications: 1 };
-  }
+  await db.workdayNotification.updateMany({
+    where: { issueId: issue.id, status: 'pending' },
+    data: { status: 'cancelled' },
+  });
+  if (!existing || reopening) return { opened: 1, resolved: 0, notifications: 0 };
+  if (escalating) return { opened: 0, resolved: 0, notifications: 0 };
   return { opened: 0, resolved: 0, notifications: 0 };
 }

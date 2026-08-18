@@ -722,11 +722,6 @@ function readRecord(value: unknown, key: string) {
   return isRecord(value) && isRecord(value[key]) ? (value[key] as Record<string, unknown>) : null;
 }
 
-function readCashRecountStage(value: unknown) {
-  if (!isRecord(value)) return null;
-  return typeof value.cashRecountStage === 'string' ? value.cashRecountStage : null;
-}
-
 function hasTaskPhoto(task: ShiftControlTask, key: string) {
   const photos = readRecord(task.handoverData, 'photos');
   return Boolean(photos?.[key]);
@@ -765,7 +760,7 @@ function draftFromHandoverData(data: unknown): HandoverDraft {
     draft.personalCashBalance = stringFromUnknown(personalCash.cashBalance);
     draft.discrepancyType = ['none', 'surplus', 'shortage'].includes(String(personalCash.discrepancyType)) ? String(personalCash.discrepancyType) as HandoverDraft['discrepancyType'] : '';
     draft.discrepancyAmount = stringFromUnknown(personalCash.discrepancyAmount);
-    draft.cashCommentRequired = personalCash.requiresComment === true;
+    draft.cashCommentRequired = false;
     draft.hasTbankCredit = booleanDraftValue(personalCash.hasTbankCredit);
     draft.encashmentAmount = stringFromUnknown(personalCash.encashmentAmount);
     draft.encashmentDirection = personalCash.encashmentDirection === 'phone_reserve' || personalCash.encashmentDirection === 'deposit_safe'
@@ -1715,19 +1710,6 @@ export function EmployeeTodayClient({
               body: requestBody,
             });
             const responsePayload = await response.json();
-            if (response.status === 409 && responsePayload.requiresComment) {
-              if (responsePayload.task) {
-                setShiftControlState((current) => ({
-                  ...current,
-                  tasks: current.tasks.map((item) => (item.id === responsePayload.task.id ? responsePayload.task as ShiftControlTask : item)),
-                }));
-              }
-              setShiftTaskErrors((current) => ({
-                ...current,
-                [task.id]: { comment: String(responsePayload.error || 'Добавьте короткий комментарий') },
-              }));
-              return null;
-            }
             if (!response.ok) throw new Error(responsePayload.error || 'Не удалось обновить задачу');
             return responsePayload as { task: ShiftControlTask };
           })();
@@ -1839,7 +1821,6 @@ export function EmployeeTodayClient({
     const isOpening = task.category === 'opening';
     const simpleLabel = task.category === 'handover' ? 'Начать сдачу смены' : 'Подтвердить';
     const errors = shiftTaskErrors[task.id] ?? {};
-    const cashRecountStage = readCashRecountStage(task.handoverData);
     const showTerminalReconciliation = isAcquiring && draft.integerValue !== '' && draft.integerValue !== '0';
     const showTerminalPhoto = isAcquiring && ['1', '2'].includes(draft.integerValue);
     const photoCompletesTaskAutomatically = showTerminalPhoto && !hasTaskPhoto(task, 'terminalReceipts');
@@ -1928,22 +1909,6 @@ export function EmployeeTodayClient({
               />
               {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
             </label>
-            {cashRecountStage === 'comment_required' && (
-              <div className='grid gap-2 rounded-lg bg-amber-50 p-2.5 text-xs ring-1 ring-amber-200'>
-                <p className='font-extrabold text-amber-950'>Добавьте короткий комментарий</p>
-                <p className='font-semibold text-amber-900'>Комментарий нужен для дополнительной проверки результата.</p>
-                <label className='grid gap-1 font-extrabold text-amber-950'>
-                  Комментарий
-                  <textarea
-                    value={draft.comment}
-                    onChange={(event) => updateShiftTaskDraft(task.id, { comment: event.target.value })}
-                    className='min-h-20 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                    placeholder='Коротко укажите обстоятельства'
-                  />
-                </label>
-                {errors.comment && <span className='text-[11px] font-bold text-amber-800'>{errors.comment}</span>}
-              </div>
-            )}
           </div>
         )}
 
@@ -2114,9 +2079,7 @@ export function EmployeeTodayClient({
           </Button>
           {!photoCompletesTaskAutomatically && (
             <Button type='button' className='h-9 text-xs font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
-              {isCash && cashRecountStage === 'comment_required'
-                ? 'Сохранить с комментарием'
-                : isEditing ? 'Сохранить исправление' : 'Сохранить'}
+              {isEditing ? 'Сохранить исправление' : 'Сохранить результат'}
             </Button>
           )}
         </div>

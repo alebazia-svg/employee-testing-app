@@ -29,7 +29,7 @@ function comparison(actual: number, expected: number | null) {
   });
 }
 
-test('only exact zero matches and comment threshold is strictly above 300 rubles', () => {
+test('only exact zero matches and no cash result requires an employee comment', () => {
   assert.deepEqual(comparison(1000, 1000), { status: 'matched', actual: 1000, expected: 1000, difference: 0, discrepancyType: 'none', requiresComment: false, capturedAt: '2026-08-16T09:00:00.000Z', oneCCheckedAt: '2026-08-16T09:00:00.000Z', cashboxName: 'Касса Чеченова', sourceError: null });
   for (const difference of [0.5, 1, 2, 100, 300, -0.5, -300]) {
     assert.equal(comparison(1000 + difference, 1000).status, 'mismatch');
@@ -37,17 +37,17 @@ test('only exact zero matches and comment threshold is strictly above 300 rubles
   assert.equal(comparison(900, 1000).discrepancyType, 'shortage');
   assert.equal(comparison(1100, 1000).discrepancyType, 'surplus');
   assert.equal(comparison(1300, 1000).requiresComment, false);
-  assert.equal(comparison(1300.01, 1000).requiresComment, true);
+  assert.equal(comparison(1300.01, 1000).requiresComment, false);
   assert.equal(comparison(1000, null).status, 'unavailable');
 });
 
-test('cash recount completes without exposing a comparison unless a comment is required', () => {
+test('cash recount always saves without exposing the comparison or asking for a comment', () => {
   const values = [0.5, 1, 2, 100, 300, 301];
   for (const difference of values) {
     const result = comparison(1000 + difference, 1000);
     assert.equal(
       decideCashRecountAction({ comparison: result, hasComment: false }),
-      difference > 300 ? 'require_comment' : 'complete_mismatch',
+      'complete_mismatch',
     );
   }
   assert.equal(decideCashRecountAction({ comparison: comparison(1000, 1000), hasComment: false }), 'complete_matched');
@@ -87,24 +87,24 @@ test('mismatch lifecycle is idempotent and next matched recount resolves it', as
         const row = { id: notifications.length + 1, status: 'pending', ...create }; notifications.push(row); return row;
       },
       updateMany: async ({ where, data }: any) => {
-        const ids = where.issueId.in as number[];
+        const ids = Array.isArray(where.issueId?.in) ? where.issueId.in as number[] : [where.issueId as number];
         const rows = notifications.filter((row) => ids.includes(row.issueId) && row.status === where.status);
         rows.forEach((row) => Object.assign(row, data)); return { count: rows.length };
       },
     },
   };
   const input = { userId: 3, taskId: 10, runId: 7, date: '2026-08-16', comment: '', comparison: comparison(900, 1000), now: new Date('2026-08-16T09:00:00.000Z') };
-  assert.deepEqual(await syncCashRecountWorkdayControl(db as PrismaClient, input), { opened: 1, resolved: 0, notifications: 1 });
+  assert.deepEqual(await syncCashRecountWorkdayControl(db as PrismaClient, input), { opened: 1, resolved: 0, notifications: 0 });
   assert.deepEqual(await syncCashRecountWorkdayControl(db as PrismaClient, input), { opened: 0, resolved: 0, notifications: 0 });
   assert.equal(issues.length, 1);
-  assert.equal(notifications.length, 1);
+  assert.equal(notifications.length, 0);
 
   assert.deepEqual(await syncCashRecountWorkdayControl(db as PrismaClient, { ...input, taskId: 11, comparison: comparison(1000, 1000), now: new Date('2026-08-16T15:30:00.000Z') }), { opened: 0, resolved: 1, notifications: 0 });
   assert.equal(issues[0].status, 'resolved');
   assert.equal(notifications.every((row) => row.status === 'cancelled'), true);
 });
 
-test('mismatch above 300 rubles is elevated and receives a reminder', async () => {
+test('mismatch above 300 rubles is elevated for ADMIN without employee notifications', async () => {
   const issues: Array<Record<string, any>> = [];
   const notifications: Array<Record<string, any>> = [];
   const db: any = {
@@ -117,11 +117,7 @@ test('mismatch above 300 rubles is elevated and receives a reminder', async () =
       },
     },
     workdayNotification: {
-      upsert: async ({ where, create }: any) => {
-        const current = notifications.find((row) => row.fingerprint === where.fingerprint);
-        if (current) return current;
-        const row = { id: notifications.length + 1, status: 'pending', ...create }; notifications.push(row); return row;
-      },
+      updateMany: async () => ({ count: 0 }),
     },
   };
   const result = await syncCashRecountWorkdayControl(db as PrismaClient, {
@@ -133,13 +129,9 @@ test('mismatch above 300 rubles is elevated and receives a reminder', async () =
     comparison: comparison(1301, 1000),
     now: new Date('2026-08-16T09:00:00.000Z'),
   });
-  assert.deepEqual(result, { opened: 1, resolved: 0, notifications: 2 });
+  assert.deepEqual(result, { opened: 1, resolved: 0, notifications: 0 });
   assert.equal(issues[0].severity, 'error');
-  assert.equal(notifications.length, 2);
-  for (const notification of notifications) {
-    assert.equal(notification.title, 'Контроль наличных');
-    assert.doesNotMatch(notification.body, /300|301|1000|1301|излиш|недост|расхожд/i);
-  }
+  assert.equal(notifications.length, 0);
 });
 
 test('unavailable source creates and resolves nothing', async () => {
