@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod } from '../lib/terminal-fiscal-auto-run';
 
-test('automatic current period uses Moscow midnight and a completed 15-minute bucket after source delay', () => {
+test('automatic current period uses Moscow midnight and a completed five-minute bucket after source delay', () => {
   const period = terminalFiscalAutomaticPeriod('current', new Date('2026-08-13T09:28:00.000Z'));
   assert.deepEqual(period, {
     periodFrom: new Date('2026-08-12T21:00:00.000Z'),
     periodTo: new Date('2026-08-13T09:15:00.000Z'),
   });
+});
+
+test('five-minute buckets make a safe operation visible within fifteen minutes', () => {
+  const period = terminalFiscalAutomaticPeriod('current', new Date('2026-08-13T09:24:00.000Z'));
+  assert.equal(period?.periodTo.toISOString(), '2026-08-13T09:10:00.000Z');
 });
 
 test('automatic current period safely skips before the first delayed bucket', () => {

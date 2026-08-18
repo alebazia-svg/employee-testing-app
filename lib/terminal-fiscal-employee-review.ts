@@ -149,6 +149,64 @@ export function evaluateTerminalFiscalPeriodCoverage(input: {
   return { state: 'uncovered', reason: 'PERIOD_OPERATION_UNCOVERED', ...base, ...oneCBase };
 }
 
+/**
+ * Adds cashier context to bank operations that are covered only at the daily
+ * amount-bucket level. This does not claim an exact bank -> 1C document pair,
+ * does not change the matching status/reason and does not create an employee
+ * error. Attribution is safe only when every still-available check in the
+ * fully-covered bucket belongs to one cashier on the mapped physical chain.
+ */
+export function attributePeriodCoveredCashiers(input: {
+  output: TerminalFiscalMatchingOutput;
+  mapping: TerminalMapping;
+  oneCChecks: OneCCheck[];
+}): TerminalFiscalMatchingOutput {
+  const assignedRefs = new Set(input.output.records.flatMap((record) => (
+    record.mappingId === input.mapping.id && record.oneCCheckKey ? [record.oneCCheckKey] : []
+  )));
+  const availableChecks = input.oneCChecks.filter((check) => (
+    !assignedRefs.has(check.sourceRef)
+    && eligibleOneCOperationType(check) !== null
+    && check.cashRegisterRef === input.mapping.oneCCashRegisterRef
+    && check.cardPayments.length === 1
+    && check.cardPayments[0]?.acquiringTerminalRef === input.mapping.oneCAcquiringTerminalRef
+    && check.cardPayments[0].amountKopecks > 0
+  ));
+  const eligibleRecords = input.output.records.filter((record) => (
+    record.mappingId === input.mapping.id
+    && !record.oneCCheckKey
+    && !record.oneCCashierRef
+    && record.candidateCount === 0
+    && record.sourceCompleteness.tbank
+    && record.sourceCompleteness.oneC
+    && (record.operationType === 'sale' || record.operationType === 'refund')
+    && ['ONE_C_CANDIDATE_PENDING', 'ONE_C_CANDIDATE_NOT_FOUND'].includes(record.reasonCode)
+  ));
+
+  const cashierByMatchingKey = new Map<string, { ref: string; name: string }>();
+  const bucketKeys = new Set(eligibleRecords.map((record) => coverageBucket(record.operationType ?? '', record.amountKopecks)));
+  for (const bucketKey of bucketKeys) {
+    const records = eligibleRecords.filter((record) => coverageBucket(record.operationType ?? '', record.amountKopecks) === bucketKey);
+    const checks = availableChecks.filter((check) => (
+      coverageBucket(eligibleOneCOperationType(check) ?? '', check.cardPayments[0].amountKopecks) === bucketKey
+    ));
+    if (checks.length < records.length || checks.some((check) => !check.cashier.ref)) continue;
+    const cashierRefs = [...new Set(checks.map((check) => check.cashier.ref))];
+    if (cashierRefs.length !== 1) continue;
+    const cashier = { ref: cashierRefs[0], name: checks.find((check) => check.cashier.name)?.cashier.name ?? '' };
+    records.forEach((record) => cashierByMatchingKey.set(record.matchingKey, cashier));
+  }
+
+  if (cashierByMatchingKey.size === 0) return input.output;
+  return {
+    ...input.output,
+    records: input.output.records.map((record) => {
+      const cashier = cashierByMatchingKey.get(record.matchingKey);
+      return cashier ? { ...record, oneCCashierRef: cashier.ref, oneCCashierName: cashier.name } : record;
+    }),
+  };
+}
+
 export function evaluateTerminalFiscalEmployeeReview(input: {
   record: MatchingAuditRecord;
   periodRecords: MatchingAuditRecord[];

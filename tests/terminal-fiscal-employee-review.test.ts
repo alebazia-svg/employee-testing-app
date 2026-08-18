@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, OneCCheck, TerminalMapping } from '../lib/terminal-fiscal-matching';
 import {
+  attributePeriodCoveredCashiers,
   evaluateTerminalFiscalEmployeeReview,
   evaluateTerminalFiscalPeriodCoverage,
   oneCChecksAvailableForEmployeeReview,
@@ -108,6 +109,55 @@ test('period coverage suppresses a false employee notification outside the stric
     record: target, periodRecords: [strict, target], mapping, oneCChecks: checks,
     cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
   }), { action: 'resolve', reason: 'PERIOD_OPERATION_COVERED' });
+});
+
+test('attributes fully covered delayed operations to the single cashier without claiming exact document matches', () => {
+  const delayedA = record({
+    matchingKey: 'bank-500-a', amountKopecks: 50_000,
+    status: 'needs_review', reasonCode: 'ONE_C_CANDIDATE_NOT_FOUND',
+  });
+  const delayedB = record({
+    matchingKey: 'bank-500-b', amountKopecks: 50_000,
+    status: 'needs_review', reasonCode: 'ONE_C_CANDIDATE_NOT_FOUND',
+  });
+  const output = attributePeriodCoveredCashiers({
+    output: { version: 'mvp-1', evaluatedAt: delayedA.evaluatedAt, records: [delayedA, delayedB] },
+    mapping,
+    oneCChecks: [
+      check({ ref: 'late-check-a', amountKopecks: 50_000, cashierRef: 'cashier-zukhra' }),
+      check({ ref: 'late-check-b', amountKopecks: 50_000, cashierRef: 'cashier-zukhra' }),
+    ],
+  });
+  assert.deepEqual(output.records.map((item) => ({
+    cashier: item.oneCCashierRef,
+    status: item.status,
+    reason: item.reasonCode,
+    check: item.oneCCheckKey,
+  })), [
+    { cashier: 'cashier-zukhra', status: 'needs_review', reason: 'ONE_C_CANDIDATE_NOT_FOUND', check: undefined },
+    { cashier: 'cashier-zukhra', status: 'needs_review', reason: 'ONE_C_CANDIDATE_NOT_FOUND', check: undefined },
+  ]);
+});
+
+test('does not attribute period coverage when cashiers conflict or checks cover only part of the bucket', () => {
+  const delayedA = record({ matchingKey: 'bank-a', amountKopecks: 50_000 });
+  const delayedB = record({ matchingKey: 'bank-b', amountKopecks: 50_000 });
+  const base = { version: 'mvp-1', evaluatedAt: delayedA.evaluatedAt, records: [delayedA, delayedB] };
+  const conflicting = attributePeriodCoveredCashiers({
+    output: base,
+    mapping,
+    oneCChecks: [
+      check({ ref: 'check-zukhra', amountKopecks: 50_000, cashierRef: 'cashier-zukhra' }),
+      check({ ref: 'check-milana', amountKopecks: 50_000, cashierRef: 'cashier-milana' }),
+    ],
+  });
+  const partial = attributePeriodCoveredCashiers({
+    output: base,
+    mapping,
+    oneCChecks: [check({ ref: 'check-only', amountKopecks: 50_000, cashierRef: 'cashier-zukhra' })],
+  });
+  assert.deepEqual(conflicting.records.map((item) => item.oneCCashierRef), [undefined, undefined]);
+  assert.deepEqual(partial.records.map((item) => item.oneCCashierRef), [undefined, undefined]);
 });
 
 test('employee guard sees a later 1C check already present at source read time without widening matching input', () => {

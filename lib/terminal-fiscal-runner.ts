@@ -18,7 +18,11 @@ import { loadCompleteTBankOperations, loadOneCKkmChecks, loadPlatformaOfdReceipt
 import { getMoscowDateKey } from '@/lib/workday';
 import { summarizeTerminalFiscalOutput } from '@/lib/terminal-fiscal-summary';
 import { syncTerminalFiscalWorkdayControl } from '@/lib/terminal-fiscal-workday-control';
-import { oneCChecksAvailableForEmployeeReview, syncTerminalFiscalEmployeeReviews } from '@/lib/terminal-fiscal-employee-review';
+import {
+  attributePeriodCoveredCashiers,
+  oneCChecksAvailableForEmployeeReview,
+  syncTerminalFiscalEmployeeReviews,
+} from '@/lib/terminal-fiscal-employee-review';
 
 function dateOnly(value: Date) {
   return getMoscowDateKey(value);
@@ -77,7 +81,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       periodFrom: input.periodFrom,
       sourceCheckedAt: oneC.checkedAt,
     });
-    const output = reconcileTerminalFiscalMvp({
+    const strictOutput = reconcileTerminalFiscalMvp({
       now,
       sources: {
         tbank: { complete: tbank.complete, checkedAt: tbank.checkedAt, error: tbank.errorCode },
@@ -88,6 +92,11 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       bankOperations: tbank.data,
       oneCChecks: periodOneCChecks,
       ofdReceipts: ofd.data,
+    });
+    const output = attributePeriodCoveredCashiers({
+      output: strictOutput,
+      mapping,
+      oneCChecks: periodOneCChecks,
     });
     const sourceIdentityHashes = [
       ...tbank.data.map((value) => technicalHash(bankOperationKey(value))),

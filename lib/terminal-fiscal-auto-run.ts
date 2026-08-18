@@ -6,7 +6,7 @@ export type TerminalFiscalAutoRunCliOptions = {
 };
 
 const MOSCOW_OFFSET_MS = 3 * 60 * 60 * 1000;
-const BUCKET_MS = 15 * 60 * 1000;
+const BUCKET_MS = 5 * 60 * 1000;
 const SOURCE_DELAY_MS = 10 * 60 * 1000;
 
 export function parseTerminalFiscalAutoRunCli(argv: string[]): TerminalFiscalAutoRunCliOptions {
