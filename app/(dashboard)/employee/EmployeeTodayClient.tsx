@@ -3020,8 +3020,21 @@ export function EmployeeTodayClient({
                             </p>
                             <p className='mt-0.5 text-[11px] font-bold text-slate-400'>{formatTime(operation.createdAt)}</p>
                           </div>
-                          <Badge className='shrink-0 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-800 ring-1 ring-amber-200'>
-                            ожидает 1С
+                          <Badge
+                            className={cn(
+                              'shrink-0 px-2 py-0.5 text-[10px] ring-1',
+                              operation.status === 'posted_1c_pair'
+                                ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                                : operation.status === 'one_c_error'
+                                  ? 'bg-rose-50 text-rose-800 ring-rose-200'
+                                  : 'bg-amber-50 text-amber-800 ring-amber-200',
+                            )}
+                          >
+                            {operation.status === 'posted_1c_pair'
+                              ? 'проведено в 1С'
+                              : operation.status === 'one_c_error'
+                                ? 'не проведено в 1С'
+                                : 'ожидает 1С'}
                           </Badge>
                         </div>
                       ))}
