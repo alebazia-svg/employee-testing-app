@@ -67,9 +67,9 @@ project from scratch.
   runner may add only cashier attribution from unused 1C checks that fully cover
   the unmatched bank operations by operation type and amount; it does not turn
   such a row into an exact match. Partial coverage or mixed cashiers remains
-  ADMIN-only. Employee delivery remains
-  disabled while a production shadow mode records only candidates that survive
-  the aggregate terminal/1C coverage guard. The guard uses one-to-one exact
+  ADMIN-only. Employee delivery is enabled in production only for candidates
+  that survive the aggregate terminal/1C coverage guard after the first complete
+  1C read at least ten minutes after payment. The guard uses one-to-one exact
   operation-type/amount coverage and keeps incomplete, partial, conflicting and
   sale/refund-pair cases ADMIN-only; matching and ADMIN control remain active.
   Starting with terminal-fiscal matching `mvp-1.1`, an exact bank/1C/OFD fiscal
