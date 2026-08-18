@@ -34,8 +34,10 @@ async function main() {
   for (const run of runs) if (!latest.has(run.mappingId)) latest.set(run.mappingId, run);
   const selected = [...latest.values()];
   const matches = selected.length ? await prisma.terminalFiscalMatch.findMany({
-    where: { runId: { in: selected.map((run) => run.id) } }, select: { status: true },
+    where: { runId: { in: selected.map((run) => run.id) } },
+    select: { status: true, reasonCode: true, oneCCashierRef: true },
   }) : [];
+  const itemReasons = new Set(['OFD_ITEMS_MISMATCH', 'OFD_ITEM_PRESENTATION_DIFFERENCE', 'OFD_ITEM_VALUES_MISMATCH']);
   const input = {
     day: dayLabel(from),
     openCount: open.length,
@@ -43,6 +45,11 @@ async function main() {
     resolvedLateCount: resolved.length,
     resolvedLateAmountKopecks: resolved.reduce((sum, row) => sum + row.amountKopecks, 0),
     confirmed: matches.filter((row) => row.status === 'confirmed').length,
+    coveredByDayTotal: matches.filter((row) => row.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND' && Boolean(row.oneCCashierRef)).length,
+    itemReview: matches.filter((row) => itemReasons.has(row.reasonCode)).length,
+    pending: matches.filter((row) => row.status === 'pending').length,
+    unavailable: matches.filter((row) => row.status === 'unavailable').length,
+    mismatches: matches.filter((row) => row.status === 'mismatch').length,
     total: matches.length,
     sourcesComplete: selected.length > 0 && selected.every((run) => run.tbankComplete && run.oneCComplete && run.ofdComplete),
   };
