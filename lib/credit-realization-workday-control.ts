@@ -143,12 +143,12 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
         where: { fingerprint },
         create: {
           userId, fingerprint, ruleKey: 'credit_realization_mismatch', severity, status: 'open',
-          title: 'Проверьте кредитную продажу', detail,
+          title: 'Чек по кредитной продаже', detail,
           sourceData: issueSourceData(controlCase), employeeActionRequired: true, originDate,
           detectedAt: now, lastDetectedAt: now,
         },
         update: {
-          userId, severity, status: 'open', title: 'Проверьте кредитную продажу', detail,
+          userId, severity, status: 'open', title: 'Чек по кредитной продаже', detail,
           sourceData: issueSourceData(controlCase), employeeActionRequired: true, originDate,
           ...(reopening ? { detectedAt: now } : {}),
           lastDetectedAt: now, resolvedAt: null,
@@ -159,7 +159,7 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
           data: {
             userId, issueId: issue.id, fingerprint: `issue:${issue.id}:detected:${now.toISOString()}`,
             kind: 'issue_detected', title: issue.title,
-            body: `Реализация ${controlCase.documentNumber}: правильный чек пока не подтверждён. Проверьте оформление в 1С.`, scheduledAt: now,
+            body: `Реализация ${controlCase.documentNumber} · ${(controlCase.amountKopecks / 100).toLocaleString('ru-RU')} ₽. Чек не найден. Проверьте оформление в 1С.`, scheduledAt: now,
           },
         });
         return 'opened' as const;

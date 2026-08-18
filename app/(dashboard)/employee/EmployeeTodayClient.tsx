@@ -31,6 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { startVisibleSync } from '@/lib/visible-sync';
+import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
@@ -1110,6 +1111,8 @@ export function EmployeeTodayClient({
   const primaryShiftControlTask = actionableShiftControlTask ?? nextShiftControlTask;
   const remainingShiftControlCount = pendingShiftControlTasks.length;
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
+  const primaryRequiredIssue = requiredIssuesState[0] ?? null;
+  const primaryRequiredIssueView = primaryRequiredIssue ? workdayIssueView(primaryRequiredIssue) : null;
   function buildHandoverSteps(draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
     return buildShiftHandoverSteps({
@@ -2753,10 +2756,14 @@ export function EmployeeTodayClient({
                 </div>
               )}
 
-              {activeWorkDay && requiredIssuesState.length > 0 && (
-                <Link href={`/employee/issues/${requiredIssuesState[0].id}`} className='flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'>
+              {activeWorkDay && primaryRequiredIssue && primaryRequiredIssueView && (
+                <Link href={`/employee/issues/${primaryRequiredIssue.id}`} className='flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'>
                   <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 ring-1 ring-amber-200'><AlertTriangle className='h-5 w-5' /></span>
-                  <span className='min-w-0 flex-1'><span className='block text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить{requiredIssuesState.length > 1 ? ` · ${requiredIssuesState.length}` : ''}</span><span className='mt-0.5 block truncate text-sm font-black'>{requiredIssuesState[0].title}</span></span>
+                  <span className='min-w-0 flex-1'>
+                    <span className='block text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить{requiredIssuesState.length > 1 ? ` · ${requiredIssuesState.length}` : ''}</span>
+                    <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryRequiredIssueView.summaryTitle}</span>
+                    {primaryRequiredIssueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{primaryRequiredIssueView.summaryMeta}</span>}
+                  </span>
                   <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span><ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
                 </Link>
               )}

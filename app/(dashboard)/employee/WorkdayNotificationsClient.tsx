@@ -150,15 +150,14 @@ export function WorkdayNotificationsClient() {
           ) : (
             <div className='max-h-80 overflow-y-auto'>
               {notifications.map((notification) => (
-                <div key={notification.id} className='flex items-start gap-2 border-b border-slate-100 px-3 py-3 last:border-b-0'>
+                <button key={notification.id} type='button' onClick={() => void openNotification(notification)} className='flex w-full items-start gap-2 border-b border-slate-100 px-3 py-3 text-left last:border-b-0'>
                   <Bell className='mt-0.5 h-4 w-4 shrink-0 text-amber-600' />
-                  <button type='button' onClick={() => void openNotification(notification)} className='min-w-0 flex-1 text-left'>
+                  <span className='min-w-0 flex-1'>
                     <p className='text-sm font-extrabold'>{notification.title}</p>
                     <p className='mt-0.5 text-xs font-semibold leading-snug text-slate-600'>{notification.body}</p>
-                  </button>
-                  <button type='button' onClick={() => void openNotification(notification)} aria-label='Открыть уведомление' className='rounded-md p-1 text-slate-400'><ChevronRight className='h-4 w-4' /></button>
-                  <button type='button' onClick={() => void dismiss(notification.id)} aria-label='Скрыть уведомление' className='rounded-md p-1 text-slate-400'><X className='h-4 w-4' /></button>
-                </div>
+                  </span>
+                  <ChevronRight className='mt-0.5 h-4 w-4 shrink-0 text-slate-400' />
+                </button>
               ))}
             </div>
           )}

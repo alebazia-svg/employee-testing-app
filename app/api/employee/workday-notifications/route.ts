@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { workdayIssueView } from '@/lib/workday-control-issue-view';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -19,7 +20,7 @@ export async function GET() {
       issueId: true,
       reviewId: true,
       task: { select: { status: true, run: { select: { status: true } } } },
-      issue: { select: { status: true } },
+      issue: { select: { status: true, ruleKey: true, title: true, detail: true, sourceData: true } },
       review: { select: { status: true } },
     },
   });
@@ -37,14 +38,19 @@ export async function GET() {
       seenTargets.add(target);
       return true;
     })
-    .map(({ task: _task, issue: _issue, review: _review, ...notification }) => ({
-      ...notification,
-      href: notification.reviewId
-        ? `/employee/payment-checks/${notification.reviewId}`
-        : notification.issueId
-          ? `/employee/issues/${notification.issueId}`
-          : '/employee',
-    }));
+    .map(({ task: _task, issue, review: _review, ...notification }) => {
+      const issueView = issue ? workdayIssueView(issue) : null;
+      return {
+        ...notification,
+        title: issueView?.summaryTitle || notification.title,
+        body: issueView?.notificationBody || notification.body,
+        href: notification.reviewId
+          ? `/employee/payment-checks/${notification.reviewId}`
+          : notification.issueId
+            ? `/employee/issues/${notification.issueId}`
+            : '/employee',
+      };
+    });
   return Response.json({ notifications });
 }
 
