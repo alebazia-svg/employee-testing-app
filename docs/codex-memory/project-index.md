@@ -68,6 +68,14 @@ project from scratch.
   the aggregate terminal/1C coverage guard. The guard uses one-to-one exact
   operation-type/amount coverage and keeps incomplete, partial, conflicting and
   sale/refund-pair cases ADMIN-only; matching and ADMIN control remain active.
+- Retail credit realization control reads the complete 1C realization/link/
+  fiscal chain plus unified OFD evidence every three minutes. A missing or
+  incorrect receipt creates one neutral employee reminder after 15 minutes;
+  it becomes a personal hard error only after the Moscow calendar day ends and
+  the mismatch remains on complete reads. A receipt created on the next day is
+  itself a hard mismatch. Ambiguous/incomplete cases stay ADMIN-only, confirmed
+  cases close automatically, and the two scheduled manual credit tasks are no
+  longer part of active retail templates.
 
 ## Known Dirty-Tree Context
 
