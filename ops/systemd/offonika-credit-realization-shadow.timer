@@ -1,0 +1,11 @@
+[Unit]
+Description=Run OFFONIKA credit realization shadow control every 3 minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/3:00 Europe/Moscow
+AccuracySec=15s
+Persistent=false
+Unit=offonika-credit-realization-shadow.service
+
+[Install]
+WantedBy=timers.target

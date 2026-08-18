@@ -1,0 +1,15 @@
+[Unit]
+Description=OFFONIKA credit realization read-only shadow control
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n -E 0 /run/lock/offonika-credit-realization-shadow.lock /usr/bin/docker exec portal-app node --conditions=react-server --import tsx scripts/credit-realization-shadow-run.ts --confirm-audit-write
+TimeoutStartSec=10min
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

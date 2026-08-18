@@ -389,6 +389,76 @@ model TerminalFiscalReviewMessage {
   @@index([authorId, createdAt])
 }
 
+model CreditRealizationControlRun {
+  id               String                               @id @default(cuid())
+  runKey           String                               @unique
+  mode             String                               @default("shadow")
+  algorithmVersion String
+  periodFrom       DateTime
+  periodTo         DateTime
+  status           String                               @default("running")
+  oneCComplete     Boolean                              @default(false)
+  ofdComplete      Boolean                              @default(false)
+  sourceDocuments  Int                                  @default(0)
+  confirmedCount   Int                                  @default(0)
+  mismatchCount    Int                                  @default(0)
+  needsReviewCount Int                                  @default(0)
+  pendingCount     Int                                  @default(0)
+  unavailableCount Int                                  @default(0)
+  lastErrorCode    String?
+  startedAt        DateTime                             @default(now())
+  completedAt      DateTime?
+  createdAt        DateTime                             @default(now())
+  updatedAt        DateTime                             @updatedAt
+  evaluations      CreditRealizationControlEvaluation[]
+
+  @@index([status, startedAt])
+  @@index([periodFrom, periodTo])
+}
+
+model CreditRealizationControlCase {
+  id                      String                               @id @default(cuid())
+  realizationRef          String                               @unique
+  documentNumber          String
+  realizationAt           DateTime
+  amountKopecks           Int
+  managerRef              String?
+  status                  String
+  reasonCode              String
+  employeeActionCandidate Boolean                              @default(false)
+  firstDetectedAt         DateTime                             @default(now())
+  lastCheckedAt           DateTime                             @default(now())
+  resolvedAt              DateTime?
+  createdAt               DateTime                             @default(now())
+  updatedAt               DateTime                             @updatedAt
+  evaluations             CreditRealizationControlEvaluation[]
+
+  @@index([status, lastCheckedAt])
+  @@index([managerRef, status, realizationAt])
+  @@index([employeeActionCandidate, status, realizationAt])
+}
+
+model CreditRealizationControlEvaluation {
+  id                      String                       @id @default(cuid())
+  caseId                  String
+  runId                   String
+  evidenceHash            String
+  algorithmVersion        String
+  status                  String
+  reasonCode              String
+  employeeActionCandidate Boolean                      @default(false)
+  oneCComplete            Boolean
+  ofdComplete             Boolean
+  evaluatedAt             DateTime
+  createdAt               DateTime                     @default(now())
+  case                     CreditRealizationControlCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  run                      CreditRealizationControlRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([caseId, evidenceHash])
+  @@index([runId, evaluatedAt])
+  @@index([status, reasonCode, evaluatedAt])
+}
+
 model UserOneCCashboxMapping {
   id                        Int      @id @default(autoincrement())
   userId                    Int      @unique

@@ -63,11 +63,15 @@ export type OneCSalesRealizationDocument = {
   amount: number | null;
   currency: string;
   organizationName: string;
+  organizationRef: string;
   organizationInn: string;
   partnerName: string;
+  partnerRef: string;
   counterpartyName: string;
+  counterpartyRef: string;
   warehouseName: string;
   managerName: string;
+  managerRef: string;
   managerSource: string;
   responsibleName: string;
   responsibleSource: string;
@@ -96,6 +100,7 @@ export type OneCLinkedDocument = {
   documentType: string;
   matchType: string;
   matchReasons: string[];
+  sourcePaths: string[];
   ref: string;
   name: string;
   number: string;
@@ -103,9 +108,13 @@ export type OneCLinkedDocument = {
   posted: boolean | null;
   amount: number | null;
   organizationName: string;
+  organizationRef: string;
   partnerName: string;
+  partnerRef: string;
   counterpartyName: string;
+  counterpartyRef: string;
   managerName: string;
+  managerRef: string;
   comment: string;
 };
 
@@ -129,6 +138,28 @@ export type OneCSalesRealizationLinks = {
     count: number | null;
     errorText: string;
   }>;
+  fiscalControl: {
+    source: string;
+    complete: boolean;
+    documents: Array<{
+      sourceType: string;
+      documentType: string;
+      documentRef: string;
+      linkPath: string;
+      operations: OneCSalesRealizationFiscalOperation[];
+      dataState: string;
+    }>;
+    conflictCount: number;
+    errors: string[];
+  };
+  completeness: {
+    linksComplete: boolean;
+    fiscalOperationsComplete: boolean;
+    failedSources: string[];
+    complete: boolean;
+    absenceIsHardErrorEligible: boolean;
+  };
+  hardErrorEligible: boolean;
   warnings: string[];
 };
 
@@ -156,6 +187,7 @@ export type OneCSalesRealizationFiscalOperation = {
   retailLocationName: string;
   kktRegistrationNumber: string;
   fiscalDriveNumber: string;
+  fiscalDocumentNumber: string;
   fiscalSign: string;
   cashPayment: number | null;
   electronicPayment: number | null;
@@ -492,6 +524,10 @@ function normalizeSalesRealizationLine(value: unknown, index: number): OneCSales
 function normalizeSalesRealizationDocument(value: unknown): OneCSalesRealizationDocument {
   const source = readRecord(value) ?? {};
   const lines = readArray(source.lines ?? source.items ?? source.products ?? source.rows).map(normalizeSalesRealizationLine);
+  const organization = readRecord(source.organization) ?? {};
+  const partner = readRecord(source.partner) ?? {};
+  const counterparty = readRecord(source.counterparty) ?? {};
+  const manager = readRecord(source.manager) ?? {};
   return {
     ref: readFirstString(source, ['ref', 'document_ref', 'documentRef', 'id', 'guid']),
     number: readFirstString(source, ['number', 'doc_number', 'docNumber', 'document_number', 'documentNumber']),
@@ -501,11 +537,15 @@ function normalizeSalesRealizationDocument(value: unknown): OneCSalesRealization
     amount: readFirstNumber(source, ['amount', 'sum', 'total', 'document_amount', 'documentAmount']),
     currency: readFirstString(source, ['currency', 'currency_code', 'currencyCode']),
     organizationName: readFirstString(source, ['organization_name', 'organizationName']) || readName(source.organization),
+    organizationRef: readFirstString(organization, ['ref', 'id', 'guid']),
     organizationInn: readFirstString(source, ['organization_inn', 'organizationInn', 'inn']),
     partnerName: readFirstString(source, ['partner_name', 'partnerName']) || readName(source.partner),
+    partnerRef: readFirstString(partner, ['ref', 'id', 'guid']),
     counterpartyName: readFirstString(source, ['counterparty_name', 'counterpartyName', 'customer_name', 'customerName']) || readName(source.counterparty),
+    counterpartyRef: readFirstString(counterparty, ['ref', 'id', 'guid']),
     warehouseName: readFirstString(source, ['warehouse_name', 'warehouseName']) || readName(source.warehouse),
     managerName: readFirstString(source, ['manager_name', 'managerName']) || readName(source.manager),
+    managerRef: readFirstString(manager, ['ref', 'id', 'guid']),
     managerSource: readFirstString(source, ['manager_source', 'managerSource']),
     responsibleName: readFirstString(source, ['responsible_name', 'responsibleName']) || readName(source.responsible),
     responsibleSource: readFirstString(source, ['responsible_source', 'responsibleSource']),
@@ -520,11 +560,19 @@ function normalizeLinkedDocument(value: unknown): OneCLinkedDocument {
   const reasons = readArray(source.match_reasons ?? source.matchReasons ?? source.reasons)
     .map((reason) => typeof reason === 'string' || typeof reason === 'number' ? String(reason) : '')
     .filter(Boolean);
+  const sourcePaths = readArray(source.source_paths ?? source.sourcePaths)
+    .map((path) => typeof path === 'string' || typeof path === 'number' ? String(path) : '')
+    .filter(Boolean);
+  const organization = readRecord(source.organization) ?? {};
+  const partner = readRecord(source.partner) ?? {};
+  const counterparty = readRecord(source.counterparty) ?? {};
+  const manager = readRecord(source.manager) ?? {};
 
   return {
     documentType: readFirstString(source, ['document_type', 'documentType', 'type']),
     matchType: readFirstString(source, ['match_type', 'matchType']),
     matchReasons: reasons,
+    sourcePaths,
     ref: readFirstString(source, ['ref', 'document_ref', 'documentRef', 'id', 'guid']),
     name: readFirstString(source, ['name', 'presentation', 'description']),
     number: readFirstString(source, ['number', 'doc_number', 'docNumber', 'document_number', 'documentNumber']),
@@ -532,9 +580,13 @@ function normalizeLinkedDocument(value: unknown): OneCLinkedDocument {
     posted: readFirstBoolean(source, ['posted', 'is_posted', 'isPosted']),
     amount: readFirstNumber(source, ['amount', 'sum', 'total', 'document_amount', 'documentAmount']),
     organizationName: readFirstString(source, ['organization_name', 'organizationName']) || readName(source.organization),
+    organizationRef: readFirstString(organization, ['ref', 'id', 'guid']),
     partnerName: readFirstString(source, ['partner_name', 'partnerName']) || readName(source.partner),
+    partnerRef: readFirstString(partner, ['ref', 'id', 'guid']),
     counterpartyName: readFirstString(source, ['counterparty_name', 'counterpartyName', 'customer_name', 'customerName']) || readName(source.counterparty),
+    counterpartyRef: readFirstString(counterparty, ['ref', 'id', 'guid']),
     managerName: readFirstString(source, ['manager_name', 'managerName']) || readName(source.manager),
+    managerRef: readFirstString(manager, ['ref', 'id', 'guid']),
     comment: readFirstString(source, ['comment', 'description']),
   };
 }
@@ -764,13 +816,15 @@ function findCashStatementSummaryPayload(data: unknown) {
   };
 }
 
-function findSalesRealizationLinksPayload(data: unknown): { links: OneCSalesRealizationLinks | null; diagnostics: string[] } {
+export function normalizeSalesRealizationLinksPayload(data: unknown): { links: OneCSalesRealizationLinks | null; diagnostics: string[] } {
   const root = readRecord(data);
   if (!root) return { links: null, diagnostics: ['Ответ 1С не похож на JSON-объект.'] };
 
   const nestedData = readRecord(root.data);
   const payload = nestedData ?? root;
   const linksRoot = readRecord(payload.links) ?? payload;
+  const fiscalRoot = readRecord(payload.fiscal_control ?? payload.fiscalControl) ?? {};
+  const completenessRoot = readRecord(payload.completeness) ?? {};
   const diagnostics: string[] = [];
 
   const links: OneCSalesRealizationLinks = {
@@ -782,6 +836,31 @@ function findSalesRealizationLinksPayload(data: unknown): { links: OneCSalesReal
     returns: normalizeLinkedDocumentGroup(linksRoot.returns),
     corrections: normalizeLinkedDocumentGroup(linksRoot.corrections),
     checkedSources: readArray(payload.checked_sources ?? payload.checkedSources).map(normalizeCheckedSource),
+    fiscalControl: {
+      source: readFirstString(fiscalRoot, ['source']),
+      complete: readFirstBoolean(fiscalRoot, ['complete']) === true,
+      documents: readArray(fiscalRoot.documents).map((value) => {
+        const source = readRecord(value) ?? {};
+        return {
+          sourceType: readFirstString(source, ['source_type', 'sourceType']),
+          documentType: readFirstString(source, ['document_type', 'documentType']),
+          documentRef: readFirstString(source, ['document_ref', 'documentRef']),
+          linkPath: readFirstString(source, ['link_path', 'linkPath']),
+          operations: readArray(source.operations).map(normalizeSalesRealizationFiscalOperation),
+          dataState: readFirstString(source, ['data_state', 'dataState']),
+        };
+      }),
+      conflictCount: readFirstNumber(fiscalRoot, ['conflict_count', 'conflictCount']) ?? 0,
+      errors: readArray(fiscalRoot.errors).map(String),
+    },
+    completeness: {
+      linksComplete: readFirstBoolean(completenessRoot, ['links_complete', 'linksComplete']) === true,
+      fiscalOperationsComplete: readFirstBoolean(completenessRoot, ['fiscal_operations_complete', 'fiscalOperationsComplete']) === true,
+      failedSources: readArray(completenessRoot.failed_sources ?? completenessRoot.failedSources).map(String),
+      complete: readFirstBoolean(completenessRoot, ['complete']) === true,
+      absenceIsHardErrorEligible: readFirstBoolean(completenessRoot, ['absence_is_hard_error_eligible', 'absenceIsHardErrorEligible']) === true,
+    },
+    hardErrorEligible: readFirstBoolean(payload, ['hard_error_eligible', 'hardErrorEligible']) === true,
     warnings: readArray(payload.warnings)
       .map((warning) => typeof warning === 'string' || typeof warning === 'number' ? String(warning) : '')
       .filter(Boolean),
@@ -808,6 +887,7 @@ function normalizeSalesRealizationFiscalOperation(value: unknown): OneCSalesReal
     retailLocationName: readFirstString(retailLocation, ['name', 'presentation']),
     kktRegistrationNumber: readFirstString(source, ['kkt_registration_number', 'kktRegistrationNumber']),
     fiscalDriveNumber: readFirstString(source, ['fiscal_drive_number', 'fiscalDriveNumber']),
+    fiscalDocumentNumber: readFirstString(source, ['fiscal_document_number', 'fiscalDocumentNumber']),
     fiscalSign: readFirstString(source, ['fiscal_sign', 'fiscalSign']),
     cashPayment: readFirstNumber(source, ['cash_payment', 'cashPayment']),
     electronicPayment: readFirstNumber(source, ['electronic_payment', 'electronicPayment']),
@@ -1305,7 +1385,7 @@ async function requestSalesRealizationLinks(config: OneCConfig, realizationRef: 
     });
     const data = await readResponseBody(response);
     const durationMs = Date.now() - startedAt;
-    const payload = findSalesRealizationLinksPayload(data);
+    const payload = normalizeSalesRealizationLinksPayload(data);
 
     if (!response.ok) {
       return {
