@@ -191,11 +191,30 @@ test('supports the exact grace boundary and invalid bank inputs safely', () => {
   assert.equal(only({ bankOperations: [{ ...bank, transactionDate: 'invalid' }] }).reasonCode, 'BANK_OPERATION_INVALID');
 });
 
-test('does not match outside five minutes or by amount alone', () => {
+test('links a unique late same-day check but still rejects the wrong terminal', () => {
   const late = { ...check, dateTime: '2026-08-10T07:05:01.000Z' };
-  assert.equal(only({ oneCChecks: [late] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({ oneCChecks: [late] }).reasonCode, 'MATCH_CONFIRMED_LATE');
   const wrongTerminal = { ...check, cardPayments: [{ ...check.cardPayments[0], acquiringTerminalRef: 'other' }] };
   assert.equal(only({ oneCChecks: [wrongTerminal] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+});
+
+test('pairs repeated equal amounts by same-day order without reusing checks', () => {
+  const banks = [
+    { ...bank, rrn: 'bank-a', transactionDate: '2026-08-10T07:00:00.000Z' },
+    { ...bank, rrn: 'bank-b', transactionDate: '2026-08-10T08:00:00.000Z' },
+  ];
+  const checks = [
+    { ...check, sourceRef: 'late-a', dateTime: '2026-08-10T10:00:00.000Z', fiscalDocumentNumber: 'fd-a', fiscalSign: 'fp-a' },
+    { ...check, sourceRef: 'late-b', dateTime: '2026-08-10T11:00:00.000Z', fiscalDocumentNumber: 'fd-b', fiscalSign: 'fp-b' },
+  ];
+  const receipts = [
+    { ...receipt, fiscalDocumentNumber: 'fd-a', fiscalSign: 'fp-a' },
+    { ...receipt, fiscalDocumentNumber: 'fd-b', fiscalSign: 'fp-b' },
+  ];
+  const records = reconcileTerminalFiscalMvp(input({ bankOperations: banks, oneCChecks: checks, ofdReceipts: receipts })).records;
+  assert.deepEqual(records.map((record) => [record.oneCCheckKey, record.reasonCode]), [
+    ['late-a', 'MATCH_CONFIRMED_LATE'], ['late-b', 'MATCH_CONFIRMED_LATE'],
+  ]);
 });
 
 test('requires an exact fiscal key and flags duplicate/conflicting fiscal evidence', () => {
@@ -287,7 +306,7 @@ test('never exposes uncertain or technical states to an employee', () => {
 });
 
 test('reasonCode contract is exhaustive and permits every emitted status', () => {
-  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 28);
+  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 29);
   const scenarios = [
     only(),
     only({ oneCChecks: [] }),

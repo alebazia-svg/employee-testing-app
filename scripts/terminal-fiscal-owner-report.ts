@@ -35,7 +35,7 @@ async function main() {
   const selected = [...latest.values()];
   const matches = selected.length ? await prisma.terminalFiscalMatch.findMany({
     where: { runId: { in: selected.map((run) => run.id) } },
-    select: { status: true, reasonCode: true, oneCCashierRef: true },
+    select: { status: true, reasonCode: true, oneCCashierRef: true, timeDifferenceSeconds: true },
   }) : [];
   const itemReasons = new Set(['OFD_ITEMS_MISMATCH', 'OFD_ITEM_PRESENTATION_DIFFERENCE', 'OFD_ITEM_VALUES_MISMATCH']);
   const input = {
@@ -44,6 +44,7 @@ async function main() {
     openAmountKopecks: open.reduce((sum, row) => sum + row.amountKopecks, 0),
     resolvedLateCount: resolved.length,
     resolvedLateAmountKopecks: resolved.reduce((sum, row) => sum + row.amountKopecks, 0),
+    linkedLateCount: matches.filter((row) => row.status === 'confirmed' && (row.timeDifferenceSeconds ?? 0) > 300).length,
     confirmed: matches.filter((row) => row.status === 'confirmed').length,
     coveredByDayTotal: matches.filter((row) => row.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND' && Boolean(row.oneCCashierRef)).length,
     itemReview: matches.filter((row) => itemReasons.has(row.reasonCode)).length,

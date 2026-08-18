@@ -4,6 +4,7 @@ export type OwnerFiscalReportInput = {
   openAmountKopecks: number;
   resolvedLateCount: number;
   resolvedLateAmountKopecks: number;
+  linkedLateCount: number;
   confirmed: number;
   coveredByDayTotal: number;
   itemReview: number;
@@ -34,9 +35,8 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
     input.pending > 0 ? `• ещё ожидают данные: ${input.pending}` : '',
     input.unavailable > 0 ? `• источник был недоступен: ${input.unavailable}` : '',
     input.mismatches > 0 ? `• подтверждённых денежных расхождений: ${input.mismatches}` : '',
-    input.resolvedLateCount > 0
-      ? `Пробито с опозданием: ${input.resolvedLateCount} на ${rubles(input.resolvedLateAmountKopecks)} ₽`
-      : 'Поздних исправлений за день: нет',
+    input.linkedLateCount > 0 ? `Чеков, связанных с оплатой после задержки: ${input.linkedLateCount}` : 'Поздних чеков за день: нет',
+    input.resolvedLateCount > 0 ? `Из них после напоминания: ${input.resolvedLateCount} на ${rubles(input.resolvedLateAmountKopecks)} ₽` : '',
     input.sourcesComplete ? 'Данные Т-Банка, 1С и ОФД получены полностью.' : 'Не все источники доступны — итог предварительный.',
   ].filter(Boolean);
   lines.push(input.openCount > 0

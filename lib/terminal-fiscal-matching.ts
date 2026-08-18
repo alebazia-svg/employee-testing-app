@@ -1,4 +1,4 @@
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.1';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.2';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
 
@@ -7,6 +7,7 @@ export type MatchingOperationType = 'sale' | 'refund';
 
 export type MatchingReasonCode =
   | 'MATCH_CONFIRMED'
+  | 'MATCH_CONFIRMED_LATE'
   | 'SOURCE_TBANK_INCOMPLETE'
   | 'SOURCE_ONE_C_INCOMPLETE'
   | 'SOURCE_OFD_INCOMPLETE'
@@ -43,6 +44,7 @@ type MatchingReasonContract = {
 
 export const MATCHING_REASON_CODE_CONTRACT = {
   MATCH_CONFIRMED: { meaning: 'Три источника однозначно совпали', allowedStatuses: ['confirmed'], employeeVisible: false },
+  MATCH_CONFIRMED_LATE: { meaning: 'Три источника однозначно совпали, чек 1С пробит позднее оплаты', allowedStatuses: ['confirmed'], employeeVisible: false },
   SOURCE_TBANK_INCOMPLETE: { meaning: 'Источник Т-Банка получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_ONE_C_INCOMPLETE: { meaning: 'Источник 1С получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_OFD_INCOMPLETE: { meaning: 'Источник OFD получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
@@ -259,6 +261,13 @@ function matchingKey(value: BankOperation) {
   return `terminal-fiscal:${bankOperationKey(value)}`;
 }
 
+function moscowDay(value: string) {
+  const parsed = timestamp(value);
+  return parsed === null ? '' : new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(parsed));
+}
+
 function activeMappings(value: BankOperation, mappings: TerminalMapping[]) {
   const at = timestamp(value.transactionDate);
   if (at === null) return [];
@@ -408,13 +417,15 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     mapping?: TerminalMapping;
     mappingsCount: number;
     candidates: Array<{ check: OneCCheck; difference: number }>;
+    strictCandidateCount: number;
+    dayCandidates: Array<{ check: OneCCheck; difference: number }>;
   };
   const contexts: Context[] = input.bankOperations.map((operation) => {
     const mappings = activeMappings(operation, input.mappings);
     const mapping = mappings.length === 1 ? mappings[0] : undefined;
     const bankAt = timestamp(operation.transactionDate);
     const type = operationType(operation.type);
-    const candidates = !mapping || type === null || bankAt === null ? [] : input.oneCChecks.flatMap((check) => {
+    const dayCandidates = !mapping || type === null || bankAt === null ? [] : input.oneCChecks.flatMap((check) => {
       if (oneCOperationType(check) !== type || check.cardPayments.length !== 1) return [];
       const payment = check.cardPayments[0];
       const checkAt = timestamp(check.dateTime);
@@ -422,11 +433,42 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       if (check.cashRegisterRef !== mapping.oneCCashRegisterRef) return [];
       if (payment.acquiringTerminalRef !== mapping.oneCAcquiringTerminalRef) return [];
       if (payment.amountKopecks !== operation.amountKopecks) return [];
-      const difference = Math.abs(checkAt - bankAt);
-      return difference <= TERMINAL_FISCAL_TIME_TOLERANCE_MS ? [{ check, difference }] : [];
+      if (moscowDay(check.dateTime) !== moscowDay(operation.transactionDate)) return [];
+      return [{ check, difference: Math.abs(checkAt - bankAt) }];
     });
-    return { operation, operationType: type, mapping, mappingsCount: mappings.length, candidates };
+    const candidates = dayCandidates.filter((candidate) => candidate.difference <= TERMINAL_FISCAL_TIME_TOLERANCE_MS);
+    return { operation, operationType: type, mapping, mappingsCount: mappings.length,
+      candidates, strictCandidateCount: candidates.length, dayCandidates };
   });
+
+  // Checks may legally be created hours after the terminal payment. For every
+  // same-day terminal/type/amount bucket, pair the still-unmatched operations
+  // and checks in chronological order only when counts are equal. This keeps
+  // repeated equal amounts one-to-one and leaves partial/ambiguous buckets for
+  // review instead of guessing.
+  const strictCheckRefs = new Set(contexts.flatMap((context) => (
+    context.strictCandidateCount === 1 ? [context.candidates[0].check.sourceRef] : []
+  )));
+  const lateGroups = new Map<string, Context[]>();
+  for (const context of contexts) {
+    if (context.strictCandidateCount !== 0 || !context.mapping || !context.operationType || context.dayCandidates.length === 0) continue;
+    const key = [context.mapping.id, context.operationType, context.operation.amountKopecks,
+      moscowDay(context.operation.transactionDate)].join('|');
+    lateGroups.set(key, [...(lateGroups.get(key) ?? []), context]);
+  }
+  for (const group of lateGroups.values()) {
+    const orderedOperations = [...group].sort((a, b) => (timestamp(a.operation.transactionDate) ?? 0) - (timestamp(b.operation.transactionDate) ?? 0));
+    const checksByRef = new Map<string, OneCCheck>();
+    group.flatMap((context) => context.dayCandidates).forEach(({ check }) => {
+      if (!strictCheckRefs.has(check.sourceRef)) checksByRef.set(check.sourceRef, check);
+    });
+    const orderedChecks = [...checksByRef.values()].sort((a, b) => (timestamp(a.dateTime) ?? 0) - (timestamp(b.dateTime) ?? 0));
+    if (orderedChecks.length !== orderedOperations.length) continue;
+    orderedOperations.forEach((context, index) => {
+      const check = orderedChecks[index];
+      context.candidates = [{ check, difference: Math.abs((timestamp(check.dateTime) ?? 0) - (timestamp(context.operation.transactionDate) ?? 0)) }];
+    });
+  }
 
   function hasExcludedMultipleCardCandidate(context: Context) {
     if (!context.mapping || !context.operationType) return false;
@@ -550,7 +592,9 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
               : 'OFD_ITEM_VALUES_MISMATCH';
           } else {
             status = 'confirmed';
-            reasonCode = 'MATCH_CONFIRMED';
+            reasonCode = (timeDifferenceSeconds ?? 0) > TERMINAL_FISCAL_TIME_TOLERANCE_MS / 1000
+              ? 'MATCH_CONFIRMED_LATE'
+              : 'MATCH_CONFIRMED';
           }
         }
       }
