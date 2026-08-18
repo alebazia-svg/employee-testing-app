@@ -279,7 +279,10 @@ async function saveHandoverDraft(
   const terminalReconciliation = readFormString(formData, 'terminalReconciliation');
   const terminalComment = readFormString(formData, 'terminalComment');
   const encashmentAmount = readFormNumber(formData, 'encashmentAmount');
-  const encashmentDirection = readFormString(formData, 'encashmentDirection');
+  const requestedEncashmentDirection = readFormString(formData, 'encashmentDirection');
+  const encashmentDirection = !isRetail && personalCashBalance !== null && personalCashBalance > 50000
+    ? 'deposit_safe'
+    : requestedEncashmentDirection;
   const comment = readFormString(formData, 'comment');
   const photos = { ...existingPhotos };
   const photoFields = [
@@ -437,11 +440,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     if (requiresEncashment) {
       if (encashmentAmount === null) return Response.json({ error: 'Укажите сумму инкассации' }, { status: 400 });
-      if (!['phone_reserve', 'deposit_safe'].includes(encashmentDirection)) {
-        return Response.json({ error: 'Выберите направление инкассации' }, { status: 400 });
+      const allowedDirections = isRetail ? ['phone_reserve', 'deposit_safe'] : ['deposit_safe'];
+      if (!allowedDirections.includes(encashmentDirection)) {
+        return Response.json({ error: isRetail ? 'Выберите направление инкассации' : 'Для опта доступна инкассация только в депозитный сейф' }, { status: 400 });
       }
       if (!hasSavedPhoto(handoverData, 'encashmentDocument')) {
-        return Response.json({ error: 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.' }, { status: 400 });
+        return Response.json({ error: isRetail
+          ? 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.'
+          : 'Сфотографируйте деньги перед помещением в депозитный сейф.' }, { status: 400 });
       }
     }
     if (isClosingEmployee && employeeKkmReportPhotosRequired) {
@@ -463,7 +469,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     try {
       if (requiresEncashment && encashmentAmount !== null) {
-        const idempotencyKey = `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`;
+        const legacyIdempotencyKey = `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`;
+        const compactIdempotencyKey = `h${task.id}`;
         const [mapping, dimensions] = await Promise.all([
           prisma.userOneCCashboxMapping.findUnique({ where: { userId: user.id } }),
           getCashStatementDimensions(),
@@ -478,7 +485,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         if (!targetCashbox) throw new Error('Касса-получатель для инкассации не найдена в 1С. Смена не завершена.');
         const encashmentPhoto = savedPhoto(handoverData, 'encashmentDocument');
         const photoPath = isRecord(encashmentPhoto) && typeof encashmentPhoto.storagePath === 'string' ? encashmentPhoto.storagePath : '';
-        let cashOperation = await prisma.cashOperation.findUnique({ where: { idempotencyKey } });
+        let cashOperation = await prisma.cashOperation.findUnique({ where: { idempotencyKey: legacyIdempotencyKey } });
+        cashOperation ??= await prisma.cashOperation.findUnique({ where: { idempotencyKey: compactIdempotencyKey } });
+        const idempotencyKey = cashOperation?.idempotencyKey ?? compactIdempotencyKey;
         cashOperation ??= await prisma.cashOperation.create({
           data: {
             userId: user.id,

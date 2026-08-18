@@ -40,6 +40,7 @@ export const dynamic = 'force-dynamic';
 
 const devWorkdayToolsEnabled = process.env.ENABLE_DEV_WORKDAY_TOOLS === 'true';
 const reserveCashboxSearchName = 'резерв под телефоны';
+const depositSafeCashboxSearchName = 'сейф депозитный';
 const oneCMoneyTolerance = 1;
 
 type AutoCheckTask = {
@@ -370,22 +371,26 @@ function selectPersonalCashShift(shifts: OneCCashShift[], task: AutoCheckTask) {
 
 function findEncashmentPair({
   personal,
-  reserve,
+  target,
   amount,
   cutoff,
+  expenseDocumentRef,
+  receiptDocumentRef,
 }: {
   personal: OneCCashStatementSummaryResult | null;
-  reserve: OneCCashStatementSummaryResult | null;
+  target: OneCCashStatementSummaryResult | null;
   amount: number;
   cutoff: Date | null;
+  expenseDocumentRef?: string | null;
+  receiptDocumentRef?: string | null;
 }) {
-  if (!personal?.ok || !reserve?.ok) return null;
+  if (!personal?.ok || !target?.ok) return null;
   const cutoffTimestamp = cutoff?.getTime() ?? Number.POSITIVE_INFINITY;
   const outgoing = personal.movements.filter((movement) => {
     const timestamp = parseOneCDateTime(movement.period);
     return timestamp !== null && timestamp <= cutoffTimestamp && Math.abs((movement.outgoing ?? 0) - amount) <= oneCMoneyTolerance;
   });
-  const incoming = reserve.movements.filter((movement) => {
+  const incoming = target.movements.filter((movement) => {
     const timestamp = parseOneCDateTime(movement.period);
     return timestamp !== null && timestamp <= cutoffTimestamp && Math.abs((movement.incoming ?? 0) - amount) <= oneCMoneyTolerance;
   });
@@ -393,6 +398,12 @@ function findEncashmentPair({
   let timeMatched = false;
   for (const expense of outgoing) {
     for (const receipt of incoming) {
+      if (
+        expenseDocumentRef
+        && receiptDocumentRef
+        && expense.document.ref === expenseDocumentRef
+        && receipt.document.ref === receiptDocumentRef
+      ) return 'exact';
       if (expense.document.ref && receipt.document.ref && expense.document.ref === receipt.document.ref) return 'exact';
       const expenseTimestamp = parseOneCDateTime(expense.period);
       const receiptTimestamp = parseOneCDateTime(receipt.period);
@@ -524,6 +535,7 @@ function cashboxMappingStatusMessage(status?: string, error?: string) {
 
 function buildEmployeeAutoChecks({
   employeeName,
+  department,
   tasks,
   cashboxName,
   cashRegisterRef,
@@ -532,11 +544,15 @@ function buildEmployeeAutoChecks({
   cashStatement,
   reserveCashboxName,
   reserveStatement,
+  depositSafeCashboxName,
+  depositSafeStatement,
+  cashOperations,
   kkmDiagnostics,
   cashShifts,
   tbankSales,
 }: {
   employeeName: string;
+  department: string;
   tasks: AutoCheckTask[];
   cashboxName: string | null;
   cashRegisterRef: string | null;
@@ -545,6 +561,15 @@ function buildEmployeeAutoChecks({
   cashStatement: OneCCashStatementSummaryResult | null;
   reserveCashboxName: string | null;
   reserveStatement: OneCCashStatementSummaryResult | null;
+  depositSafeCashboxName: string | null;
+  depositSafeStatement: OneCCashStatementSummaryResult | null;
+  cashOperations: Array<{
+    direction: string;
+    amount: number;
+    status: string;
+    oneCDocumentRef: string | null;
+    oneCReceiptDocumentRef: string | null;
+  }>;
   kkmDiagnostics: OneCKkmEquipmentDiagnosticsResult;
   cashShifts: OneCCashShiftsResult;
   tbankSales: TbankSalesForDate;
@@ -1034,28 +1059,36 @@ function buildEmployeeAutoChecks({
 
     const requiresEncashment = personalCash ? readBoolean(personalCash.requiresEncashment) : null;
     const encashmentAmount = personalCash ? readNumber(personalCash.encashmentAmount) : null;
+    const savedEncashmentDirection = personalCash ? readText(personalCash.encashmentDirection) : '';
+    const encashmentDirection = savedEncashmentDirection === 'deposit_safe' || department !== 'retail'
+      ? 'deposit_safe'
+      : 'phone_reserve';
+    const targetCashboxName = encashmentDirection === 'deposit_safe' ? depositSafeCashboxName : reserveCashboxName;
+    const targetStatement = encashmentDirection === 'deposit_safe' ? depositSafeStatement : reserveStatement;
+    const targetShortLabel = encashmentDirection === 'deposit_safe' ? 'депозитный сейф' : 'резерв';
+    const encashmentLabel = `Инкассация в ${targetShortLabel}`;
     if (requiresEncashment === false) {
-      if (!cashStatement?.ok || !reserveStatement?.ok) {
+      if (!cashStatement?.ok || !targetStatement?.ok) {
         checks.push({
           id: `handover-encashment-${task.id}`,
           taskId: task.id,
-          label: 'Инкассация в резерв',
+          label: encashmentLabel,
           status: 'unavailable',
-          summary: 'Движения своей кассы или резерва 1С не получены.',
+          summary: `Движения своей кассы или кассы «${targetCashboxName ?? targetShortLabel}» в 1С не получены.`,
         });
       } else {
         const exactAmounts = findExactEncashmentAmounts({
           personal: cashStatement,
-          reserve: reserveStatement,
+          reserve: targetStatement,
         });
         checks.push({
           id: `handover-encashment-${task.id}`,
           taskId: task.id,
-          label: 'Инкассация в резерв',
+          label: encashmentLabel,
           status: exactAmounts.length > 0 ? 'mismatch' : 'matched',
           summary: exactAmounts.length > 0
-            ? `Сотрудник указал, что инкассации не было, но в 1С найдено парное движение касса → резерв на ${exactAmounts.map(formatMoney).join(', ')}.`
-            : 'Сотрудник указал, что инкассации не было; парных движений касса → резерв в 1С не найдено.',
+            ? `Сотрудник указал, что инкассации не было, но в 1С найдено парное движение касса → ${targetShortLabel} на ${exactAmounts.map(formatMoney).join(', ')}.`
+            : `Сотрудник указал, что инкассации не было; парных движений касса → ${targetShortLabel} в 1С не найдено.`,
         });
       }
     } else if (requiresEncashment) {
@@ -1063,35 +1096,42 @@ function buildEmployeeAutoChecks({
         checks.push({
           id: `handover-encashment-${task.id}`,
           taskId: task.id,
-          label: 'Инкассация в резерв',
+          label: encashmentLabel,
           status: 'waiting',
           summary: 'Сумма инкассации не указана.',
         });
-      } else if (!cashStatement?.ok || !reserveStatement?.ok) {
+      } else if (!cashStatement?.ok || !targetStatement?.ok) {
         checks.push({
           id: `handover-encashment-${task.id}`,
           taskId: task.id,
-          label: 'Инкассация в резерв',
+          label: encashmentLabel,
           status: 'unavailable',
-          summary: 'Движения своей кассы или резерва 1С не получены.',
+          summary: `Движения своей кассы или кассы «${targetCashboxName ?? targetShortLabel}» в 1С не получены.`,
         });
       } else {
+        const postedCashOperation = cashOperations.find((operation) => (
+          operation.direction === encashmentDirection
+          && operation.status === 'posted_1c_pair'
+          && Math.abs(operation.amount - encashmentAmount) <= oneCMoneyTolerance
+        ));
         const pairMatch = findEncashmentPair({
           personal: cashStatement,
-          reserve: reserveStatement,
+          target: targetStatement,
           amount: encashmentAmount,
           cutoff: null,
+          expenseDocumentRef: postedCashOperation?.oneCDocumentRef,
+          receiptDocumentRef: postedCashOperation?.oneCReceiptDocumentRef,
         });
         checks.push({
           id: `handover-encashment-${task.id}`,
           taskId: task.id,
-          label: 'Инкассация в резерв',
+          label: encashmentLabel,
           status: pairMatch === 'exact' ? 'matched' : pairMatch === 'time' ? 'unavailable' : 'mismatch',
           summary: pairMatch === 'exact'
-            ? `В 1С один документ отражает расход из кассы и приход в резерв на ${formatMoney(encashmentAmount)}.`
+            ? `В 1С подтверждены проведённые РКО и ПКО: касса → ${targetShortLabel} на ${formatMoney(encashmentAmount)}.`
             : pairMatch === 'time'
-              ? `Найдены расход и приход на ${formatMoney(encashmentAmount)} рядом по времени, но документы 1С различаются.`
-              : `Парное движение касса → резерв на ${formatMoney(encashmentAmount)} в 1С не найдено.`,
+              ? `Найдены расход и приход на ${formatMoney(encashmentAmount)} рядом по времени, но связь пары документов 1С не подтверждена.`
+              : `Парное движение касса → ${targetShortLabel} на ${formatMoney(encashmentAmount)} в 1С не найдено.`,
           evidence: 'Проверяется учётное движение; физическое помещение денег подтверждается сотрудником и фото.',
         });
       }
@@ -1172,7 +1212,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
   const selectedDayRange = moscowDayRange(selectedDate);
-  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary, requiredIssues, lateCreditReceipts] = await Promise.all([
+  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary, requiredIssues, lateCreditReceipts, cashOperations] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
@@ -1233,6 +1273,17 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       select: { id: true, documentNumber: true, receiptDelayMinutes: true, receiptCashierName: true },
       orderBy: { realizationAt: 'asc' },
     }),
+    prisma.cashOperation.findMany({
+      where: { date: selectedDate },
+      select: {
+        userId: true,
+        direction: true,
+        amount: true,
+        status: true,
+        oneCDocumentRef: true,
+        oneCReceiptDocumentRef: true,
+      },
+    }),
   ]);
 
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
@@ -1254,7 +1305,10 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const reserveCashbox =
     cashStatementDimensions.cashboxes.find((cashbox) => normalizeSearchText(cashbox.name) === reserveCashboxSearchName)
     ?? null;
-  const [kkmDiagnostics, cashShifts, tbankSales, reserveStatement] = await Promise.all([
+  const depositSafeCashbox =
+    cashStatementDimensions.cashboxes.find((cashbox) => normalizeSearchText(cashbox.name) === depositSafeCashboxSearchName)
+    ?? null;
+  const [kkmDiagnostics, cashShifts, tbankSales, reserveStatement, depositSafeStatement] = await Promise.all([
     getKkmEquipmentDiagnostics({ dateFrom: selectedDate, dateTo: selectedDate, limit: 300 }),
     getCashShifts(selectedDate),
     getTbankSalesForDate(selectedDate),
@@ -1263,6 +1317,13 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         date: selectedDate,
         organizationRef: cashStatementOrganization.ref,
         cashboxRef: reserveCashbox.ref,
+      })
+      : Promise.resolve(null),
+    cashStatementDimensions.ok && cashStatementOrganization && depositSafeCashbox
+      ? getCashStatementSummary({
+        date: selectedDate,
+        organizationRef: cashStatementOrganization.ref,
+        cashboxRef: depositSafeCashbox.ref,
       })
       : Promise.resolve(null),
   ]);
@@ -1346,6 +1407,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     }
     const checks = buildEmployeeAutoChecks({
       employeeName: employee.name,
+      department: employee.department,
       tasks: (run?.tasks ?? []) as AutoCheckTask[],
       cashboxName: cashRow?.cashbox?.name ?? null,
       cashRegisterRef: kkmAssignmentByUser.get(employee.id)?.oneCCashRegisterRef
@@ -1355,6 +1417,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       cashStatement: cashRow?.result ?? null,
       reserveCashboxName: reserveCashbox?.name ?? null,
       reserveStatement,
+      depositSafeCashboxName: depositSafeCashbox?.name ?? null,
+      depositSafeStatement,
+      cashOperations: cashOperations.filter((operation) => operation.userId === employee.id),
       kkmDiagnostics,
       cashShifts,
       tbankSales,

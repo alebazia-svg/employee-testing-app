@@ -266,7 +266,9 @@ type CashOperationDraft = {
 };
 
 function createOperationKey() {
-  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(16).padStart(12, '0')}-0000-4000-8000-${Math.random().toString(16).slice(2).padEnd(12, '0').slice(0, 12)}`;
+  const randomPart = globalThis.crypto?.randomUUID?.().replaceAll('-', '').slice(0, 24)
+    ?? `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.slice(0, 24);
+  return `c${randomPart}`;
 }
 
 const staleCloseReasons = [
@@ -2130,8 +2132,10 @@ export function EmployeeTodayClient({
     if (step === 'zReportPhoto' && !hasHandoverPhoto(draft.zReportPhoto)) return 'Сделайте фото чека закрытия смены';
     if (step === 'encashment') {
       if (parseMoneyInput(draft.encashmentAmount) === null) return 'Укажите сумму инкассации';
-      if (!draft.encashmentDirection) return 'Выберите направление инкассации';
-      if (!hasHandoverPhoto(draft.encashmentDocumentPhoto)) return 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.';
+      if (user.department === 'retail' && !draft.encashmentDirection) return 'Выберите направление инкассации';
+      if (!hasHandoverPhoto(draft.encashmentDocumentPhoto)) return user.department === 'retail'
+        ? 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.'
+        : 'Сфотографируйте деньги перед помещением в депозитный сейф.';
     }
     return '';
   }
@@ -2414,27 +2418,35 @@ export function EmployeeTodayClient({
               />
               {stepError && parseMoneyInput(handoverDraft.encashmentAmount) === null && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
             </label>
-            <div className='grid grid-cols-2 gap-2'>
-              <Button
-                type='button'
-                className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.encashmentDirection === 'phone_reserve' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
-                onClick={() => updateHandoverDraft({ encashmentDirection: 'phone_reserve' })}
-              >
-                Резерв на телефоны
-              </Button>
-              <Button
-                type='button'
-                className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.encashmentDirection === 'deposit_safe' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
-                onClick={() => updateHandoverDraft({ encashmentDirection: 'deposit_safe' })}
-              >
-                Депозитный сейф
-              </Button>
-            </div>
+            {user.department === 'retail' ? (
+              <div className='grid grid-cols-2 gap-2'>
+                <Button
+                  type='button'
+                  className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.encashmentDirection === 'phone_reserve' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                  onClick={() => updateHandoverDraft({ encashmentDirection: 'phone_reserve' })}
+                >
+                  Резерв на телефоны
+                </Button>
+                <Button
+                  type='button'
+                  className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.encashmentDirection === 'deposit_safe' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                  onClick={() => updateHandoverDraft({ encashmentDirection: 'deposit_safe' })}
+                >
+                  Депозитный сейф
+                </Button>
+              </div>
+            ) : (
+              <p className='rounded-lg bg-slate-50 px-3 py-2 text-xs font-extrabold text-slate-700 ring-1 ring-slate-200'>
+                Направление: депозитный сейф
+              </p>
+            )}
             {renderPhotoInput(
               'Инкассация',
               'encashmentDocumentPhoto',
               task,
-              'Сфотографируйте деньги перед помещением в сейф.',
+              user.department === 'retail'
+                ? 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.'
+                : 'Сфотографируйте деньги перед помещением в депозитный сейф.',
               stepError && parseMoneyInput(handoverDraft.encashmentAmount) !== null ? stepError : undefined,
               parseMoneyInput(handoverDraft.encashmentAmount) === null ? 'Сначала укажите сумму инкассации' : undefined,
             )}
