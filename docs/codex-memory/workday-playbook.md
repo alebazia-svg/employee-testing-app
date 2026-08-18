@@ -86,6 +86,15 @@ employee answers:
 - encashment checks look for a paired outgoing movement from the employee
   cashbox and incoming movement to the reserve for the declared amount.
 
+Employee encashment now creates one atomic, idempotent 1C transfer pair: a
+posted RKO from the employee cashbox and a posted PKO into the selected target
+cashbox. The PKO uses the RKO as its base document. The portal accepts success
+only after 1C returns both posted documents with a complete-pair readback, and
+stores both references and numbers in `CashOperation`. Incomplete legacy pairs
+fail closed for ADMIN review instead of being silently completed. 1C receives
+compact operational comments; the full employee comment remains in portal
+audit. Production support requires AIAgentAPI v0.15.345 or newer.
+
 These checks are admin-side evidence. They do not overwrite manual answers and
 do not block task completion.
 
