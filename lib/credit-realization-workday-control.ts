@@ -81,7 +81,7 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
           });
         }
         await tx.workdayNotification.updateMany({
-          where: { fingerprint: reminderFingerprint, status: 'pending' },
+          where: { fingerprint: reminderFingerprint, status: { in: ['pending', 'sent'] } },
           data: { status: 'cancelled' },
         });
         return result.count;
@@ -108,7 +108,7 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
     if (action === 'remind') {
       const reminder = await prisma.$transaction(async (tx) => {
         const existingIssue = await tx.workdayControlIssue.findUnique({ where: { fingerprint } });
-        if (existingIssue) return false;
+        if (existingIssue?.status === 'open') return false;
         const existing = await tx.workdayNotification.findUnique({ where: { fingerprint: reminderFingerprint } });
         if (existing) return false;
         await tx.workdayNotification.create({
@@ -131,7 +131,7 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
       const reopening = Boolean(existing && existing.status !== 'open');
       const detail = issueDetail(controlCase.documentNumber, controlCase.reasonCode);
       await tx.workdayNotification.updateMany({
-        where: { fingerprint: reminderFingerprint, status: 'pending' },
+        where: { fingerprint: reminderFingerprint, status: { in: ['pending', 'sent'] } },
         data: { status: 'cancelled' },
       });
       const issue = await tx.workdayControlIssue.upsert({

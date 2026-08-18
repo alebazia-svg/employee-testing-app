@@ -48,9 +48,12 @@ test('lifecycle creates one issue and notification, then resolves without duplic
       findUnique: async ({ where }: any) => notifications.find((row) => row.fingerprint === where.fingerprint) ?? null,
       updateMany: async ({ where, data }: any) => {
         const issue = where.issue ? issues.find((row) => row.fingerprint === where.issue.fingerprint) : null;
+        const allowedStatuses = typeof where.status === 'string'
+          ? [where.status]
+          : where.status?.in ?? [];
         const rows = notifications.filter((row) => (
           (where.fingerprint ? row.fingerprint === where.fingerprint : row.issueId === issue?.id)
-          && row.status === where.status
+          && allowedStatuses.includes(row.status)
         ));
         rows.forEach((row) => Object.assign(row, data));
         return { count: rows.length };
@@ -63,6 +66,7 @@ test('lifecycle creates one issue and notification, then resolves without duplic
   assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T10:33:00Z')), { reminded: 0, opened: 0, resolved: 0, unassigned: 0 });
   assert.equal(issues.length, 0);
   assert.equal(notifications.length, 1);
+  notifications[0].status = 'sent';
 
   assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T21:15:00Z')), { reminded: 0, opened: 1, resolved: 0, unassigned: 0 });
   assert.equal(issues.length, 1);
