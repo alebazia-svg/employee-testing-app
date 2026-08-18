@@ -496,7 +496,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         if (cashOperation.amount !== encashmentAmount || cashOperation.direction !== encashmentDirection) {
           throw new Error('Параметры повторной инкассации не совпадают. Смена не завершена.');
         }
-        if (!cashOperation.oneCDocumentRef) {
+        if (cashOperation.status !== 'posted_1c_pair' || !cashOperation.oneCDocumentRef || !cashOperation.oneCReceiptDocumentRef) {
           const oneCResult = await createOneCCashExpenseOrder({
             idempotencyKey,
             organizationRef: organization.ref,
@@ -507,19 +507,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             direction: encashmentDirection as 'phone_reserve' | 'deposit_safe',
             employeeComment: comment,
           });
-          if (!oneCResult.ok || !oneCResult.document) {
-            const oneCError = oneCResult.error || '1С не создала РКО.';
+          if (!oneCResult.ok || !oneCResult.document || !oneCResult.receiptDocument || !oneCResult.pairComplete) {
+            const oneCError = oneCResult.error || '1С не создала и не провела связанную пару РКО и ПКО.';
             await prisma.cashOperation.update({ where: { id: cashOperation.id }, data: { status: 'one_c_error', oneCError } });
-            throw new Error(`РКО не создан: ${oneCError}. Смена не завершена.`);
+            throw new Error(`Кассовые документы не проведены: ${oneCError}. Смена не завершена.`);
           }
           cashOperation = await prisma.cashOperation.update({
             where: { id: cashOperation.id },
             data: {
-              status: 'created_1c',
+              status: 'posted_1c_pair',
               oneCDocumentRef: oneCResult.document.ref,
               oneCDocumentNumber: oneCResult.document.number,
+              oneCReceiptDocumentRef: oneCResult.receiptDocument.ref,
+              oneCReceiptDocumentNumber: oneCResult.receiptDocument.number,
               oneCError: '',
               oneCCreatedAt: new Date(),
+              oneCPostedAt: new Date(),
             },
           });
         }
@@ -532,7 +535,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
               fingerprint: `cash-operation:${cashOperation.id}:admin:${admin.id}`,
               kind: 'cash_operation_created',
               title: 'Инкассация',
-              body: `${user.name} · ${mapping.oneCCashboxName} · ${encashmentAmount.toLocaleString('ru-RU')} ₽ · ${encashmentDirection === 'phone_reserve' ? 'Резерв на телефоны' : 'Депозитный сейф'} · РКО №${cashOperation.oneCDocumentNumber}`,
+              body: `${user.name} · ${mapping.oneCCashboxName} · ${encashmentAmount.toLocaleString('ru-RU')} ₽ · ${encashmentDirection === 'phone_reserve' ? 'Резерв на телефоны' : 'Депозитный сейф'} · проведены РКО №${cashOperation.oneCDocumentNumber} и ПКО №${cashOperation.oneCReceiptDocumentNumber}`,
               scheduledAt: new Date(),
             },
             update: {},

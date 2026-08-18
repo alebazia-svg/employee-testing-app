@@ -378,6 +378,18 @@ export type OneCCashExpenseOrderDocument = {
   operation: string;
 };
 
+export type OneCCashReceiptOrderDocument = {
+  ref: string;
+  number: string;
+  datetime: string;
+  posted: boolean | null;
+  cashbox: OneCKkmReference;
+  sourceCashbox: OneCKkmReference;
+  baseDocument: OneCKkmReference;
+  amount: number | null;
+  operation: string;
+};
+
 export type CreateOneCCashExpenseOrderParams = {
   idempotencyKey: string;
   organizationRef: string;
@@ -394,6 +406,8 @@ export type CreateOneCCashExpenseOrderResult = {
   path: '/cash-expense-order-create';
   durationMs: number;
   document: OneCCashExpenseOrderDocument | null;
+  receiptDocument: OneCCashReceiptOrderDocument | null;
+  pairComplete: boolean;
   idempotentReplay: boolean;
   error?: string;
 };
@@ -732,6 +746,22 @@ function normalizeCashExpenseOrderDocument(value: unknown): OneCCashExpenseOrder
     posted: readFirstBoolean(source, ['posted']),
     cashbox: normalizeKkmReference(source.cashbox),
     targetCashbox: normalizeKkmReference(source.target_cashbox ?? source.targetCashbox),
+    amount: readFirstNumber(source, ['amount']),
+    operation: readFirstString(source, ['operation']),
+  };
+}
+
+function normalizeCashReceiptOrderDocument(value: unknown): OneCCashReceiptOrderDocument | null {
+  const source = readRecord(value);
+  if (!source) return null;
+  return {
+    ref: readFirstString(source, ['ref']),
+    number: readFirstString(source, ['number']),
+    datetime: readFirstString(source, ['datetime']),
+    posted: readFirstBoolean(source, ['posted']),
+    cashbox: normalizeKkmReference(source.cashbox),
+    sourceCashbox: normalizeKkmReference(source.source_cashbox ?? source.sourceCashbox),
+    baseDocument: normalizeKkmReference(source.base_document ?? source.baseDocument),
     amount: readFirstNumber(source, ['amount']),
     operation: readFirstString(source, ['operation']),
   };
@@ -1261,26 +1291,38 @@ async function requestCashExpenseOrder(config: OneCConfig, params: CreateOneCCas
   try {
     const preview = await request({ ...basePayload, confirm: false });
     if (!preview.response.ok || preview.data.ok !== true) {
-      return { ok: false, path, durationMs: Date.now() - startedAt, document: null, idempotentReplay: false, error: readFirstString(preview.data, ['error_text', 'error']) || `1C API returned HTTP ${preview.response.status}` };
+      return { ok: false, path, durationMs: Date.now() - startedAt, document: null, receiptDocument: null, pairComplete: false, idempotentReplay: false, error: readFirstString(preview.data, ['error_text', 'error']) || `1C API returned HTTP ${preview.response.status}` };
     }
     const existingDocument = normalizeCashExpenseOrderDocument(preview.data.document);
-    if (preview.data.idempotent_replay === true && existingDocument) {
-      return { ok: true, path, durationMs: Date.now() - startedAt, document: existingDocument, idempotentReplay: true };
+    const existingReceiptDocument = normalizeCashReceiptOrderDocument(preview.data.receipt_document);
+    if (preview.data.idempotent_replay === true && existingDocument && existingReceiptDocument && preview.data.pair_complete === true) {
+      return { ok: true, path, durationMs: Date.now() - startedAt, document: existingDocument, receiptDocument: existingReceiptDocument, pairComplete: true, idempotentReplay: true };
     }
     const previewToken = readFirstString(preview.data, ['preview_token']);
-    if (!previewToken) return { ok: false, path, durationMs: Date.now() - startedAt, document: null, idempotentReplay: false, error: '1C preview did not return a confirmation token' };
+    if (!previewToken) return { ok: false, path, durationMs: Date.now() - startedAt, document: null, receiptDocument: null, pairComplete: false, idempotentReplay: false, error: '1C preview did not return a confirmation token' };
     const confirmed = await request({ ...basePayload, confirm: true, preview_token: previewToken });
     const document = normalizeCashExpenseOrderDocument(confirmed.data.document);
+    const receiptDocument = normalizeCashReceiptOrderDocument(confirmed.data.receipt_document);
+    const pairComplete = confirmed.data.pair_complete === true;
+    const accepted = confirmed.response.ok
+      && confirmed.data.ok === true
+      && Boolean(document)
+      && Boolean(receiptDocument)
+      && document?.posted === true
+      && receiptDocument?.posted === true
+      && pairComplete;
     return {
-      ok: confirmed.response.ok && confirmed.data.ok === true && Boolean(document) && document?.posted !== true,
+      ok: accepted,
       path,
       durationMs: Date.now() - startedAt,
       document,
+      receiptDocument,
+      pairComplete,
       idempotentReplay: confirmed.data.idempotent_replay === true,
-      error: confirmed.response.ok && confirmed.data.ok === true ? undefined : readFirstString(confirmed.data, ['error_text', 'error']) || `1C API returned HTTP ${confirmed.response.status}`,
+      error: accepted ? undefined : readFirstString(confirmed.data, ['error_text', 'error']) || (confirmed.response.ok ? '1C did not confirm a complete posted RKO/PKO pair' : `1C API returned HTTP ${confirmed.response.status}`),
     };
   } catch (error) {
-    return { ok: false, path, durationMs: Date.now() - startedAt, document: null, idempotentReplay: false, error: formatError(error) };
+    return { ok: false, path, durationMs: Date.now() - startedAt, document: null, receiptDocument: null, pairComplete: false, idempotentReplay: false, error: formatError(error) };
   }
 }
 
@@ -1788,6 +1830,6 @@ export async function getCashShifts(dateFrom: string, dateTo = dateFrom): Promis
 export async function createOneCCashExpenseOrder(params: CreateOneCCashExpenseOrderParams): Promise<CreateOneCCashExpenseOrderResult> {
   const config = getConfig();
   const missingConfig = getMissingConfig(config);
-  if (missingConfig.length) return { ok: false, path: '/cash-expense-order-create', durationMs: 0, document: null, idempotentReplay: false, error: '1C API configuration is incomplete' };
+  if (missingConfig.length) return { ok: false, path: '/cash-expense-order-create', durationMs: 0, document: null, receiptDocument: null, pairComplete: false, idempotentReplay: false, error: '1C API configuration is incomplete' };
   return requestCashExpenseOrder(config, params);
 }

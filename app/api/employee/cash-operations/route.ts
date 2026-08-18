@@ -109,7 +109,7 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Параметры повторной операции не совпадают с первоначальными' }, { status: 409 });
     }
 
-    if (!operation.oneCDocumentRef) {
+    if (operation.status !== 'posted_1c_pair' || !operation.oneCDocumentRef || !operation.oneCReceiptDocumentRef) {
       const [mapping, dimensions] = await Promise.all([
         prisma.userOneCCashboxMapping.findUnique({ where: { userId: user.id } }),
         getCashStatementDimensions(),
@@ -136,19 +136,22 @@ export async function POST(req: Request) {
         direction: direction as 'phone_reserve' | 'deposit_safe',
         employeeComment: operation.comment,
       });
-      if (!result.ok || !result.document) {
-        const message = result.error || '1С не создала РКО.';
+      if (!result.ok || !result.document || !result.receiptDocument || !result.pairComplete) {
+        const message = result.error || '1С не создала и не провела связанную пару РКО и ПКО.';
         await prisma.cashOperation.update({ where: { id: operation.id }, data: { status: 'one_c_error', oneCError: message } });
-        return Response.json({ error: `Операция сохранена, но РКО не создан: ${message}`, operationId: operation.id }, { status: 502 });
+        return Response.json({ error: `Операция сохранена, но кассовые документы не проведены: ${message}`, operationId: operation.id }, { status: 502 });
       }
       await prisma.cashOperation.update({
         where: { id: operation.id },
         data: {
-          status: 'created_1c',
+          status: 'posted_1c_pair',
           oneCDocumentRef: result.document.ref,
           oneCDocumentNumber: result.document.number,
+          oneCReceiptDocumentRef: result.receiptDocument.ref,
+          oneCReceiptDocumentNumber: result.receiptDocument.number,
           oneCError: '',
           oneCCreatedAt: new Date(),
+          oneCPostedAt: new Date(),
         },
       });
       const admins = await prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
@@ -160,7 +163,7 @@ export async function POST(req: Request) {
             fingerprint: `cash-operation:${operation.id}:admin:${admin.id}`,
             kind: 'cash_operation_created',
             title: 'Инкассация',
-            body: `${user.name} · ${mapping.oneCCashboxName} · ${amount.toLocaleString('ru-RU')} ₽ · ${direction === 'phone_reserve' ? 'Резерв на телефоны' : 'Депозитный сейф'} · РКО №${result.document.number}`,
+            body: `${user.name} · ${mapping.oneCCashboxName} · ${amount.toLocaleString('ru-RU')} ₽ · ${direction === 'phone_reserve' ? 'Резерв на телефоны' : 'Депозитный сейф'} · проведены РКО №${result.document.number} и ПКО №${result.receiptDocument.number}`,
             scheduledAt: new Date(),
           },
           update: {},
