@@ -47,6 +47,13 @@ function input(overrides: Partial<CreditRealizationControlInput> = {}): CreditRe
 test('confirms a no-initial-payment realization only with full credit and OFD confirmation', () => {
   assert.deepEqual(evaluateCreditRealization(input()).reasonCodes, ['CONFIRMED_NO_INITIAL_PAYMENT']);
   assert.equal(evaluateCreditRealization(input()).status, 'confirmed');
+
+  const productionFlagDrift = operation({ fiscalized: false });
+  const driftResult = evaluateCreditRealization(input({
+    fiscalDocuments: [{ sourceType: 'realization', documentRef: 'sale-1', operations: [productionFlagDrift] }],
+    ofd: { complete: true, confirmedFiscalKeys: [creditFiscalKey(productionFlagDrift)], unlinkedExactReceipts: [] },
+  }));
+  assert.equal(driftResult.status, 'confirmed');
 });
 
 test('confirms historical cash and card initial-payment chains from the payment document', () => {

@@ -64,7 +64,7 @@ function exactUnlinkedReceipts(links: OneCSalesRealizationLinks, receipts: AusnO
     ...(payment ? [parseOneCDate(payment.document.date).getTime()] : []),
   );
   const linkedKeys = new Set(links.fiscalControl.documents.flatMap((document) => (
-    document.operations.filter((operation) => operation.fiscalized).map(creditFiscalKey).filter(Boolean)
+    document.operations.map(creditFiscalKey).filter(Boolean)
   )));
 
   return receipts.filter((receipt) => {

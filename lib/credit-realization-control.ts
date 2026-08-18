@@ -211,7 +211,10 @@ function uniquePayments(payments: CreditPaymentDocument[]) {
 function uniqueOperations(documents: CreditFiscalDocument[]) {
   const seen = new Set<string>();
   return documents.flatMap((document) => document.operations.map((operation) => ({ document, operation })))
-    .filter(({ operation }) => operation.fiscalized)
+    // In production UT, FiscalOperations can carry fiscalized=false even when
+    // FN+FD+FP are already present. The complete fiscal identity, later
+    // confirmed against OFD, is stronger evidence than this technical flag.
+    .filter(({ operation }) => operation.fiscalized || Boolean(creditFiscalKey(operation)))
     .filter(({ document, operation }) => {
       const key = creditFiscalKey(operation)
         || `${document.sourceType}:${document.documentRef}:${operation.datetime}:${operation.amount}`;
