@@ -15,6 +15,7 @@ import {
   addEmployeeTerminalFiscalReviewMessage,
   normalizeTerminalFiscalReviewMessage,
 } from '../lib/terminal-fiscal-review-messages';
+import { terminalFiscalEmployeeReviewSummary } from '../lib/terminal-fiscal-employee-review-view';
 
 const mapping: TerminalMapping = {
   id: 'mapping-1', terminalKey: 'terminal-1', oneCAcquiringTerminalRef: 'acquiring-1',
@@ -60,6 +61,16 @@ test('first complete 1C read after ten minutes is enough when one nearby mapped 
   }), { action: 'notify', employeeId: 5, cashierRef: 'cashier-magomed' });
   assert.equal(terminalFiscalEmployeeReviewText({ operationAt: new Date('2026-08-17T16:32:00.000Z'), amountKopecks: 1_250_000 }),
     'Чек 19:32 — 12 500 ₽ в 1С не найден. Проверьте продажу.');
+});
+
+test('builds a compact neutral employee workday summary', () => {
+  assert.deepEqual(terminalFiscalEmployeeReviewSummary({
+    bankOperationAt: '2026-08-17T16:32:00.000Z',
+    amountKopecks: 1_250_000,
+  }), {
+    title: 'Проверьте продажу',
+    meta: '19:32 · 12 500 ₽',
+  });
 });
 
 test('does not notify before the safe read, with incomplete 1C, or with ambiguous cashier evidence', () => {

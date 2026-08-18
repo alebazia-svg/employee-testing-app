@@ -53,6 +53,20 @@ export function serializeCashOperationForEmployee(operation: Awaited<ReturnType<
   };
 }
 
+export function serializeTerminalFiscalEmployeeReviewForEmployee(review: {
+  id: string;
+  bankOperationAt: Date;
+  amountKopecks: number;
+  detectedAt: Date;
+}) {
+  return {
+    id: review.id,
+    bankOperationAt: review.bankOperationAt.toISOString(),
+    amountKopecks: review.amountKopecks,
+    detectedAt: review.detectedAt.toISOString(),
+  };
+}
+
 async function findCurrentShiftControlRun(userId: number) {
   return prisma.shiftControlRun.findFirst({
     where: {
@@ -93,8 +107,18 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
   ]);
 
   const activeWorkDay = [todayWorkDay, unfinishedWorkDay].find((entry) => entry && !entry.endedAt && ['active', 'missing_checkout'].includes(entry.status)) ?? null;
-  const [requiredIssues, closeExceptionRequest] = await Promise.all([
+  const [requiredIssues, paymentChecks, closeExceptionRequest] = await Promise.all([
     findOpenRequiredWorkdayIssues(prisma, user.id),
+    prisma.terminalFiscalEmployeeReview.findMany({
+      where: { employeeId: user.id, status: 'open' },
+      orderBy: [{ bankOperationAt: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        bankOperationAt: true,
+        amountKopecks: true,
+        detectedAt: true,
+      },
+    }),
     activeWorkDay ? prisma.workdayCloseExceptionRequest.findFirst({
       where: { workDayEntryId: activeWorkDay.id },
       orderBy: { requestedAt: 'desc' },
@@ -108,6 +132,7 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
     shiftControl: serializeShiftControlForEmployee(shiftControlRun),
     cashOperations: cashOperations.map(serializeCashOperationForEmployee),
     requiredIssues: requiredIssues.map(serializeRequiredIssue),
+    paymentChecks: paymentChecks.map(serializeTerminalFiscalEmployeeReviewForEmployee),
     closeExceptionRequest: closeExceptionRequest ? {
       ...closeExceptionRequest,
       requestedAt: closeExceptionRequest.requestedAt.toISOString(),

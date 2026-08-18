@@ -76,6 +76,7 @@ export default async function Employee() {
       shiftControl={workdaySnapshot.shiftControl}
       cashOperations={workdaySnapshot.cashOperations}
       requiredIssues={workdaySnapshot.requiredIssues}
+      paymentChecks={workdaySnapshot.paymentChecks}
       closeExceptionRequest={workdaySnapshot.closeExceptionRequest}
     />
   );
