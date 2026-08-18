@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
+import { findOpenRequiredWorkdayIssues, serializeRequiredIssue } from '@/lib/workday-required-issues';
 
 type WorkDayForSnapshot = Awaited<ReturnType<typeof prisma.workDayEntry.findFirst>>;
 
@@ -91,11 +92,29 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
     findTodayCashOperations(user.id, today),
   ]);
 
+  const activeWorkDay = [todayWorkDay, unfinishedWorkDay].find((entry) => entry && !entry.endedAt && ['active', 'missing_checkout'].includes(entry.status)) ?? null;
+  const [requiredIssues, closeExceptionRequest] = await Promise.all([
+    findOpenRequiredWorkdayIssues(prisma, user.id),
+    activeWorkDay ? prisma.workdayCloseExceptionRequest.findFirst({
+      where: { workDayEntryId: activeWorkDay.id },
+      orderBy: { requestedAt: 'desc' },
+    }) : null,
+  ]);
+
   return {
     today,
     workDay: serializeWorkDayForEmployee(todayWorkDay),
     unfinishedWorkDay: serializeWorkDayForEmployee(unfinishedWorkDay),
     shiftControl: serializeShiftControlForEmployee(shiftControlRun),
     cashOperations: cashOperations.map(serializeCashOperationForEmployee),
+    requiredIssues: requiredIssues.map(serializeRequiredIssue),
+    closeExceptionRequest: closeExceptionRequest ? {
+      ...closeExceptionRequest,
+      requestedAt: closeExceptionRequest.requestedAt.toISOString(),
+      decidedAt: closeExceptionRequest.decidedAt?.toISOString() ?? null,
+      consumedAt: closeExceptionRequest.consumedAt?.toISOString() ?? null,
+      createdAt: closeExceptionRequest.createdAt.toISOString(),
+      updatedAt: closeExceptionRequest.updatedAt.toISOString(),
+    } : null,
   };
 }

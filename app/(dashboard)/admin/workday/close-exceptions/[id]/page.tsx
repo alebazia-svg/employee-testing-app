@@ -1,0 +1,40 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { ShieldAlert } from 'lucide-react';
+import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
+import { AdminShell } from '@/components/AdminShell';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { getCurrentUser } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
+import { readIssueIds } from '@/lib/workday-required-issues';
+import { CloseExceptionDecisionClient } from './CloseExceptionDecisionClient';
+
+export const dynamic = 'force-dynamic';
+
+const reasonLabels: Record<string, string> = { power: 'Нет света', internet: 'Нет интернета', one_c: 'Не работает 1С', kkm: 'Не работает ККМ', other: 'Другая техническая причина' };
+const statusLabels: Record<string, string> = { pending: 'Ожидает решения', approved: 'Разрешено', rejected: 'Отклонено' };
+
+export default async function AdminCloseExceptionPage({ params }: { params: { id: string } }) {
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
+  const request = await prisma.workdayCloseExceptionRequest.findUnique({
+    where: { id: params.id },
+    include: { employee: { select: { name: true } }, decidedBy: { select: { name: true } }, workDayEntry: { select: { date: true } } },
+  });
+  if (!request) redirect('/admin/workday');
+  const issueIds = readIssueIds(request.issueIds);
+  const issues = issueIds.length ? await prisma.workdayControlIssue.findMany({ where: { id: { in: issueIds } }, orderBy: { detectedAt: 'asc' } }) : [];
+  return (
+    <AdminShell>
+      <AdminBreadcrumbs current='Запрос на завершение дня' />
+      <Card className='max-w-3xl border-amber-200 bg-amber-50'>
+        <div className='flex items-start gap-3'><ShieldAlert className='mt-0.5 h-6 w-6 text-amber-700' /><div><p className='text-xs font-extrabold uppercase text-amber-700'>Техническое исключение</p><h1 className='mt-1 text-2xl font-black text-slate-950'>{request.employee.name} · {request.workDayEntry.date}</h1><div className='mt-3'><Badge>{statusLabels[request.status] ?? request.status}</Badge></div></div></div>
+        <dl className='mt-5 grid gap-3 text-sm sm:grid-cols-2'><div><dt className='font-semibold text-slate-500'>Причина</dt><dd className='font-extrabold text-slate-950'>{reasonLabels[request.reasonCode] ?? request.reasonCode}</dd></div><div><dt className='font-semibold text-slate-500'>Комментарий сотрудника</dt><dd className='font-extrabold text-slate-950'>{request.comment}</dd></div></dl>
+        <div className='mt-5 space-y-2'><h2 className='text-sm font-extrabold text-slate-900'>Незакрытые проблемы на момент запроса</h2>{issues.map((issue) => <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='block rounded-xl bg-white px-4 py-3 text-sm font-extrabold text-slate-900 ring-1 ring-amber-200'>{issue.title} · {issue.status === 'open' && issue.employeeActionRequired ? 'ещё требует действия' : 'уже исправлено'}</Link>)}</div>
+        {request.status === 'pending' ? <CloseExceptionDecisionClient requestId={request.id} /> : <div className='mt-5 border-t border-amber-200 pt-4 text-sm font-semibold text-slate-700'><p>Решение: {statusLabels[request.status] ?? request.status}</p>{request.decisionComment && <p className='mt-1'>Комментарий: {request.decisionComment}</p>}{request.decidedBy && <p className='mt-1'>Администратор: {request.decidedBy.name}</p>}<p className='mt-2'>Разрешение не закрывает саму проблему и действует только для этого рабочего дня и этого набора ошибок.</p></div>}
+      </Card>
+    </AdminShell>
+  );
+}

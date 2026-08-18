@@ -108,6 +108,7 @@ export type CreditRealizationControlResult = {
   expectedCreditRemainder: number;
   paymentDocumentRef: string | null;
   fiscalOperationCount: number;
+  receiptDelayMinutes: number | null;
 };
 
 export function buildCreditRealizationControlInput(input: {
@@ -238,11 +239,14 @@ function result(
     status,
     reasonCodes,
     employeeManagerRef: input.realization.managerRef || null,
-    employeeActionEligible: status === 'mismatch' && Boolean(input.realization.managerRef),
+    employeeActionEligible: status === 'mismatch'
+      && !reasonCodes.includes('FISCAL_RECEIPT_AFTER_SALE_DAY')
+      && Boolean(input.realization.managerRef),
     expectedCurrentPayment,
     expectedCreditRemainder,
     paymentDocumentRef,
     fiscalOperationCount,
+    receiptDelayMinutes: null,
   };
 }
 
@@ -343,6 +347,9 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
 
   const operationAt = parseOneCDate(operation.datetime);
   const sourceAt = parseOneCDate(payment?.date ?? input.realization.date);
+  const receiptDelayMinutes = !Number.isNaN(operationAt.getTime()) && !Number.isNaN(sourceAt.getTime())
+    ? Math.max(0, Math.round((operationAt.getTime() - sourceAt.getTime()) / 60_000))
+    : null;
   if (!Number.isNaN(operationAt.getTime())
     && !Number.isNaN(sourceAt.getTime())
     && operationAt.getTime() + EARLY_RECEIPT_TOLERANCE_MS < sourceAt.getTime()) {
@@ -352,7 +359,7 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
     && !Number.isNaN(sourceAt.getTime())
     && operationAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })
       !== sourceAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })) {
-    return finish('mismatch', ['FISCAL_RECEIPT_AFTER_SALE_DAY']);
+    return { ...finish('mismatch', ['FISCAL_RECEIPT_AFTER_SALE_DAY']), receiptDelayMinutes };
   }
   if (!input.ofd.complete) return finish('needs_review', ['OFD_SOURCE_INCOMPLETE']);
   const fiscalKey = creditFiscalKey(operation);
@@ -360,5 +367,8 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
     return finish('needs_review', ['OFD_CONFIRMATION_MISSING']);
   }
 
-  return finish('confirmed', [payment ? 'CONFIRMED_WITH_INITIAL_PAYMENT' : 'CONFIRMED_NO_INITIAL_PAYMENT']);
+  return {
+    ...finish('confirmed', [payment ? 'CONFIRMED_WITH_INITIAL_PAYMENT' : 'CONFIRMED_NO_INITIAL_PAYMENT']),
+    receiptDelayMinutes,
+  };
 }

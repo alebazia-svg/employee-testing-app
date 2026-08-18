@@ -75,6 +75,8 @@ export default async function Employee() {
       }))}
       shiftControl={workdaySnapshot.shiftControl}
       cashOperations={workdaySnapshot.cashOperations}
+      requiredIssues={workdaySnapshot.requiredIssues}
+      closeExceptionRequest={workdaySnapshot.closeExceptionRequest}
     />
   );
 }

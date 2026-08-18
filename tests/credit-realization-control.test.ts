@@ -138,6 +138,8 @@ test('treats a receipt created on the next Moscow day as a proven mismatch', () 
   }));
   assert.equal(result.status, 'mismatch');
   assert.deepEqual(result.reasonCodes, ['FISCAL_RECEIPT_AFTER_SALE_DAY']);
+  assert.equal(result.employeeActionEligible, false);
+  assert.equal(result.receiptDelayMinutes, 723);
 });
 
 test('normalizes the production sales-realization-links fiscal-control contract', () => {

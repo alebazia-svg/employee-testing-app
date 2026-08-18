@@ -8,6 +8,7 @@ import { createOneCCashExpenseOrder, getCashStatementDimensions, getCashStatemen
 import { shiftControlEmployeeRevisionHistoryKey, shiftControlOneCAuditKey, stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { employeeKkmReportPhotosRequired } from '@/lib/shift-control-policy';
 import { usesWorkdayShiftControl } from '@/lib/workday';
+import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib/workday-required-issues';
 import {
   appendCashRecountInputHistory,
   buildCashRecountComparison,
@@ -449,6 +450,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (!hasSavedPhoto(handoverData, 'zReport')) return Response.json({ error: 'Сделайте фото чека закрытия смены' }, { status: 400 });
     }
 
+    const requiredIssues = await findOpenRequiredWorkdayIssues(prisma, user.id);
+    const requiredIssueIds = requiredIssues.map((issue) => issue.id).sort((a, b) => a - b);
+    const closeException = requiredIssueIds.length
+      ? await findApprovedCloseException(prisma, task.run.workDayEntryId, requiredIssueIds)
+      : null;
+    if (requiredIssueIds.length && !closeException) {
+      return Response.json({
+        error: 'Есть обязательная неисправленная ошибка. Исправьте её или запросите разрешение администратора при технической невозможности.',
+        code: 'OPEN_REQUIRED_ISSUES',
+        issues: requiredIssues,
+      }, { status: 409 });
+    }
+
     try {
       if (requiresEncashment && encashmentAmount !== null) {
         const idempotencyKey = `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`;
@@ -619,6 +633,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           where: { id: task.run.workDayEntryId },
           data: { endedAt: now, status: 'completed' },
         });
+        if (closeException) {
+          await tx.workdayCloseExceptionRequest.update({ where: { id: closeException.id }, data: { consumedAt: now } });
+        }
         const tasks = await tx.shiftControlTask.findMany({
           where: { runId: task.runId },
           orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],

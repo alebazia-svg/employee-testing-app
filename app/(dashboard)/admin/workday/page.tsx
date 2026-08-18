@@ -1171,7 +1171,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const selectedControlFilter = controlFilter(searchParams?.control);
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
-  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary] = await Promise.all([
+  const selectedDayRange = moscowDayRange(selectedDate);
+  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary, requiredIssues, lateCreditReceipts] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
@@ -1219,6 +1220,19 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       orderBy: { effectiveFrom: 'asc' },
     }),
     getTerminalFiscalWorkdaySummary(moscowDayRange(selectedDate)),
+    prisma.workdayControlIssue.findMany({
+      where: { status: 'open', employeeActionRequired: true, originDate: selectedDate },
+      include: { user: { select: { name: true } } },
+      orderBy: [{ severity: 'desc' }, { detectedAt: 'asc' }],
+    }),
+    prisma.creditRealizationControlCase.findMany({
+      where: {
+        realizationAt: { gte: selectedDayRange.periodFrom, lt: selectedDayRange.periodTo },
+        receiptDelayMinutes: { gt: 15 },
+      },
+      select: { id: true, documentNumber: true, receiptDelayMinutes: true, receiptCashierName: true },
+      orderBy: { realizationAt: 'asc' },
+    }),
   ]);
 
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
@@ -1588,6 +1602,21 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         </div>
 
         <TerminalFiscalAdminSummary summary={terminalFiscalSummary} />
+
+        {requiredIssues.length > 0 && (
+          <Card className='border-amber-200 bg-amber-50'>
+            <div className='flex items-start gap-3'><AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' /><div className='min-w-0 flex-1'><h2 className='text-lg font-extrabold text-slate-950'>Обязательные неисправленные ошибки · {requiredIssues.length}</h2><p className='mt-1 text-sm font-semibold text-slate-600'>Не мешают выполнять остальные задачи, но требуют исправления до завершения рабочего дня.</p></div></div>
+            <div className='mt-4 grid gap-2 sm:grid-cols-2'>{requiredIssues.map((issue) => <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='rounded-xl bg-white px-4 py-3 ring-1 ring-amber-200 transition hover:ring-amber-400'><span className='block text-xs font-extrabold text-amber-700'>{issue.user.name}</span><span className='mt-1 block text-sm font-black text-slate-950'>{issue.title}</span></Link>)}</div>
+          </Card>
+        )}
+
+        {lateCreditReceipts.length > 0 && (
+          <Card className='border-slate-200 bg-white'>
+            <h2 className='text-base font-extrabold text-slate-950'>Исправлено после допустимого срока · {lateCreditReceipts.length}</h2>
+            <p className='mt-1 text-sm font-semibold text-slate-500'>Активного действия сотрудника уже нет. Опоздание сохранено для контроля.</p>
+            <div className='mt-3 grid gap-2 sm:grid-cols-2'>{lateCreditReceipts.map((item) => <div key={item.id} className='rounded-xl bg-slate-50 px-3 py-2 text-sm'><p className='font-extrabold text-slate-900'>Реализация {item.documentNumber} · +{item.receiptDelayMinutes} мин.</p><p className='mt-0.5 font-semibold text-slate-500'>Кассир чека: {item.receiptCashierName || 'не определён'}</p></div>)}</div>
+          </Card>
+        )}
 
         <Card className='p-0' id='employees-control'>
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between'>

@@ -39,7 +39,11 @@ export async function GET() {
     })
     .map(({ task: _task, issue: _issue, review: _review, ...notification }) => ({
       ...notification,
-      href: notification.reviewId ? `/employee/payment-checks/${notification.reviewId}` : '/employee',
+      href: notification.reviewId
+        ? `/employee/payment-checks/${notification.reviewId}`
+        : notification.issueId
+          ? `/employee/issues/${notification.issueId}`
+          : '/employee',
     }));
   return Response.json({ notifications });
 }

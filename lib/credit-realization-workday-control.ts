@@ -27,15 +27,33 @@ export function creditRealizationIssueAction(value: {
   if (value.status === 'mismatch' && value.employeeActionCandidate) {
     const ageMinutes = (now.getTime() - value.realizationAt.getTime()) / 60_000;
     if (ageMinutes < 15) return 'none' as const;
-    const realizationDay = value.realizationAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
-    const currentDay = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
-    const currentMinutes = Number(new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hour12: false,
-    }).format(now).replace(':', ''));
-    if (currentDay > realizationDay && currentMinutes >= 15 && value.completeMismatchReads >= 2) return 'open' as const;
-    return 'remind' as const;
+    return 'open' as const;
   }
   return 'resolve' as const;
+}
+
+function moscowDate(value: Date) {
+  return value.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+}
+
+function issueSourceData(controlCase: {
+  documentNumber: string;
+  realizationAt: Date;
+  amountKopecks: number;
+  reasonCode: string;
+  receiptDelayMinutes: number | null;
+  receiptCashierRef: string | null;
+  receiptCashierName: string | null;
+}) {
+  return {
+    documentNumber: controlCase.documentNumber,
+    realizationAt: controlCase.realizationAt.toISOString(),
+    amountKopecks: controlCase.amountKopecks,
+    reasonCode: controlCase.reasonCode,
+    receiptDelayMinutes: controlCase.receiptDelayMinutes,
+    receiptCashierRef: controlCase.receiptCashierRef,
+    receiptCashierName: controlCase.receiptCashierName,
+  };
 }
 
 function issueDetail(documentNumber: string, reasonCode: string) {
@@ -72,7 +90,13 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
       const count = await prisma.$transaction(async (tx) => {
         const result = await tx.workdayControlIssue.updateMany({
           where: { fingerprint, status: 'open' },
-          data: { status: 'resolved', resolvedAt: now, nextReminderAt: null },
+          data: {
+            status: 'resolved',
+            employeeActionRequired: false,
+            resolvedAt: now,
+            nextReminderAt: null,
+            sourceData: issueSourceData(controlCase),
+          },
         });
         if (result.count > 0) {
           await tx.workdayNotification.updateMany({
@@ -105,45 +129,12 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
     }
 
     const userId = mappings[0].userId;
-    if (action === 'remind') {
-      const reminder = await prisma.$transaction(async (tx) => {
-        const existingIssue = await tx.workdayControlIssue.findUnique({ where: { fingerprint } });
-        if (existingIssue?.status === 'open') return false;
-        const existing = await tx.workdayNotification.findUnique({ where: { fingerprint: reminderFingerprint } });
-        if (existing) {
-          if (existing.status !== 'cancelled') return false;
-          const reactivated = await tx.workdayNotification.updateMany({
-            where: { id: existing.id, status: 'cancelled' },
-            data: {
-              userId,
-              status: 'pending',
-              scheduledAt: now,
-              sentAt: null,
-              readAt: null,
-              lastError: '',
-            },
-          });
-          return reactivated.count === 1;
-        }
-        await tx.workdayNotification.create({
-          data: {
-            userId,
-            fingerprint: reminderFingerprint,
-            kind: 'credit_check_reminder',
-            title: 'Проверьте чек по кредитной продаже',
-            body: `Реализация ${controlCase.documentNumber}: подтверждение чека пока не получено. Проверьте, что чек пробит.`,
-            scheduledAt: now,
-          },
-        });
-        return true;
-      });
-      if (reminder) reminded += 1;
-      continue;
-    }
     const lifecycle = await prisma.$transaction(async (tx) => {
       const existing = await tx.workdayControlIssue.findUnique({ where: { fingerprint } });
       const reopening = Boolean(existing && existing.status !== 'open');
       const detail = issueDetail(controlCase.documentNumber, controlCase.reasonCode);
+      const originDate = moscowDate(controlCase.realizationAt);
+      const severity = moscowDate(now) > originDate ? 'error' : 'warning';
       await tx.workdayNotification.updateMany({
         where: { fingerprint: reminderFingerprint, status: { in: ['pending', 'sent'] } },
         data: { status: 'cancelled' },
@@ -151,14 +142,14 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
       const issue = await tx.workdayControlIssue.upsert({
         where: { fingerprint },
         create: {
-          userId, fingerprint, ruleKey: 'credit_realization_mismatch', severity: 'error', status: 'open',
+          userId, fingerprint, ruleKey: 'credit_realization_mismatch', severity, status: 'open',
           title: 'Проверьте кредитную продажу', detail,
-          sourceData: { documentNumber: controlCase.documentNumber, realizationAt: controlCase.realizationAt.toISOString(), reasonCode: controlCase.reasonCode },
+          sourceData: issueSourceData(controlCase), employeeActionRequired: true, originDate,
           detectedAt: now, lastDetectedAt: now,
         },
         update: {
-          userId, severity: 'error', status: 'open', title: 'Проверьте кредитную продажу', detail,
-          sourceData: { documentNumber: controlCase.documentNumber, realizationAt: controlCase.realizationAt.toISOString(), reasonCode: controlCase.reasonCode },
+          userId, severity, status: 'open', title: 'Проверьте кредитную продажу', detail,
+          sourceData: issueSourceData(controlCase), employeeActionRequired: true, originDate,
           ...(reopening ? { detectedAt: now } : {}),
           lastDetectedAt: now, resolvedAt: null,
         },
@@ -168,7 +159,7 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
           data: {
             userId, issueId: issue.id, fingerprint: `issue:${issue.id}:detected:${now.toISOString()}`,
             kind: 'issue_detected', title: issue.title,
-            body: `${detail} Проверьте и исправьте оформление в 1С.`, scheduledAt: now,
+            body: `Реализация ${controlCase.documentNumber}: правильный чек пока не подтверждён. Проверьте оформление в 1С.`, scheduledAt: now,
           },
         });
         return 'opened' as const;

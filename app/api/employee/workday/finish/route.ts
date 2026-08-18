@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
+import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib/workday-required-issues';
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -49,6 +50,19 @@ export async function POST(req: Request) {
     }
   }
 
+  const requiredIssues = await findOpenRequiredWorkdayIssues(prisma, user.id);
+  const requiredIssueIds = requiredIssues.map((issue) => issue.id).sort((a, b) => a - b);
+  const closeException = requiredIssueIds.length
+    ? await findApprovedCloseException(prisma, activeWorkDay.id, requiredIssueIds)
+    : null;
+  if (requiredIssueIds.length && !closeException) {
+    return Response.json({
+      error: 'Есть обязательная неисправленная ошибка. Исправьте её или запросите разрешение администратора при технической невозможности.',
+      code: 'OPEN_REQUIRED_ISSUES',
+      issues: requiredIssues,
+    }, { status: 409 });
+  }
+
   const now = new Date();
   const staleCloseViolationComment = closeStale && isStaleWorkDay
     ? [
@@ -78,6 +92,10 @@ export async function POST(req: Request) {
           closingComment: staleCloseViolationComment,
         },
       });
+    }
+
+    if (closeException) {
+      await tx.workdayCloseExceptionRequest.update({ where: { id: closeException.id }, data: { consumedAt: now } });
     }
 
     return updatedWorkDay;

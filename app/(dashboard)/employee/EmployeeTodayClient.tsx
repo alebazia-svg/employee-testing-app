@@ -54,12 +54,18 @@ function uploadFormData<T>(url: string, method: 'POST' | 'PATCH', formData: Form
         return;
       }
       const error = isRecord(result) && typeof result.error === 'string' ? result.error : fallbackError;
-      reject(new Error(error));
+      reject(new EmployeeApiError(error, isRecord(result) && typeof result.code === 'string' ? result.code : '', result));
     };
     request.onerror = () => reject(new Error('Связь прервалась при загрузке фото. Проверьте интернет и повторите.'));
     request.ontimeout = () => reject(new Error('Фото загружается слишком долго. Проверьте интернет и повторите.'));
     request.send(formData);
   });
+}
+
+class EmployeeApiError extends Error {
+  constructor(message: string, readonly code: string, readonly payload: unknown) {
+    super(message);
+  }
 }
 
 type UserSummary = {
@@ -147,6 +153,30 @@ type CashOperation = {
   createdAt: string | Date;
 };
 
+type RequiredWorkdayIssue = {
+  id: number;
+  ruleKey: string;
+  severity: string;
+  title: string;
+  detail: string;
+  sourceData: unknown;
+  originDate: string;
+  detectedAt: string;
+  lastDetectedAt: string;
+};
+
+type WorkdayCloseException = {
+  id: string;
+  status: string;
+  reasonCode: string;
+  comment: string;
+  issueIds: unknown;
+  decisionComment: string;
+  requestedAt: string;
+  decidedAt: string | null;
+  consumedAt: string | null;
+};
+
 type Props = {
   user: UserSummary;
   today: string;
@@ -158,6 +188,8 @@ type Props = {
   attestations: AttestationSummary[];
   shiftControl: ShiftControlState;
   cashOperations: CashOperation[];
+  requiredIssues: RequiredWorkdayIssue[];
+  closeExceptionRequest: WorkdayCloseException | null;
 };
 
 type EmployeeWorkdaySnapshot = {
@@ -165,6 +197,8 @@ type EmployeeWorkdaySnapshot = {
   unfinishedWorkDay: WorkDayEntry | null;
   shiftControl: ShiftControlState;
   cashOperations: CashOperation[];
+  requiredIssues: RequiredWorkdayIssue[];
+  closeExceptionRequest: WorkdayCloseException | null;
 };
 
 type Tab = 'day' | 'schedule' | 'attestations';
@@ -664,7 +698,7 @@ function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | 
     value.unfinishedWorkDay === null ? null : isRecord(value.unfinishedWorkDay) ? (value.unfinishedWorkDay as WorkDayEntry) : undefined;
   const shiftControl = value.shiftControl;
 
-  if (workDay === undefined || unfinishedWorkDay === undefined || !isRecord(shiftControl) || !Array.isArray(shiftControl.tasks) || !Array.isArray(value.cashOperations)) {
+  if (workDay === undefined || unfinishedWorkDay === undefined || !isRecord(shiftControl) || !Array.isArray(shiftControl.tasks) || !Array.isArray(value.cashOperations) || !Array.isArray(value.requiredIssues)) {
     return null;
   }
 
@@ -679,6 +713,8 @@ function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | 
       tasks: shiftControl.tasks as ShiftControlTask[],
     },
     cashOperations: value.cashOperations as CashOperation[],
+    requiredIssues: value.requiredIssues as RequiredWorkdayIssue[],
+    closeExceptionRequest: value.closeExceptionRequest === null ? null : isRecord(value.closeExceptionRequest) ? value.closeExceptionRequest as WorkdayCloseException : null,
   };
 }
 
@@ -878,6 +914,8 @@ export function EmployeeTodayClient({
   attestations,
   shiftControl,
   cashOperations,
+  requiredIssues,
+  closeExceptionRequest,
 }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('day');
@@ -887,6 +925,11 @@ export function EmployeeTodayClient({
   const [unfinished, setUnfinished] = useState(unfinishedWorkDay);
   const [shiftControlState, setShiftControlState] = useState(shiftControl);
   const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
+  const [requiredIssuesState, setRequiredIssuesState] = useState(requiredIssues);
+  const [closeExceptionRequestState, setCloseExceptionRequestState] = useState(closeExceptionRequest);
+  const [closeBlocked, setCloseBlocked] = useState(false);
+  const [closeExceptionReason, setCloseExceptionReason] = useState('');
+  const [closeExceptionComment, setCloseExceptionComment] = useState('');
   const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '', idempotencyKey: '' });
   const [selectedShift, setSelectedShift] = useState('');
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
@@ -998,6 +1041,9 @@ export function EmployeeTodayClient({
       setUnfinished(snapshot.unfinishedWorkDay);
       setShiftControlState(snapshot.shiftControl);
       setCashOperationsState(snapshot.cashOperations);
+      setRequiredIssuesState(snapshot.requiredIssues);
+      setCloseExceptionRequestState(snapshot.closeExceptionRequest);
+      if (!snapshot.requiredIssues.length) setCloseBlocked(false);
     } catch {
       // Keep the last valid snapshot and retry on the next scheduled sync.
     } finally {
@@ -1310,7 +1356,10 @@ export function EmployeeTodayClient({
     try {
       const response = await fetch('/api/employee/workday/finish', { method: 'POST' });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Не удалось завершить рабочий день');
+      if (!response.ok) {
+        if (payload.code === 'OPEN_REQUIRED_ISSUES') setCloseBlocked(true);
+        throw new Error(payload.error || 'Не удалось завершить рабочий день');
+      }
       if (payload.workDay.date === today) setWorkDay(payload.workDay);
       setUnfinished(null);
       setNow(new Date());
@@ -1348,7 +1397,10 @@ export function EmployeeTodayClient({
         }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Не удалось завершить предыдущий рабочий день');
+      if (!response.ok) {
+        if (payload.code === 'OPEN_REQUIRED_ISSUES') setCloseBlocked(true);
+        throw new Error(payload.error || 'Не удалось завершить предыдущий рабочий день');
+      }
       setUnfinished(null);
       setStaleCloseReason('');
       setStaleCloseComment('');
@@ -1357,6 +1409,35 @@ export function EmployeeTodayClient({
       setMessage(payload.staleClosed ? 'Предыдущий рабочий день закрыт' : 'Рабочий день завершён');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось завершить предыдущий рабочий день');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function requestCloseException() {
+    if (!closeExceptionReason) {
+      setError('Выберите техническую причину');
+      return;
+    }
+    if (!closeExceptionComment.trim()) {
+      setError('Коротко опишите, почему исправить сейчас невозможно');
+      return;
+    }
+    setIsSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/employee/workday/close-exception', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reasonCode: closeExceptionReason, comment: closeExceptionComment }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось отправить запрос');
+      setCloseExceptionRequestState(payload.request);
+      setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен администратору');
+      await syncCurrentWorkdayState(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось отправить запрос');
     } finally {
       setIsSaving(false);
     }
@@ -2140,6 +2221,7 @@ export function EmployeeTodayClient({
       setNow(new Date());
       await syncCurrentWorkdayState(true);
     } catch (reason) {
+      if (reason instanceof EmployeeApiError && reason.code === 'OPEN_REQUIRED_ISSUES') setCloseBlocked(true);
       setError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
     } finally {
       setIsSaving(false);
@@ -2706,6 +2788,30 @@ export function EmployeeTodayClient({
                   </span>
                   <span className='min-w-0 truncate'>Рабочий день · {workDay?.shiftLabel} · {activeElapsedLabel}</span>
                 </div>
+              )}
+
+              {activeWorkDay && requiredIssuesState.length > 0 && (
+                <Link href={`/employee/issues/${requiredIssuesState[0].id}`} className='flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'>
+                  <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 ring-1 ring-amber-200'><AlertTriangle className='h-5 w-5' /></span>
+                  <span className='min-w-0 flex-1'><span className='block text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить{requiredIssuesState.length > 1 ? ` · ${requiredIssuesState.length}` : ''}</span><span className='mt-0.5 block truncate text-sm font-black'>{requiredIssuesState[0].title}</span></span>
+                  <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span><ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
+                </Link>
+              )}
+
+              {activeWorkDay && closeBlocked && requiredIssuesState.length > 0 && (
+                <Card className='space-y-3 border-amber-200 bg-white p-4'>
+                  <div><h2 className='text-base font-black text-slate-950'>Завершение рабочего дня</h2><p className='mt-1 text-sm font-semibold leading-relaxed text-slate-600'>Сначала исправьте обязательную проблему. Если это невозможно по технической причине, запросите разрешение администратора.</p></div>
+                  {closeExceptionRequestState?.status === 'pending' && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold text-amber-800'>Запрос отправлен · ожидает решения администратора</p>}
+                  {closeExceptionRequestState?.status === 'approved' && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Администратор разрешил завершить день. Повторите сдачу смены. Сама проблема останется открытой.</p>}
+                  {closeExceptionRequestState?.status === 'rejected' && <p className='rounded-xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-800'>Запрос не согласован{closeExceptionRequestState.decisionComment ? `: ${closeExceptionRequestState.decisionComment}` : ''}</p>}
+                  {(!closeExceptionRequestState || closeExceptionRequestState.status === 'rejected') && (
+                    <div className='space-y-2'>
+                      <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает ККМ</option><option value='other'>Другая причина</option></select>
+                      <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Коротко опишите ситуацию' />
+                      <Button type='button' className='h-11 w-full bg-white font-extrabold text-slate-900 ring-1 ring-slate-200 shadow-none hover:bg-slate-50' disabled={isSaving} onClick={requestCloseException}>Запросить разрешение</Button>
+                    </div>
+                  )}
+                </Card>
               )}
 
               {activeWorkDay && !showShiftControl && (

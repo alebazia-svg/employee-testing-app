@@ -39,6 +39,9 @@ model User {
   adminInboxReceipts           AdminInboxReceipt[]
   terminalFiscalReviews        TerminalFiscalEmployeeReview[] @relation("TerminalFiscalReviewEmployee")
   terminalFiscalReviewMessages TerminalFiscalReviewMessage[]  @relation("TerminalFiscalReviewMessageAuthor")
+  workdayIssueMessages         WorkdayControlIssueMessage[]   @relation("WorkdayControlIssueMessageAuthor")
+  workdayCloseRequests         WorkdayCloseExceptionRequest[] @relation("WorkdayCloseExceptionEmployee")
+  decidedWorkdayCloseRequests  WorkdayCloseExceptionRequest[] @relation("WorkdayCloseExceptionDecidedBy")
 }
 
 model ExpenseRequestSyncRun {
@@ -428,6 +431,9 @@ model CreditRealizationControlCase {
   employeeActionCandidate Boolean                              @default(false)
   mismatchFirstDetectedAt DateTime?
   completeMismatchReads   Int                                  @default(0)
+  receiptDelayMinutes     Int?
+  receiptCashierRef       String?
+  receiptCashierName      String?
   firstDetectedAt         DateTime                             @default(now())
   lastCheckedAt           DateTime                             @default(now())
   resolvedAt              DateTime?
@@ -449,12 +455,15 @@ model CreditRealizationControlEvaluation {
   status                  String
   reasonCode              String
   employeeActionCandidate Boolean                      @default(false)
+  receiptDelayMinutes     Int?
+  receiptCashierRef       String?
+  receiptCashierName      String?
   oneCComplete            Boolean
   ofdComplete             Boolean
   evaluatedAt             DateTime
   createdAt               DateTime                     @default(now())
-  case                     CreditRealizationControlCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  run                      CreditRealizationControlRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  case                    CreditRealizationControlCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  run                     CreditRealizationControlRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@unique([caseId, evidenceHash])
   @@index([runId, evaluatedAt])
@@ -529,25 +538,26 @@ model WorkScheduleEntry {
 }
 
 model WorkDayEntry {
-  id                Int                    @id @default(autoincrement())
-  userId            Int
-  date              String
-  department        String
-  shiftCode         String
-  shiftLabel        String
-  shiftStartMinutes Int?
-  shiftEndMinutes   Int?
-  startedAt         DateTime               @default(now())
-  endedAt           DateTime?
-  lateMinutes       Int                    @default(0)
-  comment           String                 @default("")
-  status            String                 @default("active")
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shiftControlRun   ShiftControlRun?
-  cashOperations    CashOperation[]
-  kkmAssignments    WorkdayKkmAssignment[]
+  id                     Int                            @id @default(autoincrement())
+  userId                 Int
+  date                   String
+  department             String
+  shiftCode              String
+  shiftLabel             String
+  shiftStartMinutes      Int?
+  shiftEndMinutes        Int?
+  startedAt              DateTime                       @default(now())
+  endedAt                DateTime?
+  lateMinutes            Int                            @default(0)
+  comment                String                         @default("")
+  status                 String                         @default("active")
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
+  user                   User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shiftControlRun        ShiftControlRun?
+  cashOperations         CashOperation[]
+  kkmAssignments         WorkdayKkmAssignment[]
+  closeExceptionRequests WorkdayCloseExceptionRequest[]
 
   @@unique([userId, date])
   @@index([date])
@@ -686,29 +696,70 @@ model WorkdayPushSubscription {
 }
 
 model WorkdayControlIssue {
-  id             Int                   @id @default(autoincrement())
-  userId         Int
-  taskId         Int?
-  fingerprint    String                @unique
-  ruleKey        String
-  severity       String
-  status         String                @default("open")
-  title          String
-  detail         String
-  sourceData     Json?
-  detectedAt     DateTime              @default(now())
-  lastDetectedAt DateTime              @default(now())
-  nextReminderAt DateTime?
-  resolvedAt     DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  task           ShiftControlTask?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  notifications  WorkdayNotification[]
+  id                     Int                          @id @default(autoincrement())
+  userId                 Int
+  taskId                 Int?
+  fingerprint            String                       @unique
+  ruleKey                String
+  severity               String
+  status                 String                       @default("open")
+  title                  String
+  detail                 String
+  sourceData             Json?
+  detectedAt             DateTime                     @default(now())
+  lastDetectedAt         DateTime                     @default(now())
+  nextReminderAt         DateTime?
+  employeeActionRequired Boolean                      @default(false)
+  originDate             String                       @default("")
+  resolvedAt             DateTime?
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+  user                   User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task                   ShiftControlTask?            @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  notifications          WorkdayNotification[]
+  messages               WorkdayControlIssueMessage[]
 
   @@index([userId, status])
   @@index([taskId, status])
   @@index([status, nextReminderAt])
+  @@index([userId, employeeActionRequired, status])
+}
+
+model WorkdayControlIssueMessage {
+  id        String              @id @default(cuid())
+  issueId   Int
+  authorId  Int
+  body      String
+  createdAt DateTime            @default(now())
+  issue     WorkdayControlIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  author    User                @relation("WorkdayControlIssueMessageAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([issueId, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model WorkdayCloseExceptionRequest {
+  id              String       @id @default(cuid())
+  workDayEntryId  Int
+  employeeId      Int
+  status          String       @default("pending")
+  reasonCode      String
+  comment         String
+  issueIds        Json
+  requestedAt     DateTime     @default(now())
+  decidedAt       DateTime?
+  decidedById     Int?
+  decisionComment String       @default("")
+  consumedAt      DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  workDayEntry    WorkDayEntry @relation(fields: [workDayEntryId], references: [id], onDelete: Cascade)
+  employee        User         @relation("WorkdayCloseExceptionEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  decidedBy       User?        @relation("WorkdayCloseExceptionDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@index([workDayEntryId, status, requestedAt])
+  @@index([employeeId, status, requestedAt])
+  @@index([status, requestedAt])
 }
 
 model WorkdayNotification {

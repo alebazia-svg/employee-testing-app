@@ -16,6 +16,7 @@ import {
   type OneCSalesRealizationDocument,
   type OneCSalesRealizationLinks,
 } from '@/lib/one-c';
+import { loadOneCKkmChecks } from '@/lib/terminal-fiscal-sources';
 import { syncCreditRealizationWorkdayControl } from '@/lib/credit-realization-workday-control';
 
 export const CREDIT_REALIZATION_CONTROL_VERSION = 'credit-shadow-v1';
@@ -27,6 +28,11 @@ const MONEY_TOLERANCE = 0.01;
 
 function digest(value: string) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function oneCCheckFiscalKey(check: { fiscalDriveNumber?: string; fiscalDocumentNumber?: string; fiscalSign?: string }) {
+  const parts = [check.fiscalDriveNumber, check.fiscalDocumentNumber, check.fiscalSign].map((value) => value?.trim() ?? '');
+  return parts.every(Boolean) ? parts.join(':') : '';
 }
 
 function moscowDate(value: Date) {
@@ -132,6 +138,8 @@ export type CreditShadowSnapshotRow = {
   links: OneCSalesRealizationLinks;
   result: CreditRealizationControlResult;
   evidenceHash: string;
+  receiptCashierRef: string | null;
+  receiptCashierName: string | null;
 };
 
 export type CreditShadowSnapshot = {
@@ -174,7 +182,7 @@ export async function loadCreditRealizationShadowSnapshot(input: {
     maxDocuments: 20_000,
   });
   const confirmedFiscalKeys = ofd.receipts.map(fiscalKey).filter(Boolean);
-  const rows = linksResults.flatMap(({ document, links: linksResult }) => {
+  const rows: CreditShadowSnapshotRow[] = linksResults.flatMap(({ document, links: linksResult }) => {
     const links = linksResult.links!;
     const controlInput = buildCreditRealizationControlInput({
       links,
@@ -198,8 +206,29 @@ export async function loadCreditRealizationShadowSnapshot(input: {
       oneCComplete: links.completeness.complete,
       ofdComplete: ofd.completeness.complete,
     }));
-    return [{ document, links, result, evidenceHash }];
+    return [{ document, links, result, evidenceHash, receiptCashierRef: null, receiptCashierName: null }];
   });
+
+  const lateReceiptRows = rows.filter((row) => (row.result.receiptDelayMinutes ?? 0) > 15);
+  if (lateReceiptRows.length > 0) {
+    const oneCChecks = await loadOneCKkmChecks({
+      fromDate: moscowDate(input.periodFrom),
+      toDate: moscowDate(new Date(input.periodTo.getTime() + 24 * 60 * 60_000)),
+    });
+    if (oneCChecks.complete) {
+      const checksByFiscalKey = new Map(oneCChecks.data.flatMap((check) => {
+        const key = oneCCheckFiscalKey(check);
+        return key ? [[key, check] as const] : [];
+      }));
+      for (const row of lateReceiptRows) {
+        const operation = row.links.fiscalControl.documents.flatMap((document) => document.operations)[0];
+        const check = operation ? checksByFiscalKey.get(creditFiscalKey(operation)) : null;
+        row.receiptCashierRef = check?.cashier.ref || null;
+        row.receiptCashierName = check?.cashier.name || null;
+        row.evidenceHash = digest(`${row.evidenceHash}:${row.result.receiptDelayMinutes}:${row.receiptCashierRef ?? ''}`);
+      }
+    }
+  }
 
   return {
     checkedAt,
@@ -282,6 +311,9 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
           employeeActionCandidate: row.result.employeeActionEligible,
           mismatchFirstDetectedAt,
           completeMismatchReads,
+          receiptDelayMinutes: row.result.receiptDelayMinutes,
+          receiptCashierRef: row.receiptCashierRef,
+          receiptCashierName: row.receiptCashierName,
           firstDetectedAt: snapshot.checkedAt,
           lastCheckedAt: snapshot.checkedAt,
         },
@@ -295,6 +327,9 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
           employeeActionCandidate: row.result.employeeActionEligible,
           mismatchFirstDetectedAt,
           completeMismatchReads,
+          receiptDelayMinutes: row.result.receiptDelayMinutes,
+          receiptCashierRef: row.receiptCashierRef,
+          receiptCashierName: row.receiptCashierName,
           lastCheckedAt: snapshot.checkedAt,
           resolvedAt,
         },
@@ -309,6 +344,9 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
           status: row.result.status,
           reasonCode,
           employeeActionCandidate: row.result.employeeActionEligible,
+          receiptDelayMinutes: row.result.receiptDelayMinutes,
+          receiptCashierRef: row.receiptCashierRef,
+          receiptCashierName: row.receiptCashierName,
           oneCComplete: snapshot.oneCComplete,
           ofdComplete: snapshot.ofdComplete,
           evaluatedAt: snapshot.checkedAt,
