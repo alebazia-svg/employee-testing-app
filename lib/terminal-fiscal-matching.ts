@@ -464,8 +464,11 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     });
     const orderedChecks = [...checksByRef.values()].sort((a, b) => (timestamp(a.dateTime) ?? 0) - (timestamp(b.dateTime) ?? 0));
     if (orderedChecks.length !== orderedOperations.length) continue;
-    orderedOperations.forEach((context, index) => {
-      const check = orderedChecks[index];
+    const orderedPairs = orderedOperations.map((context, index) => ({ context, check: orderedChecks[index] }));
+    if (orderedPairs.some(({ context, check }) => (
+      (timestamp(check.dateTime) ?? 0) <= (timestamp(context.operation.transactionDate) ?? 0)
+    ))) continue;
+    orderedPairs.forEach(({ context, check }) => {
       context.candidates = [{ check, difference: Math.abs((timestamp(check.dateTime) ?? 0) - (timestamp(context.operation.transactionDate) ?? 0)) }];
     });
   }

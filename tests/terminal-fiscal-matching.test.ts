@@ -194,8 +194,26 @@ test('supports the exact grace boundary and invalid bank inputs safely', () => {
 test('links a unique late same-day check but still rejects the wrong terminal', () => {
   const late = { ...check, dateTime: '2026-08-10T07:05:01.000Z' };
   assert.equal(only({ oneCChecks: [late] }).reasonCode, 'MATCH_CONFIRMED_LATE');
+  const beforePayment = { ...check, dateTime: '2026-08-10T06:00:00.000Z' };
+  assert.equal(only({ oneCChecks: [beforePayment] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
   const wrongTerminal = { ...check, cardPayments: [{ ...check.cardPayments[0], acquiringTerminalRef: 'other' }] };
   assert.equal(only({ oneCChecks: [wrongTerminal] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+});
+
+test('does not pair repeated same-day checks when one check predates its ordered payment', () => {
+  const banks = [
+    { ...bank, rrn: 'bank-a', transactionDate: '2026-08-10T07:00:00.000Z' },
+    { ...bank, rrn: 'bank-b', transactionDate: '2026-08-10T08:00:00.000Z' },
+  ];
+  const checks = [
+    { ...check, sourceRef: 'after-a', dateTime: '2026-08-10T07:30:00.000Z', fiscalDocumentNumber: 'fd-a', fiscalSign: 'fp-a' },
+    { ...check, sourceRef: 'before-b', dateTime: '2026-08-10T07:45:00.000Z', fiscalDocumentNumber: 'fd-b', fiscalSign: 'fp-b' },
+  ];
+  const records = reconcileTerminalFiscalMvp(input({ bankOperations: banks, oneCChecks: checks })).records;
+  assert.deepEqual(records.map((record) => [record.reasonCode, record.oneCCheckKey]), [
+    ['ONE_C_CANDIDATE_NOT_FOUND', undefined],
+    ['ONE_C_CANDIDATE_PENDING', undefined],
+  ]);
 });
 
 test('pairs repeated equal amounts by same-day order without reusing checks', () => {

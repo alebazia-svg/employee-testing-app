@@ -36,7 +36,7 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
     input.unavailable > 0 ? `• источник был недоступен: ${input.unavailable}` : '',
     input.mismatches > 0 ? `• подтверждённых денежных расхождений: ${input.mismatches}` : '',
     input.linkedLateCount > 0 ? `Чеков, связанных с оплатой после задержки: ${input.linkedLateCount}` : 'Поздних чеков за день: нет',
-    input.resolvedLateCount > 0 ? `Из них после напоминания: ${input.resolvedLateCount} на ${rubles(input.resolvedLateAmountKopecks)} ₽` : '',
+    input.resolvedLateCount > 0 ? `Автоматически закрыто напоминаний: ${input.resolvedLateCount} на ${rubles(input.resolvedLateAmountKopecks)} ₽` : '',
     input.sourcesComplete ? 'Данные Т-Банка, 1С и ОФД получены полностью.' : 'Не все источники доступны — итог предварительный.',
   ].filter(Boolean);
   lines.push(input.openCount > 0

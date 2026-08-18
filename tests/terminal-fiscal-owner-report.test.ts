@@ -7,7 +7,7 @@ test('owner report explains open and late payments in money', () => {
     resolvedLateCount: 1, resolvedLateAmountKopecks: 150000, linkedLateCount: 1, confirmed: 8, coveredByDayTotal: 0,
     itemReview: 0, pending: 0, unavailable: 0, mismatches: 0, total: 10, sourcesComplete: true });
   assert.match(text, /без подтверждённого чека 1С: 2 на 5[\s ]701,00 ₽/);
-  assert.match(text, /после напоминания: 1 на 1[\s ]500,00 ₽/);
+  assert.match(text, /Автоматически закрыто напоминаний: 1 на 1[\s ]500,00 ₽/);
   assert.match(text, /Что делать:/);
 });
 
