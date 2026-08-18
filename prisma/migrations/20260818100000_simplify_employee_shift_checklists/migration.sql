@@ -121,3 +121,20 @@ WHERE task."runId" = run."id"
   AND run."status" = 'active'
   AND task."status" = 'pending'
   AND task."category" = 'cash';
+
+-- Pending employee notifications must follow the new privacy rule too. Keep
+-- delivered history immutable, but prevent an old queued body from exposing
+-- the expected balance or discrepancy after this rollout.
+UPDATE "WorkdayNotification" notification
+SET
+  "title" = 'Контроль наличных',
+  "body" = CASE
+    WHEN notification."kind" = 'issue_reminder'
+      THEN 'Вопрос по наличным остаётся открытым. Если нужна помощь, обратитесь к администратору.'
+    ELSE 'Результат пересчёта сохранён для контроля. Следующий пересчёт выполните по графику.'
+  END,
+  "updatedAt" = CURRENT_TIMESTAMP
+FROM "WorkdayControlIssue" issue
+WHERE notification."issueId" = issue."id"
+  AND issue."ruleKey" = 'cash_recount_mismatch'
+  AND notification."status" = 'pending';
