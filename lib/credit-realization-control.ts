@@ -22,6 +22,7 @@ export type CreditControlReasonCode =
   | 'CURRENT_PAYMENT_MISMATCH'
   | 'CREDIT_REMAINDER_MISMATCH'
   | 'FISCAL_RECEIPT_BEFORE_SOURCE_DOCUMENT'
+  | 'FISCAL_RECEIPT_AFTER_SALE_DAY'
   | 'CORRECTION_RECEIPT_REQUIRES_ADMIN'
   | 'OFD_RECEIPT_WITHOUT_ONE_C_LINK'
   | 'OFD_CONFIRMATION_MISSING'
@@ -346,6 +347,12 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
     && !Number.isNaN(sourceAt.getTime())
     && operationAt.getTime() + EARLY_RECEIPT_TOLERANCE_MS < sourceAt.getTime()) {
     return finish('needs_review', ['FISCAL_RECEIPT_BEFORE_SOURCE_DOCUMENT']);
+  }
+  if (!Number.isNaN(operationAt.getTime())
+    && !Number.isNaN(sourceAt.getTime())
+    && operationAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })
+      !== sourceAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })) {
+    return finish('mismatch', ['FISCAL_RECEIPT_AFTER_SALE_DAY']);
   }
   if (!input.ofd.complete) return finish('needs_review', ['OFD_SOURCE_INCOMPLETE']);
   const fiscalKey = creditFiscalKey(operation);

@@ -130,6 +130,16 @@ test('keeps returns, correction receipts, multiple payments and reversed chronol
   })).reasonCodes, ['FISCAL_RECEIPT_BEFORE_SOURCE_DOCUMENT']);
 });
 
+test('treats a receipt created on the next Moscow day as a proven mismatch', () => {
+  const late = operation({ datetime: '19.08.2026 00:03:00' });
+  const result = evaluateCreditRealization(input({
+    fiscalDocuments: [{ sourceType: 'realization', documentRef: 'sale-1', operations: [late] }],
+    ofd: { complete: true, confirmedFiscalKeys: [creditFiscalKey(late)], unlinkedExactReceipts: [] },
+  }));
+  assert.equal(result.status, 'mismatch');
+  assert.deepEqual(result.reasonCodes, ['FISCAL_RECEIPT_AFTER_SALE_DAY']);
+});
+
 test('normalizes the production sales-realization-links fiscal-control contract', () => {
   const raw = {
     realization: {

@@ -13,9 +13,28 @@ export function creditRealizationIssueFingerprint(realizationRef: string) {
   return `credit-realization:${digest(realizationRef)}`;
 }
 
-export function creditRealizationIssueAction(value: { status: string; employeeActionCandidate: boolean; realizationAt: Date }) {
+export function creditRealizationReminderFingerprint(realizationRef: string) {
+  return `credit-realization-reminder:${digest(realizationRef)}`;
+}
+
+export function creditRealizationIssueAction(value: {
+  status: string;
+  employeeActionCandidate: boolean;
+  realizationAt: Date;
+  completeMismatchReads: number;
+}, now = new Date()) {
   if (value.realizationAt < CREDIT_REALIZATION_EMPLOYEE_CUTOVER) return 'none' as const;
-  if (value.status === 'mismatch' && value.employeeActionCandidate) return 'open' as const;
+  if (value.status === 'mismatch' && value.employeeActionCandidate) {
+    const ageMinutes = (now.getTime() - value.realizationAt.getTime()) / 60_000;
+    if (ageMinutes < 15) return 'none' as const;
+    const realizationDay = value.realizationAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+    const currentDay = now.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+    const currentMinutes = Number(new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(now).replace(':', ''));
+    if (currentDay > realizationDay && currentMinutes >= 15 && value.completeMismatchReads >= 2) return 'open' as const;
+    return 'remind' as const;
+  }
   return 'resolve' as const;
 }
 
@@ -29,6 +48,7 @@ function issueDetail(documentNumber: string, reasonCode: string) {
     FISCAL_TOTAL_MISMATCH: 'Сумма фискальной операции не совпадает с реализацией.',
     CURRENT_PAYMENT_MISMATCH: 'Текущая оплата в чеке не совпадает с первоначальным взносом.',
     CREDIT_REMAINDER_MISMATCH: 'Остаток передачи в кредит указан неверно.',
+    FISCAL_RECEIPT_AFTER_SALE_DAY: 'Чек пробит не в день реализации.',
   };
   return `Реализация ${documentNumber}. ${details[reasonCode] ?? 'Автоматическая проверка обнаружила подтверждённое расхождение.'}`;
 }
@@ -39,12 +59,14 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
     orderBy: { realizationAt: 'asc' },
   });
   let opened = 0;
+  let reminded = 0;
   let resolved = 0;
   let unassigned = 0;
 
   for (const controlCase of cases) {
     const fingerprint = creditRealizationIssueFingerprint(controlCase.realizationRef);
-    const action = creditRealizationIssueAction(controlCase);
+    const reminderFingerprint = creditRealizationReminderFingerprint(controlCase.realizationRef);
+    const action = creditRealizationIssueAction(controlCase, now);
     if (action === 'none') continue;
     if (action === 'resolve') {
       const count = await prisma.$transaction(async (tx) => {
@@ -58,6 +80,10 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
             data: { status: 'cancelled' },
           });
         }
+        await tx.workdayNotification.updateMany({
+          where: { fingerprint: reminderFingerprint, status: 'pending' },
+          data: { status: 'cancelled' },
+        });
         return result.count;
       });
       resolved += count;
@@ -79,10 +105,35 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
     }
 
     const userId = mappings[0].userId;
+    if (action === 'remind') {
+      const reminder = await prisma.$transaction(async (tx) => {
+        const existingIssue = await tx.workdayControlIssue.findUnique({ where: { fingerprint } });
+        if (existingIssue) return false;
+        const existing = await tx.workdayNotification.findUnique({ where: { fingerprint: reminderFingerprint } });
+        if (existing) return false;
+        await tx.workdayNotification.create({
+          data: {
+            userId,
+            fingerprint: reminderFingerprint,
+            kind: 'credit_check_reminder',
+            title: 'Проверьте чек по кредитной продаже',
+            body: `Реализация ${controlCase.documentNumber}: подтверждение чека пока не получено. Проверьте, что чек пробит.`,
+            scheduledAt: now,
+          },
+        });
+        return true;
+      });
+      if (reminder) reminded += 1;
+      continue;
+    }
     const lifecycle = await prisma.$transaction(async (tx) => {
       const existing = await tx.workdayControlIssue.findUnique({ where: { fingerprint } });
       const reopening = Boolean(existing && existing.status !== 'open');
       const detail = issueDetail(controlCase.documentNumber, controlCase.reasonCode);
+      await tx.workdayNotification.updateMany({
+        where: { fingerprint: reminderFingerprint, status: 'pending' },
+        data: { status: 'cancelled' },
+      });
       const issue = await tx.workdayControlIssue.upsert({
         where: { fingerprint },
         create: {
@@ -112,5 +163,5 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
     });
     if (lifecycle === 'opened') opened += 1;
   }
-  return { opened, resolved, unassigned };
+  return { reminded, opened, resolved, unassigned };
 }

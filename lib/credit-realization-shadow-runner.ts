@@ -252,11 +252,23 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
       const realizationAt = parseOneCDate(row.document.date);
       const existingCase = await tx.creditRealizationControlCase.findUnique({
         where: { realizationRef: row.document.ref },
-        select: { id: true, status: true, resolvedAt: true },
+        select: {
+          id: true,
+          status: true,
+          resolvedAt: true,
+          mismatchFirstDetectedAt: true,
+          completeMismatchReads: true,
+        },
       });
       const resolvedAt = row.result.status === 'confirmed'
         ? (existingCase?.status === 'confirmed' ? existingCase.resolvedAt : snapshot.checkedAt)
         : null;
+      const mismatchFirstDetectedAt = row.result.status === 'mismatch'
+        ? (existingCase?.status === 'mismatch' ? existingCase.mismatchFirstDetectedAt ?? snapshot.checkedAt : snapshot.checkedAt)
+        : null;
+      const completeMismatchReads = row.result.status === 'mismatch'
+        ? (existingCase?.status === 'mismatch' ? existingCase.completeMismatchReads + 1 : 1)
+        : 0;
       const controlCase = await tx.creditRealizationControlCase.upsert({
         where: { realizationRef: row.document.ref },
         create: {
@@ -268,6 +280,8 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
           status: row.result.status,
           reasonCode,
           employeeActionCandidate: row.result.employeeActionEligible,
+          mismatchFirstDetectedAt,
+          completeMismatchReads,
           firstDetectedAt: snapshot.checkedAt,
           lastCheckedAt: snapshot.checkedAt,
         },
@@ -279,6 +293,8 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
           status: row.result.status,
           reasonCode,
           employeeActionCandidate: row.result.employeeActionEligible,
+          mismatchFirstDetectedAt,
+          completeMismatchReads,
           lastCheckedAt: snapshot.checkedAt,
           resolvedAt,
         },

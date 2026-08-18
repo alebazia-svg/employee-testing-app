@@ -426,6 +426,8 @@ model CreditRealizationControlCase {
   status                  String
   reasonCode              String
   employeeActionCandidate Boolean                              @default(false)
+  mismatchFirstDetectedAt DateTime?
+  completeMismatchReads   Int                                  @default(0)
   firstDetectedAt         DateTime                             @default(now())
   lastCheckedAt           DateTime                             @default(now())
   resolvedAt              DateTime?
