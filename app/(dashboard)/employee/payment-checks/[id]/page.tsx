@@ -34,8 +34,7 @@ export default async function EmployeePaymentCheckPage({ params }: { params: { i
             <div className='flex gap-3'><SearchCheck className='mt-0.5 h-6 w-6 shrink-0 text-amber-700' /><div><p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>{open ? 'Требуется проверка' : 'Проверка закрыта'}</p><h1 className='mt-1 text-xl font-black leading-snug text-amber-950'>Проверьте продажу</h1><p className='mt-2 text-base font-bold leading-relaxed text-amber-950'>{terminalFiscalEmployeeReviewText({ operationAt: review.bankOperationAt, amountKopecks: review.amountKopecks })}</p></div></div>
           </Card>
           <Card className='mt-4'>
-            <div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-green-700' /><h2 className='text-lg font-extrabold'>Сообщения администратору</h2></div>
-            <p className='mb-4 text-sm font-medium leading-relaxed text-slate-600'>Если самим разобраться не получилось или нужен ответ администратора, напишите здесь.</p>
+            <div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-green-700' /><h2 className='text-lg font-extrabold'>Сообщение администратору</h2></div>
             <TerminalFiscalReviewConversation
               initialMessages={review.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))}
               currentUserId={user.id}

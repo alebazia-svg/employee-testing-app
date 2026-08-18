@@ -20,9 +20,13 @@ export function workdayIssueView(value: { title: string; detail: string; sourceD
   const receiptCashierName = text(source.receiptCashierName);
   const amount = amountKopecks === null ? '' : `${(amountKopecks / 100).toLocaleString('ru-RU')} ₽`;
   const isCreditRealization = value.ruleKey === 'credit_realization_mismatch';
-  const instruction = reasonCode === 'REQUIRED_FISCAL_RECEIPT_MISSING'
-    ? 'Правильный чек пока не подтверждён. Проверьте оформление в 1С.'
-    : value.detail;
+  const missingReceiptInstructions: Record<string, string> = {
+    REQUIRED_FISCAL_RECEIPT_MISSING: 'Чек по реализации не найден. Откройте документ в 1С и проверьте оформление продажи.',
+    REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING: 'Чек по реализации не найден. Откройте реализацию в 1С и пробейте чек с передачей суммы в кредит.',
+    REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING: 'Чек по первоначальному взносу не найден. Откройте связанный ПКО в 1С и пробейте чек из него.',
+    REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING: 'Чек по первоначальному взносу не найден. Откройте связанную эквайринговую операцию в 1С и пробейте чек из неё.',
+  };
+  const instruction = missingReceiptInstructions[reasonCode] ?? value.detail;
   return {
     documentNumber,
     amount,

@@ -33,7 +33,7 @@ export default async function EmployeeWorkdayIssuePage({ params }: { params: { i
             <div className='flex gap-3'><AlertTriangle className={`mt-0.5 h-6 w-6 shrink-0 ${open ? 'text-amber-700' : 'text-green-700'}`} /><div><p className={`text-xs font-extrabold uppercase tracking-wide ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? 'Нужно исправить' : 'Исправлено'}</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>Чек по кредитной продаже</h1><p className='mt-2 text-sm font-extrabold text-slate-700'>{[view.documentNumber && `Реализация ${view.documentNumber}`, view.amount].filter(Boolean).join(' · ')}</p><p className='mt-3 text-base font-bold leading-relaxed text-slate-800'>{open ? view.instruction : 'Портал подтвердил исправление. История сохранена.'}</p></div></div>
           </Card>
           <Card className='mt-4'>
-            <div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-green-700' /><h2 className='text-lg font-extrabold'>Сообщения администратору</h2></div>
+            <div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-green-700' /><h2 className='text-lg font-extrabold'>Сообщение администратору</h2></div>
             <TerminalFiscalReviewConversation initialMessages={issue.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} currentUserId={user.id} endpoint={`/api/employee/workday-issues/${issue.id}/messages`} disabled={!open} />
           </Card>
         </div>

@@ -59,6 +59,9 @@ function issueSourceData(controlCase: {
 function issueDetail(documentNumber: string, reasonCode: string) {
   const details: Record<string, string> = {
     REQUIRED_FISCAL_RECEIPT_MISSING: 'Обязательный чек не найден в 1С и ОФД.',
+    REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING: 'Чек с передачей суммы в кредит не найден в 1С и ОФД.',
+    REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING: 'Чек из связанного ПКО первоначального взноса не найден в 1С и ОФД.',
+    REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING: 'Чек из связанной эквайринговой операции первоначального взноса не найден в 1С и ОФД.',
     PAYMENT_DOCUMENT_NOT_POSTED: 'Связанный документ первоначального взноса не проведён.',
     COUNTERPARTY_MISMATCH: 'Контрагент реализации и документа первоначального взноса не совпадает.',
     FISCALIZED_FROM_WRONG_SOURCE: 'Чек сформирован не из требуемого документа.',

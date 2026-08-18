@@ -78,8 +78,21 @@ test('uses a 15-minute grace period before a missing receipt becomes a hard mism
   assert.equal(evaluateCreditRealization({ ...missing, now: new Date('2026-08-18T09:14:59.000Z') }).status, 'pending');
   const hard = evaluateCreditRealization({ ...missing, now: new Date('2026-08-18T09:15:00.000Z') });
   assert.equal(hard.status, 'mismatch');
-  assert.deepEqual(hard.reasonCodes, ['REQUIRED_FISCAL_RECEIPT_MISSING']);
+  assert.deepEqual(hard.reasonCodes, ['REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING']);
   assert.equal(hard.employeeActionEligible, true);
+});
+
+test('missing receipt reason identifies the required initial-payment source', () => {
+  const payment = { ref: 'payment-1', number: 'P-1', date: '18.08.2026 12:02:00', posted: true, amount: 20_000, counterpartyRef: 'customer-1' };
+  const common = { fiscalDocuments: [], ofd: { complete: true, confirmedFiscalKeys: [], unlinkedExactReceipts: [] } };
+  assert.deepEqual(evaluateCreditRealization(input({
+    ...common,
+    directPayments: [{ ...payment, kind: 'cash_receipt' }],
+  })).reasonCodes, ['REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING']);
+  assert.deepEqual(evaluateCreditRealization(input({
+    ...common,
+    directPayments: [{ ...payment, kind: 'acquiring' }],
+  })).reasonCodes, ['REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING']);
 });
 
 test('keeps incomplete and legacy OFD-only absence away from employee errors', () => {
@@ -230,7 +243,7 @@ test('replays anonymized production regressions from 2025 and 08-18 August 2026'
     fiscalDocuments: [],
     ofd: { complete: true, confirmedFiscalKeys: [], unlinkedExactReceipts: [] },
   });
-  assert.deepEqual(evaluateCreditRealization(missingCurrent).reasonCodes, ['REQUIRED_FISCAL_RECEIPT_MISSING']);
+  assert.deepEqual(evaluateCreditRealization(missingCurrent).reasonCodes, ['REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING']);
 
   assert.deepEqual(evaluateCreditRealization(input({
     now: new Date('2026-08-12T12:00:00.000Z'),

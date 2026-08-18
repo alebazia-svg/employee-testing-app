@@ -57,7 +57,7 @@ export function TerminalFiscalReviewConversation({
     <div>
       <div className='space-y-2'>
         {messages.length === 0 ? (
-          <p className='rounded-xl bg-slate-50 px-4 py-4 text-sm font-medium text-slate-500'>Сообщений пока нет.</p>
+          <p className='rounded-xl bg-slate-50 px-4 py-4 text-sm font-medium text-slate-500'>Переписки пока нет.</p>
         ) : messages.map((message) => {
           const own = message.author.id === currentUserId;
           return (
@@ -78,7 +78,7 @@ export function TerminalFiscalReviewConversation({
             onChange={(event) => setBody(event.target.value)}
             maxLength={1000}
             rows={3}
-            placeholder='Напишите короткий вопрос администратору'
+            placeholder='Коротко опишите вопрос'
             className='w-full resize-none rounded-xl border-0 bg-slate-50 px-3 py-3 text-sm font-semibold text-slate-900 outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-green-500'
           />
           <div className='mt-2 flex items-center justify-between gap-3'>

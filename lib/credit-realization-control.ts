@@ -16,6 +16,9 @@ export type CreditControlReasonCode =
   | 'INVALID_DOCUMENT_AMOUNT'
   | 'FISCAL_GRACE_PERIOD'
   | 'REQUIRED_FISCAL_RECEIPT_MISSING'
+  | 'REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING'
+  | 'REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING'
+  | 'REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING'
   | 'FISCALIZED_FROM_WRONG_SOURCE'
   | 'EXTRA_OR_DUPLICATE_FISCAL_RECEIPT'
   | 'FISCAL_TOTAL_MISMATCH'
@@ -324,7 +327,11 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
     if (!input.completeness.absenceIsHardErrorEligible || !input.ofd.complete) {
       return finish('needs_review', ['OFD_SOURCE_INCOMPLETE']);
     }
-    return finish('mismatch', ['REQUIRED_FISCAL_RECEIPT_MISSING']);
+    return finish('mismatch', [payment?.kind === 'cash_receipt'
+      ? 'REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING'
+      : payment?.kind === 'acquiring'
+        ? 'REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING'
+        : 'REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING']);
   }
 
   if (expectedOperations.length > 1 || unexpectedOperations.length > 0) {
