@@ -36,6 +36,19 @@ test('ADMIN Workday terminal summary prioritizes review and unavailable states s
   assert.equal(unavailable.label, 'Источник недоступен');
 });
 
+test('ADMIN sees item review separately while the financial match remains confirmed', () => {
+  const result = presentTerminalFiscalWorkdaySummary({
+    ...base,
+    statuses: { confirmed: 4, pending: 0, mismatch: 0, unavailable: 0, needs_review: 0 },
+    reasonCodes: { MATCH_CONFIRMED: 3, OFD_ITEM_PRESENTATION_DIFFERENCE: 1 },
+  });
+  assert.equal(result.status, 'needs_review');
+  assert.equal(result.label, 'Проверить состав чека');
+  assert.match(result.detail, /подтверждено 4 из 4/);
+  assert.match(result.detail, /состав проверить 1/);
+  assert.doesNotMatch(result.detail, /оплат без чека/);
+});
+
 test('ADMIN Workday terminal summary has a neutral no-run state', () => {
   const result = presentTerminalFiscalWorkdaySummary(null);
   assert.match(result.detail, /сверка ещё не запускалась/);

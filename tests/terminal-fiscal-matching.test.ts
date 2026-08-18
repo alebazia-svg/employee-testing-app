@@ -106,9 +106,31 @@ test('does not expose a hard mismatch before grace expires', () => {
 
 test('uses items only as a review signal after exact fiscal matching', () => {
   const result = only({ ofdReceipts: [{ ...receipt, items: [{ ...receipt.items[0], name: 'Стекло' }] }] });
-  assert.equal(result.status, 'needs_review');
-  assert.equal(result.reasonCode, 'OFD_ITEMS_MISMATCH');
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.reasonCode, 'OFD_ITEM_PRESENTATION_DIFFERENCE');
   assert.equal(result.ofdReceiptKey, canonicalFiscalKey(receipt));
+});
+
+test('confirms the real AQSI financial chain when 1C and OFD names represent different item details', () => {
+  const aqsiBank = { ...bank, amountKopecks: 500000 };
+  const aqsiCheck = {
+    ...check,
+    totalKopecks: 500000,
+    electronicKopecks: 500000,
+    cardPayments: [{ ...check.cardPayments[0], amountKopecks: 500000 }],
+    items: [{ name: 'Наушники Breaking Cube EQ ANC Графит', quantity: 1, priceKopecks: 500000, sumKopecks: 500000 }],
+  };
+  const aqsiReceipt = {
+    ...receipt,
+    totalKopecks: 500000,
+    electronicKopecks: 500000,
+    items: [{ name: 'Breaking Air Pro 3 ANC/ENC Белый (шт)', quantity: 1, priceKopecks: 500000, sumKopecks: 500000 }],
+  };
+  const result = only({ bankOperations: [aqsiBank], oneCChecks: [aqsiCheck], ofdReceipts: [aqsiReceipt] });
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.reasonCode, 'OFD_ITEM_PRESENTATION_DIFFERENCE');
+  assert.equal(matchingActionPolicy(result).employeeVisible, false);
+  assert.equal(matchingActionPolicy(result).automaticAction, 'close_incident');
 });
 
 test('does not choose between multiple 1C candidates', () => {
@@ -235,12 +257,16 @@ test('accepts only deterministic nonnumeric OFD name extensions with exact line 
     [{ ...safeOfdItems[0], name: 'Фирменный устройство 15 Pro' }, safeOfdItems[1]],
   ];
   for (const items of unsafeNames) {
-    assert.equal(only({ oneCChecks: [{ ...check, items: oneCItems }], ofdReceipts: [{ ...receipt, items }] }).reasonCode, 'OFD_ITEMS_MISMATCH');
+    const result = only({ oneCChecks: [{ ...check, items: oneCItems }], ofdReceipts: [{ ...receipt, items }] });
+    assert.equal(result.status, 'confirmed');
+    assert.equal(result.reasonCode, 'OFD_ITEM_PRESENTATION_DIFFERENCE');
   }
-  assert.equal(only({
+  const valueMismatch = only({
     oneCChecks: [{ ...check, items: oneCItems }],
     ofdReceipts: [{ ...receipt, items: [{ ...safeOfdItems[0], sumKopecks: 101 }, safeOfdItems[1]] }],
-  }).reasonCode, 'OFD_ITEMS_MISMATCH');
+  });
+  assert.equal(valueMismatch.status, 'confirmed');
+  assert.equal(valueMismatch.reasonCode, 'OFD_ITEM_VALUES_MISMATCH');
 });
 
 test('appends history only when status or reason changes', () => {
@@ -261,7 +287,7 @@ test('never exposes uncertain or technical states to an employee', () => {
 });
 
 test('reasonCode contract is exhaustive and permits every emitted status', () => {
-  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 26);
+  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 28);
   const scenarios = [
     only(),
     only({ oneCChecks: [] }),

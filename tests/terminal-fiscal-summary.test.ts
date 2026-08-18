@@ -98,3 +98,13 @@ test('employee control presentation distinguishes proof from uncertain source st
   assert.equal(presentTerminalFiscalEmployeeControl({ ...base, statuses: { ...base.statuses, confirmed: 1 } }).tone, 'normal');
   assert.equal(presentTerminalFiscalEmployeeControl(null).tone, 'none');
 });
+
+test('item presentation differences stay normal for the employee after financial confirmation', () => {
+  const result = attributeTerminalFiscalRecordsToEmployees([{
+    status: 'confirmed', reasonCode: 'OFD_ITEM_PRESENTATION_DIFFERENCE', candidateCount: 1,
+    bankOperationAt: new Date('2026-08-18T07:03:22.000Z'), oneCCashierRef: 'cashier-milana',
+  }], [{ userId: 3, oneCCashierRef: 'cashier-milana' }]);
+  const control = result.byUser.get(3) ?? null;
+  assert.equal(presentTerminalFiscalEmployeeControl(control).tone, 'normal');
+  assert.match(presentTerminalFiscalEmployeeControl(control).text, /подтверждены: 1/);
+});

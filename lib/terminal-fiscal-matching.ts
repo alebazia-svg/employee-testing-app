@@ -1,4 +1,4 @@
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.1';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
 
@@ -31,6 +31,8 @@ export type MatchingReasonCode =
   | 'OFD_TOTAL_AMOUNT_MISMATCH'
   | 'OFD_ELECTRONIC_AMOUNT_MISMATCH'
   | 'OFD_KKT_MISMATCH'
+  | 'OFD_ITEM_PRESENTATION_DIFFERENCE'
+  | 'OFD_ITEM_VALUES_MISMATCH'
   | 'OFD_ITEMS_MISMATCH';
 
 type MatchingReasonContract = {
@@ -65,7 +67,9 @@ export const MATCHING_REASON_CODE_CONTRACT = {
   OFD_TOTAL_AMOUNT_MISMATCH: { meaning: 'По точному фискальному ключу расходится общая сумма', allowedStatuses: ['pending', 'mismatch'], employeeVisible: true },
   OFD_ELECTRONIC_AMOUNT_MISMATCH: { meaning: 'По точному фискальному ключу расходится электронная сумма', allowedStatuses: ['pending', 'mismatch'], employeeVisible: true },
   OFD_KKT_MISMATCH: { meaning: 'По точному фискальному ключу расходится ККТ', allowedStatuses: ['pending', 'mismatch'], employeeVisible: true },
-  OFD_ITEMS_MISMATCH: { meaning: 'По точному фискальному ключу расходятся товары после безопасной нормализации', allowedStatuses: ['needs_review'], employeeVisible: false },
+  OFD_ITEM_PRESENTATION_DIFFERENCE: { meaning: 'Финансовая и фискальная связка подтверждена, но представление наименований позиций отличается', allowedStatuses: ['confirmed'], employeeVisible: false },
+  OFD_ITEM_VALUES_MISMATCH: { meaning: 'Финансовая и фискальная связка подтверждена, но количество, цена или сумма позиций требуют проверки ADMIN', allowedStatuses: ['confirmed'], employeeVisible: false },
+  OFD_ITEMS_MISMATCH: { meaning: 'Исторический ADMIN-only код расхождения товаров до разделения финансовой и товарной проверки', allowedStatuses: ['needs_review'], employeeVisible: false },
 } as const satisfies Record<MatchingReasonCode, MatchingReasonContract>;
 
 export type MatchingSourceState = {
@@ -317,6 +321,18 @@ function normalizedItems(items: MatchingItem[]) {
   })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
 }
 
+function normalizedItemValues(items: MatchingItem[]) {
+  return items.map((item) => ({
+    quantity: item.quantity,
+    priceKopecks: item.priceKopecks,
+    sumKopecks: item.sumKopecks,
+  })).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+}
+
+function sameItemValues(left: MatchingItem[], right: MatchingItem[]) {
+  return JSON.stringify(normalizedItemValues(left)) === JSON.stringify(normalizedItemValues(right));
+}
+
 function sameItems(left: MatchingItem[], right: MatchingItem[]) {
   if (JSON.stringify(normalizedItems(left)) === JSON.stringify(normalizedItems(right))) return true;
   if (left.length !== right.length) return false;
@@ -528,7 +544,10 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
             status = isPending ? 'pending' : 'mismatch';
             reasonCode = 'OFD_ELECTRONIC_AMOUNT_MISMATCH';
           } else if (!sameItems(oneCCheck.items, ofdReceipt.items)) {
-            reasonCode = 'OFD_ITEMS_MISMATCH';
+            status = 'confirmed';
+            reasonCode = sameItemValues(oneCCheck.items, ofdReceipt.items)
+              ? 'OFD_ITEM_PRESENTATION_DIFFERENCE'
+              : 'OFD_ITEM_VALUES_MISMATCH';
           } else {
             status = 'confirmed';
             reasonCode = 'MATCH_CONFIRMED';

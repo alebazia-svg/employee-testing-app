@@ -89,9 +89,14 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
   }
   const sourcesComplete = summary.completeness.tbank && summary.completeness.oneC && summary.completeness.ofd;
   const missingOneCChecks = summary.reasonCodes.ONE_C_CANDIDATE_NOT_FOUND ?? 0;
+  const legacyItemReviews = summary.reasonCodes.OFD_ITEMS_MISMATCH ?? 0;
+  const itemReviews = legacyItemReviews
+    + (summary.reasonCodes.OFD_ITEM_PRESENTATION_DIFFERENCE ?? 0)
+    + (summary.reasonCodes.OFD_ITEM_VALUES_MISMATCH ?? 0);
+  const otherNeedsReview = Math.max(0, summary.statuses.needs_review - legacyItemReviews);
   const status = summary.statuses.mismatch > 0 || missingOneCChecks > 0
     ? 'mismatch'
-    : summary.statuses.needs_review > 0
+    : otherNeedsReview > 0 || itemReviews > 0
       ? 'needs_review'
       : !sourcesComplete || summary.statuses.unavailable > 0
         ? 'unavailable'
@@ -108,14 +113,19 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
   const parts = [
     `подтверждено ${summary.statuses.confirmed} из ${summary.total}`,
     summary.statuses.pending > 0 ? `ожидают ${summary.statuses.pending}` : '',
-    summary.statuses.needs_review > 0 ? `проверить ${summary.statuses.needs_review}` : '',
+    otherNeedsReview > 0 ? `проверить ${otherNeedsReview}` : '',
+    itemReviews > 0 ? `состав проверить ${itemReviews}` : '',
     summary.statuses.mismatch > 0 ? `расхождений ${summary.statuses.mismatch}` : '',
     summary.statuses.unavailable > 0 ? `недоступно ${summary.statuses.unavailable}` : '',
   ].filter(Boolean);
   if (missingOneCChecks > 0) parts.push(`оплат без чека 1С ${missingOneCChecks}`);
   return {
     status,
-    label: missingOneCChecks > 0 && summary.statuses.mismatch === 0 ? 'Есть проблема эквайринга' : labels[status],
+    label: missingOneCChecks > 0 && summary.statuses.mismatch === 0
+      ? 'Есть проблема эквайринга'
+      : itemReviews > 0 && status === 'needs_review' && otherNeedsReview === 0
+        ? 'Проверить состав чека'
+        : labels[status],
     detail: `Т-Банк → 1С → ОФД: ${parts.join(' · ')}.`,
   };
 }
