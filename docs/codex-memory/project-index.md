@@ -72,6 +72,12 @@ project from scratch.
   the aggregate terminal/1C coverage guard. The guard uses one-to-one exact
   operation-type/amount coverage and keeps incomplete, partial, conflicting and
   sale/refund-pair cases ADMIN-only; matching and ADMIN control remain active.
+  Starting with terminal-fiscal matching `mvp-1.1`, an exact bank/1C/OFD fiscal
+  identity with matching operation type, KKT, total and electronic payment is a
+  confirmed financial result even when the current 1C item presentation differs
+  from the immutable OFD receipt. Item-name or line-value differences remain a
+  separate ADMIN-only content review signal and never create or retain an
+  employee terminal-fiscal issue.
 - Retail credit realization control reads the complete 1C realization/link/
   fiscal chain plus unified OFD evidence every three minutes. A missing or
   incorrect receipt creates one neutral employee reminder after 15 minutes;
