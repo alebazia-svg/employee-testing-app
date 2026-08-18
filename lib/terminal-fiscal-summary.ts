@@ -89,12 +89,16 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
   }
   const sourcesComplete = summary.completeness.tbank && summary.completeness.oneC && summary.completeness.ofd;
   const missingOneCChecks = summary.reasonCodes.ONE_C_CANDIDATE_NOT_FOUND ?? 0;
+  const periodCoveredChecks = summary.attributionRecords?.filter((record) => (
+    record.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND' && Boolean(record.oneCCashierRef)
+  )).length ?? 0;
+  const uncoveredOneCChecks = Math.max(0, missingOneCChecks - periodCoveredChecks);
   const legacyItemReviews = summary.reasonCodes.OFD_ITEMS_MISMATCH ?? 0;
   const itemReviews = legacyItemReviews
     + (summary.reasonCodes.OFD_ITEM_PRESENTATION_DIFFERENCE ?? 0)
     + (summary.reasonCodes.OFD_ITEM_VALUES_MISMATCH ?? 0);
-  const otherNeedsReview = Math.max(0, summary.statuses.needs_review - legacyItemReviews);
-  const status = summary.statuses.mismatch > 0 || missingOneCChecks > 0
+  const otherNeedsReview = Math.max(0, summary.statuses.needs_review - legacyItemReviews - periodCoveredChecks);
+  const status = summary.statuses.mismatch > 0 || uncoveredOneCChecks > 0
     ? 'mismatch'
     : otherNeedsReview > 0 || itemReviews > 0
       ? 'needs_review'
@@ -111,17 +115,18 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
     needs_review: 'Требует проверки',
   } as const;
   const parts = [
-    `подтверждено ${summary.statuses.confirmed} из ${summary.total}`,
+    `точно сопоставлено ${summary.statuses.confirmed} из ${summary.total}`,
+    periodCoveredChecks > 0 ? `покрыто общей сверкой ${periodCoveredChecks}` : '',
     summary.statuses.pending > 0 ? `ожидают ${summary.statuses.pending}` : '',
     otherNeedsReview > 0 ? `проверить ${otherNeedsReview}` : '',
     itemReviews > 0 ? `состав проверить ${itemReviews}` : '',
     summary.statuses.mismatch > 0 ? `расхождений ${summary.statuses.mismatch}` : '',
     summary.statuses.unavailable > 0 ? `недоступно ${summary.statuses.unavailable}` : '',
   ].filter(Boolean);
-  if (missingOneCChecks > 0) parts.push(`оплат без чека 1С ${missingOneCChecks}`);
+  if (uncoveredOneCChecks > 0) parts.push(`оплат без покрытия чеком 1С ${uncoveredOneCChecks}`);
   return {
     status,
-    label: missingOneCChecks > 0 && summary.statuses.mismatch === 0
+    label: uncoveredOneCChecks > 0 && summary.statuses.mismatch === 0
       ? 'Есть проблема эквайринга'
       : itemReviews > 0 && status === 'needs_review' && otherNeedsReview === 0
         ? 'Проверить состав чека'
