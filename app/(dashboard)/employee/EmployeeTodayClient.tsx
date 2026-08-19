@@ -1319,7 +1319,7 @@ export function EmployeeTodayClient({
             })}
             aria-expanded={expanded}
           >
-            <span>{colleagueSummary}</span>
+            <span>{expanded ? 'Коллеги' : colleagueSummary}</span>
             {expanded ? <ChevronUp className='h-4 w-4 shrink-0' /> : <ChevronDown className='h-4 w-4 shrink-0' />}
           </button>
         )}
