@@ -1258,7 +1258,9 @@ export function EmployeeTodayClient({
     const selectedMissingRows = colleagueRows.filter(({ entry }) => !entry);
     const expanded = selected || expandedScheduleDates.has(date);
     const colleagueSummary = [
-      `Работают ${selectedWorkingRows.length}`,
+      selectedWorkingRows.length === 0
+        ? 'Коллеги: никто не работает'
+        : `Коллеги: ${selectedWorkingRows.length === 1 ? 'работает' : 'работают'} ${selectedWorkingRows.length}`,
       selectedOffRows.length ? `выходной ${selectedOffRows.length}` : '',
       selectedMissingRows.length ? `без графика ${selectedMissingRows.length}` : '',
     ].filter(Boolean).join(' · ');
