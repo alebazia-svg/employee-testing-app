@@ -4,6 +4,13 @@ import type { TBankTerminalOperation } from '@/lib/tbank-acquiring';
 const MONEY_TOLERANCE_RUBLES = 0.01;
 const TIME_TOLERANCE_MS = 5 * 60 * 1000;
 
+function moscowDay(value: string, assumeMoscow = false) {
+  const parsed = timestamp(value, assumeMoscow);
+  return parsed === null ? '' : new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(parsed));
+}
+
 export const tBankTerminalOneCMapping: Record<string, { cashRegisterName: string; acquiringTerminalName: string }> = {
   '2332022071': {
     cashRegisterName: 'Касса Абшаева ККМ',
@@ -101,9 +108,49 @@ export function reconcileTerminalOperations({
     });
   }
 
+  // The operational control uses a strict five-minute pair first. When a
+  // cashier creates the check later, reconcile the remaining same-day rows by
+  // amount and chronological order only if the bucket is fully one-to-one.
+  // Partial or conflicting buckets stay visible instead of being guessed.
+  const unmatchedChecks = availableChecks
+    .map((check, index) => ({ check, index }))
+    .filter(({ index }) => !usedCheckIndexes.has(index));
+  const lateGroups = new Map<string, TBankTerminalOperation[]>();
+  for (const operation of onlyTBank) {
+    const key = `${moscowDay(operation.transactionDate)}|${operation.amountRubles.toFixed(2)}`;
+    lateGroups.set(key, [...(lateGroups.get(key) ?? []), operation]);
+  }
+  const lateMatchedOperations = new Set<TBankTerminalOperation>();
+  for (const [key, group] of lateGroups) {
+    const [day, amount] = key.split('|');
+    const checksInGroup = unmatchedChecks.filter(({ check, index }) => (
+      !usedCheckIndexes.has(index)
+      && check.amount !== null
+      && Math.abs(check.amount - Number(amount)) <= MONEY_TOLERANCE_RUBLES
+      && moscowDay(check.datetime, true) === day
+    ));
+    if (checksInGroup.length !== group.length) continue;
+    const orderedOperations = [...group].sort((left, right) => (
+      (timestamp(left.transactionDate) ?? 0) - (timestamp(right.transactionDate) ?? 0)
+    ));
+    const orderedChecks = [...checksInGroup].sort((left, right) => (
+      (timestamp(left.check.datetime, true) ?? 0) - (timestamp(right.check.datetime, true) ?? 0)
+    ));
+    const pairs = orderedOperations.map((operation, index) => ({ operation, candidate: orderedChecks[index] }));
+    if (pairs.some(({ operation, candidate }) => (
+      (timestamp(candidate.check.datetime, true) ?? 0) <= (timestamp(operation.transactionDate) ?? 0)
+    ))) continue;
+    for (const { operation, candidate } of pairs) {
+      const difference = (timestamp(candidate.check.datetime, true) ?? 0) - (timestamp(operation.transactionDate) ?? 0);
+      usedCheckIndexes.add(candidate.index);
+      lateMatchedOperations.add(operation);
+      matched.push({ operation, check: candidate.check, timeDifferenceSeconds: Math.round(difference / 1000) });
+    }
+  }
+
   return {
     matched,
-    onlyTBank,
+    onlyTBank: onlyTBank.filter((operation) => !lateMatchedOperations.has(operation)),
     onlyOneC: availableChecks.filter((_, index) => !usedCheckIndexes.has(index)),
     unsupportedReturns,
   };

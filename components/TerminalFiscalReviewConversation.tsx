@@ -16,11 +16,15 @@ export function TerminalFiscalReviewConversation({
   currentUserId,
   endpoint,
   disabled,
+  disabledMessage = 'Проверка закрыта. История сообщений сохранена.',
+  disabledTone = 'resolved',
 }: {
   initialMessages: Message[];
   currentUserId: number;
   endpoint: string;
   disabled: boolean;
+  disabledMessage?: string;
+  disabledTone?: 'resolved' | 'admin';
 }) {
   const [messages, setMessages] = useState(initialMessages);
   const [body, setBody] = useState('');
@@ -90,7 +94,7 @@ export function TerminalFiscalReviewConversation({
           {error && <p className='mt-2 text-xs font-bold text-rose-700'>{error}</p>}
         </div>
       ) : (
-        <p className='mt-4 rounded-xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-800'>Проверка закрыта. История сообщений сохранена.</p>
+        <p className={`mt-4 rounded-xl px-4 py-3 text-sm font-semibold ${disabledTone === 'admin' ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-800'}`}>{disabledMessage}</p>
       )}
     </div>
   );

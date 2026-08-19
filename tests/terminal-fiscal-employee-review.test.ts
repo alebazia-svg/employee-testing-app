@@ -15,7 +15,7 @@ import {
   addEmployeeTerminalFiscalReviewMessage,
   normalizeTerminalFiscalReviewMessage,
 } from '../lib/terminal-fiscal-review-messages';
-import { terminalFiscalEmployeeReviewSummary } from '../lib/terminal-fiscal-employee-review-view';
+import { terminalFiscalAdminReviewView, terminalFiscalEmployeeReviewSummary } from '../lib/terminal-fiscal-employee-review-view';
 
 const mapping: TerminalMapping = {
   id: 'mapping-1', terminalKey: 'terminal-1', oneCAcquiringTerminalRef: 'acquiring-1',
@@ -71,6 +71,22 @@ test('builds a compact neutral employee workday summary', () => {
     title: 'Проверьте продажу',
     meta: '19:32 · 12 500 ₽',
   });
+});
+
+test('admin review screen distinguishes unresolved ADMIN-only and confirmed late states', () => {
+  const common = { bankOperationAt: '2026-08-17T16:26:39.000Z', amountKopecks: 50_000 };
+  const admin = terminalFiscalAdminReviewView({ ...common, status: 'admin_review' });
+  assert.equal(admin.statusLabel, 'Требуется проверить ADMIN');
+  assert.match(admin.discussionMessage, /не закрытая ошибка/);
+
+  const resolved = terminalFiscalAdminReviewView({
+    ...common,
+    status: 'resolved',
+    match: { status: 'confirmed', reasonCode: 'MATCH_CONFIRMED_LATE', oneCSourceRef: '00OF-002948', timeDifferenceSeconds: 437 },
+  });
+  assert.equal(resolved.title, 'Оплата и чек сверены');
+  assert.match(resolved.message, /00OF-002948/);
+  assert.match(resolved.message, /7 мин 17 сек/);
 });
 
 test('does not notify before the safe read, with incomplete 1C, or with ambiguous cashier evidence', () => {
