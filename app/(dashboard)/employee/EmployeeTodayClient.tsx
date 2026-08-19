@@ -31,6 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { startVisibleSync } from '@/lib/visible-sync';
+import { createIdempotencyKey } from '@/lib/idempotency-key';
 import { terminalFiscalEmployeeReviewSummary } from '@/lib/terminal-fiscal-employee-review-view';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
@@ -274,12 +275,6 @@ type CashOperationDraft = {
   comment: string;
   idempotencyKey: string;
 };
-
-function createOperationKey() {
-  const randomPart = globalThis.crypto?.randomUUID?.().replaceAll('-', '').slice(0, 24)
-    ?? `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.slice(0, 24);
-  return `c${randomPart}`;
-}
 
 const staleCloseReasons = [
   'Забыл закрыть рабочий день',
@@ -1525,7 +1520,7 @@ export function EmployeeTodayClient({
   }
 
   function openCashOperation(direction: CashOperation['direction']) {
-    setCashOperationDraft({ direction, amount: '', comment: '', idempotencyKey: createOperationKey() });
+    setCashOperationDraft({ direction, amount: '', comment: '', idempotencyKey: createIdempotencyKey() });
     setError('');
     setMessage('');
   }
