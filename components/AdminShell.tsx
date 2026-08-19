@@ -17,7 +17,7 @@ const dailyNavigation: NavigationItem[] = [
   { href: '/admin', label: 'Главная', icon: Home },
   { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness },
   { href: '/admin/expense-requests', label: 'Заявки', icon: FileClock },
-  { href: '/admin/attendance', label: 'График и посещаемость', icon: CalendarDays },
+  { href: '/admin/attendance', label: 'График', icon: CalendarDays },
   { href: '/admin/employees', label: 'Сотрудники', icon: Users },
 ];
 
@@ -48,7 +48,7 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
       href={item.href}
       title={sidebarCollapsed ? item.label : undefined}
       className={cn(
-        'relative flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-center text-sm font-semibold text-slate-300 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 md:justify-start md:gap-3 md:px-4',
+        'relative flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-center text-sm font-semibold text-slate-300 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 md:justify-start md:gap-2.5 md:px-3',
         sidebarCollapsed && 'md:px-0 md:justify-center',
         active
           ? 'bg-white/[0.08] text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] before:absolute before:left-0 before:top-2 before:h-7 before:w-1 before:rounded-r-full before:bg-primary'
@@ -56,7 +56,7 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
       )}
     >
       <Icon className={cn('h-5 w-5 shrink-0 md:h-[21px] md:w-[21px]', active ? 'text-primary' : 'text-slate-300')} />
-      <span className={cn('leading-tight', sidebarCollapsed && 'md:hidden')}>{item.label}</span>
+      <span className={cn('leading-tight md:whitespace-nowrap', sidebarCollapsed && 'md:hidden')}>{item.label}</span>
     </Link>
   );
 }
@@ -82,10 +82,10 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <aside
         className={cn(
           'border-b border-white/10 bg-[#111821] p-4 text-white shadow-[inset_-1px_0_0_rgba(255,255,255,0.06)] transition-[width] duration-200 md:fixed md:inset-y-0 md:left-0 md:z-30 md:flex md:h-screen md:flex-col md:border-b-0',
-          sidebarCollapsed ? 'md:w-[76px] md:p-4' : 'md:w-[236px] md:p-5',
+          sidebarCollapsed ? 'md:w-[76px] md:p-4' : 'md:w-[252px] md:p-5',
         )}
       >
-        <div className={cn('flex items-center justify-between gap-4', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:block')}>
+        <div className={cn('flex items-center justify-between gap-3', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:flex-row')}>
           <div className={cn(sidebarCollapsed ? 'md:flex md:justify-center' : '')}>
             {sidebarCollapsed && <Image src='/logo-offonika-icon.png' alt='OFFONIKA' width={32} height={32} className='hidden h-8 w-8 bg-transparent object-contain md:block' />}
             <div className={sidebarCollapsed ? 'md:hidden' : ''}>
@@ -103,7 +103,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <LogoutButton className='shrink-0 gap-2 bg-white/8 text-white ring-1 ring-white/10 hover:bg-white/12 md:hidden' />
         </div>
 
-        <nav className={cn('mt-5 min-h-0 overflow-y-auto md:flex-1 md:pr-1', sidebarCollapsed ? 'md:mt-7' : 'md:mt-8')}>
+        <nav className={cn('mt-5 min-h-0 overflow-y-auto md:flex-1 md:pr-1', sidebarCollapsed ? 'md:mt-7' : 'md:mt-6')}>
           <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-1'>
             {dailyNavigation.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} sidebarCollapsed={sidebarCollapsed} />)}
           </div>
@@ -149,7 +149,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <section className={cn('min-w-0 bg-[#f7faf8] p-4 transition-[margin] duration-200 md:min-h-screen md:rounded-l-[20px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[236px]')}>
+      <section className={cn('min-w-0 bg-[#f7faf8] p-4 transition-[margin] duration-200 md:min-h-screen md:rounded-l-[20px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[252px]')}>
         <div className='flex min-h-[calc(100vh-4rem)] w-full max-w-none flex-col'>
           <div className='mb-3 flex items-center justify-end gap-3'>
             <AdminInboxBell />
