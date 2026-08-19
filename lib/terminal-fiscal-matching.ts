@@ -530,6 +530,25 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     if (globalSourceFailure) {
       status = 'unavailable';
       reasonCode = globalSourceFailure;
+      // A temporarily incomplete OFD read must not keep an employee's
+      // "check missing in 1C" task open when the complete T-Bank and 1C reads
+      // already provide one safe, non-reused check for this operation. The
+      // financial three-source match stays unavailable until OFD is complete;
+      // only the narrower fact that the 1C check now exists is exposed here.
+      if (
+        globalSourceFailure === 'SOURCE_OFD_INCOMPLETE'
+        && !duplicateBankKeys.has(bankOperationKey(operation))
+        && operationAt !== null
+        && Number.isInteger(operation.amountKopecks)
+        && operation.amountKopecks > 0
+        && context.operationType !== null
+        && context.mappingsCount === 1
+        && context.candidates.length === 1
+        && (checkCandidateUse.get(context.candidates[0].check.sourceRef) ?? 0) === 1
+      ) {
+        oneCCheck = context.candidates[0].check;
+        timeDifferenceSeconds = Math.round(context.candidates[0].difference / 1000);
+      }
     } else if (duplicateBankKeys.has(bankOperationKey(operation))) {
       reasonCode = 'BANK_OPERATION_DUPLICATE';
     } else if (operationAt === null || !Number.isInteger(operation.amountKopecks) || operation.amountKopecks <= 0) {

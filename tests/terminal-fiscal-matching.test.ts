@@ -174,8 +174,25 @@ test('marks incomplete sources and mapping failures unavailable', () => {
   const sourceResult = only({ sources: { ...input().sources, ofd: { complete: false, checkedAt: input().now, error: 'limit' } } });
   assert.equal(sourceResult.status, 'unavailable');
   assert.equal(sourceResult.reasonCode, 'SOURCE_OFD_INCOMPLETE');
+  assert.equal(sourceResult.oneCCheckKey, 'check-1');
+  assert.equal(sourceResult.candidateCount, 1);
   assert.equal(only({ mappings: [] }).reasonCode, 'TERMINAL_MAPPING_MISSING');
   assert.equal(only({ mappings: [...input().mappings, { ...input().mappings[0], id: 'map-2' }] }).reasonCode, 'TERMINAL_MAPPING_CONFLICT');
+});
+
+test('does not expose an ambiguous or reused 1C check while OFD is incomplete', () => {
+  const sources = { ...input().sources, ofd: { complete: false, checkedAt: input().now } };
+  const ambiguous = only({
+    sources,
+    oneCChecks: [check, { ...check, sourceRef: 'check-2', dateTime: '2026-08-10T07:03:00.000Z' }],
+  });
+  assert.equal(ambiguous.oneCCheckKey, undefined);
+
+  const reused = reconcileTerminalFiscalMvp(input({
+    sources,
+    bankOperations: [bank, { ...bank, rrn: 'second', transactionDate: '2026-08-10T07:01:00.000Z' }],
+  })).records;
+  assert.ok(reused.every((record) => record.oneCCheckKey === undefined));
 });
 
 test('classifies every incomplete source independently', () => {

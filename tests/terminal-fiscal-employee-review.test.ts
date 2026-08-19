@@ -79,6 +79,25 @@ test('admin review screen distinguishes unresolved ADMIN-only and confirmed late
   assert.equal(admin.statusLabel, 'Требуется проверить ADMIN');
   assert.match(admin.discussionMessage, /не закрытая ошибка/);
 
+  const unavailable = terminalFiscalAdminReviewView({
+    ...common,
+    status: 'admin_review',
+    match: { status: 'unavailable', reasonCode: 'SOURCE_OFD_INCOMPLETE', oneCSourceRef: null, timeDifferenceSeconds: null },
+  });
+  assert.equal(unavailable.statusLabel, 'Ожидается повторная сверка');
+  assert.match(unavailable.message, /повторит проверку автоматически/);
+  assert.match(unavailable.discussionMessage, /не ошибка сотрудника/);
+
+  const foundWhileOfdWaits = terminalFiscalAdminReviewView({
+    ...common,
+    status: 'resolved',
+    match: { status: 'unavailable', reasonCode: 'SOURCE_OFD_INCOMPLETE', oneCSourceRef: '00OF-002948', timeDifferenceSeconds: 437 },
+  });
+  assert.equal(foundWhileOfdWaits.statusLabel, 'Активная задача закрыта');
+  assert.equal(foundWhileOfdWaits.title, 'Чек найден в 1С');
+  assert.match(foundWhileOfdWaits.message, /подтверждение ОФД система повторит автоматически/);
+  assert.match(foundWhileOfdWaits.discussionMessage, /Техническая сверка с ОФД продолжается/);
+
   const resolved = terminalFiscalAdminReviewView({
     ...common,
     status: 'resolved',
@@ -98,6 +117,23 @@ test('does not notify before the safe read, with incomplete 1C, or with ambiguou
   assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: incomplete, periodRecords: [incomplete] }).action, 'wait');
   assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: normal, periodRecords: [normal], oneCChecks: [check(), check({ ref: 'check-2', cashierRef: 'cashier-milana' })] }).action, 'admin_only');
   assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: normal, periodRecords: [normal], oneCChecks: [check({ cashierRef: '' })] }).action, 'admin_only');
+});
+
+test('closes the employee task when a unique 1C check is found even if OFD is temporarily incomplete', () => {
+  const found = record({
+    status: 'unavailable',
+    reasonCode: 'SOURCE_OFD_INCOMPLETE',
+    oneCCheckKey: 'check-found',
+    candidateCount: 1,
+    sourceCompleteness: { tbank: true, oneC: true, ofd: false },
+  });
+  assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
+    record: found,
+    periodRecords: [found],
+    mapping,
+    oneCChecks: [check({ ref: 'check-found' })],
+    cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
+  }), { action: 'resolve', reason: 'ONE_C_CHECK_FOUND' });
 });
 
 test('uses the mapped KKM only and never workstation or OFD operator evidence', () => {

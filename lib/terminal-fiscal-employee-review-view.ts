@@ -49,6 +49,17 @@ export function terminalFiscalAdminReviewView(input: {
   const operationMeta = `${moscowDateTimeFormatter.format(new Date(input.bankOperationAt))} · ${formatKopecks(input.amountKopecks)}`;
   if (input.status === 'resolved') {
     const check = input.match?.oneCSourceRef ? ` ${input.match.oneCSourceRef}` : '';
+    const awaitingSourceRetry = input.match?.reasonCode?.startsWith('SOURCE_') === true && Boolean(input.match.oneCSourceRef);
+    if (awaitingSourceRetry) {
+      return {
+        tone: 'resolved' as const,
+        statusLabel: 'Активная задача закрыта',
+        title: 'Чек найден в 1С',
+        operationMeta,
+        message: `Чек${check} однозначно связан с оплатой. Сотруднику ничего исправлять не нужно; подтверждение ОФД система повторит автоматически.`,
+        discussionMessage: 'Активная задача закрыта. Техническая сверка с ОФД продолжается в ADMIN/audit, история сообщений сохранена.',
+      };
+    }
     const delay = input.match?.reasonCode === 'MATCH_CONFIRMED_LATE'
       ? delayLabel(input.match.timeDifferenceSeconds)
       : '';
@@ -65,13 +76,18 @@ export function terminalFiscalAdminReviewView(input: {
     };
   }
   if (input.status === 'admin_review') {
+    const sourceIncomplete = input.match?.reasonCode?.startsWith('SOURCE_') === true;
     return {
       tone: 'admin' as const,
-      statusLabel: 'Требуется проверить ADMIN',
-      title: 'Неоднозначная сверка',
+      statusLabel: sourceIncomplete ? 'Ожидается повторная сверка' : 'Требуется проверить ADMIN',
+      title: sourceIncomplete ? 'Источник данных временно неполный' : 'Неоднозначная сверка',
       operationMeta,
-      message: 'Автоматическая сверка не смогла однозначно связать оплату с чеком 1С. Сотруднику ничего делать не нужно.',
-      discussionMessage: 'Это не закрытая ошибка. Случай оставлен для проверки ADMIN.',
+      message: sourceIncomplete
+        ? 'Сверку оплаты, 1С и ОФД пока нельзя завершить. Система повторит проверку автоматически; сотруднику ничего делать не нужно.'
+        : 'Автоматическая сверка не смогла однозначно связать оплату с чеком 1С. Сотруднику ничего делать не нужно.',
+      discussionMessage: sourceIncomplete
+        ? 'Это техническое ожидание, а не ошибка сотрудника. Проверка останется у ADMIN до полного чтения источников.'
+        : 'Это не закрытая ошибка. Случай оставлен для проверки ADMIN.',
     };
   }
   return {
