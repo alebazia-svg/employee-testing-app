@@ -73,6 +73,16 @@ export function adminInboxSourceState(input: {
   return { active: false, label: 'Событие', tone: 'neutral' };
 }
 
+export function adminInboxActionLabel(input: {
+  sourceType: string;
+  defaultLabel: string;
+  sourceState: AdminInboxSourceState;
+}) {
+  if (input.sourceType === 'workday_close_exception' && !input.sourceState.active) return 'Открыть решение';
+  if ((input.sourceType === 'workday_control_issue' || input.sourceType === 'terminal_fiscal_review') && !input.sourceState.active) return 'Открыть историю';
+  return input.defaultLabel;
+}
+
 export type TodayEmployee = { id: number };
 export type TodaySchedule = { userId: number; status: string };
 export type TodayWorkday = { userId: number; endedAt: Date | null; status: string };

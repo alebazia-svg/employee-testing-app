@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { adminInboxEventMeta, adminInboxSourceState } from '@/lib/admin-operations-view';
+import { adminInboxActionLabel, adminInboxEventMeta, adminInboxSourceState } from '@/lib/admin-operations-view';
 import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycle';
 import { prisma } from '@/lib/prisma';
 
@@ -66,6 +66,13 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const issue = issuesById.get(sourceId);
     const review = reviewsById.get(sourceId);
     const exception = exceptionsById.get(sourceId);
+    const meta = adminInboxEventMeta(row.event.type);
+    const sourceState = adminInboxSourceState({
+      sourceType,
+      current: currentExpenseRefs.has(sourceId),
+      businessStatus: issue?.status ?? review?.status ?? exception?.status,
+      employeeActionRequired: issue?.employeeActionRequired,
+    });
     return {
       id: row.id,
       readAt: row.readAt?.toISOString() ?? null,
@@ -78,13 +85,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
         sourceId,
         occurredAt: row.event.occurredAt.toISOString(),
       },
-      meta: adminInboxEventMeta(row.event.type),
-      sourceState: adminInboxSourceState({
-        sourceType,
-        current: currentExpenseRefs.has(sourceId),
-        businessStatus: issue?.status ?? review?.status ?? exception?.status,
-        employeeActionRequired: issue?.employeeActionRequired,
-      }),
+      meta: { ...meta, actionLabel: adminInboxActionLabel({ sourceType, defaultLabel: meta.actionLabel, sourceState }) },
+      sourceState,
     };
   });
 

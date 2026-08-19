@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adminInboxEventMeta, adminInboxSourceState, summarizeAdminToday } from '../lib/admin-operations-view';
+import { adminInboxActionLabel, adminInboxEventMeta, adminInboxSourceState, summarizeAdminToday } from '../lib/admin-operations-view';
 
 test('inbox events receive stable human categories and labels', () => {
   assert.deepEqual(adminInboxEventMeta('workday.close_exception_requested'), {
@@ -18,6 +18,11 @@ test('read state is independent from the source business state', () => {
   assert.equal(adminInboxSourceState({ sourceType: 'workday_control_issue', businessStatus: 'resolved', employeeActionRequired: false }).active, false);
   assert.equal(adminInboxSourceState({ sourceType: 'terminal_fiscal_review', businessStatus: 'admin_review' }).label, 'Только ADMIN');
   assert.equal(adminInboxSourceState({ sourceType: 'expense_request', current: false }).label, 'В истории');
+});
+
+test('resolved decisions no longer invite admin to decide again', () => {
+  const sourceState = adminInboxSourceState({ sourceType: 'workday_close_exception', businessStatus: 'approved' });
+  assert.equal(adminInboxActionLabel({ sourceType: 'workday_close_exception', defaultLabel: 'Принять решение', sourceState }), 'Открыть решение');
 });
 
 test('today summary uses workday state before schedule state', () => {
