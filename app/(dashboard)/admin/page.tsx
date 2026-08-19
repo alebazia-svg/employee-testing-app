@@ -92,7 +92,7 @@ export default async function AdminPage() {
         <AdminMetricCard icon={UserCheck} label='Работают сейчас' value={todaySummary.working} detail={workingNames.join(', ') || 'Никто не начал день'} tone='green' />
         <AdminMetricCard icon={AlertTriangle} label='Нужно моё решение' value={actions.length} detail={actions.length ? 'Откройте карточки ниже' : 'Моих действий сейчас нет'} tone={actions.length ? 'red' : 'slate'} />
         <AdminMetricCard icon={ShieldAlert} label='Исправляют сотрудники' value={issues.length + reviews.filter((item) => item.status === 'open').length} detail={employeeProblems.length ? 'Проблемы остаются активными до исправления' : 'Активных проблем нет'} tone={employeeProblems.length ? 'amber' : 'slate'} />
-        <AdminMetricCard icon={Clock3} label='Не начали вовремя' value={todaySummary.notStarted} detail={notStartedNames.join(', ') || 'Отклонений к началу нет'} tone={todaySummary.notStarted ? 'amber' : 'slate'} />
+        <AdminMetricCard icon={Clock3} label='Запланированы, ещё не начали' value={todaySummary.notStarted} detail={notStartedNames.join(', ') || 'Все запланированные сотрудники уже начали'} tone='slate' />
       </section>
 
       <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
@@ -111,7 +111,7 @@ export default async function AdminPage() {
           <SectionHeader title='Команда сегодня' count={todaySummary.working + todaySummary.completed + todaySummary.notStarted} href='/admin/workday' actionLabel='Контроль дня' />
           <div className='grid gap-0 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0'>
             <TeamState label='Работают' names={workingNames} empty='Никто не работает' tone='green' />
-            <TeamState label='Не начали' names={notStartedNames} empty='Все начали вовремя' tone={notStartedNames.length ? 'amber' : 'slate'} />
+            <TeamState label='Ещё не начали' names={notStartedNames} empty='Все запланированные сотрудники уже начали' tone='slate' />
             <TeamState label='Завершили' names={completedNames} empty='Пока никто' tone='slate' />
           </div>
         </Card>
