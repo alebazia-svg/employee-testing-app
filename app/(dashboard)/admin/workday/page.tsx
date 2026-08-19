@@ -1255,7 +1255,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     }),
     getTerminalFiscalWorkdaySummary(moscowDayRange(selectedDate)),
     prisma.workdayControlIssue.findMany({
-      where: { status: 'open', employeeActionRequired: true, originDate: selectedDate },
+      where: { status: 'open', employeeActionRequired: true, ...(selectedDate === today ? {} : { originDate: selectedDate }) },
       include: { user: { select: { name: true } } },
       orderBy: [{ severity: 'desc' }, { detectedAt: 'asc' }],
     }),
