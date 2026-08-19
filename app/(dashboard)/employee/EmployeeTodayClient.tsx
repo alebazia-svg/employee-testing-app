@@ -39,12 +39,24 @@ import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
 
-function uploadFormData<T>(url: string, method: 'POST' | 'PATCH', formData: FormData, fallbackError: string) {
+function uploadFormData<T>(
+  url: string,
+  method: 'POST' | 'PATCH',
+  formData: FormData,
+  fallbackError: string,
+  onProgress?: (progress: number) => void,
+) {
   return new Promise<T>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open(method, url);
     request.timeout = 120_000;
+    onProgress?.(0);
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total <= 0) return;
+      onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+    };
     request.onload = () => {
+      onProgress?.(100);
       let result: unknown = null;
       try {
         result = request.responseText ? JSON.parse(request.responseText) : null;
@@ -65,9 +77,15 @@ function uploadFormData<T>(url: string, method: 'POST' | 'PATCH', formData: Form
   });
 }
 
-async function submitFormData<T>(url: string, method: 'POST' | 'PATCH', formData: FormData, fallbackError: string) {
+async function submitFormData<T>(
+  url: string,
+  method: 'POST' | 'PATCH',
+  formData: FormData,
+  fallbackError: string,
+  onProgress?: (progress: number) => void,
+) {
   const containsPhoto = Array.from(formData.values()).some((value) => value instanceof File && value.size > 0);
-  if (containsPhoto) return uploadFormData<T>(url, method, formData, fallbackError);
+  if (containsPhoto) return uploadFormData<T>(url, method, formData, fallbackError, onProgress);
 
   const response = await fetch(url, { method, body: formData });
   const result: unknown = await response.json().catch(() => null);
@@ -76,6 +94,12 @@ async function submitFormData<T>(url: string, method: 'POST' | 'PATCH', formData
     throw new EmployeeApiError(error, isRecord(result) && typeof result.code === 'string' ? result.code : '', result);
   }
   return result as T;
+}
+
+function photoSavingLabel(progress: number | null) {
+  if (progress === null || progress <= 0) return 'Подготавливаем фото...';
+  if (progress >= 100) return 'Сохраняем результат...';
+  return `Отправляем фото · ${progress}%`;
 }
 
 class EmployeeApiError extends Error {
@@ -976,6 +1000,7 @@ export function EmployeeTodayClient({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [now, setNow] = useState<Date | null>(null);
   const workdaySyncAbortRef = useRef<AbortController | null>(null);
   const workdaySyncInFlightRef = useRef(false);
@@ -1550,6 +1575,7 @@ export function EmployeeTodayClient({
         'POST',
         formData,
         'Не удалось сохранить кассовую операцию',
+        setUploadProgress,
       );
 
       setCashOperationsState((current) => [result.operation, ...current]);
@@ -1559,6 +1585,7 @@ export function EmployeeTodayClient({
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
     } finally {
+      setUploadProgress(null);
       setIsSaving(false);
     }
   }
@@ -1595,6 +1622,7 @@ export function EmployeeTodayClient({
       'PATCH',
       formData,
       'Не удалось сохранить шаг',
+      setUploadProgress,
     );
     setShiftControlState((current) => ({
       ...current,
@@ -1626,6 +1654,7 @@ export function EmployeeTodayClient({
         'PATCH',
         formData,
         'Не удалось обновить задачу',
+        setUploadProgress,
       );
 
       const nextTasks = shiftControlState.tasks.map((item) => (item.id === result.task.id ? result.task : item));
@@ -1651,6 +1680,7 @@ export function EmployeeTodayClient({
         setError(message);
       }
     } finally {
+      setUploadProgress(null);
       setIsSaving(false);
     }
   }
@@ -1734,6 +1764,7 @@ export function EmployeeTodayClient({
             'PATCH',
             requestBody,
             'Не удалось обновить задачу',
+            setUploadProgress,
           )
         : await (async () => {
             const response = await fetch(`/api/employee/shift-control/tasks/${task.id}`, {
@@ -1765,6 +1796,7 @@ export function EmployeeTodayClient({
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить задачу');
     } finally {
+      setUploadProgress(null);
       setIsSaving(false);
     }
   }
@@ -1875,7 +1907,7 @@ export function EmployeeTodayClient({
             Откройте смену на кассе и сфотографируйте распечатанный чек.
           </p>
           <label className={cn('flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-12 text-base' : 'min-h-8 text-xs')}>
-            {isSaving && openingPhotoTaskId === task.id ? 'Сохраняем фото...' : isEditing ? 'Заменить фото' : 'Сделать фото'}
+            {isSaving && openingPhotoTaskId === task.id ? photoSavingLabel(uploadProgress) : isEditing ? 'Заменить фото' : 'Сделать фото'}
             <input
               type='file'
               accept='image/*'
@@ -2265,7 +2297,7 @@ export function EmployeeTodayClient({
             'flex min-h-11 items-center justify-center rounded-lg px-3 text-sm font-extrabold shadow-sm',
             disabledReason ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'cursor-pointer bg-[#111821] text-white',
           )}>
-            {isSaving ? 'Сохраняем фото...' : 'Сделать фото'}
+            {isSaving ? photoSavingLabel(uploadProgress) : 'Сделать фото'}
           </span>
         )}
         <input
@@ -3072,7 +3104,7 @@ export function EmployeeTodayClient({
                             : 'cursor-pointer bg-[#111821] text-white',
                         )}
                       >
-                        {isSaving ? 'Сохраняем фото...' : 'Сделать фото'}
+                        {isSaving ? photoSavingLabel(uploadProgress) : 'Сделать фото'}
                         <input
                           type='file'
                           accept='image/*'

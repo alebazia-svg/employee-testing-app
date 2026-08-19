@@ -57,7 +57,7 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
           <h1 className='text-[26px] font-extrabold tracking-normal text-slate-950 md:text-[28px]'>Заявки на расходование ДС</h1>
           <p className='mt-1 text-sm font-medium text-slate-500'>ADMIN-наблюдение. Портал ничего не меняет в 1С и не пишет сотрудникам.</p>
         </div>
-        <div className='rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200'>Обновление запускается только вручную</div>
+        <div className='rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200'>Обновляется автоматически каждые 3 минуты</div>
       </div>
 
       <section className='mt-5 grid gap-3 sm:grid-cols-3'>
@@ -82,7 +82,7 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
           </div>
         </div>
         {cases.length === 0 ? (
-          <div className='px-6 py-14 text-center'><CheckCircle2 className='mx-auto h-10 w-10 text-green-600' /><p className='mt-3 font-extrabold text-slate-950'>Новых заявок нет</p><p className='mt-1 text-sm text-slate-500'>После ручной синхронизации здесь появятся заявки со статусом «Не согласована».</p></div>
+          <div className='px-6 py-14 text-center'><CheckCircle2 className='mx-auto h-10 w-10 text-green-600' /><p className='mt-3 font-extrabold text-slate-950'>Новых заявок нет</p><p className='mt-1 text-sm text-slate-500'>Новая заявка со статусом «Не согласована» появится здесь после ближайшего автоматического обновления.</p></div>
         ) : (
           <div className='divide-y divide-slate-100'>
             {cases.map((item) => {
