@@ -1221,10 +1221,13 @@ export function EmployeeTodayClient({
   function getColleagueRows(date: string) {
     const entries = departmentScheduleByDate.get(date) ?? [];
     const entryByUser = new Map(entries.map((entry) => [entry.userId, entry]));
-    return colleagueUsers.map((person) => ({
-      person,
-      entry: entryByUser.get(person.id),
-    }));
+    const statusRank = (status?: string) => status === 'working' ? 0 : status === 'off' ? 1 : 2;
+    return colleagueUsers
+      .map((person) => ({
+        person,
+        entry: entryByUser.get(person.id),
+      }))
+      .sort((left, right) => statusRank(left.entry?.status) - statusRank(right.entry?.status) || left.person.name.localeCompare(right.person.name, 'ru'));
   }
 
   function getWorkingInitials(date: string) {
