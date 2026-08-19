@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { getAdminWorkdayRevision } from '@/lib/admin-workday-revision';
-import { adminWorkdayControlFilter, matchesAdminWorkdayControlFilter, type AdminWorkdayControlCategory, type AdminWorkdayControlFilter } from '@/lib/admin-workday-view';
+import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, matchesAdminWorkdayControlFilter, type AdminWorkdayControlCategory, type AdminWorkdayControlFilter } from '@/lib/admin-workday-view';
 import { getCurrentUser } from '@/lib/auth';
 import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
@@ -1462,13 +1462,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         workDay,
         tasks: (run?.tasks ?? []) as AutoCheckTask[],
       });
-      const actionableTimingViolations = timingViolations.filter((violation) => (
-        violation.kind === 'late_start'
-        || violation.kind === 'early_checkout'
-        || violation.kind === 'task_overdue'
-        || violation.kind === 'missing_checkout'
-        || violation.kind === 'workday_not_started'
-      ));
+      const activeTimingViolations = timingViolations.filter((violation) => isActiveWorkdayTimingViolation(violation.kind));
       const manualReviewCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
       const manualIssueCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
       const unresolvedAutoChecks = autoChecks.filter((check) => check.manualReview?.decision !== 'confirmed_ok');
@@ -1492,10 +1486,10 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       ].filter((reason): reason is string => Boolean(reason));
       const attentionReasons = [
         ...businessAttentionReasons,
-        actionableTimingViolations.length > 0
-          ? actionableTimingViolations.length === 1
-            ? actionableTimingViolations[0].label
-            : `Требуют действия: ${actionableTimingViolations.length} · ${actionableTimingViolations[0].label}`
+        activeTimingViolations.length > 0
+          ? activeTimingViolations.length === 1
+            ? activeTimingViolations[0].label
+            : `Требуют действия: ${activeTimingViolations.length} · ${activeTimingViolations[0].label}`
           : null,
       ].filter((reason): reason is string => Boolean(reason));
       const employeeReportedProblem = (run?.tasks ?? []).some((task) => (
@@ -1700,7 +1694,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               {([
                 ['active', `Требуют внимания · ${activeEmployeeCount}`],
                 ['pending', `Ожидается · ${pendingEmployeeCount}`],
-                ['normal', `Без замечаний · ${normalEmployeeCount}`],
+                ['normal', `Без активных проблем · ${normalEmployeeCount}`],
                 ['all', `Все · ${employeeControlRows.length}`],
               ] as Array<[AdminWorkdayControlFilter, string]>).map(([filter, label]) => (
                 <Link
