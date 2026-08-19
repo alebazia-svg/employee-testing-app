@@ -2848,7 +2848,7 @@ export function EmployeeTodayClient({
                 </div>
               )}
 
-              {activeWorkDay && primaryRequiredIssue && primaryRequiredIssueView && (
+              {primaryRequiredIssue && primaryRequiredIssueView && (
                 <Link href={`/employee/issues/${primaryRequiredIssue.id}`} className='flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'>
                   <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 ring-1 ring-amber-200'><AlertTriangle className='h-5 w-5' /></span>
                   <span className='min-w-0 flex-1'>
