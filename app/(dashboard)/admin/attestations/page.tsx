@@ -30,7 +30,10 @@ export default async function AdminAttestationsPage() {
           <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Аттестации</h1>
           <p className='mt-1 text-base font-medium text-slate-500'>Управление аттестациями и назначениями</p>
         </div>
-        <CreateAttestation />
+        <div className='flex flex-wrap gap-2'>
+          <Link href='/admin/results' className='inline-flex items-center rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'>Результаты</Link>
+          <CreateAttestation />
+        </div>
       </div>
 
       <section className='mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4'>

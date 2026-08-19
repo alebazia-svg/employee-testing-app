@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BarChart3, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, GraduationCap, Home, Inbox, LineChart, PanelLeftClose, PanelLeftOpen, ReceiptText, Users, Wrench } from 'lucide-react';
+import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, GraduationCap, History, Home, PanelLeftClose, PanelLeftOpen, ReceiptText, Users, Wrench } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
 import { AdminInboxBell } from '@/components/AdminInboxBell';
@@ -16,26 +16,25 @@ type NavigationItem = { href: string; label: string; icon: LucideIcon };
 const dailyNavigation: NavigationItem[] = [
   { href: '/admin', label: 'Главная', icon: Home },
   { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness },
-  { href: '/admin/inbox', label: 'Inbox', icon: Inbox },
   { href: '/admin/expense-requests', label: 'Заявки', icon: FileClock },
-  { href: '/admin/attendance', label: 'График', icon: CalendarDays },
+  { href: '/admin/attendance', label: 'График и посещаемость', icon: CalendarDays },
   { href: '/admin/employees', label: 'Сотрудники', icon: Users },
 ];
 
 const periodicNavigation: NavigationItem[] = [
   { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
-  { href: '/admin/analytics', label: 'Аналитика', icon: LineChart },
   { href: '/admin/attestations', label: 'Аттестации', icon: GraduationCap },
-  { href: '/admin/results', label: 'Результаты', icon: BarChart3 },
 ];
 
 const serviceNavigation: NavigationItem[] = [
   { href: '/admin/ofd', label: 'OFD и 1С', icon: ReceiptText },
   { href: '/admin/workday/tbank', label: 'Эквайринг', icon: CreditCard },
+  { href: '/admin/inbox', label: 'История уведомлений', icon: History },
 ];
 
 function isActive(pathname: string, href: string) {
   if (href === '/admin') return pathname === '/admin';
+  if (href === '/admin/attestations' && pathname.startsWith('/admin/results')) return true;
   if (href === '/admin/workday' && pathname.startsWith('/admin/workday/tbank')) return false;
   return pathname.startsWith(href);
 }
@@ -114,7 +113,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               'flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-400 transition hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 marker:content-none md:justify-start md:gap-3 md:px-4',
               sidebarCollapsed && 'md:px-0 md:justify-center',
             )}>
-              <LineChart className='h-5 w-5 shrink-0' />
+              <Banknote className='h-5 w-5 shrink-0' />
               <span className={cn('flex-1 text-left', sidebarCollapsed && 'md:hidden')}>Периодически</span>
               <ChevronDown className={cn('h-4 w-4 transition group-open:rotate-180', sidebarCollapsed && 'md:hidden')} />
             </summary>
@@ -154,7 +153,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className='flex min-h-[calc(100vh-4rem)] w-full max-w-none flex-col'>
           <div className='mb-3 flex items-center justify-end gap-3'>
             <AdminInboxBell />
-            <div className='flex items-center gap-3 rounded-full bg-white px-4 py-2 shadow-sm ring-1 ring-slate-200/80'>
+            <div className='hidden items-center gap-3 rounded-full bg-white px-4 py-2 shadow-sm ring-1 ring-slate-200/80 sm:flex'>
               <div className='flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-primary'>АД</div>
               <div>
                 <p className='text-sm font-bold text-slate-950'>Администратор</p>

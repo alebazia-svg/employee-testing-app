@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, Banknote, CreditCard } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
+import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
@@ -1623,15 +1624,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     <AdminShell>
       <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
       <div className='space-y-6'>
-        <div className='flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
-          <div>
-            <p className='text-sm font-semibold text-primary'>Операционная работа</p>
-            <h1 className='mt-1 text-3xl font-extrabold text-slate-950'>Контроль дня</h1>
-            <p className='mt-2 text-sm font-medium text-slate-500'>
-              Активные исключения по сотрудникам. Успешные проверки доступны отдельно и не перегружают экран.
-            </p>
-          </div>
-          <div className='flex flex-wrap items-center gap-2'>
+        <AdminPageHeader
+          eyebrow='Операционная работа'
+          title='Контроль дня'
+          description='Активные проблемы и состояние рабочих дней. Исправленная история не смешивается с текущими действиями.'
+          actions={<>
             <Link
               href={`/admin/workday?date=${previousDate}`}
               className='rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'
@@ -1652,8 +1649,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               Сегодня
             </Link>
             <WorkdayQrCodes />
-          </div>
-        </div>
+          </>}
+        />
 
         {showTerminalFiscalSummary && <TerminalFiscalAdminSummary summary={terminalFiscalSummary} />}
 

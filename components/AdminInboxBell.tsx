@@ -84,7 +84,7 @@ export function AdminInboxBell() {
               </button>
             ))}</div>
           )}
-          <button type='button' onClick={() => { setOpen(false); router.push('/admin/inbox'); }} className='block w-full border-t border-slate-200 px-4 py-3 text-center text-sm font-bold text-green-700 hover:bg-slate-50'>Открыть весь inbox</button>
+          <button type='button' onClick={() => { setOpen(false); router.push('/admin/inbox'); }} className='block w-full border-t border-slate-200 px-4 py-3 text-center text-sm font-bold text-green-700 hover:bg-slate-50'>Открыть историю уведомлений</button>
         </div>
       )}
     </div>

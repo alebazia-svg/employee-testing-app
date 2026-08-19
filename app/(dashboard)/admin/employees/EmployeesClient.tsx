@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Pencil, ShieldCheck, Trash2, UserCheck, UserCog, UserPlus, Users } from 'lucide-react';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, BriefcaseBusiness, Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
+import { AdminMetricCard } from '@/components/admin/AdminMetricCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -16,6 +18,8 @@ type User = {
   department: string;
   isActive: boolean;
   payrollName: string | null;
+  todayState: string;
+  attentionCount: number;
 };
 
 type Draft = User & { password: string };
@@ -35,6 +39,17 @@ const emptyDraft: Draft = {
   department: 'retail',
   isActive: true,
   payrollName: '',
+  todayState: 'no_schedule',
+  attentionCount: 0,
+};
+
+const todayStateLabels: Record<string, { label: string; className: string }> = {
+  working: { label: 'Работает', className: 'bg-green-100 text-green-800' },
+  completed: { label: 'Завершил день', className: 'bg-slate-100 text-slate-700' },
+  not_started: { label: 'Ещё не начал', className: 'bg-amber-100 text-amber-800' },
+  off: { label: 'Выходной', className: 'bg-slate-100 text-slate-600' },
+  no_schedule: { label: 'Без графика', className: 'bg-slate-100 text-slate-600' },
+  admin: { label: 'ADMIN', className: 'bg-blue-100 text-blue-800' },
 };
 
 export default function EmployeesClient({ initialUsers }: { initialUsers: User[] }) {
@@ -42,9 +57,23 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [error, setError] = useState('');
-  const adminCount = users.filter((user) => user.role === 'ADMIN').length;
-  const employeeCount = users.filter((user) => user.role !== 'ADMIN').length;
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'employees' | 'admins' | 'inactive'>('employees');
+  const adminCount = users.filter((user) => user.role === 'ADMIN' && user.isActive).length;
+  const employeeCount = users.filter((user) => user.role !== 'ADMIN' && user.isActive).length;
   const activeCount = users.filter((user) => user.isActive).length;
+  const workingCount = users.filter((user) => user.todayState === 'working').length;
+  const attentionCount = users.reduce((sum, user) => sum + user.attentionCount, 0);
+  const filteredUsers = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU');
+    return users.filter((user) => {
+      if (filter === 'employees' && (user.role === 'ADMIN' || !user.isActive)) return false;
+      if (filter === 'admins' && (user.role !== 'ADMIN' || !user.isActive)) return false;
+      if (filter === 'inactive' && user.isActive) return false;
+      if (!normalizedQuery) return true;
+      return `${user.name} ${user.login} ${departmentLabels[user.department] ?? user.department}`.toLocaleLowerCase('ru-RU').includes(normalizedQuery);
+    });
+  }, [filter, query, users]);
 
   function startCreate() {
     setError('');
@@ -72,7 +101,13 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
 
     const saved = await response.json();
     setUsers((current) => {
-      const next = editingId === 'new' ? [...current, saved] : current.map((user) => (user.id === saved.id ? saved : user));
+      const previous = editingId === 'new' ? null : current.find((user) => user.id === saved.id) ?? null;
+      const normalizedSaved: User = {
+        ...saved,
+        todayState: previous?.todayState ?? 'no_schedule',
+        attentionCount: previous?.attentionCount ?? 0,
+      };
+      const next = editingId === 'new' ? [...current, normalizedSaved] : current.map((user) => (user.id === saved.id ? normalizedSaved : user));
       return next.sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.role.localeCompare(right.role) || left.name.localeCompare(right.name, 'ru'));
     });
     setEditingId(null);
@@ -94,35 +129,23 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
 
   return (
     <div className='space-y-5'>
-      <div className='grid gap-4 md:grid-cols-4'>
-        {[
-          { label: 'Всего пользователей', value: users.length, icon: Users, tone: 'green' },
-          { label: 'Активные', value: activeCount, icon: UserCheck, tone: 'green' },
-          { label: 'Администраторы', value: adminCount, icon: UserCog, tone: 'blue' },
-          { label: 'Сотрудники', value: employeeCount, icon: UserCheck, tone: 'green' },
-        ].map((item) => {
-          const Icon = item.icon;
-          const toneClass = item.tone === 'blue' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-primary';
-          return (
-            <Card key={item.label} className='flex items-center gap-4'>
-              <div className={`flex h-12 w-12 items-center justify-center rounded-full ${toneClass}`}>
-                <Icon className='h-6 w-6' />
-              </div>
-              <div>
-                <p className='text-sm font-bold text-slate-600'>{item.label}</p>
-                <p className='mt-1 text-2xl font-extrabold text-slate-950'>{item.value}</p>
-              </div>
-            </Card>
-          );
-        })}
+      <div className='grid gap-3 sm:grid-cols-3'>
+        <AdminMetricCard icon={Users} label='Активные сотрудники' value={employeeCount} detail={`Всего активных аккаунтов: ${activeCount}`} tone='green' />
+        <AdminMetricCard icon={BriefcaseBusiness} label='Работают сейчас' value={workingCount} detail='По данным текущего рабочего дня' tone='green' />
+        <AdminMetricCard icon={AlertTriangle} label='Активные проблемы' value={attentionCount} detail={attentionCount ? 'Требуют контроля или исправления' : 'У команды нет активных проблем'} tone={attentionCount ? 'amber' : 'slate'} />
       </div>
 
-      <Card className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
-        <div>
-          <p className='text-sm font-bold text-slate-950'>Пользователи портала</p>
-          <p className='text-sm font-medium text-slate-500'>
-            Эти аккаунты используются для входа в портал. Поле “ФИО в payroll” подготовлено для будущего раздела “Моя зарплата”, но сейчас не влияет на расчёты.
-          </p>
+      <Card className='flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between'>
+        <div className='relative min-w-0 flex-1 lg:max-w-md'>
+          <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400' />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder='Найти сотрудника' className='pl-9' />
+        </div>
+        <div className='flex flex-wrap gap-2'>
+          {([
+            ['employees', `Сотрудники · ${employeeCount}`],
+            ['admins', `ADMIN · ${adminCount}`],
+            ['inactive', `Отключены · ${users.filter((user) => !user.isActive).length}`],
+          ] as const).map(([key, label]) => <button key={key} type='button' onClick={() => setFilter(key)} className={`rounded-lg px-3 py-2 text-xs font-extrabold ring-1 transition ${filter === key ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>{label}</button>)}
         </div>
         <Button className='gap-2' onClick={startCreate}>
           <UserPlus className='h-4 w-4' />
@@ -160,50 +183,44 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
         </Card>
       )}
 
-      <Card className='p-0'>
+      <Card className='overflow-hidden p-0'>
         <Table>
           <thead className='bg-slate-50 text-slate-500'>
             <tr className='text-left'>
-              <th className='px-5 py-4'>Имя</th>
-              <th className='px-5 py-4'>Логин</th>
-              <th className='px-5 py-4'>Роль</th>
+              <th className='px-5 py-4'>Сотрудник</th>
               <th className='px-5 py-4'>Отдел</th>
-              <th className='px-5 py-4'>ФИО в payroll</th>
-              <th className='px-5 py-4'>Статус</th>
+              <th className='px-5 py-4'>Сегодня</th>
+              <th className='px-5 py-4'>Требует внимания</th>
               <th className='px-5 py-4'>Действия</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
+            {filteredUsers.map((user) => {
+              const todayState = todayStateLabels[user.todayState] ?? todayStateLabels.no_schedule;
+              return (
               <tr key={user.id} className='border-t border-slate-200/80'>
-                <td className='px-5 py-4 font-medium text-slate-900'>{user.name}</td>
-                <td className='px-5 py-4 text-slate-700'>{user.login}</td>
-                <td className='px-5 py-4'>
-                  <Badge className={user.role === 'ADMIN' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
-                    {user.role === 'ADMIN' && <ShieldCheck className='mr-1 inline h-3.5 w-3.5' />}
-                    {user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}
-                  </Badge>
-                </td>
+                <td className='px-5 py-4'><p className='font-bold text-slate-950'>{user.name}</p><p className='mt-0.5 text-xs font-semibold text-slate-500'>{user.role === 'ADMIN' ? 'Администратор' : `Логин: ${user.login}`}</p></td>
                 <td className='px-5 py-4 text-slate-700'>{departmentLabels[user.department] ?? user.department}</td>
-                <td className='px-5 py-4 text-slate-700'>{user.payrollName || 'не связано'}</td>
                 <td className='px-5 py-4'>
-                  <Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}>
-                    {user.isActive ? 'Активен' : 'Отключён'}
-                  </Badge>
+                  <Badge className={user.isActive ? todayState.className : 'bg-slate-100 text-slate-500'}>{user.isActive ? todayState.label : 'Отключён'}</Badge>
                 </td>
-                <td className='flex gap-2 px-5 py-4'>
+                <td className='px-5 py-4'>{user.attentionCount > 0 ? <span className='inline-flex items-center gap-1.5 text-sm font-bold text-amber-800'><AlertTriangle className='h-4 w-4' />{user.attentionCount}</span> : <span className='text-sm font-semibold text-slate-400'>Нет</span>}</td>
+                <td className='px-5 py-4'>
+                  <div className='flex gap-2'>
+                  {user.role !== 'ADMIN' && <Link href={`/admin/workday?control=all&employee=${user.id}#employees-control`} className='inline-flex h-9 items-center rounded-lg bg-white px-3 text-xs font-bold text-slate-700 ring-1 ring-border hover:bg-slate-50'>Открыть день</Link>}
                   <Button className='h-9 w-9 bg-white p-0 text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}>
                     <Pencil className='h-4 w-4' />
                   </Button>
                   <Button className='h-9 w-9 bg-white p-0 text-red-600 ring-1 ring-border hover:bg-red-50 hover:text-red-700' onClick={() => remove(user.id)}>
                     <Trash2 className='h-4 w-4' />
                   </Button>
+                  </div>
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </Table>
-        {!users.length && <p className='p-5 text-sm font-medium text-slate-500'>Нет данных для отображения.</p>}
+        {!filteredUsers.length && <p className='p-8 text-center text-sm font-medium text-slate-500'>По выбранному фильтру сотрудников нет.</p>}
       </Card>
     </div>
   );

@@ -55,7 +55,7 @@ export function AdminInboxListClient({ initialItems }: { initialItems: AdminInbo
     <section className='mt-5 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/80'>
       <div className='border-b border-slate-200 px-4 py-4 sm:px-5'>
         <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-          <div><h2 className='text-lg font-extrabold text-slate-950'>Новые события</h2><p className='mt-1 text-xs font-medium text-slate-500'>Непрочитанных: {unread}</p></div>
+          <div><h2 className='text-lg font-extrabold text-slate-950'>События</h2><p className='mt-1 text-xs font-medium text-slate-500'>Непрочитанных: {unread}</p></div>
           {unread > 0 && <button type='button' onClick={() => void markAll()} className='inline-flex w-fit items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
         </div>
         <div className='mt-4 flex gap-2 overflow-x-auto pb-1'>

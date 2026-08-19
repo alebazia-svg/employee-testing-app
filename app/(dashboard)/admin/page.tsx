@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, ArrowRight, Bell, CheckCircle2, Clock3, CreditCard, FileText, ShieldAlert, UserCheck, Users } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Bell, CheckCircle2, Clock3, CreditCard, FileText, ShieldAlert, UserCheck } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
+import { AdminMetricCard } from '@/components/admin/AdminMetricCard';
+import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
 import { Card } from '@/components/ui/card';
 import { summarizeAdminToday } from '@/lib/admin-operations-view';
 import { getCurrentUser } from '@/lib/auth';
@@ -35,7 +37,7 @@ export default async function AdminPage() {
 
   const today = getMoscowDateKey();
   const range = moscowDayRange(today);
-  const [employees, schedules, workdays, issues, reviews, closeRequests, expenseCases, unreadCount, terminalSummary] = await Promise.all([
+  const [employees, schedules, workdays, issues, reviews, closeRequests, expenseCases, terminalSummary] = await Promise.all([
     prisma.user.findMany({ where: { role: 'EMPLOYEE', isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.workScheduleEntry.findMany({ where: { date: today }, select: { userId: true, status: true } }),
     prisma.workDayEntry.findMany({ where: { date: today }, select: { userId: true, status: true, endedAt: true, user: { select: { name: true } } } }),
@@ -55,7 +57,6 @@ export default async function AdminPage() {
       select: { id: true, oneCNumber: true, requestedByName: true, amount: true, businessOperationName: true, enteredNotApprovedAt: true, updatedAt: true },
       orderBy: [{ enteredNotApprovedAt: 'desc' }, { updatedAt: 'desc' }], take: 20,
     }),
-    prisma.adminInboxReceipt.count({ where: { userId: admin.id, readAt: null } }),
     getTerminalFiscalWorkdaySummary({ periodFrom: range.from, periodTo: range.to }),
   ]);
 
@@ -85,21 +86,18 @@ export default async function AdminPage() {
 
   return (
     <AdminShell>
-      <div className='flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
-        <div><h1 className='text-3xl font-extrabold tracking-tight text-slate-950'>Сегодня</h1><p className='mt-1 text-sm font-medium text-slate-500'>Только состояние и исключения — успешные операции скрыты.</p></div>
-        <Link href='/admin/inbox' className='inline-flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'><Bell className='h-4 w-4' /> Inbox {unreadCount > 0 ? `· ${unreadCount} новых` : '· новых нет'}</Link>
-      </div>
+      <AdminPageHeader eyebrow='Операционная сводка' title='Сегодня' description='Кто работает, что требует исправления и где необходимо именно ваше решение.' />
 
       <section className='mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
-        <TodayCard icon={UserCheck} label='Работают' value={todaySummary.working} detail={workingNames.join(', ') || 'Никто не начал день'} tone='green' />
-        <TodayCard icon={CheckCircle2} label='Завершили' value={todaySummary.completed} detail={completedNames.join(', ') || 'Пока никто'} tone='slate' />
-        <TodayCard icon={Clock3} label='Не начали' value={todaySummary.notStarted} detail={notStartedNames.join(', ') || 'Опозданий к старту нет'} tone={todaySummary.notStarted ? 'amber' : 'slate'} />
-        <TodayCard icon={Users} label='Выходной / без графика' value={todaySummary.off + todaySummary.unscheduled} detail={`Выходной ${todaySummary.off} · без графика ${todaySummary.unscheduled}`} tone='slate' />
+        <AdminMetricCard icon={UserCheck} label='Работают сейчас' value={todaySummary.working} detail={workingNames.join(', ') || 'Никто не начал день'} tone='green' />
+        <AdminMetricCard icon={AlertTriangle} label='Нужно моё решение' value={actions.length} detail={actions.length ? 'Откройте карточки ниже' : 'Моих действий сейчас нет'} tone={actions.length ? 'red' : 'slate'} />
+        <AdminMetricCard icon={ShieldAlert} label='Исправляют сотрудники' value={issues.length + reviews.filter((item) => item.status === 'open').length} detail={employeeProblems.length ? 'Проблемы остаются активными до исправления' : 'Активных проблем нет'} tone={employeeProblems.length ? 'amber' : 'slate'} />
+        <AdminMetricCard icon={Clock3} label='Не начали вовремя' value={todaySummary.notStarted} detail={notStartedNames.join(', ') || 'Отклонений к началу нет'} tone={todaySummary.notStarted ? 'amber' : 'slate'} />
       </section>
 
       <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
         <Card className='overflow-hidden p-0'>
-          <SectionHeader title='Нужно моё решение' count={actions.length} href='/admin/inbox' />
+          <SectionHeader title='Нужно моё решение' count={actions.length} />
           {actions.length ? <div className='divide-y divide-slate-100'>{actions.slice(0, 6).map((item) => <ActionRow key={item.key} item={item} />)}</div> : <Empty title='Моих действий сейчас нет' text='Новые сообщения, запросы на решение и заявки появятся здесь.' />}
         </Card>
         <Card className='overflow-hidden p-0'>
@@ -108,24 +106,29 @@ export default async function AdminPage() {
         </Card>
       </section>
 
-      <section className='mt-5'>
+      <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
+        <Card className={`overflow-hidden p-0 ${terminalAttention ? '' : 'xl:col-span-2'}`}>
+          <SectionHeader title='Команда сегодня' count={todaySummary.working + todaySummary.completed + todaySummary.notStarted} href='/admin/workday' actionLabel='Контроль дня' />
+          <div className='grid gap-0 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0'>
+            <TeamState label='Работают' names={workingNames} empty='Никто не работает' tone='green' />
+            <TeamState label='Не начали' names={notStartedNames} empty='Все начали вовремя' tone={notStartedNames.length ? 'amber' : 'slate'} />
+            <TeamState label='Завершили' names={completedNames} empty='Пока никто' tone='slate' />
+          </div>
+        </Card>
+        {terminalAttention && (
         <Link href='/admin/workday' className={`flex items-start gap-4 rounded-2xl p-5 shadow-sm ring-1 transition hover:-translate-y-0.5 ${terminalAttention ? 'bg-amber-50 ring-amber-200' : 'bg-white ring-slate-200'}`}>
           <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${terminalAttention ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}><CreditCard className='h-5 w-5' /></div>
           <div className='min-w-0 flex-1'><p className='text-xs font-extrabold uppercase tracking-wide text-slate-500'>Состояние сверки оплат</p><p className='mt-1 font-extrabold text-slate-950'>{terminal.label}</p><p className='mt-1 text-sm font-medium leading-relaxed text-slate-600'>{terminal.detail}</p></div>
           <ArrowRight className='mt-3 h-4 w-4 shrink-0 text-slate-400' />
         </Link>
+        )}
       </section>
     </AdminShell>
   );
 }
 
-function TodayCard({ icon: Icon, label, value, detail, tone }: { icon: typeof Users; label: string; value: number; detail: string; tone: 'green' | 'amber' | 'slate' }) {
-  const colors = tone === 'green' ? 'bg-green-100 text-green-700' : tone === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600';
-  return <Card className='p-4'><div className='flex items-start gap-3'><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors}`}><Icon className='h-5 w-5' /></div><div className='min-w-0'><p className='text-xs font-extrabold uppercase tracking-wide text-slate-500'>{label}</p><p className='mt-1 text-2xl font-extrabold text-slate-950'>{value}</p><p className='mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-500'>{detail}</p></div></div></Card>;
-}
-
-function SectionHeader({ title, count, href }: { title: string; count: number; href: string }) {
-  return <div className='flex items-center justify-between border-b border-slate-200 px-5 py-4'><div className='flex items-center gap-2'><h2 className='text-lg font-extrabold text-slate-950'>{title}</h2>{count > 0 && <span className='rounded-full bg-amber-100 px-2 py-0.5 text-xs font-extrabold text-amber-800'>{count}</span>}</div><Link href={href} className='text-xs font-bold text-green-700 hover:text-green-800'>Открыть всё</Link></div>;
+function SectionHeader({ title, count, href, actionLabel = 'Открыть всё' }: { title: string; count: number; href?: string; actionLabel?: string }) {
+  return <div className='flex items-center justify-between border-b border-slate-200 px-5 py-4'><div className='flex items-center gap-2'><h2 className='text-lg font-extrabold text-slate-950'>{title}</h2>{count > 0 && <span className='rounded-full bg-amber-100 px-2 py-0.5 text-xs font-extrabold text-amber-800'>{count}</span>}</div>{href && <Link href={href} className='text-xs font-bold text-green-700 hover:text-green-800'>{actionLabel}</Link>}</div>;
 }
 
 function ActionRow({ item }: { item: ActionItem }) {
@@ -135,4 +138,9 @@ function ActionRow({ item }: { item: ActionItem }) {
 
 function Empty({ title, text }: { title: string; text: string }) {
   return <div className='px-6 py-10 text-center'><CheckCircle2 className='mx-auto h-9 w-9 text-green-500' /><p className='mt-3 font-extrabold text-slate-950'>{title}</p><p className='mx-auto mt-1 max-w-md text-sm font-medium text-slate-500'>{text}</p></div>;
+}
+
+function TeamState({ label, names, empty, tone }: { label: string; names: string[]; empty: string; tone: 'green' | 'amber' | 'slate' }) {
+  const color = tone === 'green' ? 'text-green-700' : tone === 'amber' ? 'text-amber-700' : 'text-slate-500';
+  return <div className='px-5 py-4'><p className={`text-xs font-extrabold uppercase tracking-wide ${color}`}>{label} · {names.length}</p><p className='mt-2 text-sm font-semibold leading-relaxed text-slate-700'>{names.join(', ') || empty}</p></div>;
 }
