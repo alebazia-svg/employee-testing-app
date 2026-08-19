@@ -123,6 +123,11 @@ type ScheduleEntry = {
   user?: UserSummary;
 };
 
+type ScheduleUndo = {
+  date: string;
+  previousStatus: 'working' | 'off' | null;
+};
+
 type WorkDayEntry = {
   id: number;
   userId: number;
@@ -517,6 +522,16 @@ function scheduleCellLabel(status: string | null | undefined) {
   if (status === 'working') return 'раб';
   if (status === 'off') return 'вых';
   return '?';
+}
+
+function replaceScheduleRange(current: ScheduleEntry[], incoming: ScheduleEntry[], from: string, to: string) {
+  const entries = new Map(
+    current
+      .filter((entry) => entry.date < from || entry.date > to)
+      .map((entry) => [`${entry.userId}:${entry.date}`, entry]),
+  );
+  for (const entry of incoming) entries.set(`${entry.userId}:${entry.date}`, entry);
+  return [...entries.values()].sort((left, right) => left.date.localeCompare(right.date) || left.userId - right.userId);
 }
 
 function monthKeyFromDate(date: string) {
@@ -985,6 +1000,10 @@ export function EmployeeTodayClient({
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('list');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
+  const [expandedScheduleDates, setExpandedScheduleDates] = useState<Set<string>>(() => new Set([today]));
+  const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set());
+  const [loadingScheduleMonth, setLoadingScheduleMonth] = useState<string | null>(null);
+  const [scheduleUndo, setScheduleUndo] = useState<ScheduleUndo | null>(null);
   const [openShiftTaskId, setOpenShiftTaskId] = useState<number | null>(null);
   const [editingShiftTaskId, setEditingShiftTaskId] = useState<number | null>(null);
   const [shiftTaskDrafts, setShiftTaskDrafts] = useState<Record<number, ShiftTaskDraft>>({});
@@ -1025,9 +1044,12 @@ export function EmployeeTodayClient({
 
   useEffect(() => {
     if (!message) return;
-    const timer = window.setTimeout(() => setMessage(''), 4000);
+    const timer = window.setTimeout(() => {
+      setMessage('');
+      setScheduleUndo(null);
+    }, scheduleUndo ? 6000 : 4000);
     return () => window.clearTimeout(timer);
-  }, [message]);
+  }, [message, scheduleUndo]);
 
   const dates = useMemo(() => buildDateRange(today, 31), [today]);
   const previewDates = dates.slice(0, 7);
@@ -1113,17 +1135,27 @@ export function EmployeeTodayClient({
   }, [activeTab, syncCurrentWorkdayState]);
 
   const syncScheduleState = useCallback(async () => {
+    const requestedMonth = scheduleMode === 'month' ? calendarMonth : null;
+    if (requestedMonth) setLoadingScheduleMonth(requestedMonth);
     try {
-      const response = await fetch('/api/employee/workday/schedule', { cache: 'no-store' });
+      const query = requestedMonth ? `?month=${encodeURIComponent(requestedMonth)}` : '';
+      const response = await fetch(`/api/employee/workday/schedule${query}`, { cache: 'no-store' });
       if (!response.ok) return;
       const payload: unknown = await response.json();
       if (!isRecord(payload) || !Array.isArray(payload.ownSchedule) || !Array.isArray(payload.departmentSchedule)) return;
-      setOwnScheduleState(payload.ownSchedule as ScheduleEntry[]);
-      setDepartmentScheduleState(payload.departmentSchedule as ScheduleEntry[]);
+      const range = payload.range;
+      if (!isRecord(range) || typeof range.from !== 'string' || typeof range.to !== 'string') return;
+      setOwnScheduleState((current) => replaceScheduleRange(current, payload.ownSchedule as ScheduleEntry[], range.from as string, range.to as string));
+      setDepartmentScheduleState((current) => replaceScheduleRange(current, payload.departmentSchedule as ScheduleEntry[], range.from as string, range.to as string));
+      if (requestedMonth) {
+        setLoadedScheduleMonths((current) => new Set(current).add(requestedMonth));
+      }
     } catch {
       // Keep the last valid schedule and retry on the next visible sync.
+    } finally {
+      if (requestedMonth) setLoadingScheduleMonth((current) => (current === requestedMonth ? null : current));
     }
-  }, []);
+  }, [calendarMonth, scheduleMode]);
 
   useEffect(() => {
     if (activeTab !== 'schedule') return;
@@ -1176,7 +1208,8 @@ export function EmployeeTodayClient({
   }
   const handoverSteps = buildHandoverSteps(handoverDraft);
   const calendarDays = useMemo(() => buildCalendarMonth(calendarMonth), [calendarMonth]);
-  const scheduleLegendUsers = useMemo(() => [...departmentUsers].filter((person) => person.id !== user.id).sort(byName), [departmentUsers, user.id]);
+  const scheduleMonthLoaded = loadedScheduleMonths.has(calendarMonth);
+  const scheduleMonthLoading = loadingScheduleMonth === calendarMonth;
 
   useEffect(() => {
     if (!handoverTask || handoverTask.status === 'done' || activeHandoverTaskId) return;
@@ -1197,10 +1230,21 @@ export function EmployeeTodayClient({
   function getWorkingInitials(date: string) {
     const entries = departmentScheduleByDate.get(date) ?? [];
     const entryByUser = new Map(entries.map((entry) => [entry.userId, entry]));
-    return colleagueUsers
-      .filter((person) => entryByUser.get(person.id)?.status === 'working')
-      .slice(0, 4)
-      .map((person) => initials(person.name));
+    const working = colleagueUsers.filter((person) => entryByUser.get(person.id)?.status === 'working');
+    return {
+      initials: working.slice(0, 2).map((person) => initials(person.name)),
+      extraCount: Math.max(0, working.length - 2),
+    };
+  }
+
+  function applySchedulePayload(payload: unknown) {
+    if (!isRecord(payload) || !Array.isArray(payload.ownSchedule) || !Array.isArray(payload.departmentSchedule) || !isRecord(payload.range)) return false;
+    const { from, to, monthKey } = payload.range;
+    if (typeof from !== 'string' || typeof to !== 'string') return false;
+    setOwnScheduleState((current) => replaceScheduleRange(current, payload.ownSchedule as ScheduleEntry[], from, to));
+    setDepartmentScheduleState((current) => replaceScheduleRange(current, payload.departmentSchedule as ScheduleEntry[], from, to));
+    if (typeof monthKey === 'string') setLoadedScheduleMonths((current) => new Set(current).add(monthKey));
+    return true;
   }
 
   function ScheduleDayCard({ date, selected = false }: { date: string; selected?: boolean }) {
@@ -1209,6 +1253,12 @@ export function EmployeeTodayClient({
     const selectedWorkingRows = colleagueRows.filter(({ entry }) => entry?.status === 'working');
     const selectedOffRows = colleagueRows.filter(({ entry }) => entry?.status === 'off');
     const selectedMissingRows = colleagueRows.filter(({ entry }) => !entry);
+    const expanded = selected || expandedScheduleDates.has(date);
+    const colleagueSummary = [
+      `Работают ${selectedWorkingRows.length}`,
+      selectedOffRows.length ? `выходной ${selectedOffRows.length}` : '',
+      selectedMissingRows.length ? `без графика ${selectedMissingRows.length}` : '',
+    ].filter(Boolean).join(' · ');
 
     function SelectedColleagueGroup({ title, rows, tone }: { title: string; rows: typeof colleagueRows; tone: 'green' | 'slate' | 'amber' }) {
       const dotClass = tone === 'green' ? 'bg-primary' : tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400';
@@ -1242,7 +1292,7 @@ export function EmployeeTodayClient({
 
     return (
       <div className={cn('rounded-lg border bg-white p-3', selected ? 'border-primary/40 ring-2 ring-primary/10' : 'border-slate-200')}>
-        <div className='mb-2.5 flex items-center justify-between gap-3'>
+        <div className={cn('flex items-center justify-between gap-3', expanded && 'mb-2.5')}>
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
             {ownEntry?.status === 'working' && <p className='mt-0.5 text-xs font-bold text-green-700'>Рабочий день</p>}
@@ -1252,58 +1302,80 @@ export function EmployeeTodayClient({
           </Badge>
         </div>
 
-        <div className='grid grid-cols-2 gap-2'>
-          <Button
-            className={cn('h-10 rounded-lg', ownEntry?.status !== 'working' && 'bg-slate-100 text-slate-700 shadow-none hover:bg-green-100 hover:text-green-800')}
-            onClick={() => updateSchedule(date, 'working')}
-            disabled={isSaving}
+        {!selected && (
+          <button
+            type='button'
+            className={cn('flex min-h-9 w-full items-center justify-between gap-2 text-left text-xs font-bold text-slate-500', expanded && 'mt-2 border-t border-slate-100 pt-2')}
+            onClick={() => setExpandedScheduleDates((current) => {
+              const next = new Set(current);
+              if (next.has(date)) next.delete(date);
+              else next.add(date);
+              return next;
+            })}
+            aria-expanded={expanded}
           >
-            Работаю
-          </Button>
-          <Button
-            className={cn('h-10 rounded-lg', ownEntry?.status === 'off' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200')}
-            onClick={() => updateSchedule(date, 'off')}
-            disabled={isSaving}
-          >
-            Выходной
-          </Button>
-        </div>
+            <span>{colleagueSummary}</span>
+            {expanded ? <ChevronUp className='h-4 w-4 shrink-0' /> : <ChevronDown className='h-4 w-4 shrink-0' />}
+          </button>
+        )}
 
-        <div className='mt-3 border-t border-slate-100 pt-2.5'>
-          <p className='mb-2 text-[11px] font-extrabold uppercase leading-none text-slate-400'>
-            {selected ? 'Коллеги на этот день' : 'Коллеги'}
-          </p>
-          {selected ? (
-            <div className='grid gap-1.5'>
-              <SelectedColleagueGroup title='Работают' rows={selectedWorkingRows} tone='green' />
-              <SelectedColleagueGroup title='Выходной' rows={selectedOffRows} tone='slate' />
-              <SelectedColleagueGroup title='Не заполнено' rows={selectedMissingRows} tone='amber' />
+        {expanded && (
+          <>
+            <div className={cn('grid grid-cols-2 gap-2', !selected && 'mt-2')}>
+              <Button
+                className={cn('h-10 rounded-lg', ownEntry?.status !== 'working' && 'bg-slate-100 text-slate-700 shadow-none hover:bg-green-100 hover:text-green-800')}
+                onClick={() => updateSchedule(date, 'working')}
+                disabled={isSaving}
+              >
+                Работаю
+              </Button>
+              <Button
+                className={cn('h-10 rounded-lg', ownEntry?.status === 'off' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200')}
+                onClick={() => updateSchedule(date, 'off')}
+                disabled={isSaving}
+              >
+                Выходной
+              </Button>
             </div>
-          ) : colleagueRows.length ? (
-            <div className='grid gap-1.5'>
-              {colleagueRows.map(({ person, entry }) => (
-                <div key={person.id} className='flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
-                  <div className='flex min-w-0 items-center gap-2'>
-                    <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-[10px] font-extrabold text-green-800'>
-                      {initials(person.name)}
-                    </span>
-                    <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
-                  </div>
-                  <span className={cn('shrink-0 text-xs font-extrabold', entry?.status === 'working' ? 'text-green-700' : entry?.status === 'off' ? 'text-slate-500' : 'text-amber-700')}>
-                    {scheduleWorkLabel(entry?.status)}
-                  </span>
+
+            <div className='mt-3 border-t border-slate-100 pt-2.5'>
+              <p className='mb-2 text-[11px] font-extrabold uppercase leading-none text-slate-400'>
+                {selected ? 'Коллеги на этот день' : 'Коллеги'}
+              </p>
+              {selected ? (
+                <div className='grid gap-1.5'>
+                  <SelectedColleagueGroup title='Работают' rows={selectedWorkingRows} tone='green' />
+                  <SelectedColleagueGroup title='Выходной' rows={selectedOffRows} tone='slate' />
+                  <SelectedColleagueGroup title='Не заполнено' rows={selectedMissingRows} tone='amber' />
                 </div>
-              ))}
+              ) : colleagueRows.length ? (
+                <div className='grid gap-1.5'>
+                  {colleagueRows.map(({ person, entry }) => (
+                    <div key={person.id} className='flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
+                      <div className='flex min-w-0 items-center gap-2'>
+                        <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-[10px] font-extrabold text-green-800'>
+                          {initials(person.name)}
+                        </span>
+                        <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
+                      </div>
+                      <span className={cn('shrink-0 text-xs font-extrabold', entry?.status === 'working' ? 'text-green-700' : entry?.status === 'off' ? 'text-slate-500' : 'text-amber-700')}>
+                        {scheduleWorkLabel(entry?.status)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className='text-sm font-medium text-slate-400'>Нет коллег из отдела.</p>
+              )}
             </div>
-          ) : (
-            <p className='text-sm font-medium text-slate-400'>Нет коллег из отдела.</p>
-          )}
-        </div>
+          </>
+        )}
       </div>
     );
   }
 
   async function updateSchedule(date: string, status: 'working' | 'off') {
+    const previousStatus = ownScheduleByDate.get(date)?.status;
     setError('');
     setMessage('');
     setIsSaving(true);
@@ -1315,12 +1387,37 @@ export function EmployeeTodayClient({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось обновить график');
-      setOwnScheduleState(payload.ownSchedule);
-      setDepartmentScheduleState(payload.departmentSchedule);
-      router.refresh();
-      setMessage('График обновлен');
+      if (!applySchedulePayload(payload)) throw new Error('Сервер вернул неполные данные графика');
+      setScheduleUndo({ date, previousStatus: previousStatus === 'working' || previousStatus === 'off' ? previousStatus : null });
+      setMessage('График сохранён');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить график');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function undoScheduleChange() {
+    if (!scheduleUndo) return;
+    const undo = scheduleUndo;
+    setError('');
+    setMessage('');
+    setIsSaving(true);
+    try {
+      const response = undo.previousStatus
+        ? await fetch('/api/employee/workday/schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: undo.date, status: undo.previousStatus }),
+          })
+        : await fetch(`/api/employee/workday/schedule?date=${encodeURIComponent(undo.date)}`, { method: 'DELETE' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось отменить изменение');
+      if (!applySchedulePayload(payload)) throw new Error('Сервер вернул неполные данные графика');
+      setScheduleUndo(null);
+      setMessage('Изменение отменено');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось отменить изменение');
     } finally {
       setIsSaving(false);
     }
@@ -2805,7 +2902,17 @@ export function EmployeeTodayClient({
               <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-50 text-green-700 ring-1 ring-green-100'>
                 <CheckCircle2 className='h-4 w-4' />
               </span>
-              <span className='min-w-0'>{message}</span>
+              <span className='min-w-0 flex-1'>{message}</span>
+              {message === 'График сохранён' && scheduleUndo && (
+                <button
+                  type='button'
+                  className='shrink-0 rounded-lg px-2 py-1 text-xs font-extrabold text-green-700 hover:bg-green-50 disabled:opacity-50'
+                  onClick={undoScheduleChange}
+                  disabled={isSaving}
+                >
+                  Отменить
+                </button>
+              )}
             </div>
           )}
 
@@ -3155,9 +3262,9 @@ export function EmployeeTodayClient({
               )}
 
               <Card className='bg-slate-50 p-4'>
-                <div className='mb-2.5 flex items-center justify-between gap-3'>
+                <div className='mb-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
                   <h2 className='text-base font-extrabold text-slate-950'>Детали смены</h2>
-                  <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px]', factTone(displayedWorkDayStatus))}>
+                  <Badge className={cn('max-w-full shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px]', factTone(displayedWorkDayStatus))}>
                     {factLabel(displayedWorkDayStatus)}
                   </Badge>
                 </div>
@@ -3230,7 +3337,11 @@ export function EmployeeTodayClient({
                     <button
                       type='button'
                       className='flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
-                      onClick={() => setCalendarMonth((current) => addMonths(current, -1))}
+                      onClick={() => {
+                        const next = addMonths(calendarMonth, -1);
+                        setCalendarMonth(next);
+                        setSelectedScheduleDate(`${next}-01`);
+                      }}
                       aria-label='Предыдущий месяц'
                     >
                       <ChevronLeft className='h-5 w-5' />
@@ -3239,11 +3350,32 @@ export function EmployeeTodayClient({
                     <button
                       type='button'
                       className='flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
-                      onClick={() => setCalendarMonth((current) => addMonths(current, 1))}
+                      onClick={() => {
+                        const next = addMonths(calendarMonth, 1);
+                        setCalendarMonth(next);
+                        setSelectedScheduleDate(`${next}-01`);
+                      }}
                       aria-label='Следующий месяц'
                     >
                       <ChevronRight className='h-5 w-5' />
                     </button>
+                  </div>
+
+                  <div className='flex min-h-7 items-center justify-center'>
+                    {calendarMonth !== monthKeyFromDate(today) ? (
+                      <button
+                        type='button'
+                        className='rounded-lg px-3 py-1 text-xs font-extrabold text-green-700 hover:bg-green-50'
+                        onClick={() => {
+                          setCalendarMonth(monthKeyFromDate(today));
+                          setSelectedScheduleDate(today);
+                        }}
+                      >
+                        Перейти к сегодня
+                      </button>
+                    ) : (
+                      <span className='text-xs font-bold text-slate-400'>{scheduleMonthLoading ? 'Обновляем график…' : 'Текущий месяц'}</span>
+                    )}
                   </div>
 
                   <div className='grid grid-cols-7 gap-1 text-center text-[11px] font-extrabold text-slate-500'>
@@ -3258,7 +3390,9 @@ export function EmployeeTodayClient({
                       const workingInitials = getWorkingInitials(cell.date);
                       const selected = selectedScheduleDate === cell.date;
                       const statusClass =
-                        ownEntry?.status === 'working'
+                        !scheduleMonthLoaded
+                          ? 'bg-slate-50 text-slate-400 ring-slate-100'
+                          : ownEntry?.status === 'working'
                           ? 'bg-green-50 text-green-900 ring-green-100'
                           : ownEntry?.status === 'off'
                             ? 'bg-slate-100 text-slate-700 ring-slate-200'
@@ -3277,35 +3411,29 @@ export function EmployeeTodayClient({
                           )}
                         >
                           <span className='text-[13px] font-extrabold leading-none'>{cell.day}</span>
-                          <span className='mt-0.5 text-[10px] font-extrabold leading-none'>{scheduleCellLabel(ownEntry?.status)}</span>
+                          <span className='mt-0.5 text-[10px] font-extrabold leading-none'>{scheduleMonthLoaded ? scheduleCellLabel(ownEntry?.status) : '…'}</span>
                           <span className='mt-auto flex max-w-full flex-wrap gap-x-1 gap-y-0.5 overflow-hidden leading-none'>
-                            {workingInitials.map((letter, index) => (
+                            {scheduleMonthLoaded && workingInitials.initials.map((letter, index) => (
                               <span key={`${letter}-${index}`} className='text-[8px] font-extrabold leading-none text-green-800'>
                                 {letter}
                               </span>
                             ))}
+                            {scheduleMonthLoaded && workingInitials.extraCount > 0 && (
+                              <span className='text-[8px] font-extrabold leading-none text-green-800'>+{workingInitials.extraCount}</span>
+                            )}
                           </span>
                         </button>
                       );
                     })}
                   </div>
 
-                  <div className='rounded-lg border border-slate-200 bg-white p-2.5'>
-                    <p className='mb-2 text-sm font-extrabold text-slate-950'>Обозначения</p>
-                    <div className='grid gap-1.5'>
-                      {scheduleLegendUsers.map((person) => (
-                        <div key={person.id} className='flex min-w-0 items-baseline gap-2 text-xs font-bold text-slate-700'>
-                          <span className='shrink-0 font-extrabold text-green-800'>
-                            {initials(person.name)}
-                          </span>
-                          <span className='shrink-0 text-slate-300'>—</span>
-                          <span className='min-w-0 leading-tight'>{personDisplayName(person.name)}</span>
-                        </div>
-                      ))}
+                  {scheduleMonthLoaded ? (
+                    <ScheduleDayCard date={selectedScheduleDate} selected />
+                  ) : (
+                    <div className='rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500'>
+                      Загружаем выбранный месяц…
                     </div>
-                  </div>
-
-                  <ScheduleDayCard date={selectedScheduleDate} selected />
+                  )}
                 </Card>
               )}
             </div>
