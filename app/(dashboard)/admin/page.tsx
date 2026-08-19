@@ -1,305 +1,138 @@
 import Link from 'next/link';
-import type { ComponentType } from 'react';
-import { AlertTriangle, Banknote, BarChart3, CalendarCheck, ChevronRight, ClipboardCheck, FilePlus2, GraduationCap, SearchCheck, ShieldCheck, Users } from 'lucide-react';
+import { redirect } from 'next/navigation';
+import { AlertTriangle, ArrowRight, Bell, CheckCircle2, Clock3, CreditCard, FileText, ShieldAlert, UserCheck, Users } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Table } from '@/components/ui/table';
+import { summarizeAdminToday } from '@/lib/admin-operations-view';
+import { getCurrentUser } from '@/lib/auth';
+import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycle';
 import { prisma } from '@/lib/prisma';
+import { getTerminalFiscalWorkdaySummary, presentTerminalFiscalWorkdaySummary } from '@/lib/terminal-fiscal-summary';
+import { getMoscowDateKey } from '@/lib/workday';
 
 export const dynamic = 'force-dynamic';
 
-function formatDate(date: Date) {
-  return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+type ActionItem = { key: string; title: string; detail: string; href: string; occurredAt: Date; kind: 'decision' | 'message' | 'request' };
+
+function money(value: { toString(): string } | null) {
+  return value ? `${Number(value.toString()).toLocaleString('ru-RU')} ₽` : '';
 }
 
-const emptyText = 'Нет данных для отображения.';
-
-function formatDateTime(date: Date) {
-  return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
+function time(value: Date) {
+  return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }).format(value);
 }
 
-function formatMoney(value: number) {
-  return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
-}
-
-function EmptyState({
-  icon: Icon,
-  title,
-  text,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  title: string;
-  text: string;
-}) {
-  return (
-    <div className='flex min-h-[190px] flex-col items-center justify-center px-6 py-8 text-center'>
-      <div className='mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500'>
-        <Icon className='h-6 w-6' />
-      </div>
-      <p className='text-base font-extrabold text-slate-950'>{title}</p>
-      <p className='mt-2 max-w-md text-sm font-medium leading-relaxed text-slate-500'>{text}</p>
-    </div>
-  );
+function moscowDayRange(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1)).toISOString().slice(0, 10);
+  return { from: new Date(`${dateKey}T00:00:00+03:00`), to: new Date(`${next}T00:00:00+03:00`) };
 }
 
 export default async function AdminPage() {
-  const [
-    employeeCount,
-    attestationCount,
-    activeAttestationCount,
-    draftAttestationCount,
-    resultCount,
-    failedResultCount,
-    latestResults,
-    latestPayrollRun,
-  ] = await Promise.all([
-    prisma.user.count(),
-    prisma.attestation.count(),
-    prisma.attestation.count({ where: { status: 'ACTIVE' } }),
-    prisma.attestation.count({ where: { status: 'DRAFT' } }),
-    prisma.result.count(),
-    prisma.result.count({ where: { status: { not: 'Сдал' } } }),
-    prisma.result.findMany({
-      take: 5,
-      orderBy: { date: 'desc' },
-      include: { user: true, attestation: true },
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
+
+  const today = getMoscowDateKey();
+  const range = moscowDayRange(today);
+  const [employees, schedules, workdays, issues, reviews, closeRequests, expenseCases, unreadCount, terminalSummary] = await Promise.all([
+    prisma.user.findMany({ where: { role: 'EMPLOYEE', isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.workScheduleEntry.findMany({ where: { date: today }, select: { userId: true, status: true } }),
+    prisma.workDayEntry.findMany({ where: { date: today }, select: { userId: true, status: true, endedAt: true, user: { select: { name: true } } } }),
+    prisma.workdayControlIssue.findMany({
+      where: { status: 'open', employeeActionRequired: true },
+      select: { id: true, title: true, lastDetectedAt: true, user: { select: { name: true } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true, author: { select: { role: true } } } } },
+      orderBy: { lastDetectedAt: 'desc' }, take: 40,
     }),
-    prisma.payrollRun.findFirst({
-      orderBy: { createdAt: 'desc' },
-      include: { period: true },
+    prisma.terminalFiscalEmployeeReview.findMany({
+      where: { status: { in: ['open', 'admin_review'] } },
+      select: { id: true, status: true, amountKopecks: true, bankOperationAt: true, updatedAt: true, employee: { select: { name: true } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true, author: { select: { role: true } } } } },
+      orderBy: { updatedAt: 'desc' }, take: 40,
     }),
+    prisma.workdayCloseExceptionRequest.findMany({ where: { status: 'pending' }, select: { id: true, comment: true, requestedAt: true, employee: { select: { name: true } } }, orderBy: { requestedAt: 'desc' } }),
+    prisma.expenseRequestAdminCase.findMany({
+      where: { ...expenseRequestCurrentWhere, seenAt: null },
+      select: { id: true, oneCNumber: true, requestedByName: true, amount: true, businessOperationName: true, enteredNotApprovedAt: true, updatedAt: true },
+      orderBy: [{ enteredNotApprovedAt: 'desc' }, { updatedAt: 'desc' }], take: 20,
+    }),
+    prisma.adminInboxReceipt.count({ where: { userId: admin.id, readAt: null } }),
+    getTerminalFiscalWorkdaySummary({ periodFrom: range.from, periodTo: range.to }),
   ]);
 
-  const reviewCount = failedResultCount + draftAttestationCount;
-  const statCards = [
-    { title: 'Сотрудники', value: String(employeeCount), note: 'Всего сотрудников', icon: Users, href: '/admin/employees', tone: 'green' },
-    { title: 'Аттестации', value: String(attestationCount), note: `${activeAttestationCount} активных`, icon: GraduationCap, href: '/admin/attestations', tone: 'green' },
-    { title: 'Результаты', value: String(resultCount), note: 'Всего результатов', icon: BarChart3, href: '/admin/results', tone: 'green' },
-    { title: 'Посещаемость', value: '—', note: emptyText, icon: CalendarCheck, href: '/admin/attendance', tone: 'green' },
-    { title: 'Зарплата', value: latestPayrollRun ? formatMoney(latestPayrollRun.netPay) : '—', note: latestPayrollRun ? `${latestPayrollRun.period.periodKey} · расчёт №${latestPayrollRun.runNumber}` : emptyText, icon: Banknote, href: '/admin/payroll', tone: 'green' },
-    { title: 'Требует проверки', value: String(reviewCount), note: 'Несданные результаты и черновики', icon: AlertTriangle, href: '/admin/results', tone: 'amber' },
-  ];
+  const todaySummary = summarizeAdminToday({ employees, schedules, workdays });
+  const employeeById = new Map(employees.map((employee) => [employee.id, employee.name]));
+  const workingNames = workdays.filter((entry) => !entry.endedAt && entry.status !== 'completed').map((entry) => entry.user.name);
+  const completedNames = workdays.filter((entry) => entry.endedAt || entry.status === 'completed').map((entry) => entry.user.name);
+  const scheduledIds = new Set(schedules.filter((entry) => entry.status === 'working').map((entry) => entry.userId));
+  const startedIds = new Set(workdays.map((entry) => entry.userId));
+  const notStartedNames = [...scheduledIds].filter((id) => !startedIds.has(id)).map((id) => employeeById.get(id)).filter(Boolean) as string[];
 
-  const attentionItems = [
-    {
-      title: 'Несданные аттестации',
-      text: 'Результаты со статусом “Не сдал”',
-      count: failedResultCount,
-      href: '/admin/results',
-      tone: 'red',
-      icon: ShieldCheck,
-    },
-    {
-      title: 'Черновики аттестаций',
-      text: 'Аттестации ещё не активны',
-      count: draftAttestationCount,
-      href: '/admin/attestations',
-      tone: 'amber',
-      icon: ClipboardCheck,
-    },
-  ].filter((item) => item.count > 0);
+  const actions: ActionItem[] = [
+    ...closeRequests.map((item) => ({ key: `close-${item.id}`, title: `Разрешение завершить день · ${item.employee.name}`, detail: item.comment || 'Сотрудник указал техническую причину.', href: `/admin/workday/close-exceptions/${item.id}`, occurredAt: item.requestedAt, kind: 'decision' as const })),
+    ...expenseCases.map((item) => ({ key: `expense-${item.id}`, title: `Новая заявка ${item.oneCNumber || ''}`.trim(), detail: [item.requestedByName, money(item.amount), item.businessOperationName].filter(Boolean).join(' · '), href: `/admin/expense-requests/${item.id}`, occurredAt: item.enteredNotApprovedAt ?? item.updatedAt, kind: 'request' as const })),
+    ...issues.filter((item) => item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `issue-${item.id}`, title: `Сообщение от ${item.user.name}`, detail: item.title, href: `/admin/workday/issues/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.lastDetectedAt, kind: 'message' as const })),
+    ...reviews.filter((item) => item.status === 'admin_review' || item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `review-${item.id}`, title: item.status === 'admin_review' ? `Нужна проверка ADMIN · ${item.employee.name}` : `Сообщение от ${item.employee.name}`, detail: `Продажа ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.updatedAt, kind: item.status === 'admin_review' ? 'decision' as const : 'message' as const })),
+  ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
 
-  const quickActions = [
-    { title: 'Перейти к результатам на проверке', text: failedResultCount ? `${failedResultCount} результатов требуют внимания` : 'Открыть журнал результатов', href: '/admin/results', icon: SearchCheck },
-    { title: 'Открыть расчёт зарплаты', text: 'Загрузить Excel и проверить начисления', href: '/admin/payroll', icon: Banknote },
-    { title: 'Создать аттестацию', text: 'Перейти к списку аттестаций и форме создания', href: '/admin/attestations', icon: FilePlus2 },
-    { title: 'Открыть посещаемость', text: 'Посмотреть текущие данные Google Sheets', href: '/admin/attendance', icon: CalendarCheck },
-  ];
+  const actionHrefs = new Set(actions.map((item) => item.href));
+  const employeeProblems = [
+    ...issues.map((item) => ({ key: `issue-${item.id}`, title: item.title, detail: item.user.name, href: `/admin/workday/issues/${item.id}`, occurredAt: item.lastDetectedAt })),
+    ...reviews.filter((item) => item.status === 'open').map((item) => ({ key: `review-${item.id}`, title: 'Проверить продажу', detail: `${item.employee.name} · ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.updatedAt })),
+  ].filter((item) => !actionHrefs.has(item.href)).sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
+
+  const terminal = presentTerminalFiscalWorkdaySummary(terminalSummary);
+  const terminalAttention = terminal.status !== 'confirmed' && terminal.status !== 'not_run';
 
   return (
     <AdminShell>
-      <div className='mb-7'>
-        <div>
-          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Главная</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Обзор ключевых показателей и задач</p>
-        </div>
+      <div className='flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
+        <div><h1 className='text-3xl font-extrabold tracking-tight text-slate-950'>Сегодня</h1><p className='mt-1 text-sm font-medium text-slate-500'>Только состояние и исключения — успешные операции скрыты.</p></div>
+        <Link href='/admin/inbox' className='inline-flex w-fit items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'><Bell className='h-4 w-4' /> Inbox {unreadCount > 0 ? `· ${unreadCount} новых` : '· новых нет'}</Link>
       </div>
 
-      <section className='mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6'>
-        {statCards.map((item) => {
-          const Icon = item.icon;
-          const iconTone = item.tone === 'amber' ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-primary';
-          return (
-            <Link key={item.title} href={item.href} className='group block'>
-              <Card className='h-full p-5 transition group-hover:-translate-y-0.5 group-hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)]'>
-                <div className='flex items-start gap-4'>
-                  <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${iconTone}`}>
-                    <Icon className='h-6 w-6' />
-                  </div>
-                  <div className='min-w-0'>
-                    <p className='text-sm font-bold text-slate-600'>{item.title}</p>
-                    <p className='mt-2 text-2xl font-extrabold text-slate-950'>{item.value}</p>
-                    <p className='mt-1 text-xs font-medium leading-snug text-slate-500'>{item.note}</p>
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          );
-        })}
+      <section className='mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+        <TodayCard icon={UserCheck} label='Работают' value={todaySummary.working} detail={workingNames.join(', ') || 'Никто не начал день'} tone='green' />
+        <TodayCard icon={CheckCircle2} label='Завершили' value={todaySummary.completed} detail={completedNames.join(', ') || 'Пока никто'} tone='slate' />
+        <TodayCard icon={Clock3} label='Не начали' value={todaySummary.notStarted} detail={notStartedNames.join(', ') || 'Опозданий к старту нет'} tone={todaySummary.notStarted ? 'amber' : 'slate'} />
+        <TodayCard icon={Users} label='Выходной / без графика' value={todaySummary.off + todaySummary.unscheduled} detail={`Выходной ${todaySummary.off} · без графика ${todaySummary.unscheduled}`} tone='slate' />
       </section>
 
-      <section className='grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(380px,0.72fr)]'>
-        <Card className='p-0'>
-          <div className='border-b border-slate-200/80 px-5 py-4'>
-            <h2 className='text-lg font-extrabold text-slate-950'>Что требует внимания</h2>
-          </div>
-          {attentionItems.length ? (
-            <div className='divide-y divide-slate-200/80'>
-              {attentionItems.map((item) => {
-                const Icon = item.icon;
-                const toneClass = item.tone === 'red' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600';
-                const badgeClass = item.tone === 'red' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700';
-                return (
-                  <Link key={item.title} href={item.href} className='flex items-center gap-4 px-5 py-4 transition hover:bg-slate-50'>
-                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${toneClass}`}>
-                      <Icon className='h-5 w-5' />
-                    </div>
-                    <div className='min-w-0 flex-1'>
-                      <p className='font-bold text-slate-950'>{item.title}</p>
-                      <p className='text-sm font-medium text-slate-500'>{item.text}</p>
-                    </div>
-                    <Badge className={badgeClass}>{item.count}</Badge>
-                    <ChevronRight className='h-4 w-4 text-slate-400' />
-                  </Link>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState
-              icon={ShieldCheck}
-              title='Нет данных, требующих внимания.'
-              text='Когда появятся просроченные аттестации, ошибки зарплаты или проблемы с посещаемостью, они появятся здесь.'
-            />
-          )}
+      <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
+        <Card className='overflow-hidden p-0'>
+          <SectionHeader title='Нужно моё решение' count={actions.length} href='/admin/inbox' />
+          {actions.length ? <div className='divide-y divide-slate-100'>{actions.slice(0, 6).map((item) => <ActionRow key={item.key} item={item} />)}</div> : <Empty title='Моих действий сейчас нет' text='Новые сообщения, запросы на решение и заявки появятся здесь.' />}
         </Card>
-
-        <Card className='p-0'>
-          <div className='border-b border-slate-200/80 px-5 py-4'>
-            <h2 className='text-lg font-extrabold text-slate-950'>Быстрые действия</h2>
-          </div>
-          <div className='grid gap-3 p-4'>
-            {quickActions.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link key={item.title} href={item.href} className='flex items-center gap-4 rounded-lg border border-slate-200/80 bg-white px-4 py-4 transition hover:border-primary/35 hover:bg-green-50/30'>
-                  <div className='flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-green-100 text-primary'>
-                    <Icon className='h-5 w-5' />
-                  </div>
-                  <div className='min-w-0 flex-1'>
-                    <p className='font-bold text-slate-950'>{item.title}</p>
-                    <p className='text-sm font-medium text-slate-500'>{item.text}</p>
-                  </div>
-                  <ChevronRight className='h-4 w-4 text-slate-400' />
-                </Link>
-              );
-            })}
-          </div>
+        <Card className='overflow-hidden p-0'>
+          <SectionHeader title='Сотрудникам нужно исправить' count={issues.length + reviews.filter((item) => item.status === 'open').length} href='/admin/workday' />
+          {employeeProblems.length ? <div className='divide-y divide-slate-100'>{employeeProblems.slice(0, 5).map((item) => <Link key={item.key} href={item.href} className='flex items-center gap-3 px-5 py-4 hover:bg-slate-50'><ShieldAlert className='h-5 w-5 shrink-0 text-amber-600' /><span className='min-w-0 flex-1'><span className='block truncate text-sm font-extrabold text-slate-950'>{item.title}</span><span className='block truncate text-xs font-medium text-slate-500'>{item.detail}</span></span><ArrowRight className='h-4 w-4 text-slate-400' /></Link>)}</div> : <Empty title='Активных исправлений нет' text='Прочтение уведомления не влияет на этот список: проблема исчезнет только после исправления.' />}
         </Card>
       </section>
 
-      <section className='mt-5 grid gap-5 lg:grid-cols-2'>
-        <Card className='p-0'>
-          <div className='border-b border-slate-200/80 px-5 py-4'>
-            <h2 className='text-lg font-extrabold text-slate-950'>Зарплата</h2>
-          </div>
-          {latestPayrollRun ? (
-            <div className='grid gap-4 p-5'>
-              <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
-                <div>
-                  <p className='text-sm font-bold text-slate-500'>Период</p>
-                  <p className='mt-1 text-2xl font-extrabold text-slate-950'>{latestPayrollRun.period.periodKey}</p>
-                </div>
-                <Badge className={latestPayrollRun.status === 'FINAL' ? 'w-fit bg-green-100 text-green-800' : latestPayrollRun.status === 'CHECKED' ? 'w-fit bg-blue-100 text-blue-800' : 'w-fit bg-slate-100 text-slate-700'}>
-                  {latestPayrollRun.status}
-                </Badge>
-              </div>
-              <div className='grid gap-3 sm:grid-cols-2'>
-                <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
-                  <p className='text-xs font-semibold uppercase text-slate-500'>Расчёт</p>
-                  <p className='mt-1 text-lg font-bold text-slate-900'>№{latestPayrollRun.runNumber}</p>
-                </div>
-                <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
-                  <p className='text-xs font-semibold uppercase text-slate-500'>Дата сохранения</p>
-                  <p className='mt-1 text-lg font-bold text-slate-900'>{formatDateTime(latestPayrollRun.createdAt)}</p>
-                </div>
-                <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
-                  <p className='text-xs font-semibold uppercase text-slate-500'>Сотрудников</p>
-                  <p className='mt-1 text-lg font-bold text-slate-900'>{latestPayrollRun.employeeCount}</p>
-                </div>
-                <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
-                  <p className='text-xs font-semibold uppercase text-slate-500'>Проверить</p>
-                  <p className='mt-1 text-lg font-bold text-slate-900'>{latestPayrollRun.reviewCount}</p>
-                </div>
-              </div>
-              <div className='rounded-lg border border-green-100 bg-green-50 px-3 py-3'>
-                <p className='text-xs font-semibold uppercase text-green-700'>К выплате</p>
-                <p className='mt-1 text-2xl font-extrabold text-green-900'>{formatMoney(latestPayrollRun.netPay)}</p>
-              </div>
-              <Link href='/admin/payroll' className='inline-flex w-fit items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white transition hover:bg-primary/90'>
-                Открыть зарплату
-                <ChevronRight className='h-4 w-4' />
-              </Link>
-            </div>
-          ) : (
-            <EmptyState
-              icon={Banknote}
-              title='Нет данных по зарплате.'
-              text='После сохранения расчёта здесь появится последняя сводка по зарплате.'
-            />
-          )}
-        </Card>
-
-        <Card className='p-0'>
-          <div className='border-b border-slate-200/80 px-5 py-4'>
-            <h2 className='text-lg font-extrabold text-slate-950'>Посещаемость</h2>
-          </div>
-          <EmptyState
-            icon={CalendarCheck}
-            title='Нет сохранённой сводки посещаемости.'
-            text='Сейчас данные отображаются на странице посещаемости. Для вывода на главной потребуется отдельное сохранение сводки.'
-          />
-        </Card>
+      <section className='mt-5'>
+        <Link href='/admin/workday' className={`flex items-start gap-4 rounded-2xl p-5 shadow-sm ring-1 transition hover:-translate-y-0.5 ${terminalAttention ? 'bg-amber-50 ring-amber-200' : 'bg-white ring-slate-200'}`}>
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${terminalAttention ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}><CreditCard className='h-5 w-5' /></div>
+          <div className='min-w-0 flex-1'><p className='text-xs font-extrabold uppercase tracking-wide text-slate-500'>Состояние сверки оплат</p><p className='mt-1 font-extrabold text-slate-950'>{terminal.label}</p><p className='mt-1 text-sm font-medium leading-relaxed text-slate-600'>{terminal.detail}</p></div>
+          <ArrowRight className='mt-3 h-4 w-4 shrink-0 text-slate-400' />
+        </Link>
       </section>
-
-      <Card className='mt-5 p-0'>
-        <div className='flex items-center justify-between border-b border-slate-200/80 px-5 py-4'>
-          <h2 className='text-lg font-extrabold text-slate-950'>Последние результаты</h2>
-          <Link href='/admin/results' className='text-sm font-bold text-primary hover:text-green-700'>
-            Все результаты
-          </Link>
-        </div>
-        {latestResults.length ? (
-          <Table>
-            <thead className='bg-slate-50 text-left text-slate-500'>
-              <tr>
-                <th className='px-5 py-4'>Сотрудник</th>
-                <th className='px-5 py-4'>Аттестация</th>
-                <th className='px-5 py-4'>Баллы</th>
-                <th className='px-5 py-4'>Дата</th>
-                <th className='px-5 py-4'>Статус</th>
-              </tr>
-            </thead>
-            <tbody>
-              {latestResults.map((result) => (
-                <tr key={result.id} className='border-t border-slate-200/80'>
-                  <td className='px-5 py-4 font-bold text-slate-950'>{result.user.name}</td>
-                  <td className='px-5 py-4 text-slate-700'>{result.attestation.title}</td>
-                  <td className='px-5 py-4 font-bold text-primary'>{result.percent}%</td>
-                  <td className='px-5 py-4 text-slate-600'>{formatDate(result.date)}</td>
-                  <td className='px-5 py-4'>
-                    <Badge className={result.status === 'Сдал' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}>
-                      {result.status}
-                    </Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        ) : (
-          <EmptyState icon={BarChart3} title={emptyText} text='Последние результаты появятся здесь после прохождения аттестаций сотрудниками.' />
-        )}
-      </Card>
     </AdminShell>
   );
+}
+
+function TodayCard({ icon: Icon, label, value, detail, tone }: { icon: typeof Users; label: string; value: number; detail: string; tone: 'green' | 'amber' | 'slate' }) {
+  const colors = tone === 'green' ? 'bg-green-100 text-green-700' : tone === 'amber' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600';
+  return <Card className='p-4'><div className='flex items-start gap-3'><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${colors}`}><Icon className='h-5 w-5' /></div><div className='min-w-0'><p className='text-xs font-extrabold uppercase tracking-wide text-slate-500'>{label}</p><p className='mt-1 text-2xl font-extrabold text-slate-950'>{value}</p><p className='mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-500'>{detail}</p></div></div></Card>;
+}
+
+function SectionHeader({ title, count, href }: { title: string; count: number; href: string }) {
+  return <div className='flex items-center justify-between border-b border-slate-200 px-5 py-4'><div className='flex items-center gap-2'><h2 className='text-lg font-extrabold text-slate-950'>{title}</h2>{count > 0 && <span className='rounded-full bg-amber-100 px-2 py-0.5 text-xs font-extrabold text-amber-800'>{count}</span>}</div><Link href={href} className='text-xs font-bold text-green-700 hover:text-green-800'>Открыть всё</Link></div>;
+}
+
+function ActionRow({ item }: { item: ActionItem }) {
+  const Icon = item.kind === 'request' ? FileText : item.kind === 'decision' ? AlertTriangle : Bell;
+  return <Link href={item.href} className='flex items-start gap-3 px-5 py-4 hover:bg-slate-50'><div className='mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700'><Icon className='h-4 w-4' /></div><span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.title}</span><span className='mt-0.5 block text-xs font-medium leading-relaxed text-slate-600'>{item.detail}</span><span className='mt-1 block text-[11px] font-semibold text-slate-400'>{time(item.occurredAt)}</span></span><ArrowRight className='mt-2 h-4 w-4 shrink-0 text-slate-400' /></Link>;
+}
+
+function Empty({ title, text }: { title: string; text: string }) {
+  return <div className='px-6 py-10 text-center'><CheckCircle2 className='mx-auto h-9 w-9 text-green-500' /><p className='mt-3 font-extrabold text-slate-950'>{title}</p><p className='mx-auto mt-1 max-w-md text-sm font-medium text-slate-500'>{text}</p></div>;
 }

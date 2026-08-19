@@ -8,6 +8,8 @@ type InboxItem = {
   id: string;
   readAt: string | null;
   event: { type: string; title: string; body: string; href: string; occurredAt: string };
+  meta: { typeLabel: string; actionLabel: string; category: string };
+  sourceState: { active: boolean; label: string; tone: string };
 };
 
 function when(value: string) {
@@ -77,7 +79,7 @@ export function AdminInboxBell() {
             <div className='max-h-[420px] divide-y divide-slate-100 overflow-y-auto'>{items.map((item) => (
               <button key={item.id} type='button' onClick={() => void openItem(item)} className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 ${item.readAt ? 'bg-white' : 'bg-amber-50/70'}`}>
                 <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-amber-400'}`} />
-                <span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className='mt-0.5 block text-xs font-medium leading-relaxed text-slate-600'>{item.event.body}</span><span className='mt-1 block text-[11px] font-semibold text-slate-400'>{when(item.event.occurredAt)}</span></span>
+                <span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className='mt-0.5 block text-xs font-medium leading-relaxed text-slate-600'>{item.event.body}</span><span className='mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-400'><span>{when(item.event.occurredAt)}</span><span>· {item.meta.typeLabel}</span>{item.sourceState.active && <span className='rounded-full bg-amber-100 px-1.5 py-0.5 font-extrabold text-amber-800'>{item.sourceState.label}</span>}</span></span>
                 <ChevronRight className='mt-1 h-4 w-4 shrink-0 text-slate-400' />
               </button>
             ))}</div>
