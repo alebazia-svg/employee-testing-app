@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-export function CloseExceptionDecisionClient({ requestId }: { requestId: string }) {
+export function CloseExceptionDecisionClient({ requestId, approveLabel = 'Разрешить завершить день' }: { requestId: string; approveLabel?: string }) {
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -33,7 +33,7 @@ export function CloseExceptionDecisionClient({ requestId }: { requestId: string 
       <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} rows={3} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-green-500' placeholder='Необязательно при разрешении' />
       {error && <p className='text-sm font-bold text-red-700'>{error}</p>}
       <div className='grid gap-2 sm:grid-cols-2'>
-        <Button disabled={saving} onClick={() => decide('approved')} className='font-extrabold'>Разрешить завершить день</Button>
+        <Button disabled={saving} onClick={() => decide('approved')} className='font-extrabold'>{approveLabel}</Button>
         <Button disabled={saving} onClick={() => decide('rejected')} className='bg-white font-extrabold text-red-700 ring-1 ring-red-200 shadow-none hover:bg-red-50'>Не разрешать</Button>
       </div>
     </div>

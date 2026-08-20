@@ -234,6 +234,7 @@ type Props = {
   requiredIssues: RequiredWorkdayIssue[];
   paymentChecks: OpenPaymentCheck[];
   closeExceptionRequest: WorkdayCloseException | null;
+  cashEncashmentExceptionRequest: WorkdayCloseException | null;
 };
 
 type EmployeeWorkdaySnapshot = {
@@ -244,6 +245,7 @@ type EmployeeWorkdaySnapshot = {
   requiredIssues: RequiredWorkdayIssue[];
   paymentChecks: OpenPaymentCheck[];
   closeExceptionRequest: WorkdayCloseException | null;
+  cashEncashmentExceptionRequest: WorkdayCloseException | null;
 };
 
 type Tab = 'day' | 'schedule';
@@ -766,6 +768,7 @@ function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | 
     requiredIssues: value.requiredIssues as RequiredWorkdayIssue[],
     paymentChecks: value.paymentChecks as OpenPaymentCheck[],
     closeExceptionRequest: value.closeExceptionRequest === null ? null : isRecord(value.closeExceptionRequest) ? value.closeExceptionRequest as WorkdayCloseException : null,
+    cashEncashmentExceptionRequest: value.cashEncashmentExceptionRequest === null ? null : isRecord(value.cashEncashmentExceptionRequest) ? value.cashEncashmentExceptionRequest as WorkdayCloseException : null,
   };
 }
 
@@ -962,6 +965,7 @@ export function EmployeeTodayClient({
   requiredIssues,
   paymentChecks,
   closeExceptionRequest,
+  cashEncashmentExceptionRequest,
 }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('day');
@@ -974,9 +978,12 @@ export function EmployeeTodayClient({
   const [requiredIssuesState, setRequiredIssuesState] = useState(requiredIssues);
   const [paymentChecksState, setPaymentChecksState] = useState(paymentChecks);
   const [closeExceptionRequestState, setCloseExceptionRequestState] = useState(closeExceptionRequest);
+  const [cashEncashmentExceptionRequestState, setCashEncashmentExceptionRequestState] = useState(cashEncashmentExceptionRequest);
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [closeExceptionReason, setCloseExceptionReason] = useState('');
   const [closeExceptionComment, setCloseExceptionComment] = useState('');
+  const [cashEncashmentExceptionReason, setCashEncashmentExceptionReason] = useState('');
+  const [cashEncashmentExceptionComment, setCashEncashmentExceptionComment] = useState('');
   const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '', idempotencyKey: '' });
   const [selectedShift, setSelectedShift] = useState('');
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
@@ -1100,6 +1107,7 @@ export function EmployeeTodayClient({
       setRequiredIssuesState(snapshot.requiredIssues);
       setPaymentChecksState(snapshot.paymentChecks);
       setCloseExceptionRequestState(snapshot.closeExceptionRequest);
+      setCashEncashmentExceptionRequestState(snapshot.cashEncashmentExceptionRequest);
       if (!snapshot.requiredIssues.length) setCloseBlocked(false);
     } catch {
       // Keep the last valid snapshot and retry on the next scheduled sync.
@@ -1575,6 +1583,35 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось отправить запрос');
       setCloseExceptionRequestState(payload.request);
+      setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен администратору');
+      await syncCurrentWorkdayState(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось отправить запрос');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function requestCashEncashmentException() {
+    if (!cashEncashmentExceptionReason) {
+      setError('Выберите причину');
+      return;
+    }
+    if (!cashEncashmentExceptionComment.trim()) {
+      setError('Коротко укажите, где сейчас деньги');
+      return;
+    }
+    setIsSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/employee/workday/cash-encashment-exception', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: cashEncashmentExceptionReason, comment: cashEncashmentExceptionComment }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось отправить запрос');
+      setCashEncashmentExceptionRequestState(payload.request);
       setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен администратору');
       await syncCurrentWorkdayState(true);
     } catch (reason) {
@@ -2265,6 +2302,7 @@ export function EmployeeTodayClient({
     }
     if (step === 'zReportPhoto' && !hasHandoverPhoto(draft.zReportPhoto)) return 'Сделайте фото чека закрытия смены';
     if (step === 'encashment') {
+      if (cashEncashmentExceptionRequestState?.status === 'approved') return '';
       if (parseMoneyInput(draft.encashmentAmount) === null) return 'Укажите сумму инкассации';
       if (user.department === 'retail' && !draft.encashmentDirection) return 'Выберите направление инкассации';
       if (!hasHandoverPhoto(draft.encashmentDocumentPhoto)) return user.department === 'retail'
@@ -2538,6 +2576,19 @@ export function EmployeeTodayClient({
             <p className='rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
               Остаток наличных в моей кассе больше 50 000 ₽, нужна инкассация.
             </p>
+            {cashEncashmentExceptionRequestState?.status === 'approved' ? (
+              <p className='rounded-lg bg-green-50 px-3 py-2 text-xs font-bold text-green-800 ring-1 ring-green-200'>Администратор разрешил завершить день без инкассации. РКО и ПКО не будут созданы; ситуация останется на контроле.</p>
+            ) : cashEncashmentExceptionRequestState?.status === 'pending' ? (
+              <p className='rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200'>Запрос отправлен администратору · ожидает решения.</p>
+            ) : (
+              <div className='grid gap-2 rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200'>
+                <p className='text-xs font-extrabold text-slate-800'>Не удаётся выполнить инкассацию?</p>
+                <select value={cashEncashmentExceptionReason} onChange={(event) => setCashEncashmentExceptionReason(event.target.value)} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите причину</option><option value='safe_access'>Нет доступа к депозитному сейфу</option><option value='handover'>Деньги переданы ответственному сотруднику</option><option value='other'>Другая причина</option></select>
+                <textarea value={cashEncashmentExceptionComment} onChange={(event) => setCashEncashmentExceptionComment(event.target.value)} rows={2} maxLength={1000} placeholder='Где сейчас деньги и почему инкассация невозможна' className='rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' />
+                <Button type='button' className='h-10 bg-white text-xs font-extrabold text-slate-900 ring-1 ring-slate-200 shadow-none hover:bg-slate-50' disabled={isSaving} onClick={requestCashEncashmentException}>Сообщить администратору</Button>
+              </div>
+            )}
+            {cashEncashmentExceptionRequestState?.status !== 'approved' && <>
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
               Сумма инкассации
               <input
@@ -2584,6 +2635,7 @@ export function EmployeeTodayClient({
               stepError && parseMoneyInput(handoverDraft.encashmentAmount) !== null ? stepError : undefined,
               parseMoneyInput(handoverDraft.encashmentAmount) === null ? 'Сначала укажите сумму инкассации' : undefined,
             )}
+            </>}
           </div>
         )}
 

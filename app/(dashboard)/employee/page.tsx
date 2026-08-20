@@ -64,6 +64,7 @@ export default async function Employee() {
       requiredIssues={workdaySnapshot.requiredIssues}
       paymentChecks={workdaySnapshot.paymentChecks}
       closeExceptionRequest={workdaySnapshot.closeExceptionRequest}
+      cashEncashmentExceptionRequest={workdaySnapshot.cashEncashmentExceptionRequest}
     />
   );
 }

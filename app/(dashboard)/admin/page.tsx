@@ -11,6 +11,7 @@ import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycl
 import { prisma } from '@/lib/prisma';
 import { getTerminalFiscalWorkdaySummary, presentTerminalFiscalWorkdaySummary } from '@/lib/terminal-fiscal-summary';
 import { getMoscowDateKey } from '@/lib/workday';
+import { cashEncashmentExceptionPrefix, isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,7 @@ export default async function AdminPage() {
       select: { id: true, status: true, amountKopecks: true, bankOperationAt: true, updatedAt: true, employee: { select: { name: true } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true, author: { select: { role: true } } } } },
       orderBy: { updatedAt: 'desc' }, take: 40,
     }),
-    prisma.workdayCloseExceptionRequest.findMany({ where: { status: 'pending' }, select: { id: true, comment: true, requestedAt: true, employee: { select: { name: true } } }, orderBy: { requestedAt: 'desc' } }),
+    prisma.workdayCloseExceptionRequest.findMany({ where: { OR: [{ status: 'pending' }, { status: 'approved', reasonCode: { startsWith: cashEncashmentExceptionPrefix } }] }, select: { id: true, comment: true, reasonCode: true, status: true, requestedAt: true, employee: { select: { name: true } } }, orderBy: { requestedAt: 'desc' } }),
     prisma.expenseRequestAdminCase.findMany({
       where: { ...expenseRequestCurrentWhere, seenAt: null },
       select: { id: true, oneCNumber: true, requestedByName: true, amount: true, businessOperationName: true, enteredNotApprovedAt: true, updatedAt: true },
@@ -69,7 +70,7 @@ export default async function AdminPage() {
   const notStartedNames = [...scheduledIds].filter((id) => !startedIds.has(id)).map((id) => employeeById.get(id)).filter(Boolean) as string[];
 
   const actions: ActionItem[] = [
-    ...closeRequests.map((item) => ({ key: `close-${item.id}`, title: `Разрешение завершить день · ${item.employee.name}`, detail: item.comment || 'Сотрудник указал техническую причину.', href: `/admin/workday/close-exceptions/${item.id}`, occurredAt: item.requestedAt, kind: 'decision' as const })),
+    ...closeRequests.map((item) => ({ key: `close-${item.id}`, title: isCashEncashmentException(item.reasonCode) ? `Инкассация не выполнена · ${item.employee.name}` : `Разрешение завершить день · ${item.employee.name}`, detail: item.status === 'approved' && isCashEncashmentException(item.reasonCode) ? 'Разрешено без РКО и ПКО; требуется фактическое устранение.' : item.comment || 'Сотрудник указал техническую причину.', href: `/admin/workday/close-exceptions/${item.id}`, occurredAt: item.requestedAt, kind: 'decision' as const })),
     ...expenseCases.map((item) => ({ key: `expense-${item.id}`, title: `Новая заявка ${item.oneCNumber || ''}`.trim(), detail: [item.requestedByName, money(item.amount), item.businessOperationName].filter(Boolean).join(' · '), href: `/admin/expense-requests/${item.id}`, occurredAt: item.enteredNotApprovedAt ?? item.updatedAt, kind: 'request' as const })),
     ...issues.filter((item) => item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `issue-${item.id}`, title: `Сообщение от ${item.user.name}`, detail: item.title, href: `/admin/workday/issues/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.lastDetectedAt, kind: 'message' as const })),
     ...reviews.filter((item) => item.status === 'admin_review' || item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `review-${item.id}`, title: item.status === 'admin_review' ? `Нужна проверка ADMIN · ${item.employee.name}` : `Сообщение от ${item.employee.name}`, detail: `Продажа ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.updatedAt, kind: item.status === 'admin_review' ? 'decision' as const : 'message' as const })),

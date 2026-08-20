@@ -9,6 +9,7 @@ import { shiftControlEmployeeRevisionHistoryKey, shiftControlOneCAuditKey, strip
 import { employeeKkmReportPhotosRequired } from '@/lib/shift-control-policy';
 import { usesWorkdayShiftControl } from '@/lib/workday';
 import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib/workday-required-issues';
+import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import {
   appendCashRecountInputHistory,
   buildCashRecountComparison,
@@ -433,12 +434,24 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
     const requiresDiscrepancyComment = false;
 
+    const approvedCashEncashmentException = requiresEncashment
+      ? await prisma.workdayCloseExceptionRequest.findFirst({
+          where: {
+            workDayEntryId: task.run.workDayEntryId,
+            status: 'approved',
+            reasonCode: { startsWith: cashEncashmentExceptionPrefix },
+          },
+          orderBy: { decidedAt: 'desc' },
+        })
+      : null;
+    const canFinishWithoutEncashment = Boolean(approvedCashEncashmentException);
+
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
     if (isRetail && reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
     if (discrepancyType && !['none', 'surplus', 'shortage'].includes(discrepancyType)) {
       return Response.json({ error: 'Не удалось определить расхождение по кассе' }, { status: 400 });
     }
-    if (requiresEncashment) {
+    if (requiresEncashment && !canFinishWithoutEncashment) {
       if (encashmentAmount === null) return Response.json({ error: 'Укажите сумму инкассации' }, { status: 400 });
       const allowedDirections = isRetail ? ['phone_reserve', 'deposit_safe'] : ['deposit_safe'];
       if (!allowedDirections.includes(encashmentDirection)) {
@@ -468,7 +481,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     try {
-      if (requiresEncashment && encashmentAmount !== null) {
+      if (requiresEncashment && !canFinishWithoutEncashment && encashmentAmount !== null) {
         const legacyIdempotencyKey = `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`;
         const compactIdempotencyKey = `h${task.id}`;
         const [mapping, dimensions] = await Promise.all([
@@ -555,7 +568,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const photos = {
         personalStatement: savedPhoto(handoverData, 'personalStatement'),
         zReport: isClosingEmployee ? savedPhoto(handoverData, 'zReport') : null,
-        encashmentDocument: requiresEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
+        encashmentDocument: requiresEncashment && !canFinishWithoutEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
       };
       const now = new Date();
       const handoverRecord = isRecord(handoverData) ? handoverData : {};
@@ -583,8 +596,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           withdrawalDifference: null,
           hasTbankCredit: null,
           requiresEncashment,
-          encashmentAmount: requiresEncashment ? encashmentAmount : null,
-          encashmentDirection: requiresEncashment ? encashmentDirection : null,
+          encashmentAmount: requiresEncashment && !canFinishWithoutEncashment ? encashmentAmount : null,
+          encashmentDirection: requiresEncashment && !canFinishWithoutEncashment ? encashmentDirection : null,
+          encashmentExceptionRequestId: approvedCashEncashmentException?.id ?? null,
         },
         reserveCash: isRetail ? { cashBalance: reserveCashBalance } : null,
         terminalCheck: null,
@@ -645,6 +659,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         });
         if (closeException) {
           await tx.workdayCloseExceptionRequest.update({ where: { id: closeException.id }, data: { consumedAt: now } });
+        }
+        if (requiresEncashment && !canFinishWithoutEncashment) {
+          await tx.workdayCloseExceptionRequest.updateMany({
+            where: {
+              workDayEntryId: task.run.workDayEntryId,
+              reasonCode: { startsWith: cashEncashmentExceptionPrefix },
+              status: { in: ['pending', 'approved'] },
+            },
+            data: { status: 'resolved', consumedAt: now },
+          });
         }
         const tasks = await tx.shiftControlTask.findMany({
           where: { runId: task.runId },

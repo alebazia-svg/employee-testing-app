@@ -107,7 +107,7 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
   ]);
 
   const activeWorkDay = [todayWorkDay, unfinishedWorkDay].find((entry) => entry && !entry.endedAt && ['active', 'missing_checkout'].includes(entry.status)) ?? null;
-  const [requiredIssues, paymentChecks, closeExceptionRequest] = await Promise.all([
+  const [requiredIssues, paymentChecks, closeExceptionRequest, cashEncashmentExceptionRequest] = await Promise.all([
     findOpenRequiredWorkdayIssues(prisma, user.id),
     prisma.terminalFiscalEmployeeReview.findMany({
       where: { employeeId: user.id, status: 'open' },
@@ -120,7 +120,11 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
       },
     }),
     activeWorkDay ? prisma.workdayCloseExceptionRequest.findFirst({
-      where: { workDayEntryId: activeWorkDay.id },
+      where: { workDayEntryId: activeWorkDay.id, NOT: { reasonCode: { startsWith: 'cash_encashment_' } } },
+      orderBy: { requestedAt: 'desc' },
+    }) : null,
+    activeWorkDay ? prisma.workdayCloseExceptionRequest.findFirst({
+      where: { workDayEntryId: activeWorkDay.id, reasonCode: { startsWith: 'cash_encashment_' }, status: { in: ['pending', 'approved', 'rejected'] } },
       orderBy: { requestedAt: 'desc' },
     }) : null,
   ]);
@@ -140,6 +144,14 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
       consumedAt: closeExceptionRequest.consumedAt?.toISOString() ?? null,
       createdAt: closeExceptionRequest.createdAt.toISOString(),
       updatedAt: closeExceptionRequest.updatedAt.toISOString(),
+    } : null,
+    cashEncashmentExceptionRequest: cashEncashmentExceptionRequest ? {
+      ...cashEncashmentExceptionRequest,
+      requestedAt: cashEncashmentExceptionRequest.requestedAt.toISOString(),
+      decidedAt: cashEncashmentExceptionRequest.decidedAt?.toISOString() ?? null,
+      consumedAt: cashEncashmentExceptionRequest.consumedAt?.toISOString() ?? null,
+      createdAt: cashEncashmentExceptionRequest.createdAt.toISOString(),
+      updatedAt: cashEncashmentExceptionRequest.updatedAt.toISOString(),
     } : null,
   };
 }
