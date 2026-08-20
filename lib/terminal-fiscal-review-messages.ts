@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { PrismaClient } from '@prisma/client';
+import { queueAdminInboxTelegramDelivery } from '@/lib/admin-inbox';
 
 export function normalizeTerminalFiscalReviewMessage(value: unknown) {
   const body = String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -47,6 +48,7 @@ export async function addEmployeeTerminalFiscalReviewMessage(input: {
       data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })),
       skipDuplicates: true,
     });
+    await queueAdminInboxTelegramDelivery({ db: tx, eventId: event.id });
     return { messageId: message.id, inboxEventId: event.id };
   });
 }

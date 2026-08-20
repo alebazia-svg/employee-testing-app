@@ -1,0 +1,11 @@
+[Unit]
+Description=Deliver OFFONIKA ADMIN events to Telegram every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00 Europe/Moscow
+Persistent=false
+AccuracySec=15s
+Unit=offonika-admin-inbox-telegram.service
+
+[Install]
+WantedBy=timers.target

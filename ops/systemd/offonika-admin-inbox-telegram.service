@@ -1,0 +1,15 @@
+[Unit]
+Description=OFFONIKA ADMIN inbox Telegram delivery
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n -E 0 /run/lock/offonika-admin-inbox-telegram.lock /docker/employee-testing-app/ops/systemd/run-offonika-admin-inbox-telegram.sh
+TimeoutStartSec=3min
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

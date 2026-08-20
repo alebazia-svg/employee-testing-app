@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { findOpenRequiredWorkdayIssues, readIssueIds, sameIssueIds } from '@/lib/workday-required-issues';
+import { queueAdminInboxTelegramDelivery } from '@/lib/admin-inbox';
 
 const allowedReasons = new Set(['power', 'internet', 'one_c', 'kkm', 'other']);
 
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
       data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })),
       skipDuplicates: true,
     });
+    await queueAdminInboxTelegramDelivery({ db: tx, eventId: event.id });
     return request;
   });
 

@@ -33,6 +33,11 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Требуется решение ADMIN',
     actionLabel: 'Принять решение',
   },
+  'workday.cash_encashment_exception_requested': {
+    category: 'decisions',
+    typeLabel: 'Инкассация',
+    actionLabel: 'Принять решение',
+  },
 };
 
 export function adminInboxEventMeta(type: string): AdminInboxEventMeta {
@@ -46,6 +51,7 @@ export function adminInboxEventMeta(type: string): AdminInboxEventMeta {
 export function adminInboxSourceState(input: {
   sourceType: string;
   businessStatus?: string | null;
+  reasonCode?: string | null;
   current?: boolean;
   employeeActionRequired?: boolean;
 }): AdminInboxSourceState {
@@ -67,6 +73,7 @@ export function adminInboxSourceState(input: {
   }
   if (input.sourceType === 'workday_close_exception') {
     if (input.businessStatus === 'pending') return { active: true, label: 'Ожидает решения', tone: 'attention' };
+    if (input.businessStatus === 'approved' && input.reasonCode?.startsWith('cash_encashment_')) return { active: true, label: 'Инкассация на контроле', tone: 'attention' };
     if (input.businessStatus === 'approved') return { active: false, label: 'Разрешено ADMIN', tone: 'resolved' };
     if (input.businessStatus === 'rejected') return { active: false, label: 'Отклонено ADMIN', tone: 'history' };
   }

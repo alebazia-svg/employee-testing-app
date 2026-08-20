@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { cashEncashmentExceptionReasons, toCashEncashmentReasonCode, type CashEncashmentExceptionReason } from '@/lib/workday-cash-encashment-exception';
 import { prisma } from '@/lib/prisma';
+import { queueAdminInboxTelegramDelivery } from '@/lib/admin-inbox';
 
 function normalizedComment(value: unknown) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
     });
     const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
     if (admins.length) await tx.adminInboxReceipt.createMany({ data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })), skipDuplicates: true });
+    await queueAdminInboxTelegramDelivery({ db: tx, eventId: event.id });
     return created;
   });
   return Response.json({ request, created: true });

@@ -51,7 +51,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     }) : [],
     exceptionIds.length ? prisma.workdayCloseExceptionRequest.findMany({
       where: { id: { in: exceptionIds } },
-      select: { id: true, status: true },
+      select: { id: true, status: true, reasonCode: true },
     }) : [],
   ]);
 
@@ -71,6 +71,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       sourceType,
       current: currentExpenseRefs.has(sourceId),
       businessStatus: issue?.status ?? review?.status ?? exception?.status,
+      reasonCode: exception?.reasonCode,
       employeeActionRequired: issue?.employeeActionRequired,
     });
     return {

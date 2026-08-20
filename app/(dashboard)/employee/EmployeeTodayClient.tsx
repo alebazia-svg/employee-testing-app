@@ -984,6 +984,7 @@ export function EmployeeTodayClient({
   const [closeExceptionComment, setCloseExceptionComment] = useState('');
   const [cashEncashmentExceptionReason, setCashEncashmentExceptionReason] = useState('');
   const [cashEncashmentExceptionComment, setCashEncashmentExceptionComment] = useState('');
+  const [showCashEncashmentExceptionForm, setShowCashEncashmentExceptionForm] = useState(false);
   const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '', idempotencyKey: '' });
   const [selectedShift, setSelectedShift] = useState('');
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
@@ -1612,6 +1613,7 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось отправить запрос');
       setCashEncashmentExceptionRequestState(payload.request);
+      setShowCashEncashmentExceptionForm(false);
       setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен администратору');
       await syncCurrentWorkdayState(true);
     } catch (reason) {
@@ -2572,37 +2574,42 @@ export function EmployeeTodayClient({
         )}
 
         {step === 'encashment' && (
-          <div className='grid gap-3'>
-            <p className='rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
+          <div className='grid min-w-0 gap-3'>
+            <p className='break-words rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
               Остаток наличных в моей кассе больше 50 000 ₽, нужна инкассация.
             </p>
             {cashEncashmentExceptionRequestState?.status === 'approved' ? (
               <p className='rounded-lg bg-green-50 px-3 py-2 text-xs font-bold text-green-800 ring-1 ring-green-200'>Администратор разрешил завершить день без инкассации. РКО и ПКО не будут созданы; ситуация останется на контроле.</p>
             ) : cashEncashmentExceptionRequestState?.status === 'pending' ? (
-              <p className='rounded-lg bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200'>Запрос отправлен администратору · ожидает решения.</p>
-            ) : (
-              <div className='grid gap-2 rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200'>
-                <p className='text-xs font-extrabold text-slate-800'>Не удаётся выполнить инкассацию?</p>
-                <select value={cashEncashmentExceptionReason} onChange={(event) => setCashEncashmentExceptionReason(event.target.value)} className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите причину</option><option value='safe_access'>Нет доступа к депозитному сейфу</option><option value='handover'>Деньги переданы ответственному сотруднику</option><option value='other'>Другая причина</option></select>
-                <textarea value={cashEncashmentExceptionComment} onChange={(event) => setCashEncashmentExceptionComment(event.target.value)} rows={2} maxLength={1000} placeholder='Где сейчас деньги и почему инкассация невозможна' className='rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' />
-                <Button type='button' className='h-10 bg-white text-xs font-extrabold text-slate-900 ring-1 ring-slate-200 shadow-none hover:bg-slate-50' disabled={isSaving} onClick={requestCashEncashmentException}>Сообщить администратору</Button>
+              <div className='grid min-w-0 gap-2 rounded-lg bg-amber-50 p-3 ring-1 ring-amber-200'>
+                <p className='text-xs font-bold text-amber-800'>Запрос отправлен администратору · ожидает решения.</p>
+                <Button type='button' className='h-9 bg-white text-xs font-extrabold text-slate-800 ring-1 ring-amber-200 shadow-none hover:bg-amber-50' onClick={() => setShowCashEncashmentExceptionForm(false)}>Выполнить инкассацию</Button>
               </div>
+            ) : showCashEncashmentExceptionForm ? (
+              <div className='grid min-w-0 gap-2 rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200'>
+                <p className='text-xs font-extrabold text-slate-800'>Не удаётся выполнить инкассацию?</p>
+                <select value={cashEncashmentExceptionReason} onChange={(event) => setCashEncashmentExceptionReason(event.target.value)} className='h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите причину</option><option value='safe_access'>Нет доступа к депозитному сейфу</option><option value='handover'>Деньги переданы ответственному сотруднику</option><option value='other'>Другая причина</option></select>
+                <textarea value={cashEncashmentExceptionComment} onChange={(event) => setCashEncashmentExceptionComment(event.target.value)} rows={2} maxLength={1000} placeholder='Где сейчас деньги и почему инкассация невозможна' className='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' />
+                <div className='grid grid-cols-2 gap-2'><Button type='button' className='h-10 bg-white text-xs font-extrabold text-slate-700 ring-1 ring-slate-200 shadow-none hover:bg-slate-50' disabled={isSaving} onClick={() => setShowCashEncashmentExceptionForm(false)}>Назад</Button><Button type='button' className='h-10 text-xs font-extrabold' disabled={isSaving} onClick={requestCashEncashmentException}>Отправить</Button></div>
+              </div>
+            ) : (
+              <Button type='button' className='h-10 bg-white text-xs font-extrabold text-slate-800 ring-1 ring-slate-200 shadow-none hover:bg-slate-50' onClick={() => setShowCashEncashmentExceptionForm(true)}>Не можете выполнить инкассацию?</Button>
             )}
-            {cashEncashmentExceptionRequestState?.status !== 'approved' && <>
-            <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Сумма инкассации
-              <input
-                type='number'
-                inputMode='decimal'
-                min='0'
-                step='0.01'
-                value={handoverDraft.encashmentAmount}
-                onChange={(event) => updateHandoverDraft({ encashmentAmount: event.target.value })}
-                className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
-                placeholder='0'
-              />
-              {stepError && parseMoneyInput(handoverDraft.encashmentAmount) === null && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
-            </label>
+            {cashEncashmentExceptionRequestState?.status !== 'approved' && !showCashEncashmentExceptionForm && <>
+              <label className='grid min-w-0 gap-1 text-xs font-extrabold text-slate-700'>
+                Сумма инкассации
+                <input
+                  type='number'
+                  inputMode='decimal'
+                  min='0'
+                  step='0.01'
+                  value={handoverDraft.encashmentAmount}
+                  onChange={(event) => updateHandoverDraft({ encashmentAmount: event.target.value })}
+                  className='h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
+                  placeholder='0'
+                />
+                {stepError && parseMoneyInput(handoverDraft.encashmentAmount) === null && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+              </label>
             {user.department === 'retail' ? (
               <div className='grid grid-cols-2 gap-2'>
                 <Button

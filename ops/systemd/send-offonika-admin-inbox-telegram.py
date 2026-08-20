@@ -9,6 +9,7 @@ import urllib.request
 
 ENV_PATH = "/home/codex-vps/.config/ai-business-os/owner-bot.env"
 MAX_INPUT_BYTES = 16_384
+ALLOWED_BUTTON_LABELS = {"Открыть заявку", "Открыть сообщение", "Принять решение"}
 
 
 def load_env(path):
@@ -64,10 +65,13 @@ def main():
         fail("PAYLOAD_INVALID", 1)
     message = str(delivery.get("text") or "")
     href = str(delivery.get("href") or "")
-    if not message.startswith("Новая заявка на расход\n") or len(message) > 1500:
+    button_label = str(delivery.get("buttonLabel") or "")
+    if not message or len(message) > 1500:
         fail("MESSAGE_INVALID", 1)
-    if not href.startswith("/admin/expense-requests/") or any(ch in href for ch in "\r\n"):
+    if not href.startswith("/admin/inbox/open/") or any(ch in href for ch in "\r\n"):
         fail("HREF_INVALID", 1)
+    if button_label not in ALLOWED_BUTTON_LABELS:
+        fail("BUTTON_LABEL_INVALID", 1)
 
     env = load_env(ENV_PATH)
     token = env.get("OWNER_TELEGRAM_BOT_TOKEN", "").strip()
@@ -79,7 +83,7 @@ def main():
         "chat_id": chat_id,
         "text": message,
         "disable_web_page_preview": "true",
-        "reply_markup": json.dumps({"inline_keyboard": [[{"text": "Открыть заявку", "url": base_url + href}]]}, ensure_ascii=False),
+        "reply_markup": json.dumps({"inline_keyboard": [[{"text": button_label, "url": base_url + href}]]}, ensure_ascii=False),
     }
     request = urllib.request.Request(
         f"https://api.telegram.org/bot{token}/sendMessage",
