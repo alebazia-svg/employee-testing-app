@@ -32,7 +32,7 @@ export function ExpenseRequestFeedbackClient({ caseId, reasonCodes }: { caseId: 
     }).catch(() => null);
     const payload = response ? await response.json().catch(() => null) : null;
     setSaving(false);
-    if (!response?.ok) { setError(payload?.error || 'Не удалось сохранить feedback.'); return; }
+    if (!response?.ok) { setError(payload?.error || 'Не удалось сохранить вывод.'); return; }
     setDecision(''); setComment(''); setReasonCode(''); setDetailOpen(false); router.refresh();
   }
 
@@ -40,7 +40,7 @@ export function ExpenseRequestFeedbackClient({ caseId, reasonCodes }: { caseId: 
     <div className='space-y-4'>
       <div>
         <p className='text-sm font-extrabold text-slate-950'>Ваш быстрый вывод</p>
-        <p className='mt-1 text-xs font-medium text-slate-500'>Это только feedback для настройки правил. Статус заявки в 1С не изменится.</p>
+        <p className='mt-1 text-xs font-medium text-slate-500'>Вывод помогает улучшать автоматические подсказки. Статус заявки в 1С не изменится.</p>
       </div>
       <div className='grid gap-2 sm:grid-cols-2'>
         {decisions.map((item) => (
@@ -61,7 +61,7 @@ export function ExpenseRequestFeedbackClient({ caseId, reasonCodes }: { caseId: 
           {detailOpen && (
             <div className='mt-3 space-y-3 rounded-xl bg-slate-50 p-4'>
               <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} className='w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'>
-                <option value=''>Выберите reasonCode</option>
+                <option value=''>Выберите подсказку</option>
                 {reasonCodes.map((code) => <option key={code} value={code}>{code}</option>)}
               </select>
               {decision !== 'rule_change_required' && <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} rows={2} placeholder='Комментарий необязателен' className='w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm' />}

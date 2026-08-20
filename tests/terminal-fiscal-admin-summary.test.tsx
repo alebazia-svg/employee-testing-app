@@ -33,7 +33,21 @@ test('ADMIN Workday terminal summary prioritizes review and unavailable states s
     ...base,
     completeness: { tbank: true, oneC: false, ofd: true },
   });
-  assert.equal(unavailable.label, 'Источник недоступен');
+  assert.equal(unavailable.label, 'Сверка временно неполная');
+});
+
+test('ADMIN does not show a scary zero-of-zero source error while data is still arriving', () => {
+  const result = presentTerminalFiscalWorkdaySummary({
+    ...base,
+    total: 0,
+    statuses: { confirmed: 0, pending: 0, mismatch: 0, unavailable: 0, needs_review: 0 },
+    reasonCodes: {},
+    completeness: { tbank: false, oneC: true, ofd: true },
+  });
+  assert.equal(result.status, 'unavailable');
+  assert.equal(result.label, 'Ожидаются данные');
+  assert.match(result.detail, /операций для подтверждения ещё нет/i);
+  assert.doesNotMatch(result.detail, /0 из 0|источник недоступен/i);
 });
 
 test('ADMIN sees item review separately while the financial match remains confirmed', () => {
@@ -52,7 +66,7 @@ test('ADMIN sees item review separately while the financial match remains confir
 test('ADMIN Workday terminal summary has a neutral no-run state', () => {
   const result = presentTerminalFiscalWorkdaySummary(null);
   assert.match(result.detail, /сверка ещё не запускалась/);
-  assert.equal(result.label, 'Нет данных');
+  assert.equal(result.label, 'Сверка ещё не запускалась');
 });
 
 test('ADMIN Workday treats a bank operation without a 1C check as an admin-only acquiring problem', () => {

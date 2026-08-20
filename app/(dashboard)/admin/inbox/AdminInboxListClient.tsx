@@ -6,6 +6,7 @@ import { Bell, Check, CheckCheck, ChevronRight } from 'lucide-react';
 import type { AdminInboxViewItem } from '@/lib/admin-inbox-data';
 
 type Filter = 'all' | 'unread' | 'decisions' | 'messages' | 'requests' | 'system';
+const PAGE_SIZE = 30;
 
 const filters: Array<{ key: Filter; label: string }> = [
   { key: 'all', label: 'Все' }, { key: 'unread', label: 'Новые' }, { key: 'decisions', label: 'Мои решения' },
@@ -28,8 +29,10 @@ export function AdminInboxListClient({ initialItems }: { initialItems: AdminInbo
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [filter, setFilter] = useState<Filter>('all');
+  const [shown, setShown] = useState(PAGE_SIZE);
   const unread = items.filter((item) => !item.readAt).length;
-  const visible = useMemo(() => items.filter((item) => filter === 'all' || (filter === 'unread' ? !item.readAt : item.meta.category === filter)), [filter, items]);
+  const filtered = useMemo(() => items.filter((item) => filter === 'all' || (filter === 'unread' ? !item.readAt : item.meta.category === filter)), [filter, items]);
+  const visible = filtered.slice(0, shown);
 
   async function markRead(id: string) {
     const item = items.find((candidate) => candidate.id === id);
@@ -59,11 +62,11 @@ export function AdminInboxListClient({ initialItems }: { initialItems: AdminInbo
           {unread > 0 && <button type='button' onClick={() => void markAll()} className='inline-flex w-fit items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
         </div>
         <div className='mt-4 flex gap-2 overflow-x-auto pb-1'>
-          {filters.map((item) => <button key={item.key} type='button' onClick={() => setFilter(item.key)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold transition ${filter === item.key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{item.label}</button>)}
+          {filters.map((item) => <button key={item.key} type='button' onClick={() => { setFilter(item.key); setShown(PAGE_SIZE); }} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold transition ${filter === item.key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{item.label}</button>)}
         </div>
       </div>
       {visible.length === 0 ? <div className='px-6 py-14 text-center'><Bell className='mx-auto h-10 w-10 text-slate-300' /><p className='mt-3 font-extrabold text-slate-950'>В этой категории событий нет</p></div> : (
-        <div className='divide-y divide-slate-100'>{visible.map((item) => (
+        <><div className='divide-y divide-slate-100'>{visible.map((item) => (
           <div key={item.id} className={`flex items-start gap-3 px-4 py-4 sm:px-5 ${item.readAt ? 'bg-white' : 'bg-amber-50/55'}`}>
             <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-amber-400'}`} />
             <button type='button' onClick={() => void open(item)} className='min-w-0 flex-1 text-left'>
@@ -75,7 +78,7 @@ export function AdminInboxListClient({ initialItems }: { initialItems: AdminInbo
             {!item.readAt && <button type='button' onClick={() => void markRead(item.id)} title='Отметить прочитанным' className='rounded-lg p-2 text-slate-400 hover:bg-white hover:text-green-700'><Check className='h-4 w-4' /></button>}
             <button type='button' onClick={() => void open(item)} title='Открыть объект' className='rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-900'><ChevronRight className='h-4 w-4' /></button>
           </div>
-        ))}</div>
+        ))}</div>{shown < filtered.length && <div className='border-t border-slate-100 px-4 py-4 text-center'><button type='button' onClick={() => setShown((value) => value + PAGE_SIZE)} className='rounded-xl bg-slate-100 px-4 py-2 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'>Показать ещё {Math.min(PAGE_SIZE, filtered.length - shown)}</button></div>}</>
       )}
     </section>
   );

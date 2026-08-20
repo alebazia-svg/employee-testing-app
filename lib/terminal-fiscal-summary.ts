@@ -85,7 +85,7 @@ export type TerminalFiscalWorkdayPresentation = {
 
 export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkdaySummary | null): TerminalFiscalWorkdayPresentation {
   if (!summary) {
-    return { status: 'not_run', label: 'Нет данных', detail: 'За выбранный день сверка ещё не запускалась.' };
+    return { status: 'not_run', label: 'Сверка ещё не запускалась', detail: 'За выбранный день сверка ещё не запускалась.' };
   }
   const sourcesComplete = summary.completeness.tbank && summary.completeness.oneC && summary.completeness.ofd;
   const missingOneCChecks = summary.reasonCodes.ONE_C_CANDIDATE_NOT_FOUND ?? 0;
@@ -107,11 +107,18 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
         : summary.statuses.pending > 0
           ? 'pending'
           : 'confirmed';
+  if (summary.total === 0 && (status === 'unavailable' || status === 'pending')) {
+    return {
+      status,
+      label: 'Ожидаются данные',
+      detail: 'Сверка Т-Банк → 1С → ОФД пока не завершена. Операций для подтверждения ещё нет.',
+    };
+  }
   const labels = {
     confirmed: 'Всё подтверждено',
     pending: 'Ожидаем данные',
     mismatch: 'Есть расхождение',
-    unavailable: 'Источник недоступен',
+    unavailable: 'Сверка временно неполная',
     needs_review: 'Требует проверки',
   } as const;
   const parts = [

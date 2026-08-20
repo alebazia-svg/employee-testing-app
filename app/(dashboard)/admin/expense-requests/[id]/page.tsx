@@ -28,12 +28,12 @@ const categoryLabels: Record<string, string> = {
 };
 const completenessLabels: Record<string, string> = {
   complete: 'Данных достаточно', needs_clarification: 'Нужно уточнение', needs_document: 'Нужен документ',
-  needs_review: 'Нужен просмотр ADMIN', cannot_determine: 'Нельзя определить однозначно',
+  needs_review: 'Нужен просмотр администратора', cannot_determine: 'Нельзя определить однозначно',
 };
 const confidenceLabels: Record<string, string> = { high: 'высокая', medium: 'средняя', low: 'низкая' };
 const executionLabels: Record<string, string> = {
   not_executed: 'Не исполнена', partially_executed: 'Частично исполнена', fully_executed: 'Полностью исполнена',
-  unavailable: 'Данные недоступны', needs_review: 'Нужен просмотр ADMIN',
+  unavailable: 'Данные недоступны', needs_review: 'Нужен просмотр администратора',
 };
 const missingLabels: Record<string, string> = {
   delivery_origin: 'откуда / от какого поставщика', delivery_contents: 'что доставляли', delivery_destination: 'куда / кому доставили',
@@ -105,7 +105,7 @@ export default async function ExpenseRequestDetailPage({ params }: { params: { i
           <section className='rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80'>
             <div className='flex items-start gap-3'>
               <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700'><Info className='h-5 w-5' /></div>
-              <div><h2 className='text-lg font-extrabold text-slate-950'>Подсказка автоматической проверки</h2><p className='mt-1 text-xs font-medium text-slate-500'>Совет только для ADMIN. Он ничего не блокирует и не отправляется сотруднику.</p></div>
+              <div><h2 className='text-lg font-extrabold text-slate-950'>Подсказка автоматической проверки</h2><p className='mt-1 text-xs font-medium text-slate-500'>Подсказка видна только администратору. Она ничего не блокирует и не отправляется сотруднику.</p></div>
             </div>
             {evaluation ? (
               <div className='mt-4 space-y-4'>
@@ -116,7 +116,7 @@ export default async function ExpenseRequestDetailPage({ params }: { params: { i
                 </div>
                 {evaluation.suggestedQuestion && <div className='rounded-xl border border-amber-200 bg-amber-50 px-4 py-3'><p className='text-xs font-extrabold uppercase text-amber-700'>Возможное уточнение</p><p className='mt-1 text-sm font-semibold text-amber-950'>{evaluation.suggestedQuestion}</p></div>}
                 <div>
-                  <p className='text-xs font-extrabold uppercase tracking-wide text-slate-400'>Что engine считает отсутствующим</p>
+                  <p className='text-xs font-extrabold uppercase tracking-wide text-slate-400'>Каких данных не хватает</p>
                   <div className='mt-2 flex flex-wrap gap-2'>{missing.length ? missing.map((value) => <span key={value} className='rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900'>{missingLabels[value] || value}</span>) : <span className='text-sm font-semibold text-green-700'>Ничего</span>}</div>
                 </div>
                 <details className='rounded-xl border border-slate-200 bg-slate-50 px-4 py-3'>
@@ -134,12 +134,12 @@ export default async function ExpenseRequestDetailPage({ params }: { params: { i
             <ExpenseRequestFeedbackClient caseId={item.id} reasonCodes={reasonCodes} />
           </section>
           <section className='rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80'>
-            <div className='flex items-center gap-2'><History className='h-5 w-5 text-slate-500' /><h2 className='text-lg font-extrabold text-slate-950'>История feedback</h2></div>
+            <div className='flex items-center gap-2'><History className='h-5 w-5 text-slate-500' /><h2 className='text-lg font-extrabold text-slate-950'>История выводов</h2></div>
             {item.feedback.length === 0 ? <p className='mt-4 text-sm font-medium text-slate-500'>Решений пока нет.</p> : (
               <div className='mt-4 space-y-3'>{item.feedback.map((entry) => <div key={entry.id} className='rounded-xl border border-slate-200 px-4 py-3'><div className='flex flex-wrap items-center justify-between gap-2'><p className='text-sm font-extrabold text-slate-900'>{feedbackLabel(entry.decision)}</p><span className='text-xs font-medium text-slate-400'>{dateTime(entry.createdAt)}</span></div><p className='mt-1 text-xs font-semibold text-slate-500'>{entry.scope === 'reason' ? `По причине: ${entry.reasonCode}` : 'Общий вывод'} · {entry.reviewedBy.name}</p>{entry.comment && <p className='mt-2 text-sm leading-relaxed text-slate-700'>{entry.comment}</p>}</div>)}</div>
             )}
           </section>
-          <div className='rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-medium leading-relaxed text-green-900'><div className='flex gap-2'><CheckCircle2 className='mt-0.5 h-5 w-5 shrink-0' /><p>Любой feedback сохраняется только в audit портала. Согласование, отклонение и изменение заявки в 1С здесь отсутствуют.</p></div></div>
+          <div className='rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-medium leading-relaxed text-green-900'><div className='flex gap-2'><CheckCircle2 className='mt-0.5 h-5 w-5 shrink-0' /><p>Ваш вывод сохраняется в истории портала. Он не согласует, не отклоняет и не изменяет заявку в 1С.</p></div></div>
         </div>
       </div>
     </AdminShell>

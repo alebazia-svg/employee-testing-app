@@ -98,7 +98,7 @@ export default async function AdminPage() {
       <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
         <Card className='overflow-hidden p-0'>
           <SectionHeader title='Нужно моё решение' count={actions.length} />
-          {actions.length ? <div className='divide-y divide-slate-100'>{actions.slice(0, 6).map((item) => <ActionRow key={item.key} item={item} />)}</div> : <Empty title='Моих действий сейчас нет' text='Новые сообщения, запросы на решение и заявки появятся здесь.' />}
+          {actions.length ? <div className='divide-y divide-slate-100'>{actions.slice(0, 6).map((item) => <ActionRow key={item.key} item={item} />)}</div> : <Empty title='Моих действий сейчас нет' text='Новые сообщения, запросы на решение и заявки появятся здесь.' compact />}
         </Card>
         <Card className='overflow-hidden p-0'>
           <SectionHeader title='Сотрудникам нужно исправить' count={issues.length + reviews.filter((item) => item.status === 'open').length} href='/admin/workday' />
@@ -136,7 +136,10 @@ function ActionRow({ item }: { item: ActionItem }) {
   return <Link href={item.href} className='flex items-start gap-3 px-5 py-4 hover:bg-slate-50'><div className='mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700'><Icon className='h-4 w-4' /></div><span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.title}</span><span className='mt-0.5 block text-xs font-medium leading-relaxed text-slate-600'>{item.detail}</span><span className='mt-1 block text-[11px] font-semibold text-slate-400'>{time(item.occurredAt)}</span></span><ArrowRight className='mt-2 h-4 w-4 shrink-0 text-slate-400' /></Link>;
 }
 
-function Empty({ title, text }: { title: string; text: string }) {
+function Empty({ title, text, compact = false }: { title: string; text: string; compact?: boolean }) {
+  if (compact) {
+    return <div className='flex items-start gap-3 px-5 py-4'><CheckCircle2 className='mt-0.5 h-5 w-5 shrink-0 text-green-500' /><div><p className='text-sm font-extrabold text-slate-950'>{title}</p><p className='mt-0.5 text-xs font-medium leading-relaxed text-slate-500'>{text}</p></div></div>;
+  }
   return <div className='px-6 py-10 text-center'><CheckCircle2 className='mx-auto h-9 w-9 text-green-500' /><p className='mt-3 font-extrabold text-slate-950'>{title}</p><p className='mx-auto mt-1 max-w-md text-sm font-medium text-slate-500'>{text}</p></div>;
 }
 
