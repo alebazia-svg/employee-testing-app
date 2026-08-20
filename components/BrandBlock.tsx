@@ -38,6 +38,7 @@ export function BrandBlock({
         width={1873}
         height={274}
         priority={large}
+        unoptimized
         className={cn('h-auto max-w-full object-contain', config.className)}
       />
     </div>
