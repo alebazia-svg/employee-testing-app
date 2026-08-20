@@ -26,8 +26,8 @@ const periodicNavigation: NavigationItem[] = [
 ];
 
 const serviceNavigation: NavigationItem[] = [
-  { href: '/admin/ofd', label: 'OFD и 1С', icon: ReceiptText },
-  { href: '/admin/workday/tbank', label: 'Эквайринг', icon: CreditCard },
+  { href: '/admin/ofd', label: 'Чеки: 1С и OFD', icon: ReceiptText },
+  { href: '/admin/workday/tbank', label: 'Эквайринг T-Банк', icon: CreditCard },
   { href: '/admin/inbox', label: 'История уведомлений', icon: History },
 ];
 
