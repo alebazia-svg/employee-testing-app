@@ -199,7 +199,7 @@ export function WorkdayQrCodes() {
                           className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
                         >
                           <Download className='h-4 w-4' />
-                          Скачать PNG
+                          Скачать только QR
                         </a>
                         <button
                           type='button'
@@ -207,7 +207,7 @@ export function WorkdayQrCodes() {
                           className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-3 text-sm font-extrabold text-white hover:bg-green-700'
                         >
                           <Printer className='h-4 w-4' />
-                          Печать A5
+                          Печать / PDF
                         </button>
                       </div>
                     </div>
@@ -242,11 +242,11 @@ export function WorkdayQrCodes() {
                   className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-extrabold text-slate-800 hover:bg-slate-200'
                 >
                   <Download className='h-4 w-4' />
-                  Скачать
+                  Скачать только QR
                 </a>
                 <button type='button' onClick={() => printQr(activeQr)} className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-green-600 px-4 text-sm font-extrabold text-white hover:bg-green-700'>
                   <Printer className='h-4 w-4' />
-                  Печать A5
+                  Печать / PDF
                 </button>
               </div>
             </div>
