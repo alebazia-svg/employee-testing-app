@@ -76,7 +76,7 @@ export default function Login() {
                 <span className='flex min-h-[52px] items-center gap-3 rounded-xl border border-white/15 bg-black/15 px-3.5 transition focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/15'>
                   <User className='h-5 w-5 shrink-0 text-slate-400' />
                   <input
-                    className='min-w-0 flex-1 bg-transparent text-base font-semibold text-white outline-none placeholder:text-slate-500'
+                    className='offonika-login-input min-w-0 flex-1 bg-transparent text-base font-semibold text-white outline-none placeholder:text-slate-500'
                     name='username'
                     placeholder='Ваш логин'
                     value={login}
@@ -96,7 +96,7 @@ export default function Login() {
                 <span className='flex min-h-[52px] items-center gap-3 rounded-xl border border-white/15 bg-black/15 px-3.5 transition focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/15'>
                   <Lock className='h-5 w-5 shrink-0 text-slate-400' />
                   <input
-                    className='min-w-0 flex-1 bg-transparent text-base font-semibold text-white outline-none placeholder:text-slate-500'
+                    className='offonika-login-input min-w-0 flex-1 bg-transparent text-base font-semibold text-white outline-none placeholder:text-slate-500'
                     name='password'
                     placeholder='Ваш пароль'
                     type={showPassword ? 'text' : 'password'}

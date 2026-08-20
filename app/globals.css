@@ -45,6 +45,17 @@ select {
   touch-action: manipulation;
 }
 
+.offonika-login-input:-webkit-autofill,
+.offonika-login-input:-webkit-autofill:hover,
+.offonika-login-input:-webkit-autofill:focus,
+.offonika-login-input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+  -webkit-box-shadow: 0 0 0 1000px #18212b inset !important;
+  box-shadow: 0 0 0 1000px #18212b inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
 @media (max-width: 768px) {
   input,
   textarea,
