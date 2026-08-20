@@ -2822,7 +2822,7 @@ export function EmployeeTodayClient({
         </div>
       )}
       <div className='relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[24px]'>
-        <header className='bg-[#111821] px-4 pb-4 pt-4 text-white'>
+        <header className='bg-[#111821] px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] text-white'>
           <div className='flex items-center justify-between gap-3'>
             <BrandBlock size='header' />
             <div className='flex items-center gap-2'>
