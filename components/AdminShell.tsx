@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, GraduationCap, History, Home, PanelLeftClose, PanelLeftOpen, ReceiptText, Users, Wrench } from 'lucide-react';
+import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, PanelLeftClose, PanelLeftOpen, ReceiptText, Users, Wrench } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
 import { AdminInboxBell } from '@/components/AdminInboxBell';
@@ -23,7 +23,6 @@ const dailyNavigation: NavigationItem[] = [
 
 const periodicNavigation: NavigationItem[] = [
   { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
-  { href: '/admin/attestations', label: 'Аттестации', icon: GraduationCap },
 ];
 
 const serviceNavigation: NavigationItem[] = [

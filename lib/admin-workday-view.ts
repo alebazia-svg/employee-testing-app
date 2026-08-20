@@ -12,6 +12,18 @@ export function matchesAdminWorkdayControlFilter(category: AdminWorkdayControlCa
   return category === filter;
 }
 
+export function resolveAdminWorkdayControlCategory(input: {
+  hasError: boolean;
+  needsAttention: boolean;
+  cannotVerify: boolean;
+  isPending: boolean;
+}): AdminWorkdayControlCategory {
+  if (input.hasError) return 'error';
+  if (input.needsAttention || input.cannotVerify) return 'attention';
+  if (input.isPending) return 'pending';
+  return 'normal';
+}
+
 export function isActiveWorkdayTimingViolation(kind: string) {
   return kind === 'task_overdue' || kind === 'missing_checkout' || kind === 'workday_not_started';
 }

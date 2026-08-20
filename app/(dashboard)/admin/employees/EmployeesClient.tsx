@@ -1,9 +1,7 @@
 'use client';
 
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, BriefcaseBusiness, Pencil, Search, Trash2, UserPlus, Users } from 'lucide-react';
-import { AdminMetricCard } from '@/components/admin/AdminMetricCard';
+import { Pencil, Search, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,8 +16,6 @@ type User = {
   department: string;
   isActive: boolean;
   payrollName: string | null;
-  todayState: string;
-  attentionCount: number;
 };
 
 type Draft = User & { password: string };
@@ -39,17 +35,6 @@ const emptyDraft: Draft = {
   department: 'retail',
   isActive: true,
   payrollName: '',
-  todayState: 'no_schedule',
-  attentionCount: 0,
-};
-
-const todayStateLabels: Record<string, { label: string; className: string }> = {
-  working: { label: 'Работает', className: 'bg-green-100 text-green-800' },
-  completed: { label: 'Завершил день', className: 'bg-slate-100 text-slate-700' },
-  not_started: { label: 'Ещё не начал', className: 'bg-amber-100 text-amber-800' },
-  off: { label: 'Выходной', className: 'bg-slate-100 text-slate-600' },
-  no_schedule: { label: 'Без графика', className: 'bg-slate-100 text-slate-600' },
-  admin: { label: 'ADMIN', className: 'bg-blue-100 text-blue-800' },
 };
 
 export default function EmployeesClient({ initialUsers }: { initialUsers: User[] }) {
@@ -61,9 +46,6 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
   const [filter, setFilter] = useState<'employees' | 'admins' | 'inactive'>('employees');
   const adminCount = users.filter((user) => user.role === 'ADMIN' && user.isActive).length;
   const employeeCount = users.filter((user) => user.role !== 'ADMIN' && user.isActive).length;
-  const activeCount = users.filter((user) => user.isActive).length;
-  const workingCount = users.filter((user) => user.todayState === 'working').length;
-  const attentionCount = users.reduce((sum, user) => sum + user.attentionCount, 0);
   const filteredUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('ru-RU');
     return users.filter((user) => {
@@ -101,12 +83,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
 
     const saved = await response.json();
     setUsers((current) => {
-      const previous = editingId === 'new' ? null : current.find((user) => user.id === saved.id) ?? null;
-      const normalizedSaved: User = {
-        ...saved,
-        todayState: previous?.todayState ?? 'no_schedule',
-        attentionCount: previous?.attentionCount ?? 0,
-      };
+      const normalizedSaved: User = saved;
       const next = editingId === 'new' ? [...current, normalizedSaved] : current.map((user) => (user.id === saved.id ? normalizedSaved : user));
       return next.sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.role.localeCompare(right.role) || left.name.localeCompare(right.name, 'ru'));
     });
@@ -114,27 +91,8 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
     setDraft(emptyDraft);
   }
 
-  async function remove(userId: number) {
-    if (!window.confirm('Удалить сотрудника?')) return;
-    const response = await fetch(`/api/admin/employees/${userId}`, { method: 'DELETE' });
-
-    if (!response.ok) {
-      const data = await response.json();
-      setError(data.error || 'Не удалось удалить сотрудника');
-      return;
-    }
-
-    setUsers((current) => current.filter((user) => user.id !== userId));
-  }
-
   return (
     <div className='space-y-5'>
-      <div className='grid gap-3 sm:grid-cols-3'>
-        <AdminMetricCard icon={Users} label='Активные сотрудники' value={employeeCount} detail={`Всего активных аккаунтов: ${activeCount}`} tone='green' />
-        <AdminMetricCard icon={BriefcaseBusiness} label='Работают сейчас' value={workingCount} detail='По данным текущего рабочего дня' tone='green' />
-        <AdminMetricCard icon={AlertTriangle} label='Активные проблемы' value={attentionCount} detail={attentionCount ? 'Требуют контроля или исправления' : 'У команды нет активных проблем'} tone={attentionCount ? 'amber' : 'slate'} />
-      </div>
-
       <Card className='flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between'>
         <div className='relative min-w-0 flex-1 lg:max-w-md'>
           <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400' />
@@ -189,30 +147,26 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
             <tr className='text-left'>
               <th className='px-5 py-4'>Сотрудник</th>
               <th className='px-5 py-4'>Отдел</th>
-              <th className='px-5 py-4'>Сегодня</th>
-              <th className='px-5 py-4'>Требует внимания</th>
+              <th className='px-5 py-4'>Роль</th>
+              <th className='px-5 py-4'>Для зарплаты</th>
+              <th className='px-5 py-4'>Доступ</th>
               <th className='px-5 py-4'>Действия</th>
             </tr>
           </thead>
           <tbody>
             {filteredUsers.map((user) => {
-              const todayState = todayStateLabels[user.todayState] ?? todayStateLabels.no_schedule;
               return (
               <tr key={user.id} className='border-t border-slate-200/80'>
-                <td className='px-5 py-4'><p className='font-bold text-slate-950'>{user.name}</p><p className='mt-0.5 text-xs font-semibold text-slate-500'>{user.role === 'ADMIN' ? 'Администратор' : `Логин: ${user.login}`}</p></td>
+                <td className='px-5 py-4'><p className='font-bold text-slate-950'>{user.name}</p><p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p></td>
                 <td className='px-5 py-4 text-slate-700'>{departmentLabels[user.department] ?? user.department}</td>
-                <td className='px-5 py-4'>
-                  <Badge className={user.isActive ? todayState.className : 'bg-slate-100 text-slate-500'}>{user.isActive ? todayState.label : 'Отключён'}</Badge>
-                </td>
-                <td className='px-5 py-4'>{user.attentionCount > 0 ? <span className='inline-flex items-center gap-1.5 text-sm font-bold text-amber-800'><AlertTriangle className='h-4 w-4' />{user.attentionCount}</span> : <span className='text-sm font-semibold text-slate-400'>Нет</span>}</td>
+                <td className='px-5 py-4 text-sm font-semibold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</td>
+                <td className='px-5 py-4'><p className='text-sm font-semibold text-slate-700'>{user.payrollName?.trim() || user.name}</p>{!user.payrollName?.trim() && <p className='mt-0.5 text-xs font-medium text-slate-400'>Совпадает с ФИО</p>}</td>
+                <td className='px-5 py-4'><Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}>{user.isActive ? 'Активен' : 'Отключён'}</Badge></td>
                 <td className='px-5 py-4'>
                   <div className='flex gap-2'>
-                  {user.role !== 'ADMIN' && <Link href={`/admin/workday?control=all&employee=${user.id}#employees-control`} className='inline-flex h-9 items-center rounded-lg bg-white px-3 text-xs font-bold text-slate-700 ring-1 ring-border hover:bg-slate-50'>Открыть день</Link>}
-                  <Button className='h-9 w-9 bg-white p-0 text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}>
+                  <Button className='h-9 gap-2 bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}>
                     <Pencil className='h-4 w-4' />
-                  </Button>
-                  <Button className='h-9 w-9 bg-white p-0 text-red-600 ring-1 ring-border hover:bg-red-50 hover:text-red-700' onClick={() => remove(user.id)}>
-                    <Trash2 className='h-4 w-4' />
+                    Настроить
                   </Button>
                   </div>
                 </td>

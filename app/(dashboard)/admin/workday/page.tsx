@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { getAdminWorkdayRevision } from '@/lib/admin-workday-revision';
-import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, matchesAdminWorkdayControlFilter, type AdminWorkdayControlCategory, type AdminWorkdayControlFilter } from '@/lib/admin-workday-view';
+import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, matchesAdminWorkdayControlFilter, resolveAdminWorkdayControlCategory, type AdminWorkdayControlCategory, type AdminWorkdayControlFilter } from '@/lib/admin-workday-view';
 import { getCurrentUser } from '@/lib/auth';
 import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
@@ -1284,6 +1284,10 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
   const workDayByUser = new Map(workDays.map((entry) => [entry.userId, entry]));
   const shiftControlRunByUser = new Map(shiftControlRuns.map((run) => [run.userId, run]));
+  const requiredIssuesByUser = new Map<number, typeof requiredIssues>();
+  for (const issue of requiredIssues) {
+    requiredIssuesByUser.set(issue.userId, [...(requiredIssuesByUser.get(issue.userId) ?? []), issue]);
+  }
   const activeKkmAssignments = kkmAssignments.filter((assignment) => !assignment.effectiveTo);
   const kkmAssignmentByUser = new Map(activeKkmAssignments.map((assignment) => [assignment.userId, assignment]));
   const terminalFiscalAttribution = attributeTerminalFiscalRecordsToEmployees(
@@ -1454,6 +1458,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const autoChecks = autoChecksByUser.get(employee.id) ?? [];
       const terminalFiscalControl = terminalFiscalAttribution.byUser.get(employee.id) ?? null;
       const terminalFiscalPresentation = presentTerminalFiscalEmployeeControl(terminalFiscalControl);
+      const employeeRequiredIssues = requiredIssuesByUser.get(employee.id) ?? [];
       const timingViolations = evaluateWorkdayTiming({
         dateKey: selectedDate,
         todayDateKey: today,
@@ -1498,7 +1503,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         && task.status === 'done'
         && task.integerValue === 2
       ));
-      const hasError = mismatchCount > 0 || manualIssueCount > 0 || employeeReportedProblem || terminalFiscalPresentation.tone === 'error';
+      const hasError = employeeRequiredIssues.length > 0 || mismatchCount > 0 || manualIssueCount > 0 || employeeReportedProblem || terminalFiscalPresentation.tone === 'error';
       const needsAttention = !hasError && (attentionReasons.length > 0 || terminalFiscalPresentation.tone === 'attention');
       const waitingForWorkdayStart = schedule?.status === 'working' && selectedDate === today && !workDay;
       const pendingTaskCount = (run?.tasks ?? []).filter((task) => (
@@ -1512,17 +1517,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         || pendingTaskCount > 0
         || (shiftControlRequired && schedule?.status === 'working' && !run)
       );
-      const category: AdminWorkdayControlCategory = needsAttention
-        ? 'attention'
-        : hasError
-          ? 'error'
-          : cannotVerify
-            ? 'attention'
-            : isPending
-              ? 'pending'
-              : 'normal';
+      const category: AdminWorkdayControlCategory = resolveAdminWorkdayControlCategory({ hasError, needsAttention, cannotVerify, isPending });
       const reviewText = hasError
-        ? terminalFiscalPresentation.tone === 'error'
+        ? employeeRequiredIssues.length > 0
+          ? `${employeeRequiredIssues[0].title}${employeeRequiredIssues.length > 1 ? ` · ещё ${employeeRequiredIssues.length - 1}` : ''}`
+          : terminalFiscalPresentation.tone === 'error'
           ? terminalFiscalPresentation.text
           : manualIssueCount > 0
           ? `Подтверждённых проблем: ${manualIssueCount}`
@@ -1534,7 +1533,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           ? terminalFiscalPresentation.text
           : businessAttentionReasons.length > 0
           ? `${businessAttentionReasons.slice(0, 2).join(' · ')}${businessAttentionReasons.length > 2 ? ` · ещё ${businessAttentionReasons.length - 2}` : ''}`
-          : '—'
+          : activeTimingViolations[0]?.label ?? 'Требуется действие'
         : cannotVerify
           ? `Нужно проверить вручную: ${Math.max(incompleteCount, 1)}`
           : isPending
@@ -1657,7 +1656,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
 
         {requiredIssues.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>
-            <div className='flex items-start gap-3'><AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' /><div className='min-w-0 flex-1'><h2 className='text-lg font-extrabold text-slate-950'>Нужно исправить · {requiredIssues.length}</h2><p className='mt-1 text-sm font-semibold text-slate-600'>Прочтение уведомления не закрывает проблему. Она исчезнет только после фактического исправления.</p></div></div>
+            <div className='flex items-start gap-3'><AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' /><div className='min-w-0 flex-1'><h2 className='text-lg font-extrabold text-slate-950'>Обязательные ошибки · {requiredIssues.length}</h2><p className='mt-1 text-sm font-semibold text-slate-600'>Остаются активными до фактического исправления. Прочтение уведомления их не закрывает.</p></div></div>
             <div className='mt-4 grid gap-2 sm:grid-cols-2'>{requiredIssues.map((issue) => <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='rounded-xl bg-white px-4 py-3 ring-1 ring-amber-200 transition hover:ring-amber-400'><span className='block text-xs font-extrabold text-amber-700'>{issue.user.name}</span><span className='mt-1 block text-sm font-black text-slate-950'>{issue.title}</span></Link>)}</div>
           </Card>
         )}
@@ -1690,9 +1689,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             </div>
             <div className='flex flex-wrap gap-2 text-xs font-extrabold'>
               {([
-                ['active', `Нужно внимание · ${activeEmployeeCount}`],
-                ['pending', `Ещё не выполнено · ${pendingEmployeeCount}`],
-                ['normal', `Всё нормально · ${normalEmployeeCount}`],
+                ['active', `Требуют действия · ${activeEmployeeCount}`],
+                ['error', `Ошибки · ${errorEmployeeCount}`],
+                ['attention', `Отклонения · ${attentionEmployeeCount}`],
+                ['pending', `Ожидают · ${pendingEmployeeCount}`],
+                ['normal', `Норма · ${normalEmployeeCount}`],
                 ['all', `Все · ${employeeControlRows.length}`],
               ] as Array<[AdminWorkdayControlFilter, string]>).map(([filter, label]) => (
                 <Link
@@ -1732,7 +1733,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       {row.timingViolations.length > 0 && <span className='basis-full text-xs font-bold text-amber-800'>{timingSummary(row.timingViolations)}</span>}
                     </div>
                     <div className='min-w-0'>
-                      <div className='flex flex-wrap items-center gap-2'><Badge className={row.businessStatus.className}>{row.businessStatus.label}</Badge><span className='text-xs font-semibold text-slate-400'>{row.totalTaskCount > 0 ? `${row.completedTaskCount} из ${row.totalTaskCount} проверок` : 'Проверок нет'}</span></div>
+                      <div className='flex flex-wrap items-center gap-2'><Badge className={row.businessStatus.className}>{row.businessStatus.label}</Badge><span className='text-xs font-semibold text-slate-400'>{row.totalTaskCount > 0 ? `Выполнено ${row.completedTaskCount} из ${row.totalTaskCount}` : 'Проверок пока нет'}</span></div>
                       <p className={`mt-1.5 text-sm font-semibold leading-relaxed ${
                         row.category === 'error' ? 'text-rose-800' : row.category === 'attention' ? 'text-amber-800' : row.category === 'pending' ? 'text-slate-600' : 'text-green-700'
                       }`}>{row.reviewText}</p>
