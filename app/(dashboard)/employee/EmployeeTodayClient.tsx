@@ -2496,7 +2496,11 @@ export function EmployeeTodayClient({
       zReportPhoto: 'zReportPhoto',
     };
     const currentPhotoField = photoFieldForStep[step];
-    const photoCompletesHandoverStep = Boolean(currentPhotoField && !hasHandoverPhoto(handoverDraft[currentPhotoField]));
+    const photoCompletesHandoverStep = Boolean(
+      currentPhotoField
+      && !hasHandoverPhoto(handoverDraft[currentPhotoField])
+      && cashEncashmentExceptionRequestState?.status !== 'approved',
+    );
 
     return (
       <div className='rounded-xl bg-white p-3 ring-1 ring-slate-200/80'>
