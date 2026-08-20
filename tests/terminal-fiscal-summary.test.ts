@@ -93,7 +93,8 @@ test('employee control presentation distinguishes proof from uncertain source st
   };
   assert.equal(presentTerminalFiscalEmployeeControl({ ...base, statuses: { ...base.statuses, mismatch: 1 } }).tone, 'error');
   assert.equal(presentTerminalFiscalEmployeeControl({ ...base, statuses: { ...base.statuses, needs_review: 1 } }).tone, 'attention');
-  assert.equal(presentTerminalFiscalEmployeeControl({ ...base, statuses: { ...base.statuses, unavailable: 1 } }).tone, 'attention');
+  assert.equal(presentTerminalFiscalEmployeeControl({ ...base, statuses: { ...base.statuses, unavailable: 1 }, reasonCodes: { SOURCE_OFD_INCOMPLETE: 1 } }).tone, 'technical');
+  assert.equal(presentTerminalFiscalEmployeeControl({ ...base, statuses: { ...base.statuses, unavailable: 1 }, reasonCodes: { TERMINAL_MAPPING_MISSING: 1 } }).tone, 'attention');
   assert.equal(presentTerminalFiscalEmployeeControl({ ...base, statuses: { ...base.statuses, pending: 1 } }).tone, 'pending');
   assert.equal(presentTerminalFiscalEmployeeControl({ ...base, statuses: { ...base.statuses, confirmed: 1 } }).tone, 'normal');
   assert.equal(presentTerminalFiscalEmployeeControl(null).tone, 'none');

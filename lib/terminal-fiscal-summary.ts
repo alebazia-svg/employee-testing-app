@@ -6,6 +6,7 @@ import {
   attributeTerminalFiscalEmployee,
   type TerminalFiscalCashierEmployeeMapping,
 } from '@/lib/terminal-fiscal-attribution';
+import { terminalFiscalConfigurationProblem, terminalFiscalReasonLabel } from '@/lib/terminal-fiscal-reason-view';
 
 const STATUSES: MatchingStatus[] = ['confirmed', 'pending', 'mismatch', 'unavailable', 'needs_review'];
 
@@ -39,9 +40,23 @@ export type TerminalFiscalEmployeeControl = TerminalFiscalAggregate & {
 
 export function presentTerminalFiscalEmployeeControl(control: TerminalFiscalEmployeeControl | null) {
   const mismatch = control?.statuses.mismatch ?? 0;
-  const review = (control?.statuses.needs_review ?? 0) + (control?.statuses.unavailable ?? 0);
+  const review = control?.statuses.needs_review ?? 0;
+  const unavailable = control?.statuses.unavailable ?? 0;
   if (mismatch > 0) return { tone: 'error' as const, text: `Автосверка терминала: расхождений ${mismatch}` };
-  if (review > 0) return { tone: 'attention' as const, text: `Автосверка терминала: проверить ${review}` };
+  if (review > 0) return { tone: 'attention' as const, text: `Сверка оплат: нужно проверить ${review}` };
+  if (unavailable > 0) {
+    const configurationReason = Object.entries(control?.reasonCodes ?? {}).find(([reasonCode, count]) => (
+      Number(count) > 0 && terminalFiscalConfigurationProblem(reasonCode)
+    ));
+    if (configurationReason) {
+      return { tone: 'attention' as const, text: `${terminalFiscalReasonLabel(configurationReason[0])}: ${configurationReason[1]}` };
+    }
+    const sourceReason = Object.entries(control?.reasonCodes ?? {}).find(([, count]) => Number(count) > 0);
+    return {
+      tone: 'technical' as const,
+      text: sourceReason ? `${terminalFiscalReasonLabel(sourceReason[0])}: ${sourceReason[1]}` : `Сверка оплат технически неполная: ${unavailable}`,
+    };
+  }
   if ((control?.statuses.pending ?? 0) > 0) return { tone: 'pending' as const, text: 'Автосверка терминала ожидает данные' };
   if (control && control.total > 0) return { tone: 'normal' as const, text: `Операции терминала подтверждены: ${control.statuses.confirmed}` };
   return { tone: 'none' as const, text: '' };

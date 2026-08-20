@@ -98,27 +98,6 @@ function shiftState(workDay: { status: string; endedAt: Date | null } | null | u
   return { label: 'Не начал', className: 'bg-white text-slate-600 ring-1 ring-slate-200' };
 }
 
-function timingSummary(violations: WorkdayTimingViolation[]) {
-  const parts: string[] = [];
-  const lateStart = violations.find((violation) => violation.kind === 'late_start');
-  const earlyCheckout = violations.find((violation) => violation.kind === 'early_checkout');
-  const missingCheckout = violations.find((violation) => violation.kind === 'missing_checkout');
-  const workdayNotStarted = violations.find((violation) => violation.kind === 'workday_not_started');
-  const taskViolationCount = violations.filter((violation) => violation.kind === 'task_late' || violation.kind === 'task_overdue').length;
-  if (lateStart?.minutesLate) parts.push(`Вход +${lateStart.minutesLate} мин`);
-  if (earlyCheckout?.minutesLate) parts.push(`Уход −${earlyCheckout.minutesLate} мин`);
-  if (missingCheckout) parts.push('Смена не завершена');
-  if (workdayNotStarted) parts.push('Рабочий день не начат');
-  if (taskViolationCount > 0) {
-    const lastTwo = taskViolationCount % 100;
-    const last = taskViolationCount % 10;
-    const noun = lastTwo >= 11 && lastTwo <= 14 ? 'проверок' : last === 1 ? 'проверка' : last >= 2 && last <= 4 ? 'проверки' : 'проверок';
-    parts.push(`${taskViolationCount} ${noun} не в срок`);
-  }
-  if (parts.length === 0) return 'Без нарушений';
-  return `${parts.slice(0, 2).join(' · ')}${parts.length > 2 ? ` · всего ${parts.length}` : ''}`;
-}
-
 function serializeShiftControlRun(run: any) {
   if (!run) return null;
   return {
@@ -929,129 +908,6 @@ function buildEmployeeAutoChecks({
       });
     }
 
-    const terminalCheck = handoverData && isRecord(handoverData.terminalCheck) ? handoverData.terminalCheck : null;
-    const declaredTerminalOperations = terminalCheck ? readBoolean(terminalCheck.hadOperations) : null;
-    if (declaredTerminalOperations === null) {
-      checks.push({
-        id: `handover-terminal-${task.id}`,
-        taskId: task.id,
-        label: 'Операции терминала при сдаче',
-        status: 'waiting',
-        summary: 'Сотрудник ещё не указал, были ли новые операции терминала.',
-      });
-    } else {
-      checks.push({
-        id: `handover-terminal-${task.id}`,
-        taskId: task.id,
-        label: 'Операции терминала при сдаче',
-        status: 'unavailable',
-        summary: declaredTerminalOperations
-          ? `Сотрудник указал, что новые операции были; результат сверки: ${readText(terminalCheck?.reconciliation) === 'discrepancy' ? 'есть расхождение' : 'всё совпадает'}.`
-          : 'Сотрудник указал, что новых операций не было.',
-        evidence: 'Источник всех операций единого терминала пока не подключён к этой автопроверке.',
-      });
-    }
-
-    const declaredTbank = personalCash
-      ? readBoolean(personalCash.hasTbankCredit)
-      : storeClosing
-        ? readBoolean(storeClosing.hasTbankCredit)
-        : null;
-    if (!tbankSales.ok) {
-      checks.push({
-        id: `handover-tbank-${task.id}`,
-        taskId: task.id,
-        label: 'Кредиты и рассрочки',
-        status: 'unavailable',
-        summary: tbankSales.error || 'Реализации 1С не получены.',
-      });
-    } else if (declaredTbank === null) {
-      checks.push({
-        id: `handover-tbank-${task.id}`,
-        taskId: task.id,
-        label: 'Кредиты и рассрочки',
-        status: 'waiting',
-        summary: 'Сотрудник ещё не указал, были ли операции.',
-      });
-    } else if (employeeTbankDocuments.length === 0 && tbankSales.documents.length > 0) {
-      checks.push({
-        id: `handover-tbank-${task.id}`,
-        taskId: task.id,
-        label: 'Кредиты и рассрочки',
-        status: 'unavailable',
-        summary: `По имени сотрудника документы не найдены; всего по партнёру Т-Банка за день: ${tbankSales.documents.length}.`,
-        evidence: 'Сумма терминального отчёта не сравнивается: реализации 1С и операции терминала имеют разный состав.',
-      });
-    } else {
-      const oneCHasTbank = employeeTbankDocuments.length > 0;
-      const amount = employeeTbankDocuments.reduce((sum, document) => sum + (document.amount ?? 0), 0);
-      const fiscalResults = employeeTbankDocuments.map((document) => ({
-        document,
-        result: tbankSales.fiscalByRealization[document.ref],
-      }));
-      const unavailableFiscal = fiscalResults.find(({ result }) => !result?.ok);
-      const missingFiscal = fiscalResults.filter(({ result }) => !result?.fiscalized);
-      const invalidFiscal = fiscalResults.find(({ document, result }) => {
-        const operations = result?.operations.filter((operation) => operation.fiscalized) ?? [];
-        if (operations.length !== 1) return operations.length > 1;
-        const operation = operations[0];
-        return operation.amount === null
-          || Math.abs(operation.amount - (document.amount ?? 0)) > oneCMoneyTolerance
-          || operation.postpayment === null
-          || Math.abs(operation.postpayment - (document.amount ?? 0)) > oneCMoneyTolerance;
-      });
-
-      if (oneCHasTbank && unavailableFiscal) {
-        checks.push({
-          id: `handover-tbank-${task.id}`,
-          taskId: task.id,
-          label: 'Кредиты и рассрочки',
-          status: 'unavailable',
-          summary: `Реализации найдены, но фискальные операции 1С не получены для ${unavailableFiscal.document.number || 'одного документа'}.`,
-        });
-        continue;
-      }
-      if (oneCHasTbank && missingFiscal.length > 0) {
-        checks.push({
-          id: `handover-tbank-${task.id}`,
-          taskId: task.id,
-          label: 'Кредиты и рассрочки',
-          status: 'mismatch',
-          summary: `Фискальный чек не найден: ${missingFiscal.map(({ document }) => document.number).join(', ')}.`,
-          evidence: 'Проверено по прямой связи реализации с регистром ФискальныеОперации 1С.',
-        });
-        continue;
-      }
-      if (oneCHasTbank && invalidFiscal) {
-        const operation = invalidFiscal.result?.operations.find((item) => item.fiscalized);
-        checks.push({
-          id: `handover-tbank-${task.id}`,
-          taskId: task.id,
-          label: 'Кредиты и рассрочки',
-          status: 'mismatch',
-          summary: `Реализация ${formatMoney(invalidFiscal.document.amount)} · чек ${formatMoney(operation?.amount)} · постоплата ${formatMoney(operation?.postpayment)}.`,
-          evidence: `Реализация ${invalidFiscal.document.number} · чек №${operation?.checkNumber || '—'} · прямая связь 1С.`,
-        });
-        continue;
-      }
-
-      const checkNumbers = fiscalResults.flatMap(({ result }) => result?.operations
-        .filter((operation) => operation.fiscalized)
-        .map((operation) => operation.checkNumber) ?? []);
-      checks.push({
-        id: `handover-tbank-${task.id}`,
-        taskId: task.id,
-        label: 'Кредиты и рассрочки',
-        status: declaredTbank === oneCHasTbank ? 'matched' : 'mismatch',
-        summary: oneCHasTbank
-          ? `1С: ${formatRealizationCount(employeeTbankDocuments.length)} на ${formatMoney(amount)} · чеки ${checkNumbers.map((number) => `№${number}`).join(', ')}; сотрудник указал ${declaredTbank ? 'операции были' : 'операций не было'}.`
-          : `В 1С операций по сотруднику нет; сотрудник указал ${declaredTbank ? 'операции были' : 'операций не было'}.`,
-        evidence: oneCHasTbank
-          ? 'Реализации и фискальные чеки подтверждены прямой связью в 1С.'
-          : 'Кредитные реализации по сотруднику за день не найдены.',
-      });
-    }
-
     const requiresEncashment = personalCash ? readBoolean(personalCash.requiresEncashment) : null;
     const encashmentAmount = personalCash ? readNumber(personalCash.encashmentAmount) : null;
     const savedEncashmentDirection = personalCash ? readText(personalCash.encashmentDirection) : '';
@@ -1132,7 +988,7 @@ function buildEmployeeAutoChecks({
       }
     }
 
-    if (storeClosing) {
+    if (storeClosing && department === 'retail') {
       const closingAssignment = assignmentAt(kkmAssignments, task.completedAt) ?? kkmAssignments.at(-1) ?? null;
       const closingCashRegisterRef = closingAssignment?.oneCCashRegisterRef ?? cashRegisterRef;
       const factualRefs = factualCashRegisterRefs(cashShifts.shifts, employeeName);
@@ -1457,6 +1313,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const shiftControlRequired = usesWorkdayShiftControl(employee);
       const autoChecks = autoChecksByUser.get(employee.id) ?? [];
       const terminalFiscalControl = terminalFiscalAttribution.byUser.get(employee.id) ?? null;
+      const terminalFiscalRecords = terminalFiscalAttribution.recordsByUser.get(employee.id) ?? [];
       const terminalFiscalPresentation = presentTerminalFiscalEmployeeControl(terminalFiscalControl);
       const employeeRequiredIssues = requiredIssuesByUser.get(employee.id) ?? [];
       const timingViolations = evaluateWorkdayTiming({
@@ -1536,7 +1393,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           : activeTimingViolations[0]?.label ?? 'Требуется действие'
         : cannotVerify
           ? `Нужно проверить вручную: ${Math.max(incompleteCount, 1)}`
-          : isPending
+        : isPending
             ? waitingForWorkdayStart
               ? 'Рабочий день ещё не начат'
               : pendingTaskCount > 0
@@ -1544,7 +1401,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                 : 'Чек-лист ещё не создан'
           : manualReviewCount > 0
             ? `Проверено вручную: ${manualReviewCount}`
-            : 'Замечаний нет';
+            : terminalFiscalPresentation.tone === 'technical'
+              ? terminalFiscalPresentation.text
+              : 'Замечаний нет';
       const completedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'done').length;
       const totalTaskCount = run?.tasks.length ?? 0;
       const businessStatus = category === 'error'
@@ -1562,6 +1421,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         run,
         autoChecks,
         terminalFiscalControl,
+        terminalFiscalRecords,
         requiredIssueId: employeeRequiredIssues[0]?.id ?? null,
         timingViolations,
         shiftControlRequired,
@@ -1685,7 +1545,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             <div>
               <h2 className='text-lg font-extrabold text-slate-950'>Сотрудники</h2>
               <p className='mt-1 text-sm font-medium text-slate-500'>
-                Сначала показаны те, кому требуется внимание. Остальных можно открыть фильтрами.
+                Здесь только текущие ошибки и действия. Опоздания сохраняются в графике и истории смены.
               </p>
             </div>
             <div className='flex flex-wrap gap-2 text-xs font-extrabold'>
@@ -1731,7 +1591,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                     <div className='flex min-w-0 flex-wrap items-center gap-2'>
                       <Badge className={currentShiftState.className}>{currentShiftState.label}</Badge>
                       {row.workDay?.shiftLabel && <span className='text-xs font-bold text-slate-600'>{row.workDay.shiftLabel}</span>}
-                      {row.timingViolations.length > 0 && <span className='basis-full text-xs font-bold text-amber-800'>{timingSummary(row.timingViolations)}</span>}
                     </div>
                     <div className='min-w-0'>
                       <div className='flex flex-wrap items-center gap-2'><Badge className={row.businessStatus.className}>{row.businessStatus.label}</Badge><span className='text-xs font-semibold text-slate-400'>{row.totalTaskCount > 0 ? `Выполнено ${row.completedTaskCount} из ${row.totalTaskCount}` : 'Проверок пока нет'}</span></div>
@@ -1763,8 +1622,14 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                           terminalFiscalControl={row.terminalFiscalControl ? {
                             total: row.terminalFiscalControl.total,
                             statuses: row.terminalFiscalControl.statuses,
+                            reasonCodes: row.terminalFiscalControl.reasonCodes,
                             lastOperationAt: row.terminalFiscalControl.lastOperationAt?.toISOString() ?? null,
                           } : null}
+                          terminalFiscalRecords={row.terminalFiscalRecords.map((record) => ({
+                            status: record.status,
+                            reasonCode: record.reasonCode,
+                            bankOperationAt: record.bankOperationAt?.toISOString() ?? null,
+                          }))}
                           initialOpen={searchParams?.employee === String(row.employee.id)}
                           closeHref={employeeDetailCloseHref}
                           previousEmployee={previousEmployeeRow ? {

@@ -7,6 +7,13 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  terminalFiscalConfigurationProblem,
+  terminalFiscalReasonLabel,
+  terminalFiscalReasonTimes,
+  terminalFiscalSourceContext,
+  terminalFiscalSourceIncomplete,
+} from '@/lib/terminal-fiscal-reason-view';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 
 type ShiftTask = {
@@ -54,8 +61,14 @@ type Props = {
   terminalFiscalControl?: {
     total: number;
     statuses: { confirmed: number; pending: number; mismatch: number; unavailable: number; needs_review: number };
+    reasonCodes: Record<string, number>;
     lastOperationAt: string | null;
   } | null;
+  terminalFiscalRecords?: Array<{
+    status: string;
+    reasonCode: string;
+    bankOperationAt: string | null;
+  }>;
   initialOpen?: boolean;
   closeHref?: string;
   previousEmployee?: EmployeeNavigation | null;
@@ -137,9 +150,7 @@ function formatDateTime(value: string) {
 }
 
 function taskStatus(task: ShiftTask, timingViolation?: WorkdayTimingViolation) {
-  if (task.status === 'done') {
-    return timingViolation?.kind === 'task_late' ? 'late' : 'done';
-  }
+  if (task.status === 'done') return 'done';
   if (task.status === 'missed') return 'missed';
   return timingViolation?.kind === 'task_overdue' ? 'overdue' : 'pending';
 }
@@ -787,6 +798,7 @@ export function AdminShiftControlDetails({
   autoChecks = [],
   timingViolations = [],
   terminalFiscalControl = null,
+  terminalFiscalRecords = [],
   initialOpen = false,
   closeHref,
   previousEmployee,
@@ -875,18 +887,21 @@ export function AdminShiftControlDetails({
   }, [closeDetails, manualReviewSaving, manualReviewTarget, open, selectedPhoto]);
   const summary = useMemo(() => {
     if (!canUseShiftControl) return { status: 'none', label: '—', completed: 0, total: 0, overdue: 0, handoverDone: false };
+    const operationalTimingViolations = timingViolations.filter((violation) => (
+      violation.kind === 'missing_checkout' || violation.kind === 'workday_not_started'
+    ));
     if (!run) {
-      return timingViolations.length > 0
-        ? { status: 'overdue', label: 'есть нарушения времени', completed: 0, total: 0, overdue: timingViolations.length, handoverDone: false }
+      return operationalTimingViolations.length > 0
+        ? { status: 'overdue', label: 'требует внимания', completed: 0, total: 0, overdue: operationalTimingViolations.length, handoverDone: false }
         : { status: 'none', label: 'нет контроля', completed: 0, total: 0, overdue: 0, handoverDone: false };
     }
 
     const completed = run.tasks.filter((task) => task.status === 'done').length;
-    const overdue = timingViolations.length;
+    const overdue = operationalTimingViolations.length;
     const handoverDone = run.tasks.some((task) => task.category === 'handover' && task.status === 'done');
     const total = run.tasks.length;
     const status = overdue > 0 ? 'overdue' : completed === total && total > 0 ? 'completed' : handoverDone ? 'completed' : 'in_progress';
-    const label = status === 'completed' ? 'выполнено' : status === 'overdue' ? 'есть нарушения времени' : 'в процессе';
+    const label = status === 'completed' ? 'выполнено' : status === 'overdue' ? 'требует внимания' : 'в процессе';
 
     return { status, label, completed, total, overdue, handoverDone };
   }, [canUseShiftControl, run, timingViolations.length]);
@@ -926,8 +941,7 @@ export function AdminShiftControlDetails({
       const item = { task, status, autoChecks: taskAutoChecks };
       const unresolvedAutoChecks = taskAutoChecks.filter((check) => !manualReviewResolves(check));
       if (
-        status === 'late'
-        || status === 'overdue'
+        status === 'overdue'
         || status === 'missed'
         || unresolvedAutoChecks.some((check) => check.status === 'mismatch' || manualReviewConfirmsIssue(check))
       ) {
@@ -967,15 +981,24 @@ export function AdminShiftControlDetails({
   ));
   const taskTimingViolationCount = timingViolations.length - workdayTimingViolations.length;
   const terminalFiscalHasError = (terminalFiscalControl?.statuses.mismatch ?? 0) > 0;
-  const terminalFiscalNeedsAttention = (terminalFiscalControl?.statuses.needs_review ?? 0) > 0
-    || (terminalFiscalControl?.statuses.unavailable ?? 0) > 0;
+  const terminalFiscalNeedsAttention = (terminalFiscalControl?.statuses.needs_review ?? 0) > 0;
+  const terminalFiscalUnavailable = (terminalFiscalControl?.statuses.unavailable ?? 0) > 0;
+  const terminalFiscalConfigurationNeedsAttention = Object.entries(terminalFiscalControl?.reasonCodes ?? {})
+    .some(([reasonCode, count]) => Number(count) > 0 && terminalFiscalConfigurationProblem(reasonCode));
   const hasError = keyProblems.some((item) => taskBusinessState(item).tone === 'error') || terminalFiscalHasError;
   const scheduleNeedsAttention = scheduleLabel === 'не заполнено';
   const keyProblemCount = keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0)
-    + (terminalFiscalHasError || terminalFiscalNeedsAttention ? 1 : 0);
-  const hasTimingViolations = timingViolations.length > 0;
+    + (terminalFiscalHasError || terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? 1 : 0);
   const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
+  const workdayStateLabel = workDay?.status === 'completed' || workDay?.endedAt
+    ? 'завершил смену'
+    : workDay
+      ? 'работает'
+      : scheduleLabel;
+  const terminalReasonEntries = Object.entries(terminalFiscalControl?.reasonCodes ?? {})
+    .filter(([reasonCode, count]) => Number(count) > 0 && !['MATCH_CONFIRMED', 'MATCH_CONFIRMED_LATE', 'OFD_ITEM_PRESENTATION_DIFFERENCE', 'OFD_ITEM_VALUES_MISMATCH'].includes(reasonCode));
+  const terminalHasSourceIncomplete = terminalReasonEntries.some(([reasonCode]) => terminalFiscalSourceIncomplete(reasonCode));
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
   const hasDetails = Boolean(run || workDay || timingViolations.length > 0);
@@ -988,7 +1011,7 @@ export function AdminShiftControlDetails({
           className={`h-8 px-3 text-xs font-extrabold shadow-none ${
             hasError
               ? 'bg-rose-100 text-rose-900 hover:bg-rose-200'
-              : keyProblemCount > 0 || hasTimingViolations
+              : keyProblemCount > 0
                 ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
           }`}
@@ -1014,7 +1037,7 @@ export function AdminShiftControlDetails({
                 <p className='text-sm font-semibold text-primary'>Контроль смены · {dateKey}</p>
                 <h3 className='mt-0.5 truncate text-xl font-extrabold text-slate-950 sm:text-2xl'>{employeeName}</h3>
                 <p className='mt-0.5 truncate text-xs font-semibold text-slate-500 sm:text-sm'>
-                  {departmentName} · {scheduleLabel} · {workDay?.shiftLabel ?? 'смена не задана'}
+                  {departmentName} · {workdayStateLabel} · {workDay?.shiftLabel ?? 'смена не задана'}
                 </p>
               </div>
               <div className='flex shrink-0 items-center gap-2'>
@@ -1229,19 +1252,19 @@ export function AdminShiftControlDetails({
                     {run ? `Проверки: ${summary.completed} из ${summary.total} выполнено` : 'Чек-лист не используется'}
                   </p>
                   <p className='mt-0.5 text-xs font-semibold text-slate-500'>
-                    {run ? 'Откройте только ту проверку, по которой нужны подробности.' : 'Ниже показаны нарушения рабочего времени.'}
+                    {run ? 'Откройте только ту проверку, по которой нужны подробности.' : 'Данных чек-листа за этот день нет.'}
                   </p>
                 </div>
                 <Badge className={hasError
                   ? 'bg-rose-100 text-rose-800'
-                  : keyProblemCount > 0 || hasTimingViolations
+                  : keyProblemCount > 0
                     ? 'bg-amber-100 text-amber-800'
                     : pendingOverviewCount > 0
                       ? 'bg-slate-100 text-slate-700'
                     : 'bg-green-100 text-green-800'}>
                   {hasError
                     ? 'Есть ошибка'
-                    : keyProblemCount > 0 || hasTimingViolations
+                    : keyProblemCount > 0
                       ? 'Требует внимания'
                       : pendingOverviewCount > 0
                         ? 'Не выполнено'
@@ -1269,9 +1292,9 @@ export function AdminShiftControlDetails({
                       <p className='text-sm font-semibold text-rose-800'>
                         <span className='font-extrabold'>Операции терминала:</span> автоматическая сверка обнаружила расхождений: {terminalFiscalControl!.statuses.mismatch}
                       </p>
-                    ) : terminalFiscalNeedsAttention ? (
+                    ) : terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? (
                       <p className='text-sm font-semibold text-amber-800'>
-                        <span className='font-extrabold'>Операции терминала:</span> требуется проверка администратора: {(terminalFiscalControl?.statuses.needs_review ?? 0) + (terminalFiscalControl?.statuses.unavailable ?? 0)}
+                        <span className='font-extrabold'>Операции терминала:</span> требуется действие администратора
                       </p>
                     ) : null}
                     {keyProblems.slice(0, 3).map((item) => {
@@ -1280,50 +1303,54 @@ export function AdminShiftControlDetails({
                     })}
                   </div>
                 </section>
-              ) : !hasTimingViolations ? (
-                <section className='mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3'>
-                  <h4 className='text-sm font-extrabold text-slate-950'>Ключевых проблем нет</h4>
-                  <p className='mt-1 text-xs font-semibold text-slate-600'>По выполненным и доступным проверкам замечаний не найдено.</p>
+              ) : (
+                <section className='mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3'>
+                  <h4 className='text-sm font-extrabold text-green-950'>Действий не требуется</h4>
+                  <p className='mt-1 text-xs font-semibold text-green-800'>По текущим данным ошибок и незавершённых действий нет.</p>
                 </section>
-              ) : null}
-
-              {workdayTimingViolations.length > 0 ? (
-                <section className='mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3'>
-                  <h4 className='text-sm font-extrabold text-amber-950'>Нарушения времени</h4>
-                  <div className='mt-2 grid gap-1.5'>
-                    {workdayTimingViolations.map((violation) => (
-                      <p key={violation.id} className='text-sm font-semibold text-amber-800'>
-                        <span className='font-extrabold'>{violation.label}:</span> {violation.detail}
-                      </p>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
+              )}
 
               {terminalFiscalControl && terminalFiscalControl.total > 0 ? (
                 <section className={`mb-4 rounded-xl border px-4 py-3 ${
                   terminalFiscalHasError
                     ? 'border-rose-200 bg-rose-50'
-                    : terminalFiscalNeedsAttention
+                    : terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention
                       ? 'border-amber-200 bg-amber-50'
                       : terminalFiscalControl.statuses.pending > 0
                         ? 'border-blue-200 bg-blue-50'
-                        : 'border-green-200 bg-green-50'
+                        : terminalFiscalUnavailable
+                          ? 'border-slate-200 bg-slate-50'
+                          : 'border-green-200 bg-green-50'
                 }`}>
                   <div className='flex flex-wrap items-center justify-between gap-2'>
                     <h4 className='text-sm font-extrabold text-slate-950'>Автоматическая сверка терминала</h4>
                     <span className='text-xs font-extrabold text-slate-600'>Т-Банк → 1С → ОФД</span>
                   </div>
-                  <p className='mt-1 text-sm font-semibold text-slate-700'>
-                    Подтверждено {terminalFiscalControl.statuses.confirmed} из {terminalFiscalControl.total}
-                    {terminalFiscalControl.statuses.mismatch > 0 ? ` · расхождений ${terminalFiscalControl.statuses.mismatch}` : ''}
-                    {terminalFiscalControl.statuses.needs_review > 0 ? ` · проверить ${terminalFiscalControl.statuses.needs_review}` : ''}
-                    {terminalFiscalControl.statuses.unavailable > 0 ? ` · источник недоступен ${terminalFiscalControl.statuses.unavailable}` : ''}
-                    {terminalFiscalControl.statuses.pending > 0 ? ` · ожидают данных ${terminalFiscalControl.statuses.pending}` : ''}.
-                  </p>
-                  <p className='mt-1 text-xs font-semibold text-slate-500'>
-                    К сотруднику относятся только результаты с однозначным назначением ККМ; ожидание и технические состояния не считаются его ошибкой.
-                  </p>
+                  <p className='mt-1 text-sm font-semibold text-slate-700'>Подтверждено {terminalFiscalControl.statuses.confirmed} из {terminalFiscalControl.total} операций.</p>
+                  {terminalReasonEntries.length > 0 ? (
+                    <div className='mt-3 grid gap-2'>
+                      {terminalReasonEntries.map(([reasonCode, count]) => {
+                        const times = terminalFiscalReasonTimes(terminalFiscalRecords, reasonCode);
+                        const isTechnical = terminalFiscalSourceIncomplete(reasonCode);
+                        return (
+                          <div key={reasonCode} className={`rounded-lg border px-3 py-2 ${isTechnical ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50'}`}>
+                            <p className={`text-sm font-extrabold ${isTechnical ? 'text-slate-900' : 'text-amber-950'}`}>{terminalFiscalReasonLabel(reasonCode)}</p>
+                            <p className={`mt-0.5 text-xs font-semibold ${isTechnical ? 'text-slate-600' : 'text-amber-800'}`}>
+                              {times.length > 0 ? `${times.join(' и ')} · ` : ''}{count} {Number(count) === 1 ? 'операция' : 'операции'}.
+                            </p>
+                            {isTechnical ? <p className='mt-1 text-xs font-semibold text-slate-600'>{terminalFiscalSourceContext(reasonCode)}</p> : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                  {terminalHasSourceIncomplete ? (
+                    <p className='mt-3 text-xs font-semibold leading-relaxed text-slate-600'>
+                      Чек не признан отсутствующим. Это не ошибка сотрудника, действий по сотруднику нет. Система проверит операции повторно.
+                    </p>
+                  ) : (
+                    <p className='mt-2 text-xs font-semibold text-slate-500'>Ожидание технических данных не считается ошибкой сотрудника.</p>
+                  )}
                 </section>
               ) : null}
 
@@ -1335,6 +1362,23 @@ export function AdminShiftControlDetails({
                   <TaskOverviewRow key={item.task.id} item={item} department={department} run={run!} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
                 ))}
               </section> : null}
+
+              {(workdayTimingViolations.length > 0 || workDay) ? (
+                <details className='group mt-4 rounded-xl bg-white ring-1 ring-slate-200'>
+                  <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3'>
+                    <span className='text-sm font-extrabold text-slate-950'>Время работы и служебная информация</span>
+                    <span className='text-xs font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
+                    <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
+                  </summary>
+                  <div className='grid gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600'>
+                    {workDay ? <p>Фактическое время: {formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)}</p> : null}
+                    {workdayTimingViolations.map((violation) => (
+                      <p key={violation.id}><span className='font-extrabold text-slate-800'>{violation.label}:</span> {violation.detail}</p>
+                    ))}
+                    {taskTimingViolationCount > 0 ? <p>Шагов чек-листа выполнено не в срок: {taskTimingViolationCount}.</p> : null}
+                  </div>
+                </details>
+              ) : null}
             </div>
           </div>
           {selectedPhoto && (
