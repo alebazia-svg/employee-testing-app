@@ -11,7 +11,7 @@ export function TerminalFiscalAdminSummary({ summary }: { summary: TerminalFisca
       <Card className='flex items-center gap-3 px-4 py-3'>
         <Clock3 className='h-5 w-5 shrink-0 text-slate-400' aria-hidden='true' />
         <div className='min-w-0'>
-          <p className='font-extrabold text-slate-900'>Автоматическая сверка терминала</p>
+          <p className='font-extrabold text-slate-900'>Сверка оплат</p>
           <p className='text-sm font-medium text-slate-500'>{presentation.detail}</p>
         </div>
         <Badge className='ml-auto shrink-0 bg-slate-100 text-slate-700'>{presentation.label}</Badge>
@@ -34,11 +34,9 @@ export function TerminalFiscalAdminSummary({ summary }: { summary: TerminalFisca
       <div className='flex min-w-0 items-center gap-3'>
         <Icon className={`h-5 w-5 shrink-0 ${state.iconClass}`} aria-hidden='true' />
         <div className='min-w-0'>
-          <p className='font-extrabold text-slate-900'>Автоматическая сверка терминала</p>
+          <p className='font-extrabold text-slate-900'>Сверка оплат</p>
           <p className='text-sm font-semibold text-slate-600'>{presentation.detail}</p>
-          <p className='mt-0.5 text-xs font-medium text-slate-400'>
-            Только для администратора{summary.lastCompletedAt ? ` · обновлено ${formatTime(summary.lastCompletedAt)}` : ''}.
-          </p>
+          {summary.lastCompletedAt && <p className='mt-0.5 text-xs font-medium text-slate-400'>Обновлено {formatTime(summary.lastCompletedAt)}</p>}
         </div>
       </div>
       <Badge className={`w-fit shrink-0 sm:ml-auto ${state.className}`}>{presentation.label}</Badge>

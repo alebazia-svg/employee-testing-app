@@ -1196,7 +1196,7 @@ function buildEmployeeAutoChecks({
   return checks;
 }
 
-export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string; kkmAssignment?: string; kkmAssignmentError?: string; control?: string; employee?: string } }) {
+export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string; kkmAssignment?: string; kkmAssignmentError?: string; control?: string; employee?: string; technical?: string } }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');
@@ -1619,6 +1619,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   ]).values()).filter((item) => item.ref);
   const terminalFiscalPresentation = presentTerminalFiscalWorkdaySummary(terminalFiscalSummary);
   const showTerminalFiscalSummary = selectedDate !== today || terminalFiscalPresentation.status !== 'confirmed';
+  const showTechnical = searchParams?.technical === '1';
 
   return (
     <AdminShell>
@@ -1633,14 +1634,14 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               href={`/admin/workday?date=${previousDate}`}
               className='rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'
             >
-              ← предыдущий день
+              ← Предыдущий
             </Link>
             <Badge className='w-fit bg-white px-3 py-2 text-slate-700 ring-1 ring-slate-200'>{formatDateLabel(selectedDate)}</Badge>
             <Link
               href={`/admin/workday?date=${nextDate}`}
               className='rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'
             >
-              следующий день →
+              Следующий →
             </Link>
             <Link
               href='/admin/workday'
@@ -1654,12 +1655,19 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
 
         {showTerminalFiscalSummary && <TerminalFiscalAdminSummary summary={terminalFiscalSummary} />}
 
+        {requiredIssues.length > 0 && (
+          <Card className='border-amber-200 bg-amber-50'>
+            <div className='flex items-start gap-3'><AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' /><div className='min-w-0 flex-1'><h2 className='text-lg font-extrabold text-slate-950'>Нужно исправить · {requiredIssues.length}</h2><p className='mt-1 text-sm font-semibold text-slate-600'>Прочтение уведомления не закрывает проблему. Она исчезнет только после фактического исправления.</p></div></div>
+            <div className='mt-4 grid gap-2 sm:grid-cols-2'>{requiredIssues.map((issue) => <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='rounded-xl bg-white px-4 py-3 ring-1 ring-amber-200 transition hover:ring-amber-400'><span className='block text-xs font-extrabold text-amber-700'>{issue.user.name}</span><span className='mt-1 block text-sm font-black text-slate-950'>{issue.title}</span></Link>)}</div>
+          </Card>
+        )}
+
         {unfinishedWorkDays.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>
             <div className='flex items-start gap-3'>
               <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' />
               <div>
-                <p className='font-extrabold text-amber-950'>Не завершены рабочие дни раньше выбранной даты</p>
+                <p className='font-extrabold text-amber-950'>Остались незавершённые рабочие дни</p>
                 <div className='mt-2 flex flex-wrap gap-2 text-sm font-semibold text-amber-900'>
                   {unfinishedWorkDays.map((entry) => (
                     <span key={entry.id} className='rounded-full bg-white px-3 py-1 ring-1 ring-amber-200'>
@@ -1672,26 +1680,19 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           </Card>
         )}
 
-        {requiredIssues.length > 0 && (
-          <Card className='border-amber-200 bg-amber-50'>
-            <div className='flex items-start gap-3'><AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' /><div className='min-w-0 flex-1'><h2 className='text-lg font-extrabold text-slate-950'>Активные обязательные проблемы · {requiredIssues.length}</h2><p className='mt-1 text-sm font-semibold text-slate-600'>Остаются здесь после прочтения уведомления и исчезают только после фактического исправления.</p></div></div>
-            <div className='mt-4 grid gap-2 sm:grid-cols-2'>{requiredIssues.map((issue) => <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='rounded-xl bg-white px-4 py-3 ring-1 ring-amber-200 transition hover:ring-amber-400'><span className='block text-xs font-extrabold text-amber-700'>{issue.user.name}</span><span className='mt-1 block text-sm font-black text-slate-950'>{issue.title}</span></Link>)}</div>
-          </Card>
-        )}
-
         <Card className='p-0' id='employees-control'>
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between'>
             <div>
-              <h2 className='text-lg font-extrabold text-slate-950'>Состояние сотрудников</h2>
+              <h2 className='text-lg font-extrabold text-slate-950'>Сотрудники</h2>
               <p className='mt-1 text-sm font-medium text-slate-500'>
-                По умолчанию показаны только сотрудники с ошибкой или ситуацией, требующей внимания.
+                Сначала показаны те, кому требуется внимание. Остальных можно открыть фильтрами.
               </p>
             </div>
             <div className='flex flex-wrap gap-2 text-xs font-extrabold'>
               {([
-                ['active', `Требуют внимания · ${activeEmployeeCount}`],
-                ['pending', `Ожидается · ${pendingEmployeeCount}`],
-                ['normal', `Без активных проблем · ${normalEmployeeCount}`],
+                ['active', `Нужно внимание · ${activeEmployeeCount}`],
+                ['pending', `Ещё не выполнено · ${pendingEmployeeCount}`],
+                ['normal', `Всё нормально · ${normalEmployeeCount}`],
                 ['all', `Все · ${employeeControlRows.length}`],
               ] as Array<[AdminWorkdayControlFilter, string]>).map(([filter, label]) => (
                 <Link
@@ -1709,111 +1710,78 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
             </div>
           </div>
           {filteredEmployeeControlRows.length === 0 ? (
-            <div className='px-5 py-5 text-sm font-semibold text-slate-500'>В этой категории сотрудников нет.</div>
+            <div className='flex items-center gap-3 px-5 py-5 text-sm font-semibold text-slate-600'><span className='flex h-8 w-8 items-center justify-center rounded-full bg-green-100 text-green-700'>✓</span>В этой категории сотрудников нет.</div>
           ) : (
-            <div className='overflow-x-auto'>
-              <Table>
-                <thead>
-                  <tr className='text-left text-xs uppercase tracking-wide text-slate-500'>
-                    <th className='px-4 py-2.5'>Сотрудник</th>
-                    <th className='px-4 py-2.5'>Рабочий день</th>
-                    <th className='px-4 py-2.5'>Состояние</th>
-                    <th className='px-4 py-2.5'>Главное</th>
-                    <th className='px-4 py-2.5'>Действие</th>
-                    {devWorkdayToolsEnabled && <th className='px-4 py-2.5'>Dev/Test</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEmployeeControlRows.map((row) => {
-                    const currentShiftState = shiftState(row.workDay, row.schedule?.status);
-                    const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
-                    const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
-                    const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
-                      ? reviewableEmployeeRows[reviewableIndex + 1]
-                      : null;
-                    return (
-                      <tr key={row.employee.id} className='border-t border-slate-100 align-middle'>
-                        <td className='px-4 py-2.5'>
-                          <p className='font-bold text-slate-950'>
-                            {row.employee.name}
-                            <span className='ml-2 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</span>
-                          </p>
-                        </td>
-                        <td className='whitespace-nowrap px-4 py-2.5 text-sm font-semibold text-slate-700'>
-                          {row.workDay?.shiftLabel ?? '—'}
-                          <div className='mt-1 flex flex-wrap items-center gap-2'>
-                            <Badge className={currentShiftState.className}>{currentShiftState.label}</Badge>
-                            {row.timingViolations.length > 0 && <span className='max-w-[220px] whitespace-normal text-xs font-bold text-amber-800'>{timingSummary(row.timingViolations)}</span>}
-                          </div>
-                        </td>
-                        <td className='px-4 py-2.5'><Badge className={row.businessStatus.className}>{row.businessStatus.label}</Badge><p className='mt-1 text-xs font-semibold text-slate-500'>{row.totalTaskCount > 0 ? `Проверки: ${row.completedTaskCount} из ${row.totalTaskCount}` : 'Проверок нет'}</p></td>
-                        <td className={`max-w-[380px] px-4 py-2.5 text-sm font-semibold ${
-                          row.category === 'error' ? 'text-rose-800' : row.category === 'attention' ? 'text-amber-800' : row.category === 'pending' ? 'text-slate-600' : 'text-green-700'
-                        }`}>
-                          {row.reviewText}
-                        </td>
-                        <td className='whitespace-nowrap px-4 py-2.5'>
-                          {row.run || row.workDay || row.timingViolations.length > 0 ? (
-                            <AdminShiftControlDetails
-                              employeeName={row.employee.name}
-                              department={row.employee.department}
-                              departmentName={departmentLabel(row.employee.department)}
-                              scheduleLabel={scheduleStatusLabel(row.schedule?.status)}
-                              run={serializeShiftControlRun(row.run)}
-                              workDay={row.workDay ? {
-                                status: row.workDay.status,
-                                startedAt: row.workDay.startedAt.toISOString(),
-                                endedAt: row.workDay.endedAt?.toISOString() ?? null,
-                                shiftLabel: row.workDay.shiftLabel,
-                                lateMinutes: row.workDay.lateMinutes,
-                                comment: row.workDay.comment,
-                              } : null}
-                              dateKey={selectedDate}
-                              autoChecks={row.autoChecks}
-                              timingViolations={row.timingViolations}
-                              terminalFiscalControl={row.terminalFiscalControl ? {
-                                total: row.terminalFiscalControl.total,
-                                statuses: row.terminalFiscalControl.statuses,
-                                lastOperationAt: row.terminalFiscalControl.lastOperationAt?.toISOString() ?? null,
-                              } : null}
-                              initialOpen={searchParams?.employee === String(row.employee.id)}
-                              closeHref={employeeDetailCloseHref}
-                              previousEmployee={previousEmployeeRow ? {
-                                name: previousEmployeeRow.employee.name,
-                                href: employeeDetailHref(previousEmployeeRow.employee.id),
-                              } : null}
-                              nextEmployee={nextEmployeeRow ? {
-                                name: nextEmployeeRow.employee.name,
-                                href: employeeDetailHref(nextEmployeeRow.employee.id),
-                              } : null}
-                            />
-                          ) : (
-                            <span className='text-xs font-semibold text-slate-400'>Нет данных</span>
-                          )}
-                        </td>
-                        {devWorkdayToolsEnabled && (
-                          <td className='px-4 py-2.5'>
-                            <div className='flex flex-col gap-2'>
-                              {!row.workDay && row.shiftControlRequired && (
-                                <DevCreateTestShiftButtons
-                                  userId={row.employee.id}
-                                  userName={row.employee.name}
-                                  department={row.employee.department}
-                                  date={selectedDate}
-                                />
-                              )}
-                              {row.shiftControlRequired && row.run && (
-                                <DevMakeShiftTasksAvailableButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />
-                              )}
-                              <DevResetTodayButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </Table>
+            <div className='divide-y divide-slate-100'>
+              {filteredEmployeeControlRows.map((row) => {
+                const currentShiftState = shiftState(row.workDay, row.schedule?.status);
+                const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
+                const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
+                const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
+                  ? reviewableEmployeeRows[reviewableIndex + 1]
+                  : null;
+                return (
+                  <div key={row.employee.id} className='grid gap-3 px-5 py-4 transition hover:bg-slate-50/70 lg:grid-cols-[minmax(220px,0.9fr)_minmax(180px,0.75fr)_minmax(260px,1.25fr)_auto] lg:items-center'>
+                    <div className='min-w-0'>
+                      <p className='truncate font-extrabold text-slate-950'>{row.employee.name}</p>
+                      <p className='mt-0.5 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</p>
+                    </div>
+                    <div className='flex min-w-0 flex-wrap items-center gap-2'>
+                      <Badge className={currentShiftState.className}>{currentShiftState.label}</Badge>
+                      {row.workDay?.shiftLabel && <span className='text-xs font-bold text-slate-600'>{row.workDay.shiftLabel}</span>}
+                      {row.timingViolations.length > 0 && <span className='basis-full text-xs font-bold text-amber-800'>{timingSummary(row.timingViolations)}</span>}
+                    </div>
+                    <div className='min-w-0'>
+                      <div className='flex flex-wrap items-center gap-2'><Badge className={row.businessStatus.className}>{row.businessStatus.label}</Badge><span className='text-xs font-semibold text-slate-400'>{row.totalTaskCount > 0 ? `${row.completedTaskCount} из ${row.totalTaskCount} проверок` : 'Проверок нет'}</span></div>
+                      <p className={`mt-1.5 text-sm font-semibold leading-relaxed ${
+                        row.category === 'error' ? 'text-rose-800' : row.category === 'attention' ? 'text-amber-800' : row.category === 'pending' ? 'text-slate-600' : 'text-green-700'
+                      }`}>{row.reviewText}</p>
+                    </div>
+                    <div className='flex items-center gap-2 lg:justify-end'>
+                      {row.run || row.workDay || row.timingViolations.length > 0 ? (
+                        <AdminShiftControlDetails
+                          employeeName={row.employee.name}
+                          department={row.employee.department}
+                          departmentName={departmentLabel(row.employee.department)}
+                          scheduleLabel={scheduleStatusLabel(row.schedule?.status)}
+                          run={serializeShiftControlRun(row.run)}
+                          workDay={row.workDay ? {
+                            status: row.workDay.status,
+                            startedAt: row.workDay.startedAt.toISOString(),
+                            endedAt: row.workDay.endedAt?.toISOString() ?? null,
+                            shiftLabel: row.workDay.shiftLabel,
+                            lateMinutes: row.workDay.lateMinutes,
+                            comment: row.workDay.comment,
+                          } : null}
+                          dateKey={selectedDate}
+                          autoChecks={row.autoChecks}
+                          timingViolations={row.timingViolations}
+                          terminalFiscalControl={row.terminalFiscalControl ? {
+                            total: row.terminalFiscalControl.total,
+                            statuses: row.terminalFiscalControl.statuses,
+                            lastOperationAt: row.terminalFiscalControl.lastOperationAt?.toISOString() ?? null,
+                          } : null}
+                          initialOpen={searchParams?.employee === String(row.employee.id)}
+                          closeHref={employeeDetailCloseHref}
+                          previousEmployee={previousEmployeeRow ? {
+                            name: previousEmployeeRow.employee.name,
+                            href: employeeDetailHref(previousEmployeeRow.employee.id),
+                          } : null}
+                          nextEmployee={nextEmployeeRow ? {
+                            name: nextEmployeeRow.employee.name,
+                            href: employeeDetailHref(nextEmployeeRow.employee.id),
+                          } : null}
+                        />
+                      ) : <span className='text-xs font-semibold text-slate-400'>Нет данных</span>}
+                      {devWorkdayToolsEnabled && <div className='flex flex-col gap-2'>
+                        {!row.workDay && row.shiftControlRequired && <DevCreateTestShiftButtons userId={row.employee.id} userName={row.employee.name} department={row.employee.department} date={selectedDate} />}
+                        {row.shiftControlRequired && row.run && <DevMakeShiftTasksAvailableButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />}
+                        <DevResetTodayButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />
+                      </div>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </Card>
@@ -1828,11 +1796,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           </details>
         )}
 
-        <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
+        {showTechnical ? <details className='group rounded-xl bg-white ring-1 ring-slate-200' open>
           <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 transition hover:bg-slate-50'>
             <div>
               <h2 className='text-base font-extrabold text-slate-950'>Диагностика и настройки</h2>
-              <p className='mt-1 text-sm font-medium text-slate-500'>Подключения, привязки касс и технические таблицы.</p>
+              <p className='mt-1 text-sm font-medium text-slate-500'>Служебный режим: подключения, привязки касс и технические таблицы.</p>
             </div>
             <span className='text-sm font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
             <span className='hidden text-sm font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
@@ -2233,7 +2201,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         </Card>
 
           </div>
-        </details>
+        </details> : <Link href={`/admin/workday?date=${selectedDate}&technical=1#kkm-assignments`} className='flex items-center justify-between gap-3 rounded-xl bg-white px-5 py-4 text-sm font-extrabold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-950'><span><span className='block text-slate-950'>Служебные настройки</span><span className='mt-0.5 block text-xs font-semibold text-slate-500'>Привязки касс, наличные по 1С и технические таблицы</span></span><span>Открыть →</span></Link>}
 
       </div>
     </AdminShell>
