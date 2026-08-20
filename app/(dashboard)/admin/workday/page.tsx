@@ -910,6 +910,7 @@ function buildEmployeeAutoChecks({
 
     const requiresEncashment = personalCash ? readBoolean(personalCash.requiresEncashment) : null;
     const encashmentAmount = personalCash ? readNumber(personalCash.encashmentAmount) : null;
+    const encashmentExceptionRequestId = personalCash ? readText(personalCash.encashmentExceptionRequestId) : '';
     const savedEncashmentDirection = personalCash ? readText(personalCash.encashmentDirection) : '';
     const encashmentDirection = savedEncashmentDirection === 'deposit_safe' || department !== 'retail'
       ? 'deposit_safe'
@@ -948,8 +949,10 @@ function buildEmployeeAutoChecks({
           id: `handover-encashment-${task.id}`,
           taskId: task.id,
           label: encashmentLabel,
-          status: 'waiting',
-          summary: 'Сумма инкассации не указана.',
+          status: encashmentExceptionRequestId && task.status === 'done' ? 'matched' : 'waiting',
+          summary: encashmentExceptionRequestId && task.status === 'done'
+            ? 'Администратор разрешил завершить рабочий день без инкассации. Исключение сохранено для контроля.'
+            : 'Сумма инкассации не указана; ожидается решение администратора.',
         });
       } else if (!cashStatement?.ok || !targetStatement?.ok) {
         checks.push({

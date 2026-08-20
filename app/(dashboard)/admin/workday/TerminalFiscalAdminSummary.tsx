@@ -29,8 +29,16 @@ export function TerminalFiscalAdminSummary({ summary }: { summary: TerminalFisca
   } as const;
   const state = states[presentation.status as keyof typeof states];
   const Icon = state.icon;
+  const itemReviewReasons = new Set([
+    'OFD_ITEMS_MISMATCH',
+    'OFD_ITEM_PRESENTATION_DIFFERENCE',
+    'OFD_ITEM_VALUES_MISMATCH',
+  ]);
   const detailRecords = summary.attributionRecords?.filter((record) => (
-    record.status === 'needs_review' || record.status === 'mismatch' || record.status === 'unavailable'
+    record.status === 'needs_review'
+    || record.status === 'mismatch'
+    || record.status === 'unavailable'
+    || itemReviewReasons.has(record.reasonCode)
   )) ?? [];
   const detailReasons = [...new Set(detailRecords.map((record) => record.reasonCode))];
 
