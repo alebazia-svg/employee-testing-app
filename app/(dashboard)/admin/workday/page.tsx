@@ -882,11 +882,11 @@ function buildEmployeeAutoChecks({
         ? `Остаток 1С на момент проверки: ${formatMoney(personalCashAudit.balance)}${personalCashAudit.capturedAt ? ` · зафиксирован в ${formatTime(new Date(personalCashAudit.capturedAt))}` : ''}.`
         : 'Снимок при сдаче смены отсутствует; используется конечный остаток 1С за день.',
     }));
-    checks.push(moneyAutoCheck({
+    if (reserveCash) checks.push(moneyAutoCheck({
       id: `handover-reserve-${task.id}`,
       taskId: task.id,
       label: 'Пересчёт резерва',
-      actual: reserveCash ? readNumber(reserveCash.cashBalance) : null,
+      actual: readNumber(reserveCash.cashBalance),
       expected: expectedReserveCash,
       evidence: reserveCashAudit?.status === 'captured'
         ? `Остаток резерва 1С на момент проверки: ${formatMoney(reserveCashAudit.balance)}${reserveCashAudit.capturedAt ? ` · зафиксирован в ${formatTime(new Date(reserveCashAudit.capturedAt))}` : ''}.`

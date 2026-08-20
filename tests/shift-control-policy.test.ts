@@ -12,6 +12,15 @@ test('normal employee handover never asks for a KKM opening, closing or Z-report
   }), ['personalCashBalance', 'reserveCashBalance']);
 });
 
+test('only the retail closing shift recounts the shared reserve', () => {
+  assert.deepEqual(buildShiftHandoverSteps({
+    personalCashBalance: 40_000,
+    cashCommentRequired: false,
+    isRetail: true,
+    isClosingShift: false,
+  }), ['personalCashBalance']);
+});
+
 test('cash discrepancy and encashment remain in the handover flow', () => {
   assert.deepEqual(buildShiftHandoverSteps({
     personalCashBalance: 50_001,

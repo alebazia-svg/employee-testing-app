@@ -266,6 +266,7 @@ async function saveHandoverDraft(
   formData: FormData,
   task: { id: number; runId: number; handoverData: unknown; run: { date: string; workDayEntry: { shiftCode: string } } },
   isRetail: boolean,
+  includeReserve: boolean,
   userId: number,
   date: string,
 ) {
@@ -308,7 +309,7 @@ async function saveHandoverDraft(
   const auditFactBalance = existingAudit ? readNumber(existingAudit.factCashBalance) : null;
   const oneCAudit = personalCashBalance !== null && (!existingAudit || auditFactBalance !== personalCashBalance)
     ? {
-        ...await captureOneCCashAudit({ userId, date, includeReserve: isRetail, capturedAt: new Date() }),
+        ...await captureOneCCashAudit({ userId, date, includeReserve, capturedAt: new Date() }),
         factCashBalance: personalCashBalance,
       }
     : existingAudit;
@@ -342,7 +343,7 @@ async function saveHandoverDraft(
       encashmentAmount,
       encashmentDirection,
     },
-    reserveCash: isRetail
+    reserveCash: includeReserve
       ? {
           ...existingReserveCash,
           cashBalance: reserveCashBalance,
@@ -410,14 +411,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (readFormString(formData, 'intent') === 'draft') {
       try {
-        return await saveHandoverDraft(formData, task, user.department === 'retail', user.id, task.run.date);
+        const isRetail = user.department === 'retail';
+        return await saveHandoverDraft(formData, task, isRetail, isRetail && isClosingShift(task.run.workDayEntry.shiftCode), user.id, task.run.date);
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить шаг сдачи смены' }, { status: 400 });
       }
     }
 
     const isRetail = user.department === 'retail';
-    await saveHandoverDraft(formData, task, isRetail, user.id, task.run.date);
+    const isClosingEmployee = isRetail && isClosingShift(task.run.workDayEntry.shiftCode);
+    await saveHandoverDraft(formData, task, isRetail, isClosingEmployee, user.id, task.run.date);
     const savedDraftTask = await prisma.shiftControlTask.findUnique({ where: { id: task.id }, select: { handoverData: true } });
     if (!savedDraftTask) return Response.json({ error: 'Задача сдачи смены не найдена' }, { status: 404 });
     const handoverData = savedDraftTask.handoverData;
@@ -430,7 +433,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const encashmentAmount = readNumber(personalCash.encashmentAmount);
     const encashmentDirection = typeof personalCash.encashmentDirection === 'string' ? personalCash.encashmentDirection : '';
     const comment = isRecord(handoverData) && typeof handoverData.comment === 'string' ? handoverData.comment.trim() : '';
-    const isClosingEmployee = isRetail && isClosingShift(task.run.workDayEntry.shiftCode);
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
     const requiresDiscrepancyComment = false;
 
@@ -447,7 +449,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const canFinishWithoutEncashment = Boolean(approvedCashEncashmentException);
 
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
-    if (isRetail && reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
+    if (isClosingEmployee && reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
     if (discrepancyType && !['none', 'surplus', 'shortage'].includes(discrepancyType)) {
       return Response.json({ error: 'Не удалось определить расхождение по кассе' }, { status: 400 });
     }
@@ -574,7 +576,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const handoverRecord = isRecord(handoverData) ? handoverData : {};
       const savedOneCAudit = isRecord(handoverRecord[shiftControlOneCAuditKey])
         ? handoverRecord[shiftControlOneCAuditKey]
-        : await captureOneCCashAudit({ userId: user.id, date: task.run.date, includeReserve: isRetail, capturedAt: now });
+        : await captureOneCCashAudit({ userId: user.id, date: task.run.date, includeReserve: isClosingEmployee, capturedAt: now });
       const finalHandoverData = {
         draft: false,
         shiftCode: task.run.workDayEntry.shiftCode,
@@ -582,7 +584,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         [shiftControlOneCAuditKey]: savedOneCAudit,
         scope: {
           personalCash: true,
-          reserveCash: isRetail,
+          reserveCash: isClosingEmployee,
           storeClosing: isClosingEmployee,
         },
         personalCash: {
@@ -600,7 +602,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           encashmentDirection: requiresEncashment && !canFinishWithoutEncashment ? encashmentDirection : null,
           encashmentExceptionRequestId: approvedCashEncashmentException?.id ?? null,
         },
-        reserveCash: isRetail ? { cashBalance: reserveCashBalance } : null,
+        reserveCash: isClosingEmployee ? { cashBalance: reserveCashBalance } : null,
         terminalCheck: null,
         storeClosing: isClosingEmployee
           ? {

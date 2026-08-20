@@ -26,7 +26,7 @@ export function buildShiftHandoverSteps(input: {
   return [
     'personalCashBalance',
     ...(input.cashCommentRequired ? ['discrepancy' as const] : []),
-    ...(input.isRetail ? ['reserveCashBalance' as const] : []),
+    ...(input.isRetail && input.isClosingShift ? ['reserveCashBalance' as const] : []),
     ...(requiresEncashment ? ['encashment' as const] : []),
     ...(input.isClosingShift && requireKkmReportPhoto ? ['zReportPhoto' as const] : []),
   ];

@@ -506,7 +506,7 @@ function HandoverOverview({ data, department }: { data: unknown; department: str
             ? '—'
             : formatMoney(Number(personalCash.cashBalance))}
         />
-        {department === 'retail' ? (
+        {reserveCash ? (
           <DetailRow
             label='Резерв'
             value={reserveCash?.cashBalance === null || reserveCash?.cashBalance === undefined
