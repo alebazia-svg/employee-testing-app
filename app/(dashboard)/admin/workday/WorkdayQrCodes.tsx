@@ -62,7 +62,10 @@ export function WorkdayQrCodes() {
     const image = images[item.id];
     if (!image) return;
 
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=720,height=900');
+    // Safari returns a detached window for `noopener`, so document.write() silently
+    // targets nothing and the print tab stays blank. The document is written first,
+    // then its opener is cleared below.
+    const printWindow = window.open('', '_blank', 'width=720,height=900');
     if (!printWindow) return;
     const logoUrl = new URL('/offonika-wordmark.png', window.location.origin).toString();
 
@@ -123,6 +126,8 @@ export function WorkdayQrCodes() {
       </html>
     `);
     printWindow.document.close();
+    printWindow.opener = null;
+    printWindow.focus();
   }
 
   return (
