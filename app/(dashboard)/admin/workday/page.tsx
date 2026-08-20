@@ -1312,6 +1312,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       const run = shiftControlRunByUser.get(employee.id);
       const shiftControlRequired = usesWorkdayShiftControl(employee);
       const autoChecks = autoChecksByUser.get(employee.id) ?? [];
+      const handoverHasStoreClosing = (run?.tasks ?? []).some((task) => (
+        task.category === 'handover'
+        && isRecord(task.handoverData)
+        && isRecord(task.handoverData.storeClosing)
+      ));
+      const visibleTaskIds = new Set((run?.tasks ?? [])
+        .filter((task) => !(task.category === 'closing' && handoverHasStoreClosing))
+        .map((task) => task.id));
+      const visibleAutoChecks = autoChecks.filter((check) => visibleTaskIds.has(check.taskId));
       const terminalFiscalControl = terminalFiscalAttribution.byUser.get(employee.id) ?? null;
       const terminalFiscalRecords = terminalFiscalAttribution.recordsByUser.get(employee.id) ?? [];
       const terminalFiscalPresentation = presentTerminalFiscalEmployeeControl(terminalFiscalControl);
@@ -1326,9 +1335,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         tasks: (run?.tasks ?? []) as AutoCheckTask[],
       });
       const activeTimingViolations = timingViolations.filter((violation) => isActiveWorkdayTimingViolation(violation.kind));
-      const manualReviewCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
-      const manualIssueCount = autoChecks.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
-      const unresolvedAutoChecks = autoChecks.filter((check) => check.manualReview?.decision !== 'confirmed_ok');
+      const manualReviewCount = visibleAutoChecks.filter((check) => check.manualReview?.decision === 'confirmed_ok').length;
+      const manualIssueCount = visibleAutoChecks.filter((check) => check.manualReview?.decision === 'confirmed_issue').length;
+      const unresolvedAutoChecks = visibleAutoChecks.filter((check) => check.manualReview?.decision !== 'confirmed_ok');
       const mismatchCount = unresolvedAutoChecks.filter((check) => (
         check.status === 'mismatch' || check.manualReview?.decision === 'confirmed_issue'
       )).length;
@@ -1368,7 +1377,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         && task.status !== 'missed'
         && !timingViolations.some((violation) => violation.taskId === task.id && violation.kind === 'task_overdue')
       )).length;
-      const cannotVerify = incompleteCount > 0 || (Boolean(run) && autoChecks.length === 0);
+      const cannotVerify = incompleteCount > 0 || (Boolean(run) && visibleAutoChecks.length === 0);
       const isPending = !hasError && !needsAttention && (
         waitingForWorkdayStart
         || pendingTaskCount > 0
