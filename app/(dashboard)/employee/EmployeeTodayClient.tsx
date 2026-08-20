@@ -1020,6 +1020,7 @@ export function EmployeeTodayClient({
   const [now, setNow] = useState<Date | null>(null);
   const workdaySyncAbortRef = useRef<AbortController | null>(null);
   const workdaySyncInFlightRef = useRef(false);
+  const approvedCashExceptionAutoFinishRef = useRef<string | null>(null);
   const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
   const displayNow = now ?? initialRenderNow;
 
@@ -2374,14 +2375,11 @@ export function EmployeeTodayClient({
         setWorkDay(result.workDay);
         setUnfinished(null);
       }
-      setActiveHandoverTaskId(null);
-      setHandoverAttemptedStep(null);
-      setHandoverSaveError('');
-      setHandoverStep(0);
-      setHandoverDraft(emptyHandoverDraft());
-      setMessage(result.message || 'Смена сдана, рабочий день завершён');
-      setNow(new Date());
-      await syncCurrentWorkdayState(true);
+      // On iOS/PWA a partial state update after handover could leave the
+      // completion banner fresh while "Детали смены" still showed the old day.
+      // A full refresh uses the authoritative completed workday snapshot.
+      window.location.reload();
+      return;
     } catch (reason) {
       if (reason instanceof EmployeeApiError && reason.code === 'OPEN_REQUIRED_ISSUES') setCloseBlocked(true);
       setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
@@ -2389,6 +2387,22 @@ export function EmployeeTodayClient({
       setIsSaving(false);
     }
   }
+
+  useEffect(() => {
+    const request = cashEncashmentExceptionRequestState;
+    const task = activeHandoverTask;
+    const isApprovedEncashmentStep = request?.status === 'approved' && handoverSteps[handoverStep] === 'encashment';
+    if (!isApprovedEncashmentStep || !task || isCompleted || isSaving) {
+      if (request?.status !== 'approved') approvedCashExceptionAutoFinishRef.current = null;
+      return;
+    }
+
+    const attemptKey = `${request.id}:${task.id}`;
+    if (approvedCashExceptionAutoFinishRef.current === attemptKey) return;
+    approvedCashExceptionAutoFinishRef.current = attemptKey;
+    setMessage('Администратор разрешил завершение. Завершаем рабочий день…');
+    void submitHandover(task);
+  }, [activeHandoverTask, cashEncashmentExceptionRequestState, handoverStep, handoverSteps, isCompleted, isSaving]);
 
   async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
     if (!file) return;
@@ -2496,10 +2510,11 @@ export function EmployeeTodayClient({
       zReportPhoto: 'zReportPhoto',
     };
     const currentPhotoField = photoFieldForStep[step];
+    const approvedCashEncashmentStep = step === 'encashment' && cashEncashmentExceptionRequestState?.status === 'approved';
     const photoCompletesHandoverStep = Boolean(
       currentPhotoField
       && !hasHandoverPhoto(handoverDraft[currentPhotoField])
-      && cashEncashmentExceptionRequestState?.status !== 'approved',
+      && !approvedCashEncashmentStep,
     );
 
     return (
@@ -2770,6 +2785,9 @@ export function EmployeeTodayClient({
           </p>
         )}
 
+        {approvedCashEncashmentStep ? (
+          <p className='mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs font-extrabold text-slate-600 ring-1 ring-slate-200'>Завершаем рабочий день…</p>
+        ) : (
         <div className={cn('mt-4 grid gap-2', photoCompletesHandoverStep ? 'grid-cols-1' : 'grid-cols-2')}>
           <Button
             type='button'
@@ -2825,6 +2843,7 @@ export function EmployeeTodayClient({
             {isLastStep ? 'Сдать смену' : 'Далее'}
           </Button>}
         </div>
+        )}
       </div>
     );
   }
