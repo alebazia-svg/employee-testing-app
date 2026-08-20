@@ -62,27 +62,49 @@ export function WorkdayQrCodes() {
 
     const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=720,height=900');
     if (!printWindow) return;
+    const logoUrl = new URL('/logo-offonika-full.webp', window.location.origin).toString();
 
     printWindow.document.write(`
       <!doctype html>
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>QR рабочего дня - ${item.title}</title>
+          <title>OFFONIKA — QR для ${item.title}</title>
           <style>
-            body { font-family: Arial, sans-serif; margin: 32px; color: #111827; text-align: center; }
-            h1 { font-size: 32px; margin: 0 0 8px; }
-            p { font-size: 18px; margin: 0 0 24px; color: #475569; }
-            img { width: 360px; height: 360px; }
-            code { display: inline-block; margin-top: 20px; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 14px; }
+            @page { size: A5 portrait; margin: 0; }
+            * { box-sizing: border-box; }
+            body { margin: 0; color: #101827; font-family: Arial, Helvetica, sans-serif; }
+            .sheet { min-height: 210mm; display: flex; flex-direction: column; overflow: hidden; }
+            .brand { display: flex; align-items: center; justify-content: center; min-height: 31mm; padding: 8mm 14mm; background: #111821; }
+            .brand img { width: 67mm; height: auto; }
+            main { flex: 1; padding: 11mm 18mm 8mm; text-align: center; }
+            .eyebrow { color: #4da814; font-size: 10pt; font-weight: 800; letter-spacing: .16em; }
+            h1 { margin: 3mm 0 2mm; font-size: 29pt; line-height: 1; letter-spacing: .01em; }
+            .lead { max-width: 112mm; margin: 0 auto; color: #526174; font-size: 12pt; line-height: 1.35; }
+            .qr-frame { display: inline-flex; margin: 7mm auto; padding: 5mm; border: 1.2mm solid #4db214; border-radius: 6mm; background: #fff; }
+            .qr-frame img { display: block; width: 91mm; height: 91mm; }
+            .steps { margin: 0 auto; max-width: 120mm; display: grid; gap: 3mm; text-align: left; }
+            .step { display: flex; align-items: center; gap: 4mm; min-height: 14mm; padding: 3mm 4mm; border-radius: 4mm; background: #f4f7f5; font-size: 11pt; line-height: 1.25; }
+            .number { display: flex; flex: 0 0 8mm; align-items: center; justify-content: center; width: 8mm; height: 8mm; border-radius: 50%; background: #4db214; color: #fff; font-size: 10pt; font-weight: 800; }
+            footer { padding: 7mm 16mm; border-top: .4mm solid #dbe3df; color: #627184; font-size: 8.5pt; line-height: 1.35; text-align: center; }
           </style>
         </head>
         <body>
-          <h1>OFFONIKA · ${item.title}</h1>
-          <p>QR для начала рабочего дня</p>
-          <img src="${image}" alt="QR ${item.title}" />
-          <br />
-          <code>${item.value}</code>
+          <section class="sheet">
+            <header class="brand"><img src="${logoUrl}" alt="OFFONIKA" /></header>
+            <main>
+              <div class="eyebrow">НАЧАЛО РАБОЧЕГО ДНЯ</div>
+              <h1>${item.title.toUpperCase()}</h1>
+              <p class="lead">Перед началом смены откройте портал и отсканируйте этот QR-код.</p>
+              <div class="qr-frame"><img src="${image}" alt="QR ${item.title}" /></div>
+              <div class="steps">
+                <div class="step"><span class="number">1</span><span>Откройте портал OFFONIKA</span></div>
+                <div class="step"><span class="number">2</span><span>Нажмите «Сканировать QR»</span></div>
+                <div class="step"><span class="number">3</span><span>Наведите камеру на этот код</span></div>
+              </div>
+            </main>
+            <footer>QR-код действует только для сотрудников отдела «${item.title}».<br />Если код не считывается — обратитесь к администратору.</footer>
+          </section>
           <script>window.onload = () => { window.print(); };</script>
         </body>
       </html>
@@ -167,7 +189,7 @@ export function WorkdayQrCodes() {
                           className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-3 text-sm font-extrabold text-white hover:bg-green-700'
                         >
                           <Printer className='h-4 w-4' />
-                          Печать
+                          Печать A5
                         </button>
                       </div>
                     </div>
@@ -194,7 +216,7 @@ export function WorkdayQrCodes() {
 
             <div className='mt-5 flex flex-col items-center gap-4'>
               {images[activeQr.id] ? <img src={images[activeQr.id]} alt={`QR ${activeQr.title}`} className='h-72 w-72' /> : <QrCode className='h-24 w-24 text-slate-300' />}
-              <p className='break-all rounded-xl bg-slate-50 px-3 py-2 font-mono text-sm font-bold text-slate-700 ring-1 ring-slate-200'>{activeQr.value}</p>
+              <p className='rounded-xl bg-green-50 px-4 py-3 text-center text-sm font-bold leading-relaxed text-green-900 ring-1 ring-green-100'>Перед началом смены откройте портал и отсканируйте этот QR-код.</p>
               <div className='grid w-full gap-2 sm:grid-cols-2'>
                 <a
                   href={images[activeQr.id] || '#'}
@@ -206,7 +228,7 @@ export function WorkdayQrCodes() {
                 </a>
                 <button type='button' onClick={() => printQr(activeQr)} className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-green-600 px-4 text-sm font-extrabold text-white hover:bg-green-700'>
                   <Printer className='h-4 w-4' />
-                  Печать
+                  Печать A5
                 </button>
               </div>
             </div>
