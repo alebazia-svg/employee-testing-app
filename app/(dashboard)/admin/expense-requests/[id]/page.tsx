@@ -17,7 +17,7 @@ function list(value: unknown) { return Array.isArray(value) ? value.map(String) 
 function money(value: unknown) { const number = Number(value); return Number.isFinite(number) ? `${number.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽` : '—'; }
 function dateTime(value: Date | null) { return value ? new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Moscow' }).format(value) : '—'; }
 function feedbackLabel(value: string) {
-  return ({ normal: 'Всё нормально', clarification_required: 'Действительно нужно уточнить', hint_unnecessary: 'Подсказка лишняя', rule_change_required: 'Правило нужно изменить' } as Record<string, string>)[value] ?? value;
+  return ({ normal: 'Всё верно', clarification_required: 'Уточнение действительно нужно', hint_unnecessary: 'Уточнение не требуется', rule_change_required: 'Нужно изменить правило' } as Record<string, string>)[value] ?? value;
 }
 const categoryLabels: Record<string, string> = {
   supplier_payment: 'Оплата поставщику', customer_refund: 'Возврат клиенту', accountable_advance: 'Подотчёт',
@@ -76,7 +76,7 @@ export default async function ExpenseRequestDetailPage({ params }: { params: { i
         <div>
           <div className='flex flex-wrap items-center gap-2'>
             <h1 className='text-2xl font-extrabold text-slate-950'>Заявка {item.oneCNumber || 'без номера'}</h1>
-            {!item.seenAt && <span className='rounded-full bg-amber-400 px-2.5 py-1 text-xs font-extrabold text-slate-950'>Новая</span>}
+            {item.isNotApproved && item.currentCycleOrigin === 'live' && !item.seenAt && <span className='rounded-full bg-amber-400 px-2.5 py-1 text-xs font-extrabold text-slate-950'>Новая</span>}
             {item.deletionMark && <span className='rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-800'>Помечена на удаление в 1С</span>}
           </div>
           <p className='mt-1 text-sm font-medium text-slate-500'>{dateTime(item.oneCDate)} · появление в очереди №{item.notApprovedCycle}</p>
@@ -87,14 +87,15 @@ export default async function ExpenseRequestDetailPage({ params }: { params: { i
       <div className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,0.8fr)]'>
         <div className='space-y-5'>
           <section className='rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80'>
-            <h2 className='text-lg font-extrabold text-slate-950'>Данные из 1С</h2>
+            <h2 className='text-lg font-extrabold text-slate-950'>Что запрашивают</h2>
+            <p className='mt-1 text-xs font-medium text-slate-500'>Основные сведения заявки, полученные из 1С.</p>
             <div className='mt-4 grid gap-3 sm:grid-cols-2'>
-              <Fact label='КтоЗаявил' value={item.requestedByName} />
+              <Fact label='Заявитель' value={item.requestedByName} />
               <Fact label='Сумма' value={money(item.amount)} />
-              <Fact label='Хозяйственная операция' value={nestedName(source, 'businessOperation') || item.businessOperationName} />
+              <Fact label='Операция' value={nestedName(source, 'businessOperation') || item.businessOperationName} />
               <Fact label='Статья ДДС' value={nestedName(source, 'cashFlowItem')} />
-              <Fact label='Контрагент / партнёр' value={counterparty} />
-              <Fact label='Документ-основание' value={sourceDocument} />
+              <Fact label='Контрагент' value={counterparty} />
+              <Fact label='Основание' value={sourceDocument} />
               <Fact label='Назначение платежа' value={text(source.paymentPurpose)} wide />
               <Fact label='Комментарий' value={text(source.comment)} wide />
               <Fact label='Исполнение' value={executionLabels[text(execution.state)] || text(execution.state) || 'Нет данных'} />
@@ -105,7 +106,7 @@ export default async function ExpenseRequestDetailPage({ params }: { params: { i
           <section className='rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/80'>
             <div className='flex items-start gap-3'>
               <div className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700'><Info className='h-5 w-5' /></div>
-              <div><h2 className='text-lg font-extrabold text-slate-950'>Подсказка автоматической проверки</h2><p className='mt-1 text-xs font-medium text-slate-500'>Подсказка видна только администратору. Она ничего не блокирует и не отправляется сотруднику.</p></div>
+              <div><h2 className='text-lg font-extrabold text-slate-950'>Что проверить</h2><p className='mt-1 text-xs font-medium text-slate-500'>Автоматическая подсказка только для администратора. Она не меняет заявку и не отправляется сотруднику.</p></div>
             </div>
             {evaluation ? (
               <div className='mt-4 space-y-4'>
