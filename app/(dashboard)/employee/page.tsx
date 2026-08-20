@@ -32,15 +32,7 @@ export default async function Employee() {
   const today = getMoscowDateKey();
   const dates = buildDateRange(today, 31);
 
-  const [attestations, ownSchedule, departmentSchedule, departmentUsers, workdaySnapshot] = await Promise.all([
-    prisma.attestation.findMany({
-      where: { status: 'ACTIVE' },
-      include: {
-        results: { where: { userId: user.id }, orderBy: { date: 'desc' }, take: 1 },
-        progresses: { where: { userId: user.id } },
-      },
-      orderBy: { id: 'asc' },
-    }),
+  const [ownSchedule, departmentSchedule, departmentUsers, workdaySnapshot] = await Promise.all([
     prisma.workScheduleEntry.findMany({
       where: { userId: user.id, date: { in: dates } },
       orderBy: { date: 'asc' },
@@ -67,12 +59,6 @@ export default async function Employee() {
       departmentUsers={departmentUsers}
       todayWorkDay={workdaySnapshot.workDay}
       unfinishedWorkDay={workdaySnapshot.unfinishedWorkDay}
-      attestations={attestations.map((attestation) => ({
-        id: attestation.id,
-        title: attestation.title,
-        resultStatus: attestation.results[0]?.status ?? null,
-        hasProgress: Boolean(attestation.progresses[0]),
-      }))}
       shiftControl={workdaySnapshot.shiftControl}
       cashOperations={workdaySnapshot.cashOperations}
       requiredIssues={workdaySnapshot.requiredIssues}

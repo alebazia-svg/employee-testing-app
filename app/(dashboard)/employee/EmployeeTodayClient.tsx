@@ -18,7 +18,6 @@ import {
   ClipboardCheck,
   Clock,
   CreditCard,
-  GraduationCap,
   Home,
   ReceiptText,
   RefreshCw,
@@ -144,13 +143,6 @@ type WorkDayEntry = {
   status: string;
 };
 
-type AttestationSummary = {
-  id: number;
-  title: string;
-  resultStatus: string | null;
-  hasProgress: boolean;
-};
-
 type ShiftControlTask = {
   id: number;
   runId: number;
@@ -237,7 +229,6 @@ type Props = {
   departmentUsers: UserSummary[];
   todayWorkDay: WorkDayEntry | null;
   unfinishedWorkDay: WorkDayEntry | null;
-  attestations: AttestationSummary[];
   shiftControl: ShiftControlState;
   cashOperations: CashOperation[];
   requiredIssues: RequiredWorkdayIssue[];
@@ -255,7 +246,7 @@ type EmployeeWorkdaySnapshot = {
   closeExceptionRequest: WorkdayCloseException | null;
 };
 
-type Tab = 'day' | 'schedule' | 'attestations';
+type Tab = 'day' | 'schedule';
 type ScheduleMode = 'list' | 'month';
 type QrScannerState = 'idle' | 'starting' | 'scanning' | 'found' | 'error';
 type ShiftTaskDraft = {
@@ -316,7 +307,6 @@ const staleCloseReasons = [
 const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
   { id: 'day', label: 'Рабочий день', icon: Home },
   { id: 'schedule', label: 'График', icon: CalendarDays },
-  { id: 'attestations', label: 'Аттестации', icon: GraduationCap },
 ];
 
 const workdaySyncIntervalMs = 60_000;
@@ -967,7 +957,6 @@ export function EmployeeTodayClient({
   departmentUsers,
   todayWorkDay,
   unfinishedWorkDay,
-  attestations,
   shiftControl,
   cashOperations,
   requiredIssues,
@@ -3444,39 +3433,10 @@ export function EmployeeTodayClient({
             </div>
           )}
 
-          {activeTab === 'attestations' && (
-            <Card>
-              <div className='mb-4 flex items-center gap-2'>
-                <GraduationCap className='h-5 w-5 text-primary' />
-                <h2 className='text-lg font-extrabold text-slate-950'>Аттестации</h2>
-              </div>
-              {attestations.length ? (
-                <div className='grid gap-3'>
-                  {attestations.map((attestation) => (
-                    <Link
-                      key={attestation.id}
-                      href={`/employee/attestations/${attestation.id}`}
-                      className='flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 transition hover:border-primary/40 hover:bg-green-50'
-                    >
-                      <div>
-                        <p className='font-extrabold text-slate-950'>{attestation.title}</p>
-                        <p className='mt-1 text-sm font-medium text-slate-500'>
-                          {attestation.resultStatus ? 'Уже пройдена' : attestation.hasProgress ? 'Можно продолжить' : 'Доступна'}
-                        </p>
-                      </div>
-                      <CheckCircle2 className='h-5 w-5 text-primary' />
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className='text-sm font-medium text-slate-500'>Сейчас нет доступных аттестаций.</p>
-              )}
-            </Card>
-          )}
         </div>
 
         <nav className='fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] border-t border-slate-200 bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)] backdrop-blur md:absolute'>
-          <div className='grid grid-cols-3 gap-1'>
+          <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
               const active = activeTab === item.id;
