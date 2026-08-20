@@ -67,7 +67,7 @@ export function WorkdayQrCodes() {
     // then its opener is cleared below.
     const printWindow = window.open('', '_blank', 'width=720,height=900');
     if (!printWindow) return;
-    const logoUrl = new URL('/offonika-wordmark.png', window.location.origin).toString();
+    const logoUrl = new URL('/offonika-wordmark-print.png', window.location.origin).toString();
 
     printWindow.document.write(`
       <!doctype html>
