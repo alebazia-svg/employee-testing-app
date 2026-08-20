@@ -1562,6 +1562,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         run,
         autoChecks,
         terminalFiscalControl,
+        requiredIssueId: employeeRequiredIssues[0]?.id ?? null,
         timingViolations,
         shiftControlRequired,
         category,
@@ -1739,7 +1740,9 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       }`}>{row.reviewText}</p>
                     </div>
                     <div className='flex items-center gap-2 lg:justify-end'>
-                      {row.run || row.workDay || row.timingViolations.length > 0 ? (
+                      {row.requiredIssueId ? (
+                        <Link href={`/admin/workday/issues/${row.requiredIssueId}`} className='inline-flex h-8 items-center rounded-md bg-rose-100 px-3 text-xs font-extrabold text-rose-900 transition hover:bg-rose-200'>Открыть</Link>
+                      ) : row.run || row.workDay || row.timingViolations.length > 0 ? (
                         <AdminShiftControlDetails
                           employeeName={row.employee.name}
                           department={row.employee.department}
