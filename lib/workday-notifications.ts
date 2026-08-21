@@ -6,6 +6,98 @@ import { prisma } from '@/lib/prisma';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
+type NotificationLifecycleRow = {
+  id: number;
+  kind: string;
+  fingerprint: string;
+  taskId: number | null;
+  issueId: number | null;
+  reviewId: string | null;
+  task: { status: string; run: { status: string } } | null;
+  issue: { status: string; employeeActionRequired: boolean } | null;
+  review: { status: string } | null;
+};
+
+type CloseExceptionScope = 'required_issues' | 'cash_encashment' | 'all';
+
+function closeExceptionScope(reasonCode: string) {
+  return reasonCode.startsWith('cash_encashment_') ? 'cash_encashment' : 'required_issues';
+}
+
+export function closeExceptionNotificationRef(notification: Pick<NotificationLifecycleRow, 'kind' | 'fingerprint'>) {
+  if (notification.kind !== 'workday_close_exception_decision') return null;
+  const match = /^workday-close-exception:([^:]+):(approved|rejected)$/.exec(notification.fingerprint);
+  return match ? { requestId: match[1], decision: match[2] } : null;
+}
+
+export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
+  const refs = rows.map(closeExceptionNotificationRef).filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const requestIds = [...new Set(refs.map((item) => item.requestId))];
+  const referencedRequests = requestIds.length ? await db.workdayCloseExceptionRequest.findMany({
+    where: { id: { in: requestIds } },
+    select: {
+      id: true,
+      workDayEntryId: true,
+      status: true,
+      reasonCode: true,
+      consumedAt: true,
+      workDayEntry: { select: { status: true, endedAt: true } },
+    },
+  }) : [];
+  const workDayEntryIds = [...new Set(referencedRequests.map((request) => request.workDayEntryId))];
+  const decidedRequests = workDayEntryIds.length ? await db.workdayCloseExceptionRequest.findMany({
+    where: { workDayEntryId: { in: workDayEntryIds }, status: { in: ['approved', 'rejected'] } },
+    select: { id: true, workDayEntryId: true, status: true, reasonCode: true },
+    orderBy: [{ decidedAt: 'desc' }, { requestedAt: 'desc' }],
+  }) : [];
+  const latestByWorkdayAndScope = new Map<string, string>();
+  for (const request of decidedRequests) {
+    const key = `${request.workDayEntryId}:${closeExceptionScope(request.reasonCode)}`;
+    if (!latestByWorkdayAndScope.has(key)) latestByWorkdayAndScope.set(key, request.id);
+  }
+  const requestsById = new Map(referencedRequests.map((request) => [request.id, request]));
+
+  return rows.filter((notification) => {
+    if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
+    if (notification.issue) return notification.issue.status === 'open' && notification.issue.employeeActionRequired;
+    if (notification.review) return notification.review.status === 'open';
+    const ref = closeExceptionNotificationRef(notification);
+    if (!ref) return true;
+    const request = requestsById.get(ref.requestId);
+    if (!request || request.status !== ref.decision || request.consumedAt) return false;
+    if (request.workDayEntry.endedAt || !['active', 'missing_checkout'].includes(request.workDayEntry.status)) return false;
+    const latestKey = `${request.workDayEntryId}:${closeExceptionScope(request.reasonCode)}`;
+    return latestByWorkdayAndScope.get(latestKey) === request.id;
+  });
+}
+
+export async function resolveCloseExceptionNotifications(db: DbClient, input: {
+  workDayEntryId: number;
+  now: Date;
+  scope?: CloseExceptionScope;
+}) {
+  const requests = await db.workdayCloseExceptionRequest.findMany({
+    where: { workDayEntryId: input.workDayEntryId },
+    select: { id: true, reasonCode: true },
+  });
+  const requestIds = requests
+    .filter((request) => !input.scope || input.scope === 'all' || closeExceptionScope(request.reasonCode) === input.scope)
+    .map((request) => request.id);
+  if (!requestIds.length) return;
+  const fingerprints = requestIds.flatMap((id) => [
+    `workday-close-exception:${id}:approved`,
+    `workday-close-exception:${id}:rejected`,
+  ]);
+  await db.workdayNotification.updateMany({
+    where: { fingerprint: { in: fingerprints }, status: 'sent', readAt: null },
+    data: { readAt: input.now },
+  });
+  await db.workdayNotification.updateMany({
+    where: { fingerprint: { in: fingerprints }, status: 'pending' },
+    data: { status: 'cancelled' },
+  });
+}
+
 type NotificationTask = {
   id: number;
   userId: number;
@@ -103,6 +195,18 @@ export async function cancelPendingTaskNotifications(db: DbClient, taskId: numbe
   });
 }
 
+export async function resolveTaskNotifications(db: DbClient, taskIds: number[], now: Date) {
+  if (!taskIds.length) return;
+  await db.workdayNotification.updateMany({
+    where: { taskId: { in: taskIds }, status: 'sent', readAt: null },
+    data: { readAt: now },
+  });
+  await db.workdayNotification.updateMany({
+    where: { taskId: { in: taskIds }, status: 'pending' },
+    data: { status: 'cancelled' },
+  });
+}
+
 function configureWebPush() {
   const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim() ?? '';
   const privateKey = process.env.WEB_PUSH_VAPID_PRIVATE_KEY?.trim() ?? '';
@@ -124,20 +228,17 @@ async function activeUnreadNotificationTargets(userId: number) {
     where: { userId, status: 'sent', readAt: null },
     select: {
       id: true,
+      kind: true,
+      fingerprint: true,
       taskId: true,
       issueId: true,
       reviewId: true,
       task: { select: { status: true, run: { select: { status: true } } } },
-      issue: { select: { status: true } },
+      issue: { select: { status: true, employeeActionRequired: true } },
       review: { select: { status: true } },
     },
   });
-  const active = rows.filter((notification) => {
-    if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
-    if (notification.issue) return notification.issue.status === 'open';
-    if (notification.review) return notification.review.status === 'open';
-    return true;
-  });
+  const active = await filterActiveWorkdayNotifications(prisma, rows);
   return new Set(active.map(notificationTargetKey));
 }
 
@@ -155,12 +256,11 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   });
   const pushConfigured = configureWebPush();
   const results: Array<{ id: number; status: string }> = [];
+  const activeDue = await filterActiveWorkdayNotifications(prisma, due);
+  const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
-    const taskFinished = notification.task && (notification.task.status === 'done' || notification.task.status === 'missed' || notification.task.run.status !== 'active');
-    const issueFinished = notification.issue && notification.issue.status !== 'open';
-    const reviewFinished = notification.review && notification.review.status !== 'open';
-    if (taskFinished || issueFinished || reviewFinished) {
+    if (!activeDueIds.has(notification.id)) {
       await prisma.workdayNotification.update({ where: { id: notification.id }, data: { status: 'cancelled' } });
       results.push({ id: notification.id, status: 'cancelled' });
       continue;

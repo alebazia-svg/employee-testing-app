@@ -54,6 +54,7 @@ export function adminInboxSourceState(input: {
   reasonCode?: string | null;
   current?: boolean;
   employeeActionRequired?: boolean;
+  sourceCompleted?: boolean;
 }): AdminInboxSourceState {
   if (input.sourceType === 'expense_request') {
     return input.current
@@ -72,6 +73,7 @@ export function adminInboxSourceState(input: {
     return { active: false, label: 'Закрыто', tone: 'resolved' };
   }
   if (input.sourceType === 'workday_close_exception') {
+    if (input.sourceCompleted) return { active: false, label: 'Завершено', tone: 'resolved' };
     if (input.businessStatus === 'pending') return { active: true, label: 'Ожидает решения', tone: 'attention' };
     if (input.businessStatus === 'approved' && input.reasonCode?.startsWith('cash_encashment_')) return { active: true, label: 'Инкассация на контроле', tone: 'attention' };
     if (input.businessStatus === 'approved') return { active: false, label: 'Разрешено ADMIN', tone: 'resolved' };

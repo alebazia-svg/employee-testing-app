@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { findOpenRequiredWorkdayIssues, readIssueIds, sameIssueIds } from '@/lib/workday-required-issues';
 import { queueAdminInboxTelegramDelivery } from '@/lib/admin-inbox';
+import { resolveCloseExceptionNotifications } from '@/lib/workday-notifications';
 
 const allowedReasons = new Set(['power', 'internet', 'one_c', 'kkm', 'other']);
 
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
 
   const now = new Date();
   const result = await prisma.$transaction(async (tx) => {
+    await resolveCloseExceptionNotifications(tx, { workDayEntryId: workDay.id, now, scope: 'required_issues' });
     const request = await tx.workdayCloseExceptionRequest.create({
       data: { workDayEntryId: workDay.id, employeeId: user.id, reasonCode, comment, issueIds, requestedAt: now },
     });

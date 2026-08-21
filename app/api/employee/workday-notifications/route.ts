@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
+import { filterActiveWorkdayNotifications } from '@/lib/workday-notifications';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -8,10 +9,11 @@ export async function GET() {
   const rows = await prisma.workdayNotification.findMany({
     where: { userId: user.id, status: 'sent', readAt: null },
     orderBy: { sentAt: 'desc' },
-    take: 30,
+    take: 200,
     select: {
       id: true,
       kind: true,
+      fingerprint: true,
       title: true,
       body: true,
       sentAt: true,
@@ -20,18 +22,13 @@ export async function GET() {
       issueId: true,
       reviewId: true,
       task: { select: { status: true, run: { select: { status: true } } } },
-      issue: { select: { status: true, ruleKey: true, title: true, detail: true, sourceData: true } },
+      issue: { select: { status: true, employeeActionRequired: true, ruleKey: true, title: true, detail: true, sourceData: true } },
       review: { select: { status: true } },
     },
   });
   const seenTargets = new Set<string>();
-  const notifications = rows
-    .filter((notification) => {
-      if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
-      if (notification.issue) return notification.issue.status === 'open';
-      if (notification.review) return notification.review.status === 'open';
-      return true;
-    })
+  const activeRows = await filterActiveWorkdayNotifications(prisma, rows);
+  const notifications = activeRows
     .filter((notification) => {
       const target = notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : `notification:${notification.id}`;
       if (seenTargets.has(target)) return false;
@@ -50,7 +47,8 @@ export async function GET() {
             ? `/employee/issues/${notification.issueId}`
             : '/employee',
       };
-    });
+    })
+    .slice(0, 30);
   return Response.json({ notifications });
 }
 

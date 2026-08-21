@@ -21,15 +21,21 @@ export type AdminInboxViewItem = {
 };
 
 export async function loadAdminInbox(input: { userId: number; limit: number; unreadOnly?: boolean }) {
-  const [rows, unreadCount] = await Promise.all([
+  const [displayRows, unreadRows] = await Promise.all([
     prisma.adminInboxReceipt.findMany({
-      where: { userId: input.userId, ...(input.unreadOnly ? { readAt: null } : {}) },
+      where: { userId: input.userId },
       include: { event: true },
       orderBy: { event: { occurredAt: 'desc' } },
       take: input.limit,
     }),
-    prisma.adminInboxReceipt.count({ where: { userId: input.userId, readAt: null } }),
+    prisma.adminInboxReceipt.findMany({
+      where: { userId: input.userId, readAt: null },
+      include: { event: true },
+      orderBy: { event: { occurredAt: 'desc' } },
+    }),
   ]);
+
+  const rows = [...new Map([...displayRows, ...unreadRows].map((row) => [row.id, row])).values()];
 
   const expenseRefs = rows.filter((row) => row.event.sourceType === 'expense_request').map((row) => row.event.sourceId);
   const issueIds = rows.filter((row) => row.event.sourceType === 'workday_control_issue').map((row) => Number(row.event.sourceId)).filter(Number.isInteger);
@@ -51,7 +57,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     }) : [],
     exceptionIds.length ? prisma.workdayCloseExceptionRequest.findMany({
       where: { id: { in: exceptionIds } },
-      select: { id: true, status: true, reasonCode: true },
+      select: { id: true, status: true, reasonCode: true, consumedAt: true },
     }) : [],
   ]);
 
@@ -60,23 +66,25 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const reviewsById = new Map(reviews.map((item) => [item.id, item]));
   const exceptionsById = new Map(exceptions.map((item) => [item.id, item]));
 
-  const items: AdminInboxViewItem[] = rows.map((row) => {
+  const itemsById = new Map(rows.map((row) => {
     const sourceType = row.event.sourceType;
     const sourceId = row.event.sourceId;
     const issue = issuesById.get(sourceId);
     const review = reviewsById.get(sourceId);
     const exception = exceptionsById.get(sourceId);
     const meta = adminInboxEventMeta(row.event.type);
+    const lifecycleManaged = ['expense_request', 'workday_control_issue', 'terminal_fiscal_review', 'workday_close_exception'].includes(sourceType);
     const sourceState = adminInboxSourceState({
       sourceType,
       current: currentExpenseRefs.has(sourceId),
       businessStatus: issue?.status ?? review?.status ?? exception?.status,
       reasonCode: exception?.reasonCode,
       employeeActionRequired: issue?.employeeActionRequired,
+      sourceCompleted: Boolean(exception?.consumedAt),
     });
-    return {
+    const item: AdminInboxViewItem = {
       id: row.id,
-      readAt: row.readAt?.toISOString() ?? null,
+      readAt: row.readAt?.toISOString() ?? (lifecycleManaged && !sourceState.active ? row.event.occurredAt.toISOString() : null),
       event: {
         type: row.event.type,
         title: row.event.title,
@@ -89,7 +97,18 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       meta: { ...meta, actionLabel: adminInboxActionLabel({ sourceType, defaultLabel: meta.actionLabel, sourceState }) },
       sourceState,
     };
-  });
+    return [row.id, item] as const;
+  }));
+
+  const itemRows = input.unreadOnly ? unreadRows : displayRows;
+  const items = itemRows
+    .map((row) => itemsById.get(row.id))
+    .filter((item): item is AdminInboxViewItem => Boolean(item))
+    .filter((item) => !input.unreadOnly || item.readAt === null)
+    .slice(0, input.limit);
+  const unreadCount = unreadRows.reduce((count, row) => (
+    itemsById.get(row.id)?.readAt === null ? count + 1 : count
+  ), 0);
 
   return { items, unreadCount };
 }

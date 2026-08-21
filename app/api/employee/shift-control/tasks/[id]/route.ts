@@ -10,6 +10,7 @@ import { employeeKkmReportPhotosRequired } from '@/lib/shift-control-policy';
 import { usesWorkdayShiftControl } from '@/lib/workday';
 import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib/workday-required-issues';
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
+import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
 import {
   appendCashRecountInputHistory,
   buildCashRecountComparison,
@@ -441,6 +442,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           where: {
             workDayEntryId: task.run.workDayEntryId,
             status: 'approved',
+            consumedAt: null,
             reasonCode: { startsWith: cashEncashmentExceptionPrefix },
           },
           orderBy: { decidedAt: 'desc' },
@@ -672,10 +674,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             data: { status: 'resolved', consumedAt: now },
           });
         }
+        await resolveCloseExceptionNotifications(tx, {
+          workDayEntryId: task.run.workDayEntryId,
+          now,
+          scope: 'all',
+        });
         const tasks = await tx.shiftControlTask.findMany({
           where: { runId: task.runId },
           orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
         });
+        await resolveTaskNotifications(tx, tasks.map((item) => item.id), now);
         return { task: updatedTask, tasks, run: updatedRun, workDay };
       });
 
@@ -712,6 +720,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           }, editedAt) as Prisma.InputJsonValue,
         },
       });
+      await resolveTaskNotifications(prisma, [task.id], editedAt);
 
       return Response.json({ task: updatedTask });
     } catch (error) {
@@ -776,6 +785,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           handoverData: withEmployeeRevision(task, nextHandoverData, editedAt) as Prisma.InputJsonValue,
         },
       });
+      await resolveTaskNotifications(prisma, [task.id], editedAt);
       return Response.json({ task: taskForEmployee(updatedTask) });
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить проверку операций терминала' }, { status: 400 });
@@ -899,6 +909,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         return updated;
       })
     : await prisma.shiftControlTask.update({ where: { id: task.id }, data });
+
+  await resolveTaskNotifications(prisma, [task.id], editedAt);
 
   return Response.json({ task: taskForEmployee(updatedTask) });
 }

@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib/workday-required-issues';
+import { resolveCloseExceptionNotifications } from '@/lib/workday-notifications';
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -97,6 +98,12 @@ export async function POST(req: Request) {
     if (closeException) {
       await tx.workdayCloseExceptionRequest.update({ where: { id: closeException.id }, data: { consumedAt: now } });
     }
+
+    await resolveCloseExceptionNotifications(tx, {
+      workDayEntryId: activeWorkDay.id,
+      now,
+      scope: 'all',
+    });
 
     return updatedWorkDay;
   });

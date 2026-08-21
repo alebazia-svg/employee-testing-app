@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { cashEncashmentExceptionReasons, toCashEncashmentReasonCode, type CashEncashmentExceptionReason } from '@/lib/workday-cash-encashment-exception';
 import { prisma } from '@/lib/prisma';
 import { queueAdminInboxTelegramDelivery } from '@/lib/admin-inbox';
+import { resolveCloseExceptionNotifications } from '@/lib/workday-notifications';
 
 function normalizedComment(value: unknown) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
 
   const now = new Date();
   const request = await prisma.$transaction(async (tx) => {
+    await resolveCloseExceptionNotifications(tx, { workDayEntryId: workDay.id, now, scope: 'cash_encashment' });
     const created = await tx.workdayCloseExceptionRequest.create({
       data: { workDayEntryId: workDay.id, employeeId: user.id, reasonCode, comment, issueIds: [], requestedAt: now },
     });

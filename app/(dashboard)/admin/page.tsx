@@ -52,7 +52,7 @@ export default async function AdminPage() {
       select: { id: true, status: true, amountKopecks: true, bankOperationAt: true, updatedAt: true, employee: { select: { name: true } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true, author: { select: { role: true } } } } },
       orderBy: { updatedAt: 'desc' }, take: 40,
     }),
-    prisma.workdayCloseExceptionRequest.findMany({ where: { OR: [{ status: 'pending' }, { status: 'approved', reasonCode: { startsWith: cashEncashmentExceptionPrefix } }] }, select: { id: true, comment: true, reasonCode: true, status: true, requestedAt: true, employee: { select: { name: true } } }, orderBy: { requestedAt: 'desc' } }),
+    prisma.workdayCloseExceptionRequest.findMany({ where: { consumedAt: null, OR: [{ status: 'pending' }, { status: 'approved', reasonCode: { startsWith: cashEncashmentExceptionPrefix } }] }, select: { id: true, comment: true, reasonCode: true, status: true, requestedAt: true, employee: { select: { name: true } } }, orderBy: { requestedAt: 'desc' } }),
     prisma.expenseRequestAdminCase.findMany({
       where: { ...expenseRequestCurrentWhere, seenAt: null },
       select: { id: true, oneCNumber: true, requestedByName: true, amount: true, businessOperationName: true, enteredNotApprovedAt: true, updatedAt: true },

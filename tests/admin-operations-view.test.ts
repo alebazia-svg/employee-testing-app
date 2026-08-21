@@ -25,6 +25,19 @@ test('resolved decisions no longer invite admin to decide again', () => {
   assert.equal(adminInboxActionLabel({ sourceType: 'workday_close_exception', defaultLabel: 'Принять решение', sourceState }), 'Открыть решение');
 });
 
+test('consumed close exceptions leave the active inbox regardless of the original decision', () => {
+  assert.deepEqual(adminInboxSourceState({
+    sourceType: 'workday_close_exception',
+    businessStatus: 'approved',
+    reasonCode: 'cash_encashment_not_possible',
+    sourceCompleted: true,
+  }), {
+    active: false,
+    label: 'Завершено',
+    tone: 'resolved',
+  });
+});
+
 test('today summary uses workday state before schedule state', () => {
   const summary = summarizeAdminToday({
     employees: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }],

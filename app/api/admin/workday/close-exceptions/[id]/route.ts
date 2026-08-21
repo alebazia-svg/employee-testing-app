@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
+import { resolveCloseExceptionNotifications } from '@/lib/workday-notifications';
 
 const decisions = new Set(['approved', 'rejected']);
 
@@ -22,6 +23,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const now = new Date();
   const request = await prisma.$transaction(async (tx) => {
+    await resolveCloseExceptionNotifications(tx, {
+      workDayEntryId: existing.workDayEntryId,
+      now,
+      scope: cashEncashmentException ? 'cash_encashment' : 'required_issues',
+    });
     const updated = await tx.workdayCloseExceptionRequest.update({
       where: { id: existing.id },
       data: { status, decisionComment, decidedAt: now, decidedById: admin.id },
