@@ -742,6 +742,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function normalizedIssueIds(value: unknown) {
+  return Array.isArray(value)
+    ? [...new Set(value.map(Number).filter((id) => Number.isInteger(id) && id > 0))].sort((a, b) => a - b)
+    : [];
+}
+
+function sameIssueIds(left: number[], right: number[]) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
 function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | null {
   if (!isRecord(value)) return null;
 
@@ -976,6 +986,7 @@ export function EmployeeTodayClient({
   const [shiftControlState, setShiftControlState] = useState(shiftControl);
   const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
   const [requiredIssuesState, setRequiredIssuesState] = useState(requiredIssues);
+  const [showAllRequiredIssues, setShowAllRequiredIssues] = useState(false);
   const [paymentChecksState, setPaymentChecksState] = useState(paymentChecks);
   const [closeExceptionRequestState, setCloseExceptionRequestState] = useState(closeExceptionRequest);
   const [cashEncashmentExceptionRequestState, setCashEncashmentExceptionRequestState] = useState(cashEncashmentExceptionRequest);
@@ -1195,6 +1206,11 @@ export function EmployeeTodayClient({
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
   const primaryPaymentCheck = paymentChecksState[0] ?? null;
   const primaryPaymentCheckView = primaryPaymentCheck ? terminalFiscalEmployeeReviewSummary(primaryPaymentCheck) : null;
+  const currentRequiredIssueIds = requiredIssuesState.map((issue) => issue.id).sort((a, b) => a - b);
+  const closeExceptionMatchesCurrentIssues = Boolean(
+    closeExceptionRequestState
+    && sameIssueIds(normalizedIssueIds(closeExceptionRequestState.issueIds), currentRequiredIssueIds),
+  );
   function buildHandoverSteps(draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
     return buildShiftHandoverSteps({
@@ -2406,7 +2422,7 @@ export function EmployeeTodayClient({
   useEffect(() => {
     const request = closeExceptionRequestState;
     const task = shiftControlTasks.find((item) => item.category === 'handover' && item.status !== 'done') ?? null;
-    if (request?.status !== 'approved' || !task || isCompleted || isSaving) {
+    if (request?.status !== 'approved' || !closeExceptionMatchesCurrentIssues || !task || isCompleted || isSaving) {
       if (request?.status !== 'approved') approvedRequiredIssuesAutoFinishRef.current = null;
       return;
     }
@@ -2418,7 +2434,7 @@ export function EmployeeTodayClient({
     setHandoverDraft(savedDraft);
     setMessage('Администратор разрешил завершение. Завершаем рабочий день…');
     void submitHandover(task, savedDraft, buildHandoverSteps(savedDraft));
-  }, [closeExceptionRequestState, handoverDraft, isCompleted, isSaving, shiftControlTasks]);
+  }, [closeExceptionMatchesCurrentIssues, closeExceptionRequestState, handoverDraft, isCompleted, isSaving, shiftControlTasks]);
 
   async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
     if (!file) return;
@@ -3057,7 +3073,7 @@ export function EmployeeTodayClient({
                     </div>
                   </div>
                   <div className='divide-y divide-amber-200 border-t border-amber-200 bg-white/45'>
-                    {requiredIssuesState.map((issue) => {
+                    {(showAllRequiredIssues ? requiredIssuesState : requiredIssuesState.slice(0, 1)).map((issue) => {
                       const issueView = workdayIssueView(issue);
                       return (
                         <Link key={issue.id} href={`/employee/issues/${issue.id}`} className='flex items-center gap-3 px-3.5 py-3 transition hover:bg-white/60'>
@@ -3069,6 +3085,17 @@ export function EmployeeTodayClient({
                         </Link>
                       );
                     })}
+                    {requiredIssuesState.length > 1 && (
+                      <button
+                        type='button'
+                        onClick={() => setShowAllRequiredIssues((current) => !current)}
+                        className='flex w-full items-center justify-center gap-2 px-3.5 py-3 text-sm font-extrabold text-amber-900 transition hover:bg-white/60'
+                        aria-expanded={showAllRequiredIssues}
+                      >
+                        {showAllRequiredIssues ? 'Свернуть список' : `Показать остальные · ${requiredIssuesState.length - 1}`}
+                        {showAllRequiredIssues ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
+                      </button>
+                    )}
                   </div>
                 </section>
               )}
@@ -3088,10 +3115,11 @@ export function EmployeeTodayClient({
               {activeWorkDay && closeBlocked && requiredIssuesState.length > 0 && (
                 <Card className='space-y-3 border-amber-200 bg-white p-4'>
                   <div><h2 className='text-base font-black text-slate-950'>Завершение рабочего дня</h2><p className='mt-1 text-sm font-semibold leading-relaxed text-slate-600'>Сначала исправьте обязательную проблему. Если это невозможно по технической причине, запросите разрешение администратора.</p></div>
-                  {closeExceptionRequestState?.status === 'pending' && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold text-amber-800'>Запрос отправлен · ожидает решения администратора</p>}
-                  {closeExceptionRequestState?.status === 'approved' && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Администратор разрешил завершить день. Портал завершает смену автоматически; сама проблема останется открытой.</p>}
-                  {closeExceptionRequestState?.status === 'rejected' && <p className='rounded-xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-800'>Запрос не согласован{closeExceptionRequestState.decisionComment ? `: ${closeExceptionRequestState.decisionComment}` : ''}</p>}
-                  {(!closeExceptionRequestState || closeExceptionRequestState.status === 'rejected') && (
+                  {closeExceptionRequestState?.status === 'pending' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold text-amber-800'>Запрос отправлен · ожидает решения администратора</p>}
+                  {closeExceptionRequestState?.status === 'approved' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Администратор разрешил завершить день. Портал завершает смену автоматически; сами проблемы останутся открытыми.</p>}
+                  {closeExceptionRequestState?.status === 'rejected' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-800'>Запрос не согласован{closeExceptionRequestState.decisionComment ? `: ${closeExceptionRequestState.decisionComment}` : ''}</p>}
+                  {closeExceptionRequestState && !closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold leading-relaxed text-amber-800'>После предыдущего запроса появилась новая обязательная проблема. Старое разрешение её не включает — отправьте новый запрос по текущим проблемам.</p>}
+                  {(!closeExceptionRequestState || closeExceptionRequestState.status === 'rejected' || !closeExceptionMatchesCurrentIssues) && (
                     <div className='space-y-2'>
                       <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает ККМ</option><option value='other'>Другая причина</option></select>
                       <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Коротко опишите ситуацию' />

@@ -69,6 +69,12 @@ type Props = {
     reasonCode: string;
     bankOperationAt: string | null;
   }>;
+  requiredIssues?: Array<{
+    id: number;
+    title: string;
+    meta: string;
+    href: string;
+  }>;
   initialOpen?: boolean;
   closeHref?: string;
   previousEmployee?: EmployeeNavigation | null;
@@ -799,6 +805,7 @@ export function AdminShiftControlDetails({
   timingViolations = [],
   terminalFiscalControl = null,
   terminalFiscalRecords = [],
+  requiredIssues = [],
   initialOpen = false,
   closeHref,
   previousEmployee,
@@ -985,9 +992,9 @@ export function AdminShiftControlDetails({
   const terminalFiscalUnavailable = (terminalFiscalControl?.statuses.unavailable ?? 0) > 0;
   const terminalFiscalConfigurationNeedsAttention = Object.entries(terminalFiscalControl?.reasonCodes ?? {})
     .some(([reasonCode, count]) => Number(count) > 0 && terminalFiscalConfigurationProblem(reasonCode));
-  const hasError = keyProblems.some((item) => taskBusinessState(item).tone === 'error') || terminalFiscalHasError;
+  const hasError = requiredIssues.length > 0 || keyProblems.some((item) => taskBusinessState(item).tone === 'error') || terminalFiscalHasError;
   const scheduleNeedsAttention = scheduleLabel === 'не заполнено';
-  const keyProblemCount = keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0)
+  const keyProblemCount = requiredIssues.length + keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0)
     + (terminalFiscalHasError || terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? 1 : 0);
   const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
@@ -1001,7 +1008,7 @@ export function AdminShiftControlDetails({
   const terminalHasSourceIncomplete = terminalReasonEntries.some(([reasonCode]) => terminalFiscalSourceIncomplete(reasonCode));
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
-  const hasDetails = Boolean(run || workDay || timingViolations.length > 0);
+  const hasDetails = Boolean(requiredIssues.length > 0 || run || workDay || timingViolations.length > 0);
 
   return (
     <div>
@@ -1282,6 +1289,25 @@ export function AdminShiftControlDetails({
                     hasError ? 'text-rose-950' : 'text-amber-950'
                   }`}>Ключевые проблемы</h4>
                   <div className='mt-2 grid gap-1.5'>
+                    {requiredIssues.length > 0 ? (
+                      <div className='mb-1 overflow-hidden rounded-lg border border-rose-200 bg-white'>
+                        <div className='flex items-center justify-between gap-3 border-b border-rose-100 px-3 py-2'>
+                          <p className='text-xs font-extrabold uppercase tracking-wide text-rose-800'>Обязательные ошибки</p>
+                          <span className='rounded-full bg-rose-100 px-2 py-0.5 text-xs font-extrabold text-rose-800'>{requiredIssues.length}</span>
+                        </div>
+                        <div className='divide-y divide-slate-100'>
+                          {requiredIssues.map((issue) => (
+                            <Link key={issue.id} href={issue.href} className='flex items-center justify-between gap-3 px-3 py-2.5 transition hover:bg-rose-50'>
+                              <span className='min-w-0'>
+                                <span className='block text-sm font-extrabold text-slate-950'>{issue.title}</span>
+                                {issue.meta ? <span className='mt-0.5 block text-xs font-bold text-slate-500'>{issue.meta}</span> : null}
+                              </span>
+                              <span className='shrink-0 text-xs font-extrabold text-rose-800'>Открыть →</span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     {scheduleNeedsAttention ? (
                       <p className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>График:</span> рабочий график сотрудника не заполнен</p>
                     ) : null}

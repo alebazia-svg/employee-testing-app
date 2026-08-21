@@ -1440,7 +1440,15 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         autoChecks,
         terminalFiscalControl,
         terminalFiscalRecords,
-        requiredIssueId: employeeRequiredIssues[0]?.id ?? null,
+        requiredIssues: employeeRequiredIssues.map((issue) => {
+          const view = workdayIssueView(issue);
+          return {
+            id: issue.id,
+            title: view.summaryTitle,
+            meta: view.summaryMeta,
+            href: `/admin/workday/issues/${issue.id}`,
+          };
+        }),
         timingViolations,
         shiftControlRequired,
         category,
@@ -1462,7 +1470,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   const pendingEmployeeCount = employeeControlRows.filter((row) => row.category === 'pending').length;
   const normalEmployeeCount = employeeControlRows.filter((row) => row.category === 'normal').length;
   const filteredEmployeeControlRows = employeeControlRows.filter((row) => matchesAdminWorkdayControlFilter(row.category, selectedControlFilter));
-  const reviewableEmployeeRows = filteredEmployeeControlRows.filter((row) => row.run || row.workDay || row.timingViolations.length > 0);
+  const reviewableEmployeeRows = filteredEmployeeControlRows.filter((row) => row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0);
   const controlFilterHref = (filter: AdminWorkdayControlFilter) => `/admin/workday?date=${selectedDate}&control=${filter}#employees-control`;
   const employeeDetailHref = (employeeId: number) => (
     `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}&employee=${employeeId}#employees-control`
@@ -1640,9 +1648,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       }`}>{row.reviewText}</p>
                     </div>
                     <div className='flex items-center gap-2 lg:justify-end'>
-                      {row.requiredIssueId ? (
-                        <Link href={`/admin/workday?date=${selectedDate}&control=${selectedControlFilter}#required-issues-${row.employee.id}`} className='inline-flex h-8 items-center rounded-md bg-rose-100 px-3 text-xs font-extrabold text-rose-900 transition hover:bg-rose-200'>Открыть все · {requiredIssuesByUser.get(row.employee.id)?.length ?? 1}</Link>
-                      ) : row.run || row.workDay || row.timingViolations.length > 0 ? (
+                      {row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0 ? (
                         <AdminShiftControlDetails
                           employeeName={row.employee.name}
                           department={row.employee.department}
@@ -1671,6 +1677,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                             reasonCode: record.reasonCode,
                             bankOperationAt: record.bankOperationAt?.toISOString() ?? null,
                           }))}
+                          requiredIssues={row.requiredIssues}
                           initialOpen={searchParams?.employee === String(row.employee.id)}
                           closeHref={employeeDetailCloseHref}
                           previousEmployee={previousEmployeeRow ? {
