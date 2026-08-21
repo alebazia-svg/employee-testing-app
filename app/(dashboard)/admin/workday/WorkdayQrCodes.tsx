@@ -9,14 +9,14 @@ const workdayQrCodes = [
     id: 'retail',
     title: 'Розница',
     description: 'QR для старта рабочего дня сотрудников розницы.',
-    wish: 'Хорошего дня и отличных продаж!',
+    printFile: '/print/offonika-workday-retail-a5.pdf',
     value: 'offonika-workday-start:retail',
   },
   {
     id: 'wholesale',
     title: 'Опт',
     description: 'QR для старта рабочего дня сотрудников опта.',
-    wish: 'Удачного дня и продуктивной работы!',
+    printFile: '/print/offonika-workday-wholesale-a5.pdf',
     value: 'offonika-workday-start:wholesale',
   },
 ] as const;
@@ -59,75 +59,8 @@ export function WorkdayQrCodes() {
   }, []);
 
   function printQr(item: WorkdayQrCode) {
-    const image = images[item.id];
-    if (!image) return;
-
-    // Safari returns a detached window for `noopener`, so document.write() silently
-    // targets nothing and the print tab stays blank. The document is written first,
-    // then its opener is cleared below.
-    const printWindow = window.open('', '_blank', 'width=720,height=900');
-    if (!printWindow) return;
-    const logoUrl = new URL('/offonika-wordmark-print.png', window.location.origin).toString();
-
-    printWindow.document.write(`
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>OFFONIKA — QR для ${item.title}</title>
-          <style>
-            @page { size: A5 portrait; margin: 0; }
-            * { box-sizing: border-box; }
-            body { margin: 0; color: #101827; font-family: Arial, Helvetica, sans-serif; }
-            .sheet { min-height: 210mm; padding: 8mm 8mm 7mm; overflow: hidden; }
-            .brand { display: flex; justify-content: center; padding: 3mm 0 8mm; }
-            .brand img { display: block; width: 42mm; height: auto; }
-            main { text-align: center; }
-            .department { color: #49ad14; font-size: 10pt; font-weight: 800; letter-spacing: .22em; }
-            h1 { margin: 5mm 0 2mm; color: #121a27; font-size: 28pt; line-height: 1.04; letter-spacing: -.02em; }
-            .lead { margin: 0 auto; color: #354052; font-size: 12pt; font-weight: 700; line-height: 1.35; }
-            .qr-zone { position: relative; width: 112mm; height: 112mm; margin: 9mm auto 7mm; display: flex; align-items: center; justify-content: center; }
-            .qr-frame { padding: 8mm; background: #fff; }
-            .qr-frame img { display: block; width: 92mm; height: 92mm; }
-            .corner { position: absolute; width: 8mm; height: 8mm; border-color: #49ad14; border-style: solid; border-width: 0; }
-            .corner-tl { top: 0; left: 0; border-top-width: .8mm; border-left-width: .8mm; }
-            .corner-tr { top: 0; right: 0; border-top-width: .8mm; border-right-width: .8mm; }
-            .corner-bl { bottom: 0; left: 0; border-bottom-width: .8mm; border-left-width: .8mm; }
-            .corner-br { right: 0; bottom: 0; border-right-width: .8mm; border-bottom-width: .8mm; }
-            .steps { margin: 0 auto; max-width: 126mm; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; text-align: left; }
-            .step { display: flex; align-items: center; gap: 2.5mm; color: #121a27; font-size: 9.5pt; font-weight: 800; line-height: 1.2; }
-            .step-icon { display: flex; width: 9mm; height: 9mm; flex: 0 0 9mm; color: #49ad14; }
-            .step-icon svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-            .step-note { display: block; margin-top: 1mm; color: #657184; font-size: 7.5pt; font-weight: 700; }
-            footer { margin: 8mm 7mm 0; padding-top: 6mm; border-top: .35mm solid #e5e9e5; color: #49ad14; font-size: 10pt; font-weight: 800; line-height: 1.35; text-align: center; }
-          </style>
-        </head>
-        <body>
-          <section class="sheet">
-            <header class="brand"><img src="${logoUrl}" alt="OFFONIKA" /></header>
-            <main>
-              <div class="department">${item.title.toUpperCase()}</div>
-              <h1>Сканируй и начинай</h1>
-              <p class="lead">Наведи камеру на QR-код — и начни рабочий день</p>
-              <div class="qr-zone">
-                <span class="corner corner-tl"></span><span class="corner corner-tr"></span><span class="corner corner-bl"></span><span class="corner corner-br"></span>
-                <div class="qr-frame"><img src="${image}" alt="QR ${item.title}" /></div>
-              </div>
-              <div class="steps">
-                <div class="step"><span class="step-icon"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg></span><span>Открой Offonika</span></div>
-                <div class="step"><span class="step-icon"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></span><span>Сканируй QR</span></div>
-                <div class="step"><span class="step-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg></span><span>Готово!<small class="step-note">Рабочий день начат</small></span></div>
-              </div>
-            </main>
-            <footer>✦ ${item.wish}</footer>
-          </section>
-          <script>window.onload = () => { window.print(); };</script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.opener = null;
-    printWindow.focus();
+    const printWindow = window.open(item.printFile, '_blank', 'noopener,noreferrer');
+    if (!printWindow) window.location.assign(item.printFile);
   }
 
   return (
