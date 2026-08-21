@@ -3069,7 +3069,7 @@ export function EmployeeTodayClient({
                     <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 ring-1 ring-amber-200'><AlertTriangle className='h-5 w-5' /></span>
                     <div className='min-w-0'>
                       <p className='text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить · {requiredIssuesState.length}</p>
-                      <p className='mt-0.5 text-sm font-bold leading-tight text-slate-700'>Откройте и исправьте каждую проблему</p>
+                      <p className='mt-0.5 text-sm font-bold leading-tight text-slate-700'>Откройте и выполните инструкцию</p>
                     </div>
                   </div>
                   <div className='divide-y divide-amber-200 border-t border-amber-200 bg-white/45'>
