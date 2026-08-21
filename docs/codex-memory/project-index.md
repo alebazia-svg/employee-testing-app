@@ -41,6 +41,13 @@ project from scratch.
 ## Current Architecture Principles
 
 - Extend existing modules before proposing new architecture.
+- Portal authentication uses the signed, HTTP-only `offonika_session` cookie.
+  The signing key comes only from `PORTAL_SESSION_SECRET`; legacy numeric
+  `userId` cookies are not trusted. Every `/admin` page must reject non-admins
+  before business-data queries, and every `/api/admin` handler must enforce the
+  same role independently. Internal integrations such as the AUSN export keep
+  their own bearer-token authentication and must not be coupled to browser
+  sessions.
 - Keep business domains isolated: Workday changes should not touch OFD/payroll
   unless explicitly requested.
 - Trust But Verify: employees confirm real-world actions; portal checks 1C/OFD
