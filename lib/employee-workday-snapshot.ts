@@ -67,6 +67,22 @@ export function serializeTerminalFiscalEmployeeReviewForEmployee(review: {
   };
 }
 
+export function serializeDepartmentWorkdayForEmployee(entry: {
+  userId: number;
+  date: string;
+  status: string;
+  startedAt: Date;
+  endedAt: Date | null;
+}) {
+  return {
+    userId: entry.userId,
+    date: entry.date,
+    status: entry.status,
+    startedAt: entry.startedAt.toISOString(),
+    endedAt: entry.endedAt?.toISOString() ?? null,
+  };
+}
+
 async function findCurrentShiftControlRun(userId: number) {
   return prisma.shiftControlRun.findFirst({
     where: {
@@ -96,7 +112,7 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
   const today = getMoscowDateKey();
   const shiftControlEnabled = usesWorkdayShiftControl(user);
 
-  const [todayWorkDay, unfinishedWorkDay, shiftControlRun, cashOperations] = await Promise.all([
+  const [todayWorkDay, unfinishedWorkDay, shiftControlRun, cashOperations, departmentWorkdays] = await Promise.all([
     prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date: today } } }),
     prisma.workDayEntry.findFirst({
       where: { userId: user.id, status: { in: ['active', 'missing_checkout'] }, endedAt: null, date: { not: today } },
@@ -104,6 +120,11 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
     }),
     shiftControlEnabled ? findCurrentShiftControlRun(user.id) : null,
     findTodayCashOperations(user.id, today),
+    prisma.workDayEntry.findMany({
+      where: { department: user.department, date: today },
+      select: { userId: true, date: true, status: true, startedAt: true, endedAt: true },
+      orderBy: [{ startedAt: 'asc' }, { userId: 'asc' }],
+    }),
   ]);
 
   const activeWorkDay = [todayWorkDay, unfinishedWorkDay].find((entry) => entry && !entry.endedAt && ['active', 'missing_checkout'].includes(entry.status)) ?? null;
@@ -133,6 +154,7 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
     today,
     workDay: serializeWorkDayForEmployee(todayWorkDay),
     unfinishedWorkDay: serializeWorkDayForEmployee(unfinishedWorkDay),
+    departmentWorkdays: departmentWorkdays.map(serializeDepartmentWorkdayForEmployee),
     shiftControl: serializeShiftControlForEmployee(shiftControlRun),
     cashOperations: cashOperations.map(serializeCashOperationForEmployee),
     requiredIssues: requiredIssues.map(serializeRequiredIssue),

@@ -36,6 +36,7 @@ import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
+import { colleaguePresence } from '@/lib/workday-presence';
 import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
 
 function uploadFormData<T>(
@@ -143,6 +144,8 @@ type WorkDayEntry = {
   status: string;
 };
 
+type DepartmentWorkdayPresence = Pick<WorkDayEntry, 'userId' | 'date' | 'status' | 'startedAt' | 'endedAt'>;
+
 type ShiftControlTask = {
   id: number;
   runId: number;
@@ -227,6 +230,7 @@ type Props = {
   ownSchedule: ScheduleEntry[];
   departmentSchedule: ScheduleEntry[];
   departmentUsers: UserSummary[];
+  departmentWorkdays: DepartmentWorkdayPresence[];
   todayWorkDay: WorkDayEntry | null;
   unfinishedWorkDay: WorkDayEntry | null;
   shiftControl: ShiftControlState;
@@ -240,6 +244,7 @@ type Props = {
 type EmployeeWorkdaySnapshot = {
   workDay: WorkDayEntry | null;
   unfinishedWorkDay: WorkDayEntry | null;
+  departmentWorkdays: DepartmentWorkdayPresence[];
   shiftControl: ShiftControlState;
   cashOperations: CashOperation[];
   requiredIssues: RequiredWorkdayIssue[];
@@ -760,7 +765,7 @@ function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | 
     value.unfinishedWorkDay === null ? null : isRecord(value.unfinishedWorkDay) ? (value.unfinishedWorkDay as WorkDayEntry) : undefined;
   const shiftControl = value.shiftControl;
 
-  if (workDay === undefined || unfinishedWorkDay === undefined || !isRecord(shiftControl) || !Array.isArray(shiftControl.tasks) || !Array.isArray(value.cashOperations) || !Array.isArray(value.requiredIssues) || !Array.isArray(value.paymentChecks)) {
+  if (workDay === undefined || unfinishedWorkDay === undefined || !Array.isArray(value.departmentWorkdays) || !isRecord(shiftControl) || !Array.isArray(shiftControl.tasks) || !Array.isArray(value.cashOperations) || !Array.isArray(value.requiredIssues) || !Array.isArray(value.paymentChecks)) {
     return null;
   }
 
@@ -770,6 +775,7 @@ function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | 
   return {
     workDay,
     unfinishedWorkDay,
+    departmentWorkdays: value.departmentWorkdays as DepartmentWorkdayPresence[],
     shiftControl: {
       run,
       tasks: shiftControl.tasks as ShiftControlTask[],
@@ -968,6 +974,7 @@ export function EmployeeTodayClient({
   ownSchedule,
   departmentSchedule,
   departmentUsers,
+  departmentWorkdays,
   todayWorkDay,
   unfinishedWorkDay,
   shiftControl,
@@ -981,6 +988,7 @@ export function EmployeeTodayClient({
   const [activeTab, setActiveTab] = useState<Tab>('day');
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
+  const [departmentWorkdaysState, setDepartmentWorkdaysState] = useState(departmentWorkdays);
   const [workDay, setWorkDay] = useState(todayWorkDay);
   const [unfinished, setUnfinished] = useState(unfinishedWorkDay);
   const [shiftControlState, setShiftControlState] = useState(shiftControl);
@@ -1116,6 +1124,7 @@ export function EmployeeTodayClient({
 
       setWorkDay(snapshot.workDay);
       setUnfinished(snapshot.unfinishedWorkDay);
+      setDepartmentWorkdaysState(snapshot.departmentWorkdays);
       setShiftControlState(snapshot.shiftControl);
       setCashOperationsState(snapshot.cashOperations);
       setRequiredIssuesState(snapshot.requiredIssues);
@@ -1175,10 +1184,14 @@ export function EmployeeTodayClient({
 
   const todayDepartmentEntries = departmentScheduleByDate.get(today) ?? [];
   const todayEntryByUser = new Map(todayDepartmentEntries.map((entry) => [entry.userId, entry]));
+  const todayWorkdayByUser = new Map(departmentWorkdaysState.filter((entry) => entry.date === today).map((entry) => [entry.userId, entry]));
   const colleagueUsers = departmentUsers.filter((person) => person.id !== user.id).sort(byName);
-  const workingColleagues = colleagueUsers.filter((person) => todayEntryByUser.get(person.id)?.status === 'working');
-  const offColleagues = colleagueUsers.filter((person) => todayEntryByUser.get(person.id)?.status === 'off');
-  const missingColleagues = colleagueUsers.filter((person) => !todayEntryByUser.has(person.id));
+  const todayPresence = (person: UserSummary) => colleaguePresence(todayEntryByUser.get(person.id)?.status, todayWorkdayByUser.get(person.id));
+  const workingColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'active');
+  const completedColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'completed');
+  const scheduledColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'scheduled');
+  const offColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'off');
+  const missingColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'missing');
   const shiftControlBelongsToToday = shiftControlState.run?.date === today;
   const shiftControlCompleted = shiftControlState.run?.status === 'completed' || shiftControlState.run?.completedAt;
   const showShiftControl =
@@ -3415,9 +3428,11 @@ export function EmployeeTodayClient({
                   <Users className='h-5 w-5 text-primary' />
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
                 </div>
-                <ColleagueGroup title='Работают' people={workingColleagues} tone='green' />
-                <ColleagueGroup title='Выходной' people={offColleagues} tone='slate' />
-                <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' />
+                <ColleagueGroup title='Работают сейчас' people={workingColleagues} tone='green' />
+                {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' />}
+                {scheduledColleagues.length > 0 && <ColleagueGroup title='По графику — ещё не начали' people={scheduledColleagues} tone='amber' />}
+                {offColleagues.length > 0 && <ColleagueGroup title='Выходной' people={offColleagues} tone='slate' />}
+                {missingColleagues.length > 0 && <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' />}
               </Card>
             </div>
           )}

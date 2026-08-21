@@ -57,6 +57,7 @@ export default async function Employee() {
       ownSchedule={ownSchedule.map(serializeScheduleEntry)}
       departmentSchedule={departmentSchedule.map(serializeScheduleEntry)}
       departmentUsers={departmentUsers}
+      departmentWorkdays={workdaySnapshot.departmentWorkdays}
       todayWorkDay={workdaySnapshot.workDay}
       unfinishedWorkDay={workdaySnapshot.unfinishedWorkDay}
       shiftControl={workdaySnapshot.shiftControl}
