@@ -1,4 +1,4 @@
-import { getCurrentUser } from '@/lib/auth';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
 
@@ -46,6 +46,8 @@ function buildPeriodKey(year: number, month: number) {
 }
 
 export async function POST(req: Request) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const payload = (await req.json()) as PayrollRunPayload;
   const year = asNumber(payload.period?.year);
   const month = asNumber(payload.period?.month, -1);
@@ -59,7 +61,6 @@ export async function POST(req: Request) {
   }
 
   const employeeResults = payload.employeeResults;
-  const user = await getCurrentUser();
   const periodKey = buildPeriodKey(year, month);
   const totals = payload.totals ?? {};
 
@@ -100,7 +101,7 @@ export async function POST(req: Request) {
         salesBonus: asNumber(totals.salesBonus),
         disciplineBonus: asNumber(totals.disciplineBonus),
         sourceSummary: asJson(payload.sourceSummary),
-        createdByUserId: user?.id ?? null,
+        createdByUserId: access.user.id,
         sourceFiles: {
           create: (payload.sourceFiles ?? []).map((file) => ({
             type: asString(file.type, 'unknown'),

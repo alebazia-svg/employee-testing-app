@@ -1,8 +1,13 @@
 import { prisma } from '@/lib/prisma';
 import { AdminShell } from '@/components/AdminShell';
 import AttestationEditor from './AttestationEditor';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
 
 export default async function AdminAttestationPage({ params }: { params: { id: string } }) {
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
   const attestation = await prisma.attestation.findUnique({
     where: { id: Number(params.id) },
     include: {

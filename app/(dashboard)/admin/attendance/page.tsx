@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { getAttendanceRows, getScheduleRows, type AttendanceRow, type ScheduleRow } from '@/lib/google-sheets';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -818,6 +820,9 @@ function DailyTable({ rows }: { rows: DailySummary[] }) {
 }
 
 export default async function AdminAttendancePage({ searchParams }: { searchParams: SearchParams }) {
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
   let data;
   let error = '';
   let scheduleData;

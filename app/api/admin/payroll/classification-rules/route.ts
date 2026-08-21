@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,8 @@ function asNumber(value: unknown, fallback: number) {
 }
 
 export async function GET() {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const rules = await prisma.payrollClassificationRule.findMany({
     orderBy: [{ isActive: 'desc' }, { priority: 'asc' }, { updatedAt: 'desc' }],
   });
@@ -51,6 +54,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const payload = await req.json();
   const matchType = asString(payload.matchType);
   const targetCalculationType = asString(payload.targetCalculationType);

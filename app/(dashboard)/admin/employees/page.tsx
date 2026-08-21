@@ -3,10 +3,15 @@ import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
 import EmployeesClient from './EmployeesClient';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function EmployeesPage() {
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
   const users = await prisma.user.findMany({
     orderBy: [{ isActive: 'desc' }, { role: 'asc' }, { name: 'asc' }],
     select: {

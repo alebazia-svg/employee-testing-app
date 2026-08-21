@@ -6,10 +6,15 @@ import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminResultsPage() {
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
   const results = await prisma.result.findMany({
     include: { user: true, attestation: true },
     orderBy: { date: 'desc' },

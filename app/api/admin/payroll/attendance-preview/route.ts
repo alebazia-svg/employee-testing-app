@@ -1,4 +1,5 @@
 import { getAttendanceRows, getScheduleRows, type AttendanceRow, type ScheduleRow } from '@/lib/google-sheets';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -199,6 +200,8 @@ function getPeriod(searchParams: URLSearchParams) {
 }
 
 export async function GET(request: Request) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const period = getPeriod(new URL(request.url).searchParams);
 
   if (!period) {

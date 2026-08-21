@@ -1,8 +1,11 @@
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export async function GET() {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const users = await prisma.user.findMany({
     orderBy: [{ isActive: 'desc' }, { role: 'asc' }, { name: 'asc' }],
     select: { id: true, name: true, login: true, role: true, department: true, isActive: true, payrollName: true },
@@ -12,6 +15,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const { name, login, password, role, department, isActive, payrollName } = await req.json();
   if (!name?.trim() || !login?.trim() || !password?.trim()) {
     return Response.json({ error: 'Заполните имя, логин и пароль' }, { status: 400 });

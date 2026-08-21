@@ -4,6 +4,8 @@ import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import ResetAttemptButton from './ResetAttemptButton';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
 
 type Detail = {
   questionId: number;
@@ -16,6 +18,9 @@ type Detail = {
 };
 
 export default async function ResultDetailsPage({ params }: { params: { id: string } }) {
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
   const result = await prisma.result.findUnique({
     where: { id: Number(params.id) },
     include: { user: true, attestation: true },

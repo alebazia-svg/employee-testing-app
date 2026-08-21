@@ -9,10 +9,15 @@ import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { attestationStatusLabel, attestationTypeLabel } from '@/lib/test-format';
 import CreateAttestation from './CreateAttestation';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminAttestationsPage() {
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
   const attestations = await prisma.attestation.findMany({
     include: { sections: { include: { questions: true } } },
     orderBy: { id: 'asc' },

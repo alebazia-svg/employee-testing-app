@@ -1,8 +1,11 @@
 import { prisma } from '@/lib/prisma';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const report = await prisma.salesAnalyticsReport.findFirst({
     where: { sourceReportType: 'extended_vgp' },
     orderBy: { uploadedAt: 'desc' },

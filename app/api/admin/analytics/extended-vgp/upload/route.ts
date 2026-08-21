@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { parseExtendedVgp } from '@/lib/analytics/extended-vgp';
 import type { Prisma } from '@prisma/client';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,8 @@ function asString(value: FormDataEntryValue | null) {
 }
 
 export async function POST(req: Request) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const formData = await req.formData();
   const file = formData.get('file');
   const period = asString(formData.get('period'));

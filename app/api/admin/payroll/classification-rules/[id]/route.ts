@@ -1,8 +1,11 @@
 import { prisma } from '@/lib/prisma';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return Response.json({ error: 'Invalid rule id.' }, { status: 400 });

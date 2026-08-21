@@ -7,6 +7,8 @@ import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
 import { prisma } from '@/lib/prisma';
 import { ExtendedVgpUpload } from './ExtendedVgpUpload';
+import { redirect } from 'next/navigation';
+import { getCurrentUser } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -1275,6 +1277,9 @@ type PageSearchParams = {
 };
 
 export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: PageSearchParams }) {
+  const admin = await getCurrentUser();
+  if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/employee');
   const sourceMode = getSourceMode(searchParams?.source);
   const [latestExtendedHeader, latestRunForDefault, periods] = await Promise.all([
     getLatestExtendedReportHeader(),

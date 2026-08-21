@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,8 @@ function isAllowedTransition(currentStatus: string, nextStatus: PayrollRunStatus
 }
 
 export async function PATCH(req: Request, { params }: RouteContext) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const id = Number(params.id);
 
   if (!Number.isInteger(id) || id <= 0) {

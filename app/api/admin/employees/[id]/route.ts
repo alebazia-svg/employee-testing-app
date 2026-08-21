@@ -1,8 +1,11 @@
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const { name, login, password, role, department, isActive, payrollName } = await req.json();
   const userId = Number(params.id);
   if (!name?.trim() || !login?.trim()) {
@@ -44,6 +47,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const userId = Number(params.id);
   const user = await prisma.user.findUnique({ where: { id: userId } });
 

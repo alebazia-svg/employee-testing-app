@@ -1,7 +1,10 @@
 import { prisma } from '@/lib/prisma';
 import { parseOptions } from '@/lib/attestation';
+import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const attestation = await prisma.attestation.findUnique({
     where: { id: Number(params.id) },
     include: {
@@ -24,6 +27,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   const body = await req.json();
   const attestation = await prisma.attestation.update({
     where: { id: Number(params.id) },
@@ -39,6 +44,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
   await prisma.attestation.delete({ where: { id: Number(params.id) } });
 
   return Response.json({ ok: true });
