@@ -1021,6 +1021,7 @@ export function EmployeeTodayClient({
   const workdaySyncAbortRef = useRef<AbortController | null>(null);
   const workdaySyncInFlightRef = useRef(false);
   const approvedCashExceptionAutoFinishRef = useRef<string | null>(null);
+  const approvedRequiredIssuesAutoFinishRef = useRef<string | null>(null);
   const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
   const displayNow = now ?? initialRenderNow;
 
@@ -1192,8 +1193,6 @@ export function EmployeeTodayClient({
   const primaryShiftControlTask = actionableShiftControlTask ?? nextShiftControlTask;
   const remainingShiftControlCount = pendingShiftControlTasks.length;
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
-  const primaryRequiredIssue = requiredIssuesState[0] ?? null;
-  const primaryRequiredIssueView = primaryRequiredIssue ? workdayIssueView(primaryRequiredIssue) : null;
   const primaryPaymentCheck = paymentChecksState[0] ?? null;
   const primaryPaymentCheckView = primaryPaymentCheck ? terminalFiscalEmployeeReviewSummary(primaryPaymentCheck) : null;
   function buildHandoverSteps(draft = handoverDraft) {
@@ -2404,6 +2403,23 @@ export function EmployeeTodayClient({
     void submitHandover(task);
   }, [activeHandoverTask, cashEncashmentExceptionRequestState, handoverStep, handoverSteps, isCompleted, isSaving]);
 
+  useEffect(() => {
+    const request = closeExceptionRequestState;
+    const task = shiftControlTasks.find((item) => item.category === 'handover' && item.status !== 'done') ?? null;
+    if (request?.status !== 'approved' || !task || isCompleted || isSaving) {
+      if (request?.status !== 'approved') approvedRequiredIssuesAutoFinishRef.current = null;
+      return;
+    }
+
+    const attemptKey = `${request.id}:${task.id}`;
+    if (approvedRequiredIssuesAutoFinishRef.current === attemptKey) return;
+    approvedRequiredIssuesAutoFinishRef.current = attemptKey;
+    const savedDraft = isRecord(task.handoverData) ? draftFromHandoverData(task.handoverData) : handoverDraft;
+    setHandoverDraft(savedDraft);
+    setMessage('Администратор разрешил завершение. Завершаем рабочий день…');
+    void submitHandover(task, savedDraft, buildHandoverSteps(savedDraft));
+  }, [closeExceptionRequestState, handoverDraft, isCompleted, isSaving, shiftControlTasks]);
+
   async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
     if (!file) return;
     setHandoverAttemptedStep(null);
@@ -3031,16 +3047,30 @@ export function EmployeeTodayClient({
                 </div>
               )}
 
-              {primaryRequiredIssue && primaryRequiredIssueView && (
-                <Link href={`/employee/issues/${primaryRequiredIssue.id}`} className='flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'>
-                  <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 ring-1 ring-amber-200'><AlertTriangle className='h-5 w-5' /></span>
-                  <span className='min-w-0 flex-1'>
-                    <span className='block text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить{requiredIssuesState.length > 1 ? ` · ${requiredIssuesState.length}` : ''}</span>
-                    <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryRequiredIssueView.summaryTitle}</span>
-                    {primaryRequiredIssueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{primaryRequiredIssueView.summaryMeta}</span>}
-                  </span>
-                  <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span><ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
-                </Link>
+              {requiredIssuesState.length > 0 && (
+                <section className='overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 text-slate-950 shadow-sm'>
+                  <div className='flex items-center gap-3 px-3.5 py-3'>
+                    <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 ring-1 ring-amber-200'><AlertTriangle className='h-5 w-5' /></span>
+                    <div className='min-w-0'>
+                      <p className='text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить · {requiredIssuesState.length}</p>
+                      <p className='mt-0.5 text-sm font-bold leading-tight text-slate-700'>Откройте и исправьте каждую проблему</p>
+                    </div>
+                  </div>
+                  <div className='divide-y divide-amber-200 border-t border-amber-200 bg-white/45'>
+                    {requiredIssuesState.map((issue) => {
+                      const issueView = workdayIssueView(issue);
+                      return (
+                        <Link key={issue.id} href={`/employee/issues/${issue.id}`} className='flex items-center gap-3 px-3.5 py-3 transition hover:bg-white/60'>
+                          <span className='min-w-0 flex-1'>
+                            <span className='block text-sm font-black leading-tight'>{issueView.summaryTitle}</span>
+                            {issueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{issueView.summaryMeta}</span>}
+                          </span>
+                          <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span><ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </section>
               )}
 
               {primaryPaymentCheck && primaryPaymentCheckView && (
@@ -3059,7 +3089,7 @@ export function EmployeeTodayClient({
                 <Card className='space-y-3 border-amber-200 bg-white p-4'>
                   <div><h2 className='text-base font-black text-slate-950'>Завершение рабочего дня</h2><p className='mt-1 text-sm font-semibold leading-relaxed text-slate-600'>Сначала исправьте обязательную проблему. Если это невозможно по технической причине, запросите разрешение администратора.</p></div>
                   {closeExceptionRequestState?.status === 'pending' && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold text-amber-800'>Запрос отправлен · ожидает решения администратора</p>}
-                  {closeExceptionRequestState?.status === 'approved' && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Администратор разрешил завершить день. Повторите сдачу смены. Сама проблема останется открытой.</p>}
+                  {closeExceptionRequestState?.status === 'approved' && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Администратор разрешил завершить день. Портал завершает смену автоматически; сама проблема останется открытой.</p>}
                   {closeExceptionRequestState?.status === 'rejected' && <p className='rounded-xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-800'>Запрос не согласован{closeExceptionRequestState.decisionComment ? `: ${closeExceptionRequestState.decisionComment}` : ''}</p>}
                   {(!closeExceptionRequestState || closeExceptionRequestState.status === 'rejected') && (
                     <div className='space-y-2'>

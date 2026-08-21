@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, MessageCircle } from 'lucide-react';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
@@ -22,9 +23,38 @@ export default async function AdminWorkdayIssuePage({ params }: { params: { id: 
   if (!issue) redirect('/admin/workday');
   const open = issue.status === 'open' && issue.employeeActionRequired;
   const view = workdayIssueView(issue);
+  const employeeIssues = await prisma.workdayControlIssue.findMany({
+    where: { userId: issue.userId, status: 'open', employeeActionRequired: true },
+    orderBy: [{ severity: 'desc' }, { detectedAt: 'asc' }],
+  });
   return (
     <AdminShell>
       <AdminBreadcrumbs current='Обязательная ошибка' />
+      {employeeIssues.length > 1 && (
+        <nav aria-label={`Активные ошибки сотрудника ${issue.user.name}`} className='mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-3'>
+          <div className='flex items-center justify-between gap-3 px-1 pb-2'>
+            <p className='text-sm font-black text-slate-950'>{issue.user.name} · активные ошибки</p>
+            <span className='rounded-full bg-amber-100 px-2.5 py-1 text-xs font-extrabold text-amber-800'>{employeeIssues.length}</span>
+          </div>
+          <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-3'>
+            {employeeIssues.map((employeeIssue) => {
+              const employeeIssueView = workdayIssueView(employeeIssue);
+              const selected = employeeIssue.id === issue.id;
+              return (
+                <Link
+                  key={employeeIssue.id}
+                  href={`/admin/workday/issues/${employeeIssue.id}`}
+                  aria-current={selected ? 'page' : undefined}
+                  className={`rounded-xl px-3 py-2.5 ring-1 transition ${selected ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-950 ring-amber-200 hover:ring-amber-400'}`}
+                >
+                  <span className='block text-sm font-extrabold'>{employeeIssueView.summaryTitle}</span>
+                  <span className={`mt-0.5 block text-xs font-bold ${selected ? 'text-slate-300' : 'text-slate-500'}`}>{employeeIssueView.summaryMeta || 'Открыть подробности'}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
       <div className='grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(360px,1.1fr)]'>
         <Card className={open ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}>
           <div className='flex gap-3'><AlertTriangle className={`mt-0.5 h-6 w-6 shrink-0 ${open ? 'text-amber-700' : 'text-green-700'}`} /><div><p className={`text-xs font-extrabold uppercase tracking-wide ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? 'Действие сотрудника требуется' : 'Активное действие закрыто'}</p><h1 className='mt-1 text-2xl font-black text-slate-950'>Чек по кредитной продаже</h1><p className='mt-3 text-base font-bold leading-relaxed text-slate-800'>{view.instruction}</p></div></div>

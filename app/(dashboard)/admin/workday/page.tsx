@@ -27,6 +27,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { shiftControlOneCAuditKey } from '@/lib/shift-control-one-c-audit';
 import { attributeTerminalFiscalRecordsToEmployees, getTerminalFiscalWorkdaySummary, presentTerminalFiscalEmployeeControl, presentTerminalFiscalWorkdaySummary } from '@/lib/terminal-fiscal-summary';
+import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { evaluateWorkdayTiming } from '@/lib/workday-timing';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, getShiftOptionsForDepartment, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
@@ -1147,6 +1148,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   for (const issue of requiredIssues) {
     requiredIssuesByUser.set(issue.userId, [...(requiredIssuesByUser.get(issue.userId) ?? []), issue]);
   }
+  const requiredIssueGroups = Array.from(requiredIssuesByUser.entries()).map(([userId, issues]) => ({
+    userId,
+    userName: issues[0]?.user.name ?? 'Сотрудник',
+    issues,
+  }));
   const activeKkmAssignments = kkmAssignments.filter((assignment) => !assignment.effectiveTo);
   const kkmAssignmentByUser = new Map(activeKkmAssignments.map((assignment) => [assignment.userId, assignment]));
   const terminalFiscalAttribution = attributeTerminalFiscalRecordsToEmployees(
@@ -1530,7 +1536,30 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         {requiredIssues.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>
             <div className='flex items-start gap-3'><AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' /><div className='min-w-0 flex-1'><h2 className='text-lg font-extrabold text-slate-950'>Обязательные ошибки · {requiredIssues.length}</h2><p className='mt-1 text-sm font-semibold text-slate-600'>Остаются активными до фактического исправления. Прочтение уведомления их не закрывает.</p></div></div>
-            <div className='mt-4 grid gap-2 sm:grid-cols-2'>{requiredIssues.map((issue) => <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='rounded-xl bg-white px-4 py-3 ring-1 ring-amber-200 transition hover:ring-amber-400'><span className='block text-xs font-extrabold text-amber-700'>{issue.user.name}</span><span className='mt-1 block text-sm font-black text-slate-950'>{issue.title}</span></Link>)}</div>
+            <div className='mt-4 space-y-3'>
+              {requiredIssueGroups.map((group) => (
+                <section key={group.userId} id={`required-issues-${group.userId}`} className='scroll-mt-24 rounded-xl bg-white p-3 ring-1 ring-amber-200'>
+                  <div className='flex items-center justify-between gap-3 border-b border-amber-100 px-1 pb-2'>
+                    <h3 className='text-sm font-black text-slate-950'>{group.userName}</h3>
+                    <span className='rounded-full bg-amber-100 px-2.5 py-1 text-xs font-extrabold text-amber-800'>{group.issues.length}</span>
+                  </div>
+                  <div className='mt-1 divide-y divide-slate-100'>
+                    {group.issues.map((issue) => {
+                      const view = workdayIssueView(issue);
+                      return (
+                        <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='flex items-center justify-between gap-3 rounded-lg px-1 py-3 transition hover:bg-amber-50'>
+                          <span className='min-w-0'>
+                            <span className='block text-sm font-black text-slate-950'>{view.summaryTitle}</span>
+                            <span className='mt-0.5 block text-xs font-bold text-slate-500'>{view.summaryMeta || 'Открыть подробности'}</span>
+                          </span>
+                          <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть →</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
           </Card>
         )}
 
@@ -1612,7 +1641,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                     </div>
                     <div className='flex items-center gap-2 lg:justify-end'>
                       {row.requiredIssueId ? (
-                        <Link href={`/admin/workday/issues/${row.requiredIssueId}`} className='inline-flex h-8 items-center rounded-md bg-rose-100 px-3 text-xs font-extrabold text-rose-900 transition hover:bg-rose-200'>Открыть</Link>
+                        <Link href={`/admin/workday?date=${selectedDate}&control=${selectedControlFilter}#required-issues-${row.employee.id}`} className='inline-flex h-8 items-center rounded-md bg-rose-100 px-3 text-xs font-extrabold text-rose-900 transition hover:bg-rose-200'>Открыть все · {requiredIssuesByUser.get(row.employee.id)?.length ?? 1}</Link>
                       ) : row.run || row.workDay || row.timingViolations.length > 0 ? (
                         <AdminShiftControlDetails
                           employeeName={row.employee.name}
