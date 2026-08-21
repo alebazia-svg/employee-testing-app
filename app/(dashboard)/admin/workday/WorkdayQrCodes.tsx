@@ -59,8 +59,7 @@ export function WorkdayQrCodes() {
   }, []);
 
   function printQr(item: WorkdayQrCode) {
-    const printWindow = window.open(item.printFile, '_blank', 'noopener,noreferrer');
-    if (!printWindow) window.location.assign(item.printFile);
+    window.open(item.printFile, '_blank', 'noopener,noreferrer');
   }
 
   return (
