@@ -58,6 +58,7 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
   const requestsById = new Map(referencedRequests.map((request) => [request.id, request]));
 
   return rows.filter((notification) => {
+    if (notification.kind === 'cash_operation_created') return false;
     if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
     if (notification.issue) return notification.issue.status === 'open' && notification.issue.employeeActionRequired;
     if (notification.review) return notification.review.status === 'open';

@@ -552,21 +552,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             },
           });
         }
-        const admins = await prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
-        for (const admin of admins) {
-          await prisma.workdayNotification.upsert({
-            where: { fingerprint: `cash-operation:${cashOperation.id}:admin:${admin.id}` },
-            create: {
-              userId: admin.id,
-              fingerprint: `cash-operation:${cashOperation.id}:admin:${admin.id}`,
-              kind: 'cash_operation_created',
-              title: 'Инкассация',
-              body: `${user.name} · ${mapping.oneCCashboxName} · ${encashmentAmount.toLocaleString('ru-RU')} ₽ · ${encashmentDirection === 'phone_reserve' ? 'Резерв на телефоны' : 'Депозитный сейф'} · проведены РКО №${cashOperation.oneCDocumentNumber} и ПКО №${cashOperation.oneCReceiptDocumentNumber}`,
-              scheduledAt: new Date(),
-            },
-            update: {},
-          });
-        }
       }
 
       const photos = {

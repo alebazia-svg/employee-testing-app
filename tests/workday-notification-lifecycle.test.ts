@@ -62,3 +62,15 @@ test('only the latest decision in the same workday scope stays visible', async (
 
   assert.deepEqual((await filterActiveWorkdayNotifications(db as never, rows)).map((row) => row.id), [2]);
 });
+
+test('successful cash operations do not appear as employee attention notifications', async () => {
+  const rows = [{
+    ...baseNotification,
+    id: 3,
+    kind: 'cash_operation_created',
+    fingerprint: 'cash-operation:3:admin:1',
+  }];
+  const db = { workdayCloseExceptionRequest: { findMany: async () => [] } };
+
+  assert.deepEqual(await filterActiveWorkdayNotifications(db as never, rows), []);
+});

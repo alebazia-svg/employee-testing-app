@@ -154,21 +154,6 @@ export async function POST(req: Request) {
           oneCPostedAt: new Date(),
         },
       });
-      const admins = await prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
-      for (const admin of admins) {
-        await prisma.workdayNotification.upsert({
-          where: { fingerprint: `cash-operation:${operation.id}:admin:${admin.id}` },
-          create: {
-            userId: admin.id,
-            fingerprint: `cash-operation:${operation.id}:admin:${admin.id}`,
-            kind: 'cash_operation_created',
-            title: 'Инкассация',
-            body: `${user.name} · ${mapping.oneCCashboxName} · ${amount.toLocaleString('ru-RU')} ₽ · ${direction === 'phone_reserve' ? 'Резерв на телефоны' : 'Депозитный сейф'} · проведены РКО №${result.document.number} и ПКО №${result.receiptDocument.number}`,
-            scheduledAt: new Date(),
-          },
-          update: {},
-        });
-      }
     }
 
     const savedOperation = await prisma.cashOperation.findUniqueOrThrow({ where: { id: operation.id } });
