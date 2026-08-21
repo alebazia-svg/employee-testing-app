@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { filterActiveWorkdayNotifications } from '../lib/workday-notifications';
+import {
+  filterActiveWorkdayNotifications,
+  reconcileActiveWorkdayNotifications,
+  workdayNotificationHref,
+} from '../lib/workday-notifications';
 
 const baseNotification = {
   kind: 'workday_close_exception_decision',
@@ -73,4 +77,47 @@ test('successful cash operations do not appear as employee attention notificatio
   const db = { workdayCloseExceptionRequest: { findMany: async () => [] } };
 
   assert.deepEqual(await filterActiveWorkdayNotifications(db as never, rows), []);
+});
+
+test('inactive sent notifications are cancelled without marking them as read', async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  const rows = [
+    {
+      ...baseNotification,
+      id: 4,
+      kind: 'issue_detected',
+      fingerprint: 'issue:4:detected',
+      issueId: 4,
+      issue: { status: 'open', employeeActionRequired: true },
+    },
+    {
+      ...baseNotification,
+      id: 5,
+      kind: 'issue_detected',
+      fingerprint: 'issue:5:detected',
+      issueId: 5,
+      issue: { status: 'resolved', employeeActionRequired: false },
+    },
+  ];
+  const db = {
+    workdayCloseExceptionRequest: { findMany: async () => [] },
+    workdayNotification: {
+      updateMany: async (args: Record<string, unknown>) => {
+        updates.push(args);
+        return { count: 1 };
+      },
+    },
+  };
+
+  assert.deepEqual((await reconcileActiveWorkdayNotifications(db as never, rows)).map((row) => row.id), [4]);
+  assert.deepEqual(updates, [{
+    where: { id: { in: [5] }, status: 'sent', readAt: null },
+    data: { status: 'cancelled' },
+  }]);
+});
+
+test('notification links open the exact employee action target', () => {
+  assert.equal(workdayNotificationHref({ issueId: 12, reviewId: null }), '/employee/issues/12');
+  assert.equal(workdayNotificationHref({ issueId: null, reviewId: 'review-7' }), '/employee/payment-checks/review-7');
+  assert.equal(workdayNotificationHref({ issueId: null, reviewId: null }), '/employee');
 });

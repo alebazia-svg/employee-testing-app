@@ -1,7 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
-import { filterActiveWorkdayNotifications } from '@/lib/workday-notifications';
+import { reconcileActiveWorkdayNotifications, workdayNotificationHref } from '@/lib/workday-notifications';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -9,7 +9,6 @@ export async function GET() {
   const rows = await prisma.workdayNotification.findMany({
     where: { userId: user.id, status: 'sent', readAt: null },
     orderBy: { sentAt: 'desc' },
-    take: 200,
     select: {
       id: true,
       kind: true,
@@ -27,7 +26,7 @@ export async function GET() {
     },
   });
   const seenTargets = new Set<string>();
-  const activeRows = await filterActiveWorkdayNotifications(prisma, rows);
+  const activeRows = await reconcileActiveWorkdayNotifications(prisma, rows);
   const notifications = activeRows
     .filter((notification) => {
       const target = notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : `notification:${notification.id}`;
@@ -41,11 +40,7 @@ export async function GET() {
         ...notification,
         title: issueView?.summaryTitle || notification.title,
         body: issueView?.notificationBody || notification.body,
-        href: notification.reviewId
-          ? `/employee/payment-checks/${notification.reviewId}`
-          : notification.issueId
-            ? `/employee/issues/${notification.issueId}`
-            : '/employee',
+        href: workdayNotificationHref(notification),
       };
     })
     .slice(0, 30);

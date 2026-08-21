@@ -72,6 +72,23 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
   });
 }
 
+export async function reconcileActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
+  const activeRows = await filterActiveWorkdayNotifications(db, rows);
+  const activeIds = new Set(activeRows.map((notification) => notification.id));
+  const inactiveIds = rows
+    .filter((notification) => !activeIds.has(notification.id))
+    .map((notification) => notification.id);
+
+  if (inactiveIds.length) {
+    await db.workdayNotification.updateMany({
+      where: { id: { in: inactiveIds }, status: 'sent', readAt: null },
+      data: { status: 'cancelled' },
+    });
+  }
+
+  return activeRows;
+}
+
 export async function resolveCloseExceptionNotifications(db: DbClient, input: {
   workDayEntryId: number;
   now: Date;
@@ -224,6 +241,30 @@ function notificationTargetKey(notification: { id: number; taskId: number | null
   return `notification:${notification.id}`;
 }
 
+export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null }) {
+  if (notification.reviewId) return `/employee/payment-checks/${notification.reviewId}`;
+  if (notification.issueId) return `/employee/issues/${notification.issueId}`;
+  return '/employee';
+}
+
+async function reconcileStoredUnreadWorkdayNotifications() {
+  const rows = await prisma.workdayNotification.findMany({
+    where: { status: 'sent', readAt: null },
+    select: {
+      id: true,
+      kind: true,
+      fingerprint: true,
+      taskId: true,
+      issueId: true,
+      reviewId: true,
+      task: { select: { status: true, run: { select: { status: true } } } },
+      issue: { select: { status: true, employeeActionRequired: true } },
+      review: { select: { status: true } },
+    },
+  });
+  await reconcileActiveWorkdayNotifications(prisma, rows);
+}
+
 async function activeUnreadNotificationTargets(userId: number) {
   const rows = await prisma.workdayNotification.findMany({
     where: { userId, status: 'sent', readAt: null },
@@ -239,11 +280,12 @@ async function activeUnreadNotificationTargets(userId: number) {
       review: { select: { status: true } },
     },
   });
-  const active = await filterActiveWorkdayNotifications(prisma, rows);
+  const active = await reconcileActiveWorkdayNotifications(prisma, rows);
   return new Set(active.map(notificationTargetKey));
 }
 
 export async function dispatchDueWorkdayNotifications(now = new Date()) {
+  await reconcileStoredUnreadWorkdayNotifications();
   const due = await prisma.workdayNotification.findMany({
     where: { status: 'pending', scheduledAt: { lte: now } },
     include: {
@@ -275,7 +317,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         title: notification.title,
         body: notification.body,
-        url: notification.reviewId ? `/employee/payment-checks/${notification.reviewId}` : '/employee',
+        url: workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,
       });
