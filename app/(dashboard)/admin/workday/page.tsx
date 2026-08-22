@@ -1148,11 +1148,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
   for (const issue of requiredIssues) {
     requiredIssuesByUser.set(issue.userId, [...(requiredIssuesByUser.get(issue.userId) ?? []), issue]);
   }
-  const requiredIssueGroups = Array.from(requiredIssuesByUser.entries()).map(([userId, issues]) => ({
-    userId,
-    userName: issues[0]?.user.name ?? 'Сотрудник',
-    issues,
-  }));
   const activeKkmAssignments = kkmAssignments.filter((assignment) => !assignment.effectiveTo);
   const kkmAssignmentByUser = new Map(activeKkmAssignments.map((assignment) => [assignment.userId, assignment]));
   const terminalFiscalAttribution = attributeTerminalFiscalRecordsToEmployees(
@@ -1424,6 +1419,11 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
               : 'Замечаний нет';
       const completedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'done').length;
       const totalTaskCount = run?.tasks.length ?? 0;
+      const activeWorkDay = Boolean(workDay && !workDay.endedAt && workDay.status !== 'completed');
+      const primaryRequiredIssue = employeeRequiredIssues[0] ?? null;
+      const primaryIssueLifecycle = primaryRequiredIssue
+        ? `${primaryRequiredIssue.originDate === today ? 'Возникла сегодня' : `Возникла ${formatDateLabel(primaryRequiredIssue.originDate)}`} · ${getMoscowDateKey(primaryRequiredIssue.lastDetectedAt) === today ? `автопроверка сегодня в ${formatTime(primaryRequiredIssue.lastDetectedAt)}` : `автопроверка ${formatDateLabel(getMoscowDateKey(primaryRequiredIssue.lastDetectedAt))} в ${formatTime(primaryRequiredIssue.lastDetectedAt)}`}`
+        : '';
       const businessStatus = category === 'error'
         ? { label: 'Есть ошибка', className: 'bg-rose-100 text-rose-800' }
         : category === 'attention'
@@ -1442,17 +1442,21 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         terminalFiscalRecords,
         requiredIssues: employeeRequiredIssues.map((issue) => {
           const view = workdayIssueView(issue);
+          const lifecycle = `${issue.originDate === today ? 'Возникла сегодня' : `Возникла ${formatDateLabel(issue.originDate)}`} · ${getMoscowDateKey(issue.lastDetectedAt) === today ? `автопроверка сегодня в ${formatTime(issue.lastDetectedAt)}` : `автопроверка ${formatDateLabel(getMoscowDateKey(issue.lastDetectedAt))} в ${formatTime(issue.lastDetectedAt)}`}`;
           return {
             id: issue.id,
             title: view.summaryTitle,
             meta: view.summaryMeta,
+            lifecycle,
             href: `/admin/workday/issues/${issue.id}`,
           };
         }),
         timingViolations,
         shiftControlRequired,
+        activeWorkDay,
         category,
         reviewText,
+        primaryIssueLifecycle,
         completedTaskCount,
         totalTaskCount,
         businessStatus,
@@ -1464,12 +1468,14 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         || left.employee.department.localeCompare(right.employee.department, 'ru')
         || left.employee.name.localeCompare(right.employee.name, 'ru');
     });
-  const errorEmployeeCount = employeeControlRows.filter((row) => row.category === 'error').length;
-  const attentionEmployeeCount = employeeControlRows.filter((row) => row.category === 'attention').length;
-  const activeEmployeeCount = errorEmployeeCount + attentionEmployeeCount;
   const pendingEmployeeCount = employeeControlRows.filter((row) => row.category === 'pending').length;
   const normalEmployeeCount = employeeControlRows.filter((row) => row.category === 'normal').length;
-  const filteredEmployeeControlRows = employeeControlRows.filter((row) => matchesAdminWorkdayControlFilter(row.category, selectedControlFilter));
+  const focusEmployeeCount = employeeControlRows.filter((row) => row.activeWorkDay || matchesAdminWorkdayControlFilter(row.category, 'active')).length;
+  const filteredEmployeeControlRows = employeeControlRows.filter((row) => (
+    selectedControlFilter === 'active'
+      ? row.activeWorkDay || matchesAdminWorkdayControlFilter(row.category, 'active')
+      : matchesAdminWorkdayControlFilter(row.category, selectedControlFilter)
+  ));
   const reviewableEmployeeRows = filteredEmployeeControlRows.filter((row) => row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0);
   const controlFilterHref = (filter: AdminWorkdayControlFilter) => `/admin/workday?date=${selectedDate}&control=${filter}#employees-control`;
   const employeeDetailHref = (employeeId: number) => (
@@ -1514,7 +1520,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         <AdminPageHeader
           eyebrow='Операционная работа'
           title='Контроль дня'
-          description='Активные проблемы и состояние рабочих дней. Исправленная история не смешивается с текущими действиями.'
+          description='Состояние сотрудников и текущие отклонения. Ваши решения и новые обращения собраны на главной.'
           actions={<>
             <Link
               href={`/admin/workday?date=${previousDate}`}
@@ -1541,41 +1547,6 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
 
         {showTerminalFiscalSummary && <TerminalFiscalAdminSummary summary={terminalFiscalSummary} />}
 
-        {requiredIssues.length > 0 && (
-          <Card className='border-amber-200 bg-amber-50'>
-            <div className='flex items-start gap-3'><AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' /><div className='min-w-0 flex-1'><h2 className='text-lg font-extrabold text-slate-950'>Обязательные ошибки · {requiredIssues.length}</h2><p className='mt-1 text-sm font-semibold text-slate-600'>Остаются активными до фактического исправления. Прочтение уведомления их не закрывает.</p></div></div>
-            <div className='mt-4 space-y-3'>
-              {requiredIssueGroups.map((group) => (
-                <section key={group.userId} id={`required-issues-${group.userId}`} className='scroll-mt-24 rounded-xl bg-white p-3 ring-1 ring-amber-200'>
-                  <div className='flex items-center justify-between gap-3 border-b border-amber-100 px-1 pb-2'>
-                    <h3 className='text-sm font-black text-slate-950'>{group.userName}</h3>
-                    <span className='rounded-full bg-amber-100 px-2.5 py-1 text-xs font-extrabold text-amber-800'>{group.issues.length}</span>
-                  </div>
-                  <div className='mt-1 divide-y divide-slate-100'>
-                    {group.issues.map((issue) => {
-                      const view = workdayIssueView(issue);
-                      const originLabel = issue.originDate === today ? 'Возникла сегодня' : `Возникла ${formatDateLabel(issue.originDate)}`;
-                      const checkedLabel = getMoscowDateKey(issue.lastDetectedAt) === today
-                        ? `автопроверка сегодня в ${formatTime(issue.lastDetectedAt)}`
-                        : `автопроверка ${formatDateLabel(getMoscowDateKey(issue.lastDetectedAt))} в ${formatTime(issue.lastDetectedAt)}`;
-                      return (
-                        <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='flex items-center justify-between gap-3 rounded-lg px-1 py-3 transition hover:bg-amber-50'>
-                          <span className='min-w-0'>
-                            <span className='block text-sm font-black text-slate-950'>{view.summaryTitle}</span>
-                            <span className='mt-0.5 block text-xs font-bold text-slate-500'>{view.summaryMeta || 'Открыть подробности'}</span>
-                            <span className='mt-1 block text-xs font-semibold text-slate-400'>{originLabel} · {checkedLabel}</span>
-                          </span>
-                          <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть →</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
-          </Card>
-        )}
-
         {unfinishedWorkDays.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>
             <div className='flex items-start gap-3'>
@@ -1597,18 +1568,16 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
         <Card className='p-0' id='employees-control'>
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between'>
             <div>
-              <h2 className='text-lg font-extrabold text-slate-950'>Сотрудники</h2>
+              <h2 className='text-lg font-extrabold text-slate-950'>Состояние сотрудников</h2>
               <p className='mt-1 text-sm font-medium text-slate-500'>
-                Здесь только текущие ошибки и действия. Опоздания сохраняются в графике и истории смены.
+                Сначала показаны работающие сотрудники и те, у кого есть активная проблема или отклонение.
               </p>
             </div>
             <div className='flex flex-wrap gap-2 text-xs font-extrabold'>
               {([
-                ['active', `Требуют действия · ${activeEmployeeCount}`],
-                ['error', `Ошибки · ${errorEmployeeCount}`],
-                ['attention', `Отклонения · ${attentionEmployeeCount}`],
-                ['pending', `Ожидают · ${pendingEmployeeCount}`],
-                ['normal', `Норма · ${normalEmployeeCount}`],
+                ['active', `Главное сейчас · ${focusEmployeeCount}`],
+                ['pending', `Ожидаются · ${pendingEmployeeCount}`],
+                ['normal', `Без проблем · ${normalEmployeeCount}`],
                 ['all', `Все · ${employeeControlRows.length}`],
               ] as Array<[AdminWorkdayControlFilter, string]>).map(([filter, label]) => (
                 <Link
@@ -1647,10 +1616,16 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       {row.workDay?.shiftLabel && <span className='text-xs font-bold text-slate-600'>{row.workDay.shiftLabel}</span>}
                     </div>
                     <div className='min-w-0'>
-                      <div className='flex flex-wrap items-center gap-2'><Badge className={row.businessStatus.className}>{row.businessStatus.label}</Badge><span className='text-xs font-semibold text-slate-400'>{row.totalTaskCount > 0 ? `Выполнено ${row.completedTaskCount} из ${row.totalTaskCount}` : 'Проверок пока нет'}</span></div>
+                      <div className='flex flex-wrap items-center gap-2'>
+                        <Badge className={row.requiredIssues.length > 0 ? 'bg-amber-100 text-amber-800' : row.activeWorkDay && row.category === 'normal' ? 'bg-green-100 text-green-800' : row.businessStatus.className}>
+                          {row.requiredIssues.length > 0 ? 'Исправляет сотрудник' : row.activeWorkDay && row.category === 'normal' ? 'Идёт по плану' : row.businessStatus.label}
+                        </Badge>
+                        <span className='text-xs font-semibold text-slate-400'>{row.totalTaskCount > 0 ? `Выполнено ${row.completedTaskCount} из ${row.totalTaskCount}` : 'Проверок пока нет'}</span>
+                      </div>
                       <p className={`mt-1.5 text-sm font-semibold leading-relaxed ${
                         row.category === 'error' ? 'text-rose-800' : row.category === 'attention' ? 'text-amber-800' : row.category === 'pending' ? 'text-slate-600' : 'text-green-700'
                       }`}>{row.reviewText}</p>
+                      {row.primaryIssueLifecycle && <p className='mt-1 text-xs font-semibold text-slate-400'>{row.primaryIssueLifecycle}</p>}
                     </div>
                     <div className='flex items-center gap-2 lg:justify-end'>
                       {row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0 ? (

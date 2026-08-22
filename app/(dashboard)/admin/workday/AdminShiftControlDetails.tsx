@@ -73,6 +73,7 @@ type Props = {
     id: number;
     title: string;
     meta: string;
+    lifecycle?: string;
     href: string;
   }>;
   initialOpen?: boolean;
@@ -1301,6 +1302,7 @@ export function AdminShiftControlDetails({
                               <span className='min-w-0'>
                                 <span className='block text-sm font-extrabold text-slate-950'>{issue.title}</span>
                                 {issue.meta ? <span className='mt-0.5 block text-xs font-bold text-slate-500'>{issue.meta}</span> : null}
+                                {issue.lifecycle ? <span className='mt-1 block text-xs font-semibold text-slate-400'>{issue.lifecycle}</span> : null}
                               </span>
                               <span className='shrink-0 text-xs font-extrabold text-rose-800'>Открыть →</span>
                             </Link>
