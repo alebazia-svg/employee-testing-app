@@ -1,57 +1,94 @@
-﻿# Launch Checklist
+# Launch Checklist
 
-This checklist is for launching the portal as the daily work tool for employees.
-It is product/operations oriented, not a generic engineering roadmap.
+Last reviewed: 2026-08-23. Priority and future scope are owned by
+`master-plan.md`; this file is the release gate only.
 
-## P0 - Required Before Employee Launch
+Status keys: `[x]` verified baseline, `[~]` implemented but still needs a live
+or device check, `[ ]` incomplete launch gate.
 
-- Run a full workday pilot on phone for 1-2 employees: start day, checklist,
-  photos, cash operation, handover, stale-day closure and admin review.
-- Keep shift-control templates limited to supported shifts and prevent empty
-  `ShiftControlRun` creation.
-- Finalize Workday V1 checklist wording so employees confirm real-world facts
-  instead of copying 1C data.
-- Make cash controls follow the "trust but verify" principle: employee enters
-  physical cash fact first, admin/system compares with 1C after.
-- Add or verify explicit employee-to-1C-cashbox mapping before scaling beyond
-  the small pilot.
-- Verify photo uploads persist through Docker volume `portal-uploads`.
-- Ensure production dev/debug controls are hidden or disabled.
+## Baseline Already Accepted
 
-## P0 - Mobile Experience
+- [x] Supported Retail and Wholesale shift templates exist and empty
+  `ShiftControlRun` creation is prevented.
+- [x] Workday V1 wording follows Trust But Verify: employees enter real-world
+  facts while system evidence stays separate.
+- [x] QR start, shift selection, current action, handover and stale-day handling
+  are implemented.
+- [x] ADMIN Workday is exception-first and separates business results from
+  technical diagnostics.
+- [x] Required issues remain active independently from notification read state.
+- [x] Production debug mutation routes are disabled.
+- [x] PWA branding, manifest, icons, standalone launch and compact mobile login
+  are implemented.
+- [x] Printable A5 department QR layouts are implemented.
 
-Before employees start using the portal daily, the mobile version should feel
-like a real app, not a regular website opened by accident.
+## Code Quality Gate
 
-Required checks:
+- [x] `npx tsc --noEmit` passes.
+- [x] `npm run build` passes.
+- [x] Workday tests pass (22/22 at the 2026-08-23 review).
+- [x] Credit-control tests pass (18/18 at the 2026-08-23 review).
+- [x] Expense-request tests pass (38/38 at the 2026-08-23 review).
+- [x] Terminal/acquiring tests pass (98/98 at the 2026-08-23 review).
+- [x] Payroll regression tests pass (10/10 at the 2026-08-23 review).
+- [x] All current automated quality gates are green.
 
-- own PWA / Web App icon instead of a default browser letter;
-- clear app name on the home screen;
-- splash screen with Offonika branding/logo;
-- launch as a web app without obvious browser chrome where supported;
-- mobile login page shows the login form immediately without large scrolling;
-- top promo/intro block on mobile is shortened or redesigned;
-- check usability on iPhone and Android;
-- verify the main Workday scenarios on an actual phone, not only desktop.
+## Production Safety Gate
 
-## P1 - Strongly Preferred Before Wider Rollout
+- [~] Explicit employee-to-1C cashbox mapping exists; verify every pilot
+  participant before their first real shift.
+- [~] Upload persistence is designed around `portal-uploads`; perform one final
+  upload/rebuild/readback drill.
+- [~] Encashment uses an idempotent RKO/PKO pair, deferred reconciliation and a
+  manual takeover guard; perform live safe failure/recovery drills.
+- [~] Cash operations can be retained locally during a connection failure;
+  verify photo, amount and idempotency after reconnecting.
+- [~] Push/portal notifications exist; verify scheduler health, device delivery,
+  exact links and automatic lifecycle closure.
+- [~] Terminal, credit, expense and reconciliation jobs exist; verify production
+  timers and fresh logs immediately before pilot.
+- [ ] Confirm current production commit, healthy container, rollback command and
+  no unexplained recent errors.
 
-- Push notifications for checklist timing and overdue tasks.
-- Admin "today's exceptions" view for missed start, overdue checklist, unfinished
-  day, cash discrepancy and stale-day closure.
-- Daily shift report V1 that summarizes cash, acquiring, credits, photos,
-  comments and discrepancies in one card.
-- Stabilize a read-only KKM shift endpoint that proves X/Z shift state and
-  provides an acquiring total at a requested cutoff time. The portal already
-  consumes current cash, daily KKM/acquiring and credit-sales data, but marks
-  these two KKM limitations as partial checks.
+## Device Gate
 
-## P2 - After Launch
+- [~] Verify installed PWA, QR camera, screen-lock resume and push delivery on
+  the current iPhone.
+- [ ] Verify the same path on at least one supported Android device.
+- [ ] Test Wi-Fi/mobile switching, weak connectivity and temporary full loss of
+  internet.
+- [ ] Confirm that every offline or unavailable-source message states what was
+  saved, what will retry and what the employee must do now.
+- [ ] Document the boundary: cash-operation retention exists, but the whole PWA
+  is not guaranteed to operate without internet.
 
-- OFD Control Event V1 with database-backed lifecycle and manager assignment.
-- Payroll identity mapping instead of hard-coded aliases.
-- Employee-facing salary explanation after payroll sources are stable.
-- Banking statement automation and deeper financial reconciliation.
-- AI Enhancement starts only after the employee launch is stable. Product
-  direction is described in `product-vision.md`; do not turn this launch
-  checklist into a separate AI roadmap.
+## Real Employee Pilot Gate
+
+- [ ] Prepare one-page employee onboarding and ADMIN incident instructions.
+- [ ] Confirm credentials, department, shifts, schedule and 1C cashbox mapping
+  for one Retail and one Wholesale pilot employee.
+- [ ] Let both employees perform at least five real shifts themselves.
+- [ ] Observe QR start, due reminders, corrections, cash, encashment, issues,
+  notifications, handover and next-day state.
+- [ ] Complete at least one controlled internet-loss drill and one 1C-unavailable
+  drill without losing data or duplicating 1C documents.
+- [ ] Reach five consecutive pilot shifts with no open P0 defect or developer
+  intervention in the employee's normal path.
+
+## Wider Rollout Decision
+
+Approve wider rollout only when:
+
+- [ ] every automated quality gate is green;
+- [ ] all pilot days close correctly;
+- [ ] no amount/photo is lost and no cash document is duplicated;
+- [ ] unavailable sources remain neutral and never falsely accuse employees;
+- [ ] notifications always lead to a current concrete action;
+- [ ] ADMIN explains every exception and next action within seconds;
+- [ ] employees know what to do for internet, 1C, camera and notification
+  failures;
+- [ ] rollback and first-week enhanced monitoring are assigned.
+
+Payroll transparency, new discipline rules, attestations, prepayment/PKO
+analysis, OFD Control Event V1, attendance-source migration and AI are explicitly
+after-launch work. They do not block this checklist.

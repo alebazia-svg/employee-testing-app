@@ -28,6 +28,8 @@ project from scratch.
 
 ## Read First By Task
 
+- Product priority, current phase or a new idea: `master-plan.md`, then
+  `launch-checklist.md` and `decision-log.md`.
 - Workday UI/API/checklists/cash: `workday-playbook.md`,
   `one-c-workday-audit.md`, then relevant source files.
 - Payroll: `payroll-playbook.md`, then tests and existing calculation helpers.

@@ -20,6 +20,8 @@ re-discovery of already-known architecture.
 - `error-playbook.md` - repeated failures and exact prevention/fix patterns.
 - `portal-map.md` - modules, routes, data sources and ownership boundaries.
 - `product-vision.md` - product principles such as trust-but-verify.
+- `master-plan.md` - single prioritized roadmap, launch phase and captured idea
+  inbox.
 - `launch-checklist.md` - practical launch gates for employee rollout.
 - `deploy-playbook.md` - concise deployment memory and command pitfalls.
 - `git-worktree-playbook.md` - dirty-tree, staging and commit hygiene.
@@ -44,4 +46,3 @@ re-discovery of already-known architecture.
   meaningful phase start/finish, architecture decision, workflow, persistent
   rule or Definition of Done. Do not turn memory into a log of every small
   bugfix, UI patch or refactor.
-
