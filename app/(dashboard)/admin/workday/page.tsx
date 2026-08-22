@@ -1554,11 +1554,16 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                   <div className='mt-1 divide-y divide-slate-100'>
                     {group.issues.map((issue) => {
                       const view = workdayIssueView(issue);
+                      const originLabel = issue.originDate === today ? 'Возникла сегодня' : `Возникла ${formatDateLabel(issue.originDate)}`;
+                      const checkedLabel = getMoscowDateKey(issue.lastDetectedAt) === today
+                        ? `автопроверка сегодня в ${formatTime(issue.lastDetectedAt)}`
+                        : `автопроверка ${formatDateLabel(getMoscowDateKey(issue.lastDetectedAt))} в ${formatTime(issue.lastDetectedAt)}`;
                       return (
                         <Link key={issue.id} href={`/admin/workday/issues/${issue.id}`} className='flex items-center justify-between gap-3 rounded-lg px-1 py-3 transition hover:bg-amber-50'>
                           <span className='min-w-0'>
                             <span className='block text-sm font-black text-slate-950'>{view.summaryTitle}</span>
                             <span className='mt-0.5 block text-xs font-bold text-slate-500'>{view.summaryMeta || 'Открыть подробности'}</span>
+                            <span className='mt-1 block text-xs font-semibold text-slate-400'>{originLabel} · {checkedLabel}</span>
                           </span>
                           <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть →</span>
                         </Link>
