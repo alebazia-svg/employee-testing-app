@@ -86,6 +86,8 @@ export function adminInboxSourceState(input: {
   }
   if (input.sourceType === 'cash_operation') {
     if (input.businessStatus === 'one_c_error') return { active: true, label: 'Требуется ручное проведение', tone: 'attention' };
+    if (input.businessStatus === 'manual_in_progress') return { active: true, label: 'Взято в ручную', tone: 'active' };
+    if (input.businessStatus === 'retrying_1c') return { active: true, label: 'Проводится повторно', tone: 'active' };
     if (input.businessStatus === 'resolved_manual') return { active: false, label: 'Подтверждено вручную', tone: 'resolved' };
     return { active: false, label: 'Проведено в 1С', tone: 'resolved' };
   }

@@ -33,6 +33,8 @@ test('failed cash operation stays active until the 1C pair is posted', () => {
   });
   assert.equal(adminInboxSourceState({ sourceType: 'cash_operation', businessStatus: 'posted_1c_pair' }).active, false);
   assert.equal(adminInboxSourceState({ sourceType: 'cash_operation', businessStatus: 'resolved_manual' }).label, 'Подтверждено вручную');
+  assert.equal(adminInboxSourceState({ sourceType: 'cash_operation', businessStatus: 'manual_in_progress' }).label, 'Взято в ручную');
+  assert.equal(adminInboxSourceState({ sourceType: 'cash_operation', businessStatus: 'retrying_1c' }).label, 'Проводится повторно');
 });
 
 test('consumed close exceptions leave the active inbox regardless of the original decision', () => {

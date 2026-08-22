@@ -95,6 +95,10 @@ export type ShiftAutoCheck = {
   summary: string;
   evidence?: string;
   manualReview?: ShiftAutoCheckManualReview | null;
+  cashOperation?: {
+    id: number;
+    status: string;
+  };
 };
 
 export type ShiftAutoCheckManualReview = {
@@ -820,6 +824,7 @@ export function AdminShiftControlDetails({
   const [manualReviewComment, setManualReviewComment] = useState('');
   const [manualReviewError, setManualReviewError] = useState('');
   const [manualReviewSaving, setManualReviewSaving] = useState(false);
+  const [cashControlSaving, setCashControlSaving] = useState(false);
   const canUseShiftControl = department === 'retail' || department === 'wholesale';
   const closeDetails = useCallback(() => {
     setSelectedPhoto(null);
@@ -868,6 +873,27 @@ export function AdminShiftControlDetails({
       setManualReviewError(error instanceof Error ? error.message : 'Не удалось сохранить подтверждение.');
     } finally {
       setManualReviewSaving(false);
+    }
+  }
+  async function updateCashOperationControl(action: 'take_manual' | 'release_automatic' | 'retry_now') {
+    const operation = manualReviewTarget?.cashOperation;
+    if (!operation || cashControlSaving) return;
+    setCashControlSaving(true);
+    setManualReviewError('');
+    try {
+      const response = await fetch(`/api/admin/workday/cash-operations/${operation.id}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, comment: manualReviewComment.trim() }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'Не удалось изменить способ проведения.');
+      setManualReviewTarget(null);
+      router.refresh();
+    } catch (error) {
+      setManualReviewError(error instanceof Error ? error.message : 'Не удалось изменить способ проведения.');
+    } finally {
+      setCashControlSaving(false);
     }
   }
   useEffect(() => {
@@ -1477,6 +1503,47 @@ export function AdminShiftControlDetails({
                     <X className='h-5 w-5' />
                   </Button>
                 </div>
+                {manualReviewTarget.cashOperation ? (
+                  <div className='mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3'>
+                    <p className='text-sm font-extrabold text-amber-950'>Как провести документы в 1С</p>
+                    <p className='mt-1 text-xs font-semibold leading-relaxed text-amber-800'>
+                      Если создаёте РКО и ПКО самостоятельно, сначала возьмите операцию в ручную. Тогда портал не запустит автоматический повтор.
+                    </p>
+                    <div className='mt-3 flex flex-wrap gap-2'>
+                      {manualReviewTarget.cashOperation.status === 'manual_in_progress' ? (
+                        <Button
+                          type='button'
+                          className='bg-white text-slate-700 shadow-none ring-1 ring-slate-200 hover:bg-slate-50'
+                          onClick={() => updateCashOperationControl('release_automatic')}
+                          disabled={cashControlSaving || manualReviewSaving}
+                        >
+                          Вернуть автоматике
+                        </Button>
+                      ) : manualReviewTarget.cashOperation.status === 'retrying_1c' ? (
+                        <span className='inline-flex min-h-10 items-center rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200'>Портал проводит документы…</span>
+                      ) : (
+                        <>
+                          <Button
+                            type='button'
+                            className='bg-slate-950 text-white hover:bg-slate-800'
+                            onClick={() => updateCashOperationControl('take_manual')}
+                            disabled={cashControlSaving || manualReviewSaving}
+                          >
+                            Беру в ручную
+                          </Button>
+                          <Button
+                            type='button'
+                            className='bg-primary text-white hover:bg-primary/90'
+                            onClick={() => updateCashOperationControl('retry_now')}
+                            disabled={cashControlSaving || manualReviewSaving}
+                          >
+                            Провести автоматически
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
                 <fieldset className='mt-4'>
                   <legend className='text-sm font-extrabold text-slate-900'>Результат ручной проверки</legend>
                   <div className='mt-2 grid gap-2 sm:grid-cols-2'>
@@ -1540,11 +1607,11 @@ export function AdminShiftControlDetails({
                     type='button'
                     className='bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200'
                     onClick={() => setManualReviewTarget(null)}
-                    disabled={manualReviewSaving}
+                    disabled={manualReviewSaving || cashControlSaving}
                   >
                     Отмена
                   </Button>
-                  <Button type='button' onClick={submitManualReview} disabled={manualReviewSaving}>
+                  <Button type='button' onClick={submitManualReview} disabled={manualReviewSaving || cashControlSaving}>
                     {manualReviewSaving ? 'Сохраняю…' : 'Сохранить решение'}
                   </Button>
                 </div>

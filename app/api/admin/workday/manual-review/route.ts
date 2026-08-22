@@ -72,7 +72,7 @@ export async function POST(req: Request) {
       const failedOperations = await tx.cashOperation.findMany({
         where: {
           workDayEntryId: task.run.workDayEntryId,
-          status: 'one_c_error',
+          status: { in: ['one_c_error', 'manual_in_progress'] },
           ...(operationIdMatch
             ? { id: Number(operationIdMatch[1]) }
             : { idempotencyKey: { in: handoverKeys } }),

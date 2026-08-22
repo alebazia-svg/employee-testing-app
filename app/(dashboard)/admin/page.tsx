@@ -59,8 +59,8 @@ export default async function AdminPage() {
       orderBy: [{ enteredNotApprovedAt: 'desc' }, { updatedAt: 'desc' }], take: 20,
     }),
     prisma.cashOperation.findMany({
-      where: { status: 'one_c_error' },
-      select: { id: true, date: true, amount: true, oneCError: true, updatedAt: true, user: { select: { id: true, name: true } } },
+      where: { status: { in: ['one_c_error', 'manual_in_progress', 'retrying_1c'] } },
+      select: { id: true, date: true, amount: true, status: true, oneCError: true, updatedAt: true, user: { select: { id: true, name: true } } },
       orderBy: { updatedAt: 'desc' },
       take: 20,
     }),
@@ -78,7 +78,7 @@ export default async function AdminPage() {
   const actions: ActionItem[] = [
     ...closeRequests.map((item) => ({ key: `close-${item.id}`, title: isCashEncashmentException(item.reasonCode) ? `Инкассация не выполнена · ${item.employee.name}` : `Разрешение завершить день · ${item.employee.name}`, detail: item.status === 'approved' && isCashEncashmentException(item.reasonCode) ? 'Разрешено без РКО и ПКО; требуется фактическое устранение.' : item.comment || 'Сотрудник указал техническую причину.', href: `/admin/workday/close-exceptions/${item.id}`, occurredAt: item.requestedAt, kind: 'decision' as const })),
     ...expenseCases.map((item) => ({ key: `expense-${item.id}`, title: `Новая заявка ${item.oneCNumber || ''}`.trim(), detail: [item.requestedByName, money(item.amount), item.businessOperationName].filter(Boolean).join(' · '), href: `/admin/expense-requests/${item.id}`, occurredAt: item.enteredNotApprovedAt ?? item.updatedAt, kind: 'request' as const })),
-    ...cashOperationErrors.map((item) => ({ key: `cash-operation-${item.id}`, title: `Инкассация не проведена · ${item.user.name}`, detail: `${item.amount.toLocaleString('ru-RU')} ₽ · ${item.oneCError || 'Требуется ручное проведение в 1С'}`, href: `/admin/workday?date=${item.date}&employee=${item.user.id}`, occurredAt: item.updatedAt, kind: 'decision' as const })),
+    ...cashOperationErrors.map((item) => ({ key: `cash-operation-${item.id}`, title: `Инкассация не проведена · ${item.user.name}`, detail: `${item.amount.toLocaleString('ru-RU')} ₽ · ${item.status === 'manual_in_progress' ? 'Взято в ручную' : item.status === 'retrying_1c' ? 'Повторное проведение' : item.oneCError || 'Можно повторить автоматически или взять в ручную'}`, href: `/admin/workday?date=${item.date}&employee=${item.user.id}`, occurredAt: item.updatedAt, kind: 'decision' as const })),
     ...issues.filter((item) => item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `issue-${item.id}`, title: `Сообщение от ${item.user.name}`, detail: item.title, href: `/admin/workday/issues/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.lastDetectedAt, kind: 'message' as const })),
     ...reviews.filter((item) => item.status === 'admin_review' || item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `review-${item.id}`, title: item.status === 'admin_review' ? `Нужна проверка администратора · ${item.employee.name}` : `Сообщение от ${item.employee.name}`, detail: `Продажа ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.updatedAt, kind: item.status === 'admin_review' ? 'decision' as const : 'message' as const })),
   ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());

@@ -37,6 +37,13 @@ import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShift
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { colleaguePresence } from '@/lib/workday-presence';
+import {
+  cashOutboxFormData,
+  listEmployeeCashOutboxItems,
+  removeEmployeeCashOutboxItem,
+  saveEmployeeCashOutboxItem,
+  type EmployeeCashOutboxItem,
+} from '@/lib/employee-cash-outbox';
 import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
 
 function uploadFormData<T>(
@@ -71,8 +78,8 @@ function uploadFormData<T>(
       const error = isRecord(result) && typeof result.error === 'string' ? result.error : fallbackError;
       reject(new EmployeeApiError(error, isRecord(result) && typeof result.code === 'string' ? result.code : '', result));
     };
-    request.onerror = () => reject(new Error('Связь прервалась при сохранении. Проверьте интернет и повторите.'));
-    request.ontimeout = () => reject(new Error('Сохранение занимает слишком долго. Проверьте интернет и повторите.'));
+    request.onerror = () => reject(new EmployeeNetworkError('Связь прервалась при сохранении.'));
+    request.ontimeout = () => reject(new EmployeeNetworkError('Сохранение занимает слишком долго.'));
     request.send(formData);
   });
 }
@@ -107,6 +114,8 @@ class EmployeeApiError extends Error {
     super(message);
   }
 }
+
+class EmployeeNetworkError extends Error {}
 
 type UserSummary = {
   id: number;
@@ -1036,11 +1045,15 @@ export function EmployeeTodayClient({
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [cashOutboxCount, setCashOutboxCount] = useState(0);
+  const [cashOutboxSyncing, setCashOutboxSyncing] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
   const workdaySyncAbortRef = useRef<AbortController | null>(null);
   const workdaySyncInFlightRef = useRef(false);
   const approvedCashExceptionAutoFinishRef = useRef<string | null>(null);
   const approvedRequiredIssuesAutoFinishRef = useRef<string | null>(null);
+  const cashOutboxSyncingRef = useRef(false);
   const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
   const displayNow = now ?? initialRenderNow;
 
@@ -1153,6 +1166,68 @@ export function EmployeeTodayClient({
       workdaySyncInFlightRef.current = false;
     };
   }, [activeTab, syncCurrentWorkdayState]);
+
+  const refreshCashOutboxCount = useCallback(async () => {
+    try {
+      const items = await listEmployeeCashOutboxItems();
+      setCashOutboxCount(items.filter((item) => item.userId === user.id).length);
+    } catch {
+      setCashOutboxCount(0);
+    }
+  }, [user.id]);
+
+  const flushCashOutbox = useCallback(async () => {
+    if (cashOutboxSyncingRef.current || !navigator.onLine) return;
+    cashOutboxSyncingRef.current = true;
+    setCashOutboxSyncing(true);
+    let saved = 0;
+    try {
+      const items = (await listEmployeeCashOutboxItems())
+        .filter((item) => item.userId === user.id)
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      for (const item of items) {
+        try {
+          await uploadFormData<{ operation: CashOperation }>(item.url, 'POST', cashOutboxFormData(item), 'Не удалось отправить сохранённую операцию');
+          await removeEmployeeCashOutboxItem(item.id);
+          saved += 1;
+        } catch (reason) {
+          if (reason instanceof EmployeeNetworkError) break;
+          // A business conflict needs the employee to reopen the action instead
+          // of silently discarding the locally saved amount and photo.
+          break;
+        }
+      }
+      await refreshCashOutboxCount();
+      if (saved > 0) {
+        await syncCurrentWorkdayState(true);
+        setMessage(saved === 1 ? 'Сохранённая операция отправлена в портал' : `Сохранённые операции отправлены: ${saved}`);
+      }
+    } catch {
+      // IndexedDB can be unavailable in a private browser session. Online work
+      // still follows the ordinary server path in that case.
+    } finally {
+      cashOutboxSyncingRef.current = false;
+      setCashOutboxSyncing(false);
+    }
+  }, [refreshCashOutboxCount, syncCurrentWorkdayState, user.id]);
+
+  useEffect(() => {
+    const updateConnection = () => {
+      const online = navigator.onLine;
+      setIsOnline(online);
+      if (online) void flushCashOutbox();
+    };
+    updateConnection();
+    void refreshCashOutboxCount();
+    window.addEventListener('online', updateConnection);
+    window.addEventListener('offline', updateConnection);
+    document.addEventListener('visibilitychange', updateConnection);
+    return () => {
+      window.removeEventListener('online', updateConnection);
+      window.removeEventListener('offline', updateConnection);
+      document.removeEventListener('visibilitychange', updateConnection);
+    };
+  }, [flushCashOutbox, refreshCashOutboxCount]);
 
   const syncScheduleState = useCallback(async () => {
     const requestedMonth = scheduleMode === 'month' ? calendarMonth : null;
@@ -1726,9 +1801,29 @@ export function EmployeeTodayClient({
     formData.append('idempotencyKey', cashOperationDraft.idempotencyKey);
     formData.append('photo', file);
 
+    const outboxItem: EmployeeCashOutboxItem = {
+      id: cashOperationDraft.idempotencyKey,
+      userId: user.id,
+      createdAt: new Date().toISOString(),
+      url: '/api/employee/cash-operations',
+      direction: cashOperationDraft.direction,
+      amount: cashOperationDraft.amount,
+      comment: cashOperationDraft.comment,
+      photo: file,
+      lastError: '',
+    };
+
     setError('');
     setIsSaving(true);
+    let savedLocally = false;
     try {
+      try {
+        await saveEmployeeCashOutboxItem(outboxItem);
+        savedLocally = true;
+        await refreshCashOutboxCount();
+      } catch {
+        savedLocally = false;
+      }
       const result = await uploadFormData<{ operation: CashOperation; message?: string }>(
         '/api/employee/cash-operations',
         'POST',
@@ -1737,12 +1832,24 @@ export function EmployeeTodayClient({
         setUploadProgress,
       );
 
+      if (savedLocally) await removeEmployeeCashOutboxItem(outboxItem.id);
+      await refreshCashOutboxCount();
       setCashOperationsState((current) => [result.operation, ...current]);
       setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
       await syncCurrentWorkdayState(true);
       setMessage(result.message ?? `Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
+      if (reason instanceof EmployeeNetworkError && savedLocally) {
+        setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
+        setMessage('Связь прервалась. Операция и фото сохранены на телефоне и отправятся автоматически.');
+        await refreshCashOutboxCount();
+      } else {
+        if (savedLocally) {
+          await removeEmployeeCashOutboxItem(outboxItem.id).catch(() => undefined);
+          await refreshCashOutboxCount();
+        }
+        setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
+      }
     } finally {
       setUploadProgress(null);
       setIsSaving(false);
@@ -2957,6 +3064,28 @@ export function EmployeeTodayClient({
         </header>
 
         <div className='flex-1 px-4 pb-[calc(8.75rem+env(safe-area-inset-bottom))] pt-4'>
+          {!isOnline || cashOutboxCount > 0 ? (
+            <div className={`mb-4 rounded-2xl px-4 py-3 ring-1 ${isOnline ? 'bg-blue-50 text-blue-950 ring-blue-200' : 'bg-amber-50 text-amber-950 ring-amber-200'}`}>
+              <div className='flex items-start gap-3'>
+                <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isOnline ? 'bg-blue-500' : 'bg-amber-500'}`} />
+                <div className='min-w-0 flex-1'>
+                  <p className='text-sm font-extrabold'>{isOnline ? (cashOutboxSyncing ? 'Восстанавливаем связь' : 'Есть данные на телефоне') : 'Нет соединения'}</p>
+                  <p className='mt-0.5 text-xs font-semibold leading-relaxed opacity-80'>
+                    {isOnline
+                      ? cashOutboxSyncing
+                        ? 'Отправляем сохранённые операции в портал.'
+                        : `Ожидают отправки: ${cashOutboxCount}. Нажмите, чтобы повторить сейчас.`
+                      : 'Введённые данные инкассации будут сохранены на телефоне и отправятся после восстановления связи.'}
+                  </p>
+                </div>
+                {isOnline && cashOutboxCount > 0 && !cashOutboxSyncing ? (
+                  <button type='button' className='shrink-0 text-xs font-extrabold text-blue-800' onClick={() => void flushCashOutbox()}>
+                    Отправить
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
             <Card className='mb-4 border-amber-200 bg-amber-50'>
               <div className='flex items-start gap-3'>

@@ -927,15 +927,21 @@ function buildEmployeeAutoChecks({
       `h${task.id}`,
       `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`,
     ]);
-    for (const operation of cashOperations.filter((item) => item.status === 'one_c_error' && !handoverOperationKeys.has(item.idempotencyKey))) {
+    for (const operation of cashOperations.filter((item) => ['one_c_error', 'manual_in_progress', 'retrying_1c'].includes(item.status) && !handoverOperationKeys.has(item.idempotencyKey))) {
       const operationTarget = operation.direction === 'deposit_safe' ? 'депозитный сейф' : 'резерв';
+      const operationState = operation.status === 'manual_in_progress'
+        ? 'Операцию взял в ручную администратор.'
+        : operation.status === 'retrying_1c'
+          ? 'Портал повторно проводит документы в 1С.'
+          : 'Можно повторить автоматически или взять проведение в ручную.';
       checks.push({
         id: `cash-operation-${operation.id}-${task.id}`,
         taskId: task.id,
         label: `Дневная инкассация в ${operationTarget}`,
         status: 'unavailable',
-        summary: `${formatMoney(operation.amount)}. Инкассация зафиксирована, но документы 1С не проведены. Требуется действие администратора.`,
+        summary: `${formatMoney(operation.amount)}. Инкассация зафиксирована, но документы 1С не проведены. ${operationState}`,
         evidence: operation.oneCError || '1С не вернула подтверждение проведения связанной пары документов.',
+        cashOperation: { id: operation.id, status: operation.status },
       });
     }
     if (requiresEncashment === false) {
@@ -985,7 +991,7 @@ function buildEmployeeAutoChecks({
         const failedCashOperation = cashOperations.find((operation) => (
           handoverOperationKeys.has(operation.idempotencyKey)
           && operation.direction === encashmentDirection
-          && operation.status === 'one_c_error'
+          && ['one_c_error', 'manual_in_progress', 'retrying_1c'].includes(operation.status)
           && Math.abs(operation.amount - encashmentAmount) <= oneCMoneyTolerance
         ));
         const postedCashOperation = cashOperations.find((operation) => (
@@ -1015,6 +1021,7 @@ function buildEmployeeAutoChecks({
               ? `Найдены расход и приход на ${formatMoney(encashmentAmount)} рядом по времени, но связь пары документов 1С не подтверждена.`
               : `Парное движение касса → ${targetShortLabel} на ${formatMoney(encashmentAmount)} в 1С не найдено.`,
           evidence: 'Проверяется учётное движение; физическое помещение денег подтверждается сотрудником и фото.',
+          cashOperation: failedCashOperation ? { id: failedCashOperation.id, status: failedCashOperation.status } : undefined,
         });
       }
     }
