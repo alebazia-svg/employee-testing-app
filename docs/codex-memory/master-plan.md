@@ -46,7 +46,7 @@ gate is complete, unless a newly discovered P0 defect makes the pilot unsafe.
 | Connectivity protection | `VERIFY` | Failed cash uploads can be retained on the phone and retried; this is not full offline PWA support. |
 | Credit receipt control | `VERIFY` | Deterministic 1C/OFD lifecycle and employee-safe exception wording are implemented; production observation remains required. |
 | Terminal/acquiring control | `VERIFY` | Rules fail closed, ambiguous cases remain ADMIN-only and employee attribution requires reliable evidence. |
-| Employee notifications | `VERIFY` | Portal Inbox/push lifecycle exists; a dedicated one-minute production dispatcher is prepared and still requires deployment plus device delivery verification. |
+| Employee notifications | `VERIFY` | Portal Inbox/push lifecycle and the dedicated one-minute production dispatcher are deployed; timer health is confirmed and device delivery still requires verification. |
 | ADMIN Telegram | `VERIFY` | Only events requiring owner attention should be duplicated; read state is separate from business-resolution state. |
 | Printable QR holders | `DONE` | Separate approved A5 Retail and Wholesale print layouts are available from ADMIN. |
 | Payroll | `DONE` for current process | Existing formulas and the agreed discipline rule remain unchanged. Direct 1C payroll and employee earnings are not part of launch. |
@@ -67,7 +67,7 @@ Complete in this order:
    - ADMIN has already handled RKO/PKO manually and automatic retry does not duplicate it;
    - delayed 1C recovery moves the case to the correct ADMIN state without blocking the employee;
    - notification disappears only when its underlying action is no longer active.
-   - deploy and verify the dedicated employee-notification dispatcher before testing push delivery.
+   - verify employee push delivery on a real device; the dedicated production dispatcher is already active.
 3. `NEXT` Verify the device matrix:
    - installed PWA on the current iPhone;
    - at least one supported Android device;

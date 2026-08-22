@@ -43,9 +43,9 @@ or device check, `[ ]` incomplete launch gate.
   manual takeover guard; perform live safe failure/recovery drills.
 - [~] Cash operations can be retained locally during a connection failure;
   verify photo, amount and idempotency after reconnecting.
-- [~] Push/portal notifications and a dedicated one-minute dispatcher exist;
-  deploy the dispatcher, then verify timer health, device delivery, exact links
-  and automatic lifecycle closure.
+- [~] Push/portal notifications and the dedicated one-minute dispatcher are
+  deployed; production timer health is confirmed. Verify real-device delivery,
+  exact links and automatic lifecycle closure.
 - [~] Terminal, credit, expense and reconciliation jobs exist; verify production
   timers and fresh logs immediately before pilot.
 - [ ] Confirm current production commit, healthy container, rollback command and
