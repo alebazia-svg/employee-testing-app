@@ -59,3 +59,28 @@ test('a partial encashment keeps the exception active', async () => {
   assert.equal(result.requiredAmount, 65_406);
   assert.equal(updated, false);
 });
+
+test('completed legacy workdays are eligible even when consumedAt was not recorded', async () => {
+  let capturedWhere: unknown = null;
+  const db = {
+    workdayCloseExceptionRequest: {
+      findMany: async ({ where }: { where: unknown }) => {
+        capturedWhere = where;
+        return [];
+      },
+    },
+  };
+
+  await resolveCarriedCashEncashmentExceptions(db as never, {
+    employeeId: 7,
+    operationId: 14,
+    operationDate: '2026-08-21',
+    operationAmount: 162_000,
+    operationCreatedAt: new Date('2026-08-21T15:26:34.094Z'),
+  });
+
+  assert.deepEqual((capturedWhere as { OR: unknown }).OR, [
+    { consumedAt: { not: null } },
+    { workDayEntry: { status: 'completed' } },
+  ]);
+});

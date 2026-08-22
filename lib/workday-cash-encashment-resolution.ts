@@ -41,9 +41,12 @@ export async function resolveCarriedCashEncashmentExceptions(db: DbClient, input
     where: {
       employeeId: input.employeeId,
       status: 'approved',
-      consumedAt: { not: null },
       reasonCode: { startsWith: cashEncashmentExceptionPrefix },
       requestedAt: { lt: input.operationCreatedAt },
+      OR: [
+        { consumedAt: { not: null } },
+        { workDayEntry: { status: 'completed' } },
+      ],
     },
     select: {
       id: true,
