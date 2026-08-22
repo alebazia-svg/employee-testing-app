@@ -1729,7 +1729,7 @@ export function EmployeeTodayClient({
     setError('');
     setIsSaving(true);
     try {
-      const result = await uploadFormData<{ operation: CashOperation }>(
+      const result = await uploadFormData<{ operation: CashOperation; message?: string }>(
         '/api/employee/cash-operations',
         'POST',
         formData,
@@ -1740,7 +1740,7 @@ export function EmployeeTodayClient({
       setCashOperationsState((current) => [result.operation, ...current]);
       setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
       await syncCurrentWorkdayState(true);
-      setMessage(`Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
+      setMessage(result.message ?? `Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
     } finally {
@@ -3388,18 +3388,20 @@ export function EmployeeTodayClient({
                           <Badge
                             className={cn(
                               'shrink-0 px-2 py-0.5 text-[10px] ring-1',
-                              operation.status === 'posted_1c_pair'
+                              operation.status === 'posted_1c_pair' || operation.status === 'resolved_manual'
                                 ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
                                 : operation.status === 'one_c_error'
-                                  ? 'bg-rose-50 text-rose-800 ring-rose-200'
+                                  ? 'bg-amber-50 text-amber-800 ring-amber-200'
                                   : 'bg-amber-50 text-amber-800 ring-amber-200',
                             )}
                           >
                             {operation.status === 'posted_1c_pair'
-                              ? 'проведено в 1С'
+                              ? 'Проведено в 1С'
+                              : operation.status === 'resolved_manual'
+                                ? 'Подтверждено'
                               : operation.status === 'one_c_error'
-                                ? 'не проведено в 1С'
-                                : 'ожидает 1С'}
+                                ? 'У администратора'
+                                : 'Обрабатывается'}
                           </Badge>
                         </div>
                       ))}

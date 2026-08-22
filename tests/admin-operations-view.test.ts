@@ -4,7 +4,7 @@ import { adminInboxActionLabel, adminInboxEventMeta, adminInboxSourceState, summ
 
 test('inbox events receive stable human categories and labels', () => {
   assert.deepEqual(adminInboxEventMeta('workday.close_exception_requested'), {
-    category: 'decisions', typeLabel: 'Требуется решение ADMIN', actionLabel: 'Принять решение',
+    category: 'decisions', typeLabel: 'Требуется решение администратора', actionLabel: 'Принять решение',
   });
   assert.equal(adminInboxEventMeta('workday_issue.employee_message').category, 'messages');
   assert.equal(adminInboxEventMeta('expense_request.created').category, 'requests');
@@ -16,13 +16,23 @@ test('read state is independent from the source business state', () => {
     active: true, label: 'Проблема активна', tone: 'attention',
   });
   assert.equal(adminInboxSourceState({ sourceType: 'workday_control_issue', businessStatus: 'resolved', employeeActionRequired: false }).active, false);
-  assert.equal(adminInboxSourceState({ sourceType: 'terminal_fiscal_review', businessStatus: 'admin_review' }).label, 'Только ADMIN');
+  assert.equal(adminInboxSourceState({ sourceType: 'terminal_fiscal_review', businessStatus: 'admin_review' }).label, 'На контроле администратора');
   assert.equal(adminInboxSourceState({ sourceType: 'expense_request', current: false }).label, 'В истории');
 });
 
 test('resolved decisions no longer invite admin to decide again', () => {
   const sourceState = adminInboxSourceState({ sourceType: 'workday_close_exception', businessStatus: 'approved' });
   assert.equal(adminInboxActionLabel({ sourceType: 'workday_close_exception', defaultLabel: 'Принять решение', sourceState }), 'Открыть решение');
+});
+
+test('failed cash operation stays active until the 1C pair is posted', () => {
+  assert.deepEqual(adminInboxSourceState({ sourceType: 'cash_operation', businessStatus: 'one_c_error' }), {
+    active: true,
+    label: 'Требуется ручное проведение',
+    tone: 'attention',
+  });
+  assert.equal(adminInboxSourceState({ sourceType: 'cash_operation', businessStatus: 'posted_1c_pair' }).active, false);
+  assert.equal(adminInboxSourceState({ sourceType: 'cash_operation', businessStatus: 'resolved_manual' }).label, 'Подтверждено вручную');
 });
 
 test('consumed close exceptions leave the active inbox regardless of the original decision', () => {

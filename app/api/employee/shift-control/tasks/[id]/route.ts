@@ -1,4 +1,5 @@
 import { getCurrentUser } from '@/lib/auth';
+import { createCashOperationFailureAlert } from '@/lib/cash-operation-admin-alert';
 import { prisma } from '@/lib/prisma';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
@@ -10,6 +11,7 @@ import { employeeKkmReportPhotosRequired } from '@/lib/shift-control-policy';
 import { usesWorkdayShiftControl } from '@/lib/workday';
 import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib/workday-required-issues';
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
+import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
 import {
   appendCashRecountInputHistory,
@@ -485,21 +487,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
 
     try {
+      let postedEncashmentOperation: { id: number; date: string; amount: number; createdAt: Date } | null = null;
+      let encashmentDeferredToAdmin = false;
       if (requiresEncashment && !canFinishWithoutEncashment && encashmentAmount !== null) {
         const legacyIdempotencyKey = `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`;
         const compactIdempotencyKey = `h${task.id}`;
-        const [mapping, dimensions] = await Promise.all([
-          prisma.userOneCCashboxMapping.findUnique({ where: { userId: user.id } }),
-          getCashStatementDimensions(),
-        ]);
-        const organization = dimensions.organizations.find((item) => normalizeSearchText(item.name).includes(cashStatementOrganizationSearchName))
-          ?? dimensions.organizations[0]
-          ?? null;
-        const targetCashboxName = encashmentDirection === 'phone_reserve' ? reserveCashboxSearchName : depositSafeCashboxSearchName;
-        const targetCashbox = dimensions.cashboxes.find((item) => normalizeSearchText(item.name) === targetCashboxName) ?? null;
-        if (!mapping?.isActive) throw new Error('Касса сотрудника не привязана к 1С. Смена не завершена.');
-        if (!dimensions.ok || !organization) throw new Error('Организация или справочник касс 1С недоступны. Смена не завершена.');
-        if (!targetCashbox) throw new Error('Касса-получатель для инкассации не найдена в 1С. Смена не завершена.');
         const encashmentPhoto = savedPhoto(handoverData, 'encashmentDocument');
         const photoPath = isRecord(encashmentPhoto) && typeof encashmentPhoto.storagePath === 'string' ? encashmentPhoto.storagePath : '';
         let cashOperation = await prisma.cashOperation.findUnique({ where: { idempotencyKey: legacyIdempotencyKey } });
@@ -522,35 +514,82 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         if (cashOperation.amount !== encashmentAmount || cashOperation.direction !== encashmentDirection) {
           throw new Error('Параметры повторной инкассации не совпадают. Смена не завершена.');
         }
-        if (cashOperation.status !== 'posted_1c_pair' || !cashOperation.oneCDocumentRef || !cashOperation.oneCReceiptDocumentRef) {
-          const oneCResult = await createOneCCashExpenseOrder({
-            idempotencyKey,
-            organizationRef: organization.ref,
-            cashboxRef: mapping.oneCCashboxRef,
-            targetCashboxRef: targetCashbox.ref,
-            employeeName: user.name,
-            amount: encashmentAmount,
-            direction: encashmentDirection as 'phone_reserve' | 'deposit_safe',
-            employeeComment: comment,
-          });
-          if (!oneCResult.ok || !oneCResult.document || !oneCResult.receiptDocument || !oneCResult.pairComplete) {
-            const oneCError = oneCResult.error || '1С не создала и не провела связанную пару РКО и ПКО.';
-            await prisma.cashOperation.update({ where: { id: cashOperation.id }, data: { status: 'one_c_error', oneCError } });
-            throw new Error(`Кассовые документы не проведены: ${oneCError}. Смена не завершена.`);
+        const cashOperationId = cashOperation.id;
+        const pairAlreadyPosted = cashOperation.status === 'posted_1c_pair' && Boolean(cashOperation.oneCDocumentRef) && Boolean(cashOperation.oneCReceiptDocumentRef);
+        if (!pairAlreadyPosted) {
+          const deferToAdmin = async (oneCError: string) => {
+            cashOperation = await prisma.$transaction(async (tx) => {
+              const failedOperation = await tx.cashOperation.update({ where: { id: cashOperationId }, data: { status: 'one_c_error', oneCError } });
+              await createCashOperationFailureAlert({ db: tx, operation: failedOperation, employeeName: user.name, error: oneCError, occurredAt: new Date() });
+              return failedOperation;
+            });
+            encashmentDeferredToAdmin = true;
+          };
+          const mapping = await prisma.userOneCCashboxMapping.findUnique({ where: { userId: user.id } });
+          let dimensions: Awaited<ReturnType<typeof getCashStatementDimensions>> | null = null;
+          let sourceError = '';
+          try {
+            dimensions = await getCashStatementDimensions();
+          } catch (error) {
+            sourceError = error instanceof Error ? error.message : 'Связь с 1С недоступна.';
           }
-          cashOperation = await prisma.cashOperation.update({
-            where: { id: cashOperation.id },
-            data: {
-              status: 'posted_1c_pair',
-              oneCDocumentRef: oneCResult.document.ref,
-              oneCDocumentNumber: oneCResult.document.number,
-              oneCReceiptDocumentRef: oneCResult.receiptDocument.ref,
-              oneCReceiptDocumentNumber: oneCResult.receiptDocument.number,
-              oneCError: '',
-              oneCCreatedAt: new Date(),
-              oneCPostedAt: new Date(),
-            },
-          });
+          const organization = dimensions?.organizations.find((item) => normalizeSearchText(item.name).includes(cashStatementOrganizationSearchName))
+            ?? dimensions?.organizations[0]
+            ?? null;
+          const targetCashboxName = encashmentDirection === 'phone_reserve' ? reserveCashboxSearchName : depositSafeCashboxSearchName;
+          const targetCashbox = dimensions?.cashboxes.find((item) => normalizeSearchText(item.name) === targetCashboxName) ?? null;
+          const configurationError = sourceError
+            || (!mapping?.isActive
+              ? 'Касса сотрудника не привязана к 1С.'
+              : !dimensions?.ok || !organization
+                ? 'Организация или справочник касс 1С недоступны.'
+                : !targetCashbox
+                  ? 'Касса-получатель для инкассации не найдена в 1С.'
+                  : '');
+          if (configurationError) {
+            await deferToAdmin(configurationError);
+          } else if (mapping?.isActive && organization && targetCashbox) {
+            let oneCResult: Awaited<ReturnType<typeof createOneCCashExpenseOrder>> | null = null;
+            try {
+              oneCResult = await createOneCCashExpenseOrder({
+                idempotencyKey,
+                organizationRef: organization.ref,
+                cashboxRef: mapping.oneCCashboxRef,
+                targetCashboxRef: targetCashbox.ref,
+                employeeName: user.name,
+                amount: encashmentAmount,
+                direction: encashmentDirection as 'phone_reserve' | 'deposit_safe',
+                employeeComment: comment,
+              });
+            } catch (error) {
+              await deferToAdmin(error instanceof Error ? error.message : 'Связь с 1С прервалась при проведении инкассации.');
+            }
+            if (oneCResult && (!oneCResult.ok || !oneCResult.document || !oneCResult.receiptDocument || !oneCResult.pairComplete)) {
+              await deferToAdmin(oneCResult.error || '1С не создала и не провела связанную пару РКО и ПКО.');
+            } else if (oneCResult?.ok && oneCResult.document && oneCResult.receiptDocument && oneCResult.pairComplete) {
+              cashOperation = await prisma.cashOperation.update({
+                where: { id: cashOperation.id },
+                data: {
+                  status: 'posted_1c_pair',
+                  oneCDocumentRef: oneCResult.document.ref,
+                  oneCDocumentNumber: oneCResult.document.number,
+                  oneCReceiptDocumentRef: oneCResult.receiptDocument.ref,
+                  oneCReceiptDocumentNumber: oneCResult.receiptDocument.number,
+                  oneCError: '',
+                  oneCCreatedAt: new Date(),
+                  oneCPostedAt: new Date(),
+                },
+              });
+            }
+          }
+        }
+        if (cashOperation.status === 'posted_1c_pair') {
+          postedEncashmentOperation = {
+            id: cashOperation.id,
+            date: cashOperation.date,
+            amount: cashOperation.amount,
+            createdAt: cashOperation.createdAt,
+          };
         }
       }
 
@@ -659,6 +698,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
             data: { status: 'resolved', consumedAt: now },
           });
         }
+        if (postedEncashmentOperation) {
+          await resolveCarriedCashEncashmentExceptions(tx, {
+            employeeId: user.id,
+            operationId: postedEncashmentOperation.id,
+            operationDate: postedEncashmentOperation.date,
+            operationAmount: postedEncashmentOperation.amount,
+            operationCreatedAt: postedEncashmentOperation.createdAt,
+          });
+        }
         await resolveCloseExceptionNotifications(tx, {
           workDayEntryId: task.run.workDayEntryId,
           now,
@@ -676,7 +724,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         ...result,
         task: taskForEmployee(result.task),
         tasks: result.tasks.map(taskForEmployee),
-        message: 'Смена сдана, рабочий день завершён',
+        message: encashmentDeferredToAdmin
+          ? 'Смена завершена. Инкассация зафиксирована и передана администратору.'
+          : 'Смена сдана, рабочий день завершён',
       });
     } catch (error) {
       return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить сдачу смены' }, { status: 400 });

@@ -10,6 +10,7 @@ const TELEGRAM_EVENT_TYPES = [
   'expense_request.created',
   'workday.close_exception_requested',
   'workday.cash_encashment_exception_requested',
+  'workday.cash_operation_failed',
   'workday_issue.employee_message',
   'terminal_fiscal_review.employee_message',
 ] as const;
@@ -40,7 +41,7 @@ export type ClaimedAdminInboxTelegramDelivery = {
   leaseToken: string;
   text: string;
   href: string;
-  buttonLabel: 'Открыть заявку' | 'Открыть сообщение' | 'Принять решение';
+  buttonLabel: 'Открыть заявку' | 'Открыть сообщение' | 'Открыть контроль' | 'Принять решение';
 };
 
 function messageForEvent(input: {
@@ -64,6 +65,9 @@ function messageForEvent(input: {
   }
   if (input.type === 'workday.close_exception_requested' || input.type === 'workday.cash_encashment_exception_requested') {
     return { text: `${input.title}\n${input.body}`, buttonLabel: 'Принять решение' as const };
+  }
+  if (input.type === 'workday.cash_operation_failed') {
+    return { text: `${input.title}\n${input.body}`, buttonLabel: 'Открыть контроль' as const };
   }
   return { text: `${input.title}\n${input.body}`, buttonLabel: 'Открыть сообщение' as const };
 }

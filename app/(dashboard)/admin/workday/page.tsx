@@ -539,9 +539,12 @@ function buildEmployeeAutoChecks({
   depositSafeCashboxName: string | null;
   depositSafeStatement: OneCCashStatementSummaryResult | null;
   cashOperations: Array<{
+    id: number;
+    idempotencyKey: string;
     direction: string;
     amount: number;
     status: string;
+    oneCError: string;
     oneCDocumentRef: string | null;
     oneCReceiptDocumentRef: string | null;
   }>;
@@ -920,6 +923,21 @@ function buildEmployeeAutoChecks({
     const targetStatement = encashmentDirection === 'deposit_safe' ? depositSafeStatement : reserveStatement;
     const targetShortLabel = encashmentDirection === 'deposit_safe' ? 'депозитный сейф' : 'резерв';
     const encashmentLabel = `Инкассация в ${targetShortLabel}`;
+    const handoverOperationKeys = new Set([
+      `h${task.id}`,
+      `00000000-0000-4000-8000-${task.id.toString(16).padStart(12, '0')}`,
+    ]);
+    for (const operation of cashOperations.filter((item) => item.status === 'one_c_error' && !handoverOperationKeys.has(item.idempotencyKey))) {
+      const operationTarget = operation.direction === 'deposit_safe' ? 'депозитный сейф' : 'резерв';
+      checks.push({
+        id: `cash-operation-${operation.id}-${task.id}`,
+        taskId: task.id,
+        label: `Дневная инкассация в ${operationTarget}`,
+        status: 'unavailable',
+        summary: `${formatMoney(operation.amount)}. Инкассация зафиксирована, но документы 1С не проведены. Требуется действие администратора.`,
+        evidence: operation.oneCError || '1С не вернула подтверждение проведения связанной пары документов.',
+      });
+    }
     if (requiresEncashment === false) {
       if (!cashStatement?.ok || !targetStatement?.ok) {
         checks.push({
@@ -964,8 +982,15 @@ function buildEmployeeAutoChecks({
           summary: `Движения своей кассы или кассы «${targetCashboxName ?? targetShortLabel}» в 1С не получены.`,
         });
       } else {
+        const failedCashOperation = cashOperations.find((operation) => (
+          handoverOperationKeys.has(operation.idempotencyKey)
+          && operation.direction === encashmentDirection
+          && operation.status === 'one_c_error'
+          && Math.abs(operation.amount - encashmentAmount) <= oneCMoneyTolerance
+        ));
         const postedCashOperation = cashOperations.find((operation) => (
-          operation.direction === encashmentDirection
+          handoverOperationKeys.has(operation.idempotencyKey)
+          && operation.direction === encashmentDirection
           && operation.status === 'posted_1c_pair'
           && Math.abs(operation.amount - encashmentAmount) <= oneCMoneyTolerance
         ));
@@ -981,8 +1006,10 @@ function buildEmployeeAutoChecks({
           id: `handover-encashment-${task.id}`,
           taskId: task.id,
           label: encashmentLabel,
-          status: pairMatch === 'exact' ? 'matched' : pairMatch === 'time' ? 'unavailable' : 'mismatch',
-          summary: pairMatch === 'exact'
+          status: failedCashOperation ? 'unavailable' : pairMatch === 'exact' ? 'matched' : pairMatch === 'time' ? 'unavailable' : 'mismatch',
+          summary: failedCashOperation
+            ? `Сотрудник выполнил инкассацию, но 1С не провела документы. Администратор уведомлён: ${failedCashOperation.oneCError || 'требуется ручное проведение'}.`
+            : pairMatch === 'exact'
             ? `В 1С подтверждены проведённые РКО и ПКО: касса → ${targetShortLabel} на ${formatMoney(encashmentAmount)}.`
             : pairMatch === 'time'
               ? `Найдены расход и приход на ${formatMoney(encashmentAmount)} рядом по времени, но связь пары документов 1С не подтверждена.`
@@ -1131,10 +1158,13 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
     prisma.cashOperation.findMany({
       where: { date: selectedDate },
       select: {
+        id: true,
+        idempotencyKey: true,
         userId: true,
         direction: true,
         amount: true,
         status: true,
+        oneCError: true,
         oneCDocumentRef: true,
         oneCReceiptDocumentRef: true,
       },

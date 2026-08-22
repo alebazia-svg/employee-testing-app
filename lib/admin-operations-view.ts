@@ -30,13 +30,18 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
   },
   'workday.close_exception_requested': {
     category: 'decisions',
-    typeLabel: 'Требуется решение ADMIN',
+    typeLabel: 'Требуется решение администратора',
     actionLabel: 'Принять решение',
   },
   'workday.cash_encashment_exception_requested': {
     category: 'decisions',
     typeLabel: 'Инкассация',
     actionLabel: 'Принять решение',
+  },
+  'workday.cash_operation_failed': {
+    category: 'decisions',
+    typeLabel: 'Ошибка инкассации',
+    actionLabel: 'Открыть контроль дня',
   },
 };
 
@@ -69,15 +74,20 @@ export function adminInboxSourceState(input: {
   }
   if (input.sourceType === 'terminal_fiscal_review') {
     if (input.businessStatus === 'open') return { active: true, label: 'Проверка активна', tone: 'attention' };
-    if (input.businessStatus === 'admin_review') return { active: true, label: 'Только ADMIN', tone: 'active' };
+    if (input.businessStatus === 'admin_review') return { active: true, label: 'На контроле администратора', tone: 'active' };
     return { active: false, label: 'Закрыто', tone: 'resolved' };
   }
   if (input.sourceType === 'workday_close_exception') {
     if (input.sourceCompleted) return { active: false, label: 'Завершено', tone: 'resolved' };
     if (input.businessStatus === 'pending') return { active: true, label: 'Ожидает решения', tone: 'attention' };
     if (input.businessStatus === 'approved' && input.reasonCode?.startsWith('cash_encashment_')) return { active: true, label: 'Инкассация на контроле', tone: 'attention' };
-    if (input.businessStatus === 'approved') return { active: false, label: 'Разрешено ADMIN', tone: 'resolved' };
-    if (input.businessStatus === 'rejected') return { active: false, label: 'Отклонено ADMIN', tone: 'history' };
+    if (input.businessStatus === 'approved') return { active: false, label: 'Разрешено администратором', tone: 'resolved' };
+    if (input.businessStatus === 'rejected') return { active: false, label: 'Отклонено администратором', tone: 'history' };
+  }
+  if (input.sourceType === 'cash_operation') {
+    if (input.businessStatus === 'one_c_error') return { active: true, label: 'Требуется ручное проведение', tone: 'attention' };
+    if (input.businessStatus === 'resolved_manual') return { active: false, label: 'Подтверждено вручную', tone: 'resolved' };
+    return { active: false, label: 'Проведено в 1С', tone: 'resolved' };
   }
   return { active: false, label: 'Событие', tone: 'neutral' };
 }

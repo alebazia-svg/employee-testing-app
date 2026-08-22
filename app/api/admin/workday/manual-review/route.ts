@@ -37,30 +37,59 @@ export async function POST(req: Request) {
 
   const task = await prisma.shiftControlTask.findUnique({
     where: { id: taskId },
-    select: { id: true },
+    select: { id: true, run: { select: { workDayEntryId: true } } },
   });
   if (!task) {
     return Response.json({ error: 'Задача чек-листа не найдена.' }, { status: 404 });
   }
 
-  const review = await prisma.shiftControlManualReview.create({
-    data: {
-      taskId,
-      checkId,
-      checkLabel,
-      decision,
-      comment,
-      reviewedById: admin.id,
-    },
-    include: {
-      reviewedBy: {
-        select: {
-          id: true,
-          name: true,
-          login: true,
+  const review = await prisma.$transaction(async (tx) => {
+    const createdReview = await tx.shiftControlManualReview.create({
+      data: {
+        taskId,
+        checkId,
+        checkLabel,
+        decision,
+        comment,
+        reviewedById: admin.id,
+      },
+      include: {
+        reviewedBy: {
+          select: {
+            id: true,
+            name: true,
+            login: true,
+          },
         },
       },
-    },
+    });
+    const operationIdMatch = checkId.match(new RegExp(`^cash-operation-(\\d+)-${taskId}$`));
+    if (decision === 'confirmed_ok' && (checkId === `handover-encashment-${taskId}` || operationIdMatch)) {
+      const handoverKeys = [
+        `h${taskId}`,
+        `00000000-0000-4000-8000-${taskId.toString(16).padStart(12, '0')}`,
+      ];
+      const failedOperations = await tx.cashOperation.findMany({
+        where: {
+          workDayEntryId: task.run.workDayEntryId,
+          status: 'one_c_error',
+          ...(operationIdMatch
+            ? { id: Number(operationIdMatch[1]) }
+            : { idempotencyKey: { in: handoverKeys } }),
+        },
+        select: { id: true, oneCError: true },
+      });
+      for (const operation of failedOperations) {
+        await tx.cashOperation.update({
+          where: { id: operation.id },
+          data: {
+            status: 'resolved_manual',
+            oneCError: [operation.oneCError, `Проведение вручную подтверждено администратором: ${comment}`].filter(Boolean).join(' '),
+          },
+        });
+      }
+    }
+    return createdReview;
   });
 
   return Response.json({

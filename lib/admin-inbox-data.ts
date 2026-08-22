@@ -41,8 +41,9 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const issueIds = rows.filter((row) => row.event.sourceType === 'workday_control_issue').map((row) => Number(row.event.sourceId)).filter(Number.isInteger);
   const reviewIds = rows.filter((row) => row.event.sourceType === 'terminal_fiscal_review').map((row) => row.event.sourceId);
   const exceptionIds = rows.filter((row) => row.event.sourceType === 'workday_close_exception').map((row) => row.event.sourceId);
+  const cashOperationIds = rows.filter((row) => row.event.sourceType === 'cash_operation').map((row) => Number(row.event.sourceId)).filter(Number.isInteger);
 
-  const [currentExpenses, issues, reviews, exceptions] = await Promise.all([
+  const [currentExpenses, issues, reviews, exceptions, cashOperations] = await Promise.all([
     expenseRefs.length ? prisma.expenseRequestAdminCase.findMany({
       where: { ...expenseRequestCurrentWhere, oneCRequestRef: { in: expenseRefs } },
       select: { oneCRequestRef: true },
@@ -59,12 +60,17 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       where: { id: { in: exceptionIds } },
       select: { id: true, status: true, reasonCode: true, consumedAt: true },
     }) : [],
+    cashOperationIds.length ? prisma.cashOperation.findMany({
+      where: { id: { in: cashOperationIds } },
+      select: { id: true, status: true },
+    }) : [],
   ]);
 
   const currentExpenseRefs = new Set(currentExpenses.map((item) => item.oneCRequestRef));
   const issuesById = new Map(issues.map((item) => [String(item.id), item]));
   const reviewsById = new Map(reviews.map((item) => [item.id, item]));
   const exceptionsById = new Map(exceptions.map((item) => [item.id, item]));
+  const cashOperationsById = new Map(cashOperations.map((item) => [String(item.id), item]));
 
   const itemsById = new Map(rows.map((row) => {
     const sourceType = row.event.sourceType;
@@ -72,12 +78,13 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const issue = issuesById.get(sourceId);
     const review = reviewsById.get(sourceId);
     const exception = exceptionsById.get(sourceId);
+    const cashOperation = cashOperationsById.get(sourceId);
     const meta = adminInboxEventMeta(row.event.type);
-    const lifecycleManaged = ['expense_request', 'workday_control_issue', 'terminal_fiscal_review', 'workday_close_exception'].includes(sourceType);
+    const lifecycleManaged = ['expense_request', 'workday_control_issue', 'terminal_fiscal_review', 'workday_close_exception', 'cash_operation'].includes(sourceType);
     const sourceState = adminInboxSourceState({
       sourceType,
       current: currentExpenseRefs.has(sourceId),
-      businessStatus: issue?.status ?? review?.status ?? exception?.status,
+      businessStatus: issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
       reasonCode: exception?.reasonCode,
       employeeActionRequired: issue?.employeeActionRequired,
       sourceCompleted: Boolean(exception?.consumedAt),

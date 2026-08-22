@@ -38,7 +38,7 @@ export default async function AdminPage() {
 
   const today = getMoscowDateKey();
   const range = moscowDayRange(today);
-  const [employees, schedules, workdays, issues, reviews, closeRequests, expenseCases, terminalSummary] = await Promise.all([
+  const [employees, schedules, workdays, issues, reviews, closeRequests, expenseCases, cashOperationErrors, terminalSummary] = await Promise.all([
     prisma.user.findMany({ where: { role: 'EMPLOYEE', isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.workScheduleEntry.findMany({ where: { date: today }, select: { userId: true, status: true } }),
     prisma.workDayEntry.findMany({ where: { date: today }, select: { userId: true, status: true, endedAt: true, user: { select: { name: true } } } }),
@@ -58,6 +58,12 @@ export default async function AdminPage() {
       select: { id: true, oneCNumber: true, requestedByName: true, amount: true, businessOperationName: true, enteredNotApprovedAt: true, updatedAt: true },
       orderBy: [{ enteredNotApprovedAt: 'desc' }, { updatedAt: 'desc' }], take: 20,
     }),
+    prisma.cashOperation.findMany({
+      where: { status: 'one_c_error' },
+      select: { id: true, date: true, amount: true, oneCError: true, updatedAt: true, user: { select: { id: true, name: true } } },
+      orderBy: { updatedAt: 'desc' },
+      take: 20,
+    }),
     getTerminalFiscalWorkdaySummary({ periodFrom: range.from, periodTo: range.to }),
   ]);
 
@@ -72,8 +78,9 @@ export default async function AdminPage() {
   const actions: ActionItem[] = [
     ...closeRequests.map((item) => ({ key: `close-${item.id}`, title: isCashEncashmentException(item.reasonCode) ? `Инкассация не выполнена · ${item.employee.name}` : `Разрешение завершить день · ${item.employee.name}`, detail: item.status === 'approved' && isCashEncashmentException(item.reasonCode) ? 'Разрешено без РКО и ПКО; требуется фактическое устранение.' : item.comment || 'Сотрудник указал техническую причину.', href: `/admin/workday/close-exceptions/${item.id}`, occurredAt: item.requestedAt, kind: 'decision' as const })),
     ...expenseCases.map((item) => ({ key: `expense-${item.id}`, title: `Новая заявка ${item.oneCNumber || ''}`.trim(), detail: [item.requestedByName, money(item.amount), item.businessOperationName].filter(Boolean).join(' · '), href: `/admin/expense-requests/${item.id}`, occurredAt: item.enteredNotApprovedAt ?? item.updatedAt, kind: 'request' as const })),
+    ...cashOperationErrors.map((item) => ({ key: `cash-operation-${item.id}`, title: `Инкассация не проведена · ${item.user.name}`, detail: `${item.amount.toLocaleString('ru-RU')} ₽ · ${item.oneCError || 'Требуется ручное проведение в 1С'}`, href: `/admin/workday?date=${item.date}&employee=${item.user.id}`, occurredAt: item.updatedAt, kind: 'decision' as const })),
     ...issues.filter((item) => item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `issue-${item.id}`, title: `Сообщение от ${item.user.name}`, detail: item.title, href: `/admin/workday/issues/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.lastDetectedAt, kind: 'message' as const })),
-    ...reviews.filter((item) => item.status === 'admin_review' || item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `review-${item.id}`, title: item.status === 'admin_review' ? `Нужна проверка ADMIN · ${item.employee.name}` : `Сообщение от ${item.employee.name}`, detail: `Продажа ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.updatedAt, kind: item.status === 'admin_review' ? 'decision' as const : 'message' as const })),
+    ...reviews.filter((item) => item.status === 'admin_review' || item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `review-${item.id}`, title: item.status === 'admin_review' ? `Нужна проверка администратора · ${item.employee.name}` : `Сообщение от ${item.employee.name}`, detail: `Продажа ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.updatedAt, kind: item.status === 'admin_review' ? 'decision' as const : 'message' as const })),
   ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
 
   const actionHrefs = new Set(actions.map((item) => item.href));
