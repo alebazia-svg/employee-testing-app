@@ -213,7 +213,7 @@ test('telegram claim is leased once and sent state is independent from inbox rea
   assert.ok(claim);
   assert.match(claim.text, /Новая заявка на расход\nЗаявитель: Менеджер\nСумма: 1 000 ₽/);
   assert.match(claim.text, /Комментарий: Доставка товара/);
-  assert.match(claim.href, /^\/admin\/expense-requests\//);
+  assert.match(claim.href, /^\/admin\/inbox\/open\//);
   assert.equal(await claimAdminInboxTelegramDelivery(db.client, new Date('2026-08-17T10:02:00Z')), null);
   await markAdminInboxTelegramDeliverySent({ db: db.client, deliveryId: claim.deliveryId, leaseToken: claim.leaseToken, externalMessageId: '123' });
   assert.equal([...db.state.inboxDeliveries.values()][0]?.status, 'sent');

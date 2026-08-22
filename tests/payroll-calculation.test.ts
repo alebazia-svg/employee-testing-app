@@ -73,7 +73,7 @@ type PayrollModule = {
 };
 
 async function loadPayrollModule(): Promise<PayrollModule> {
-  const sourcePath = resolve('app/(dashboard)/admin/payroll/page.tsx');
+  const sourcePath = resolve('app/(dashboard)/admin/payroll/PayrollClient.tsx');
   const generatedPath = resolve('tests/.generated/payroll-page-test-module.tsx');
   const source = readFileSync(sourcePath, 'utf8');
 
@@ -96,7 +96,6 @@ const retailManager = 'Чеченова Милана';
 const wholesaleManager = 'Ахобекова Залина';
 const asadManager = 'Икаев Асад';
 const traineeManager = 'СтажерРозница';
-const traineeAlias = 'Косторенко Магомед';
 const traineeAliasVariants = ['Косторенко Магомед', 'Магомед Косторенко', 'Магомед Косторенко (стажёр)', 'Костеренко Магомед', 'Магомед Костеренко', 'Костенко Магомед', 'Магомед Костенко', 'Костанко Магомед', 'Магомед Костанко', 'Костаренко Магомед', 'Магомед Костаренко'];
 const excludedPayrollManagers = ['Кештова Аслан', 'Кештова Амир', 'Кештов Аслан', 'Кештов Амир', 'Атабиева Муслим', 'Атабиев Муслим'];
 const creditClient = 'Кредит/рассрочка';
@@ -205,7 +204,7 @@ describe('payroll calculation regression rules', () => {
     assert.equal(summary.totalBonus, 910);
   });
 
-  it('merges retail trainee sales aliases into one payroll employee', () => {
+  it('merges Magomed spelling aliases without permanently merging the reusable trainee account', () => {
     const classification = classifySalesRows([
       salesRow({
         manager: traineeManager,
@@ -224,15 +223,19 @@ describe('payroll calculation regression rules', () => {
     ]);
 
     const traineeSummary = classification.managerSummaries.find((item) => item.manager === traineeManager);
-    const aliasSummary = classification.managerSummaries.find((item) => item.manager === traineeAlias);
+    const magomedSummary = classification.managerSummaries.find((item) => item.manager === 'Костеренко Магомед');
 
     assert.ok(traineeSummary);
-    assert.equal(aliasSummary, undefined);
+    assert.ok(magomedSummary);
     for (const alias of traineeAliasVariants) {
-      assert.equal(classification.managerSummaries.find((item) => item.manager === alias), undefined);
+      if (alias !== 'Костеренко Магомед') {
+        assert.equal(classification.managerSummaries.find((item) => item.manager === alias), undefined);
+      }
     }
-    assert.equal(traineeSummary.revenue, 23000);
-    assert.equal(traineeSummary.grossProfit, 13800);
+    assert.equal(traineeSummary.revenue, 1000);
+    assert.equal(traineeSummary.grossProfit, 600);
+    assert.equal(magomedSummary.revenue, 22000);
+    assert.equal(magomedSummary.grossProfit, 13200);
   });
 
   it('excludes non-payroll people from payroll summaries', () => {

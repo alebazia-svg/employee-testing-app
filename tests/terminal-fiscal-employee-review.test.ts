@@ -394,6 +394,7 @@ test('employee message goes to ADMIN inbox and ADMIN reply uses the existing emp
   const messages: any[] = [];
   const events: any[] = [];
   const receipts: any[] = [];
+  const deliveries: any[] = [];
   const notifications: any[] = [];
   const db: any = {
     terminalFiscalEmployeeReview: {
@@ -408,6 +409,9 @@ test('employee message goes to ADMIN inbox and ADMIN reply uses the existing emp
       create: async ({ data }: any) => { const row = { id: `event-${events.length + 1}`, ...data }; events.push(row); return row; },
     },
     adminInboxReceipt: { createMany: async ({ data }: any) => { receipts.push(...data); return { count: data.length }; } },
+    adminInboxDelivery: {
+      upsert: async ({ create }: any) => { const row = { id: `delivery-${deliveries.length + 1}`, ...create }; deliveries.push(row); return row; },
+    },
     user: { findMany: async () => [{ id: 1 }] },
     workdayNotification: {
       create: async ({ data }: any) => { const row = { id: notifications.length + 1, ...data }; notifications.push(row); return row; },
@@ -418,6 +422,7 @@ test('employee message goes to ADMIN inbox and ADMIN reply uses the existing emp
   assert.equal(events.length, 1);
   assert.equal(events[0].type, 'terminal_fiscal_review.employee_message');
   assert.equal(receipts.length, 1);
+  assert.equal(deliveries.length, 1);
   assert.equal(notifications.length, 0);
 
   await addAdminTerminalFiscalReviewMessage({ prisma: db as PrismaClient, reviewId: 'review-1', adminId: 1, body: 'Проверьте журнал продаж.' });
