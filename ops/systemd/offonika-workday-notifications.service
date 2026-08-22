@@ -1,0 +1,14 @@
+[Unit]
+Description=Dispatch OFFONIKA employee workday notifications
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n -E 0 /run/lock/offonika-workday-notifications.lock /usr/bin/docker exec -w /app portal-app node --conditions=react-server --import tsx scripts/dispatch-workday-notifications.ts
+TimeoutStartSec=3min
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

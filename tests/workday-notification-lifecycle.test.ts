@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   filterActiveWorkdayNotifications,
@@ -120,4 +121,14 @@ test('notification links open the exact employee action target', () => {
   assert.equal(workdayNotificationHref({ issueId: 12, reviewId: null }), '/employee/issues/12');
   assert.equal(workdayNotificationHref({ issueId: null, reviewId: 'review-7' }), '/employee/payment-checks/review-7');
   assert.equal(workdayNotificationHref({ issueId: null, reviewId: null }), '/employee');
+});
+
+test('production timer dispatches due employee notifications every minute', () => {
+  const service = readFileSync('ops/systemd/offonika-workday-notifications.service', 'utf8');
+  const timer = readFileSync('ops/systemd/offonika-workday-notifications.timer', 'utf8');
+
+  assert.match(service, /scripts\/dispatch-workday-notifications\.ts/);
+  assert.match(service, /\/usr\/bin\/flock/);
+  assert.match(timer, /OnCalendar=\*-\*-\* \*:\*:00 Europe\/Moscow/);
+  assert.match(timer, /Unit=offonika-workday-notifications\.service/);
 });

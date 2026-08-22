@@ -1,0 +1,11 @@
+[Unit]
+Description=Dispatch OFFONIKA employee workday notifications every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00 Europe/Moscow
+Persistent=false
+AccuracySec=15s
+Unit=offonika-workday-notifications.service
+
+[Install]
+WantedBy=timers.target
