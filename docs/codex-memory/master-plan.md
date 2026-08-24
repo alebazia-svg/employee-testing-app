@@ -60,7 +60,25 @@ Complete in this order:
    - update the expense-request Telegram link expectation for Inbox routing;
    - update the terminal-message test fixture for ADMIN Telegram delivery;
    - rerun TypeScript, build and all domain test suites.
-2. `NEXT` Run controlled failure drills in production-safe scope:
+2. `NEXT` Conduct one cross-functional pre-pilot audit of the whole product:
+   - business usefulness and completeness of every employee and ADMIN workflow;
+   - PWA and ADMIN information architecture, wording, visual hierarchy,
+     accessibility and device-specific usability;
+   - all reminders, Inbox items, push messages and Telegram duplicates, including
+     trigger, recipient, timing, wording, deep link, read state and resolution;
+   - 1C/OFD/bank/schedule dependencies, source-of-truth boundaries, stale data,
+     idempotency, recovery and manual-takeover safety;
+   - empty, duplicated, obsolete, unreachable or half-working screens, actions,
+     tasks, notifications and history states;
+   - data retention, permissions, personal-data exposure, logs, uploads,
+     performance, monitoring, backup and rollback readiness;
+   - operational edge cases and small inconsistencies that can confuse an
+     employee or ADMIN even when the main flow technically succeeds.
+
+   Produce one evidence-backed register with exact locations and four outcomes:
+   `launch blocker`, `fix before pilot`, `after launch` or `remove/decline`.
+   Close or explicitly accept every launch blocker before starting the pilot.
+3. `NEXT` Run controlled failure drills in production-safe scope:
    - 1C unavailable before/during encashment;
    - connection loss during a cash operation/photo upload;
    - locally retained operation is sent after connectivity returns;
@@ -68,20 +86,20 @@ Complete in this order:
    - delayed 1C recovery moves the case to the correct ADMIN state without blocking the employee;
    - notification disappears only when its underlying action is no longer active.
    - verify employee push delivery on a real device; the dedicated production dispatcher is already active.
-3. `NEXT` Verify the device matrix:
+4. `NEXT` Verify the device matrix:
    - installed PWA on the current iPhone;
    - at least one supported Android device;
    - camera permission and QR scan;
    - push permission and delivery;
    - app resume after screen lock/backgrounding;
    - Wi-Fi/mobile-data switching and weak connection behavior.
-4. `NEXT` Verify production operations:
+5. `NEXT` Verify production operations:
    - current server commit and container health;
    - notification, expense, terminal, credit and reconciliation timers;
    - persistent uploads volume;
    - recent logs contain no unexplained fresh application/API errors;
    - rollback path is ready.
-5. `NEXT` Prepare a one-page employee onboarding instruction and an ADMIN incident
+6. `NEXT` Prepare a one-page employee onboarding instruction and an ADMIN incident
    script for internet, 1C, camera, notification and unfinished-day problems.
 
 ## Pilot Gate
@@ -98,6 +116,8 @@ these shifts.
 
 The pilot passes only when all of the following are true:
 
+- the cross-functional pre-pilot audit is complete and every launch blocker is
+  closed or explicitly accepted with a safe operating procedure;
 - every shift can start, progress and finish without developer intervention;
 - no entered amount or required photo is lost;
 - no duplicate cash documents are created in 1C;
