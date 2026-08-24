@@ -16,7 +16,7 @@ test('credit issue summary is compact and identifies the realization on mobile',
 
   assert.equal(view.summaryTitle, 'Чек по кредитной продаже');
   assert.equal(view.summaryMeta, '00OF-009620 · 130 896 ₽');
-  assert.equal(view.notificationBody, 'Реализация 00OF-009620 · 130 896 ₽. Чек не найден. Проверьте оформление в 1С.');
+  assert.equal(view.notificationBody, 'Реализация 00OF-009620 · 130 896 ₽. Чек не найден — откройте проверку.');
   assert.equal(view.instruction, 'Чек по реализации не найден. Откройте реализацию в 1С и пробейте чек с передачей суммы в кредит.');
 });
 

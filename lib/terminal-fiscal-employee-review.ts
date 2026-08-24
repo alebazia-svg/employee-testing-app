@@ -277,7 +277,7 @@ function moneyFromKopecks(value: number) {
 }
 
 export function terminalFiscalEmployeeReviewText(input: { operationAt: Date; amountKopecks: number }) {
-  return `Чек ${moscowTime(input.operationAt)} — ${moneyFromKopecks(input.amountKopecks)} в 1С не найден. Проверьте продажу.`;
+  return `Чек ${moscowTime(input.operationAt)} · ${moneyFromKopecks(input.amountKopecks)} пока не найден в 1С. Проверьте оформление продажи.`;
 }
 
 export async function syncTerminalFiscalEmployeeReviews(
@@ -378,7 +378,7 @@ export async function syncTerminalFiscalEmployeeReviews(
           reviewId: review.id,
           fingerprint: `${reviewKey}:created`,
           kind: 'terminal_fiscal_review',
-          title: 'Проверьте продажу',
+          title: 'Проверьте чек по продаже',
           body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks }),
           scheduledAt: new Date(input.output.evaluatedAt),
         },

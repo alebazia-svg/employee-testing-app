@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   filterActiveWorkdayNotifications,
   reconcileActiveWorkdayNotifications,
+  workdayTaskNotificationCopy,
   workdayNotificationHref,
 } from '../lib/workday-notifications';
 
@@ -121,6 +122,21 @@ test('notification links open the exact employee action target', () => {
   assert.equal(workdayNotificationHref({ issueId: 12, reviewId: null }), '/employee/issues/12');
   assert.equal(workdayNotificationHref({ issueId: null, reviewId: 'review-7' }), '/employee/payment-checks/review-7');
   assert.equal(workdayNotificationHref({ issueId: null, reviewId: null }), '/employee');
+});
+
+test('task reminders are neutral, concise and distinguish cashbox acceptance', () => {
+  assert.deepEqual(workdayTaskNotificationCopy({ category: 'cash', title: 'Принять кассу: пересчитать наличные' }, 'planned'), {
+    title: 'Примите кассу',
+    body: 'Пересчитайте наличные и внесите фактический остаток.',
+  });
+  assert.deepEqual(workdayTaskNotificationCopy({ category: 'cash', title: 'Пересчитать наличные в середине смены' }, 'overdue'), {
+    title: 'Пересчёт кассы ожидает',
+    body: 'Пересчитайте наличные и внесите фактический остаток.',
+  });
+  assert.deepEqual(workdayTaskNotificationCopy({ category: 'handover', title: 'Сдать смену' }, 'overdue_repeat'), {
+    title: 'Сдача смены ожидает',
+    body: 'Выполните итоговые действия и сдайте смену.',
+  });
 });
 
 test('production timer dispatches due employee notifications every minute', () => {

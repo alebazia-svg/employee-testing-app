@@ -60,7 +60,7 @@ test('first complete 1C read after ten minutes is enough when one nearby mapped 
     cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
   }), { action: 'notify', employeeId: 5, cashierRef: 'cashier-magomed' });
   assert.equal(terminalFiscalEmployeeReviewText({ operationAt: new Date('2026-08-17T16:32:00.000Z'), amountKopecks: 1_250_000 }),
-    'Чек 19:32 — 12 500 ₽ в 1С не найден. Проверьте продажу.');
+    'Чек 19:32 · 12 500 ₽ пока не найден в 1С. Проверьте оформление продажи.');
 });
 
 test('builds a compact neutral employee workday summary', () => {

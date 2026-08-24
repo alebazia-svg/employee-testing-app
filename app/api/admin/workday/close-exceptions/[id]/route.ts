@@ -37,13 +37,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         userId: existing.employeeId,
         fingerprint: `workday-close-exception:${existing.id}:${status}`,
         kind: 'workday_close_exception_decision',
-        title: status === 'approved'
-          ? cashEncashmentException ? 'Можно завершить день без инкассации' : 'Можно завершить рабочий день'
-          : 'Запрос не согласован',
+        title: status === 'approved' ? 'Завершение дня разрешено' : 'Завершение дня не согласовано',
         body: status === 'approved'
           ? cashEncashmentException
-            ? 'Администратор разрешил завершить день без инкассации. РКО и ПКО не будут созданы; ситуация останется под контролем.'
-            : 'Администратор разрешил завершить день. Неисправленная проблема останется под контролем.'
+            ? 'Можно завершить день без инкассации. Ситуация остаётся у администратора на контроле.'
+            : 'Можно завершить день. Неисправленная проблема остаётся у администратора на контроле.'
           : decisionComment,
         scheduledAt: now,
       },

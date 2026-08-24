@@ -108,7 +108,7 @@ export async function syncTerminalFiscalWorkdayControl(
           ruleKey: 'terminal_fiscal_mismatch',
           severity: 'error',
           status: 'open',
-          title: 'Расхождение операции терминала',
+          title: 'Проверьте оплату терминалом',
           detail,
           sourceData: {
             matchingHash: fingerprint.slice('terminal-fiscal:'.length),
@@ -124,7 +124,7 @@ export async function syncTerminalFiscalWorkdayControl(
           userId,
           severity: 'error',
           status: 'open',
-          title: 'Расхождение операции терминала',
+          title: 'Проверьте оплату терминалом',
           detail,
           sourceData: {
             matchingHash: fingerprint.slice('terminal-fiscal:'.length),
@@ -150,7 +150,7 @@ export async function syncTerminalFiscalWorkdayControl(
             fingerprint: notificationFingerprint,
             kind: 'issue_detected',
             title: issue.title,
-            body: `${issue.detail} Проверьте операцию и чек в 1С.`,
+            body: `${issue.detail} Откройте проверку.`,
             scheduledAt: now,
           },
         });
@@ -166,7 +166,7 @@ export async function syncTerminalFiscalWorkdayControl(
             fingerprint: `issue:${issue.id}:reminder:${reminderBucket}`,
             kind: 'issue_reminder',
             title: issue.title,
-            body: `Расхождение операции терминала ещё не исправлено. ${issue.detail}`,
+            body: `Проверка всё ещё ожидает вашего действия. ${issue.detail}`,
             scheduledAt: now,
           },
           update: {},

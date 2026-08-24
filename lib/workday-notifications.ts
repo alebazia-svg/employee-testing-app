@@ -143,25 +143,41 @@ const repeatMinutesByCategory: Record<string, number> = {
   closing: 15,
 };
 
-function notificationTitle(task: Pick<NotificationTask, 'category' | 'title'>) {
-  if (task.category === 'cash') return 'Пора пересчитать кассу';
-  if (task.category === 'opening') return 'Откройте смену ККМ';
-  if (task.category === 'closing') return 'Закройте смену ККМ';
-  if (task.category === 'acquiring') return 'Проверьте операции терминала';
-  if (task.category === 'credit') return 'Проверьте кредиты и рассрочки';
-  if (task.category === 'handover') return 'Пора сдать смену';
-  return task.title;
-}
-
-function notificationBody(task: Pick<NotificationTask, 'category' | 'title'>, kind: string) {
+export function workdayTaskNotificationCopy(task: Pick<NotificationTask, 'category' | 'title'>, kind: string) {
   const overdue = kind !== 'planned';
-  if (task.category === 'cash') return overdue ? 'Проверка наличных просрочена. Пересчитайте кассу сейчас.' : 'Пересчитайте наличные и внесите фактический остаток.';
-  if (task.category === 'opening') return overdue ? 'Открытие смены ККМ ещё не подтверждено.' : 'Откройте смену на кассе и подтвердите выполнение.';
-  if (task.category === 'closing') return overdue ? 'Закрытие смены ККМ ещё не подтверждено.' : 'Закройте смену на кассе и подтвердите выполнение.';
-  if (task.category === 'acquiring') return overdue ? 'Проверка операций терминала просрочена.' : 'Проверьте новые операции после предыдущей проверки.';
-  if (task.category === 'credit') return overdue ? 'Проверка кредитов и рассрочек просрочена.' : 'Проверьте операции кредитов и рассрочек.';
-  if (task.category === 'handover') return overdue ? 'Смена ещё не сдана.' : 'Выполните итоговые действия и сдайте смену.';
-  return overdue ? `Задание просрочено: ${task.title}` : `Пора выполнить: ${task.title}`;
+  const acceptingCashbox = task.category === 'cash' && /принять кассу/i.test(task.title);
+  if (acceptingCashbox) return {
+    title: overdue ? 'Приём кассы ожидает' : 'Примите кассу',
+    body: 'Пересчитайте наличные и внесите фактический остаток.',
+  };
+  if (task.category === 'cash') return {
+    title: overdue ? 'Пересчёт кассы ожидает' : 'Пора пересчитать кассу',
+    body: 'Пересчитайте наличные и внесите фактический остаток.',
+  };
+  if (task.category === 'opening') return {
+    title: overdue ? 'Открытие кассы ожидает' : 'Откройте смену ККМ',
+    body: 'Откройте смену на кассе и подтвердите выполнение.',
+  };
+  if (task.category === 'closing') return {
+    title: overdue ? 'Закрытие кассы ожидает' : 'Закройте смену ККМ',
+    body: 'Закройте смену на кассе и подтвердите выполнение.',
+  };
+  if (task.category === 'acquiring') return {
+    title: overdue ? 'Проверка терминала ожидает' : 'Проверьте операции терминала',
+    body: 'Проверьте новые операции после предыдущей проверки.',
+  };
+  if (task.category === 'credit') return {
+    title: overdue ? 'Проверка кредитов ожидает' : 'Проверьте кредиты и рассрочки',
+    body: 'Проверьте операции кредитов и рассрочек.',
+  };
+  if (task.category === 'handover') return {
+    title: overdue ? 'Сдача смены ожидает' : 'Пора сдать смену',
+    body: 'Выполните итоговые действия и сдайте смену.',
+  };
+  return {
+    title: overdue ? 'Задание ожидает выполнения' : task.title,
+    body: overdue ? `Выполните задание: ${task.title}` : `Пора выполнить: ${task.title}`,
+  };
 }
 
 export function moscowTaskTime(dateKey: string, minutes: number) {
@@ -183,12 +199,11 @@ export async function scheduleTaskNotifications(db: DbClient, tasks: Notificatio
       { kind: 'overdue_repeat', scheduledAt: new Date(plannedAt.getTime() + (graceMinutes + repeatMinutes) * 60_000) },
     ];
     return entries.map((entry) => ({
+      ...workdayTaskNotificationCopy(task, entry.kind),
       userId: task.userId,
       taskId: task.id,
       fingerprint: `task:${task.id}:${entry.kind}`,
       kind: entry.kind,
-      title: notificationTitle(task),
-      body: notificationBody(task, entry.kind),
       scheduledAt: entry.scheduledAt,
     }));
   });

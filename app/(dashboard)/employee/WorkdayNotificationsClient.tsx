@@ -2,15 +2,32 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, ChevronRight, X } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle2, ChevronRight, Clock3, MessageCircle, X } from 'lucide-react';
 
 type WorkdayNotification = {
   id: number;
+  kind: string;
   title: string;
   body: string;
   readAt: string | null;
   href: string;
 };
+
+function NotificationMarker({ notification }: { notification: WorkdayNotification }) {
+  if (notification.kind.endsWith('_reply')) {
+    return <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'><MessageCircle className='h-4 w-4' /></span>;
+  }
+  if (notification.kind === 'workday_close_exception_decision') {
+    const rejected = notification.title.includes('не согласовано');
+    return rejected
+      ? <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-100'><AlertTriangle className='h-4 w-4' /></span>
+      : <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'><CheckCircle2 className='h-4 w-4' /></span>;
+  }
+  if (['issue_detected', 'issue_reminder', 'terminal_fiscal_review'].includes(notification.kind)) {
+    return <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-100'><AlertTriangle className='h-4 w-4' /></span>;
+  }
+  return <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'><Clock3 className='h-4 w-4' /></span>;
+}
 
 function urlBase64ToUint8Array(value: string) {
   const padding = '='.repeat((4 - value.length % 4) % 4);
@@ -91,12 +108,6 @@ export function WorkdayNotificationsClient() {
     return () => window.clearInterval(timer);
   }, [connectPush, refresh]);
 
-  useEffect(() => {
-    if (!open) return;
-    const timer = window.setTimeout(() => setOpen(false), 10_000);
-    return () => window.clearTimeout(timer);
-  }, [open]);
-
   async function dismiss(id: number) {
     setNotifications((current) => {
       const next = current.filter((notification) => notification.id !== id);
@@ -142,9 +153,9 @@ export function WorkdayNotificationsClient() {
           </div>
 
           {!pushConnected && (
-            <div className='border-b border-blue-100 bg-blue-50 px-4 py-3'>
-              <p className='text-xs font-bold text-blue-950'>Включите системные напоминания на этом устройстве.</p>
-              <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='mt-2 rounded-lg bg-blue-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
+            <div className='border-b border-green-100 bg-green-50 px-4 py-3'>
+              <p className='text-xs font-bold text-green-950'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
+              <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='mt-2 rounded-lg bg-green-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
                 {busy ? 'Подключаем…' : permission === 'granted' ? 'Подключить уведомления' : 'Разрешить уведомления'}
               </button>
               {error && <p className='mt-2 text-xs font-bold text-rose-700'>{error}</p>}
@@ -157,7 +168,7 @@ export function WorkdayNotificationsClient() {
             <div className='max-h-80 overflow-y-auto'>
               {notifications.map((notification) => (
                 <button key={notification.id} type='button' onClick={() => void openNotification(notification)} className='flex w-full items-start gap-2 border-b border-slate-100 px-3 py-3 text-left last:border-b-0'>
-                  <Bell className='mt-0.5 h-4 w-4 shrink-0 text-amber-600' />
+                  <NotificationMarker notification={notification} />
                   <span className='min-w-0 flex-1'>
                     <p className='text-sm font-extrabold'>{notification.title}</p>
                     <p className='mt-0.5 text-xs font-semibold leading-snug text-slate-600'>{notification.body}</p>

@@ -37,7 +37,7 @@ export function workdayIssueView(value: { title: string; detail: string; sourceD
     summaryTitle: isCreditRealization ? 'Чек по кредитной продаже' : value.title,
     summaryMeta: [documentNumber, amount].filter(Boolean).join(' · '),
     notificationBody: isCreditRealization && documentNumber
-      ? `Реализация ${documentNumber}${amount ? ` · ${amount}` : ''}. Чек не найден. Проверьте оформление в 1С.`
+      ? `Реализация ${documentNumber}${amount ? ` · ${amount}` : ''}. Чек не найден — откройте проверку.`
       : value.detail,
   };
 }

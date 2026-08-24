@@ -162,7 +162,7 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
           data: {
             userId, issueId: issue.id, fingerprint: `issue:${issue.id}:detected:${now.toISOString()}`,
             kind: 'issue_detected', title: issue.title,
-            body: `Реализация ${controlCase.documentNumber} · ${(controlCase.amountKopecks / 100).toLocaleString('ru-RU')} ₽. Чек не найден. Проверьте оформление в 1С.`, scheduledAt: now,
+            body: `Реализация ${controlCase.documentNumber} · ${(controlCase.amountKopecks / 100).toLocaleString('ru-RU')} ₽. Чек не найден — откройте проверку.`, scheduledAt: now,
           },
         });
         return 'opened' as const;

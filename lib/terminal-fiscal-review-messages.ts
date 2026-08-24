@@ -76,7 +76,7 @@ export async function addAdminTerminalFiscalReviewMessage(input: {
         reviewId: review.id,
         fingerprint: `terminal-fiscal-review:${review.id}:admin-message:${message.id}`,
         kind: 'terminal_fiscal_review_reply',
-        title: 'Ответ администратора',
+        title: 'Ответ по проверке продажи',
         body: short(input.body),
         scheduledAt: now,
       },
