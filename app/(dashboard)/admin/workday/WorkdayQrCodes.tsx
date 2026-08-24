@@ -9,6 +9,7 @@ const workdayQrCodes = [
     id: 'retail',
     title: 'Розница',
     description: 'QR для старта рабочего дня сотрудников розницы.',
+    posterFile: '/print/offonika-workday-retail-a5.png',
     printFile: '/print/offonika-workday-retail-a5.pdf',
     value: 'offonika-workday-start:retail',
   },
@@ -16,6 +17,7 @@ const workdayQrCodes = [
     id: 'wholesale',
     title: 'Опт',
     description: 'QR для старта рабочего дня сотрудников опта.',
+    posterFile: '/print/offonika-workday-wholesale-a5.png',
     printFile: '/print/offonika-workday-wholesale-a5.pdf',
     value: 'offonika-workday-start:wholesale',
   },
@@ -25,7 +27,6 @@ type WorkdayQrCode = (typeof workdayQrCodes)[number];
 
 export function WorkdayQrCodes() {
   const [images, setImages] = useState<Record<string, string>>({});
-  const [activeQr, setActiveQr] = useState<WorkdayQrCode | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
@@ -108,23 +109,38 @@ export function WorkdayQrCodes() {
                       <p className='mt-1 text-sm font-medium text-slate-500'>{item.description}</p>
                     </div>
 
-                    <div className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-center'>
-                      <button
-                        type='button'
-                        onClick={() => setActiveQr(item)}
-                        className='flex h-28 w-28 shrink-0 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200 transition hover:ring-green-300'
+                    <div className='mt-4 flex flex-col gap-3 sm:flex-row sm:items-start'>
+                      <a
+                        href={item.posterFile}
+                        target='_blank'
+                        rel='noreferrer'
+                        className='group relative aspect-[1480/2100] w-full shrink-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:ring-green-300 sm:w-40'
+                        aria-label={`Открыть макет ${item.title}`}
                       >
-                        {image ? <img src={image} alt={`QR ${item.title}`} className='h-24 w-24' /> : <QrCode className='h-12 w-12 text-slate-300' />}
-                      </button>
+                        <img src={item.posterFile} alt={`Менюхолдер A5 — ${item.title}`} className='h-full w-full object-cover' />
+                        <span className='absolute inset-x-2 bottom-2 inline-flex min-h-8 items-center justify-center gap-1 rounded-lg bg-slate-950/80 px-2 text-xs font-extrabold text-white opacity-0 backdrop-blur-sm transition group-hover:opacity-100'>
+                          <Maximize2 className='h-3.5 w-3.5' />
+                          Открыть макет
+                        </span>
+                      </a>
                       <div className='grid flex-1 gap-2'>
-                        <button
-                          type='button'
-                          onClick={() => setActiveQr(item)}
+                        <a
+                          href={item.posterFile}
+                          target='_blank'
+                          rel='noreferrer'
                           className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
                         >
                           <Maximize2 className='h-4 w-4' />
-                          Открыть крупно
-                        </button>
+                          Посмотреть макет
+                        </a>
+                        <a
+                          href={item.posterFile}
+                          download={`offonika-workday-${item.id}-a5.png`}
+                          className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
+                        >
+                          <Download className='h-4 w-4' />
+                          Скачать PNG
+                        </a>
                         <a
                           href={image || '#'}
                           download={`offonika-workday-${item.id}-qr.png`}
@@ -139,7 +155,7 @@ export function WorkdayQrCodes() {
                           className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-3 text-sm font-extrabold text-white hover:bg-green-700'
                         >
                           <Printer className='h-4 w-4' />
-                          Печать / PDF
+                          Печать A5 / PDF
                         </button>
                       </div>
                     </div>
@@ -151,40 +167,6 @@ export function WorkdayQrCodes() {
         </div>
       ) : null}
 
-      {activeQr && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm'>
-          <div className='w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl'>
-            <div className='flex items-start justify-between gap-4'>
-              <div>
-                <p className='text-sm font-black uppercase tracking-wide text-green-700'>QR рабочего дня</p>
-                <h3 className='mt-1 text-2xl font-black text-slate-950'>{activeQr.title}</h3>
-              </div>
-              <button type='button' onClick={() => setActiveQr(null)} className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700'>
-                <X className='h-5 w-5' />
-              </button>
-            </div>
-
-            <div className='mt-5 flex flex-col items-center gap-4'>
-              {images[activeQr.id] ? <img src={images[activeQr.id]} alt={`QR ${activeQr.title}`} className='h-72 w-72' /> : <QrCode className='h-24 w-24 text-slate-300' />}
-              <p className='rounded-xl bg-green-50 px-4 py-3 text-center text-sm font-bold leading-relaxed text-green-900 ring-1 ring-green-100'>Перед началом смены откройте портал и отсканируйте этот QR-код.</p>
-              <div className='grid w-full gap-2 sm:grid-cols-2'>
-                <a
-                  href={images[activeQr.id] || '#'}
-                  download={`offonika-workday-${activeQr.id}-qr.png`}
-                  className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-extrabold text-slate-800 hover:bg-slate-200'
-                >
-                  <Download className='h-4 w-4' />
-                  Скачать только QR
-                </a>
-                <button type='button' onClick={() => printQr(activeQr)} className='inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-green-600 px-4 text-sm font-extrabold text-white hover:bg-green-700'>
-                  <Printer className='h-4 w-4' />
-                  Печать / PDF
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
