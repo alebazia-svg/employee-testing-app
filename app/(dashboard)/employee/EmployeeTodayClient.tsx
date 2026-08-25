@@ -508,9 +508,9 @@ function WorkdayQrScanner({
 }
 
 function scheduleTone(status: string | null | undefined) {
-  if (status === 'working') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
-  if (status === 'off') return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
-  return 'bg-amber-100 text-amber-800 ring-1 ring-amber-200';
+  if (status === 'working') return 'employee-material-status employee-material-status-green';
+  if (status === 'off') return 'employee-material-status employee-material-status-slate';
+  return 'employee-material-status employee-material-status-amber';
 }
 
 function scheduleLabel(status: string | null | undefined) {
@@ -580,10 +580,10 @@ function buildCalendarMonth(monthKey: string) {
 }
 
 function factTone(status: string | null | undefined) {
-  if (status === 'active') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
-  if (status === 'completed') return 'bg-green-100 text-green-800 ring-1 ring-green-200';
-  if (status === 'missing_checkout') return 'bg-amber-100 text-amber-800 ring-1 ring-amber-200';
-  return 'bg-slate-100 text-slate-600 ring-1 ring-slate-200';
+  if (status === 'active') return 'employee-material-status employee-material-status-green';
+  if (status === 'completed') return 'employee-material-status employee-material-status-green';
+  if (status === 'missing_checkout') return 'employee-material-status employee-material-status-amber';
+  return 'employee-material-status employee-material-status-slate';
 }
 
 function factLabel(status: string | null | undefined) {
@@ -949,13 +949,13 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
 }
 
 function ColleagueGroup({ title, people, tone, emptyLabel = 'Нет сотрудников' }: { title: string; people: UserSummary[]; tone: 'green' | 'slate' | 'amber'; emptyLabel?: string }) {
-  const dotClass = tone === 'green' ? 'bg-primary' : tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400';
+  const dotClass = tone === 'green' ? 'employee-material-status-dot-green' : tone === 'amber' ? 'employee-material-status-dot-amber' : 'employee-material-status-dot-slate';
 
   return (
     <section className='employee-material-subcard rounded-lg bg-white/90 p-2.5 ring-1 ring-slate-200/80'>
       <div className='mb-1.5 flex items-center justify-between gap-3'>
         <div className='flex items-center gap-2'>
-          <span className={cn('h-2.5 w-2.5 rounded-full', dotClass)} />
+          <span className={cn('employee-material-status-dot', dotClass)} />
           <h3 className='text-sm font-extrabold text-slate-950'>{title}</h3>
         </div>
         <span className='text-xs font-extrabold text-slate-400'>{people.length}</span>
@@ -1370,13 +1370,13 @@ export function EmployeeTodayClient({
     ].filter(Boolean).join(' · ');
 
     function SelectedColleagueGroup({ title, rows, tone }: { title: string; rows: typeof colleagueRows; tone: 'green' | 'slate' | 'amber' }) {
-      const dotClass = tone === 'green' ? 'bg-primary' : tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400';
+      const dotClass = tone === 'green' ? 'employee-material-status-dot-green' : tone === 'amber' ? 'employee-material-status-dot-amber' : 'employee-material-status-dot-slate';
 
       return (
         <div className='employee-material-subcard rounded-lg bg-slate-50 px-2.5 py-2'>
           <div className='mb-1.5 flex items-center justify-between gap-2'>
             <span className='inline-flex items-center gap-2 text-xs font-extrabold text-slate-700'>
-              <span className={cn('h-2 w-2 rounded-full', dotClass)} />
+              <span className={cn('employee-material-status-dot h-2 w-2', dotClass)} />
               {title}
             </span>
             <span className='text-[11px] font-extrabold text-slate-400'>{rows.length}</span>
@@ -3219,7 +3219,7 @@ export function EmployeeTodayClient({
               )}
 
               {activeWorkDay && (
-                <div className='flex items-center gap-2 rounded-full bg-green-50 px-3 py-2 text-sm font-extrabold text-green-900 ring-1 ring-green-100'>
+                <div className='employee-material-status-strip flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold text-green-900'>
                   <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-green-700 ring-1 ring-green-100'>
                     <CheckCircle2 className='h-4 w-4' />
                   </span>
@@ -3230,7 +3230,7 @@ export function EmployeeTodayClient({
               {requiredIssuesState.length > 0 && (
                 <section className='overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 text-slate-950 shadow-sm'>
                   <div className='flex items-center gap-3 px-3.5 py-3'>
-                    <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 ring-1 ring-amber-200'><AlertTriangle className='h-5 w-5' /></span>
+                    <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-5 w-5' /></span>
                     <div className='min-w-0'>
                       <p className='text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить · {requiredIssuesState.length}</p>
                       <p className='mt-0.5 text-sm font-bold leading-tight text-slate-700'>Откройте и выполните инструкцию</p>
@@ -3266,7 +3266,7 @@ export function EmployeeTodayClient({
 
               {primaryPaymentCheck && primaryPaymentCheckView && (
                 <Link href={`/employee/payment-checks/${primaryPaymentCheck.id}`} className='flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'>
-                  <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-amber-700 ring-1 ring-amber-200'><ReceiptText className='h-5 w-5' /></span>
+                  <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'><ReceiptText className='h-5 w-5' /></span>
                   <span className='min-w-0 flex-1'>
                     <span className='block text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно проверить{paymentChecksState.length > 1 ? ` · ${paymentChecksState.length}` : ''}</span>
                     <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryPaymentCheckView.title}</span>
@@ -3303,7 +3303,7 @@ export function EmployeeTodayClient({
               {activeWorkDay && !showShiftControl && (
                 <Card className='space-y-3 border-green-100 bg-white p-4'>
                   <div className='flex items-start gap-3'>
-                    <span className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
+                    <span className='employee-material-heading-icon h-11 w-11 shrink-0 rounded-xl text-green-700'>
                       <Clock className='h-5 w-5' />
                     </span>
                     <div className='min-w-0'>
@@ -3326,7 +3326,7 @@ export function EmployeeTodayClient({
 
               {isCompleted && (
                 <Card className='flex items-center gap-3 p-3.5'>
-                  <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-100 text-green-700'>
+                  <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-green-700'>
                     <Check className='h-5 w-5' />
                   </span>
                   <div className='min-w-0'>
@@ -3405,7 +3405,7 @@ export function EmployeeTodayClient({
                       const Icon = shiftTaskIcon(task);
                       return (
                         <div key={task.id} className={cn('flex gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-slate-600 ring-1 ring-slate-200/80', uiStatus === 'done' && 'opacity-75')}>
-                          <div className={cn('mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1', shiftTaskIconClass(task.category))}>
+                          <div className={cn('employee-material-icon mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', shiftTaskIconClass(task.category))}>
                             {uiStatus === 'done' ? <CheckCircle2 className='h-4 w-4' /> : <Icon className='h-4 w-4' />}
                           </div>
                           <div className='min-w-0 flex-1'>
@@ -3442,7 +3442,7 @@ export function EmployeeTodayClient({
                         {cashOperationsState.length} операций · {formatCashOperationAmount(cashOperationTotal)}
                       </p>
                     </div>
-                    <Banknote className='h-5 w-5 text-primary' />
+                    <span className='employee-material-heading-icon'><Banknote className='h-5 w-5 text-primary' /></span>
                   </div>
 
                   <div className={cn('grid gap-2', user.department === 'retail' ? 'grid-cols-2' : 'grid-cols-1')}>

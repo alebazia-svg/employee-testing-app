@@ -31,10 +31,10 @@ export default async function EmployeePaymentCheckPage({ params }: { params: { i
         <div className='px-4 py-5'>
           <Link href='/employee' className='inline-flex items-center gap-2 text-sm font-extrabold text-green-700'><ArrowLeft className='h-4 w-4' />Назад</Link>
           <Card className='mt-4 border-amber-200 bg-amber-50'>
-            <div className='flex gap-3'><SearchCheck className='mt-0.5 h-6 w-6 shrink-0 text-amber-700' /><div><p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>{open ? 'Требуется проверка' : 'Проверка закрыта'}</p><h1 className='mt-1 text-xl font-black leading-snug text-amber-950'>Проверьте продажу</h1><p className='mt-2 text-base font-bold leading-relaxed text-amber-950'>{terminalFiscalEmployeeReviewText({ operationAt: review.bankOperationAt, amountKopecks: review.amountKopecks })}</p></div></div>
+            <div className='flex gap-3'><span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-amber-700'><SearchCheck className='h-6 w-6' /></span><div><p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>{open ? 'Требуется проверка' : 'Проверка закрыта'}</p><h1 className='mt-1 text-xl font-black leading-snug text-amber-950'>Проверьте продажу</h1><p className='mt-2 text-base font-bold leading-relaxed text-amber-950'>{terminalFiscalEmployeeReviewText({ operationAt: review.bankOperationAt, amountKopecks: review.amountKopecks })}</p></div></div>
           </Card>
           <Card className='employee-material-form mt-4'>
-            <div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-green-700' /><h2 className='text-lg font-extrabold'>Сообщение администратору</h2></div>
+            <div className='mb-4 flex items-center gap-2'><span className='employee-material-heading-icon'><MessageCircle className='h-5 w-5 text-green-700' /></span><h2 className='text-lg font-extrabold'>Сообщение администратору</h2></div>
             <TerminalFiscalReviewConversation
               initialMessages={review.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))}
               currentUserId={user.id}
