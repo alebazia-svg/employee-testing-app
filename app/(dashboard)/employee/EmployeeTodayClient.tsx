@@ -1050,6 +1050,7 @@ export function EmployeeTodayClient({
   const [isOnline, setIsOnline] = useState(true);
   const [cashOutboxCount, setCashOutboxCount] = useState(0);
   const [cashOutboxSyncing, setCashOutboxSyncing] = useState(false);
+  const [cashOutboxError, setCashOutboxError] = useState('');
   const [now, setNow] = useState<Date | null>(null);
   const workdaySyncAbortRef = useRef<AbortController | null>(null);
   const workdaySyncInFlightRef = useRef(false);
@@ -1182,7 +1183,9 @@ export function EmployeeTodayClient({
     if (cashOutboxSyncingRef.current || !navigator.onLine) return;
     cashOutboxSyncingRef.current = true;
     setCashOutboxSyncing(true);
+    setCashOutboxError('');
     let saved = 0;
+    let failure = '';
     try {
       const items = (await listEmployeeCashOutboxItems())
         .filter((item) => item.userId === user.id)
@@ -1193,13 +1196,12 @@ export function EmployeeTodayClient({
           await removeEmployeeCashOutboxItem(item.id);
           saved += 1;
         } catch (reason) {
-          if (reason instanceof EmployeeNetworkError) break;
-          // A business conflict needs the employee to reopen the action instead
-          // of silently discarding the locally saved amount and photo.
+          failure = reason instanceof Error ? reason.message : 'Не удалось отправить сохранённую инкассацию.';
           break;
         }
       }
       await refreshCashOutboxCount();
+      if (failure) setCashOutboxError(failure);
       if (saved > 0) {
         await syncCurrentWorkdayState(true);
         setMessage(saved === 1 ? 'Сохранённая операция отправлена в портал' : `Сохранённые операции отправлены: ${saved}`);
@@ -3091,18 +3093,20 @@ export function EmployeeTodayClient({
               <div className='flex items-start gap-3'>
                 <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isOnline ? 'bg-blue-500' : 'bg-amber-500'}`} />
                 <div className='min-w-0 flex-1'>
-                  <p className='text-sm font-extrabold'>{isOnline ? (cashOutboxSyncing ? 'Восстанавливаем связь' : 'Есть данные на телефоне') : 'Нет соединения'}</p>
+                  <p className='text-sm font-extrabold'>{isOnline ? (cashOutboxSyncing ? 'Отправляем инкассацию' : 'Инкассация сохранена на телефоне') : 'Нет соединения'}</p>
                   <p className='mt-0.5 text-xs font-semibold leading-relaxed opacity-80'>
                     {isOnline
                       ? cashOutboxSyncing
-                        ? 'Отправляем сохранённые операции в портал.'
-                        : `Ожидают отправки: ${cashOutboxCount}. Нажмите, чтобы повторить сейчас.`
+                        ? 'Сумма и фотография отправляются в портал.'
+                        : cashOutboxError
+                          ? `Не удалось отправить: ${cashOutboxError}`
+                          : `Сумма и фото не потеряны. Ожидают отправки: ${cashOutboxCount}.`
                       : 'Введённые данные инкассации будут сохранены на телефоне и отправятся после восстановления связи.'}
                   </p>
                 </div>
                 {isOnline && cashOutboxCount > 0 && !cashOutboxSyncing ? (
                   <button type='button' className='shrink-0 text-xs font-extrabold text-blue-800' onClick={() => void flushCashOutbox()}>
-                    Отправить
+                    Повторить
                   </button>
                 ) : null}
               </div>
