@@ -65,7 +65,7 @@ export function AdminInboxBell() {
 
   return (
     <div ref={root} className='relative'>
-      <button type='button' onClick={() => { setOpen((value) => !value); if (!open) void load(); }} aria-label='Уведомления администратора' className='admin-material-control relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 transition hover:text-slate-950'>
+      <button type='button' onClick={() => { setOpen((value) => !value); if (!open) void load(); }} aria-label='Уведомления администратора' className='admin-material-filter-active relative flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 text-white ring-1 ring-white/20 transition hover:-translate-y-0.5 hover:text-white'>
         <Bell className='h-5 w-5' />
         {unreadCount > 0 && <span className='absolute -right-1 -top-1 min-w-5 rounded-full bg-amber-400 px-1.5 py-1 text-center text-[10px] font-extrabold leading-none text-slate-950 ring-2 ring-[#f7faf8]'>{unreadCount > 99 ? '99+' : unreadCount}</span>}
       </button>
