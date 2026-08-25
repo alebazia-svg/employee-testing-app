@@ -14,7 +14,7 @@ self.addEventListener('push', (event) => {
     icon: '/pwa-icon-192.png',
     badge: '/favicon-32x32.png',
     data: { url: data.url || '/employee', notificationId: data.notificationId || null },
-    tag: data.notificationId ? `workday-${data.notificationId}` : 'workday',
+    tag: data.notificationId ? `${data.tagPrefix || 'workday'}-${data.notificationId}` : (data.tagPrefix || 'workday'),
     renotify: false,
   }));
   event.waitUntil(Promise.all(actions));

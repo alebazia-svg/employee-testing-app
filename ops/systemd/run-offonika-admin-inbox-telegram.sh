@@ -34,3 +34,5 @@ for _ in $(seq 1 20); do
   echo "telegram_delivery=$error_code delivery_id=$delivery_id"
   break
 done
+
+/usr/bin/docker exec "$APP_CONTAINER" node --conditions=react-server --import tsx scripts/admin-inbox-web-push-delivery.ts

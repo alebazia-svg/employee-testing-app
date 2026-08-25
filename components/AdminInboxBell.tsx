@@ -25,6 +25,33 @@ export function AdminInboxBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pushConnected, setPushConnected] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState('');
+
+  async function connectPush(requestPermission: boolean) {
+    setPushBusy(true);
+    setPushError('');
+    try {
+      if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Уведомления не поддерживаются на этом устройстве.');
+      const permission = requestPermission ? await Notification.requestPermission() : Notification.permission;
+      if (permission !== 'granted') throw new Error('Разрешите уведомления в настройках устройства.');
+      const configResponse = await fetch('/api/admin/push-subscription', { cache: 'no-store' });
+      const config = await configResponse.json();
+      if (!configResponse.ok || !config.publicKey) throw new Error('Push-уведомления ещё не настроены.');
+      const registration = await navigator.serviceWorker.register('/workday-sw.js', { scope: '/' });
+      const existing = await registration.pushManager.getSubscription();
+      const subscription = existing ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(config.publicKey) });
+      const response = await fetch('/api/admin/push-subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription) });
+      if (!response.ok) throw new Error('Не удалось сохранить разрешение на уведомления.');
+      setPushConnected(true);
+    } catch (error) {
+      setPushConnected(false);
+      if (requestPermission) setPushError(error instanceof Error ? error.message : 'Не удалось включить уведомления.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   async function load() {
     const response = await fetch('/api/admin/inbox?limit=8', { cache: 'no-store' }).catch(() => null);
@@ -37,6 +64,7 @@ export function AdminInboxBell() {
 
   useEffect(() => {
     void load();
+    if ('Notification' in window && Notification.permission === 'granted') void connectPush(false);
     const timer = window.setInterval(() => void load(), 60_000);
     function close(event: MouseEvent) {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
@@ -75,6 +103,13 @@ export function AdminInboxBell() {
             <div><p className='font-extrabold text-slate-950'>Уведомления</p><p className='text-xs font-medium text-slate-500'>{unreadCount ? `Непрочитанных: ${unreadCount}` : 'Новых нет'}</p></div>
             {unreadCount > 0 && <button type='button' onClick={() => void markAll()} className='admin-material-control inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-green-700'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
           </div>
+          {!pushConnected && (
+            <div className='border-b border-green-100 bg-green-50 px-4 py-3'>
+              <p className='text-xs font-bold leading-relaxed text-green-950'>Получайте новые заявки и запросы сотрудников, даже когда портал закрыт.</p>
+              <button type='button' disabled={pushBusy} onClick={() => void connectPush(true)} className='admin-material-primary mt-2 rounded-lg px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>{pushBusy ? 'Подключаем…' : 'Включить уведомления'}</button>
+              {pushError && <p className='mt-2 text-xs font-bold text-rose-700'>{pushError}</p>}
+            </div>
+          )}
           {items.length === 0 ? <p className='px-5 py-10 text-center text-sm font-medium text-slate-500'>Уведомлений пока нет.</p> : (
             <div className='max-h-[420px] space-y-2 overflow-y-auto p-2.5'>{items.map((item) => (
               <button key={item.id} type='button' onClick={() => void openItem(item)} className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition hover:-translate-y-0.5 ${item.readAt ? 'admin-material-control border-white/80 bg-white' : 'border-amber-200 bg-amber-50/80 shadow-[3px_4px_10px_rgba(120,92,28,0.12),inset_0_1px_rgba(255,255,255,0.7)]'}`}>
@@ -89,4 +124,10 @@ export function AdminInboxBell() {
       )}
     </div>
   );
+}
+
+function urlBase64ToUint8Array(value: string) {
+  const padding = '='.repeat((4 - value.length % 4) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
 }
