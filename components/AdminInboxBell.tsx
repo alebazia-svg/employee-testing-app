@@ -65,12 +65,12 @@ export function AdminInboxBell() {
 
   return (
     <div ref={root} className='relative'>
-      <button type='button' onClick={() => { setOpen((value) => !value); if (!open) void load(); }} aria-label='Уведомления администратора' className='relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm ring-1 ring-slate-200/80 transition hover:text-slate-950'>
+      <button type='button' onClick={() => { setOpen((value) => !value); if (!open) void load(); }} aria-label='Уведомления администратора' className='admin-material-control relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 transition hover:text-slate-950'>
         <Bell className='h-5 w-5' />
         {unreadCount > 0 && <span className='absolute -right-1 -top-1 min-w-5 rounded-full bg-amber-400 px-1.5 py-1 text-center text-[10px] font-extrabold leading-none text-slate-950 ring-2 ring-[#f7faf8]'>{unreadCount > 99 ? '99+' : unreadCount}</span>}
       </button>
       {open && (
-        <div className='fixed inset-x-3 top-4 z-50 max-h-[calc(100vh-2rem)] w-auto overflow-hidden rounded-2xl bg-white text-left shadow-2xl ring-1 ring-slate-200 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:max-h-none sm:w-[min(92vw,400px)]'>
+        <div className='admin-dialog-panel fixed inset-x-3 top-4 z-50 max-h-[calc(100vh-2rem)] w-auto overflow-hidden rounded-2xl bg-white text-left ring-1 ring-slate-200 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:max-h-none sm:w-[min(92vw,400px)]'>
           <div className='flex items-center justify-between border-b border-slate-200 px-4 py-3'>
             <div><p className='font-extrabold text-slate-950'>Уведомления</p><p className='text-xs font-medium text-slate-500'>{unreadCount ? `Непрочитанных: ${unreadCount}` : 'Новых нет'}</p></div>
             {unreadCount > 0 && <button type='button' onClick={() => void markAll()} className='inline-flex items-center gap-1 text-xs font-bold text-green-700'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
