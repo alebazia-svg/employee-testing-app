@@ -22,9 +22,9 @@ export function AdminMetricCard({
   tone?: keyof typeof tones;
 }) {
   return (
-    <div className='rounded-2xl bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)] ring-1 ring-slate-200/90'>
+    <div className='admin-material-card rounded-2xl p-4'>
       <div className='flex items-start gap-3'>
-        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', tones[tone])}>
+        <div className={cn('admin-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', tones[tone])}>
           <Icon className='h-5 w-5' />
         </div>
         <div className='min-w-0'>

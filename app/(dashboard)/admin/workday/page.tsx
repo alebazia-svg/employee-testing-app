@@ -1561,20 +1561,20 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           actions={<>
             <Link
               href={`/admin/workday?date=${previousDate}`}
-              className='rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'
+              className='admin-material-control rounded-lg px-3 py-2 text-sm font-bold text-slate-700 transition'
             >
               ← Предыдущий
             </Link>
-            <Badge className='w-fit bg-white px-3 py-2 text-slate-700 ring-1 ring-slate-200'>{formatDateLabel(selectedDate)}</Badge>
+            <Badge className='admin-material-control w-fit px-3 py-2 text-slate-700'>{formatDateLabel(selectedDate)}</Badge>
             <Link
               href={`/admin/workday?date=${nextDate}`}
-              className='rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'
+              className='admin-material-control rounded-lg px-3 py-2 text-sm font-bold text-slate-700 transition'
             >
               Следующий →
             </Link>
             <Link
               href='/admin/workday'
-              className='rounded-lg bg-primary px-3 py-2 text-sm font-extrabold text-white transition hover:bg-primary/90'
+              className='admin-material-primary rounded-lg px-3 py-2 text-sm font-extrabold text-white transition'
             >
               Сегодня
             </Link>
@@ -1602,7 +1602,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           </Card>
         )}
 
-        <Card className='p-0' id='employees-control'>
+        <Card className='admin-material-surface p-0' id='employees-control'>
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between'>
             <div>
               <h2 className='text-lg font-extrabold text-slate-950'>Состояние сотрудников</h2>
@@ -1622,8 +1622,8 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                   href={controlFilterHref(filter)}
                   className={`rounded-lg px-3 py-2 ring-1 transition ${
                     selectedControlFilter === filter
-                      ? 'bg-slate-950 text-white ring-slate-950'
-                      : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'
+                      ? 'admin-material-filter-active text-white ring-slate-950'
+                      : 'admin-material-control text-slate-700 ring-slate-200'
                   }`}
                 >
                   {label}
@@ -1643,7 +1643,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                   ? reviewableEmployeeRows[reviewableIndex + 1]
                   : null;
                 return (
-                  <div key={row.employee.id} className='grid gap-3 px-5 py-4 transition hover:bg-slate-50/70 lg:grid-cols-[minmax(220px,0.9fr)_minmax(180px,0.75fr)_minmax(260px,1.25fr)_auto] lg:items-center'>
+                  <div key={row.employee.id} className='admin-control-row grid gap-3 px-5 py-4 transition lg:grid-cols-[minmax(220px,0.9fr)_minmax(180px,0.75fr)_minmax(260px,1.25fr)_auto] lg:items-center'>
                     <div className='min-w-0'>
                       <p className='truncate font-extrabold text-slate-950'>{row.employee.name}</p>
                       <p className='mt-0.5 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</p>

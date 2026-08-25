@@ -104,18 +104,18 @@ export default async function AdminPage() {
       </section>
 
       <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
-        <Card className='overflow-hidden p-0'>
+        <Card className='admin-material-surface overflow-hidden p-0'>
           <SectionHeader title='Нужно моё решение' count={actions.length} />
           {actions.length ? <div className='divide-y divide-slate-100'>{actions.slice(0, 6).map((item) => <ActionRow key={item.key} item={item} />)}</div> : <Empty title='Моих действий сейчас нет' text='Новые сообщения, запросы на решение и заявки появятся здесь.' compact />}
         </Card>
-        <Card className='overflow-hidden p-0'>
+        <Card className='admin-material-surface overflow-hidden p-0'>
           <SectionHeader title='Сотрудникам нужно исправить' count={issues.length + reviews.filter((item) => item.status === 'open').length} href='/admin/workday' />
           {employeeProblems.length ? <div className='divide-y divide-slate-100'>{employeeProblems.slice(0, 5).map((item) => <Link key={item.key} href={item.href} className='flex items-center gap-3 px-5 py-4 hover:bg-slate-50'><ShieldAlert className='h-5 w-5 shrink-0 text-amber-600' /><span className='min-w-0 flex-1'><span className='block truncate text-sm font-extrabold text-slate-950'>{item.title}</span><span className='block truncate text-xs font-medium text-slate-500'>{item.detail}</span></span><ArrowRight className='h-4 w-4 text-slate-400' /></Link>)}</div> : <Empty title='Активных исправлений нет' text='Прочтение уведомления не влияет на этот список: проблема исчезнет только после исправления.' />}
         </Card>
       </section>
 
       <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
-        <Card className={`overflow-hidden p-0 ${terminalAttention ? '' : 'xl:col-span-2'}`}>
+        <Card className={`admin-material-surface overflow-hidden p-0 ${terminalAttention ? '' : 'xl:col-span-2'}`}>
           <SectionHeader title='Команда сегодня' count={todaySummary.working + todaySummary.completed + todaySummary.notStarted} href='/admin/workday' actionLabel='Контроль дня' />
           <div className='grid gap-0 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0'>
             <TeamState label='Работают' names={workingNames} empty='Никто не работает' tone='green' />

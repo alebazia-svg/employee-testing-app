@@ -70,6 +70,63 @@ select {
   }
 }
 
+/* Admin material system: restrained depth for navigation and summary surfaces. */
+.admin-shell { background: #202a2f; }
+
+.admin-sidebar {
+  background: radial-gradient(circle at 8% 0, rgba(104, 119, 125, 0.48), transparent 30%), linear-gradient(158deg, #364147 0%, #253137 52%, #1c262b 100%);
+  box-shadow: inset -1px 0 rgba(255, 255, 255, 0.08), 12px 0 28px rgba(23, 32, 36, 0.14);
+}
+
+.admin-nav-item-active {
+  background: linear-gradient(145deg, #fbfaf5, #dfe1dc);
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  box-shadow: 7px 9px 18px rgba(8, 15, 18, 0.5), -2px -2px 8px rgba(255, 255, 255, 0.13), inset 0 1px rgba(255, 255, 255, 0.82);
+}
+
+.admin-nav-item-active svg { color: #4db82f !important; }
+
+.admin-workspace {
+  background: radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.94), transparent 31%), linear-gradient(145deg, #f8f8f5 0%, #eef0ec 48%, #e7eae6 100%);
+}
+
+.admin-account-chip,
+.admin-material-card,
+.admin-material-surface,
+.admin-material-control {
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  background: linear-gradient(145deg, #fbfaf6, #e5e7e2);
+  box-shadow: 7px 9px 19px rgba(76, 87, 82, 0.16), -3px -3px 9px rgba(255, 255, 255, 0.92), inset 0 1px rgba(255, 255, 255, 0.76);
+}
+
+.admin-material-card { min-height: 124px; }
+
+.admin-material-icon {
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow: 3px 4px 9px rgba(70, 81, 76, 0.16), inset 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.admin-material-control { box-shadow: 3px 4px 9px rgba(76, 87, 82, 0.13), -2px -2px 6px rgba(255, 255, 255, 0.82); }
+.admin-material-control:hover { background: linear-gradient(145deg, #ffffff, #eceee9); transform: translateY(-1px); }
+
+.admin-material-filter-active {
+  background: linear-gradient(145deg, #3a464b, #202b30);
+  box-shadow: 4px 6px 12px rgba(34, 45, 49, 0.3), inset 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.admin-material-primary {
+  background: linear-gradient(145deg, #5ed33d, #3cb324);
+  box-shadow: 4px 6px 13px rgba(62, 181, 43, 0.28), inset 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.admin-material-primary:hover { background: linear-gradient(145deg, #65da43, #42b928); transform: translateY(-1px); }
+.admin-control-row { background: rgba(255, 255, 255, 0.17); }
+.admin-control-row:hover { background: rgba(255, 255, 255, 0.62); }
+
+@media (max-width: 767px) {
+  .admin-sidebar { background: linear-gradient(155deg, #364147, #202a2f); }
+}
+
 /* Employee mobile UI: light mineral material with restrained graphite controls. */
 .employee-material-shell {
   background:

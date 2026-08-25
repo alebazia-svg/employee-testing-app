@@ -47,11 +47,11 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
       href={item.href}
       title={sidebarCollapsed ? item.label : undefined}
       className={cn(
-        'relative flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-center text-sm font-semibold text-slate-300 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 md:justify-start md:gap-2.5 md:px-3',
+        'admin-nav-item relative flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-slate-200 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 md:justify-start md:gap-2.5 md:px-3',
         sidebarCollapsed && 'md:px-0 md:justify-center',
         active
-          ? 'bg-white/[0.08] text-white shadow-[0_12px_28px_rgba(0,0,0,0.18)] before:absolute before:left-0 before:top-2 before:h-7 before:w-1 before:rounded-r-full before:bg-primary'
-          : 'hover:bg-white/[0.06] hover:text-white',
+          ? 'admin-nav-item-active text-slate-900 before:absolute before:left-0 before:top-2 before:h-7 before:w-1 before:rounded-r-full before:bg-primary'
+          : 'hover:bg-white/[0.07] hover:text-white',
       )}
     >
       <Icon className={cn('h-5 w-5 shrink-0 md:h-[21px] md:w-[21px]', active ? 'text-primary' : 'text-slate-300')} />
@@ -77,11 +77,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <main className='min-h-screen overflow-x-hidden bg-[#111821] text-slate-950'>
+    <main className='admin-shell min-h-screen overflow-x-hidden text-slate-950'>
       <aside
         className={cn(
-          'border-b border-white/10 bg-[#111821] p-4 text-white shadow-[inset_-1px_0_0_rgba(255,255,255,0.06)] transition-[width] duration-200 md:fixed md:inset-y-0 md:left-0 md:z-30 md:flex md:h-screen md:flex-col md:border-b-0',
-          sidebarCollapsed ? 'md:w-[76px] md:p-4' : 'md:w-[252px] md:p-5',
+          'admin-sidebar border-b border-white/10 p-4 text-white transition-[width] duration-200 md:fixed md:inset-y-0 md:left-0 md:z-30 md:flex md:h-screen md:flex-col md:border-b-0',
+          sidebarCollapsed ? 'md:w-[76px] md:p-4' : 'md:w-[228px] md:p-4',
         )}
       >
         <div className={cn('flex items-center justify-between gap-3', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:flex-row')}>
@@ -148,11 +148,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <section className={cn('min-w-0 bg-[#f7faf8] p-4 transition-[margin] duration-200 md:min-h-screen md:rounded-l-[20px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[252px]')}>
+      <section className={cn('admin-workspace min-w-0 p-4 transition-[margin] duration-200 md:min-h-screen md:rounded-l-[24px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[228px]')}>
         <div className='flex min-h-[calc(100vh-4rem)] w-full max-w-none flex-col'>
           <div className='mb-3 flex items-center justify-end gap-3'>
             <AdminInboxBell />
-            <div className='hidden items-center gap-3 rounded-full bg-white px-4 py-2 shadow-sm ring-1 ring-slate-200/80 sm:flex'>
+            <div className='admin-account-chip hidden items-center gap-3 rounded-full px-4 py-2 sm:flex'>
               <div className='flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-primary'>АД</div>
               <div>
                 <p className='text-sm font-bold text-slate-950'>Администратор</p>
