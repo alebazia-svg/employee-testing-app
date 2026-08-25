@@ -2,7 +2,7 @@
   "name": "OFFONIKA Portal",
   "short_name": "OFFONIKA",
   "description": "Рабочий портал OFFONIKA",
-  "start_url": "/employee",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#111821",
