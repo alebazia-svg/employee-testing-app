@@ -1824,6 +1824,8 @@ export function EmployeeTodayClient({
       amount: cashOperationDraft.amount,
       comment: cashOperationDraft.comment,
       photo: file,
+      photoName: file.name || `cash-operation-${cashOperationDraft.idempotencyKey}.jpg`,
+      photoType: file.type || 'image/jpeg',
       lastError: '',
     };
 

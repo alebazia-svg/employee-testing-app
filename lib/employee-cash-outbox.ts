@@ -8,7 +8,9 @@ export type EmployeeCashOutboxItem = {
   direction: string;
   amount: string;
   comment: string;
-  photo: File;
+  photo: Blob;
+  photoName?: string;
+  photoType?: string;
   lastError: string;
 };
 
@@ -55,11 +57,19 @@ export function listEmployeeCashOutboxItems() {
 }
 
 export function cashOutboxFormData(item: EmployeeCashOutboxItem) {
+  if (!(item.photo instanceof Blob) || item.photo.size <= 0) {
+    throw new Error('Сохранённая фотография повреждена. Обратитесь к администратору — сумму и запись не удаляйте.');
+  }
+  // WebKit may restore a File from IndexedDB as a plain Blob. Rebuilding it
+  // with an explicit filename keeps the multipart body valid on iOS/PWA.
+  const photoType = item.photoType || item.photo.type || 'image/jpeg';
+  const photoName = item.photoName || `cash-operation-${item.id}.jpg`;
+  const photo = new File([item.photo], photoName, { type: photoType, lastModified: Date.now() });
   const formData = new FormData();
   formData.append('direction', item.direction);
   formData.append('amount', item.amount);
   formData.append('comment', item.comment);
   formData.append('idempotencyKey', item.id);
-  formData.append('photo', item.photo);
+  formData.append('photo', photo, photo.name);
   return formData;
 }
