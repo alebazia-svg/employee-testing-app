@@ -129,7 +129,7 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
 
   const activeWorkDay = [todayWorkDay, unfinishedWorkDay].find((entry) => entry && !entry.endedAt && ['active', 'missing_checkout'].includes(entry.status)) ?? null;
   const [requiredIssues, paymentChecks, closeExceptionRequest, cashEncashmentExceptionRequest] = await Promise.all([
-    findOpenRequiredWorkdayIssues(prisma, user.id),
+    findOpenRequiredWorkdayIssues(prisma, user.id, activeWorkDay?.date),
     prisma.terminalFiscalEmployeeReview.findMany({
       where: { employeeId: user.id, status: 'open' },
       orderBy: [{ bankOperationAt: 'asc' }, { id: 'asc' }],

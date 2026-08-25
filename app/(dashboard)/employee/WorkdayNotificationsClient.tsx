@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Bell, CheckCircle2, ChevronRight, Clock3, MessageCircle, X } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle2, ChevronRight, Clock3, MessageCircle, ReceiptText, X } from 'lucide-react';
 
 type WorkdayNotification = {
   id: number;
@@ -15,18 +15,20 @@ type WorkdayNotification = {
 
 function NotificationMarker({ notification }: { notification: WorkdayNotification }) {
   if (notification.kind.endsWith('_reply')) {
-    return <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'><MessageCircle className='h-4 w-4' /></span>;
+    return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><MessageCircle className='h-4 w-4' /></span>;
   }
   if (notification.kind === 'workday_close_exception_decision') {
     const rejected = notification.title.includes('не согласовано');
     return rejected
-      ? <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-100'><AlertTriangle className='h-4 w-4' /></span>
-      : <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'><CheckCircle2 className='h-4 w-4' /></span>;
+      ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-4 w-4' /></span>
+      : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><CheckCircle2 className='h-4 w-4' /></span>;
   }
   if (['issue_detected', 'issue_reminder', 'terminal_fiscal_review'].includes(notification.kind)) {
-    return <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700 ring-1 ring-amber-100'><AlertTriangle className='h-4 w-4' /></span>;
+    return notification.kind === 'terminal_fiscal_review'
+      ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><ReceiptText className='h-4 w-4' /></span>
+      : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-4 w-4' /></span>;
   }
-  return <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'><Clock3 className='h-4 w-4' /></span>;
+  return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><Clock3 className='h-4 w-4' /></span>;
 }
 
 function urlBase64ToUint8Array(value: string) {
@@ -167,13 +169,13 @@ export function WorkdayNotificationsClient() {
           ) : (
             <div className='max-h-80 overflow-y-auto'>
               {notifications.map((notification) => (
-                <button key={notification.id} type='button' onClick={() => void openNotification(notification)} className='flex w-full items-start gap-2 border-b border-slate-100 px-3 py-3 text-left last:border-b-0'>
+                <button key={notification.id} type='button' onClick={() => void openNotification(notification)} className='employee-material-notification-item flex w-full items-start gap-3 border-b border-slate-200/60 px-3 py-3.5 text-left last:border-b-0'>
                   <NotificationMarker notification={notification} />
                   <span className='min-w-0 flex-1'>
-                    <p className='text-sm font-extrabold'>{notification.title}</p>
-                    <p className='mt-0.5 text-xs font-semibold leading-snug text-slate-600'>{notification.body}</p>
+                    <p className='text-sm font-black leading-snug text-[#273137]'>{notification.title}</p>
+                    <p className='mt-1 text-xs font-semibold leading-snug text-[#59646b]'>{notification.body}</p>
                   </span>
-                  <ChevronRight className='mt-0.5 h-4 w-4 shrink-0 text-slate-400' />
+                  <ChevronRight className='mt-1 h-4 w-4 shrink-0 text-[#455158]' />
                 </button>
               ))}
             </div>

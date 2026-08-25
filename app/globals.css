@@ -452,6 +452,56 @@ select {
     -4px -4px 9px rgba(255, 255, 255, 0.88) !important;
 }
 
+.employee-material-ui button:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.42) contrast(0.88);
+  opacity: 0.58 !important;
+  box-shadow: inset 2px 2px 5px rgba(88, 86, 80, 0.13), inset -2px -2px 5px rgba(255, 255, 255, 0.78) !important;
+  text-shadow: none;
+}
+
+.employee-material-message {
+  width: fit-content;
+  box-shadow: 4px 6px 12px rgba(79, 80, 77, 0.16), -2px -2px 6px rgba(255, 255, 255, 0.72);
+}
+
+.employee-material-message-own {
+  border: 1px solid rgba(73, 84, 89, 0.72);
+  border-radius: 22px 22px 8px 22px;
+  background:
+    radial-gradient(circle at 16% 0, rgba(255, 255, 255, 0.08), transparent 34%),
+    linear-gradient(145deg, #3b464b, #293237);
+}
+
+.employee-material-message-admin {
+  border: 1px solid rgba(168, 224, 142, 0.48);
+  border-radius: 22px 22px 22px 8px;
+  background: linear-gradient(145deg, #f6fcef, #e1efd9);
+}
+
+.employee-material-notification-item {
+  position: relative;
+}
+
+.employee-material-notification-item::before {
+  width: 5px;
+  height: 5px;
+  margin-top: 13px;
+  flex: 0 0 5px;
+  content: "";
+  border-radius: 999px;
+  background: #51b411;
+  box-shadow: 0 0 0 3px rgba(81, 180, 17, 0.1);
+}
+
+.employee-material-alert-card {
+  border-color: rgba(229, 171, 52, 0.38) !important;
+  background:
+    radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.84), transparent 36%),
+    linear-gradient(145deg, #fffdf7, #f2ecdc) !important;
+  box-shadow: 8px 10px 19px rgba(126, 109, 73, 0.2), -5px -5px 12px rgba(255, 255, 255, 0.88) !important;
+}
+
 .employee-brand-material {
   position: relative;
   isolation: isolate;

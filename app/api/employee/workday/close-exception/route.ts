@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   });
   if (!workDay) return Response.json({ error: 'Нет активного рабочего дня' }, { status: 404 });
 
-  const issues = await findOpenRequiredWorkdayIssues(prisma, user.id);
+  const issues = await findOpenRequiredWorkdayIssues(prisma, user.id, workDay.date);
   const issueIds = issues.map((issue) => issue.id).sort((a, b) => a - b);
   if (!issueIds.length) return Response.json({ error: 'Обязательных неисправленных ошибок уже нет' }, { status: 409 });
 

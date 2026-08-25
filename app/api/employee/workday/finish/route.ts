@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const requiredIssues = await findOpenRequiredWorkdayIssues(prisma, user.id);
+  const requiredIssues = await findOpenRequiredWorkdayIssues(prisma, user.id, activeWorkDay.date);
   const requiredIssueIds = requiredIssues.map((issue) => issue.id).sort((a, b) => a - b);
   const closeException = requiredIssueIds.length
     ? await findApprovedCloseException(prisma, activeWorkDay.id, requiredIssueIds)

@@ -66,7 +66,7 @@ export function TerminalFiscalReviewConversation({
           const own = message.author.id === currentUserId;
           return (
             <div key={message.id} className={`flex ${own ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[88%] rounded-2xl px-4 py-3 ${own ? 'employee-material-primary-action text-white' : 'employee-material-subcard bg-slate-100 text-slate-900'}`}>
+              <div className={`employee-material-message max-w-[84%] px-4 py-3 ${own ? 'employee-material-message-own text-white' : 'employee-material-message-admin text-slate-900'}`}>
                 <p className='text-xs font-bold opacity-70'>{own ? 'Вы' : message.author.name}</p>
                 <p className='mt-1 whitespace-pre-wrap text-sm font-medium leading-relaxed'>{message.body}</p>
                 <p className='mt-1 text-[11px] font-semibold opacity-55'>{when(message.createdAt)}</p>

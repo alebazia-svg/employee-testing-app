@@ -947,7 +947,7 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-function ColleagueGroup({ title, people, tone }: { title: string; people: UserSummary[]; tone: 'green' | 'slate' | 'amber' }) {
+function ColleagueGroup({ title, people, tone, emptyLabel = 'Нет сотрудников' }: { title: string; people: UserSummary[]; tone: 'green' | 'slate' | 'amber'; emptyLabel?: string }) {
   const dotClass = tone === 'green' ? 'bg-primary' : tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400';
 
   return (
@@ -971,7 +971,7 @@ function ColleagueGroup({ title, people, tone }: { title: string; people: UserSu
           ))}
         </div>
       ) : (
-        <p className='text-sm font-medium text-slate-400'>Нет сотрудников</p>
+        <p className='text-sm font-medium text-slate-500'>{emptyLabel}</p>
       )}
     </section>
   );
@@ -1022,6 +1022,7 @@ export function EmployeeTodayClient({
   const [staleCloseReason, setStaleCloseReason] = useState('');
   const [staleCloseComment, setStaleCloseComment] = useState('');
   const [showFullSchedule, setShowFullSchedule] = useState(false);
+  const [showInactiveColleagues, setShowInactiveColleagues] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('list');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
@@ -1611,7 +1612,12 @@ export function EmployeeTodayClient({
       const response = await fetch('/api/employee/workday/finish', { method: 'POST' });
       const payload = await response.json();
       if (!response.ok) {
-        if (payload.code === 'OPEN_REQUIRED_ISSUES') setCloseBlocked(true);
+        if (payload.code === 'OPEN_REQUIRED_ISSUES') {
+          setCloseBlocked(true);
+          if (Array.isArray(payload.issues)) setRequiredIssuesState(payload.issues);
+          window.setTimeout(() => document.getElementById('employee-close-exception')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+          return;
+        }
         throw new Error(payload.error || 'Не удалось завершить рабочий день');
       }
       if (payload.workDay.date === today) setWorkDay(payload.workDay);
@@ -1652,7 +1658,12 @@ export function EmployeeTodayClient({
       });
       const payload = await response.json();
       if (!response.ok) {
-        if (payload.code === 'OPEN_REQUIRED_ISSUES') setCloseBlocked(true);
+        if (payload.code === 'OPEN_REQUIRED_ISSUES') {
+          setCloseBlocked(true);
+          if (Array.isArray(payload.issues)) setRequiredIssuesState(payload.issues);
+          window.setTimeout(() => document.getElementById('employee-close-exception')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+          return;
+        }
         throw new Error(payload.error || 'Не удалось завершить предыдущий рабочий день');
       }
       setUnfinished(null);
@@ -2542,19 +2553,29 @@ export function EmployeeTodayClient({
   useEffect(() => {
     const request = closeExceptionRequestState;
     const task = shiftControlTasks.find((item) => item.category === 'handover' && item.status !== 'done') ?? null;
-    if (request?.status !== 'approved' || !closeExceptionMatchesCurrentIssues || !task || isCompleted || isSaving) {
+    if (request?.status !== 'approved' || !closeExceptionMatchesCurrentIssues || isCompleted || isSaving) {
       if (request?.status !== 'approved') approvedRequiredIssuesAutoFinishRef.current = null;
       return;
     }
 
-    const attemptKey = `${request.id}:${task.id}`;
+    const targetKey = unfinished ? `stale:${unfinished.id}` : task ? `task:${task.id}` : activeWorkDay ? `workday:${activeWorkDay.id}` : '';
+    if (!targetKey) return;
+    const attemptKey = `${request.id}:${targetKey}`;
     if (approvedRequiredIssuesAutoFinishRef.current === attemptKey) return;
     approvedRequiredIssuesAutoFinishRef.current = attemptKey;
+    setMessage('Администратор разрешил завершение. Закрываем рабочий день…');
+    if (unfinished) {
+      void finishUnfinishedWorkDay();
+      return;
+    }
+    if (!task) {
+      void finishWorkDay();
+      return;
+    }
     const savedDraft = isRecord(task.handoverData) ? draftFromHandoverData(task.handoverData) : handoverDraft;
     setHandoverDraft(savedDraft);
-    setMessage('Администратор разрешил завершение. Завершаем рабочий день…');
     void submitHandover(task, savedDraft, buildHandoverSteps(savedDraft));
-  }, [closeExceptionMatchesCurrentIssues, closeExceptionRequestState, handoverDraft, isCompleted, isSaving, shiftControlTasks]);
+  }, [activeWorkDay, closeExceptionMatchesCurrentIssues, closeExceptionRequestState, handoverDraft, isCompleted, isSaving, shiftControlTasks, staleCloseComment, staleCloseReason, unfinished]);
 
   async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
     if (!file) return;
@@ -3087,7 +3108,7 @@ export function EmployeeTodayClient({
             </div>
           ) : null}
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
-            <Card className='mb-4 border-amber-200 bg-amber-50'>
+            <Card className='employee-material-alert-card mb-4 border-amber-200 bg-amber-50'>
               <div className='flex items-start gap-3'>
                 <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' />
                 <div className='flex-1'>
@@ -3168,7 +3189,7 @@ export function EmployeeTodayClient({
 
           {activeTab === 'day' && (
             <div className='space-y-3'>
-              {!workDay && (
+              {!workDay && !unfinished && (
                 <Card className='space-y-3 p-4'>
                   <div className='flex items-start gap-3'>
                     <span className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
@@ -3254,9 +3275,16 @@ export function EmployeeTodayClient({
                 </Link>
               )}
 
-              {activeWorkDay && closeBlocked && requiredIssuesState.length > 0 && (
-                <Card className='space-y-3 border-amber-200 bg-white p-4'>
-                  <div><h2 className='text-base font-black text-slate-950'>Завершение рабочего дня</h2><p className='mt-1 text-sm font-semibold leading-relaxed text-slate-600'>Сначала исправьте обязательную проблему. Если это невозможно по технической причине, запросите разрешение администратора.</p></div>
+              {(activeWorkDay || unfinished) && closeBlocked && requiredIssuesState.length > 0 && (
+                <Card id='employee-close-exception' className='space-y-3 border-amber-200 bg-white p-4 scroll-mt-4'>
+                  <div>
+                    <h2 className='text-base font-black text-slate-950'>{unfinished ? 'Как закрыть предыдущий день' : 'Завершение рабочего дня'}</h2>
+                    <p className='mt-1 text-sm font-semibold leading-relaxed text-slate-600'>
+                      {unfinished
+                        ? 'В закрываемой смене осталась обязательная проблема. Откройте её выше и исправьте. Если это технически невозможно, отправьте администратору запрос — после одобрения портал закроет именно предыдущий день.'
+                        : 'Сначала исправьте обязательную проблему. Если это невозможно по технической причине, запросите разрешение администратора.'}
+                    </p>
+                  </div>
                   {closeExceptionRequestState?.status === 'pending' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold text-amber-800'>Запрос отправлен · ожидает решения администратора</p>}
                   {closeExceptionRequestState?.status === 'approved' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Администратор разрешил завершить день. Портал завершает смену автоматически; сами проблемы останутся открытыми.</p>}
                   {closeExceptionRequestState?.status === 'rejected' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-800'>Запрос не согласован{closeExceptionRequestState.decisionComment ? `: ${closeExceptionRequestState.decisionComment}` : ''}</p>}
@@ -3265,7 +3293,7 @@ export function EmployeeTodayClient({
                     <div className='space-y-2'>
                       <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает ККМ</option><option value='other'>Другая причина</option></select>
                       <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Коротко опишите ситуацию' />
-                      <Button type='button' className='h-11 w-full bg-white font-extrabold text-slate-900 ring-1 ring-slate-200 shadow-none hover:bg-slate-50' disabled={isSaving} onClick={requestCloseException}>Запросить разрешение</Button>
+                      <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={isSaving} onClick={requestCloseException}>Запросить разрешение администратора</Button>
                     </div>
                   )}
                 </Card>
@@ -3559,11 +3587,22 @@ export function EmployeeTodayClient({
                   <span className='employee-material-heading-icon'><Users className='h-5 w-5 text-primary' /></span>
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
                 </div>
-                <ColleagueGroup title='Работают сейчас' people={workingColleagues} tone='green' />
+                <ColleagueGroup title='Работают сейчас' people={workingColleagues} tone='green' emptyLabel='Сейчас никто не работает' />
                 {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' />}
-                {scheduledColleagues.length > 0 && <ColleagueGroup title='По графику — ещё не начали' people={scheduledColleagues} tone='amber' />}
-                {offColleagues.length > 0 && <ColleagueGroup title='Выходной' people={offColleagues} tone='slate' />}
-                {missingColleagues.length > 0 && <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' />}
+                {scheduledColleagues.length > 0 && <ColleagueGroup title='Ожидаются сегодня' people={scheduledColleagues} tone='amber' />}
+                {offColleagues.length + missingColleagues.length > 0 && (
+                  <Button
+                    type='button'
+                    className='employee-material-secondary-action h-10 w-full gap-2 text-xs font-extrabold'
+                    onClick={() => setShowInactiveColleagues((current) => !current)}
+                    aria-expanded={showInactiveColleagues}
+                  >
+                    {showInactiveColleagues ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
+                    {showInactiveColleagues ? 'Скрыть неработающих' : `Не работают сегодня · ${offColleagues.length + missingColleagues.length}`}
+                  </Button>
+                )}
+                {showInactiveColleagues && offColleagues.length > 0 && <ColleagueGroup title='Выходной' people={offColleagues} tone='slate' />}
+                {showInactiveColleagues && missingColleagues.length > 0 && <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' />}
               </Card>
             </div>
           )}

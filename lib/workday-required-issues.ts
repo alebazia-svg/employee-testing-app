@@ -16,9 +16,14 @@ export const workdayRequiredIssueSelect = {
   lastDetectedAt: true,
 } satisfies Prisma.WorkdayControlIssueSelect;
 
-export async function findOpenRequiredWorkdayIssues(db: Db, userId: number) {
+export async function findOpenRequiredWorkdayIssues(db: Db, userId: number, throughDate?: string) {
   return db.workdayControlIssue.findMany({
-    where: { userId, status: 'open', employeeActionRequired: true },
+    where: {
+      userId,
+      status: 'open',
+      employeeActionRequired: true,
+      ...(throughDate ? { originDate: { lte: throughDate } } : {}),
+    },
     select: workdayRequiredIssueSelect,
     orderBy: [{ severity: 'desc' }, { detectedAt: 'asc' }],
   });
