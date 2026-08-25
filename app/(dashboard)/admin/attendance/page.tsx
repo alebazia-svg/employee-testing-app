@@ -617,7 +617,23 @@ function RawTable({ rows }: { rows: ParsedMark[] }) {
 
 function EmployeeTotalsTable({ rows }: { rows: EmployeeSummary[] }) {
   return (
-    <Table>
+    <>
+      <div className='grid gap-3 p-3 md:hidden'>
+        {rows.map((row) => (
+          <div key={row.employee} className='admin-material-card rounded-2xl p-4'>
+            <div className='flex items-start justify-between gap-3'><p className='font-extrabold text-slate-950'>{displayEmployeeName(row.employee)}</p><Badge className={hasViolation(row) ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>{hasViolation(row) ? `${row.totalViolations} наруш.` : 'Без нарушений'}</Badge></div>
+            <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
+              <MobileStat label='Дней с отметками' value={row.daysWithMarks} />
+              <MobileStat label='Полных дней' value={row.fullDays} />
+              <MobileStat label='Опозданий' value={row.lateDays} tone={row.lateDays ? 'amber' : 'slate'} />
+              <MobileStat label='Проблем с отметками' value={row.markProblemDays} tone={row.markProblemDays ? 'red' : 'slate'} />
+              <MobileStat label='Отработано' value={formatDuration(row.totalWorkedMinutes)} />
+              <MobileStat label='Проблемный %' value={`${row.problemsRate}%`} tone={row.problemsRate > 30 ? 'red' : 'slate'} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className='hidden md:block'><Table>
       <thead className='bg-slate-50 text-slate-500'>
         <tr className='text-left'>
           <th className='px-5 py-4'>Сотрудник</th>
@@ -670,13 +686,30 @@ function EmployeeTotalsTable({ rows }: { rows: EmployeeSummary[] }) {
           </tr>
         ))}
       </tbody>
-    </Table>
+      </Table></div>
+    </>
   );
 }
 
 function PlanEmployeeTotalsTable({ rows }: { rows: PlanEmployeeSummary[] }) {
   return (
-    <Table>
+    <>
+      <div className='grid gap-3 p-3 md:hidden'>
+        {rows.map((row) => (
+          <div key={`${row.department}-${row.employee}`} className='admin-material-card rounded-2xl p-4'>
+            <div className='flex items-start justify-between gap-3'><div><p className='font-extrabold text-slate-950'>{displayEmployeeName(row.employee)}</p><p className='mt-0.5 text-xs font-semibold text-slate-500'>{row.department}</p></div><Badge className={row.attendanceRate === 100 ? 'bg-green-100 text-green-800' : row.attendanceRate >= 80 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}>{row.attendanceRate}% явки</Badge></div>
+            <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
+              <MobileStat label='План / явка' value={`${row.plannedDays} / ${row.attendanceDays}`} />
+              <MobileStat label='Полных дней' value={row.fullDays} />
+              <MobileStat label='Нет явки' value={row.missedDays} tone={row.missedDays ? 'red' : 'slate'} />
+              <MobileStat label='Опозданий' value={row.lateDays} tone={row.lateDays ? 'amber' : 'slate'} />
+              <MobileStat label='Нет ухода' value={row.noDepartureDays} tone={row.noDepartureDays ? 'amber' : 'slate'} />
+              <MobileStat label='Отработано' value={formatDuration(row.totalWorkedMinutes)} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className='hidden md:block'><Table>
       <thead className='bg-slate-50 text-slate-500'>
         <tr className='text-left'>
           <th className='px-5 py-4'>Подразделение</th>
@@ -715,8 +748,14 @@ function PlanEmployeeTotalsTable({ rows }: { rows: PlanEmployeeSummary[] }) {
           </tr>
         ))}
       </tbody>
-    </Table>
+      </Table></div>
+    </>
   );
+}
+
+function MobileStat({ label, value, tone = 'slate' }: { label: string; value: string | number; tone?: 'slate' | 'amber' | 'red' }) {
+  const valueClass = tone === 'red' ? 'text-red-700' : tone === 'amber' ? 'text-amber-700' : 'text-slate-800';
+  return <div className='rounded-xl bg-white/70 px-3 py-2 ring-1 ring-white'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>{label}</p><p className={`mt-1 font-extrabold ${valueClass}`}>{value}</p></div>;
 }
 
 function plannedWorkLabel(value: boolean | null, hasSchedule = true) {

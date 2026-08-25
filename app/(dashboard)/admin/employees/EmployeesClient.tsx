@@ -141,7 +141,28 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
         </Card>
       )}
 
-      <Card className='overflow-hidden p-0'>
+      <div className='grid gap-3 md:hidden'>
+        {filteredUsers.map((user) => (
+          <Card key={user.id} className='admin-material-card p-4'>
+            <div className='flex items-start justify-between gap-3'>
+              <div className='min-w-0'>
+                <p className='font-extrabold text-slate-950'>{user.name}</p>
+                <p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p>
+              </div>
+              <Badge className={user.isActive ? 'shrink-0 bg-green-100 text-green-800' : 'shrink-0 bg-slate-100 text-slate-500'}>{user.isActive ? 'Активен' : 'Отключён'}</Badge>
+            </div>
+            <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
+              <div><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Отдел</p><p className='mt-1 font-bold text-slate-700'>{departmentLabels[user.department] ?? user.department}</p></div>
+              <div><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Роль</p><p className='mt-1 font-bold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</p></div>
+              <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Для зарплаты</p><p className='mt-1 font-bold text-slate-700'>{user.payrollName?.trim() || user.name}</p></div>
+            </div>
+            <Button className='mt-4 h-10 w-full gap-2 bg-white text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}><Pencil className='h-4 w-4' />Настроить</Button>
+          </Card>
+        ))}
+        {!filteredUsers.length && <Card className='p-8 text-center text-sm font-medium text-slate-500'>По выбранному фильтру сотрудников нет.</Card>}
+      </div>
+
+      <Card className='hidden overflow-hidden p-0 md:block'>
         <Table>
           <thead className='bg-slate-50 text-slate-500'>
             <tr className='text-left'>

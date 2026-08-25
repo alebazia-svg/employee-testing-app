@@ -1561,22 +1561,23 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
           actions={<>
             <Link
               href={`/admin/workday?date=${previousDate}`}
+              aria-label='Предыдущий день'
               className='admin-material-control rounded-lg px-3 py-2 text-sm font-bold text-slate-700 transition'
             >
-              ← Предыдущий
+              ← <span className='hidden sm:inline'>Предыдущий</span>
             </Link>
             <Badge className='admin-material-control w-fit px-3 py-2 text-slate-700'>{formatDateLabel(selectedDate)}</Badge>
             <Link
               href={`/admin/workday?date=${nextDate}`}
               className='admin-material-control rounded-lg px-3 py-2 text-sm font-bold text-slate-700 transition'
             >
-              Следующий →
+              <span className='hidden sm:inline'>Следующий</span> →
             </Link>
             <Link
               href='/admin/workday'
               className='admin-material-primary rounded-lg px-3 py-2 text-sm font-extrabold text-white transition'
             >
-              Сегодня
+              <span className='sm:hidden'>Сегодня</span><span className='hidden sm:inline'>Сегодня</span>
             </Link>
             <WorkdayQrCodes />
           </>}

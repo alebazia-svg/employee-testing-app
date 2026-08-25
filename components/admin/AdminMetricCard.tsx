@@ -22,15 +22,15 @@ export function AdminMetricCard({
   tone?: keyof typeof tones;
 }) {
   return (
-    <div className='admin-material-card rounded-2xl p-4'>
-      <div className='flex items-start gap-3'>
-        <div className={cn('admin-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', tones[tone])}>
+    <div className='admin-material-card rounded-2xl p-3 sm:p-4'>
+      <div className='flex items-start gap-2 sm:gap-3'>
+        <div className={cn('admin-material-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10', tones[tone])}>
           <Icon className='h-5 w-5' />
         </div>
         <div className='min-w-0'>
-          <p className='text-xs font-extrabold uppercase tracking-[0.08em] text-slate-500'>{label}</p>
+          <p className='text-[10px] font-extrabold uppercase leading-[1.25] tracking-[0.04em] text-slate-500 sm:text-xs sm:tracking-[0.08em]'>{label}</p>
           <p className='mt-1 text-2xl font-extrabold text-slate-950'>{value}</p>
-          {detail && <p className='mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-500'>{detail}</p>}
+          {detail && <p className='mt-1 hidden line-clamp-2 text-xs font-medium leading-relaxed text-slate-500 sm:block'>{detail}</p>}
         </div>
       </div>
     </div>

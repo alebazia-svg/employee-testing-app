@@ -61,7 +61,13 @@ export function AdminInboxListClient({ initialItems }: { initialItems: AdminInbo
           <div><h2 className='text-lg font-extrabold text-slate-950'>События</h2><p className='mt-1 text-xs font-medium text-slate-500'>Непрочитанных: {unread}</p></div>
           {unread > 0 && <button type='button' onClick={() => void markAll()} className='inline-flex w-fit items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
         </div>
-        <div className='mt-4 flex gap-2 overflow-x-auto pb-1'>
+        <label className='mt-4 block sm:hidden'>
+          <span className='sr-only'>Категория уведомлений</span>
+          <select value={filter} onChange={(event) => { setFilter(event.target.value as Filter); setShown(PAGE_SIZE); }} className='admin-material-control w-full rounded-xl bg-white px-3 py-2.5 text-sm font-extrabold text-slate-700 outline-none'>
+            {filters.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+          </select>
+        </label>
+        <div className='mt-4 hidden gap-2 overflow-x-auto pb-1 sm:flex'>
           {filters.map((item) => <button key={item.key} type='button' onClick={() => { setFilter(item.key); setShown(PAGE_SIZE); }} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold transition ${filter === item.key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{item.label}</button>)}
         </div>
       </div>

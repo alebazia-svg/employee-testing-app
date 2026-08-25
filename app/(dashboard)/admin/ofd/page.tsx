@@ -2211,7 +2211,7 @@ function ReturnCard({
 }
 
 const REGISTRY_GRID_CLASS =
-  'grid min-w-[1180px] grid-cols-[180px_190px_250px_220px_210px_260px_120px] gap-3';
+  'grid grid-cols-1 gap-3 md:min-w-[1180px] md:grid-cols-[180px_190px_250px_220px_210px_260px_120px]';
 
 function linkedGroupText(group?: OneCLinkedDocumentGroup) {
   if (!group) return 'не проверено';
@@ -2365,25 +2365,30 @@ function EventRegistryRow({
       <summary className='cursor-pointer list-none px-4 py-3 transition-colors hover:bg-slate-50 [&::-webkit-details-marker]:hidden'>
         <div className={`${REGISTRY_GRID_CLASS} items-start text-sm`}>
           <div>
+            <p className='mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400 md:hidden'>Статус</p>
             <Badge className={businessUiClass(status)}>{businessUiLabel(status)}</Badge>
             {classification.eventType === 'fixed_with_discrepancies' ? (
               <p className='mt-1 text-xs font-bold text-amber-700'>исправлено с замечанием</p>
             ) : null}
           </div>
-          <div className='font-semibold text-slate-800'>{manager}</div>
+          <div className='font-semibold text-slate-800'><p className='mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400 md:hidden'>Ответственный</p>{manager}</div>
           <div>
+            <p className='mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400 md:hidden'>Чек OFD</p>
             <p className='font-extrabold text-slate-950'>{ofdText}</p>
             <p className='mt-1 line-clamp-1 text-xs font-semibold text-slate-500'>{primaryItemName(sample.itemsPreview)}</p>
           </div>
           <div>
+            <p className='mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400 md:hidden'>Реализация 1С</p>
             <p className='font-extrabold text-slate-950'>{saleText}</p>
             <p className='mt-1 line-clamp-1 text-xs font-semibold text-slate-500'>{document ? `${formatDate(document.date)} · ${document.counterpartyName || document.partnerName || 'контрагент не определён'}` : 'нет подтверждённой реализации'}</p>
           </div>
           <div>
+            <p className='mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400 md:hidden'>Что сделать</p>
             <p className='font-extrabold text-slate-950'>{businessActionText(classification)}</p>
             <p className='mt-1 line-clamp-1 text-xs font-semibold text-slate-500'>{status === 'fixed' || status === 'info' ? 'без срочного действия' : 'нужно проверить вручную'}</p>
           </div>
           <div>
+            <p className='mb-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400 md:hidden'>Почему</p>
             <p className='line-clamp-2 font-semibold text-slate-800'>{businessWhyText(classification)}</p>
             {sample.ofdIncomplete ? (
               <p className='mt-1 text-xs font-extrabold text-red-700'>Цепочка может быть неполной: OFD загружен не полностью</p>
@@ -2797,7 +2802,7 @@ export default async function AdminOfdPage({
       {samples.length ? (
         filteredRows.length ? (
           <div className='overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm'>
-            <div className={`${REGISTRY_GRID_CLASS} bg-slate-50 px-4 py-3 text-xs font-extrabold uppercase text-slate-500`}>
+            <div className={`${REGISTRY_GRID_CLASS} hidden bg-slate-50 px-4 py-3 text-xs font-extrabold uppercase text-slate-500 md:grid`}>
               <div>Бизнес-статус</div>
               <div>Ответственный</div>
               <div>Чек OFD</div>
