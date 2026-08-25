@@ -96,7 +96,7 @@ export default async function AdminPage() {
     <AdminShell>
       <AdminPageHeader eyebrow='Операционная сводка' title='Сегодня' description='Кто работает, что требует исправления и где необходимо именно ваше решение.' />
 
-      <section className='mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+      <section className='mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4'>
         <AdminMetricCard icon={UserCheck} label='Работают сейчас' value={todaySummary.working} detail={workingNames.join(', ') || 'Никто не начал день'} tone='green' />
         <AdminMetricCard icon={AlertTriangle} label='Нужно моё решение' value={actions.length} detail={actions.length ? 'Откройте карточки ниже' : 'Моих действий сейчас нет'} tone={actions.length ? 'red' : 'slate'} />
         <AdminMetricCard icon={ShieldAlert} label='Исправляют сотрудники' value={issues.length + reviews.filter((item) => item.status === 'open').length} detail={employeeProblems.length ? 'Проблемы остаются активными до исправления' : 'Активных проблем нет'} tone={employeeProblems.length ? 'amber' : 'slate'} />

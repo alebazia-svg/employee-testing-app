@@ -89,15 +89,15 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
         <div className='self-start rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200 sm:self-auto'>Обновление каждые 3 минуты</div>
       </div>
 
-      <section className='mt-5 grid gap-3 sm:grid-cols-3'>
+      <section className='mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3'>
         {[
           { label: 'Новые', value: unreadCount, hint: 'ещё не открыты', icon: Inbox, tone: 'text-amber-700 bg-amber-50' },
           { label: 'Нужно уточнить', value: clarificationCount, hint: 'по текущим заявкам', icon: AlertCircle, tone: 'text-amber-800 bg-amber-50' },
           { label: 'Данных достаточно', value: completeCount, hint: 'по текущим заявкам', icon: CheckCircle2, tone: 'text-green-700 bg-green-50' },
         ].map((item) => (
-          <div key={item.label} className='flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200/80'>
+          <div key={item.label} className='flex min-w-0 items-center gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200/80 sm:p-4'>
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.tone}`}><item.icon className='h-5 w-5' /></div>
-            <div><p className='text-xl font-extrabold text-slate-950'>{item.value}</p><p className='text-sm font-bold text-slate-700'>{item.label}</p><p className='text-xs font-medium text-slate-400'>{item.hint}</p></div>
+            <div className='min-w-0'><p className='text-xl font-extrabold text-slate-950'>{item.value}</p><p className='text-sm font-bold leading-tight text-slate-700'>{item.label}</p><p className='mt-0.5 text-xs font-medium leading-tight text-slate-400'>{item.hint}</p></div>
           </div>
         ))}
       </section>

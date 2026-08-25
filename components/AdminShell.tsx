@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, PanelLeftClose, PanelLeftOpen, ReceiptText, Users, Wrench } from 'lucide-react';
+import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Users, Wrench, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
 import { AdminInboxBell } from '@/components/AdminInboxBell';
@@ -63,6 +63,8 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMoreActive = [...dailyNavigation.slice(3), ...periodicNavigation, ...serviceNavigation].some((item) => isActive(pathname, item.href));
 
   useEffect(() => {
     setSidebarCollapsed(window.localStorage.getItem('admin-sidebar-collapsed') === 'true');
@@ -78,9 +80,19 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <main className='admin-shell min-h-screen overflow-x-hidden text-slate-950'>
+      <header className='admin-mobile-header sticky top-0 z-40 flex items-center justify-between gap-3 px-4 py-3 md:hidden'>
+        <div className='w-[150px]'><BrandBlock size='employee' /></div>
+        <div className='flex items-center gap-2'>
+          <AdminInboxBell />
+          <button type='button' onClick={() => setMobileMenuOpen(true)} className='admin-material-control flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Открыть разделы админки'>
+            <Menu className='h-5 w-5' />
+          </button>
+        </div>
+      </header>
+
       <aside
         className={cn(
-          'admin-sidebar border-b border-white/10 p-4 text-white transition-[width] duration-200 md:fixed md:inset-y-0 md:left-0 md:z-30 md:flex md:h-screen md:flex-col md:border-b-0',
+          'admin-sidebar hidden border-b border-white/10 p-4 text-white transition-[width] duration-200 md:fixed md:inset-y-0 md:left-0 md:z-30 md:flex md:h-screen md:flex-col md:border-b-0',
           sidebarCollapsed ? 'md:w-[76px] md:p-4' : 'md:w-[228px] md:p-4',
         )}
       >
@@ -148,9 +160,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <section className={cn('admin-workspace min-w-0 p-4 transition-[margin] duration-200 md:min-h-screen md:rounded-l-[24px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[228px]')}>
+      <section className={cn('admin-workspace min-w-0 px-3 pb-28 pt-4 transition-[margin] duration-200 sm:px-4 md:min-h-screen md:rounded-l-[24px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[228px]')}>
         <div className='flex min-h-[calc(100vh-4rem)] w-full max-w-none flex-col'>
-          <div className='mb-3 flex items-center justify-end gap-3'>
+          <div className='mb-3 hidden items-center justify-end gap-3 md:flex'>
             <AdminInboxBell />
             <div className='admin-account-chip hidden items-center gap-3 rounded-full px-4 py-2 sm:flex'>
               <div className='flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-primary'>АД</div>
@@ -167,6 +179,34 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </footer>
         </div>
       </section>
+
+      <nav className='admin-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 gap-1 px-2 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-2 md:hidden' aria-label='Основная навигация админки'>
+        {dailyNavigation.slice(0, 3).map((item) => {
+          const Icon = item.icon;
+          const active = isActive(pathname, item.href);
+          return <Link key={item.href} href={item.href} className={cn('admin-mobile-nav-item flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-extrabold', active && 'is-active')}><Icon className='h-5 w-5' /><span>{item.label === 'Контроль дня' ? 'Контроль' : item.label}</span></Link>;
+        })}
+        <button type='button' onClick={() => setMobileMenuOpen(true)} className={cn('admin-mobile-nav-item flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-extrabold', (mobileMenuOpen || mobileMoreActive) && 'is-active')}><Menu className='h-5 w-5' /><span>Ещё</span></button>
+      </nav>
+
+      {mobileMenuOpen ? (
+        <div className='fixed inset-0 z-50 flex items-end bg-slate-950/45 p-3 backdrop-blur-sm md:hidden' onClick={() => setMobileMenuOpen(false)}>
+          <section className='admin-dialog-panel max-h-[86dvh] w-full overflow-y-auto rounded-3xl p-4' onClick={(event) => event.stopPropagation()} aria-label='Все разделы админки'>
+            <div className='mb-4 flex items-center justify-between gap-3'>
+              <div><p className='text-xs font-extrabold uppercase tracking-wide text-[#5eb70b]'>OFFONIKA</p><h2 className='text-xl font-extrabold text-slate-950'>Все разделы</h2></div>
+              <button type='button' onClick={() => setMobileMenuOpen(false)} className='admin-material-control flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Закрыть меню'><X className='h-5 w-5' /></button>
+            </div>
+            <div className='grid grid-cols-2 gap-2'>
+              {[...dailyNavigation.slice(3), ...periodicNavigation, ...serviceNavigation].map((item) => {
+                const Icon = item.icon;
+                const active = isActive(pathname, item.href);
+                return <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#5eb70b]' /><span>{item.label}</span></Link>;
+              })}
+            </div>
+            <LogoutButton className='admin-material-filter-active mt-3 w-full gap-2 bg-slate-950 text-white hover:bg-slate-900' />
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -66,8 +66,8 @@ export function AdminInboxListClient({ initialItems }: { initialItems: AdminInbo
         </div>
       </div>
       {visible.length === 0 ? <div className='px-6 py-14 text-center'><Bell className='mx-auto h-10 w-10 text-slate-300' /><p className='mt-3 font-extrabold text-slate-950'>В этой категории событий нет</p></div> : (
-        <><div className='divide-y divide-slate-100'>{visible.map((item) => (
-          <div key={item.id} className={`flex items-start gap-3 px-4 py-4 sm:px-5 ${item.readAt ? 'bg-white' : 'bg-amber-50/55'}`}>
+        <><div className='space-y-2 p-2.5 sm:space-y-0 sm:p-0'>{visible.map((item) => (
+          <div key={item.id} className={`flex items-start gap-3 rounded-xl border px-3 py-3 sm:rounded-none sm:border-x-0 sm:border-b-0 sm:px-5 sm:py-4 ${item.readAt ? 'admin-material-control border-white/80 bg-white sm:border-slate-100' : 'border-amber-200 bg-amber-50/55'}`}>
             <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-amber-400'}`} />
             <button type='button' onClick={() => void open(item)} className='min-w-0 flex-1 text-left'>
               <span className='flex flex-wrap items-center gap-2'><span className='text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${stateClass(item.sourceState.tone)}`}>{item.sourceState.label}</span></span>
