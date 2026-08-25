@@ -84,7 +84,8 @@ select {
   box-shadow: 7px 9px 18px rgba(8, 15, 18, 0.5), -2px -2px 8px rgba(255, 255, 255, 0.13), inset 0 1px rgba(255, 255, 255, 0.82);
 }
 
-.admin-nav-item-active svg { color: #4db82f !important; }
+.admin-nav-item-active svg { color: #5eb70b !important; }
+.admin-nav-item-active::before { background: #5eb70b !important; }
 
 .admin-workspace {
   background: radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.94), transparent 31%), linear-gradient(145deg, #f8f8f5 0%, #eef0ec 48%, #e7eae6 100%);
