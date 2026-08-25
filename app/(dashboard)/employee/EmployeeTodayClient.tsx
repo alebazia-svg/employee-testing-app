@@ -2670,7 +2670,7 @@ export function EmployeeTodayClient({
     );
 
     return (
-      <div className='rounded-xl bg-white p-3 ring-1 ring-slate-200/80'>
+      <div className='employee-material-form rounded-xl bg-white p-3 ring-1 ring-slate-200/80'>
         <div className='mb-3 flex items-start justify-between gap-3'>
           <div className='flex items-start gap-2'>
             <span className='mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'>
@@ -3050,10 +3050,10 @@ export function EmployeeTodayClient({
             <BrandBlock size='employee' />
             <div className='flex items-center gap-2'>
               <WorkdayNotificationsClient />
-              <div className='flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-xs font-extrabold text-white ring-1 ring-white/10'>
+              <div className='employee-material-header-action flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-xs font-extrabold text-white ring-1 ring-white/10'>
                 {initials(user.name)}
               </div>
-              <LogoutButton iconOnly title='Выйти' className='h-10 w-10 bg-white/[0.08] px-0 text-white ring-1 ring-white/10 hover:bg-white/[0.12]' />
+              <LogoutButton iconOnly title='Выйти' className='employee-material-header-action h-10 w-10 bg-white/[0.08] px-0 text-white ring-1 ring-white/10 hover:bg-white/[0.12]' />
             </div>
           </div>
 
@@ -3444,7 +3444,7 @@ export function EmployeeTodayClient({
                   )}
 
                   {cashOperationDraft.direction && (
-                    <div className='grid gap-2 rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200/80'>
+                    <div className='employee-material-form grid gap-2 rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200/80'>
                       <div className='flex items-center justify-between gap-2'>
                         <p className='text-sm font-extrabold text-slate-950'>
                           {cashOperationDraft.direction === 'phone_reserve' ? 'Пополнить резерв' : 'В депозитный сейф'}
@@ -3576,7 +3576,7 @@ export function EmployeeTodayClient({
                   <h2 className='text-xl font-extrabold text-slate-950'>График</h2>
                 </div>
 
-                <div className='grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1'>
+                <div className='employee-material-segment grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1'>
                   {[
                     { id: 'list' as const, label: 'Список' },
                     { id: 'month' as const, label: 'Месяц' },
@@ -3616,7 +3616,7 @@ export function EmployeeTodayClient({
                   <div className='flex items-center justify-between gap-2'>
                     <button
                       type='button'
-                      className='flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
+                      className='employee-material-calendar-nav flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
                       onClick={() => {
                         const next = addMonths(calendarMonth, -1);
                         setCalendarMonth(next);
@@ -3629,7 +3629,7 @@ export function EmployeeTodayClient({
                     <p className='text-base font-extrabold text-slate-950'>{monthTitle(calendarMonth)}</p>
                     <button
                       type='button'
-                      className='flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
+                      className='employee-material-calendar-nav flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
                       onClick={() => {
                         const next = addMonths(calendarMonth, 1);
                         setCalendarMonth(next);
@@ -3684,7 +3684,7 @@ export function EmployeeTodayClient({
                           type='button'
                           onClick={() => setSelectedScheduleDate(cell.date)}
                           className={cn(
-                            'flex min-h-[60px] min-w-0 flex-col rounded-md p-1 text-left ring-1 transition hover:scale-[1.01]',
+                            'employee-material-calendar-day flex min-h-[60px] min-w-0 flex-col rounded-md p-1 text-left ring-1 transition hover:scale-[1.01]',
                             statusClass,
                             !cell.inMonth && 'opacity-40',
                             selected && 'ring-2 ring-primary shadow-[0_8px_18px_rgba(81,180,17,0.16)]',

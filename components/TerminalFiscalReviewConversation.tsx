@@ -58,15 +58,15 @@ export function TerminalFiscalReviewConversation({
   }
 
   return (
-    <div>
+    <div className='employee-material-conversation'>
       <div className='space-y-2'>
         {messages.length === 0 ? (
-          <p className='rounded-xl bg-slate-50 px-4 py-4 text-sm font-medium text-slate-500'>Переписки пока нет.</p>
+          <p className='employee-material-subcard rounded-xl bg-slate-50 px-4 py-4 text-sm font-medium text-slate-500'>Переписки пока нет.</p>
         ) : messages.map((message) => {
           const own = message.author.id === currentUserId;
           return (
             <div key={message.id} className={`flex ${own ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[88%] rounded-2xl px-4 py-3 ${own ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-900'}`}>
+              <div className={`max-w-[88%] rounded-2xl px-4 py-3 ${own ? 'employee-material-primary-action text-white' : 'employee-material-subcard bg-slate-100 text-slate-900'}`}>
                 <p className='text-xs font-bold opacity-70'>{own ? 'Вы' : message.author.name}</p>
                 <p className='mt-1 whitespace-pre-wrap text-sm font-medium leading-relaxed'>{message.body}</p>
                 <p className='mt-1 text-[11px] font-semibold opacity-55'>{when(message.createdAt)}</p>
@@ -76,7 +76,7 @@ export function TerminalFiscalReviewConversation({
         })}
       </div>
       {!disabled ? (
-        <div className='mt-4 rounded-2xl border border-slate-200 bg-white p-3'>
+        <div className='employee-material-form mt-4 rounded-2xl border border-slate-200 bg-white p-3'>
           <textarea
             value={body}
             onChange={(event) => setBody(event.target.value)}
@@ -87,7 +87,7 @@ export function TerminalFiscalReviewConversation({
           />
           <div className='mt-2 flex items-center justify-between gap-3'>
             <span className='text-xs font-medium text-slate-400'>{body.length}/1000</span>
-            <button type='button' onClick={() => void send()} disabled={busy || !body.trim()} className='inline-flex items-center gap-2 rounded-xl bg-green-700 px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-50'>
+            <button type='button' onClick={() => void send()} disabled={busy || !body.trim()} className='employee-material-green-action inline-flex items-center gap-2 rounded-xl bg-green-700 px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-50'>
               <Send className='h-4 w-4' />{busy ? 'Отправляем…' : 'Отправить'}
             </button>
           </div>

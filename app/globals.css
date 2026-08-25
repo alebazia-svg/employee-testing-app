@@ -88,7 +88,7 @@ select {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 150 150' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.10'/%3E%3C/svg%3E");
 }
 
-.employee-material-shell > * {
+.employee-material-shell > :not(.employee-material-nav) {
   position: relative;
   z-index: 1;
 }
@@ -105,8 +105,7 @@ select {
   color: #677178 !important;
 }
 
-.employee-material-header button,
-.employee-material-header [class*="bg-white/["] {
+.employee-material-header-action {
   color: #fff !important;
   background: linear-gradient(145deg, #444e53, #283136) !important;
   border-color: rgba(75, 86, 91, 0.75) !important;
@@ -135,9 +134,16 @@ select {
 }
 
 .employee-material-nav {
+  position: fixed !important;
   border-color: rgba(255, 255, 255, 0.85) !important;
   background: rgba(248, 247, 243, 0.9) !important;
   box-shadow: 0 -15px 30px rgba(57, 62, 64, 0.12) !important;
+}
+
+@media (min-width: 768px) {
+  .employee-material-nav {
+    position: absolute !important;
+  }
 }
 
 .employee-material-tab {
@@ -224,6 +230,21 @@ select {
   box-shadow: 0 25px 55px rgba(30, 36, 39, 0.32), -5px -5px 14px rgba(255, 255, 255, 0.7) !important;
 }
 
+.employee-material-toast {
+  max-height: min(34vh, 220px);
+  overflow-y: auto;
+}
+
+.employee-material-toast.bg-red-50 {
+  border-color: rgba(239, 68, 68, 0.2) !important;
+  background: linear-gradient(145deg, #fffdfb, #f5e8e5) !important;
+}
+
+.employee-material-toast.bg-white {
+  border-color: rgba(81, 180, 17, 0.22) !important;
+  background: linear-gradient(145deg, #fdfff9, #e9f1e4) !important;
+}
+
 .employee-material-choice {
   border-color: rgba(255, 255, 255, 0.92) !important;
   border-radius: 20px !important;
@@ -244,6 +265,16 @@ select {
 
 .employee-material-popover button:not([aria-label]) {
   border-radius: 16px;
+}
+
+.employee-material-popover button:not([aria-label]):not(.employee-material-green-action) {
+  color: #30393e !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.employee-material-popover button:not([aria-label]):hover {
+  background: rgba(255, 255, 255, 0.58) !important;
 }
 
 .employee-material-popover {
@@ -302,6 +333,57 @@ select {
 .employee-material-secondary-action:hover {
   color: #263035 !important;
   background: linear-gradient(145deg, #fffefa, #ebe9e2) !important;
+}
+
+.employee-material-form {
+  border: 1px solid rgba(255, 255, 255, 0.9) !important;
+  border-radius: 18px !important;
+  background: linear-gradient(145deg, rgba(250, 249, 245, 0.9), rgba(232, 230, 223, 0.82)) !important;
+  box-shadow: inset 2px 2px 5px rgba(103, 99, 91, 0.1), inset -2px -2px 5px rgba(255, 255, 255, 0.9);
+}
+
+.employee-material-form button.bg-slate-100,
+.employee-material-form button.bg-white {
+  border: 1px solid rgba(255, 255, 255, 0.94) !important;
+  color: #30393e !important;
+  background: linear-gradient(145deg, #fdfcf8, #e6e4dd) !important;
+  box-shadow: 4px 5px 10px rgba(117, 113, 104, 0.22), -3px -3px 7px rgba(255, 255, 255, 0.92) !important;
+}
+
+.employee-material-ui input:not([type="file"]),
+.employee-material-ui textarea,
+.employee-material-ui select {
+  border-color: rgba(255, 255, 255, 0.92) !important;
+  border-radius: 14px !important;
+  color: #273137;
+  background: linear-gradient(145deg, rgba(239, 238, 233, 0.92), rgba(255, 255, 255, 0.96)) !important;
+  box-shadow: inset 2px 2px 5px rgba(96, 93, 85, 0.13), inset -2px -2px 5px rgba(255, 255, 255, 0.96) !important;
+}
+
+.employee-material-ui input:not([type="file"]):focus,
+.employee-material-ui textarea:focus,
+.employee-material-ui select:focus {
+  border-color: rgba(81, 180, 17, 0.55) !important;
+  box-shadow: inset 2px 2px 5px rgba(96, 93, 85, 0.1), 0 0 0 3px rgba(81, 180, 17, 0.14) !important;
+}
+
+.employee-material-segment {
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 999px !important;
+  background: rgba(229, 228, 223, 0.72) !important;
+  box-shadow: inset 2px 2px 5px rgba(95, 92, 84, 0.12), inset -2px -2px 5px rgba(255, 255, 255, 0.82);
+}
+
+.employee-material-calendar-nav {
+  border: 1px solid rgba(255, 255, 255, 0.94) !important;
+  border-radius: 999px !important;
+  background: linear-gradient(145deg, #fdfcf8, #e5e3dc) !important;
+  box-shadow: 4px 5px 10px rgba(117, 113, 104, 0.24), -3px -3px 7px rgba(255, 255, 255, 0.92) !important;
+}
+
+.employee-material-calendar-day {
+  border-radius: 10px !important;
+  box-shadow: inset 1px 1px 3px rgba(94, 91, 84, 0.08), inset -1px -1px 3px rgba(255, 255, 255, 0.86);
 }
 
 .employee-material-green-action {

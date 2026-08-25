@@ -132,7 +132,7 @@ export function WorkdayNotificationsClient() {
       <button
         type='button'
         onClick={() => setOpen((current) => !current)}
-        className='relative flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white ring-1 ring-white/10 hover:bg-white/[0.12]'
+        className='employee-material-header-action relative flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white ring-1 ring-white/10 hover:bg-white/[0.12]'
         aria-label='Уведомления'
         aria-expanded={open}
       >
@@ -155,7 +155,7 @@ export function WorkdayNotificationsClient() {
           {!pushConnected && (
             <div className='border-b border-green-100 bg-green-50 px-4 py-3'>
               <p className='text-xs font-bold text-green-950'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
-              <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='mt-2 rounded-lg bg-green-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
+              <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='employee-material-green-action mt-2 rounded-lg bg-green-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
                 {busy ? 'Подключаем…' : permission === 'granted' ? 'Подключить уведомления' : 'Разрешить уведомления'}
               </button>
               {error && <p className='mt-2 text-xs font-bold text-rose-700'>{error}</p>}

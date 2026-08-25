@@ -327,7 +327,9 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     let lastError = '';
     if (pushConfigured) {
       const unreadTargets = await activeUnreadNotificationTargets(notification.userId);
-      unreadTargets.add(notificationTargetKey(notification));
+      const targetKey = notificationTargetKey(notification);
+      const targetAlreadyUnread = unreadTargets.has(targetKey);
+      unreadTargets.add(targetKey);
       const badgeCount = unreadTargets.size;
       const payload = JSON.stringify({
         title: notification.title,
@@ -336,7 +338,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
         notificationId: notification.id,
         badgeCount,
       });
-      for (const subscription of notification.user.pushSubscriptions) {
+      for (const subscription of targetAlreadyUnread ? [] : notification.user.pushSubscriptions) {
         try {
           await webpush.sendNotification({
             endpoint: subscription.endpoint,
