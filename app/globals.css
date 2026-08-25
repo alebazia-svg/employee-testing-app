@@ -403,6 +403,55 @@ select {
   text-shadow: 0 1px 1px rgba(30, 87, 13, 0.3);
 }
 
+/* Map every legacy Button state in the employee app to the same material system. */
+.employee-material-ui button.bg-primary:not(.employee-material-header-action) {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(119, 224, 70, 0.64) !important;
+  color: #fff !important;
+  background:
+    radial-gradient(circle at 22% 12%, rgba(255, 255, 255, 0.2), transparent 30%),
+    linear-gradient(145deg, #62d82d 0%, #48bd1d 48%, #309c13 100%) !important;
+  box-shadow:
+    inset 1px 1px 2px rgba(255, 255, 255, 0.35),
+    inset -2px -2px 4px rgba(32, 103, 13, 0.22),
+    7px 9px 16px rgba(57, 111, 34, 0.3),
+    -4px -4px 9px rgba(255, 255, 255, 0.9) !important;
+  text-shadow: 0 1px 1px rgba(30, 87, 13, 0.3);
+}
+
+.employee-material-ui button.bg-slate-700,
+.employee-material-ui button.bg-slate-800,
+.employee-material-ui button.bg-slate-900,
+.employee-material-ui button.bg-slate-950 {
+  border: 1px solid rgba(76, 87, 92, 0.82) !important;
+  color: #fff !important;
+  background: linear-gradient(145deg, #3d484d, #263035) !important;
+  box-shadow: 7px 9px 16px rgba(77, 76, 71, 0.34), -4px -4px 9px rgba(255, 255, 255, 0.88) !important;
+}
+
+.employee-material-ui button.bg-slate-100,
+.employee-material-ui button.bg-white {
+  border: 1px solid rgba(255, 255, 255, 0.94) !important;
+  color: #30393e !important;
+  background: linear-gradient(145deg, #fdfcf8, #e6e4dd) !important;
+  box-shadow: 5px 7px 12px rgba(117, 113, 104, 0.24), -4px -4px 9px rgba(255, 255, 255, 0.92) !important;
+}
+
+.employee-material-ui button.bg-amber-600,
+.employee-material-ui button.bg-amber-700 {
+  border: 1px solid rgba(245, 183, 71, 0.72) !important;
+  color: #fff !important;
+  background:
+    radial-gradient(circle at 22% 12%, rgba(255, 255, 255, 0.18), transparent 30%),
+    linear-gradient(145deg, #f1a72b, #d97800) !important;
+  box-shadow:
+    inset 1px 1px 2px rgba(255, 255, 255, 0.3),
+    inset -2px -2px 4px rgba(126, 68, 0, 0.18),
+    7px 9px 16px rgba(139, 91, 25, 0.28),
+    -4px -4px 9px rgba(255, 255, 255, 0.88) !important;
+}
+
 .employee-brand-material {
   position: relative;
   isolation: isolate;

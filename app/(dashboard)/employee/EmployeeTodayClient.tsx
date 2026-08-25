@@ -2209,7 +2209,7 @@ export function EmployeeTodayClient({
     if (!isOpen) {
       return (
         <Button
-          className={cn('employee-material-secondary-action mt-2 w-full font-extrabold', compact ? 'h-12 rounded-xl text-base' : 'h-8 text-xs')}
+          className={cn(compact ? 'employee-material-green-action' : 'employee-material-secondary-action', 'mt-2 w-full font-extrabold', compact ? 'h-12 rounded-xl text-base' : 'h-8 text-xs')}
           onClick={() => openShiftTaskForm(task)}
           disabled={isSaving}
         >
