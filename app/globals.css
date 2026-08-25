@@ -503,10 +503,10 @@ select {
 
 .login-material-plane {
   background-image:
-    radial-gradient(circle at 25% 30%, rgba(255,255,255,.22) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 70% 65%, rgba(30,39,43,.08) 0 1px, transparent 1.5px);
-  background-size: 7px 7px, 11px 11px;
-  opacity: .22;
+    radial-gradient(ellipse at 14% 8%, rgba(255,255,255,.32), transparent 31%),
+    radial-gradient(ellipse at 86% 88%, rgba(255,255,255,.07), transparent 34%),
+    linear-gradient(118deg, transparent 0 58%, rgba(255,255,255,.055) 62%, transparent 68%);
+  opacity: .72;
 }
 
 .login-material-rings {
@@ -542,6 +542,16 @@ select {
   box-shadow: inset 3px 3px 8px rgba(79,88,94,.13), inset -4px -4px 9px #fff;
 }
 
+.login-material-field input:-webkit-autofill,
+.login-material-field input:-webkit-autofill:hover,
+.login-material-field input:-webkit-autofill:focus,
+.login-material-field input:-webkit-autofill:active {
+  -webkit-text-fill-color: #273137 !important;
+  caret-color: #273137;
+  transition: background-color 9999s ease-out 0s;
+  box-shadow: 0 0 0 1000px transparent inset !important;
+}
+
 .login-material-field-icon {
   display: grid;
   width: 30px;
@@ -564,9 +574,29 @@ select {
 
 @media (max-width: 1023px) {
   .login-material-page {
-    background: linear-gradient(160deg, #f9f8f3 0 77%, #303c41 77.5%, #192226 100%);
+    background:
+      radial-gradient(ellipse at 75% 92%, rgba(91,105,110,.38), transparent 29%),
+      linear-gradient(160deg, #faf9f4 0 76.8%, #ecebe5 77%, #49555a 77.55%, #2c373c 82%, #182226 100%);
   }
-  .login-material-mark, .login-material-rings { display: none; }
+  .login-material-plane {
+    background-image:
+      radial-gradient(ellipse at 18% 8%, rgba(255,255,255,.38), transparent 32%),
+      linear-gradient(125deg, transparent 0 66%, rgba(255,255,255,.045) 73%, transparent 82%);
+    opacity: .65;
+  }
+  .login-material-mark { display: none; }
+  .login-material-rings {
+    display: block;
+    left: auto;
+    right: -155px;
+    bottom: -195px;
+    width: 340px;
+    height: 340px;
+    border-width: 12px;
+    border-color: rgba(79, 93, 98, .58);
+    box-shadow: 0 0 0 11px rgba(31,42,46,.82), 0 0 0 29px rgba(71,84,89,.55), -9px -12px 24px rgba(255,255,255,.045), 12px 16px 28px rgba(0,0,0,.24);
+    opacity: .78;
+  }
 }
 
 .employee-material-alert-card {
