@@ -123,6 +123,50 @@ select {
 .admin-control-row { background: rgba(255, 255, 255, 0.17); }
 .admin-control-row:hover { background: rgba(255, 255, 255, 0.62); }
 
+/* Admin actions: one material hierarchy across every route and lazy state. */
+.admin-workspace :where(button, a).bg-primary,
+.admin-workspace :where(button, a).bg-green-600,
+.admin-workspace :where(button, a).bg-green-700 {
+  border: 1px solid rgba(116, 226, 83, 0.62);
+  background: linear-gradient(145deg, #5ed33d, #3cb324);
+  box-shadow: 4px 6px 13px rgba(62, 181, 43, 0.28), -2px -2px 6px rgba(255, 255, 255, 0.7), inset 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.admin-workspace :where(button, a).bg-primary:hover,
+.admin-workspace :where(button, a).bg-green-600:hover,
+.admin-workspace :where(button, a).bg-green-700:hover {
+  background: linear-gradient(145deg, #65da43, #42b928);
+  box-shadow: 5px 7px 15px rgba(62, 181, 43, 0.31), -2px -2px 6px rgba(255, 255, 255, 0.74), inset 0 1px rgba(255, 255, 255, 0.32);
+  transform: translateY(-1px);
+}
+
+.admin-workspace :where(button, a).bg-slate-950,
+.admin-workspace :where(button, a).bg-slate-900,
+.admin-workspace :where(button, a).bg-slate-800 {
+  border: 1px solid rgba(83, 98, 105, 0.66);
+  background: linear-gradient(145deg, #3b484e, #222d32);
+  box-shadow: 4px 6px 12px rgba(34, 45, 49, 0.3), -2px -2px 6px rgba(255, 255, 255, 0.28), inset 0 1px rgba(255, 255, 255, 0.11);
+}
+
+.admin-workspace :where(button, a).bg-slate-950:hover,
+.admin-workspace :where(button, a).bg-slate-900:hover,
+.admin-workspace :where(button, a).bg-slate-800:hover {
+  background: linear-gradient(145deg, #46545a, #29353a);
+  transform: translateY(-1px);
+}
+
+.admin-workspace :where(button, a).bg-slate-100,
+.admin-workspace :where(button, a).bg-slate-200 {
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  background: linear-gradient(145deg, #f8f8f4, #dfe2dd);
+  box-shadow: 3px 4px 9px rgba(76, 87, 82, 0.12), -2px -2px 6px rgba(255, 255, 255, 0.78), inset 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.admin-workspace :where(button, a):disabled {
+  box-shadow: inset 1px 1px 4px rgba(76, 87, 82, 0.1);
+  transform: none;
+}
+
 /*
  * The admin area contains several data-heavy tools that render their deeper
  * states only after a report is loaded. Keep their existing markup and
