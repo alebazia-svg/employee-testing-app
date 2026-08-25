@@ -1060,7 +1060,7 @@ export function AdminShiftControlDetails({
       {open && hasDetails && typeof document !== 'undefined' ? createPortal(
         <div className='fixed inset-0 z-[100] bg-slate-950/55 p-0 backdrop-blur-sm sm:p-3' onClick={closeDetails}>
           <div
-            className='mx-auto flex h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:rounded-2xl'
+            className='admin-dialog-panel mx-auto flex h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:rounded-2xl'
             onClick={(event) => event.stopPropagation()}
             role='dialog'
             aria-modal='true'
@@ -1443,7 +1443,7 @@ export function AdminShiftControlDetails({
                 setSelectedPhoto(null);
               }}
             >
-              <div className='flex max-h-full w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl' onClick={(event) => event.stopPropagation()}>
+              <div className='admin-dialog-panel flex max-h-full w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl' onClick={(event) => event.stopPropagation()}>
                 <div className='flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3'>
                   <p className='min-w-0 truncate text-sm font-extrabold text-slate-950'>{selectedPhoto.label}</p>
                   <div className='flex shrink-0 items-center gap-2'>
@@ -1481,7 +1481,7 @@ export function AdminShiftControlDetails({
               }}
             >
               <div
-                className='w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl'
+                className='admin-dialog-panel w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl'
                 onClick={(event) => event.stopPropagation()}
                 role='dialog'
                 aria-modal='true'

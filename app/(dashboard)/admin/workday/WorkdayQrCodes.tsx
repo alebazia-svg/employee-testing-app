@@ -76,7 +76,7 @@ export function WorkdayQrCodes() {
 
       {expanded ? (
         <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm' onClick={() => setExpanded(false)}>
-          <div className='max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl' onClick={(event) => event.stopPropagation()}>
+          <div className='admin-dialog-panel max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl' onClick={(event) => event.stopPropagation()}>
             <div className='flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4'>
               <div className='flex items-start gap-3'>
                 <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700'>

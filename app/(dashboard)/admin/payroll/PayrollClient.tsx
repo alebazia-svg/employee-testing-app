@@ -6532,7 +6532,7 @@ export default function AdminPayrollPage() {
 
             {selectedManagerStatus && selectedManagerPayroll && (
               <div className='fixed inset-0 z-50 flex justify-end bg-slate-950/45'>
-                <aside className='h-full w-full overflow-y-auto bg-white p-4 shadow-2xl md:w-[62vw] xl:w-[58vw]'>
+                <aside className='admin-dialog-panel h-full w-full overflow-y-auto bg-white p-4 shadow-2xl md:w-[62vw] xl:w-[58vw]'>
                   <div className='mb-4 flex items-start justify-between gap-4 border-b border-border pb-4'>
                     <div className='min-w-0'>
                       <h2 className='truncate text-[22px] font-bold text-slate-900'>{selectedManagerPayroll.manager}</h2>
