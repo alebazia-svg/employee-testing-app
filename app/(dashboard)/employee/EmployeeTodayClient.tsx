@@ -456,7 +456,7 @@ function WorkdayQrScanner({
   }, []);
 
   return (
-    <div className='fixed inset-0 z-50 bg-slate-950 text-white'>
+    <div className='employee-material-scanner fixed inset-0 z-50 bg-slate-950 text-white'>
       <div className='mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-5'>
         <div className='mb-4 flex items-center justify-between gap-3'>
           <div>
@@ -468,11 +468,11 @@ function WorkdayQrScanner({
           </button>
         </div>
 
-        <div className='relative flex-1 overflow-hidden rounded-3xl bg-black shadow-2xl shadow-black/40'>
+        <div className='employee-material-camera relative flex-1 overflow-hidden rounded-3xl bg-black shadow-2xl shadow-black/40'>
           <video ref={videoRef} className='h-full w-full object-cover' muted playsInline autoPlay />
           <canvas ref={canvasRef} className='hidden' />
           <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
-            <div className='h-56 w-56 rounded-3xl border-4 border-green-300 shadow-[0_0_0_999px_rgba(2,6,23,0.42)]' />
+            <div className='employee-material-scan-frame h-56 w-56 rounded-3xl border-4 border-green-300 shadow-[0_0_0_999px_rgba(2,6,23,0.42)]' />
           </div>
           <div className='absolute inset-x-4 top-4 rounded-2xl bg-slate-950/70 px-4 py-3 text-center backdrop-blur'>
             <p className='text-sm font-extrabold'>Наведите камеру на QR-код на рабочем месте</p>
@@ -494,7 +494,7 @@ function WorkdayQrScanner({
         </div>
 
         {error && (
-          <div className='mt-4 rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-50'>
+          <div className='employee-material-scanner-warning mt-4 rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-50'>
             {error}
             <button type='button' onClick={startCamera} className='mt-3 flex min-h-11 w-full items-center justify-center rounded-xl bg-amber-400 px-3 font-black text-slate-950'>
               Попробовать ещё раз
@@ -940,7 +940,7 @@ function getElapsed(workDay: WorkDayEntry | null, now: Date) {
 
 function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className='rounded-lg bg-white/80 px-2.5 py-1.5 ring-1 ring-slate-200/80'>
+    <div className='employee-material-subcard rounded-lg bg-white/80 px-2.5 py-1.5 ring-1 ring-slate-200/80'>
       <p className='text-[11px] font-extrabold uppercase text-slate-400'>{label}</p>
       <p className='mt-0.5 text-sm font-extrabold text-slate-950'>{value}</p>
     </div>
@@ -951,7 +951,7 @@ function ColleagueGroup({ title, people, tone }: { title: string; people: UserSu
   const dotClass = tone === 'green' ? 'bg-primary' : tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400';
 
   return (
-    <section className='rounded-lg bg-white/90 p-2.5 ring-1 ring-slate-200/80'>
+    <section className='employee-material-subcard rounded-lg bg-white/90 p-2.5 ring-1 ring-slate-200/80'>
       <div className='mb-1.5 flex items-center justify-between gap-3'>
         <div className='flex items-center gap-2'>
           <span className={cn('h-2.5 w-2.5 rounded-full', dotClass)} />
@@ -962,7 +962,7 @@ function ColleagueGroup({ title, people, tone }: { title: string; people: UserSu
       {people.length ? (
         <div className='grid gap-1.5'>
           {people.map((person) => (
-            <div key={person.id} className='flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
+            <div key={person.id} className='employee-material-person flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
               <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111821] text-[11px] font-extrabold text-white'>
                 {initials(person.name)}
               </span>
@@ -1371,7 +1371,7 @@ export function EmployeeTodayClient({
       const dotClass = tone === 'green' ? 'bg-primary' : tone === 'amber' ? 'bg-amber-500' : 'bg-slate-400';
 
       return (
-        <div className='rounded-lg bg-slate-50 px-2.5 py-2'>
+        <div className='employee-material-subcard rounded-lg bg-slate-50 px-2.5 py-2'>
           <div className='mb-1.5 flex items-center justify-between gap-2'>
             <span className='inline-flex items-center gap-2 text-xs font-extrabold text-slate-700'>
               <span className={cn('h-2 w-2 rounded-full', dotClass)} />
@@ -1398,7 +1398,7 @@ export function EmployeeTodayClient({
     }
 
     return (
-      <div className={cn('rounded-lg border bg-white p-3', selected ? 'border-primary/40 ring-2 ring-primary/10' : 'border-slate-200')}>
+      <div className={cn('employee-material-day-card rounded-lg border bg-white p-3', selected ? 'border-primary/40 ring-2 ring-primary/10' : 'border-slate-200')}>
         <div className={cn('flex items-center justify-between gap-3', expanded && 'mb-2.5')}>
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
@@ -1458,7 +1458,7 @@ export function EmployeeTodayClient({
               ) : colleagueRows.length ? (
                 <div className='grid gap-1.5'>
                   {colleagueRows.map(({ person, entry }) => (
-                    <div key={person.id} className='flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
+                    <div key={person.id} className='employee-material-subcard flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
                       <div className='flex min-w-0 items-center gap-2'>
                         <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-[10px] font-extrabold text-green-800'>
                           {initials(person.name)}
@@ -2172,7 +2172,7 @@ export function EmployeeTodayClient({
           <p className={cn('font-semibold leading-snug text-slate-500', compact ? 'text-sm' : 'text-xs')}>
             Откройте смену на кассе и сфотографируйте распечатанный чек.
           </p>
-          <label className={cn('flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-12 text-base' : 'min-h-8 text-xs')}>
+          <label className={cn('employee-material-primary-action flex w-full cursor-pointer items-center justify-center rounded-xl bg-[#111821] px-3 font-extrabold text-white shadow-sm', compact ? 'min-h-12 text-base' : 'min-h-8 text-xs')}>
             {isSaving && openingPhotoTaskId === task.id ? photoSavingLabel(uploadProgress) : isEditing ? 'Заменить фото' : 'Сделать фото'}
             <input
               type='file'
@@ -2197,7 +2197,7 @@ export function EmployeeTodayClient({
     if (!isCash && !isAcquiring && !isCredit) {
       return (
         <Button
-          className={cn('mt-2 w-full font-extrabold', compact ? 'h-12 rounded-xl text-base' : 'h-8 text-xs')}
+          className={cn('employee-material-primary-action mt-2 w-full font-extrabold', compact ? 'h-12 rounded-xl text-base' : 'h-8 text-xs')}
           onClick={() => completeShiftControlTask(task)}
           disabled={isSaving}
         >
@@ -2209,7 +2209,7 @@ export function EmployeeTodayClient({
     if (!isOpen) {
       return (
         <Button
-          className={cn('mt-2 w-full font-extrabold', compact ? 'h-12 rounded-xl text-base' : 'h-8 bg-slate-100 text-xs text-slate-800 shadow-none hover:bg-green-100 hover:text-green-800')}
+          className={cn('employee-material-secondary-action mt-2 w-full font-extrabold', compact ? 'h-12 rounded-xl text-base' : 'h-8 text-xs')}
           onClick={() => openShiftTaskForm(task)}
           disabled={isSaving}
         >
@@ -2219,7 +2219,7 @@ export function EmployeeTodayClient({
     }
 
     return (
-      <div className='mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
+      <div className='employee-material-subcard mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
         {isCash && (
           <div className='grid gap-2'>
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
@@ -3001,7 +3001,7 @@ export function EmployeeTodayClient({
   }
 
   return (
-    <main className='min-h-screen overflow-x-hidden bg-[#111821] text-slate-950 md:px-6 md:py-6'>
+    <main className='employee-material-ui min-h-screen overflow-x-hidden bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
       {qrScannerOpen && (
         <WorkdayQrScanner
           userDepartment={user.department}
@@ -3011,7 +3011,7 @@ export function EmployeeTodayClient({
       )}
       {shiftPickerOpen && !workDay && (
         <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]'>
-          <div className='w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
+          <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
             <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
             <div className='flex items-start justify-between gap-3'>
               <div>
@@ -3034,7 +3034,7 @@ export function EmployeeTodayClient({
                   type='button'
                   disabled={isSaving}
                   onClick={() => void chooseShiftAfterQr(shift.code)}
-                  className='flex min-h-14 items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 text-left text-base font-black text-slate-950 transition active:scale-[0.99] disabled:opacity-60'
+                className='employee-material-choice flex min-h-14 items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 text-left text-base font-black text-slate-950 transition active:scale-[0.99] disabled:opacity-60'
                 >
                   <span>{shiftLabel(shift.code)}</span>
                   <span className='text-xs font-extrabold uppercase text-green-700'>Начать</span>
@@ -3044,10 +3044,10 @@ export function EmployeeTodayClient({
           </div>
         </div>
       )}
-      <div className='relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[24px]'>
-        <header className='bg-[#111821] px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] text-white'>
+      <div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
+        <header className='employee-material-header px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))]'>
           <div className='flex items-center justify-between gap-3'>
-            <BrandBlock size='header' />
+            <BrandBlock size='employee' />
             <div className='flex items-center gap-2'>
               <WorkdayNotificationsClient />
               <div className='flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-xs font-extrabold text-white ring-1 ring-white/10'>
@@ -3132,7 +3132,7 @@ export function EmployeeTodayClient({
           {error && (
             <div
               role='alert'
-              className='fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-[488px] items-start gap-2.5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-extrabold leading-snug text-red-900 shadow-2xl ring-1 ring-red-200'
+              className='employee-material-toast fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-[488px] items-start gap-2.5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-extrabold leading-snug text-red-900 shadow-2xl ring-1 ring-red-200'
             >
               <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-red-700' />
               <span className='min-w-0 flex-1'>{error}</span>
@@ -3148,7 +3148,7 @@ export function EmployeeTodayClient({
           )}
 
           {message && (
-            <div className='fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-[488px] items-center gap-2.5 rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-slate-950 shadow-2xl ring-1 ring-green-200'>
+            <div className='employee-material-toast fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-[488px] items-center gap-2.5 rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-slate-950 shadow-2xl ring-1 ring-green-200'>
               <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-50 text-green-700 ring-1 ring-green-100'>
                 <CheckCircle2 className='h-4 w-4' />
               </span>
@@ -3183,7 +3183,7 @@ export function EmployeeTodayClient({
                   </div>
                   <Button
                     type='button'
-                    className='h-14 w-full rounded-xl text-base font-black'
+                    className='employee-material-green-action h-14 w-full rounded-xl text-base font-black'
                     onClick={openQrStart}
                     disabled={isSaving || Boolean(unfinished)}
                   >
@@ -3323,7 +3323,7 @@ export function EmployeeTodayClient({
                   </div>
 
                   {activeHandoverTask ? null : (
-                    <div className={cn('rounded-2xl border-l-4 px-3.5 py-3 ring-1', actionableShiftControlTask ? 'border-green-500 bg-white ring-green-200 shadow-sm' : 'border-transparent bg-slate-50 ring-slate-200')}>
+                    <div className={cn('employee-material-focus rounded-2xl border-l-4 px-3.5 py-3 ring-1', actionableShiftControlTask ? 'employee-material-focus-current border-green-500 bg-white ring-green-200 shadow-sm' : 'employee-material-focus-upcoming border-transparent bg-slate-50 ring-slate-200')}>
                       <p className={cn('text-[11px] font-extrabold uppercase', actionableShiftControlTask ? 'text-green-700' : 'text-slate-400')}>
                         {actionableShiftControlTask ? 'Текущий шаг' : 'Следующая проверка'}
                       </p>
@@ -3331,7 +3331,7 @@ export function EmployeeTodayClient({
                         {primaryShiftControlTask && (() => {
                           const Icon = shiftTaskIcon(primaryShiftControlTask);
                           return (
-                            <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1', shiftTaskIconClass(primaryShiftControlTask.category))}>
+                            <span className={cn('employee-material-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1', shiftTaskIconClass(primaryShiftControlTask.category))}>
                               <Icon className='h-6 w-6' />
                             </span>
                           );
@@ -3362,7 +3362,7 @@ export function EmployeeTodayClient({
                   {!activeHandoverTask && otherShiftControlTaskCount > 0 && (
                     <Button
                       type='button'
-                      className='h-9 w-full bg-slate-100 text-xs font-extrabold text-slate-800 shadow-none hover:bg-slate-200'
+                      className='employee-material-primary-action h-10 w-full text-xs font-extrabold'
                       onClick={() => setShowFullShiftPlan((current) => !current)}
                     >
                       {showFullShiftPlan ? 'Скрыть план смены' : `Показать остальные задачи (${otherShiftControlTaskCount})`}
@@ -3420,7 +3420,7 @@ export function EmployeeTodayClient({
                     {user.department === 'retail' && (
                       <Button
                         type='button'
-                        className='h-9 border border-slate-200 bg-white px-2 text-xs font-extrabold text-slate-800 shadow-none hover:bg-slate-50 hover:text-slate-950'
+                        className='employee-material-secondary-action h-9 px-2 text-xs font-extrabold'
                         onClick={() => openCashOperation('phone_reserve')}
                         disabled={!workDay || isSaving}
                       >
@@ -3429,7 +3429,7 @@ export function EmployeeTodayClient({
                     )}
                     <Button
                       type='button'
-                      className='h-9 border border-slate-200 bg-white px-2 text-xs font-extrabold text-slate-800 shadow-none hover:bg-slate-50 hover:text-slate-950'
+                      className='employee-material-secondary-action h-9 px-2 text-xs font-extrabold'
                       onClick={() => openCashOperation('deposit_safe')}
                       disabled={!workDay || isSaving}
                     >
@@ -3556,7 +3556,7 @@ export function EmployeeTodayClient({
 
               <Card className='space-y-2.5 p-4'>
                 <div className='flex items-center gap-2'>
-                  <Users className='h-5 w-5 text-primary' />
+                  <span className='employee-material-heading-icon'><Users className='h-5 w-5 text-primary' /></span>
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
                 </div>
                 <ColleagueGroup title='Работают сейчас' people={workingColleagues} tone='green' />
@@ -3572,7 +3572,7 @@ export function EmployeeTodayClient({
             <div className='space-y-3'>
               <Card className='space-y-3 p-3.5'>
                 <div className='flex items-center gap-2'>
-                  <CalendarDays className='h-5 w-5 text-primary' />
+                  <span className='employee-material-heading-icon'><CalendarDays className='h-5 w-5 text-primary' /></span>
                   <h2 className='text-xl font-extrabold text-slate-950'>График</h2>
                 </div>
 
@@ -3604,7 +3604,7 @@ export function EmployeeTodayClient({
                     ))}
                   </div>
 
-                  <Button className='w-full gap-2 bg-slate-100 text-slate-800 shadow-none hover:bg-slate-200' onClick={() => setShowFullSchedule((current) => !current)}>
+                  <Button className='employee-material-secondary-action w-full gap-2' onClick={() => setShowFullSchedule((current) => !current)}>
                     {showFullSchedule ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
                     {showFullSchedule ? 'Свернуть график' : 'Открыть полный график'}
                   </Button>
@@ -3721,7 +3721,7 @@ export function EmployeeTodayClient({
 
         </div>
 
-        <nav className='fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] border-t border-slate-200 bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)] backdrop-blur md:absolute'>
+        <nav className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] border-t border-slate-200 bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)] backdrop-blur md:absolute'>
           <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
@@ -3732,7 +3732,7 @@ export function EmployeeTodayClient({
                   type='button'
                   onClick={() => setActiveTab(item.id)}
                   className={cn(
-                    'flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] font-extrabold transition',
+                    'employee-material-tab flex min-h-[54px] flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] font-extrabold transition',
                     active ? 'bg-[#111821] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
                   )}
                 >

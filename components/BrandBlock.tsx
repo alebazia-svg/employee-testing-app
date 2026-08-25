@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
-type BrandSize = 'login' | 'header' | 'sidebar';
+type BrandSize = 'login' | 'header' | 'employee' | 'sidebar';
 
 const logoConfig: Record<BrandSize, { src: string; className: string }> = {
   login: {
@@ -10,6 +10,10 @@ const logoConfig: Record<BrandSize, { src: string; className: string }> = {
   },
   header: {
     src: '/offonika-wordmark-header.png',
+    className: 'w-[178px] md:w-[205px]',
+  },
+  employee: {
+    src: '/offonika-wordmark-print.png',
     className: 'w-[178px] md:w-[205px]',
   },
   sidebar: {
@@ -31,7 +35,7 @@ export function BrandBlock({
   const config = logoConfig[brandSize];
 
   return (
-    <div className='inline-flex min-w-0 items-start'>
+    <div className={cn('inline-flex min-w-0 items-start', brandSize === 'employee' && 'employee-brand-material')}>
       <Image
         src={config.src}
         alt='OFFONIKA'
