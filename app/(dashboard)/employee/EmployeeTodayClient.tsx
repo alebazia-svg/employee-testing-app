@@ -684,7 +684,7 @@ function shiftTaskTitle(task: ShiftControlTask) {
 
 function shiftTaskIconClass(category: string) {
   if (category === 'cash') return 'bg-green-50 text-green-700 ring-green-100';
-  if (category === 'credit') return 'bg-blue-50 text-blue-700 ring-blue-100';
+  if (category === 'credit') return 'bg-slate-50 text-slate-700 ring-slate-200';
   if (category === 'acquiring') return 'bg-emerald-50 text-emerald-700 ring-emerald-100';
   if (category === 'opening') return 'bg-slate-50 text-slate-700 ring-slate-200';
   if (category === 'handover') return 'bg-amber-50 text-amber-700 ring-amber-100';
@@ -942,7 +942,7 @@ function getElapsed(workDay: WorkDayEntry | null, now: Date) {
 function DetailItem({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className='employee-material-subcard rounded-lg bg-white/80 px-2.5 py-1.5 ring-1 ring-slate-200/80'>
-      <p className='text-[11px] font-extrabold uppercase text-slate-400'>{label}</p>
+      <p className='text-xs font-extrabold uppercase text-slate-400'>{label}</p>
       <p className='mt-0.5 text-sm font-extrabold text-slate-950'>{value}</p>
     </div>
   );
@@ -964,7 +964,7 @@ function ColleagueGroup({ title, people, tone, emptyLabel = 'Нет сотруд
         <div className='grid gap-1.5'>
           {people.map((person) => (
             <div key={person.id} className='employee-material-person flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
-              <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111821] text-[11px] font-extrabold text-white'>
+              <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111821] text-xs font-extrabold text-white'>
                 {initials(person.name)}
               </span>
               <span className='min-w-0 truncate text-sm font-bold text-slate-800'>{person.name}</span>
@@ -1381,13 +1381,13 @@ export function EmployeeTodayClient({
               <span className={cn('employee-material-status-dot h-2 w-2', dotClass)} />
               {title}
             </span>
-            <span className='text-[11px] font-extrabold text-slate-400'>{rows.length}</span>
+            <span className='text-xs font-extrabold text-slate-400'>{rows.length}</span>
           </div>
           {rows.length ? (
             <div className='grid gap-1'>
               {rows.map(({ person }) => (
                 <div key={person.id} className='flex min-w-0 items-center gap-2'>
-                  <span className='flex h-5 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-extrabold text-green-800 ring-1 ring-green-100'>
+                  <span className='flex h-5 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-extrabold text-green-800 ring-1 ring-green-100'>
                     {initials(person.name)}
                   </span>
                   <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
@@ -1408,7 +1408,7 @@ export function EmployeeTodayClient({
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
             {ownEntry?.status === 'working' && <p className='mt-0.5 text-xs font-bold text-green-700'>Рабочий день</p>}
           </div>
-          <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px]', scheduleTone(ownEntry?.status))}>
+          <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', scheduleTone(ownEntry?.status))}>
             Я: {scheduleWorkLabel(ownEntry?.status)}
           </Badge>
         </div>
@@ -1450,7 +1450,7 @@ export function EmployeeTodayClient({
             </div>
 
             <div className='mt-3 border-t border-slate-100 pt-2.5'>
-              <p className='mb-2 text-[11px] font-extrabold uppercase leading-none text-slate-400'>
+              <p className='mb-2 text-xs font-extrabold uppercase leading-none text-slate-400'>
                 {selected ? 'Коллеги на этот день' : 'Коллеги'}
               </p>
               {selected ? (
@@ -1464,7 +1464,7 @@ export function EmployeeTodayClient({
                   {colleagueRows.map(({ person, entry }) => (
                     <div key={person.id} className='employee-material-subcard flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
                       <div className='flex min-w-0 items-center gap-2'>
-                        <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-[10px] font-extrabold text-green-800'>
+                        <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-[11px] font-extrabold text-green-800'>
                           {initials(person.name)}
                         </span>
                         <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
@@ -2240,7 +2240,7 @@ export function EmployeeTodayClient({
           <div className='grid gap-2'>
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
               Наличные в кассе
-              <span className='text-[11px] font-semibold leading-snug text-slate-500'>
+              <span className='text-xs font-semibold leading-snug text-slate-500'>
                 Пересчитайте деньги и внесите фактическую сумму.
               </span>
               <input
@@ -2253,7 +2253,7 @@ export function EmployeeTodayClient({
                 className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                 placeholder='0'
               />
-              {errors.numericValue && <span className='text-[11px] font-bold text-amber-700'>{errors.numericValue}</span>}
+              {errors.numericValue && <span className='text-xs font-bold text-amber-700'>{errors.numericValue}</span>}
             </label>
           </div>
         )}
@@ -2262,7 +2262,7 @@ export function EmployeeTodayClient({
           <>
             <div className='grid gap-2'>
               <p className='text-xs font-extrabold text-slate-700'>Операции терминала</p>
-              <p className='text-[11px] font-semibold leading-snug text-slate-500'>
+              <p className='text-xs font-semibold leading-snug text-slate-500'>
                 {previousTerminalTask ? 'Были новые операции после предыдущей проверки?' : 'Были операции по терминалу с начала смены?'}
               </p>
               <div className='grid grid-cols-2 gap-2'>
@@ -2281,7 +2281,7 @@ export function EmployeeTodayClient({
                   Да
                 </Button>
               </div>
-              {errors.integerValue && <span className='text-[11px] font-bold text-amber-700'>{errors.integerValue}</span>}
+              {errors.integerValue && <span className='text-xs font-bold text-amber-700'>{errors.integerValue}</span>}
             </div>
 
             {showTerminalReconciliation && (
@@ -2315,14 +2315,14 @@ export function EmployeeTodayClient({
                   className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                 placeholder='Что не совпадает?'
                 />
-                {errors.comment && <span className='text-[11px] font-bold text-amber-700'>{errors.comment}</span>}
+                {errors.comment && <span className='text-xs font-bold text-amber-700'>{errors.comment}</span>}
               </label>
             )}
 
             {showTerminalPhoto && (
               <label className='grid gap-2 text-xs font-extrabold text-slate-700'>
                 Чеки терминала
-                <span className='text-[11px] font-semibold leading-snug text-slate-500'>{terminalPhotoHint}</span>
+                <span className='text-xs font-semibold leading-snug text-slate-500'>{terminalPhotoHint}</span>
                 <span className={cn(
                   'flex min-h-10 items-center justify-center rounded-lg px-3 text-xs font-extrabold',
                   draft.integerValue === '2' && !draft.comment.trim()
@@ -2338,10 +2338,10 @@ export function EmployeeTodayClient({
                         : 'Сделать фото'}
                 </span>
                 {!draft.terminalReceiptsPhoto && hasTaskPhoto(task, 'terminalReceipts') && (
-                  <span className='text-[11px] font-semibold text-green-700'>Текущее фото сохранено</span>
+                  <span className='text-xs font-semibold text-green-700'>Текущее фото сохранено</span>
                 )}
                 {draft.integerValue === '2' && !draft.comment.trim() && (
-                  <span className='text-[11px] font-semibold text-amber-700'>Сначала опишите расхождение</span>
+                  <span className='text-xs font-semibold text-amber-700'>Сначала опишите расхождение</span>
                 )}
                 <input
                   type='file'
@@ -2367,7 +2367,7 @@ export function EmployeeTodayClient({
           <>
             <div className='grid gap-2'>
               <p className='text-xs font-extrabold text-slate-700'>Операции Т-Банка</p>
-              <p className='text-[11px] font-semibold leading-snug text-slate-500'>
+              <p className='text-xs font-semibold leading-snug text-slate-500'>
                 Проверьте, что операции оформлены в 1С.
               </p>
               <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
@@ -2393,7 +2393,7 @@ export function EmployeeTodayClient({
                   Есть проблема
                 </Button>
               </div>
-              {errors.integerValue && <span className='text-[11px] font-bold text-amber-700'>{errors.integerValue}</span>}
+              {errors.integerValue && <span className='text-xs font-bold text-amber-700'>{errors.integerValue}</span>}
             </div>
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
               Комментарий {draft.integerValue === '2' ? '(обязательно)' : '(если нужно)'}
@@ -2403,7 +2403,7 @@ export function EmployeeTodayClient({
                 className='min-h-14 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                 placeholder={draft.integerValue === '2' ? 'Что именно не получилось?' : 'Необязательно'}
               />
-              {errors.comment && <span className='text-[11px] font-bold text-amber-700'>{errors.comment}</span>}
+              {errors.comment && <span className='text-xs font-bold text-amber-700'>{errors.comment}</span>}
             </label>
           </>
         )}
@@ -2636,8 +2636,8 @@ export function EmployeeTodayClient({
           }}
         />
         {file && <span className='rounded-lg bg-green-50 px-2.5 py-2 text-xs font-bold text-green-700 ring-1 ring-green-100'>Фото прикреплено</span>}
-        {disabledReason && <span className='text-[11px] font-semibold text-amber-700'>{disabledReason}</span>}
-        {fieldError && <span className='text-[11px] font-bold text-amber-700'>{fieldError}</span>}
+        {disabledReason && <span className='text-xs font-semibold text-amber-700'>{disabledReason}</span>}
+        {fieldError && <span className='text-xs font-bold text-amber-700'>{fieldError}</span>}
       </label>
     );
   }
@@ -2703,7 +2703,7 @@ export function EmployeeTodayClient({
               <HandoverIcon className='h-4 w-4' />
             </span>
             <div>
-              <p className='text-[11px] font-extrabold uppercase text-green-700'>{sectionTitle}</p>
+              <p className='text-xs font-extrabold uppercase text-green-700'>{sectionTitle}</p>
               <h3 className='mt-0.5 text-base font-extrabold text-slate-950'>{handoverStepTitle[step] ?? `Шаг ${handoverStep + 1} из ${handoverSteps.length}`}</h3>
               <p className='mt-1 text-xs font-semibold leading-snug text-slate-500'>
                 {step === 'reserveCashBalance' ? 'Общий резерв' : 'Только ваша касса'}
@@ -2730,7 +2730,7 @@ export function EmployeeTodayClient({
               className='h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
               placeholder='0'
             />
-            {stepError && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+            {stepError && <span className='text-xs font-bold text-amber-700'>{stepError}</span>}
           </label>
         )}
 
@@ -2750,7 +2750,7 @@ export function EmployeeTodayClient({
               className='h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
               placeholder='0'
             />
-            {stepError && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+            {stepError && <span className='text-xs font-bold text-amber-700'>{stepError}</span>}
           </label>
         )}
 
@@ -2766,7 +2766,7 @@ export function EmployeeTodayClient({
                 placeholder='Кратко укажите причину'
               />
             </label>
-            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+            {stepError && <p className='text-xs font-bold text-amber-700'>{stepError}</p>}
           </div>
         )}
 
@@ -2805,7 +2805,7 @@ export function EmployeeTodayClient({
                   className='h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                   placeholder='0'
                 />
-                {stepError && parseMoneyInput(handoverDraft.encashmentAmount) === null && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+                {stepError && parseMoneyInput(handoverDraft.encashmentAmount) === null && <span className='text-xs font-bold text-amber-700'>{stepError}</span>}
               </label>
             {user.department === 'retail' ? (
               <div className='grid grid-cols-2 gap-2'>
@@ -2865,7 +2865,7 @@ export function EmployeeTodayClient({
                 Нет
               </Button>
             </div>
-            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+            {stepError && <p className='text-xs font-bold text-amber-700'>{stepError}</p>}
           </div>
         )}
 
@@ -2882,7 +2882,7 @@ export function EmployeeTodayClient({
                 <textarea value={handoverDraft.terminalComment} onChange={(event) => updateHandoverDraft({ terminalComment: event.target.value })} className='min-h-16 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20' placeholder='Кратко опишите расхождение' />
               </label>
             )}
-            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+            {stepError && <p className='text-xs font-bold text-amber-700'>{stepError}</p>}
           </div>
         )}
 
@@ -2914,7 +2914,7 @@ export function EmployeeTodayClient({
                 Нет
               </Button>
             </div>
-            {stepError && <p className='text-[11px] font-bold text-amber-700'>{stepError}</p>}
+            {stepError && <p className='text-xs font-bold text-amber-700'>{stepError}</p>}
           </div>
         )}
 
@@ -2944,7 +2944,7 @@ export function EmployeeTodayClient({
                 className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                 placeholder='0'
               />
-              {stepError && hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) && <span className='text-[11px] font-bold text-amber-700'>{stepError}</span>}
+              {stepError && hasHandoverPhoto(handoverDraft.tbankTerminalReportPhoto) && <span className='text-xs font-bold text-amber-700'>{stepError}</span>}
             </label>
             {renderPhotoInput(
               'Сверка итогов Т-Банка',
@@ -3091,9 +3091,9 @@ export function EmployeeTodayClient({
 
         <div className='flex-1 px-4 pb-[calc(8.75rem+env(safe-area-inset-bottom))] pt-4'>
           {!isOnline || cashOutboxCount > 0 ? (
-            <div className={`mb-4 rounded-2xl px-4 py-3 ring-1 ${isOnline ? 'bg-blue-50 text-blue-950 ring-blue-200' : 'bg-amber-50 text-amber-950 ring-amber-200'}`}>
+            <div className={`mb-4 rounded-2xl px-4 py-3 ${isOnline ? 'employee-material-info-card text-slate-900' : 'employee-material-alert-card text-amber-950'}`}>
               <div className='flex items-start gap-3'>
-                <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${isOnline ? 'bg-blue-500' : 'bg-amber-500'}`} />
+                <span className={`employee-material-status-dot mt-1 ${isOnline ? 'employee-material-status-dot-slate' : 'employee-material-status-dot-amber'}`} />
                 <div className='min-w-0 flex-1'>
                   <p className='text-sm font-extrabold'>{isOnline ? (cashOutboxSyncing ? 'Отправляем инкассацию' : 'Инкассация сохранена на телефоне') : 'Нет соединения'}</p>
                   <p className='mt-0.5 text-xs font-semibold leading-relaxed opacity-80'>
@@ -3107,7 +3107,7 @@ export function EmployeeTodayClient({
                   </p>
                 </div>
                 {isOnline && cashOutboxCount > 0 && !cashOutboxSyncing ? (
-                  <button type='button' className='shrink-0 text-xs font-extrabold text-blue-800' onClick={() => void flushCashOutbox()}>
+                  <button type='button' className='employee-material-secondary-action h-9 shrink-0 px-3 text-xs font-extrabold' onClick={() => void flushCashOutbox()}>
                     Повторить
                   </button>
                 ) : null}
@@ -3238,7 +3238,7 @@ export function EmployeeTodayClient({
                   <div className='flex items-center gap-3 px-3.5 py-3'>
                     <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-5 w-5' /></span>
                     <div className='min-w-0'>
-                      <p className='text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить · {requiredIssuesState.length}</p>
+                      <p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить · {requiredIssuesState.length}</p>
                       <p className='mt-0.5 text-sm font-bold leading-tight text-slate-700'>Откройте и выполните инструкцию</p>
                     </div>
                   </div>
@@ -3274,7 +3274,7 @@ export function EmployeeTodayClient({
                 <Link href={`/employee/payment-checks/${primaryPaymentCheck.id}`} className='flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'>
                   <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'><ReceiptText className='h-5 w-5' /></span>
                   <span className='min-w-0 flex-1'>
-                    <span className='block text-[11px] font-extrabold uppercase tracking-wide text-amber-700'>Нужно проверить{paymentChecksState.length > 1 ? ` · ${paymentChecksState.length}` : ''}</span>
+                    <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно проверить{paymentChecksState.length > 1 ? ` · ${paymentChecksState.length}` : ''}</span>
                     <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryPaymentCheckView.title}</span>
                     <span className='mt-1 block text-xs font-extrabold text-slate-600'>{primaryPaymentCheckView.meta}</span>
                   </span>
@@ -3359,7 +3359,7 @@ export function EmployeeTodayClient({
 
                   {activeHandoverTask ? null : (
                     <div className={cn('employee-material-focus rounded-2xl border-l-4 px-3.5 py-3 ring-1', actionableShiftControlTask ? 'employee-material-focus-current border-green-500 bg-white ring-green-200 shadow-sm' : 'employee-material-focus-upcoming border-transparent bg-slate-50 ring-slate-200')}>
-                      <p className={cn('text-[11px] font-extrabold uppercase', actionableShiftControlTask ? 'text-green-700' : 'text-slate-400')}>
+                      <p className={cn('text-xs font-extrabold uppercase', actionableShiftControlTask ? 'employee-material-current-label text-green-700' : 'text-slate-500')}>
                         {actionableShiftControlTask ? 'Текущий шаг' : 'Следующая проверка'}
                       </p>
                       <div className='mt-1 flex items-center gap-2'>
@@ -3420,7 +3420,7 @@ export function EmployeeTodayClient({
                                 <p className='text-sm font-extrabold leading-tight text-slate-700'>{shiftTaskTitle(task)}</p>
                                 <p className='mt-1 text-xs font-bold text-slate-500'>План: {plannedTimeLabel(task.plannedTimeMinutes)}</p>
                               </div>
-                              <Badge className='shrink-0 bg-white px-2 py-0.5 text-[10px] text-slate-500 ring-1 ring-slate-200'>
+                              <Badge className='shrink-0 bg-white px-2 py-0.5 text-[11px] text-slate-500 ring-1 ring-slate-200'>
                                 {shiftTaskStatusLabel(uiStatus)}
                               </Badge>
                             </div>
@@ -3547,11 +3547,11 @@ export function EmployeeTodayClient({
                             <p className='text-xs font-extrabold text-slate-900'>
                               {formatCashOperationAmount(operation.amount)} {cashOperationDirectionLabel(operation.direction)}
                             </p>
-                            <p className='mt-0.5 text-[11px] font-bold text-slate-400'>{formatTime(operation.createdAt)}</p>
+                            <p className='mt-0.5 text-xs font-bold text-slate-400'>{formatTime(operation.createdAt)}</p>
                           </div>
                           <Badge
                             className={cn(
-                              'shrink-0 px-2 py-0.5 text-[10px] ring-1',
+                              'shrink-0 px-2 py-0.5 text-[11px] ring-1',
                               operation.status === 'posted_1c_pair' || operation.status === 'resolved_manual'
                                 ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
                                 : operation.status === 'one_c_error'
@@ -3577,7 +3577,7 @@ export function EmployeeTodayClient({
               <Card className='bg-slate-50 p-4'>
                 <div className='mb-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
                   <h2 className='text-base font-extrabold text-slate-950'>Детали смены</h2>
-                  <Badge className={cn('max-w-full shrink-0 whitespace-nowrap px-2 py-0.5 text-[11px]', factTone(displayedWorkDayStatus))}>
+                  <Badge className={cn('max-w-full shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', factTone(displayedWorkDayStatus))}>
                     {factLabel(displayedWorkDayStatus)}
                   </Badge>
                 </div>
@@ -3704,7 +3704,7 @@ export function EmployeeTodayClient({
                     )}
                   </div>
 
-                  <div className='grid grid-cols-7 gap-1 text-center text-[11px] font-extrabold text-slate-500'>
+                  <div className='grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-slate-500'>
                     {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => (
                       <span key={day}>{day}</span>
                     ))}
@@ -3737,15 +3737,15 @@ export function EmployeeTodayClient({
                           )}
                         >
                           <span className='text-[13px] font-extrabold leading-none'>{cell.day}</span>
-                          <span className='mt-0.5 text-[10px] font-extrabold leading-none'>{scheduleMonthLoaded ? scheduleCellLabel(ownEntry?.status) : '…'}</span>
+                          <span className='mt-0.5 text-[11px] font-extrabold leading-none'>{scheduleMonthLoaded ? scheduleCellLabel(ownEntry?.status) : '…'}</span>
                           <span className='mt-auto flex max-w-full flex-wrap gap-x-1 gap-y-0.5 overflow-hidden leading-none'>
                             {scheduleMonthLoaded && workingInitials.initials.map((letter, index) => (
-                              <span key={`${letter}-${index}`} className='text-[8px] font-extrabold leading-none text-green-800'>
+                              <span key={`${letter}-${index}`} className='text-[9px] font-extrabold leading-none text-green-800'>
                                 {letter}
                               </span>
                             ))}
                             {scheduleMonthLoaded && workingInitials.extraCount > 0 && (
-                              <span className='text-[8px] font-extrabold leading-none text-green-800'>+{workingInitials.extraCount}</span>
+                              <span className='text-[9px] font-extrabold leading-none text-green-800'>+{workingInitials.extraCount}</span>
                             )}
                           </span>
                         </button>
@@ -3778,7 +3778,7 @@ export function EmployeeTodayClient({
                   type='button'
                   onClick={() => setActiveTab(item.id)}
                   className={cn(
-                    'employee-material-tab flex min-h-[54px] flex-col items-center justify-center gap-1 rounded-lg px-2 text-[11px] font-extrabold transition',
+                    'employee-material-tab flex min-h-[54px] flex-col items-center justify-center gap-1 rounded-lg px-2 text-xs font-extrabold transition',
                     active ? 'bg-[#111821] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
                   )}
                 >

@@ -195,15 +195,31 @@ select {
 }
 
 .employee-material-focus-current {
-  border-color: rgba(81, 180, 17, 0.3) !important;
-  background: linear-gradient(145deg, #f7fcf3, #dfeada) !important;
-  box-shadow: 6px 8px 15px rgba(77, 112, 62, 0.22), -4px -4px 9px rgba(255, 255, 255, 0.94) !important;
+  position: relative;
+  border-left-width: 5px !important;
+  border-color: rgba(75, 196, 35, 0.72) !important;
+  background: linear-gradient(145deg, #fbfaf6, #e5e4de) !important;
+  box-shadow: 9px 12px 22px rgba(74, 79, 76, 0.25), -5px -5px 12px rgba(255, 255, 255, 0.96), inset 0 1px rgba(255, 255, 255, 0.74) !important;
+  transform: translateY(-2px);
 }
 
 .employee-material-focus-current .employee-material-icon {
   color: #3b9f1f !important;
-  background: linear-gradient(145deg, #fbfff8, #dcebd5) !important;
-  border-color: rgba(81, 180, 17, 0.2) !important;
+  background: linear-gradient(145deg, #fbfaf6, #e5e3dc) !important;
+  border-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.employee-material-current-label {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  color: #4f5d63 !important;
+  background: linear-gradient(145deg, #f7f6f1, #dedfdc);
+  box-shadow: 2px 3px 7px rgba(74, 82, 80, 0.16), inset 0 1px rgba(255, 255, 255, 0.72);
 }
 
 .employee-material-focus-upcoming {
@@ -262,6 +278,14 @@ select {
   border: 1px solid rgba(255, 255, 255, 0.82);
   background: linear-gradient(145deg, rgba(240, 251, 236, 0.95), rgba(214, 239, 205, 0.86));
   box-shadow: 3px 4px 9px rgba(91, 118, 82, 0.14), inset 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.employee-material-info-card {
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  background:
+    radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.82), transparent 38%),
+    linear-gradient(145deg, #f5f5f1, #dee2df);
+  box-shadow: 7px 9px 17px rgba(94, 102, 101, 0.2), -4px -4px 10px rgba(255, 255, 255, 0.88);
 }
 
 .employee-material-status-dot {
