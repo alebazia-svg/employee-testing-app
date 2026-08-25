@@ -2696,7 +2696,7 @@ export function EmployeeTodayClient({
     );
 
     return (
-      <div className='employee-material-form rounded-xl bg-white p-3 ring-1 ring-slate-200/80'>
+      <div className='employee-material-focus employee-material-focus-current employee-material-form rounded-xl border-l-[5px] p-3 ring-1'>
         <div className='mb-3 flex items-start justify-between gap-3'>
           <div className='flex items-start gap-2'>
             <span className='mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'>
