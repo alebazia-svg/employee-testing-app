@@ -73,7 +73,7 @@ export async function addAdminWorkdayIssueMessage(input: {
         issueId: issue.id,
         fingerprint: `workday-issue:${issue.id}:admin-message:${message.id}`,
         kind: 'workday_issue_reply',
-        title: 'Ответ по проблеме рабочего дня',
+        title: 'Ответ администратора',
         body: short(input.body),
         scheduledAt: now,
       },

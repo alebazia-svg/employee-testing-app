@@ -161,7 +161,7 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
         await tx.workdayNotification.create({
           data: {
             userId, issueId: issue.id, fingerprint: `issue:${issue.id}:detected:${now.toISOString()}`,
-            kind: 'issue_detected', title: issue.title,
+            kind: 'issue_detected', title: 'Проверьте кредитный чек',
             body: `Реализация ${controlCase.documentNumber} · ${(controlCase.amountKopecks / 100).toLocaleString('ru-RU')} ₽. Чек не найден — откройте проверку.`, scheduledAt: now,
           },
         });

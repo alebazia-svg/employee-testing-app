@@ -37,7 +37,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         userId: existing.employeeId,
         fingerprint: `workday-close-exception:${existing.id}:${status}`,
         kind: 'workday_close_exception_decision',
-        title: status === 'approved' ? 'Завершение дня разрешено' : 'Завершение дня не согласовано',
+        title: status === 'approved' ? 'Можно завершить день' : 'Завершение не согласовано',
         body: status === 'approved'
           ? cashEncashmentException
             ? 'Можно завершить день без инкассации. Ситуация остаётся у администратора на контроле.'

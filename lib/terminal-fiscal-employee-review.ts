@@ -378,7 +378,7 @@ export async function syncTerminalFiscalEmployeeReviews(
           reviewId: review.id,
           fingerprint: `${reviewKey}:created`,
           kind: 'terminal_fiscal_review',
-          title: 'Проверьте чек по продаже',
+          title: 'Проверьте чек продажи',
           body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks }),
           scheduledAt: new Date(input.output.evaluatedAt),
         },

@@ -127,15 +127,15 @@ test('notification links open the exact employee action target', () => {
 test('task reminders are neutral, concise and distinguish cashbox acceptance', () => {
   assert.deepEqual(workdayTaskNotificationCopy({ category: 'cash', title: 'Принять кассу: пересчитать наличные' }, 'planned'), {
     title: 'Примите кассу',
-    body: 'Пересчитайте наличные и внесите фактический остаток.',
+    body: 'Пересчитайте наличные и внесите остаток.',
   });
   assert.deepEqual(workdayTaskNotificationCopy({ category: 'cash', title: 'Пересчитать наличные в середине смены' }, 'overdue'), {
-    title: 'Пересчёт кассы ожидает',
-    body: 'Пересчитайте наличные и внесите фактический остаток.',
+    title: 'Пересчитайте кассу',
+    body: 'Задание просрочено. Внесите фактический остаток.',
   });
   assert.deepEqual(workdayTaskNotificationCopy({ category: 'handover', title: 'Сдать смену' }, 'overdue_repeat'), {
-    title: 'Сдача смены ожидает',
-    body: 'Выполните итоговые действия и сдайте смену.',
+    title: 'Сдайте смену',
+    body: 'Задание просрочено. Выполните итоговые действия.',
   });
 });
 

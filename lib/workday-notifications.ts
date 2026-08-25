@@ -145,38 +145,39 @@ const repeatMinutesByCategory: Record<string, number> = {
 
 export function workdayTaskNotificationCopy(task: Pick<NotificationTask, 'category' | 'title'>, kind: string) {
   const overdue = kind !== 'planned';
+  const overduePrefix = overdue ? 'Задание просрочено. ' : '';
   const acceptingCashbox = task.category === 'cash' && /принять кассу/i.test(task.title);
   if (acceptingCashbox) return {
-    title: overdue ? 'Приём кассы ожидает' : 'Примите кассу',
-    body: 'Пересчитайте наличные и внесите фактический остаток.',
+    title: 'Примите кассу',
+    body: `${overduePrefix}Пересчитайте наличные и внесите остаток.`,
   };
   if (task.category === 'cash') return {
-    title: overdue ? 'Пересчёт кассы ожидает' : 'Пора пересчитать кассу',
-    body: 'Пересчитайте наличные и внесите фактический остаток.',
+    title: 'Пересчитайте кассу',
+    body: `${overduePrefix}Внесите фактический остаток.`,
   };
   if (task.category === 'opening') return {
-    title: overdue ? 'Открытие кассы ожидает' : 'Откройте смену ККМ',
-    body: 'Откройте смену на кассе и подтвердите выполнение.',
+    title: 'Откройте смену ККМ',
+    body: `${overduePrefix}Откройте смену и подтвердите выполнение.`,
   };
   if (task.category === 'closing') return {
-    title: overdue ? 'Закрытие кассы ожидает' : 'Закройте смену ККМ',
-    body: 'Закройте смену на кассе и подтвердите выполнение.',
+    title: 'Закройте смену ККМ',
+    body: `${overduePrefix}Закройте смену и подтвердите выполнение.`,
   };
   if (task.category === 'acquiring') return {
-    title: overdue ? 'Проверка терминала ожидает' : 'Проверьте операции терминала',
-    body: 'Проверьте новые операции после предыдущей проверки.',
+    title: 'Проверьте терминал',
+    body: `${overduePrefix}Проверьте новые операции.`,
   };
   if (task.category === 'credit') return {
-    title: overdue ? 'Проверка кредитов ожидает' : 'Проверьте кредиты и рассрочки',
-    body: 'Проверьте операции кредитов и рассрочек.',
+    title: 'Проверьте кредиты',
+    body: `${overduePrefix}Проверьте кредиты и рассрочки.`,
   };
   if (task.category === 'handover') return {
-    title: overdue ? 'Сдача смены ожидает' : 'Пора сдать смену',
-    body: 'Выполните итоговые действия и сдайте смену.',
+    title: 'Сдайте смену',
+    body: `${overduePrefix}Выполните итоговые действия.`,
   };
   return {
-    title: overdue ? 'Задание ожидает выполнения' : task.title,
-    body: overdue ? `Выполните задание: ${task.title}` : `Пора выполнить: ${task.title}`,
+    title: task.title,
+    body: `${overduePrefix}Откройте задание в приложении.`,
   };
 }
 
@@ -332,8 +333,9 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       unreadTargets.add(targetKey);
       const badgeCount = unreadTargets.size;
       const payload = JSON.stringify({
-        title: notification.title,
-        body: notification.body,
+        ...(notification.task
+          ? workdayTaskNotificationCopy(notification.task, notification.kind)
+          : { title: notification.title, body: notification.body }),
         url: workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,

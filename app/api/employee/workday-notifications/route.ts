@@ -1,7 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
-import { reconcileActiveWorkdayNotifications, workdayNotificationHref } from '@/lib/workday-notifications';
+import { reconcileActiveWorkdayNotifications, workdayNotificationHref, workdayTaskNotificationCopy } from '@/lib/workday-notifications';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -20,7 +20,7 @@ export async function GET() {
       taskId: true,
       issueId: true,
       reviewId: true,
-      task: { select: { status: true, run: { select: { status: true } } } },
+      task: { select: { status: true, category: true, title: true, run: { select: { status: true } } } },
       issue: { select: { status: true, employeeActionRequired: true, ruleKey: true, title: true, detail: true, sourceData: true } },
       review: { select: { status: true } },
     },
@@ -34,12 +34,13 @@ export async function GET() {
       seenTargets.add(target);
       return true;
     })
-    .map(({ task: _task, issue, review: _review, ...notification }) => {
+    .map(({ task, issue, review: _review, ...notification }) => {
       const issueView = issue ? workdayIssueView(issue) : null;
+      const taskCopy = task ? workdayTaskNotificationCopy(task, notification.kind) : null;
       return {
         ...notification,
-        title: issueView?.summaryTitle || notification.title,
-        body: issueView?.notificationBody || notification.body,
+        title: issueView?.summaryTitle || taskCopy?.title || notification.title,
+        body: issueView?.notificationBody || taskCopy?.body || notification.body,
         href: workdayNotificationHref(notification),
       };
     })

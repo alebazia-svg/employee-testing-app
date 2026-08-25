@@ -110,6 +110,12 @@ export function WorkdayNotificationsClient() {
     return () => window.clearInterval(timer);
   }, [connectPush, refresh]);
 
+  useEffect(() => {
+    if (!open) return;
+    const closeTimer = window.setTimeout(() => setOpen(false), 10_000);
+    return () => window.clearTimeout(closeTimer);
+  }, [open]);
+
   async function dismiss(id: number) {
     setNotifications((current) => {
       const next = current.filter((notification) => notification.id !== id);
