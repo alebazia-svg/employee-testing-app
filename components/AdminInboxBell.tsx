@@ -65,7 +65,7 @@ export function AdminInboxBell() {
 
   return (
     <div ref={root} className='relative'>
-      <button type='button' onClick={() => { setOpen((value) => !value); if (!open) void load(); }} aria-label='Уведомления администратора' className='admin-material-filter-active relative flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 text-white ring-1 ring-white/20 transition hover:-translate-y-0.5 hover:text-white'>
+      <button type='button' onClick={() => { setOpen((value) => !value); if (!open) void load(); }} aria-label='Уведомления администратора' className='admin-material-control relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 transition hover:-translate-y-0.5 hover:text-slate-950'>
         <Bell className='h-5 w-5' />
         {unreadCount > 0 && <span className='absolute -right-1 -top-1 min-w-5 rounded-full bg-amber-400 px-1.5 py-1 text-center text-[10px] font-extrabold leading-none text-slate-950 ring-2 ring-[#f7faf8]'>{unreadCount > 99 ? '99+' : unreadCount}</span>}
       </button>
@@ -73,18 +73,18 @@ export function AdminInboxBell() {
         <div className='admin-dialog-panel fixed inset-x-3 top-4 z-50 max-h-[calc(100vh-2rem)] w-auto overflow-hidden rounded-2xl bg-white text-left ring-1 ring-slate-200 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:max-h-none sm:w-[min(92vw,400px)]'>
           <div className='flex items-center justify-between border-b border-slate-200 px-4 py-3'>
             <div><p className='font-extrabold text-slate-950'>Уведомления</p><p className='text-xs font-medium text-slate-500'>{unreadCount ? `Непрочитанных: ${unreadCount}` : 'Новых нет'}</p></div>
-            {unreadCount > 0 && <button type='button' onClick={() => void markAll()} className='inline-flex items-center gap-1 text-xs font-bold text-green-700'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
+            {unreadCount > 0 && <button type='button' onClick={() => void markAll()} className='admin-material-control inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-green-700'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
           </div>
           {items.length === 0 ? <p className='px-5 py-10 text-center text-sm font-medium text-slate-500'>Уведомлений пока нет.</p> : (
-            <div className='max-h-[420px] divide-y divide-slate-100 overflow-y-auto'>{items.map((item) => (
-              <button key={item.id} type='button' onClick={() => void openItem(item)} className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-slate-50 ${item.readAt ? 'bg-white' : 'bg-amber-50/70'}`}>
+            <div className='max-h-[420px] space-y-2 overflow-y-auto p-2.5'>{items.map((item) => (
+              <button key={item.id} type='button' onClick={() => void openItem(item)} className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition hover:-translate-y-0.5 ${item.readAt ? 'admin-material-control border-white/80 bg-white' : 'border-amber-200 bg-amber-50/80 shadow-[3px_4px_10px_rgba(120,92,28,0.12),inset_0_1px_rgba(255,255,255,0.7)]'}`}>
                 <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-amber-400'}`} />
                 <span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className='mt-0.5 block text-xs font-medium leading-relaxed text-slate-600'>{item.event.body}</span><span className='mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-400'><span>{when(item.event.occurredAt)}</span><span>· {item.meta.typeLabel}</span>{item.sourceState.active && <span className='rounded-full bg-amber-100 px-1.5 py-0.5 font-extrabold text-amber-800'>{item.sourceState.label}</span>}</span></span>
                 <ChevronRight className='mt-1 h-4 w-4 shrink-0 text-slate-400' />
               </button>
             ))}</div>
           )}
-          <button type='button' onClick={() => { setOpen(false); router.push('/admin/inbox'); }} className='block w-full border-t border-slate-200 px-4 py-3 text-center text-sm font-bold text-green-700 hover:bg-slate-50'>Открыть историю уведомлений</button>
+          <button type='button' onClick={() => { setOpen(false); router.push('/admin/inbox'); }} className='admin-material-filter-active mx-3 mb-3 block w-[calc(100%_-_1.5rem)] rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-bold text-white transition hover:-translate-y-0.5'>Открыть историю уведомлений</button>
         </div>
       )}
     </div>
