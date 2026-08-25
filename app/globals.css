@@ -404,7 +404,7 @@ select {
 }
 
 /* Map every legacy Button state in the employee app to the same material system. */
-.employee-material-ui button.bg-primary:not(.employee-material-header-action) {
+.employee-material-ui button.bg-primary:not(.employee-material-header-action):not(.employee-material-primary-action):not(.employee-material-secondary-action) {
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(119, 224, 70, 0.64) !important;
