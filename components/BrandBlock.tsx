@@ -17,8 +17,8 @@ const logoConfig: Record<BrandSize, { src: string; className: string }> = {
     className: 'w-[178px] md:w-[205px]',
   },
   sidebar: {
-    src: '/logo-offonika-sidebar.webp',
-    className: 'w-[190px]',
+    src: '/offonika-wordmark-header.png',
+    className: 'w-[176px]',
   },
 };
 
