@@ -150,6 +150,25 @@ select {
   border-radius: 999px !important;
 }
 
+.employee-material-tab.bg-\[\#111821\] {
+  color: #f8f7f2 !important;
+}
+
+.employee-material-tab:not(.bg-\[\#111821\]) {
+  color: #5d6b71 !important;
+}
+
+.employee-material-tab-status {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #51c72a;
+  box-shadow: 0 0 0 1.5px #263238, 0 1px 3px rgba(67, 185, 27, 0.42);
+}
+
 .employee-material-day-card {
   border-color: rgba(255, 255, 255, 0.92) !important;
   border-radius: 22px !important;
@@ -207,6 +226,16 @@ select {
   border: 1px solid rgba(255, 255, 255, 0.92) !important;
   background: linear-gradient(145deg, #fcfbf7, #e5e3dc) !important;
   box-shadow: 4px 5px 10px rgba(117, 113, 104, 0.28), -3px -3px 8px rgba(255, 255, 255, 0.9) !important;
+}
+
+.employee-material-brand-o {
+  display: block;
+  width: 26px;
+  height: 26px;
+  background: #4ac51f;
+  -webkit-mask: url('/offonika-o-white.png') center / contain no-repeat;
+  mask: url('/offonika-o-white.png') center / contain no-repeat;
+  filter: drop-shadow(0 1px 1px rgba(42, 128, 18, 0.18));
 }
 
 .employee-material-heading-icon {

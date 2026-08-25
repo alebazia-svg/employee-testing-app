@@ -21,6 +21,7 @@ import {
   Home,
   ReceiptText,
   RefreshCw,
+  ScanLine,
   Users,
   X,
 } from 'lucide-react';
@@ -3192,8 +3193,8 @@ export function EmployeeTodayClient({
               {!workDay && !unfinished && (
                 <Card className='space-y-3 p-4'>
                   <div className='flex items-start gap-3'>
-                    <span className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
-                      <Camera className='h-6 w-6' />
+                    <span className='employee-material-heading-icon h-11 w-11 shrink-0 rounded-xl' aria-hidden='true'>
+                      <span className='employee-material-brand-o' />
                     </span>
                     <div className='min-w-0'>
                       <h2 className='text-xl font-black leading-tight text-slate-950'>Начать рабочий день</h2>
@@ -3208,7 +3209,7 @@ export function EmployeeTodayClient({
                     onClick={openQrStart}
                     disabled={isSaving || Boolean(unfinished)}
                   >
-                    <Camera className='mr-2 h-5 w-5' />
+                    <ScanLine className='mr-2 h-5 w-5' />
                     Сканировать QR
                   </Button>
                   {unfinished && (
@@ -3775,7 +3776,10 @@ export function EmployeeTodayClient({
                     active ? 'bg-[#111821] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
                   )}
                 >
-                  <Icon className={cn('h-5 w-5', active && 'text-primary')} />
+                  <span className='relative flex h-6 w-6 items-center justify-center' aria-hidden='true'>
+                    <Icon className='h-5 w-5' strokeWidth={2.15} />
+                    {active && <span className='employee-material-tab-status' />}
+                  </span>
                   <span>{item.label}</span>
                 </button>
               );
