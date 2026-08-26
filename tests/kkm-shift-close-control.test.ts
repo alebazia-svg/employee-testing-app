@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readKkmShiftCloseSimulation, simulateKkmShiftClose } from '../lib/kkm-shift-close-control';
+import { kkmShiftCloseOneCPeriod, readKkmShiftCloseSimulation, simulateKkmShiftClose } from '../lib/kkm-shift-close-control';
+
+test('1C KKM check period uses an exclusive next-day upper bound', () => {
+  assert.deepEqual(kkmShiftCloseOneCPeriod('2026-08-26'), {
+    fromDate: '2026-08-26',
+    toDate: '2026-08-27',
+  });
+});
 
 const activatedAt = '2026-08-26T10:00:00.000Z';
 

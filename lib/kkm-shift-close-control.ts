@@ -61,6 +61,10 @@ function moscowPeriod(date: string) {
   return { from: `${date}T00:00:00+03:00`, to: `${nextDate(date)}T00:00:00+03:00` };
 }
 
+export function kkmShiftCloseOneCPeriod(date: string) {
+  return { fromDate: date, toDate: nextDate(date) };
+}
+
 function normalized(value: string) {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
 }
@@ -76,7 +80,7 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
   const cashierRef = identity?.oneCCashierRef?.trim() || '';
   if (!cashierRef) return { ...empty, status: 'unavailable', sourceError: 'Кассир сотрудника не сопоставлен с 1С.' };
 
-  const checks = await loadOneCKkmChecks({ fromDate: input.date, toDate: input.date }).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'ONE_C_REQUEST_FAILED' }));
+  const checks = await loadOneCKkmChecks(kkmShiftCloseOneCPeriod(input.date)).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'ONE_C_REQUEST_FAILED' }));
   if (!checks.complete) return { ...empty, cashierRef, status: 'unavailable', sourceError: 'Не удалось получить полный список чеков 1С.' };
   const employeeChecks = checks.data.filter((check) => check.cashier.ref === cashierRef).sort((a, b) => Date.parse(a.dateTime) - Date.parse(b.dateTime));
   const lastCheck = employeeChecks.at(-1) ?? null;
