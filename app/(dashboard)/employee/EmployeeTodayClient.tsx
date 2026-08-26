@@ -1300,6 +1300,9 @@ export function EmployeeTodayClient({
   const primaryPaymentCheckView = primaryPaymentCheck ? terminalFiscalEmployeeReviewSummary(primaryPaymentCheck) : null;
   const kkmCloseIssue = requiredIssuesState.find((issue) => issue.ruleKey === 'kkm_shift_not_closed') ?? null;
   const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || Boolean(kkmCloseIssue));
+  const requiredIssuesForBanner = showCloseResolution
+    ? requiredIssuesState.filter((issue) => issue.ruleKey !== 'kkm_shift_not_closed')
+    : requiredIssuesState;
   const currentRequiredIssueIds = requiredIssuesState.map((issue) => issue.id).sort((a, b) => a - b);
   const closeExceptionMatchesCurrentIssues = Boolean(
     closeExceptionRequestState
@@ -3285,17 +3288,17 @@ export function EmployeeTodayClient({
                 </div>
               )}
 
-              {requiredIssuesState.length > 0 && (
+              {requiredIssuesForBanner.length > 0 && (
                 <section className='overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 text-slate-950 shadow-sm'>
                   <div className='flex items-center gap-3 px-3.5 py-3'>
                     <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-5 w-5' /></span>
                     <div className='min-w-0'>
-                      <p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить · {requiredIssuesState.length}</p>
+                      <p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить · {requiredIssuesForBanner.length}</p>
                       <p className='mt-0.5 text-sm font-bold leading-tight text-slate-700'>Откройте и выполните инструкцию</p>
                     </div>
                   </div>
                   <div className='divide-y divide-amber-200 border-t border-amber-200 bg-white/45'>
-                    {(showAllRequiredIssues ? requiredIssuesState : requiredIssuesState.slice(0, 1)).map((issue) => {
+                    {(showAllRequiredIssues ? requiredIssuesForBanner : requiredIssuesForBanner.slice(0, 1)).map((issue) => {
                       const issueView = workdayIssueView(issue);
                       return (
                         <Link key={issue.id} href={`/employee/issues/${issue.id}`} className='flex items-center gap-3 px-3.5 py-3 transition hover:bg-white/60'>
@@ -3307,14 +3310,14 @@ export function EmployeeTodayClient({
                         </Link>
                       );
                     })}
-                    {requiredIssuesState.length > 1 && (
+                    {requiredIssuesForBanner.length > 1 && (
                       <button
                         type='button'
                         onClick={() => setShowAllRequiredIssues((current) => !current)}
                         className='flex w-full items-center justify-center gap-2 px-3.5 py-3 text-sm font-extrabold text-amber-900 transition hover:bg-white/60'
                         aria-expanded={showAllRequiredIssues}
                       >
-                        {showAllRequiredIssues ? 'Свернуть список' : `Показать остальные · ${requiredIssuesState.length - 1}`}
+                        {showAllRequiredIssues ? 'Свернуть список' : `Показать остальные · ${requiredIssuesForBanner.length - 1}`}
                         {showAllRequiredIssues ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
                       </button>
                     )}
