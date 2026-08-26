@@ -60,7 +60,7 @@ function readFormString(formData: FormData, key: string) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function isClosingShift(shiftCode: string | null | undefined) {
+function isStoreClosingShift(shiftCode: string | null | undefined) {
   return shiftCode === '11_20' || shiftCode === '09_20';
 }
 
@@ -358,7 +358,7 @@ async function saveHandoverDraft(
       reconciliation: terminalHadOperations ? terminalReconciliation : 'not_required',
       comment: terminalReconciliation === 'discrepancy' ? terminalComment : '',
     },
-    storeClosing: isClosingShift(task.run.workDayEntry.shiftCode)
+    storeClosing: isRetail
       ? {
           zReportRequired: employeeKkmReportPhotosRequired,
           verification: 'one_c_cash_shift',
@@ -416,15 +416,16 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (readFormString(formData, 'intent') === 'draft') {
       try {
         const isRetail = user.department === 'retail';
-        return await saveHandoverDraft(formData, task, isRetail, isRetail && isClosingShift(task.run.workDayEntry.shiftCode), user.id, task.run.date);
+        return await saveHandoverDraft(formData, task, isRetail, isRetail && isStoreClosingShift(task.run.workDayEntry.shiftCode), user.id, task.run.date);
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : 'Не удалось сохранить шаг сдачи смены' }, { status: 400 });
       }
     }
 
     const isRetail = user.department === 'retail';
-    const isClosingEmployee = isRetail && isClosingShift(task.run.workDayEntry.shiftCode);
-    await saveHandoverDraft(formData, task, isRetail, isClosingEmployee, user.id, task.run.date);
+    const isStoreClosingEmployee = isRetail && isStoreClosingShift(task.run.workDayEntry.shiftCode);
+    const requiresKkmClose = isRetail;
+    await saveHandoverDraft(formData, task, isRetail, isStoreClosingEmployee, user.id, task.run.date);
     const savedDraftTask = await prisma.shiftControlTask.findUnique({ where: { id: task.id }, select: { handoverData: true } });
     if (!savedDraftTask) return Response.json({ error: 'Задача сдачи смены не найдена' }, { status: 404 });
     const handoverData = savedDraftTask.handoverData;
@@ -455,7 +456,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const canFinishWithoutEncashment = Boolean(approvedCashEncashmentException);
 
     if (personalCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в моей кассе' }, { status: 400 });
-    if (isClosingEmployee && reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
+    if (isStoreClosingEmployee && reserveCashBalance === null) return Response.json({ error: 'Укажите остаток наличных в резерве' }, { status: 400 });
     if (discrepancyType && !['none', 'surplus', 'shortage'].includes(discrepancyType)) {
       return Response.json({ error: 'Не удалось определить расхождение по кассе' }, { status: 400 });
     }
@@ -471,11 +472,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           : 'Сфотографируйте деньги перед помещением в депозитный сейф.' }, { status: 400 });
       }
     }
-    if (isClosingEmployee && employeeKkmReportPhotosRequired) {
+    if (requiresKkmClose && employeeKkmReportPhotosRequired) {
       if (!hasSavedPhoto(handoverData, 'zReport')) return Response.json({ error: 'Сделайте фото чека закрытия смены' }, { status: 400 });
     }
 
-    if (isClosingEmployee) {
+    if (requiresKkmClose) {
       const now = new Date();
       const handoverRecord = isRecord(handoverData) ? handoverData : {};
       const previousCheck = readRecord(handoverRecord, 'kkmCloseCheck');
@@ -634,14 +635,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
       const photos = {
         personalStatement: savedPhoto(handoverData, 'personalStatement'),
-        zReport: isClosingEmployee ? savedPhoto(handoverData, 'zReport') : null,
+        zReport: requiresKkmClose ? savedPhoto(handoverData, 'zReport') : null,
         encashmentDocument: requiresEncashment && !canFinishWithoutEncashment ? savedPhoto(handoverData, 'encashmentDocument') : null,
       };
       const now = new Date();
       const handoverRecord = isRecord(handoverData) ? handoverData : {};
       const savedOneCAudit = isRecord(handoverRecord[shiftControlOneCAuditKey])
         ? handoverRecord[shiftControlOneCAuditKey]
-        : await captureOneCCashAudit({ userId: user.id, date: task.run.date, includeReserve: isClosingEmployee, capturedAt: now });
+        : await captureOneCCashAudit({ userId: user.id, date: task.run.date, includeReserve: isStoreClosingEmployee, capturedAt: now });
       const finalHandoverData = {
         draft: false,
         shiftCode: task.run.workDayEntry.shiftCode,
@@ -650,8 +651,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         kkmCloseCheck: kkmCloseCheckAudit ?? null,
         scope: {
           personalCash: true,
-          reserveCash: isClosingEmployee,
-          storeClosing: isClosingEmployee,
+          reserveCash: isStoreClosingEmployee,
+          storeClosing: requiresKkmClose,
         },
         personalCash: {
           cashBalance: personalCashBalance,
@@ -668,9 +669,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
           encashmentDirection: requiresEncashment && !canFinishWithoutEncashment ? encashmentDirection : null,
           encashmentExceptionRequestId: approvedCashEncashmentException?.id ?? null,
         },
-        reserveCash: isClosingEmployee ? { cashBalance: reserveCashBalance } : null,
+        reserveCash: isStoreClosingEmployee ? { cashBalance: reserveCashBalance } : null,
         terminalCheck: null,
-        storeClosing: isClosingEmployee
+        storeClosing: requiresKkmClose
           ? {
               zReportRequired: employeeKkmReportPhotosRequired,
               verification: 'one_c_cash_shift_and_ofd_z_report',

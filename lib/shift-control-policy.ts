@@ -17,7 +17,8 @@ export function buildShiftHandoverSteps(input: {
   personalCashBalance: number | null;
   cashCommentRequired: boolean;
   isRetail: boolean;
-  isClosingShift: boolean;
+  isStoreClosingShift: boolean;
+  requiresKkmClose: boolean;
   requireKkmReportPhoto?: boolean;
 }): ShiftHandoverStep[] {
   const requiresEncashment = input.personalCashBalance !== null && input.personalCashBalance > 50_000;
@@ -26,8 +27,8 @@ export function buildShiftHandoverSteps(input: {
   return [
     'personalCashBalance',
     ...(input.cashCommentRequired ? ['discrepancy' as const] : []),
-    ...(input.isRetail && input.isClosingShift ? ['reserveCashBalance' as const] : []),
+    ...(input.isRetail && input.isStoreClosingShift ? ['reserveCashBalance' as const] : []),
     ...(requiresEncashment ? ['encashment' as const] : []),
-    ...(input.isClosingShift && requireKkmReportPhoto ? ['zReportPhoto' as const] : []),
+    ...(input.requiresKkmClose && requireKkmReportPhoto ? ['zReportPhoto' as const] : []),
   ];
 }

@@ -9,6 +9,7 @@ import { Table } from '@/components/ui/table';
 import { getAdminWorkdayRevision } from '@/lib/admin-workday-revision';
 import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, matchesAdminWorkdayControlFilter, resolveAdminWorkdayControlCategory, type AdminWorkdayControlCategory, type AdminWorkdayControlFilter } from '@/lib/admin-workday-view';
 import { getCurrentUser } from '@/lib/auth';
+import { readKkmShiftCloseSimulation } from '@/lib/kkm-shift-close-control';
 import { oneCDateTimestamp, parseOneCDateTime } from '@/lib/one-c-date';
 import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
@@ -1698,7 +1699,12 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       {(devWorkdayToolsEnabled || row.employee.login === 'kkm_test') && <div className='flex flex-col gap-2'>
                         {!row.workDay && row.shiftControlRequired && <DevCreateTestShiftButtons userId={row.employee.id} userName={row.employee.name} department={row.employee.department} date={selectedDate} />}
                         {row.shiftControlRequired && row.run && <DevMakeShiftTasksAvailableButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />}
-                        {row.employee.department === 'retail' && row.workDay?.comment.startsWith('Dev/Test') && row.run?.tasks.find((task) => task.category === 'handover') && <DevKkmCloseScenarioControl taskId={row.run.tasks.find((task) => task.category === 'handover')!.id} />}
+                        {row.employee.department === 'retail' && row.workDay?.comment.startsWith('Dev/Test') && row.run?.tasks.find((task) => task.category === 'handover') && (() => {
+                          const handoverTask = row.run!.tasks.find((task) => task.category === 'handover')!;
+                          const handoverData = isRecord(handoverTask.handoverData) ? handoverTask.handoverData : {};
+                          const simulation = readKkmShiftCloseSimulation(handoverData.kkmCloseSimulation);
+                          return <DevKkmCloseScenarioControl taskId={handoverTask.id} initialScenario={simulation?.scenario ?? null} />;
+                        })()}
                         <DevResetTodayButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />
                       </div>}
                     </div>

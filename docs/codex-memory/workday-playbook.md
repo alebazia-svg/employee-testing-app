@@ -140,6 +140,10 @@ missing-check review into an accusation or a hard mismatch.
 
 Current limitations must stay visible:
 
+- each retail workstation now has its own KKT. Therefore every retail employee
+  must pass automatic KKT closure verification when handing over their shift,
+  regardless of whether their scheduled shift closes the store. Only the shared
+  reserve recount remains limited to the employee whose shift closes the store;
 - a closed 1C cash shift alone is not proof that the physical KKT completed
   closure. Retail handover must also find the same fiscal shift's Z-report in
   Platforma OFD;
@@ -289,8 +293,9 @@ thought":
   employee must do right now.
 
 Opening and closing the KKM remain real employee actions, but they are not
-employee checklist confirmations. The portal verifies their result through
-`/cash-shifts` and keeps failures on the system/admin side.
+employee checklist confirmations. The portal verifies every retail employee's
+own KKT closure through 1C plus the matching Platforma OFD Z-report and keeps
+failures on the system/admin side.
 
 ## Admin Control UX
 

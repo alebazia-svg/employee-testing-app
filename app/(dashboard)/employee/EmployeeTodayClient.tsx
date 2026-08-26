@@ -899,7 +899,7 @@ function creditResultLabel(integerValue: number | null | undefined) {
   return 'результат сверки не указан';
 }
 
-function isClosingShift(shiftCode: string | null | undefined) {
+function isStoreClosingShift(shiftCode: string | null | undefined) {
   return shiftCode === '11_20' || shiftCode === '09_20';
 }
 
@@ -1310,7 +1310,8 @@ export function EmployeeTodayClient({
       personalCashBalance: draftCashBalance,
       cashCommentRequired: draft.cashCommentRequired,
       isRetail: user.department === 'retail',
-      isClosingShift: isClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode),
+      isStoreClosingShift: isStoreClosingShift(activeWorkDay?.shiftCode ?? workDay?.shiftCode),
+      requiresKkmClose: user.department === 'retail',
     });
   }
   const handoverSteps = buildHandoverSteps(handoverDraft);
