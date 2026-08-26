@@ -3334,7 +3334,7 @@ export function EmployeeTodayClient({
               )}
 
               {(activeWorkDay || unfinished) && closeBlocked && requiredIssuesState.length > 0 && (
-                <Card id='employee-close-exception' className='space-y-3 border-amber-200 bg-white p-4 scroll-mt-4'>
+                <Card id='employee-close-exception' className='mb-6 space-y-3 border-amber-200 bg-white p-4 scroll-mb-[calc(7rem+env(safe-area-inset-bottom))] scroll-mt-4'>
                   <div>
                     <h2 className='text-base font-black text-slate-950'>{unfinished ? 'Как закрыть предыдущий день' : 'Завершение рабочего дня'}</h2>
                     <p className='mt-1 text-sm font-semibold leading-relaxed text-slate-600'>
