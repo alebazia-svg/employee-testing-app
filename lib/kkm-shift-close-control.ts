@@ -21,7 +21,35 @@ export type KkmShiftCloseEvidence = {
   ofdClosedAt: string;
   ofdDocumentLink: string;
   sourceError: string;
+  simulated?: boolean;
 };
+
+export type KkmShiftCloseSimulationScenario = 'confirmed' | 'delayed' | 'one_c_open' | 'ofd_missing' | 'one_c_unavailable' | 'ofd_unavailable';
+export type KkmShiftCloseSimulation = { scenario: KkmShiftCloseSimulationScenario; activatedAt: string };
+
+const simulationScenarios = new Set<KkmShiftCloseSimulationScenario>(['confirmed', 'delayed', 'one_c_open', 'ofd_missing', 'one_c_unavailable', 'ofd_unavailable']);
+
+export function readKkmShiftCloseSimulation(value: unknown): KkmShiftCloseSimulation | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  if (typeof source.scenario !== 'string' || !simulationScenarios.has(source.scenario as KkmShiftCloseSimulationScenario)) return null;
+  if (typeof source.activatedAt !== 'string' || !Number.isFinite(Date.parse(source.activatedAt))) return null;
+  return { scenario: source.scenario as KkmShiftCloseSimulationScenario, activatedAt: source.activatedAt };
+}
+
+export function simulateKkmShiftClose(simulation: KkmShiftCloseSimulation, now = new Date()): KkmShiftCloseEvidence {
+  const common = {
+    checkedAt: now.toISOString(), cashierRef: 'DEV-CASHIER', cashRegisterRef: 'DEV-CASHBOX', cashRegisterName: 'Тестовая касса',
+    kktRegistrationNumber: '0000000000000000', oneCShiftNumber: 'DEV-1', fiscalShiftNumber: '777',
+    oneCOpenedAt: simulation.activatedAt, oneCClosedAt: now.toISOString(), ofdOpenedAt: '', ofdClosedAt: '', ofdDocumentLink: '', simulated: true as const,
+  };
+  const delayedConfirmed = simulation.scenario === 'delayed' && now.getTime() - Date.parse(simulation.activatedAt) >= 45_000;
+  if (simulation.scenario === 'confirmed' || delayedConfirmed) return { ...common, status: 'confirmed', ofdOpenedAt: simulation.activatedAt, ofdClosedAt: now.toISOString(), ofdDocumentLink: 'dev://z-report', sourceError: '' };
+  if (simulation.scenario === 'one_c_open') return { ...common, oneCClosedAt: '', status: 'one_c_open', sourceError: 'Dev/Test: смена в 1С осталась открыта.' };
+  if (simulation.scenario === 'one_c_unavailable') return { ...common, oneCClosedAt: '', status: 'unavailable', sourceError: 'Dev/Test: 1С временно недоступна.' };
+  if (simulation.scenario === 'ofd_unavailable') return { ...common, status: 'unavailable', sourceError: 'Dev/Test: сервис проверки чеков временно недоступен.' };
+  return { ...common, status: 'ofd_missing', sourceError: 'Dev/Test: чек закрытия смены не найден.' };
+}
 
 function nextDate(date: string) {
   const value = new Date(`${date}T12:00:00+03:00`);
@@ -37,7 +65,8 @@ function normalized(value: string) {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
 }
 
-export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string }): Promise<KkmShiftCloseEvidence> {
+export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string; simulation?: KkmShiftCloseSimulation | null }): Promise<KkmShiftCloseEvidence> {
+  if (process.env.ENABLE_DEV_WORKDAY_TOOLS === 'true' && input.simulation) return simulateKkmShiftClose(input.simulation);
   const checkedAt = new Date().toISOString();
   const empty = { checkedAt, cashierRef: '', cashRegisterRef: '', cashRegisterName: '', kktRegistrationNumber: '', oneCShiftNumber: '', fiscalShiftNumber: '', oneCOpenedAt: '', oneCClosedAt: '', ofdOpenedAt: '', ofdClosedAt: '', ofdDocumentLink: '' };
   const identity = await input.db.userOneCCashboxMapping.findUnique({ where: { userId: input.userId } });
@@ -120,13 +149,14 @@ export async function recheckOpenKkmShiftCloseIssues(now = new Date()) {
   const { prisma } = await import('@/lib/prisma');
   const issues = await prisma.workdayControlIssue.findMany({
     where: { ruleKey: 'kkm_shift_not_closed', status: 'open' },
-    include: { task: { select: { id: true, run: { select: { date: true, workDayEntryId: true } } } } },
+    include: { task: { select: { id: true, handoverData: true, run: { select: { date: true, workDayEntryId: true } } } } },
     take: 5,
   });
   let resolved = 0;
   for (const issue of issues) {
     if (!issue.task) continue;
-    const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: issue.userId, date: issue.task.run.date });
+    const handover = issue.task.handoverData && typeof issue.task.handoverData === 'object' && !Array.isArray(issue.task.handoverData) ? issue.task.handoverData as Record<string, unknown> : null;
+    const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: issue.userId, date: issue.task.run.date, simulation: readKkmShiftCloseSimulation(handover?.kkmCloseSimulation) });
     await syncKkmShiftCloseIssue(prisma, { userId: issue.userId, taskId: issue.task.id, workDayEntryId: issue.task.run.workDayEntryId, date: issue.task.run.date, evidence, now });
     if (evidence.status === 'confirmed') resolved += 1;
   }

@@ -36,6 +36,7 @@ import { AdminWorkdayAutoRefresh } from './AdminWorkdayAutoRefresh';
 import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
 import { DevMakeShiftTasksAvailableButton } from './DevMakeShiftTasksAvailableButton';
+import { DevKkmCloseScenarioControl } from './DevKkmCloseScenarioControl';
 import { DevResetTodayButton } from './DevResetTodayButton';
 import { TerminalFiscalAdminSummary } from './TerminalFiscalAdminSummary';
 import { WorkdayQrCodes } from './WorkdayQrCodes';
@@ -1696,6 +1697,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                       {devWorkdayToolsEnabled && <div className='flex flex-col gap-2'>
                         {!row.workDay && row.shiftControlRequired && <DevCreateTestShiftButtons userId={row.employee.id} userName={row.employee.name} department={row.employee.department} date={selectedDate} />}
                         {row.shiftControlRequired && row.run && <DevMakeShiftTasksAvailableButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />}
+                        {row.employee.department === 'retail' && row.workDay?.comment.startsWith('Dev/Test') && row.run?.tasks.find((task) => task.category === 'handover') && <DevKkmCloseScenarioControl taskId={row.run.tasks.find((task) => task.category === 'handover')!.id} />}
                         <DevResetTodayButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />
                       </div>}
                     </div>

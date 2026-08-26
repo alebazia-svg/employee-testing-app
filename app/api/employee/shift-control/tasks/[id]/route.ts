@@ -13,7 +13,7 @@ import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
-import { syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
+import { readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
 import {
   appendCashRecountInputHistory,
   buildCashRecountComparison,
@@ -481,7 +481,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       const previousCheck = readRecord(handoverRecord, 'kkmCloseCheck');
       const previousStartedAt = previousCheck && typeof previousCheck.startedAt === 'string' ? Date.parse(previousCheck.startedAt) : Number.NaN;
       const startedAt = Number.isFinite(previousStartedAt) ? new Date(previousStartedAt) : now;
-      const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: user.id, date: task.run.date });
+      const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: user.id, date: task.run.date, simulation: readKkmShiftCloseSimulation(handoverRecord.kkmCloseSimulation) });
       kkmCloseCheckAudit = {
         startedAt: startedAt.toISOString(),
         checkedAt: evidence.checkedAt,
