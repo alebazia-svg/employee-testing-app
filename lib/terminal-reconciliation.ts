@@ -12,6 +12,10 @@ function moscowDay(value: string, assumeMoscow = false) {
 }
 
 export const tBankTerminalOneCMapping: Record<string, { cashRegisterName: string; acquiringTerminalName: string }> = {
+  '1010808747019437': {
+    cashRegisterName: 'Касса Чеченова ККМ',
+    acquiringTerminalName: 'Терминал Ногмова Бэла ИП',
+  },
   '2332022071': {
     cashRegisterName: 'Касса Абшаева ККМ',
     acquiringTerminalName: 'Терминал Ногмова Бэла ИП',

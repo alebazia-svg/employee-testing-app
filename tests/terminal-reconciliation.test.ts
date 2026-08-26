@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { reconcileTerminalOperations } from '../lib/terminal-reconciliation';
+import { reconcileTerminalOperations, tBankTerminalOneCMapping } from '../lib/terminal-reconciliation';
 
 const operation = {
   rrn: 'rrn', transactionDate: '2026-08-17T16:26:39.000Z', amountKopecks: 50_000,
@@ -21,6 +21,17 @@ test('reconciles the real 17 August payment with its unique check seven minutes 
   assert.equal(result.matched[0].timeDifferenceSeconds, 437);
   assert.equal(result.onlyTBank.length, 0);
   assert.equal(result.onlyOneC.length, 0);
+});
+
+test('both physical T-Bank terminals are mapped to their own 1C cash registers', () => {
+  assert.deepEqual(tBankTerminalOneCMapping['1010808747019437'], {
+    cashRegisterName: 'Касса Чеченова ККМ',
+    acquiringTerminalName: 'Терминал Ногмова Бэла ИП',
+  });
+  assert.deepEqual(tBankTerminalOneCMapping['2332022071'], {
+    cashRegisterName: 'Касса Абшаева ККМ',
+    acquiringTerminalName: 'Терминал Ногмова Бэла ИП',
+  });
 });
 
 test('does not guess when only part of a repeated-amount bucket has a check', () => {
