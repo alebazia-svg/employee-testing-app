@@ -28,13 +28,13 @@ export function CloseExceptionDecisionClient({ requestId, approveLabel = 'Раз
   }
 
   return (
-    <div className='mt-5 space-y-3 border-t border-slate-200 pt-5'>
+    <div className='mt-5 scroll-mb-28 space-y-3 border-t border-slate-200 pt-5'>
       <label className='block text-sm font-extrabold text-slate-800'>Комментарий к решению</label>
       <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} rows={3} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-green-500' placeholder='Необязательно при разрешении' />
       {error && <p className='text-sm font-bold text-red-700'>{error}</p>}
       <div className='grid gap-2 sm:grid-cols-2'>
         <Button disabled={saving} onClick={() => decide('approved')} className='font-extrabold'>{approveLabel}</Button>
-        <Button disabled={saving} onClick={() => decide('rejected')} className='bg-white font-extrabold text-red-700 ring-1 ring-red-200 shadow-none hover:bg-red-50'>Не разрешать</Button>
+        <Button disabled={saving} onClick={() => decide('rejected')} className='bg-white font-extrabold text-slate-700 ring-1 ring-slate-300 shadow-none hover:bg-slate-50'>Не разрешать</Button>
       </div>
     </div>
   );
