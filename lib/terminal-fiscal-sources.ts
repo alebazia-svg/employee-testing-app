@@ -5,7 +5,7 @@ import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 import { getTBankTerminalOperations, getTBankTerminals, type TBankTerminalOperation } from '@/lib/tbank-acquiring';
 import { collectCompleteTBankWindow, splitIntoFixedWindows } from '@/lib/tbank-complete-window';
 import type { BankOperation, MatchingItem, OfdReceipt, OneCCheck, TerminalMapping } from '@/lib/terminal-fiscal-matching';
-import { normalizePlatformaOfdReceipt } from '@/lib/terminal-fiscal-ofd-adapter';
+import { normalizePlatformaOfdReceipt, normalizePlatformaOfdZReport, type NormalizedPlatformaOfdZReport } from '@/lib/terminal-fiscal-ofd-adapter';
 import { normalizeOneCDateTime } from '@/lib/terminal-fiscal-one-c-adapter';
 import { getMoscowDateKey } from '@/lib/workday';
 
@@ -16,6 +16,8 @@ export type SourceSnapshot<T> = {
   errorCode?: string;
   windows?: number;
 };
+
+export type PlatformaOfdZReport = NormalizedPlatformaOfdZReport;
 
 type TBankPage = Awaited<ReturnType<typeof getTBankTerminalOperations>>;
 type TBankPageLoader = (input: { terminalKey: string; from: string; till: string; limit: number }) => Promise<TBankPage>;
@@ -253,6 +255,27 @@ export async function loadPlatformaOfdReceipts(input: {
     data: normalizedReceipts,
     errorCode: complete ? undefined : normalizedReceipts.length !== receipts.length ? 'OFD_NORMALIZATION_FAILED' : 'OFD_INCOMPLETE',
   };
+}
+
+export async function loadPlatformaOfdZReports(input: {
+  kktRegistrationNumber: string;
+  from: string;
+  to: string;
+}): Promise<SourceSnapshot<PlatformaOfdZReport>> {
+  const checkedAt = new Date().toISOString();
+  const baseUrl = process.env.PLATFORMA_OFD_PROXY_BASE_URL?.trim().replace(/\/+$/, '');
+  if (!baseUrl) return { complete: false, checkedAt, data: [], errorCode: 'OFD_PROXY_NOT_CONFIGURED' };
+  const query = new URLSearchParams({ kktRegNumber: input.kktRegistrationNumber, from: input.from, to: input.to });
+  const { response, body } = await fetchJson(`${baseUrl}/api/v1/ofd/platforma/z-reports?${query}`, { headers: { Accept: 'application/json' } });
+  const root = record(body);
+  const dataRoot = record(root?.data);
+  const rows = array(dataRoot?.zReports ?? root?.zReports);
+  if (!response.ok || !root) return { complete: false, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' };
+  const normalized = rows.map((value) => normalizePlatformaOfdZReport(value, input.kktRegistrationNumber)).filter(Boolean) as PlatformaOfdZReport[];
+  const meta = record(root.meta);
+  const providerComplete = root.complete === true || dataRoot?.complete === true || meta?.complete === true;
+  const complete = providerComplete && normalized.length === rows.length;
+  return { complete, checkedAt, data: normalized, errorCode: complete ? undefined : normalized.length !== rows.length ? 'OFD_NORMALIZATION_FAILED' : 'OFD_INCOMPLETE' };
 }
 
 export async function previewTerminalFiscalMappings(input: { from: string; to: string }) {

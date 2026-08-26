@@ -13,6 +13,7 @@ import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
+import { syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
 import {
   appendCashRecountInputHistory,
   buildCashRecountComparison,
@@ -438,6 +439,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const comment = isRecord(handoverData) && typeof handoverData.comment === 'string' ? handoverData.comment.trim() : '';
     const requiresEncashment = personalCashBalance !== null && personalCashBalance > 50000;
     const requiresDiscrepancyComment = false;
+    let kkmCloseCheckAudit = readRecord(isRecord(handoverData) ? handoverData : {}, 'kkmCloseCheck');
 
     const approvedCashEncashmentException = requiresEncashment
       ? await prisma.workdayCloseExceptionRequest.findFirst({
@@ -471,6 +473,43 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     if (isClosingEmployee && employeeKkmReportPhotosRequired) {
       if (!hasSavedPhoto(handoverData, 'zReport')) return Response.json({ error: 'Сделайте фото чека закрытия смены' }, { status: 400 });
+    }
+
+    if (isClosingEmployee) {
+      const now = new Date();
+      const handoverRecord = isRecord(handoverData) ? handoverData : {};
+      const previousCheck = readRecord(handoverRecord, 'kkmCloseCheck');
+      const previousStartedAt = previousCheck && typeof previousCheck.startedAt === 'string' ? Date.parse(previousCheck.startedAt) : Number.NaN;
+      const startedAt = Number.isFinite(previousStartedAt) ? new Date(previousStartedAt) : now;
+      const evidence = await verifyEmployeeKkmShiftClose({ db: prisma, userId: user.id, date: task.run.date });
+      kkmCloseCheckAudit = {
+        startedAt: startedAt.toISOString(),
+        checkedAt: evidence.checkedAt,
+        attempts: (readInteger(previousCheck?.attempts) ?? 0) + 1,
+        status: evidence.status,
+        evidence,
+      };
+      await prisma.shiftControlTask.update({
+        where: { id: task.id },
+        data: {
+          handoverData: {
+            ...handoverRecord,
+            kkmCloseCheck: kkmCloseCheckAudit,
+          } as Prisma.InputJsonValue,
+        },
+      });
+      if (evidence.status === 'confirmed') {
+        await syncKkmShiftCloseIssue(prisma, { userId: user.id, taskId: task.id, workDayEntryId: task.run.workDayEntryId, date: task.run.date, evidence, now });
+      } else if (now.getTime() - startedAt.getTime() < 90_000) {
+        return Response.json({
+          error: 'Касса может передать чек с небольшой задержкой. Проверяем автоматически…',
+          code: 'KKM_SHIFT_CHECK_PENDING',
+          retryAfterMs: 15_000,
+          startedAt: startedAt.toISOString(),
+        }, { status: 409 });
+      } else {
+        await syncKkmShiftCloseIssue(prisma, { userId: user.id, taskId: task.id, workDayEntryId: task.run.workDayEntryId, date: task.run.date, evidence, now });
+      }
     }
 
     const requiredIssues = await findOpenRequiredWorkdayIssues(prisma, user.id);
@@ -608,6 +647,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         shiftCode: task.run.workDayEntry.shiftCode,
         submittedAt: now.toISOString(),
         [shiftControlOneCAuditKey]: savedOneCAudit,
+        kkmCloseCheck: kkmCloseCheckAudit ?? null,
         scope: {
           personalCash: true,
           reserveCash: isClosingEmployee,
@@ -633,7 +673,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
         storeClosing: isClosingEmployee
           ? {
               zReportRequired: employeeKkmReportPhotosRequired,
-              verification: 'one_c_cash_shift',
+              verification: 'one_c_cash_shift_and_ofd_z_report',
             }
           : null,
         comment,

@@ -1,5 +1,14 @@
 import type { MatchingItem, OfdReceipt } from '@/lib/terminal-fiscal-matching';
 
+export type NormalizedPlatformaOfdZReport = {
+  kktRegistrationNumber: string;
+  fiscalDriveNumber: string;
+  shiftNumber: string;
+  openedAt: string;
+  closedAt: string;
+  documentLink: string;
+};
+
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -60,4 +69,18 @@ export function normalizePlatformaOfdReceipt(value: unknown): OfdReceipt | null 
     electronicKopecks: integer(money.electronicKopecks),
     items: normalizeItems(source.items),
   };
+}
+
+export function normalizePlatformaOfdZReport(value: unknown, expectedKktRegistrationNumber = ''): NormalizedPlatformaOfdZReport | null {
+  const source = record(value);
+  const kkt = record(source?.kkt);
+  if (!source || !kkt) return null;
+  const kktRegistrationNumber = text(kkt.registrationNumber) || expectedKktRegistrationNumber;
+  const fiscalDriveNumber = text(kkt.fiscalDriveNumber);
+  const shiftNumber = text(source.shiftNumber);
+  const openedAt = text(source.openedAt);
+  const closedAt = text(source.closedAt);
+  if (!kktRegistrationNumber || !fiscalDriveNumber || !shiftNumber || !openedAt || !closedAt) return null;
+  if (!Number.isFinite(Date.parse(openedAt)) || !Number.isFinite(Date.parse(closedAt))) return null;
+  return { kktRegistrationNumber, fiscalDriveNumber, shiftNumber, openedAt, closedAt, documentLink: text(source.documentLink) };
 }

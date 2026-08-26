@@ -1298,6 +1298,7 @@ export function EmployeeTodayClient({
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
   const primaryPaymentCheck = paymentChecksState[0] ?? null;
   const primaryPaymentCheckView = primaryPaymentCheck ? terminalFiscalEmployeeReviewSummary(primaryPaymentCheck) : null;
+  const kkmCloseIssue = requiredIssuesState.find((issue) => issue.ruleKey === 'kkm_shift_not_closed') ?? null;
   const currentRequiredIssueIds = requiredIssuesState.map((issue) => issue.id).sort((a, b) => a - b);
   const closeExceptionMatchesCurrentIssues = Boolean(
     closeExceptionRequestState
@@ -2505,18 +2506,37 @@ export function EmployeeTodayClient({
     setHandoverSaveError('');
     setIsSaving(true);
     try {
-      const result = await submitFormData<{
+      let result: {
         task: ShiftControlTask;
         tasks?: ShiftControlTask[];
         run?: ShiftControlRun | null;
         workDay?: WorkDayEntry;
         message?: string;
-      }>(
-        '/api/employee/shift-control/tasks/' + task.id,
-        'PATCH',
-        formData,
-        'Не удалось сдать смену',
-      );
+      } | null = null;
+      while (!result) {
+        try {
+          result = await submitFormData<{
+            task: ShiftControlTask;
+            tasks?: ShiftControlTask[];
+            run?: ShiftControlRun | null;
+            workDay?: WorkDayEntry;
+            message?: string;
+          }>(
+            '/api/employee/shift-control/tasks/' + task.id,
+            'PATCH',
+            formData,
+            'Не удалось сдать смену',
+          );
+        } catch (reason) {
+          if (reason instanceof EmployeeApiError && reason.code === 'KKM_SHIFT_CHECK_PENDING') {
+            setMessage('Ожидаем подтверждение кассы · проверяем автоматически…');
+            setHandoverSaveError('Касса может передать чек с небольшой задержкой. Проверяем автоматически — ничего нажимать не нужно.');
+            await new Promise((resolve) => window.setTimeout(resolve, 15_000));
+            continue;
+          }
+          throw reason;
+        }
+      }
 
       setShiftControlState((current) => ({
         run: result.run ?? current.run,
@@ -2532,7 +2552,10 @@ export function EmployeeTodayClient({
       window.location.reload();
       return;
     } catch (reason) {
-      if (reason instanceof EmployeeApiError && reason.code === 'OPEN_REQUIRED_ISSUES') setCloseBlocked(true);
+      if (reason instanceof EmployeeApiError && reason.code === 'OPEN_REQUIRED_ISSUES') {
+        setCloseBlocked(true);
+        if (isRecord(reason.payload) && Array.isArray(reason.payload.issues)) setRequiredIssuesState(reason.payload.issues as RequiredWorkdayIssue[]);
+      }
       setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
     } finally {
       setIsSaving(false);
@@ -2604,6 +2627,33 @@ export function EmployeeTodayClient({
       setHandoverStep((current) => Math.min(nextSteps.length - 1, current + 1));
     } catch (reason) {
       setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сохранить фото');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function sendKkmClosePhotoToAdmin(task: ShiftControlTask, file: File | null) {
+    if (!file) return;
+    setIsSaving(true);
+    setError('');
+    try {
+      const nextDraft = { ...handoverDraft, zReportPhoto: file };
+      setHandoverDraft(nextDraft);
+      const savedTask = await saveHandoverDraft(task, nextDraft);
+      const savedDraft = isRecord(savedTask.handoverData) ? draftFromHandoverData(savedTask.handoverData) : nextDraft;
+      setHandoverDraft(savedDraft);
+      const response = await fetch('/api/employee/workday/close-exception', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reasonCode: 'kkm', comment: 'Чек закрытия смены распечатался. Фото приложено, но портал пока не подтвердил закрытие кассы.' }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось отправить фото администратору');
+      setCloseExceptionRequestState(payload.request);
+      setMessage('Фото отправлено администратору · ожидайте решения');
+      await syncCurrentWorkdayState(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось отправить фото администратору');
     } finally {
       setIsSaving(false);
     }
@@ -3292,13 +3342,24 @@ export function EmployeeTodayClient({
                         : 'Сначала исправьте обязательную проблему. Если это невозможно по технической причине, запросите разрешение администратора.'}
                     </p>
                   </div>
+                  {kkmCloseIssue && handoverTask && !hasHandoverPhoto(handoverDraft.zReportPhoto) && (
+                    <div className='space-y-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200'>
+                      <p className='text-sm font-black text-slate-950'>Чек закрытия смены распечатался?</p>
+                      <p className='text-xs font-semibold leading-relaxed text-slate-600'>Сфотографируйте его как резервное подтверждение. Если чек не вышел, фото не требуется — сообщите администратору ниже.</p>
+                      <label className='block'>
+                        <span className='flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 text-sm font-extrabold text-white shadow-sm'>{isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}</span>
+                        <input type='file' accept='image/*' capture='environment' className='sr-only' disabled={isSaving} onChange={(event) => { const file = event.target.files?.[0] ?? null; event.currentTarget.value = ''; void sendKkmClosePhotoToAdmin(handoverTask, file); }} />
+                      </label>
+                    </div>
+                  )}
+                  {kkmCloseIssue && hasHandoverPhoto(handoverDraft.zReportPhoto) && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Фото чека прикреплено и будет доступно администратору.</p>}
                   {closeExceptionRequestState?.status === 'pending' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold text-amber-800'>Запрос отправлен · ожидает решения администратора</p>}
                   {closeExceptionRequestState?.status === 'approved' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Администратор разрешил завершить день. Портал завершает смену автоматически; сами проблемы останутся открытыми.</p>}
                   {closeExceptionRequestState?.status === 'rejected' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-800'>Запрос не согласован{closeExceptionRequestState.decisionComment ? `: ${closeExceptionRequestState.decisionComment}` : ''}</p>}
                   {closeExceptionRequestState && !closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold leading-relaxed text-amber-800'>После предыдущего запроса появилась новая обязательная проблема. Старое разрешение её не включает — отправьте новый запрос по текущим проблемам.</p>}
                   {(!closeExceptionRequestState || closeExceptionRequestState.status === 'rejected' || !closeExceptionMatchesCurrentIssues) && (
                     <div className='space-y-2'>
-                      <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает ККМ</option><option value='other'>Другая причина</option></select>
+                      <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
                       <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Коротко опишите ситуацию' />
                       <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={isSaving} onClick={requestCloseException}>Запросить разрешение администратора</Button>
                     </div>
