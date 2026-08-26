@@ -35,6 +35,16 @@ export async function DELETE(req: Request) {
     });
     const runIds = shiftRuns.map((run) => run.id);
 
+    // Dev/Test reset must also remove issues created by the simulated run.
+    // Otherwise an old KKM failure survives the deleted task (taskId becomes
+    // null) and blocks the next test shift for the same employee and date.
+    const deletedIssues = await tx.workdayControlIssue.deleteMany({
+      where: {
+        userId: userIdToReset,
+        originDate: date,
+      },
+    });
+
     const deletedTasks = runIds.length
       ? await tx.shiftControlTask.deleteMany({
           where: { runId: { in: runIds } },
@@ -56,6 +66,7 @@ export async function DELETE(req: Request) {
       deletedTasks: deletedTasks.count,
       deletedRuns: deletedRuns.count,
       deletedWorkDays: deletedWorkDays.count,
+      deletedIssues: deletedIssues.count,
     };
   });
 
