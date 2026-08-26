@@ -767,29 +767,33 @@ model WorkdayCloseExceptionRequest {
 }
 
 model WorkdayNotification {
-  id           Int                           @id @default(autoincrement())
-  userId       Int
-  taskId       Int?
-  issueId      Int?
-  reviewId     String?
-  fingerprint  String                        @unique
-  kind         String
-  title        String
-  body         String
-  status       String                        @default("pending")
-  scheduledAt  DateTime
-  sentAt       DateTime?
-  readAt       DateTime?
-  attemptCount Int                           @default(0)
-  lastError    String                        @default("")
-  createdAt    DateTime                      @default(now())
-  updatedAt    DateTime                      @updatedAt
-  user         User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  task         ShiftControlTask?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  issue        WorkdayControlIssue?          @relation(fields: [issueId], references: [id], onDelete: Cascade)
-  review       TerminalFiscalEmployeeReview? @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  id                Int                           @id @default(autoincrement())
+  userId            Int
+  taskId            Int?
+  issueId           Int?
+  reviewId          String?
+  fingerprint       String                        @unique
+  kind              String
+  title             String
+  body              String
+  status            String                        @default("pending")
+  scheduledAt       DateTime
+  sentAt            DateTime?
+  readAt            DateTime?
+  attemptCount      Int                           @default(0)
+  lastError         String                        @default("")
+  pushStatus        String                        @default("pending")
+  pushDeliveredAt   DateTime?
+  nextPushAttemptAt DateTime?
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+  user              User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task              ShiftControlTask?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  issue             WorkdayControlIssue?          @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  review            TerminalFiscalEmployeeReview? @relation(fields: [reviewId], references: [id], onDelete: Cascade)
 
   @@index([userId, status, scheduledAt])
+  @@index([status, pushStatus, nextPushAttemptAt])
   @@index([taskId, kind])
   @@index([issueId, kind])
   @@index([reviewId, kind])

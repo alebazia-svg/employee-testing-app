@@ -4,7 +4,7 @@ import { dispatchDueWorkdayNotifications } from '@/lib/workday-notifications';
 async function main() {
   if (process.argv.includes('--inspect')) {
     const now = new Date();
-    const [pendingDue, earliestPending, activePushSubscriptions] = await Promise.all([
+    const [pendingDue, earliestPending, activePushSubscriptions, retryDue, pushStates] = await Promise.all([
       prisma.workdayNotification.count({ where: { status: 'pending', scheduledAt: { lte: now } } }),
       prisma.workdayNotification.findFirst({
         where: { status: 'pending' },
@@ -12,6 +12,19 @@ async function main() {
         select: { scheduledAt: true },
       }),
       prisma.workdayPushSubscription.count({ where: { disabledAt: null } }),
+      prisma.workdayNotification.count({
+        where: {
+          status: 'sent',
+          readAt: null,
+          pushStatus: { in: ['retry_pending', 'no_subscription', 'not_configured'] },
+          nextPushAttemptAt: { lte: now },
+        },
+      }),
+      prisma.workdayNotification.groupBy({
+        by: ['pushStatus'],
+        where: { status: 'sent', readAt: null },
+        _count: { _all: true },
+      }),
     ]);
     const pushConfigured = Boolean(
       process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim()
@@ -24,6 +37,8 @@ async function main() {
       earliestPendingAt: earliestPending?.scheduledAt ?? null,
       activePushSubscriptions,
       pushConfigured,
+      retryDue,
+      pushStates: Object.fromEntries(pushStates.map((row) => [row.pushStatus, row._count._all])),
     })}\n`);
     return;
   }

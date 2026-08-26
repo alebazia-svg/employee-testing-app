@@ -3,6 +3,7 @@ import 'server-only';
 import webpush from 'web-push';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { planWorkdayPushDelivery } from '@/lib/workday-push-delivery';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -281,7 +282,7 @@ async function reconcileStoredUnreadWorkdayNotifications() {
   await reconcileActiveWorkdayNotifications(prisma, rows);
 }
 
-async function activeUnreadNotificationTargets(userId: number) {
+async function activeUnreadNotificationTargets(userId: number, excludeNotificationId?: number) {
   const rows = await prisma.workdayNotification.findMany({
     where: { userId, status: 'sent', readAt: null },
     select: {
@@ -297,13 +298,23 @@ async function activeUnreadNotificationTargets(userId: number) {
     },
   });
   const active = await reconcileActiveWorkdayNotifications(prisma, rows);
-  return new Set(active.map(notificationTargetKey));
+  return new Set(active.filter((notification) => notification.id !== excludeNotificationId).map(notificationTargetKey));
 }
 
 export async function dispatchDueWorkdayNotifications(now = new Date()) {
   await reconcileStoredUnreadWorkdayNotifications();
   const due = await prisma.workdayNotification.findMany({
-    where: { status: 'pending', scheduledAt: { lte: now } },
+    where: {
+      OR: [
+        { status: 'pending', scheduledAt: { lte: now } },
+        {
+          status: 'sent',
+          readAt: null,
+          pushStatus: { in: ['retry_pending', 'no_subscription', 'not_configured'] },
+          nextPushAttemptAt: { lte: now },
+        },
+      ],
+    },
     include: {
       task: { include: { run: { select: { status: true } } } },
       issue: true,
@@ -314,24 +325,32 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     take: 200,
   });
   const pushConfigured = configureWebPush();
-  const results: Array<{ id: number; status: string }> = [];
+  const results: Array<{ id: number; status: string; pushStatus: string }> = [];
   const activeDue = await filterActiveWorkdayNotifications(prisma, due);
   const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
     if (!activeDueIds.has(notification.id)) {
-      await prisma.workdayNotification.update({ where: { id: notification.id }, data: { status: 'cancelled' } });
-      results.push({ id: notification.id, status: 'cancelled' });
+      await prisma.workdayNotification.update({
+        where: { id: notification.id },
+        data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
+      });
+      results.push({ id: notification.id, status: 'cancelled', pushStatus: 'cancelled' });
       continue;
     }
 
-    let lastError = '';
-    if (pushConfigured) {
-      const unreadTargets = await activeUnreadNotificationTargets(notification.userId);
-      const targetKey = notificationTargetKey(notification);
-      const targetAlreadyUnread = unreadTargets.has(targetKey);
-      unreadTargets.add(targetKey);
-      const badgeCount = unreadTargets.size;
+    const unreadTargets = await activeUnreadNotificationTargets(notification.userId, notification.id);
+    const targetKey = notificationTargetKey(notification);
+    const targetAlreadyUnread = unreadTargets.has(targetKey);
+    unreadTargets.add(targetKey);
+    const badgeCount = unreadTargets.size;
+    const attemptNumber = notification.attemptCount + 1;
+    let deliveredCount = 0;
+    let transientFailureCount = 0;
+    let permanentFailureCount = 0;
+    let lastErrorCode = '';
+
+    if (pushConfigured && !targetAlreadyUnread && notification.user.pushSubscriptions.length > 0) {
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
@@ -340,33 +359,50 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
         notificationId: notification.id,
         badgeCount,
       });
-      for (const subscription of targetAlreadyUnread ? [] : notification.user.pushSubscriptions) {
+      for (const subscription of notification.user.pushSubscriptions) {
         try {
           await webpush.sendNotification({
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
           }, payload);
+          deliveredCount += 1;
         } catch (error) {
           const statusCode = typeof error === 'object' && error && 'statusCode' in error ? Number(error.statusCode) : 0;
           if (statusCode === 404 || statusCode === 410) {
             await prisma.workdayPushSubscription.update({ where: { id: subscription.id }, data: { disabledAt: now } });
+            permanentFailureCount += 1;
           } else {
-            lastError = error instanceof Error ? error.message.slice(0, 500) : 'Push delivery failed';
+            transientFailureCount += 1;
           }
+          lastErrorCode = statusCode ? `WEB_PUSH_${statusCode}` : 'WEB_PUSH_FAILED';
         }
       }
     }
 
+    const pushOutcome = planWorkdayPushDelivery({
+      now,
+      attemptNumber,
+      configured: pushConfigured,
+      targetAlreadyUnread,
+      subscriptionCount: notification.user.pushSubscriptions.length,
+      deliveredCount,
+      transientFailureCount,
+      permanentFailureCount,
+      lastErrorCode,
+    });
     await prisma.workdayNotification.update({
       where: { id: notification.id },
       data: {
         status: 'sent',
-        sentAt: now,
+        sentAt: notification.sentAt ?? now,
         attemptCount: { increment: 1 },
-        lastError: pushConfigured ? lastError : 'Web Push is not configured; notification is available in the portal.',
+        lastError: pushOutcome.lastErrorCode,
+        pushStatus: pushOutcome.status,
+        pushDeliveredAt: pushOutcome.status === 'delivered' ? now : notification.pushDeliveredAt,
+        nextPushAttemptAt: pushOutcome.nextAttemptAt,
       },
     });
-    results.push({ id: notification.id, status: 'sent' });
+    results.push({ id: notification.id, status: 'sent', pushStatus: pushOutcome.status });
   }
 
   return { processed: results.length, results };

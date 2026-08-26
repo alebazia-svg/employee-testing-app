@@ -27,6 +27,15 @@ export async function POST(req: Request) {
     create: { userId: user.id, endpoint, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '' },
     update: { userId: user.id, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '', disabledAt: null },
   });
+  await prisma.workdayNotification.updateMany({
+    where: {
+      userId: user.id,
+      status: 'sent',
+      readAt: null,
+      pushStatus: { in: ['no_subscription', 'retry_pending'] },
+    },
+    data: { pushStatus: 'retry_pending', nextPushAttemptAt: new Date(), lastError: '' },
+  });
   return Response.json({ ok: true, id: subscription.id });
 }
 
