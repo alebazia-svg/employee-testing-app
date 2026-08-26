@@ -83,14 +83,19 @@ export function serializeDepartmentWorkdayForEmployee(entry: {
   };
 }
 
-async function findCurrentShiftControlRun(userId: number) {
+async function findCurrentShiftControlRun(userId: number, today: string) {
   return prisma.shiftControlRun.findFirst({
     where: {
       userId,
-      workDayEntry: {
-        status: { in: ['active', 'missing_checkout'] },
-        endedAt: null,
-      },
+      OR: [
+        {
+          workDayEntry: {
+            status: { in: ['active', 'missing_checkout'] },
+            endedAt: null,
+          },
+        },
+        { date: today, status: 'completed' },
+      ],
     },
     include: {
       tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] },
@@ -118,7 +123,7 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
       where: { userId: user.id, status: { in: ['active', 'missing_checkout'] }, endedAt: null, date: { not: today } },
       orderBy: { startedAt: 'desc' },
     }),
-    shiftControlEnabled ? findCurrentShiftControlRun(user.id) : null,
+    shiftControlEnabled ? findCurrentShiftControlRun(user.id, today) : null,
     findTodayCashOperations(user.id, today),
     prisma.workDayEntry.findMany({
       where: { department: user.department, date: today },
