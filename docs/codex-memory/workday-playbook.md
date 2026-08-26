@@ -124,15 +124,18 @@ The integration provides:
 - no employee attribution from OFD operator, workstation or employee-to-device
   assignment. Ambiguous or incomplete cases remain ADMIN-only.
 
-Employee delivery for the neutral missing-check review is disabled while the
-production runner operates in shadow mode. The shadow path records a candidate
-only after an aggregate per-terminal/KKM guard proves that the bank operation is
-not covered by a distinct eligible 1C card check of the same operation type and
-amount. It never reuses a 1C check; incomplete, partial, conflicting and paired
-sale/refund evidence remains ADMIN-only. Checks already available at the actual
-1C read time can suppress a notification even when their document time falls
-just outside the matching period. Core `mvp-1`, its strict five-minute window,
-hard mismatch control and ADMIN visibility stay unchanged.
+Employee delivery for the neutral missing-check review is enabled in production.
+After the first complete 1C read at least ten minutes after the bank operation,
+the runner first applies an aggregate per-terminal/KKM guard. If no distinct 1C
+card check of the same operation type and amount covers the operation, it sends
+the review to an employee only when sale checks on the same mapped KKM within
+plus or minus fifteen minutes identify exactly one active mapped `cashier.ref`.
+No nearby cashier, several nearby cashiers, a missing employee mapping, incomplete
+sources, partial coverage, conflicts and paired sale/refund evidence remain
+ADMIN-only. The equipment mapping itself never identifies an employee. A later
+1C check resolves the review and cancels a still-pending notification. Core
+`mvp-1`, its strict five-minute window, hard-mismatch control and ADMIN visibility
+stay unchanged.
 
 The 120-minute matching grace remains the final technical classification
 boundary. It is not the employee-notification delay and does not turn a neutral
