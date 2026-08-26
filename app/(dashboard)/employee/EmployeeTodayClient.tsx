@@ -3354,7 +3354,10 @@ export function EmployeeTodayClient({
                       <p className='text-sm font-black text-slate-950'>Чек закрытия смены распечатался?</p>
                       <p className='text-xs font-semibold leading-relaxed text-slate-600'>Да — сфотографируйте чек. Нет — выберите причину ниже.</p>
                       <label className='block'>
-                        <span className='flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 text-sm font-extrabold text-white shadow-sm'>{isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}</span>
+                        <span className='employee-material-secondary-action flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-800 shadow-sm ring-1 ring-slate-200'>
+                          <Camera className='h-4 w-4 text-green-700' />
+                          {isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}
+                        </span>
                         <input type='file' accept='image/*' capture='environment' className='sr-only' disabled={isSaving} onChange={(event) => { const file = event.target.files?.[0] ?? null; event.currentTarget.value = ''; void sendKkmClosePhotoToAdmin(handoverTask, file); }} />
                       </label>
                     </div>
@@ -3368,7 +3371,7 @@ export function EmployeeTodayClient({
                     <div className='space-y-2'>
                       <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
                       <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' />
-                      <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={isSaving} onClick={requestCloseException}>Сообщить администратору</Button>
+                      <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={isSaving || !closeExceptionReason} onClick={requestCloseException}>Сообщить администратору</Button>
                     </div>
                   )}
                 </Card>
