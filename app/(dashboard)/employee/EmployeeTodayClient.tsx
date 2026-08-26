@@ -1296,6 +1296,8 @@ export function EmployeeTodayClient({
   const primaryShiftControlTask = actionableShiftControlTask ?? nextShiftControlTask;
   const remainingShiftControlCount = pendingShiftControlTasks.length;
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
+  const completedKkmCloseCheck = readRecord(handoverTask?.handoverData, 'kkmCloseCheck');
+  const kkmClosureConfirmed = completedKkmCloseCheck?.status === 'confirmed';
   const primaryPaymentCheck = paymentChecksState[0] ?? null;
   const primaryPaymentCheckView = primaryPaymentCheck ? terminalFiscalEmployeeReviewSummary(primaryPaymentCheck) : null;
   const kkmCloseIssue = requiredIssuesState.find((issue) => issue.ruleKey === 'kkm_shift_not_closed') ?? null;
@@ -3408,6 +3410,7 @@ export function EmployeeTodayClient({
                   </span>
                   <div className='min-w-0'>
                     <p className='text-sm font-black text-slate-950'>Рабочий день завершён</p>
+                    {kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : null}
                     <p className='mt-0.5 text-xs font-bold text-slate-500'>
                       {formatTime(workDay?.startedAt)}–{formatTime(workDay?.endedAt)} · {elapsedLabel}
                     </p>
