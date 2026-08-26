@@ -140,11 +140,19 @@ missing-check review into an accusation or a hard mismatch.
 
 Current limitations must stay visible:
 
-- current KKM endpoints do not prove that a paper X-report or Z-report was
-  printed, but `/cash-shifts` does prove the operational opening/closing state;
-- paper KKM report photos are not required from employees. Opening and closing
-  are verified automatically from the 1C cash-shift state; historical photos
-  remain available as audit;
+- a closed 1C cash shift alone is not proof that the physical KKT completed
+  closure. Retail handover must also find the same fiscal shift's Z-report in
+  Platforma OFD;
+- the actual KKT is derived from the employee cashier identity in that day's 1C
+  checks. Never create a permanent employee-to-KKT assignment: employees and
+  workplaces can change;
+- normal closure is fully automatic and does not require a paper report photo.
+  After a 90-second propagation grace, a missing confirmation becomes a required
+  control issue. A printed closing receipt photo is accepted only as reserve
+  evidence for an administrator exception;
+- an approved exception may allow the portal workday to finish, but does not
+  resolve the underlying KKT issue. The minute runner rechecks open issues and
+  resolves them only after the matching OFD Z-report appears;
 - T-Bank terminal totals are not compared with realization totals because the
   two sources can have different business composition;
 - physical placement of cash in the reserve remains a human fact; 1C verifies
