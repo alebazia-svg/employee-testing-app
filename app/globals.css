@@ -246,9 +246,10 @@ select {
 
 .admin-mobile-nav {
   border-top: 1px solid rgba(190, 199, 193, 0.56);
-  background: rgba(248, 248, 244, 0.96);
+  background: #f8f8f4;
   box-shadow: 0 -8px 22px rgba(45, 57, 51, 0.13);
-  backdrop-filter: blur(18px);
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .admin-mobile-nav-item { color: #778188; transition: color 160ms ease, background 160ms ease, box-shadow 160ms ease; }
@@ -333,15 +334,16 @@ select {
 
 .employee-material-nav {
   position: fixed !important;
+  right: 0;
+  bottom: 0;
+  left: 0;
   border-color: rgba(255, 255, 255, 0.85) !important;
-  background: rgba(248, 247, 243, 0.9) !important;
+  background: #f8f7f3 !important;
   box-shadow: 0 -15px 30px rgba(57, 62, 64, 0.12) !important;
-}
-
-@media (min-width: 768px) {
-  .employee-material-nav {
-    position: absolute !important;
-  }
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .employee-material-tab {

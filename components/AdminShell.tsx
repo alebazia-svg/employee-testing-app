@@ -79,7 +79,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <main className='admin-shell min-h-screen overflow-x-hidden text-slate-950'>
+    <main className='admin-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
       <header className='admin-mobile-header sticky top-0 z-40 flex items-center justify-between gap-3 px-4 py-3 md:hidden'>
         <div className='w-[150px]'><BrandBlock size='employee' /></div>
         <div className='flex items-center gap-2'>

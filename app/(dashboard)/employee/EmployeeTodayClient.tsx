@@ -3027,7 +3027,7 @@ export function EmployeeTodayClient({
   }
 
   return (
-    <main className='employee-material-ui min-h-screen overflow-x-hidden bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
+    <main className='employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
       {qrScannerOpen && (
         <WorkdayQrScanner
           userDepartment={user.department}
@@ -3767,7 +3767,7 @@ export function EmployeeTodayClient({
 
         </div>
 
-        <nav className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] border-t border-slate-200 bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)] backdrop-blur md:absolute'>
+        <nav className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] border-t border-slate-200 bg-[#f8f7f3] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)]'>
           <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
