@@ -9,6 +9,7 @@ import { Table } from '@/components/ui/table';
 import { getAdminWorkdayRevision } from '@/lib/admin-workday-revision';
 import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, matchesAdminWorkdayControlFilter, resolveAdminWorkdayControlCategory, type AdminWorkdayControlCategory, type AdminWorkdayControlFilter } from '@/lib/admin-workday-view';
 import { getCurrentUser } from '@/lib/auth';
+import { oneCDateTimestamp, parseOneCDateTime } from '@/lib/one-c-date';
 import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
   getCashStatementDimensions,
@@ -64,13 +65,6 @@ type KkmAssignmentInterval = {
   effectiveFrom: Date;
   effectiveTo: Date | null;
 };
-
-function parseOneCDatetime(value: string) {
-  const ru = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})/);
-  if (ru) return new Date(`${ru[3]}-${ru[2].padStart(2, '0')}-${ru[1].padStart(2, '0')}T${ru[4].padStart(2, '0')}:${ru[5]}:${ru[6]}+03:00`);
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
 
 function assignmentAt(assignments: KkmAssignmentInterval[], moment: Date | null) {
   if (!moment) return assignments.at(-1) ?? null;
@@ -189,15 +183,6 @@ function readTaskCashAudit(task: AutoCheckTask, key: 'personalCash' | 'reserveCa
     cashboxName: readText(snapshot.cashboxName),
     error: readText(snapshot.error),
   };
-}
-
-function parseOneCDateTime(value: string | null | undefined) {
-  if (!value) return null;
-  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
-    ? `${value.replace(' ', 'T')}+03:00`
-    : value;
-  const timestamp = Date.parse(normalized);
-  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function taskCutoff(task: AutoCheckTask) {
@@ -362,11 +347,11 @@ function findEncashmentPair({
   if (!personal?.ok || !target?.ok) return null;
   const cutoffTimestamp = cutoff?.getTime() ?? Number.POSITIVE_INFINITY;
   const outgoing = personal.movements.filter((movement) => {
-    const timestamp = parseOneCDateTime(movement.period);
+    const timestamp = oneCDateTimestamp(movement.period);
     return timestamp !== null && timestamp <= cutoffTimestamp && Math.abs((movement.outgoing ?? 0) - amount) <= oneCMoneyTolerance;
   });
   const incoming = target.movements.filter((movement) => {
-    const timestamp = parseOneCDateTime(movement.period);
+    const timestamp = oneCDateTimestamp(movement.period);
     return timestamp !== null && timestamp <= cutoffTimestamp && Math.abs((movement.incoming ?? 0) - amount) <= oneCMoneyTolerance;
   });
 
@@ -380,8 +365,8 @@ function findEncashmentPair({
         && receipt.document.ref === receiptDocumentRef
       ) return 'exact';
       if (expense.document.ref && receipt.document.ref && expense.document.ref === receipt.document.ref) return 'exact';
-      const expenseTimestamp = parseOneCDateTime(expense.period);
-      const receiptTimestamp = parseOneCDateTime(receipt.period);
+      const expenseTimestamp = oneCDateTimestamp(expense.period);
+      const receiptTimestamp = oneCDateTimestamp(receipt.period);
       if (expenseTimestamp !== null && receiptTimestamp !== null && Math.abs(expenseTimestamp - receiptTimestamp) <= 10 * 60 * 1000) {
         timeMatched = true;
       }
@@ -624,7 +609,7 @@ function buildEmployeeAutoChecks({
 
       const cutoffTimestamp = cutoff?.getTime() ?? Number.POSITIVE_INFINITY;
       const matchedDocuments = employeeTbankDocuments.filter((document) => {
-        const timestamp = parseOneCDateTime(document.date);
+        const timestamp = oneCDateTimestamp(document.date);
         return timestamp !== null && timestamp <= cutoffTimestamp;
       });
       const declaredOperations = task.integerValue === 1 || task.integerValue === 2;
@@ -1065,11 +1050,11 @@ function buildEmployeeAutoChecks({
     const isEmployee = (cashierName: string) => Boolean(employeeKey) && normalizeSearchText(cashierName).includes(employeeKey);
     const employeeChecks = kkmDiagnostics.recentChecks.filter((check) => isEmployee(check.cashier.name));
     const employeeChecksOnOtherKkm = employeeChecks.filter((check) => {
-      const assigned = assignmentAt(kkmAssignments, parseOneCDatetime(check.datetime));
+      const assigned = assignmentAt(kkmAssignments, parseOneCDateTime(check.datetime));
       return Boolean(assigned) && check.cashRegister.ref !== assigned?.oneCCashRegisterRef;
     });
     const otherCashiersOnAssignedKkm = kkmDiagnostics.recentChecks.filter((check) => {
-      const assigned = assignmentAt(kkmAssignments, parseOneCDatetime(check.datetime));
+      const assigned = assignmentAt(kkmAssignments, parseOneCDateTime(check.datetime));
       return Boolean(assigned) && check.cashRegister.ref === assigned?.oneCCashRegisterRef && !isEmployee(check.cashier.name);
     });
     const hasConflict = employeeChecksOnOtherKkm.length > 0 || otherCashiersOnAssignedKkm.length > 0;

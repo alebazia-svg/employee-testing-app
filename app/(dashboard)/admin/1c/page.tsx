@@ -5,6 +5,7 @@ import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { getCurrentUser } from '@/lib/auth';
+import { parseOneCDateTime } from '@/lib/one-c-date';
 import { getAIAgentHealth, getSalesRealizations, type OneCEndpointResult, type OneCSalesRealizationDocument } from '@/lib/one-c';
 
 export const dynamic = 'force-dynamic';
@@ -57,8 +58,8 @@ function formatMoney(value: number | null, currency = 'RUB') {
 
 function formatDocumentDate(value: string) {
   if (!value) return 'нет данных';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  const date = parseOneCDateTime(value);
+  if (!date) return value;
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short' }).format(date);
 }
 

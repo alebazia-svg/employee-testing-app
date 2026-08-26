@@ -7,6 +7,7 @@ import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { getCurrentUser } from '@/lib/auth';
+import { moscowDateKey, parseOneCDateTime } from '@/lib/one-c-date';
 import { runSabyOfdProbe } from '@/lib/saby-ofd';
 import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
@@ -325,8 +326,8 @@ async function safeGetSalesRealizationLinks(realizationRef: string): Promise<One
 
 function formatDate(value?: string) {
   if (!value) return 'нет данных';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  const date = parseOneCDateTime(value);
+  if (!date) return value;
   return new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'medium' }).format(date);
 }
 
@@ -537,29 +538,14 @@ function countMatchedProducts(ofdItems: ItemPreview[], document: OneCSalesRealiz
 }
 
 function parseDateTime(value?: string) {
-  if (!value) return null;
-  const trimmed = value.trim();
-  const ruDate = trimmed.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:[ T,]+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
-  if (ruDate) {
-    const date = new Date(
-      Number(ruDate[3]),
-      Number(ruDate[2]) - 1,
-      Number(ruDate[1]),
-      Number(ruDate[4] ?? 0),
-      Number(ruDate[5] ?? 0),
-      Number(ruDate[6] ?? 0),
-    );
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  const parsedDate = new Date(trimmed);
-  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  return parseOneCDateTime(value);
 }
 
 function dateDay(value?: string) {
   const date = parseDateTime(value);
   if (!date) return null;
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const [year, month, day] = moscowDateKey(date).split('-').map(Number);
+  return Date.UTC(year, month - 1, day);
 }
 
 function dayDiff(left?: string, right?: string) {
@@ -743,11 +729,12 @@ function countLinkWarnings(result?: OneCSalesRealizationLinksResult) {
 }
 
 function daysSince(value: string | undefined, currentDate: Date) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  const start = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  const current = Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate());
+  const date = parseOneCDateTime(value);
+  if (!date) return null;
+  const [startYear, startMonth, startDay] = moscowDateKey(date).split('-').map(Number);
+  const [currentYear, currentMonth, currentDay] = moscowDateKey(currentDate).split('-').map(Number);
+  const start = Date.UTC(startYear, startMonth - 1, startDay);
+  const current = Date.UTC(currentYear, currentMonth - 1, currentDay);
   return Math.floor((current - start) / (24 * 60 * 60 * 1000));
 }
 

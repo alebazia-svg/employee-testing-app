@@ -1,5 +1,6 @@
 import 'server-only';
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
+import { normalizeOneCDateTime as normalizeOneCDateTimeValue } from '@/lib/one-c-date';
 
 type OneCConfig = {
   baseUrl: string;
@@ -514,10 +515,7 @@ function readFirstBoolean(source: Record<string, unknown>, keys: string[]) {
 }
 
 function normalizeOneCDateTime(value: string) {
-  const match = value.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
-  if (!match) return value;
-  const [, day, month, year, hour, minute, second] = match;
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${hour.padStart(2, '0')}:${minute}:${second}+03:00`;
+  return normalizeOneCDateTimeValue(value) || value;
 }
 
 function normalizeSalesRealizationLine(value: unknown, index: number): OneCSalesRealizationLine {

@@ -17,6 +17,7 @@ import {
   type OneCSalesRealizationLinks,
 } from '@/lib/one-c';
 import { loadOneCKkmChecks } from '@/lib/terminal-fiscal-sources';
+import { parseOneCDateTime } from '@/lib/one-c-date';
 import { syncCreditRealizationWorkdayControl } from '@/lib/credit-realization-workday-control';
 
 export const CREDIT_REALIZATION_CONTROL_VERSION = 'credit-shadow-v2';
@@ -41,15 +42,6 @@ function moscowDate(value: Date) {
   }).format(value);
 }
 
-function parseOneCDate(value: string) {
-  const match = value.match(/^(\d{1,2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  if (!match) return new Date(value);
-  return new Date(Date.UTC(
-    Number(match[3]), Number(match[2]) - 1, Number(match[1]),
-    Number(match[4]) - 3, Number(match[5]), Number(match[6] ?? 0),
-  ));
-}
-
 function moneyMatches(left: number, right: number) {
   return Math.abs(left - right) <= MONEY_TOLERANCE;
 }
@@ -67,10 +59,11 @@ function exactUnlinkedReceipts(links: OneCSalesRealizationLinks, receipts: AusnO
   const expectedCash = payment?.kind === 'cash' ? paymentAmount : 0;
   const expectedElectronic = payment?.kind === 'electronic' ? paymentAmount : 0;
   const expectedCredit = realization.amount - paymentAmount;
-  const sourceAt = Math.max(
-    parseOneCDate(realization.date).getTime(),
-    ...(payment ? [parseOneCDate(payment.document.date).getTime()] : []),
-  );
+  const sourceDates = [realization.date, ...(payment ? [payment.document.date] : [])]
+    .map(parseOneCDateTime)
+    .filter((value): value is Date => value !== null);
+  if (sourceDates.length === 0) return [];
+  const sourceAt = Math.max(...sourceDates.map((value) => value.getTime()));
   const linkedKeys = new Set(links.fiscalControl.documents.flatMap((document) => (
     document.operations.map(creditFiscalKey).filter(Boolean)
   )));
@@ -110,7 +103,7 @@ async function loadRealizations(periodFrom: Date, periodTo: Date) {
     });
     if (!page.ok) return { complete: false, documents, errorCode: 'ONE_C_REALIZATIONS_INCOMPLETE' };
     documents.push(...page.documents.filter((document) => {
-      const documentAt = parseOneCDate(document.date).getTime();
+      const documentAt = parseOneCDateTime(document.date)?.getTime() ?? Number.NaN;
       return Number.isFinite(documentAt)
         && documentAt >= periodFrom.getTime()
         && documentAt < periodTo.getTime();
@@ -278,7 +271,8 @@ export async function persistCreditRealizationShadowSnapshot(prisma: PrismaClien
   await prisma.$transaction(async (tx) => {
     for (const row of snapshot.rows) {
       const reasonCode = row.result.reasonCodes[0];
-      const realizationAt = parseOneCDate(row.document.date);
+      const realizationAt = parseOneCDateTime(row.document.date);
+      if (!realizationAt) continue;
       const existingCase = await tx.creditRealizationControlCase.findUnique({
         where: { realizationRef: row.document.ref },
         select: {

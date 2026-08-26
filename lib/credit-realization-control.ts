@@ -1,4 +1,5 @@
 import type { OneCSalesRealizationLinks } from '@/lib/one-c';
+import { parseOneCDateTime } from '@/lib/one-c-date';
 
 export type CreditControlStatus = 'confirmed' | 'pending' | 'mismatch' | 'needs_review' | 'unavailable';
 
@@ -192,21 +193,6 @@ export function creditFiscalKey(value: Pick<CreditFiscalOperation, 'fiscalDriveN
   return parts.every(Boolean) ? parts.join(':') : '';
 }
 
-function parseOneCDate(value: string) {
-  const russian = value.match(/^(\d{1,2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  if (russian) {
-    return new Date(Date.UTC(
-      Number(russian[3]),
-      Number(russian[2]) - 1,
-      Number(russian[1]),
-      Number(russian[4]) - 3,
-      Number(russian[5]),
-      Number(russian[6] ?? 0),
-    ));
-  }
-  return new Date(value);
-}
-
 function uniquePayments(payments: CreditPaymentDocument[]) {
   const byRef = new Map<string, CreditPaymentDocument>();
   for (const payment of payments) byRef.set(`${payment.kind}:${payment.ref}`, payment);
@@ -316,8 +302,8 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
     if (input.ofd.unlinkedExactReceipts.length > 0) return finish('needs_review', ['OFD_RECEIPT_WITHOUT_ONE_C_LINK']);
 
     const sourceDates = [input.realization.date, ...(payment ? [payment.date] : [])]
-      .map(parseOneCDate)
-      .filter((value) => !Number.isNaN(value.getTime()));
+      .map(parseOneCDateTime)
+      .filter((value): value is Date => value !== null);
     if (sourceDates.length === 0) return finish('unavailable', ['INVALID_DOCUMENT_AMOUNT']);
     const latestSourceAt = Math.max(...sourceDates.map((value) => value.getTime()));
     const graceMinutes = input.graceMinutes ?? DEFAULT_GRACE_MINUTES;
@@ -352,18 +338,18 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
     return finish('mismatch', ['CREDIT_REMAINDER_MISMATCH']);
   }
 
-  const operationAt = parseOneCDate(operation.datetime);
-  const sourceAt = parseOneCDate(payment?.date ?? input.realization.date);
-  const receiptDelayMinutes = !Number.isNaN(operationAt.getTime()) && !Number.isNaN(sourceAt.getTime())
+  const operationAt = parseOneCDateTime(operation.datetime);
+  const sourceAt = parseOneCDateTime(payment?.date ?? input.realization.date);
+  const receiptDelayMinutes = operationAt && sourceAt
     ? Math.max(0, Math.round((operationAt.getTime() - sourceAt.getTime()) / 60_000))
     : null;
-  if (!Number.isNaN(operationAt.getTime())
-    && !Number.isNaN(sourceAt.getTime())
+  if (operationAt
+    && sourceAt
     && operationAt.getTime() + EARLY_RECEIPT_TOLERANCE_MS < sourceAt.getTime()) {
     return finish('needs_review', ['FISCAL_RECEIPT_BEFORE_SOURCE_DOCUMENT']);
   }
-  if (!Number.isNaN(operationAt.getTime())
-    && !Number.isNaN(sourceAt.getTime())
+  if (operationAt
+    && sourceAt
     && operationAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })
       !== sourceAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })) {
     return { ...finish('mismatch', ['FISCAL_RECEIPT_AFTER_SALE_DAY']), receiptDelayMinutes };
