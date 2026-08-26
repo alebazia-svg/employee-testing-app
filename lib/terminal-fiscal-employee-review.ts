@@ -13,10 +13,17 @@ export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 10 * 60 * 1000;
 export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_WINDOW_MS = 15 * 60 * 1000;
 
 type CashierMapping = { userId: number; oneCCashierRef: string };
+type KkmResponsibility = {
+  id: number;
+  userId: number;
+  oneCCashRegisterRef: string | null;
+  effectiveFrom: Date;
+  effectiveTo: Date | null;
+};
 
 export type EmployeeReviewDecision =
   | { action: 'wait' | 'resolve' | 'admin_only'; reason: string }
-  | { action: 'notify'; employeeId: number; cashierRef: string };
+  | { action: 'notify'; employeeId: number; attributionKey: string; source: 'kkm_responsibility' | 'one_c_cashier' };
 
 export type EmployeeReviewCoverageDecision = {
   state: 'covered' | 'uncovered' | 'ambiguous' | 'incomplete';
@@ -213,6 +220,7 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
   mapping: TerminalMapping;
   oneCChecks: OneCCheck[];
   cashierMappings: CashierMapping[];
+  kkmResponsibilities?: KkmResponsibility[];
 }): EmployeeReviewDecision {
   const { record, mapping } = input;
   if (record.oneCCheckKey || record.status === 'confirmed' || record.status === 'mismatch') {
@@ -242,6 +250,22 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
   if (coverage.state === 'covered') return { action: 'resolve', reason: coverage.reason };
   if (coverage.state === 'ambiguous') return { action: 'admin_only', reason: coverage.reason };
 
+  const responsibilities = (input.kkmResponsibilities ?? []).filter((item) => (
+    item.oneCCashRegisterRef === mapping.oneCCashRegisterRef
+    && item.effectiveFrom.getTime() <= operationAt
+    && (item.effectiveTo === null || item.effectiveTo.getTime() > operationAt)
+  ));
+  const responsibleEmployees = [...new Set(responsibilities.map((item) => item.userId))];
+  if (responsibleEmployees.length === 1) {
+    return {
+      action: 'notify',
+      employeeId: responsibleEmployees[0],
+      attributionKey: `kkm-responsibility:${responsibilities[0].id}`,
+      source: 'kkm_responsibility',
+    };
+  }
+  if (responsibleEmployees.length > 1) return { action: 'admin_only', reason: 'KKM_RESPONSIBILITY_CONFLICT' };
+
   const nearby = input.oneCChecks.filter((check) => {
     const checkAt = timestamp(check.dateTime);
     return checkAt !== null
@@ -259,7 +283,7 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
     .filter((item) => item.oneCCashierRef === cashierRefs[0])
     .map((item) => item.userId))];
   if (employees.length !== 1) return { action: 'admin_only', reason: employees.length ? 'CASHIER_MAPPING_CONFLICT' : 'CASHIER_NOT_MAPPED' };
-  return { action: 'notify', employeeId: employees[0], cashierRef: cashierRefs[0] };
+  return { action: 'notify', employeeId: employees[0], attributionKey: `one-c-cashier:${cashierRefs[0]}`, source: 'one_c_cashier' };
 }
 
 function moscowTime(value: Date) {
@@ -302,6 +326,20 @@ export async function syncTerminalFiscalEmployeeReviews(
 
   for (const record of input.output.records) {
     const reviewKey = terminalFiscalEmployeeReviewKey(record);
+    const operationAt = new Date(record.evidence.bankTransactionDate);
+    const operationDate = Number.isNaN(operationAt.getTime()) ? null : new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(operationAt);
+    const kkmResponsibilities = operationDate ? await prisma.workdayKkmAssignment.findMany({
+      where: {
+        date: operationDate,
+        oneCCashRegisterRef: input.mapping.oneCCashRegisterRef,
+        effectiveFrom: { lte: operationAt },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: operationAt } }],
+      },
+      select: { id: true, userId: true, oneCCashRegisterRef: true, effectiveFrom: true, effectiveTo: true },
+      take: 2,
+    }) : [];
     const decision = evaluateTerminalFiscalEmployeeReview({
       record,
       periodRecords: input.output.records,
@@ -310,6 +348,7 @@ export async function syncTerminalFiscalEmployeeReviews(
       cashierMappings: cashierMappings.flatMap((item) => item.oneCCashierRef
         ? [{ userId: item.userId, oneCCashierRef: item.oneCCashierRef }]
         : []),
+      kkmResponsibilities,
     });
     if (decision.action === 'wait') continue;
     if (decision.action === 'resolve') {
@@ -344,10 +383,9 @@ export async function syncTerminalFiscalEmployeeReviews(
     }
     if (decision.action !== 'notify') continue;
 
-    const operationAt = new Date(record.evidence.bankTransactionDate);
     if (Number.isNaN(operationAt.getTime())) continue;
     const employeeId = decision.employeeId;
-    const cashierRef = decision.cashierRef;
+    const attributionKey = decision.attributionKey;
     const created = await prisma.$transaction(async (tx) => {
       const existing = await tx.terminalFiscalEmployeeReview.findUnique({ where: { reviewKey } });
       if (existing && !['open', 'shadow_candidate'].includes(existing.status)) return false;
@@ -362,7 +400,7 @@ export async function syncTerminalFiscalEmployeeReviews(
           reasonCode: record.reasonCode,
           bankOperationAt: operationAt,
           amountKopecks: record.amountKopecks,
-          cashierRefHash: digest(cashierRef),
+          cashierRefHash: digest(attributionKey),
           detectedAt: new Date(input.output.evaluatedAt),
           lastCheckedAt: new Date(input.output.evaluatedAt),
         },

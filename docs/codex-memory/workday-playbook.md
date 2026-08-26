@@ -128,12 +128,15 @@ Employee delivery for the neutral missing-check review is enabled in production.
 After the first complete 1C read at least ten minutes after the bank operation,
 the runner first applies an aggregate per-terminal/KKM guard. If no distinct 1C
 card check of the same operation type and amount covers the operation, it sends
-the review to an employee only when sale checks on the same mapped KKM within
-plus or minus fifteen minutes identify exactly one active mapped `cashier.ref`.
-No nearby cashier, several nearby cashiers, a missing employee mapping, incomplete
-sources, partial coverage, conflicts and paired sale/refund evidence remain
-ADMIN-only. The equipment mapping itself never identifies an employee. A later
-1C check resolves the review and cancels a still-pending notification. Core
+the review to the employee assigned to that mapped KKM at the operation time.
+This is operational responsibility for the workstation, not an assertion that
+the employee personally made or omitted the missing check. If no dated KKM
+assignment exists, the safe fallback remains exactly one active mapped
+`cashier.ref` from sale checks on the same KKM within plus or minus fifteen
+minutes. Conflicting assignments or cashiers, incomplete sources, partial
+coverage, conflicts and paired sale/refund evidence remain ADMIN-only. A later
+1C check records its actual cashier, resolves the review and cancels a still-
+pending notification. Core
 `mvp-1`, its strict five-minute window, hard-mismatch control and ADMIN visibility
 stay unchanged.
 

@@ -71,8 +71,11 @@ project from scratch.
   Terminal-fiscal employee attribution uses only a confirmed 1C `cashier.ref`;
   hard mismatches without a mapped 1C cashier remain ADMIN-only. A missing 1C
   check may create a neutral employee review only after a complete read at least
-  ten minutes after payment and only when nearby checks of the same KKM identify
-  one mapped cashier. When strict time matching misses delayed checks, the
+  ten minutes after payment. It is addressed first to the employee assigned to
+  the mapped KKM at the operation time; this means operational responsibility,
+  not proven personal fault. If no dated assignment exists, exactly one mapped
+  cashier from nearby checks of the same KKM is the fallback. When strict time
+  matching misses delayed checks, the
   runner may add only cashier attribution from unused 1C checks that fully cover
   the unmatched bank operations by operation type and amount; it does not turn
   such a row into an exact match. Partial coverage or mixed cashiers remains

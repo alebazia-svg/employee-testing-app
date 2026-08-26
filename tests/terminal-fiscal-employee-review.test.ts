@@ -58,7 +58,7 @@ test('first complete 1C read after ten minutes is enough when one nearby mapped 
   assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
     record: target, periodRecords: [target], mapping, oneCChecks: [check()],
     cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
-  }), { action: 'notify', employeeId: 5, cashierRef: 'cashier-magomed' });
+  }), { action: 'notify', employeeId: 5, attributionKey: 'one-c-cashier:cashier-magomed', source: 'one_c_cashier' });
   assert.equal(terminalFiscalEmployeeReviewText({ operationAt: new Date('2026-08-17T16:32:00.000Z'), amountKopecks: 1_250_000 }),
     'Оплата 12 500 ₽ в 19:32. Проверьте и пробейте чек.');
 });
@@ -119,6 +119,37 @@ test('does not notify before the safe read, with incomplete 1C, or with ambiguou
   assert.equal(evaluateTerminalFiscalEmployeeReview({ ...args, record: normal, periodRecords: [normal], oneCChecks: [check({ cashierRef: '' })] }).action, 'admin_only');
 });
 
+test('addresses a missing check to the employee responsible for the mapped KKM at the operation time', () => {
+  const target = record();
+  assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
+    record: target,
+    periodRecords: [target],
+    mapping,
+    oneCChecks: [],
+    cashierMappings: [],
+    kkmResponsibilities: [{
+      id: 41,
+      userId: 3,
+      oneCCashRegisterRef: 'kkm-1',
+      effectiveFrom: new Date('2026-08-17T06:00:00.000Z'),
+      effectiveTo: null,
+    }],
+  }), { action: 'notify', employeeId: 3, attributionKey: 'kkm-responsibility:41', source: 'kkm_responsibility' });
+});
+
+test('keeps conflicting KKM responsibility assignments admin-only', () => {
+  const target = record();
+  const base = { oneCCashRegisterRef: 'kkm-1', effectiveFrom: new Date('2026-08-17T06:00:00.000Z'), effectiveTo: null };
+  assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
+    record: target,
+    periodRecords: [target],
+    mapping,
+    oneCChecks: [],
+    cashierMappings: [],
+    kkmResponsibilities: [{ id: 41, userId: 3, ...base }, { id: 42, userId: 4, ...base }],
+  }), { action: 'admin_only', reason: 'KKM_RESPONSIBILITY_CONFLICT' });
+});
+
 test('closes the employee task when a unique 1C check is found even if OFD is temporarily incomplete', () => {
   const found = record({
     status: 'unavailable',
@@ -148,7 +179,7 @@ test('uses the mapped KKM only and never workstation or OFD operator evidence', 
       { userId: 3, oneCCashierRef: 'cashier-milana' },
     ],
   });
-  assert.deepEqual(result, { action: 'notify', employeeId: 5, cashierRef: 'cashier-magomed' });
+  assert.deepEqual(result, { action: 'notify', employeeId: 5, attributionKey: 'one-c-cashier:cashier-magomed', source: 'one_c_cashier' });
 });
 
 test('period coverage suppresses a false employee notification outside the strict five-minute match window', () => {
@@ -294,6 +325,7 @@ test('one review and notification are created without duplicates and a later 1C 
   const reviews: any[] = [];
   const notifications: any[] = [];
   const db: any = {
+    workdayKkmAssignment: { findMany: async () => [] },
     userOneCCashboxMapping: { findMany: async () => [{ userId: 5, oneCCashierRef: 'cashier-magomed' }] },
     terminalFiscalEmployeeReview: {
       findUnique: async ({ where }: any) => reviews.find((row) => row.reviewKey === where.reviewKey) ?? null,
@@ -342,6 +374,7 @@ test('shadow mode records one would-notify candidate without creating an employe
   const reviews: any[] = [];
   const notifications: any[] = [];
   const db: any = {
+    workdayKkmAssignment: { findMany: async () => [] },
     userOneCCashboxMapping: { findMany: async () => [{ userId: 5, oneCCashierRef: 'cashier-magomed' }] },
     terminalFiscalEmployeeReview: {
       findUnique: async ({ where }: any) => reviews.find((row) => row.reviewKey === where.reviewKey) ?? null,
