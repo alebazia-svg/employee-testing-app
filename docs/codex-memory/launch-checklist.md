@@ -38,8 +38,10 @@ or device check, `[ ]` incomplete launch gate.
 - [x] Inconsistent 1C date parsing was replaced with one shared RU/ISO/Moscow
   parser for ADMIN 1C, Workday, OFD, terminal normalization and credit control.
   Dedicated date tests, all domain suites, TypeScript and production build pass.
-- [ ] Separate portal-notification state from actual push delivery, retry
-  transient failures and expose failed/no-subscription outcomes to monitoring.
+- [~] Portal publication is separated from actual push delivery; transient
+  failures retry with bounded backoff and delivery/no-subscription/configuration
+  outcomes are exposed by the dispatcher inspector. Apply the migration and
+  verify successful delivery plus one controlled retry on a real device.
 - [ ] Close critical/high production dependency findings and rerun the full
   regression/build/production smoke gate.
 - [ ] Add image size/type/content limits to cash and shift-photo uploads.
@@ -59,8 +61,9 @@ or device check, `[ ]` incomplete launch gate.
 - [~] Cash operations can be retained locally during a connection failure;
   verify photo, amount and idempotency after reconnecting.
 - [~] Push/portal notifications and the dedicated one-minute dispatcher are
-  deployed; production timer health is confirmed. Verify real-device delivery,
-  exact links and automatic lifecycle closure.
+  deployed; production timer health is confirmed. Truthful push state and retry
+  handling are implemented locally. Apply the migration, then verify real-device
+  delivery, one controlled retry, exact links and automatic lifecycle closure.
 - [~] Terminal, credit, expense and reconciliation jobs exist; verify production
   timers and fresh logs immediately before pilot.
 - [~] Current production commit, running container, healthy timers and no fresh

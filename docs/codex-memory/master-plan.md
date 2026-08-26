@@ -46,7 +46,7 @@ gate is complete, unless a newly discovered P0 defect makes the pilot unsafe.
 | Connectivity protection | `VERIFY` | Failed cash uploads can be retained on the phone and retried; this is not full offline PWA support. |
 | Credit receipt control | `VERIFY` | Deterministic 1C/OFD lifecycle and employee-safe exception wording are implemented; production observation remains required. |
 | Terminal/acquiring control | `VERIFY` | Rules fail closed, ambiguous cases remain ADMIN-only and employee attribution requires reliable evidence. |
-| Employee notifications | `VERIFY` | Portal Inbox/push lifecycle and the dedicated one-minute production dispatcher are deployed; timer health is confirmed and device delivery still requires verification. |
+| Employee notifications | `VERIFY` | Portal publication and actual push delivery now have separate lifecycle state; bounded retry and inspector diagnostics are implemented. Production migration and real-device delivery/retry still require verification. |
 | ADMIN Telegram | `VERIFY` | Only events requiring owner attention should be duplicated; read state is separate from business-resolution state. |
 | Printable QR holders | `DONE` | Separate approved A5 Retail and Wholesale print layouts are available from ADMIN. |
 | Payroll | `DONE` for current process | Existing formulas and the agreed discipline rule remain unchanged. Direct 1C payroll and employee earnings are not part of launch. |
@@ -84,7 +84,8 @@ Complete in this order:
 3. `IN PROGRESS` Close the audit launch blockers in this order:
    - `DONE` unify 1C date parsing and cover ADMIN 1C, Workday, OFD, terminal
      normalization and credit consumers with regression tests;
-   - `NEXT` make push delivery state truthful and retry transient failures;
+   - `IMPLEMENTED / VERIFY` make push delivery state truthful and retry transient
+     failures; apply the migration and verify delivery/retry on a real device;
    - add upload limits/content validation;
    - remediate critical/high dependency findings in isolated changes;
    - prove recurring DB/uploads backup and restore;
