@@ -1299,6 +1299,7 @@ export function EmployeeTodayClient({
   const primaryPaymentCheck = paymentChecksState[0] ?? null;
   const primaryPaymentCheckView = primaryPaymentCheck ? terminalFiscalEmployeeReviewSummary(primaryPaymentCheck) : null;
   const kkmCloseIssue = requiredIssuesState.find((issue) => issue.ruleKey === 'kkm_shift_not_closed') ?? null;
+  const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || Boolean(kkmCloseIssue));
   const currentRequiredIssueIds = requiredIssuesState.map((issue) => issue.id).sort((a, b) => a - b);
   const closeExceptionMatchesCurrentIssues = Boolean(
     closeExceptionRequestState
@@ -3333,20 +3334,22 @@ export function EmployeeTodayClient({
                 </Link>
               )}
 
-              {(activeWorkDay || unfinished) && closeBlocked && requiredIssuesState.length > 0 && (
+              {(activeWorkDay || unfinished) && showCloseResolution && (
                 <Card id='employee-close-exception' className='mb-6 space-y-3 border-amber-200 bg-white p-4 scroll-mb-[calc(7rem+env(safe-area-inset-bottom))] scroll-mt-4'>
                   <div>
-                    <h2 className='text-base font-black text-slate-950'>{unfinished ? 'Как закрыть предыдущий день' : 'Завершение рабочего дня'}</h2>
+                    <h2 className='text-base font-black text-slate-950'>{unfinished ? 'Как закрыть предыдущий день' : kkmCloseIssue ? 'Закрытие кассы не подтверждено' : 'Завершение рабочего дня'}</h2>
                     <p className='mt-1 text-sm font-semibold leading-relaxed text-slate-600'>
                       {unfinished
                         ? 'В закрываемой смене осталась обязательная проблема. Откройте её выше и исправьте. Если это технически невозможно, отправьте администратору запрос — после одобрения портал закроет именно предыдущий день.'
-                        : 'Сначала исправьте обязательную проблему. Если это невозможно по технической причине, запросите разрешение администратора.'}
+                        : kkmCloseIssue
+                          ? 'Рабочий день пока нельзя завершить.'
+                          : 'Исправьте проблему или сообщите администратору.'}
                     </p>
                   </div>
                   {kkmCloseIssue && handoverTask && !hasHandoverPhoto(handoverDraft.zReportPhoto) && (
                     <div className='space-y-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200'>
                       <p className='text-sm font-black text-slate-950'>Чек закрытия смены распечатался?</p>
-                      <p className='text-xs font-semibold leading-relaxed text-slate-600'>Сфотографируйте его как резервное подтверждение. Если чек не вышел, фото не требуется — сообщите администратору ниже.</p>
+                      <p className='text-xs font-semibold leading-relaxed text-slate-600'>Да — сфотографируйте чек. Нет — выберите причину ниже.</p>
                       <label className='block'>
                         <span className='flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-[#111821] px-3 text-sm font-extrabold text-white shadow-sm'>{isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}</span>
                         <input type='file' accept='image/*' capture='environment' className='sr-only' disabled={isSaving} onChange={(event) => { const file = event.target.files?.[0] ?? null; event.currentTarget.value = ''; void sendKkmClosePhotoToAdmin(handoverTask, file); }} />
@@ -3361,8 +3364,8 @@ export function EmployeeTodayClient({
                   {(!closeExceptionRequestState || closeExceptionRequestState.status === 'rejected' || !closeExceptionMatchesCurrentIssues) && (
                     <div className='space-y-2'>
                       <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
-                      <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Коротко опишите ситуацию' />
-                      <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={isSaving} onClick={requestCloseException}>Запросить разрешение администратора</Button>
+                      <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' />
+                      <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={isSaving} onClick={requestCloseException}>Сообщить администратору</Button>
                     </div>
                   )}
                 </Card>
@@ -3406,7 +3409,7 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
-              {showShiftControl && (
+              {showShiftControl && !(activeHandoverTask && showCloseResolution) && (
                 <Card className='space-y-3 bg-white p-4'>
                   <div>
                     <div>

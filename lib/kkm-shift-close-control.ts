@@ -115,11 +115,11 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
     }
     return null;
   }
-  const title = input.evidence.status === 'one_c_open' ? 'Касса не закрыта' : input.evidence.status === 'ofd_missing' ? 'ККТ не подтвердила закрытие' : 'Не удалось проверить кассу';
+  const title = input.evidence.status === 'one_c_open' ? 'Касса не закрыта' : input.evidence.status === 'ofd_missing' ? 'Закрытие кассы не подтверждено' : 'Не удалось проверить кассу';
   const detail = input.evidence.status === 'one_c_open'
     ? 'Закройте кассовую смену и нажмите «Проверить снова».'
     : input.evidence.status === 'ofd_missing'
-      ? 'Касса не передала чек закрытия смены. Если чек распечатался — приложите фото; если не вышел — сообщите администратору.'
+      ? 'Если чек закрытия распечатался — приложите фото. Если нет — сообщите администратору.'
       : 'Портал временно не может подтвердить закрытие кассы. Попробуйте снова; если не получается — сообщите администратору.';
   const issue = await db.workdayControlIssue.upsert({
     where: { fingerprint },
