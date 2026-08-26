@@ -1,6 +1,6 @@
 # Offonika Portal Master Plan
 
-Last reviewed: 2026-08-23.
+Last reviewed: 2026-08-26.
 
 This is the single operational roadmap for the portal. It separates accepted
 scope, launch blockers and future ideas so that a new idea does not silently
@@ -60,7 +60,7 @@ Complete in this order:
    - update the expense-request Telegram link expectation for Inbox routing;
    - update the terminal-message test fixture for ADMIN Telegram delivery;
    - rerun TypeScript, build and all domain test suites.
-2. `NEXT` Conduct one cross-functional pre-pilot audit of the whole product:
+2. `DONE` Conduct one cross-functional pre-pilot audit of the whole product:
    - business usefulness and completeness of every employee and ADMIN workflow;
    - PWA and ADMIN information architecture, wording, visual hierarchy,
      accessibility and device-specific usability;
@@ -78,7 +78,19 @@ Complete in this order:
    Produce one evidence-backed register with exact locations and four outcomes:
    `launch blocker`, `fix before pilot`, `after launch` or `remove/decline`.
    Close or explicitly accept every launch blocker before starting the pilot.
-3. `NEXT` Run controlled failure drills in production-safe scope:
+   The evidence-backed result is recorded in
+   `pre-pilot-audit-2026-08-25.md`. Seven launch blockers and ten pre-pilot fixes
+   are now the active hardening queue.
+3. `IN PROGRESS` Close the audit launch blockers in this order:
+   - `DONE` unify 1C date parsing and cover ADMIN 1C, Workday, OFD, terminal
+     normalization and credit consumers with regression tests;
+   - `NEXT` make push delivery state truthful and retry transient failures;
+   - add upload limits/content validation;
+   - remediate critical/high dependency findings in isolated changes;
+   - prove recurring DB/uploads backup and restore;
+   - reconcile stale production lifecycle records;
+   - decide whether QR is a convenience ritual or physical-presence evidence.
+4. `NEXT` Run controlled failure drills in production-safe scope:
    - 1C unavailable before/during encashment;
    - connection loss during a cash operation/photo upload;
    - locally retained operation is sent after connectivity returns;
@@ -86,20 +98,20 @@ Complete in this order:
    - delayed 1C recovery moves the case to the correct ADMIN state without blocking the employee;
    - notification disappears only when its underlying action is no longer active.
    - verify employee push delivery on a real device; the dedicated production dispatcher is already active.
-4. `NEXT` Verify the device matrix:
+5. `NEXT` Verify the device matrix:
    - installed PWA on the current iPhone;
    - at least one supported Android device;
    - camera permission and QR scan;
    - push permission and delivery;
    - app resume after screen lock/backgrounding;
    - Wi-Fi/mobile-data switching and weak connection behavior.
-5. `NEXT` Verify production operations:
+6. `NEXT` Verify production operations:
    - current server commit and container health;
    - notification, expense, terminal, credit and reconciliation timers;
    - persistent uploads volume;
    - recent logs contain no unexplained fresh application/API errors;
    - rollback path is ready.
-6. `NEXT` Prepare a one-page employee onboarding instruction and an ADMIN incident
+7. `NEXT` Prepare a one-page employee onboarding instruction and an ADMIN incident
    script for internet, 1C, camera, notification and unfinished-day problems.
 
 ## Pilot Gate

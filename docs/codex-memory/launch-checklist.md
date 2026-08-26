@@ -1,6 +1,6 @@
 # Launch Checklist
 
-Last reviewed: 2026-08-23. Priority and future scope are owned by
+Last reviewed: 2026-08-26. Priority and future scope are owned by
 `master-plan.md`; this file is the release gate only.
 
 Status keys: `[x]` verified baseline, `[~]` implemented but still needs a live
@@ -35,6 +35,21 @@ or device check, `[ ]` incomplete launch gate.
 
 ## Production Safety Gate
 
+- [x] Inconsistent 1C date parsing was replaced with one shared RU/ISO/Moscow
+  parser for ADMIN 1C, Workday, OFD, terminal normalization and credit control.
+  Dedicated date tests, all domain suites, TypeScript and production build pass.
+- [ ] Separate portal-notification state from actual push delivery, retry
+  transient failures and expose failed/no-subscription outcomes to monitoring.
+- [ ] Close critical/high production dependency findings and rerun the full
+  regression/build/production smoke gate.
+- [ ] Add image size/type/content limits to cash and shift-photo uploads.
+- [ ] Prove recurring PostgreSQL/uploads backup, integrity checks and one restore
+  rehearsal.
+- [ ] Reconcile or explicitly archive stale workdays, legacy 1C cash states and
+  consumed/approved close-request inconsistencies before selecting pilot users.
+- [ ] Decide whether the static QR is only a convenient start ritual or must be
+  server-validated physical-presence evidence; do not use self-selected shift
+  lateness for discipline before this boundary is explicit.
 - [~] Explicit employee-to-1C cashbox mapping exists; verify every pilot
   participant before their first real shift.
 - [~] Upload persistence is designed around `portal-uploads`; perform one final
@@ -48,8 +63,21 @@ or device check, `[ ]` incomplete launch gate.
   exact links and automatic lifecycle closure.
 - [~] Terminal, credit, expense and reconciliation jobs exist; verify production
   timers and fresh logs immediately before pilot.
-- [ ] Confirm current production commit, healthy container, rollback command and
-  no unexplained recent errors.
+- [~] Current production commit, running container, healthy timers and no fresh
+  unexplained application errors were confirmed during the 2026-08-25 audit.
+  Add an application healthcheck, timer catch-up monitoring and a proven
+  rollback/restore path before marking complete.
+
+## ADMIN Clarity Gate
+
+- [x] ADMIN Главная counts and problem details use the same deduplicated model;
+  the former `1 problem / no active problems` contradiction is removed.
+- [x] Ordinary `Ожидаются данные` terminal state remains neutral until it is
+  actually overdue, incomplete or erroneous.
+- [ ] Open Attendance on the current month, normalize duplicate identities and
+  state clearly that Google remains the temporary payroll source.
+- [ ] Resolve the current old credit issue and define an audited exception path
+  for a factual correction that an employee cannot perform.
 
 ## Device Gate
 
