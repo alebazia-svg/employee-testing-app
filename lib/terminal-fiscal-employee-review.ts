@@ -23,7 +23,7 @@ type KkmResponsibility = {
 
 export type EmployeeReviewDecision =
   | { action: 'wait' | 'resolve' | 'admin_only'; reason: string }
-  | { action: 'notify'; employeeId: number; attributionKey: string; source: 'kkm_responsibility' | 'one_c_cashier' };
+  | { action: 'notify'; employeeId: number; attributionKey: string; source: 'kkm_responsibility' | 'kkm_day_cashier' | 'one_c_cashier' };
 
 export type EmployeeReviewCoverageDecision = {
   state: 'covered' | 'uncovered' | 'ambiguous' | 'incomplete';
@@ -265,6 +265,27 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
     };
   }
   if (responsibleEmployees.length > 1) return { action: 'admin_only', reason: 'KKM_RESPONSIBILITY_CONFLICT' };
+
+  const dayCashierCounts = new Map<string, number>();
+  for (const check of input.oneCChecks) {
+    if (check.cashRegisterRef !== mapping.oneCCashRegisterRef || !check.cashier.ref) continue;
+    dayCashierCounts.set(check.cashier.ref, (dayCashierCounts.get(check.cashier.ref) ?? 0) + 1);
+  }
+  const rankedDayCashiers = [...dayCashierCounts.entries()].sort((left, right) => right[1] - left[1]);
+  if (rankedDayCashiers.length > 0 && (rankedDayCashiers.length === 1 || rankedDayCashiers[0][1] > rankedDayCashiers[1][1])) {
+    const cashierRef = rankedDayCashiers[0][0];
+    const dayEmployees = [...new Set(input.cashierMappings
+      .filter((item) => item.oneCCashierRef === cashierRef)
+      .map((item) => item.userId))];
+    if (dayEmployees.length === 1) {
+      return {
+        action: 'notify',
+        employeeId: dayEmployees[0],
+        attributionKey: `kkm-day-cashier:${cashierRef}`,
+        source: 'kkm_day_cashier',
+      };
+    }
+  }
 
   const nearby = input.oneCChecks.filter((check) => {
     const checkAt = timestamp(check.dateTime);

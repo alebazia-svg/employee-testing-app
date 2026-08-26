@@ -131,9 +131,12 @@ card check of the same operation type and amount covers the operation, it sends
 the review to the employee assigned to that mapped KKM at the operation time.
 This is operational responsibility for the workstation, not an assertion that
 the employee personally made or omitted the missing check. If no dated KKM
-assignment exists, the safe fallback remains exactly one active mapped
-`cashier.ref` from sale checks on the same KKM within plus or minus fifteen
-minutes. Conflicting assignments or cashiers, incomplete sources, partial
+assignment exists, the runner uses the uniquely dominant mapped cashier from
+that KKM's checks for the current day. This tolerates an occasional check made
+from another account without moving responsibility away from the employee who
+operates the workstation. A unique nearby mapped cashier within plus or minus
+fifteen minutes remains the final fallback. Conflicting assignments, a tied or
+unmapped cashier result, incomplete sources, partial
 coverage, conflicts and paired sale/refund evidence remain ADMIN-only. A later
 1C check records its actual cashier, resolves the review and cancels a still-
 pending notification. Core

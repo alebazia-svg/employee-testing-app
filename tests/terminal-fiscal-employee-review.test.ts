@@ -58,7 +58,7 @@ test('first complete 1C read after ten minutes is enough when one nearby mapped 
   assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
     record: target, periodRecords: [target], mapping, oneCChecks: [check()],
     cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
-  }), { action: 'notify', employeeId: 5, attributionKey: 'one-c-cashier:cashier-magomed', source: 'one_c_cashier' });
+  }), { action: 'notify', employeeId: 5, attributionKey: 'kkm-day-cashier:cashier-magomed', source: 'kkm_day_cashier' });
   assert.equal(terminalFiscalEmployeeReviewText({ operationAt: new Date('2026-08-17T16:32:00.000Z'), amountKopecks: 1_250_000 }),
     'Оплата 12 500 ₽ в 19:32. Проверьте и пробейте чек.');
 });
@@ -150,6 +150,24 @@ test('keeps conflicting KKM responsibility assignments admin-only', () => {
   }), { action: 'admin_only', reason: 'KKM_RESPONSIBILITY_CONFLICT' });
 });
 
+test('uses the uniquely dominant cashier of the mapped KKM day when no manual responsibility exists', () => {
+  const target = record();
+  assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
+    record: target,
+    periodRecords: [target],
+    mapping,
+    oneCChecks: [
+      check({ ref: 'day-1', cashierRef: 'cashier-milana', dateTime: '2026-08-17T08:00:00.000Z' }),
+      check({ ref: 'day-2', cashierRef: 'cashier-milana', dateTime: '2026-08-17T09:00:00.000Z' }),
+      check({ ref: 'brief-substitute', cashierRef: 'cashier-diana', dateTime: '2026-08-17T10:00:00.000Z' }),
+    ],
+    cashierMappings: [
+      { userId: 3, oneCCashierRef: 'cashier-milana' },
+      { userId: 6, oneCCashierRef: 'cashier-diana' },
+    ],
+  }), { action: 'notify', employeeId: 3, attributionKey: 'kkm-day-cashier:cashier-milana', source: 'kkm_day_cashier' });
+});
+
 test('closes the employee task when a unique 1C check is found even if OFD is temporarily incomplete', () => {
   const found = record({
     status: 'unavailable',
@@ -179,7 +197,7 @@ test('uses the mapped KKM only and never workstation or OFD operator evidence', 
       { userId: 3, oneCCashierRef: 'cashier-milana' },
     ],
   });
-  assert.deepEqual(result, { action: 'notify', employeeId: 5, attributionKey: 'one-c-cashier:cashier-magomed', source: 'one_c_cashier' });
+  assert.deepEqual(result, { action: 'notify', employeeId: 5, attributionKey: 'kkm-day-cashier:cashier-magomed', source: 'kkm_day_cashier' });
 });
 
 test('period coverage suppresses a false employee notification outside the strict five-minute match window', () => {

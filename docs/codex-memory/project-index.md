@@ -73,8 +73,9 @@ project from scratch.
   check may create a neutral employee review only after a complete read at least
   ten minutes after payment. It is addressed first to the employee assigned to
   the mapped KKM at the operation time; this means operational responsibility,
-  not proven personal fault. If no dated assignment exists, exactly one mapped
-  cashier from nearby checks of the same KKM is the fallback. When strict time
+  not proven personal fault. If no dated assignment exists, the uniquely
+  dominant mapped cashier from that KKM's current-day checks is used; a unique
+  nearby mapped cashier is the final fallback. When strict time
   matching misses delayed checks, the
   runner may add only cashier attribution from unused 1C checks that fully cover
   the unmatched bank operations by operation type and amount; it does not turn
