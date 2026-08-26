@@ -1094,6 +1094,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
       select: {
         id: true,
         name: true,
+        login: true,
         department: true,
         oneCCashboxMapping: true,
       },
@@ -1694,7 +1695,7 @@ export default async function AdminWorkdayPage({ searchParams }: { searchParams?
                           } : null}
                         />
                       ) : <span className='text-xs font-semibold text-slate-400'>Нет данных</span>}
-                      {devWorkdayToolsEnabled && <div className='flex flex-col gap-2'>
+                      {(devWorkdayToolsEnabled || row.employee.login === 'kkm_test') && <div className='flex flex-col gap-2'>
                         {!row.workDay && row.shiftControlRequired && <DevCreateTestShiftButtons userId={row.employee.id} userName={row.employee.name} department={row.employee.department} date={selectedDate} />}
                         {row.shiftControlRequired && row.run && <DevMakeShiftTasksAvailableButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />}
                         {row.employee.department === 'retail' && row.workDay?.comment.startsWith('Dev/Test') && row.run?.tasks.find((task) => task.category === 'handover') && <DevKkmCloseScenarioControl taskId={row.run.tasks.find((task) => task.category === 'handover')!.id} />}

@@ -7,10 +7,6 @@ function isDateKey(value: unknown): value is string {
 }
 
 export async function POST(req: Request) {
-  if (process.env.ENABLE_DEV_WORKDAY_TOOLS !== 'true') {
-    return Response.json({ error: 'Dev workday tools are disabled' }, { status: 403 });
-  }
-
   const admin = await getCurrentUser();
   if (!admin || admin.role !== 'ADMIN') {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
@@ -30,12 +26,13 @@ export async function POST(req: Request) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, department: true, role: true, isActive: true },
+    select: { id: true, name: true, login: true, department: true, role: true, isActive: true },
   });
 
   if (!user || user.role !== 'EMPLOYEE' || !user.isActive) {
     return Response.json({ error: 'Employee not found' }, { status: 404 });
   }
+  if (process.env.ENABLE_DEV_WORKDAY_TOOLS !== 'true' && user.login !== 'kkm_test') return Response.json({ error: 'Dev workday tools are disabled' }, { status: 403 });
   if (!usesWorkdayShiftControl(user)) {
     return Response.json({ error: 'Dev/Test shift control is not required for this employee' }, { status: 400 });
   }

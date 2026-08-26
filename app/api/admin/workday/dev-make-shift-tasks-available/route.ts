@@ -7,10 +7,6 @@ function isDateKey(value: unknown): value is string {
 }
 
 export async function PATCH(req: Request) {
-  if (process.env.ENABLE_DEV_WORKDAY_TOOLS !== 'true') {
-    return Response.json({ error: 'Dev workday tools are disabled' }, { status: 403 });
-  }
-
   const admin = await getCurrentUser();
   if (!admin || admin.role !== 'ADMIN') {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
@@ -21,6 +17,8 @@ export async function PATCH(req: Request) {
   if (!Number.isInteger(userId) || userId <= 0) {
     return Response.json({ error: 'Invalid user id' }, { status: 400 });
   }
+  const target = await prisma.user.findUnique({ where: { id: userId }, select: { login: true } });
+  if (process.env.ENABLE_DEV_WORKDAY_TOOLS !== 'true' && target?.login !== 'kkm_test') return Response.json({ error: 'Dev workday tools are disabled' }, { status: 403 });
 
   const date = isDateKey(body.date) ? body.date : getMoscowDateKey();
   const nowMinutes = Math.max(0, getMoscowMinutes() - 30);

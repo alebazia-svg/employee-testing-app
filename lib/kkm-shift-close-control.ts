@@ -66,7 +66,10 @@ function normalized(value: string) {
 }
 
 export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string; simulation?: KkmShiftCloseSimulation | null }): Promise<KkmShiftCloseEvidence> {
-  if (process.env.ENABLE_DEV_WORKDAY_TOOLS === 'true' && input.simulation) return simulateKkmShiftClose(input.simulation);
+  if (input.simulation) {
+    const simulatedUser = await input.db.user.findUnique({ where: { id: input.userId }, select: { login: true } });
+    if (process.env.ENABLE_DEV_WORKDAY_TOOLS === 'true' || simulatedUser?.login === 'kkm_test') return simulateKkmShiftClose(input.simulation);
+  }
   const checkedAt = new Date().toISOString();
   const empty = { checkedAt, cashierRef: '', cashRegisterRef: '', cashRegisterName: '', kktRegistrationNumber: '', oneCShiftNumber: '', fiscalShiftNumber: '', oneCOpenedAt: '', oneCClosedAt: '', ofdOpenedAt: '', ofdClosedAt: '', ofdDocumentLink: '' };
   const identity = await input.db.userOneCCashboxMapping.findUnique({ where: { userId: input.userId } });

@@ -7,10 +7,6 @@ function isDateKey(value: unknown): value is string {
 }
 
 export async function DELETE(req: Request) {
-  if (process.env.ENABLE_DEV_WORKDAY_TOOLS !== 'true') {
-    return Response.json({ error: 'Dev workday tools are disabled' }, { status: 403 });
-  }
-
   const admin = await getCurrentUser();
   if (!admin || admin.role !== 'ADMIN') {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
@@ -28,6 +24,8 @@ export async function DELETE(req: Request) {
   }
 
   const userIdToReset = Number.isInteger(targetUserId) && targetUserId > 0 ? targetUserId : Number(url.searchParams.get('userId'));
+  const target = await prisma.user.findUnique({ where: { id: userIdToReset }, select: { login: true } });
+  if (process.env.ENABLE_DEV_WORKDAY_TOOLS !== 'true' && target?.login !== 'kkm_test') return Response.json({ error: 'Dev workday tools are disabled' }, { status: 403 });
   const requestedDate = isDateKey(body.date) ? body.date : url.searchParams.get('date');
   const date = isDateKey(requestedDate) ? requestedDate : getMoscowDateKey();
   const result = await prisma.$transaction(async (tx) => {
