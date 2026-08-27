@@ -9,7 +9,7 @@ import type {
   TerminalMapping,
 } from '@/lib/terminal-fiscal-matching';
 
-export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 10 * 60 * 1000;
+export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 15 * 60 * 1000;
 export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_WINDOW_MS = 15 * 60 * 1000;
 
 type CashierMapping = { userId: number; oneCCashierRef: string };

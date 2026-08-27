@@ -117,7 +117,7 @@ The integration provides:
   normalized from kopecks to rubles;
 - idempotent matching audit and a hard-mismatch lifecycle;
 - a neutral missing-check review after the first complete T-Bank/1C read at
-  least ten minutes after payment, only when nearby checks on the same KKM have
+  least fifteen minutes after payment, only when nearby checks on the same KKM have
   exactly one mapped `cashier.ref`;
 - one employee notification per operation, automatic closure when the 1C check
   later appears, and a small operation-specific employee/ADMIN discussion;
@@ -125,7 +125,7 @@ The integration provides:
   assignment. Ambiguous or incomplete cases remain ADMIN-only.
 
 Employee delivery for the neutral missing-check review is enabled in production.
-After the first complete 1C read at least ten minutes after the bank operation,
+After the first complete 1C read at least fifteen minutes after the bank operation,
 the runner first applies an aggregate per-terminal/KKM guard. If no distinct 1C
 card check of the same operation type and amount covers the operation, it sends
 the review to the employee assigned to that mapped KKM at the operation time.

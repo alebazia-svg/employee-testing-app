@@ -25,10 +25,10 @@ const mapping: TerminalMapping = {
 function record(overrides: Partial<MatchingAuditRecord> = {}): MatchingAuditRecord {
   return {
     matchingKey: 'operation-1', version: 'mvp-1', status: 'pending', reasonCode: 'ONE_C_CANDIDATE_PENDING',
-    evaluatedAt: '2026-08-17T16:45:00.000Z', graceUntil: '2026-08-17T18:32:00.000Z', mappingId: mapping.id,
+    evaluatedAt: '2026-08-17T16:47:00.000Z', graceUntil: '2026-08-17T18:32:00.000Z', mappingId: mapping.id,
     bankOperationKey: 'secret-operation', operationType: 'sale', amountKopecks: 1_250_000, candidateCount: 0,
     evidence: { bankTransactionDate: '2026-08-17T16:32:00.000Z' },
-    sourceCheckedAt: { tbank: '2026-08-17T16:45:00.000Z', oneC: '2026-08-17T16:45:00.000Z', ofd: '2026-08-17T16:45:00.000Z' },
+    sourceCheckedAt: { tbank: '2026-08-17T16:47:00.000Z', oneC: '2026-08-17T16:47:00.000Z', ofd: '2026-08-17T16:47:00.000Z' },
     sourceCompleteness: { tbank: true, oneC: true, ofd: false }, history: [],
     ...overrides,
   };
@@ -53,7 +53,7 @@ function check(input: {
   };
 }
 
-test('first complete 1C read after ten minutes is enough when one nearby mapped cashier exists', () => {
+test('first complete 1C read after fifteen minutes is enough when one nearby mapped cashier exists', () => {
   const target = record();
   assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
     record: target, periodRecords: [target], mapping, oneCChecks: [check()],

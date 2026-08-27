@@ -71,7 +71,7 @@ project from scratch.
   Terminal-fiscal employee attribution uses only a confirmed 1C `cashier.ref`;
   hard mismatches without a mapped 1C cashier remain ADMIN-only. A missing 1C
   check may create a neutral employee review only after a complete read at least
-  ten minutes after payment. It is addressed first to the employee assigned to
+  fifteen minutes after payment. It is addressed first to the employee assigned to
   the mapped KKM at the operation time; this means operational responsibility,
   not proven personal fault. If no dated assignment exists, the uniquely
   dominant mapped cashier from that KKM's current-day checks is used; a unique
@@ -82,7 +82,7 @@ project from scratch.
   such a row into an exact match. Partial coverage or mixed cashiers remains
   ADMIN-only. Employee delivery is enabled in production only for candidates
   that survive the aggregate terminal/1C coverage guard after the first complete
-  1C read at least ten minutes after payment. The guard uses one-to-one exact
+  1C read at least fifteen minutes after payment. The guard uses one-to-one exact
   operation-type/amount coverage and keeps incomplete, partial, conflicting and
   sale/refund-pair cases ADMIN-only; matching and ADMIN control remain active.
   Starting with terminal-fiscal matching `mvp-1.1`, an exact bank/1C/OFD fiscal

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod } from '../lib/terminal-fiscal-auto-run';
 
@@ -30,4 +31,9 @@ test('automatic runner remains non-persisting without the explicit audit flag', 
   assert.deepEqual(parseTerminalFiscalAutoRunCli(['--mode', 'current']), { mode: 'current', persist: false });
   assert.deepEqual(parseTerminalFiscalAutoRunCli(['--mode', 'previous', '--confirm-audit-write']), { mode: 'previous', persist: true });
   assert.throws(() => parseTerminalFiscalAutoRunCli(['--mode', 'other']), /Usage/);
+});
+
+test('production current-day audit runs every five minutes', () => {
+  const timer = readFileSync('ops/systemd/offonika-terminal-fiscal-current.timer', 'utf8');
+  assert.match(timer, /OnCalendar=\*-\*-\* \*:02\/5:00 Europe\/Moscow/);
 });
