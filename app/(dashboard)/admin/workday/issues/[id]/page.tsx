@@ -29,7 +29,7 @@ export default async function AdminWorkdayIssuePage({ params }: { params: { id: 
   const issueId = Number(params.id);
   const issue = Number.isInteger(issueId) ? await prisma.workdayControlIssue.findUnique({
     where: { id: issueId },
-    include: { user: { select: { name: true } }, task: { select: { handoverData: true } }, messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } } },
+    include: { user: { select: { name: true } }, task: { select: { handoverData: true } }, notifications: { where: { kind: 'workday_issue_reply' }, orderBy: { createdAt: 'desc' }, take: 5 }, messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } } },
   }) : null;
   if (!issue) redirect('/admin/workday');
   const open = issue.status === 'open' && issue.employeeActionRequired;
@@ -48,6 +48,14 @@ export default async function AdminWorkdayIssuePage({ params }: { params: { id: 
     where: { userId: issue.userId, status: 'open', employeeActionRequired: true },
     orderBy: [{ severity: 'desc' }, { detectedAt: 'asc' }],
   });
+  const deliveryLabel = (notification: typeof issue.notifications[number]) => {
+    if (notification.readAt) return 'Прочитано';
+    if (notification.pushStatus === 'delivered') return 'Доставлено на устройство';
+    if (notification.pushStatus === 'no_subscription') return 'Push не подключён — увидит при входе';
+    if (notification.status === 'pending') return 'Ожидает отправки';
+    if (notification.pushStatus === 'retry_pending') return 'Повторная отправка';
+    return 'Сохранено в портале';
+  };
   return (
     <AdminShell>
       <AdminBreadcrumbs current='Обязательная ошибка' />
@@ -82,8 +90,9 @@ export default async function AdminWorkdayIssuePage({ params }: { params: { id: 
           <dl className='mt-5 grid gap-3 border-t border-amber-200 pt-4 text-sm sm:grid-cols-2'><div><dt className='font-semibold text-slate-500'>Сотрудник</dt><dd className='mt-1 font-extrabold text-slate-950'>{issue.user.name}</dd></div>{isKkmCloseIssue ? <><div><dt className='font-semibold text-slate-500'>Касса 1С</dt><dd className='mt-1 font-extrabold text-slate-950'>{String(evidence?.cashRegisterName || 'не определена')}</dd></div><div><dt className='font-semibold text-slate-500'>ККТ</dt><dd className='mt-1 break-all font-extrabold text-slate-950'>{String(evidence?.kktRegistrationNumber || 'не определена')}</dd></div><div><dt className='font-semibold text-slate-500'>Состояние источников</dt><dd className='mt-1 font-extrabold text-slate-950'>{String(evidence?.sourceError || issue.detail)}</dd></div></> : <div><dt className='font-semibold text-slate-500'>Реализация</dt><dd className='mt-1 font-extrabold text-slate-950'>{[view.documentNumber, view.amount].filter(Boolean).join(' · ')}</dd></div>}<div><dt className='font-semibold text-slate-500'>Проблема возникла</dt><dd className='mt-1 font-extrabold text-slate-950'>{originLabel}</dd></div><div><dt className='font-semibold text-slate-500'>Последняя автопроверка</dt><dd className='mt-1 font-extrabold text-slate-950'>{lastDetectedLabel}</dd></div>{!isKkmCloseIssue && !open && view.receiptDelayMinutes !== null && <div><dt className='font-semibold text-slate-500'>Чек пробит позже</dt><dd className='mt-1 font-extrabold text-slate-950'>на {view.receiptDelayMinutes} мин.</dd></div>}{!isKkmCloseIssue && view.receiptCashierName && <div><dt className='font-semibold text-slate-500'>Кассир чека 1С</dt><dd className='mt-1 font-extrabold text-slate-950'>{view.receiptCashierName}</dd></div>}</dl>
           {isKkmCloseIssue && <div className='mt-5 rounded-xl bg-white p-4 ring-1 ring-amber-200'><p className='text-sm font-black text-slate-950'>Фото чека закрытия</p>{zReportHref ? <a href={zReportHref} target='_blank' rel='noreferrer' className='mt-3 block overflow-hidden rounded-xl ring-1 ring-slate-200'><img src={zReportHref} alt='Фото чека закрытия смены' className='max-h-[32rem] w-full object-contain' /></a> : <p className='mt-2 text-sm font-semibold text-slate-600'>Фото не приложено. Возможно, чек не распечатался.</p>}</div>}
           {!open && view.receiptDelayMinutes !== null && view.receiptDelayMinutes > 15 && <p className='mt-4 rounded-xl bg-white/70 px-4 py-3 text-sm font-semibold text-slate-700'>Правильный чек появился, поэтому действие сотрудника закрыто. Опоздание сохранено в audit.</p>}
+          {open && issue.ruleKey === 'credit_realization_mismatch' && <form action={`/api/admin/workday/issues/${issue.id}/dismiss`} method='post' className='mt-5 border-t border-amber-200 pt-4'><button type='submit' className='rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-extrabold text-white'>Снять как тестовую проверку</button><p className='mt-2 text-xs font-semibold text-slate-500'>Только эта реализация больше не будет возвращаться. Новые ошибки продолжат создаваться.</p></form>}
         </Card>
-        <Card><div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-green-700' /><h2 className='text-lg font-extrabold'>Обсуждение</h2></div><TerminalFiscalReviewConversation initialMessages={issue.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} currentUserId={admin.id} endpoint={`/api/admin/workday/issues/${issue.id}/messages`} disabled={!open} /></Card>
+        <Card><div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-green-700' /><h2 className='text-lg font-extrabold'>Обсуждение</h2></div><TerminalFiscalReviewConversation initialMessages={issue.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} currentUserId={admin.id} endpoint={`/api/admin/workday/issues/${issue.id}/messages`} disabled={!open} />{issue.notifications.length > 0 && <div className='mt-4 border-t border-slate-200 pt-3'><p className='text-xs font-black uppercase tracking-wide text-slate-500'>Доставка сообщений</p>{issue.notifications.map((notification) => <p key={notification.id} className='mt-1 text-xs font-bold text-slate-700'>{deliveryLabel(notification)}</p>)}</div>}</Card>
       </div>
     </AdminShell>
   );

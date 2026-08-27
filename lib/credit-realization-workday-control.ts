@@ -134,6 +134,7 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
     const userId = mappings[0].userId;
     const lifecycle = await prisma.$transaction(async (tx) => {
       const existing = await tx.workdayControlIssue.findUnique({ where: { fingerprint } });
+      if (existing?.status === 'dismissed') return 'unchanged' as const;
       const reopening = Boolean(existing && existing.status !== 'open');
       const detail = issueDetail(controlCase.documentNumber, controlCase.reasonCode);
       const originDate = moscowDate(controlCase.realizationAt);
