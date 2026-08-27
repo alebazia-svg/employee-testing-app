@@ -14,6 +14,7 @@ import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exc
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
 import { readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
+import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
 import {
   appendCashRecountInputHistory,
   buildCashRecountComparison,
@@ -244,11 +245,7 @@ async function captureOneCCashAudit({
 }
 
 async function savePhoto(file: File, runId: number, taskId: number, key: string) {
-  if (!file.type.startsWith('image/')) {
-    throw new Error('Добавьте фото');
-  }
-
-  const extension = file.type.split('/')[1]?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+  const { extension } = await validateEmployeeImage(file);
   const directory = path.join(process.cwd(), 'uploads', 'shift-control', String(runId), String(taskId));
   await mkdir(directory, { recursive: true });
 
@@ -380,6 +377,7 @@ async function saveHandoverDraft(
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  if (requestBodyTooLarge(req)) return Response.json({ error: 'Фото слишком большое. Максимальный размер — 8 МБ.' }, { status: 413 });
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   if (!usesWorkdayShiftControl(user)) return Response.json({ error: 'Shift control is not required for this employee' }, { status: 403 });

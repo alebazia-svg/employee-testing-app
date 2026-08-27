@@ -1,0 +1,12 @@
+[Unit]
+Description=Backup OFFONIKA portal PostgreSQL and uploads
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/docker/employee-testing-app/ops/systemd/backup-offonika-portal.sh
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

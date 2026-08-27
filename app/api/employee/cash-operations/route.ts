@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { createOneCCashExpenseOrder, getCashStatementDimensions } from '@/lib/one-c';
+import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
 
 function normalizeSearchText(value: string) {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
@@ -39,11 +40,7 @@ function canUseDirection(user: { department: string; name?: string | null; login
 }
 
 async function savePhoto(file: File, workDayId: number, direction: string) {
-  if (!file.type.startsWith('image/')) {
-    throw new Error('Добавьте фото');
-  }
-
-  const extension = file.type.split('/')[1]?.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+  const { extension } = await validateEmployeeImage(file);
   const directory = path.join(process.cwd(), 'uploads', 'cash-operations', String(workDayId));
   await mkdir(directory, { recursive: true });
 
@@ -59,6 +56,7 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+  if (requestBodyTooLarge(req)) return Response.json({ error: 'Фото слишком большое. Максимальный размер — 8 МБ.' }, { status: 413 });
   const formData = await req.formData().catch(() => null);
   if (!formData) return Response.json({ error: 'Invalid form data' }, { status: 400 });
 

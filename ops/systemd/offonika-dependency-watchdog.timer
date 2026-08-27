@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OFFONIKA external dependencies every 15 minutes
+
+[Timer]
+OnCalendar=*-*-* *:04/15:00 Europe/Moscow
+Persistent=true
+AccuracySec=30s
+Unit=offonika-dependency-watchdog.service
+
+[Install]
+WantedBy=timers.target

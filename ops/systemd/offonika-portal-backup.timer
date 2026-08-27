@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily OFFONIKA portal backup
+
+[Timer]
+OnCalendar=*-*-* 02:20:00 Europe/Moscow
+Persistent=true
+RandomizedDelaySec=10min
+Unit=offonika-portal-backup.service
+
+[Install]
+WantedBy=timers.target

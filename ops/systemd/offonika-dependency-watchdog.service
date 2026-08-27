@@ -1,0 +1,12 @@
+[Unit]
+Description=OFFONIKA external dependency watchdog
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec portal-app node --conditions=react-server --import tsx scripts/dependency-watchdog.ts
+TimeoutStartSec=4min
+NoNewPrivileges=true
+PrivateTmp=true
