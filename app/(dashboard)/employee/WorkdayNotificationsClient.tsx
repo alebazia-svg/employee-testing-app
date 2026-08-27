@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Bell, CheckCircle2, ChevronRight, Clock3, MessageCircle, ReceiptText, X } from 'lucide-react';
+import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
 
 type WorkdayNotification = {
   id: number;
@@ -11,6 +12,9 @@ type WorkdayNotification = {
   body: string;
   readAt: string | null;
   href: string;
+  taskId: number | null;
+  issueId: number | null;
+  reviewId: string | null;
 };
 
 function NotificationMarker({ notification }: { notification: WorkdayNotification }) {
@@ -116,21 +120,22 @@ export function WorkdayNotificationsClient() {
     return () => window.clearTimeout(closeTimer);
   }, [open]);
 
-  async function dismiss(id: number) {
+  async function dismiss(notification: WorkdayNotification) {
+    const threadKey = workdayNotificationThreadKey(notification);
     setNotifications((current) => {
-      const next = current.filter((notification) => notification.id !== id);
+      const next = current.filter((item) => workdayNotificationThreadKey(item) !== threadKey);
       syncAppBadge(next.length);
       return next;
     });
     await fetch('/api/employee/workday-notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id: notification.id }),
     }).catch(() => null);
   }
 
   async function openNotification(notification: WorkdayNotification) {
-    await dismiss(notification.id);
+    await dismiss(notification);
     setOpen(false);
     router.push(notification.href || '/employee');
   }

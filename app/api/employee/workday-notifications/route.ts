@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { reconcileActiveWorkdayNotifications, workdayNotificationHref, workdayTaskNotificationCopy } from '@/lib/workday-notifications';
+import { workdayNotificationThreadWhere } from '@/lib/workday-notification-thread';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -55,6 +56,14 @@ export async function POST(req: Request) {
   const payload = await req.json().catch(() => null);
   const id = Number(payload?.id);
   if (!Number.isInteger(id) || id <= 0) return Response.json({ error: 'Invalid notification id' }, { status: 400 });
-  await prisma.workdayNotification.updateMany({ where: { id, userId: user.id }, data: { readAt: new Date() } });
+  const notification = await prisma.workdayNotification.findFirst({
+    where: { id, userId: user.id },
+    select: { id: true, taskId: true, issueId: true, reviewId: true },
+  });
+  if (!notification) return Response.json({ error: 'Notification not found' }, { status: 404 });
+  await prisma.workdayNotification.updateMany({
+    where: { userId: user.id, ...workdayNotificationThreadWhere(notification) },
+    data: { readAt: new Date() },
+  });
   return Response.json({ ok: true });
 }
