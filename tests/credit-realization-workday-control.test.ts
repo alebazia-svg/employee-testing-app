@@ -27,6 +27,7 @@ test('lifecycle creates one issue and notification, then resolves without duplic
   const notifications: Array<Record<string, any>> = [];
   const db: any = {
     creditRealizationControlCase: { findMany: async () => cases },
+    workDayEntry: { findFirst: async () => ({ id: 1 }) },
     userOneCCashboxMapping: { findMany: async () => [{ userId: 4 }] },
     workdayControlIssue: {
       findUnique: async ({ where }: any) => issues.find((row) => row.fingerprint === where.fingerprint) ?? null,
@@ -42,9 +43,21 @@ test('lifecycle creates one issue and notification, then resolves without duplic
         rows.forEach((row) => Object.assign(row, data));
         return { count: rows.length };
       },
+      update: async ({ where, data }: any) => {
+        const row = issues.find((item) => item.id === where.id);
+        Object.assign(row!, data);
+        return row;
+      },
     },
     workdayNotification: {
       create: async ({ data }: any) => notifications.push({ id: notifications.length + 1, status: 'pending', ...data }),
+      upsert: async ({ where, create }: any) => {
+        const existing = notifications.find((row) => row.fingerprint === where.fingerprint);
+        if (existing) return existing;
+        const row = { id: notifications.length + 1, status: 'pending', ...create };
+        notifications.push(row);
+        return row;
+      },
       findUnique: async ({ where }: any) => notifications.find((row) => row.fingerprint === where.fingerprint) ?? null,
       updateMany: async ({ where, data }: any) => {
         const issue = where.issue ? issues.find((row) => row.fingerprint === where.issue.fingerprint) : null;
@@ -71,6 +84,9 @@ test('lifecycle creates one issue and notification, then resolves without duplic
   assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T08:18:00Z')), { reminded: 0, opened: 0, resolved: 0, unassigned: 0 });
   assert.equal(notifications.length, 1);
 
+  assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T09:16:00Z')), { reminded: 1, opened: 0, resolved: 0, unassigned: 0 });
+  assert.equal(notifications.length, 2);
+
   cases[0].status = 'confirmed';
   cases[0].employeeActionCandidate = false;
   cases[0].receiptDelayMinutes = 18;
@@ -83,7 +99,7 @@ test('lifecycle creates one issue and notification, then resolves without duplic
     documentNumber: 'R-1', realizationAt: '2026-08-18T08:00:00.000Z', amountKopecks: 100_000_00,
     reasonCode: 'REQUIRED_FISCAL_RECEIPT_MISSING', receiptDelayMinutes: 18, receiptCashierRef: 'cashier-1', receiptCashierName: 'Кассир',
   });
-  assert.equal(notifications[0].status, 'cancelled');
+  assert.equal(notifications.every((notification) => notification.status === 'cancelled'), true);
 });
 
 test('a correct next-day receipt closes employee action but remains auditable', async () => {

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 
 export const CREDIT_REALIZATION_EMPLOYEE_CUTOVER = new Date('2026-08-18T00:00:00+03:00');
+const CREDIT_REMINDER_MS = 60 * 60 * 1000;
 
 function digest(value: string) {
   return createHash('sha256').update(value).digest('hex');
@@ -149,12 +150,15 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
           userId, fingerprint, ruleKey: 'credit_realization_mismatch', severity, status: 'open',
           title: 'Чек по кредитной продаже', detail,
           sourceData: issueSourceData(controlCase), employeeActionRequired: true, originDate,
-          detectedAt: now, lastDetectedAt: now,
+          detectedAt: now, lastDetectedAt: now, nextReminderAt: new Date(now.getTime() + CREDIT_REMINDER_MS),
         },
         update: {
           userId, severity, status: 'open', title: 'Чек по кредитной продаже', detail,
           sourceData: issueSourceData(controlCase), employeeActionRequired: true, originDate,
-          ...(reopening ? { detectedAt: now } : {}),
+          ...(reopening ? { detectedAt: now, nextReminderAt: new Date(now.getTime() + CREDIT_REMINDER_MS) } : {}),
+          ...(!reopening && !existing?.nextReminderAt ? {
+            nextReminderAt: new Date((existing?.detectedAt ?? now).getTime() + CREDIT_REMINDER_MS),
+          } : {}),
           lastDetectedAt: now, resolvedAt: null,
         },
       });
@@ -168,9 +172,32 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
         });
         return 'opened' as const;
       }
+      if (existing.nextReminderAt && existing.nextReminderAt <= now) {
+        const activeWorkday = await tx.workDayEntry.findFirst({
+          where: { userId, date: moscowDate(now), status: 'active', endedAt: null },
+          select: { id: true },
+        });
+        if (!activeWorkday) return 'unchanged' as const;
+        const reminderBucket = Math.floor(now.getTime() / CREDIT_REMINDER_MS);
+        await tx.workdayNotification.upsert({
+          where: { fingerprint: `issue:${issue.id}:credit-reminder:${reminderBucket}` },
+          create: {
+            userId, issueId: issue.id, fingerprint: `issue:${issue.id}:credit-reminder:${reminderBucket}`,
+            kind: 'issue_reminder', title: 'Кредитный чек всё ещё не исправлен',
+            body: `Реализация ${controlCase.documentNumber} · ${(controlCase.amountKopecks / 100).toLocaleString('ru-RU')} ₽. Откройте задачу и исправьте чек.`,
+            scheduledAt: now,
+          },
+          update: {},
+        });
+        await tx.workdayControlIssue.update({
+          where: { id: issue.id }, data: { nextReminderAt: new Date(now.getTime() + CREDIT_REMINDER_MS) },
+        });
+        return 'reminded' as const;
+      }
       return 'unchanged' as const;
     });
     if (lifecycle === 'opened') opened += 1;
+    if (lifecycle === 'reminded') reminded += 1;
   }
   return { reminded, opened, resolved, unassigned };
 }
