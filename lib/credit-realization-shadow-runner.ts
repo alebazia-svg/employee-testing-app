@@ -20,7 +20,7 @@ import { loadOneCKkmChecks } from '@/lib/terminal-fiscal-sources';
 import { parseOneCDateTime } from '@/lib/one-c-date';
 import { syncCreditRealizationWorkdayControl } from '@/lib/credit-realization-workday-control';
 
-export const CREDIT_REALIZATION_CONTROL_VERSION = 'credit-shadow-v2';
+export const CREDIT_REALIZATION_CONTROL_VERSION = 'credit-shadow-v3';
 export const CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED = process.env.CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED === 'true';
 export const CREDIT_REALIZATION_CUSTOMER_REF = '537e501e-4640-11ed-8f49-0025901e48ee';
 const PAGE_LIMIT = 500;

@@ -129,7 +129,7 @@ test('detects wrong source, extra receipt and initial-payment composition errors
   })).reasonCodes, ['CREDIT_REMAINDER_MISMATCH']);
 });
 
-test('keeps returns, correction receipts, multiple payments and reversed chronology in ADMIN review', () => {
+test('keeps returns, correction receipts and multiple payments in ADMIN review while allowing same-day 1C recording delay', () => {
   assert.equal(evaluateCreditRealization(input({ directReturns: 1 })).status, 'needs_review');
   assert.equal(evaluateCreditRealization(input({ fiscalDocuments: [{ sourceType: 'realization', documentRef: 'sale-1', operations: [operation({ documentType: 'Кассовый чек коррекции' })] }] })).status, 'needs_review');
   assert.equal(evaluateCreditRealization(input({
@@ -138,9 +138,21 @@ test('keeps returns, correction receipts, multiple payments and reversed chronol
       { kind: 'cash_receipt', ref: 'p2', number: 'P2', date: '18.08.2026 12:02:00', posted: true, amount: 10_000, counterpartyRef: 'customer-1' },
     ],
   })).status, 'needs_review');
-  assert.deepEqual(evaluateCreditRealization(input({
-    fiscalDocuments: [{ sourceType: 'realization', documentRef: 'sale-1', operations: [operation({ datetime: '18.08.2026 11:20:00' })] }],
-  })).reasonCodes, ['FISCAL_RECEIPT_BEFORE_SOURCE_DOCUMENT']);
+  const earlierSameDay = operation({ datetime: '18.08.2026 11:20:00' });
+  assert.equal(evaluateCreditRealization(input({
+    fiscalDocuments: [{ sourceType: 'realization', documentRef: 'sale-1', operations: [earlierSameDay] }],
+    ofd: { complete: true, confirmedFiscalKeys: [creditFiscalKey(earlierSameDay)], unlinkedExactReceipts: [] },
+  })).status, 'confirmed');
+});
+
+test('keeps a receipt from a previous Moscow day in ADMIN review', () => {
+  const earlierDay = operation({ datetime: '17.08.2026 23:58:00' });
+  const result = evaluateCreditRealization(input({
+    fiscalDocuments: [{ sourceType: 'realization', documentRef: 'sale-1', operations: [earlierDay] }],
+    ofd: { complete: true, confirmedFiscalKeys: [creditFiscalKey(earlierDay)], unlinkedExactReceipts: [] },
+  }));
+  assert.equal(result.status, 'needs_review');
+  assert.deepEqual(result.reasonCodes, ['FISCAL_RECEIPT_BEFORE_SOURCE_DOCUMENT']);
 });
 
 test('treats a receipt created on the next Moscow day as a proven mismatch', () => {

@@ -177,7 +177,6 @@ export function buildCreditRealizationControlInput(input: {
 
 const MONEY_TOLERANCE = 0.01;
 const DEFAULT_GRACE_MINUTES = 15;
-const EARLY_RECEIPT_TOLERANCE_MS = 2 * 60_000;
 
 function amountMatches(left: number | null, right: number) {
   return left !== null && Number.isFinite(left) && Math.abs(left - right) <= MONEY_TOLERANCE;
@@ -343,21 +342,23 @@ export function evaluateCreditRealization(input: CreditRealizationControlInput):
   const receiptDelayMinutes = operationAt && sourceAt
     ? Math.max(0, Math.round((operationAt.getTime() - sourceAt.getTime()) / 60_000))
     : null;
-  if (operationAt
-    && sourceAt
-    && operationAt.getTime() + EARLY_RECEIPT_TOLERANCE_MS < sourceAt.getTime()) {
-    return finish('needs_review', ['FISCAL_RECEIPT_BEFORE_SOURCE_DOCUMENT']);
-  }
-  if (operationAt
-    && sourceAt
-    && operationAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })
-      !== sourceAt.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' })) {
-    return { ...finish('mismatch', ['FISCAL_RECEIPT_AFTER_SALE_DAY']), receiptDelayMinutes };
-  }
   if (!input.ofd.complete) return finish('needs_review', ['OFD_SOURCE_INCOMPLETE']);
   const fiscalKey = creditFiscalKey(operation);
   if (!fiscalKey || !input.ofd.confirmedFiscalKeys.includes(fiscalKey)) {
     return finish('needs_review', ['OFD_CONFIRMATION_MISSING']);
+  }
+  const operationDay = operationAt?.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+  const sourceDay = sourceAt?.toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+  if (operationAt
+    && sourceAt
+    && operationAt.getTime() < sourceAt.getTime()
+    && operationDay !== sourceDay) {
+    return finish('needs_review', ['FISCAL_RECEIPT_BEFORE_SOURCE_DOCUMENT']);
+  }
+  if (operationAt
+    && sourceAt
+    && operationDay !== sourceDay) {
+    return { ...finish('mismatch', ['FISCAL_RECEIPT_AFTER_SALE_DAY']), receiptDelayMinutes };
   }
 
   return {
