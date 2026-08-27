@@ -235,26 +235,44 @@ export async function loadPlatformaOfdReceipts(input: {
   kktRegistrationNumber: string;
   from: string;
   to: string;
-}): Promise<SourceSnapshot<OfdReceipt>> {
+}, dependencies: {
+  fetchJson?: typeof fetchJson;
+  sleep?: (milliseconds: number) => Promise<void>;
+} = {}): Promise<SourceSnapshot<OfdReceipt>> {
   const checkedAt = new Date().toISOString();
   const baseUrl = process.env.PLATFORMA_OFD_PROXY_BASE_URL?.trim().replace(/\/+$/, '');
   if (!baseUrl) return { complete: false, checkedAt, data: [], errorCode: 'OFD_PROXY_NOT_CONFIGURED' };
   const query = new URLSearchParams({ kktRegNumber: input.kktRegistrationNumber, from: input.from, to: input.to });
-  const { response, body } = await fetchJson(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`, { headers: { Accept: 'application/json' } });
-  const root = record(body);
-  if (!response.ok || !root) return { complete: false, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' };
-  const dataRoot = record(root.data);
-  const receipts = array(root.receipts ?? dataRoot?.receipts);
-  const meta = record(root.meta);
-  const normalizedReceipts = receipts.map(normalizePlatformaOfdReceipt).filter(Boolean) as OfdReceipt[];
-  const providerComplete = root.complete === true || dataRoot?.complete === true || meta?.complete === true;
-  const complete = providerComplete && normalizedReceipts.length === receipts.length;
-  return {
-    complete,
-    checkedAt,
-    data: normalizedReceipts,
-    errorCode: complete ? undefined : normalizedReceipts.length !== receipts.length ? 'OFD_NORMALIZATION_FAILED' : 'OFD_INCOMPLETE',
-  };
+  const request = dependencies.fetchJson ?? fetchJson;
+  const sleep = dependencies.sleep ?? ((milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  let latest: SourceSnapshot<OfdReceipt> = { complete: false, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const { response, body } = await request(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`, { headers: { Accept: 'application/json' } });
+      const root = record(body);
+      if (!response.ok || !root) {
+        latest = { complete: false, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' };
+      } else {
+        const dataRoot = record(root.data);
+        const receipts = array(root.receipts ?? dataRoot?.receipts);
+        const meta = record(root.meta);
+        const normalizedReceipts = receipts.map(normalizePlatformaOfdReceipt).filter(Boolean) as OfdReceipt[];
+        const providerComplete = root.complete === true || dataRoot?.complete === true || meta?.complete === true;
+        const complete = providerComplete && normalizedReceipts.length === receipts.length;
+        latest = {
+          complete,
+          checkedAt,
+          data: normalizedReceipts,
+          errorCode: complete ? undefined : normalizedReceipts.length !== receipts.length ? 'OFD_NORMALIZATION_FAILED' : 'OFD_INCOMPLETE',
+        };
+      }
+    } catch {
+      latest = { complete: false, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' };
+    }
+    if (latest.complete || attempt === 2) return latest;
+    await sleep((attempt + 1) * 1_000);
+  }
+  return latest;
 }
 
 export async function loadPlatformaOfdZReports(input: {

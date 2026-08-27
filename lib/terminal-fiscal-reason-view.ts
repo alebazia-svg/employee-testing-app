@@ -1,7 +1,7 @@
 export const terminalFiscalReasonLabels: Record<string, string> = {
   SOURCE_TBANK_INCOMPLETE: 'Т-Банк передал данные не полностью',
   SOURCE_ONE_C_INCOMPLETE: '1С передала данные не полностью',
-  SOURCE_OFD_INCOMPLETE: 'ОФД передал данные не полностью',
+  SOURCE_OFD_INCOMPLETE: 'Платформа ОФД временно передала неполные данные',
   TERMINAL_MAPPING_MISSING: 'Не настроена связь терминала с ККМ и ККТ',
   TERMINAL_MAPPING_CONFLICT: 'Для терминала одновременно действуют несколько связей',
   BANK_OPERATION_DUPLICATE: 'Банковская операция продублирована',

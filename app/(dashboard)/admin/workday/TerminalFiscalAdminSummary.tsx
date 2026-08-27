@@ -71,7 +71,7 @@ export function TerminalFiscalAdminSummary({ summary }: { summary: TerminalFisca
                 </div>
               );
             })}
-            <p className='text-xs font-semibold text-slate-500'>Технически неполные источники не считаются ошибкой сотрудника. Здесь показана причина каждого неподтверждённого результата.</p>
+            <p className='text-xs font-semibold text-slate-500'>Это не считается ошибкой сотрудника. Портал автоматически повторит проверку, когда Платформа ОФД передаст полный ответ.</p>
           </div>
         </details>
       </Card>

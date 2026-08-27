@@ -143,7 +143,7 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
     otherNeedsReview > 0 ? `проверить ${otherNeedsReview}` : '',
     itemReviews > 0 ? `состав проверить ${itemReviews}` : '',
     summary.statuses.mismatch > 0 ? `расхождений ${summary.statuses.mismatch}` : '',
-    summary.statuses.unavailable > 0 ? `недоступно ${summary.statuses.unavailable}` : '',
+    summary.statuses.unavailable > 0 ? `ещё нельзя проверить ${summary.statuses.unavailable}` : '',
   ].filter(Boolean);
   if (uncoveredOneCChecks > 0) parts.push(`оплат без покрытия чеком 1С ${uncoveredOneCChecks}`);
   return {
