@@ -29,13 +29,14 @@ export async function GET() {
   const activeRows = await reconcileActiveWorkdayNotifications(prisma, rows);
   const notifications = activeRows
     .filter((notification) => {
-      const target = notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : `notification:${notification.id}`;
+      const reply = notification.kind.endsWith('_reply');
+      const target = reply ? `reply:${notification.id}` : notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : `notification:${notification.id}`;
       if (seenTargets.has(target)) return false;
       seenTargets.add(target);
       return true;
     })
     .map(({ task, issue, review: _review, ...notification }) => {
-      const issueView = issue ? workdayIssueView(issue) : null;
+      const issueView = issue && !notification.kind.endsWith('_reply') ? workdayIssueView(issue) : null;
       const taskCopy = task ? workdayTaskNotificationCopy(task, notification.kind) : null;
       return {
         ...notification,
