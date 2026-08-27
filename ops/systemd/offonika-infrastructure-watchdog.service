@@ -1,0 +1,12 @@
+[Unit]
+Description=OFFONIKA infrastructure watchdog
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/docker/employee-testing-app/ops/systemd/run-offonika-infrastructure-watchdog.sh
+TimeoutStartSec=5min
+NoNewPrivileges=true
+PrivateTmp=true

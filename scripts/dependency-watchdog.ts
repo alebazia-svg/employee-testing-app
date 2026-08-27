@@ -56,7 +56,15 @@ async function publish(input: { eventKey: string; type: string; title: string; b
 }
 
 async function main() {
-  const results = await probes();
+  const firstResults = await probes();
+  const failedKeys = new Set(firstResults.filter((result) => !result.ok).map((result) => result.key));
+  let results = firstResults;
+  if (failedKeys.size > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    const retryResults = await probes();
+    const retryByKey = new Map(retryResults.map((result) => [result.key, result]));
+    results = firstResults.map((result) => failedKeys.has(result.key) ? retryByKey.get(result.key) ?? result : result);
+  }
   for (const result of results) {
     const latest = await prisma.adminInboxEvent.findFirst({ where: { sourceType: 'dependency', sourceId: result.key, type: { in: ['dependency.down', 'dependency.recovered'] } }, orderBy: { occurredAt: 'desc' } });
     if (!result.ok && latest?.type !== 'dependency.down') {

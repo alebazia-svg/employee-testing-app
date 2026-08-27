@@ -1,0 +1,11 @@
+[Unit]
+Description=Run OFFONIKA infrastructure watchdog every 10 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=offonika-infrastructure-watchdog.service
+
+[Install]
+WantedBy=timers.target
