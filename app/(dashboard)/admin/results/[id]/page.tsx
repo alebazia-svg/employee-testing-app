@@ -17,7 +17,8 @@ type Detail = {
   isCorrect: boolean;
 };
 
-export default async function ResultDetailsPage({ params }: { params: { id: string } }) {
+export default async function ResultDetailsPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

@@ -858,7 +858,8 @@ function DailyTable({ rows }: { rows: DailySummary[] }) {
   );
 }
 
-export default async function AdminAttendancePage({ searchParams }: { searchParams: SearchParams }) {
+export default async function AdminAttendancePage(props: { searchParams: Promise<SearchParams> }) {
+  const searchParams = await props.searchParams;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

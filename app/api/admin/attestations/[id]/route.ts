@@ -2,7 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { parseOptions } from '@/lib/attestation';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const attestation = await prisma.attestation.findUnique({
@@ -26,7 +27,8 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   });
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const body = await req.json();
@@ -43,7 +45,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return Response.json(attestation);
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   await prisma.attestation.delete({ where: { id: Number(params.id) } });

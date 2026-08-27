@@ -310,7 +310,7 @@ async function saveHandoverDraft(
   const auditFactBalance = existingAudit ? readNumber(existingAudit.factCashBalance) : null;
   const oneCAudit = personalCashBalance !== null && (!existingAudit || auditFactBalance !== personalCashBalance)
     ? {
-        ...await captureOneCCashAudit({ userId, date, includeReserve, capturedAt: new Date() }),
+        ...(await captureOneCCashAudit({ userId, date, includeReserve, capturedAt: new Date() })),
         factCashBalance: personalCashBalance,
       }
     : existingAudit;
@@ -376,7 +376,8 @@ async function saveHandoverDraft(
   return Response.json({ task: taskForEmployee(updatedTask) });
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (requestBodyTooLarge(req)) return Response.json({ error: 'Фото слишком большое. Максимальный размер — 8 МБ.' }, { status: 413 });
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -907,12 +908,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const oneCAudit = existingStage === 'comment_required' && existingAudit && existingFact === numericValue
       ? existingAudit
       : {
-          ...await captureOneCCashAudit({
+          ...(await captureOneCCashAudit({
           userId: user.id,
           date: task.run.date,
           includeReserve: false,
           capturedAt: completedAt,
-          }),
+          })),
           factCashBalance: numericValue,
         };
     const personalAudit = readRecord(oneCAudit, 'personalCash');

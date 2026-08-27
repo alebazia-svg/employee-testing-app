@@ -5,7 +5,7 @@ import {
   normalizeTerminalFiscalReviewMessage,
 } from '@/lib/terminal-fiscal-review-messages';
 
-export async function POST(request: Request, context: { params: { id: string } }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user || user.role !== 'EMPLOYEE') return Response.json({ error: 'Forbidden' }, { status: 403 });
   const payload = await request.json().catch(() => null);
@@ -14,7 +14,7 @@ export async function POST(request: Request, context: { params: { id: string } }
   try {
     const result = await addEmployeeTerminalFiscalReviewMessage({
       prisma,
-      reviewId: context.params.id,
+      reviewId: (await context.params).id,
       employeeId: user.id,
       body: message.body,
     });

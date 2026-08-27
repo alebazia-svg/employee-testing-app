@@ -7,9 +7,9 @@ const payrollRunStatuses = ['DRAFT', 'CHECKED', 'FINAL'] as const;
 type PayrollRunStatus = (typeof payrollRunStatuses)[number];
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
 function isPayrollRunStatus(value: unknown): value is PayrollRunStatus {
@@ -23,7 +23,8 @@ function isAllowedTransition(currentStatus: string, nextStatus: PayrollRunStatus
   return false;
 }
 
-export async function PATCH(req: Request, { params }: RouteContext) {
+export async function PATCH(req: Request, props: RouteContext) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const id = Number(params.id);

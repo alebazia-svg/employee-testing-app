@@ -3,7 +3,8 @@ import { requireAdminApi } from '@/lib/admin-api-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const id = Number(params.id);

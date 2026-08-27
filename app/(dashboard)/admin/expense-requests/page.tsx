@@ -30,7 +30,8 @@ function engineLabel(state: string) {
 
 type PageSearchParams = { view?: string; q?: string };
 
-export default async function ExpenseRequestsAdminPage({ searchParams }: { searchParams?: PageSearchParams }) {
+export default async function ExpenseRequestsAdminPage(props: { searchParams?: Promise<PageSearchParams> }) {
+  const searchParams = await props.searchParams;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

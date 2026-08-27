@@ -1276,7 +1276,8 @@ type PageSearchParams = {
   source?: string;
 };
 
-export default async function AdminAnalyticsPage({ searchParams }: { searchParams?: PageSearchParams }) {
+export default async function AdminAnalyticsPage(props: { searchParams?: Promise<PageSearchParams> }) {
+  const searchParams = await props.searchParams;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

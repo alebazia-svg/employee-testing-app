@@ -41,11 +41,12 @@ function formatMoney(value: number) {
   return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
 }
 
-export default async function AdminTBankAcquiringPage({
-  searchParams,
-}: {
-  searchParams: { terminalKey?: string; date?: string };
-}) {
+export default async function AdminTBankAcquiringPage(
+  props: {
+    searchParams: Promise<{ terminalKey?: string; date?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');

@@ -2401,11 +2401,12 @@ function EventRegistryRow({
   );
 }
 
-export default async function AdminOfdPage({
-  searchParams,
-}: {
-  searchParams?: { organizationInn?: string; dateFrom?: string; dateTo?: string; limit?: string; eventType?: string };
-}) {
+export default async function AdminOfdPage(
+  props: {
+    searchParams?: Promise<{ organizationInn?: string; dateFrom?: string; dateTo?: string; limit?: string; eventType?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');

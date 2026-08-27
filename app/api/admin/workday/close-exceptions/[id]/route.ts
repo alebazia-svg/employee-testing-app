@@ -5,7 +5,8 @@ import { resolveCloseExceptionNotifications } from '@/lib/workday-notifications'
 
 const decisions = new Set(['approved', 'rejected']);
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await getCurrentUser();
   if (!admin) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   if (admin.role !== 'ADMIN') return Response.json({ error: 'Forbidden' }, { status: 403 });

@@ -2,10 +2,10 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { addAdminWorkdayIssueMessage, normalizeWorkdayIssueMessage } from '@/lib/workday-control-issue-messages';
 
-export async function POST(request: Request, context: { params: { id: string } }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const admin = await getCurrentUser();
   if (!admin || admin.role !== 'ADMIN') return Response.json({ error: 'Forbidden' }, { status: 403 });
-  const issueId = Number(context.params.id);
+  const issueId = Number((await context.params).id);
   if (!Number.isInteger(issueId) || issueId <= 0) return Response.json({ error: 'Некорректная проблема.' }, { status: 400 });
   const payload = await request.json().catch(() => null);
   const message = normalizeWorkdayIssueMessage(payload?.body);

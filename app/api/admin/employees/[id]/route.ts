@@ -3,7 +3,8 @@ import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const { name, login, password, role, department, isActive, payrollName } = await req.json();
@@ -46,7 +47,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const userId = Number(params.id);

@@ -4,7 +4,8 @@ import AttestationEditor from './AttestationEditor';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 
-export default async function AdminAttestationPage({ params }: { params: { id: string } }) {
+export default async function AdminAttestationPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

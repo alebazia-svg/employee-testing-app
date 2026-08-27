@@ -1077,7 +1077,10 @@ function buildEmployeeAutoChecks({
   return checks;
 }
 
-export default async function AdminWorkdayPage({ searchParams }: { searchParams?: { date?: string; cashboxMapping?: string; cashboxMappingError?: string; kkmAssignment?: string; kkmAssignmentError?: string; control?: string; employee?: string; technical?: string } }) {
+export default async function AdminWorkdayPage(
+  props: { searchParams?: Promise<{ date?: string; cashboxMapping?: string; cashboxMappingError?: string; kkmAssignment?: string; kkmAssignmentError?: string; control?: string; employee?: string; technical?: string }> }
+) {
+  const searchParams = await props.searchParams;
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');

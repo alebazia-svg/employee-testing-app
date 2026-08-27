@@ -4,12 +4,13 @@ import { requireAdminApi } from '@/lib/admin-api-auth';
 export const dynamic = 'force-dynamic';
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
-export async function GET(_req: Request, { params }: RouteContext) {
+export async function GET(_req: Request, props: RouteContext) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const id = Number(params.id);

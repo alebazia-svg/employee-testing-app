@@ -27,7 +27,8 @@ function zReportPhotoPath(value: unknown) {
   return typeof photo?.storagePath === 'string' ? photo.storagePath : '';
 }
 
-export default async function AdminCloseExceptionPage({ params }: { params: { id: string } }) {
+export default async function AdminCloseExceptionPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

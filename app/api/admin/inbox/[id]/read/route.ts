@@ -1,11 +1,11 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export async function POST(_: Request, context: { params: { id: string } }) {
+export async function POST(_: Request, context: { params: Promise<{ id: string }> }) {
   const admin = await getCurrentUser();
   if (!admin || admin.role !== 'ADMIN') return Response.json({ error: 'Forbidden' }, { status: 403 });
   const result = await prisma.adminInboxReceipt.updateMany({
-    where: { id: context.params.id, userId: admin.id, readAt: null },
+    where: { id: (await context.params).id, userId: admin.id, readAt: null },
     data: { readAt: new Date() },
   });
   return Response.json({ ok: true, updated: result.count }, { headers: { 'Cache-Control': 'private, no-store' } });

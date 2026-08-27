@@ -3,7 +3,7 @@ import { validateExpenseRequestFeedback } from '@/lib/expense-request-admin-feed
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export async function POST(request: Request, context: { params: { id: string } }) {
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const admin = await getCurrentUser();
   if (!admin || admin.role !== 'ADMIN') return Response.json({ error: 'Forbidden' }, { status: 403 });
   const body = await request.json().catch(() => ({}));
@@ -15,7 +15,7 @@ export async function POST(request: Request, context: { params: { id: string } }
   if (validationError) return Response.json({ error: validationError }, { status: 400 });
 
   const caseRow = await prisma.expenseRequestAdminCase.findUnique({
-    where: { id: context.params.id },
+    where: { id: (await context.params).id },
     include: { evaluations: { orderBy: { evaluatedAt: 'desc' }, take: 1 } },
   });
   if (!caseRow) return Response.json({ error: 'Заявка не найдена.' }, { status: 404 });

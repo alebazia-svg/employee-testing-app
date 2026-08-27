@@ -23,14 +23,15 @@ export async function POST(req: Request) {
 
   clearLoginFailures(req, login);
 
-  cookies().set(sessionCookieName, createSessionToken(user.id), {
+  const cookieStore = await cookies();
+  cookieStore.set(sessionCookieName, createSessionToken(user.id), {
     path: '/',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: sessionMaxAgeSeconds,
   });
-  cookies().delete('userId');
+  cookieStore.delete('userId');
 
   return Response.json({ role: user.role });
 }

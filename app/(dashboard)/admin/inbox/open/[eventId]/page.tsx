@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
-export default async function OpenAdminInboxEventPage({ params }: { params: { eventId: string } }) {
+export default async function OpenAdminInboxEventPage(props: { params: Promise<{ eventId: string }> }) {
+  const params = await props.params;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

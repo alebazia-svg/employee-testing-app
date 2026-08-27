@@ -2,7 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { parseOptions } from '@/lib/attestation';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 
-export async function POST(req: Request, { params }: { params: { sectionId: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ sectionId: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const body = await req.json();

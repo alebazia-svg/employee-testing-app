@@ -2,7 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { parseOptions } from '@/lib/attestation';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 
-export async function PATCH(req: Request, { params }: { params: { questionId: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ questionId: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const body = await req.json();
@@ -18,7 +19,8 @@ export async function PATCH(req: Request, { params }: { params: { questionId: st
   return Response.json({ ...question, options: parseOptions(question.options) });
 }
 
-export async function DELETE(_: Request, { params }: { params: { questionId: string } }) {
+export async function DELETE(_: Request, props: { params: Promise<{ questionId: string }> }) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   await prisma.question.delete({ where: { id: Number(params.questionId) } });

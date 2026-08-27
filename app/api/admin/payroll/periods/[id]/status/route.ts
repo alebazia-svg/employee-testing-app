@@ -7,16 +7,17 @@ const payrollPeriodStatuses = ['OPEN', 'CLOSED'] as const;
 type PayrollPeriodStatus = (typeof payrollPeriodStatuses)[number];
 
 type RouteContext = {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 };
 
 function isPayrollPeriodStatus(value: unknown): value is PayrollPeriodStatus {
   return typeof value === 'string' && payrollPeriodStatuses.includes(value as PayrollPeriodStatus);
 }
 
-export async function PATCH(req: Request, { params }: RouteContext) {
+export async function PATCH(req: Request, props: RouteContext) {
+  const params = await props.params;
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const id = Number(params.id);

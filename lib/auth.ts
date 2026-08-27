@@ -3,7 +3,8 @@ import { prisma } from './prisma';
 import { readSessionToken, sessionCookieName } from './session';
 
 export async function getCurrentUser() {
-  const session = readSessionToken(cookies().get(sessionCookieName)?.value);
+  const cookieStore = await cookies();
+  const session = readSessionToken(cookieStore.get(sessionCookieName)?.value);
   if (!session) return null;
   return prisma.user.findFirst({ where: { id: session.userId, isActive: true } });
 }

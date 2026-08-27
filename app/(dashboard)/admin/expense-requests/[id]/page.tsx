@@ -47,7 +47,8 @@ function Fact({ label, value, wide = false }: { label: string; value: React.Reac
   return <div className={`rounded-xl bg-slate-50 px-4 py-3 ${wide ? 'sm:col-span-2' : ''}`}><p className='text-[11px] font-extrabold uppercase tracking-wide text-slate-400'>{label}</p><div className='mt-1 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-800'>{value || '—'}</div></div>;
 }
 
-export default async function ExpenseRequestDetailPage({ params }: { params: { id: string } }) {
+export default async function ExpenseRequestDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

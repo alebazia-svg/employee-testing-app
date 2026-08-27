@@ -10,7 +10,8 @@ import { terminalFiscalAdminReviewView } from '@/lib/terminal-fiscal-employee-re
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminPaymentCheckPage({ params }: { params: { id: string } }) {
+export default async function AdminPaymentCheckPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await getCurrentUser();
   if (!admin) redirect('/login');
   if (admin.role !== 'ADMIN') redirect('/employee');

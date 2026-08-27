@@ -12,7 +12,8 @@ import { formatDateLabel, getMoscowDateKey } from '@/lib/workday';
 
 export const dynamic = 'force-dynamic';
 
-export default async function EmployeeWorkdayIssuePage({ params }: { params: { id: string } }) {
+export default async function EmployeeWorkdayIssuePage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   if (user.role !== 'EMPLOYEE') redirect('/admin');

@@ -13,7 +13,8 @@ function appendControlNote(previous: string | null, note: string) {
   return [previous?.trim(), note.trim()].filter(Boolean).join('\n');
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await getCurrentUser();
   if (!admin || admin.role !== 'ADMIN') return Response.json({ error: 'Forbidden' }, { status: 403 });
   const id = operationId(params.id);
