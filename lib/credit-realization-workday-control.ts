@@ -26,7 +26,7 @@ export function creditRealizationIssueAction(value: {
   if (value.realizationAt < CREDIT_REALIZATION_EMPLOYEE_CUTOVER) return 'none' as const;
   if (value.status === 'mismatch' && value.employeeActionCandidate) {
     const ageMinutes = (now.getTime() - value.realizationAt.getTime()) / 60_000;
-    if (ageMinutes < 15) return 'none' as const;
+    if (ageMinutes < 15 || value.completeMismatchReads < 2) return 'none' as const;
     return 'open' as const;
   }
   return 'resolve' as const;

@@ -139,9 +139,16 @@ fifteen minutes remains the final fallback. Conflicting assignments, a tied or
 unmapped cashier result, incomplete sources, partial
 coverage, conflicts and paired sale/refund evidence remain ADMIN-only. A later
 1C check records its actual cashier, resolves the review and cancels a still-
-pending notification. Core
-`mvp-1`, its strict five-minute window, hard-mismatch control and ADMIN visibility
-stay unchanged.
+pending notification. Core `mvp-1`, its strict five-minute window,
+hard-mismatch control and ADMIN visibility stay unchanged.
+
+Credit-sale employee control uses the same operational standard: a missing
+required receipt is shown to the mapped manager only after the 15-minute grace
+period and two consecutive complete 1C/OFD mismatch reads. The three-minute
+runner therefore normally opens the task about 15–21 minutes after the
+realization. A receipt created on a later day closes the current action but is
+retained as a late-receipt violation in the audit history; it never makes the
+original day timely.
 
 The 120-minute matching grace remains the final technical classification
 boundary. It is not the employee-notification delay and does not turn a neutral

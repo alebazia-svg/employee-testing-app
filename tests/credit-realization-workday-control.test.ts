@@ -11,6 +11,7 @@ test('only a post-cutover proven mismatch opens employee control', () => {
   const current = { status: 'mismatch', employeeActionCandidate: true, realizationAt: new Date('2026-08-18T08:00:00Z'), completeMismatchReads: 2 };
   assert.equal(creditRealizationIssueAction(current, new Date('2026-08-18T08:14:59Z')), 'none');
   assert.equal(creditRealizationIssueAction(current, new Date('2026-08-18T08:15:00Z')), 'open');
+  assert.equal(creditRealizationIssueAction({ ...current, completeMismatchReads: 1 }, new Date('2026-08-18T08:30:00Z')), 'none');
   assert.equal(creditRealizationIssueAction({ ...current, status: 'needs_review', employeeActionCandidate: false }), 'resolve');
   assert.equal(creditRealizationIssueAction({ ...current, realizationAt: new Date('2026-08-17T08:00:00Z') }), 'none');
   assert.doesNotMatch(creditRealizationIssueFingerprint('private-realization-ref'), /private-realization-ref/);
@@ -115,5 +116,5 @@ test('unmapped cases never create employee side effects', async () => {
     userOneCCashboxMapping: { findMany: async () => [] },
     $transaction: async () => { throw new Error('must not write'); },
   };
-  assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T10:30:00Z')), { reminded: 0, opened: 0, resolved: 0, unassigned: 1 });
+  assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T10:30:00Z')), { reminded: 0, opened: 0, resolved: 0, unassigned: 0 });
 });
