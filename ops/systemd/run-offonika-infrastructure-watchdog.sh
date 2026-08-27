@@ -51,13 +51,26 @@ units=(
   offonika-terminal-fiscal-owner-report
   offonika-workday-notifications
 )
+declare -A unit_labels=(
+  [ausn-report-cache-refresh]="Обновление данных АУСН"
+  [bank-statement-engine]="Загрузка выписки Т-Банка"
+  [bank-statement-engine-vtb-import]="Загрузка выписки ВТБ"
+  [bank-statement-engine-vtb-resolver]="Проверка документов ВТБ"
+  [offonika-admin-inbox-telegram]="Отправка важных сообщений в Telegram"
+  [offonika-credit-realization-shadow]="Проверка кредитных продаж"
+  [offonika-dependency-watchdog]="Контроль подключений к внешним сервисам"
+  [offonika-terminal-fiscal-current]="Текущая сверка оплат по терминалу"
+  [offonika-terminal-fiscal-final]="Итоговая сверка оплат по терминалу"
+  [offonika-terminal-fiscal-owner-report]="Отчёт владельцу по оплатам"
+  [offonika-workday-notifications]="Отправка уведомлений сотрудникам"
+)
 for unit in "${units[@]}"; do
   timer_state=$(systemctl is-active "$unit.timer" 2>/dev/null || true)
   service_result=$(systemctl show "$unit.service" -p Result --value 2>/dev/null || true)
   if [[ "$timer_state" == active && ( "$service_result" == success || -z "$service_result" ) ]]; then
-    add_check "unit.$unit" "Задание $unit" true "Таймер активен, последний результат ${service_result:-ещё не запускалось}"
+    add_check "unit.$unit" "${unit_labels[$unit]}" true "Расписание активно, последняя проверка успешна"
   else
-    add_check "unit.$unit" "Задание $unit" false "Таймер: ${timer_state:-не найден}; последний результат: ${service_result:-нет}"
+    add_check "unit.$unit" "${unit_labels[$unit]}" false "Расписание: ${timer_state:-не найден}; результат: ${service_result:-нет}"
   fi
 done
 
