@@ -157,6 +157,16 @@ export async function syncTerminalFiscalWorkdayControl(
         return 'opened' as const;
       }
       if (existing.nextReminderAt && existing.nextReminderAt <= now) {
+        const activeWorkday = await tx.workDayEntry.findFirst({
+          where: {
+            userId,
+            date: moscowDateKey(now),
+            status: 'active',
+            endedAt: null,
+          },
+          select: { id: true },
+        });
+        if (!activeWorkday) return 'unchanged' as const;
         const reminderBucket = Math.floor(now.getTime() / REMINDER_MS);
         await tx.workdayNotification.upsert({
           where: { fingerprint: `issue:${issue.id}:reminder:${reminderBucket}` },

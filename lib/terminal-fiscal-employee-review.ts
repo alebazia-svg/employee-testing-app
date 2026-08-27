@@ -11,6 +11,7 @@ import type {
 
 export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 15 * 60 * 1000;
 export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_WINDOW_MS = 15 * 60 * 1000;
+const EMPLOYEE_REVIEW_REMINDER_MS = 60 * 60 * 1000;
 
 type CashierMapping = { userId: number; oneCCashierRef: string };
 type KkmResponsibility = {
@@ -408,6 +409,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     const employeeId = decision.employeeId;
     const attributionKey = decision.attributionKey;
     const created = await prisma.$transaction(async (tx) => {
+      const evaluatedAt = new Date(input.output.evaluatedAt);
       const existing = await tx.terminalFiscalEmployeeReview.findUnique({ where: { reviewKey } });
       if (existing && !['open', 'shadow_candidate'].includes(existing.status)) return false;
       const review = await tx.terminalFiscalEmployeeReview.upsert({
@@ -422,11 +424,11 @@ export async function syncTerminalFiscalEmployeeReviews(
           bankOperationAt: operationAt,
           amountKopecks: record.amountKopecks,
           cashierRefHash: digest(attributionKey),
-          detectedAt: new Date(input.output.evaluatedAt),
-          lastCheckedAt: new Date(input.output.evaluatedAt),
+          detectedAt: evaluatedAt,
+          lastCheckedAt: evaluatedAt,
         },
         update: {
-          lastCheckedAt: new Date(input.output.evaluatedAt),
+          lastCheckedAt: evaluatedAt,
           ...(mode === 'shadow' ? { status: 'shadow_candidate' } : {}),
         },
       });
@@ -439,10 +441,36 @@ export async function syncTerminalFiscalEmployeeReviews(
           kind: 'terminal_fiscal_review',
           title: 'В 1С нет чека',
           body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks }),
-          scheduledAt: new Date(input.output.evaluatedAt),
+          scheduledAt: evaluatedAt,
         },
         update: {},
       });
+      if (mode === 'notify' && existing && review.status === 'open'
+        && evaluatedAt.getTime() - new Date(review.detectedAt).getTime() >= EMPLOYEE_REVIEW_REMINDER_MS) {
+        const workdayDate = new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(evaluatedAt);
+        const activeWorkday = await tx.workDayEntry.findFirst({
+          where: { userId: employeeId, date: workdayDate, status: 'active', endedAt: null },
+          select: { id: true },
+        });
+        if (activeWorkday) {
+          const reminderBucket = Math.floor(evaluatedAt.getTime() / EMPLOYEE_REVIEW_REMINDER_MS);
+          await tx.workdayNotification.upsert({
+            where: { fingerprint: `${reviewKey}:reminder:${reminderBucket}` },
+            create: {
+              userId: employeeId,
+              reviewId: review.id,
+              fingerprint: `${reviewKey}:reminder:${reminderBucket}`,
+              kind: 'issue_reminder',
+              title: 'Чек в 1С всё ещё не пробит',
+              body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks }),
+              scheduledAt: evaluatedAt,
+            },
+            update: {},
+          });
+        }
+      }
       return existing === null;
     });
     if (created && mode === 'notify') opened += 1;
