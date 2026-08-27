@@ -147,9 +147,24 @@ export function mergeOfdReceipts(saby: AusnOfdReceipt[], platforma: AusnOfdRecei
 }
 
 async function getJson(url: string) {
-  const response = await fetch(url, { method: 'GET', cache: 'no-store', headers: { Accept: 'application/json' } });
-  const body = await response.json().catch(() => null);
-  return { response, body: record(body) };
+  try {
+    const response = await fetch(url, { method: 'GET', cache: 'no-store', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(30_000) });
+    const body = await response.json().catch(() => null);
+    return { response, body: record(body) };
+  } catch {
+    return { response: new Response(null, { status: 503 }), body: null };
+  }
+}
+
+async function getCompletePlatformaPage(url: string) {
+  let last = await getJson(url);
+  for (let attempt = 1; attempt < 3; attempt += 1) {
+    const meta = record(last.body?.meta);
+    if (last.response.ok && meta?.complete === true) return last;
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
+    last = await getJson(url);
+  }
+  return last;
 }
 
 function nextDay(value: string) {
@@ -178,7 +193,7 @@ async function loadPlatforma(dateFrom: string, dateTo: string) {
       from: `${dateFrom}T00:00:00+03:00`,
       to: `${nextDay(dateTo)}T00:00:00+03:00`,
     });
-    const result = await getJson(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`);
+    const result = await getCompletePlatformaPage(`${baseUrl}/api/v1/ofd/platforma/receipts?${query}`);
     const data = record(result.body?.data);
     const meta = record(result.body?.meta);
     const sourceRows = rows(data?.receipts);
