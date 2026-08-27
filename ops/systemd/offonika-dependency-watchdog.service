@@ -6,7 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/docker exec portal-app node --conditions=react-server --import tsx scripts/dependency-watchdog.ts
+Environment='DEPENDENCY_EXPIRIES_JSON=[{"key":"platforma_ofd_main_cash1","label":"ОФД — Розница Касса 1","expiresOn":"2027-02-16"},{"key":"platforma_ofd_main_cash2","label":"ОФД — Розница Касса 2","expiresOn":"2028-08-02"},{"key":"platforma_onec_cash1","label":"Интеграция ОФД в 1С — Розница Касса 1","expiresOn":"2026-09-26"},{"key":"platforma_onec_cash2","label":"Интеграция ОФД в 1С — Розница Касса 2","expiresOn":"2026-09-21"}]'
+ExecStart=/usr/bin/docker exec --env DEPENDENCY_EXPIRIES_JSON=${DEPENDENCY_EXPIRIES_JSON} portal-app node --conditions=react-server --import tsx scripts/dependency-watchdog.ts
 TimeoutStartSec=4min
 NoNewPrivileges=true
 PrivateTmp=true
