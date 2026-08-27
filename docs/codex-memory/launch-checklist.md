@@ -42,11 +42,13 @@ or device check, `[ ]` incomplete launch gate.
   failures retry with bounded backoff and delivery/no-subscription/configuration
   outcomes are exposed by the dispatcher inspector. Apply the migration and
   verify successful delivery plus one controlled retry on a real device.
-- [ ] Close critical/high production dependency findings and rerun the full
-  regression/build/production smoke gate.
-- [ ] Add image size/type/content limits to cash and shift-photo uploads.
-- [ ] Prove recurring PostgreSQL/uploads backup, integrity checks and one restore
-  rehearsal.
+- [x] Critical/high production dependency findings are closed: production runs
+  Next.js 15.5.24 and official SheetJS 0.20.3; `npm audit --omit=dev` is 0 and
+  full regression/build pass.
+- [x] Cash and shift-photo uploads are capped at 8 MB and validate real
+  JPG/PNG/WebP signatures and MIME types.
+- [~] Daily PostgreSQL/uploads backup, integrity checks and one isolated restore
+  rehearsal are proven. Select an encrypted offsite target before wider rollout.
 - [ ] Reconcile or explicitly archive stale workdays, legacy 1C cash states and
   consumed/approved close-request inconsistencies before selecting pilot users.
 - [ ] Decide whether the static QR is only a convenient start ritual or must be

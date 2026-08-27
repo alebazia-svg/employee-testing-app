@@ -86,9 +86,10 @@ Complete in this order:
      normalization and credit consumers with regression tests;
    - `IMPLEMENTED / VERIFY` make push delivery state truthful and retry transient
      failures; apply the migration and verify delivery/retry on a real device;
-   - add upload limits/content validation;
-   - remediate critical/high dependency findings in isolated changes;
-   - prove recurring DB/uploads backup and restore;
+   - `DONE` add upload limits/content validation;
+   - `DONE` remediate critical/high dependency findings in isolated changes;
+   - `LOCAL DONE / OFFSITE NEXT` prove recurring DB/uploads backup and restore,
+     then select an encrypted external backup target;
    - reconcile stale production lifecycle records;
    - decide whether QR is a convenience ritual or physical-presence evidence.
 4. `NEXT` Run controlled failure drills in production-safe scope:

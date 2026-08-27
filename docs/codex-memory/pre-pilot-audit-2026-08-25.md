@@ -2,6 +2,21 @@
 
 Дата среза: 2026-08-25.
 
+## Дополнение: закрытие технических блокеров 2026-08-28
+
+- Production обновлён с Next.js 14.2.15 до 15.5.24; SheetJS заменён на
+  официальный пакет 0.20.3, PostCSS/nanoid/esbuild обновлены. `npm audit
+  --omit=dev` возвращает 0 известных уязвимостей. TypeScript, production build
+  и доменные тесты payroll, terminal, credit, expense и workday проходят.
+- Загрузка фото уже ограничена 8 МБ и принимает только файлы с совпадающими
+  MIME и сигнатурами JPG, PNG или WebP; focused tests проходят.
+- Ежедневный локальный backup PostgreSQL/uploads работает. Ошибка с абсолютными
+  `.tmp`-путями в `SHA256SUMS` исправлена. Свежая копия `20260827T222408Z`
+  восстановлена в изолированном PostgreSQL: 51 public-таблица; архив uploads
+  распакован и содержит 132 файла. Production DB не изменялась.
+- Локальный restore доказан, но внешний backup target всё ещё не выбран. Потеря
+  всего VPS остаётся незакрытым инфраструктурным риском.
+
 ## Дополнение: эксплуатационная проверка 2026-08-27
 
 Портал на production commit
@@ -19,8 +34,8 @@ expense requests 38/38, payroll 10/10; production build успешен. Обыч
 | LB-8 | Ежедневный отчёт владельцу не запускается | `offonika-terminal-fiscal-owner-report.service` находится в `failed`, код `203/EXEC`. Production-файл `run-offonika-terminal-fiscal-owner-report.sh` не имеет executable bit. Финансовый контроль может выполниться, но итоговое предупреждение владельцу не уйдёт. | Установить скрипт с mode `0755`, запустить один безопасный контрольный прогон, проверить доставку и добавить оповещение о падении самого таймера. |
 | LB-9 | Обновление кэша АУСН находится в `failed` | `ausn-report-cache-refresh.service` завершился с status 1. Без root-журнала точная причина не установлена. Кэшированный отчёт может продолжать выглядеть доступным после прекращения обновления. | Получить журнал от имени администратора, устранить причину и показывать пользователю время последнего полного обновления и состояние каждого источника. |
 | LB-10 | Нет единого мониторинга внешних зависимостей и сроков услуг | Текущий код проверяет доступность 1С, СБИС/ОФД, Platforma OFD и Т-Банка во время бизнес-сверки, но не хранит срок договора/подписки и не предупреждает до отключения. `saby-ofd.ts` не извлекает дату окончания услуги. | Добавить Dependency Registry и ежедневный dependency watchdog с предупреждениями за 30/14/7/3/1 день, а также при первом отказе, повторном отказе и восстановлении. |
-| LB-11 | Нет доказанного регулярного backup/restore | На сервере найдены только ручные rollback-дампы перед изменениями; самый свежий наблюдаемый дамп портала датирован 2026-08-18. Автоматического backup job для PostgreSQL и uploads в репозитории нет. | Ежедневный зашифрованный backup БД и uploads, хранение вне VPS, контроль размера/контрольной суммы, политика retention и тестовое восстановление. |
-| LB-12 | Production dependency audit остаётся красным | На 2026-08-27 `npm audit --omit=dev` показывает 1 critical, 3 high и 1 low: устаревший Next.js 14.2.15, PostCSS, `xlsx`, `nanoid`, `esbuild`. | Изолированно обновить Next.js/React-цепочку и PostCSS; заменить или изолировать `xlsx`; повторить полный regression, auth/permissions и production smoke. |
+| LB-11 | Частично закрыт: локальный backup/restore доказан, внешней копии нет | Ежедневная копия, checksum и изолированное восстановление подтверждены 2026-08-28. Копия находится на том же VPS. | Выбрать защищённый внешний target, шифрование и проверить offsite readback. |
+| LB-12 | Закрыт 2026-08-28 | `npm audit --omit=dev`: 0. Next.js 15.5.24, официальный SheetJS 0.20.3; полный regression/build зелёный. | Production smoke и наблюдение после обновления выполнены через healthcheck/watchdog; продолжить обычный мониторинг. |
 
 ### Обязательный реестр зависимостей
 
@@ -118,9 +133,9 @@ operation or 1C write was started during the audit.
 | --- | --- | --- | --- |
 | LB-1 | Inconsistent parsing of 1C dates | `sales-realizations` returns Russian dates. `/admin/1c` passes them to `new Date()`, so `12.06.2026` renders as 6 December. The core credit runner has a safe parser, but ADMIN Workday has another parser that does not accept this format. This can misstate a date or hide a matching realization. | Introduce one shared 1C datetime parser, migrate every consumer and add RU/ISO/timezone regression tests. |
 | LB-2 | Push delivery can be recorded as sent when no device received it | Notification dispatch marks the portal notification `sent` when there is no subscription, Web Push is not configured or a transient send error occurs. There is no retry for a temporary push failure. The portal Inbox still keeps the event, but reminder reliability is overstated. | Separate portal creation from push delivery state, retry transient failures and expose/monitor failed delivery. Verify on real iPhone and Android. |
-| LB-3 | Production dependencies contain known critical/high vulnerabilities | `npm audit --omit=dev` reports one critical and three high findings, including the current Next.js line and `xlsx`. | Upgrade Next.js in an isolated regression task; replace or safely isolate `xlsx`; rerun the full suite and production smoke checks. |
-| LB-4 | No proven recurring backup and restore path | Uploads are persistent, but the repo contains no automated PostgreSQL/uploads backup job or periodic restore test. Observed rollback dumps were old/manual; one schedule backup artifact was empty. | Add recurring DB and uploads backup, retention, integrity check and one restore rehearsal before wider employee access. |
-| LB-5 | Employee image uploads are unbounded | Cash and shift-photo endpoints accept any `image/*`, read the full body into memory and have no size or signature validation. A large/mislabelled file can exhaust the app. | Add request/file-size limits, allowlisted formats, content validation and user-facing compression/error text. |
+| LB-3 | Закрыт 2026-08-28 | `npm audit --omit=dev` reports 0 findings after isolated Next/SheetJS/PostCSS upgrade; domain regression and production build pass. | Continue dependency monitoring. |
+| LB-4 | Частично закрыт 2026-08-28 | Daily DB/uploads backup, retention, checksums and isolated restore are proven. Offsite copy is not configured. | Select encrypted external target and prove offsite readback. |
+| LB-5 | Закрыт | Employee uploads are capped at 8 MB and validated by allowlisted MIME plus JPG/PNG/WebP file signatures before full read; focused tests pass. | Monitor upload storage during pilot. |
 | LB-6 | Production contains unresolved legacy lifecycle state | One workday remained active for more than two days; old cash operations remain in `pending_1c`/`created_1c`; an approved close request for a completed day has no consumption timestamp. Current automation can confuse this history with live exceptions. | Reconcile or explicitly archive legacy records through an audited migration/script and define the stale-day incident procedure. |
 | LB-7 | QR/shift selection does not prove physical presence or the planned shift | The department QR is a static client-side payload; the start endpoint does not validate it. An authenticated client can call start directly. The employee then chooses any supported shift, which can change calculated lateness. | Decide and document whether QR is a convenient ritual or proof of presence. If it is evidence, add server validation and planned-shift binding before discipline/payroll use. |
 
