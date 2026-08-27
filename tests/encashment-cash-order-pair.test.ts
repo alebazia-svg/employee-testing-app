@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createOneCCashExpenseOrder } from '../lib/one-c';
+import { createOneCCashExpenseOrder, previewOneCCashExpenseOrder } from '../lib/one-c';
 
 const expense = {
   ref: '00000000-0000-4000-8000-000000000001', number: 'РКО-1', datetime: '2026-08-18 16:00:00', posted: true,
@@ -66,6 +66,28 @@ test('portal rejects a successful HTTP response without the posted PKO', async (
     assert.equal(result.pairComplete, false);
     assert.equal(result.receiptDocument, null);
     assert.match(result.error ?? '', /complete posted RKO\/PKO pair/);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test('cash-order diagnostic performs preview only and never confirms a write', async () => {
+  process.env['1C_BASE_URL'] = 'https://one-c.test/hs/agent';
+  process.env['1C_API_USER'] = 'test';
+  process.env['1C_API_PASSWORD'] = 'test';
+  const originalFetch = global.fetch;
+  const calls: Array<Record<string, unknown>> = [];
+  global.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    calls.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return new Response(JSON.stringify({ ok: true, transaction_rolled_back: true, preview_token: 'pair-token', pair_complete_preview: true }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const result = await previewOneCCashExpenseOrder(params());
+    assert.equal(result.ok, true);
+    assert.equal(result.confirmationRequired, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]?.confirm, false);
+    assert.equal('preview_token' in (calls[0] ?? {}), false);
   } finally {
     global.fetch = originalFetch;
   }

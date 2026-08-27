@@ -413,6 +413,10 @@ export type CreateOneCCashExpenseOrderResult = {
   error?: string;
 };
 
+export type PreviewOneCCashExpenseOrderResult = CreateOneCCashExpenseOrderResult & {
+  confirmationRequired: boolean;
+};
+
 let cachedHealth: { expiresAt: number; value: OneCHealthResult } | null = null;
 
 export const DEFAULT_SALES_REALIZATIONS_PARAMS: SalesRealizationsParams = {
@@ -1324,6 +1328,46 @@ async function requestCashExpenseOrder(config: OneCConfig, params: CreateOneCCas
   }
 }
 
+async function requestCashExpenseOrderPreview(config: OneCConfig, params: CreateOneCCashExpenseOrderParams): Promise<PreviewOneCCashExpenseOrderResult> {
+  const startedAt = Date.now();
+  const path = '/cash-expense-order-create';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(config.timeoutMs, 15_000));
+  try {
+    const response = await fetch(`${config.baseUrl}${path}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: buildAuthHeader(config) },
+      body: JSON.stringify({
+        idempotency_key: params.idempotencyKey,
+        organization_ref: params.organizationRef,
+        cashbox_ref: params.cashboxRef,
+        target_cashbox_ref: params.targetCashboxRef,
+        employee_name: params.employeeName,
+        amount: params.amount,
+        direction: params.direction,
+        employee_comment: params.employeeComment,
+        confirm: false,
+      }),
+      cache: 'no-store', signal: controller.signal,
+    });
+    const data = readRecord(await readResponseBody(response)) ?? {};
+    const document = normalizeCashExpenseOrderDocument(data.document);
+    const receiptDocument = normalizeCashReceiptOrderDocument(data.receipt_document);
+    return {
+      ok: response.ok && data.ok === true,
+      path, durationMs: Date.now() - startedAt, document, receiptDocument,
+      pairComplete: data.pair_complete === true,
+      idempotentReplay: data.idempotent_replay === true,
+      confirmationRequired: Boolean(readFirstString(data, ['preview_token'])),
+      error: response.ok && data.ok === true ? undefined : readFirstString(data, ['error_text', 'error']) || `1C API returned HTTP ${response.status}`,
+    };
+  } catch (error) {
+    return { ok: false, path, durationMs: Date.now() - startedAt, document: null, receiptDocument: null, pairComplete: false, idempotentReplay: false, confirmationRequired: false, error: formatError(error) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function requestSalesRealizations(config: OneCConfig, params: SalesRealizationsParams): Promise<OneCSalesRealizationsResult> {
   const startedAt = Date.now();
   const controller = new AbortController();
@@ -1830,4 +1874,11 @@ export async function createOneCCashExpenseOrder(params: CreateOneCCashExpenseOr
   const missingConfig = getMissingConfig(config);
   if (missingConfig.length) return { ok: false, path: '/cash-expense-order-create', durationMs: 0, document: null, receiptDocument: null, pairComplete: false, idempotentReplay: false, error: '1C API configuration is incomplete' };
   return requestCashExpenseOrder(config, params);
+}
+
+export async function previewOneCCashExpenseOrder(params: CreateOneCCashExpenseOrderParams): Promise<PreviewOneCCashExpenseOrderResult> {
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+  if (missingConfig.length) return { ok: false, path: '/cash-expense-order-create', durationMs: 0, document: null, receiptDocument: null, pairComplete: false, idempotentReplay: false, confirmationRequired: false, error: '1C API configuration is incomplete' };
+  return requestCashExpenseOrderPreview(config, params);
 }
