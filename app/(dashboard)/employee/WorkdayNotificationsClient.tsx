@@ -32,7 +32,10 @@ function NotificationMarker({ notification }: { notification: WorkdayNotificatio
       ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><ReceiptText className='h-4 w-4' /></span>
       : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-4 w-4' /></span>;
   }
-  return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><Clock3 className='h-4 w-4' /></span>;
+  if (['planned', 'overdue', 'overdue_repeat'].includes(notification.kind)) {
+    return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><Clock3 className='h-4 w-4' /></span>;
+  }
+  return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><Clock3 className='h-4 w-4' /></span>;
 }
 
 function urlBase64ToUint8Array(value: string) {
@@ -151,7 +154,7 @@ export function WorkdayNotificationsClient() {
       >
         <Bell className='h-[18px] w-[18px]' />
         {notifications.length > 0 && (
-          <span className='absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-black text-slate-950 ring-2 ring-[#111821]'>
+          <span className='absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#e4534d] px-1 text-[10px] font-black text-white ring-2 ring-[#f5f4ef] shadow-[0_3px_8px_rgba(135,48,43,0.28)]'>
             {notifications.length > 9 ? '9+' : notifications.length}
           </span>
         )}
@@ -166,8 +169,8 @@ export function WorkdayNotificationsClient() {
           </div>
 
           {!pushConnected && (
-            <div className='border-b border-green-100 bg-green-50 px-4 py-3'>
-              <p className='text-xs font-bold text-green-950'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
+            <div className='border-b border-slate-200 bg-slate-50 px-4 py-3'>
+              <p className='text-xs font-bold text-slate-800'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
               <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='employee-material-green-action mt-2 rounded-lg bg-green-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
                 {busy ? 'Подключаем…' : permission === 'granted' ? 'Подключить уведомления' : 'Разрешить уведомления'}
               </button>

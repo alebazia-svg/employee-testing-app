@@ -3858,7 +3858,6 @@ export function EmployeeTodayClient({
                 >
                   <span className='relative flex h-6 w-6 items-center justify-center' aria-hidden='true'>
                     <Icon className='h-5 w-5' strokeWidth={2.15} />
-                    {active && <span className='employee-material-tab-status' />}
                   </span>
                   <span>{item.label}</span>
                 </button>

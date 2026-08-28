@@ -367,7 +367,8 @@ select {
 }
 
 .employee-material-tab.is-active {
-  color: #27332e !important;
+  color: #42b92a !important;
+  font-weight: 800 !important;
 }
 
 .employee-material-tab.is-active svg {
@@ -377,17 +378,6 @@ select {
 .employee-material-tab:not(.is-active):hover {
   color: #4d5a55 !important;
   background: rgba(255, 255, 255, 0.2) !important;
-}
-
-.employee-material-tab-status {
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: #51c72a;
-  box-shadow: 0 0 0 1.5px #263238, 0 1px 3px rgba(67, 185, 27, 0.42);
 }
 
 .employee-material-day-card {
