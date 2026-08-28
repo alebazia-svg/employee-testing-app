@@ -7,6 +7,11 @@ import { Table } from '@/components/ui/table';
 import { getAttendanceRows, getScheduleRows, type AttendanceRow, type ScheduleRow } from '@/lib/google-sheets';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
+import {
+  attendanceEmployeeKey,
+  canonicalAttendanceEmployeeName,
+} from '@/lib/attendance-identity';
+import { getMoscowDateKey } from '@/lib/workday';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,7 +103,7 @@ type PlanEmployeeSummary = {
 const ALL = 'all';
 
 function normalizeEmployeeName(name: string) {
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+  return attendanceEmployeeKey(name);
 }
 
 function getDepartment(employee: string) {
@@ -108,10 +113,7 @@ function getDepartment(employee: string) {
 }
 
 function displayEmployeeName(employee: string) {
-  const parts = employee.trim().split(/\s+/).filter(Boolean);
-  if (parts.length <= 1) return employee;
-  if (/^[А-ЯЁA-Z]\.?$/i.test(parts[1])) return parts[0];
-  return parts[1];
+  return canonicalAttendanceEmployeeName(employee);
 }
 
 function employeeMatchesFilter(rowEmployee: string, matchedEmployee: string, selectedEmployee: string) {
@@ -208,6 +210,7 @@ function normalizeRows(rows: AttendanceRow[]): ParsedMark[] {
     const parsedAt = parseRuTimestamp(row.timestamp || `${row.date} ${row.time}`);
     return {
       ...row,
+      employee: canonicalAttendanceEmployeeName(row.employee),
       parsedAt,
       dateKey: dateKey(parsedAt, row.date),
       monthKey: monthKey(parsedAt, row.date),
@@ -221,6 +224,7 @@ function normalizeScheduleRows(rows: ScheduleRow[]): ParsedScheduleRow[] {
     const parsedDate = parseRuTimestamp(row.date);
     return {
       ...row,
+      employee: canonicalAttendanceEmployeeName(row.employee),
       dateKey: dateKey(parsedDate, row.date),
       monthKey: monthKey(parsedDate, row.date),
     };
@@ -323,7 +327,7 @@ function buildPlanFactRows(scheduleRows: ParsedScheduleRow[], summaries: DailySu
       dateKey: row.dateKey,
       date: displayDateFromKey(row.dateKey),
       dayOfWeek: row.dayOfWeek || '-',
-      employee: displayEmployeeName(row.employee),
+      employee: canonicalAttendanceEmployeeName(row.employee),
       matchedEmployee: summary?.employee ?? row.employee,
       department: getDepartment(row.employee),
       hasSchedule: true,
@@ -357,7 +361,7 @@ function buildPlanFactRows(scheduleRows: ParsedScheduleRow[], summaries: DailySu
       dateKey: summary.dateKey,
       date: summary.date,
       dayOfWeek: '-',
-      employee: displayEmployeeName(summary.employee),
+      employee: canonicalAttendanceEmployeeName(summary.employee),
       matchedEmployee: summary.employee,
       department: getDepartment(summary.employee),
       hasSchedule: false,
@@ -868,9 +872,15 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
   let scheduleData;
   let scheduleError = '';
 
-  try {
-    data = await getAttendanceRows();
-  } catch (caught) {
+  const [attendanceResult, scheduleResult] = await Promise.allSettled([
+    getAttendanceRows(),
+    getScheduleRows(),
+  ]);
+
+  if (attendanceResult.status === 'fulfilled') {
+    data = attendanceResult.value;
+  } else {
+    const caught = attendanceResult.reason;
     error = caught instanceof Error ? caught.message : 'Не удалось загрузить Google Sheets.';
     data = {
       mode: 'demo' as const,
@@ -879,9 +889,10 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
     };
   }
 
-  try {
-    scheduleData = await getScheduleRows();
-  } catch (caught) {
+  if (scheduleResult.status === 'fulfilled') {
+    scheduleData = scheduleResult.value;
+  } else {
+    const caught = scheduleResult.reason;
     scheduleError = caught instanceof Error ? caught.message : 'Не удалось загрузить график работы из Google Sheets.';
     scheduleData = {
       mode: 'not-configured' as const,
@@ -895,7 +906,7 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
   const normalizedScheduleRows = normalizeScheduleRows(scheduleData.rows);
   const allPlanFactRows = buildPlanFactRows(normalizedScheduleRows, allSummaries);
   const filters = {
-    month: searchParams.month || ALL,
+    month: searchParams.month || getMoscowDateKey().slice(0, 7),
     employee: searchParams.employee || ALL,
     status: searchParams.status || ALL,
   };
@@ -916,7 +927,7 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
         <div>
           <AdminBreadcrumbs current='Посещаемость' />
           <h1 className='text-[26px] font-extrabold tracking-normal text-slate-950 md:text-[28px]'>Посещаемость</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Аналитика по отметкам из Google Sheets: лист “Ответы на форму (1)”, диапазон A:F.</p>
+          <p className='mt-1 text-base font-medium text-slate-500'>Временный отчёт по графику и отметкам из Google Sheets до перехода сотрудников на портал.</p>
           <p className='mt-1 text-sm font-medium text-slate-500'>На текущем этапе явка считается подтверждённой по отметке начала рабочего дня. Отсутствие отметки ухода фиксируется отдельно и не обнуляет явку.</p>
         </div>
         <Badge className={isDemo ? 'bg-slate-100 text-slate-700' : 'bg-green-100 text-green-800'}>
