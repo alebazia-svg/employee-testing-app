@@ -198,6 +198,8 @@ These items are useful but do not block employee rollout:
    incomplete or duplicate card. Historical frequency is evidence of actual
    work, not proof that the most common action is the correct procedure; correct
    answers require verified 1C configuration and owner-approved business rules.
+   The current evidence and unresolved rule checks are tracked in
+   `attestation-content-discovery.md`.
 6. Continue OFD Control Event V1 and deeper financial reconciliation without
    mixing that architecture into Workday launch hardening.
 7. Add AI explanations/briefs only on top of reliable deterministic events.
