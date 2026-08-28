@@ -1,6 +1,6 @@
 export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.4';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
-export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 36 * 60 * 60 * 1000;
+export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 48 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
 
 export type MatchingStatus = 'confirmed' | 'pending' | 'mismatch' | 'unavailable' | 'needs_review';
