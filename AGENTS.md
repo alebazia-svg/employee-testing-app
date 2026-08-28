@@ -36,6 +36,16 @@ making changes here. The 1C/AIAgentAPI workspace is a separate repository.
 - Treat dirty files as user or prior-session work. Do not revert them unless the
   user confirms.
 
+## Interactive Terminal Continuity
+
+- When a task opens a visible Terminal for the owner to enter `sudo`, do not end
+  the turn after asking for the password and do not require the owner to send
+  `готово`. Keep monitoring that Terminal, report concise progress in
+  commentary, and continue automatically as soon as the command advances.
+- While an approved command is still running, remain with the workflow through
+  its terminal result and the required read-only verification. A password prompt
+  is an intermediate step, not a handoff or completion point.
+
 ## Repo Map
 
 - `app/(dashboard)/employee/` - employee mobile workday UI.
