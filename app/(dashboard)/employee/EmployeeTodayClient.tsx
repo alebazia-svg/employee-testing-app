@@ -3130,7 +3130,9 @@ export function EmployeeTodayClient({
       <div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
         <header className='employee-material-header px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))]'>
           <div className='flex items-center justify-between gap-3'>
-            <BrandBlock size='employee' />
+            <div className='w-[164px] shrink-0'>
+              <BrandBlock size='employee' />
+            </div>
             <div className='flex items-center gap-2'>
               <WorkdayNotificationsClient />
               <LogoutButton iconOnly title='Выйти' className='employee-material-header-action h-10 w-10 bg-white/[0.08] px-0 text-white ring-1 ring-white/10 hover:bg-white/[0.12]' />
