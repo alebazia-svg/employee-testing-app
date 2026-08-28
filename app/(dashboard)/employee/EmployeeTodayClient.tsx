@@ -3133,16 +3133,19 @@ export function EmployeeTodayClient({
             <BrandBlock size='employee' />
             <div className='flex items-center gap-2'>
               <WorkdayNotificationsClient />
-              <div className='employee-material-header-action flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-xs font-extrabold text-white ring-1 ring-white/10'>
-                {initials(user.name)}
-              </div>
               <LogoutButton iconOnly title='Выйти' className='employee-material-header-action h-10 w-10 bg-white/[0.08] px-0 text-white ring-1 ring-white/10 hover:bg-white/[0.12]' />
             </div>
           </div>
 
-          <div className='mt-3 flex items-end justify-between gap-3'>
-            <p className='min-w-0 truncate text-sm font-bold text-slate-100'>{user.name} · {departmentLabel(user.department)}</p>
-            <p className='shrink-0 text-xs font-semibold text-slate-300'>{formatDateLabel(today)}</p>
+          <div className='mt-2 grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5'>
+            <div className='employee-material-profile-avatar flex h-8 w-8 items-center justify-center text-[10px] font-black' aria-hidden='true'>
+              {initials(user.name)}
+            </div>
+            <div className='employee-material-profile-copy min-w-0'>
+              <p className='truncate text-xs font-extrabold text-[#273137]'>{user.name}</p>
+              <p className='mt-0.5 truncate text-[10px] font-bold text-[#758084]'>{departmentLabel(user.department)}</p>
+            </div>
+            <p className='shrink-0 text-[10px] font-bold text-[#758084]'>{formatDateLabel(today)}</p>
           </div>
         </header>
 

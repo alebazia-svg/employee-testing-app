@@ -312,6 +312,22 @@ select {
   box-shadow: 5px 6px 11px rgba(73, 77, 75, 0.34), -3px -3px 8px rgba(255, 255, 255, 0.92) !important;
 }
 
+.employee-material-profile-avatar {
+  color: #354147;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 11px;
+  background: linear-gradient(145deg, #f9f8f3, #dddcd6);
+  box-shadow: 3px 4px 8px rgba(86, 89, 86, 0.18), -2px -2px 6px rgba(255, 255, 255, 0.9);
+}
+
+.employee-material-profile-copy p:first-child {
+  color: #273137 !important;
+}
+
+.employee-material-profile-copy p:last-child {
+  color: #758084 !important;
+}
+
 .employee-material-ui [class*="shadow-[0_10px_28px"]:not(.border-amber-200):not(.border-green-100) {
   border-color: rgba(255, 255, 255, 0.92) !important;
   border-radius: 24px !important;
