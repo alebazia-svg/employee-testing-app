@@ -88,8 +88,9 @@ Complete in this order:
      failures; apply the migration and verify delivery/retry on a real device;
    - `DONE` add upload limits/content validation;
    - `DONE` remediate critical/high dependency findings in isolated changes;
-   - `LOCAL DONE / OFFSITE NEXT` prove recurring DB/uploads backup and restore,
-     then select an encrypted external backup target;
+   - `DONE 2026-08-28` recurring DB/uploads backup and isolated restore are
+     proven; public-key-encrypted offsite copies go to Yandex Disk and passed
+     download, checksum, decryption and dump readback;
    - reconcile stale production lifecycle records;
    - decide whether QR is a convenience ritual or physical-presence evidence.
 4. `NEXT` Run controlled failure drills in production-safe scope:

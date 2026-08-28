@@ -47,10 +47,12 @@ or device check, `[ ]` incomplete launch gate.
   full regression/build pass.
 - [x] Cash and shift-photo uploads are capped at 8 MB and validate real
   JPG/PNG/WebP signatures and MIME types.
-- [~] Daily PostgreSQL/uploads backup, integrity checks and one isolated restore
-  rehearsal are proven. Select an encrypted offsite target before wider rollout.
-- [ ] Reconcile or explicitly archive stale workdays, legacy 1C cash states and
-  consumed/approved close-request inconsistencies before selecting pilot users.
+- [x] Daily PostgreSQL/uploads backup, integrity checks and one isolated restore
+  rehearsal are proven. A daily public-key-encrypted copy is sent to Yandex
+  Disk; download, SHA-256 readback, decryption and PostgreSQL dump inspection
+  were proven on 2026-08-28. The private key remains on the owner's Mac.
+- [x] Legacy 1C cash states were reconciled or explicitly archived and the one
+  stale consumed/approved close-request inconsistency was repaired with readback.
 - [ ] Decide whether the static QR is only a convenient start ritual or must be
   server-validated physical-presence evidence; do not use self-selected shift
   lateness for discipline before this boundary is explicit.
