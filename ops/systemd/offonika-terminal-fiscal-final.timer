@@ -5,7 +5,7 @@ Description=Finalize the previous OFFONIKA terminal fiscal day after midnight
 OnCalendar=*-*-* 00:14:00 Europe/Moscow
 OnCalendar=*-*-* 00:44:00 Europe/Moscow
 OnCalendar=*-*-* 01:14:00 Europe/Moscow
-Persistent=false
+Persistent=true
 AccuracySec=30s
 Unit=offonika-terminal-fiscal-final.service
 

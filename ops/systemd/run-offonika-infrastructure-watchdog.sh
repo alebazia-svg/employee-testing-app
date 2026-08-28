@@ -76,6 +76,15 @@ for unit in "${units[@]}"; do
   service_result=$(systemctl show "$unit.service" -p Result --value 2>/dev/null || true)
   if [[ "$timer_state" == active && ( "$service_state" == active || "$service_state" == activating ) ]]; then
     add_check "unit.$unit" "${unit_labels[$unit]}" true "Расписание активно, проверка выполняется сейчас"
+  elif [[ "$unit" == offonika-terminal-fiscal-final && "$timer_state" == active && "$service_result" == success ]]; then
+    last_exit=$(systemctl show "$unit.service" -p ExecMainExitTimestamp --value 2>/dev/null || true)
+    last_exit_epoch=$(date -d "$last_exit" +%s 2>/dev/null || echo 0)
+    age_hours=$(( ($(date +%s) - last_exit_epoch) / 3600 ))
+    if (( last_exit_epoch > 0 && age_hours <= 36 )); then
+      add_check "unit.$unit" "${unit_labels[$unit]}" true "Последняя итоговая сверка успешна, ${age_hours} ч назад"
+    else
+      add_check "unit.$unit" "${unit_labels[$unit]}" false "Нет успешной итоговой сверки за последние 36 ч"
+    fi
   elif [[ "$timer_state" == active && ( "$service_result" == success || -z "$service_result" ) ]]; then
     add_check "unit.$unit" "${unit_labels[$unit]}" true "Расписание активно, последняя проверка успешна"
   else
