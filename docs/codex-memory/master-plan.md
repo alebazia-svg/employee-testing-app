@@ -187,7 +187,17 @@ These items are useful but do not block employee rollout:
    sources and policy are stable. The current agreed discipline rule stays
    unchanged until a separate policy decision.
 5. Design useful novice/experienced employee attestations from verified business
-   processes and evidence, not from generic questions.
+   processes and evidence, not from generic questions. Build a common 1C core
+   plus Retail/Wholesale role modules around the documents managers actually
+   create: sales through MegaPrice/RMK and realizations, returns by original
+   sale path, expense requests and their analytics, purchases/receipts,
+   customer orders and payment situations, and creation of nomenclature.
+   Nomenclature assessment must cover duplicate search before creation,
+   selection of the correct kind/group/category, naming and brand attributes,
+   characteristics/series for relevant electronics and the consequences of an
+   incomplete or duplicate card. Historical frequency is evidence of actual
+   work, not proof that the most common action is the correct procedure; correct
+   answers require verified 1C configuration and owner-approved business rules.
 6. Continue OFD Control Event V1 and deeper financial reconciliation without
    mixing that architecture into Workday launch hardening.
 7. Add AI explanations/briefs only on top of reliable deterministic events.
