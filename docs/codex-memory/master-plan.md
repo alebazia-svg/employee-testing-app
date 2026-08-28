@@ -114,8 +114,9 @@ Complete in this order:
    - persistent uploads volume;
    - recent logs contain no unexplained fresh application/API errors;
    - rollback path is ready.
-7. `NEXT` Prepare a one-page employee onboarding instruction and an ADMIN incident
-   script for internet, 1C, camera, notification and unfinished-day problems.
+7. `DONE 2026-08-28` Prepare a one-page employee onboarding instruction and an
+   owner phone pilot checklist for internet, 1C/OFD, camera, notification and
+   unfinished-day problems.
 
 ## Pilot Gate
 

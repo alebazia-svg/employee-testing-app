@@ -100,7 +100,8 @@ or device check, `[ ]` incomplete launch gate.
 
 ## Real Employee Pilot Gate
 
-- [ ] Prepare one-page employee onboarding and ADMIN incident instructions.
+- [x] Prepare one-page employee onboarding and owner phone pilot instructions;
+  the employee guide covers internet, camera, 1C/OFD, push and stale-day states.
 - [ ] Confirm credentials, department, shifts, schedule and 1C cashbox mapping
   for one Retail and one Wholesale pilot employee.
 - [ ] Let both employees perform at least five real shifts themselves.
