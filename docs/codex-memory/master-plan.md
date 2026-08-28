@@ -124,6 +124,11 @@ Complete in this order:
    - persistent uploads volume;
    - recent logs contain no unexplained fresh application/API errors;
    - rollback path is ready.
+   - before the two-person pilot, keep only the selected Retail and Wholesale
+     participants in the active portal rollout scope. Employees who have not
+     received the PWA must not create misleading `Рабочий день не начат`
+     attention for ADMIN; the temporary operational option is to disable their
+     portal accounts until their rollout group starts.
 7. `DONE 2026-08-28` Prepare a one-page employee onboarding instruction and an
    owner phone pilot checklist for internet, 1C/OFD, camera, notification and
    unfinished-day problems.
@@ -139,6 +144,11 @@ Pilot participants:
 During the pilot, ADMIN observes and resolves exceptions but does not perform
 the employee's normal path on their behalf. Do not add broad new features during
 these shifts.
+
+The historical credit-receipt issue discussed during owner testing is archived
+as unresolved history and is intentionally absent from the employee's active
+work. Do not reintroduce an employee or ADMIN escalation workflow for that old
+case without a new explicit business decision.
 
 The pilot passes only when all of the following are true:
 

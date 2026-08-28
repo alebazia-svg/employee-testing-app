@@ -87,10 +87,12 @@ or device check, `[ ]` incomplete launch gate.
   the former `1 problem / no active problems` contradiction is removed.
 - [x] Ordinary `Ожидаются данные` terminal state remains neutral until it is
   actually overdue, incomplete or erroneous.
-- [ ] Open Attendance on the current month, normalize duplicate identities and
-  state clearly that Google remains the temporary payroll source.
-- [ ] Resolve the current old credit issue and define an audited exception path
-  for a factual correction that an employee cannot perform.
+- [x] Attendance opens on the current Moscow month, normalizes known duplicate
+  identities, loads safe Google sources in parallel and states clearly that
+  Google remains the temporary payroll source.
+- [x] The old credit issue is removed from the employee's active work and kept
+  only as unresolved history by explicit owner decision. No new exception or
+  escalation workflow is required for that historical case.
 
 ## Device Gate
 
@@ -112,6 +114,9 @@ or device check, `[ ]` incomplete launch gate.
   the employee guide covers internet, camera, 1C/OFD, push and stale-day states.
 - [ ] Confirm credentials, department, shifts, schedule and 1C cashbox mapping
   for one Retail and one Wholesale pilot employee.
+- [ ] Limit active portal rollout to those pilot participants before their first
+  shifts, so employees who have not received the PWA do not create false
+  `Рабочий день не начат` attention in ADMIN.
 - [ ] Let both employees perform at least five real shifts themselves.
 - [ ] Observe QR start, due reminders, corrections, cash, encashment, issues,
   notifications, handover and next-day state.
