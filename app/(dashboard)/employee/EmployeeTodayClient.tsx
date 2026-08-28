@@ -3137,15 +3137,15 @@ export function EmployeeTodayClient({
             </div>
           </div>
 
-          <div className='mt-2 grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5'>
-            <div className='employee-material-profile-avatar flex h-8 w-8 items-center justify-center text-[10px] font-black' aria-hidden='true'>
+          <div className='mt-3 grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5'>
+            <div className='employee-material-profile-avatar flex h-8 w-8 items-center justify-center text-[11px] font-black' aria-hidden='true'>
               {initials(user.name)}
             </div>
             <div className='employee-material-profile-copy min-w-0'>
-              <p className='truncate text-xs font-extrabold text-[#273137]'>{user.name}</p>
-              <p className='mt-0.5 truncate text-[10px] font-bold text-[#758084]'>{departmentLabel(user.department)}</p>
+              <p className='truncate text-sm font-extrabold leading-tight text-[#273137]'>{user.name}</p>
+              <p className='mt-1 truncate text-[11px] font-bold leading-none text-[#758084]'>{departmentLabel(user.department)}</p>
             </div>
-            <p className='shrink-0 text-[10px] font-bold text-[#758084]'>{formatDateLabel(today)}</p>
+            <p className='shrink-0 text-[11px] font-bold leading-none text-[#758084]'>{formatDateLabel(today)}</p>
           </div>
         </header>
 
