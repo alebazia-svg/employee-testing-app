@@ -1,0 +1,17 @@
+[Unit]
+Description=Encrypt and copy the latest OFFONIKA portal backup to Yandex Disk
+After=docker.service offonika-portal-backup.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/docker/employee-testing-app/ops/systemd/backup-offonika-portal-offsite.sh
+TimeoutStartSec=60min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/offonika-portal
+ReadOnlyPaths=/etc/offonika-portal
+
