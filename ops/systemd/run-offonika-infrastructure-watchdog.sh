@@ -44,8 +44,11 @@ units=(
   bank-statement-engine-vtb-import
   bank-statement-engine-vtb-resolver
   offonika-admin-inbox-telegram
+  offonika-cash-operation-retry
   offonika-credit-realization-shadow
   offonika-dependency-watchdog
+  offonika-expense-request-sync
+  offonika-portal-offsite-backup
   offonika-terminal-fiscal-current
   offonika-terminal-fiscal-final
   offonika-terminal-fiscal-owner-report
@@ -57,8 +60,11 @@ declare -A unit_labels=(
   [bank-statement-engine-vtb-import]="Загрузка выписки ВТБ"
   [bank-statement-engine-vtb-resolver]="Проверка документов ВТБ"
   [offonika-admin-inbox-telegram]="Отправка важных сообщений в Telegram"
+  [offonika-cash-operation-retry]="Повторная проверка инкассаций"
   [offonika-credit-realization-shadow]="Проверка кредитных продаж"
   [offonika-dependency-watchdog]="Контроль подключений к внешним сервисам"
+  [offonika-expense-request-sync]="Проверка заявок на расходы"
+  [offonika-portal-offsite-backup]="Внешняя резервная копия портала"
   [offonika-terminal-fiscal-current]="Текущая сверка оплат по терминалу"
   [offonika-terminal-fiscal-final]="Итоговая сверка оплат по терминалу"
   [offonika-terminal-fiscal-owner-report]="Отчёт владельцу по оплатам"
@@ -66,11 +72,14 @@ declare -A unit_labels=(
 )
 for unit in "${units[@]}"; do
   timer_state=$(systemctl is-active "$unit.timer" 2>/dev/null || true)
+  service_state=$(systemctl is-active "$unit.service" 2>/dev/null || true)
   service_result=$(systemctl show "$unit.service" -p Result --value 2>/dev/null || true)
-  if [[ "$timer_state" == active && ( "$service_result" == success || -z "$service_result" ) ]]; then
+  if [[ "$timer_state" == active && ( "$service_state" == active || "$service_state" == activating ) ]]; then
+    add_check "unit.$unit" "${unit_labels[$unit]}" true "Расписание активно, проверка выполняется сейчас"
+  elif [[ "$timer_state" == active && ( "$service_result" == success || -z "$service_result" ) ]]; then
     add_check "unit.$unit" "${unit_labels[$unit]}" true "Расписание активно, последняя проверка успешна"
   else
-    add_check "unit.$unit" "${unit_labels[$unit]}" false "Расписание: ${timer_state:-не найден}; результат: ${service_result:-нет}"
+    add_check "unit.$unit" "${unit_labels[$unit]}" false "Расписание: ${timer_state:-не найден}; служба: ${service_state:-не найдена}; результат: ${service_result:-нет}"
   fi
 done
 
