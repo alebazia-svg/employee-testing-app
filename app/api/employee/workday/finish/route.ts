@@ -93,6 +93,17 @@ export async function POST(req: Request) {
           closingComment: staleCloseViolationComment,
         },
       });
+      await tx.shiftControlTask.updateMany({
+        where: {
+          run: { workDayEntryId: activeWorkDay.id },
+          required: true,
+          status: { not: 'done' },
+        },
+        data: {
+          status: 'missed',
+          comment: 'Не выполнено до закрытия предыдущего рабочего дня',
+        },
+      });
     }
 
     if (closeException) {
