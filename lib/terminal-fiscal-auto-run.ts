@@ -35,3 +35,14 @@ export function terminalFiscalAutomaticPeriod(mode: TerminalFiscalAutoRunMode, n
   const periodTo = new Date(Math.floor(safeNow / BUCKET_MS) * BUCKET_MS);
   return periodTo > todayFrom ? { periodFrom: todayFrom, periodTo } : null;
 }
+
+export function terminalFiscalAutomaticPeriods(mode: TerminalFiscalAutoRunMode, now = new Date()) {
+  const selected = terminalFiscalAutomaticPeriod(mode, now);
+  if (!selected) return [];
+  if (mode === 'previous') return [selected];
+  const todayFrom = moscowMidnightUtc(now);
+  return [
+    { periodFrom: new Date(todayFrom.getTime() - 24 * 60 * 60 * 1000), periodTo: todayFrom },
+    selected,
+  ];
+}

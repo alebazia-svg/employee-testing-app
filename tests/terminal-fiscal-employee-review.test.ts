@@ -342,6 +342,8 @@ test('a check already consumed by another bank operation cannot cover the missin
 test('one review and notification are created without duplicates and a later 1C check resolves them', async () => {
   const reviews: any[] = [];
   const notifications: any[] = [];
+  const adminEvents: any[] = [];
+  const adminReceipts: any[] = [];
   const db: any = {
     workdayKkmAssignment: { findMany: async () => [] },
     userOneCCashboxMapping: { findMany: async () => [{ userId: 5, oneCCashierRef: 'cashier-magomed' }] },
@@ -373,6 +375,21 @@ test('one review and notification are created without duplicates and a later 1C 
         rows.forEach((row) => Object.assign(row, data)); return { count: rows.length };
       },
     },
+    user: {
+      findUnique: async () => ({ name: 'Костеренко Магомед' }),
+      findMany: async () => [{ id: 1 }],
+    },
+    adminInboxEvent: {
+      upsert: async ({ where, create }: any) => {
+        const existing = adminEvents.find((row) => row.eventKey === where.eventKey);
+        if (existing) return existing;
+        const row = { id: `event-${adminEvents.length + 1}`, ...create };
+        adminEvents.push(row); return row;
+      },
+    },
+    adminInboxReceipt: {
+      createMany: async ({ data }: any) => { adminReceipts.push(...data); return { count: data.length }; },
+    },
     $transaction: async (callback: any) => callback(db),
   };
   const output = { version: 'mvp-1', evaluatedAt: record().evaluatedAt, records: [record()] };
@@ -380,6 +397,9 @@ test('one review and notification are created without duplicates and a later 1C 
   assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()] }), { opened: 0, resolved: 0, adminOnly: 0, shadowed: 0 });
   assert.equal(reviews.length, 1);
   assert.equal(notifications.length, 1);
+  assert.equal(adminEvents.length, 1);
+  assert.equal(adminReceipts.length, 1);
+  assert.match(adminEvents[0].body, /Костеренко Магомед/);
   assert.equal(JSON.stringify(reviews).includes('secret-operation'), false);
 
   const found = record({ status: 'confirmed', reasonCode: 'MATCH_CONFIRMED', candidateCount: 1, oneCCheckKey: 'check-found' });

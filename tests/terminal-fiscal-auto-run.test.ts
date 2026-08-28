@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod } from '../lib/terminal-fiscal-auto-run';
+import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod, terminalFiscalAutomaticPeriods } from '../lib/terminal-fiscal-auto-run';
 
 test('automatic current period uses Moscow midnight and a completed five-minute bucket after source delay', () => {
   const period = terminalFiscalAutomaticPeriod('current', new Date('2026-08-13T09:28:00.000Z'));
@@ -36,4 +36,11 @@ test('automatic runner remains non-persisting without the explicit audit flag', 
 test('production current-day audit runs every five minutes', () => {
   const timer = readFileSync('ops/systemd/offonika-terminal-fiscal-current.timer', 'utf8');
   assert.match(timer, /OnCalendar=\*-\*-\* \*:02\/5:00 Europe\/Moscow/);
+});
+
+test('current automation also revisits the previous day for late checks', () => {
+  assert.deepEqual(terminalFiscalAutomaticPeriods('current', new Date('2026-08-13T09:28:00.000Z')), [
+    { periodFrom: new Date('2026-08-11T21:00:00.000Z'), periodTo: new Date('2026-08-12T21:00:00.000Z') },
+    { periodFrom: new Date('2026-08-12T21:00:00.000Z'), periodTo: new Date('2026-08-13T09:15:00.000Z') },
+  ]);
 });

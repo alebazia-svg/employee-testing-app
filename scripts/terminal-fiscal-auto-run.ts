@@ -1,45 +1,42 @@
 import { prisma } from '../lib/prisma';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod } from '../lib/terminal-fiscal-auto-run';
+import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods } from '../lib/terminal-fiscal-auto-run';
 import { runTerminalFiscalHistoricalDryRun } from '../lib/terminal-fiscal-runner';
 
 async function main() {
   const options = parseTerminalFiscalAutoRunCli(process.argv.slice(2));
-  const period = terminalFiscalAutomaticPeriod(options.mode);
-  if (!period) {
+  const periods = terminalFiscalAutomaticPeriods(options.mode);
+  if (periods.length === 0) {
     process.stdout.write(`${JSON.stringify({ ok: true, skipped: true, reason: 'PERIOD_NOT_READY' })}\n`);
     return;
   }
-  const mappings = await prisma.terminalFiscalMapping.findMany({
-    where: {
-      isActive: true,
-      effectiveFrom: { lt: period.periodTo },
-      OR: [{ effectiveTo: null }, { effectiveTo: { gt: period.periodFrom } }],
-    },
-    select: { id: true },
-    orderBy: { id: 'asc' },
-  });
   const results = [];
-  for (const mapping of mappings) {
-    const result = await runTerminalFiscalHistoricalDryRun({
-      mappingId: mapping.id,
-      periodFrom: period.periodFrom,
-      periodTo: period.periodTo,
-      persist: options.persist,
-      syncWorkdayControl: options.persist && process.env.TERMINAL_FISCAL_WORKDAY_CONTROL_ENABLED === 'true',
+  for (const period of periods) {
+    const mappings = await prisma.terminalFiscalMapping.findMany({
+      where: {
+        isActive: true,
+        effectiveFrom: { lt: period.periodTo },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: period.periodFrom } }],
+      },
+      select: { id: true }, orderBy: { id: 'asc' },
     });
-    results.push({
-      acquired: result.acquired,
-      persisted: result.acquired ? result.persisted : false,
-      statuses: result.acquired ? result.summary.statuses : undefined,
-    });
+    for (const mapping of mappings) {
+      const result = await runTerminalFiscalHistoricalDryRun({
+        mappingId: mapping.id, periodFrom: period.periodFrom, periodTo: period.periodTo,
+        persist: options.persist,
+        syncWorkdayControl: options.persist && process.env.TERMINAL_FISCAL_WORKDAY_CONTROL_ENABLED === 'true',
+      });
+      results.push({
+        periodFrom: period.periodFrom.toISOString(), periodTo: period.periodTo.toISOString(),
+        acquired: result.acquired, persisted: result.acquired ? result.persisted : false,
+        statuses: result.acquired ? result.summary.statuses : undefined,
+      });
+    }
   }
   process.stdout.write(`${JSON.stringify({
     ok: true,
     mode: options.mode,
     persisted: options.persist,
-    periodFrom: period.periodFrom.toISOString(),
-    periodTo: period.periodTo.toISOString(),
-    mappingCount: mappings.length,
+    periodCount: periods.length,
     results,
   })}\n`);
 }

@@ -1,5 +1,6 @@
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.3';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.4';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
+export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 36 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
 
 export type MatchingStatus = 'confirmed' | 'pending' | 'mismatch' | 'unavailable' | 'needs_review';
@@ -433,7 +434,8 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       if (check.cashRegisterRef !== mapping.oneCCashRegisterRef) return [];
       if (payment.acquiringTerminalRef !== mapping.oneCAcquiringTerminalRef) return [];
       if (payment.amountKopecks !== operation.amountKopecks) return [];
-      if (moscowDay(check.dateTime) !== moscowDay(operation.transactionDate)) return [];
+      if (checkAt < bankAt - TERMINAL_FISCAL_TIME_TOLERANCE_MS
+        || checkAt - bankAt > TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS) return [];
       return [{ check, difference: Math.abs(checkAt - bankAt) }];
     });
     const candidates = dayCandidates.filter((candidate) => candidate.difference <= TERMINAL_FISCAL_TIME_TOLERANCE_MS);
@@ -459,7 +461,8 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
   for (const group of lateGroups.values()) {
     const orderedOperations = [...group].sort((a, b) => (timestamp(a.operation.transactionDate) ?? 0) - (timestamp(b.operation.transactionDate) ?? 0));
     const checksByRef = new Map<string, OneCCheck>();
-    group.flatMap((context) => context.dayCandidates).forEach(({ check }) => {
+    group.flatMap((context) => context.dayCandidates.map((candidate) => ({ ...candidate, context }))).forEach(({ check, context }) => {
+      if (moscowDay(check.dateTime) !== moscowDay(context.operation.transactionDate)) return;
       if (!strictCheckRefs.has(check.sourceRef)) checksByRef.set(check.sourceRef, check);
     });
     const orderedChecks = [...checksByRef.values()].sort((a, b) => (timestamp(a.dateTime) ?? 0) - (timestamp(b.dateTime) ?? 0));
@@ -489,7 +492,7 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       const checkAt = timestamp(check.dateTime) ?? 0;
       return !strictCheckRefs.has(check.sourceRef)
         && checkAt > bankAt
-        && checkAt - bankAt <= TERMINAL_FISCAL_GRACE_MS;
+        && checkAt - bankAt <= TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS;
     }));
   }
   const forwardUse = new Map<string, number>();

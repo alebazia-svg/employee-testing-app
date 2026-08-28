@@ -234,6 +234,18 @@ test('links a unique forward late check even when an unrelated earlier check has
   assert.equal(result.timeDifferenceSeconds, 56 * 60);
 });
 
+test('links a unique check created on the following Moscow day', () => {
+  const lateNextDay = {
+    ...check, sourceRef: 'next-day', dateTime: '2026-08-11T06:00:00.000Z',
+    fiscalDocumentNumber: 'fd-next', fiscalSign: 'fp-next',
+  };
+  const nextReceipt = { ...receipt, fiscalDocumentNumber: 'fd-next', fiscalSign: 'fp-next' };
+  const result = only({ oneCChecks: [lateNextDay], ofdReceipts: [nextReceipt] });
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.reasonCode, 'MATCH_CONFIRMED_LATE');
+  assert.equal(result.oneCCheckKey, 'next-day');
+});
+
 test('does not pair repeated same-day checks when one check predates its ordered payment', () => {
   const banks = [
     { ...bank, rrn: 'bank-a', transactionDate: '2026-08-10T07:00:00.000Z' },

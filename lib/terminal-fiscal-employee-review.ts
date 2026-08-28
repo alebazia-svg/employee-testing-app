@@ -445,6 +445,30 @@ export async function syncTerminalFiscalEmployeeReviews(
         },
         update: {},
       });
+      if (mode === 'notify' && existing === null && review.status === 'open') {
+        const [employee, admins] = await Promise.all([
+          tx.user.findUnique({ where: { id: employeeId }, select: { name: true } }),
+          tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } }),
+        ]);
+        const event = await tx.adminInboxEvent.upsert({
+          where: { eventKey: `${reviewKey}:admin-opened` },
+          create: {
+            eventKey: `${reviewKey}:admin-opened`,
+            type: 'terminal_fiscal_review.created',
+            title: 'Чек в 1С не пробит вовремя',
+            body: `${employee?.name ?? 'Сотрудник'} · ${terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks })}`,
+            href: `/admin/workday/payment-checks/${review.id}`,
+            sourceType: 'terminal_fiscal_review',
+            sourceId: review.id,
+            occurredAt: evaluatedAt,
+          },
+          update: {},
+        });
+        if (admins.length) await tx.adminInboxReceipt.createMany({
+          data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })),
+          skipDuplicates: true,
+        });
+      }
       if (mode === 'notify' && existing && review.status === 'open'
         && evaluatedAt.getTime() - new Date(review.detectedAt).getTime() >= EMPLOYEE_REVIEW_REMINDER_MS) {
         const workdayDate = new Intl.DateTimeFormat('en-CA', {

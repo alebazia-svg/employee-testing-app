@@ -5,6 +5,7 @@ import {
   bankOperationKey,
   canonicalFiscalKey,
   reconcileTerminalFiscalMvp,
+  TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS,
   TERMINAL_FISCAL_MATCHING_VERSION,
   type TerminalMapping,
 } from '@/lib/terminal-fiscal-matching';
@@ -66,15 +67,16 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   }) : null;
   if (input.persist === true && !lease) return { acquired: false as const };
   try {
+    const lateMatchTo = new Date(input.periodTo.getTime() + TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS);
     const [tbank, oneC, ofd] = await Promise.all([
       (dependencies.loadTbank ?? loadCompleteTBankOperations)({ terminalKey: mapping.terminalKey, from: input.periodFrom.toISOString(), to: input.periodTo.toISOString() }),
-      (dependencies.loadOneC ?? loadOneCKkmChecks)({ fromDate: dateOnly(input.periodFrom), toDate: nextDateKey(dateOnly(new Date(input.periodTo.getTime() - 1))) }),
-      (dependencies.loadOfd ?? loadPlatformaOfdReceipts)({ kktRegistrationNumber: mapping.kktRegistrationNumber, from: input.periodFrom.toISOString(), to: input.periodTo.toISOString() }),
+      (dependencies.loadOneC ?? loadOneCKkmChecks)({ fromDate: dateOnly(input.periodFrom), toDate: nextDateKey(dateOnly(lateMatchTo)) }),
+      (dependencies.loadOfd ?? loadPlatformaOfdReceipts)({ kktRegistrationNumber: mapping.kktRegistrationNumber, from: input.periodFrom.toISOString(), to: lateMatchTo.toISOString() }),
     ]);
     const now = new Date().toISOString();
     const periodOneCChecks = oneC.data.filter((check) => {
       const at = new Date(check.dateTime).getTime();
-      return Number.isFinite(at) && at >= input.periodFrom.getTime() && at < input.periodTo.getTime();
+      return Number.isFinite(at) && at >= input.periodFrom.getTime() && at < lateMatchTo.getTime();
     });
     const employeeReviewOneCChecks = oneCChecksAvailableForEmployeeReview({
       checks: oneC.data,

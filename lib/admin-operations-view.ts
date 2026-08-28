@@ -28,6 +28,11 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Сообщение по продаже',
     actionLabel: 'Открыть обсуждение',
   },
+  'terminal_fiscal_review.created': {
+    category: 'decisions',
+    typeLabel: 'Чек пробит с задержкой',
+    actionLabel: 'Открыть проверку',
+  },
   'workday.close_exception_requested': {
     category: 'decisions',
     typeLabel: 'Требуется решение администратора',
