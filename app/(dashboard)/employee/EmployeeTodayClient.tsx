@@ -3841,7 +3841,7 @@ export function EmployeeTodayClient({
 
         </div>
 
-        <nav className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] border-t border-slate-200 bg-[#f8f7f3] px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-16px_34px_rgba(15,23,42,0.12)]'>
+        <nav className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
           <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
@@ -3852,8 +3852,8 @@ export function EmployeeTodayClient({
                   type='button'
                   onClick={() => setActiveTab(item.id)}
                   className={cn(
-                    'employee-material-tab flex min-h-[54px] flex-col items-center justify-center gap-1 rounded-lg px-2 text-xs font-extrabold transition',
-                    active ? 'bg-[#111821] text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900',
+                    'employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-1 px-2 text-xs font-extrabold transition',
+                    active ? 'is-active' : 'text-slate-500',
                   )}
                 >
                   <span className='relative flex h-6 w-6 items-center justify-center' aria-hidden='true'>

@@ -337,25 +337,46 @@ select {
   right: 0;
   bottom: 0;
   left: 0;
-  border-color: rgba(255, 255, 255, 0.85) !important;
-  background: #f8f7f3 !important;
-  box-shadow: 0 -15px 30px rgba(57, 62, 64, 0.12) !important;
-  -webkit-backdrop-filter: none !important;
-  backdrop-filter: none !important;
+  isolation: isolate;
+  overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.96) !important;
+  background: rgba(243, 243, 237, 0.76) !important;
+  box-shadow: 0 -10px 28px rgba(31, 40, 36, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.88) !important;
   -webkit-transform: translateZ(0);
   transform: translateZ(0);
+  will-change: transform;
+}
+
+.employee-material-nav::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: rgba(243, 243, 237, 0.34);
+  -webkit-backdrop-filter: blur(28px) saturate(138%);
+  backdrop-filter: blur(28px) saturate(138%);
 }
 
 .employee-material-tab {
-  border-radius: 999px !important;
+  position: relative;
+  border-radius: 0 !important;
+  color: #748079 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
-.employee-material-tab.bg-\[\#111821\] {
-  color: #f8f7f2 !important;
+.employee-material-tab.is-active {
+  color: #27332e !important;
 }
 
-.employee-material-tab:not(.bg-\[\#111821\]) {
-  color: #5d6b71 !important;
+.employee-material-tab.is-active svg {
+  color: #42bd28;
+}
+
+.employee-material-tab:not(.is-active):hover {
+  color: #4d5a55 !important;
+  background: rgba(255, 255, 255, 0.2) !important;
 }
 
 .employee-material-tab-status {
