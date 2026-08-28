@@ -340,6 +340,15 @@ and the full Workday path on iPhone and Android.
 The accepted MVP for starting a workday is QR inside the employee web app, not
 an external camera link as the main path.
 
+The static QR is a required operational start ritual and department gate. It is
+not independent evidence of physical presence: its payload can be copied and
+the current start endpoint does not receive a server-verifiable scan proof.
+Therefore portal start time and calculated lateness are useful ADMIN signals
+during the pilot, but must not automatically change payroll, discipline or a
+bonus. If stronger presence evidence is ever required, it needs a separate
+business decision and a server-verifiable mechanism rather than stronger claims
+about the current static QR.
+
 Current flow:
 
 - employee opens `/employee` while already logged in;

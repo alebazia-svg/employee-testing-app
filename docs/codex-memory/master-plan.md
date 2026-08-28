@@ -92,8 +92,11 @@ Complete in this order:
    - `DONE 2026-08-28` recurring DB/uploads backup and isolated restore are
      proven; public-key-encrypted offsite copies go to Yandex Disk and passed
      download, checksum, decryption and dump readback;
-   - reconcile stale production lifecycle records;
-   - decide whether QR is a convenience ritual or physical-presence evidence.
+   - `DONE` reconcile stale production lifecycle records;
+   - `DONE 2026-08-28` define the static department QR as the required start
+     ritual and department gate, not independent physical-presence evidence.
+     Portal timing may guide ADMIN attention during the pilot but must not drive
+     automatic discipline or payroll consequences.
 4. `NEXT` Run controlled failure drills in production-safe scope:
    - 1C unavailable before/during encashment;
    - connection loss during a cash operation/photo upload;

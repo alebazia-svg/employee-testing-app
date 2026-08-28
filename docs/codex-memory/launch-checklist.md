@@ -54,9 +54,10 @@ or device check, `[ ]` incomplete launch gate.
   were proven on 2026-08-28. The private key remains on the owner's Mac.
 - [x] Legacy 1C cash states were reconciled or explicitly archived and the one
   stale consumed/approved close-request inconsistency was repaired with readback.
-- [ ] Decide whether the static QR is only a convenient start ritual or must be
-  server-validated physical-presence evidence; do not use self-selected shift
-  lateness for discipline before this boundary is explicit.
+- [x] The static department QR is explicitly a required start ritual and
+  department gate, not independent proof of physical presence. Self-selected
+  shift lateness may guide ADMIN attention during the pilot but cannot drive
+  automatic discipline or payroll consequences.
 - [~] Explicit employee-to-1C cashbox mapping exists; verify every pilot
   participant before their first real shift.
 - [~] Upload persistence is designed around `portal-uploads`; perform one final
