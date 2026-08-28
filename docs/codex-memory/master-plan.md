@@ -46,7 +46,7 @@ gate is complete, unless a newly discovered P0 defect makes the pilot unsafe.
 | Connectivity protection | `VERIFY` | Failed cash uploads can be retained on the phone and retried; this is not full offline PWA support. |
 | Credit receipt control | `VERIFY` | Deterministic 1C/OFD lifecycle and employee-safe exception wording are implemented; production observation remains required. |
 | Terminal/acquiring control | `VERIFY` | Rules fail closed, ambiguous cases remain ADMIN-only and employee attribution requires reliable evidence. |
-| Employee notifications | `VERIFY` | Portal publication and actual push delivery now have separate lifecycle state; bounded retry and inspector diagnostics are implemented. Production migration and real-device delivery/retry still require verification. |
+| Employee notifications | `VERIFY` | Portal publication and actual push delivery have separate lifecycle state; bounded retry and inspector diagnostics are deployed. Repeated delivery on the owner's real iPhone is confirmed; a controlled retry failure and Android remain to verify. |
 | ADMIN Telegram | `VERIFY` | Only events requiring owner attention should be duplicated; read state is separate from business-resolution state. |
 | Printable QR holders | `DONE` | Separate approved A5 Retail and Wholesale print layouts are available from ADMIN. |
 | Payroll | `DONE` for current process | Existing formulas and the agreed discipline rule remain unchanged. Direct 1C payroll and employee earnings are not part of launch. |
@@ -85,7 +85,8 @@ Complete in this order:
    - `DONE` unify 1C date parsing and cover ADMIN 1C, Workday, OFD, terminal
      normalization and credit consumers with regression tests;
    - `IMPLEMENTED / VERIFY` make push delivery state truthful and retry transient
-     failures; apply the migration and verify delivery/retry on a real device;
+     failures; production and repeated iPhone delivery are confirmed, while one
+     controlled transient retry remains to verify;
    - `DONE` add upload limits/content validation;
    - `DONE` remediate critical/high dependency findings in isolated changes;
    - `DONE 2026-08-28` recurring DB/uploads backup and isolated restore are
@@ -100,9 +101,10 @@ Complete in this order:
    - ADMIN has already handled RKO/PKO manually and automatic retry does not duplicate it;
    - delayed 1C recovery moves the case to the correct ADMIN state without blocking the employee;
    - notification disappears only when its underlying action is no longer active.
-   - verify employee push delivery on a real device; the dedicated production dispatcher is already active.
+   - verify one controlled transient push retry; ordinary iPhone delivery and
+     the dedicated production dispatcher are already confirmed.
 5. `NEXT` Verify the device matrix:
-   - installed PWA on the current iPhone;
+   - `DONE` installed PWA and repeated notification delivery on the current iPhone;
    - at least one supported Android device;
    - camera permission and QR scan;
    - push permission and delivery;

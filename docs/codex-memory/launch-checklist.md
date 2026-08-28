@@ -40,8 +40,9 @@ or device check, `[ ]` incomplete launch gate.
   Dedicated date tests, all domain suites, TypeScript and production build pass.
 - [~] Portal publication is separated from actual push delivery; transient
   failures retry with bounded backoff and delivery/no-subscription/configuration
-  outcomes are exposed by the dispatcher inspector. Apply the migration and
-  verify successful delivery plus one controlled retry on a real device.
+  outcomes are exposed by the dispatcher inspector. The production migration
+  and repeated real-iPhone delivery are verified through multi-day owner
+  testing; one controlled transient-failure retry remains to be proven.
 - [x] Critical/high production dependency findings are closed: production runs
   Next.js 15.5.24 and official SheetJS 0.20.3; `npm audit --omit=dev` is 0 and
   full regression/build pass.
@@ -64,10 +65,10 @@ or device check, `[ ]` incomplete launch gate.
   manual takeover guard; perform live safe failure/recovery drills.
 - [~] Cash operations can be retained locally during a connection failure;
   verify photo, amount and idempotency after reconnecting.
-- [~] Push/portal notifications and the dedicated one-minute dispatcher are
-  deployed; production timer health is confirmed. Truthful push state and retry
-  handling are implemented locally. Apply the migration, then verify real-device
-  delivery, one controlled retry, exact links and automatic lifecycle closure.
+- [~] Push/portal notifications, truthful delivery state and bounded retry are
+  deployed; production timer health and repeated delivery to the owner's real
+  iPhone are confirmed. Verify one controlled transient retry, exact links and
+  automatic lifecycle closure before the employee pilot.
 - [~] Terminal, credit, expense and reconciliation jobs exist; verify production
   timers and fresh logs immediately before pilot.
 - [~] Current production commit, running container, healthy timers and no fresh
@@ -88,8 +89,8 @@ or device check, `[ ]` incomplete launch gate.
 
 ## Device Gate
 
-- [~] Verify installed PWA, QR camera, screen-lock resume and push delivery on
-  the current iPhone.
+- [x] Installed PWA, QR workday use and repeated push delivery on the current
+  iPhone are confirmed through the owner's multi-day employee-role testing.
 - [ ] Verify the same path on at least one supported Android device.
 - [ ] Test Wi-Fi/mobile switching, weak connectivity and temporary full loss of
   internet.
