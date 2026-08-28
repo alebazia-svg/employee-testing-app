@@ -217,6 +217,23 @@ test('links a unique late same-day check but still rejects the wrong terminal', 
   assert.equal(only({ oneCChecks: [wrongTerminal] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
 });
 
+test('links a unique forward late check even when an unrelated earlier check has the same amount', () => {
+  const earlier = {
+    ...check, sourceRef: 'earlier-unrelated', dateTime: '2026-08-10T06:30:00.000Z',
+    fiscalDocumentNumber: 'fd-earlier', fiscalSign: 'fp-earlier',
+  };
+  const later = {
+    ...check, sourceRef: 'late-target', dateTime: '2026-08-10T07:56:00.000Z',
+    fiscalDocumentNumber: 'fd-later', fiscalSign: 'fp-later',
+  };
+  const laterReceipt = { ...receipt, fiscalDocumentNumber: 'fd-later', fiscalSign: 'fp-later' };
+  const result = only({ oneCChecks: [earlier, later], ofdReceipts: [laterReceipt] });
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.reasonCode, 'MATCH_CONFIRMED_LATE');
+  assert.equal(result.oneCCheckKey, 'late-target');
+  assert.equal(result.timeDifferenceSeconds, 56 * 60);
+});
+
 test('does not pair repeated same-day checks when one check predates its ordered payment', () => {
   const banks = [
     { ...bank, rrn: 'bank-a', transactionDate: '2026-08-10T07:00:00.000Z' },

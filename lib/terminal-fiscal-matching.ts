@@ -1,4 +1,4 @@
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.2';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.3';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
 
@@ -472,6 +472,36 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       context.candidates = [{ check, difference: Math.abs((timestamp(check.dateTime) ?? 0) - (timestamp(context.operation.transactionDate) ?? 0)) }];
     });
   }
+
+  // A bucket can contain an older same-amount 1C check which has no terminal
+  // operation in the current snapshot.  Do not let that unrelated earlier
+  // check block a single, unambiguous check created after the payment.  The
+  // wider window is bounded by the normal two-hour grace period and is used
+  // only when both sides have exactly one possible partner.
+  const unresolved = contexts.filter((context) => (
+    context.strictCandidateCount === 0 && context.candidates.length === 0
+    && context.mapping && context.operationType
+  ));
+  const forwardCandidates = new Map<Context, Array<{ check: OneCCheck; difference: number }>>();
+  for (const context of unresolved) {
+    const bankAt = timestamp(context.operation.transactionDate) ?? 0;
+    forwardCandidates.set(context, context.dayCandidates.filter(({ check }) => {
+      const checkAt = timestamp(check.dateTime) ?? 0;
+      return !strictCheckRefs.has(check.sourceRef)
+        && checkAt > bankAt
+        && checkAt - bankAt <= TERMINAL_FISCAL_GRACE_MS;
+    }));
+  }
+  const forwardUse = new Map<string, number>();
+  forwardCandidates.forEach((candidates) => candidates.forEach(({ check }) => (
+    forwardUse.set(check.sourceRef, (forwardUse.get(check.sourceRef) ?? 0) + 1)
+  )));
+  forwardCandidates.forEach((candidates, context) => {
+    if (candidates.length !== 1) return;
+    const candidate = candidates[0];
+    if ((forwardUse.get(candidate.check.sourceRef) ?? 0) !== 1) return;
+    context.candidates = [candidate];
+  });
 
   function hasExcludedMultipleCardCandidate(context: Context) {
     if (!context.mapping || !context.operationType) return false;
