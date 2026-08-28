@@ -1,6 +1,6 @@
 # Launch Checklist
 
-Last reviewed: 2026-08-26. Priority and future scope are owned by
+Last reviewed: 2026-08-28. Priority and future scope are owned by
 `master-plan.md`; this file is the release gate only.
 
 Status keys: `[x]` verified baseline, `[~]` implemented but still needs a live
@@ -26,11 +26,12 @@ or device check, `[ ]` incomplete launch gate.
 
 - [x] `npx tsc --noEmit` passes.
 - [x] `npm run build` passes.
-- [x] Workday tests pass (22/22 at the 2026-08-23 review).
-- [x] Credit-control tests pass (18/18 at the 2026-08-23 review).
-- [x] Expense-request tests pass (38/38 at the 2026-08-23 review).
-- [x] Terminal/acquiring tests pass (98/98 at the 2026-08-23 review).
-- [x] Payroll regression tests pass (10/10 at the 2026-08-23 review).
+- [x] Workday tests pass (38/38 at the 2026-08-28 review).
+- [x] Credit-control tests pass (20/20 at the 2026-08-28 review).
+- [x] Expense-request tests pass (38/38 at the 2026-08-28 review).
+- [x] Terminal/acquiring tests pass (108/108 at the 2026-08-28 review).
+- [x] Payroll regression tests pass (10/10 at the 2026-08-28 review).
+- [x] Dedicated 1C date tests pass (9/9 at the 2026-08-28 review).
 - [x] All current automated quality gates are green.
 
 ## Production Safety Gate
@@ -73,9 +74,12 @@ or device check, `[ ]` incomplete launch gate.
 - [~] Terminal, credit, expense and reconciliation jobs exist; verify production
   timers and fresh logs immediately before pilot.
 - [~] Current production commit, running container, healthy timers and no fresh
-  unexplained application errors were confirmed during the 2026-08-25 audit.
-  Add an application healthcheck, timer catch-up monitoring and a proven
-  rollback/restore path before marking complete.
+  unexplained application errors were reconfirmed on 2026-08-28. Production is
+  on the expected deployed commit; employee and ADMIN Workday routes return
+  HTTP 200.
+  Application healthcheck and infrastructure watchdog are implemented; deploy
+  and verify persistent terminal-finalization catch-up and its 36-hour freshness
+  check. Rehearse the application rollback path before marking complete.
 
 ## ADMIN Clarity Gate
 
@@ -97,10 +101,10 @@ or device check, `[ ]` incomplete launch gate.
   when an Android user actually enters the rollout.
 - [ ] Test Wi-Fi/mobile switching, weak connectivity and temporary full loss of
   internet.
-- [ ] Confirm that every offline or unavailable-source message states what was
-  saved, what will retry and what the employee must do now.
-- [ ] Document the boundary: cash-operation retention exists, but the whole PWA
-  is not guaranteed to operate without internet.
+- [x] Offline cash-operation and unavailable-1C wording states what was saved,
+  what will retry and whether the employee or ADMIN must act.
+- [x] The boundary is documented: cash-operation amount/photo retention exists,
+  but the whole PWA is not guaranteed to operate without internet.
 
 ## Real Employee Pilot Gate
 

@@ -1,6 +1,6 @@
 # Offonika Portal Master Plan
 
-Last reviewed: 2026-08-26.
+Last reviewed: 2026-08-28.
 
 This is the single operational roadmap for the portal. It separates accepted
 scope, launch blockers and future ideas so that a new idea does not silently
@@ -106,6 +106,10 @@ Complete in this order:
    - notification disappears only when its underlying action is no longer active.
    - verify one controlled transient push retry; ordinary iPhone delivery and
      the dedicated production dispatcher are already confirmed.
+   - `DONE 2026-08-28` code-level safety and regression verification: the full
+     Workday, terminal, credit, expense, payroll and 1C-date suites, TypeScript
+     and production build are green. This does not replace the remaining live
+     connectivity and dependency drills.
 5. `NEXT` Verify the device matrix:
    - `DONE` installed PWA and repeated notification delivery on the current iPhone;
    - Android is deferred until an Android device actually appears in the employee
