@@ -46,7 +46,7 @@ gate is complete, unless a newly discovered P0 defect makes the pilot unsafe.
 | Connectivity protection | `VERIFY` | Failed cash uploads can be retained on the phone and retried; this is not full offline PWA support. |
 | Credit receipt control | `VERIFY` | Deterministic 1C/OFD lifecycle and employee-safe exception wording are implemented; production observation remains required. |
 | Terminal/acquiring control | `VERIFY` | Rules fail closed, ambiguous cases remain ADMIN-only and employee attribution requires reliable evidence. |
-| Employee notifications | `VERIFY` | Portal publication and actual push delivery have separate lifecycle state; bounded retry and inspector diagnostics are deployed. Repeated delivery on the owner's real iPhone is confirmed; a controlled retry failure and Android remain to verify. |
+| Employee notifications | `VERIFY` | Portal publication and actual push delivery have separate lifecycle state; bounded retry and inspector diagnostics are deployed. Repeated delivery on the owner's real iPhone is confirmed; only a controlled retry failure remains in current device scope. |
 | ADMIN Telegram | `VERIFY` | Only events requiring owner attention should be duplicated; read state is separate from business-resolution state. |
 | Printable QR holders | `DONE` | Separate approved A5 Retail and Wholesale print layouts are available from ADMIN. |
 | Payroll | `DONE` for current process | Existing formulas and the agreed discipline rule remain unchanged. Direct 1C payroll and employee earnings are not part of launch. |
@@ -105,7 +105,8 @@ Complete in this order:
      the dedicated production dispatcher are already confirmed.
 5. `NEXT` Verify the device matrix:
    - `DONE` installed PWA and repeated notification delivery on the current iPhone;
-   - at least one supported Android device;
+   - Android is deferred until an Android device actually appears in the employee
+     rollout and does not block the current iPhone-only pilot;
    - camera permission and QR scan;
    - push permission and delivery;
    - app resume after screen lock/backgrounding;

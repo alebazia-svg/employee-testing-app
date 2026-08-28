@@ -91,7 +91,9 @@ or device check, `[ ]` incomplete launch gate.
 
 - [x] Installed PWA, QR workday use and repeated push delivery on the current
   iPhone are confirmed through the owner's multi-day employee-role testing.
-- [ ] Verify the same path on at least one supported Android device.
+- [x] Android is not part of the current launch device scope because neither the
+  owner nor the planned employees use Android. Run the same device check only
+  when an Android user actually enters the rollout.
 - [ ] Test Wi-Fi/mobile switching, weak connectivity and temporary full loss of
   internet.
 - [ ] Confirm that every offline or unavailable-source message states what was
