@@ -964,7 +964,7 @@ function ColleagueGroup({ title, people, tone, emptyLabel = 'Нет сотруд
         <div className='grid gap-1.5'>
           {people.map((person) => (
             <div key={person.id} className='employee-material-person flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
-              <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#111821] text-xs font-extrabold text-white'>
+              <span className='employee-material-person-avatar flex h-7 w-7 shrink-0 items-center justify-center text-[11px] font-extrabold'>
                 {initials(person.name)}
               </span>
               <span className='min-w-0 truncate text-sm font-bold text-slate-800'>{person.name}</span>
@@ -1395,7 +1395,7 @@ export function EmployeeTodayClient({
             <div className='grid gap-1'>
               {rows.map(({ person }) => (
                 <div key={person.id} className='flex min-w-0 items-center gap-2'>
-                  <span className='flex h-5 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-extrabold text-green-800 ring-1 ring-green-100'>
+                  <span className='employee-material-person-avatar flex h-6 w-6 shrink-0 items-center justify-center text-[9px] font-extrabold'>
                     {initials(person.name)}
                   </span>
                   <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
@@ -1472,7 +1472,7 @@ export function EmployeeTodayClient({
                   {colleagueRows.map(({ person, entry }) => (
                     <div key={person.id} className='employee-material-subcard flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
                       <div className='flex min-w-0 items-center gap-2'>
-                        <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-[11px] font-extrabold text-green-800'>
+                        <span className='employee-material-person-avatar flex h-6 w-6 shrink-0 items-center justify-center text-[9px] font-extrabold'>
                           {initials(person.name)}
                         </span>
                         <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
@@ -3139,8 +3139,8 @@ export function EmployeeTodayClient({
             </div>
           </div>
 
-          <div className='mt-3 grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2.5'>
-            <div className='employee-material-profile-avatar flex h-8 w-8 items-center justify-center text-[11px] font-black' aria-hidden='true'>
+          <div className='mt-3 grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2.5'>
+            <div className='employee-material-profile-avatar flex h-9 w-9 items-center justify-center text-[11px] font-black' aria-hidden='true'>
               {initials(user.name)}
             </div>
             <div className='employee-material-profile-copy min-w-0'>

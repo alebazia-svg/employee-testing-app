@@ -314,10 +314,18 @@ select {
 
 .employee-material-profile-avatar {
   color: #354147;
-  border: 1px solid rgba(255, 255, 255, 0.88);
-  border-radius: 11px;
-  background: linear-gradient(145deg, #f9f8f3, #dddcd6);
-  box-shadow: 3px 4px 8px rgba(86, 89, 86, 0.18), -2px -2px 6px rgba(255, 255, 255, 0.9);
+  border: 2px solid #354147;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #fbfaf6, #e6e5df);
+  box-shadow: 0 3px 8px rgba(66, 72, 74, 0.16), inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.employee-material-person-avatar {
+  color: #354147;
+  border: 1.5px solid #354147;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #fbfaf6, #e6e5df);
+  box-shadow: 0 2px 5px rgba(66, 72, 74, 0.13), inset 0 0 0 1px rgba(255, 255, 255, 0.68);
 }
 
 .employee-material-profile-copy p:first-child {
