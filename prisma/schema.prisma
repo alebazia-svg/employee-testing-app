@@ -24,6 +24,7 @@ model User {
   payrollAdjustments           PayrollAdjustment[]            @relation("PayrollAdjustmentCreatedBy")
   workSchedules                WorkScheduleEntry[]
   workDays                     WorkDayEntry[]
+  workdayStartIntents          WorkdayStartIntent[]
   shiftControlRuns             ShiftControlRun[]
   shiftControlManualReviews    ShiftControlManualReview[]     @relation("ShiftControlManualReviewReviewedBy")
   cashOperations               CashOperation[]
@@ -537,6 +538,24 @@ model WorkScheduleEntry {
   @@index([status])
 }
 
+model WorkdayStartIntent {
+  id           String        @id @default(cuid())
+  userId       Int
+  date         String
+  department   String
+  qrAcceptedAt DateTime      @default(now())
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workDay      WorkDayEntry?
+
+  @@unique([userId, date])
+  @@index([date, department])
+  @@index([expiresAt, consumedAt])
+}
+
 model WorkDayEntry {
   id                     Int                            @id @default(autoincrement())
   userId                 Int
@@ -547,13 +566,18 @@ model WorkDayEntry {
   shiftStartMinutes      Int?
   shiftEndMinutes        Int?
   startedAt              DateTime                       @default(now())
+  qrAcceptedAt           DateTime?
+  startIntentId          String?                        @unique
   endedAt                DateTime?
   lateMinutes            Int                            @default(0)
+  latenessPolicyVersion  String?
+  latenessShadowPointsX2 Int?
   comment                String                         @default("")
   status                 String                         @default("active")
   createdAt              DateTime                       @default(now())
   updatedAt              DateTime                       @updatedAt
   user                   User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startIntent            WorkdayStartIntent?            @relation(fields: [startIntentId], references: [id], onDelete: SetNull)
   shiftControlRun        ShiftControlRun?
   cashOperations         CashOperation[]
   kkmAssignments         WorkdayKkmAssignment[]

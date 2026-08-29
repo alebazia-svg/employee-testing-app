@@ -7,8 +7,15 @@ type WorkDayForSnapshot = Awaited<ReturnType<typeof prisma.workDayEntry.findFirs
 
 export function serializeWorkDayForEmployee(entry: WorkDayForSnapshot) {
   if (!entry) return null;
+  const {
+    startIntentId: _startIntentId,
+    qrAcceptedAt: _qrAcceptedAt,
+    latenessPolicyVersion: _latenessPolicyVersion,
+    latenessShadowPointsX2: _latenessShadowPointsX2,
+    ...employeeEntry
+  } = entry;
   return {
-    ...entry,
+    ...employeeEntry,
     startedAt: entry.startedAt.toISOString(),
     endedAt: entry.endedAt?.toISOString() ?? null,
     createdAt: entry.createdAt.toISOString(),

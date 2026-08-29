@@ -1,6 +1,7 @@
 'use client';
 
 import jsQR from 'jsqr';
+import { parseWorkdayQrDepartment } from '@/lib/workday-qr';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -330,16 +331,6 @@ const workdaySyncIntervalMs = 60_000;
 const scheduleSyncIntervalMs = 30_000;
 const workdaySyncTimeoutMs = 15_000;
 
-function parseWorkdayQrDepartment(value: string) {
-  const text = value.trim();
-  if (!text) return null;
-
-  const directMatch = text.match(/^offonika-workday-start:(retail|wholesale)$/i);
-  if (directMatch) return directMatch[1].toLowerCase();
-
-  return null;
-}
-
 function cameraErrorMessage(error: unknown) {
   if (!(error instanceof DOMException)) return 'Не удалось открыть камеру. Попробуйте ещё раз.';
   if (error.name === 'NotAllowedError' || error.name === 'SecurityError') return 'Доступ к камере запрещён. Разрешите камеру для портала и попробуйте снова.';
@@ -357,7 +348,7 @@ function WorkdayQrScanner({
 }: {
   userDepartment: string;
   onCancel: () => void;
-  onAccepted: (department: string) => void;
+  onAccepted: (result: { department: string; qrPayload: string }) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -421,7 +412,7 @@ function WorkdayQrScanner({
       }
       setState('found');
       stopCamera();
-      window.setTimeout(() => onAccepted(department), 350);
+      onAccepted({ department, qrPayload: code.data });
       return;
     }
 
@@ -1018,6 +1009,7 @@ export function EmployeeTodayClient({
   const [selectedShift, setSelectedShift] = useState('');
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const [qrDepartmentConfirmed, setQrDepartmentConfirmed] = useState<string | null>(null);
+  const [workdayStartIntentId, setWorkdayStartIntentId] = useState<string | null>(null);
   const [shiftPickerOpen, setShiftPickerOpen] = useState(false);
   const [comment, setComment] = useState('');
   const [staleCloseReason, setStaleCloseReason] = useState('');
@@ -1554,15 +1546,39 @@ export function EmployeeTodayClient({
       setError('QR-старт доступен только для розницы и опта');
       return;
     }
+    setQrDepartmentConfirmed(null);
+    setWorkdayStartIntentId(null);
     setQrScannerOpen(true);
   }
 
-  async function handleQrAccepted(department: string) {
+  async function handleQrAccepted({ department, qrPayload }: { department: string; qrPayload: string }) {
     setQrScannerOpen(false);
-    setQrDepartmentConfirmed(department);
     setMessage('');
     setError('');
-    setShiftPickerOpen(true);
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/workday/start-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qrPayload }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось подтвердить QR-код');
+      if (payload.alreadyStarted) {
+        window.location.reload();
+        return;
+      }
+      if (typeof payload.startIntentId !== 'string') throw new Error('Сервер не подтвердил начало рабочего дня');
+      setQrDepartmentConfirmed(department);
+      setWorkdayStartIntentId(payload.startIntentId);
+      setShiftPickerOpen(true);
+    } catch (reason) {
+      setQrDepartmentConfirmed(null);
+      setWorkdayStartIntentId(null);
+      setError(reason instanceof Error ? reason.message : 'Не удалось подтвердить QR-код');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function chooseShiftAfterQr(value: string) {
@@ -1588,15 +1604,25 @@ export function EmployeeTodayClient({
       setError('Выберите смену перед началом рабочего дня');
       return;
     }
+    if (!workdayStartIntentId) {
+      setError('QR-подтверждение не найдено. Отсканируйте код ещё раз.');
+      return;
+    }
     setIsSaving(true);
     try {
       const response = await fetch('/api/employee/workday/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shiftCode: shiftCodeOverride, comment }),
+        body: JSON.stringify({ shiftCode: shiftCodeOverride, comment, startIntentId: workdayStartIntentId }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Не удалось начать рабочий день');
+      if (!response.ok) {
+        if (response.status === 409) {
+          setQrDepartmentConfirmed(null);
+          setWorkdayStartIntentId(null);
+        }
+        throw new Error(payload.error || 'Не удалось начать рабочий день');
+      }
       // Safari/PWA can retain pre-start values in part of the React tree even
       // after the workday response is applied. Use the same full reload that
       // reliably refreshes these values when the employee does it manually.
@@ -3100,7 +3126,7 @@ export function EmployeeTodayClient({
               <div>
                 <p className='text-xs font-black uppercase tracking-[0.18em] text-green-700'>QR подтверждён</p>
                 <h2 className='mt-1 text-2xl font-black text-slate-950'>Выберите смену</h2>
-                <p className='mt-1 text-sm font-semibold text-slate-500'>Рабочий день начнётся сразу после выбора.</p>
+                <p className='mt-1 text-sm font-semibold text-slate-500'>Выберите свою смену на сегодня.</p>
               </div>
               <button
                 type='button'

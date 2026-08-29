@@ -1,10 +1,23 @@
+import { Prisma, type WorkDayEntry } from '@prisma/client';
 import { getCurrentUser } from '@/lib/auth';
+import { buildLatenessShadowSnapshot } from '@/lib/attendance-shadow';
 import { prisma } from '@/lib/prisma';
-import { getLateMinutes, getMoscowDateKey, getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl } from '@/lib/workday';
+import { getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl } from '@/lib/workday';
 import { scheduleTaskNotifications } from '@/lib/workday-notifications';
 
 async function ensureTaskNotifications(userId: number, date: string, tasks: Array<{ id: number; title: string; category: string; plannedTimeMinutes: number | null }>) {
   await scheduleTaskNotifications(prisma, tasks.map((task) => ({ ...task, userId, run: { date } })));
+}
+
+function employeeWorkDayResponse(entry: WorkDayEntry) {
+  const {
+    startIntentId: _startIntentId,
+    qrAcceptedAt: _qrAcceptedAt,
+    latenessPolicyVersion: _latenessPolicyVersion,
+    latenessShadowPointsX2: _latenessShadowPointsX2,
+    ...employeeEntry
+  } = entry;
+  return employeeEntry;
 }
 
 async function ensureShiftControlRun(user: { id: number; name: string; login: string; department: string }, workDay: { id: number; date: string; shiftCode: string }, now = new Date()) {
@@ -54,17 +67,24 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const payload = await req.json().catch(() => ({}));
-  const { shiftCode, comment } = payload;
+  const { shiftCode, comment, startIntentId } = payload;
   const shift = getShiftOption(typeof shiftCode === 'string' ? shiftCode : '');
   const now = new Date();
-  const date = getMoscowDateKey(now);
-  const lateMinutes = getLateMinutes(shift.startMinutes, getMoscowMinutes(now));
   const hasShiftControl = usesWorkdayShiftControl(user);
 
   if (hasShiftControl && !isShiftSupportedForDepartment(user.department, shift.code)) {
     return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
   }
 
+  if (typeof startIntentId !== 'string' || !startIntentId) {
+    return Response.json({ error: 'QR-подтверждение не найдено. Отсканируйте код ещё раз.' }, { status: 400 });
+  }
+
+  const intent = await prisma.workdayStartIntent.findUnique({ where: { id: startIntentId } });
+  if (!intent || intent.userId !== user.id || intent.department !== user.department) {
+    return Response.json({ error: 'QR-подтверждение недействительно. Отсканируйте код ещё раз.' }, { status: 400 });
+  }
+  const date = intent.date;
   const existing = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });
   if (existing) {
     const shiftControlRun =
@@ -73,12 +93,20 @@ export async function POST(req: Request) {
         : null;
     if (shiftControlRun) await ensureTaskNotifications(user.id, existing.date, shiftControlRun.tasks);
     return Response.json({
-      workDay: existing,
+      workDay: employeeWorkDayResponse(existing),
       shiftControlRun,
       alreadyStarted: true,
       message: 'Рабочий день уже начат',
     });
   }
+
+  if (intent.consumedAt || intent.expiresAt <= now) {
+    return Response.json({ error: 'Время выбора смены истекло. Отсканируйте QR ещё раз.' }, { status: 409 });
+  }
+
+  const qrAcceptedAt = intent.qrAcceptedAt;
+  const shadowResult = buildLatenessShadowSnapshot(shift.startMinutes, getMoscowMinutes(qrAcceptedAt));
+  const lateMinutes = shadowResult.lateMinutes;
 
   const kkmAssignment = user.department === 'retail'
     ? await prisma.workdayKkmAssignment.findFirst({ where: { userId: user.id, date, effectiveTo: null }, orderBy: { effectiveFrom: 'desc' } })
@@ -92,21 +120,41 @@ export async function POST(req: Request) {
     shiftLabel: shift.label,
     shiftStartMinutes: shift.startMinutes,
     shiftEndMinutes: shift.endMinutes,
-    startedAt: now,
+    startedAt: qrAcceptedAt,
+    qrAcceptedAt,
+    startIntentId: intent.id,
     lateMinutes,
+    latenessPolicyVersion: shadowResult.policyVersion,
+    latenessShadowPointsX2: shadowResult.pointsX2,
     comment: lateMinutes > 0 && typeof comment === 'string' ? comment.trim() : '',
     status: 'active',
   };
 
   if (!hasShiftControl) {
-    const workDay = await prisma.$transaction(async (tx) => {
-      const created = await tx.workDayEntry.create({ data: workDayData });
-      if (kkmAssignment) {
-        await tx.workdayKkmAssignment.update({ where: { id: kkmAssignment.id }, data: { workDayEntryId: created.id } });
+    try {
+      const workDay = await prisma.$transaction(async (tx) => {
+        const consumed = await tx.workdayStartIntent.updateMany({
+          where: { id: intent.id, userId: user.id, consumedAt: null, expiresAt: { gt: now } },
+          data: { consumedAt: now },
+        });
+        if (consumed.count !== 1) throw new Error('WORKDAY_START_INTENT_ALREADY_USED');
+        const created = await tx.workDayEntry.create({ data: workDayData });
+        if (kkmAssignment) {
+          await tx.workdayKkmAssignment.update({ where: { id: kkmAssignment.id }, data: { workDayEntryId: created.id } });
+        }
+        return created;
+      });
+      return Response.json({ workDay: employeeWorkDayResponse(workDay), alreadyStarted: false });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const racedWorkDay = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });
+        if (racedWorkDay) return Response.json({ workDay: employeeWorkDayResponse(racedWorkDay), alreadyStarted: true, message: 'Рабочий день уже начат' });
       }
-      return created;
-    });
-    return Response.json({ workDay, alreadyStarted: false });
+      if (error instanceof Error && error.message === 'WORKDAY_START_INTENT_ALREADY_USED') {
+        return Response.json({ error: 'QR-подтверждение уже использовано. Обновите экран.' }, { status: 409 });
+      }
+      throw error;
+    }
   }
 
   const template = await prisma.shiftControlTemplate.findFirst({
@@ -119,39 +167,56 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
   }
 
-  const { workDay, shiftControlRun } = await prisma.$transaction(async (tx) => {
-    const createdWorkDay = await tx.workDayEntry.create({ data: workDayData });
-    if (kkmAssignment) {
-      await tx.workdayKkmAssignment.update({ where: { id: kkmAssignment.id }, data: { workDayEntryId: createdWorkDay.id } });
-    }
+  try {
+    const { workDay, shiftControlRun } = await prisma.$transaction(async (tx) => {
+      const consumed = await tx.workdayStartIntent.updateMany({
+        where: { id: intent.id, userId: user.id, consumedAt: null, expiresAt: { gt: now } },
+        data: { consumedAt: now },
+      });
+      if (consumed.count !== 1) throw new Error('WORKDAY_START_INTENT_ALREADY_USED');
 
-    const createdShiftControlRun = await tx.shiftControlRun.create({
-      data: {
-        workDayEntryId: createdWorkDay.id,
-        userId: user.id,
-        department: user.department,
-        date,
-        templateId: template.id,
-        status: 'active',
-        startedAt: now,
-        tasks: {
-          create: template.tasks.map((task) => ({
-            templateTaskId: task.id,
-            title: task.title,
-            category: task.category,
-            sortOrder: task.sortOrder,
-            required: task.required,
-            plannedTimeMinutes: task.plannedTimeMinutes,
-            status: 'pending',
-          })),
+      const createdWorkDay = await tx.workDayEntry.create({ data: workDayData });
+      if (kkmAssignment) {
+        await tx.workdayKkmAssignment.update({ where: { id: kkmAssignment.id }, data: { workDayEntryId: createdWorkDay.id } });
+      }
+
+      const createdShiftControlRun = await tx.shiftControlRun.create({
+        data: {
+          workDayEntryId: createdWorkDay.id,
+          userId: user.id,
+          department: user.department,
+          date,
+          templateId: template.id,
+          status: 'active',
+          startedAt: now,
+          tasks: {
+            create: template.tasks.map((task) => ({
+              templateTaskId: task.id,
+              title: task.title,
+              category: task.category,
+              sortOrder: task.sortOrder,
+              required: task.required,
+              plannedTimeMinutes: task.plannedTimeMinutes,
+              status: 'pending',
+            })),
+          },
         },
-      },
-      include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
+        include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
+      });
+
+      return { workDay: createdWorkDay, shiftControlRun: createdShiftControlRun };
     });
 
-    return { workDay: createdWorkDay, shiftControlRun: createdShiftControlRun };
-  });
-
-  await ensureTaskNotifications(user.id, workDay.date, shiftControlRun.tasks);
-  return Response.json({ workDay, shiftControlRun, alreadyStarted: false });
+    await ensureTaskNotifications(user.id, workDay.date, shiftControlRun.tasks);
+    return Response.json({ workDay: employeeWorkDayResponse(workDay), shiftControlRun, alreadyStarted: false });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const racedWorkDay = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });
+      if (racedWorkDay) return Response.json({ workDay: employeeWorkDayResponse(racedWorkDay), alreadyStarted: true, message: 'Рабочий день уже начат' });
+    }
+    if (error instanceof Error && error.message === 'WORKDAY_START_INTENT_ALREADY_USED') {
+      return Response.json({ error: 'QR-подтверждение уже использовано. Обновите экран.' }, { status: 409 });
+    }
+    throw error;
+  }
 }

@@ -7,6 +7,7 @@ import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatShadowPoints } from '@/lib/attendance-shadow';
 import {
   terminalFiscalConfigurationProblem,
   terminalFiscalReasonLabel,
@@ -42,9 +43,13 @@ type ShiftRun = {
 type WorkDayInfo = {
   status: string;
   startedAt: string;
+  qrAcceptedAt: string | null;
+  createdAt: string;
   endedAt: string | null;
   shiftLabel: string;
   lateMinutes: number;
+  latenessPolicyVersion: string | null;
+  latenessShadowPointsX2: number | null;
   comment: string;
 } | null;
 
@@ -826,6 +831,10 @@ export function AdminShiftControlDetails({
   const [manualReviewSaving, setManualReviewSaving] = useState(false);
   const [cashControlSaving, setCashControlSaving] = useState(false);
   const canUseShiftControl = department === 'retail' || department === 'wholesale';
+  const shadowPolicyVersion = workDay?.latenessPolicyVersion ?? null;
+  const shadowPointsX2 = workDay?.latenessShadowPointsX2 ?? null;
+  const qrAcceptedAt = workDay?.qrAcceptedAt ?? null;
+  const workDayCreatedAt = workDay?.createdAt ?? null;
   const closeDetails = useCallback(() => {
     setSelectedPhoto(null);
     setManualReviewTarget(null);
@@ -1220,6 +1229,14 @@ export function AdminShiftControlDetails({
                         <dt className='font-semibold text-slate-500'>График</dt>
                         <dd className='font-extrabold text-slate-900'>{scheduleLabel}</dd>
                       </div>
+                      {shadowPolicyVersion && shadowPointsX2 !== null ? (
+                        <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
+                          <dt className='font-semibold text-slate-500'>Тестовая оценка</dt>
+                          <dd className='text-right font-extrabold text-slate-900'>
+                            {formatShadowPoints(shadowPointsX2 ?? 0)} · без влияния
+                          </dd>
+                        </div>
+                      ) : null}
                       <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
                         <dt className='font-semibold text-slate-500'>Смена</dt>
                         <dd className='font-extrabold text-slate-900'>{workDay?.shiftLabel ?? '—'}</dd>
@@ -1243,6 +1260,16 @@ export function AdminShiftControlDetails({
                       <div className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600'>
                         Комментарий: {workDay!.comment}
                       </div>
+                    ) : null}
+                    {qrAcceptedAt && workDayCreatedAt ? (
+                      <details className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600'>
+                        <summary className='cursor-pointer font-extrabold text-slate-700'>Диагностика входа</summary>
+                        <div className='mt-2 grid gap-1'>
+                          <p>QR принят сервером: {formatTime(qrAcceptedAt)}</p>
+                          <p>WorkDay создан: {formatTime(workDayCreatedAt)}</p>
+                          <p>Правило: {shadowPolicyVersion}</p>
+                        </div>
+                      </details>
                     ) : null}
                   </section>
 
