@@ -3,6 +3,12 @@ import 'server-only';
 import webpush from 'web-push';
 import { prisma } from '@/lib/prisma';
 
+export const ADMIN_INBOX_PUSH_READ_GRACE_MS = 30 * 60 * 1000;
+
+export function getAdminInboxPushReadGraceCutoff(now: Date) {
+  return new Date(now.getTime() - ADMIN_INBOX_PUSH_READ_GRACE_MS);
+}
+
 function configureWebPush() {
   const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim() ?? '';
   const privateKey = process.env.WEB_PUSH_VAPID_PRIVATE_KEY?.trim() ?? '';
@@ -14,8 +20,15 @@ function configureWebPush() {
 
 export async function dispatchAdminInboxWebPush(now = new Date()) {
   if (!configureWebPush()) throw new Error('WEB_PUSH_NOT_CONFIGURED');
+  const readGraceCutoff = getAdminInboxPushReadGraceCutoff(now);
   const receipts = await prisma.adminInboxReceipt.findMany({
-    where: { readAt: null, user: { role: 'ADMIN', isActive: true } },
+    where: {
+      user: { role: 'ADMIN', isActive: true },
+      OR: [
+        { readAt: null },
+        { createdAt: { gte: readGraceCutoff } },
+      ],
+    },
     include: { event: true, user: { include: { pushSubscriptions: { where: { disabledAt: null } } } } },
     orderBy: { createdAt: 'asc' },
     take: 100,

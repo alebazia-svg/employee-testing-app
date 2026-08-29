@@ -4,7 +4,12 @@ import type { Prisma } from '@prisma/client';
 
 type AdminInboxDb = Pick<Prisma.TransactionClient, 'user' | 'adminInboxEvent' | 'adminInboxReceipt' | 'adminInboxDelivery'>;
 
+export function isAdminInboxTelegramEnabled(env: Record<string, string | undefined> = process.env) {
+  return env.ADMIN_INBOX_TELEGRAM_ENABLED === '1';
+}
+
 export async function queueAdminInboxTelegramDelivery(input: { db: Pick<Prisma.TransactionClient, 'adminInboxDelivery'>; eventId: string }) {
+  if (!isAdminInboxTelegramEnabled()) return;
   await input.db.adminInboxDelivery.upsert({
     where: { eventId_channel_recipientKey: { eventId: input.eventId, channel: 'telegram', recipientKey: 'offonika_control_owner' } },
     create: { eventId: input.eventId, channel: 'telegram', recipientKey: 'offonika_control_owner' },
