@@ -341,13 +341,13 @@ The accepted MVP for starting a workday is QR inside the employee web app, not
 an external camera link as the main path.
 
 The static QR is a required operational start ritual and department gate. It is
-not independent evidence of physical presence: its payload can be copied and
-the current start endpoint does not receive a server-verifiable scan proof.
-Therefore portal start time and calculated lateness are useful ADMIN signals
-during the pilot, but must not automatically change payroll, discipline or a
-bonus. If stronger presence evidence is ever required, it needs a separate
-business decision and a server-verifiable mechanism rather than stronger claims
-about the current static QR.
+not independent evidence of physical presence because its payload can be
+copied. The portal now records server acceptance immediately after a valid QR
+scan and before shift selection. This is the authoritative operational start
+timestamp, but it remains shadow evidence during the pilot and must not change
+payroll, discipline or a bonus. If stronger presence evidence is ever required,
+it needs a separate business decision and a presence-verifiable mechanism
+rather than stronger claims about the current static QR.
 
 Current flow:
 
@@ -357,8 +357,33 @@ Current flow:
   - `offonika-workday-start:retail`;
   - `offonika-workday-start:wholesale`;
 - portal verifies the QR department matches the employee department;
+- the server creates or reuses a short-lived, one-day QR start intent and stores
+  `qrAcceptedAt` before the shift picker opens;
 - employee chooses one of the supported department shifts in a bottom sheet;
-- workday starts and the screen focuses on `Сейчас нужно`.
+- the start API atomically consumes the intent, creates one `WorkDayEntry`, uses
+  `qrAcceptedAt` as `startedAt`, calculates lateness against the selected shift
+  and creates the checklist run;
+- the screen focuses on `Сейчас нужно`.
+
+The automatic lateness result is stored with its exact policy version. The
+current provisional policy is `lateness-shadow-v1`; it is an immutable shadow
+snapshot, not a payroll instruction. Historical rows must never be silently
+recalculated when a future policy changes. Ordinary lateness is automatic;
+manual exception cases are a separate later workflow.
+
+The ADMIN Workday page also derives a department-level shadow check from the
+schedule and self-selected shifts. For one scheduled employee it expects the
+department long shift; for two it expects the approved early+late combination.
+This check is observational during partial rollout: it never blocks shift
+selection and never becomes an employee violation by itself.
+
+Future employee messages such as `приду позже`, `уйду раньше`, `отлучусь`,
+`не выйду` or another workday change must be stored as separate employee
+declarations, not as mutations of attendance facts. The future record should
+preserve its own `declaredAt`, intended event time/range, type, reason and
+whether it was submitted before, during or after the event; an optional ADMIN
+decision may classify the exception later. QR/start/end timestamps and the
+original automatic calculation remain unchanged regardless of that decision.
 
 The first employee screen is intentionally mobile-first and action-first:
 

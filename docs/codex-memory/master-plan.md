@@ -36,7 +36,7 @@ gate is complete, unless a newly discovered P0 defect makes the pilot unsafe.
 | Area | Status | Current accepted result |
 | --- | --- | --- |
 | PWA entry and navigation | `DONE` | Branded mobile login, PWA icon/manifest, compact Workday and Schedule navigation. |
-| Workday start | `DONE` | Department QR scan inside the PWA, supported shift selection and immediate action focus. |
+| Workday start | `VERIFY` | Department QR scan records server `qrAcceptedAt` before self-selected shift choice; WorkDay and lateness use that timestamp. Versioned lateness and department-combination results run in shadow mode only. |
 | Workday checklist | `DONE` | Supported templates only, no empty runs, reversible unfinished flow and audited corrections before handover. |
 | Schedule | `DONE` | Real Google Sheets schedule is imported into the portal as the temporary source while employees are not yet fully migrated. |
 | ADMIN structure | `DONE` | Main ADMIN, Inbox and Workday Control have distinct purposes and exception-first presentation. |
@@ -214,6 +214,9 @@ These are captured ideas, not accepted implementation tasks:
   instead of acquiring;
 - treatment of legitimate wholesale debt/credit payments in those controls;
 - a transparent employee earnings view and possible future bonus-event model;
+- one employee action for reporting a workday change (`приду позже`, `уйду
+  раньше`, `отлучусь`, `не выйду`, other), stored separately from immutable
+  attendance facts and any later ADMIN decision;
 - broader offline queues for workday actions beyond cash operations;
 - removal, archiving or repurposing of the remaining Analytics area;
 - future expansion of attestations and management knowledge-gap reporting.
