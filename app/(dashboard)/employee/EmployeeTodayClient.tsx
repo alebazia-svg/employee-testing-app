@@ -3841,8 +3841,9 @@ export function EmployeeTodayClient({
           )}
 
         </div>
+      </div>
 
-        <nav className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
+        <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
           <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
@@ -3866,7 +3867,6 @@ export function EmployeeTodayClient({
             })}
           </div>
         </nav>
-      </div>
     </main>
   );
 }
