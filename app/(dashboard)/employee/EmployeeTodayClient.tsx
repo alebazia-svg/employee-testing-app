@@ -3695,12 +3695,7 @@ export function EmployeeTodayClient({
 
           {activeTab === 'schedule' && (
             <div className='space-y-3'>
-              <Card className='space-y-3 p-3.5'>
-                <div className='flex items-center gap-2'>
-                  <span className='employee-material-heading-icon'><CalendarDays className='h-5 w-5 text-primary' /></span>
-                  <h2 className='text-xl font-extrabold text-slate-950'>График</h2>
-                </div>
-
+              <Card className='p-2.5'>
                 <div className='employee-material-segment grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1'>
                   {[
                     { id: 'list' as const, label: 'Список' },
@@ -3737,11 +3732,11 @@ export function EmployeeTodayClient({
               )}
 
               {scheduleMode === 'month' && (
-                <Card className='space-y-3 p-3'>
+                <Card className='space-y-2.5 p-2.5'>
                   <div className='flex items-center justify-between gap-2'>
                     <button
                       type='button'
-                      className='employee-material-calendar-nav flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
+                      className='employee-material-calendar-nav flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
                       onClick={() => {
                         const next = addMonths(calendarMonth, -1);
                         setCalendarMonth(next);
@@ -3751,10 +3746,28 @@ export function EmployeeTodayClient({
                     >
                       <ChevronLeft className='h-5 w-5' />
                     </button>
-                    <p className='text-base font-extrabold text-slate-950'>{monthTitle(calendarMonth)}</p>
+                    <div className='min-w-0 text-center'>
+                      <p className='truncate text-base font-extrabold text-slate-950'>{monthTitle(calendarMonth)}</p>
+                      {calendarMonth !== monthKeyFromDate(today) ? (
+                        <button
+                          type='button'
+                          className='mt-0.5 text-[11px] font-extrabold leading-none text-green-700'
+                          onClick={() => {
+                            setCalendarMonth(monthKeyFromDate(today));
+                            setSelectedScheduleDate(today);
+                          }}
+                        >
+                          К текущему месяцу
+                        </button>
+                      ) : (
+                        <p className='mt-0.5 text-[11px] font-bold leading-none text-slate-400'>
+                          {scheduleMonthLoading ? 'Обновляем…' : 'Текущий месяц'}
+                        </p>
+                      )}
+                    </div>
                     <button
                       type='button'
-                      className='employee-material-calendar-nav flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
+                      className='employee-material-calendar-nav flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
                       onClick={() => {
                         const next = addMonths(calendarMonth, 1);
                         setCalendarMonth(next);
@@ -3766,30 +3779,13 @@ export function EmployeeTodayClient({
                     </button>
                   </div>
 
-                  <div className='flex min-h-7 items-center justify-center'>
-                    {calendarMonth !== monthKeyFromDate(today) ? (
-                      <button
-                        type='button'
-                        className='rounded-lg px-3 py-1 text-xs font-extrabold text-green-700 hover:bg-green-50'
-                        onClick={() => {
-                          setCalendarMonth(monthKeyFromDate(today));
-                          setSelectedScheduleDate(today);
-                        }}
-                      >
-                        Перейти к сегодня
-                      </button>
-                    ) : (
-                      <span className='text-xs font-bold text-slate-400'>{scheduleMonthLoading ? 'Обновляем график…' : 'Текущий месяц'}</span>
-                    )}
-                  </div>
-
-                  <div className='grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-slate-500'>
+                  <div className='grid grid-cols-7 gap-0.5 text-center text-xs font-extrabold text-slate-500'>
                     {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => (
                       <span key={day}>{day}</span>
                     ))}
                   </div>
 
-                  <div className='grid grid-cols-7 gap-1'>
+                  <div className='grid grid-cols-7 gap-0.5'>
                     {calendarDays.map((cell) => {
                       const ownEntry = ownScheduleByDate.get(cell.date);
                       const workingInitials = getWorkingInitials(cell.date);
@@ -3809,7 +3805,7 @@ export function EmployeeTodayClient({
                           type='button'
                           onClick={() => setSelectedScheduleDate(cell.date)}
                           className={cn(
-                            'employee-material-calendar-day flex min-h-[60px] min-w-0 flex-col rounded-md p-1 text-left ring-1 transition hover:scale-[1.01]',
+                            'employee-material-calendar-day flex min-h-[50px] min-w-0 flex-col rounded-md p-1 text-left ring-1 transition hover:scale-[1.01]',
                             statusClass,
                             !cell.inMonth && 'opacity-40',
                             selected && 'ring-2 ring-primary shadow-[0_8px_18px_rgba(81,180,17,0.16)]',
