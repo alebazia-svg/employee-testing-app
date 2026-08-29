@@ -58,9 +58,9 @@ or device check, `[ ]` incomplete launch gate.
 - [~] The static department QR is explicitly a required start ritual and
   department gate, not independent proof of physical presence. Server
   `qrAcceptedAt`, versioned lateness shadow and a non-blocking department shift
-  combination check are implemented locally; after deployment verify the QR ->
-  shift -> WorkDay flow on the pilot iPhone. Shadow data cannot drive automatic
-  discipline or payroll consequences.
+  combination check were deployed with their additive migration on 2026-08-29;
+  verify the QR -> shift -> WorkDay timestamp on the pilot iPhone. Shadow data
+  cannot drive automatic discipline or payroll consequences.
 - [~] Explicit employee-to-1C cashbox mapping exists; verify every pilot
   participant before their first real shift.
 - [~] Upload persistence is designed around `portal-uploads`; perform one final
