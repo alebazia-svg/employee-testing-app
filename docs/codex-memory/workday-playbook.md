@@ -45,6 +45,28 @@ Shift choice is schedule-aware but never preassigned to a named employee:
 - missing or unsupported schedule topology fails open to the existing supported
   department shifts instead of blocking QR start.
 
+The employee Schedule tab now supports both a seven-day operational view and a
+full monthly grid. Employees explicitly mark future days as `Работаю` or
+`Выходной`; past days are read-only. Every change appends a
+`WorkScheduleChange` audit row. The monthly grid keeps employee initials and
+shows reduced staffing without forcing the employee to open every day.
+
+Retail and Wholesale use two people as the normal coverage target, but reduced
+or empty staffing never blocks an honest schedule change. A change below the
+target requires an explicit confirmation, creates an ADMIN Inbox event and
+offers other active department employees `Могу выйти` / `Не могу`. The request
+closes when normal coverage is restored. Do not silently extend the remaining
+employee's shift.
+
+Google Sheets remains the temporary schedule source during owner testing. The
+existing `schedule:import-google` command is a manual one-way import and can
+overwrite matching portal schedule rows; it is not an automatic sync. Always
+run it as a dry-run first, and do not schedule it blindly after employees begin
+editing the PWA. Before the employee pilot, implement and approve an explicit
+transition mode: Google -> portal while Google is authoritative, followed by a
+documented cutover that disables Google writes/imports when the PWA becomes the
+source of truth.
+
 An employee may correct a mistaken shift during the first five minutes after
 WorkDay creation only while the checklist is untouched and no cash operation or
 control issue exists. The original server `qrAcceptedAt` never changes. The

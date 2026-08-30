@@ -38,7 +38,7 @@ gate is complete, unless a newly discovered P0 defect makes the pilot unsafe.
 | PWA entry and navigation | `DONE` | Branded mobile login, PWA icon/manifest, compact Workday and Schedule navigation. |
 | Workday start | `VERIFY` | Department QR scan records server `qrAcceptedAt` before shift choice; WorkDay and lateness use that timestamp. Shift choice is schedule-aware without assigning named employees in advance: a solo worker receives the long department shift, the first of two chooses either paired shift and the second receives the remaining one. A five-minute audited correction rebuilds an untouched checklist without changing QR time. Stale schedules fail safely through an explicit solo-worker override; lateness remains shadow-only. |
 | Workday checklist | `DONE` | Supported templates only, no empty runs, reversible unfinished flow and audited corrections before handover. |
-| Schedule | `DONE` | Real Google Sheets schedule is imported into the portal as the temporary source while employees are not yet fully migrated. |
+| Schedule | `VERIFY` | Mobile seven-day and monthly views, explicit work/off editing, first-name display, audit history and non-blocking replacement requests are deployed. Google Sheets remains the temporary source during owner testing; a guarded Google -> portal sync and explicit source-of-truth cutover are still required before the employee pilot. |
 | ADMIN structure | `DONE` | Main ADMIN, Inbox and Workday Control have distinct purposes and exception-first presentation. |
 | Required issues | `DONE` | Active issues remain visible after notification read and close only after factual resolution. |
 | Cash recount | `DONE` | Employee records the physical fact; hidden 1C evidence and differences remain on the ADMIN side. |

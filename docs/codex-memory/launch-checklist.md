@@ -66,6 +66,11 @@ or device check, `[ ]` incomplete launch gate.
   cannot drive automatic discipline or payroll consequences.
 - [~] Explicit employee-to-1C cashbox mapping exists; verify every pilot
   participant before their first real shift.
+- [~] Employee schedule editing, monthly overview, audited changes and
+  non-blocking replacement requests are deployed. During owner testing Google
+  Sheets remains authoritative. Before the employee pilot, verify a guarded
+  Google -> portal synchronization and document the cutover that disables the
+  import when the PWA becomes authoritative.
 - [~] Upload persistence is designed around `portal-uploads`; perform one final
   upload/rebuild/readback drill.
 - [~] Encashment uses an idempotent RKO/PKO pair, deferred reconciliation and a
