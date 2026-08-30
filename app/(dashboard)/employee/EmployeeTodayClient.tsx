@@ -3669,11 +3669,16 @@ export function EmployeeTodayClient({
             <div className='space-y-3'>
               {!workDay && !unfinished && (
                 <Card className='space-y-3 p-4'>
-                  <div className='min-w-0'>
-                    <h2 className='text-xl font-black leading-tight text-slate-950'>Начать рабочий день</h2>
-                    <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
-                      Отсканируйте QR-код отдела на рабочем месте.
-                    </p>
+                  <div className='flex items-center gap-3'>
+                    <span className='employee-material-heading-icon text-primary'>
+                      <Clock className='h-6 w-6' />
+                    </span>
+                    <div className='min-w-0'>
+                      <h2 className='text-xl font-black leading-tight text-slate-950'>Начать рабочий день</h2>
+                      <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
+                        Отсканируйте QR-код отдела на рабочем месте.
+                      </p>
+                    </div>
                   </div>
                   <Button
                     type='button'
