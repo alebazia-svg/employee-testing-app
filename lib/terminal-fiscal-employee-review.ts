@@ -180,13 +180,16 @@ export function evaluateTerminalFiscalGlobalPeriodCoverage(input: {
   if (relevantRecords.some((item) => !item.sourceCompleteness.tbank || !item.sourceCompleteness.oneC)) {
     return { state: 'incomplete', reason: 'PERIOD_SOURCE_INCOMPLETE', ...base, oneCCount: 0, oneCSumKopecks: 0 };
   }
+  const knownCashRegisters = new Set(input.context.mappings.map((mapping) => mapping.oneCCashRegisterRef));
+  const knownAcquiringTerminals = new Set(input.context.mappings.map((mapping) => mapping.oneCAcquiringTerminalRef));
   const eligibleChecks = input.context.oneCChecks.filter((check) => {
     const type = eligibleOneCOperationType(check);
     if (type === null || check.cardPayments.length !== 1 || check.cardPayments[0].amountKopecks <= 0) return false;
-    return input.context.mappings.some((mapping) => (
-      check.cashRegisterRef === mapping.oneCCashRegisterRef
-      && check.cardPayments[0].acquiringTerminalRef === mapping.oneCAcquiringTerminalRef
-    ));
+    // The employee may temporarily use either of the two known terminals with
+    // either of the two known KKM. For the employee-notification guard the
+    // equipment topology is a set, not two permanently coupled pairs.
+    return knownCashRegisters.has(check.cashRegisterRef)
+      && knownAcquiringTerminals.has(check.cardPayments[0].acquiringTerminalRef);
   });
   const oneCBase = {
     oneCCount: eligibleChecks.length,
@@ -207,6 +210,15 @@ export function evaluateTerminalFiscalGlobalPeriodCoverage(input: {
   }
   if (sameOneC.length >= sameBank.length) return { state: 'covered', reason: 'PERIOD_OPERATION_COVERED', ...base, ...oneCBase };
   if (sameOneC.length > 0) return { state: 'ambiguous', reason: 'PERIOD_PARTIAL_BUCKET_COVERAGE', ...base, ...oneCBase };
+  const oppositeType = input.record.operationType === 'sale' ? 'refund' : 'sale';
+  const oppositeBucket = coverageBucket(oppositeType, input.record.amountKopecks);
+  const oppositeBank = unmatchedRecords.filter((item) => coverageBucket(item.operationType ?? '', item.amountKopecks) === oppositeBucket);
+  const oppositeOneC = availableChecks.filter((check) => (
+    coverageBucket(eligibleOneCOperationType(check) ?? '', check.cardPayments[0].amountKopecks) === oppositeBucket
+  ));
+  if (oppositeBank.length > 0 && oppositeOneC.length === 0) {
+    return { state: 'ambiguous', reason: 'PERIOD_REVERSAL_PAIR', ...base, ...oneCBase };
+  }
   return { state: 'uncovered', reason: 'PERIOD_OPERATION_UNCOVERED', ...base, ...oneCBase };
 }
 

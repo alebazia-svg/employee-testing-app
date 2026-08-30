@@ -246,6 +246,32 @@ test('global coverage across both KKM prevents a false missing-check error after
   }), { action: 'resolve', reason: 'PERIOD_OPERATION_COVERED' });
 });
 
+test('global coverage accepts either known terminal on either known KKM', () => {
+  const otherMapping: TerminalMapping = {
+    id: 'mapping-2', terminalKey: 'terminal-2', oneCAcquiringTerminalRef: 'acquiring-2',
+    oneCCashRegisterRef: 'kkm-2', kktRegistrationNumber: 'kkt-2', activeFrom: mapping.activeFrom,
+  };
+  const target = record({ matchingKey: 'bank-cross-equipment-300', amountKopecks: 30_000 });
+  const crossed = check({ ref: 'crossed-300', cashRegisterRef: 'kkm-1', amountKopecks: 30_000 });
+  crossed.cardPayments[0].acquiringTerminalRef = 'acquiring-2';
+  assert.equal(evaluateTerminalFiscalGlobalPeriodCoverage({
+    record: target,
+    context: { records: [target], mappings: [mapping, otherMapping], oneCChecks: [crossed] },
+  }).state, 'covered');
+});
+
+test('global coverage keeps an unmatched sale/refund pair ADMIN-only', () => {
+  const sale = record({ matchingKey: 'bank-sale-300', amountKopecks: 30_000 });
+  const refund = record({ matchingKey: 'bank-refund-300', operationType: 'refund', amountKopecks: 30_000 });
+  const coverage = evaluateTerminalFiscalGlobalPeriodCoverage({
+    record: sale,
+    context: { records: [sale, refund], mappings: [mapping], oneCChecks: [] },
+  });
+  assert.deepEqual({ state: coverage.state, reason: coverage.reason }, {
+    state: 'ambiguous', reason: 'PERIOD_REVERSAL_PAIR',
+  });
+});
+
 test('global coverage compares amount buckets, so equal grand totals cannot hide a missing check', () => {
   const target = record({ matchingKey: 'bank-300', amountKopecks: 30_000 });
   const peer = record({ matchingKey: 'bank-500', amountKopecks: 50_000 });

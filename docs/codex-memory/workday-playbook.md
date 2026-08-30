@@ -192,8 +192,10 @@ The integration provides:
 
 Employee delivery for the neutral missing-check review is enabled in production.
 After the first complete 1C read at least fifteen minutes after the bank operation,
-the runner first applies an aggregate per-terminal/KKM guard. If no distinct 1C
-card check of the same operation type and amount covers the operation, it sends
+the runner first applies one aggregate guard across every active retail terminal
+and KKM. Either known terminal may be used with either known KKM; the guard
+compares one-to-one operation-type/amount buckets and does not require the usual
+terminal/KKM pair. If no distinct 1C card check covers the operation, it sends
 the review to the employee assigned to that mapped KKM at the operation time.
 This is operational responsibility for the workstation, not an assertion that
 the employee personally made or omitted the missing check. If no dated KKM
