@@ -77,6 +77,17 @@ offers other active department employees `Могу выйти` / `Не могу`
 closes when normal coverage is restored. Do not silently extend the remaining
 employee's shift.
 
+Coverage confirmation and replacement requests apply only when an employee
+changes an already confirmed day from `Работаю` to `Выходной`. Initial schedule
+completion (`пусто -> Работаю` or `пусто -> Выходной`) is a declaration, not a
+staffing withdrawal: it must not show a false shortage warning, create an ADMIN
+event or notify colleagues merely because their dates are still unfilled.
+Initial monthly saves remain push-silent. A bulk edit that changes confirmed
+working dates to days off creates at most one monthly replacement digest per
+eligible colleague, rather than one push per affected date. Explicit single-day
+`Работаю -> Выходной` changes keep the date-specific deduplicated replacement
+lifecycle.
+
 Google Sheets remains the temporary schedule source during owner testing. The
 existing `schedule:import-google` command is a manual one-way import and can
 overwrite matching portal schedule rows; it is not an automatic sync. Always
