@@ -51,6 +51,14 @@ type WorkDayInfo = {
   latenessPolicyVersion: string | null;
   latenessShadowPointsX2: number | null;
   comment: string;
+  shiftChanges: Array<{
+    source: string;
+    fromShiftLabel: string;
+    toShiftLabel: string;
+    fromLateMinutes: number;
+    toLateMinutes: number;
+    changedAt: string;
+  }>;
 } | null;
 
 type Props = {
@@ -1259,6 +1267,15 @@ export function AdminShiftControlDetails({
                     {workDay?.comment ? (
                       <div className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600'>
                         Комментарий: {workDay!.comment}
+                      </div>
+                    ) : null}
+                    {workDay?.shiftChanges.length ? (
+                      <div className='mt-3 rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-900'>
+                        {workDay!.shiftChanges.map((change, index) => (
+                          <p key={`${change.changedAt}-${index}`}>
+                            Смена исправлена {formatTime(change.changedAt)}: {change.fromShiftLabel} → {change.toShiftLabel}; опоздание {change.fromLateMinutes} → {change.toLateMinutes} мин.
+                          </p>
+                        ))}
                       </div>
                     ) : null}
                     {qrAcceptedAt && workDayCreatedAt ? (

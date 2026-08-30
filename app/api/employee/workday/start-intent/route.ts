@@ -2,6 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey } from '@/lib/workday';
 import { parseWorkdayQrDepartment, workdayStartIntentExpiresAt } from '@/lib/workday-qr';
+import { loadWorkdayShiftSelection, workdayShiftSelectionHint } from '@/lib/workday-shift-selection';
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -28,6 +29,12 @@ export async function POST(req: Request) {
     });
   }
 
+  const shiftSelection = await loadWorkdayShiftSelection(prisma, {
+    department: user.department,
+    currentUserId: user.id,
+    date,
+  });
+
   const existingIntent = await prisma.workdayStartIntent.findUnique({ where: { userId_date: { userId: user.id, date } } });
   if (existingIntent && !existingIntent.consumedAt && existingIntent.expiresAt > now) {
     return Response.json({
@@ -35,6 +42,8 @@ export async function POST(req: Request) {
       qrAcceptedAt: existingIntent.qrAcceptedAt.toISOString(),
       expiresAt: existingIntent.expiresAt.toISOString(),
       reused: true,
+      shiftSelection,
+      shiftSelectionHint: workdayShiftSelectionHint(shiftSelection),
     });
   }
 
@@ -60,5 +69,7 @@ export async function POST(req: Request) {
     qrAcceptedAt: intent.qrAcceptedAt.toISOString(),
     expiresAt: intent.expiresAt.toISOString(),
     reused: false,
+    shiftSelection,
+    shiftSelectionHint: workdayShiftSelectionHint(shiftSelection),
   });
 }

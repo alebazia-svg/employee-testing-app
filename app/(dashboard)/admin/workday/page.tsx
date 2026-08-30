@@ -1105,7 +1105,10 @@ export default async function AdminWorkdayPage(
       },
     }),
     prisma.workScheduleEntry.findMany({ where: { date: selectedDate } }),
-    prisma.workDayEntry.findMany({ where: { date: selectedDate } }),
+    prisma.workDayEntry.findMany({
+      where: { date: selectedDate },
+      include: { shiftChanges: { orderBy: { changedAt: 'asc' } } },
+    }),
     prisma.shiftControlRun.findMany({
       where: { date: selectedDate },
       include: {
@@ -1726,6 +1729,14 @@ export default async function AdminWorkdayPage(
                             latenessPolicyVersion: row.workDay.latenessPolicyVersion,
                             latenessShadowPointsX2: row.workDay.latenessShadowPointsX2,
                             comment: row.workDay.comment,
+                            shiftChanges: row.workDay.shiftChanges.map((change) => ({
+                              source: change.source,
+                              fromShiftLabel: change.fromShiftLabel,
+                              toShiftLabel: change.toShiftLabel,
+                              fromLateMinutes: change.fromLateMinutes,
+                              toLateMinutes: change.toLateMinutes,
+                              changedAt: change.changedAt.toISOString(),
+                            })),
                           } : null}
                           dateKey={selectedDate}
                           autoChecks={row.autoChecks}

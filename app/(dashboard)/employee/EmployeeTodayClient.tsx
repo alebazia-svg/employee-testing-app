@@ -153,6 +153,7 @@ type WorkDayEntry = {
   lateMinutes: number;
   comment: string;
   status: string;
+  createdAt?: string | Date;
 };
 
 type DepartmentWorkdayPresence = Pick<WorkDayEntry, 'userId' | 'date' | 'status' | 'startedAt' | 'endedAt'>;
@@ -1010,6 +1011,12 @@ export function EmployeeTodayClient({
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const [qrDepartmentConfirmed, setQrDepartmentConfirmed] = useState<string | null>(null);
   const [workdayStartIntentId, setWorkdayStartIntentId] = useState<string | null>(null);
+  const [startShiftCodes, setStartShiftCodes] = useState<string[] | null>(null);
+  const [startExceptionShiftCodes, setStartExceptionShiftCodes] = useState<string[]>([]);
+  const [shiftSelectionHint, setShiftSelectionHint] = useState('Выберите свою смену на сегодня.');
+  const [shiftCorrectionOpen, setShiftCorrectionOpen] = useState(false);
+  const [shiftCorrectionCodes, setShiftCorrectionCodes] = useState<string[]>([]);
+  const [shiftCorrectionHint, setShiftCorrectionHint] = useState('');
   const [shiftPickerOpen, setShiftPickerOpen] = useState(false);
   const [comment, setComment] = useState('');
   const [staleCloseReason, setStaleCloseReason] = useState('');
@@ -1095,6 +1102,9 @@ export function EmployeeTodayClient({
   const activeWorkDay = workDay && !isCompleted ? workDay : null;
   const displayedWorkDayStatus = isCompleted ? 'completed' : workDay?.status;
   const availableShiftOptions = getShiftOptionsForDepartment(user.department);
+  const availableStartShiftOptions = startShiftCodes
+    ? availableShiftOptions.filter((shift) => startShiftCodes.includes(shift.code))
+    : availableShiftOptions;
   const selectedShiftOption = availableShiftOptions.find((shift) => shift.code === selectedShift);
   const elapsedMs = getElapsed(workDay, displayNow);
   const elapsedLabel = formatDuration(elapsedMs);
@@ -1103,6 +1113,10 @@ export function EmployeeTodayClient({
   const shiftEnd = workDay ? workDay.shiftEndMinutes : selectedShiftOption?.endMinutes;
   const shiftControlEnabled = usesWorkdayShiftControl(user);
   const canUseCashOperations = shiftControlEnabled;
+  const shiftCorrectionWindowOpen = Boolean(
+    activeWorkDay?.createdAt
+    && displayNow.getTime() <= new Date(activeWorkDay.createdAt).getTime() + 5 * 60_000,
+  );
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
   const syncCurrentWorkdayState = useCallback(async (replaceInFlight = false) => {
@@ -1548,6 +1562,9 @@ export function EmployeeTodayClient({
     }
     setQrDepartmentConfirmed(null);
     setWorkdayStartIntentId(null);
+    setStartShiftCodes(null);
+    setStartExceptionShiftCodes([]);
+    setShiftSelectionHint('Выберите свою смену на сегодня.');
     setQrScannerOpen(true);
   }
 
@@ -1571,11 +1588,58 @@ export function EmployeeTodayClient({
       if (typeof payload.startIntentId !== 'string') throw new Error('Сервер не подтвердил начало рабочего дня');
       setQrDepartmentConfirmed(department);
       setWorkdayStartIntentId(payload.startIntentId);
+      setStartShiftCodes(Array.isArray(payload.shiftSelection?.allowedShiftCodes) ? payload.shiftSelection.allowedShiftCodes : null);
+      setStartExceptionShiftCodes(Array.isArray(payload.shiftSelection?.exceptionShiftCodes) ? payload.shiftSelection.exceptionShiftCodes : []);
+      setShiftSelectionHint(typeof payload.shiftSelectionHint === 'string' ? payload.shiftSelectionHint : 'Выберите свою смену на сегодня.');
       setShiftPickerOpen(true);
     } catch (reason) {
       setQrDepartmentConfirmed(null);
       setWorkdayStartIntentId(null);
+      setStartShiftCodes(null);
+      setStartExceptionShiftCodes([]);
       setError(reason instanceof Error ? reason.message : 'Не удалось подтвердить QR-код');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function openShiftCorrection() {
+    setError('');
+    setMessage('');
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/workday/change-shift', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось проверить доступные смены');
+      if (!payload.canCorrect || !Array.isArray(payload.allowedShiftCodes) || payload.allowedShiftCodes.length === 0) {
+        throw new Error('Самостоятельное исправление уже недоступно. Обратитесь к администратору.');
+      }
+      setShiftCorrectionCodes(payload.allowedShiftCodes);
+      setShiftCorrectionHint(typeof payload.hint === 'string' ? payload.hint : 'Выберите правильную смену.');
+      setShiftCorrectionOpen(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось открыть исправление смены');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function correctShift(toShiftCode: string) {
+    setError('');
+    setMessage('');
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/workday/change-shift', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toShiftCode }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось исправить смену');
+      setShiftCorrectionOpen(false);
+      window.location.reload();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось исправить смену');
     } finally {
       setIsSaving(false);
     }
@@ -3126,7 +3190,7 @@ export function EmployeeTodayClient({
               <div>
                 <p className='text-xs font-black uppercase tracking-[0.18em] text-green-700'>QR подтверждён</p>
                 <h2 className='mt-1 text-2xl font-black text-slate-950'>Выберите смену</h2>
-                <p className='mt-1 text-sm font-semibold text-slate-500'>Выберите свою смену на сегодня.</p>
+                <p className='mt-1 text-sm font-semibold text-slate-500'>{shiftSelectionHint}</p>
               </div>
               <button
                 type='button'
@@ -3137,7 +3201,7 @@ export function EmployeeTodayClient({
               </button>
             </div>
             <div className='mt-5 grid gap-2'>
-              {availableShiftOptions.map((shift) => (
+              {availableStartShiftOptions.map((shift) => (
                 <button
                   key={shift.code}
                   type='button'
@@ -3147,6 +3211,58 @@ export function EmployeeTodayClient({
                 >
                   <span>{shiftLabel(shift.code)}</span>
                   <span className='text-xs font-extrabold uppercase text-green-700'>Начать</span>
+                </button>
+              ))}
+              {startExceptionShiftCodes.length > 0 && (
+                <div className='mt-2 border-t border-slate-200 pt-3'>
+                  <p className='mb-2 text-xs font-bold leading-relaxed text-slate-500'>Если график не обновили и сегодня в отделе один сотрудник:</p>
+                  {availableShiftOptions.filter((shift) => startExceptionShiftCodes.includes(shift.code)).map((shift) => (
+                    <button
+                      key={shift.code}
+                      type='button'
+                      disabled={isSaving}
+                      onClick={() => void chooseShiftAfterQr(shift.code)}
+                      className='employee-material-choice flex min-h-12 w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 text-left text-sm font-extrabold text-slate-800 transition active:scale-[0.99] disabled:opacity-60'
+                    >
+                      <span>Сегодня один сотрудник · {shiftLabel(shift.code)}</span>
+                      <span className='text-xs font-extrabold text-green-700'>Начать</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {shiftCorrectionOpen && workDay && (
+        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]'>
+          <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
+            <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+            <div className='flex items-start justify-between gap-3'>
+              <div>
+                <p className='text-xs font-black uppercase tracking-[0.18em] text-green-700'>Исправление доступно 5 минут</p>
+                <h2 className='mt-1 text-2xl font-black text-slate-950'>Выберите правильную смену</h2>
+                <p className='mt-1 text-sm font-semibold text-slate-500'>{shiftCorrectionHint}</p>
+              </div>
+              <button
+                type='button'
+                onClick={() => setShiftCorrectionOpen(false)}
+                className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600'
+              >
+                <ChevronDown className='h-5 w-5' />
+              </button>
+            </div>
+            <div className='mt-5 grid gap-2'>
+              {availableShiftOptions.filter((shift) => shiftCorrectionCodes.includes(shift.code)).map((shift) => (
+                <button
+                  key={shift.code}
+                  type='button'
+                  disabled={isSaving}
+                  onClick={() => void correctShift(shift.code)}
+                  className='employee-material-choice flex min-h-14 items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 text-left text-base font-black text-slate-950 transition active:scale-[0.99] disabled:opacity-60'
+                >
+                  <span>{shiftLabel(shift.code)}</span>
+                  <span className='text-xs font-extrabold uppercase text-green-700'>Исправить</span>
                 </button>
               ))}
             </div>
@@ -3692,6 +3808,16 @@ export function EmployeeTodayClient({
                   <DetailItem label='Окончание' value={workDay?.endedAt ? formatTime(workDay.endedAt) : 'не указано'} />
                   <DetailItem label='Опоздание' value={workDay?.lateMinutes ? `${workDay.lateMinutes} мин` : 'нет'} />
                 </div>
+                {shiftCorrectionWindowOpen && (
+                  <button
+                    type='button'
+                    onClick={() => void openShiftCorrection()}
+                    disabled={isSaving}
+                    className='mt-3 text-xs font-extrabold text-green-700 underline decoration-green-300 underline-offset-4 disabled:opacity-50'
+                  >
+                    Выбрали не ту смену? Исправить
+                  </button>
+                )}
               </Card>
 
               <Card className='space-y-2.5 p-4'>

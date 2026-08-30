@@ -43,6 +43,7 @@ model User {
   workdayIssueMessages         WorkdayControlIssueMessage[]   @relation("WorkdayControlIssueMessageAuthor")
   workdayCloseRequests         WorkdayCloseExceptionRequest[] @relation("WorkdayCloseExceptionEmployee")
   decidedWorkdayCloseRequests  WorkdayCloseExceptionRequest[] @relation("WorkdayCloseExceptionDecidedBy")
+  workdayShiftChanges          WorkdayShiftChange[]
 }
 
 model ExpenseRequestSyncRun {
@@ -582,11 +583,35 @@ model WorkDayEntry {
   cashOperations         CashOperation[]
   kkmAssignments         WorkdayKkmAssignment[]
   closeExceptionRequests WorkdayCloseExceptionRequest[]
+  shiftChanges           WorkdayShiftChange[]
 
   @@unique([userId, date])
   @@index([date])
   @@index([department, date])
   @@index([status])
+}
+
+model WorkdayShiftChange {
+  id                    String       @id @default(cuid())
+  workDayEntryId        Int
+  userId                Int
+  source                String       @default("employee")
+  fromShiftCode         String
+  fromShiftLabel        String
+  toShiftCode           String
+  toShiftLabel          String
+  fromLateMinutes       Int
+  toLateMinutes         Int
+  fromShadowPointsX2    Int?
+  toShadowPointsX2      Int?
+  latenessPolicyVersion String?
+  changedAt             DateTime     @default(now())
+  createdAt             DateTime     @default(now())
+  workDayEntry          WorkDayEntry @relation(fields: [workDayEntryId], references: [id], onDelete: Cascade)
+  user                  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workDayEntryId, changedAt])
+  @@index([userId, changedAt])
 }
 
 model CashOperation {

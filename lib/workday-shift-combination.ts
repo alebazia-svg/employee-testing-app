@@ -12,7 +12,7 @@ export type ShiftCombinationEvaluation = {
   unexpectedStartCount: number;
 };
 
-const expectedByDepartmentAndCount: Record<Department, Record<number, string[]>> = {
+export const expectedByDepartmentAndCount: Record<Department, Record<number, string[]>> = {
   retail: {
     1: ['09_20'],
     2: ['09_18', '11_20'],
@@ -37,7 +37,8 @@ export function evaluateDepartmentShiftCombination(input: {
 
   let status: ShiftCombinationStatus = 'unavailable';
   if (expectedShiftCodes.length > 0) {
-    if (unexpectedStartCount > 0 || scheduledStarts.length > scheduledIds.size) status = 'mismatch';
+    const hasUnexpectedShift = actualShiftCodes.some((code) => !expectedShiftCodes.includes(code));
+    if (unexpectedStartCount > 0 || scheduledStarts.length > scheduledIds.size || hasUnexpectedShift) status = 'mismatch';
     else if (scheduledStarts.length < scheduledIds.size) status = 'waiting';
     else status = actualShiftCodes.join('|') === expectedSorted.join('|') ? 'valid' : 'mismatch';
   }

@@ -4,6 +4,34 @@ import { buildLatenessShadowSnapshot } from '@/lib/attendance-shadow';
 import { prisma } from '@/lib/prisma';
 import { getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl } from '@/lib/workday';
 import { scheduleTaskNotifications } from '@/lib/workday-notifications';
+import { loadWorkdayShiftSelection, permittedWorkdayShiftCodes } from '@/lib/workday-shift-selection';
+
+const SHIFT_NO_LONGER_AVAILABLE = 'WORKDAY_SHIFT_NO_LONGER_AVAILABLE';
+
+async function serializableTransaction<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(operation, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2034' || attempt === 2) throw error;
+    }
+  }
+  throw new Error('WORKDAY_SERIALIZABLE_RETRY_EXHAUSTED');
+}
+
+async function assertShiftStillAvailable(
+  tx: Prisma.TransactionClient,
+  input: { department: string; userId: number; date: string; shiftCode: string },
+) {
+  const selection = await loadWorkdayShiftSelection(tx, {
+    department: input.department,
+    currentUserId: input.userId,
+    date: input.date,
+  });
+  if (selection.mode !== 'unavailable' && !permittedWorkdayShiftCodes(selection).includes(input.shiftCode)) {
+    throw new Error(SHIFT_NO_LONGER_AVAILABLE);
+  }
+}
 
 async function ensureTaskNotifications(userId: number, date: string, tasks: Array<{ id: number; title: string; category: string; plannedTimeMinutes: number | null }>) {
   await scheduleTaskNotifications(prisma, tasks.map((task) => ({ ...task, userId, run: { date } })));
@@ -132,7 +160,8 @@ export async function POST(req: Request) {
 
   if (!hasShiftControl) {
     try {
-      const workDay = await prisma.$transaction(async (tx) => {
+      const workDay = await serializableTransaction(async (tx) => {
+        await assertShiftStillAvailable(tx, { department: user.department, userId: user.id, date, shiftCode: shift.code });
         const consumed = await tx.workdayStartIntent.updateMany({
           where: { id: intent.id, userId: user.id, consumedAt: null, expiresAt: { gt: now } },
           data: { consumedAt: now },
@@ -149,6 +178,9 @@ export async function POST(req: Request) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const racedWorkDay = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });
         if (racedWorkDay) return Response.json({ workDay: employeeWorkDayResponse(racedWorkDay), alreadyStarted: true, message: 'Рабочий день уже начат' });
+      }
+      if (error instanceof Error && error.message === SHIFT_NO_LONGER_AVAILABLE) {
+        return Response.json({ error: 'Доступная смена уже изменилась. Отсканируйте QR ещё раз.' }, { status: 409 });
       }
       if (error instanceof Error && error.message === 'WORKDAY_START_INTENT_ALREADY_USED') {
         return Response.json({ error: 'QR-подтверждение уже использовано. Обновите экран.' }, { status: 409 });
@@ -168,7 +200,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { workDay, shiftControlRun } = await prisma.$transaction(async (tx) => {
+    const { workDay, shiftControlRun } = await serializableTransaction(async (tx) => {
+      await assertShiftStillAvailable(tx, { department: user.department, userId: user.id, date, shiftCode: shift.code });
       const consumed = await tx.workdayStartIntent.updateMany({
         where: { id: intent.id, userId: user.id, consumedAt: null, expiresAt: { gt: now } },
         data: { consumedAt: now },
@@ -213,6 +246,9 @@ export async function POST(req: Request) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const racedWorkDay = await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } });
       if (racedWorkDay) return Response.json({ workDay: employeeWorkDayResponse(racedWorkDay), alreadyStarted: true, message: 'Рабочий день уже начат' });
+    }
+    if (error instanceof Error && error.message === SHIFT_NO_LONGER_AVAILABLE) {
+      return Response.json({ error: 'Доступная смена уже изменилась. Отсканируйте QR ещё раз.' }, { status: 409 });
     }
     if (error instanceof Error && error.message === 'WORKDAY_START_INTENT_ALREADY_USED') {
       return Response.json({ error: 'QR-подтверждение уже использовано. Обновите экран.' }, { status: 409 });
