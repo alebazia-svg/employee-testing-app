@@ -265,6 +265,10 @@ export function workdayNotificationHref(notification: { issueId: number | null; 
     const date = notification.fingerprint?.match(/^schedule-coverage:[^:]+:(\d{4}-\d{2}-\d{2}):/)?.[1];
     return date ? `/employee?tab=schedule&date=${date}` : '/employee?tab=schedule';
   }
+  if (notification.kind === 'schedule_replacement_digest') {
+    const month = notification.fingerprint?.match(/^schedule-coverage-digest:[^:]+:(\d{4}-\d{2}):/)?.[1];
+    return month ? `/employee?tab=schedule&date=${month}-01` : '/employee?tab=schedule';
+  }
   return '/employee';
 }
 

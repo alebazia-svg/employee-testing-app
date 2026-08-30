@@ -315,14 +315,14 @@ select {
 .employee-material-profile-avatar {
   position: relative;
   overflow: hidden;
-  color: #527f5c;
+  color: #39444a;
   border: 0;
   border-radius: 999px;
-  background: radial-gradient(circle at 34% 28%, #d8f0dd 0%, #bfdfc7 60%, #a9d1b4 100%);
+  background: radial-gradient(circle at 34% 28%, #f7f8f5 0%, #e7e9e6 62%, #d8dcda 100%);
   box-shadow:
-    inset 2px 2px 4px rgba(255, 255, 255, 0.34),
-    inset -2px -2px 5px rgba(67, 117, 78, 0.13),
-    0 2px 6px rgba(55, 91, 64, 0.08);
+    inset 2px 2px 4px rgba(255, 255, 255, 0.82),
+    inset -2px -2px 5px rgba(54, 64, 71, 0.12),
+    0 3px 8px rgba(44, 53, 58, 0.13);
 }
 
 .employee-material-profile-avatar::after {
@@ -338,9 +338,9 @@ select {
   z-index: 1;
   width: 25px;
   height: 25px;
-  fill: #edf8ef;
+  fill: #39444a;
   opacity: 0.98;
-  filter: drop-shadow(-1px -1px 0 rgba(69, 119, 80, 0.28)) drop-shadow(1px 1px 0 rgba(255, 255, 255, 0.48));
+  filter: drop-shadow(-1px -1px 0 rgba(255, 255, 255, 0.18)) drop-shadow(1px 1px 0 rgba(28, 35, 39, 0.18));
 }
 
 .employee-material-profile-copy p:first-child {

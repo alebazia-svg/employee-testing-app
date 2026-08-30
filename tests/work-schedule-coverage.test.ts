@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { departmentScheduleTarget, scheduleCoverage, scheduleCoverageCopy, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange } from '../lib/work-schedule-coverage';
+import { departmentScheduleTarget, scheduleCoverage, scheduleCoverageCopy, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '../lib/work-schedule-coverage';
 
 test('retail and wholesale target two employees without blocking reduced staffing', () => {
   assert.equal(departmentScheduleTarget('retail'), 2);
@@ -12,7 +12,8 @@ test('retail and wholesale target two employees without blocking reduced staffin
 
 test('coverage copy distinguishes reduced and empty department states', () => {
   assert.match(scheduleCoverageCopy(scheduleCoverage('retail', 1)).title, /один сотрудник/);
-  assert.match(scheduleCoverageCopy(scheduleCoverage('retail', 0)).title, /никто не выходит/);
+  assert.match(scheduleCoverageCopy(scheduleCoverage('retail', 0)).title, /никого не будет/);
+  assert.equal(scheduleCoverageCopy(scheduleCoverage('retail', 1)).action, 'Сохранить выходной');
 });
 
 test('coverage transition counts only the changed employee once', () => {
@@ -20,6 +21,17 @@ test('coverage transition counts only the changed employee once', () => {
   assert.equal(scheduleWorkingCountAfterChange({ workingBefore: 1, previousStatus: 'off', nextStatus: 'working' }), 2);
   assert.equal(scheduleWorkingCountAfterChange({ workingBefore: 1, previousStatus: null, nextStatus: 'working' }), 2);
   assert.equal(scheduleWorkingCountAfterChange({ workingBefore: 0, previousStatus: null, nextStatus: 'off' }), 0);
+});
+
+test('replacement requests are created only when a confirmed working day becomes a day off', () => {
+  const reduced = scheduleCoverage('retail', 1);
+  const empty = scheduleCoverage('retail', 0);
+  assert.equal(shouldRequestScheduleReplacement({ previousStatus: null, nextStatus: 'off', coverage: empty }), false);
+  assert.equal(shouldRequestScheduleReplacement({ previousStatus: null, nextStatus: 'working', coverage: reduced }), false);
+  assert.equal(shouldRequestScheduleReplacement({ previousStatus: 'off', nextStatus: 'working', coverage: reduced }), false);
+  assert.equal(shouldRequestScheduleReplacement({ previousStatus: 'working', nextStatus: 'off', coverage: reduced }), true);
+  assert.equal(shouldRequestScheduleReplacement({ previousStatus: 'working', nextStatus: 'off', coverage: empty }), true);
+  assert.equal(shouldRequestScheduleReplacement({ previousStatus: 'working', nextStatus: 'off', coverage: scheduleCoverage('retail', 2) }), false);
 });
 
 test('employee schedule uses first names while preserving a safe fallback', () => {

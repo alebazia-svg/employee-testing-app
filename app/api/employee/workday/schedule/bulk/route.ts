@@ -1,6 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getMoscowDateKey } from '@/lib/workday';
+import { formatDateLabel, getMoscowDateKey } from '@/lib/workday';
 import { isValidScheduleDateKey, isValidScheduleMonthKey } from '@/lib/workday-schedule';
 import { persistEmployeeScheduleChange } from '@/lib/work-schedule-persistence';
 
@@ -91,6 +91,68 @@ export async function POST(req: Request) {
         notifyCoverage: false,
       });
       coverageResults.push({ date: change.date, state: coverage.state });
+    }
+
+    if (mode === 'edit') {
+      const stateByDate = new Map(coverageResults.map((item) => [item.date, item.state]));
+      const replacementDates = changes
+        .filter((change) => (
+          change.previousStatus === 'working'
+          && change.status === 'off'
+          && stateByDate.get(change.date) !== 'full'
+        ))
+        .map((change) => change.date);
+
+      if (replacementDates.length > 0) {
+        const colleagues = await tx.user.findMany({
+          where: {
+            role: 'EMPLOYEE',
+            isActive: true,
+            department: user.department,
+            id: { not: user.id },
+          },
+          select: { id: true },
+        });
+        const workingByUserAndDate = new Set(
+          departmentEntries
+            .filter((entry) => entry.status === 'working')
+            .map((entry) => `${entry.userId}:${entry.date}`),
+        );
+        const candidates = colleagues.filter((colleague) => (
+          replacementDates.some((date) => !workingByUserAndDate.has(`${colleague.id}:${date}`))
+        ));
+        const now = new Date();
+        const body = replacementDates.length === 1
+          ? `${formatDateLabel(replacementDates[0])} · Сможете выйти на замену?`
+          : `${replacementDates.length} дн. · Откройте график и отметьте дни, когда сможете выйти.`;
+        for (const candidate of candidates) {
+          const fingerprint = `schedule-coverage-digest:${user.department}:${monthKey}:${user.id}:${candidate.id}`;
+          await tx.workdayNotification.upsert({
+            where: { fingerprint },
+            create: {
+              userId: candidate.id,
+              fingerprint,
+              kind: 'schedule_replacement_digest',
+              title: 'Нужна замена в графике',
+              body,
+              scheduledAt: now,
+            },
+            update: {
+              title: 'Нужна замена в графике',
+              body,
+              status: 'pending',
+              scheduledAt: now,
+              sentAt: null,
+              readAt: null,
+              pushStatus: 'pending',
+              pushDeliveredAt: null,
+              nextPushAttemptAt: null,
+              lastError: '',
+              attemptCount: 0,
+            },
+          });
+        }
+      }
     }
     return { staleDates: [], coverageResults };
   });

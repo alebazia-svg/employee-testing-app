@@ -35,19 +35,29 @@ export function scheduleWorkingCountAfterChange(input: {
   );
 }
 
+export function shouldRequestScheduleReplacement(input: {
+  previousStatus: string | null | undefined;
+  nextStatus: 'working' | 'off';
+  coverage: ScheduleCoverage;
+}) {
+  return input.previousStatus === 'working'
+    && input.nextStatus === 'off'
+    && input.coverage.needsReplacement;
+}
+
 export function scheduleCoverageCopy(coverage: ScheduleCoverage) {
   if (coverage.state === 'empty') {
     return {
-      title: 'На этот день пока никто не выходит',
-      body: 'Портал сообщит ADMIN и предложит коллегам выйти на замену.',
-      action: 'Сохранить и запросить замену',
+      title: 'В отделе никого не будет',
+      body: 'Коллегам придёт просьба выйти на замену.',
+      action: 'Сохранить выходной',
     };
   }
   if (coverage.state === 'reduced') {
     return {
-      title: 'После изменения останется один сотрудник',
-      body: 'Рабочий день не блокируется. Портал предложит коллегам выйти на замену.',
-      action: 'Сохранить и запросить замену',
+      title: 'Останется один сотрудник',
+      body: 'Коллегам придёт просьба выйти на замену.',
+      action: 'Сохранить выходной',
     };
   }
   return {

@@ -2,7 +2,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { buildDateRange, getMoscowDateKey, scheduleStatuses } from '@/lib/workday';
 import { buildScheduleMonthRange, isValidScheduleDateKey, scheduleMonthKeyFromDate } from '@/lib/workday-schedule';
-import { scheduleCoverage, scheduleCoverageCopy, scheduleWorkingCountAfterChange } from '@/lib/work-schedule-coverage';
+import { scheduleCoverage, scheduleCoverageCopy, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '@/lib/work-schedule-coverage';
 import { persistEmployeeScheduleChange } from '@/lib/work-schedule-persistence';
 
 const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
@@ -115,7 +115,11 @@ export async function POST(req: Request) {
     return Response.json({ ...(await scheduleSnapshot(user, range.dates, range.monthKey)), coverage }, { headers: noStoreHeaders });
   }
 
-  if (status === 'off' && coverage.needsReplacement && confirmCoverageImpact !== true) {
+  if (shouldRequestScheduleReplacement({
+    previousStatus: currentEntry?.status,
+    nextStatus: status,
+    coverage,
+  }) && confirmCoverageImpact !== true) {
     return Response.json({
       error: 'Подтвердите изменение графика',
       code: 'SCHEDULE_COVERAGE_CONFIRMATION_REQUIRED',

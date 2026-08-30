@@ -20,6 +20,7 @@ import {
   Clock,
   CreditCard,
   Home,
+  Pencil,
   ReceiptText,
   RefreshCw,
   ScanLine,
@@ -1383,7 +1384,9 @@ export function EmployeeTodayClient({
     : buildBulkScheduleChanges(bulkEditableDates, bulkWorkingDates);
   const bulkCounts = bulkScheduleCounts(bulkScheduleChanges);
   const activeDepartmentUserIds = new Set(departmentUsers.map((person) => person.id));
-  const bulkCoverage = bulkScheduleChanges.map((change) => {
+  const bulkCoverage = bulkScheduleChanges
+    .filter((change) => change.previousStatus === 'working' && change.status === 'off')
+    .map((change) => {
     const workingBefore = (departmentScheduleByDate.get(change.date) ?? [])
       .filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working').length;
     const workingAfter = scheduleWorkingCountAfterChange({
@@ -1468,7 +1471,7 @@ export function EmployeeTodayClient({
     return true;
   }
 
-  function ScheduleDayCard({ date, selected = false }: { date: string; selected?: boolean }) {
+  function ScheduleDayCard({ date, selected = false, compact = false }: { date: string; selected?: boolean; compact?: boolean }) {
     const ownEntry = ownScheduleByDate.get(date);
     const colleagueRows = getColleagueRows(date);
     const selectedWorkingRows = colleagueRows.filter(({ entry }) => entry?.status === 'working');
@@ -1488,7 +1491,7 @@ export function EmployeeTodayClient({
       : workingNames ? `Работают: ${workingNames}` : 'В этот день пока никто не работает';
 
     return (
-      <div className={cn('employee-material-day-card rounded-lg border bg-white p-3', selected ? 'border-primary/40 ring-2 ring-primary/10' : 'border-slate-200')}>
+      <div className={cn('employee-material-day-card rounded-lg border bg-white', compact ? 'p-2.5' : 'p-3', selected ? 'border-slate-400 ring-2 ring-slate-200' : 'border-slate-200')}>
         <div className='flex items-center justify-between gap-3'>
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
@@ -1497,7 +1500,18 @@ export function EmployeeTodayClient({
             {statusCopy}
           </Badge>
         </div>
-        <p className='mt-2 text-sm font-semibold leading-snug text-slate-600'>{peopleCopy}</p>
+        <div className={cn('flex items-center gap-2', compact ? 'mt-1.5' : 'mt-2')}>
+          <p className='min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-600'>{peopleCopy}</p>
+          {compact && canEdit && (
+            <Button
+              type='button'
+              className='employee-material-secondary-action h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold'
+              onClick={() => setEditingScheduleDate(date)}
+            >
+              {ownEntry ? 'Изменить' : 'Выбрать'}
+            </Button>
+          )}
+        </div>
 
         {replacementRequested && (
           <div className='employee-material-alert-card mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3'>
@@ -1525,7 +1539,7 @@ export function EmployeeTodayClient({
           </div>
         )}
 
-        {canEdit ? (
+        {!compact && canEdit ? (
           <Button
             type='button'
             className='employee-material-secondary-action mt-3 h-11 w-full rounded-xl text-sm font-extrabold'
@@ -1533,9 +1547,9 @@ export function EmployeeTodayClient({
           >
             {ownEntry ? 'Изменить мой день' : 'Выбрать день'}
           </Button>
-        ) : (
+        ) : !compact ? (
           <p className='mt-2 text-center text-xs font-bold text-slate-400'>Прошедший день доступен только для просмотра</p>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -1558,6 +1572,7 @@ export function EmployeeTodayClient({
         && isRecord(payload.coverage)
         && isRecord(payload.copy)
       ) {
+        setEditingScheduleDate(null);
         setPendingScheduleChange({
           date,
           status,
@@ -3502,10 +3517,29 @@ export function EmployeeTodayClient({
           )}
 
           {editingScheduleDate && !pendingScheduleChange && (
-            <div className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'>
+            <div
+              className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'
+              role='dialog'
+              aria-modal='true'
+              aria-label='Изменить мой день'
+              onClick={(event) => {
+                if (event.target === event.currentTarget && !isSaving) setEditingScheduleDate(null);
+              }}
+            >
               <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
-                <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>Изменить мой день</p>
+                <div className='flex items-center justify-between gap-3'>
+                  <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>Изменить мой день</p>
+                  <button
+                    type='button'
+                    className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100'
+                    aria-label='Закрыть без изменений'
+                    disabled={isSaving}
+                    onClick={() => setEditingScheduleDate(null)}
+                  >
+                    <X className='h-5 w-5' />
+                  </button>
+                </div>
                 <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{formatDateLabel(editingScheduleDate)}</h2>
                 <p className='mt-2 text-sm font-semibold text-slate-600'>Как вы работаете в этот день?</p>
                 <div className='mt-5 grid grid-cols-2 gap-2'>
@@ -3549,16 +3583,23 @@ export function EmployeeTodayClient({
           )}
 
           {pendingScheduleChange && (
-            <div className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'>
+            <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Изменение графика'>
               <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
                 <p className='text-xs font-black uppercase tracking-[0.14em] text-amber-700'>Изменение графика</p>
                 <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{pendingScheduleChange.copy.title}</h2>
                 <div className='employee-material-alert-card mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3'>
-                  <p className='text-sm font-extrabold text-amber-950'>После изменения: {pendingScheduleChange.coverage.workingCount} из {pendingScheduleChange.coverage.targetCount}</p>
-                  <p className='mt-1 text-sm font-semibold leading-relaxed text-amber-900'>{pendingScheduleChange.copy.body}</p>
+                  {pendingScheduleChange.coverage.state === 'reduced' && scheduleNames(
+                    getColleagueRows(pendingScheduleChange.date).filter(({ entry }) => entry?.status === 'working'),
+                  ) && (
+                    <p className='text-sm font-extrabold text-amber-950'>
+                      В смене останется {scheduleNames(getColleagueRows(pendingScheduleChange.date).filter(({ entry }) => entry?.status === 'working'))}.
+                    </p>
+                  )}
+                  <p className={cn('text-sm font-semibold leading-relaxed text-amber-900', pendingScheduleChange.coverage.state === 'reduced' && 'mt-1')}>
+                    {pendingScheduleChange.copy.body}
+                  </p>
                 </div>
-                <p className='mt-3 text-xs font-semibold leading-relaxed text-slate-500'>Изменение не блокируется. Причины отсутствия коллегам не показываются.</p>
                 <Button
                   type='button'
                   className='employee-material-green-action mt-5 h-14 w-full rounded-xl text-base font-black'
@@ -3571,7 +3612,10 @@ export function EmployeeTodayClient({
                   type='button'
                   className='employee-material-secondary-action mt-2 h-12 w-full rounded-xl text-sm font-extrabold'
                   disabled={isSaving}
-                  onClick={() => setPendingScheduleChange(null)}
+                  onClick={() => {
+                    setPendingScheduleChange(null);
+                    setEditingScheduleDate(null);
+                  }}
                 >
                   Отмена
                 </Button>
@@ -4075,7 +4119,13 @@ export function EmployeeTodayClient({
                       key={mode.id}
                       type='button'
                       disabled={bulkScheduleMode}
-                      onClick={() => setScheduleMode(mode.id)}
+                      onClick={() => {
+                        setScheduleMode(mode.id);
+                        if (mode.id === 'month') {
+                          setCalendarMonth(monthKeyFromDate(today));
+                          setSelectedScheduleDate(today);
+                        }
+                      }}
                       className={cn(
                         'h-10 rounded-xl text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-70',
                         scheduleMode === mode.id
@@ -4179,9 +4229,15 @@ export function EmployeeTodayClient({
                   </div>
 
                   {scheduleMonthLoaded && incompleteScheduleDates.length === 0 && !bulkScheduleMode && (
-                    <div className='flex items-center justify-between gap-2 rounded-xl bg-green-50 px-3 py-2 text-green-800 ring-1 ring-green-100'>
-                      <span className='inline-flex items-center gap-1.5 text-[11px] font-extrabold'><CheckCircle2 className='h-4 w-4' />Все дни выбраны</span>
-                      <button type='button' className='text-[11px] font-extrabold text-green-800' onClick={startBulkScheduleEdit}>Изменить несколько дней</button>
+                    <div className='flex justify-end py-0.5'>
+                      <button
+                        type='button'
+                        className='employee-material-secondary-action inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-extrabold text-green-800'
+                        onClick={startBulkScheduleEdit}
+                      >
+                        <Pencil className='h-4 w-4' aria-hidden='true' />
+                        Изменить несколько дней
+                      </button>
                     </div>
                   )}
 
@@ -4196,6 +4252,7 @@ export function EmployeeTodayClient({
                       const ownEntry = ownScheduleByDate.get(cell.date);
                       const workingInitials = getWorkingInitials(cell.date);
                       const selected = selectedScheduleDate === cell.date;
+                      const isToday = cell.date === today;
                       const bulkEligible = bulkScheduleMode && bulkEditableDates.includes(cell.date);
                       const bulkWorking = bulkEligible && bulkWorkingDates.has(cell.date);
                       const statusClass =
@@ -4204,11 +4261,11 @@ export function EmployeeTodayClient({
                           : bulkWorking
                             ? 'bg-green-100 text-green-950 ring-green-300'
                           : bulkEligible
-                            ? 'bg-slate-100 text-slate-700 ring-slate-200'
+                            ? 'bg-[#e7ebe9] text-slate-800 ring-[#c7cfcb]'
                           : ownEntry?.status === 'working'
                           ? 'bg-green-50 text-green-900 ring-green-100'
                           : ownEntry?.status === 'off'
-                            ? 'bg-slate-100 text-slate-700 ring-slate-200'
+                            ? 'bg-[#e7ebe9] text-slate-800 ring-[#c7cfcb]'
                             : 'bg-amber-50 text-amber-800 ring-amber-100';
 
                       return (
@@ -4217,8 +4274,7 @@ export function EmployeeTodayClient({
                           type='button'
                           onClick={() => {
                             if (bulkScheduleMode) toggleBulkWorkingDate(cell.date);
-                            else if (cell.inMonth && cell.date >= today) setEditingScheduleDate(cell.date);
-                            else setSelectedScheduleDate(cell.date);
+                            else if (cell.inMonth) setSelectedScheduleDate(cell.date);
                           }}
                           aria-pressed={bulkEligible ? bulkWorking : undefined}
                           disabled={bulkScheduleMode && !bulkEligible}
@@ -4228,7 +4284,8 @@ export function EmployeeTodayClient({
                             !cell.inMonth && 'opacity-40',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
                             bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
-                            !bulkScheduleMode && selected && cell.date < today && 'ring-2 ring-slate-500',
+                            !bulkScheduleMode && selected && !isToday && 'ring-2 ring-green-500 shadow-[0_6px_14px_rgba(22,163,74,0.12)]',
+                            !bulkScheduleMode && isToday && 'ring-2 ring-[#303a3f] shadow-[0_6px_14px_rgba(48,58,63,0.14)]',
                           )}
                         >
                           <span className='text-xs font-extrabold leading-none'>{cell.day}</span>
@@ -4251,9 +4308,13 @@ export function EmployeeTodayClient({
                     })}
                   </div>
 
+                  {scheduleMonthLoaded && !bulkScheduleMode && selectedScheduleDate.startsWith(`${calendarMonth}-`) && (
+                    <ScheduleDayCard date={selectedScheduleDate} selected compact />
+                  )}
+
                   <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] font-extrabold text-slate-600'>
                     <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-green-100 ring-1 ring-green-300' />Работаю</span>
-                    <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-slate-100 ring-1 ring-slate-300' />Выходной</span>
+                    <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#e7ebe9] ring-1 ring-[#aeb9b4]' />Выходной</span>
                     {!bulkScheduleMode && <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
                   </div>
 
@@ -4284,13 +4345,13 @@ export function EmployeeTodayClient({
                 disabled={bulkCounts.totalDays === 0}
                 onClick={() => setBulkScheduleConfirmOpen(true)}
               >
-                Проверить
+                {bulkScheduleKind === 'edit' ? 'Проверить изменения' : 'Проверить график'}
               </Button>
             </div>
           </div>
         )}
 
-        {!bulkScheduleConfirmOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
+        {!bulkScheduleConfirmOpen && !editingScheduleDate && !pendingScheduleChange && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
           <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
@@ -4299,7 +4360,13 @@ export function EmployeeTodayClient({
                 <button
                   key={item.id}
                   type='button'
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => {
+                    if (item.id === 'schedule' && activeTab !== 'schedule') {
+                      setCalendarMonth(monthKeyFromDate(today));
+                      setSelectedScheduleDate(today);
+                    }
+                    setActiveTab(item.id);
+                  }}
                   className={cn(
                     'employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-1 px-2 text-xs font-extrabold transition',
                     active ? 'is-active' : 'text-slate-500',

@@ -127,6 +127,12 @@ test('notification links open the exact employee action target', () => {
     kind: 'schedule_replacement_request',
     fingerprint: 'schedule-coverage:retail:2026-09-05:17',
   }), '/employee?tab=schedule&date=2026-09-05');
+  assert.equal(workdayNotificationHref({
+    issueId: null,
+    reviewId: null,
+    kind: 'schedule_replacement_digest',
+    fingerprint: 'schedule-coverage-digest:retail:2026-09:17:22',
+  }), '/employee?tab=schedule&date=2026-09-01');
   assert.equal(workdayNotificationHref({ issueId: null, reviewId: null }), '/employee');
 });
 

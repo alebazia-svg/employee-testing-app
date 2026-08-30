@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { Prisma } from '@prisma/client';
 import { formatDateLabel } from '@/lib/workday';
-import { scheduleCoverage, scheduleCoverageCopy, schedulePersonName, scheduleWorkingCountAfterChange } from '@/lib/work-schedule-coverage';
+import { scheduleCoverage, scheduleCoverageCopy, schedulePersonName, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '@/lib/work-schedule-coverage';
 
 type ScheduleEmployee = { id: number; name: string; department: string };
 type ScheduleEntryState = { userId: number; status: string };
@@ -63,6 +63,12 @@ export async function persistEmployeeScheduleChange(tx: Prisma.TransactionClient
     if (event) await tx.adminInboxReceipt.updateMany({ where: { eventId: event.id, readAt: null }, data: { readAt: now } });
     return coverage;
   }
+
+  if (!shouldRequestScheduleReplacement({
+    previousStatus: input.previousStatus,
+    nextStatus: input.status,
+    coverage,
+  })) return coverage;
 
   const workingUserIds = new Set(
     input.departmentEntries
