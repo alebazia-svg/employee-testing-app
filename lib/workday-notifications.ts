@@ -258,9 +258,13 @@ function notificationTargetKey(notification: { id: number; taskId: number | null
   return `notification:${notification.id}`;
 }
 
-export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null }) {
+export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
   if (notification.reviewId) return `/employee/payment-checks/${notification.reviewId}`;
   if (notification.issueId) return `/employee/issues/${notification.issueId}`;
+  if (notification.kind === 'schedule_replacement_request') {
+    const date = notification.fingerprint?.match(/^schedule-coverage:[^:]+:(\d{4}-\d{2}-\d{2}):/)?.[1];
+    return date ? `/employee?tab=schedule&date=${date}` : '/employee?tab=schedule';
+  }
   return '/employee';
 }
 

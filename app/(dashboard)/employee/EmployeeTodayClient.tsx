@@ -3,7 +3,7 @@
 import jsQR from 'jsqr';
 import { parseWorkdayQrDepartment } from '@/lib/workday-qr';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -39,6 +39,7 @@ import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShift
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { colleaguePresence } from '@/lib/workday-presence';
+import { scheduleCoverage, schedulePersonLabel, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
 import {
   cashOutboxFormData,
   listEmployeeCashOutboxItems,
@@ -134,9 +135,11 @@ type ScheduleEntry = {
   user?: UserSummary;
 };
 
-type ScheduleUndo = {
+type PendingScheduleChange = {
   date: string;
-  previousStatus: 'working' | 'off' | null;
+  status: 'working' | 'off';
+  coverage: ScheduleCoverage;
+  copy: { title: string; body: string; action: string };
 };
 
 type WorkDayEntry = {
@@ -518,9 +521,9 @@ function scheduleWorkLabel(status: string | null | undefined) {
 }
 
 function scheduleCellLabel(status: string | null | undefined) {
-  if (status === 'working') return 'раб';
-  if (status === 'off') return 'вых';
-  return '?';
+  if (status === 'working') return 'Раб.';
+  if (status === 'off') return 'Вых.';
+  return 'Выбрать';
 }
 
 function replaceScheduleRange(current: ScheduleEntry[], incoming: ScheduleEntry[], from: string, to: string) {
@@ -598,11 +601,6 @@ function initials(name: string) {
     .join('')
     .slice(0, 2)
     .toUpperCase();
-}
-
-function personDisplayName(name: string) {
-  const shortName = name.split('/').pop()?.trim();
-  return shortName || name;
 }
 
 function byName(a: UserSummary, b: UserSummary) {
@@ -987,6 +985,7 @@ export function EmployeeTodayClient({
   cashEncashmentExceptionRequest,
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<Tab>('day');
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -1021,15 +1020,16 @@ export function EmployeeTodayClient({
   const [comment, setComment] = useState('');
   const [staleCloseReason, setStaleCloseReason] = useState('');
   const [staleCloseComment, setStaleCloseComment] = useState('');
-  const [showFullSchedule, setShowFullSchedule] = useState(false);
   const [showInactiveColleagues, setShowInactiveColleagues] = useState(false);
-  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('list');
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('month');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
   const [expandedScheduleDates, setExpandedScheduleDates] = useState<Set<string>>(() => new Set([today]));
+  const [editingScheduleDate, setEditingScheduleDate] = useState<string | null>(null);
   const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set());
   const [loadingScheduleMonth, setLoadingScheduleMonth] = useState<string | null>(null);
-  const [scheduleUndo, setScheduleUndo] = useState<ScheduleUndo | null>(null);
+  const [pendingScheduleChange, setPendingScheduleChange] = useState<PendingScheduleChange | null>(null);
+  const [replacementRequestDates, setReplacementRequestDates] = useState<Set<string>>(() => new Set());
   const [openShiftTaskId, setOpenShiftTaskId] = useState<number | null>(null);
   const [editingShiftTaskId, setEditingShiftTaskId] = useState<number | null>(null);
   const [shiftTaskDrafts, setShiftTaskDrafts] = useState<Record<number, ShiftTaskDraft>>({});
@@ -1068,6 +1068,17 @@ export function EmployeeTodayClient({
   }, []);
 
   useEffect(() => {
+    if (searchParams.get('tab') !== 'schedule') return;
+    const requestedDate = searchParams.get('date');
+    setActiveTab('schedule');
+    setScheduleMode(requestedDate ? 'month' : 'list');
+    if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+      setCalendarMonth(monthKeyFromDate(requestedDate));
+      setSelectedScheduleDate(requestedDate);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     const hasActiveWorkDay = Boolean(workDay && workDay.status !== 'completed' && !workDay.endedAt);
     if (activeTab !== 'day' || !hasActiveWorkDay) return;
     setNow(new Date());
@@ -1079,14 +1090,12 @@ export function EmployeeTodayClient({
     if (!message) return;
     const timer = window.setTimeout(() => {
       setMessage('');
-      setScheduleUndo(null);
-    }, scheduleUndo ? 6000 : 4000);
+    }, 4000);
     return () => window.clearTimeout(timer);
-  }, [message, scheduleUndo]);
+  }, [message]);
 
   const dates = useMemo(() => buildDateRange(today, 31), [today]);
   const previewDates = dates.slice(0, 7);
-  const visibleDates = showFullSchedule ? dates : previewDates;
   const ownScheduleByDate = useMemo(() => new Map(ownScheduleState.map((entry) => [entry.date, entry])), [ownScheduleState]);
   const departmentScheduleByDate = useMemo(() => {
     const groups = new Map<string, ScheduleEntry[]>();
@@ -1330,6 +1339,9 @@ export function EmployeeTodayClient({
   const calendarDays = useMemo(() => buildCalendarMonth(calendarMonth), [calendarMonth]);
   const scheduleMonthLoaded = loadedScheduleMonths.has(calendarMonth);
   const scheduleMonthLoading = loadingScheduleMonth === calendarMonth;
+  const incompleteScheduleDates = calendarDays.filter((cell) => (
+    cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date)
+  ));
 
   useEffect(() => {
     if (!handoverTask || handoverTask.status === 'done' || activeHandoverTaskId) return;
@@ -1350,13 +1362,20 @@ export function EmployeeTodayClient({
       .sort((left, right) => statusRank(left.entry?.status) - statusRank(right.entry?.status) || left.person.name.localeCompare(right.person.name, 'ru'));
   }
 
+  function personDisplayName(name: string) {
+    return schedulePersonLabel(name, departmentUsers.map((person) => person.name));
+  }
+
   function getWorkingInitials(date: string) {
     const entries = departmentScheduleByDate.get(date) ?? [];
     const entryByUser = new Map(entries.map((entry) => [entry.userId, entry]));
-    const working = colleagueUsers.filter((person) => entryByUser.get(person.id)?.status === 'working');
+    const working = [...departmentUsers].sort(byName).filter((person) => entryByUser.get(person.id)?.status === 'working');
+    const filledCount = departmentUsers.filter((person) => entryByUser.has(person.id)).length;
     return {
-      initials: working.slice(0, 2).map((person) => initials(person.name)),
-      extraCount: Math.max(0, working.length - 2),
+      initials: working.slice(0, 3).map((person) => initials(person.name)),
+      extraCount: Math.max(0, working.length - 3),
+      count: working.length,
+      complete: departmentUsers.length > 0 && filledCount === departmentUsers.length,
     };
   }
 
@@ -1366,6 +1385,9 @@ export function EmployeeTodayClient({
     if (typeof from !== 'string' || typeof to !== 'string') return false;
     setOwnScheduleState((current) => replaceScheduleRange(current, payload.ownSchedule as ScheduleEntry[], from, to));
     setDepartmentScheduleState((current) => replaceScheduleRange(current, payload.departmentSchedule as ScheduleEntry[], from, to));
+    if (Array.isArray(payload.replacementRequestDates)) {
+      setReplacementRequestDates(new Set(payload.replacementRequestDates.filter((date): date is string => typeof date === 'string')));
+    }
     if (typeof monthKey === 'string') setLoadedScheduleMonths((current) => new Set(current).add(monthKey));
     return true;
   }
@@ -1376,7 +1398,13 @@ export function EmployeeTodayClient({
     const selectedWorkingRows = colleagueRows.filter(({ entry }) => entry?.status === 'working');
     const selectedOffRows = colleagueRows.filter(({ entry }) => entry?.status === 'off');
     const selectedMissingRows = colleagueRows.filter(({ entry }) => !entry);
+    const activeDepartmentUserIds = new Set(departmentUsers.map((person) => person.id));
+    const workingCount = (departmentScheduleByDate.get(date) ?? []).filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working').length;
+    const coverage = scheduleCoverage(user.department, workingCount);
+    const replacementRequested = replacementRequestDates.has(date) && ownEntry?.status !== 'working';
     const expanded = selected || expandedScheduleDates.has(date);
+    const editing = editingScheduleDate === date;
+    const canEdit = date >= today;
     const colleagueSummary = [
       selectedWorkingRows.length === 0
         ? 'Коллеги: никто не работает'
@@ -1444,24 +1472,64 @@ export function EmployeeTodayClient({
           </button>
         )}
 
+        {replacementRequested && (
+          <div className='employee-material-alert-card mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3'>
+            <p className='text-xs font-black uppercase tracking-[0.12em] text-amber-700'>Нужна замена</p>
+            <p className='mt-1 text-sm font-extrabold text-slate-950'>
+              {coverage.state === 'empty' ? 'На этот день пока никто не выходит' : 'В отделе остаётся один сотрудник'}
+            </p>
+            <p className='mt-1 text-xs font-semibold leading-relaxed text-slate-600'>Вы можете выйти в этот день?</p>
+            <Button
+              type='button'
+              className='employee-material-green-action mt-3 h-11 w-full rounded-xl text-sm font-black'
+              onClick={() => void updateSchedule(date, 'working')}
+              disabled={isSaving}
+            >
+              Могу выйти
+            </Button>
+            <Button
+              type='button'
+              className='employee-material-secondary-action mt-2 h-10 w-full rounded-xl text-xs font-extrabold'
+              onClick={() => void declineScheduleReplacement(date)}
+              disabled={isSaving}
+            >
+              Не могу
+            </Button>
+          </div>
+        )}
+
         {expanded && (
           <>
-            <div className={cn('grid grid-cols-2 gap-2', !selected && 'mt-2')}>
+            {editing && canEdit ? (
+              <div className={cn('grid grid-cols-2 gap-2', !selected && 'mt-2')}>
+                <Button
+                  className={cn('h-11 rounded-xl', ownEntry?.status !== 'working' && 'bg-slate-100 text-slate-700 shadow-none hover:bg-green-100 hover:text-green-800')}
+                  onClick={() => updateSchedule(date, 'working')}
+                  disabled={isSaving}
+                >
+                  Работаю
+                </Button>
+                <Button
+                  className={cn('h-11 rounded-xl', ownEntry?.status === 'off' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200')}
+                  onClick={() => updateSchedule(date, 'off')}
+                  disabled={isSaving}
+                >
+                  Выходной
+                </Button>
+              </div>
+            ) : canEdit ? (
               <Button
-                className={cn('h-10 rounded-lg', ownEntry?.status !== 'working' && 'bg-slate-100 text-slate-700 shadow-none hover:bg-green-100 hover:text-green-800')}
-                onClick={() => updateSchedule(date, 'working')}
-                disabled={isSaving}
+                type='button'
+                className={cn('employee-material-secondary-action h-11 w-full rounded-xl text-sm font-extrabold', !selected && 'mt-2')}
+                onClick={() => setEditingScheduleDate(date)}
               >
-                Работаю
+                {selected ? `Изменить ${formatDateLabel(date)}` : 'Изменить мой день'}
               </Button>
-              <Button
-                className={cn('h-10 rounded-lg', ownEntry?.status === 'off' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200')}
-                onClick={() => updateSchedule(date, 'off')}
-                disabled={isSaving}
-              >
-                Выходной
-              </Button>
-            </div>
+            ) : (
+              <p className={cn('text-center text-xs font-bold text-slate-400', !selected && 'mt-2')}>
+                Прошедший день доступен только для просмотра
+              </p>
+            )}
 
             <div className='mt-3 border-t border-slate-100 pt-2.5'>
               <p className='mb-2 text-xs font-extrabold uppercase leading-none text-slate-400'>
@@ -1469,9 +1537,9 @@ export function EmployeeTodayClient({
               </p>
               {selected ? (
                 <div className='grid gap-1.5'>
-                  <SelectedColleagueGroup title='Работают' rows={selectedWorkingRows} tone='green' />
-                  <SelectedColleagueGroup title='Выходной' rows={selectedOffRows} tone='slate' />
-                  <SelectedColleagueGroup title='Не заполнено' rows={selectedMissingRows} tone='amber' />
+                  {selectedWorkingRows.length > 0 && <SelectedColleagueGroup title='Работают' rows={selectedWorkingRows} tone='green' />}
+                  {selectedOffRows.length > 0 && <SelectedColleagueGroup title='Выходной' rows={selectedOffRows} tone='slate' />}
+                  {selectedMissingRows.length > 0 && <SelectedColleagueGroup title='Не заполнено' rows={selectedMissingRows} tone='amber' />}
                 </div>
               ) : colleagueRows.length ? (
                 <div className='grid gap-1.5'>
@@ -1499,8 +1567,7 @@ export function EmployeeTodayClient({
     );
   }
 
-  async function updateSchedule(date: string, status: 'working' | 'off') {
-    const previousStatus = ownScheduleByDate.get(date)?.status;
+  async function updateSchedule(date: string, status: 'working' | 'off', confirmCoverageImpact = false) {
     setError('');
     setMessage('');
     setIsSaving(true);
@@ -1508,12 +1575,28 @@ export function EmployeeTodayClient({
       const response = await fetch('/api/employee/workday/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, status }),
+        body: JSON.stringify({ date, status, confirmCoverageImpact }),
       });
       const payload = await response.json();
+      if (
+        response.status === 409
+        && isRecord(payload)
+        && payload.code === 'SCHEDULE_COVERAGE_CONFIRMATION_REQUIRED'
+        && isRecord(payload.coverage)
+        && isRecord(payload.copy)
+      ) {
+        setPendingScheduleChange({
+          date,
+          status,
+          coverage: payload.coverage as unknown as ScheduleCoverage,
+          copy: payload.copy as PendingScheduleChange['copy'],
+        });
+        return;
+      }
       if (!response.ok) throw new Error(payload.error || 'Не удалось обновить график');
       if (!applySchedulePayload(payload)) throw new Error('Сервер вернул неполные данные графика');
-      setScheduleUndo({ date, previousStatus: previousStatus === 'working' || previousStatus === 'off' ? previousStatus : null });
+      setPendingScheduleChange(null);
+      setEditingScheduleDate(null);
       setMessage('График сохранён');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить график');
@@ -1522,27 +1605,22 @@ export function EmployeeTodayClient({
     }
   }
 
-  async function undoScheduleChange() {
-    if (!scheduleUndo) return;
-    const undo = scheduleUndo;
+  async function declineScheduleReplacement(date: string) {
     setError('');
     setMessage('');
     setIsSaving(true);
     try {
-      const response = undo.previousStatus
-        ? await fetch('/api/employee/workday/schedule', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date: undo.date, status: undo.previousStatus }),
-          })
-        : await fetch(`/api/employee/workday/schedule?date=${encodeURIComponent(undo.date)}`, { method: 'DELETE' });
+      const response = await fetch('/api/employee/workday/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, action: 'decline_replacement' }),
+      });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Не удалось отменить изменение');
+      if (!response.ok) throw new Error(payload.error || 'Не удалось сохранить ответ');
       if (!applySchedulePayload(payload)) throw new Error('Сервер вернул неполные данные графика');
-      setScheduleUndo(null);
-      setMessage('Изменение отменено');
+      setMessage('Ответ сохранён');
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Не удалось отменить изменение');
+      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить ответ');
     } finally {
       setIsSaving(false);
     }
@@ -3385,16 +3463,37 @@ export function EmployeeTodayClient({
                 <CheckCircle2 className='h-4 w-4' />
               </span>
               <span className='min-w-0 flex-1'>{message}</span>
-              {message === 'График сохранён' && scheduleUndo && (
-                <button
+            </div>
+          )}
+
+          {pendingScheduleChange && (
+            <div className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'>
+              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+                <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+                <p className='text-xs font-black uppercase tracking-[0.14em] text-amber-700'>Изменение графика</p>
+                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{pendingScheduleChange.copy.title}</h2>
+                <div className='employee-material-alert-card mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3'>
+                  <p className='text-sm font-extrabold text-amber-950'>После изменения: {pendingScheduleChange.coverage.workingCount} из {pendingScheduleChange.coverage.targetCount}</p>
+                  <p className='mt-1 text-sm font-semibold leading-relaxed text-amber-900'>{pendingScheduleChange.copy.body}</p>
+                </div>
+                <p className='mt-3 text-xs font-semibold leading-relaxed text-slate-500'>Изменение не блокируется. Причины отсутствия коллегам не показываются.</p>
+                <Button
                   type='button'
-                  className='shrink-0 rounded-lg px-2 py-1 text-xs font-extrabold text-green-700 hover:bg-green-50 disabled:opacity-50'
-                  onClick={undoScheduleChange}
+                  className='employee-material-green-action mt-5 h-14 w-full rounded-xl text-base font-black'
                   disabled={isSaving}
+                  onClick={() => void updateSchedule(pendingScheduleChange.date, pendingScheduleChange.status, true)}
                 >
-                  Отменить
-                </button>
-              )}
+                  {pendingScheduleChange.copy.action}
+                </Button>
+                <Button
+                  type='button'
+                  className='employee-material-secondary-action mt-2 h-12 w-full rounded-xl text-sm font-extrabold'
+                  disabled={isSaving}
+                  onClick={() => setPendingScheduleChange(null)}
+                >
+                  Отмена
+                </Button>
+              </div>
             </div>
           )}
 
@@ -3848,17 +3947,17 @@ export function EmployeeTodayClient({
           {activeTab === 'schedule' && (
             <div className='space-y-3'>
               <Card className='p-2.5'>
-                <div className='employee-material-segment grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1'>
+                <div className='employee-material-segment grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1'>
                   {[
-                    { id: 'list' as const, label: 'Список' },
-                    { id: 'month' as const, label: 'Месяц' },
+                    { id: 'list' as const, label: 'Ближайшие дни' },
+                    { id: 'month' as const, label: 'Весь месяц' },
                   ].map((mode) => (
                     <button
                       key={mode.id}
                       type='button'
                       onClick={() => setScheduleMode(mode.id)}
                       className={cn(
-                        'h-10 rounded-lg text-sm font-extrabold transition',
+                        'h-11 rounded-xl text-sm font-extrabold transition',
                         scheduleMode === mode.id ? 'bg-[#111821] text-white shadow-[0_8px_18px_rgba(15,23,42,0.16)]' : 'text-slate-600 hover:bg-white',
                       )}
                     >
@@ -3869,22 +3968,42 @@ export function EmployeeTodayClient({
               </Card>
 
               {scheduleMode === 'list' && (
-                <>
-                  <div className='grid gap-2.5'>
-                    {visibleDates.map((date) => (
-                      <ScheduleDayCard key={date} date={date} />
-                    ))}
-                  </div>
-
-                  <Button className='employee-material-secondary-action w-full gap-2' onClick={() => setShowFullSchedule((current) => !current)}>
-                    {showFullSchedule ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
-                    {showFullSchedule ? 'Свернуть график' : 'Открыть полный график'}
-                  </Button>
-                </>
+                <div className='grid gap-2.5'>
+                  {previewDates.map((date) => (
+                    <ScheduleDayCard key={date} date={date} />
+                  ))}
+                </div>
               )}
 
               {scheduleMode === 'month' && (
-                <Card className='space-y-2.5 p-2.5'>
+                <>
+                  {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && (
+                    <Card className='employee-material-alert-card border-amber-200 bg-amber-50 p-3.5'>
+                      <div className='flex items-start gap-3'>
+                        <span className='employee-material-heading-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'>
+                          <AlertTriangle className='h-5 w-5' />
+                        </span>
+                        <div className='min-w-0 flex-1'>
+                          <p className='font-extrabold text-amber-950'>Заполните график на {monthTitle(calendarMonth).toLowerCase()}</p>
+                          <p className='mt-1 text-xs font-semibold text-amber-900'>Осталось отметить {incompleteScheduleDates.length} дн.</p>
+                        </div>
+                      </div>
+                      <Button
+                        type='button'
+                        className='employee-material-green-action mt-3 h-12 w-full rounded-xl text-sm font-black'
+                        onClick={() => {
+                          const nextDate = incompleteScheduleDates[0]?.date;
+                          if (!nextDate) return;
+                          setSelectedScheduleDate(nextDate);
+                          setExpandedScheduleDates((current) => new Set(current).add(nextDate));
+                          setEditingScheduleDate(nextDate);
+                        }}
+                      >
+                        Продолжить заполнение
+                      </Button>
+                    </Card>
+                  )}
+                  <Card className='space-y-2.5 p-2.5'>
                   <div className='flex items-center justify-between gap-2'>
                     <button
                       type='button'
@@ -3937,7 +4056,7 @@ export function EmployeeTodayClient({
                     ))}
                   </div>
 
-                  <div className='grid grid-cols-7 gap-0.5'>
+                  <div className='grid grid-cols-7 gap-1'>
                     {calendarDays.map((cell) => {
                       const ownEntry = ownScheduleByDate.get(cell.date);
                       const workingInitials = getWorkingInitials(cell.date);
@@ -3957,27 +4076,34 @@ export function EmployeeTodayClient({
                           type='button'
                           onClick={() => setSelectedScheduleDate(cell.date)}
                           className={cn(
-                            'employee-material-calendar-day flex min-h-[50px] min-w-0 flex-col rounded-md p-1 text-left ring-1 transition hover:scale-[1.01]',
+                            'employee-material-calendar-day flex min-h-[62px] min-w-0 flex-col rounded-lg p-1.5 text-left ring-1 transition hover:scale-[1.01]',
                             statusClass,
                             !cell.inMonth && 'opacity-40',
-                            selected && 'ring-2 ring-primary shadow-[0_8px_18px_rgba(81,180,17,0.16)]',
+                            selected && 'ring-2 ring-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.14)]',
                           )}
                         >
-                          <span className='text-[13px] font-extrabold leading-none'>{cell.day}</span>
-                          <span className='mt-0.5 text-[11px] font-extrabold leading-none'>{scheduleMonthLoaded ? scheduleCellLabel(ownEntry?.status) : '…'}</span>
-                          <span className='mt-auto flex max-w-full flex-wrap gap-x-1 gap-y-0.5 overflow-hidden leading-none'>
-                            {scheduleMonthLoaded && workingInitials.initials.map((letter, index) => (
-                              <span key={`${letter}-${index}`} className='text-[9px] font-extrabold leading-none text-green-800'>
-                                {letter}
-                              </span>
-                            ))}
-                            {scheduleMonthLoaded && workingInitials.extraCount > 0 && (
-                              <span className='text-[9px] font-extrabold leading-none text-green-800'>+{workingInitials.extraCount}</span>
-                            )}
+                          <span className='text-xs font-extrabold leading-none'>{cell.day}</span>
+                          <span className='mt-1 truncate text-[9px] font-extrabold leading-none'>{scheduleMonthLoaded ? scheduleCellLabel(ownEntry?.status) : '…'}</span>
+                          <span className={cn(
+                            'mt-auto max-w-full text-[8px] font-extrabold leading-none',
+                            scheduleMonthLoaded && workingInitials.count === 0 && workingInitials.complete ? 'text-amber-700' : 'text-green-800',
+                          )}>
+                            {scheduleMonthLoaded && workingInitials.count === 0 && workingInitials.complete ? 'Никого' : ''}
+                            {scheduleMonthLoaded ? workingInitials.initials.join(' ') : ''}
+                            {scheduleMonthLoaded && workingInitials.extraCount > 0 ? ` +${workingInitials.extraCount}` : ''}
                           </span>
+                          {scheduleMonthLoaded && workingInitials.count === 1 && (
+                            <span className='mt-0.5 text-[7px] font-extrabold leading-none text-amber-700'>1 чел.</span>
+                          )}
                         </button>
                       );
                     })}
+                  </div>
+
+                  <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] font-bold text-slate-500'>
+                    <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-green-50 ring-1 ring-green-100' />Работаю</span>
+                    <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-slate-100 ring-1 ring-slate-200' />Выходной</span>
+                    <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-amber-50 ring-1 ring-amber-100' />Нужно выбрать</span>
                   </div>
 
                   {scheduleMonthLoaded ? (
@@ -3987,7 +4113,8 @@ export function EmployeeTodayClient({
                       Загружаем выбранный месяц…
                     </div>
                   )}
-                </Card>
+                  </Card>
+                </>
               )}
             </div>
           )}

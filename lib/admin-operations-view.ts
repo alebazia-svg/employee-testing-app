@@ -48,6 +48,11 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Ошибка инкассации',
     actionLabel: 'Открыть контроль дня',
   },
+  'work_schedule.coverage_gap': {
+    category: 'requests',
+    typeLabel: 'График отдела',
+    actionLabel: 'Открыть день',
+  },
 };
 
 export function adminInboxEventMeta(type: string): AdminInboxEventMeta {

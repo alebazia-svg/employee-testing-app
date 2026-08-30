@@ -144,7 +144,7 @@ test('second scheduled employee receives only the remaining paired shift', () =>
   }).allowedShiftCodes, ['09_18']);
 });
 
-test('first of two employees can choose either paired shift and missing schedule fails open', () => {
+test('first of two employees can choose either paired shift and missing schedule stays explicit', () => {
   assert.deepEqual(deriveWorkdayShiftSelection({
     department: 'wholesale',
     currentUserId: 3,
@@ -165,6 +165,27 @@ test('first of two employees can choose either paired shift and missing schedule
     scheduledWorkingUserIds: [],
     startedWorkdays: [],
   });
-  assert.equal(fallback.mode, 'unavailable');
+  assert.equal(fallback.mode, 'outside_schedule');
   assert.deepEqual(fallback.allowedShiftCodes, ['09_18', '09_19', '10_19']);
+});
+
+test('an unscheduled employee receives the remaining paired shift after a colleague starts', () => {
+  assert.deepEqual(deriveWorkdayShiftSelection({
+    department: 'retail',
+    currentUserId: 2,
+    scheduledWorkingUserIds: [],
+    startedWorkdays: [{ userId: 1, shiftCode: '09_18' }],
+  }), {
+    mode: 'outside_schedule_remaining',
+    scheduledCount: 0,
+    allowedShiftCodes: ['11_20'],
+    exceptionShiftCodes: [],
+  });
+
+  assert.deepEqual(deriveWorkdayShiftSelection({
+    department: 'wholesale',
+    currentUserId: 4,
+    scheduledWorkingUserIds: [3],
+    startedWorkdays: [{ userId: 3, shiftCode: '10_19' }],
+  }).allowedShiftCodes, ['09_18']);
 });

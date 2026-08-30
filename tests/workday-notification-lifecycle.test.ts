@@ -121,6 +121,12 @@ test('inactive sent notifications are cancelled without marking them as read', a
 test('notification links open the exact employee action target', () => {
   assert.equal(workdayNotificationHref({ issueId: 12, reviewId: null }), '/employee/issues/12');
   assert.equal(workdayNotificationHref({ issueId: null, reviewId: 'review-7' }), '/employee/payment-checks/review-7');
+  assert.equal(workdayNotificationHref({
+    issueId: null,
+    reviewId: null,
+    kind: 'schedule_replacement_request',
+    fingerprint: 'schedule-coverage:retail:2026-09-05:17',
+  }), '/employee?tab=schedule&date=2026-09-05');
   assert.equal(workdayNotificationHref({ issueId: null, reviewId: null }), '/employee');
 });
 

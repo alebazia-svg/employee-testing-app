@@ -2,7 +2,7 @@ import { getShiftOptionsForDepartment } from '@/lib/workday';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
-export type WorkdayShiftSelectionMode = 'solo' | 'first_of_pair' | 'remaining' | 'unavailable';
+export type WorkdayShiftSelectionMode = 'solo' | 'first_of_pair' | 'remaining' | 'outside_schedule_remaining' | 'outside_schedule' | 'unavailable';
 
 export type WorkdayShiftSelection = {
   mode: WorkdayShiftSelectionMode;
@@ -44,7 +44,25 @@ export function deriveWorkdayShiftSelection(input: {
   const scheduledIds = new Set(input.scheduledWorkingUserIds);
   const scheduledCount = scheduledIds.size;
   const expectedShiftCodes = shiftCodesByDepartmentAndCount[input.department][scheduledCount];
-  if (!expectedShiftCodes || !scheduledIds.has(input.currentUserId)) {
+  if (!scheduledIds.has(input.currentUserId)) {
+    const pairedShiftCodes = shiftCodesByDepartmentAndCount[input.department][2];
+    const otherStarts = input.startedWorkdays.filter((entry) => entry.userId !== input.currentUserId);
+    if (otherStarts.length === 1 && pairedShiftCodes.includes(otherStarts[0].shiftCode)) {
+      return {
+        mode: 'outside_schedule_remaining',
+        scheduledCount,
+        allowedShiftCodes: pairedShiftCodes.filter((code) => code !== otherStarts[0].shiftCode),
+        exceptionShiftCodes: [],
+      };
+    }
+    return {
+      mode: 'outside_schedule',
+      scheduledCount,
+      allowedShiftCodes: getShiftOptionsForDepartment(input.department).map((shift) => shift.code),
+      exceptionShiftCodes: [],
+    };
+  }
+  if (!expectedShiftCodes) {
     return fallbackSelection(input.department);
   }
 
@@ -84,6 +102,8 @@ export function permittedWorkdayShiftCodes(selection: WorkdayShiftSelection) {
 export function workdayShiftSelectionHint(selection: WorkdayShiftSelection) {
   if (selection.mode === 'solo') return 'Сегодня в отделе один сотрудник — смена определена по графику.';
   if (selection.mode === 'remaining') return 'Коллега уже начал рабочий день — вам доступна оставшаяся смена.';
+  if (selection.mode === 'outside_schedule_remaining') return 'Коллега уже начал рабочий день — оставшаяся смена определена автоматически.';
+  if (selection.mode === 'outside_schedule') return 'В графике на сегодня нет вашей рабочей отметки. Выберите фактическую смену.';
   if (selection.mode === 'first_of_pair') return 'Выберите свою смену. Смена коллеги определится автоматически.';
   return 'Выберите свою смену на сегодня.';
 }

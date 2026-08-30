@@ -23,6 +23,7 @@ model User {
   payrollRuns                  PayrollRun[]                   @relation("PayrollRunCreatedBy")
   payrollAdjustments           PayrollAdjustment[]            @relation("PayrollAdjustmentCreatedBy")
   workSchedules                WorkScheduleEntry[]
+  workScheduleChanges          WorkScheduleChange[]
   workDays                     WorkDayEntry[]
   workdayStartIntents          WorkdayStartIntent[]
   shiftControlRuns             ShiftControlRun[]
@@ -537,6 +538,25 @@ model WorkScheduleEntry {
   @@index([date])
   @@index([department, date])
   @@index([status])
+}
+
+model WorkScheduleChange {
+  id             String   @id @default(cuid())
+  userId         Int
+  date           String
+  department     String
+  previousStatus String?
+  nextStatus     String
+  source         String   @default("employee")
+  workingBefore  Int
+  workingAfter   Int
+  coverageState  String
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date, createdAt])
+  @@index([department, date, createdAt])
+  @@index([coverageState, createdAt])
 }
 
 model WorkdayStartIntent {
