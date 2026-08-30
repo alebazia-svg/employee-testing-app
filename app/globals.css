@@ -720,6 +720,22 @@ select {
   box-shadow: inset 1px 1px 3px rgba(94, 91, 84, 0.08), inset -1px -1px 3px rgba(255, 255, 255, 0.86);
 }
 
+.employee-material-calendar-day.is-selected {
+  box-shadow:
+    0 0 0 2px rgba(66, 185, 42, 0.72),
+    0 6px 14px rgba(44, 112, 30, 0.12),
+    inset 1px 1px 3px rgba(94, 91, 84, 0.08),
+    inset -1px -1px 3px rgba(255, 255, 255, 0.86) !important;
+}
+
+.employee-material-calendar-day.is-today {
+  box-shadow:
+    0 0 0 2px #303a3f,
+    0 6px 14px rgba(48, 58, 63, 0.16),
+    inset 1px 1px 3px rgba(94, 91, 84, 0.08),
+    inset -1px -1px 3px rgba(255, 255, 255, 0.86) !important;
+}
+
 .employee-material-green-action {
   position: relative;
   overflow: hidden;

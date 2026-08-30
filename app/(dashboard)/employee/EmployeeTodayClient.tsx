@@ -1500,9 +1500,9 @@ export function EmployeeTodayClient({
             {statusCopy}
           </Badge>
         </div>
-        <div className={cn('flex items-center gap-2', compact ? 'mt-1.5' : 'mt-2')}>
-          <p className='min-w-0 flex-1 text-sm font-semibold leading-snug text-slate-600'>{peopleCopy}</p>
-          {compact && canEdit && (
+        <p className={cn('text-sm font-semibold leading-snug text-slate-600', compact ? 'mt-1.5 whitespace-nowrap' : 'mt-2')}>{peopleCopy}</p>
+        {compact && canEdit && (
+          <div className='mt-2 flex justify-end'>
             <Button
               type='button'
               className='employee-material-secondary-action h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold'
@@ -1510,8 +1510,8 @@ export function EmployeeTodayClient({
             >
               {ownEntry ? 'Изменить' : 'Выбрать'}
             </Button>
-          )}
-        </div>
+          </div>
+        )}
 
         {replacementRequested && (
           <div className='employee-material-alert-card mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3'>
@@ -4284,8 +4284,8 @@ export function EmployeeTodayClient({
                             !cell.inMonth && 'opacity-40',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
                             bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
-                            !bulkScheduleMode && selected && !isToday && 'ring-2 ring-green-500 shadow-[0_6px_14px_rgba(22,163,74,0.12)]',
-                            !bulkScheduleMode && isToday && 'ring-2 ring-[#303a3f] shadow-[0_6px_14px_rgba(48,58,63,0.14)]',
+                            !bulkScheduleMode && selected && !isToday && 'is-selected',
+                            !bulkScheduleMode && isToday && 'is-today',
                           )}
                         >
                           <span className='text-xs font-extrabold leading-none'>{cell.day}</span>
@@ -4308,15 +4308,15 @@ export function EmployeeTodayClient({
                     })}
                   </div>
 
-                  {scheduleMonthLoaded && !bulkScheduleMode && selectedScheduleDate.startsWith(`${calendarMonth}-`) && (
-                    <ScheduleDayCard date={selectedScheduleDate} selected compact />
-                  )}
-
                   <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] font-extrabold text-slate-600'>
                     <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-green-100 ring-1 ring-green-300' />Работаю</span>
                     <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#e7ebe9] ring-1 ring-[#aeb9b4]' />Выходной</span>
                     {!bulkScheduleMode && <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
                   </div>
+
+                  {scheduleMonthLoaded && !bulkScheduleMode && selectedScheduleDate.startsWith(`${calendarMonth}-`) && (
+                    <ScheduleDayCard date={selectedScheduleDate} selected compact />
+                  )}
 
                   {!scheduleMonthLoaded ? (
                     <div className='rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500'>
