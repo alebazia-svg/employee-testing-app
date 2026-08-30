@@ -85,7 +85,10 @@ export async function POST(req: Request) {
         previousStatus: mode === 'edit' ? existingOwnByDate.get(change.date) : null,
         departmentEntries: entries,
         source: mode === 'edit' ? 'employee_bulk_edit' : 'employee_bulk',
-        notifyCoverage: mode === 'edit',
+        // A monthly edit can touch dozens of dates. Per-date replacement pushes
+        // belong only to the explicit single-day flow; otherwise one save floods
+        // every colleague with a notification for each affected day.
+        notifyCoverage: false,
       });
       coverageResults.push({ date: change.date, state: coverage.state });
     }
