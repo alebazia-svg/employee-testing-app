@@ -69,7 +69,7 @@ test('builds a compact neutral employee workday summary', () => {
     bankOperationAt: '2026-08-17T16:32:00.000Z',
     amountKopecks: 1_250_000,
   }), {
-    title: 'Проверьте продажу',
+    title: 'Пробейте чек на 12 500 ₽',
     meta: '19:32 · 12 500 ₽',
   });
 });

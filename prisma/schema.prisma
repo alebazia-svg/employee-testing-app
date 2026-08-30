@@ -391,6 +391,10 @@ model TerminalFiscalReviewParticipant {
   id        String                       @id @default(cuid())
   reviewId  String
   userId    Int
+  openedAt  DateTime?
+  handlingUntil DateTime?
+  response  String                       @default("pending")
+  respondedAt DateTime?
   createdAt DateTime                     @default(now())
   review    TerminalFiscalEmployeeReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
   user      User                         @relation(fields: [userId], references: [id], onDelete: Cascade)

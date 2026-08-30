@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ArrowLeft, MessageCircle, SearchCheck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
+import { EmployeePaymentCheckActionCard } from '@/components/EmployeePaymentCheckActionCard';
 import { LogoutButton } from '@/components/LogoutButton';
-import { TerminalFiscalReviewConversation } from '@/components/TerminalFiscalReviewConversation';
 import { Card } from '@/components/ui/card';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { terminalFiscalEmployeeReviewText } from '@/lib/terminal-fiscal-employee-review';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,38 +16,18 @@ export default async function EmployeePaymentCheckPage(props: { params: Promise<
   if (!user) redirect('/login');
   if (user.role !== 'EMPLOYEE') redirect('/admin');
   const review = await prisma.terminalFiscalEmployeeReview.findFirst({
-    where: {
-      id: params.id,
-      OR: [{ employeeId: user.id }, { participants: { some: { userId: user.id } } }],
-    },
-    include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } } },
+    where: { id: params.id, OR: [{ employeeId: user.id }, { participants: { some: { userId: user.id } } }] },
+    include: { participants: true, messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { role: true } } } } },
   });
   if (!review) redirect('/employee');
   const open = review.status === 'open';
-  return (
-    <main className='employee-material-ui min-h-screen bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
-      <div className='employee-material-shell relative mx-auto min-h-screen w-full max-w-[520px] shadow-2xl md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
-        <header className='employee-material-header flex items-center justify-between px-4 py-4'>
-          <BrandBlock size='employee' />
-          <LogoutButton iconOnly title='Выйти' className='employee-material-header-action h-10 w-10 px-0 text-white' />
-        </header>
-        <div className='px-4 py-5'>
-          <Link href='/employee' className='inline-flex items-center gap-2 text-sm font-extrabold text-green-700'><ArrowLeft className='h-4 w-4' />Назад</Link>
-          <Card className={`mt-4 ${open ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
-            <div className='flex gap-3'><span className={`employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${open ? 'text-amber-700' : 'text-green-700'}`}><SearchCheck className='h-6 w-6' /></span><div><p className={`text-xs font-extrabold uppercase tracking-wide ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? 'Требуется проверка' : 'Проверка закрыта'}</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>Проверьте продажу</h1><p className='mt-2 text-base font-bold leading-relaxed text-slate-800'>{open ? terminalFiscalEmployeeReviewText({ operationAt: review.bankOperationAt, amountKopecks: review.amountKopecks, sharedShift: review.assignmentScope === 'retail_shift' }) : 'Портал подтвердил исправление. История проверки сохранена.'}</p></div></div>
-          </Card>
-          {review.assignmentScope === 'retail_shift' && open ? <p className='mt-3 text-sm font-bold leading-relaxed text-slate-300'>Задача общей смене: проверьте обе кассы. После появления чека она закроется у всех автоматически.</p> : null}
-          <Card className='employee-material-form mt-4'>
-            <div className='mb-4 flex items-center gap-2'><span className='employee-material-heading-icon'><MessageCircle className='h-5 w-5 text-green-700' /></span><h2 className='text-lg font-extrabold'>Сообщение администратору</h2></div>
-            <TerminalFiscalReviewConversation
-              initialMessages={review.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))}
-              currentUserId={user.id}
-              endpoint={`/api/employee/payment-checks/${review.id}/messages`}
-              disabled={!open}
-            />
-          </Card>
-        </div>
+  const latestAdminMessage = [...review.messages].reverse().find((message) => message.author.role === 'ADMIN')?.body ?? null;
+  return <main className='employee-material-ui min-h-screen bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
+    <div className='employee-material-shell relative mx-auto min-h-screen w-full max-w-[520px] shadow-2xl md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
+      <header className='employee-material-header flex items-center justify-between px-4 py-4'><BrandBlock size='employee' /><LogoutButton iconOnly title='Выйти' className='employee-material-header-action h-10 w-10 px-0 text-white' /></header>
+      <div className='px-4 py-5'><Link href='/employee' className='inline-flex items-center gap-2 text-sm font-extrabold text-green-700'><ArrowLeft className='h-4 w-4' />Назад</Link>
+        <div className='mt-4'>{open ? <EmployeePaymentCheckActionCard reviewId={review.id} amountKopecks={review.amountKopecks} bankOperationAt={review.bankOperationAt.toISOString()} initialResponse={review.participants.find((item) => item.userId === user.id)?.response ?? 'pending'} latestAdminMessage={latestAdminMessage} /> : <Card className='rounded-[24px] border-green-200 bg-green-50'><div className='flex gap-3'><span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-green-700'><CheckCircle2 className='h-6 w-6' /></span><div><p className='text-xs font-extrabold uppercase tracking-wide text-green-700'>Исправлено</p><h1 className='mt-1 text-xl font-black leading-snug'>Чек найден в 1С</h1><p className='mt-2 text-sm font-bold text-slate-700'>Проверка закрыта автоматически.</p></div></div></Card>}</div>
       </div>
-    </main>
-  );
+    </div>
+  </main>;
 }
