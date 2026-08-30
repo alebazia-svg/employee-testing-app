@@ -61,6 +61,13 @@ replacement push per date; staffing gaps remain visible in the shared calendar
 and ADMIN view, while later single-day changes keep the ordinary confirmation
 and notification lifecycle.
 
+A separate `Изменить несколько дней` flow lets the employee revise already
+saved current/future dates in one pass. It starts from the persisted schedule,
+sends only dates whose status actually changed, records `employee_bulk_edit`
+audit rows and uses optimistic concurrency (`previousStatus`) so a stale device
+cannot overwrite newer edits. Unlike initial completion, these corrections use
+the ordinary department-coverage notification lifecycle.
+
 Retail and Wholesale use two people as the normal coverage target, but reduced
 or empty staffing never blocks an honest schedule change. A change below the
 target requires an explicit confirmation, creates an ADMIN Inbox event and
