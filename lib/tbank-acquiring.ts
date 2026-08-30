@@ -28,6 +28,7 @@ export type TBankTerminalOperation = {
   amountRubles: number;
   maskedCardNumber: string;
   type: 'Debit' | 'Credit' | 'Other';
+  rawType?: string;
 };
 
 export type TBankTerminalsResult = {
@@ -256,6 +257,7 @@ export async function getTBankTerminalOperations(params: {
       amountRubles: amountKopecks / 100,
       maskedCardNumber: maskCardNumber(value.cardNumber),
       type,
+      rawType,
     }];
   });
 

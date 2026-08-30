@@ -145,7 +145,10 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
   const [requiredIssues, paymentChecks, closeExceptionRequest, cashEncashmentExceptionRequest] = await Promise.all([
     findOpenRequiredWorkdayIssues(prisma, user.id, activeWorkDay?.date),
     prisma.terminalFiscalEmployeeReview.findMany({
-      where: { employeeId: user.id, status: 'open' },
+      where: {
+        status: 'open',
+        OR: [{ employeeId: user.id }, { participants: { some: { userId: user.id } } }],
+      },
       orderBy: [{ bankOperationAt: 'asc' }, { id: 'asc' }],
       select: {
         id: true,

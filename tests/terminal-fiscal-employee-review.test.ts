@@ -523,7 +523,7 @@ test('review messages are short plain text and cannot be empty', () => {
   assert.equal(normalizeTerminalFiscalReviewMessage('x'.repeat(1001)).ok, false);
 });
 
-test('employee message goes to ADMIN inbox without duplicate Telegram and ADMIN reply uses the employee channel', async () => {
+test('shared shift conversation is visible to a participant and ADMIN reply reaches every participant', async () => {
   const messages: any[] = [];
   const events: any[] = [];
   const receipts: any[] = [];
@@ -532,8 +532,8 @@ test('employee message goes to ADMIN inbox without duplicate Telegram and ADMIN 
   const db: any = {
     terminalFiscalEmployeeReview: {
       findFirst: async ({ include }: any) => include?.employee
-        ? { id: 'review-1', employeeId: 5, status: 'open', employee: { name: 'Костеренко Магомед' } }
-        : { id: 'review-1', employeeId: 5, status: 'open' },
+        ? { id: 'review-1', employeeId: 5, assignmentScope: 'retail_shift', status: 'open', employee: { name: 'Костеренко Магомед' } }
+        : { id: 'review-1', employeeId: 5, status: 'open', participants: [{ userId: 5 }, { userId: 6 }] },
     },
     terminalFiscalReviewMessage: {
       create: async ({ data }: any) => { const row = { id: `message-${messages.length + 1}`, ...data }; messages.push(row); return row; },
@@ -554,13 +554,15 @@ test('employee message goes to ADMIN inbox without duplicate Telegram and ADMIN 
   await addEmployeeTerminalFiscalReviewMessage({ prisma: db as PrismaClient, reviewId: 'review-1', employeeId: 5, body: 'Нужно уточнить продажу.' });
   assert.equal(events.length, 1);
   assert.equal(events[0].type, 'terminal_fiscal_review.employee_message');
+  assert.match(events[0].body, /Смена Розницы/);
   assert.equal(receipts.length, 1);
   assert.equal(deliveries.length, 0);
   assert.equal(notifications.length, 0);
 
   await addAdminTerminalFiscalReviewMessage({ prisma: db as PrismaClient, reviewId: 'review-1', adminId: 1, body: 'Проверьте журнал продаж.' });
   assert.equal(messages.length, 2);
-  assert.equal(notifications.length, 1);
+  assert.equal(notifications.length, 2);
+  assert.deepEqual(notifications.map((item) => item.userId), [5, 6]);
   assert.equal(notifications[0].reviewId, 'review-1');
   assert.equal(notifications[0].kind, 'terminal_fiscal_review_reply');
 });

@@ -8,43 +8,44 @@ datasource db {
 }
 
 model User {
-  id                           Int                            @id @default(autoincrement())
-  name                         String
-  login                        String                         @unique
-  passwordHash                 String
-  role                         String
-  department                   String                         @default("retail")
-  isActive                     Boolean                        @default(true)
-  payrollName                  String?
-  results                      Result[]
-  progresses                   AttemptProgress[]
-  resetTargets                 AttemptReset[]                 @relation("ResetTarget")
-  resetByActions               AttemptReset[]                 @relation("ResetBy")
-  payrollRuns                  PayrollRun[]                   @relation("PayrollRunCreatedBy")
-  payrollAdjustments           PayrollAdjustment[]            @relation("PayrollAdjustmentCreatedBy")
-  workSchedules                WorkScheduleEntry[]
-  workScheduleChanges          WorkScheduleChange[]
-  workDays                     WorkDayEntry[]
-  workdayStartIntents          WorkdayStartIntent[]
-  shiftControlRuns             ShiftControlRun[]
-  shiftControlManualReviews    ShiftControlManualReview[]     @relation("ShiftControlManualReviewReviewedBy")
-  cashOperations               CashOperation[]
-  oneCCashboxMapping           UserOneCCashboxMapping?
-  pushSubscriptions            WorkdayPushSubscription[]
-  workdayNotifications         WorkdayNotification[]
-  workdayControlIssues         WorkdayControlIssue[]
-  kkmAssignments               WorkdayKkmAssignment[]         @relation("WorkdayKkmAssignmentEmployee")
-  assignedKkmAssignments       WorkdayKkmAssignment[]         @relation("WorkdayKkmAssignmentAssignedBy")
-  expenseRequestCasesSeen      ExpenseRequestAdminCase[]      @relation("ExpenseRequestCaseSeenBy")
-  expenseRequestCasesReviewed  ExpenseRequestAdminCase[]      @relation("ExpenseRequestCaseReviewedBy")
-  expenseRequestFeedback       ExpenseRequestAdminFeedback[]
-  adminInboxReceipts           AdminInboxReceipt[]
-  terminalFiscalReviews        TerminalFiscalEmployeeReview[] @relation("TerminalFiscalReviewEmployee")
-  terminalFiscalReviewMessages TerminalFiscalReviewMessage[]  @relation("TerminalFiscalReviewMessageAuthor")
-  workdayIssueMessages         WorkdayControlIssueMessage[]   @relation("WorkdayControlIssueMessageAuthor")
-  workdayCloseRequests         WorkdayCloseExceptionRequest[] @relation("WorkdayCloseExceptionEmployee")
-  decidedWorkdayCloseRequests  WorkdayCloseExceptionRequest[] @relation("WorkdayCloseExceptionDecidedBy")
-  workdayShiftChanges          WorkdayShiftChange[]
+  id                               Int                               @id @default(autoincrement())
+  name                             String
+  login                            String                            @unique
+  passwordHash                     String
+  role                             String
+  department                       String                            @default("retail")
+  isActive                         Boolean                           @default(true)
+  payrollName                      String?
+  results                          Result[]
+  progresses                       AttemptProgress[]
+  resetTargets                     AttemptReset[]                    @relation("ResetTarget")
+  resetByActions                   AttemptReset[]                    @relation("ResetBy")
+  payrollRuns                      PayrollRun[]                      @relation("PayrollRunCreatedBy")
+  payrollAdjustments               PayrollAdjustment[]               @relation("PayrollAdjustmentCreatedBy")
+  workSchedules                    WorkScheduleEntry[]
+  workScheduleChanges              WorkScheduleChange[]
+  workDays                         WorkDayEntry[]
+  workdayStartIntents              WorkdayStartIntent[]
+  shiftControlRuns                 ShiftControlRun[]
+  shiftControlManualReviews        ShiftControlManualReview[]        @relation("ShiftControlManualReviewReviewedBy")
+  cashOperations                   CashOperation[]
+  oneCCashboxMapping               UserOneCCashboxMapping?
+  pushSubscriptions                WorkdayPushSubscription[]
+  workdayNotifications             WorkdayNotification[]
+  workdayControlIssues             WorkdayControlIssue[]
+  kkmAssignments                   WorkdayKkmAssignment[]            @relation("WorkdayKkmAssignmentEmployee")
+  assignedKkmAssignments           WorkdayKkmAssignment[]            @relation("WorkdayKkmAssignmentAssignedBy")
+  expenseRequestCasesSeen          ExpenseRequestAdminCase[]         @relation("ExpenseRequestCaseSeenBy")
+  expenseRequestCasesReviewed      ExpenseRequestAdminCase[]         @relation("ExpenseRequestCaseReviewedBy")
+  expenseRequestFeedback           ExpenseRequestAdminFeedback[]
+  adminInboxReceipts               AdminInboxReceipt[]
+  terminalFiscalReviews            TerminalFiscalEmployeeReview[]    @relation("TerminalFiscalReviewEmployee")
+  terminalFiscalReviewParticipants TerminalFiscalReviewParticipant[]
+  terminalFiscalReviewMessages     TerminalFiscalReviewMessage[]     @relation("TerminalFiscalReviewMessageAuthor")
+  workdayIssueMessages             WorkdayControlIssueMessage[]      @relation("WorkdayControlIssueMessageAuthor")
+  workdayCloseRequests             WorkdayCloseExceptionRequest[]    @relation("WorkdayCloseExceptionEmployee")
+  decidedWorkdayCloseRequests      WorkdayCloseExceptionRequest[]    @relation("WorkdayCloseExceptionDecidedBy")
+  workdayShiftChanges              WorkdayShiftChange[]
 }
 
 model ExpenseRequestSyncRun {
@@ -295,6 +296,7 @@ model TerminalFiscalMatch {
   status                String
   reasonCode            String
   operationType         String?
+  bankOperationRawType  String?
   bankOperationAt       DateTime?
   bankOperationHash     String
   oneCSourceRef         String?
@@ -333,6 +335,7 @@ model TerminalFiscalMatchEvaluation {
   status                String
   reasonCode            String
   mappingId             String?
+  bankOperationRawType  String?
   bankOperationAt       DateTime?
   bankOperationHash     String
   oneCSourceRef         String?
@@ -356,30 +359,44 @@ model TerminalFiscalMatchEvaluation {
 }
 
 model TerminalFiscalEmployeeReview {
-  id                       String                        @id @default(cuid())
-  reviewKey                String                        @unique
-  matchingHash             String                        @unique
+  id                       String                            @id @default(cuid())
+  reviewKey                String                            @unique
+  matchingHash             String                            @unique
   mappingId                String?
   employeeId               Int
-  status                   String                        @default("open")
+  assignmentScope          String                            @default("individual")
+  status                   String                            @default("open")
   reasonCode               String
   bankOperationAt          DateTime
   amountKopecks            Int
   cashierRefHash           String
-  attributionWindowMinutes Int                           @default(15)
-  detectedAt               DateTime                      @default(now())
-  lastCheckedAt            DateTime                      @default(now())
+  attributionWindowMinutes Int                               @default(15)
+  detectedAt               DateTime                          @default(now())
+  lastCheckedAt            DateTime                          @default(now())
   resolvedAt               DateTime?
-  createdAt                DateTime                      @default(now())
-  updatedAt                DateTime                      @updatedAt
-  mapping                  TerminalFiscalMapping?        @relation(fields: [mappingId], references: [id], onDelete: Restrict)
-  employee                 User                          @relation("TerminalFiscalReviewEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  createdAt                DateTime                          @default(now())
+  updatedAt                DateTime                          @updatedAt
+  mapping                  TerminalFiscalMapping?            @relation(fields: [mappingId], references: [id], onDelete: Restrict)
+  employee                 User                              @relation("TerminalFiscalReviewEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
   messages                 TerminalFiscalReviewMessage[]
   notifications            WorkdayNotification[]
+  participants             TerminalFiscalReviewParticipant[]
 
   @@index([employeeId, status, bankOperationAt])
   @@index([status, lastCheckedAt])
   @@index([mappingId, bankOperationAt])
+}
+
+model TerminalFiscalReviewParticipant {
+  id        String                       @id @default(cuid())
+  reviewId  String
+  userId    Int
+  createdAt DateTime                     @default(now())
+  review    TerminalFiscalEmployeeReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user      User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@index([userId, reviewId])
 }
 
 model TerminalFiscalReviewMessage {

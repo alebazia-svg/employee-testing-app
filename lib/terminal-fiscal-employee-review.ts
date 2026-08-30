@@ -390,8 +390,10 @@ function moneyFromKopecks(value: number) {
   })} ₽`;
 }
 
-export function terminalFiscalEmployeeReviewText(input: { operationAt: Date; amountKopecks: number }) {
-  return `Оплата ${moneyFromKopecks(input.amountKopecks)} в ${moscowTime(input.operationAt)}. Проверьте и пробейте чек.`;
+export function terminalFiscalEmployeeReviewText(input: { operationAt: Date; amountKopecks: number; sharedShift?: boolean }) {
+  return input.sharedShift
+    ? `Оплата ${moneyFromKopecks(input.amountKopecks)} в ${moscowTime(input.operationAt)}. В 1С чек не найден. Проверьте обе кассы.`
+    : `Оплата ${moneyFromKopecks(input.amountKopecks)} в ${moscowTime(input.operationAt)}. Проверьте и пробейте чек.`;
 }
 
 export async function syncTerminalFiscalEmployeeReviews(
@@ -476,8 +478,29 @@ export async function syncTerminalFiscalEmployeeReviews(
     if (decision.action !== 'notify') continue;
 
     if (Number.isNaN(operationAt.getTime())) continue;
-    const employeeId = decision.employeeId;
-    const attributionKey = decision.attributionKey;
+    let participantIds = [decision.employeeId];
+    let assignmentScope = 'individual';
+    let attributionKey = decision.attributionKey;
+    if (input.globalCoverage) {
+      const shiftEntries = await prisma.workDayEntry.findMany({
+        where: {
+          department: 'retail',
+          startedAt: { lte: operationAt },
+          OR: [{ endedAt: null }, { endedAt: { gte: operationAt } }],
+          user: { role: 'EMPLOYEE', isActive: true },
+        },
+        select: { userId: true },
+        orderBy: { userId: 'asc' },
+      });
+      participantIds = [...new Set(shiftEntries.map((entry) => entry.userId))];
+      if (participantIds.length === 0) {
+        adminOnly += 1;
+        continue;
+      }
+      assignmentScope = 'retail_shift';
+      attributionKey = `retail-shift:${operationDate ?? operationAt.toISOString().slice(0, 10)}`;
+    }
+    const employeeId = participantIds[0];
     const created = await prisma.$transaction(async (tx) => {
       const evaluatedAt = new Date(input.output.evaluatedAt);
       const existing = await tx.terminalFiscalEmployeeReview.findUnique({ where: { reviewKey } });
@@ -489,6 +512,7 @@ export async function syncTerminalFiscalEmployeeReviews(
           matchingHash: digest(record.matchingKey),
           mappingId: record.mappingId ?? null,
           employeeId,
+          assignmentScope,
           status: mode === 'shadow' ? 'shadow_candidate' : 'open',
           reasonCode: record.reasonCode,
           bankOperationAt: operationAt,
@@ -499,25 +523,34 @@ export async function syncTerminalFiscalEmployeeReviews(
         },
         update: {
           lastCheckedAt: evaluatedAt,
+          assignmentScope,
           ...(mode === 'shadow' ? { status: 'shadow_candidate' } : {}),
         },
       });
-      if (mode === 'notify' && review.status === 'open') await tx.workdayNotification.upsert({
-        where: { fingerprint: `${reviewKey}:created` },
-        create: {
-          userId: employeeId,
-          reviewId: review.id,
-          fingerprint: `${reviewKey}:created`,
-          kind: 'terminal_fiscal_review',
-          title: 'В 1С нет чека',
-          body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks }),
-          scheduledAt: evaluatedAt,
-        },
-        update: {},
-      });
+      if (tx.terminalFiscalReviewParticipant) await tx.terminalFiscalReviewParticipant.createMany({
+          data: participantIds.map((userId) => ({ reviewId: review.id, userId })),
+          skipDuplicates: true,
+        });
+      if (mode === 'notify' && review.status === 'open') {
+        for (const userId of participantIds) await tx.workdayNotification.upsert({
+          where: { fingerprint: `${reviewKey}:created:${userId}` },
+          create: {
+            userId,
+            reviewId: review.id,
+            fingerprint: `${reviewKey}:created:${userId}`,
+            kind: 'terminal_fiscal_review',
+            title: 'В 1С нет чека',
+            body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: assignmentScope === 'retail_shift' }),
+            scheduledAt: evaluatedAt,
+          },
+          update: {},
+        });
+      }
       if (mode === 'notify' && existing === null && review.status === 'open') {
         const [employee, admins] = await Promise.all([
-          tx.user.findUnique({ where: { id: employeeId }, select: { name: true } }),
+          assignmentScope === 'retail_shift'
+            ? Promise.resolve(null)
+            : tx.user.findUnique({ where: { id: employeeId }, select: { name: true } }),
           tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } }),
         ]);
         const event = await tx.adminInboxEvent.upsert({
@@ -526,7 +559,7 @@ export async function syncTerminalFiscalEmployeeReviews(
             eventKey: `${reviewKey}:admin-opened`,
             type: 'terminal_fiscal_review.created',
             title: 'Чек в 1С не пробит вовремя',
-            body: `${employee?.name ?? 'Сотрудник'} · ${terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks })}`,
+            body: `${assignmentScope === 'retail_shift' ? 'Смена Розницы' : (employee?.name ?? 'Сотрудник')} · ${terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: assignmentScope === 'retail_shift' })}`,
             href: `/admin/workday/payment-checks/${review.id}`,
             sourceType: 'terminal_fiscal_review',
             sourceId: review.id,
@@ -544,21 +577,21 @@ export async function syncTerminalFiscalEmployeeReviews(
         const workdayDate = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
         }).format(evaluatedAt);
-        const activeWorkday = await tx.workDayEntry.findFirst({
-          where: { userId: employeeId, date: workdayDate, status: 'active', endedAt: null },
-          select: { id: true },
+        const activeWorkdays = await tx.workDayEntry.findMany({
+          where: { userId: { in: participantIds }, date: workdayDate, status: 'active', endedAt: null },
+          select: { userId: true },
         });
-        if (activeWorkday) {
+        if (activeWorkdays.length) {
           const reminderBucket = Math.floor(evaluatedAt.getTime() / EMPLOYEE_REVIEW_REMINDER_MS);
-          await tx.workdayNotification.upsert({
-            where: { fingerprint: `${reviewKey}:reminder:${reminderBucket}` },
+          for (const activeWorkday of activeWorkdays) await tx.workdayNotification.upsert({
+            where: { fingerprint: `${reviewKey}:reminder:${reminderBucket}:${activeWorkday.userId}` },
             create: {
-              userId: employeeId,
+              userId: activeWorkday.userId,
               reviewId: review.id,
-              fingerprint: `${reviewKey}:reminder:${reminderBucket}`,
+              fingerprint: `${reviewKey}:reminder:${reminderBucket}:${activeWorkday.userId}`,
               kind: 'issue_reminder',
               title: 'Чек в 1С всё ещё не пробит',
-              body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks }),
+              body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: assignmentScope === 'retail_shift' }),
               scheduledAt: evaluatedAt,
             },
             update: {},

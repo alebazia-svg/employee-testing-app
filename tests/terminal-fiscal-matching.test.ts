@@ -203,7 +203,9 @@ test('classifies every incomplete source independently', () => {
 
 test('supports the exact grace boundary and invalid bank inputs safely', () => {
   assert.equal(only({ now: '2026-08-10T09:00:00.000Z', oneCChecks: [] }).status, 'needs_review');
-  assert.equal(only({ bankOperations: [{ ...bank, type: 'Other' }] }).reasonCode, 'BANK_OPERATION_UNSUPPORTED');
+  const unsupported = only({ bankOperations: [{ ...bank, type: 'Other', rawType: 'Reversal' }] });
+  assert.equal(unsupported.reasonCode, 'BANK_OPERATION_UNSUPPORTED');
+  assert.equal(unsupported.evidence.bankOperationRawType, 'Reversal');
   assert.equal(only({ bankOperations: [{ ...bank, amountKopecks: 0 }] }).reasonCode, 'BANK_OPERATION_INVALID');
   assert.equal(only({ bankOperations: [{ ...bank, transactionDate: 'invalid' }] }).reasonCode, 'BANK_OPERATION_INVALID');
 });

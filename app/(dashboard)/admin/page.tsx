@@ -49,7 +49,7 @@ export default async function AdminPage() {
     }),
     prisma.terminalFiscalEmployeeReview.findMany({
       where: { status: { in: ['open', 'admin_review'] } },
-      select: { id: true, status: true, amountKopecks: true, bankOperationAt: true, updatedAt: true, employee: { select: { name: true } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true, author: { select: { role: true } } } } },
+      select: { id: true, status: true, assignmentScope: true, amountKopecks: true, bankOperationAt: true, updatedAt: true, employee: { select: { name: true } }, messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true, author: { select: { role: true } } } } },
       orderBy: { updatedAt: 'desc' }, take: 40,
     }),
     prisma.workdayCloseExceptionRequest.findMany({ where: { consumedAt: null, OR: [{ status: 'pending' }, { status: 'approved', reasonCode: { startsWith: cashEncashmentExceptionPrefix } }] }, select: { id: true, comment: true, reasonCode: true, status: true, requestedAt: true, employee: { select: { name: true } } }, orderBy: { requestedAt: 'desc' } }),
@@ -80,13 +80,13 @@ export default async function AdminPage() {
     ...expenseCases.map((item) => ({ key: `expense-${item.id}`, title: `Новая заявка ${item.oneCNumber || ''}`.trim(), detail: [item.requestedByName, money(item.amount), item.businessOperationName].filter(Boolean).join(' · '), href: `/admin/expense-requests/${item.id}`, occurredAt: item.enteredNotApprovedAt ?? item.updatedAt, kind: 'request' as const })),
     ...cashOperationErrors.map((item) => ({ key: `cash-operation-${item.id}`, title: `Инкассация не проведена · ${item.user.name}`, detail: `${item.amount.toLocaleString('ru-RU')} ₽ · ${item.status === 'manual_in_progress' ? 'Взято в ручную' : item.status === 'retrying_1c' ? 'Повторное проведение' : item.oneCError || 'Можно повторить автоматически или взять в ручную'}`, href: `/admin/workday?date=${item.date}&employee=${item.user.id}`, occurredAt: item.updatedAt, kind: 'decision' as const })),
     ...issues.filter((item) => item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `issue-${item.id}`, title: `Сообщение от ${item.user.name}`, detail: item.title, href: `/admin/workday/issues/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.lastDetectedAt, kind: 'message' as const })),
-    ...reviews.filter((item) => item.status === 'admin_review' || item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `review-${item.id}`, title: item.status === 'admin_review' ? `Нужна проверка администратора · ${item.employee.name}` : `Сообщение от ${item.employee.name}`, detail: `Продажа ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.updatedAt, kind: item.status === 'admin_review' ? 'decision' as const : 'message' as const })),
+    ...reviews.filter((item) => item.status === 'admin_review' || item.messages[0]?.author.role === 'EMPLOYEE').map((item) => ({ key: `review-${item.id}`, title: item.status === 'admin_review' ? `Нужна проверка администратора · ${item.assignmentScope === 'retail_shift' ? 'смена Розницы' : item.employee.name}` : `Сообщение · ${item.assignmentScope === 'retail_shift' ? 'смена Розницы' : item.employee.name}`, detail: `Продажа ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.messages[0]?.createdAt ?? item.updatedAt, kind: item.status === 'admin_review' ? 'decision' as const : 'message' as const })),
   ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
 
   const actionHrefs = new Set(actions.map((item) => item.href));
   const employeeProblems = [
     ...issues.map((item) => ({ key: `issue-${item.id}`, title: item.title, detail: item.user.name, href: `/admin/workday/issues/${item.id}`, occurredAt: item.lastDetectedAt })),
-    ...reviews.filter((item) => item.status === 'open').map((item) => ({ key: `review-${item.id}`, title: 'Проверить продажу', detail: `${item.employee.name} · ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.updatedAt })),
+    ...reviews.filter((item) => item.status === 'open').map((item) => ({ key: `review-${item.id}`, title: 'Проверить продажу', detail: `${item.assignmentScope === 'retail_shift' ? 'Смена Розницы' : item.employee.name} · ${time(item.bankOperationAt)} · ${(item.amountKopecks / 100).toLocaleString('ru-RU')} ₽`, href: `/admin/workday/payment-checks/${item.id}`, occurredAt: item.updatedAt })),
   ].filter((item) => !actionHrefs.has(item.href)).sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
 
   const terminal = presentTerminalFiscalWorkdaySummary(terminalSummary);

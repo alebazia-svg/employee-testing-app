@@ -474,6 +474,21 @@ Admin QR codes live in `/admin/workday`. The diagnostic camera/QR page is
 `/admin/dev/qr-test` and should stay a technical tool for checking iPhone/PWA
 camera behavior separately from Workday logic.
 
+## Terminal Payment Shift Tasks
+
+- Reconcile globally across all known Retail cash registers and acquiring
+  terminals. Cross-use of known equipment must not create a personal error
+  when type, amount and count are covered by the shared pool of 1C checks.
+- After a complete safe 1C read, one genuinely uncovered payment creates one
+  shared Retail-shift task. Participants are active Retail employees whose
+  workdays overlap the bank-operation time. They share one conversation and
+  every participant receives an ADMIN reply.
+- A shared task is not personal blame. When a matching 1C check appears, the
+  task and all pending participant notifications close together. The actual
+  cashier and delay remain available from the persisted 1C match.
+- Incomplete sources, ambiguous coverage and unsupported bank-operation types
+  stay ADMIN-only. Persist the original T-Bank operation type for diagnosis.
+
 ## Stale Unfinished Workday
 
 Employees can have an unfinished previous workday. The UI was adjusted so a

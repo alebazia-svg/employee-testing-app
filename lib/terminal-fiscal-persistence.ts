@@ -106,6 +106,7 @@ function matchPersistenceData(record: MatchingAuditRecord, runId: string) {
     status: record.status,
     reasonCode: record.reasonCode,
     operationType: record.operationType ?? null,
+    bankOperationRawType: record.evidence.bankOperationRawType ?? null,
     bankOperationAt: optionalDate(record.evidence.bankTransactionDate),
     bankOperationHash,
     oneCSourceRef,

@@ -97,6 +97,7 @@ export type BankOperation = {
   transactionDate: string;
   amountKopecks: number;
   type: 'Debit' | 'Credit' | 'Other';
+  rawType?: string;
 };
 
 export type OneCCardPayment = {
@@ -177,6 +178,7 @@ export type MatchingAuditRecord = {
   candidateCount: number;
   evidence: {
     bankTransactionDate: string;
+    bankOperationRawType?: string;
     oneCDateTime?: string;
     oneCTotalKopecks?: number;
     oneCElectronicKopecks?: number;
@@ -674,6 +676,7 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       candidateCount: context.candidates.length,
       evidence: {
         bankTransactionDate: operation.transactionDate,
+        bankOperationRawType: operation.rawType,
         oneCDateTime: oneCCheck?.dateTime,
         oneCTotalKopecks: oneCCheck?.totalKopecks,
         oneCElectronicKopecks: oneCCheck?.electronicKopecks,

@@ -17,7 +17,10 @@ export default async function EmployeePaymentCheckPage(props: { params: Promise<
   if (!user) redirect('/login');
   if (user.role !== 'EMPLOYEE') redirect('/admin');
   const review = await prisma.terminalFiscalEmployeeReview.findFirst({
-    where: { id: params.id, employeeId: user.id },
+    where: {
+      id: params.id,
+      OR: [{ employeeId: user.id }, { participants: { some: { userId: user.id } } }],
+    },
     include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } } },
   });
   if (!review) redirect('/employee');
@@ -32,8 +35,9 @@ export default async function EmployeePaymentCheckPage(props: { params: Promise<
         <div className='px-4 py-5'>
           <Link href='/employee' className='inline-flex items-center gap-2 text-sm font-extrabold text-green-700'><ArrowLeft className='h-4 w-4' />Назад</Link>
           <Card className={`mt-4 ${open ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
-            <div className='flex gap-3'><span className={`employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${open ? 'text-amber-700' : 'text-green-700'}`}><SearchCheck className='h-6 w-6' /></span><div><p className={`text-xs font-extrabold uppercase tracking-wide ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? 'Требуется проверка' : 'Проверка закрыта'}</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>Проверьте продажу</h1><p className='mt-2 text-base font-bold leading-relaxed text-slate-800'>{open ? terminalFiscalEmployeeReviewText({ operationAt: review.bankOperationAt, amountKopecks: review.amountKopecks }) : 'Портал подтвердил исправление. История проверки сохранена.'}</p></div></div>
+            <div className='flex gap-3'><span className={`employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${open ? 'text-amber-700' : 'text-green-700'}`}><SearchCheck className='h-6 w-6' /></span><div><p className={`text-xs font-extrabold uppercase tracking-wide ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? 'Требуется проверка' : 'Проверка закрыта'}</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>Проверьте продажу</h1><p className='mt-2 text-base font-bold leading-relaxed text-slate-800'>{open ? terminalFiscalEmployeeReviewText({ operationAt: review.bankOperationAt, amountKopecks: review.amountKopecks, sharedShift: review.assignmentScope === 'retail_shift' }) : 'Портал подтвердил исправление. История проверки сохранена.'}</p></div></div>
           </Card>
+          {review.assignmentScope === 'retail_shift' && open ? <p className='mt-3 text-sm font-bold leading-relaxed text-slate-300'>Задача общей смене: проверьте обе кассы. После появления чека она закроется у всех автоматически.</p> : null}
           <Card className='employee-material-form mt-4'>
             <div className='mb-4 flex items-center gap-2'><span className='employee-material-heading-icon'><MessageCircle className='h-5 w-5 text-green-700' /></span><h2 className='text-lg font-extrabold'>Сообщение администратору</h2></div>
             <TerminalFiscalReviewConversation

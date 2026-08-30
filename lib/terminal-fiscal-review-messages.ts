@@ -24,7 +24,11 @@ export async function addEmployeeTerminalFiscalReviewMessage(input: {
   const now = input.now ?? new Date();
   return input.prisma.$transaction(async (tx) => {
     const review = await tx.terminalFiscalEmployeeReview.findFirst({
-      where: { id: input.reviewId, employeeId: input.employeeId, status: 'open' },
+      where: {
+        id: input.reviewId,
+        status: 'open',
+        OR: [{ employeeId: input.employeeId }, { participants: { some: { userId: input.employeeId } } }],
+      },
       include: { employee: { select: { name: true } } },
     });
     if (!review) throw new Error('REVIEW_NOT_AVAILABLE');
@@ -36,7 +40,7 @@ export async function addEmployeeTerminalFiscalReviewMessage(input: {
         eventKey: `terminal_fiscal_review:employee_message:${message.id}`,
         type: 'terminal_fiscal_review.employee_message',
         title: 'Сообщение по проверке продажи',
-        body: `${review.employee.name}: ${short(input.body)}`,
+        body: `${review.assignmentScope === 'retail_shift' ? 'Смена Розницы' : review.employee.name}: ${short(input.body)}`,
         href: `/admin/workday/payment-checks/${review.id}`,
         sourceType: 'terminal_fiscal_review',
         sourceId: review.id,
@@ -64,17 +68,20 @@ export async function addAdminTerminalFiscalReviewMessage(input: {
   return input.prisma.$transaction(async (tx) => {
     const review = await tx.terminalFiscalEmployeeReview.findFirst({
       where: { id: input.reviewId, status: 'open' },
-      select: { id: true, employeeId: true },
+      select: { id: true, employeeId: true, participants: { select: { userId: true } } },
     });
     if (!review) throw new Error('REVIEW_NOT_AVAILABLE');
     const message = await tx.terminalFiscalReviewMessage.create({
       data: { reviewId: review.id, authorId: input.adminId, body: input.body, createdAt: now },
     });
-    await tx.workdayNotification.create({
+    const recipientIds = [...new Set((review.participants ?? []).length
+      ? review.participants.map((participant) => participant.userId)
+      : [review.employeeId])];
+    for (const userId of recipientIds) await tx.workdayNotification.create({
       data: {
-        userId: review.employeeId,
+        userId,
         reviewId: review.id,
-        fingerprint: `terminal-fiscal-review:${review.id}:admin-message:${message.id}`,
+        fingerprint: `terminal-fiscal-review:${review.id}:admin-message:${message.id}:${userId}`,
         kind: 'terminal_fiscal_review_reply',
         title: 'Ответ администратора',
         body: short(input.body),
