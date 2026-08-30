@@ -51,6 +51,16 @@ full monthly grid. Employees explicitly mark future days as `Работаю` or
 `WorkScheduleChange` audit row. The monthly grid keeps employee initials and
 shows reduced staffing without forcing the employee to open every day.
 
+For initial monthly completion, `Заполнить график` switches only the still-empty
+current/future dates into bulk selection. The employee taps every working day;
+all other empty dates become days off only after one summary confirmation.
+Already completed dates are immutable in this flow. The bulk API saves the full
+set atomically, fails closed if another device filled any target date, and
+records `employee_bulk` audit rows. Initial completion must not generate one
+replacement push per date; staffing gaps remain visible in the shared calendar
+and ADMIN view, while later single-day changes keep the ordinary confirmation
+and notification lifecycle.
+
 Retail and Wholesale use two people as the normal coverage target, but reduced
 or empty staffing never blocks an honest schedule change. A change below the
 target requires an explicit confirmation, creates an ADMIN Inbox event and
