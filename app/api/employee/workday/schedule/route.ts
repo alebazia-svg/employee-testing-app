@@ -1,8 +1,9 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { buildDateRange, formatDateLabel, getMoscowDateKey, scheduleStatuses } from '@/lib/workday';
+import { buildDateRange, getMoscowDateKey, scheduleStatuses } from '@/lib/workday';
 import { buildScheduleMonthRange, isValidScheduleDateKey, scheduleMonthKeyFromDate } from '@/lib/workday-schedule';
-import { scheduleCoverage, scheduleCoverageCopy, schedulePersonName, scheduleWorkingCountAfterChange } from '@/lib/work-schedule-coverage';
+import { scheduleCoverage, scheduleCoverageCopy, scheduleWorkingCountAfterChange } from '@/lib/work-schedule-coverage';
+import { persistEmployeeScheduleChange } from '@/lib/work-schedule-persistence';
 
 const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
 
@@ -123,102 +124,14 @@ export async function POST(req: Request) {
     }, { status: 409, headers: noStoreHeaders });
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.workScheduleEntry.upsert({
-      where: { userId_date: { userId: user.id, date } },
-      create: { userId: user.id, date, status, department: user.department },
-      update: { status, department: user.department },
-    });
-    await tx.workScheduleChange.create({
-      data: {
-        userId: user.id,
-        date,
-        department: user.department,
-        previousStatus: currentEntry?.status ?? null,
-        nextStatus: status,
-        workingBefore,
-        workingAfter,
-        coverageState: coverage.state,
-      },
-    });
-
-    const fingerprintPrefix = `schedule-coverage:${user.department}:${date}:`;
-    await tx.workdayNotification.updateMany({
-      where: { fingerprint: `${fingerprintPrefix}${user.id}`, status: { in: ['pending', 'sent'] } },
-      data: { status: 'cancelled', pushStatus: 'cancelled', readAt: new Date(), nextPushAttemptAt: null },
-    });
-    if (!coverage.needsReplacement) {
-      await tx.workdayNotification.updateMany({
-        where: { fingerprint: { startsWith: fingerprintPrefix }, status: { in: ['pending', 'sent'] } },
-        data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
-      });
-      const event = await tx.adminInboxEvent.findUnique({ where: { eventKey: `schedule-coverage:${user.department}:${date}` }, select: { id: true } });
-      if (event) await tx.adminInboxReceipt.updateMany({ where: { eventId: event.id, readAt: null }, data: { readAt: new Date() } });
-      return;
-    }
-
-    const workingUserIds = new Set(
-      departmentEntries
-        .filter((entry) => entry.status === 'working' && entry.userId !== user.id)
-        .map((entry) => entry.userId),
-    );
-    if (status === 'working') workingUserIds.add(user.id);
-    const candidates = await tx.user.findMany({
-      where: { role: 'EMPLOYEE', isActive: true, department: user.department, id: { notIn: [...workingUserIds, user.id] } },
-      select: { id: true },
-    });
-    const copy = scheduleCoverageCopy(coverage);
-    for (const candidate of candidates) {
-      await tx.workdayNotification.upsert({
-        where: { fingerprint: `${fingerprintPrefix}${candidate.id}` },
-        create: {
-          userId: candidate.id,
-          fingerprint: `${fingerprintPrefix}${candidate.id}`,
-          kind: 'schedule_replacement_request',
-          title: coverage.state === 'empty' ? 'На этот день пока никто не выходит' : 'На этот день нужна замена',
-          body: `${formatDateLabel(date)} · ${copy.body}`,
-          scheduledAt: new Date(),
-        },
-        update: {
-          title: coverage.state === 'empty' ? 'На этот день пока никто не выходит' : 'На этот день нужна замена',
-          body: `${formatDateLabel(date)} · ${copy.body}`,
-          status: 'pending',
-          scheduledAt: new Date(),
-          sentAt: null,
-          readAt: null,
-          pushStatus: 'pending',
-          pushDeliveredAt: null,
-          nextPushAttemptAt: null,
-          lastError: '',
-          attemptCount: 0,
-        },
-      });
-    }
-
-    const event = await tx.adminInboxEvent.upsert({
-      where: { eventKey: `schedule-coverage:${user.department}:${date}` },
-      create: {
-        eventKey: `schedule-coverage:${user.department}:${date}`,
-        type: 'work_schedule.coverage_gap',
-        title: coverage.state === 'empty' ? 'На рабочий день никто не назначен' : 'Сокращённый состав отдела',
-        body: `${formatDateLabel(date)} · ${schedulePersonName(user.name)}: график изменён. ${coverage.workingCount} из ${coverage.targetCount} сотрудников.`,
-        href: `/admin/workday?date=${date}`,
-        sourceType: 'work_schedule_coverage',
-        sourceId: `${user.department}:${date}`,
-        occurredAt: new Date(),
-      },
-      update: {
-        title: coverage.state === 'empty' ? 'На рабочий день никто не назначен' : 'Сокращённый состав отдела',
-        body: `${formatDateLabel(date)} · ${schedulePersonName(user.name)}: график изменён. ${coverage.workingCount} из ${coverage.targetCount} сотрудников.`,
-        occurredAt: new Date(),
-      },
-    });
-    const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
-    if (admins.length) {
-      await tx.adminInboxReceipt.createMany({ data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })), skipDuplicates: true });
-      await tx.adminInboxReceipt.updateMany({ where: { eventId: event.id }, data: { readAt: null } });
-    }
-  });
+  await prisma.$transaction((tx) => persistEmployeeScheduleChange(tx, {
+    user,
+    date,
+    status,
+    previousStatus: currentEntry?.status,
+    departmentEntries,
+    source: 'employee',
+  }));
 
   const monthKey = scheduleMonthKeyFromDate(date);
   const range = monthKey ? requestedDates(monthKey) : null;

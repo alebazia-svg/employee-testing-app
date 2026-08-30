@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { colleaguePresence } from '@/lib/workday-presence';
 import { scheduleCoverage, schedulePersonLabel, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
+import { buildBulkScheduleChanges, bulkScheduleCounts } from '@/lib/work-schedule-bulk';
 import {
   cashOutboxFormData,
   listEmployeeCashOutboxItems,
@@ -512,12 +513,6 @@ function scheduleLabel(status: string | null | undefined) {
   if (status === 'working') return 'По графику';
   if (status === 'off') return 'Выходной';
   return 'Нет графика';
-}
-
-function scheduleWorkLabel(status: string | null | undefined) {
-  if (status === 'working') return 'Работаю';
-  if (status === 'off') return 'Выходной';
-  return 'Не заполнено';
 }
 
 function scheduleCellLabel(status: string | null | undefined) {
@@ -1024,8 +1019,10 @@ export function EmployeeTodayClient({
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('month');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
-  const [expandedScheduleDates, setExpandedScheduleDates] = useState<Set<string>>(() => new Set([today]));
   const [editingScheduleDate, setEditingScheduleDate] = useState<string | null>(null);
+  const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
+  const [bulkWorkingDates, setBulkWorkingDates] = useState<Set<string>>(() => new Set());
+  const [bulkScheduleConfirmOpen, setBulkScheduleConfirmOpen] = useState(false);
   const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set());
   const [loadingScheduleMonth, setLoadingScheduleMonth] = useState<string | null>(null);
   const [pendingScheduleChange, setPendingScheduleChange] = useState<PendingScheduleChange | null>(null);
@@ -1342,6 +1339,17 @@ export function EmployeeTodayClient({
   const incompleteScheduleDates = calendarDays.filter((cell) => (
     cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date)
   ));
+  const bulkMissingDates = incompleteScheduleDates.map((cell) => cell.date);
+  const bulkScheduleChanges = buildBulkScheduleChanges(bulkMissingDates, bulkWorkingDates);
+  const bulkCounts = bulkScheduleCounts(bulkScheduleChanges);
+  const activeDepartmentUserIds = new Set(departmentUsers.map((person) => person.id));
+  const bulkCoverage = bulkScheduleChanges.map((change) => {
+    const workingBefore = (departmentScheduleByDate.get(change.date) ?? [])
+      .filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working').length;
+    return { date: change.date, coverage: scheduleCoverage(user.department, workingBefore + (change.status === 'working' ? 1 : 0)) };
+  });
+  const bulkReducedCount = bulkCoverage.filter(({ coverage }) => coverage.state === 'reduced').length;
+  const bulkEmptyCount = bulkCoverage.filter(({ coverage }) => coverage.state === 'empty').length;
 
   useEffect(() => {
     if (!handoverTask || handoverTask.status === 'done' || activeHandoverTaskId) return;
@@ -1364,6 +1372,13 @@ export function EmployeeTodayClient({
 
   function personDisplayName(name: string) {
     return schedulePersonLabel(name, departmentUsers.map((person) => person.name));
+  }
+
+  function scheduleNames(rows: Array<{ person: UserSummary }>) {
+    const names = rows.map(({ person }) => personDisplayName(person.name));
+    if (names.length <= 1) return names[0] ?? '';
+    if (names.length === 2) return `${names[0]} и ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')} и ${names.at(-1)}`;
   }
 
   function getWorkingInitials(date: string) {
@@ -1396,81 +1411,32 @@ export function EmployeeTodayClient({
     const ownEntry = ownScheduleByDate.get(date);
     const colleagueRows = getColleagueRows(date);
     const selectedWorkingRows = colleagueRows.filter(({ entry }) => entry?.status === 'working');
-    const selectedOffRows = colleagueRows.filter(({ entry }) => entry?.status === 'off');
-    const selectedMissingRows = colleagueRows.filter(({ entry }) => !entry);
     const activeDepartmentUserIds = new Set(departmentUsers.map((person) => person.id));
     const workingCount = (departmentScheduleByDate.get(date) ?? []).filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working').length;
     const coverage = scheduleCoverage(user.department, workingCount);
     const replacementRequested = replacementRequestDates.has(date) && ownEntry?.status !== 'working';
-    const expanded = selected || expandedScheduleDates.has(date);
-    const editing = editingScheduleDate === date;
     const canEdit = date >= today;
-    const colleagueSummary = [
-      selectedWorkingRows.length === 0
-        ? 'Коллеги: никто не работает'
-        : `Коллеги: ${selectedWorkingRows.length === 1 ? 'работает' : 'работают'} ${selectedWorkingRows.length}`,
-      selectedOffRows.length ? `выходной ${selectedOffRows.length}` : '',
-      selectedMissingRows.length ? `без графика ${selectedMissingRows.length}` : '',
-    ].filter(Boolean).join(' · ');
-
-    function SelectedColleagueGroup({ title, rows, tone }: { title: string; rows: typeof colleagueRows; tone: 'green' | 'slate' | 'amber' }) {
-      const dotClass = tone === 'green' ? 'employee-material-status-dot-green' : tone === 'amber' ? 'employee-material-status-dot-amber' : 'employee-material-status-dot-slate';
-
-      return (
-        <div className='employee-material-subcard rounded-lg bg-slate-50 px-2.5 py-2'>
-          <div className='mb-1.5 flex items-center justify-between gap-2'>
-            <span className='inline-flex items-center gap-2 text-xs font-extrabold text-slate-700'>
-              <span className={cn('employee-material-status-dot h-2 w-2', dotClass)} />
-              {title}
-            </span>
-            <span className='text-xs font-extrabold text-slate-400'>{rows.length}</span>
-          </div>
-          {rows.length ? (
-            <div className='grid gap-1'>
-              {rows.map(({ person }) => (
-                <div key={person.id} className='flex min-w-0 items-center gap-2'>
-                  <span className='employee-material-person-avatar flex h-6 w-6 shrink-0 items-center justify-center text-[9px] font-extrabold'>
-                    {initials(person.name)}
-                  </span>
-                  <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className='text-xs font-medium text-slate-400'>Нет сотрудников</p>
-          )}
-        </div>
-      );
-    }
+    const workingNames = scheduleNames(selectedWorkingRows);
+    const statusCopy = ownEntry?.status === 'working'
+      ? 'Вы работаете'
+      : ownEntry?.status === 'off'
+        ? 'У вас выходной'
+        : 'День не выбран';
+    const peopleCopy = ownEntry?.status === 'working'
+      ? workingNames ? `Вместе с вами: ${workingNames}` : 'В этот день вы работаете без коллег'
+      : workingNames ? `Работают: ${workingNames}` : 'В этот день пока никто не работает';
 
     return (
       <div className={cn('employee-material-day-card rounded-lg border bg-white p-3', selected ? 'border-primary/40 ring-2 ring-primary/10' : 'border-slate-200')}>
-        <div className={cn('flex items-center justify-between gap-3', expanded && 'mb-2.5')}>
+        <div className='flex items-center justify-between gap-3'>
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
-            {ownEntry?.status === 'working' && <p className='mt-0.5 text-xs font-bold text-green-700'>Рабочий день</p>}
           </div>
           <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', scheduleTone(ownEntry?.status))}>
-            Я: {scheduleWorkLabel(ownEntry?.status)}
+            {statusCopy}
           </Badge>
         </div>
-
-        {!selected && (
-          <button
-            type='button'
-            className={cn('flex min-h-9 w-full items-center justify-between gap-2 text-left text-xs font-bold text-slate-500', expanded && 'mt-2 border-t border-slate-100 pt-2')}
-            onClick={() => setExpandedScheduleDates((current) => {
-              const next = new Set(current);
-              if (next.has(date)) next.delete(date);
-              else next.add(date);
-              return next;
-            })}
-            aria-expanded={expanded}
-          >
-            <span>{expanded ? 'Коллеги' : colleagueSummary}</span>
-            {expanded ? <ChevronUp className='h-4 w-4 shrink-0' /> : <ChevronDown className='h-4 w-4 shrink-0' />}
-          </button>
-        )}
+        <p className='mt-2 text-sm font-semibold leading-snug text-slate-600'>{peopleCopy}</p>
 
         {replacementRequested && (
           <div className='employee-material-alert-card mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3'>
@@ -1498,70 +1464,16 @@ export function EmployeeTodayClient({
           </div>
         )}
 
-        {expanded && (
-          <>
-            {editing && canEdit ? (
-              <div className={cn('grid grid-cols-2 gap-2', !selected && 'mt-2')}>
-                <Button
-                  className={cn('h-11 rounded-xl', ownEntry?.status !== 'working' && 'bg-slate-100 text-slate-700 shadow-none hover:bg-green-100 hover:text-green-800')}
-                  onClick={() => updateSchedule(date, 'working')}
-                  disabled={isSaving}
-                >
-                  Работаю
-                </Button>
-                <Button
-                  className={cn('h-11 rounded-xl', ownEntry?.status === 'off' ? 'bg-slate-700 hover:bg-slate-800' : 'bg-slate-100 text-slate-700 shadow-none hover:bg-slate-200')}
-                  onClick={() => updateSchedule(date, 'off')}
-                  disabled={isSaving}
-                >
-                  Выходной
-                </Button>
-              </div>
-            ) : canEdit ? (
-              <Button
-                type='button'
-                className={cn('employee-material-secondary-action h-11 w-full rounded-xl text-sm font-extrabold', !selected && 'mt-2')}
-                onClick={() => setEditingScheduleDate(date)}
-              >
-                {selected ? `Изменить ${formatDateLabel(date)}` : 'Изменить мой день'}
-              </Button>
-            ) : (
-              <p className={cn('text-center text-xs font-bold text-slate-400', !selected && 'mt-2')}>
-                Прошедший день доступен только для просмотра
-              </p>
-            )}
-
-            <div className='mt-3 border-t border-slate-100 pt-2.5'>
-              <p className='mb-2 text-xs font-extrabold uppercase leading-none text-slate-400'>
-                {selected ? 'Коллеги на этот день' : 'Коллеги'}
-              </p>
-              {selected ? (
-                <div className='grid gap-1.5'>
-                  {selectedWorkingRows.length > 0 && <SelectedColleagueGroup title='Работают' rows={selectedWorkingRows} tone='green' />}
-                  {selectedOffRows.length > 0 && <SelectedColleagueGroup title='Выходной' rows={selectedOffRows} tone='slate' />}
-                  {selectedMissingRows.length > 0 && <SelectedColleagueGroup title='Не заполнено' rows={selectedMissingRows} tone='amber' />}
-                </div>
-              ) : colleagueRows.length ? (
-                <div className='grid gap-1.5'>
-                  {colleagueRows.map(({ person, entry }) => (
-                    <div key={person.id} className='employee-material-subcard flex min-w-0 items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
-                      <div className='flex min-w-0 items-center gap-2'>
-                        <span className='employee-material-person-avatar flex h-6 w-6 shrink-0 items-center justify-center text-[9px] font-extrabold'>
-                          {initials(person.name)}
-                        </span>
-                        <span className='min-w-0 text-sm font-bold leading-tight text-slate-700'>{personDisplayName(person.name)}</span>
-                      </div>
-                      <span className={cn('shrink-0 text-xs font-extrabold', entry?.status === 'working' ? 'text-green-700' : entry?.status === 'off' ? 'text-slate-500' : 'text-amber-700')}>
-                        {scheduleWorkLabel(entry?.status)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className='text-sm font-medium text-slate-400'>Нет коллег из отдела.</p>
-              )}
-            </div>
-          </>
+        {canEdit ? (
+          <Button
+            type='button'
+            className='employee-material-secondary-action mt-3 h-11 w-full rounded-xl text-sm font-extrabold'
+            onClick={() => setEditingScheduleDate(date)}
+          >
+            {ownEntry ? 'Изменить мой день' : 'Выбрать день'}
+          </Button>
+        ) : (
+          <p className='mt-2 text-center text-xs font-bold text-slate-400'>Прошедший день доступен только для просмотра</p>
         )}
       </div>
     );
@@ -1597,9 +1509,60 @@ export function EmployeeTodayClient({
       if (!applySchedulePayload(payload)) throw new Error('Сервер вернул неполные данные графика');
       setPendingScheduleChange(null);
       setEditingScheduleDate(null);
-      setMessage('График сохранён');
+      setMessage(status === 'working' ? 'Рабочий день сохранён' : 'Выходной сохранён');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось обновить график');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function startBulkSchedule() {
+    setError('');
+    setMessage('');
+    setBulkWorkingDates(new Set());
+    setBulkScheduleConfirmOpen(false);
+    setBulkScheduleMode(true);
+  }
+
+  function cancelBulkSchedule() {
+    setBulkScheduleMode(false);
+    setBulkScheduleConfirmOpen(false);
+    setBulkWorkingDates(new Set());
+  }
+
+  function toggleBulkWorkingDate(date: string) {
+    if (!bulkMissingDates.includes(date)) return;
+    setBulkWorkingDates((current) => {
+      const next = new Set(current);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }
+
+  async function saveBulkSchedule() {
+    if (bulkScheduleChanges.length === 0) return;
+    setError('');
+    setMessage('');
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/workday/schedule/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ monthKey: calendarMonth, changes: bulkScheduleChanges, confirmed: true }),
+      });
+      const payload: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        if (response.status === 409) await syncScheduleState();
+        throw new Error(isRecord(payload) && typeof payload.error === 'string' ? payload.error : 'Не удалось сохранить график');
+      }
+      cancelBulkSchedule();
+      await syncScheduleState();
+      setMessage(`График сохранён · ${bulkCounts.totalDays} дн.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить график');
+      setBulkScheduleConfirmOpen(false);
     } finally {
       setIsSaving(false);
     }
@@ -3466,6 +3429,53 @@ export function EmployeeTodayClient({
             </div>
           )}
 
+          {editingScheduleDate && !pendingScheduleChange && (
+            <div className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'>
+              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+                <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+                <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>Изменить мой день</p>
+                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{formatDateLabel(editingScheduleDate)}</h2>
+                <p className='mt-2 text-sm font-semibold text-slate-600'>Как вы работаете в этот день?</p>
+                <div className='mt-5 grid grid-cols-2 gap-2'>
+                  <Button
+                    type='button'
+                    className={cn(
+                      'h-14 rounded-xl text-base font-black',
+                      ownScheduleByDate.get(editingScheduleDate)?.status === 'working'
+                        ? 'employee-material-green-action'
+                        : 'employee-material-secondary-action text-slate-800',
+                    )}
+                    disabled={isSaving}
+                    onClick={() => void updateSchedule(editingScheduleDate, 'working')}
+                  >
+                    Работаю
+                  </Button>
+                  <Button
+                    type='button'
+                    className={cn(
+                      'h-14 rounded-xl text-base font-black',
+                      ownScheduleByDate.get(editingScheduleDate)?.status === 'off'
+                        ? 'bg-slate-800 text-white hover:bg-slate-900'
+                        : 'employee-material-secondary-action text-slate-800',
+                    )}
+                    disabled={isSaving}
+                    onClick={() => void updateSchedule(editingScheduleDate, 'off')}
+                  >
+                    Выходной
+                  </Button>
+                </div>
+                <Button
+                  type='button'
+                  className='employee-material-secondary-action mt-2 h-12 w-full rounded-xl text-sm font-extrabold'
+                  disabled={isSaving}
+                  onClick={() => setEditingScheduleDate(null)}
+                >
+                  Отмена
+                </Button>
+              </div>
+            </div>
+          )}
+
           {pendingScheduleChange && (
             <div className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'>
               <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
@@ -3492,6 +3502,48 @@ export function EmployeeTodayClient({
                   onClick={() => setPendingScheduleChange(null)}
                 >
                   Отмена
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {bulkScheduleConfirmOpen && (
+            <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'>
+              <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+                <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+                <div className='flex items-center justify-between gap-3'>
+                  <p className='text-xs font-black uppercase tracking-[0.12em] text-green-700'>{monthTitle(calendarMonth)}</p>
+                  <button type='button' className='shrink-0 text-xs font-extrabold text-slate-500' onClick={() => setBulkScheduleConfirmOpen(false)}>Изменить выбор</button>
+                </div>
+                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>Проверьте график</h2>
+                <div className='mt-3 grid grid-cols-2 gap-2'>
+                  <div className='rounded-2xl bg-green-50 px-4 py-2.5 ring-1 ring-green-100'>
+                    <p className='text-xs font-bold text-green-700'>Рабочих дней</p>
+                    <p className='text-2xl font-black text-green-950'>{bulkCounts.workingDays}</p>
+                  </div>
+                  <div className='rounded-2xl bg-slate-100 px-4 py-2.5 ring-1 ring-slate-200'>
+                    <p className='text-xs font-bold text-slate-600'>Выходных</p>
+                    <p className='text-2xl font-black text-slate-950'>{bulkCounts.offDays}</p>
+                  </div>
+                </div>
+                {(bulkReducedCount > 0 || bulkEmptyCount > 0) && (
+                  <div className='employee-material-alert-card mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3'>
+                    <p className='text-sm font-extrabold text-amber-950'>Проверьте состав отдела</p>
+                    <p className='mt-1 text-sm font-semibold leading-relaxed text-amber-900'>
+                      {bulkReducedCount > 0 ? `Сокращённый состав — ${bulkReducedCount} дн.` : ''}
+                      {bulkReducedCount > 0 && bulkEmptyCount > 0 ? ' · ' : ''}
+                      {bulkEmptyCount > 0 ? `Никто не выходит — ${bulkEmptyCount} дн.` : ''}
+                    </p>
+                    <p className='mt-1 text-xs font-semibold text-amber-800'>Данные будут видны коллегам и администратору.</p>
+                  </div>
+                )}
+                <Button
+                  type='button'
+                  className='employee-material-green-action sticky bottom-0 z-10 mt-4 h-12 w-full rounded-xl text-base font-black shadow-[0_12px_30px_rgba(34,197,24,0.24)]'
+                  disabled={isSaving}
+                  onClick={() => void saveBulkSchedule()}
+                >
+                  {isSaving ? 'Сохраняем…' : `Сохранить ${bulkCounts.totalDays} дн.`}
                 </Button>
               </div>
             </div>
@@ -3955,10 +4007,13 @@ export function EmployeeTodayClient({
                     <button
                       key={mode.id}
                       type='button'
+                      disabled={bulkScheduleMode}
                       onClick={() => setScheduleMode(mode.id)}
                       className={cn(
-                        'h-11 rounded-xl text-sm font-extrabold transition',
-                        scheduleMode === mode.id ? 'bg-[#111821] text-white shadow-[0_8px_18px_rgba(15,23,42,0.16)]' : 'text-slate-600 hover:bg-white',
+                        'h-11 rounded-xl text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-70',
+                        scheduleMode === mode.id
+                          ? 'bg-[#111821] text-white shadow-[0_8px_18px_rgba(15,23,42,0.16)]'
+                          : 'bg-green-50/80 text-green-800 hover:bg-green-100',
                       )}
                     >
                       {mode.label}
@@ -3977,7 +4032,7 @@ export function EmployeeTodayClient({
 
               {scheduleMode === 'month' && (
                 <>
-                  {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && (
+                  {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && !bulkScheduleMode && (
                     <Card className='employee-material-alert-card border-amber-200 bg-amber-50 p-3.5'>
                       <div className='flex items-start gap-3'>
                         <span className='employee-material-heading-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'>
@@ -3991,16 +4046,21 @@ export function EmployeeTodayClient({
                       <Button
                         type='button'
                         className='employee-material-green-action mt-3 h-12 w-full rounded-xl text-sm font-black'
-                        onClick={() => {
-                          const nextDate = incompleteScheduleDates[0]?.date;
-                          if (!nextDate) return;
-                          setSelectedScheduleDate(nextDate);
-                          setExpandedScheduleDates((current) => new Set(current).add(nextDate));
-                          setEditingScheduleDate(nextDate);
-                        }}
+                        onClick={startBulkSchedule}
                       >
-                        Продолжить заполнение
+                        Заполнить график
                       </Button>
+                    </Card>
+                  )}
+                  {bulkScheduleMode && (
+                    <Card className='border-green-200 bg-green-50/80 p-3.5'>
+                      <div className='flex items-start justify-between gap-3'>
+                        <div className='min-w-0'>
+                          <p className='font-extrabold text-green-950'>Отметьте дни, когда работаете</p>
+                          <p className='mt-1 text-xs font-semibold leading-relaxed text-green-800'>Неотмеченные дни станут выходными. Уже заполненные дни не изменятся.</p>
+                        </div>
+                        <button type='button' className='shrink-0 text-xs font-extrabold text-slate-500' onClick={cancelBulkSchedule}>Отмена</button>
+                      </div>
                     </Card>
                   )}
                   <Card className='space-y-2.5 p-2.5'>
@@ -4008,6 +4068,7 @@ export function EmployeeTodayClient({
                     <button
                       type='button'
                       className='employee-material-calendar-nav flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
+                      disabled={bulkScheduleMode}
                       onClick={() => {
                         const next = addMonths(calendarMonth, -1);
                         setCalendarMonth(next);
@@ -4023,6 +4084,7 @@ export function EmployeeTodayClient({
                         <button
                           type='button'
                           className='mt-0.5 text-[11px] font-extrabold leading-none text-green-700'
+                          disabled={bulkScheduleMode}
                           onClick={() => {
                             setCalendarMonth(monthKeyFromDate(today));
                             setSelectedScheduleDate(today);
@@ -4039,6 +4101,7 @@ export function EmployeeTodayClient({
                     <button
                       type='button'
                       className='employee-material-calendar-nav flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
+                      disabled={bulkScheduleMode}
                       onClick={() => {
                         const next = addMonths(calendarMonth, 1);
                         setCalendarMonth(next);
@@ -4061,9 +4124,15 @@ export function EmployeeTodayClient({
                       const ownEntry = ownScheduleByDate.get(cell.date);
                       const workingInitials = getWorkingInitials(cell.date);
                       const selected = selectedScheduleDate === cell.date;
+                      const bulkEligible = bulkScheduleMode && bulkMissingDates.includes(cell.date);
+                      const bulkWorking = bulkEligible && bulkWorkingDates.has(cell.date);
                       const statusClass =
                         !scheduleMonthLoaded
                           ? 'bg-slate-50 text-slate-400 ring-slate-100'
+                          : bulkWorking
+                            ? 'bg-green-100 text-green-950 ring-green-300'
+                          : bulkEligible
+                            ? 'bg-slate-100 text-slate-700 ring-slate-200'
                           : ownEntry?.status === 'working'
                           ? 'bg-green-50 text-green-900 ring-green-100'
                           : ownEntry?.status === 'off'
@@ -4074,16 +4143,22 @@ export function EmployeeTodayClient({
                         <button
                           key={cell.date}
                           type='button'
-                          onClick={() => setSelectedScheduleDate(cell.date)}
+                          onClick={() => bulkScheduleMode ? toggleBulkWorkingDate(cell.date) : setSelectedScheduleDate(cell.date)}
+                          aria-pressed={bulkEligible ? bulkWorking : undefined}
+                          disabled={bulkScheduleMode && !bulkEligible}
                           className={cn(
                             'employee-material-calendar-day flex min-h-[62px] min-w-0 flex-col rounded-lg p-1.5 text-left ring-1 transition hover:scale-[1.01]',
                             statusClass,
                             !cell.inMonth && 'opacity-40',
-                            selected && 'ring-2 ring-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.14)]',
+                            bulkScheduleMode && !bulkEligible && 'opacity-55',
+                            bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
+                            !bulkScheduleMode && selected && 'ring-2 ring-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.14)]',
                           )}
                         >
                           <span className='text-xs font-extrabold leading-none'>{cell.day}</span>
-                          <span className='mt-1 truncate text-[9px] font-extrabold leading-none'>{scheduleMonthLoaded ? scheduleCellLabel(ownEntry?.status) : '…'}</span>
+                          <span className='mt-1 truncate text-[9px] font-extrabold leading-none'>
+                            {scheduleMonthLoaded ? bulkEligible ? (bulkWorking ? 'Работаю' : 'Выходной') : scheduleCellLabel(ownEntry?.status) : '…'}
+                          </span>
                           <span className={cn(
                             'mt-auto max-w-full text-[8px] font-extrabold leading-none',
                             scheduleMonthLoaded && workingInitials.count === 0 && workingInitials.complete ? 'text-amber-700' : 'text-green-800',
@@ -4103,16 +4178,16 @@ export function EmployeeTodayClient({
                   <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] font-bold text-slate-500'>
                     <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-green-50 ring-1 ring-green-100' />Работаю</span>
                     <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-slate-100 ring-1 ring-slate-200' />Выходной</span>
-                    <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-amber-50 ring-1 ring-amber-100' />Нужно выбрать</span>
+                    {!bulkScheduleMode && <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-amber-50 ring-1 ring-amber-100' />Нужно выбрать</span>}
                   </div>
 
-                  {scheduleMonthLoaded ? (
+                  {scheduleMonthLoaded && !bulkScheduleMode ? (
                     <ScheduleDayCard date={selectedScheduleDate} selected />
-                  ) : (
+                  ) : !scheduleMonthLoaded ? (
                     <div className='rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500'>
                       Загружаем выбранный месяц…
                     </div>
-                  )}
+                  ) : null}
                   </Card>
                 </>
               )}
@@ -4122,7 +4197,26 @@ export function EmployeeTodayClient({
         </div>
       </div>
 
-        <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
+        {bulkScheduleMode && !bulkScheduleConfirmOpen && (
+          <div className='fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 mx-auto w-full max-w-[520px] px-3'>
+            <div className='rounded-2xl bg-[#111821] p-3 text-white shadow-[0_18px_45px_rgba(15,23,42,0.28)]'>
+              <div className='mb-2 flex items-center justify-between gap-3 px-1 text-xs font-bold'>
+                <span>Рабочих · {bulkCounts.workingDays}</span>
+                <span className='text-slate-300'>Выходных · {bulkCounts.offDays}</span>
+              </div>
+              <Button
+                type='button'
+                className='employee-material-green-action h-12 w-full rounded-xl text-sm font-black'
+                disabled={bulkCounts.totalDays === 0}
+                onClick={() => setBulkScheduleConfirmOpen(true)}
+              >
+                Проверить и сохранить {bulkCounts.totalDays} дн.
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!bulkScheduleConfirmOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
           <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
@@ -4145,7 +4239,7 @@ export function EmployeeTodayClient({
               );
             })}
           </div>
-        </nav>
+        </nav>}
     </main>
   );
 }
