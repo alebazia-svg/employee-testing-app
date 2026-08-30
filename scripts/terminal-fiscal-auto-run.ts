@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods } from '../lib/terminal-fiscal-auto-run';
 import { runTerminalFiscalHistoricalDryRun } from '../lib/terminal-fiscal-runner';
+import { syncTerminalFiscalEmployeeReviews } from '../lib/terminal-fiscal-employee-review';
 
 async function main() {
   const options = parseTerminalFiscalAutoRunCli(process.argv.slice(2));
@@ -11,6 +12,7 @@ async function main() {
   }
   const results = [];
   for (const period of periods) {
+    const reviewContexts: NonNullable<Awaited<ReturnType<typeof runTerminalFiscalHistoricalDryRun>>['employeeReviewContext']>[] = [];
     const mappings = await prisma.terminalFiscalMapping.findMany({
       where: {
         isActive: true,
@@ -24,12 +26,34 @@ async function main() {
         mappingId: mapping.id, periodFrom: period.periodFrom, periodTo: period.periodTo,
         persist: options.persist,
         syncWorkdayControl: options.persist && process.env.TERMINAL_FISCAL_WORKDAY_CONTROL_ENABLED === 'true',
+        deferEmployeeReviewSync: options.persist && process.env.TERMINAL_FISCAL_WORKDAY_CONTROL_ENABLED === 'true',
       });
+      if (result.acquired && result.employeeReviewContext) reviewContexts.push(result.employeeReviewContext);
       results.push({
         periodFrom: period.periodFrom.toISOString(), periodTo: period.periodTo.toISOString(),
         acquired: result.acquired, persisted: result.acquired ? result.persisted : false,
         statuses: result.acquired ? result.summary.statuses : undefined,
       });
+    }
+    // Employee-facing conclusions are safe only after every active mapping for
+    // the period participated in the same cycle. A partial cycle may miss the
+    // check made through the other KKM/terminal and must not accuse anyone.
+    if (reviewContexts.length === mappings.length && reviewContexts.length > 0) {
+      const checks = [...new Map(reviewContexts.flatMap((context) => context.oneCChecks).map((check) => [check.sourceRef, check])).values()];
+      const globalCoverage = {
+        records: reviewContexts.flatMap((context) => context.output.records),
+        mappings: reviewContexts.map((context) => context.mapping),
+        oneCChecks: checks,
+      };
+      for (const context of reviewContexts) {
+        await syncTerminalFiscalEmployeeReviews(prisma, {
+          output: context.output,
+          mapping: context.mapping,
+          oneCChecks: context.oneCChecks,
+          mode: context.mode,
+          globalCoverage,
+        });
+      }
     }
   }
   process.stdout.write(`${JSON.stringify({

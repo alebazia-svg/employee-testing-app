@@ -41,6 +41,12 @@ export type EmployeeReviewCoverageDecision = {
   oneCSumKopecks: number;
 };
 
+export type TerminalFiscalGlobalCoverageContext = {
+  records: MatchingAuditRecord[];
+  mappings: TerminalMapping[];
+  oneCChecks: OneCCheck[];
+};
+
 function digest(value: string) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -157,6 +163,53 @@ export function evaluateTerminalFiscalPeriodCoverage(input: {
   return { state: 'uncovered', reason: 'PERIOD_OPERATION_UNCOVERED', ...base, ...oneCBase };
 }
 
+export function evaluateTerminalFiscalGlobalPeriodCoverage(input: {
+  record: MatchingAuditRecord;
+  context: TerminalFiscalGlobalCoverageContext;
+}): EmployeeReviewCoverageDecision {
+  const mappingIds = new Set(input.context.mappings.map((mapping) => mapping.id));
+  const relevantRecords = input.context.records.filter((item) => (
+    item.mappingId && mappingIds.has(item.mappingId)
+    && (item.operationType === 'sale' || item.operationType === 'refund')
+    && item.amountKopecks > 0
+  ));
+  const base = {
+    bankCount: relevantRecords.length,
+    bankSumKopecks: relevantRecords.reduce((sum, item) => sum + item.amountKopecks, 0),
+  };
+  if (relevantRecords.some((item) => !item.sourceCompleteness.tbank || !item.sourceCompleteness.oneC)) {
+    return { state: 'incomplete', reason: 'PERIOD_SOURCE_INCOMPLETE', ...base, oneCCount: 0, oneCSumKopecks: 0 };
+  }
+  const eligibleChecks = input.context.oneCChecks.filter((check) => {
+    const type = eligibleOneCOperationType(check);
+    if (type === null || check.cardPayments.length !== 1 || check.cardPayments[0].amountKopecks <= 0) return false;
+    return input.context.mappings.some((mapping) => (
+      check.cashRegisterRef === mapping.oneCCashRegisterRef
+      && check.cardPayments[0].acquiringTerminalRef === mapping.oneCAcquiringTerminalRef
+    ));
+  });
+  const oneCBase = {
+    oneCCount: eligibleChecks.length,
+    oneCSumKopecks: eligibleChecks.reduce((sum, check) => sum + check.cardPayments[0].amountKopecks, 0),
+  };
+  const assignedRefs = relevantRecords.flatMap((item) => item.oneCCheckKey ? [item.oneCCheckKey] : []);
+  if (new Set(assignedRefs).size !== assignedRefs.length) {
+    return { state: 'ambiguous', reason: 'PERIOD_COVERAGE_CONFLICT', ...base, ...oneCBase };
+  }
+  const assigned = new Set(assignedRefs);
+  const unmatchedRecords = relevantRecords.filter((item) => !item.oneCCheckKey);
+  const availableChecks = eligibleChecks.filter((check) => !assigned.has(check.sourceRef));
+  const targetBucket = coverageBucket(input.record.operationType ?? '', input.record.amountKopecks);
+  const sameBank = unmatchedRecords.filter((item) => coverageBucket(item.operationType ?? '', item.amountKopecks) === targetBucket);
+  const sameOneC = availableChecks.filter((check) => coverageBucket(eligibleOneCOperationType(check) ?? '', check.cardPayments[0].amountKopecks) === targetBucket);
+  if (!sameBank.some((item) => item.matchingKey === input.record.matchingKey)) {
+    return { state: 'ambiguous', reason: 'PERIOD_COVERAGE_CONFLICT', ...base, ...oneCBase };
+  }
+  if (sameOneC.length >= sameBank.length) return { state: 'covered', reason: 'PERIOD_OPERATION_COVERED', ...base, ...oneCBase };
+  if (sameOneC.length > 0) return { state: 'ambiguous', reason: 'PERIOD_PARTIAL_BUCKET_COVERAGE', ...base, ...oneCBase };
+  return { state: 'uncovered', reason: 'PERIOD_OPERATION_UNCOVERED', ...base, ...oneCBase };
+}
+
 /**
  * Adds cashier context to bank operations that are covered only at the daily
  * amount-bucket level. This does not claim an exact bank -> 1C document pair,
@@ -222,6 +275,7 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
   oneCChecks: OneCCheck[];
   cashierMappings: CashierMapping[];
   kkmResponsibilities?: KkmResponsibility[];
+  globalCoverage?: TerminalFiscalGlobalCoverageContext;
 }): EmployeeReviewDecision {
   const { record, mapping } = input;
   if (record.oneCCheckKey || record.status === 'confirmed' || record.status === 'mismatch') {
@@ -241,7 +295,9 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
     return { action: 'wait', reason: 'FIRST_SAFE_READ_NOT_REACHED' };
   }
 
-  const coverage = evaluateTerminalFiscalPeriodCoverage({
+  const coverage = input.globalCoverage
+    ? evaluateTerminalFiscalGlobalPeriodCoverage({ record, context: input.globalCoverage })
+    : evaluateTerminalFiscalPeriodCoverage({
     record,
     periodRecords: input.periodRecords,
     mapping,
@@ -333,6 +389,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     mapping: TerminalMapping;
     oneCChecks: OneCCheck[];
     mode?: 'notify' | 'shadow';
+    globalCoverage?: TerminalFiscalGlobalCoverageContext;
   },
 ) {
   const refs = [...new Set(input.oneCChecks.map((check) => check.cashier.ref).filter(Boolean))];
@@ -371,6 +428,7 @@ export async function syncTerminalFiscalEmployeeReviews(
         ? [{ userId: item.userId, oneCCashierRef: item.oneCCashierRef }]
         : []),
       kkmResponsibilities,
+      globalCoverage: input.globalCoverage,
     });
     if (decision.action === 'wait') continue;
     if (decision.action === 'resolve') {

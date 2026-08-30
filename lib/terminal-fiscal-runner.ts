@@ -41,6 +41,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   periodTo: Date;
   persist?: boolean;
   syncWorkdayControl?: boolean;
+  deferEmployeeReviewSync?: boolean;
 }, dependencies: {
   loadTbank?: typeof loadCompleteTBankOperations;
   loadOneC?: typeof loadOneCKkmChecks;
@@ -132,7 +133,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
           : process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_SHADOW_ENABLED === 'true'
             ? 'shadow'
             : null;
-        if (employeeReviewMode) {
+        if (employeeReviewMode && input.deferEmployeeReviewSync !== true) {
           await syncTerminalFiscalEmployeeReviews(prisma, {
             output,
             mapping,
@@ -143,12 +144,20 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       }
     }
     const summary = summarizeTerminalFiscalOutput(output);
+    const employeeReviewMode = process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED === 'true'
+      ? 'notify' as const
+      : process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_SHADOW_ENABLED === 'true'
+        ? 'shadow' as const
+        : null;
     return {
       acquired: true as const,
       persisted: Boolean(lease),
       summary: input.syncWorkdayControl === true
         ? { ...summary, safety: { employeeVisible: true, incidentCreation: true, notifications: true } as const }
         : summary,
+      employeeReviewContext: input.deferEmployeeReviewSync === true && employeeReviewMode
+        ? { output, mapping, oneCChecks: employeeReviewOneCChecks, mode: employeeReviewMode }
+        : undefined,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : '';

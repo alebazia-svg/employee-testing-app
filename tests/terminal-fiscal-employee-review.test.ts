@@ -5,6 +5,7 @@ import type { MatchingAuditRecord, OneCCheck, TerminalMapping } from '../lib/ter
 import {
   attributePeriodCoveredCashiers,
   evaluateTerminalFiscalEmployeeReview,
+  evaluateTerminalFiscalGlobalPeriodCoverage,
   evaluateTerminalFiscalPeriodCoverage,
   oneCChecksAvailableForEmployeeReview,
   syncTerminalFiscalEmployeeReviews,
@@ -221,6 +222,41 @@ test('period coverage suppresses a false employee notification outside the stric
     record: target, periodRecords: [strict, target], mapping, oneCChecks: checks,
     cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
   }), { action: 'resolve', reason: 'PERIOD_OPERATION_COVERED' });
+});
+
+test('global coverage across both KKM prevents a false missing-check error after another cashier uses another terminal', () => {
+  const otherMapping: TerminalMapping = {
+    id: 'mapping-2', terminalKey: 'terminal-2', oneCAcquiringTerminalRef: 'acquiring-2',
+    oneCCashRegisterRef: 'kkm-2', kktRegistrationNumber: 'kkt-2', activeFrom: mapping.activeFrom,
+  };
+  const target = record({ matchingKey: 'bank-300-kosterenko', amountKopecks: 30_000 });
+  const zukhraChecks = [
+    check({ ref: 'zukhra-300-a', cashRegisterRef: 'kkm-2', amountKopecks: 30_000, cashierRef: 'cashier-zukhra', dateTime: '2026-08-17T17:01:00.000Z' }),
+    check({ ref: 'zukhra-300-b', cashRegisterRef: 'kkm-2', amountKopecks: 30_000, cashierRef: 'cashier-zukhra', dateTime: '2026-08-17T17:20:00.000Z' }),
+  ].map((item) => ({ ...item, cardPayments: item.cardPayments.map((payment) => ({ ...payment, acquiringTerminalRef: 'acquiring-2' })) }));
+  const globalCoverage = { records: [target], mappings: [mapping, otherMapping], oneCChecks: zukhraChecks };
+  assert.equal(evaluateTerminalFiscalGlobalPeriodCoverage({ record: target, context: globalCoverage }).state, 'covered');
+  assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
+    record: target,
+    periodRecords: [target],
+    mapping,
+    oneCChecks: [],
+    cashierMappings: [],
+    globalCoverage,
+  }), { action: 'resolve', reason: 'PERIOD_OPERATION_COVERED' });
+});
+
+test('global coverage compares amount buckets, so equal grand totals cannot hide a missing check', () => {
+  const target = record({ matchingKey: 'bank-300', amountKopecks: 30_000 });
+  const peer = record({ matchingKey: 'bank-500', amountKopecks: 50_000 });
+  const context = {
+    records: [target, peer],
+    mappings: [mapping],
+    oneCChecks: [check({ ref: 'check-400-a', amountKopecks: 40_000 }), check({ ref: 'check-400-b', amountKopecks: 40_000 })],
+  };
+  const coverage = evaluateTerminalFiscalGlobalPeriodCoverage({ record: target, context });
+  assert.equal(coverage.bankSumKopecks, coverage.oneCSumKopecks);
+  assert.deepEqual({ state: coverage.state, reason: coverage.reason }, { state: 'uncovered', reason: 'PERIOD_OPERATION_UNCOVERED' });
 });
 
 test('attributes fully covered delayed operations to the single cashier without claiming exact document matches', () => {
@@ -461,7 +497,7 @@ test('review messages are short plain text and cannot be empty', () => {
   assert.equal(normalizeTerminalFiscalReviewMessage('x'.repeat(1001)).ok, false);
 });
 
-test('employee message goes to ADMIN inbox and ADMIN reply uses the existing employee notification channel', async () => {
+test('employee message goes to ADMIN inbox without duplicate Telegram and ADMIN reply uses the employee channel', async () => {
   const messages: any[] = [];
   const events: any[] = [];
   const receipts: any[] = [];
@@ -469,7 +505,7 @@ test('employee message goes to ADMIN inbox and ADMIN reply uses the existing emp
   const notifications: any[] = [];
   const db: any = {
     terminalFiscalEmployeeReview: {
-      findFirst: async ({ where }: any) => where.employeeId
+      findFirst: async ({ include }: any) => include?.employee
         ? { id: 'review-1', employeeId: 5, status: 'open', employee: { name: 'Костеренко Магомед' } }
         : { id: 'review-1', employeeId: 5, status: 'open' },
     },
@@ -493,7 +529,7 @@ test('employee message goes to ADMIN inbox and ADMIN reply uses the existing emp
   assert.equal(events.length, 1);
   assert.equal(events[0].type, 'terminal_fiscal_review.employee_message');
   assert.equal(receipts.length, 1);
-  assert.equal(deliveries.length, 1);
+  assert.equal(deliveries.length, 0);
   assert.equal(notifications.length, 0);
 
   await addAdminTerminalFiscalReviewMessage({ prisma: db as PrismaClient, reviewId: 'review-1', adminId: 1, body: 'Проверьте журнал продаж.' });
