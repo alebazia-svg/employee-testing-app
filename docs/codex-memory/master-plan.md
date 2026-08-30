@@ -36,7 +36,7 @@ gate is complete, unless a newly discovered P0 defect makes the pilot unsafe.
 | Area | Status | Current accepted result |
 | --- | --- | --- |
 | PWA entry and navigation | `DONE` | Branded mobile login, PWA icon/manifest, compact Workday and Schedule navigation. |
-| Workday start | `VERIFY` | Department QR scan records server `qrAcceptedAt` before self-selected shift choice; WorkDay and lateness use that timestamp. Versioned lateness and department-combination results run in shadow mode only. |
+| Workday start | `VERIFY` | Department QR scan records server `qrAcceptedAt` before shift choice; WorkDay and lateness use that timestamp. Shift choice is schedule-aware without assigning named employees in advance: a solo worker receives the long department shift, the first of two chooses either paired shift and the second receives the remaining one. A five-minute audited correction rebuilds an untouched checklist without changing QR time. Stale schedules fail safely through an explicit solo-worker override; lateness remains shadow-only. |
 | Workday checklist | `DONE` | Supported templates only, no empty runs, reversible unfinished flow and audited corrections before handover. |
 | Schedule | `DONE` | Real Google Sheets schedule is imported into the portal as the temporary source while employees are not yet fully migrated. |
 | ADMIN structure | `DONE` | Main ADMIN, Inbox and Workday Control have distinct purposes and exception-first presentation. |
@@ -217,6 +217,10 @@ These are captured ideas, not accepted implementation tasks:
 - one employee action for reporting a workday change (`приду позже`, `уйду
   раньше`, `отлучусь`, `не выйду`, other), stored separately from immutable
   attendance facts and any later ADMIN decision;
+- date-specific department schedule overrides for approved shortened or holiday
+  opening hours. ADMIN sets the actual date and hours; do not infer movable
+  religious holidays automatically. The override must feed shift choice,
+  checklist deadlines and end-of-day timing from one source;
 - broader offline queues for workday actions beyond cash operations;
 - removal, archiving or repurposing of the remaining Analytics area;
 - future expansion of attestations and management knowledge-gap reporting.

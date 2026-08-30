@@ -31,6 +31,31 @@ Unsupported shifts for retail/wholesale should not create empty
 `ShiftControlRun` records. If no active template exists, show a clear employee
 error instead of creating a run without tasks.
 
+Shift choice is schedule-aware but never preassigned to a named employee:
+
+- one scheduled Retail employee receives `09_20`;
+- two scheduled Retail employees use the pair `09_18` + `11_20`; the first
+  chooses and the second receives the remaining shift;
+- one scheduled Wholesale employee receives `09_19`;
+- two scheduled Wholesale employees use the pair `09_18` + `10_19` in the same
+  first-choice/remaining-choice order;
+- when the schedule still shows two people but only one actually works, the
+  first employee may explicitly use the solo shift. This is not silent: the
+  department combination becomes an ADMIN-visible mismatch;
+- missing or unsupported schedule topology fails open to the existing supported
+  department shifts instead of blocking QR start.
+
+An employee may correct a mistaken shift during the first five minutes after
+WorkDay creation only while the checklist is untouched and no cash operation or
+control issue exists. The original server `qrAcceptedAt` never changes. The
+portal recalculates lateness, replaces the unused checklist and notifications,
+and appends a `WorkdayShiftChange` audit row. Later/active corrections belong to
+ADMIN handling.
+
+Future shortened or holiday days require a date-specific ADMIN schedule
+override that becomes the single source for shift options, checklist times and
+planned end. Do not hard-code movable holiday dates.
+
 ## Templates
 
 Production has active templates for:
