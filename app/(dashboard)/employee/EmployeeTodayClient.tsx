@@ -1502,7 +1502,7 @@ export function EmployeeTodayClient({
         </div>
         <p className={cn('text-sm font-semibold leading-snug text-slate-600', compact ? 'mt-1.5 whitespace-nowrap' : 'mt-2')}>{peopleCopy}</p>
         {compact && canEdit && (
-          <div className='mt-2 flex justify-end'>
+          <div className='mt-2 flex justify-center'>
             <Button
               type='button'
               className='employee-material-secondary-action h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold'
@@ -3700,20 +3700,14 @@ export function EmployeeTodayClient({
               )}
 
               {requiredIssuesForBanner.length > 0 && (
-                <section className='overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 text-slate-950 shadow-sm'>
-                  <div className='flex items-center gap-3 px-3.5 py-3'>
-                    <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-5 w-5' /></span>
-                    <div className='min-w-0'>
-                      <p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить · {requiredIssuesForBanner.length}</p>
-                      <p className='mt-0.5 text-sm font-bold leading-tight text-slate-700'>Откройте и выполните инструкцию</p>
-                    </div>
-                  </div>
-                  <div className='divide-y divide-amber-200 border-t border-amber-200 bg-white/45'>
+                <section className='space-y-2'>
                     {(showAllRequiredIssues ? requiredIssuesForBanner : requiredIssuesForBanner.slice(0, 1)).map((issue) => {
                       const issueView = workdayIssueView(issue);
                       return (
-                        <Link key={issue.id} href={`/employee/issues/${issue.id}`} className='flex items-center gap-3 px-3.5 py-3 transition hover:bg-white/60'>
+                        <Link key={issue.id} href={`/employee/issues/${issue.id}`} className='flex items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm transition hover:bg-amber-100/70'>
+                          <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><AlertTriangle className='h-5 w-5' /></span>
                           <span className='min-w-0 flex-1'>
+                            <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить</span>
                             <span className='block text-sm font-black leading-tight'>{issueView.summaryTitle}</span>
                             {issueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{issueView.summaryMeta}</span>}
                           </span>
@@ -3725,20 +3719,19 @@ export function EmployeeTodayClient({
                       <button
                         type='button'
                         onClick={() => setShowAllRequiredIssues((current) => !current)}
-                        className='flex w-full items-center justify-center gap-2 px-3.5 py-3 text-sm font-extrabold text-amber-900 transition hover:bg-white/60'
+                        className='flex w-full items-center justify-center gap-2 rounded-2xl px-3.5 py-3 text-sm font-extrabold text-amber-900 transition hover:bg-amber-50'
                         aria-expanded={showAllRequiredIssues}
                       >
                         {showAllRequiredIssues ? 'Свернуть список' : `Показать остальные · ${requiredIssuesForBanner.length - 1}`}
                         {showAllRequiredIssues ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
                       </button>
                     )}
-                  </div>
                 </section>
               )}
 
               {primaryPaymentCheck && primaryPaymentCheckView && (
-                <Link href={`/employee/payment-checks/${primaryPaymentCheck.id}`} className='flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'>
-                  <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'><ReceiptText className='h-5 w-5' /></span>
+                <Link href={`/employee/payment-checks/${primaryPaymentCheck.id}`} className='flex items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm'>
+                  <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><ReceiptText className='h-5 w-5' /></span>
                   <span className='min-w-0 flex-1'>
                     <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно проверить{paymentChecksState.length > 1 ? ` · ${paymentChecksState.length}` : ''}</span>
                     <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryPaymentCheckView.title}</span>
@@ -4229,7 +4222,7 @@ export function EmployeeTodayClient({
                   </div>
 
                   {scheduleMonthLoaded && incompleteScheduleDates.length === 0 && !bulkScheduleMode && (
-                    <div className='flex justify-end py-0.5'>
+                    <div className='flex justify-center py-0.5'>
                       <button
                         type='button'
                         className='employee-material-secondary-action inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-extrabold text-green-800'
@@ -4253,11 +4246,16 @@ export function EmployeeTodayClient({
                       const workingInitials = getWorkingInitials(cell.date);
                       const selected = selectedScheduleDate === cell.date;
                       const isToday = cell.date === today;
+                      const isPast = cell.date < today;
+                      const isOutsideMonth = !cell.inMonth;
+                      const isLockedMissing = !ownEntry && isPast;
                       const bulkEligible = bulkScheduleMode && bulkEditableDates.includes(cell.date);
                       const bulkWorking = bulkEligible && bulkWorkingDates.has(cell.date);
                       const statusClass =
                         !scheduleMonthLoaded
                           ? 'bg-slate-50 text-slate-400 ring-slate-100'
+                          : isOutsideMonth
+                            ? 'bg-transparent text-slate-400 ring-transparent'
                           : bulkWorking
                             ? 'bg-green-100 text-green-950 ring-green-300'
                           : bulkEligible
@@ -4266,6 +4264,8 @@ export function EmployeeTodayClient({
                           ? 'bg-green-50 text-green-900 ring-green-100'
                           : ownEntry?.status === 'off'
                             ? 'bg-[#e7ebe9] text-slate-800 ring-[#c7cfcb]'
+                            : isLockedMissing
+                              ? 'bg-[#eef0ed] text-slate-500 ring-[#d9ddda]'
                             : 'bg-amber-50 text-amber-800 ring-amber-100';
 
                       return (
@@ -4277,11 +4277,11 @@ export function EmployeeTodayClient({
                             else if (cell.inMonth) setSelectedScheduleDate(cell.date);
                           }}
                           aria-pressed={bulkEligible ? bulkWorking : undefined}
-                          disabled={bulkScheduleMode && !bulkEligible}
+                          disabled={isOutsideMonth || (bulkScheduleMode && !bulkEligible)}
                           className={cn(
-                            'employee-material-calendar-day flex min-h-[50px] min-w-0 flex-col rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01]',
+                            'employee-material-calendar-day flex min-h-[50px] min-w-0 flex-col rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
                             statusClass,
-                            !cell.inMonth && 'opacity-40',
+                            isOutsideMonth && 'opacity-30',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
                             bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
                             !bulkScheduleMode && selected && !isToday && 'is-selected',
@@ -4290,17 +4290,25 @@ export function EmployeeTodayClient({
                         >
                           <span className='text-xs font-extrabold leading-none'>{cell.day}</span>
                           <span className='mt-1 truncate text-[9px] font-extrabold leading-none'>
-                            {scheduleMonthLoaded ? bulkEligible ? (bulkWorking ? 'Работаю' : 'Выходной') : scheduleCellLabel(ownEntry?.status) : '…'}
+                            {scheduleMonthLoaded
+                              ? isOutsideMonth
+                                ? ''
+                                : bulkEligible
+                                  ? (bulkWorking ? 'Работаю' : 'Выходной')
+                                  : isLockedMissing
+                                    ? '—'
+                                    : scheduleCellLabel(ownEntry?.status)
+                              : '…'}
                           </span>
                           <span className={cn(
                             'mt-auto max-w-full text-[8px] font-extrabold leading-none',
                             scheduleMonthLoaded && workingInitials.count === 0 && workingInitials.complete ? 'text-amber-700' : 'text-green-800',
                           )}>
-                            {scheduleMonthLoaded && workingInitials.count === 0 && workingInitials.complete ? 'Никого' : ''}
-                            {scheduleMonthLoaded ? workingInitials.initials.join(' ') : ''}
-                            {scheduleMonthLoaded && workingInitials.extraCount > 0 ? ` +${workingInitials.extraCount}` : ''}
+                            {scheduleMonthLoaded && !isOutsideMonth && workingInitials.count === 0 && workingInitials.complete ? 'Никого' : ''}
+                            {scheduleMonthLoaded && !isOutsideMonth ? workingInitials.initials.join(' ') : ''}
+                            {scheduleMonthLoaded && !isOutsideMonth && workingInitials.extraCount > 0 ? ` +${workingInitials.extraCount}` : ''}
                           </span>
-                          {scheduleMonthLoaded && workingInitials.count === 1 && (
+                          {scheduleMonthLoaded && !isOutsideMonth && workingInitials.count === 1 && (
                             <span className='mt-0.5 text-[7px] font-extrabold leading-none text-amber-700'>1 чел.</span>
                           )}
                         </button>
@@ -4311,7 +4319,7 @@ export function EmployeeTodayClient({
                   <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] font-extrabold text-slate-600'>
                     <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-green-100 ring-1 ring-green-300' />Работаю</span>
                     <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#e7ebe9] ring-1 ring-[#aeb9b4]' />Выходной</span>
-                    {!bulkScheduleMode && <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
+                    {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
                   </div>
 
                   {scheduleMonthLoaded && !bulkScheduleMode && selectedScheduleDate.startsWith(`${calendarMonth}-`) && (

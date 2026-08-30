@@ -45,6 +45,10 @@ function issueSourceData(controlCase: {
   receiptDelayMinutes: number | null;
   receiptCashierRef: string | null;
   receiptCashierName: string | null;
+  paymentKind: string | null;
+  paymentDocumentNumber: string | null;
+  paymentAmountKopecks: number | null;
+  expectedCreditKopecks: number | null;
 }) {
   return {
     documentNumber: controlCase.documentNumber,
@@ -54,6 +58,10 @@ function issueSourceData(controlCase: {
     receiptDelayMinutes: controlCase.receiptDelayMinutes,
     receiptCashierRef: controlCase.receiptCashierRef,
     receiptCashierName: controlCase.receiptCashierName,
+    paymentKind: controlCase.paymentKind ?? null,
+    paymentDocumentNumber: controlCase.paymentDocumentNumber ?? null,
+    paymentAmountKopecks: controlCase.paymentAmountKopecks ?? null,
+    expectedCreditKopecks: controlCase.expectedCreditKopecks ?? null,
   };
 }
 

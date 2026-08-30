@@ -450,6 +450,11 @@ model CreditRealizationControlCase {
   realizationAt           DateTime
   amountKopecks           Int
   managerRef              String?
+  paymentKind             String?
+  paymentDocumentRef      String?
+  paymentDocumentNumber   String?
+  paymentAmountKopecks    Int?
+  expectedCreditKopecks   Int?
   status                  String
   reasonCode              String
   employeeActionCandidate Boolean                              @default(false)

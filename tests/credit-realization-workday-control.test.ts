@@ -98,6 +98,7 @@ test('lifecycle creates one issue and notification, then resolves without duplic
   assert.deepEqual(issues[0].sourceData, {
     documentNumber: 'R-1', realizationAt: '2026-08-18T08:00:00.000Z', amountKopecks: 100_000_00,
     reasonCode: 'REQUIRED_FISCAL_RECEIPT_MISSING', receiptDelayMinutes: 18, receiptCashierRef: 'cashier-1', receiptCashierName: 'Кассир',
+    paymentKind: null, paymentDocumentNumber: null, paymentAmountKopecks: null, expectedCreditKopecks: null,
   });
   assert.equal(notifications.every((notification) => notification.status === 'cancelled'), true);
 });
