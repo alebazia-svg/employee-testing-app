@@ -19,6 +19,19 @@ Ask:
 If the answer depends on current production state, verify it instead of relying
 on memory.
 
+For every meaningful product or UX change, write down the working baseline
+before editing:
+
+- **Fixed:** approved behavior, composition, terminology and business rules that
+  must not change.
+- **Requested:** the exact problem to solve now.
+- **Excluded:** rejected ideas and areas outside the current task.
+- **Acceptance:** observable states that must be true before showing the result.
+
+If a new request conflicts with the baseline, stop and explain the conflict.
+Recommend the best product-level choice instead of silently following the last
+instruction or agreeing with both incompatible ideas.
+
 ## While Coding
 
 - Keep edits scoped to the requested area.
@@ -26,6 +39,14 @@ on memory.
 - Avoid duplicating matching, date parsing, payroll alias or workday shift logic.
 - Add comments only where they reduce real future confusion.
 - Do not start a wider refactor because the nearby code is imperfect.
+- Recheck adjacent behavior after every material decision. For UI work include
+  default, selected, empty, error, cancel, return/re-entry and small-screen
+  states when they exist.
+- Compare implementation with the approved reference or previous accepted state
+  before asking the owner to review it. Do not rely on memory for visual QA.
+- Keep a distinction between the owner's hypothesis and the accepted project
+  decision. Challenge a hypothesis when evidence or workflow analysis shows a
+  better option.
 
 ## Before Commit
 
@@ -73,6 +94,11 @@ Report:
 - deploy result if deployed;
 - remaining dirty files when relevant;
 - what was intentionally not touched.
+- whether the implementation still matches every fixed constraint and accepted
+  business rule identified before coding;
+- which non-happy-path states were checked and any remaining uncertainty;
+- for visual work, whether the exact target state was rendered and reviewed
+  before commit/deploy;
 - whether this task changed actual project state: roadmap or maturity status,
   start/finish of a meaningful phase, architecture decisions, workflow,
   persistent development rules, Definition of Done or stale Codex memory.
