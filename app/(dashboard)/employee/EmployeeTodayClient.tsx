@@ -39,8 +39,9 @@ import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShift
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { colleaguePresence } from '@/lib/workday-presence';
-import { scheduleCoverage, schedulePersonLabel, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
-import { buildBulkScheduleChanges, bulkScheduleCounts } from '@/lib/work-schedule-bulk';
+import { expectedColleagueShiftCode } from '@/lib/workday-colleague-shift';
+import { scheduleCoverage, schedulePersonLabel, scheduleWorkingCountAfterChange, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
+import { buildBulkScheduleChanges, buildBulkScheduleEditChanges, bulkScheduleCounts, type BulkScheduleStatus } from '@/lib/work-schedule-bulk';
 import {
   cashOutboxFormData,
   listEmployeeCashOutboxItems,
@@ -160,7 +161,7 @@ type WorkDayEntry = {
   createdAt?: string | Date;
 };
 
-type DepartmentWorkdayPresence = Pick<WorkDayEntry, 'userId' | 'date' | 'status' | 'startedAt' | 'endedAt'>;
+type DepartmentWorkdayPresence = Pick<WorkDayEntry, 'userId' | 'date' | 'status' | 'shiftCode' | 'startedAt' | 'endedAt'>;
 
 type ShiftControlTask = {
   id: number;
@@ -933,7 +934,29 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-function ColleagueGroup({ title, people, tone, emptyLabel = 'Нет сотрудников' }: { title: string; people: UserSummary[]; tone: 'green' | 'slate' | 'amber'; emptyLabel?: string }) {
+function EmployeeProfileGlyph() {
+  return (
+    <svg className='employee-material-profile-glyph' viewBox='0 0 32 32' aria-hidden='true'>
+      <path d='M16 15.6c3.55 0 6.12-2.78 6.12-6.35C22.12 5.73 19.55 3 16 3S9.88 5.73 9.88 9.25c0 3.57 2.57 6.35 6.12 6.35Zm0 2.25c-6.14 0-10.82 3.26-11.78 8.2-.3 1.52.89 2.95 2.45 2.95h18.66c1.56 0 2.75-1.43 2.45-2.95-.96-4.94-5.64-8.2-11.78-8.2Z' />
+    </svg>
+  );
+}
+
+function ColleagueGroup({
+  title,
+  people,
+  tone,
+  emptyLabel = 'Нет сотрудников',
+  displayName,
+  detail,
+}: {
+  title: string;
+  people: UserSummary[];
+  tone: 'green' | 'slate' | 'amber';
+  emptyLabel?: string;
+  displayName: (person: UserSummary) => string;
+  detail?: (person: UserSummary) => string | null;
+}) {
   const dotClass = tone === 'green' ? 'employee-material-status-dot-green' : tone === 'amber' ? 'employee-material-status-dot-amber' : 'employee-material-status-dot-slate';
 
   return (
@@ -947,14 +970,17 @@ function ColleagueGroup({ title, people, tone, emptyLabel = 'Нет сотруд
       </div>
       {people.length ? (
         <div className='grid gap-1.5'>
-          {people.map((person) => (
-            <div key={person.id} className='employee-material-person flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5'>
-              <span className='employee-material-person-avatar flex h-7 w-7 shrink-0 items-center justify-center text-[11px] font-extrabold'>
-                {initials(person.name)}
-              </span>
-              <span className='min-w-0 truncate text-sm font-bold text-slate-800'>{person.name}</span>
-            </div>
-          ))}
+          {people.map((person) => {
+            const personDetail = detail?.(person);
+            return (
+              <div key={person.id} className='employee-material-person flex min-h-11 items-center rounded-lg bg-slate-50 px-3 py-2'>
+                <span className='flex min-w-0 flex-1 flex-col'>
+                  <span className='truncate text-sm font-extrabold text-slate-900'>{displayName(person)}</span>
+                  {personDetail && <span className='mt-0.5 truncate text-[11px] font-semibold text-slate-500'>{personDetail}</span>}
+                </span>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className='text-sm font-medium text-slate-500'>{emptyLabel}</p>
@@ -1021,6 +1047,7 @@ export function EmployeeTodayClient({
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
   const [editingScheduleDate, setEditingScheduleDate] = useState<string | null>(null);
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
+  const [bulkScheduleKind, setBulkScheduleKind] = useState<'fill' | 'edit'>('fill');
   const [bulkWorkingDates, setBulkWorkingDates] = useState<Set<string>>(() => new Set());
   const [bulkScheduleConfirmOpen, setBulkScheduleConfirmOpen] = useState(false);
   const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set());
@@ -1283,6 +1310,9 @@ export function EmployeeTodayClient({
   const scheduledColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'scheduled');
   const offColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'off');
   const missingColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'missing');
+  const scheduledWorkingUserIds = todayDepartmentEntries
+    .filter((entry) => entry.status === 'working')
+    .map((entry) => entry.userId);
   const shiftControlBelongsToToday = shiftControlState.run?.date === today;
   const shiftControlCompleted = shiftControlState.run?.status === 'completed' || shiftControlState.run?.completedAt;
   const showShiftControl =
@@ -1340,13 +1370,28 @@ export function EmployeeTodayClient({
     cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date)
   ));
   const bulkMissingDates = incompleteScheduleDates.map((cell) => cell.date);
-  const bulkScheduleChanges = buildBulkScheduleChanges(bulkMissingDates, bulkWorkingDates);
+  const bulkExistingDates = calendarDays
+    .filter((cell) => cell.inMonth && cell.date >= today && ownScheduleByDate.has(cell.date))
+    .map((cell) => cell.date);
+  const bulkEditableDates = bulkScheduleKind === 'edit' ? bulkExistingDates : bulkMissingDates;
+  const bulkPreviousStatuses = new Map<string, BulkScheduleStatus>(bulkExistingDates.flatMap((date) => {
+    const status = ownScheduleByDate.get(date)?.status;
+    return status === 'working' || status === 'off' ? [[date, status]] : [];
+  }));
+  const bulkScheduleChanges = bulkScheduleKind === 'edit'
+    ? buildBulkScheduleEditChanges(bulkEditableDates, bulkWorkingDates, bulkPreviousStatuses)
+    : buildBulkScheduleChanges(bulkEditableDates, bulkWorkingDates);
   const bulkCounts = bulkScheduleCounts(bulkScheduleChanges);
   const activeDepartmentUserIds = new Set(departmentUsers.map((person) => person.id));
   const bulkCoverage = bulkScheduleChanges.map((change) => {
     const workingBefore = (departmentScheduleByDate.get(change.date) ?? [])
       .filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working').length;
-    return { date: change.date, coverage: scheduleCoverage(user.department, workingBefore + (change.status === 'working' ? 1 : 0)) };
+    const workingAfter = scheduleWorkingCountAfterChange({
+      workingBefore,
+      previousStatus: change.previousStatus ?? null,
+      nextStatus: change.status,
+    });
+    return { date: change.date, coverage: scheduleCoverage(user.department, workingAfter) };
   });
   const bulkReducedCount = bulkCoverage.filter(({ coverage }) => coverage.state === 'reduced').length;
   const bulkEmptyCount = bulkCoverage.filter(({ coverage }) => coverage.state === 'empty').length;
@@ -1372,6 +1417,22 @@ export function EmployeeTodayClient({
 
   function personDisplayName(name: string) {
     return schedulePersonLabel(name, departmentUsers.map((person) => person.name));
+  }
+
+  function colleagueDetail(person: UserSummary) {
+    const workday = todayWorkdayByUser.get(person.id);
+    if (workday?.shiftCode) return `Смена ${shiftLabel(workday.shiftCode)}`;
+    if (todayPresence(person) === 'scheduled') {
+      const expectedCode = expectedColleagueShiftCode({
+        department: user.department,
+        colleagueUserId: person.id,
+        scheduledWorkingUserIds,
+        startedWorkdays: departmentWorkdaysState.filter((entry) => entry.date === today),
+      });
+      const expectedShift = expectedCode ? shiftOptions.find((shift) => shift.code === expectedCode) : null;
+      return expectedShift ? `Ожидается к ${minutesToTime(expectedShift.startMinutes)}` : 'Ожидается сегодня';
+    }
+    return null;
   }
 
   function scheduleNames(rows: Array<{ person: UserSummary }>) {
@@ -1520,7 +1581,17 @@ export function EmployeeTodayClient({
   function startBulkSchedule() {
     setError('');
     setMessage('');
+    setBulkScheduleKind('fill');
     setBulkWorkingDates(new Set());
+    setBulkScheduleConfirmOpen(false);
+    setBulkScheduleMode(true);
+  }
+
+  function startBulkScheduleEdit() {
+    setError('');
+    setMessage('');
+    setBulkScheduleKind('edit');
+    setBulkWorkingDates(new Set(bulkExistingDates.filter((date) => ownScheduleByDate.get(date)?.status === 'working')));
     setBulkScheduleConfirmOpen(false);
     setBulkScheduleMode(true);
   }
@@ -1529,10 +1600,11 @@ export function EmployeeTodayClient({
     setBulkScheduleMode(false);
     setBulkScheduleConfirmOpen(false);
     setBulkWorkingDates(new Set());
+    setBulkScheduleKind('fill');
   }
 
   function toggleBulkWorkingDate(date: string) {
-    if (!bulkMissingDates.includes(date)) return;
+    if (!bulkEditableDates.includes(date)) return;
     setBulkWorkingDates((current) => {
       const next = new Set(current);
       if (next.has(date)) next.delete(date);
@@ -1550,7 +1622,7 @@ export function EmployeeTodayClient({
       const response = await fetch('/api/employee/workday/schedule/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ monthKey: calendarMonth, changes: bulkScheduleChanges, confirmed: true }),
+        body: JSON.stringify({ monthKey: calendarMonth, mode: bulkScheduleKind, changes: bulkScheduleChanges, confirmed: true }),
       });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) {
@@ -1559,7 +1631,7 @@ export function EmployeeTodayClient({
       }
       cancelBulkSchedule();
       await syncScheduleState();
-      setMessage(`График сохранён · ${bulkCounts.totalDays} дн.`);
+      setMessage(bulkScheduleKind === 'edit' ? `Изменения сохранены · ${bulkCounts.totalDays}` : `График сохранён · ${bulkCounts.totalDays} дн.`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось сохранить график');
       setBulkScheduleConfirmOpen(false);
@@ -3322,9 +3394,9 @@ export function EmployeeTodayClient({
             </div>
           </div>
 
-          <div className='mt-3 grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2.5'>
-            <div className='employee-material-profile-avatar flex h-9 w-9 items-center justify-center text-[11px] font-black' aria-hidden='true'>
-              {initials(user.name)}
+          <div className='mt-3 grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2.5'>
+            <div className='employee-material-profile-avatar flex h-11 w-11 items-center justify-center' aria-hidden='true'>
+              <EmployeeProfileGlyph />
             </div>
             <div className='employee-material-profile-copy min-w-0'>
               <p className='truncate text-sm font-extrabold leading-tight text-[#273137]'>{user.name}</p>
@@ -3515,14 +3587,14 @@ export function EmployeeTodayClient({
                   <p className='text-xs font-black uppercase tracking-[0.12em] text-green-700'>{monthTitle(calendarMonth)}</p>
                   <button type='button' className='shrink-0 text-xs font-extrabold text-slate-500' onClick={() => setBulkScheduleConfirmOpen(false)}>Изменить выбор</button>
                 </div>
-                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>Проверьте график</h2>
+                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{bulkScheduleKind === 'edit' ? 'Проверьте изменения' : 'Проверьте график'}</h2>
                 <div className='mt-3 grid grid-cols-2 gap-2'>
                   <div className='rounded-2xl bg-green-50 px-4 py-2.5 ring-1 ring-green-100'>
-                    <p className='text-xs font-bold text-green-700'>Рабочих дней</p>
+                    <p className='text-xs font-bold text-green-700'>{bulkScheduleKind === 'edit' ? 'Станут рабочими' : 'Рабочих дней'}</p>
                     <p className='text-2xl font-black text-green-950'>{bulkCounts.workingDays}</p>
                   </div>
                   <div className='rounded-2xl bg-slate-100 px-4 py-2.5 ring-1 ring-slate-200'>
-                    <p className='text-xs font-bold text-slate-600'>Выходных</p>
+                    <p className='text-xs font-bold text-slate-600'>{bulkScheduleKind === 'edit' ? 'Станут выходными' : 'Выходных'}</p>
                     <p className='text-2xl font-black text-slate-950'>{bulkCounts.offDays}</p>
                   </div>
                 </div>
@@ -3543,7 +3615,7 @@ export function EmployeeTodayClient({
                   disabled={isSaving}
                   onClick={() => void saveBulkSchedule()}
                 >
-                  {isSaving ? 'Сохраняем…' : `Сохранить ${bulkCounts.totalDays} дн.`}
+                  {isSaving ? 'Сохраняем…' : bulkScheduleKind === 'edit' ? `Сохранить изменения · ${bulkCounts.totalDays}` : `Сохранить ${bulkCounts.totalDays} дн.`}
                 </Button>
               </div>
             </div>
@@ -3553,16 +3625,11 @@ export function EmployeeTodayClient({
             <div className='space-y-3'>
               {!workDay && !unfinished && (
                 <Card className='space-y-3 p-4'>
-                  <div className='flex items-start gap-3'>
-                    <span className='employee-material-heading-icon h-11 w-11 shrink-0 rounded-xl' aria-hidden='true'>
-                      <span className='employee-material-brand-o' />
-                    </span>
-                    <div className='min-w-0'>
-                      <h2 className='text-xl font-black leading-tight text-slate-950'>Начать рабочий день</h2>
-                      <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
-                        Отсканируйте QR-код отдела на рабочем месте.
-                      </p>
-                    </div>
+                  <div className='min-w-0'>
+                    <h2 className='text-xl font-black leading-tight text-slate-950'>Начать рабочий день</h2>
+                    <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
+                      Отсканируйте QR-код отдела на рабочем месте.
+                    </p>
                   </div>
                   <Button
                     type='button'
@@ -3976,9 +4043,9 @@ export function EmployeeTodayClient({
                   <span className='employee-material-heading-icon'><Users className='h-5 w-5 text-primary' /></span>
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
                 </div>
-                <ColleagueGroup title='Работают сейчас' people={workingColleagues} tone='green' emptyLabel='Сейчас никто не работает' />
-                {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' />}
-                {scheduledColleagues.length > 0 && <ColleagueGroup title='Ожидаются сегодня' people={scheduledColleagues} tone='amber' />}
+                <ColleagueGroup title='Работают сейчас' people={workingColleagues} tone='green' emptyLabel='Сейчас никто не работает' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
+                {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
+                {scheduledColleagues.length > 0 && <ColleagueGroup title='Ожидаются сегодня' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {offColleagues.length + missingColleagues.length > 0 && (
                   <Button
                     type='button'
@@ -3990,15 +4057,15 @@ export function EmployeeTodayClient({
                     {showInactiveColleagues ? 'Скрыть неработающих' : `Не работают сегодня · ${offColleagues.length + missingColleagues.length}`}
                   </Button>
                 )}
-                {showInactiveColleagues && offColleagues.length > 0 && <ColleagueGroup title='Выходной' people={offColleagues} tone='slate' />}
-                {showInactiveColleagues && missingColleagues.length > 0 && <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' />}
+                {showInactiveColleagues && offColleagues.length > 0 && <ColleagueGroup title='Выходной' people={offColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} />}
+                {showInactiveColleagues && missingColleagues.length > 0 && <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} />}
               </Card>
             </div>
           )}
 
           {activeTab === 'schedule' && (
             <div className='space-y-3'>
-              <Card className='p-2.5'>
+              <Card className='p-1.5'>
                 <div className='employee-material-segment grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1'>
                   {[
                     { id: 'list' as const, label: 'Ближайшие дни' },
@@ -4010,7 +4077,7 @@ export function EmployeeTodayClient({
                       disabled={bulkScheduleMode}
                       onClick={() => setScheduleMode(mode.id)}
                       className={cn(
-                        'h-11 rounded-xl text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-70',
+                        'h-10 rounded-xl text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-70',
                         scheduleMode === mode.id
                           ? 'bg-[#111821] text-white shadow-[0_8px_18px_rgba(15,23,42,0.16)]'
                           : 'bg-green-50/80 text-green-800 hover:bg-green-100',
@@ -4033,37 +4100,35 @@ export function EmployeeTodayClient({
               {scheduleMode === 'month' && (
                 <>
                   {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && !bulkScheduleMode && (
-                    <Card className='employee-material-alert-card border-amber-200 bg-amber-50 p-3.5'>
-                      <div className='flex items-start gap-3'>
-                        <span className='employee-material-heading-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-amber-700'>
+                    <Card className='employee-material-alert-card flex items-center gap-2.5 border-amber-200 bg-amber-50 p-2.5'>
+                        <span className='employee-material-heading-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-amber-700'>
                           <AlertTriangle className='h-5 w-5' />
                         </span>
                         <div className='min-w-0 flex-1'>
-                          <p className='font-extrabold text-amber-950'>Заполните график на {monthTitle(calendarMonth).toLowerCase()}</p>
-                          <p className='mt-1 text-xs font-semibold text-amber-900'>Осталось отметить {incompleteScheduleDates.length} дн.</p>
+                          <p className='text-sm font-extrabold text-amber-950'>Осталось выбрать {incompleteScheduleDates.length} дн.</p>
+                          <p className='mt-0.5 text-[11px] font-semibold text-amber-900'>{monthTitle(calendarMonth)} ещё не заполнен</p>
                         </div>
-                      </div>
                       <Button
                         type='button'
-                        className='employee-material-green-action mt-3 h-12 w-full rounded-xl text-sm font-black'
+                        className='employee-material-green-action h-10 shrink-0 rounded-xl px-3 text-xs font-black'
                         onClick={startBulkSchedule}
                       >
-                        Заполнить график
+                        Заполнить
                       </Button>
                     </Card>
                   )}
                   {bulkScheduleMode && (
-                    <Card className='border-green-200 bg-green-50/80 p-3.5'>
+                    <Card className='border-green-200 bg-green-50/80 p-3'>
                       <div className='flex items-start justify-between gap-3'>
                         <div className='min-w-0'>
-                          <p className='font-extrabold text-green-950'>Отметьте дни, когда работаете</p>
-                          <p className='mt-1 text-xs font-semibold leading-relaxed text-green-800'>Неотмеченные дни станут выходными. Уже заполненные дни не изменятся.</p>
+                          <p className='text-sm font-extrabold text-green-950'>{bulkScheduleKind === 'edit' ? 'Измените нужные дни' : 'Отметьте дни, когда работаете'}</p>
+                          <p className='mt-1 text-[11px] font-semibold leading-relaxed text-green-800'>{bulkScheduleKind === 'edit' ? 'Сохранятся только изменённые даты.' : 'Неотмеченные дни станут выходными. Уже заполненные дни не изменятся.'}</p>
                         </div>
                         <button type='button' className='shrink-0 text-xs font-extrabold text-slate-500' onClick={cancelBulkSchedule}>Отмена</button>
                       </div>
                     </Card>
                   )}
-                  <Card className='space-y-2.5 p-2.5'>
+                  <Card className='space-y-2 p-2.5'>
                   <div className='flex items-center justify-between gap-2'>
                     <button
                       type='button'
@@ -4113,6 +4178,13 @@ export function EmployeeTodayClient({
                     </button>
                   </div>
 
+                  {scheduleMonthLoaded && incompleteScheduleDates.length === 0 && !bulkScheduleMode && (
+                    <div className='flex items-center justify-between gap-2 rounded-xl bg-green-50 px-3 py-2 text-green-800 ring-1 ring-green-100'>
+                      <span className='inline-flex items-center gap-1.5 text-[11px] font-extrabold'><CheckCircle2 className='h-4 w-4' />Все дни выбраны</span>
+                      <button type='button' className='text-[11px] font-extrabold text-green-800' onClick={startBulkScheduleEdit}>Изменить несколько дней</button>
+                    </div>
+                  )}
+
                   <div className='grid grid-cols-7 gap-0.5 text-center text-xs font-extrabold text-slate-500'>
                     {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => (
                       <span key={day}>{day}</span>
@@ -4124,7 +4196,7 @@ export function EmployeeTodayClient({
                       const ownEntry = ownScheduleByDate.get(cell.date);
                       const workingInitials = getWorkingInitials(cell.date);
                       const selected = selectedScheduleDate === cell.date;
-                      const bulkEligible = bulkScheduleMode && bulkMissingDates.includes(cell.date);
+                      const bulkEligible = bulkScheduleMode && bulkEditableDates.includes(cell.date);
                       const bulkWorking = bulkEligible && bulkWorkingDates.has(cell.date);
                       const statusClass =
                         !scheduleMonthLoaded
@@ -4143,16 +4215,20 @@ export function EmployeeTodayClient({
                         <button
                           key={cell.date}
                           type='button'
-                          onClick={() => bulkScheduleMode ? toggleBulkWorkingDate(cell.date) : setSelectedScheduleDate(cell.date)}
+                          onClick={() => {
+                            if (bulkScheduleMode) toggleBulkWorkingDate(cell.date);
+                            else if (cell.inMonth && cell.date >= today) setEditingScheduleDate(cell.date);
+                            else setSelectedScheduleDate(cell.date);
+                          }}
                           aria-pressed={bulkEligible ? bulkWorking : undefined}
                           disabled={bulkScheduleMode && !bulkEligible}
                           className={cn(
-                            'employee-material-calendar-day flex min-h-[62px] min-w-0 flex-col rounded-lg p-1.5 text-left ring-1 transition hover:scale-[1.01]',
+                            'employee-material-calendar-day flex min-h-[50px] min-w-0 flex-col rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01]',
                             statusClass,
                             !cell.inMonth && 'opacity-40',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
                             bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
-                            !bulkScheduleMode && selected && 'ring-2 ring-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.14)]',
+                            !bulkScheduleMode && selected && cell.date < today && 'ring-2 ring-slate-500',
                           )}
                         >
                           <span className='text-xs font-extrabold leading-none'>{cell.day}</span>
@@ -4175,15 +4251,13 @@ export function EmployeeTodayClient({
                     })}
                   </div>
 
-                  <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] font-bold text-slate-500'>
-                    <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-green-50 ring-1 ring-green-100' />Работаю</span>
-                    <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-slate-100 ring-1 ring-slate-200' />Выходной</span>
-                    {!bulkScheduleMode && <span className='inline-flex items-center gap-1'><span className='h-2.5 w-2.5 rounded bg-amber-50 ring-1 ring-amber-100' />Нужно выбрать</span>}
+                  <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] font-extrabold text-slate-600'>
+                    <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-green-100 ring-1 ring-green-300' />Работаю</span>
+                    <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-slate-100 ring-1 ring-slate-300' />Выходной</span>
+                    {!bulkScheduleMode && <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
                   </div>
 
-                  {scheduleMonthLoaded && !bulkScheduleMode ? (
-                    <ScheduleDayCard date={selectedScheduleDate} selected />
-                  ) : !scheduleMonthLoaded ? (
+                  {!scheduleMonthLoaded ? (
                     <div className='rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-bold text-slate-500'>
                       Загружаем выбранный месяц…
                     </div>
@@ -4199,18 +4273,18 @@ export function EmployeeTodayClient({
 
         {bulkScheduleMode && !bulkScheduleConfirmOpen && (
           <div className='fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 mx-auto w-full max-w-[520px] px-3'>
-            <div className='rounded-2xl bg-[#111821] p-3 text-white shadow-[0_18px_45px_rgba(15,23,42,0.28)]'>
-              <div className='mb-2 flex items-center justify-between gap-3 px-1 text-xs font-bold'>
-                <span>Рабочих · {bulkCounts.workingDays}</span>
-                <span className='text-slate-300'>Выходных · {bulkCounts.offDays}</span>
+            <div className='employee-material-sheet flex items-center gap-3 rounded-2xl p-2.5 shadow-[0_16px_38px_rgba(15,23,42,0.16)]'>
+              <div className='min-w-[70px] px-1'>
+                <p className='text-lg font-black leading-none text-green-800'>{bulkCounts.totalDays}</p>
+                <p className='mt-1 text-[10px] font-bold leading-none text-slate-500'>{bulkScheduleKind === 'edit' ? 'дней изменено' : 'дней выбрано'}</p>
               </div>
               <Button
                 type='button'
-                className='employee-material-green-action h-12 w-full rounded-xl text-sm font-black'
+                className='employee-material-green-action h-11 flex-1 rounded-xl text-sm font-black'
                 disabled={bulkCounts.totalDays === 0}
                 onClick={() => setBulkScheduleConfirmOpen(true)}
               >
-                Проверить и сохранить {bulkCounts.totalDays} дн.
+                Проверить
               </Button>
             </div>
           </div>

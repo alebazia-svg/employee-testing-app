@@ -78,6 +78,7 @@ export function serializeDepartmentWorkdayForEmployee(entry: {
   userId: number;
   date: string;
   status: string;
+  shiftCode: string;
   startedAt: Date;
   endedAt: Date | null;
 }) {
@@ -85,6 +86,7 @@ export function serializeDepartmentWorkdayForEmployee(entry: {
     userId: entry.userId,
     date: entry.date,
     status: entry.status,
+    shiftCode: entry.shiftCode,
     startedAt: entry.startedAt.toISOString(),
     endedAt: entry.endedAt?.toISOString() ?? null,
   };
@@ -134,7 +136,7 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
     findTodayCashOperations(user.id, today),
     prisma.workDayEntry.findMany({
       where: { department: user.department, date: today },
-      select: { userId: true, date: true, status: true, startedAt: true, endedAt: true },
+      select: { userId: true, date: true, status: true, shiftCode: true, startedAt: true, endedAt: true },
       orderBy: [{ startedAt: 'asc' }, { userId: 'asc' }],
     }),
   ]);

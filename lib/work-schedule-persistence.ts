@@ -13,7 +13,7 @@ export async function persistEmployeeScheduleChange(tx: Prisma.TransactionClient
   status: 'working' | 'off';
   previousStatus: string | null | undefined;
   departmentEntries: ScheduleEntryState[];
-  source: 'employee' | 'employee_bulk';
+  source: 'employee' | 'employee_bulk' | 'employee_bulk_edit';
   notifyCoverage?: boolean;
 }) {
   const workingBefore = input.departmentEntries.filter((entry) => entry.status === 'working').length;
