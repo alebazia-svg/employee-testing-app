@@ -65,8 +65,10 @@ A separate `Изменить несколько дней` flow lets the employee
 saved current/future dates in one pass. It starts from the persisted schedule,
 sends only dates whose status actually changed, records `employee_bulk_edit`
 audit rows and uses optimistic concurrency (`previousStatus`) so a stale device
-cannot overwrite newer edits. Unlike initial completion, these corrections use
-the ordinary department-coverage notification lifecycle.
+cannot overwrite newer edits. Like initial completion, a bulk save must not
+generate one replacement push per changed date. Coverage gaps remain visible in
+the shared calendar and ADMIN; an explicit single-day correction keeps the
+ordinary confirmation and replacement-notification lifecycle.
 
 Retail and Wholesale use two people as the normal coverage target, but reduced
 or empty staffing never blocks an honest schedule change. A change below the
