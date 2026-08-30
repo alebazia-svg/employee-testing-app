@@ -65,6 +65,13 @@ and release-quality gate.
 - Do not propose commit or deploy while known UX, logic or verification gaps
   remain. For user-visible changes that require visual approval, show the exact
   target state before deployment.
+- A preview of an existing PWA or ADMIN screen must be grounded in the real
+  application: use the actual rendered screen, its screenshot or its live DOM
+  and preserve every unchanged element. Do not present a recreated logo,
+  background, typography, neighboring card or material system as if it were the
+  real application. An illustrative mock is allowed only for early exploration
+  and must be labeled explicitly as approximate and unsuitable for final visual
+  approval.
 
 ## Interactive Terminal Continuity
 

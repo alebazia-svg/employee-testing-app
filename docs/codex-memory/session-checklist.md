@@ -44,6 +44,10 @@ instruction or agreeing with both incompatible ideas.
   states when they exist.
 - Compare implementation with the approved reference or previous accepted state
   before asking the owner to review it. Do not rely on memory for visual QA.
+- For an existing interface, build approval previews from the actual rendered
+  app or an exact screenshot/DOM baseline. Verify that logo, background,
+  typography, header, neighboring content and spacing remain real when they are
+  outside the requested change.
 - Keep a distinction between the owner's hypothesis and the accepted project
   decision. Challenge a hypothesis when evidence or workflow analysis shows a
   better option.
