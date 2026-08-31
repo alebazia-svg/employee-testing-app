@@ -108,6 +108,9 @@ export function WorkdayNotificationsClient() {
   }, []);
 
   useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      void navigator.serviceWorker.register('/workday-sw.js', { scope: '/' }).catch(() => undefined);
+    }
     const supported = 'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window;
     const currentPermission = supported ? Notification.permission : 'unsupported';
     setPermission(currentPermission);

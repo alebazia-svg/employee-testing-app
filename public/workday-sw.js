@@ -1,3 +1,39 @@
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open('offonika-offline-v1').then((cache) => cache.addAll([
+      '/offline.html',
+      '/offonika-wordmark-header.png',
+      '/pwa-icon-192.png',
+    ])).then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys
+        .filter((key) => key.startsWith('offonika-offline-') && key !== 'offonika-offline-v1')
+        .map((key) => caches.delete(key))))
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  if (event.request.mode !== 'navigate') return;
+
+  event.respondWith((async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    try {
+      return await fetch(event.request, { signal: controller.signal });
+    } catch {
+      return (await caches.match('/offline.html')) || Response.error();
+    } finally {
+      clearTimeout(timeout);
+    }
+  })());
+});
+
 self.addEventListener('push', (event) => {
   let data = {};
   try {

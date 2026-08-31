@@ -1298,6 +1298,7 @@ export function EmployeeTodayClient({
         signal: controller.signal,
       });
       if (!response.ok) return;
+      setIsOnline(true);
       const payload: unknown = await response.json();
       const snapshot = readEmployeeWorkdaySnapshot(payload);
       if (!snapshot || controller.signal.aborted) return;
@@ -1315,6 +1316,7 @@ export function EmployeeTodayClient({
       setShiftCorrectionState(snapshot.shiftCorrection);
       if (!snapshot.requiredIssues.length) setCloseBlocked(false);
     } catch {
+      if (workdaySyncAbortRef.current === controller) setIsOnline(false);
       // Keep the last valid snapshot and retry on the next scheduled sync.
     } finally {
       window.clearTimeout(timeout);
@@ -1384,8 +1386,11 @@ export function EmployeeTodayClient({
   useEffect(() => {
     const updateConnection = () => {
       const online = navigator.onLine;
-      setIsOnline(online);
-      if (online) void flushCashOutbox();
+      if (!online) setIsOnline(false);
+      if (online) {
+        void syncCurrentWorkdayState(true);
+        void flushCashOutbox();
+      }
     };
     updateConnection();
     void refreshCashOutboxCount();
@@ -1397,7 +1402,7 @@ export function EmployeeTodayClient({
       window.removeEventListener('offline', updateConnection);
       document.removeEventListener('visibilitychange', updateConnection);
     };
-  }, [flushCashOutbox, refreshCashOutboxCount]);
+  }, [flushCashOutbox, refreshCashOutboxCount, syncCurrentWorkdayState]);
 
   const syncScheduleState = useCallback(async () => {
     const requestedMonth = scheduleMode === 'month' ? calendarMonth : null;
@@ -3635,7 +3640,7 @@ export function EmployeeTodayClient({
               <div className='flex items-start gap-3'>
                 <span className={`employee-material-status-dot mt-1 ${isOnline ? 'employee-material-status-dot-slate' : 'employee-material-status-dot-amber'}`} />
                 <div className='min-w-0 flex-1'>
-                  <p className='text-sm font-extrabold'>{isOnline ? (cashOutboxSyncing ? 'Отправляем инкассацию' : 'Инкассация сохранена на телефоне') : 'Нет соединения'}</p>
+                  <p className='text-sm font-extrabold'>{isOnline ? (cashOutboxSyncing ? 'Отправляем инкассацию' : 'Инкассация сохранена на телефоне') : 'Нет связи с порталом'}</p>
                   <p className='mt-0.5 text-xs font-semibold leading-relaxed opacity-80'>
                     {isOnline
                       ? cashOutboxSyncing
@@ -3643,11 +3648,13 @@ export function EmployeeTodayClient({
                         : cashOutboxError
                           ? `Не удалось отправить: ${cashOutboxError}`
                           : `Сумма и фото не потеряны. Ожидают отправки: ${cashOutboxCount}.`
-                      : 'Введённые данные инкассации будут сохранены на телефоне и отправятся после восстановления связи.'}
+                      : cashOutboxCount > 0
+                        ? 'Инкассация сохранена на телефоне и отправится после восстановления связи.'
+                        : 'Проверьте интернет или VPN. Данные обновятся после восстановления связи.'}
                   </p>
                 </div>
-                {isOnline && cashOutboxCount > 0 && !cashOutboxSyncing ? (
-                  <button type='button' className='employee-material-secondary-action h-9 shrink-0 px-3 text-xs font-extrabold' onClick={() => void flushCashOutbox()}>
+                {(!isOnline || (cashOutboxCount > 0 && !cashOutboxSyncing)) ? (
+                  <button type='button' className='employee-material-secondary-action h-9 shrink-0 px-3 text-xs font-extrabold' onClick={() => void (isOnline ? flushCashOutbox() : syncCurrentWorkdayState(true))}>
                     Повторить
                   </button>
                 ) : null}
