@@ -35,6 +35,7 @@ import { evaluateWorkdayTiming } from '@/lib/workday-timing';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { departmentLabel, formatDateLabel, formatTime, getMoscowDateKey, getMoscowMinutes, getShiftOption, getShiftOptionsForDepartment, scheduleStatusLabel, usesWorkdayShiftControl } from '@/lib/workday';
 import { AdminWorkdayAutoRefresh } from './AdminWorkdayAutoRefresh';
+import { AdminWorkdayCorrectionButton } from './AdminWorkdayCorrectionButton';
 import { AdminShiftControlDetails, type ShiftAutoCheck, type ShiftAutoCheckManualReview } from './AdminShiftControlDetails';
 import { DevCreateTestShiftButtons } from './DevCreateTestShiftButtons';
 import { DevMakeShiftTasksAvailableButton } from './DevMakeShiftTasksAvailableButton';
@@ -87,11 +88,12 @@ function scheduleClass(status: string | undefined) {
   return 'bg-amber-100 text-amber-800';
 }
 
-function shiftState(workDay: { status: string; endedAt: Date | null } | null | undefined, scheduleStatus?: string) {
+function shiftState(workDay: { status: string; endedAt: Date | null } | null | undefined, scheduleStatus?: string, onVacation = false) {
   if (workDay?.endedAt || workDay?.status === 'completed') {
     return { label: 'Завершил смену', className: 'bg-slate-100 text-slate-700' };
   }
   if (workDay) return { label: 'Работает', className: 'bg-green-100 text-green-800' };
+  if (onVacation) return { label: 'В отпуске', className: 'bg-[#eceaf3] text-[#5f596f] ring-1 ring-[#d7d2e1]' };
   if (scheduleStatus === 'off') return { label: 'Выходной', className: 'bg-slate-50 text-slate-500 ring-1 ring-slate-200' };
   return { label: 'Не начал', className: 'bg-white text-slate-600 ring-1 ring-slate-200' };
 }
@@ -1092,7 +1094,7 @@ export default async function AdminWorkdayPage(
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
   const selectedDayRange = moscowDayRange(selectedDate);
-  const [employees, schedules, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary, requiredIssues, lateCreditReceipts, cashOperations] = await Promise.all([
+  const [employees, schedules, vacations, vacationHistory, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary, requiredIssues, lateCreditReceipts, cashOperations] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
@@ -1105,6 +1107,18 @@ export default async function AdminWorkdayPage(
       },
     }),
     prisma.workScheduleEntry.findMany({ where: { date: selectedDate } }),
+    prisma.employeeVacation.findMany({
+      where: { status: 'active', dateFrom: { lte: selectedDate }, dateTo: { gte: selectedDate } },
+      orderBy: [{ department: 'asc' }, { dateFrom: 'asc' }],
+    }),
+    prisma.employeeVacation.findMany({
+      include: {
+        user: { select: { id: true, name: true, department: true } },
+        changes: { orderBy: { createdAt: 'desc' }, take: 1, include: { actor: { select: { name: true } } } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 30,
+    }),
     prisma.workDayEntry.findMany({
       where: { date: selectedDate },
       include: { shiftChanges: { orderBy: { changedAt: 'asc' } } },
@@ -1174,6 +1188,7 @@ export default async function AdminWorkdayPage(
   ]);
 
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
+  const vacationByUser = new Map(vacations.map((vacation) => [vacation.userId, vacation]));
   const workDayByUser = new Map(workDays.map((entry) => [entry.userId, entry]));
   const shiftControlRunByUser = new Map(shiftControlRuns.map((run) => [run.userId, run]));
   const requiredIssuesByUser = new Map<number, typeof requiredIssues>();
@@ -1184,7 +1199,7 @@ export default async function AdminWorkdayPage(
   const shiftCombinationEvaluations = (['retail', 'wholesale'] as const).map((department) => evaluateDepartmentShiftCombination({
     department,
     scheduledWorkingUserIds: schedules
-      .filter((entry) => entry.department === department && entry.status === 'working')
+      .filter((entry) => entry.department === department && entry.status === 'working' && !vacationByUser.has(entry.userId))
       .map((entry) => entry.userId),
     startedWorkdays: workDays
       .filter((entry) => entry.department === department)
@@ -1341,6 +1356,7 @@ export default async function AdminWorkdayPage(
         .map((task) => ({
           employee,
           schedule: scheduleByUser.get(employee.id),
+          vacation: vacationByUser.get(employee.id) ?? null,
           workDay: workDayByUser.get(employee.id),
           task,
           status: acquiringControlStatus(task),
@@ -1353,6 +1369,8 @@ export default async function AdminWorkdayPage(
   const employeeControlRows = employees
     .map((employee) => {
       const schedule = scheduleByUser.get(employee.id);
+      const vacation = vacationByUser.get(employee.id) ?? null;
+      const effectiveScheduleStatus = vacation ? 'off' : schedule?.status;
       const workDay = workDayByUser.get(employee.id);
       const run = shiftControlRunByUser.get(employee.id);
       const shiftControlRequired = usesWorkdayShiftControl(employee);
@@ -1375,7 +1393,7 @@ export default async function AdminWorkdayPage(
         todayDateKey: today,
         nowMinutes,
         department: employee.department,
-        scheduleStatus: schedule?.status,
+        scheduleStatus: effectiveScheduleStatus,
         workDay,
         tasks: (run?.tasks ?? []) as AutoCheckTask[],
       });
@@ -1392,7 +1410,7 @@ export default async function AdminWorkdayPage(
       )).length;
       const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed').length;
       const businessAttentionReasons = [
-        !schedule ? 'График не заполнен' : null,
+        !schedule && !vacation ? 'График не заполнен' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
         missedTaskCount > 0 ? `Пропущено проверок: ${missedTaskCount}` : null,
         mismatchCount > 0
@@ -1416,7 +1434,7 @@ export default async function AdminWorkdayPage(
       ));
       const hasError = employeeRequiredIssues.length > 0 || mismatchCount > 0 || manualIssueCount > 0 || employeeReportedProblem || terminalFiscalPresentation.tone === 'error';
       const needsAttention = !hasError && (attentionReasons.length > 0 || terminalFiscalPresentation.tone === 'attention');
-      const waitingForWorkdayStart = schedule?.status === 'working' && selectedDate === today && !workDay;
+      const waitingForWorkdayStart = effectiveScheduleStatus === 'working' && selectedDate === today && !workDay;
       const pendingTaskCount = (run?.tasks ?? []).filter((task) => (
         task.status !== 'done'
         && task.status !== 'missed'
@@ -1426,7 +1444,7 @@ export default async function AdminWorkdayPage(
       const isPending = !hasError && !needsAttention && (
         waitingForWorkdayStart
         || pendingTaskCount > 0
-        || (shiftControlRequired && schedule?.status === 'working' && !run)
+        || (shiftControlRequired && effectiveScheduleStatus === 'working' && !run)
       );
       const category: AdminWorkdayControlCategory = resolveAdminWorkdayControlCategory({ hasError, needsAttention, cannotVerify, isPending });
       const reviewText = hasError
@@ -1476,6 +1494,8 @@ export default async function AdminWorkdayPage(
       return {
         employee,
         schedule,
+        vacation,
+        effectiveScheduleStatus,
         workDay,
         run,
         autoChecks,
@@ -1682,7 +1702,7 @@ export default async function AdminWorkdayPage(
           ) : (
             <div className='divide-y divide-slate-100'>
               {filteredEmployeeControlRows.map((row) => {
-                const currentShiftState = shiftState(row.workDay, row.schedule?.status);
+                const currentShiftState = shiftState(row.workDay, row.effectiveScheduleStatus, Boolean(row.vacation));
                 const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
                 const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
                 const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
@@ -1711,12 +1731,19 @@ export default async function AdminWorkdayPage(
                       {row.primaryIssueLifecycle && <p className='mt-1 text-xs font-semibold text-slate-400'>{row.primaryIssueLifecycle}</p>}
                     </div>
                     <div className='flex items-center gap-2 lg:justify-end'>
+                      <AdminWorkdayCorrectionButton
+                        employee={{ id: row.employee.id, name: row.employee.name, department: row.employee.department }}
+                        date={selectedDate}
+                        scheduleStatus={row.schedule?.status}
+                        workDay={row.workDay ? { shiftCode: row.workDay.shiftCode, status: row.workDay.status, endedAt: row.workDay.endedAt?.toISOString() ?? null } : null}
+                        vacation={row.vacation ? { id: row.vacation.id, dateFrom: row.vacation.dateFrom, dateTo: row.vacation.dateTo } : null}
+                      />
                       {row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0 ? (
                         <AdminShiftControlDetails
                           employeeName={row.employee.name}
                           department={row.employee.department}
                           departmentName={departmentLabel(row.employee.department)}
-                          scheduleLabel={scheduleStatusLabel(row.schedule?.status)}
+                          scheduleLabel={row.vacation ? `Отпуск · ${formatDateLabel(row.vacation.dateFrom)} — ${formatDateLabel(row.vacation.dateTo)}` : scheduleStatusLabel(row.effectiveScheduleStatus)}
                           run={serializeShiftControlRun(row.run)}
                           workDay={row.workDay ? {
                             status: row.workDay.status,
@@ -1783,6 +1810,23 @@ export default async function AdminWorkdayPage(
             </div>
           )}
         </Card>
+
+        {vacationHistory.length > 0 && (
+          <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
+            <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 transition hover:bg-slate-50'>
+              <div><h2 className='text-base font-extrabold text-slate-950'>Отпуска сотрудников</h2><p className='mt-1 text-sm font-medium text-slate-500'>Текущие, будущие и последние изменения · без согласования.</p></div>
+              <span className='text-sm font-extrabold text-slate-500 group-open:hidden'>Открыть</span><span className='hidden text-sm font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
+            </summary>
+            <div className='divide-y divide-slate-100 border-t border-slate-200'>
+              {vacationHistory.map((vacation) => (
+                <div key={vacation.id} className='flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:justify-between'>
+                  <div><p className='font-extrabold text-slate-950'>{vacation.user.name}</p><p className='mt-0.5 text-sm font-semibold text-slate-600'>{formatDateLabel(vacation.dateFrom)} — {formatDateLabel(vacation.dateTo)}</p></div>
+                  <div className='text-left sm:text-right'><Badge className={vacation.status === 'active' ? 'bg-[#eceaf3] text-[#5f596f]' : 'bg-slate-100 text-slate-500'}>{vacation.status === 'active' ? vacation.dateTo < today ? 'Завершён' : vacation.dateFrom <= today ? 'Сейчас в отпуске' : 'Запланирован' : 'Отменён'}</Badge><p className='mt-1 text-xs font-semibold text-slate-400'>{vacation.changes[0] ? `${vacation.changes[0].actor.name} · ${vacation.changes[0].action === 'created' ? 'создан' : vacation.changes[0].action === 'updated' ? 'изменён' : 'отменён'}` : ''}</p></div>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
 
         {lateCreditReceipts.length > 0 && (
           <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
@@ -2178,7 +2222,7 @@ export default async function AdminWorkdayPage(
                         </p>
                       </td>
                       <td className='px-4 py-2.5'>
-                        <Badge className={scheduleClass(row.schedule?.status)}>{scheduleStatusLabel(row.schedule?.status)}</Badge>
+                        <Badge className={row.vacation ? 'bg-[#eceaf3] text-[#5f596f]' : scheduleClass(row.schedule?.status)}>{row.vacation ? 'Отпуск' : scheduleStatusLabel(row.schedule?.status)}</Badge>
                         <span className='ml-2 text-sm font-semibold text-slate-600'>{row.workDay?.shiftLabel ?? '—'}</span>
                       </td>
                       <td className='px-4 py-2.5'>

@@ -38,9 +38,10 @@ export default async function AdminPage() {
 
   const today = getMoscowDateKey();
   const range = moscowDayRange(today);
-  const [employees, schedules, workdays, issues, reviews, closeRequests, expenseCases, cashOperationErrors, terminalSummary] = await Promise.all([
+  const [employees, schedules, vacations, workdays, issues, reviews, closeRequests, expenseCases, cashOperationErrors, terminalSummary] = await Promise.all([
     prisma.user.findMany({ where: { role: 'EMPLOYEE', isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.workScheduleEntry.findMany({ where: { date: today }, select: { userId: true, status: true } }),
+    prisma.employeeVacation.findMany({ where: { status: 'active', dateFrom: { lte: today }, dateTo: { gte: today } }, select: { userId: true } }),
     prisma.workDayEntry.findMany({ where: { date: today }, select: { userId: true, status: true, endedAt: true, user: { select: { name: true } } } }),
     prisma.workdayControlIssue.findMany({
       where: { status: 'open', employeeActionRequired: true },
@@ -67,11 +68,13 @@ export default async function AdminPage() {
     getTerminalFiscalWorkdaySummary({ periodFrom: range.from, periodTo: range.to }),
   ]);
 
-  const todaySummary = summarizeAdminToday({ employees, schedules, workdays });
+  const vacationUserIds = new Set(vacations.map((vacation) => vacation.userId));
+  const effectiveSchedules = schedules.map((entry) => vacationUserIds.has(entry.userId) ? { ...entry, status: 'off' } : entry);
+  const todaySummary = summarizeAdminToday({ employees, schedules: effectiveSchedules, workdays });
   const employeeById = new Map(employees.map((employee) => [employee.id, employee.name]));
   const workingNames = workdays.filter((entry) => !entry.endedAt && entry.status !== 'completed').map((entry) => entry.user.name);
   const completedNames = workdays.filter((entry) => entry.endedAt || entry.status === 'completed').map((entry) => entry.user.name);
-  const scheduledIds = new Set(schedules.filter((entry) => entry.status === 'working').map((entry) => entry.userId));
+  const scheduledIds = new Set(effectiveSchedules.filter((entry) => entry.status === 'working').map((entry) => entry.userId));
   const startedIds = new Set(workdays.map((entry) => entry.userId));
   const notStartedNames = [...scheduledIds].filter((id) => !startedIds.has(id)).map((id) => employeeById.get(id)).filter(Boolean) as string[];
 

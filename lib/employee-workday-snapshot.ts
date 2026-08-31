@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { stripShiftControlOneCAudit } from '@/lib/shift-control-one-c-audit';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 import { findOpenRequiredWorkdayIssues, serializeRequiredIssue } from '@/lib/workday-required-issues';
+import { getWorkdayShiftCorrectionState } from '@/lib/workday-shift-change';
+import { serializeEmployeeVacation } from '@/lib/employee-vacation';
 
 type WorkDayForSnapshot = Awaited<ReturnType<typeof prisma.workDayEntry.findFirst>>;
 
@@ -126,7 +128,7 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
   const today = getMoscowDateKey();
   const shiftControlEnabled = usesWorkdayShiftControl(user);
 
-  const [todayWorkDay, unfinishedWorkDay, shiftControlRun, cashOperations, departmentWorkdays] = await Promise.all([
+  const [todayWorkDay, unfinishedWorkDay, shiftControlRun, cashOperations, departmentWorkdays, departmentVacations] = await Promise.all([
     prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date: today } } }),
     prisma.workDayEntry.findFirst({
       where: { userId: user.id, status: { in: ['active', 'missing_checkout'] }, endedAt: null, date: { not: today } },
@@ -138,6 +140,11 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
       where: { department: user.department, date: today },
       select: { userId: true, date: true, status: true, shiftCode: true, startedAt: true, endedAt: true },
       orderBy: [{ startedAt: 'asc' }, { userId: 'asc' }],
+    }),
+    prisma.employeeVacation.findMany({
+      where: { department: user.department, status: 'active', dateFrom: { lte: today }, dateTo: { gte: today } },
+      include: { user: { select: { id: true, name: true, department: true } } },
+      orderBy: [{ dateFrom: 'asc' }, { user: { name: 'asc' } }],
     }),
   ]);
 
@@ -167,11 +174,16 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
     }) : null,
   ]);
 
+  const shiftCorrection = todayWorkDay
+    ? await getWorkdayShiftCorrectionState({ userId: user.id, department: user.department, date: today })
+    : { canCorrect: false, allowedShiftCodes: [], hint: '' };
+
   return {
     today,
     workDay: serializeWorkDayForEmployee(todayWorkDay),
     unfinishedWorkDay: serializeWorkDayForEmployee(unfinishedWorkDay),
     departmentWorkdays: departmentWorkdays.map(serializeDepartmentWorkdayForEmployee),
+    departmentVacations: departmentVacations.map(serializeEmployeeVacation),
     shiftControl: serializeShiftControlForEmployee(shiftControlRun),
     cashOperations: cashOperations.map(serializeCashOperationForEmployee),
     requiredIssues: requiredIssues.map(serializeRequiredIssue),
@@ -192,5 +204,6 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
       createdAt: cashEncashmentExceptionRequest.createdAt.toISOString(),
       updatedAt: cashEncashmentExceptionRequest.updatedAt.toISOString(),
     } : null,
+    shiftCorrection,
   };
 }

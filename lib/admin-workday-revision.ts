@@ -32,11 +32,16 @@ export function formatAdminWorkdayRevision({
 }
 
 export async function getAdminWorkdayRevision(date: string) {
-  const [schedules, workDays, runs, tasks, cashOperations, manualReviews] = await Promise.all([
+  const [schedules, vacations, workDays, runs, tasks, cashOperations, manualReviews] = await Promise.all([
     prisma.workScheduleEntry.aggregate({
       where: { date },
       _count: { _all: true },
       _max: { id: true, updatedAt: true },
+    }),
+    prisma.employeeVacation.aggregate({
+      where: { status: 'active', dateFrom: { lte: date }, dateTo: { gte: date } },
+      _count: { _all: true },
+      _max: { updatedAt: true },
     }),
     prisma.workDayEntry.aggregate({
       where: { date },
@@ -71,6 +76,7 @@ export async function getAdminWorkdayRevision(date: string) {
     nowMinutes: getMoscowMinutes(),
     parts: [
       { count: schedules._count._all, latestId: schedules._max.id, latestAt: schedules._max.updatedAt },
+      { count: vacations._count._all, latestAt: vacations._max.updatedAt },
       { count: workDays._count._all, latestId: workDays._max.id, latestAt: workDays._max.updatedAt },
       { count: runs._count._all, latestId: runs._max.id, latestAt: runs._max.updatedAt },
       { count: tasks._count._all, latestId: tasks._max.id, latestAt: tasks._max.updatedAt },

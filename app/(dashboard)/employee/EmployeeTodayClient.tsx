@@ -4,7 +4,7 @@ import jsQR from 'jsqr';
 import { parseWorkdayQrDepartment } from '@/lib/workday-qr';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   AlertTriangle,
   Banknote,
@@ -51,6 +51,78 @@ import {
   type EmployeeCashOutboxItem,
 } from '@/lib/employee-cash-outbox';
 import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
+
+function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () => void; disabled?: boolean }) {
+  const startYRef = useRef<number | null>(null);
+  const startTimeRef = useRef(0);
+  const offsetRef = useRef(0);
+  const sheetRef = useRef<HTMLElement | null>(null);
+  const dismissTimerRef = useRef<number | null>(null);
+
+  const resetSheet = useCallback(() => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    sheet.style.transition = 'transform 180ms ease-out';
+    sheet.style.transform = 'translateY(0)';
+    sheet.style.willChange = '';
+  }, []);
+
+  const finishDrag = useCallback(() => {
+    if (startYRef.current === null) return;
+    const elapsed = Math.max(1, performance.now() - startTimeRef.current);
+    const shouldDismiss = offsetRef.current >= 72 || (offsetRef.current >= 24 && offsetRef.current / elapsed >= 0.55);
+    startYRef.current = null;
+
+    if (!shouldDismiss || disabled) {
+      resetSheet();
+      return;
+    }
+
+    const sheet = sheetRef.current;
+    if (sheet) {
+      sheet.style.transition = 'transform 180ms ease-in';
+      sheet.style.transform = 'translateY(110%)';
+    }
+    dismissTimerRef.current = window.setTimeout(onDismiss, 180);
+  }, [disabled, onDismiss, resetSheet]);
+
+  useEffect(() => () => {
+    if (dismissTimerRef.current !== null) window.clearTimeout(dismissTimerRef.current);
+  }, []);
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (disabled) return;
+    const sheet = event.currentTarget.parentElement;
+    if (!sheet) return;
+    sheetRef.current = sheet;
+    startYRef.current = event.clientY;
+    startTimeRef.current = performance.now();
+    offsetRef.current = 0;
+    sheet.style.transition = 'none';
+    sheet.style.willChange = 'transform';
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (startYRef.current === null || disabled) return;
+    const offset = Math.max(0, event.clientY - startYRef.current);
+    offsetRef.current = offset;
+    if (sheetRef.current) sheetRef.current.style.transform = `translateY(${offset}px)`;
+  }
+
+  return (
+    <div
+      className={cn('-mx-2 -mt-3 mb-1 flex h-8 touch-none items-center justify-center', disabled ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')}
+      aria-hidden='true'
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+    >
+      <span className='h-1.5 w-12 rounded-full bg-slate-300' />
+    </div>
+  );
+}
 
 function uploadFormData<T>(
   url: string,
@@ -135,6 +207,18 @@ type ScheduleEntry = {
   date: string;
   department: string;
   status: string;
+  user?: UserSummary;
+};
+
+type EmployeeVacation = {
+  id: string;
+  userId: number;
+  department: string;
+  dateFrom: string;
+  dateTo: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
   user?: UserSummary;
 };
 
@@ -249,6 +333,7 @@ type Props = {
   departmentSchedule: ScheduleEntry[];
   departmentUsers: UserSummary[];
   departmentWorkdays: DepartmentWorkdayPresence[];
+  departmentVacations?: EmployeeVacation[];
   todayWorkDay: WorkDayEntry | null;
   unfinishedWorkDay: WorkDayEntry | null;
   shiftControl: ShiftControlState;
@@ -257,18 +342,28 @@ type Props = {
   paymentChecks: OpenPaymentCheck[];
   closeExceptionRequest: WorkdayCloseException | null;
   cashEncashmentExceptionRequest: WorkdayCloseException | null;
+  shiftCorrection?: ShiftCorrectionState;
+  ownVacations?: EmployeeVacation[];
+};
+
+type ShiftCorrectionState = {
+  canCorrect: boolean;
+  allowedShiftCodes: string[];
+  hint: string;
 };
 
 type EmployeeWorkdaySnapshot = {
   workDay: WorkDayEntry | null;
   unfinishedWorkDay: WorkDayEntry | null;
   departmentWorkdays: DepartmentWorkdayPresence[];
+  departmentVacations: EmployeeVacation[];
   shiftControl: ShiftControlState;
   cashOperations: CashOperation[];
   requiredIssues: RequiredWorkdayIssue[];
   paymentChecks: OpenPaymentCheck[];
   closeExceptionRequest: WorkdayCloseException | null;
   cashEncashmentExceptionRequest: WorkdayCloseException | null;
+  shiftCorrection: ShiftCorrectionState;
 };
 
 type Tab = 'day' | 'schedule';
@@ -533,6 +628,22 @@ function replaceScheduleRange(current: ScheduleEntry[], incoming: ScheduleEntry[
   return [...entries.values()].sort((left, right) => left.date.localeCompare(right.date) || left.userId - right.userId);
 }
 
+function replaceVacationRange(current: EmployeeVacation[], incoming: EmployeeVacation[], from: string, to: string) {
+  return [
+    ...current.filter((vacation) => vacation.dateTo < from || vacation.dateFrom > to),
+    ...incoming,
+  ].sort((left, right) => left.dateFrom.localeCompare(right.dateFrom) || left.id.localeCompare(right.id));
+}
+
+function vacationOnDate(vacations: EmployeeVacation[], date: string, userId?: number) {
+  return vacations.find((vacation) => (
+    vacation.status === 'active'
+    && (userId === undefined || vacation.userId === userId)
+    && vacation.dateFrom <= date
+    && vacation.dateTo >= date
+  ));
+}
+
 function monthKeyFromDate(date: string) {
   return date.slice(0, 7);
 }
@@ -773,6 +884,7 @@ function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | 
     workDay,
     unfinishedWorkDay,
     departmentWorkdays: value.departmentWorkdays as DepartmentWorkdayPresence[],
+    departmentVacations: Array.isArray(value.departmentVacations) ? value.departmentVacations as EmployeeVacation[] : [],
     shiftControl: {
       run,
       tasks: shiftControl.tasks as ShiftControlTask[],
@@ -782,6 +894,9 @@ function readEmployeeWorkdaySnapshot(value: unknown): EmployeeWorkdaySnapshot | 
     paymentChecks: value.paymentChecks as OpenPaymentCheck[],
     closeExceptionRequest: value.closeExceptionRequest === null ? null : isRecord(value.closeExceptionRequest) ? value.closeExceptionRequest as WorkdayCloseException : null,
     cashEncashmentExceptionRequest: value.cashEncashmentExceptionRequest === null ? null : isRecord(value.cashEncashmentExceptionRequest) ? value.cashEncashmentExceptionRequest as WorkdayCloseException : null,
+    shiftCorrection: isRecord(value.shiftCorrection) && typeof value.shiftCorrection.canCorrect === 'boolean' && Array.isArray(value.shiftCorrection.allowedShiftCodes)
+      ? value.shiftCorrection as ShiftCorrectionState
+      : { canCorrect: false, allowedShiftCodes: [], hint: '' },
   };
 }
 
@@ -1005,12 +1120,17 @@ export function EmployeeTodayClient({
   paymentChecks,
   closeExceptionRequest,
   cashEncashmentExceptionRequest,
+  shiftCorrection,
+  ownVacations = [],
+  departmentVacations = [],
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<Tab>('day');
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
+  const [ownVacationsState, setOwnVacationsState] = useState(ownVacations);
+  const [departmentVacationsState, setDepartmentVacationsState] = useState(departmentVacations);
   const [departmentWorkdaysState, setDepartmentWorkdaysState] = useState(departmentWorkdays);
   const [workDay, setWorkDay] = useState(todayWorkDay);
   const [unfinished, setUnfinished] = useState(unfinishedWorkDay);
@@ -1021,6 +1141,7 @@ export function EmployeeTodayClient({
   const [paymentChecksState, setPaymentChecksState] = useState(paymentChecks);
   const [closeExceptionRequestState, setCloseExceptionRequestState] = useState(closeExceptionRequest);
   const [cashEncashmentExceptionRequestState, setCashEncashmentExceptionRequestState] = useState(cashEncashmentExceptionRequest);
+  const [shiftCorrectionState, setShiftCorrectionState] = useState<ShiftCorrectionState>(shiftCorrection ?? { canCorrect: false, allowedShiftCodes: [], hint: '' });
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [closeExceptionReason, setCloseExceptionReason] = useState('');
   const [closeExceptionComment, setCloseExceptionComment] = useState('');
@@ -1054,6 +1175,10 @@ export function EmployeeTodayClient({
   const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set());
   const [loadingScheduleMonth, setLoadingScheduleMonth] = useState<string | null>(null);
   const [pendingScheduleChange, setPendingScheduleChange] = useState<PendingScheduleChange | null>(null);
+  const [vacationEditorOpen, setVacationEditorOpen] = useState(false);
+  const [editingVacation, setEditingVacation] = useState<EmployeeVacation | null>(null);
+  const [vacationFrom, setVacationFrom] = useState(today);
+  const [vacationTo, setVacationTo] = useState(today);
   const [replacementRequestDates, setReplacementRequestDates] = useState<Set<string>>(() => new Set());
   const [openShiftTaskId, setOpenShiftTaskId] = useState<number | null>(null);
   const [editingShiftTaskId, setEditingShiftTaskId] = useState<number | null>(null);
@@ -1131,6 +1256,8 @@ export function EmployeeTodayClient({
     }
     return groups;
   }, [departmentScheduleState]);
+  const ownVacationForDate = useCallback((date: string) => vacationOnDate(ownVacationsState, date, user.id), [ownVacationsState, user.id]);
+  const departmentVacationForDate = useCallback((date: string, userId: number) => vacationOnDate(departmentVacationsState, date, userId), [departmentVacationsState]);
 
   const isCompleted = workDay?.status === 'completed' || Boolean(workDay?.endedAt);
   const activeWorkDay = workDay && !isCompleted ? workDay : null;
@@ -1147,10 +1274,7 @@ export function EmployeeTodayClient({
   const shiftEnd = workDay ? workDay.shiftEndMinutes : selectedShiftOption?.endMinutes;
   const shiftControlEnabled = usesWorkdayShiftControl(user);
   const canUseCashOperations = shiftControlEnabled;
-  const shiftCorrectionWindowOpen = Boolean(
-    activeWorkDay?.createdAt
-    && displayNow.getTime() <= new Date(activeWorkDay.createdAt).getTime() + 5 * 60_000,
-  );
+  const shiftCorrectionWindowOpen = Boolean(activeWorkDay && shiftCorrectionState.canCorrect);
   const cashOperationTotal = cashOperationsState.reduce((sum, operation) => sum + operation.amount, 0);
 
   const syncCurrentWorkdayState = useCallback(async (replaceInFlight = false) => {
@@ -1181,12 +1305,14 @@ export function EmployeeTodayClient({
       setWorkDay(snapshot.workDay);
       setUnfinished(snapshot.unfinishedWorkDay);
       setDepartmentWorkdaysState(snapshot.departmentWorkdays);
+      setDepartmentVacationsState((current) => replaceVacationRange(current, snapshot.departmentVacations, today, today));
       setShiftControlState(snapshot.shiftControl);
       setCashOperationsState(snapshot.cashOperations);
       setRequiredIssuesState(snapshot.requiredIssues);
       setPaymentChecksState(snapshot.paymentChecks);
       setCloseExceptionRequestState(snapshot.closeExceptionRequest);
       setCashEncashmentExceptionRequestState(snapshot.cashEncashmentExceptionRequest);
+      setShiftCorrectionState(snapshot.shiftCorrection);
       if (!snapshot.requiredIssues.length) setCloseBlocked(false);
     } catch {
       // Keep the last valid snapshot and retry on the next scheduled sync.
@@ -1286,6 +1412,8 @@ export function EmployeeTodayClient({
       if (!isRecord(range) || typeof range.from !== 'string' || typeof range.to !== 'string') return;
       setOwnScheduleState((current) => replaceScheduleRange(current, payload.ownSchedule as ScheduleEntry[], range.from as string, range.to as string));
       setDepartmentScheduleState((current) => replaceScheduleRange(current, payload.departmentSchedule as ScheduleEntry[], range.from as string, range.to as string));
+      if (Array.isArray(payload.ownVacations)) setOwnVacationsState((current) => replaceVacationRange(current, payload.ownVacations as EmployeeVacation[], range.from as string, range.to as string));
+      if (Array.isArray(payload.departmentVacations)) setDepartmentVacationsState((current) => replaceVacationRange(current, payload.departmentVacations as EmployeeVacation[], range.from as string, range.to as string));
       if (requestedMonth) {
         setLoadedScheduleMonths((current) => new Set(current).add(requestedMonth));
       }
@@ -1305,14 +1433,18 @@ export function EmployeeTodayClient({
   const todayEntryByUser = new Map(todayDepartmentEntries.map((entry) => [entry.userId, entry]));
   const todayWorkdayByUser = new Map(departmentWorkdaysState.filter((entry) => entry.date === today).map((entry) => [entry.userId, entry]));
   const colleagueUsers = departmentUsers.filter((person) => person.id !== user.id).sort(byName);
-  const todayPresence = (person: UserSummary) => colleaguePresence(todayEntryByUser.get(person.id)?.status, todayWorkdayByUser.get(person.id));
+  const todayPresence = (person: UserSummary) => colleaguePresence(
+    departmentVacationForDate(today, person.id) ? 'off' : todayEntryByUser.get(person.id)?.status,
+    todayWorkdayByUser.get(person.id),
+  );
   const workingColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'active');
   const completedColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'completed');
   const scheduledColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'scheduled');
-  const offColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'off');
+  const vacationColleagues = colleagueUsers.filter((person) => Boolean(departmentVacationForDate(today, person.id)));
+  const offColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'off' && !departmentVacationForDate(today, person.id));
   const missingColleagues = colleagueUsers.filter((person) => todayPresence(person) === 'missing');
   const scheduledWorkingUserIds = todayDepartmentEntries
-    .filter((entry) => entry.status === 'working')
+    .filter((entry) => entry.status === 'working' && !departmentVacationForDate(today, entry.userId))
     .map((entry) => entry.userId);
   const shiftControlBelongsToToday = shiftControlState.run?.date === today;
   const shiftControlCompleted = shiftControlState.run?.status === 'completed' || shiftControlState.run?.completedAt;
@@ -1368,11 +1500,11 @@ export function EmployeeTodayClient({
   const scheduleMonthLoaded = loadedScheduleMonths.has(calendarMonth);
   const scheduleMonthLoading = loadingScheduleMonth === calendarMonth;
   const incompleteScheduleDates = calendarDays.filter((cell) => (
-    cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date)
+    cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date)
   ));
   const bulkMissingDates = incompleteScheduleDates.map((cell) => cell.date);
   const bulkExistingDates = calendarDays
-    .filter((cell) => cell.inMonth && cell.date >= today && ownScheduleByDate.has(cell.date))
+    .filter((cell) => cell.inMonth && cell.date >= today && ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date))
     .map((cell) => cell.date);
   const bulkEditableDates = bulkScheduleKind === 'edit' ? bulkExistingDates : bulkMissingDates;
   const bulkPreviousStatuses = new Map<string, BulkScheduleStatus>(bulkExistingDates.flatMap((date) => {
@@ -1388,7 +1520,7 @@ export function EmployeeTodayClient({
     .filter((change) => change.previousStatus === 'working' && change.status === 'off')
     .map((change) => {
     const workingBefore = (departmentScheduleByDate.get(change.date) ?? [])
-      .filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working').length;
+      .filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working' && !departmentVacationForDate(change.date, entry.userId)).length;
     const workingAfter = scheduleWorkingCountAfterChange({
       workingBefore,
       previousStatus: change.previousStatus ?? null,
@@ -1413,7 +1545,7 @@ export function EmployeeTodayClient({
     return colleagueUsers
       .map((person) => ({
         person,
-        entry: entryByUser.get(person.id),
+        entry: departmentVacationForDate(date, person.id) ? undefined : entryByUser.get(person.id),
       }))
       .sort((left, right) => statusRank(left.entry?.status) - statusRank(right.entry?.status) || left.person.name.localeCompare(right.person.name, 'ru'));
   }
@@ -1448,8 +1580,8 @@ export function EmployeeTodayClient({
   function getWorkingInitials(date: string) {
     const entries = departmentScheduleByDate.get(date) ?? [];
     const entryByUser = new Map(entries.map((entry) => [entry.userId, entry]));
-    const working = [...departmentUsers].sort(byName).filter((person) => entryByUser.get(person.id)?.status === 'working');
-    const filledCount = departmentUsers.filter((person) => entryByUser.has(person.id)).length;
+    const working = [...departmentUsers].sort(byName).filter((person) => entryByUser.get(person.id)?.status === 'working' && !departmentVacationForDate(date, person.id));
+    const filledCount = departmentUsers.filter((person) => entryByUser.has(person.id) || departmentVacationForDate(date, person.id)).length;
     return {
       initials: working.slice(0, 3).map((person) => initials(person.name)),
       extraCount: Math.max(0, working.length - 3),
@@ -1464,6 +1596,8 @@ export function EmployeeTodayClient({
     if (typeof from !== 'string' || typeof to !== 'string') return false;
     setOwnScheduleState((current) => replaceScheduleRange(current, payload.ownSchedule as ScheduleEntry[], from, to));
     setDepartmentScheduleState((current) => replaceScheduleRange(current, payload.departmentSchedule as ScheduleEntry[], from, to));
+    if (Array.isArray(payload.ownVacations)) setOwnVacationsState((current) => replaceVacationRange(current, payload.ownVacations as EmployeeVacation[], from, to));
+    if (Array.isArray(payload.departmentVacations)) setDepartmentVacationsState((current) => replaceVacationRange(current, payload.departmentVacations as EmployeeVacation[], from, to));
     if (Array.isArray(payload.replacementRequestDates)) {
       setReplacementRequestDates(new Set(payload.replacementRequestDates.filter((date): date is string => typeof date === 'string')));
     }
@@ -1473,20 +1607,25 @@ export function EmployeeTodayClient({
 
   function ScheduleDayCard({ date, selected = false, compact = false }: { date: string; selected?: boolean; compact?: boolean }) {
     const ownEntry = ownScheduleByDate.get(date);
+    const ownVacation = ownVacationForDate(date);
     const colleagueRows = getColleagueRows(date);
     const selectedWorkingRows = colleagueRows.filter(({ entry }) => entry?.status === 'working');
     const activeDepartmentUserIds = new Set(departmentUsers.map((person) => person.id));
-    const workingCount = (departmentScheduleByDate.get(date) ?? []).filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working').length;
+    const workingCount = (departmentScheduleByDate.get(date) ?? []).filter((entry) => activeDepartmentUserIds.has(entry.userId) && entry.status === 'working' && !departmentVacationForDate(date, entry.userId)).length;
     const coverage = scheduleCoverage(user.department, workingCount);
     const replacementRequested = replacementRequestDates.has(date) && ownEntry?.status !== 'working';
     const canEdit = date >= today;
     const workingNames = scheduleNames(selectedWorkingRows);
-    const statusCopy = ownEntry?.status === 'working'
+    const statusCopy = ownVacation
+      ? 'В отпуске'
+      : ownEntry?.status === 'working'
       ? 'Вы работаете'
       : ownEntry?.status === 'off'
         ? 'У вас выходной'
         : 'День не выбран';
-    const peopleCopy = ownEntry?.status === 'working'
+    const peopleCopy = ownVacation
+      ? `Отпуск: ${formatDateLabel(ownVacation.dateFrom)} — ${formatDateLabel(ownVacation.dateTo)}`
+      : ownEntry?.status === 'working'
       ? workingNames ? `Вместе с вами: ${workingNames}` : 'В этот день вы работаете без коллег'
       : workingNames ? `Работают: ${workingNames}` : 'В этот день пока никто не работает';
 
@@ -1496,7 +1635,7 @@ export function EmployeeTodayClient({
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
           </div>
-          <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', scheduleTone(ownEntry?.status))}>
+          <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', ownVacation ? 'bg-[#eceaf3] text-[#5f596f] ring-1 ring-[#d7d2e1]' : scheduleTone(ownEntry?.status))}>
             {statusCopy}
           </Badge>
         </div>
@@ -1506,9 +1645,9 @@ export function EmployeeTodayClient({
             <Button
               type='button'
               className='employee-material-secondary-action h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold'
-              onClick={() => setEditingScheduleDate(date)}
+              onClick={() => ownVacation ? openVacationEditor(ownVacation) : setEditingScheduleDate(date)}
             >
-              {ownEntry ? 'Изменить' : 'Выбрать'}
+              {ownVacation ? 'Изменить отпуск' : ownEntry ? 'Изменить' : 'Выбрать'}
             </Button>
           </div>
         )}
@@ -1543,15 +1682,82 @@ export function EmployeeTodayClient({
           <Button
             type='button'
             className='employee-material-secondary-action mt-3 h-11 w-full rounded-xl text-sm font-extrabold'
-            onClick={() => setEditingScheduleDate(date)}
+            onClick={() => ownVacation ? openVacationEditor(ownVacation) : setEditingScheduleDate(date)}
           >
-            {ownEntry ? 'Изменить мой день' : 'Выбрать день'}
+            {ownVacation ? 'Изменить отпуск' : ownEntry ? 'Изменить мой день' : 'Выбрать день'}
           </Button>
         ) : !compact ? (
           <p className='mt-2 text-center text-xs font-bold text-slate-400'>Прошедший день доступен только для просмотра</p>
         ) : null}
       </div>
     );
+  }
+
+  function openVacationEditor(vacation?: EmployeeVacation | null) {
+    const initialDate = selectedScheduleDate >= today ? selectedScheduleDate : today;
+    setEditingVacation(vacation ?? null);
+    setVacationFrom(vacation?.dateFrom ?? initialDate);
+    setVacationTo(vacation?.dateTo ?? initialDate);
+    setEditingScheduleDate(null);
+    setVacationEditorOpen(true);
+  }
+
+  async function saveVacation() {
+    setError('');
+    setMessage('');
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/workday/vacations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: editingVacation ? 'update' : 'create',
+          id: editingVacation?.id,
+          dateFrom: vacationFrom,
+          dateTo: vacationTo,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось сохранить отпуск');
+      if (!isRecord(payload.vacation)) throw new Error('Сервер вернул неполные данные отпуска');
+      const savedVacation = payload.vacation as EmployeeVacation;
+      setOwnVacationsState((current) => [...current.filter((item) => item.id !== savedVacation.id), savedVacation]);
+      setDepartmentVacationsState((current) => [...current.filter((item) => item.id !== savedVacation.id), { ...savedVacation, user }]);
+      setVacationEditorOpen(false);
+      setEditingVacation(null);
+      setSelectedScheduleDate(vacationFrom);
+      setCalendarMonth(monthKeyFromDate(vacationFrom));
+      setMessage(editingVacation ? 'Отпуск изменён' : 'Отпуск отмечен в графике');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить отпуск');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function cancelVacation() {
+    if (!editingVacation) return;
+    setError('');
+    setMessage('');
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/employee/workday/vacations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', id: editingVacation.id }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось отменить отпуск');
+      setOwnVacationsState((current) => current.filter((item) => item.id !== editingVacation.id));
+      setDepartmentVacationsState((current) => current.filter((item) => item.id !== editingVacation.id));
+      setVacationEditorOpen(false);
+      setEditingVacation(null);
+      setMessage('Отпуск удалён из графика');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось отменить отпуск');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   async function updateSchedule(date: string, status: 'working' | 'off', confirmCoverageImpact = false) {
@@ -1740,8 +1946,10 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось проверить доступные смены');
       if (!payload.canCorrect || !Array.isArray(payload.allowedShiftCodes) || payload.allowedShiftCodes.length === 0) {
-        throw new Error('Самостоятельное исправление уже недоступно. Обратитесь к администратору.');
+        setShiftCorrectionState({ canCorrect: false, allowedShiftCodes: [], hint: '' });
+        return;
       }
+      setShiftCorrectionState(payload as ShiftCorrectionState);
       setShiftCorrectionCodes(payload.allowedShiftCodes);
       setShiftCorrectionHint(typeof payload.hint === 'string' ? payload.hint : 'Выберите правильную смену.');
       setShiftCorrectionOpen(true);
@@ -3313,7 +3521,7 @@ export function EmployeeTodayClient({
       {shiftPickerOpen && !workDay && (
         <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]'>
           <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
-            <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+            <BottomSheetDragHandle onDismiss={() => setShiftPickerOpen(false)} disabled={isSaving} />
             <div className='flex items-start justify-between gap-3'>
               <div>
                 <p className='text-xs font-black uppercase tracking-[0.18em] text-green-700'>QR подтверждён</p>
@@ -3365,7 +3573,7 @@ export function EmployeeTodayClient({
       {shiftCorrectionOpen && workDay && (
         <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]'>
           <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
-            <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+            <BottomSheetDragHandle onDismiss={() => setShiftCorrectionOpen(false)} disabled={isSaving} />
             <div className='flex items-start justify-between gap-3'>
               <div>
                 <p className='text-xs font-black uppercase tracking-[0.18em] text-green-700'>Исправление доступно 5 минут</p>
@@ -3516,6 +3724,54 @@ export function EmployeeTodayClient({
             </div>
           )}
 
+          {vacationEditorOpen && (
+            <div
+              className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'
+              role='dialog'
+              aria-modal='true'
+              aria-label={editingVacation ? 'Изменить отпуск' : 'Отметить отпуск'}
+              onClick={(event) => {
+                if (event.target === event.currentTarget && !isSaving) setVacationEditorOpen(false);
+              }}
+            >
+              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+                <BottomSheetDragHandle onDismiss={() => setVacationEditorOpen(false)} disabled={isSaving} />
+                <div className='flex items-center justify-between gap-3'>
+                  <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>График</p>
+                  <button type='button' className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100' aria-label='Закрыть без изменений' disabled={isSaving} onClick={() => setVacationEditorOpen(false)}>
+                    <X className='h-5 w-5' />
+                  </button>
+                </div>
+                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{editingVacation ? 'Изменить отпуск' : 'Отметить отпуск'}</h2>
+                <p className='mt-2 text-sm font-semibold leading-relaxed text-slate-600'>Коллеги увидят только период отпуска — без личных причин.</p>
+                <div className='mt-5 grid grid-cols-2 gap-2'>
+                  <label className='employee-material-form grid gap-1.5 rounded-xl p-3'>
+                    <span className='text-[11px] font-black uppercase tracking-[0.08em] text-slate-500'>Начало</span>
+                    <input type='date' min={today} value={vacationFrom} onChange={(event) => {
+                      setVacationFrom(event.target.value);
+                      if (event.target.value > vacationTo) setVacationTo(event.target.value);
+                    }} className='min-w-0 bg-transparent text-sm font-extrabold text-slate-950 outline-none' />
+                  </label>
+                  <label className='employee-material-form grid gap-1.5 rounded-xl p-3'>
+                    <span className='text-[11px] font-black uppercase tracking-[0.08em] text-slate-500'>Окончание</span>
+                    <input type='date' min={vacationFrom || today} value={vacationTo} onChange={(event) => setVacationTo(event.target.value)} className='min-w-0 bg-transparent text-sm font-extrabold text-slate-950 outline-none' />
+                  </label>
+                </div>
+                <Button type='button' className='employee-material-green-action mt-4 h-12 w-full rounded-xl text-sm font-black' disabled={isSaving || !vacationFrom || !vacationTo} onClick={() => void saveVacation()}>
+                  {isSaving ? 'Сохраняем…' : 'Сохранить отпуск'}
+                </Button>
+                {editingVacation && (
+                  <Button type='button' className='employee-material-secondary-action mt-2 h-11 w-full rounded-xl text-xs font-extrabold text-red-700' disabled={isSaving} onClick={() => void cancelVacation()}>
+                    Убрать отпуск из графика
+                  </Button>
+                )}
+                <Button type='button' className='mt-2 h-10 w-full bg-transparent text-xs font-extrabold text-slate-500 shadow-none hover:bg-slate-100' disabled={isSaving} onClick={() => setVacationEditorOpen(false)}>
+                  Отмена
+                </Button>
+              </div>
+            </div>
+          )}
+
           {editingScheduleDate && !pendingScheduleChange && (
             <div
               className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'
@@ -3527,7 +3783,7 @@ export function EmployeeTodayClient({
               }}
             >
               <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
-                <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+                <BottomSheetDragHandle onDismiss={() => setEditingScheduleDate(null)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
                   <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>Изменить мой день</p>
                   <button
@@ -3585,7 +3841,10 @@ export function EmployeeTodayClient({
           {pendingScheduleChange && (
             <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Изменение графика'>
               <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
-                <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+                <BottomSheetDragHandle onDismiss={() => {
+                  setPendingScheduleChange(null);
+                  setEditingScheduleDate(null);
+                }} disabled={isSaving} />
                 <p className='text-xs font-black uppercase tracking-[0.14em] text-amber-700'>Изменение графика</p>
                 <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{pendingScheduleChange.copy.title}</h2>
                 <div className='employee-material-alert-card mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3'>
@@ -3626,7 +3885,7 @@ export function EmployeeTodayClient({
           {bulkScheduleConfirmOpen && (
             <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'>
               <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
-                <div className='mx-auto mb-4 h-1.5 w-12 rounded-full bg-slate-200' />
+                <BottomSheetDragHandle onDismiss={() => setBulkScheduleConfirmOpen(false)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
                   <p className='text-xs font-black uppercase tracking-[0.12em] text-green-700'>{monthTitle(calendarMonth)}</p>
                   <button type='button' className='shrink-0 text-xs font-extrabold text-slate-500' onClick={() => setBulkScheduleConfirmOpen(false)}>Изменить выбор</button>
@@ -4075,7 +4334,7 @@ export function EmployeeTodayClient({
                     disabled={isSaving}
                     className='mt-3 text-xs font-extrabold text-green-700 underline decoration-green-300 underline-offset-4 disabled:opacity-50'
                   >
-                    Выбрали не ту смену? Исправить
+                    Изменить смену
                   </button>
                 )}
               </Card>
@@ -4088,6 +4347,10 @@ export function EmployeeTodayClient({
                 <ColleagueGroup title='Работают сейчас' people={workingColleagues} tone='green' emptyLabel='Сейчас никто не работает' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
                 {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {scheduledColleagues.length > 0 && <ColleagueGroup title='Ожидаются сегодня' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
+                {vacationColleagues.length > 0 && <ColleagueGroup title='В отпуске' people={vacationColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={(person) => {
+                  const vacation = departmentVacationForDate(today, person.id);
+                  return vacation ? `До ${formatDateLabel(vacation.dateTo)}` : null;
+                }} />}
                 {offColleagues.length + missingColleagues.length > 0 && (
                   <Button
                     type='button'
@@ -4226,15 +4489,25 @@ export function EmployeeTodayClient({
                     </button>
                   </div>
 
-                  {scheduleMonthLoaded && incompleteScheduleDates.length === 0 && !bulkScheduleMode && (
-                    <div className='flex justify-center py-0.5'>
+                  {scheduleMonthLoaded && !bulkScheduleMode && (
+                    <div className={cn('mx-auto grid w-full max-w-[300px] gap-2 py-0.5', incompleteScheduleDates.length === 0 ? 'grid-cols-2' : 'grid-cols-1')}>
+                      {incompleteScheduleDates.length === 0 && (
+                        <button
+                          type='button'
+                          className='employee-material-secondary-action inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl px-2 text-xs font-extrabold leading-[1.05] text-slate-800'
+                          onClick={startBulkScheduleEdit}
+                        >
+                          <Pencil className='h-4 w-4' aria-hidden='true' />
+                          <span>Изменить<br />несколько дней</span>
+                        </button>
+                      )}
                       <button
                         type='button'
-                        className='employee-material-secondary-action inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-xs font-extrabold text-green-800'
-                        onClick={startBulkScheduleEdit}
+                        className={cn('employee-material-secondary-action inline-flex h-12 items-center justify-center gap-2 rounded-xl px-2 text-xs font-extrabold leading-[1.05] text-green-800', incompleteScheduleDates.length === 0 ? 'w-full' : 'mx-auto w-[146px]')}
+                        onClick={() => openVacationEditor(ownVacationForDate(selectedScheduleDate))}
                       >
-                        <Pencil className='h-4 w-4' aria-hidden='true' />
-                        Изменить несколько дней
+                        <CalendarDays className='h-4 w-4' aria-hidden='true' />
+                        <span>Отметить<br />отпуск</span>
                       </button>
                     </div>
                   )}
@@ -4248,6 +4521,7 @@ export function EmployeeTodayClient({
                   <div className='grid grid-cols-7 gap-1'>
                     {calendarDays.map((cell) => {
                       const ownEntry = ownScheduleByDate.get(cell.date);
+                      const ownVacation = ownVacationForDate(cell.date);
                       const workingInitials = getWorkingInitials(cell.date);
                       const selected = selectedScheduleDate === cell.date;
                       const isToday = cell.date === today;
@@ -4265,6 +4539,8 @@ export function EmployeeTodayClient({
                             ? 'bg-green-100 text-green-950 ring-green-300'
                           : bulkEligible
                             ? 'bg-[#e7ebe9] text-slate-800 ring-[#c7cfcb]'
+                          : ownVacation
+                            ? 'bg-[#eeecf4] text-[#554f68] ring-[#d7d2e1]'
                           : ownEntry?.status === 'working'
                           ? 'bg-green-50 text-green-900 ring-green-100'
                           : ownEntry?.status === 'off'
@@ -4300,6 +4576,8 @@ export function EmployeeTodayClient({
                                 ? ''
                                 : bulkEligible
                                   ? (bulkWorking ? 'Работаю' : 'Выходной')
+                                  : ownVacation
+                                    ? 'Отп.'
                                   : isLockedMissing
                                     ? '—'
                                     : scheduleCellLabel(ownEntry?.status)
@@ -4324,6 +4602,7 @@ export function EmployeeTodayClient({
                   <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] font-extrabold text-slate-600'>
                     <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-green-100 ring-1 ring-green-300' />Работаю</span>
                     <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#e7ebe9] ring-1 ring-[#aeb9b4]' />Выходной</span>
+                    <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#eeecf4] ring-1 ring-[#cfc9dc]' />Отпуск</span>
                     {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
                   </div>
 
@@ -4364,7 +4643,7 @@ export function EmployeeTodayClient({
           </div>
         )}
 
-        {!bulkScheduleConfirmOpen && !editingScheduleDate && !pendingScheduleChange && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
+        {!bulkScheduleConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
           <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;

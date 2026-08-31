@@ -50,7 +50,7 @@ export async function POST(req: Request) {
 
   const result: { staleDates: string[]; coverageResults?: Array<{ date: string; state: 'full' | 'reduced' | 'empty' }> } = await prisma.$transaction(async (tx) => {
     const dates = changes.map((change) => change.date);
-    const [existingOwn, departmentEntries] = await Promise.all([
+    const [existingOwn, departmentEntries, vacations] = await Promise.all([
       tx.workScheduleEntry.findMany({ where: { userId: user.id, date: { in: dates } }, select: { date: true, status: true } }),
       tx.workScheduleEntry.findMany({
         where: {
@@ -60,7 +60,18 @@ export async function POST(req: Request) {
         },
         select: { userId: true, date: true, status: true },
       }),
+      tx.employeeVacation.findMany({
+        where: {
+          department: user.department,
+          status: 'active',
+          dateFrom: { lte: dates[dates.length - 1] },
+          dateTo: { gte: dates[0] },
+        },
+        select: { userId: true, dateFrom: true, dateTo: true },
+      }),
     ]);
+    const ownVacationDates = changes.filter((change) => vacations.some((vacation) => vacation.userId === user.id && vacation.dateFrom <= change.date && vacation.dateTo >= change.date)).map((change) => change.date);
+    if (ownVacationDates.length > 0) return { staleDates: ownVacationDates };
     const existingOwnByDate = new Map(existingOwn.map((entry) => [entry.date, entry.status]));
     const staleDates = mode === 'fill'
       ? existingOwn.map((entry) => entry.date)
@@ -71,6 +82,7 @@ export async function POST(req: Request) {
 
     const entriesByDate = new Map<string, Array<{ userId: number; status: string }>>();
     for (const entry of departmentEntries) {
+      if (vacations.some((vacation) => vacation.userId === entry.userId && vacation.dateFrom <= entry.date && vacation.dateTo >= entry.date)) continue;
       const rows = entriesByDate.get(entry.date) ?? [];
       rows.push(entry);
       entriesByDate.set(entry.date, rows);

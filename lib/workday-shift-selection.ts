@@ -114,7 +114,7 @@ export async function loadWorkdayShiftSelection(
   db: SelectionDb,
   input: { department: string; currentUserId: number; date: string },
 ) {
-  const [schedules, startedWorkdays] = await Promise.all([
+  const [schedules, startedWorkdays, vacations] = await Promise.all([
     db.workScheduleEntry.findMany({
       where: { department: input.department, date: input.date, status: 'working' },
       select: { userId: true },
@@ -123,12 +123,22 @@ export async function loadWorkdayShiftSelection(
       where: { department: input.department, date: input.date },
       select: { userId: true, shiftCode: true },
     }),
+    db.employeeVacation.findMany({
+      where: {
+        department: input.department,
+        status: 'active',
+        dateFrom: { lte: input.date },
+        dateTo: { gte: input.date },
+      },
+      select: { userId: true },
+    }),
   ]);
+  const vacationUserIds = new Set(vacations.map((vacation) => vacation.userId));
 
   return deriveWorkdayShiftSelection({
     department: input.department,
     currentUserId: input.currentUserId,
-    scheduledWorkingUserIds: schedules.map((entry) => entry.userId),
+    scheduledWorkingUserIds: schedules.map((entry) => entry.userId).filter((userId) => !vacationUserIds.has(userId)),
     startedWorkdays,
   });
 }

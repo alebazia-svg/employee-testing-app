@@ -4,6 +4,7 @@ import { buildDateRange, getMoscowDateKey, scheduleStatuses } from '@/lib/workda
 import { buildScheduleMonthRange, isValidScheduleDateKey, scheduleMonthKeyFromDate } from '@/lib/workday-schedule';
 import { scheduleCoverage, scheduleCoverageCopy, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '@/lib/work-schedule-coverage';
 import { persistEmployeeScheduleChange } from '@/lib/work-schedule-persistence';
+import { serializeEmployeeVacation } from '@/lib/employee-vacation';
 
 const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
 
@@ -13,7 +14,7 @@ function requestedDates(monthKey?: string | null) {
 }
 
 async function scheduleSnapshot(user: { id: number; department: string }, dates: string[], monthKey: string | null) {
-  const [ownSchedule, departmentSchedule, replacementNotifications] = await Promise.all([
+  const [ownSchedule, departmentSchedule, replacementNotifications, ownVacations, departmentVacations] = await Promise.all([
     prisma.workScheduleEntry.findMany({
       where: { userId: user.id, date: { in: dates } },
       orderBy: { date: 'asc' },
@@ -36,6 +37,21 @@ async function scheduleSnapshot(user: { id: number; department: string }, dates:
       },
       select: { fingerprint: true },
     }),
+    prisma.employeeVacation.findMany({
+      where: { userId: user.id, status: 'active', dateFrom: { lte: dates[dates.length - 1] }, dateTo: { gte: dates[0] } },
+      orderBy: [{ dateFrom: 'asc' }, { createdAt: 'asc' }],
+    }),
+    prisma.employeeVacation.findMany({
+      where: {
+        department: user.department,
+        status: 'active',
+        dateFrom: { lte: dates[dates.length - 1] },
+        dateTo: { gte: dates[0] },
+        user: { role: 'EMPLOYEE', isActive: true, department: user.department },
+      },
+      include: { user: { select: { id: true, name: true, department: true } } },
+      orderBy: [{ dateFrom: 'asc' }, { user: { name: 'asc' } }],
+    }),
   ]);
   const replacementRequestDates = replacementNotifications
     .map((notification) => notification.fingerprint.match(/^schedule-coverage:[^:]+:(\d{4}-\d{2}-\d{2}):/)?.[1])
@@ -43,6 +59,8 @@ async function scheduleSnapshot(user: { id: number; department: string }, dates:
   return {
     ownSchedule,
     departmentSchedule,
+    ownVacations: ownVacations.map(serializeEmployeeVacation),
+    departmentVacations: departmentVacations.map(serializeEmployeeVacation),
     replacementRequestDates,
     range: { monthKey, from: dates[0], to: dates[dates.length - 1] },
   };
@@ -90,7 +108,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Прошедший день нельзя изменить самостоятельно. Обратитесь к администратору.' }, { status: 409 });
   }
 
-  const [currentEntry, departmentEntries] = await Promise.all([
+  const [currentEntry, departmentEntries, vacations] = await Promise.all([
     prisma.workScheduleEntry.findUnique({ where: { userId_date: { userId: user.id, date } } }),
     prisma.workScheduleEntry.findMany({
       where: {
@@ -99,8 +117,17 @@ export async function POST(req: Request) {
         user: { role: 'EMPLOYEE', isActive: true, department: user.department },
       },
     }),
+    prisma.employeeVacation.findMany({
+      where: { department: user.department, status: 'active', dateFrom: { lte: date }, dateTo: { gte: date } },
+      select: { userId: true },
+    }),
   ]);
-  const workingBefore = departmentEntries.filter((entry) => entry.status === 'working').length;
+  const vacationUserIds = new Set(vacations.map((vacation) => vacation.userId));
+  if (vacationUserIds.has(user.id)) {
+    return Response.json({ error: 'Этот день входит в отпуск. Измените период отпуска.' }, { status: 409, headers: noStoreHeaders });
+  }
+  const effectiveDepartmentEntries = departmentEntries.filter((entry) => !vacationUserIds.has(entry.userId));
+  const workingBefore = effectiveDepartmentEntries.filter((entry) => entry.status === 'working').length;
   const workingAfter = scheduleWorkingCountAfterChange({
     workingBefore,
     previousStatus: currentEntry?.status,
@@ -133,7 +160,7 @@ export async function POST(req: Request) {
     date,
     status,
     previousStatus: currentEntry?.status,
-    departmentEntries,
+    departmentEntries: effectiveDepartmentEntries,
     source: 'employee',
   }));
 

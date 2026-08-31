@@ -46,6 +46,11 @@ model User {
   workdayCloseRequests             WorkdayCloseExceptionRequest[]    @relation("WorkdayCloseExceptionEmployee")
   decidedWorkdayCloseRequests      WorkdayCloseExceptionRequest[]    @relation("WorkdayCloseExceptionDecidedBy")
   workdayShiftChanges              WorkdayShiftChange[]
+  employeeVacations                EmployeeVacation[]                @relation("EmployeeVacationEmployee")
+  createdEmployeeVacations         EmployeeVacation[]                @relation("EmployeeVacationCreatedBy")
+  updatedEmployeeVacations         EmployeeVacation[]                @relation("EmployeeVacationUpdatedBy")
+  employeeVacationChanges          EmployeeVacationChange[]          @relation("EmployeeVacationChangeEmployee")
+  authoredEmployeeVacationChanges  EmployeeVacationChange[]          @relation("EmployeeVacationChangeActor")
 }
 
 model ExpenseRequestSyncRun {
@@ -583,6 +588,49 @@ model WorkScheduleChange {
   @@index([userId, date, createdAt])
   @@index([department, date, createdAt])
   @@index([coverageState, createdAt])
+}
+
+model EmployeeVacation {
+  id          String                   @id @default(cuid())
+  userId      Int
+  department  String
+  dateFrom    String
+  dateTo      String
+  status      String                   @default("active")
+  createdById Int
+  updatedById Int
+  cancelledAt DateTime?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  user        User                     @relation("EmployeeVacationEmployee", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy   User                     @relation("EmployeeVacationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy   User                     @relation("EmployeeVacationUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  changes     EmployeeVacationChange[]
+
+  @@index([userId, status, dateFrom, dateTo])
+  @@index([department, status, dateFrom, dateTo])
+}
+
+model EmployeeVacationChange {
+  id               String           @id @default(cuid())
+  vacationId       String
+  userId           Int
+  actorId          Int
+  department       String
+  action           String
+  previousDateFrom String?
+  previousDateTo   String?
+  nextDateFrom     String?
+  nextDateTo       String?
+  source           String
+  createdAt        DateTime         @default(now())
+  vacation         EmployeeVacation @relation(fields: [vacationId], references: [id], onDelete: Cascade)
+  user             User             @relation("EmployeeVacationChangeEmployee", fields: [userId], references: [id], onDelete: Cascade)
+  actor            User             @relation("EmployeeVacationChangeActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([vacationId, createdAt])
+  @@index([userId, createdAt])
+  @@index([department, createdAt])
 }
 
 model WorkdayStartIntent {
