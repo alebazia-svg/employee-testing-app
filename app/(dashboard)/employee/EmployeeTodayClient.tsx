@@ -4555,7 +4555,7 @@ export function EmployeeTodayClient({
                     ))}
                   </div>
 
-                  <div className='grid grid-cols-7 gap-1'>
+                  <div className='grid grid-cols-7 gap-x-1 gap-y-0.5'>
                     {calendarDays.map((cell) => {
                       const ownEntry = ownScheduleByDate.get(cell.date);
                       const ownVacation = ownVacationForDate(cell.date);
@@ -4598,12 +4598,12 @@ export function EmployeeTodayClient({
                           aria-pressed={bulkEligible ? bulkWorking : undefined}
                           disabled={isOutsideMonth || (bulkScheduleMode && !bulkEligible)}
                           className={cn(
-                            'employee-material-calendar-day flex min-h-[52px] min-w-0 flex-col rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
+                            'employee-material-calendar-day flex min-h-[48px] min-w-0 flex-col rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
                             statusClass,
                             isOutsideMonth && 'opacity-30',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
                             bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
-                            vacationInitials.count > 0 && 'min-h-[64px]',
+                            vacationInitials.count > 0 && 'min-h-[60px]',
                             !bulkScheduleMode && selected && !isToday && 'is-selected',
                             !bulkScheduleMode && isToday && 'is-today',
                           )}
