@@ -1649,10 +1649,10 @@ export function EmployeeTodayClient({
     return (
       <div className={cn(
         'employee-material-day-card rounded-lg border bg-white',
-        compact ? 'p-2.5' : 'p-3',
+        compact ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 p-2.5' : 'p-3',
         selected ? 'border-slate-400 ring-2 ring-slate-200' : 'border-slate-200',
       )}>
-        <div className='flex items-center justify-between gap-3'>
+        <div className={cn('flex items-center justify-between gap-3', compact && 'col-span-2')}>
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
           </div>
@@ -1660,9 +1660,9 @@ export function EmployeeTodayClient({
             {statusCopy}
           </Badge>
         </div>
-        <p className={cn('text-sm font-semibold leading-snug text-slate-600', compact ? 'mt-1.5' : 'mt-2')}>{peopleCopy}</p>
+        <p className={cn('text-sm font-semibold leading-snug text-slate-600', compact ? 'm-0 min-w-0' : 'mt-2')}>{peopleCopy}</p>
         {compact && canEdit && (
-          <div className='mt-2 flex justify-center'>
+          <div className='m-0 flex justify-end'>
             <Button
               type='button'
               className='employee-material-secondary-action h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold'
@@ -1676,14 +1676,14 @@ export function EmployeeTodayClient({
         {vacationNames && (
           <p className={cn(
             'rounded-lg bg-[#eee9f5] px-2 py-1.5 text-xs font-extrabold text-[#574e69]',
-            'mt-2',
+            compact ? 'col-span-2 m-0' : 'mt-2',
           )}>
             В отпуске: {vacationNames}
           </p>
         )}
 
         {replacementRequested && (
-          <div className='employee-material-alert-card mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3'>
+          <div className={cn('employee-material-alert-card mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3', compact && 'col-span-2')}>
             <p className='text-xs font-black uppercase tracking-[0.12em] text-amber-700'>Нужна замена</p>
             <p className='mt-1 text-sm font-extrabold text-slate-950'>
               {coverage.state === 'empty' ? 'На этот день пока никто не выходит' : 'В отделе остаётся один сотрудник'}
