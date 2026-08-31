@@ -500,6 +500,24 @@ tab uses its own lightweight snapshot on open/focus and every 30 seconds while
 visible, so colleague changes appear without reloading and the schedule is not
 rerendered by the workday timer.
 
+## PWA Connection Resilience
+
+`public/workday-sw.js` must stay registered for every employee session, not
+only after push permission is granted. It precaches only the neutral offline
+launch screen and public brand assets; it must never cache an authenticated
+employee page or API response.
+
+When navigation cannot reach the portal because the network, VPN route or DNS
+resolver is broken, the service worker returns `/offline.html`. That screen
+checks `/api/health`, retries automatically and returns to `/employee` after
+recovery. Inside an already open employee screen, connection state is based on
+a real portal snapshot request as well as `navigator.onLine`, because an active
+VPN tunnel can report online while its DNS is unavailable.
+
+Do not queue QR acceptance or workday start offline: server time is the
+authoritative attendance timestamp. Cash encashment keeps its separate audited
+device outbox and may be submitted after recovery.
+
 Admin QR codes live in `/admin/workday`. The diagnostic camera/QR page is
 `/admin/dev/qr-test` and should stay a technical tool for checking iPhone/PWA
 camera behavior separately from Workday logic.
