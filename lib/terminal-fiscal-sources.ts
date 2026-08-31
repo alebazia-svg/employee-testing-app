@@ -176,12 +176,14 @@ export function normalizeOneCCheck(value: unknown, fiscalFacts: Map<string, Reco
   });
   return {
     sourceRef,
+    number: text(source.number),
     sourceType: actualSourceType as OneCCheck['sourceType'],
     operationType: operation as OneCCheck['operationType'],
     dateTime,
     cashRegisterRef: metadataRef(source.cashRegister) || text(source.cashRegisterRef),
     kktRegistrationNumber: text(fact?.kktRegistrationNumber) || text(source.kktRegistrationNumber),
     totalKopecks: integer(source.amountKopecks ?? source.totalKopecks),
+    cashKopecks: integer(source.cashKopecks),
     electronicKopecks: integer(source.electronicKopecks),
     cashier: {
       ref: metadataRef(source.cashier),

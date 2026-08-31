@@ -123,12 +123,14 @@ export type OneCCashier = {
 
 export type OneCCheck = {
   sourceRef: string;
+  number?: string;
   sourceType: 'sale_check' | 'refund_check' | 'correction' | 'credit_realization';
   operationType: 'sale' | 'refund' | 'correction';
   dateTime: string;
   cashRegisterRef: string;
   kktRegistrationNumber: string;
   totalKopecks: number;
+  cashKopecks?: number;
   electronicKopecks: number;
   cashier: OneCCashier;
   cardPayments: OneCCardPayment[];

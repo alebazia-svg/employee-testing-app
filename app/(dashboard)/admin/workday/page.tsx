@@ -11,6 +11,7 @@ import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, matchesAdmin
 import { getCurrentUser } from '@/lib/auth';
 import { readKkmShiftCloseSimulation } from '@/lib/kkm-shift-close-control';
 import { oneCDateTimestamp, parseOneCDateTime } from '@/lib/one-c-date';
+import { loadOneCReturnPaymentConflicts } from '@/lib/one-c-return-payment-control';
 import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
   getCashStatementDimensions,
@@ -1094,7 +1095,7 @@ export default async function AdminWorkdayPage(
   const previousDate = addDays(selectedDate, -1);
   const nextDate = addDays(selectedDate, 1);
   const selectedDayRange = moscowDayRange(selectedDate);
-  const [employees, schedules, vacations, vacationHistory, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary, requiredIssues, lateCreditReceipts, cashOperations] = await Promise.all([
+  const [employees, schedules, vacations, vacationHistory, workDays, shiftControlRuns, unfinishedWorkDays, cashStatementDimensions, liveRevision, kkmAssignments, terminalFiscalSummary, returnPaymentControl, requiredIssues, lateCreditReceipts, cashOperations] = await Promise.all([
     prisma.user.findMany({
       where: { role: 'EMPLOYEE', isActive: true },
       orderBy: [{ department: 'asc' }, { name: 'asc' }],
@@ -1158,6 +1159,7 @@ export default async function AdminWorkdayPage(
       orderBy: { effectiveFrom: 'asc' },
     }),
     getTerminalFiscalWorkdaySummary(moscowDayRange(selectedDate)),
+    loadOneCReturnPaymentConflicts(selectedDate),
     prisma.workdayControlIssue.findMany({
       where: { status: 'open', employeeActionRequired: true, ...(selectedDate === today ? {} : { originDate: selectedDate }) },
       include: { user: { select: { name: true } } },
@@ -1649,6 +1651,27 @@ export default async function AdminWorkdayPage(
         </details>
 
         {showTerminalFiscalSummary && <TerminalFiscalAdminSummary summary={terminalFiscalSummary} />}
+
+        {returnPaymentControl.conflicts.length > 0 && (
+          <Card className='border-rose-200 bg-rose-50'>
+            <div className='flex items-start gap-3'>
+              <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-rose-700' aria-hidden='true' />
+              <div className='min-w-0'>
+                <p className='font-extrabold text-rose-950'>Возврат записан двумя способами оплаты</p>
+                <p className='mt-1 text-sm font-semibold text-rose-900'>В 1С одновременно указаны наличные и активная оплата картой. Отчёт о розничных продажах может не провестиcь.</p>
+                <div className='mt-3 grid gap-2'>
+                  {returnPaymentControl.conflicts.map((conflict) => (
+                    <div key={conflict.sourceRef} className='rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-rose-200'>
+                      <p className='font-extrabold text-slate-950'>Возврат {conflict.number} · {(conflict.totalKopecks / 100).toLocaleString('ru-RU')} ₽ · {formatTime(conflict.dateTime)}</p>
+                      <p className='mt-0.5 text-xs'>Наличными {(conflict.cashKopecks / 100).toLocaleString('ru-RU')} ₽ + картой {(conflict.activeCardKopecks / 100).toLocaleString('ru-RU')} ₽{conflict.cashierName ? ` · ${conflict.cashierName}` : ''}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className='mt-3 text-xs font-bold text-rose-800'>Не исправляйте отчёт вручную. Требуется администраторская коррекция исходного возвратного чека.</p>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {unfinishedWorkDays.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>
