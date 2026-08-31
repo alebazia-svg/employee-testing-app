@@ -3661,9 +3661,9 @@ export function EmployeeTodayClient({
 
         <div className={cn(
           'flex-1 px-4 pt-4',
-          activeTab === 'schedule' && !bulkScheduleMode
-            ? 'pb-[calc(5.75rem+env(safe-area-inset-bottom))]'
-            : 'pb-[calc(8.75rem+env(safe-area-inset-bottom))]',
+          bulkScheduleMode
+            ? 'pb-[calc(8.75rem+env(safe-area-inset-bottom))]'
+            : 'pb-[calc(5.75rem+env(safe-area-inset-bottom))]',
         )}>
           {!isOnline || cashOutboxCount > 0 ? (
             <div className={`mb-4 rounded-2xl px-4 py-3 ${isOnline ? 'employee-material-info-card text-slate-900' : 'employee-material-alert-card text-amber-950'}`}>
