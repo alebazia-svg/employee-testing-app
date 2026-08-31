@@ -104,6 +104,25 @@ portal recalculates lateness, replaces the unused checklist and notifications,
 and appends a `WorkdayShiftChange` audit row. Later/active corrections belong to
 ADMIN handling.
 
+Employee vacation is a separate audited layer over the schedule. It does not
+erase or rewrite the underlying `WorkScheduleEntry`: while an active vacation
+covers a date, that employee is excluded from effective staffing and shift
+selection and is shown as `Отпуск` in the employee calendar and ADMIN control.
+Employees may create, change or cancel only future vacation periods without an
+approval workflow. Once the first vacation day has started, only ADMIN may
+correct it. Every create/update/cancel action appends an
+`EmployeeVacationChange` row with the actor and source.
+
+ADMIN Workday provides one `Изменить` entry point per employee and selected
+date. It can correct the schedule status, manage vacation periods and safely
+change an active selected shift. Shift changes remain fail-closed once checklist
+answers, cash operations or control issues exist; ADMIN correction never
+rewrites QR/start timestamps or completed operational facts. The employee PWA
+uses one material bottom-sheet pattern for shift selection, schedule editing,
+vacation and confirmations. A visible drag handle must support swipe-down
+dismissal; explicit close/cancel controls remain available and dismissal is
+disabled while data is being saved.
+
 Future shortened or holiday days require a date-specific ADMIN schedule
 override that becomes the single source for shift options, checklist times and
 planned end. Do not hard-code movable holiday dates.
