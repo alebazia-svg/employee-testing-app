@@ -1172,6 +1172,7 @@ export function EmployeeTodayClient({
   const [bulkScheduleKind, setBulkScheduleKind] = useState<'fill' | 'edit'>('fill');
   const [bulkWorkingDates, setBulkWorkingDates] = useState<Set<string>>(() => new Set());
   const [bulkScheduleConfirmOpen, setBulkScheduleConfirmOpen] = useState(false);
+  const [bulkScheduleExitConfirmOpen, setBulkScheduleExitConfirmOpen] = useState(false);
   const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set());
   const [loadingScheduleMonth, setLoadingScheduleMonth] = useState<string | null>(null);
   const [pendingScheduleChange, setPendingScheduleChange] = useState<PendingScheduleChange | null>(null);
@@ -1850,6 +1851,7 @@ export function EmployeeTodayClient({
   function cancelBulkSchedule() {
     setBulkScheduleMode(false);
     setBulkScheduleConfirmOpen(false);
+    setBulkScheduleExitConfirmOpen(false);
     setBulkWorkingDates(new Set());
     setBulkScheduleKind('fill');
   }
@@ -3661,7 +3663,7 @@ export function EmployeeTodayClient({
 
         <div className={cn(
           'flex-1 px-4 pt-4',
-          bulkScheduleMode
+          activeTab === 'schedule' && bulkScheduleMode
             ? 'pb-[calc(8.75rem+env(safe-area-inset-bottom))]'
             : 'pb-[calc(5.75rem+env(safe-area-inset-bottom))]',
         )}>
@@ -3956,6 +3958,33 @@ export function EmployeeTodayClient({
                   onClick={() => void saveBulkSchedule()}
                 >
                   {isSaving ? 'Сохраняем…' : bulkScheduleKind === 'edit' ? `Сохранить изменения · ${bulkCounts.totalDays}` : `Сохранить ${bulkCounts.totalDays} дн.`}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {bulkScheduleExitConfirmOpen && (
+            <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Выход из заполнения графика'>
+              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+                <BottomSheetDragHandle onDismiss={() => setBulkScheduleExitConfirmOpen(false)} />
+                <p className='text-xs font-black uppercase tracking-[0.12em] text-amber-700'>График не сохранён</p>
+                <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>Выйти без сохранения?</h2>
+                <Button
+                  type='button'
+                  className='employee-material-green-action mt-5 h-14 w-full rounded-xl text-base font-black'
+                  onClick={() => setBulkScheduleExitConfirmOpen(false)}
+                >
+                  Остаться
+                </Button>
+                <Button
+                  type='button'
+                  className='employee-material-secondary-action mt-2 h-12 w-full rounded-xl text-sm font-extrabold'
+                  onClick={() => {
+                    cancelBulkSchedule();
+                    setActiveTab('day');
+                  }}
+                >
+                  Выйти
                 </Button>
               </div>
             </div>
@@ -4665,12 +4694,12 @@ export function EmployeeTodayClient({
         </div>
       </div>
 
-        {bulkScheduleMode && !bulkScheduleConfirmOpen && (
+        {activeTab === 'schedule' && bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && (
           <div className='fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 mx-auto w-full max-w-[520px] px-3'>
             <div className='employee-material-sheet flex items-center gap-3 rounded-2xl p-2.5 shadow-[0_16px_38px_rgba(15,23,42,0.16)]'>
-              <div className='min-w-[70px] px-1'>
-                <p className='text-lg font-black leading-none text-green-800'>{bulkCounts.totalDays}</p>
-                <p className='mt-1 text-[10px] font-bold leading-none text-slate-500'>{bulkScheduleKind === 'edit' ? 'дней изменено' : 'дней выбрано'}</p>
+              <div className='min-w-[92px] px-1'>
+                <p className='text-[10px] font-bold leading-none text-slate-500'>{bulkScheduleKind === 'edit' ? 'Будет изменено' : 'Будет сохранено'}</p>
+                <p className='mt-1 text-sm font-black leading-none text-green-800'>{bulkCounts.totalDays} дн.</p>
               </div>
               <Button
                 type='button'
@@ -4684,7 +4713,7 @@ export function EmployeeTodayClient({
           </div>
         )}
 
-        {!bulkScheduleConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
+        {!bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
           <div className='grid grid-cols-2 gap-1'>
             {tabs.map((item) => {
               const Icon = item.icon;
@@ -4694,6 +4723,16 @@ export function EmployeeTodayClient({
                   key={item.id}
                   type='button'
                   onClick={() => {
+                    if (item.id === 'day' && activeTab === 'schedule' && bulkScheduleMode) {
+                      const hasUnsavedSelection = bulkScheduleKind === 'edit'
+                        ? bulkScheduleChanges.length > 0
+                        : bulkWorkingDates.size > 0;
+                      if (hasUnsavedSelection) {
+                        setBulkScheduleExitConfirmOpen(true);
+                        return;
+                      }
+                      cancelBulkSchedule();
+                    }
                     if (item.id === 'schedule' && activeTab !== 'schedule') {
                       setCalendarMonth(monthKeyFromDate(today));
                       setSelectedScheduleDate(today);
