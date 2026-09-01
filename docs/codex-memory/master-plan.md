@@ -117,7 +117,9 @@ Complete in this order:
    - camera permission and QR scan;
    - push permission and delivery;
    - app resume after screen lock/backgrounding;
-   - Wi-Fi/mobile-data switching and weak connection behavior.
+   - `DONE 2026-09-01` Wi-Fi/mobile-data switching and a temporary full-loss
+     recovery were verified on the owner's iPhone; continue observing genuinely
+     weak/unstable connections during the pilot.
 6. `NEXT` Verify production operations:
    - current server commit and container health;
    - notification, expense, terminal, credit and reconciliation timers;

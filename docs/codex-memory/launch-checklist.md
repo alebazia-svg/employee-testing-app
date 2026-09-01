@@ -111,8 +111,11 @@ or device check, `[ ]` incomplete launch gate.
 - [x] Android is not part of the current launch device scope because neither the
   owner nor the planned employees use Android. Run the same device check only
   when an Android user actually enters the rollout.
-- [ ] Test Wi-Fi/mobile switching, weak connectivity and temporary full loss of
-  internet.
+- [x] Wi-Fi/mobile switching and temporary full loss of internet were verified
+  on the owner's iPhone on 2026-09-01: the open PWA remained usable, an offline
+  relaunch showed the neutral connection screen and recovery returned to the
+  employee view automatically. Weak/unstable-network observation continues
+  during the pilot but no longer blocks its start.
 - [x] Offline cash-operation and unavailable-1C wording states what was saved,
   what will retry and whether the employee or ADMIN must act.
 - [x] The boundary is documented: cash-operation amount/photo retention exists,
