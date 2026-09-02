@@ -440,6 +440,24 @@ select {
   box-shadow: inset 1px 1px 3px rgba(94, 91, 84, 0.06), inset -1px -1px 3px rgba(255, 255, 255, 0.9);
 }
 
+.employee-material-colleague-group-green {
+  background: linear-gradient(145deg, rgba(248, 253, 246, 0.96), rgba(231, 245, 226, 0.86)) !important;
+}
+
+.employee-material-colleague-group-amber {
+  background: linear-gradient(145deg, rgba(255, 252, 241, 0.97), rgba(250, 240, 210, 0.78)) !important;
+}
+
+.employee-material-colleague-group-slate {
+  background: linear-gradient(145deg, rgba(248, 249, 247, 0.97), rgba(230, 234, 232, 0.82)) !important;
+}
+
+.employee-material-colleague-group-green .employee-material-person,
+.employee-material-colleague-group-amber .employee-material-person,
+.employee-material-colleague-group-slate .employee-material-person {
+  background: rgba(255, 255, 255, 0.48) !important;
+}
+
 .employee-material-focus {
   border-left-width: 1px !important;
   border-color: rgba(255, 255, 255, 0.92) !important;
@@ -550,8 +568,40 @@ select {
   border-radius: 14px;
 }
 
+.employee-material-accent-icon {
+  position: relative;
+  isolation: isolate;
+  color: #48bd1d !important;
+  background: linear-gradient(145deg, #fbfcf9, #e7e9e5) !important;
+  border-color: rgba(255, 255, 255, 0.94) !important;
+  box-shadow:
+    4px 5px 10px rgba(91, 112, 84, 0.24),
+    -3px -3px 8px rgba(255, 255, 255, 0.94),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.76) !important;
+}
+
+.employee-material-accent-icon svg {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.55));
+}
+
 .employee-material-nav {
   padding-top: 7px !important;
+}
+
+.employee-material-tab > span[aria-hidden='true'] {
+  transition: color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, transform 140ms ease;
+}
+
+.employee-material-tab:active > span[aria-hidden='true'] {
+  transform: scale(0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .employee-material-tab > span[aria-hidden='true'] {
+    transition: none;
+  }
 }
 
 .employee-material-sheet,

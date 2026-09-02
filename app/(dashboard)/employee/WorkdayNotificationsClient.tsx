@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Bell, CheckCircle2, ChevronRight, Clock3, MessageCircle, ReceiptText, X } from 'lucide-react';
+import { BellIcon as PremiumBellIcon } from '@solar-icons/react/bold-duotone';
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, MessageCircle, ReceiptText, X } from 'lucide-react';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
 
 type WorkdayNotification = {
@@ -155,7 +156,7 @@ export function WorkdayNotificationsClient() {
         aria-label='Уведомления'
         aria-expanded={open}
       >
-        <Bell className='h-[18px] w-[18px]' />
+        <PremiumBellIcon color='#ffffff' secondaryColor='#b9c2bf' secondaryOpacity={0.9} className='h-5 w-5' />
         {notifications.length > 0 && (
           <span className='absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#e4534d] px-1 text-[10px] font-black text-white ring-2 ring-[#f5f4ef] shadow-[0_3px_8px_rgba(135,48,43,0.28)]'>
             {notifications.length > 9 ? '9+' : notifications.length}

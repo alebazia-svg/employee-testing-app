@@ -2,12 +2,22 @@
 
 import jsQR from 'jsqr';
 import { parseWorkdayQrDepartment } from '@/lib/workday-qr';
+import {
+  BillListIcon as PremiumBillListIcon,
+  CalendarMarkIcon as PremiumCalendarIcon,
+  CameraIcon as PremiumCameraIcon,
+  Card2Icon as PremiumCardIcon,
+  ClockCircleIcon as PremiumClockIcon,
+  ClipboardCheckIcon as PremiumClipboardCheckIcon,
+  Home2Icon as PremiumHomeIcon,
+  Safe2Icon as PremiumSafeIcon,
+  UserRoundedIcon as PremiumUserIcon,
+} from '@solar-icons/react/bold-duotone';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   AlertTriangle,
-  Banknote,
   CalendarDays,
   Camera,
   Check,
@@ -16,15 +26,10 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  ClipboardCheck,
-  Clock,
-  CreditCard,
-  Home,
   Pencil,
   ReceiptText,
   RefreshCw,
-  ScanLine,
-  Users,
+  ScanQrCode,
   X,
 } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
@@ -424,9 +429,9 @@ const staleCloseReasons = [
   'Другое',
 ];
 
-const tabs: Array<{ id: Tab; label: string; icon: typeof Home }> = [
-  { id: 'day', label: 'Рабочий день', icon: Home },
-  { id: 'schedule', label: 'График', icon: CalendarDays },
+const tabs: Array<{ id: Tab; label: string; icon: typeof PremiumHomeIcon }> = [
+  { id: 'day', label: 'Рабочий день', icon: PremiumHomeIcon },
+  { id: 'schedule', label: 'График', icon: PremiumCalendarIcon },
 ];
 
 const workdaySyncIntervalMs = 60_000;
@@ -704,6 +709,7 @@ function departmentLabel(department: string | null | undefined) {
 
 function greetingForMoscowTime(now: Date) {
   const minutes = getMoscowMinutes(now);
+  if (minutes < 5 * 60) return 'Доброй ночи';
   if (minutes < 12 * 60) return 'Доброе утро';
   if (minutes < 18 * 60) return 'Добрый день';
   return 'Добрый вечер';
@@ -764,14 +770,25 @@ function shiftTaskStatusLabel(status: string) {
   return 'ожидает';
 }
 
+function CashRubleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox='0 0 24 24' fill='none' aria-hidden='true'>
+      <rect x='5' y='3.5' width='16' height='13' rx='3.25' fill='#a5e592' />
+      <rect x='2' y='7.5' width='17' height='13' rx='3.25' fill='#42bd2b' />
+      <circle cx='10.5' cy='14' r='4.1' fill='#278f18' />
+      <text x='10.5' y='17' fill='white' fontSize='8.5' fontWeight='900' textAnchor='middle'>₽</text>
+    </svg>
+  );
+}
+
 function shiftTaskIcon(task: ShiftControlTask) {
-  if (task.category === 'cash') return Banknote;
-  if (task.category === 'credit') return ReceiptText;
-  if (task.category === 'acquiring') return CreditCard;
-  if (task.category === 'opening') return Camera;
-  if (task.category === 'handover') return ClipboardCheck;
-  if (task.category === 'closing') return Camera;
-  return Clock;
+  if (task.category === 'cash') return CashRubleIcon;
+  if (task.category === 'credit') return PremiumBillListIcon;
+  if (task.category === 'acquiring') return PremiumCardIcon;
+  if (task.category === 'opening') return PremiumCameraIcon;
+  if (task.category === 'handover') return PremiumClipboardCheckIcon;
+  if (task.category === 'closing') return PremiumCameraIcon;
+  return PremiumClockIcon;
 }
 
 function shiftTaskTitle(task: ShiftControlTask) {
@@ -1058,10 +1075,19 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
 }
 
 function EmployeeProfileGlyph() {
+  return <PremiumUserIcon color='#39444a' secondaryColor='#98a29e' secondaryOpacity={0.86} className='employee-material-profile-glyph' aria-hidden='true' />;
+}
+
+function ColleaguesGlyph() {
   return (
-    <svg className='employee-material-profile-glyph' viewBox='0 0 32 32' aria-hidden='true'>
-      <path d='M16 15.6c3.55 0 6.12-2.78 6.12-6.35C22.12 5.73 19.55 3 16 3S9.88 5.73 9.88 9.25c0 3.57 2.57 6.35 6.12 6.35Zm0 2.25c-6.14 0-10.82 3.26-11.78 8.2-.3 1.52.89 2.95 2.45 2.95h18.66c1.56 0 2.75-1.43 2.45-2.95-.96-4.94-5.64-8.2-11.78-8.2Z' />
-    </svg>
+    <span className='relative block h-7 w-7' aria-hidden='true'>
+      <span className='absolute bottom-0 right-[-1px] flex h-5 w-5'>
+        <PremiumUserIcon color='#69c94e' secondaryColor='#a5e592' secondaryOpacity={0.96} className='h-full w-full' />
+      </span>
+      <span className='absolute bottom-0 left-[-1px] z-[1] flex h-5 w-5'>
+        <PremiumUserIcon color='#278f18' secondaryColor='#68ce4f' secondaryOpacity={0.96} className='h-full w-full' />
+      </span>
+    </span>
   );
 }
 
@@ -1083,7 +1109,7 @@ function ColleagueGroup({
   const dotClass = tone === 'green' ? 'employee-material-status-dot-green' : tone === 'amber' ? 'employee-material-status-dot-amber' : 'employee-material-status-dot-slate';
 
   return (
-    <section className='employee-material-subcard rounded-lg bg-white/90 p-2.5 ring-1 ring-slate-200/80'>
+    <section className={cn('employee-material-subcard rounded-lg bg-white/90 p-2.5 ring-1 ring-slate-200/80', `employee-material-colleague-group-${tone}`)}>
       <div className='mb-1.5 flex items-center justify-between gap-3'>
         <div className='flex items-center gap-2'>
           <span className={cn('employee-material-status-dot', dotClass)} />
@@ -3195,14 +3221,14 @@ export function EmployeeTodayClient({
     };
     const handoverIcon =
       step === 'personalCashBalance' || step === 'reserveCashBalance' || step === 'encashment'
-        ? Banknote
+        ? CashRubleIcon
         : step === 'terminalQuestion' || step === 'terminalReconciliation' || step === 'terminalReceipts'
-          ? CreditCard
+          ? PremiumCardIcon
           : step === 'tbankQuestion' || step === 'tbankReceipts' || step === 'tbankTerminal'
-            ? ReceiptText
+            ? PremiumBillListIcon
             : step === 'discrepancy'
               ? AlertTriangle
-              : ReceiptText;
+              : PremiumBillListIcon;
     const HandoverIcon = handoverIcon;
     const photoFieldForStep: Partial<Record<string, HandoverPhotoKey>> = {
       encashment: 'encashmentDocumentPhoto',
@@ -3655,7 +3681,7 @@ export function EmployeeTodayClient({
             </div>
             <div className='flex items-center gap-2'>
               <WorkdayNotificationsClient />
-              <LogoutButton iconOnly title='Выйти' className='employee-material-header-action h-10 w-10 bg-white/[0.08] px-0 text-white ring-1 ring-white/10 hover:bg-white/[0.12]' />
+              <LogoutButton iconOnly iconStyle='duotone' title='Выйти' className='employee-material-header-action h-10 w-10 bg-white/[0.08] px-0 text-white ring-1 ring-white/10 hover:bg-white/[0.12]' />
             </div>
           </div>
 
@@ -4004,15 +4030,17 @@ export function EmployeeTodayClient({
             <div className='space-y-3'>
               {!workDay && !unfinished && (
                 <Card className='space-y-3 p-4'>
-                  <div className='flex items-center gap-3'>
-                    <span className='employee-material-heading-icon text-primary'>
-                      <Clock className='h-6 w-6' />
+                  <p className='text-[13px] font-extrabold leading-[18px] text-[#278f18]'>
+                    {greetingForMoscowTime(displayNow)}, {schedulePersonName(user.name)}
+                  </p>
+                  <div className='flex items-start gap-3'>
+                    <span className='employee-material-heading-icon employee-material-accent-icon mt-0.5 text-primary'>
+                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-[22px] w-[22px]' />
                     </span>
                     <div className='min-w-0'>
-                      <p className='text-xs font-extrabold text-green-700'>{greetingForMoscowTime(displayNow)}, {schedulePersonName(user.name)}</p>
-                      <h2 className='mt-0.5 text-xl font-black leading-tight text-slate-950'>Рабочий день ещё не начат</h2>
+                      <h2 className='text-xl font-black leading-tight text-slate-950'>Рабочий день не начат</h2>
                       <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
-                        Чтобы начать смену, отсканируйте QR-код отдела в магазине.
+                        Отсканируйте QR-код в магазине.
                       </p>
                     </div>
                   </div>
@@ -4022,7 +4050,7 @@ export function EmployeeTodayClient({
                     onClick={openQrStart}
                     disabled={isSaving || Boolean(unfinished)}
                   >
-                    <ScanLine className='mr-2 h-5 w-5' />
+                    <ScanQrCode className='mr-2 h-7 w-7' strokeWidth={2.35} aria-hidden='true' />
                     Начать рабочий день
                   </Button>
                   {unfinished && (
@@ -4125,8 +4153,8 @@ export function EmployeeTodayClient({
               {activeWorkDay && !showShiftControl && (
                 <Card className='space-y-3 border-green-100 bg-white p-4'>
                   <div className='flex items-start gap-3'>
-                    <span className='employee-material-heading-icon h-11 w-11 shrink-0 rounded-xl text-green-700'>
-                      <Clock className='h-5 w-5' />
+                    <span className='employee-material-heading-icon employee-material-accent-icon h-11 w-11 shrink-0 rounded-xl text-green-700'>
+                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-[22px] w-[22px]' />
                     </span>
                     <div className='min-w-0'>
                       <h2 className='text-lg font-black leading-tight text-slate-950'>Отметка рабочего дня</h2>
@@ -4265,7 +4293,9 @@ export function EmployeeTodayClient({
                         {cashOperationsState.length} операций · {formatCashOperationAmount(cashOperationTotal)}
                       </p>
                     </div>
-                    <span className='employee-material-heading-icon'><Banknote className='h-5 w-5 text-primary' /></span>
+                    <span className='employee-material-heading-icon employee-material-accent-icon h-11 w-11 shrink-0'>
+                      <PremiumSafeIcon color='#237d18' secondaryColor='#9cde8c' secondaryOpacity={1} className='h-7 w-7' />
+                    </span>
                   </div>
 
                   <div className={cn('grid gap-2', user.department === 'retail' ? 'grid-cols-2' : 'grid-cols-1')}>
@@ -4398,11 +4428,13 @@ export function EmployeeTodayClient({
                     {factLabel(displayedWorkDayStatus)}
                   </Badge>
                 </div>
-                <div className='grid grid-cols-2 gap-1.5'>
-                  <DetailItem label='Смена' value={workDay ? workDay.shiftLabel : selectedShift ? shiftLabel(selectedShift) : 'не выбрана'} />
+                <div className='grid grid-cols-3 gap-1.5'>
                   <DetailItem label='Начало' value={workDay ? formatTime(workDay.startedAt) : minutesToTime(shiftStart)} />
-                  <DetailItem label='Окончание' value={workDay?.endedAt ? formatTime(workDay.endedAt) : 'не указано'} />
-                  <DetailItem label='Опоздание' value={workDay?.lateMinutes ? `${workDay.lateMinutes} мин` : 'нет'} />
+                  <DetailItem label='Окончание' value={workDay?.endedAt ? formatTime(workDay.endedAt) : '—'} />
+                  <DetailItem
+                    label='Опоздание'
+                    value={workDay?.lateMinutes ? <span className='text-amber-700'>{workDay.lateMinutes} мин</span> : 'Без опоздания'}
+                  />
                 </div>
                 {shiftCorrectionWindowOpen && (
                   <button
@@ -4418,7 +4450,9 @@ export function EmployeeTodayClient({
 
               <Card className='space-y-2.5 p-4'>
                 <div className='flex items-center gap-2'>
-                  <span className='employee-material-heading-icon'><Users className='h-5 w-5 text-primary' /></span>
+                  <span className='employee-material-heading-icon employee-material-accent-icon' aria-hidden='true'>
+                    <ColleaguesGlyph />
+                  </span>
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
                 </div>
                 <ColleagueGroup title='Уже начали смену' people={workingColleagues} tone='green' emptyLabel='Никто из коллег пока не начал смену' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
@@ -4760,7 +4794,12 @@ export function EmployeeTodayClient({
                   )}
                 >
                   <span className='relative flex h-6 w-6 items-center justify-center' aria-hidden='true'>
-                    <Icon className='h-5 w-5' strokeWidth={2.15} />
+                    <Icon
+                      className='h-6 w-6'
+                      color={active ? '#2da915' : '#68746f'}
+                      secondaryColor={active ? '#69d644' : '#aab2ae'}
+                      secondaryOpacity={active ? 0.92 : 0.82}
+                    />
                   </span>
                   <span>{item.label}</span>
                 </button>
