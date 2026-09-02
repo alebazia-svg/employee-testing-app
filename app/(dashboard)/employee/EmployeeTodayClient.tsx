@@ -4097,7 +4097,7 @@ export function EmployeeTodayClient({
                           href={`/employee/issues/${issue.id}`}
                           aria-busy={openingDetailHref === `/employee/issues/${issue.id}`}
                           onClick={() => setOpeningDetailHref(`/employee/issues/${issue.id}`)}
-                          className={cn('flex items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm transition hover:bg-amber-100/70', openingDetailHref && 'pointer-events-none')}
+                          className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm transition hover:bg-amber-100/70'
                         >
                           <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
                           <span className='min-w-0 flex-1'>
@@ -4129,7 +4129,7 @@ export function EmployeeTodayClient({
                   href={`/employee/payment-checks/${primaryPaymentCheck.id}`}
                   aria-busy={openingDetailHref === `/employee/payment-checks/${primaryPaymentCheck.id}`}
                   onClick={() => setOpeningDetailHref(`/employee/payment-checks/${primaryPaymentCheck.id}`)}
-                  className={cn('flex items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm', openingDetailHref && 'pointer-events-none')}
+                  className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm'
                 >
                   <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
                   <span className='min-w-0 flex-1'>

@@ -167,9 +167,7 @@ export function WorkdayNotificationsClient() {
       </button>
 
       {open && (
-        <>
-          <button type='button' className='fixed inset-0 z-40 cursor-default' aria-label='Закрыть панель уведомлений' onClick={() => setOpen(false)} />
-          <div role='dialog' aria-label='Уведомления' className='employee-material-popover fixed inset-x-4 top-[6.5rem] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-80'>
+        <div role='dialog' aria-label='Уведомления' className='employee-material-popover fixed inset-x-4 top-[6.5rem] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-80'>
           <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3'>
             <p className='text-sm font-black'>Уведомления</p>
             <button type='button' onClick={() => setOpen(false)} className='rounded-md p-1 text-slate-500' aria-label='Закрыть уведомления'><X className='h-4 w-4' /></button>
@@ -201,8 +199,7 @@ export function WorkdayNotificationsClient() {
               ))}
             </div>
           )}
-          </div>
-        </>
+        </div>
       )}
     </div>
   );
