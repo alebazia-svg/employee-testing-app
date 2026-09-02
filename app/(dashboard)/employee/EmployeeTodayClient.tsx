@@ -619,7 +619,7 @@ function scheduleLabel(status: string | null | undefined) {
 function scheduleCellLabel(status: string | null | undefined) {
   if (status === 'working') return 'Раб.';
   if (status === 'off') return 'Вых.';
-  return 'Выбрать';
+  return '—';
 }
 
 function replaceScheduleRange(current: ScheduleEntry[], incoming: ScheduleEntry[], from: string, to: string) {
@@ -3700,7 +3700,8 @@ export function EmployeeTodayClient({
         </header>
 
         <div className={cn(
-          'flex-1 px-4 pt-4',
+          'flex-1 px-4',
+          activeTab === 'schedule' ? 'pt-2' : 'pt-4',
           activeTab === 'schedule' && bulkScheduleMode
             ? 'pb-[calc(8.75rem+env(safe-area-inset-bottom))]'
             : 'pb-[calc(5.75rem+env(safe-area-inset-bottom))]',
@@ -4514,13 +4515,12 @@ export function EmployeeTodayClient({
               {scheduleMode === 'month' && (
                 <>
                   {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && !bulkScheduleMode && (
-                    <Card className='employee-material-alert-card flex items-center gap-2.5 border-amber-200 bg-amber-50 p-2.5'>
+                    <Card className='employee-material-alert-card flex items-center gap-2.5 border-amber-200 bg-amber-50 p-2'>
                         <span className='employee-material-heading-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-amber-700'>
                           <AlertTriangle className='h-5 w-5' />
                         </span>
                         <div className='min-w-0 flex-1'>
                           <p className='text-sm font-extrabold text-amber-950'>Осталось выбрать {incompleteScheduleDates.length} дн.</p>
-                          <p className='mt-0.5 text-[11px] font-semibold text-amber-900'>{monthTitle(calendarMonth)} ещё не заполнен</p>
                         </div>
                       <Button
                         type='button'
@@ -4696,11 +4696,11 @@ export function EmployeeTodayClient({
                     })}
                   </div>
 
-                  <div className='flex flex-wrap gap-x-3 gap-y-1 px-1 text-[11px] font-extrabold text-slate-600'>
-                    <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#d9f1dc] ring-1 ring-[#9ed1a7]' />Работаю</span>
-                    <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#dce2df] ring-1 ring-[#aebbb5]' />Выходной</span>
-                    <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#ddd5ea] ring-1 ring-[#aa9fbd]' />Отпуск</span>
-                    {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
+                  <div className='flex flex-nowrap items-center justify-between gap-1 px-0.5 text-[10px] font-extrabold text-slate-600'>
+                    <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#d9f1dc] ring-1 ring-[#9ed1a7]' />Работаю</span>
+                    <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#dce2df] ring-1 ring-[#aebbb5]' />Выходной</span>
+                    <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#ddd5ea] ring-1 ring-[#aa9fbd]' />Отпуск</span>
+                    {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
                   </div>
 
                   {scheduleMonthLoaded && !bulkScheduleMode && (
