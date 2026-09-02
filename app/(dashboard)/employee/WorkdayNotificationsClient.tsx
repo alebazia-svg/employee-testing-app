@@ -129,6 +129,12 @@ export function WorkdayNotificationsClient() {
     return () => window.clearInterval(timer);
   }, [connectPush, refresh]);
 
+  useEffect(() => {
+    if (!open) return;
+    const closeTimer = window.setTimeout(() => setOpen(false), 10_000);
+    return () => window.clearTimeout(closeTimer);
+  }, [open]);
+
   async function dismiss(notification: WorkdayNotification) {
     const threadKey = workdayNotificationThreadKey(notification);
     setNotifications((current) => {
@@ -144,7 +150,7 @@ export function WorkdayNotificationsClient() {
   }
 
   async function openNotification(notification: WorkdayNotification) {
-    void dismiss(notification);
+    await dismiss(notification);
     setOpen(false);
     router.push(notification.href || '/employee');
   }
