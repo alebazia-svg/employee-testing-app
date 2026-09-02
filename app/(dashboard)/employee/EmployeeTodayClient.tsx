@@ -7,32 +7,28 @@ import {
   CalendarMarkIcon as PremiumCalendarIcon,
   CameraIcon as PremiumCameraIcon,
   Card2Icon as PremiumCardIcon,
+  CheckCircleIcon as PremiumCheckCircleIcon,
   ClockCircleIcon as PremiumClockIcon,
   ClipboardCheckIcon as PremiumClipboardCheckIcon,
+  DangerTriangleIcon as PremiumDangerTriangleIcon,
   Home2Icon as PremiumHomeIcon,
-  Safe2Icon as PremiumSafeIcon,
   UserRoundedIcon as PremiumUserIcon,
 } from '@solar-icons/react/bold-duotone';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
-  AlertTriangle,
   CalendarDays,
   Camera,
-  Check,
-  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   Pencil,
-  ReceiptText,
   RefreshCw,
   ScanQrCode,
   X,
 } from 'lucide-react';
-import { LogoutButton } from '@/components/LogoutButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -54,7 +50,7 @@ import {
   saveEmployeeCashOutboxItem,
   type EmployeeCashOutboxItem,
 } from '@/lib/employee-cash-outbox';
-import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
+import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalHeader';
 
 function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () => void; disabled?: boolean }) {
   const startYRef = useRef<number | null>(null);
@@ -561,7 +557,7 @@ function WorkdayQrScanner({
             <p className='text-xs font-black uppercase tracking-[0.22em] text-green-300'>Начало дня</p>
             <h2 className='mt-1 text-2xl font-black leading-tight'>Отсканируйте QR отдела</h2>
           </div>
-          <button type='button' onClick={onCancel} className='flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white'>
+          <button type='button' onClick={onCancel} className='flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white' aria-label='Закрыть сканер'>
             <X className='h-6 w-6' />
           </button>
         </div>
@@ -584,7 +580,7 @@ function WorkdayQrScanner({
           {state === 'found' && (
             <div className='absolute inset-4 flex items-center justify-center rounded-3xl bg-green-500/90 text-center backdrop-blur'>
               <div>
-                <CheckCircle2 className='mx-auto h-14 w-14' />
+                <PremiumCheckCircleIcon color='#ffffff' secondaryColor='#b7e9ac' secondaryOpacity={0.72} className='mx-auto h-14 w-14' />
                 <p className='mt-3 text-2xl font-black'>QR принят</p>
               </div>
             </div>
@@ -772,8 +768,8 @@ function shiftTaskStatusLabel(status: string) {
 function CashRubleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox='0 0 24 24' fill='none' aria-hidden='true'>
-      <rect x='5' y='3.5' width='16' height='13' rx='3.25' fill='#a5e592' />
-      <rect x='2' y='7.5' width='17' height='13' rx='3.25' fill='#42bd2b' />
+      <rect x='5' y='3.5' width='16' height='13' rx='3.25' fill='#b7e9ac' />
+      <rect x='2' y='7.5' width='17' height='13' rx='3.25' fill='#68ce4f' />
       <circle cx='10.5' cy='14' r='4.1' fill='#278f18' />
       <text x='10.5' y='17' fill='white' fontSize='8.5' fontWeight='900' textAnchor='middle'>₽</text>
     </svg>
@@ -806,7 +802,7 @@ function shiftTaskTitle(task: ShiftControlTask) {
 function shiftTaskIconClass(category: string) {
   if (category === 'cash') return 'bg-green-50 text-green-700 ring-green-100';
   if (category === 'credit') return 'bg-slate-50 text-slate-700 ring-slate-200';
-  if (category === 'acquiring') return 'bg-emerald-50 text-emerald-700 ring-emerald-100';
+  if (category === 'acquiring') return 'bg-green-50 text-green-700 ring-green-100';
   if (category === 'opening') return 'bg-slate-50 text-slate-700 ring-slate-200';
   if (category === 'handover') return 'bg-amber-50 text-amber-700 ring-amber-100';
   if (category === 'closing') return 'bg-slate-100 text-slate-800 ring-slate-200';
@@ -822,6 +818,23 @@ function timeUntilLabel(minutes: number | null | undefined, now: Date) {
   if (hours > 0 && restMinutes > 0) return `через ${hours} ч ${restMinutes} мин`;
   if (hours > 0) return `через ${hours} ч`;
   return `через ${restMinutes} мин`;
+}
+
+function primaryTaskTimingLabel(task: ShiftControlTask, now: Date) {
+  const status = shiftTaskStatus(task, now);
+  if (task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined) {
+    return status === 'overdue' ? 'Просрочено' : 'Можно выполнить сейчас';
+  }
+  if (status === 'overdue') {
+    const overdueMinutes = Math.max(1, getMoscowMinutes(now) - task.plannedTimeMinutes);
+    const hours = Math.floor(overdueMinutes / 60);
+    const restMinutes = overdueMinutes % 60;
+    const duration = hours > 0
+      ? `${hours} ч${restMinutes > 0 ? ` ${restMinutes} мин` : ''}`
+      : `${restMinutes} мин`;
+    return `Просрочено на ${duration}`;
+  }
+  return `В ${plannedTimeLabel(task.plannedTimeMinutes)} · ${timeUntilLabel(task.plannedTimeMinutes, now)}`;
 }
 
 function formatShiftMoney(value: number | null | undefined) {
@@ -1052,9 +1065,8 @@ function taskCountWord(count: number) {
   return 'задач';
 }
 
-function remainingTasksLabel(count: number, primaryCategory?: string | null) {
-  if (count === 1 && primaryCategory === 'handover') return 'Осталось: сдать смену';
-  return `Осталось: ${count} ${taskCountWord(count)}`;
+function remainingTasksLabel(count: number) {
+  return count === 1 ? 'Осталась 1 задача' : `Осталось ${count} ${taskCountWord(count)}`;
 }
 
 function getElapsed(workDay: WorkDayEntry | null, now: Date) {
@@ -1073,20 +1085,40 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
   );
 }
 
-function EmployeeProfileGlyph() {
-  return <PremiumUserIcon color='#39444a' secondaryColor='#98a29e' secondaryOpacity={0.86} className='employee-material-profile-glyph' aria-hidden='true' />;
-}
-
 function ColleaguesGlyph() {
   return (
-    <span className='relative block h-7 w-7' aria-hidden='true'>
-      <span className='absolute bottom-0 right-[-1px] flex h-5 w-5'>
-        <PremiumUserIcon color='#69c94e' secondaryColor='#a5e592' secondaryOpacity={0.96} className='h-full w-full' />
+    <span className='relative block h-8 w-8' aria-hidden='true'>
+      <span className='absolute bottom-0 right-[-1px] flex h-6 w-6'>
+        <PremiumUserIcon color='#68ce4f' secondaryColor='#b7e9ac' secondaryOpacity={0.96} className='h-full w-full' />
       </span>
-      <span className='absolute bottom-0 left-[-1px] z-[1] flex h-5 w-5'>
+      <span className='absolute bottom-0 left-[-1px] z-[1] flex h-6 w-6'>
         <PremiumUserIcon color='#278f18' secondaryColor='#68ce4f' secondaryOpacity={0.96} className='h-full w-full' />
       </span>
     </span>
+  );
+}
+
+function DepositSafeGlyph() {
+  return (
+    <svg viewBox='0 0 32 32' className='h-7 w-7' aria-hidden='true'>
+      <rect x='2.8' y='4' width='26.4' height='24' rx='5' fill='#68ce4f' />
+      <rect x='6.1' y='7.3' width='19.8' height='17.4' rx='3' fill='#d9f2d3' />
+      <circle cx='11.9' cy='16.2' r='3.9' fill='#68ce4f' />
+      <path d='M11.9 16.2V12.3a3.9 3.9 0 0 1 3.9 3.9Z' fill='#278f18' />
+      <rect x='11.9' y='15.55' width='4.5' height='1.3' rx='0.65' fill='#278f18' />
+      <circle cx='15.6' cy='11.7' r='1.15' fill='#68ce4f' />
+      <rect x='17.1' y='10.4' width='6.2' height='11.2' rx='1.4' fill='#278f18' />
+      <g fill='#f7fff4'>
+        <rect x='18.25' y='11.8' width='1.35' height='1.35' rx='0.3' />
+        <rect x='20.75' y='11.8' width='1.35' height='1.35' rx='0.3' />
+        <rect x='18.25' y='14.5' width='1.35' height='1.35' rx='0.3' />
+        <rect x='20.75' y='14.5' width='1.35' height='1.35' rx='0.3' />
+        <rect x='18.25' y='17.2' width='1.35' height='1.35' rx='0.3' />
+        <rect x='20.75' y='17.2' width='1.35' height='1.35' rx='0.3' />
+      </g>
+      <rect x='26.2' y='9.1' width='1.6' height='4.7' rx='0.8' fill='#278f18' />
+      <rect x='26.2' y='18.2' width='1.6' height='4.7' rx='0.8' fill='#278f18' />
+    </svg>
   );
 }
 
@@ -1170,6 +1202,7 @@ export function EmployeeTodayClient({
   const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
   const [requiredIssuesState, setRequiredIssuesState] = useState(requiredIssues);
   const [showAllRequiredIssues, setShowAllRequiredIssues] = useState(false);
+  const [openingDetailHref, setOpeningDetailHref] = useState<string | null>(null);
   const [paymentChecksState, setPaymentChecksState] = useState(paymentChecks);
   const [closeExceptionRequestState, setCloseExceptionRequestState] = useState(closeExceptionRequest);
   const [cashEncashmentExceptionRequestState, setCashEncashmentExceptionRequestState] = useState(cashEncashmentExceptionRequest);
@@ -1276,6 +1309,11 @@ export function EmployeeTodayClient({
     }, 4000);
     return () => window.clearTimeout(timer);
   }, [message]);
+
+  useEffect(() => {
+    for (const issue of requiredIssuesState) router.prefetch(`/employee/issues/${issue.id}`);
+    for (const review of paymentChecksState) router.prefetch(`/employee/payment-checks/${review.id}`);
+  }, [paymentChecksState, requiredIssuesState, router]);
 
   const dates = useMemo(() => buildDateRange(today, 31), [today]);
   const previewDates = dates.slice(0, 7);
@@ -3227,7 +3265,7 @@ export function EmployeeTodayClient({
           : step === 'tbankQuestion' || step === 'tbankReceipts' || step === 'tbankTerminal'
             ? PremiumBillListIcon
             : step === 'discrepancy'
-              ? AlertTriangle
+              ? PremiumDangerTriangleIcon
               : PremiumBillListIcon;
     const HandoverIcon = handoverIcon;
     const photoFieldForStep: Partial<Record<string, HandoverPhotoKey>> = {
@@ -3249,8 +3287,8 @@ export function EmployeeTodayClient({
       <div className='employee-material-focus employee-material-focus-current employee-material-form rounded-xl border-l-[5px] p-3 ring-1'>
         <div className='mb-3 flex items-start justify-between gap-3'>
           <div className='flex items-start gap-2'>
-            <span className='mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700 ring-1 ring-green-100'>
-              <HandoverIcon className='h-4 w-4' />
+            <span className='mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
+              <HandoverIcon className='h-5 w-5' />
             </span>
             <div>
               <p className='text-xs font-extrabold uppercase text-green-700'>{sectionTitle}</p>
@@ -3586,7 +3624,7 @@ export function EmployeeTodayClient({
         />
       )}
       {shiftPickerOpen && !workDay && (
-        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]'>
+        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Выбор смены'>
           <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
             <BottomSheetDragHandle onDismiss={() => setShiftPickerOpen(false)} disabled={isSaving} />
             <div className='flex items-start justify-between gap-3'>
@@ -3599,6 +3637,7 @@ export function EmployeeTodayClient({
                 type='button'
                 onClick={() => setShiftPickerOpen(false)}
                 className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600'
+                aria-label='Закрыть без изменений'
               >
                 <ChevronDown className='h-5 w-5' />
               </button>
@@ -3638,7 +3677,7 @@ export function EmployeeTodayClient({
         </div>
       )}
       {shiftCorrectionOpen && workDay && (
-        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]'>
+        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Исправление смены'>
           <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
             <BottomSheetDragHandle onDismiss={() => setShiftCorrectionOpen(false)} disabled={isSaving} />
             <div className='flex items-start justify-between gap-3'>
@@ -3651,6 +3690,7 @@ export function EmployeeTodayClient({
                 type='button'
                 onClick={() => setShiftCorrectionOpen(false)}
                 className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600'
+                aria-label='Закрыть без изменений'
               >
                 <ChevronDown className='h-5 w-5' />
               </button>
@@ -3673,35 +3713,11 @@ export function EmployeeTodayClient({
         </div>
       )}
       <div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
-        <header className='employee-material-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]'>
-          <div className='employee-material-header-profile grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2.5'>
-            <div className='employee-material-profile-avatar flex h-11 w-11 items-center justify-center' aria-hidden='true'>
-              <EmployeeProfileGlyph />
-            </div>
-            <div className='employee-material-profile-copy min-w-0'>
-              <p className='truncate text-sm font-extrabold leading-tight text-[#273137]'>{user.name}</p>
-              <p className='employee-material-profile-meta mt-1 truncate text-[11px] font-bold leading-none text-[#758084]'>
-                <span>{departmentLabel(user.department)}</span>
-                <span aria-hidden='true'> · </span>
-                <span>{formatDateLabel(today)}</span>
-              </p>
-            </div>
-          </div>
-          <div className='employee-material-header-actions flex items-center gap-2'>
-            <WorkdayNotificationsClient />
-            <LogoutButton
-              iconOnly
-              iconStyle='duotone'
-              title='Выйти'
-              confirmBeforeLogout
-              className='employee-material-header-action h-10 w-10 px-0 text-white'
-            />
-          </div>
-        </header>
+        <EmployeePortalHeader name={user.name} meta={`${departmentLabel(user.department)} · ${employeeHeaderDateLabel(today)}`} />
 
         <div className={cn(
           'flex-1 px-4',
-          activeTab === 'schedule' ? 'pt-2' : 'pt-4',
+          'pt-2',
           activeTab === 'schedule' && bulkScheduleMode
             ? 'pb-[calc(8.75rem+env(safe-area-inset-bottom))]'
             : 'pb-[calc(5.75rem+env(safe-area-inset-bottom))]',
@@ -3735,7 +3751,7 @@ export function EmployeeTodayClient({
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
             <Card className='employee-material-alert-card mb-4 border-amber-200 bg-amber-50'>
               <div className='flex items-start gap-3'>
-                <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' />
+                <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='mt-0.5 h-5 w-5 shrink-0' />
                 <div className='flex-1'>
                   <p className='font-extrabold text-amber-950'>Есть незавершённый рабочий день</p>
                   <p className='mt-1 text-sm font-medium text-amber-900'>
@@ -3780,7 +3796,7 @@ export function EmployeeTodayClient({
               role='alert'
               className='employee-material-toast fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-[488px] items-start gap-2.5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-extrabold leading-snug text-red-900 shadow-2xl ring-1 ring-red-200'
             >
-              <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-red-700' />
+              <PremiumDangerTriangleIcon color='#b42318' secondaryColor='#f4aaa5' secondaryOpacity={0.78} className='mt-0.5 h-5 w-5 shrink-0' />
               <span className='min-w-0 flex-1'>{error}</span>
               <button
                 type='button'
@@ -3796,7 +3812,7 @@ export function EmployeeTodayClient({
           {message && (
             <div className='employee-material-toast fixed inset-x-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 mx-auto flex max-w-[488px] items-center gap-2.5 rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-slate-950 shadow-2xl ring-1 ring-green-200'>
               <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-50 text-green-700 ring-1 ring-green-100'>
-                <CheckCircle2 className='h-4 w-4' />
+                <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' />
               </span>
               <span className='min-w-0 flex-1'>{message}</span>
             </div>
@@ -3961,7 +3977,7 @@ export function EmployeeTodayClient({
           )}
 
           {bulkScheduleConfirmOpen && (
-            <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'>
+            <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Проверка графика'>
               <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setBulkScheduleConfirmOpen(false)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
@@ -4038,7 +4054,7 @@ export function EmployeeTodayClient({
                   </p>
                   <div className='flex items-start gap-3'>
                     <span className='employee-material-heading-icon employee-material-accent-icon mt-0.5 text-primary'>
-                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-[22px] w-[22px]' />
+                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-8 w-8' />
                     </span>
                     <div className='min-w-0'>
                       <h2 className='text-xl font-black leading-tight text-slate-950'>Рабочий день не начат</h2>
@@ -4065,7 +4081,7 @@ export function EmployeeTodayClient({
               {activeWorkDay && (
                 <div className='employee-material-status-strip flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold text-green-900'>
                   <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-green-700 ring-1 ring-green-100'>
-                    <CheckCircle2 className='h-4 w-4' />
+                    <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-5 w-5' />
                   </span>
                   <span className='min-w-0 truncate'>Рабочий день · {workDay?.shiftLabel} · {activeElapsedLabel}</span>
                 </div>
@@ -4076,14 +4092,21 @@ export function EmployeeTodayClient({
                     {(showAllRequiredIssues ? requiredIssuesForBanner : requiredIssuesForBanner.slice(0, 1)).map((issue) => {
                       const issueView = workdayIssueView(issue);
                       return (
-                        <Link key={issue.id} href={`/employee/issues/${issue.id}`} className='flex items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm transition hover:bg-amber-100/70'>
-                          <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><AlertTriangle className='h-5 w-5' /></span>
+                        <Link
+                          key={issue.id}
+                          href={`/employee/issues/${issue.id}`}
+                          aria-busy={openingDetailHref === `/employee/issues/${issue.id}`}
+                          onClick={() => setOpeningDetailHref(`/employee/issues/${issue.id}`)}
+                          className={cn('flex items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm transition hover:bg-amber-100/70', openingDetailHref && 'pointer-events-none')}
+                        >
+                          <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
                           <span className='min-w-0 flex-1'>
                             <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить</span>
                             <span className='block text-sm font-black leading-tight'>{issueView.summaryTitle}</span>
                             {issueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{issueView.summaryMeta}</span>}
                           </span>
-                          <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span><ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
+                          <span className='shrink-0 text-xs font-extrabold text-amber-800'>{openingDetailHref === `/employee/issues/${issue.id}` ? 'Открываем…' : 'Открыть'}</span>
+                          {openingDetailHref === `/employee/issues/${issue.id}` ? <RefreshCw className='h-4 w-4 shrink-0 animate-spin text-amber-700' /> : <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />}
                         </Link>
                       );
                     })}
@@ -4102,14 +4125,20 @@ export function EmployeeTodayClient({
               )}
 
               {primaryPaymentCheck && primaryPaymentCheckView && (
-                <Link href={`/employee/payment-checks/${primaryPaymentCheck.id}`} className='flex items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm'>
-                  <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><ReceiptText className='h-5 w-5' /></span>
+                <Link
+                  href={`/employee/payment-checks/${primaryPaymentCheck.id}`}
+                  aria-busy={openingDetailHref === `/employee/payment-checks/${primaryPaymentCheck.id}`}
+                  onClick={() => setOpeningDetailHref(`/employee/payment-checks/${primaryPaymentCheck.id}`)}
+                  className={cn('flex items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm', openingDetailHref && 'pointer-events-none')}
+                >
+                  <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
                   <span className='min-w-0 flex-1'>
                     <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно проверить{paymentChecksState.length > 1 ? ` · ${paymentChecksState.length}` : ''}</span>
                     <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryPaymentCheckView.title}</span>
                     <span className='mt-1 block text-xs font-extrabold text-slate-600'>{primaryPaymentCheckView.meta}</span>
                   </span>
-                  <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span><ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
+                  <span className='shrink-0 text-xs font-extrabold text-amber-800'>{openingDetailHref === `/employee/payment-checks/${primaryPaymentCheck.id}` ? 'Открываем…' : 'Открыть'}</span>
+                  {openingDetailHref === `/employee/payment-checks/${primaryPaymentCheck.id}` ? <RefreshCw className='h-4 w-4 shrink-0 animate-spin text-amber-700' /> : <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />}
                 </Link>
               )}
 
@@ -4157,7 +4186,7 @@ export function EmployeeTodayClient({
                 <Card className='space-y-3 border-green-100 bg-white p-4'>
                   <div className='flex items-start gap-3'>
                     <span className='employee-material-heading-icon employee-material-accent-icon h-11 w-11 shrink-0 rounded-xl text-green-700'>
-                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-[22px] w-[22px]' />
+                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-8 w-8' />
                     </span>
                     <div className='min-w-0'>
                       <h2 className='text-lg font-black leading-tight text-slate-950'>Отметка рабочего дня</h2>
@@ -4179,8 +4208,8 @@ export function EmployeeTodayClient({
 
               {isCompleted && (
                 <Card className='flex items-center gap-3 p-3.5'>
-                  <span className='employee-material-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-green-700'>
-                    <Check className='h-5 w-5' />
+                  <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-green-700'>
+                    <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-7 w-7' />
                   </span>
                   <div className='min-w-0'>
                     <p className='text-sm font-black text-slate-950'>Рабочий день завершён</p>
@@ -4200,22 +4229,19 @@ export function EmployeeTodayClient({
                         {activeHandoverTask || actionableShiftControlTask ? 'Сейчас нужно' : 'Следующая проверка'}
                       </h2>
                       <p className='mt-0.5 text-xs font-bold text-slate-500'>
-                        {activeHandoverTask ? `Сдача смены: шаг ${handoverStep + 1} из ${handoverSteps.length}` : remainingTasksLabel(remainingShiftControlCount, primaryShiftControlTask?.category)}
+                        {activeHandoverTask ? `Сдача смены · шаг ${handoverStep + 1} из ${handoverSteps.length}` : remainingTasksLabel(remainingShiftControlCount)}
                       </p>
                     </div>
                   </div>
 
                   {activeHandoverTask ? null : (
                     <div className={cn('employee-material-focus rounded-2xl border-l-4 px-3.5 py-3 ring-1', actionableShiftControlTask ? 'employee-material-focus-current border-green-500 bg-white ring-green-200 shadow-sm' : 'employee-material-focus-upcoming border-transparent bg-slate-50 ring-slate-200')}>
-                      <p className={cn('text-xs font-extrabold uppercase', actionableShiftControlTask ? 'employee-material-current-label text-green-700' : 'text-slate-500')}>
-                        {actionableShiftControlTask ? 'Текущий шаг' : 'Следующая проверка'}
-                      </p>
-                      <div className='mt-1 flex items-center gap-2'>
+                      <div className='flex items-center gap-2'>
                         {primaryShiftControlTask && (() => {
                           const Icon = shiftTaskIcon(primaryShiftControlTask);
                           return (
                             <span className={cn('employee-material-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1', shiftTaskIconClass(primaryShiftControlTask.category))}>
-                              <Icon className='h-6 w-6' />
+                              <Icon className='h-8 w-8' />
                             </span>
                           );
                         })()}
@@ -4224,16 +4250,8 @@ export function EmployeeTodayClient({
                         </p>
                       </div>
                       {primaryShiftControlTask && (
-                        <div className='mt-2 flex flex-wrap items-center gap-2'>
-                          <span className='text-xs font-bold text-slate-500'>
-                            {shiftTaskStatusLabel(shiftTaskStatus(primaryShiftControlTask, displayNow))}
-                          </span>
-                          <span className='text-xs font-bold text-slate-500'>
-                            {plannedTimeLabel(primaryShiftControlTask.plannedTimeMinutes)}
-                          </span>
-                          {!actionableShiftControlTask && (
-                            <span className='text-xs font-bold text-slate-500'>{timeUntilLabel(primaryShiftControlTask.plannedTimeMinutes, displayNow)}</span>
-                          )}
+                        <div className='mt-2 flex items-center'>
+                          <span className='text-xs font-bold text-slate-500'>{primaryTaskTimingLabel(primaryShiftControlTask, displayNow)}</span>
                         </div>
                       )}
                       {actionableShiftControlTask && renderShiftTaskAction(actionableShiftControlTask, true)}
@@ -4261,7 +4279,7 @@ export function EmployeeTodayClient({
                       return (
                         <div key={task.id} className={cn('flex gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-slate-600 ring-1 ring-slate-200/80', uiStatus === 'done' && 'opacity-75')}>
                           <div className={cn('employee-material-icon mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', shiftTaskIconClass(task.category))}>
-                            {uiStatus === 'done' ? <CheckCircle2 className='h-4 w-4' /> : <Icon className='h-4 w-4' />}
+                            {uiStatus === 'done' ? <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /> : <Icon className='h-4 w-4' />}
                           </div>
                           <div className='min-w-0 flex-1'>
                             <div className='flex items-start justify-between gap-2'>
@@ -4298,7 +4316,7 @@ export function EmployeeTodayClient({
                       </p>
                     </div>
                     <span className='employee-material-heading-icon employee-material-accent-icon h-11 w-11 shrink-0'>
-                      <PremiumSafeIcon color='#237d18' secondaryColor='#9cde8c' secondaryOpacity={1} className='h-7 w-7' />
+                      <DepositSafeGlyph />
                     </span>
                   </div>
 
@@ -4402,12 +4420,10 @@ export function EmployeeTodayClient({
                           </div>
                           <Badge
                             className={cn(
-                              'shrink-0 px-2 py-0.5 text-[11px] ring-1',
+                              'employee-material-status shrink-0 px-2 py-0.5 text-[11px]',
                               operation.status === 'posted_1c_pair' || operation.status === 'resolved_manual'
-                                ? 'bg-emerald-50 text-emerald-800 ring-emerald-200'
-                                : operation.status === 'one_c_error'
-                                  ? 'bg-amber-50 text-amber-800 ring-amber-200'
-                                  : 'bg-amber-50 text-amber-800 ring-amber-200',
+                                ? 'employee-material-status-green'
+                                : 'employee-material-status-amber',
                             )}
                           >
                             {operation.status === 'posted_1c_pair'
@@ -4516,8 +4532,8 @@ export function EmployeeTodayClient({
                 <>
                   {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && !bulkScheduleMode && (
                     <Card className='employee-material-alert-card flex items-center gap-2.5 border-amber-200 bg-amber-50 p-2'>
-                        <span className='employee-material-heading-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-amber-700'>
-                          <AlertTriangle className='h-5 w-5' />
+                        <span className='employee-material-heading-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-amber-700'>
+                          <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' />
                         </span>
                         <div className='min-w-0 flex-1'>
                           <p className='text-sm font-extrabold text-amber-950'>Осталось выбрать {incompleteScheduleDates.length} дн.</p>
@@ -4670,7 +4686,7 @@ export function EmployeeTodayClient({
                               ? isOutsideMonth
                                 ? ''
                                 : bulkEligible
-                                  ? (bulkWorking ? 'Работаю' : 'Выходной')
+                                  ? (bulkWorking ? 'Раб.' : 'Вых.')
                                   : ownVacation
                                     ? 'Отп.'
                                   : isLockedMissing
@@ -4696,7 +4712,7 @@ export function EmployeeTodayClient({
                     })}
                   </div>
 
-                  <div className='flex flex-nowrap items-center justify-between gap-1 px-0.5 text-[10px] font-extrabold text-slate-600'>
+                  <div className='flex flex-nowrap items-center justify-center gap-3 px-0.5 text-[10px] font-extrabold text-slate-600'>
                     <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#d9f1dc] ring-1 ring-[#9ed1a7]' />Работаю</span>
                     <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#dce2df] ring-1 ring-[#aebbb5]' />Выходной</span>
                     <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#ddd5ea] ring-1 ring-[#aa9fbd]' />Отпуск</span>

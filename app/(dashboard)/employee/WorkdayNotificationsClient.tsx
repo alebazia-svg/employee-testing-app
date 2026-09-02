@@ -2,8 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { BellIcon as PremiumBellIcon } from '@solar-icons/react/bold-duotone';
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, MessageCircle, ReceiptText, X } from 'lucide-react';
+import {
+  BellIcon as PremiumBellIcon,
+  BillListIcon as PremiumBillListIcon,
+  ChatRoundDotsIcon as PremiumChatIcon,
+  CheckCircleIcon as PremiumCheckCircleIcon,
+  ClockCircleIcon as PremiumClockIcon,
+  DangerTriangleIcon as PremiumDangerTriangleIcon,
+} from '@solar-icons/react/bold-duotone';
+import { ChevronRight, X } from 'lucide-react';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
 
 type WorkdayNotification = {
@@ -20,23 +27,23 @@ type WorkdayNotification = {
 
 function NotificationMarker({ notification }: { notification: WorkdayNotification }) {
   if (notification.kind.endsWith('_reply')) {
-    return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><MessageCircle className='h-4 w-4' /></span>;
+    return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><PremiumChatIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /></span>;
   }
   if (notification.kind === 'workday_close_exception_decision') {
     const rejected = notification.title.includes('не согласовано');
     return rejected
-      ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-4 w-4' /></span>
-      : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><CheckCircle2 className='h-4 w-4' /></span>;
+      ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
+      : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /></span>;
   }
   if (['issue_detected', 'issue_reminder', 'terminal_fiscal_review'].includes(notification.kind)) {
     return notification.kind === 'terminal_fiscal_review'
-      ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><ReceiptText className='h-4 w-4' /></span>
-      : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><AlertTriangle className='h-4 w-4' /></span>;
+      ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
+      : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
   }
   if (['planned', 'overdue', 'overdue_repeat'].includes(notification.kind)) {
-    return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><Clock3 className='h-4 w-4' /></span>;
+    return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumClockIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
   }
-  return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><Clock3 className='h-4 w-4' /></span>;
+  return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><PremiumClockIcon color='#455158' secondaryColor='#b9c2bf' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
 }
 
 function urlBase64ToUint8Array(value: string) {
@@ -121,12 +128,6 @@ export function WorkdayNotificationsClient() {
     return () => window.clearInterval(timer);
   }, [connectPush, refresh]);
 
-  useEffect(() => {
-    if (!open) return;
-    const closeTimer = window.setTimeout(() => setOpen(false), 10_000);
-    return () => window.clearTimeout(closeTimer);
-  }, [open]);
-
   async function dismiss(notification: WorkdayNotification) {
     const threadKey = workdayNotificationThreadKey(notification);
     setNotifications((current) => {
@@ -142,7 +143,7 @@ export function WorkdayNotificationsClient() {
   }
 
   async function openNotification(notification: WorkdayNotification) {
-    await dismiss(notification);
+    void dismiss(notification);
     setOpen(false);
     router.push(notification.href || '/employee');
   }
@@ -152,7 +153,7 @@ export function WorkdayNotificationsClient() {
       <button
         type='button'
         onClick={() => setOpen((current) => !current)}
-        className='employee-material-header-action relative flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white ring-1 ring-white/10 hover:bg-white/[0.12]'
+        className='employee-material-header-action relative flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.08] text-white ring-1 ring-white/10 hover:bg-white/[0.12]'
         aria-label='Уведомления'
         aria-expanded={open}
       >
@@ -166,7 +167,9 @@ export function WorkdayNotificationsClient() {
       </button>
 
       {open && (
-        <div className='employee-material-popover fixed inset-x-4 top-[6.5rem] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-80'>
+        <>
+          <button type='button' className='fixed inset-0 z-40 cursor-default' aria-label='Закрыть панель уведомлений' onClick={() => setOpen(false)} />
+          <div role='dialog' aria-label='Уведомления' className='employee-material-popover fixed inset-x-4 top-[6.5rem] z-50 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-80'>
           <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3'>
             <p className='text-sm font-black'>Уведомления</p>
             <button type='button' onClick={() => setOpen(false)} className='rounded-md p-1 text-slate-500' aria-label='Закрыть уведомления'><X className='h-4 w-4' /></button>
@@ -198,7 +201,8 @@ export function WorkdayNotificationsClient() {
               ))}
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

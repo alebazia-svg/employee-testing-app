@@ -597,10 +597,10 @@ select {
 .employee-material-status-dot-slate { background: #87949a; }
 
 .employee-material-heading-icon {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  border-radius: 14px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 16px;
 }
 
 .employee-material-accent-icon {
