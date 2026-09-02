@@ -1263,11 +1263,12 @@ export function EmployeeTodayClient({
 
   useEffect(() => {
     const hasActiveWorkDay = Boolean(workDay && workDay.status !== 'completed' && !workDay.endedAt);
-    if (activeTab !== 'day' || !hasActiveWorkDay) return;
+    const needsCurrentTime = hasActiveWorkDay || (!workDay && !unfinished);
+    if (activeTab !== 'day' || !needsCurrentTime) return;
     setNow(new Date());
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
-  }, [activeTab, workDay]);
+  }, [activeTab, unfinished, workDay]);
 
   useEffect(() => {
     if (!message) return;
