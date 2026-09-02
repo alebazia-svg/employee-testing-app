@@ -23,6 +23,7 @@ export function workdayIssueView(value: { title: string; detail: string; sourceD
   const expectedCreditKopecks = integer(source.expectedCreditKopecks);
   const amount = amountKopecks === null ? '' : `${(amountKopecks / 100).toLocaleString('ru-RU')} ₽`;
   const isCreditRealization = value.ruleKey === 'credit_realization_mismatch';
+  const bannerTitle = isCreditRealization ? 'Кредитный чек' : value.title;
   const paymentAmount = paymentAmountKopecks === null ? '' : `${(paymentAmountKopecks / 100).toLocaleString('ru-RU')} ₽`;
   const expectedCredit = expectedCreditKopecks === null ? '' : `${(expectedCreditKopecks / 100).toLocaleString('ru-RU')} ₽`;
   const exactPaymentSuffix = [paymentAmount && `${paymentAmount} первоначальный взнос`, expectedCredit && `${expectedCredit} в кредит`].filter(Boolean).join(', ');
@@ -57,6 +58,7 @@ export function workdayIssueView(value: { title: string; detail: string; sourceD
     paymentDocumentNumber,
     paymentAmount,
     expectedCredit,
+    bannerTitle,
     summaryTitle: isCreditRealization ? 'Чек по кредитной продаже' : value.title,
     summaryMeta: [documentNumber, amount].filter(Boolean).join(' · '),
     notificationBody: isCreditRealization && documentNumber

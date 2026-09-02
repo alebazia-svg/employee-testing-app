@@ -1139,20 +1139,20 @@ function ColleagueGroup({
   const dotClass = tone === 'green' ? 'employee-material-status-dot-green' : tone === 'amber' ? 'employee-material-status-dot-amber' : 'employee-material-status-dot-slate';
 
   return (
-    <section className={cn('employee-material-subcard rounded-lg bg-white/90 p-2.5 ring-1 ring-slate-200/80', `employee-material-colleague-group-${tone}`)}>
-      <div className='mb-1.5 flex items-center justify-between gap-3'>
+    <section className={cn('employee-material-subcard rounded-lg bg-white/90 p-2 ring-1 ring-slate-200/80', `employee-material-colleague-group-${tone}`)}>
+      <div className={cn('flex items-center justify-between gap-3', people.length > 0 && 'mb-1.5')}>
         <div className='flex items-center gap-2'>
           <span className={cn('employee-material-status-dot', dotClass)} />
           <h3 className='text-sm font-extrabold text-slate-950'>{title}</h3>
         </div>
-        <span className='text-xs font-extrabold text-slate-400'>{people.length}</span>
+        <span className='text-xs font-extrabold text-slate-400'>{people.length > 0 ? people.length : emptyLabel}</span>
       </div>
       {people.length ? (
         <div className='grid gap-1.5'>
           {people.map((person) => {
             const personDetail = detail?.(person);
             return (
-              <div key={person.id} className='employee-material-person flex min-h-11 items-center rounded-lg bg-slate-50 px-3 py-2'>
+              <div key={person.id} className='employee-material-person flex min-h-10 items-center rounded-lg bg-slate-50 px-2.5 py-1.5'>
                 <span className='flex min-w-0 flex-1 flex-col'>
                   <span className='truncate text-sm font-extrabold text-slate-900'>{displayName(person)}</span>
                   {personDetail && <span className='mt-0.5 truncate text-[11px] font-semibold text-slate-500'>{personDetail}</span>}
@@ -1161,9 +1161,7 @@ function ColleagueGroup({
             );
           })}
         </div>
-      ) : (
-        <p className='text-sm font-medium text-slate-500'>{emptyLabel}</p>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -3280,8 +3278,8 @@ export function EmployeeTodayClient({
       <div className='employee-material-focus employee-material-focus-current employee-material-form rounded-xl border-l-[5px] p-3 ring-1'>
         <div className='mb-3 flex items-start justify-between gap-3'>
           <div className='flex items-start gap-2'>
-            <span className='mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
-              <HandoverIcon className='h-5 w-5' />
+            <span className='mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
+              <HandoverIcon className='h-[26px] w-[26px]' />
             </span>
             <div>
               <p className='text-xs font-extrabold uppercase text-green-700'>{sectionTitle}</p>
@@ -4088,12 +4086,12 @@ export function EmployeeTodayClient({
                         <a
                           key={issue.id}
                           href={`/employee/issues/${issue.id}`}
-                          className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm transition hover:bg-amber-100/70'
+                          className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm transition hover:bg-amber-100/70'
                         >
                           <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
                           <span className='min-w-0 flex-1'>
                             <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить</span>
-                            <span className='block text-sm font-black leading-tight'>{issueView.summaryTitle}</span>
+                            <span className='block text-sm font-black leading-tight'>{issueView.bannerTitle}</span>
                             {issueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{issueView.summaryMeta}</span>}
                           </span>
                           <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span>
@@ -4118,7 +4116,7 @@ export function EmployeeTodayClient({
               {primaryPaymentCheck && primaryPaymentCheckView && (
                 <a
                   href={`/employee/payment-checks/${primaryPaymentCheck.id}`}
-                  className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm'
+                  className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'
                 >
                   <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
                   <span className='min-w-0 flex-1'>
@@ -4203,9 +4201,6 @@ export function EmployeeTodayClient({
                   <div className='min-w-0'>
                     <p className='text-sm font-black text-slate-950'>Рабочий день завершён</p>
                     {kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : null}
-                    <p className='mt-0.5 text-xs font-bold text-slate-500'>
-                      {formatTime(workDay?.startedAt)}–{formatTime(workDay?.endedAt)} · {elapsedLabel}
-                    </p>
                   </div>
                 </Card>
               )}
@@ -4464,7 +4459,7 @@ export function EmployeeTodayClient({
                   </span>
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
                 </div>
-                <ColleagueGroup title='Уже начали смену' people={workingColleagues} tone='green' emptyLabel='Никто из коллег пока не начал смену' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
+                <ColleagueGroup title='Сейчас работают' people={workingColleagues} tone='green' emptyLabel='Никто' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
                 {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {scheduledColleagues.length > 0 && <ColleagueGroup title='Ещё не начали смену' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {vacationColleagues.length > 0 && <ColleagueGroup title='В отпуске' people={vacationColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={(person) => {

@@ -18,7 +18,7 @@ export function terminalFiscalEmployeeReviewSummary(input: {
   amountKopecks: number;
 }) {
   return {
-    title: `Пробейте чек на ${formatKopecks(input.amountKopecks)}`,
+    title: 'Пробейте чек',
     meta: `${moscowTimeFormatter.format(new Date(input.bankOperationAt))} · ${formatKopecks(input.amountKopecks)}`,
   };
 }
