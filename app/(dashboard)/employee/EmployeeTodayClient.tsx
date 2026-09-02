@@ -32,7 +32,6 @@ import {
   ScanQrCode,
   X,
 } from 'lucide-react';
-import { BrandBlock } from '@/components/BrandBlock';
 import { LogoutButton } from '@/components/LogoutButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -3674,27 +3673,29 @@ export function EmployeeTodayClient({
         </div>
       )}
       <div className='employee-material-shell relative mx-auto flex min-h-screen w-full max-w-[520px] flex-col bg-[#f7faf8] shadow-[0_0_70px_rgba(0,0,0,0.24)] ring-1 ring-white/10 md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
-        <header className='employee-material-header px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))]'>
-          <div className='flex items-center justify-between gap-3'>
-            <div className='w-[164px] shrink-0'>
-              <BrandBlock size='employee' />
-              <p className='-mt-0.5 whitespace-nowrap text-center text-[10px] font-extrabold uppercase tracking-[0.03em] text-[#687578]'>Портал для сотрудников</p>
-            </div>
-            <div className='flex items-center gap-2'>
-              <WorkdayNotificationsClient />
-              <LogoutButton iconOnly iconStyle='duotone' title='Выйти' className='employee-material-header-action h-10 w-10 bg-white/[0.08] px-0 text-white ring-1 ring-white/10 hover:bg-white/[0.12]' />
-            </div>
-          </div>
-
-          <div className='mt-3 grid grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2.5'>
+        <header className='employee-material-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]'>
+          <div className='employee-material-header-profile grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2.5'>
             <div className='employee-material-profile-avatar flex h-11 w-11 items-center justify-center' aria-hidden='true'>
               <EmployeeProfileGlyph />
             </div>
             <div className='employee-material-profile-copy min-w-0'>
               <p className='truncate text-sm font-extrabold leading-tight text-[#273137]'>{user.name}</p>
-              <p className='mt-1 truncate text-[11px] font-bold leading-none text-[#758084]'>{departmentLabel(user.department)}</p>
+              <p className='employee-material-profile-meta mt-1 truncate text-[11px] font-bold leading-none text-[#758084]'>
+                <span>{departmentLabel(user.department)}</span>
+                <span aria-hidden='true'> · </span>
+                <span>{formatDateLabel(today)}</span>
+              </p>
             </div>
-            <p className='shrink-0 text-[11px] font-bold leading-none text-[#758084]'>{formatDateLabel(today)}</p>
+          </div>
+          <div className='employee-material-header-actions flex items-center gap-2'>
+            <WorkdayNotificationsClient />
+            <LogoutButton
+              iconOnly
+              iconStyle='duotone'
+              title='Выйти'
+              confirmBeforeLogout
+              className='employee-material-header-action h-10 w-10 px-0 text-white'
+            />
           </div>
         </header>
 
@@ -4243,10 +4244,11 @@ export function EmployeeTodayClient({
                   {!activeHandoverTask && otherShiftControlTaskCount > 0 && (
                     <Button
                       type='button'
-                      className='employee-material-primary-action h-10 w-full text-xs font-extrabold'
+                      className='employee-material-secondary-action h-10 w-full gap-2 text-xs font-extrabold'
                       onClick={() => setShowFullShiftPlan((current) => !current)}
                     >
-                      {showFullShiftPlan ? 'Скрыть план смены' : `Показать остальные задачи (${otherShiftControlTaskCount})`}
+                      {showFullShiftPlan ? 'Скрыть задачи' : `Остальные задачи (${otherShiftControlTaskCount})`}
+                      <ChevronDown className={cn('h-4 w-4 transition-transform', showFullShiftPlan && 'rotate-180')} aria-hidden='true' />
                     </Button>
                   )}
 
