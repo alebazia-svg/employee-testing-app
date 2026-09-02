@@ -14,7 +14,6 @@ import {
   Home2Icon as PremiumHomeIcon,
   UserRoundedIcon as PremiumUserIcon,
 } from '@solar-icons/react/bold-duotone';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
@@ -1202,7 +1201,6 @@ export function EmployeeTodayClient({
   const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
   const [requiredIssuesState, setRequiredIssuesState] = useState(requiredIssues);
   const [showAllRequiredIssues, setShowAllRequiredIssues] = useState(false);
-  const [openingDetailHref, setOpeningDetailHref] = useState<string | null>(null);
   const [paymentChecksState, setPaymentChecksState] = useState(paymentChecks);
   const [closeExceptionRequestState, setCloseExceptionRequestState] = useState(closeExceptionRequest);
   const [cashEncashmentExceptionRequestState, setCashEncashmentExceptionRequestState] = useState(cashEncashmentExceptionRequest);
@@ -1309,11 +1307,6 @@ export function EmployeeTodayClient({
     }, 4000);
     return () => window.clearTimeout(timer);
   }, [message]);
-
-  useEffect(() => {
-    for (const issue of requiredIssuesState) router.prefetch(`/employee/issues/${issue.id}`);
-    for (const review of paymentChecksState) router.prefetch(`/employee/payment-checks/${review.id}`);
-  }, [paymentChecksState, requiredIssuesState, router]);
 
   const dates = useMemo(() => buildDateRange(today, 31), [today]);
   const previewDates = dates.slice(0, 7);
@@ -4092,11 +4085,9 @@ export function EmployeeTodayClient({
                     {(showAllRequiredIssues ? requiredIssuesForBanner : requiredIssuesForBanner.slice(0, 1)).map((issue) => {
                       const issueView = workdayIssueView(issue);
                       return (
-                        <Link
+                        <a
                           key={issue.id}
                           href={`/employee/issues/${issue.id}`}
-                          aria-busy={openingDetailHref === `/employee/issues/${issue.id}`}
-                          onClick={() => setOpeningDetailHref(`/employee/issues/${issue.id}`)}
                           className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm transition hover:bg-amber-100/70'
                         >
                           <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
@@ -4105,9 +4096,9 @@ export function EmployeeTodayClient({
                             <span className='block text-sm font-black leading-tight'>{issueView.summaryTitle}</span>
                             {issueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{issueView.summaryMeta}</span>}
                           </span>
-                          <span className='shrink-0 text-xs font-extrabold text-amber-800'>{openingDetailHref === `/employee/issues/${issue.id}` ? 'Открываем…' : 'Открыть'}</span>
-                          {openingDetailHref === `/employee/issues/${issue.id}` ? <RefreshCw className='h-4 w-4 shrink-0 animate-spin text-amber-700' /> : <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />}
-                        </Link>
+                          <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span>
+                          <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
+                        </a>
                       );
                     })}
                     {requiredIssuesForBanner.length > 1 && (
@@ -4125,10 +4116,8 @@ export function EmployeeTodayClient({
               )}
 
               {primaryPaymentCheck && primaryPaymentCheckView && (
-                <Link
+                <a
                   href={`/employee/payment-checks/${primaryPaymentCheck.id}`}
-                  aria-busy={openingDetailHref === `/employee/payment-checks/${primaryPaymentCheck.id}`}
-                  onClick={() => setOpeningDetailHref(`/employee/payment-checks/${primaryPaymentCheck.id}`)}
                   className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-slate-950 shadow-sm'
                 >
                   <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
@@ -4137,9 +4126,9 @@ export function EmployeeTodayClient({
                     <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryPaymentCheckView.title}</span>
                     <span className='mt-1 block text-xs font-extrabold text-slate-600'>{primaryPaymentCheckView.meta}</span>
                   </span>
-                  <span className='shrink-0 text-xs font-extrabold text-amber-800'>{openingDetailHref === `/employee/payment-checks/${primaryPaymentCheck.id}` ? 'Открываем…' : 'Открыть'}</span>
-                  {openingDetailHref === `/employee/payment-checks/${primaryPaymentCheck.id}` ? <RefreshCw className='h-4 w-4 shrink-0 animate-spin text-amber-700' /> : <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />}
-                </Link>
+                  <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span>
+                  <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
+                </a>
               )}
 
               {(activeWorkDay || unfinished) && showCloseResolution && (
