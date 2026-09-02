@@ -41,7 +41,7 @@ import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { colleaguePresence } from '@/lib/workday-presence';
 import { expectedColleagueShiftCode } from '@/lib/workday-colleague-shift';
-import { scheduleCoverage, schedulePersonLabel, scheduleWorkingCountAfterChange, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
+import { scheduleCoverage, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
 import { buildBulkScheduleChanges, buildBulkScheduleEditChanges, bulkScheduleCounts, type BulkScheduleStatus } from '@/lib/work-schedule-bulk';
 import {
   cashOutboxFormData,
@@ -702,6 +702,13 @@ function departmentLabel(department: string | null | undefined) {
   return 'Розница';
 }
 
+function greetingForMoscowTime(now: Date) {
+  const minutes = getMoscowMinutes(now);
+  if (minutes < 12 * 60) return 'Доброе утро';
+  if (minutes < 18 * 60) return 'Добрый день';
+  return 'Добрый вечер';
+}
+
 function initials(name: string) {
   return name
     .split(' ')
@@ -1163,7 +1170,6 @@ export function EmployeeTodayClient({
   const [comment, setComment] = useState('');
   const [staleCloseReason, setStaleCloseReason] = useState('');
   const [staleCloseComment, setStaleCloseComment] = useState('');
-  const [showInactiveColleagues, setShowInactiveColleagues] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('month');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
@@ -1508,6 +1514,9 @@ export function EmployeeTodayClient({
   const incompleteScheduleDates = calendarDays.filter((cell) => (
     cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date)
   ));
+  const upcomingOwnVacation = ownVacationsState
+    .filter((vacation) => vacation.status === 'active' && vacation.dateTo >= today)
+    .sort((left, right) => left.dateFrom.localeCompare(right.dateFrom))[0] ?? null;
   const bulkMissingDates = incompleteScheduleDates.map((cell) => cell.date);
   const bulkExistingDates = calendarDays
     .filter((cell) => cell.inMonth && cell.date >= today && ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date))
@@ -1571,7 +1580,7 @@ export function EmployeeTodayClient({
         startedWorkdays: departmentWorkdaysState.filter((entry) => entry.date === today),
       });
       const expectedShift = expectedCode ? shiftOptions.find((shift) => shift.code === expectedCode) : null;
-      return expectedShift ? `Ожидается к ${minutesToTime(expectedShift.startMinutes)}` : 'Ожидается сегодня';
+      return expectedShift ? `Начало смены — ${minutesToTime(expectedShift.startMinutes)}` : 'По графику работает сегодня';
     }
     return null;
   }
@@ -3642,6 +3651,7 @@ export function EmployeeTodayClient({
           <div className='flex items-center justify-between gap-3'>
             <div className='w-[164px] shrink-0'>
               <BrandBlock size='employee' />
+              <p className='-mt-0.5 whitespace-nowrap text-center text-[10px] font-extrabold uppercase tracking-[0.03em] text-[#687578]'>Портал для сотрудников</p>
             </div>
             <div className='flex items-center gap-2'>
               <WorkdayNotificationsClient />
@@ -3999,9 +4009,10 @@ export function EmployeeTodayClient({
                       <Clock className='h-6 w-6' />
                     </span>
                     <div className='min-w-0'>
-                      <h2 className='text-xl font-black leading-tight text-slate-950'>Начать рабочий день</h2>
+                      <p className='text-xs font-extrabold text-green-700'>{greetingForMoscowTime(displayNow)}, {schedulePersonName(user.name)}</p>
+                      <h2 className='mt-0.5 text-xl font-black leading-tight text-slate-950'>Рабочий день ещё не начат</h2>
                       <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
-                        Отсканируйте QR-код отдела на рабочем месте.
+                        Чтобы начать смену, отсканируйте QR-код отдела в магазине.
                       </p>
                     </div>
                   </div>
@@ -4012,7 +4023,7 @@ export function EmployeeTodayClient({
                     disabled={isSaving || Boolean(unfinished)}
                   >
                     <ScanLine className='mr-2 h-5 w-5' />
-                    Сканировать QR
+                    Начать рабочий день
                   </Button>
                   {unfinished && (
                     <p className='text-xs font-bold text-amber-700'>Сначала закройте предыдущий рабочий день.</p>
@@ -4380,7 +4391,7 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
-              <Card className='bg-slate-50 p-4'>
+              {workDay && <Card className='bg-slate-50 p-4'>
                 <div className='mb-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
                   <h2 className='text-base font-extrabold text-slate-950'>Детали смены</h2>
                   <Badge className={cn('max-w-full shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', factTone(displayedWorkDayStatus))}>
@@ -4403,33 +4414,22 @@ export function EmployeeTodayClient({
                     Изменить смену
                   </button>
                 )}
-              </Card>
+              </Card>}
 
               <Card className='space-y-2.5 p-4'>
                 <div className='flex items-center gap-2'>
                   <span className='employee-material-heading-icon'><Users className='h-5 w-5 text-primary' /></span>
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
                 </div>
-                <ColleagueGroup title='Работают сейчас' people={workingColleagues} tone='green' emptyLabel='Сейчас никто не работает' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
+                <ColleagueGroup title='Уже начали смену' people={workingColleagues} tone='green' emptyLabel='Никто из коллег пока не начал смену' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
                 {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
-                {scheduledColleagues.length > 0 && <ColleagueGroup title='Ожидаются сегодня' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
+                {scheduledColleagues.length > 0 && <ColleagueGroup title='Ещё не начали смену' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {vacationColleagues.length > 0 && <ColleagueGroup title='В отпуске' people={vacationColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={(person) => {
                   const vacation = departmentVacationForDate(today, person.id);
                   return vacation ? `До ${formatDateLabel(vacation.dateTo)}` : null;
                 }} />}
-                {offColleagues.length + missingColleagues.length > 0 && (
-                  <Button
-                    type='button'
-                    className='employee-material-secondary-action h-10 w-full gap-2 text-xs font-extrabold'
-                    onClick={() => setShowInactiveColleagues((current) => !current)}
-                    aria-expanded={showInactiveColleagues}
-                  >
-                    {showInactiveColleagues ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
-                    {showInactiveColleagues ? 'Скрыть неработающих' : `Не работают сегодня · ${offColleagues.length + missingColleagues.length}`}
-                  </Button>
-                )}
-                {showInactiveColleagues && offColleagues.length > 0 && <ColleagueGroup title='Выходной' people={offColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} />}
-                {showInactiveColleagues && missingColleagues.length > 0 && <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} />}
+                {offColleagues.length > 0 && <ColleagueGroup title='Сегодня выходной' people={offColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} />}
+                {missingColleagues.length > 0 && <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} />}
               </Card>
             </div>
           )}
@@ -4555,25 +4555,15 @@ export function EmployeeTodayClient({
                     </button>
                   </div>
 
-                  {scheduleMonthLoaded && !bulkScheduleMode && (
-                    <div className={cn('mx-auto grid w-full max-w-[300px] gap-2 py-0.5', incompleteScheduleDates.length === 0 ? 'grid-cols-2' : 'grid-cols-1')}>
-                      {incompleteScheduleDates.length === 0 && (
-                        <button
-                          type='button'
-                          className='employee-material-secondary-action inline-flex h-[42px] w-full items-center justify-center gap-2 rounded-xl px-2 text-xs font-extrabold leading-[1.05] text-slate-800'
-                          onClick={startBulkScheduleEdit}
-                        >
-                          <Pencil className='h-4 w-4' aria-hidden='true' />
-                          <span>Изменить<br />несколько дней</span>
-                        </button>
-                      )}
+                  {scheduleMonthLoaded && !bulkScheduleMode && incompleteScheduleDates.length === 0 && (
+                    <div className='flex justify-center py-0.5'>
                       <button
                         type='button'
-                        className={cn('employee-material-secondary-action inline-flex h-[42px] items-center justify-center gap-2 rounded-xl px-2 text-xs font-extrabold leading-[1.05] text-green-800', incompleteScheduleDates.length === 0 ? 'w-full' : 'mx-auto w-[146px]')}
-                        onClick={() => openVacationEditor(ownVacationForDate(selectedScheduleDate))}
+                        className='employee-material-secondary-action inline-flex h-[42px] min-w-[190px] items-center justify-center gap-2 rounded-xl px-4 text-xs font-extrabold text-slate-800'
+                        onClick={startBulkScheduleEdit}
                       >
-                        <CalendarDays className='h-4 w-4' aria-hidden='true' />
-                        <span>Отметить<br />отпуск</span>
+                        <Pencil className='h-4 w-4' aria-hidden='true' />
+                        <span>Изменить несколько дней</span>
                       </button>
                     </div>
                   )}
@@ -4675,6 +4665,31 @@ export function EmployeeTodayClient({
                     <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-[#ddd5ea] ring-1 ring-[#aa9fbd]' />Отпуск</span>
                     {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex items-center gap-1'><span className='h-3 w-3 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
                   </div>
+
+                  {scheduleMonthLoaded && !bulkScheduleMode && (
+                    upcomingOwnVacation ? (
+                      <button
+                        type='button'
+                        className='flex w-full items-center justify-between gap-3 rounded-xl bg-[#eee9f5] px-3 py-2.5 text-left text-[#4e4661] ring-1 ring-[#c8bdd8]'
+                        onClick={() => openVacationEditor(upcomingOwnVacation)}
+                      >
+                        <span className='flex min-w-0 items-center gap-2'>
+                          <CalendarDays className='h-4 w-4 shrink-0' aria-hidden='true' />
+                          <span className='truncate text-xs font-extrabold'>Отпуск · {formatDateLabel(upcomingOwnVacation.dateFrom)} — {formatDateLabel(upcomingOwnVacation.dateTo)}</span>
+                        </span>
+                        <span className='shrink-0 text-xs font-extrabold'>Изменить</span>
+                      </button>
+                    ) : (
+                      <button
+                        type='button'
+                        className='mx-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold text-slate-500 transition hover:text-green-700'
+                        onClick={() => openVacationEditor(null)}
+                      >
+                        <CalendarDays className='h-4 w-4' aria-hidden='true' />
+                        Отметить отпуск
+                      </button>
+                    )
+                  )}
 
                   {scheduleMonthLoaded && !bulkScheduleMode && selectedScheduleDate.startsWith(`${calendarMonth}-`) && (
                     <ScheduleDayCard date={selectedScheduleDate} selected compact />
