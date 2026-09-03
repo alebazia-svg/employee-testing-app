@@ -88,12 +88,19 @@ async function collect() {
     if (response.result?.exceptionDetails) throw new Error('TBANK_CABINET_FETCH_FAILED');
     const rows = response.result?.result?.value;
     if (!Array.isArray(rows)) throw new Error('TBANK_CABINET_RESPONSE_INVALID');
-    const operations = rows.map((row) => {
+    const completedRows = rows.filter((row) => {
+      if (['Debit', 'Credit'].includes(row.operationType)) return true;
+      // Authorization is not a completed payment. A later collection will
+      // include it if T-Business promotes it to a final Debit/Credit operation.
+      if (['DebitAuth', 'CreditAuth'].includes(row.operationType)
+        && row.transactionStatus === row.operationType) return false;
+      throw new Error('TBANK_CABINET_UNKNOWN_OPERATION');
+    });
+    const operations = completedRows.map((row) => {
       const terminalKey = TERMINALS.get(String(row.serialNumber || ''));
       const transactionDate = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(String(row.transactionDate || ''))
         ? `${row.transactionDate}+03:00` : String(row.transactionDate || '');
       if (!terminalKey || !row.operationId || !Number.isSafeInteger(row.amount) || row.amount <= 0
-        || !['Debit', 'Credit'].includes(row.operationType)
         || !['TERM_CARD', 'TERM_SBP'].includes(row.source)
         || !Number.isFinite(new Date(transactionDate).getTime())) throw new Error('TBANK_CABINET_UNKNOWN_OPERATION');
       return {
