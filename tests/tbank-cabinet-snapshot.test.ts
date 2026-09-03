@@ -13,7 +13,7 @@ const valid = {
   periodTo: '2026-09-03T17:02:00.000Z',
   complete: true,
   operations: [{
-    operationId: 'qr-operation', terminalKey: 'terminal-2', transactionDate: '2026-09-03T16:39:27+03:00',
+    operationId: 'qr-operation', rrn: '', terminalKey: 'terminal-2', transactionDate: '2026-09-03T16:39:27+03:00',
     amountKopecks: 50000, type: 'Debit', source: 'TERM_SBP',
   }],
 };
@@ -29,6 +29,20 @@ test('accepts a complete card-and-QR cabinet snapshot and produces a stable iden
   assert.equal(result.data.length, 1);
   assert.equal(result.data[0].rrn, 'cabinet:qr-operation');
   assert.equal(result.data[0].rawType, 'TERM_SBP');
+});
+
+test('preserves card RRN so switching sources does not duplicate existing card audits', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'tbank-cabinet-'));
+  const file = path.join(directory, 'current.json');
+  await writeFile(file, JSON.stringify({
+    ...valid,
+    operations: [{ ...valid.operations[0], operationId: 'card-operation', rrn: 'bank-rrn', source: 'TERM_CARD' }],
+  }));
+  const result = await loadTBankCabinetOperations({
+    path: file, terminalKey: 'terminal-2', from: '2026-09-03T13:00:00.000Z', to: '2026-09-03T14:00:00.000Z', now,
+  });
+  assert.equal(result.complete, true);
+  assert.equal(result.data[0].rrn, 'bank-rrn');
 });
 
 test('fails closed for stale or insufficient-period snapshots', async () => {

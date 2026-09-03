@@ -9,6 +9,7 @@ export const TBANK_CABINET_MAX_AGE_MS = 10 * 60 * 1000;
 
 type CabinetOperation = {
   operationId: string;
+  rrn: string;
   terminalKey: string;
   transactionDate: string;
   amountKopecks: number;
@@ -49,14 +50,17 @@ export function parseTBankCabinetSnapshot(value: unknown): CabinetSnapshot | nul
     const item = record(value);
     const transactionDate = parseDate(item?.transactionDate);
     if (!item || typeof item.operationId !== 'string' || !item.operationId.trim()
+      || typeof item.rrn !== 'string'
       || typeof item.terminalKey !== 'string' || !item.terminalKey.trim() || !transactionDate
       || !Number.isSafeInteger(item.amountKopecks) || Number(item.amountKopecks) <= 0
       || !['Debit', 'Credit'].includes(String(item.type))
-      || !['TERM_CARD', 'TERM_SBP'].includes(String(item.source))) return null;
+      || !['TERM_CARD', 'TERM_SBP'].includes(String(item.source))
+      || (item.source === 'TERM_CARD' && !item.rrn.trim())) return null;
     if (identities.has(item.operationId)) return null;
     identities.add(item.operationId);
     operations.push({
       operationId: item.operationId,
+      rrn: item.rrn,
       terminalKey: item.terminalKey,
       transactionDate: transactionDate.value,
       amountKopecks: Number(item.amountKopecks),
@@ -112,7 +116,7 @@ export async function loadTBankCabinetOperations(input: {
       })
       .map((operation) => ({
         terminalKey: operation.terminalKey,
-        rrn: `cabinet:${operation.operationId}`,
+        rrn: operation.rrn || `cabinet:${operation.operationId}`,
         transactionDate: operation.transactionDate,
         amountKopecks: operation.amountKopecks,
         type: operation.type,

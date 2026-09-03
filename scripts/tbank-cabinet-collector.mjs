@@ -44,9 +44,16 @@ async function cdpClient(webSocketDebuggerUrl) {
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
   return {
     call(method, params = {}) {
-      return new Promise((resolve) => {
+      return new Promise((resolve, reject) => {
         const requestId = ++id;
-        pending.set(requestId, resolve);
+        const timeout = setTimeout(() => {
+          pending.delete(requestId);
+          reject(new Error('TBANK_CABINET_CDP_TIMEOUT'));
+        }, 20_000);
+        pending.set(requestId, (message) => {
+          clearTimeout(timeout);
+          resolve(message);
+        });
         socket.send(JSON.stringify({ id: requestId, method, params }));
       });
     },
@@ -104,7 +111,7 @@ async function collect() {
         || !['TERM_CARD', 'TERM_SBP'].includes(row.source)
         || !Number.isFinite(new Date(transactionDate).getTime())) throw new Error('TBANK_CABINET_UNKNOWN_OPERATION');
       return {
-        operationId: String(row.operationId), terminalKey, transactionDate,
+        operationId: String(row.operationId), rrn: String(row.rrn || ''), terminalKey, transactionDate,
         amountKopecks: row.amount, type: row.operationType, source: row.source,
       };
     });

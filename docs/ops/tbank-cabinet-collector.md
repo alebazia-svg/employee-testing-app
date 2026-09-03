@@ -9,13 +9,15 @@ keeping bank access least-privilege and outside VPS.
   Наблюдатель` only. It has no accounts, payments or signing rights.
 - The browser listens only on `127.0.0.1:9333` on the owner's Mac.
 - The collector never reads or exports cookies, storage, passwords or SMS.
-- The uploaded JSON contains only operation ID, time, amount in kopecks,
+- The uploaded JSON contains only operation ID, card RRN where available, time, amount in kopecks,
   debit/credit type, card/SBP source and the mapped terminal ID.
 - Delivery uses the owner's existing SSH key and an atomic rename. The VPS does
   not receive the T-Business session.
 - Portal matching fails closed when the snapshot is older than ten minutes,
   does not cover the requested period, contains an unknown operation, or is
   otherwise incomplete.
+- A cabinet/CDP request is bounded by a 20-second timeout. A failed attempt
+  never overwrites the last valid snapshot and the LaunchAgent retries later.
 
 ## Mac runtime
 
