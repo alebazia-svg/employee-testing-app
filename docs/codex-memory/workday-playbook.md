@@ -540,11 +540,22 @@ camera behavior separately from Workday logic.
 ## Stale Unfinished Workday
 
 Employees can have an unfinished previous workday. The UI was adjusted so a
-stale day can be closed with a reason/comment instead of forcing impossible
-handover steps later.
+stale day can be closed without forcing impossible handover steps later.
 
-Future improvements may include explicit violation status, admin approval and
-discipline impact, but do not add those unless requested.
+- The main screen shows one compact card; the reason is selected in a bottom
+  sheet only after the employee chooses to close the old shift.
+- Standard reasons are one tap. A comment is required only for `Другое`.
+- The server stores a stable reason code and a neutral factual audit comment;
+  it does not automatically classify the employee's action as a violation.
+- Required old checklist tasks become `missed`, but an already open control
+  issue is not deleted or moved to another date.
+- An open issue keeps its original `originDate`, remains visible on the current
+  employee screen and creates an idempotent ADMIN inbox event with its exact
+  age. The old issue does not take over the current day's KKM handover UI.
+- Normal same-day closure still requires open mandatory issues to be resolved
+  or covered by an approved technical exception.
+- Cached clients using the previous reason labels remain accepted during the
+  PWA rollout.
 
 ## Upload Safety
 

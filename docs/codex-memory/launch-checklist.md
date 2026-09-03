@@ -14,6 +14,11 @@ or device check, `[ ]` incomplete launch gate.
   facts while system evidence stays separate.
 - [x] QR start, shift selection, current action, handover and stale-day handling
   are implemented.
+- [~] A stale previous shift now closes through a compact reason flow without
+  replaying obsolete checklist steps; open issues retain their original date,
+  remain actionable today and notify ADMIN idempotently. Verify one real stale
+  shift with one carried credit issue and one carried KKM issue on the pilot
+  device before broad rollout.
 - [x] ADMIN Workday is exception-first and separates business results from
   technical diagnostics.
 - [x] Required issues remain active independently from notification read state.
