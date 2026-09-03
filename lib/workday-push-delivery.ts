@@ -2,6 +2,18 @@ export const MAX_WORKDAY_PUSH_ATTEMPTS = 5;
 
 const RETRY_MINUTES = [1, 5, 15, 30, 60] as const;
 
+export function suppressUnreadWorkdayPush(input: {
+  targetAlreadyUnread: boolean;
+  kind: string;
+  task: { category: string; status: string; run: { status: string } } | null;
+}) {
+  const handoverReminder = input.task?.category === 'handover'
+    && input.task.status === 'pending'
+    && input.task.run.status === 'active'
+    && ['planned', 'overdue', 'overdue_repeat', 'early_finish_reminder'].includes(input.kind);
+  return input.targetAlreadyUnread && !handoverReminder;
+}
+
 export type WorkdayPushStatus =
   | 'pending'
   | 'delivered'

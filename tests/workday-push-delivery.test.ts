@@ -1,8 +1,30 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MAX_WORKDAY_PUSH_ATTEMPTS, planWorkdayPushDelivery } from '../lib/workday-push-delivery';
+import { MAX_WORKDAY_PUSH_ATTEMPTS, planWorkdayPushDelivery, suppressUnreadWorkdayPush } from '../lib/workday-push-delivery';
 
 const now = new Date('2026-08-26T09:00:00.000Z');
+
+test('scheduled handover pushes bypass unread suppression, including early finish', () => {
+  for (const kind of ['planned', 'overdue', 'overdue_repeat', 'early_finish_reminder']) {
+    const suppressed = suppressUnreadWorkdayPush({
+      targetAlreadyUnread: true, kind,
+      task: { category: 'handover', status: 'pending', run: { status: 'active' } },
+    });
+    assert.equal(suppressed, false);
+    assert.equal(plan({ targetAlreadyUnread: suppressed, deliveredCount: 1 }).status, 'delivered');
+  }
+});
+
+test('other notifications retain unread suppression', () => {
+  for (const category of ['cash', 'opening', 'credit', 'closing']) {
+    assert.equal(suppressUnreadWorkdayPush({
+      targetAlreadyUnread: true, kind: 'overdue_repeat',
+      task: { category, status: 'pending', run: { status: 'active' } },
+    }), true);
+  }
+  assert.equal(suppressUnreadWorkdayPush({ targetAlreadyUnread: true, kind: 'issue_detected', task: null }), true);
+  assert.equal(suppressUnreadWorkdayPush({ targetAlreadyUnread: false, kind: 'issue_detected', task: null }), false);
+});
 
 function plan(overrides: Partial<Parameters<typeof planWorkdayPushDelivery>[0]> = {}) {
   return planWorkdayPushDelivery({

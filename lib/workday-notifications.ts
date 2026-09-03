@@ -3,7 +3,7 @@ import 'server-only';
 import webpush from 'web-push';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { planWorkdayPushDelivery } from '@/lib/workday-push-delivery';
+import { planWorkdayPushDelivery, suppressUnreadWorkdayPush } from '@/lib/workday-push-delivery';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -349,7 +349,11 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
 
     const unreadTargets = await activeUnreadNotificationTargets(notification.userId, notification.id);
     const targetKey = notificationTargetKey(notification);
-    const targetAlreadyUnread = unreadTargets.has(targetKey);
+    const targetAlreadyUnread = suppressUnreadWorkdayPush({
+      targetAlreadyUnread: unreadTargets.has(targetKey),
+      kind: notification.kind,
+      task: notification.task,
+    });
     unreadTargets.add(targetKey);
     const badgeCount = unreadTargets.size;
     const attemptNumber = notification.attemptCount + 1;

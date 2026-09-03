@@ -6,6 +6,7 @@ import {
   reconcileActiveWorkdayNotifications,
   workdayTaskNotificationCopy,
   workdayNotificationHref,
+  scheduleTaskNotifications,
 } from '../lib/workday-notifications';
 
 const baseNotification = {
@@ -17,6 +18,31 @@ const baseNotification = {
   issue: null,
   review: null,
 };
+
+test('handover reminders stop after task completion or run closure', async () => {
+  const rows = ['planned', 'overdue', 'overdue_repeat', 'early_finish_reminder'].flatMap((kind, index) =>
+    ['pending', 'done', 'missed'].flatMap((status, state) => ['active', 'completed'].map((runStatus, runIndex) => ({
+      ...baseNotification, id: index * 10 + state * 2 + runIndex,
+      kind, fingerprint: `handover:${index}:${state}:${runIndex}`, taskId: 7,
+      task: { status, run: { status: runStatus } },
+    }))),
+  );
+  const active = await filterActiveWorkdayNotifications({} as never, rows);
+  assert.equal(active.length, 4);
+  assert.ok(active.every(row => row.task.status === 'pending' && row.task.run.status === 'active'));
+});
+
+test('ordinary handover has exactly three reminder slots, fifteen minutes apart', async () => {
+  const rows: Array<{ scheduledAt: Date }> = [];
+  const db = { workdayNotification: { upsert: async (args: { create: { scheduledAt: Date } }) => { rows.push(args.create); } } };
+  await scheduleTaskNotifications(db as never, [{
+    id: 7, userId: 2, category: 'handover', title: 'Сдать смену',
+    plannedTimeMinutes: 1080, run: { date: '2026-09-03' },
+  }]);
+  assert.deepEqual(rows.map(row => row.scheduledAt.toISOString()), [
+    '2026-09-03T15:00:00.000Z', '2026-09-03T15:15:00.000Z', '2026-09-03T15:30:00.000Z',
+  ]);
+});
 
 test('close-exception decisions disappear when the workday is completed', async () => {
   const rows = [{
