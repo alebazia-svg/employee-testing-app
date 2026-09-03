@@ -12,6 +12,9 @@ import type {
 export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 15 * 60 * 1000;
 export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_WINDOW_MS = 15 * 60 * 1000;
 const EMPLOYEE_REVIEW_REMINDER_MS = 60 * 60 * 1000;
+// Do not turn already-known historical gaps into surprise employee pushes when
+// the retail-day fallback is first deployed. Older cases remain ADMIN-only.
+const RETAIL_DAY_FALLBACK_EFFECTIVE_AT = new Date('2026-09-03T18:10:00.000Z').getTime();
 
 type CashierMapping = { userId: number; oneCCashierRef: string };
 type KkmResponsibility = {
@@ -46,6 +49,25 @@ export type TerminalFiscalGlobalCoverageContext = {
   mappings: TerminalMapping[];
   oneCChecks: OneCCheck[];
 };
+
+export function selectRetailReviewParticipants(input: {
+  operationAt: Date;
+  entries: Array<{ userId: number; startedAt: Date; endedAt: Date | null }>;
+}) {
+  const active = input.entries.filter((entry) => (
+    entry.startedAt.getTime() <= input.operationAt.getTime()
+    && (entry.endedAt === null || entry.endedAt.getTime() >= input.operationAt.getTime())
+  ));
+  const selected = active.length > 0 ? active : input.entries;
+  return {
+    participantIds: [...new Set(selected.map((entry) => entry.userId))].sort((a, b) => a - b),
+    assignmentScope: active.length > 0 ? 'retail_shift' : 'retail_day',
+  };
+}
+
+function sharedAssignment(scope: string) {
+  return scope === 'retail_shift' || scope === 'retail_day';
+}
 
 function digest(value: string) {
   return createHash('sha256').update(value).digest('hex');
@@ -482,22 +504,27 @@ export async function syncTerminalFiscalEmployeeReviews(
     let assignmentScope = 'individual';
     let attributionKey = decision.attributionKey;
     if (input.globalCoverage) {
-      const shiftEntries = await prisma.workDayEntry.findMany({
+      const dayEntries = await prisma.workDayEntry.findMany({
         where: {
+          date: operationDate ?? undefined,
           department: 'retail',
-          startedAt: { lte: operationAt },
-          OR: [{ endedAt: null }, { endedAt: { gte: operationAt } }],
+          status: { in: ['active', 'completed'] },
           user: { role: 'EMPLOYEE', isActive: true },
         },
-        select: { userId: true },
+        select: { userId: true, startedAt: true, endedAt: true },
         orderBy: { userId: 'asc' },
       });
-      participantIds = [...new Set(shiftEntries.map((entry) => entry.userId))];
+      const selection = selectRetailReviewParticipants({ operationAt, entries: dayEntries });
+      participantIds = selection.participantIds;
       if (participantIds.length === 0) {
         adminOnly += 1;
         continue;
       }
-      assignmentScope = 'retail_shift';
+      if (selection.assignmentScope === 'retail_day' && operationAt.getTime() < RETAIL_DAY_FALLBACK_EFFECTIVE_AT) {
+        adminOnly += 1;
+        continue;
+      }
+      assignmentScope = selection.assignmentScope;
       attributionKey = `retail-shift:${operationDate ?? operationAt.toISOString().slice(0, 10)}`;
     }
     const employeeId = participantIds[0];
@@ -540,7 +567,7 @@ export async function syncTerminalFiscalEmployeeReviews(
             fingerprint: `${reviewKey}:created:${userId}`,
             kind: 'terminal_fiscal_review',
             title: 'В 1С нет чека',
-            body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: assignmentScope === 'retail_shift' }),
+            body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: sharedAssignment(assignmentScope) }),
             scheduledAt: evaluatedAt,
           },
           update: {},
@@ -548,7 +575,7 @@ export async function syncTerminalFiscalEmployeeReviews(
       }
       if (mode === 'notify' && existing === null && review.status === 'open') {
         const [employee, admins] = await Promise.all([
-          assignmentScope === 'retail_shift'
+          sharedAssignment(assignmentScope)
             ? Promise.resolve(null)
             : tx.user.findUnique({ where: { id: employeeId }, select: { name: true } }),
           tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } }),
@@ -559,7 +586,7 @@ export async function syncTerminalFiscalEmployeeReviews(
             eventKey: `${reviewKey}:admin-opened`,
             type: 'terminal_fiscal_review.created',
             title: 'Чек в 1С не пробит вовремя',
-            body: `${assignmentScope === 'retail_shift' ? 'Смена Розницы' : (employee?.name ?? 'Сотрудник')} · ${terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: assignmentScope === 'retail_shift' })}`,
+            body: `${sharedAssignment(assignmentScope) ? 'Сотрудники Розницы' : (employee?.name ?? 'Сотрудник')} · ${terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: sharedAssignment(assignmentScope) })}`,
             href: `/admin/workday/payment-checks/${review.id}`,
             sourceType: 'terminal_fiscal_review',
             sourceId: review.id,
@@ -591,7 +618,7 @@ export async function syncTerminalFiscalEmployeeReviews(
               fingerprint: `${reviewKey}:reminder:${reminderBucket}:${activeWorkday.userId}`,
               kind: 'issue_reminder',
               title: 'Чек в 1С всё ещё не пробит',
-              body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: assignmentScope === 'retail_shift' }),
+              body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: sharedAssignment(assignmentScope) }),
               scheduledAt: evaluatedAt,
             },
             update: {},

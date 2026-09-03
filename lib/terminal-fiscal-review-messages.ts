@@ -40,7 +40,7 @@ export async function addEmployeeTerminalFiscalReviewMessage(input: {
         eventKey: `terminal_fiscal_review:employee_message:${message.id}`,
         type: 'terminal_fiscal_review.employee_message',
         title: 'Сообщение по проверке продажи',
-        body: `${review.assignmentScope === 'retail_shift' ? 'Смена Розницы' : review.employee.name}: ${short(input.body)}`,
+        body: `${review.assignmentScope === 'retail_shift' || review.assignmentScope === 'retail_day' ? 'Сотрудники Розницы' : review.employee.name}: ${short(input.body)}`,
         href: `/admin/workday/payment-checks/${review.id}`,
         sourceType: 'terminal_fiscal_review',
         sourceId: review.id,

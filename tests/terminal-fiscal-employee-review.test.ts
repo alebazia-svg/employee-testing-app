@@ -8,9 +8,25 @@ import {
   evaluateTerminalFiscalGlobalPeriodCoverage,
   evaluateTerminalFiscalPeriodCoverage,
   oneCChecksAvailableForEmployeeReview,
+  selectRetailReviewParticipants,
   syncTerminalFiscalEmployeeReviews,
   terminalFiscalEmployeeReviewText,
 } from '../lib/terminal-fiscal-employee-review';
+
+test('falls back from employees active at payment time to everyone who worked retail that day', () => {
+  const operationAt = new Date('2026-09-02T13:02:09.000Z');
+  const entries = [
+    { userId: 4, startedAt: new Date('2026-09-02T13:23:36.906Z'), endedAt: new Date('2026-09-02T15:29:14.390Z') },
+    { userId: 5, startedAt: new Date('2026-09-02T16:05:14.241Z'), endedAt: new Date('2026-09-02T19:37:20.682Z') },
+  ];
+  assert.deepEqual(selectRetailReviewParticipants({ operationAt, entries }), {
+    participantIds: [4, 5], assignmentScope: 'retail_day',
+  });
+
+  assert.deepEqual(selectRetailReviewParticipants({ operationAt: new Date('2026-09-02T14:00:00.000Z'), entries }), {
+    participantIds: [4], assignmentScope: 'retail_shift',
+  });
+});
 import {
   addAdminTerminalFiscalReviewMessage,
   addEmployeeTerminalFiscalReviewMessage,
@@ -554,7 +570,7 @@ test('shared shift conversation is visible to a participant and ADMIN reply reac
   await addEmployeeTerminalFiscalReviewMessage({ prisma: db as PrismaClient, reviewId: 'review-1', employeeId: 5, body: 'Нужно уточнить продажу.' });
   assert.equal(events.length, 1);
   assert.equal(events[0].type, 'terminal_fiscal_review.employee_message');
-  assert.match(events[0].body, /Смена Розницы/);
+  assert.match(events[0].body, /Сотрудники Розницы/);
   assert.equal(receipts.length, 1);
   assert.equal(deliveries.length, 0);
   assert.equal(notifications.length, 0);
