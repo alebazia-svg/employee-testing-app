@@ -14,8 +14,8 @@ const REMOTE = process.env.TBANK_CABINET_REMOTE || 'bela@portal.alebazia.xyz';
 const REMOTE_DIR = process.env.TBANK_CABINET_REMOTE_DIR || '/home/bela/offonika-tbank-cabinet';
 const LOCAL_DIR = process.env.TBANK_CABINET_LOCAL_DIR || path.join(os.homedir(), 'Library', 'Application Support', 'OFFONIKA TBank Monitor', 'collector');
 const TERMINALS = new Map([
-  ['1010808747019437', '10693079'],
-  ['2332022071', '10630337'],
+  ['1010808747019437', '1010808747019437'],
+  ['2332022071', '2332022071'],
 ]);
 
 function httpJson(url) {
