@@ -43,8 +43,8 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
           {isKkmCloseIssue && open && !showConversation && (
             <Card className='employee-material-form mt-4 space-y-3'>
               <h2 className='text-lg font-extrabold'>Что делать дальше</h2>
-              <p className='text-sm font-semibold leading-relaxed text-slate-600'>Вернитесь к рабочему дню: там можно сфотографировать чек или сообщить администратору.</p>
-              <Link href='/employee#employee-close-exception' className='employee-material-primary-action flex h-11 w-full items-center justify-center rounded-xl px-4 text-sm font-extrabold text-white'>Вернуться и сообщить</Link>
+              <p className='text-sm font-semibold leading-relaxed text-slate-600'>{issue.originDate < today ? 'Портал продолжает проверять закрытие кассы автоматически. Если к сдаче сегодняшней смены проблема останется, сообщите администратору с главного экрана.' : 'Вернитесь к рабочему дню: там можно сфотографировать чек или сообщить администратору.'}</p>
+              <Link href='/employee#employee-close-exception' className='employee-material-primary-action flex h-11 w-full items-center justify-center rounded-xl px-4 text-sm font-extrabold text-white'>Вернуться к рабочему дню</Link>
             </Card>
           )}
           {showConversation && !isCreditIssue && <Card className='employee-material-form mt-4'>

@@ -23,6 +23,11 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Сообщение сотрудника',
     actionLabel: 'Открыть обсуждение',
   },
+  'workday.issue_carried': {
+    category: 'system',
+    typeLabel: 'Открытая ошибка сотрудника',
+    actionLabel: 'Открыть ошибку',
+  },
   'terminal_fiscal_review.employee_message': {
     category: 'messages',
     typeLabel: 'Сообщение по продаже',

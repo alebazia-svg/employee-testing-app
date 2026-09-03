@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
 import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib/workday-required-issues';
 import { resolveCloseExceptionNotifications } from '@/lib/workday-notifications';
+import { notifyAdminsAboutCarriedWorkdayIssues, staleWorkdayCloseAuditComment, validateStaleWorkdayClose } from '@/lib/workday-stale-close';
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -11,8 +12,8 @@ export async function POST(req: Request) {
   const payload = await req.json().catch(() => ({}));
   const requestedWorkDayId = typeof payload?.workDayId === 'number' ? payload.workDayId : null;
   const closeStale = payload?.closeStale === true;
-  const staleCloseReason = typeof payload?.staleCloseReason === 'string' ? payload.staleCloseReason.trim() : '';
-  const staleCloseComment = typeof payload?.staleCloseComment === 'string' ? payload.staleCloseComment.trim() : '';
+  const staleCloseReason = payload?.staleCloseReason;
+  const staleCloseComment = payload?.staleCloseComment;
   const today = getMoscowDateKey();
 
   const activeWorkDay = requestedWorkDayId
@@ -30,14 +31,14 @@ export async function POST(req: Request) {
 
   const isStaleWorkDay = activeWorkDay.date < today;
 
-  if (closeStale && isStaleWorkDay) {
-    if (!staleCloseReason) {
-      return Response.json({ error: 'Выберите причину закрытия предыдущего дня без сдачи смены' }, { status: 400 });
-    }
-    if (!staleCloseComment) {
-      return Response.json({ error: 'Напишите комментарий для администратора' }, { status: 400 });
-    }
+  if (isStaleWorkDay && !closeStale) {
+    return Response.json({ error: 'Закройте предыдущую смену через форму причины', code: 'STALE_CLOSE_REASON_REQUIRED' }, { status: 409 });
   }
+
+  const staleCloseInput = closeStale && isStaleWorkDay
+    ? validateStaleWorkdayClose({ reason: staleCloseReason, comment: staleCloseComment })
+    : null;
+  if (staleCloseInput && !staleCloseInput.ok) return Response.json({ error: staleCloseInput.error }, { status: 400 });
 
   if (usesWorkdayShiftControl(user)) {
     const shiftControlRun = await prisma.shiftControlRun.findUnique({
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
   const closeException = requiredIssueIds.length
     ? await findApprovedCloseException(prisma, activeWorkDay.id, requiredIssueIds)
     : null;
-  if (requiredIssueIds.length && !closeException) {
+  if (requiredIssueIds.length && !closeException && !(closeStale && isStaleWorkDay)) {
     return Response.json({
       error: 'Есть обязательная неисправленная ошибка. Исправьте её или запросите разрешение администратора при технической невозможности.',
       code: 'OPEN_REQUIRED_ISSUES',
@@ -65,12 +66,8 @@ export async function POST(req: Request) {
   }
 
   const now = new Date();
-  const staleCloseViolationComment = closeStale && isStaleWorkDay
-    ? [
-        'НАРУШЕНИЕ: предыдущий рабочий день закрыт без сдачи смены.',
-        `Причина: ${staleCloseReason}`,
-        `Комментарий сотрудника: ${staleCloseComment}`,
-      ].join('\n')
+  const staleCloseViolationComment = staleCloseInput?.ok
+    ? staleWorkdayCloseAuditComment({ reasonLabel: staleCloseInput.reason.label, comment: staleCloseInput.comment })
     : '';
   const workDay = await prisma.$transaction(async (tx) => {
     const updatedWorkDay = await tx.workDayEntry.update({
@@ -103,6 +100,13 @@ export async function POST(req: Request) {
           status: 'missed',
           comment: 'Не выполнено до закрытия предыдущего рабочего дня',
         },
+      });
+      await notifyAdminsAboutCarriedWorkdayIssues({
+        db: tx,
+        employeeId: user.id,
+        currentDate: today,
+        issues: requiredIssues,
+        occurredAt: now,
       });
     }
 

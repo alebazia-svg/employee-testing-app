@@ -7,6 +7,9 @@ test('inbox events receive stable human categories and labels', () => {
     category: 'decisions', typeLabel: 'Требуется решение администратора', actionLabel: 'Принять решение',
   });
   assert.equal(adminInboxEventMeta('workday_issue.employee_message').category, 'messages');
+  assert.deepEqual(adminInboxEventMeta('workday.issue_carried'), {
+    category: 'system', typeLabel: 'Открытая ошибка сотрудника', actionLabel: 'Открыть ошибку',
+  });
   assert.equal(adminInboxEventMeta('expense_request.created').category, 'requests');
   assert.equal(adminInboxEventMeta('unknown.event').category, 'system');
 });

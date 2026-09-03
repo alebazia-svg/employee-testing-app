@@ -50,6 +50,7 @@ import {
   type EmployeeCashOutboxItem,
 } from '@/lib/employee-cash-outbox';
 import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalHeader';
+import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
 
 function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () => void; disabled?: boolean }) {
   const startYRef = useRef<number | null>(null);
@@ -414,14 +415,6 @@ type CashOperationDraft = {
   comment: string;
   idempotencyKey: string;
 };
-
-const staleCloseReasons = [
-  'Забыл закрыть рабочий день',
-  'Не удалось закончить сдачу смены',
-  'Техническая проблема',
-  'По указанию администратора',
-  'Другое',
-];
 
 const tabs: Array<{ id: Tab; label: string; icon: typeof PremiumHomeIcon }> = [
   { id: 'day', label: 'Рабочий день', icon: PremiumHomeIcon },
@@ -1224,6 +1217,7 @@ export function EmployeeTodayClient({
   const [comment, setComment] = useState('');
   const [staleCloseReason, setStaleCloseReason] = useState('');
   const [staleCloseComment, setStaleCloseComment] = useState('');
+  const [staleCloseOpen, setStaleCloseOpen] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('month');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
@@ -1542,7 +1536,9 @@ export function EmployeeTodayClient({
   const kkmClosureConfirmed = completedKkmCloseCheck?.status === 'confirmed';
   const primaryPaymentCheck = paymentChecksState[0] ?? null;
   const primaryPaymentCheckView = primaryPaymentCheck ? terminalFiscalEmployeeReviewSummary(primaryPaymentCheck) : null;
-  const kkmCloseIssue = requiredIssuesState.find((issue) => issue.ruleKey === 'kkm_shift_not_closed') ?? null;
+  const kkmCloseIssue = requiredIssuesState.find((issue) => (
+    issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === activeWorkDay?.date
+  )) ?? null;
   const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || Boolean(kkmCloseIssue));
   const requiredIssuesForBanner = showCloseResolution
     ? requiredIssuesState.filter((issue) => issue.ruleKey !== 'kkm_shift_not_closed')
@@ -2173,8 +2169,8 @@ export function EmployeeTodayClient({
       setError('Выберите причину закрытия предыдущего дня без сдачи смены');
       return;
     }
-    if (!staleCloseComment.trim()) {
-      setError('Добавьте комментарий. Он поможет администратору разобраться в ситуации.');
+    if (staleCloseReason === 'other' && !staleCloseComment.trim()) {
+      setError('Коротко опишите причину');
       return;
     }
     setIsSaving(true);
@@ -2200,6 +2196,7 @@ export function EmployeeTodayClient({
         throw new Error(payload.error || 'Не удалось завершить предыдущий рабочий день');
       }
       setUnfinished(null);
+      setStaleCloseOpen(false);
       setStaleCloseReason('');
       setStaleCloseComment('');
       setNow(new Date());
@@ -3741,44 +3738,29 @@ export function EmployeeTodayClient({
           ) : null}
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
             <Card className='employee-material-alert-card mb-4 border-amber-200 bg-amber-50'>
-              <div className='flex items-start gap-3'>
-                <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='mt-0.5 h-5 w-5 shrink-0' />
+              <div className='flex items-center gap-3'>
+                <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'>
+                  <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' />
+                </span>
                 <div className='flex-1'>
-                  <p className='font-extrabold text-amber-950'>Есть незавершённый рабочий день</p>
-                  <p className='mt-1 text-sm font-medium text-amber-900'>
-                    Предыдущая смена не была завершена.
-                    Чтобы начать новый рабочий день, укажите причину и закройте предыдущий.
-                    Администратор увидит причину и комментарий.
-                  </p>
-                  <div className='mt-3 grid gap-2'>
-                    <label className='block text-sm font-bold text-amber-950'>
-                      Причина
-                      <select
-                        value={staleCloseReason}
-                        onChange={(event) => setStaleCloseReason(event.target.value)}
-                        className='mt-1.5 w-full rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200'
-                      >
-                        <option value=''>Выберите причину</option>
-                        {staleCloseReasons.map((reason) => (
-                          <option key={reason} value={reason}>{reason}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className='block text-sm font-bold text-amber-950'>
-                      Комментарий
-                      <textarea
-                        value={staleCloseComment}
-                        onChange={(event) => setStaleCloseComment(event.target.value)}
-                        className='mt-1.5 min-h-16 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200'
-                        placeholder='Например: чек закрытия смены потеряла, фото сделать уже не могу'
-                      />
-                    </label>
-                  </div>
-                  <Button className='mt-3 w-full bg-amber-600 hover:bg-amber-700' onClick={finishUnfinishedWorkDay} disabled={isSaving}>
-                    Закрыть незавершённый день
-                  </Button>
+                  <p className='font-extrabold text-amber-950'>Предыдущая смена не закрыта</p>
+                  <p className='mt-1 text-sm font-semibold leading-snug text-amber-900'>Закройте её, чтобы начать сегодняшний рабочий день.</p>
                 </div>
               </div>
+              <Button className='employee-material-green-action mt-3 h-12 w-full rounded-xl text-sm font-black' onClick={() => setStaleCloseOpen(true)}>
+                Закрыть предыдущую смену
+              </Button>
+              <StaleWorkdayCloseSheet
+                open={staleCloseOpen}
+                shiftLabel={unfinished?.shiftLabel || ''}
+                reason={staleCloseReason}
+                comment={staleCloseComment}
+                saving={isSaving}
+                onReasonChange={(reason) => { setStaleCloseReason(reason); if (reason !== 'other') setStaleCloseComment(''); }}
+                onCommentChange={setStaleCloseComment}
+                onClose={() => setStaleCloseOpen(false)}
+                onSubmit={finishUnfinishedWorkDay}
+              />
             </Card>
           )}
 
@@ -4092,7 +4074,8 @@ export function EmployeeTodayClient({
                           <span className='min-w-0 flex-1'>
                             <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить</span>
                             <span className='block text-sm font-black leading-tight'>{issueView.bannerTitle}</span>
-                            {issueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{issueView.summaryMeta}</span>}
+                            {issue.originDate < today && <span className='mt-1 block text-xs font-extrabold text-slate-600'>Ошибка от {formatDateLabel(issue.originDate).replace(/^.*?,\s*/, '')}{issueView.summaryMeta ? ` · ${issueView.summaryMeta}` : ''}</span>}
+                            {issue.originDate >= today && issueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{issueView.summaryMeta}</span>}
                           </span>
                           <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span>
                           <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
