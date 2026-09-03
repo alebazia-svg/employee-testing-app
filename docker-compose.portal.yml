@@ -39,7 +39,7 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       PORT: "3000"
       CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED: "true"
-      TBANK_CABINET_SNAPSHOT_ENABLED: "false"
+      TBANK_CABINET_SNAPSHOT_ENABLED: "true"
       TBANK_CABINET_SNAPSHOT_PATH: /app/runtime/tbank-cabinet/current.json
     volumes:
       - portal-uploads:/app/uploads

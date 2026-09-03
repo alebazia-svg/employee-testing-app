@@ -36,6 +36,6 @@ the portal receives no fresh snapshot and the source becomes incomplete.
 ## Production rollout
 
 The compose mount exposes `/home/bela/offonika-tbank-cabinet/current.json` to
-the portal read-only. Keep `TBANK_CABINET_SNAPSHOT_ENABLED=false` during the
-shadow comparison. Enable it only after current-day card and QR totals and both
-terminal mappings have been verified against the cabinet, 1C and OFD.
+the portal read-only. Keep `TBANK_CABINET_SNAPSHOT_ENABLED=false` during an
+initial shadow comparison. Production was enabled only after card and QR totals
+and both terminal mappings were verified against the cabinet, 1C and OFD.
