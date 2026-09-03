@@ -23,6 +23,15 @@ test('read state is independent from the source business state', () => {
   assert.equal(adminInboxSourceState({ sourceType: 'expense_request', current: false }).label, 'В истории');
 });
 
+test('lost dependency and recovery have clear portal states', () => {
+  assert.deepEqual(adminInboxSourceState({ sourceType: 'dependency', eventType: 'dependency.down' }), {
+    active: true, label: 'Связь потеряна', tone: 'attention',
+  });
+  assert.deepEqual(adminInboxSourceState({ sourceType: 'dependency', eventType: 'dependency.recovered' }), {
+    active: false, label: 'Работа восстановлена', tone: 'resolved',
+  });
+});
+
 test('resolved decisions no longer invite admin to decide again', () => {
   const sourceState = adminInboxSourceState({ sourceType: 'workday_close_exception', businessStatus: 'approved' });
   assert.equal(adminInboxActionLabel({ sourceType: 'workday_close_exception', defaultLabel: 'Принять решение', sourceState }), 'Открыть решение');

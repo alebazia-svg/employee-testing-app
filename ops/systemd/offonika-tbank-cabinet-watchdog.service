@@ -1,0 +1,12 @@
+[Unit]
+Description=Monitor OFFONIKA T-Bank cabinet operation freshness
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec portal-app node --conditions=react-server --import tsx scripts/tbank-cabinet-watchdog.ts
+TimeoutStartSec=1min
+NoNewPrivileges=true
+PrivateTmp=true

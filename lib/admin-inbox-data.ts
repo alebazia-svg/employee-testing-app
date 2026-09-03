@@ -83,6 +83,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const lifecycleManaged = ['expense_request', 'workday_control_issue', 'terminal_fiscal_review', 'workday_close_exception', 'cash_operation'].includes(sourceType);
     const sourceState = adminInboxSourceState({
       sourceType,
+      eventType: row.event.type,
       current: currentExpenseRefs.has(sourceId),
       businessStatus: issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
       reasonCode: exception?.reasonCode,

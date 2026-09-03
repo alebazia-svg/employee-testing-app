@@ -1,0 +1,11 @@
+[Unit]
+Description=Check OFFONIKA T-Bank cabinet operation freshness every 3 minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/3:00 Europe/Moscow
+Persistent=true
+AccuracySec=15s
+Unit=offonika-tbank-cabinet-watchdog.service
+
+[Install]
+WantedBy=timers.target

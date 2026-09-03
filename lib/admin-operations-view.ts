@@ -70,12 +70,20 @@ export function adminInboxEventMeta(type: string): AdminInboxEventMeta {
 
 export function adminInboxSourceState(input: {
   sourceType: string;
+  eventType?: string | null;
   businessStatus?: string | null;
   reasonCode?: string | null;
   current?: boolean;
   employeeActionRequired?: boolean;
   sourceCompleted?: boolean;
 }): AdminInboxSourceState {
+  if (input.sourceType === 'dependency') {
+    return input.eventType === 'dependency.down'
+      ? { active: true, label: 'Связь потеряна', tone: 'attention' }
+      : input.eventType === 'dependency.recovered'
+        ? { active: false, label: 'Работа восстановлена', tone: 'resolved' }
+        : { active: false, label: 'Системное событие', tone: 'neutral' };
+  }
   if (input.sourceType === 'expense_request') {
     return input.current
       ? { active: true, label: 'Текущая заявка', tone: 'active' }
