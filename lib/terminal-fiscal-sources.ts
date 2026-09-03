@@ -8,6 +8,7 @@ import type { BankOperation, MatchingItem, OfdReceipt, OneCCheck, TerminalMappin
 import { normalizePlatformaOfdReceipt, normalizePlatformaOfdZReport, type NormalizedPlatformaOfdZReport } from '@/lib/terminal-fiscal-ofd-adapter';
 import { normalizeOneCDateTime } from '@/lib/terminal-fiscal-one-c-adapter';
 import { getMoscowDateKey } from '@/lib/workday';
+import { loadTBankCabinetOperations } from '@/lib/tbank-cabinet-snapshot';
 
 export type SourceSnapshot<T> = {
   complete: boolean;
@@ -78,6 +79,15 @@ export async function loadCompleteTBankOperations(input: {
   to: string;
   loadPage?: TBankPageLoader;
 }): Promise<SourceSnapshot<BankOperation>> {
+  const cabinetSnapshotPath = process.env.TBANK_CABINET_SNAPSHOT_PATH?.trim();
+  if (process.env.TBANK_CABINET_SNAPSHOT_ENABLED === 'true' && cabinetSnapshotPath && !input.loadPage) {
+    return loadTBankCabinetOperations({
+      path: cabinetSnapshotPath,
+      terminalKey: input.terminalKey,
+      from: input.from,
+      to: input.to,
+    });
+  }
   const checkedAt = new Date().toISOString();
   const fromMs = new Date(input.from).getTime();
   const toMs = new Date(input.to).getTime();

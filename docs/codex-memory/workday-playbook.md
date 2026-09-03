@@ -203,8 +203,18 @@ photos remain available as audit history.
 
 The integration provides:
 
-- `lib/tbank-acquiring.ts` reads active terminals and terminal operations from
-  the official T-API trading acquiring endpoints;
+- `lib/tbank-acquiring.ts` reads card operations from the official T-API
+  trading acquiring endpoints;
+- T-Bank does not expose QR acquiring operations through that public API. A
+  least-privilege observer account in a dedicated Edge profile on the always-on
+  Mac reads the cabinet's own combined operations register. The collector sends
+  only operation ID, time, amount, sale/refund type, payment source and mapped
+  terminal ID to an atomic read-only snapshot on VPS. Browser credentials,
+  cookies, phone numbers and card data never leave the Mac;
+- `TBANK_CABINET_SNAPSHOT_ENABLED=true` switches matching to that combined
+  card-and-QR snapshot. A missing, stale, malformed, period-incomplete or
+  unknown-terminal snapshot fails closed as an incomplete T-Bank source and
+  cannot create an employee accusation;
 - `/admin/workday/tbank` is an admin-only diagnostic page for selecting a
   terminal and viewing its operations for the last 24 hours;
 - `/api/admin/workday/tbank-probe` exposes the same diagnostic data to an
