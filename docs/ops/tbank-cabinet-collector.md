@@ -32,6 +32,9 @@ keeping bank access least-privilege and outside VPS.
   It creates one ADMIN inbox/PWA event after the snapshot becomes ten minutes
   stale and one recovery event when fresh data resumes; unchanged state does
   not create repeats.
+  The watchdog compares only the last successful generation time, avoiding a
+  race with the collector. Operational matching separately keeps its stricter
+  requested-period coverage check.
 
 The dedicated Edge window may stay in the background. If T-Business asks for a
 new login, only the owner enters the password or SMS. Until login is restored,
