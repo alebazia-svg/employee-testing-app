@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
 import { PayrollBonusesEditor } from './PayrollBonusesEditor';
+import { PayrollFinboxImport } from './PayrollFinboxImport';
 import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
 
 type CellValue = string | number | boolean | Date | null | undefined;
@@ -6084,7 +6085,7 @@ export default function AdminPayrollPage() {
                                 </label>
                               </>}
                               {row.manager === agentCreditCommissionEmployee && <label className='grid gap-1 text-sm font-semibold text-slate-700'>Агентские, ₽
-                                <Input aria-label={`Агентские: ${row.manager}`} type='number' min='0' step='100' value={salesInput.agentCreditCommission ?? ''} onChange={(event) => updateManualPayroll(row.manager, 'agentCreditCommission', event.target.value)} />
+                                <Input aria-label={`Агентские: ${row.manager}`} type='number' min='0' step='0.01' value={salesInput.agentCreditCommission ?? ''} onChange={(event) => updateManualPayroll(row.manager, 'agentCreditCommission', event.target.value)} />
                               </label>}
                               <label className='grid gap-1 text-sm font-semibold text-slate-700'>Аванс, ₽
                                 <Input aria-label={`Аванс: ${row.manager}`} type='number' min='0' step='100' value={input.advance} onChange={(event) => changeInput('advance', event.target.value)} />
@@ -6096,6 +6097,13 @@ export default function AdminPayrollPage() {
                                 <Input aria-label={`Комментарий: ${row.manager}`} value={input.comment} onChange={(event) => changeInput('comment', event.target.value)} />
                               </label>
                             </fieldset>
+                            {row.manager === agentCreditCommissionEmployee && <PayrollFinboxImport
+                              key={`${selectedPayrollPeriodKey}-finbox`}
+                              periodKey={selectedPayrollPeriodKey}
+                              currentAmount={salesInput.agentCreditCommission ?? ''}
+                              disabled={isCurrentPeriodClosed || isSavingPayroll}
+                              onApply={(amount) => updateManualPayroll(row.manager, 'agentCreditCommission', amount)}
+                            />}
                             <PayrollBonusesEditor
                               key={`${selectedPayrollPeriodKey}-bonuses-${row.manager}`}
                               employeeName={row.manager}

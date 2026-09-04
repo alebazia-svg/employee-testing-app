@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PayrollBonusesEditor } from '../app/(dashboard)/admin/payroll/PayrollBonusesEditor';
+import { parseFinboxReport } from '../lib/payroll-finbox';
 import { PAYROLL_COMPENSATION_VERSION, getInitialPayrollBonuses, validatePayrollBonuses, validatePayrollCompensationSnapshot, validatePayrollCompensationVersion, type PayrollBonus } from '../lib/payroll-compensation';
 
 type SalesRow = {
@@ -64,6 +65,7 @@ type PayrollModule = {
           lateCount: string;
           advance: string;
           comment: string;
+          agentCreditCommission?: string;
         }
       | undefined,
   ) => {
@@ -71,6 +73,7 @@ type PayrollModule = {
     lateCount: number | null;
     dayPay: number;
     salesBonus: number;
+    agentCreditCommission: number;
     grossPay: number;
     netPay: number;
     manager: string;
@@ -348,6 +351,29 @@ function assertMoney(actual: number, expected: number) {
 }
 
 describe('payroll calculation regression rules', () => {
+  it('applies confirmed Finbox kopecks through the existing Diana formula without accumulating or changing advances', () => {
+    const preview = parseFinboxReport('Начальный остаток на 2026-08-01\t0\n01.08.2026\tНачисление агентского вознаграждения\t85373.06\nКонечный остаток на 2026-08-31\t85373.06', '2026-08');
+    assert.deepEqual(preview.errors, []);
+    const summary = managerSummary([salesRow({ manager: 'Кумахова Диана', revenue: 1000, cost: 400, grossProfit: 600 })], 'Кумахова Диана');
+    const manual = { workedDays: '17', lateCount: '0', advance: '5000', comment: 'demo', agentCreditCommission: '85373' };
+    const previous = buildFullPayrollRow(summary, manual);
+    const updatedManual = { ...manual, agentCreditCommission: preview.amount };
+    const updated = buildFullPayrollRow(summary, updatedManual);
+    assertMoney(updated.agentCreditCommission, 85373.06);
+    assertMoney(updated.grossPay - previous.grossPay, 0.06);
+    assertMoney(updated.netPay - previous.netPay, 0.06);
+    assert.equal(updated.advance, 5000);
+    assert.equal(updated.dayPay, previous.dayPay);
+    assert.equal(updated.salesBonus, previous.salesBonus);
+    assert.deepEqual(buildFullPayrollRow(summary, { ...updatedManual, agentCreditCommission: preview.amount }), updated);
+    assert.equal(manual.agentCreditCommission, '85373');
+  });
+
+  it('does not credit Diana agency earnings to another employee', () => {
+    const summary = managerSummary([salesRow({ manager: retailManager, revenue: 1000, cost: 400, grossProfit: 600 })], retailManager);
+    const manual = { workedDays: '20', lateCount: '0', advance: '1000', comment: '' };
+    assert.deepEqual(buildFullPayrollRow(summary, { ...manual, agentCreditCommission: '85373.06' }), buildFullPayrollRow(summary, manual));
+  });
   it('calculates services at 50% of revenue', () => {
     const summary = managerSummary(
       [
