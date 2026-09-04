@@ -16,6 +16,7 @@ import {
   terminalFiscalSourceIncomplete,
 } from '@/lib/terminal-fiscal-reason-view';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
+import { deviationReasonLabel } from '@/lib/workday-deviation';
 
 type ShiftTask = {
   id: number;
@@ -58,6 +59,14 @@ type WorkDayInfo = {
     fromLateMinutes: number;
     toLateMinutes: number;
     changedAt: string;
+  }>;
+  deviations: Array<{
+    kind: string;
+    reasonCode: string;
+    comment: string;
+    lateMinutesSnapshot: number | null;
+    requestedEndMinutes: number | null;
+    reportedAt: string;
   }>;
 } | null;
 
@@ -1470,6 +1479,19 @@ export function AdminShiftControlDetails({
                   </summary>
                   <div className='grid gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600'>
                     {workDay ? <p>Фактическое время: {formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)}</p> : null}
+                    {workDay?.deviations.map((deviation) => {
+                      const requestedTime = deviation.requestedEndMinutes === null
+                        ? ''
+                        : `${String(Math.floor(deviation.requestedEndMinutes / 60)).padStart(2, '0')}:${String(deviation.requestedEndMinutes % 60).padStart(2, '0')}`;
+                      return (
+                        <p key={`${deviation.kind}-${deviation.reportedAt}`}>
+                          <span className='font-extrabold text-slate-800'>{deviation.kind === 'late_arrival' ? 'Причина опоздания' : `Досрочное завершение${requestedTime ? ` в ${requestedTime}` : ''}`}:</span>{' '}
+                          {deviationReasonLabel(deviation.kind === 'late_arrival' ? 'late_arrival' : 'early_finish', deviation.reasonCode)}
+                          {deviation.comment ? ` · ${deviation.comment}` : ''}
+                          {' · '}{formatTime(deviation.reportedAt)}
+                        </p>
+                      );
+                    })}
                     {workdayTimingViolations.map((violation) => (
                       <p key={violation.id}><span className='font-extrabold text-slate-800'>{violation.label}:</span> {violation.detail}</p>
                     ))}

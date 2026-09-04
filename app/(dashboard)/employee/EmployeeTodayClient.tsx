@@ -51,6 +51,7 @@ import {
 } from '@/lib/employee-cash-outbox';
 import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalHeader';
 import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
+import { earlyFinishReasons, lateArrivalReasons, lateArrivalThresholdMinutes, type WorkdayDeviationKind } from '@/lib/workday-deviation';
 
 function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () => void; disabled?: boolean }) {
   const startYRef = useRef<number | null>(null);
@@ -244,6 +245,18 @@ type WorkDayEntry = {
   comment: string;
   status: string;
   createdAt?: string | Date;
+  deviations?: WorkdayDeviation[];
+};
+
+type WorkdayDeviation = {
+  id: string;
+  workDayEntryId: number;
+  kind: string;
+  reasonCode: string;
+  comment: string;
+  lateMinutesSnapshot: number | null;
+  requestedEndMinutes: number | null;
+  reportedAt: string;
 };
 
 type DepartmentWorkdayPresence = Pick<WorkDayEntry, 'userId' | 'date' | 'status' | 'shiftCode' | 'startedAt' | 'endedAt'>;
@@ -1195,6 +1208,11 @@ export function EmployeeTodayClient({
   const [paymentChecksState, setPaymentChecksState] = useState(paymentChecks);
   const [closeExceptionRequestState, setCloseExceptionRequestState] = useState(closeExceptionRequest);
   const [cashEncashmentExceptionRequestState, setCashEncashmentExceptionRequestState] = useState(cashEncashmentExceptionRequest);
+  const [deviationSheetKind, setDeviationSheetKind] = useState<WorkdayDeviationKind | null>(null);
+  const [deviationReason, setDeviationReason] = useState('');
+  const [deviationComment, setDeviationComment] = useState('');
+  const [earlyFinishTime, setEarlyFinishTime] = useState('16:30');
+  const latePromptWorkdayIdRef = useRef<number | null>(null);
   const [shiftCorrectionState, setShiftCorrectionState] = useState<ShiftCorrectionState>(shiftCorrection ?? { canCorrect: false, allowedShiftCodes: [], hint: '' });
   const [closeBlocked, setCloseBlocked] = useState(false);
   const [closeExceptionReason, setCloseExceptionReason] = useState('');
@@ -1317,6 +1335,9 @@ export function EmployeeTodayClient({
 
   const isCompleted = workDay?.status === 'completed' || Boolean(workDay?.endedAt);
   const activeWorkDay = workDay && !isCompleted ? workDay : null;
+  const lateArrivalDeviation = workDay?.deviations?.find((item) => item.kind === 'late_arrival') ?? null;
+  const earlyFinishDeviation = workDay?.deviations?.find((item) => item.kind === 'early_finish') ?? null;
+  const needsLateArrivalReason = Boolean(activeWorkDay && activeWorkDay.lateMinutes >= lateArrivalThresholdMinutes && !lateArrivalDeviation);
   const displayedWorkDayStatus = isCompleted ? 'completed' : workDay?.status;
   const availableShiftOptions = getShiftOptionsForDepartment(user.department);
   const availableStartShiftOptions = startShiftCodes
@@ -1520,8 +1541,9 @@ export function EmployeeTodayClient({
     ? shiftControlTasks.filter((task) => task.status === 'done' || !hiddenDuringHandoverCategories.has(task.category))
     : shiftControlTasks;
   const pendingShiftControlTasks = visibleShiftControlTasks.filter((task) => task.status !== 'done');
-  const actionableShiftControlTask =
-    pendingShiftControlTasks.find((task) => task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(displayNow) >= task.plannedTimeMinutes) ?? null;
+  const actionableShiftControlTask = earlyFinishDeviation
+    ? pendingShiftControlTasks[0] ?? null
+    : pendingShiftControlTasks.find((task) => task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(displayNow) >= task.plannedTimeMinutes) ?? null;
   const handoverTask = shiftControlTasks.find((task) => task.category === 'handover') ?? null;
   const isHandoverDone = handoverTask?.status === 'done';
   const activeHandoverTask = activeHandoverTaskId ? shiftControlTasks.find((task) => task.id === activeHandoverTaskId) ?? null : null;
@@ -1543,6 +1565,62 @@ export function EmployeeTodayClient({
   const requiredIssuesForBanner = showCloseResolution
     ? requiredIssuesState.filter((issue) => issue.ruleKey !== 'kkm_shift_not_closed')
     : requiredIssuesState;
+
+  useEffect(() => {
+    if (!needsLateArrivalReason || !activeWorkDay || latePromptWorkdayIdRef.current === activeWorkDay.id) return;
+    latePromptWorkdayIdRef.current = activeWorkDay.id;
+    setDeviationReason('');
+    setDeviationComment('');
+    setDeviationSheetKind('late_arrival');
+  }, [activeWorkDay, needsLateArrivalReason]);
+
+  function openEarlyFinishSheet() {
+    const moscowParts = new Intl.DateTimeFormat('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date());
+    const hour = moscowParts.find((part) => part.type === 'hour')?.value ?? '16';
+    const minute = moscowParts.find((part) => part.type === 'minute')?.value ?? '30';
+    const currentMinutes = Number(hour) * 60 + Number(minute);
+    const minimum = (activeWorkDay?.shiftStartMinutes ?? currentMinutes - 1) + 1;
+    const maximum = (activeWorkDay?.shiftEndMinutes ?? currentMinutes + 1) - 1;
+    const suggestedMinutes = Math.max(minimum, Math.min(currentMinutes, maximum));
+    setEarlyFinishTime(`${String(Math.floor(suggestedMinutes / 60)).padStart(2, '0')}:${String(suggestedMinutes % 60).padStart(2, '0')}`);
+    setDeviationReason('');
+    setDeviationComment('');
+    setDeviationSheetKind('early_finish');
+  }
+
+  async function submitWorkdayDeviation() {
+    if (!deviationSheetKind || isSaving) return;
+    setIsSaving(true);
+    setError('');
+    try {
+      const response = await fetch('/api/employee/workday/deviations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: deviationSheetKind,
+          reasonCode: deviationReason,
+          comment: deviationComment,
+          requestedEndTime: deviationSheetKind === 'early_finish' ? earlyFinishTime : undefined,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'Не удалось сохранить.');
+      setDeviationSheetKind(null);
+      setDeviationReason('');
+      setDeviationComment('');
+      await syncCurrentWorkdayState(true);
+      setMessage(deviationSheetKind === 'late_arrival' ? 'Причина опоздания сохранена.' : 'Сдача смены начата.');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Не удалось сохранить.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
   const currentRequiredIssueIds = requiredIssuesState.map((issue) => issue.id).sort((a, b) => a - b);
   const closeExceptionMatchesCurrentIssues = Boolean(
     closeExceptionRequestState
@@ -2442,6 +2520,7 @@ export function EmployeeTodayClient({
 
   function shiftControlPhotoMessage(tasks: ShiftControlTask[], completedTaskId: number) {
     const pendingTasks = tasks.filter((task) => task.status !== 'done' && task.id !== completedTaskId);
+    if (earlyFinishDeviation && pendingTasks.length) return 'Фото прикреплено. Перейдите к следующему шагу.';
     const nextActionable = pendingTasks.find((task) => task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(new Date()) >= task.plannedTimeMinutes);
     if (nextActionable) return 'Фото прикреплено';
 
@@ -2612,6 +2691,7 @@ export function EmployeeTodayClient({
 
   function canActOnShiftTask(task: ShiftControlTask) {
     if (task.status === 'done') return editingShiftTaskId === task.id;
+    if (earlyFinishDeviation) return task.id === pendingShiftControlTasks[0]?.id;
     return task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(displayNow) >= task.plannedTimeMinutes;
   }
 
@@ -3604,6 +3684,52 @@ export function EmployeeTodayClient({
 
   return (
     <main className='employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
+      {deviationSheetKind && (() => {
+        const isLate = deviationSheetKind === 'late_arrival';
+        const reasons = isLate ? lateArrivalReasons : earlyFinishReasons;
+        const valid = Boolean(deviationReason) && (deviationReason !== 'other' || Boolean(deviationComment.trim()));
+        return (
+          <div className='fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label={isLate ? 'Причина опоздания' : 'Завершить раньше'}>
+            <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+              <BottomSheetDragHandle onDismiss={() => setDeviationSheetKind(null)} disabled={isSaving} />
+              <div className='flex items-start justify-between gap-3'>
+                <div className='min-w-0'>
+                  <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>Рабочий день</p>
+                  <h2 className='mt-1 text-2xl font-black leading-tight text-slate-950'>{isLate ? 'Причина опоздания' : 'Завершить раньше'}</h2>
+                  <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>{isLate ? 'Выберите короткую причину, чтобы продолжить.' : 'Укажите время — откроется сдача смены.'}</p>
+                </div>
+                <button type='button' onClick={() => setDeviationSheetKind(null)} disabled={isSaving} className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'>
+                  <X className='h-5 w-5' />
+                </button>
+              </div>
+              <div className='mt-5 grid gap-3'>
+                {isLate ? (
+                  <div className='rounded-xl bg-amber-50 px-3.5 py-3 ring-1 ring-amber-100'>
+                    <div className='flex items-center justify-between gap-3'><span className='text-xs font-extrabold text-amber-800'>Опоздание</span><span className='text-sm font-black text-amber-900'>{activeWorkDay?.lateMinutes ?? 0} мин</span></div>
+                  </div>
+                ) : (
+                  <label className='employee-material-form grid gap-1.5 rounded-xl p-3 text-sm font-extrabold text-slate-800'>Завершу в
+                    <input type='time' value={earlyFinishTime} onChange={(event) => setEarlyFinishTime(event.target.value)} className='h-11 rounded-lg border border-slate-200 bg-white px-3 text-base font-bold text-slate-950' />
+                  </label>
+                )}
+                <fieldset className='employee-material-form rounded-xl p-3'>
+                  <legend className='px-1 text-sm font-extrabold text-slate-800'>Причина</legend>
+                  <div className='mt-1 grid grid-cols-2 gap-2'>
+                    {Object.entries(reasons).map(([value, label]) => (
+                      <button key={value} type='button' onClick={() => setDeviationReason(value)} className={cn('flex h-14 items-center justify-center rounded-xl px-2 text-center text-xs font-extrabold leading-tight ring-1 transition', value === 'other' && 'col-span-2', deviationReason === value ? 'bg-green-100 text-green-900 ring-green-300' : 'bg-white text-slate-600 ring-slate-200')}>{label}</button>
+                    ))}
+                  </div>
+                  {deviationReason === 'other' && <textarea value={deviationComment} onChange={(event) => setDeviationComment(event.target.value)} rows={2} className='mt-3 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100' placeholder='Коротко опишите причину' />}
+                </fieldset>
+                {error && <p className='rounded-xl bg-rose-50 px-3 py-2.5 text-sm font-bold text-rose-800 ring-1 ring-rose-100'>{error}</p>}
+                <Button type='button' className='employee-material-green-action h-14 w-full rounded-xl text-base font-black' disabled={!valid || isSaving} onClick={() => void submitWorkdayDeviation()}>
+                  {isLate ? 'Сохранить и продолжить' : 'Начать сдачу смены'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {qrScannerOpen && (
         <WorkdayQrScanner
           userDepartment={user.department}
@@ -4052,11 +4178,34 @@ export function EmployeeTodayClient({
               )}
 
               {activeWorkDay && (
-                <div className='employee-material-status-strip flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold text-green-900'>
-                  <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-green-700 ring-1 ring-green-100'>
-                    <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-5 w-5' />
-                  </span>
-                  <span className='min-w-0 truncate'>Рабочий день · {workDay?.shiftLabel} · {activeElapsedLabel}</span>
+                <div className='grid gap-1.5'>
+                  <div className='employee-material-status-strip flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold text-green-900'>
+                    <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-green-700 ring-1 ring-green-100'>
+                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-5 w-5' />
+                    </span>
+                    <span className='min-w-0 truncate'>Рабочий день · {workDay?.shiftLabel} · {activeElapsedLabel}</span>
+                  </div>
+                  {needsLateArrivalReason && (
+                    <button
+                      type='button'
+                      className='mx-auto w-fit px-2 py-1 text-xs font-extrabold text-amber-700 underline decoration-amber-300 underline-offset-4'
+                      onClick={() => { setDeviationReason(''); setDeviationComment(''); setDeviationSheetKind('late_arrival'); }}
+                    >
+                      Указать причину опоздания
+                    </button>
+                  )}
+                  {activeWorkDay && shiftControlState.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) < shiftEnd && (
+                    <button
+                      type='button'
+                      className='mx-auto w-fit px-2 py-1 text-xs font-extrabold text-slate-500 underline decoration-slate-300 underline-offset-4'
+                      onClick={openEarlyFinishSheet}
+                    >
+                      Завершить раньше
+                    </button>
+                  )}
+                  {earlyFinishDeviation && (
+                    <p className='rounded-xl bg-green-50 px-3 py-2 text-center text-xs font-extrabold text-green-800 ring-1 ring-green-100'>Завершение смены раньше времени{earlyFinishDeviation.requestedEndMinutes !== null ? ` · ${plannedTimeLabel(earlyFinishDeviation.requestedEndMinutes)}` : ''}</p>
+                  )}
                 </div>
               )}
 
@@ -4218,7 +4367,7 @@ export function EmployeeTodayClient({
                       </div>
                       {primaryShiftControlTask && (
                         <div className='mt-2 flex items-center'>
-                          <span className='text-xs font-bold text-slate-500'>{primaryTaskTimingLabel(primaryShiftControlTask, displayNow)}</span>
+                          <span className='text-xs font-bold text-slate-500'>{earlyFinishDeviation ? 'Выполните сейчас для сдачи смены' : primaryTaskTimingLabel(primaryShiftControlTask, displayNow)}</span>
                         </div>
                       )}
                       {actionableShiftControlTask && renderShiftTaskAction(actionableShiftControlTask, true)}
@@ -4252,7 +4401,7 @@ export function EmployeeTodayClient({
                             <div className='flex items-start justify-between gap-2'>
                               <div className='min-w-0'>
                                 <p className='text-sm font-extrabold leading-tight text-slate-700'>{shiftTaskTitle(task)}</p>
-                                <p className='mt-1 text-xs font-bold text-slate-500'>План: {plannedTimeLabel(task.plannedTimeMinutes)}</p>
+                                <p className='mt-1 text-xs font-bold text-slate-500'>{earlyFinishDeviation && uiStatus !== 'done' ? 'После предыдущего шага' : `План: ${plannedTimeLabel(task.plannedTimeMinutes)}`}</p>
                               </div>
                               <Badge className='shrink-0 bg-white px-2 py-0.5 text-[11px] text-slate-500 ring-1 ring-slate-200'>
                                 {shiftTaskStatusLabel(uiStatus)}

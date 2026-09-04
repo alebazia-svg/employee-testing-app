@@ -51,6 +51,7 @@ model User {
   updatedEmployeeVacations         EmployeeVacation[]                @relation("EmployeeVacationUpdatedBy")
   employeeVacationChanges          EmployeeVacationChange[]          @relation("EmployeeVacationChangeEmployee")
   authoredEmployeeVacationChanges  EmployeeVacationChange[]          @relation("EmployeeVacationChangeActor")
+  workdayDeviations                WorkdayDeviation[]
 }
 
 model ExpenseRequestSyncRun {
@@ -678,11 +679,32 @@ model WorkDayEntry {
   kkmAssignments         WorkdayKkmAssignment[]
   closeExceptionRequests WorkdayCloseExceptionRequest[]
   shiftChanges           WorkdayShiftChange[]
+  deviations             WorkdayDeviation[]
 
   @@unique([userId, date])
   @@index([date])
   @@index([department, date])
   @@index([status])
+}
+
+model WorkdayDeviation {
+  id                  String       @id @default(cuid())
+  workDayEntryId      Int
+  userId              Int
+  kind                String
+  reasonCode          String
+  comment             String       @default("")
+  lateMinutesSnapshot Int?
+  requestedEndMinutes Int?
+  reportedAt          DateTime     @default(now())
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  workDayEntry        WorkDayEntry @relation(fields: [workDayEntryId], references: [id], onDelete: Cascade)
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workDayEntryId, kind])
+  @@index([userId, reportedAt])
+  @@index([kind, reportedAt])
 }
 
 model WorkdayShiftChange {

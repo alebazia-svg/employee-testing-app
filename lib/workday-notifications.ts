@@ -145,6 +145,10 @@ const repeatMinutesByCategory: Record<string, number> = {
 };
 
 export function workdayTaskNotificationCopy(task: Pick<NotificationTask, 'category' | 'title'>, kind: string) {
+  if (task.category === 'handover' && kind === 'early_finish_reminder') return {
+    title: 'Завершите рабочий день',
+    body: 'Продолжите сдачу смены.',
+  };
   const overdue = kind !== 'planned';
   const overduePrefix = overdue ? 'Задание просрочено. ' : '';
   const acceptingCashbox = task.category === 'cash' && /принять кассу/i.test(task.title);

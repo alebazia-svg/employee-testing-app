@@ -5,9 +5,20 @@ import { findOpenRequiredWorkdayIssues, serializeRequiredIssue } from '@/lib/wor
 import { getWorkdayShiftCorrectionState } from '@/lib/workday-shift-change';
 import { serializeEmployeeVacation } from '@/lib/employee-vacation';
 
-type WorkDayForSnapshot = Awaited<ReturnType<typeof prisma.workDayEntry.findFirst>>;
+type WorkDayForSnapshot = NonNullable<Awaited<ReturnType<typeof prisma.workDayEntry.findFirst>>> & {
+  deviations?: Array<{
+    id: string;
+    workDayEntryId: number;
+    kind: string;
+    reasonCode: string;
+    comment: string;
+    lateMinutesSnapshot: number | null;
+    requestedEndMinutes: number | null;
+    reportedAt: Date;
+  }>;
+};
 
-export function serializeWorkDayForEmployee(entry: WorkDayForSnapshot) {
+export function serializeWorkDayForEmployee(entry: WorkDayForSnapshot | null) {
   if (!entry) return null;
   const {
     startIntentId: _startIntentId,
@@ -18,6 +29,10 @@ export function serializeWorkDayForEmployee(entry: WorkDayForSnapshot) {
   } = entry;
   return {
     ...employeeEntry,
+    deviations: entry.deviations?.map((deviation) => ({
+      ...deviation,
+      reportedAt: deviation.reportedAt.toISOString(),
+    })) ?? [],
     startedAt: entry.startedAt.toISOString(),
     endedAt: entry.endedAt?.toISOString() ?? null,
     createdAt: entry.createdAt.toISOString(),
@@ -129,9 +144,13 @@ export async function getEmployeeWorkdaySnapshot(user: { id: number; department:
   const shiftControlEnabled = usesWorkdayShiftControl(user);
 
   const [todayWorkDay, unfinishedWorkDay, shiftControlRun, cashOperations, departmentWorkdays, departmentVacations] = await Promise.all([
-    prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date: today } } }),
+    prisma.workDayEntry.findUnique({
+      where: { userId_date: { userId: user.id, date: today } },
+      include: { deviations: { orderBy: { reportedAt: 'asc' } } },
+    }),
     prisma.workDayEntry.findFirst({
       where: { userId: user.id, status: { in: ['active', 'missing_checkout'] }, endedAt: null, date: { not: today } },
+      include: { deviations: { orderBy: { reportedAt: 'asc' } } },
       orderBy: { startedAt: 'desc' },
     }),
     shiftControlEnabled ? findCurrentShiftControlRun(user.id, today) : null,

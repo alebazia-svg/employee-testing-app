@@ -1121,7 +1121,10 @@ export default async function AdminWorkdayPage(
     }),
     prisma.workDayEntry.findMany({
       where: { date: selectedDate },
-      include: { shiftChanges: { orderBy: { changedAt: 'asc' } } },
+      include: {
+        shiftChanges: { orderBy: { changedAt: 'asc' } },
+        deviations: { orderBy: { reportedAt: 'asc' } },
+      },
     }),
     prisma.shiftControlRun.findMany({
       where: { date: selectedDate },
@@ -1763,6 +1766,14 @@ export default async function AdminWorkdayPage(
                               fromLateMinutes: change.fromLateMinutes,
                               toLateMinutes: change.toLateMinutes,
                               changedAt: change.changedAt.toISOString(),
+                            })),
+                            deviations: row.workDay.deviations.map((deviation) => ({
+                              kind: deviation.kind,
+                              reasonCode: deviation.reasonCode,
+                              comment: deviation.comment,
+                              lateMinutesSnapshot: deviation.lateMinutesSnapshot,
+                              requestedEndMinutes: deviation.requestedEndMinutes,
+                              reportedAt: deviation.reportedAt.toISOString(),
                             })),
                           } : null}
                           dateKey={selectedDate}

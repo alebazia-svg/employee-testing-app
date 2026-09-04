@@ -421,6 +421,27 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       }
     }
 
+    const earlyFinishDeviation = await prisma.workdayDeviation.findUnique({
+      where: { workDayEntryId_kind: { workDayEntryId: task.run.workDayEntryId, kind: 'early_finish' } },
+      select: { id: true },
+    });
+    if (earlyFinishDeviation) {
+      const remainingRequiredTasks = await prisma.shiftControlTask.count({
+        where: {
+          runId: task.runId,
+          required: true,
+          category: { notIn: ['handover', 'closing'] },
+          status: { not: 'done' },
+        },
+      });
+      if (remainingRequiredTasks > 0) {
+        return Response.json({
+          error: 'Сначала выполните оставшиеся обязательные шаги.',
+          code: 'EARLY_FINISH_TASKS_REQUIRED',
+        }, { status: 409 });
+      }
+    }
+
     const isRetail = user.department === 'retail';
     const isStoreClosingEmployee = isRetail && isStoreClosingShift(task.run.workDayEntry.shiftCode);
     const requiresKkmClose = isRetail;
