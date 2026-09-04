@@ -46,6 +46,32 @@ account permanently merge with future unrelated trainees.
 
 ## UI Direction
 
+### Production — August 2026 rules
+
+- Bela keeps the existing 12% employee base, with a gross-pay floor of RUB
+  100,000 starting in `2026-08`; advances are subtracted afterwards.
+- One-time awards are added after regular calculations and minimum guarantees,
+  excluded from Bela's base, and saved as existing `PayrollAdjustment` records.
+  Saved history is immutable; no Prisma migration or 1C write is part of this work.
+- Owner approved one entry point: `Дни, авансы и премии`. Each employee expands
+  to show their manual inputs, bonus amounts/reasons and final payout. Do not
+  reintroduce a separate bonus tab. Preserve nonzero legacy fixed-pay bonuses
+  visibly in the same editor; do not silently migrate or double-count them.
+- The initial August awards are drafts only (Astemir 20,000; Zalina 15,000;
+  Liana 5,000). They must not recur automatically in later months.
+- New snapshots from August require the current compensation contract. Validate
+  detail components and premium reasons as well as totals; retain legacy July
+  save compatibility and existing history reads.
+- Owner approved the UI and release. Deployed on 2026-09-04 as `fc7f41c`
+  on top of production `d5cd3d0`; only five payroll code/test files changed.
+  The release also restores Bela's detail opening without personal sales rows.
+- Verification: 32 isolated-release payroll tests, TypeScript and build passed;
+  1,700 differential scenarios preserve other formulas and pre-August Bela.
+  Live local detail open/close/re-entry passed. Production container is healthy,
+  expected bundle markers are present, and no pending migrations were applied.
+  Existing saved runs were not recalculated; production payroll saves were not
+  performed for testing. 1C synchronization remains outside this release.
+
 The audit/review block is meant for review workflows, not the final payroll
 summary. Avoid mixing "quick product review" into the main summary if it makes
 the pay result harder to understand.
