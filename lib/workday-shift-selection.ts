@@ -67,12 +67,37 @@ export function deriveWorkdayShiftSelection(input: {
   }
 
   if (scheduledCount === 1) {
+    const pairedShiftCodes = shiftCodesByDepartmentAndCount[input.department][2];
+    const otherStarts = input.startedWorkdays.filter((entry) => entry.userId !== input.currentUserId);
+    if (otherStarts.length === 1 && pairedShiftCodes.includes(otherStarts[0].shiftCode)) {
+      return {
+        mode: 'remaining',
+        scheduledCount,
+        allowedShiftCodes: pairedShiftCodes.filter((code) => code !== otherStarts[0].shiftCode),
+        exceptionShiftCodes: [],
+      };
+    }
+    if (otherStarts.length > 0) {
+      return {
+        mode: 'unavailable',
+        scheduledCount,
+        allowedShiftCodes: expectedShiftCodes,
+        exceptionShiftCodes: [],
+      };
+    }
     return { mode: 'solo', scheduledCount, allowedShiftCodes: expectedShiftCodes, exceptionShiftCodes: [] };
   }
 
-  const otherStarts = input.startedWorkdays.filter(
-    (entry) => entry.userId !== input.currentUserId && scheduledIds.has(entry.userId),
-  );
+  const allOtherStarts = input.startedWorkdays.filter((entry) => entry.userId !== input.currentUserId);
+  if (allOtherStarts.some((entry) => !scheduledIds.has(entry.userId))) {
+    return {
+      mode: 'unavailable',
+      scheduledCount,
+      allowedShiftCodes: expectedShiftCodes,
+      exceptionShiftCodes: [],
+    };
+  }
+  const otherStarts = allOtherStarts;
   if (otherStarts.length === 0) {
     const soloShiftCode = shiftCodesByDepartmentAndCount[input.department][1] ?? [];
     return { mode: 'first_of_pair', scheduledCount, allowedShiftCodes: expectedShiftCodes, exceptionShiftCodes: soloShiftCode };
@@ -105,7 +130,7 @@ export function workdayShiftSelectionHint(selection: WorkdayShiftSelection) {
   if (selection.mode === 'outside_schedule_remaining') return 'Коллега уже начал рабочий день — оставшаяся смена определена автоматически.';
   if (selection.mode === 'outside_schedule') return 'В графике на сегодня нет вашей рабочей отметки. Выберите фактическую смену.';
   if (selection.mode === 'first_of_pair') return 'Выберите свою смену. Смена коллеги определится автоматически.';
-  return 'Выберите свою смену на сегодня.';
+  return 'Проверьте график.';
 }
 
 type SelectionDb = Prisma.TransactionClient | typeof prisma;

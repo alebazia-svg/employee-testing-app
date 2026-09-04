@@ -39,7 +39,8 @@ import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShift
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { colleaguePresence } from '@/lib/workday-presence';
-import { expectedColleagueShiftCode } from '@/lib/workday-colleague-shift';
+import { expectedColleagueShiftCode, hasColleagueShiftConflict } from '@/lib/workday-colleague-shift';
+import { formatDurationWithSeconds } from '@/lib/workday-duration';
 import { scheduleCoverage, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
 import { buildBulkScheduleChanges, buildBulkScheduleEditChanges, bulkScheduleCounts, type BulkScheduleStatus } from '@/lib/work-schedule-bulk';
 import {
@@ -734,16 +735,6 @@ function formatDuration(ms: number) {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
-function formatDurationWithSeconds(ms: number) {
-  const safeMs = Math.max(0, ms);
-  const totalSeconds = Math.floor(safeMs / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 function minutesToTime(minutes: number | null | undefined) {
@@ -1702,14 +1693,16 @@ export function EmployeeTodayClient({
     const workday = todayWorkdayByUser.get(person.id);
     if (workday?.shiftCode) return `Смена ${shiftLabel(workday.shiftCode)}`;
     if (todayPresence(person) === 'scheduled') {
-      const expectedCode = expectedColleagueShiftCode({
+      const shiftContext = {
         department: user.department,
         colleagueUserId: person.id,
         scheduledWorkingUserIds,
         startedWorkdays: departmentWorkdaysState.filter((entry) => entry.date === today),
-      });
+      };
+      const expectedCode = expectedColleagueShiftCode(shiftContext);
       const expectedShift = expectedCode ? shiftOptions.find((shift) => shift.code === expectedCode) : null;
-      return expectedShift ? `Начало смены — ${minutesToTime(expectedShift.startMinutes)}` : 'По графику работает сегодня';
+      if (hasColleagueShiftConflict(shiftContext)) return 'Проверьте график';
+      return expectedShift ? `Смена по плану: ${shiftLabel(expectedCode!)}` : 'По графику работает сегодня';
     }
     return null;
   }

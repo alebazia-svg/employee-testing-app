@@ -144,6 +144,31 @@ test('second scheduled employee receives only the remaining paired shift', () =>
   }).allowedShiftCodes, ['09_18']);
 });
 
+test('actual off-schedule start determines the remaining shift for the scheduled colleague', () => {
+  assert.deepEqual(deriveWorkdayShiftSelection({
+    department: 'retail',
+    currentUserId: 2,
+    scheduledWorkingUserIds: [2],
+    startedWorkdays: [{ userId: 1, shiftCode: '09_18' }],
+  }), {
+    mode: 'remaining',
+    scheduledCount: 1,
+    allowedShiftCodes: ['11_20'],
+    exceptionShiftCodes: [],
+  });
+});
+
+test('an extra off-schedule start does not guess a shift in a two-person schedule', () => {
+  const selection = deriveWorkdayShiftSelection({
+    department: 'retail',
+    currentUserId: 2,
+    scheduledWorkingUserIds: [2, 3],
+    startedWorkdays: [{ userId: 1, shiftCode: '09_18' }],
+  });
+
+  assert.equal(selection.mode, 'unavailable');
+});
+
 test('first of two employees can choose either paired shift and missing schedule stays explicit', () => {
   assert.deepEqual(deriveWorkdayShiftSelection({
     department: 'wholesale',
