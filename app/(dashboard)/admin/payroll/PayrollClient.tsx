@@ -9,6 +9,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
+import { PayrollBonusesEditor } from './PayrollBonusesEditor';
+import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
 
 type CellValue = string | number | boolean | Date | null | undefined;
 type Row = CellValue[];
@@ -282,6 +284,7 @@ type SavedPayrollEmployeeResult = {
   reasons?: unknown;
   comment: string;
   calculationDetails: SavedPayrollCalculationDetail[];
+  adjustments?: Array<{ id: number; type: string; amount: number; reason: string; createdAt: string; createdByUserId: number | null }>;
 };
 
 type SavedPayrollSourceFile = {
@@ -336,6 +339,10 @@ function getSavedEmployeeReasons(row: { reasons?: unknown }) {
 }
 
 type FullPayrollRow = BonusManagerSummary & {
+  belaBase?: number;
+  belaPercentAmount?: number;
+  minimumGuaranteeAdjustment?: number;
+  oneTimeBonus?: number;
   payrollDepartment: string;
   position: string;
   salaryType: SalaryType;
@@ -2850,33 +2857,6 @@ function isBelaManager(manager: string) {
   return normalized.includes('бэла') || normalized.includes('бела') || normalized.includes('кештова');
 }
 
-function isBelaBaseEmployee(manager: string) {
-  const normalized = normalizePersonName(manager);
-  return (
-    normalized.includes('тохов') ||
-    normalized.includes('астемир') ||
-    normalized.includes('ахобекова') ||
-    normalized.includes('залина') ||
-    normalized.includes('хурцокова') ||
-    normalized.includes('хурзокова') ||
-    normalized.includes('ляна') ||
-    normalized.includes('лиана') ||
-    normalized.includes('кумакова') ||
-    normalized.includes('кумахова') ||
-    normalized.includes('диана') ||
-    normalized.includes('чиченова') ||
-    normalized.includes('чеченова') ||
-    normalized.includes('милана') ||
-    normalized.includes('абшаева') ||
-    normalized.includes('зухра') ||
-    normalized.includes('икаев') ||
-    normalized.includes('асад') ||
-    normalized.includes('магомед') ||
-    normalized.includes('стажеррозница') ||
-    normalized.includes('стажёррозница')
-  );
-}
-
 function isNoDayPayManager(manager: string) {
   return normalizePersonName(manager).includes('асад');
 }
@@ -3017,22 +2997,41 @@ function getPayrollManualInput(manager: string, manualPayroll: Record<string, Pa
   );
 }
 
-function applyBelaPercentRule(rows: FullPayrollRow[]): FullPayrollRow[] {
-  const belaBaseGrossPay = rows
-    .filter((row) => row.salaryRule !== 'belaPercent' && isBelaBaseEmployee(row.manager))
-    .reduce((sum, row) => sum + row.grossPay, 0);
+function applyBelaPercentRule(rows: FullPayrollRow[], periodKey: string): FullPayrollRow[] {
+  const baseRows = rows.filter((row) => row.salaryRule !== 'belaPercent' && isBelaBaseEmployee(row.manager));
+  const belaBaseGrossPay = baseRows.reduce((sum, row) => sum + row.grossPay - (row.oneTimeBonus ?? 0), 0);
+  const minimum = getBelaMinimum(periodKey);
 
   return rows.map((row) => {
     if (row.salaryRule !== 'belaPercent') return row;
-    const grossPay = belaBaseGrossPay * 0.12;
+    const belaPercentAmount = minimum ? payrollMoney(belaBaseGrossPay * 0.12) : belaBaseGrossPay * 0.12;
+    const minimumGuaranteeAdjustment = minimum ? payrollMoney(Math.max(0, minimum - belaPercentAmount)) : 0;
+    const grossPay = belaPercentAmount + minimumGuaranteeAdjustment;
     const netPay = grossPay - row.advance;
+    const payrollReasons = [
+      ...(row.advance > grossPay ? ['Аванс больше начислений'] : []),
+      ...(minimum && baseRows.some((baseRow) => baseRow.payrollReasons.length > 0) ? ['Не полностью проверена база расчёта 12%'] : []),
+    ];
     return {
       ...row,
+      belaBase: belaBaseGrossPay,
+      belaPercentAmount,
+      minimumGuaranteeAdjustment,
       grossPay,
       netPay,
-      payrollStatus: row.advance > grossPay ? 'Проверить' as const : 'OK' as const,
-      payrollReasons: row.advance > grossPay ? ['Аванс больше начислений'] : [],
+      payrollStatus: payrollReasons.length ? 'Проверить' as const : 'OK' as const,
+      payrollReasons,
     };
+  });
+}
+
+function applyPayrollBonuses(rows: FullPayrollRow[], bonuses: PayrollBonus[]): FullPayrollRow[] {
+  return rows.map((row) => {
+    const oneTimeBonus = getPayrollBonusTotal(bonuses, row.manager);
+    const grossPay = row.grossPay + oneTimeBonus;
+    const payrollReasons = row.payrollReasons.filter((reason) => reason !== 'Аванс больше начислений');
+    if (row.advance > grossPay) payrollReasons.push('Аванс больше начислений');
+    return { ...row, oneTimeBonus, grossPay, netPay: row.netPay + oneTimeBonus, payrollReasons, payrollStatus: payrollReasons.length ? 'Проверить' : 'OK' };
   });
 }
 
@@ -3188,10 +3187,10 @@ function getSalaryTypeLabel(salaryType: SalaryType) {
   return 'Розничный бонус продаж';
 }
 
-function getSalaryFormulaLabel(salaryType: SalaryType) {
+function getSalaryFormulaLabel(salaryType: SalaryType, periodKey = '') {
   if (salaryType === 'purchase_manager') return '20 × 600 + закупки × 1,75% + доведение до 100 000 - аванс - удержание';
   if (salaryType === 'fixed_salary') return 'оклад + премия - аванс - удержание';
-  if (salaryType === 'vl_percent') return '12% от итого начислено выбранных сотрудников';
+  if (salaryType === 'vl_percent') return getBelaMinimum(periodKey) ? '12% от обычных начислений выбранных сотрудников + доведение до 100 000 − аванс; разовая премия сверху' : '12% от итого начислено выбранных сотрудников';
   if (salaryType === 'wholesale_percent') return 'оптовый бонус + дни + дисциплина - аванс';
   return 'дни + бонусы продаж + дисциплина - аванс';
 }
@@ -3320,6 +3319,8 @@ export default function AdminPayrollPage() {
   const [fixedPayroll, setFixedPayroll] = useState<Record<string, FixedPayrollInput>>({});
   const [purchasePayroll, setPurchasePayroll] = useState<PurchasePayrollInput>({ advance: '', deduction: '', comment: '' });
   const [purchaseReport, setPurchaseReport] = useState<PurchaseReportState | null>(null);
+  const [bonusState, setBonusState] = useState<{ periodKey: string; drafts: PayrollBonusDraft[]; error: string }>({ periodKey: '', drafts: [], error: '' });
+  const [bonusStorageWarning, setBonusStorageWarning] = useState('');
   const [salesSourceFile, setSalesSourceFile] = useState<PayrollSourceFileSnapshot | null>(null);
   const [purchaseSourceFile, setPurchaseSourceFile] = useState<PayrollSourceFileSnapshot | null>(null);
   const [purchaseError, setPurchaseError] = useState('');
@@ -3356,6 +3357,28 @@ export default function AdminPayrollPage() {
   const rows = selectedSheet && workbook ? workbook.sheets[selectedSheet] ?? [] : [];
   const payrollManualStorageKey = `payroll-manual-${year}-${month}`;
   const selectedPayrollPeriodKey = `${year}-${formatPayrollMonthKey(Number(month))}`;
+  const bonusesReady = bonusState.periodKey === selectedPayrollPeriodKey;
+  const bonusDrafts = bonusesReady ? bonusState.drafts : [];
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(`payroll-bonuses-v1-${selectedPayrollPeriodKey}`);
+      setBonusState({ periodKey: selectedPayrollPeriodKey, drafts: saved === null ? getInitialPayrollBonuses(selectedPayrollPeriodKey) : readPayrollBonusDrafts(JSON.parse(saved)), error: '' });
+    } catch {
+      setBonusState({ periodKey: selectedPayrollPeriodKey, drafts: [], error: 'Сохранённый черновик премий не прочитан. Добавьте премии заново или перезагрузите страницу для повторного чтения.' });
+    }
+    setBonusStorageWarning('');
+  }, [selectedPayrollPeriodKey]);
+
+  useEffect(() => {
+    if (!bonusesReady || bonusState.error) return;
+    try {
+      window.localStorage.setItem(`payroll-bonuses-v1-${selectedPayrollPeriodKey}`, JSON.stringify(bonusState.drafts));
+      setBonusStorageWarning('');
+    } catch {
+      setBonusStorageWarning('Браузер не сохранил черновик премий. Сохраните расчёт в историю до закрытия страницы.');
+    }
+  }, [bonusesReady, bonusState, selectedPayrollPeriodKey]);
 
   useEffect(() => {
     skipNextManualPayrollSave.current = true;
@@ -3419,7 +3442,18 @@ export default function AdminPayrollPage() {
   );
   const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll, selectedPayrollPeriodKey), [fixedPayroll, selectedPayrollPeriodKey]);
   const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport), [purchasePayroll, purchaseReport]);
-  const fullPayrollRows = useMemo(() => applyBelaPercentRule([...salesPayrollRows, ...fixedPayrollRows, purchasePayrollRow]), [salesPayrollRows, fixedPayrollRows, purchasePayrollRow]);
+  const regularPayrollRows = useMemo(() => applyBelaPercentRule([...salesPayrollRows, ...fixedPayrollRows, purchasePayrollRow], selectedPayrollPeriodKey), [salesPayrollRows, fixedPayrollRows, purchasePayrollRow, selectedPayrollPeriodKey]);
+  const bonusValidation = useMemo(() => {
+    try {
+      if (!bonusesReady) throw new Error('Загружается черновик премий.');
+      if (bonusState.error) throw new Error(bonusState.error);
+      return { bonuses: validatePayrollBonuses(bonusState.drafts, regularPayrollRows.map((row) => row.manager)), error: '' };
+    } catch (error) {
+      return { bonuses: [] as PayrollBonus[], error: error instanceof Error ? error.message : 'Проверьте премии.' };
+    }
+  }, [bonusState, bonusesReady, regularPayrollRows]);
+  const fullPayrollRows = useMemo(() => applyPayrollBonuses(regularPayrollRows, bonusValidation.bonuses), [regularPayrollRows, bonusValidation.bonuses]);
+  const unmappedBonusDrafts = bonusDrafts.filter((draft) => !regularPayrollRows.some((row) => row.manager === draft.employeeName));
   const purchaseTargetBase = purchaseTargetSalary / purchasePercent;
   const purchaseCompletionPercent = (purchasePayrollRow.purchasePercentAmount / purchaseTargetSalary) * 100;
   const payrollAttendanceMappingRows = useMemo(
@@ -3605,7 +3639,7 @@ export default function AdminPayrollPage() {
   const registrarParseUnsafe = parseResult.isRegistrarReport && (!parseResult.isSafeForPayrollCalculation || payrollReviewCount > 20);
   const selectedManagerSummary = useMemo(() => classification.managerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [classification.managerSummaries, selectedManager]);
   const selectedManagerRows = useMemo(() => classification.rows.filter((row) => row.manager === selectedManager), [classification.rows, selectedManager]);
-  const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager')
+  const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager' || selectedManagerPayroll.salaryType === 'vl_percent')
     ? { status: selectedManagerPayroll.payrollStatus, reason: selectedManagerPayroll.payrollReasons.join(', ') || 'замечаний нет' }
     : selectedManagerSummary
       ? getManagerStatus(selectedManagerSummary, classification.rows, classification.accessoryExcludedRows)
@@ -4005,6 +4039,15 @@ export default function AdminPayrollPage() {
           source: nextSource,
         },
       };
+    });
+  }
+
+  function replaceBonusDrafts(previousDrafts: PayrollBonusDraft[], drafts: PayrollBonusDraft[]) {
+    const previousIds = new Set(previousDrafts.map((draft) => draft.id));
+    setBonusState((current) => current.periodKey !== selectedPayrollPeriodKey ? current : {
+      periodKey: current.periodKey,
+      drafts: [...current.drafts.filter((draft) => !previousIds.has(draft.id)), ...drafts],
+      error: '',
     });
   }
 
@@ -4689,10 +4732,12 @@ export default function AdminPayrollPage() {
       const push = (component: string, base: string | number | null, formula: string, amount: number, comment = '') => {
         rowsForEmployee.push([...baseColumns, component, typeof base === 'number' ? toExportMoney(base) : base, formula, toExportMoney(amount), comment]);
       };
+      const pushBonuses = () => bonusValidation.bonuses.filter((bonus) => bonus.employeeName === row.manager).forEach((bonus) => push('Разовая премия', null, 'сверх обычного расчёта и гарантии; вне базы 12% Бэлы', bonus.amount, bonus.reason));
 
       if (row.salaryType === 'fixed_salary') {
         push('Фиксированный оклад', row.fixedSalary, 'оклад', row.fixedSalary, row.position);
         push('Премия', row.fixedBonus, 'ручной ввод', row.fixedBonus);
+        pushBonuses();
         push('Аванс', row.advance, 'удержание', -row.advance);
         push('Удержание', row.fixedDeduction, 'ручной ввод', -row.fixedDeduction);
         push('К выплате', row.grossPay, 'оклад + премия - аванс - удержание', row.netPay, row.comment);
@@ -4703,6 +4748,7 @@ export default function AdminPayrollPage() {
         push('Оплата по дням', purchaseStandardWorkedDays, `${purchaseStandardWorkedDays} × ${purchaseDayRate}`, row.dayPay, `ставка ${formatMoney(purchaseDayRate)}`);
         push('Закупки 1,75%', row.purchaseBase, 'закупки × 1,75%', row.purchasePercentAmount);
         push('Доведение закупщика до 100 000', row.purchaseTargetSalary, 'целевая ЗП - дни - закупки 1,75%', row.purchaseTargetAdjustment);
+        pushBonuses();
         push('Аванс', row.advance, 'удержание', -row.advance);
         push('Удержание', row.fixedDeduction, 'ручной ввод', -row.fixedDeduction);
         push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType), row.netPay, row.comment);
@@ -4712,7 +4758,8 @@ export default function AdminPayrollPage() {
       if (row.dayPay) push('Оплата по дням', row.workedDays, `${row.workedDays ?? 0} × ${row.dayRate}`, row.dayPay, getPayrollDaysSourceLabel(row.daysSource));
 
       if (row.salaryType === 'vl_percent') {
-        push('ВЛ 12%', row.grossPay / 0.12, '12% от итого начислено выбранных сотрудников', row.grossPay);
+        push('ВЛ 12%', row.belaBase ?? 0, '12% от обычных начислений выбранных сотрудников, без разовых премий', row.belaPercentAmount ?? 0);
+        if (getBelaMinimum(selectedPayrollPeriodKey)) push('Доведение Бэлы до 100 000', getBelaMinimum(selectedPayrollPeriodKey), 'max(0, 100 000 − расчёт 12%)', row.minimumGuaranteeAdjustment ?? 0);
       } else if (row.salaryType === 'wholesale_percent') {
         push('Бонус опта 1,75%', classification.wholesale.base, 'общая база опта × 1,75%', row.wholesaleBonus);
       } else {
@@ -4726,8 +4773,9 @@ export default function AdminPayrollPage() {
 
       if (row.disciplineBonus) push('Дисциплина', row.lateCount, 'опозданий ≤ 3', row.disciplineBonus);
       if (row.agentCreditCommission > 0) push('Агентские по кредитам', null, 'ручной ввод', row.agentCreditCommission, 'Отдельное ручное начисление');
+      pushBonuses();
       push('Аванс', row.advance, 'удержание', -row.advance);
-      push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType), row.netPay, row.comment);
+      push('К выплате', row.grossPay, `${getSalaryFormulaLabel(row.salaryType, selectedPayrollPeriodKey)}${row.oneTimeBonus ? '; + разовая премия' : ''}`, row.netPay, row.comment);
 
       return rowsForEmployee;
     });
@@ -4964,6 +5012,8 @@ export default function AdminPayrollPage() {
     ].filter(Boolean);
 
     return {
+      compensationVersion: PAYROLL_COMPENSATION_VERSION,
+      bonuses: bonusDrafts,
       period: {
         year: Number(year),
         month: Number(month),
@@ -5040,6 +5090,10 @@ export default function AdminPayrollPage() {
         },
       ],
       employeeResults: fullPayrollRows.map((row, index) => ({
+        belaBase: row.belaBase,
+        belaPercentAmount: row.belaPercentAmount,
+        minimumGuaranteeAdjustment: row.minimumGuaranteeAdjustment ?? 0,
+        oneTimeBonus: row.oneTimeBonus ?? 0,
         employeeName: row.manager,
         department: row.department,
         payrollDepartment: row.payrollDepartment,
@@ -5085,6 +5139,7 @@ export default function AdminPayrollPage() {
 
   async function savePayrollSnapshot() {
     if (!fullPayrollRows.length) return;
+    if (bonusValidation.error) { setSaveError(bonusValidation.error); return; }
     if (isCurrentPeriodClosed) {
       setSaveError('Период закрыт. Новые расчёты за этот месяц запрещены.');
       return;
@@ -5120,6 +5175,7 @@ export default function AdminPayrollPage() {
   }
 
   async function exportPayrollWorkbook() {
+    if (bonusValidation.error) { setSaveError(bonusValidation.error); return; }
     const XLSX = (await import('xlsx-js-style')).default;
     const workbookExport = XLSX.utils.book_new();
     const periodLabel = `${months[Number(month)]} ${year}`;
@@ -5203,7 +5259,7 @@ export default function AdminPayrollPage() {
     );
     const totalDeductions = fullPayrollRows.reduce((sum, row) => sum + row.fixedDeduction, 0);
     const totalMainAmount = fullPayrollRows.reduce((sum, row) => sum + getPayrollExportMainAmount(row), 0);
-    const totalFixedBonus = fullPayrollRows.reduce((sum, row) => sum + row.fixedBonus, 0);
+    const totalFixedBonus = fullPayrollRows.reduce((sum, row) => sum + row.fixedBonus + (row.oneTimeBonus ?? 0), 0);
 
     const summaryRows = [
       ['Зарплатная ведомость — ' + periodLabel],
@@ -5225,10 +5281,10 @@ export default function AdminPayrollPage() {
       toExportMoney(row.dayPay),
       row.salaryType === 'retail_sales_bonus' || row.salaryType === 'wholesale_percent' ? toExportMoney(row.salesBonus) : '',
       row.salaryType === 'purchase_manager' ? toExportMoney(row.purchasePercentAmount) : '',
-      row.salaryType === 'purchase_manager' ? toExportMoney(row.purchaseTargetAdjustment) : '',
-      row.salaryType === 'vl_percent' ? toExportMoney(row.grossPay) : '',
+      row.salaryType === 'purchase_manager' ? toExportMoney(row.purchaseTargetAdjustment) : row.salaryType === 'vl_percent' ? toExportMoney(row.minimumGuaranteeAdjustment ?? 0) : '',
+      row.salaryType === 'vl_percent' ? toExportMoney(row.belaPercentAmount ?? 0) : '',
       row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager' ? '' : toExportMoney(row.disciplineBonus),
-      toExportMoney(row.fixedBonus),
+      toExportMoney(row.fixedBonus + (row.oneTimeBonus ?? 0)),
       toExportMoney(row.agentCreditCommission),
       toExportMoney(row.advance),
       toExportMoney(row.fixedDeduction),
@@ -5237,8 +5293,8 @@ export default function AdminPayrollPage() {
       getPayrollRowExportComment(row),
     ]);
     const totalPurchaseBonus = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'purchase_manager' ? row.purchasePercentAmount : 0), 0);
-    const totalPurchaseAdjustment = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'purchase_manager' ? row.purchaseTargetAdjustment : 0), 0);
-    const totalVlAmount = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'vl_percent' ? row.grossPay : 0), 0);
+    const totalPurchaseAdjustment = fullPayrollRows.reduce((sum, row) => sum + row.purchaseTargetAdjustment + (row.minimumGuaranteeAdjustment ?? 0), 0);
+    const totalVlAmount = fullPayrollRows.reduce((sum, row) => sum + (row.belaPercentAmount ?? 0), 0);
     const totalFixedSalary = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'fixed_salary' ? row.fixedSalary : 0), 0);
     const totalAgentCreditCommission = fullPayrollRows.reduce((sum, row) => sum + row.agentCreditCommission, 0);
     const totalRow = ['ИТОГО', '', '', toExportMoney(payrollTotals.grossPay), toExportMoney(totalFixedSalary), '', '', toExportMoney(payrollTotals.dayPay), toExportMoney(totalBonus), toExportMoney(totalPurchaseBonus), toExportMoney(totalPurchaseAdjustment), toExportMoney(totalVlAmount), toExportMoney(payrollTotals.disciplineBonus), toExportMoney(totalFixedBonus), toExportMoney(totalAgentCreditCommission), toExportMoney(payrollTotals.advance), toExportMoney(totalDeductions), toExportMoney(payrollTotals.netPay), '', ''];
@@ -5523,9 +5579,9 @@ export default function AdminPayrollPage() {
 
             </Card>
 
-            <div>
+            <div className='min-w-0'>
               <div className='mb-5 flex flex-wrap gap-2'>
-                {['Итог ЗП', 'Дни и авансы', 'Аудит расчёта'].map((tab) => (
+                {['Итог ЗП', 'Дни, авансы и премии', 'Аудит расчёта'].map((tab) => (
                   <button
                     key={tab}
                     type='button'
@@ -5536,6 +5592,9 @@ export default function AdminPayrollPage() {
                   </button>
                 ))}
               </div>
+
+              {bonusStorageWarning && <p role='alert' className='mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900'>{bonusStorageWarning}</p>}
+              {bonusValidation.error && <p role='alert' className='mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800'>{bonusValidation.error} Премии не включены в итог; сохранение и экспорт недоступны до исправления. {activePayrollTab !== 'Дни, авансы и премии' && <button type='button' onClick={() => setActivePayrollTab('Дни, авансы и премии')} className='font-semibold underline'>Проверить премии</button>}</p>}
 
               {activePayrollTab === 'Итог ЗП' && (
                 <div className='grid gap-5'>
@@ -5668,14 +5727,14 @@ export default function AdminPayrollPage() {
                     <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                       <h2 className='text-lg font-bold text-slate-900'>Итог по сотрудникам</h2>
                       <div className='flex flex-wrap gap-2'>
-                        <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0 || isCurrentPeriodClosed} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
+                        <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0 || isCurrentPeriodClosed || Boolean(bonusValidation.error)} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
                           {isSavingPayroll ? 'Сохраняю...' : 'Сохранить расчёт'}
                         </button>
-                        <button type='button' onClick={exportPayrollWorkbook} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90'>
+                        <button type='button' onClick={exportPayrollWorkbook} disabled={Boolean(bonusValidation.error)} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50'>
                           Скачать ведомость Excel
                         </button>
-                        <button type='button' onClick={() => setActivePayrollTab('Дни и авансы')} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900'>
-                          Редактировать дни и авансы
+                        <button type='button' onClick={() => setActivePayrollTab('Дни, авансы и премии')} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900'>
+                          Редактировать дни, авансы и премии
                         </button>
                       </div>
                     </div>
@@ -5717,6 +5776,7 @@ export default function AdminPayrollPage() {
                             <th className='w-[60px] px-2 py-2 text-right'>Опозд.</th>
                             <th className='w-[112px] px-2 py-2 text-right'>Продажи</th>
                             <th className='w-[96px] px-2 py-2 text-right'>Дисц.</th>
+                            <th className='w-[96px] px-2 py-2 text-right'>Раз. премии</th>
                             <th className='w-[96px] px-2 py-2 text-right'>Аванс</th>
                             <th className='w-[112px] px-2 py-2 text-right'>Выплата</th>
                             <th className='w-[92px] px-2 py-2'>Статус</th>
@@ -5731,12 +5791,14 @@ export default function AdminPayrollPage() {
                                 <td className='max-w-[210px] truncate px-2 py-2 font-semibold text-slate-900' title={`${summary.manager} · ${summary.position}`}>
                                   <span className='block truncate'>{summary.manager}</span>
                                   <span className='block truncate text-[11px] font-medium text-slate-500'>{summary.position}</span>
+                                  {summary.salaryRule === 'belaPercent' && getBelaMinimum(selectedPayrollPeriodKey) > 0 && <span className='block text-[11px] font-medium text-slate-600'>Доведение: {formatMoney(summary.minimumGuaranteeAdjustment ?? 0)}</span>}
                                 </td>
                                 <td className='whitespace-nowrap px-2 py-2 text-slate-700'>{summary.payrollDepartment}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.workedDays ?? '—'}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.lateCount ?? '—'}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right font-semibold text-slate-900'>{formatMoney(summary.salesBonus)}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.salaryType === 'fixed_salary' || summary.salaryType === 'purchase_manager' ? '—' : formatMoney(summary.disciplineBonus)}</td>
+                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{formatMoney(summary.oneTimeBonus ?? 0)}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{formatMoney(summary.advance)}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right font-bold text-slate-900'>{formatMoney(summary.netPay)}</td>
                                 <td className='px-2 py-2'>
@@ -5849,6 +5911,10 @@ export default function AdminPayrollPage() {
                       <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
                         Это сохранённый снимок расчёта. Исходный Excel-файл не восстанавливается, сохранены итоговые данные расчёта.
                       </p>
+                      {selectedSavedRun.employeeResults.some((row) => row.adjustments?.length) && <div className='mb-4 rounded-lg border border-border p-3'>
+                        <h3 className='font-bold text-slate-900'>Зафиксированные разовые премии</h3>
+                        {selectedSavedRun.employeeResults.flatMap((row) => (row.adjustments ?? []).filter((bonus) => bonus.type === 'ONE_TIME_BONUS').map((bonus) => <p key={bonus.id} className='mt-2 text-sm text-slate-700'>{row.employeeName} · {formatMoney(bonus.amount)} · {bonus.reason}<span className='block text-xs text-slate-500'>Внесено: {new Date(bonus.createdAt).toLocaleString('ru-RU')} · администратор ID {bonus.createdByUserId ?? '—'}</span></p>))}
+                      </div>}
                       {getSavedRunReviewReasons(selectedSavedRun).length > 0 && (
                         <div className='mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>
                           <p className='font-bold'>Основные причины проверки</p>
@@ -5962,143 +6028,99 @@ export default function AdminPayrollPage() {
                 </div>
               )}
 
-              {activePayrollTab === 'Дни и авансы' && (
+              {activePayrollTab === 'Дни, авансы и премии' && (
                 <Card>
                   <div className='mb-4'>
-                    <h2 className='text-lg font-bold text-slate-900'>Дни и авансы</h2>
-                    <p className='mt-1 text-sm text-slate-500'>Ручной ввод дней, опозданий, авансов и комментариев по сотрудникам.</p>
+                    <h2 className='text-lg font-bold text-slate-900'>Дни, авансы и премии</h2>
+                    <p className='mt-1 text-sm text-slate-500'>Раскройте сотрудника: все ручные суммы и итог к выплате находятся в одном месте.</p>
+                    <p className='mt-2 text-xs text-slate-500'>Новые премии прибавляются сверх обычного расчёта и доведения до минимума, не входят в базу 12% Бэлы и не переносятся в следующий месяц. «Сохранить расчёт» фиксирует суммы, основания и автора в истории. Записи в 1С не создаются.</p>
                   </div>
-                  <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
-                    <table className='w-full min-w-[1180px] text-sm'>
-                      <thead className='bg-slate-50 text-left text-slate-500'>
-                        <tr>
-                          <th className='px-3 py-3'>Сотрудник</th>
-                          <th className='px-3 py-3'>Отдел</th>
-                          <th className='px-3 py-3'>Источник</th>
-                          <th className='px-3 py-3'>Отработано дней</th>
-                          <th className='px-3 py-3 text-right'>Ставка</th>
-                          <th className='px-3 py-3 text-right'>Оплата по дням</th>
-                          <th className='px-3 py-3'>Опоздания</th>
-                          <th className='px-3 py-3 text-right'>Бонус дисциплины</th>
-                          <th className='px-3 py-3'>Агентские</th>
-                          <th className='px-3 py-3'>Аванс</th>
-                          <th className='px-3 py-3'>Комментарий</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                          {salesPayrollRows.map((row) => {
-                            const manual = manualPayroll[row.manager] ?? { workedDays: '', lateCount: '', advance: '', comment: '' };
-                            const workedDaysValue = manual.workedDays || (row.workedDays === null ? '' : String(row.workedDays));
-                            const lateCountValue = manual.lateCount || (row.lateCount === null ? '' : String(row.lateCount));
-                            return (
-                            <tr key={row.manager} className='border-t border-border/70 align-top'>
-                              <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
-                              <td className='px-3 py-2'>{row.payrollDepartment}</td>
-                              <td className='px-3 py-2 text-slate-700'>{getPayrollDaysSourceLabel(row.daysSource)}</td>
-                              <td className='px-3 py-2'><Input type='number' min='0' step='0.5' value={workedDaysValue} onChange={(event) => updateManualPayroll(row.manager, 'workedDays', event.target.value)} className='h-9 w-28' /></td>
-                              <td className='px-3 py-2 text-right'>{formatMoney(row.dayRate)}</td>
-                              <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.dayPay)}</td>
-                              <td className='px-3 py-2'><Input type='number' min='0' step='1' value={lateCountValue} onChange={(event) => updateManualPayroll(row.manager, 'lateCount', event.target.value)} className='h-9 w-28' /></td>
-                              <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.disciplineBonus)}</td>
-                              <td className='px-3 py-2'>
-                                {row.manager === agentCreditCommissionEmployee ? (
-                                  <Input type='number' min='0' step='100' value={manual.agentCreditCommission ?? ''} onChange={(event) => updateManualPayroll(row.manager, 'agentCreditCommission', event.target.value)} className='h-9 w-32' />
-                                ) : (
-                                  <span className='text-slate-400'>—</span>
-                                )}
-                              </td>
-                              <td className='px-3 py-2'><Input type='number' min='0' step='100' value={manual.advance} onChange={(event) => updateManualPayroll(row.manager, 'advance', event.target.value)} className='h-9 w-32' /></td>
-                              <td className='px-3 py-2'><Input value={manual.comment} onChange={(event) => updateManualPayroll(row.manager, 'comment', event.target.value)} placeholder='Комментарий' className='h-9 min-w-[220px]' /></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                  <div className='grid min-w-0 gap-3'>
+                    {fullPayrollRows.map((row) => {
+                      const fixed = row.salaryType === 'fixed_salary';
+                      const purchase = row.salaryType === 'purchase_manager';
+                      const salesInput = manualPayroll[row.manager] ?? { workedDays: '', lateCount: '', advance: '', comment: '' };
+                      const fixedInput = fixedPayroll[row.manager] ?? { bonus: '', advance: '', deduction: '', comment: '' };
+                      const input = fixed ? fixedInput : purchase ? purchasePayroll : salesInput;
+                      const employeeDrafts = bonusDrafts.filter((draft) => draft.employeeName === row.manager);
+                      const changeInput = (field: 'advance' | 'comment', value: string) => {
+                        if (fixed) updateFixedPayroll(row.manager, field, value);
+                        else if (purchase) updatePurchasePayroll(field, value);
+                        else updateManualPayroll(row.manager, field, value);
+                      };
+                      const showsLegacyBonus = fixed && (Boolean(fixedInput.bonus) || !getBelaMinimum(selectedPayrollPeriodKey));
+                      return (
+                        <details key={`${selectedPayrollPeriodKey}-${row.manager}`} className='min-w-0 rounded-lg border border-border bg-white'>
+                          <summary aria-label={`Данные зарплаты: ${row.manager}`} className='cursor-pointer rounded-lg px-4 py-3 text-sm marker:text-slate-400'>
+                            <span className='inline-grid w-[calc(100%_-_20px)] min-w-0 gap-2 align-top sm:grid-cols-[minmax(0,1fr)_auto]'>
+                              <span className='min-w-0'>
+                                <span className='block font-bold text-slate-900'>{row.manager}</span>
+                                <span className='block text-xs text-slate-500'>{row.payrollDepartment} · {row.position}</span>
+                                {row.payrollReasons.length > 0 && <span className='block text-xs text-amber-800'>Требует проверки · {row.payrollReasons.length}</span>}
+                                {employeeDrafts.length > 0 && <span className='block text-xs text-slate-600'>Премии: {bonusValidation.error ? 'проверьте ввод' : formatMoney((row.oneTimeBonus ?? 0) + row.fixedBonus)}</span>}
+                              </span>
+                              <span className='sm:text-right'>
+                                <span className='block text-xs text-slate-500'>К выплате{bonusValidation.error ? ' · без разовых премий' : ''}</span>
+                                <span className='block font-bold text-slate-900'>{formatMoney(row.netPay)}</span>
+                                <span className='block text-xs text-slate-500'>Раскрыть / свернуть</span>
+                              </span>
+                            </span>
+                          </summary>
+                          <div className='min-w-0 space-y-4 border-t border-border p-4'>
+                            <div className='grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3'>
+                              <p>Обычное начисление: <strong>{formatMoney(row.grossPay - (row.oneTimeBonus ?? 0))}</strong></p>
+                              {fixed && <p>Оклад: <strong>{formatMoney(row.fixedSalary)}</strong></p>}
+                              {purchase && <><p>Дни: {row.workedDays} × {formatMoney(row.dayRate)}</p><p>База закупок: {row.purchaseBase === null ? 'нет отчёта' : formatMoney(row.purchaseBase)}</p><p>Закупки 1,75%: {formatMoney(row.purchasePercentAmount)}</p><p>Доведение: {formatMoney(row.purchaseTargetAdjustment)}</p></>}
+                              {row.salaryRule === 'belaPercent' && <><p>База 12%: {formatMoney(row.belaBase ?? 0)}</p><p>Расчёт 12%: {formatMoney(row.belaPercentAmount ?? 0)}</p>{getBelaMinimum(selectedPayrollPeriodKey) > 0 && <p>Доведение до 100 000: <strong>{formatMoney(row.minimumGuaranteeAdjustment ?? 0)}</strong></p>}</>}
+                              {!fixed && !purchase && row.salaryRule === 'standard' && <><p>Оплата по дням: {formatMoney(row.dayPay)}</p><p>Дисциплина: {formatMoney(row.disciplineBonus)}</p><p>Источник дней: {getPayrollDaysSourceLabel(row.daysSource)}</p></>}
+                            </div>
+                            <fieldset disabled={isCurrentPeriodClosed || isSavingPayroll} className='grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
+                              {!fixed && !purchase && row.salaryRule === 'standard' && <>
+                                <label className='grid gap-1 text-sm font-semibold text-slate-700'>Отработано дней
+                                  <Input aria-label={`Дни: ${row.manager}`} type='number' min='0' step='0.5' value={salesInput.workedDays || (row.workedDays === null ? '' : String(row.workedDays))} onChange={(event) => updateManualPayroll(row.manager, 'workedDays', event.target.value)} />
+                                </label>
+                                <label className='grid gap-1 text-sm font-semibold text-slate-700'>Опоздания
+                                  <Input aria-label={`Опоздания: ${row.manager}`} type='number' min='0' step='1' value={salesInput.lateCount || (row.lateCount === null ? '' : String(row.lateCount))} onChange={(event) => updateManualPayroll(row.manager, 'lateCount', event.target.value)} />
+                                </label>
+                              </>}
+                              {row.manager === agentCreditCommissionEmployee && <label className='grid gap-1 text-sm font-semibold text-slate-700'>Агентские, ₽
+                                <Input aria-label={`Агентские: ${row.manager}`} type='number' min='0' step='100' value={salesInput.agentCreditCommission ?? ''} onChange={(event) => updateManualPayroll(row.manager, 'agentCreditCommission', event.target.value)} />
+                              </label>}
+                              <label className='grid gap-1 text-sm font-semibold text-slate-700'>Аванс, ₽
+                                <Input aria-label={`Аванс: ${row.manager}`} type='number' min='0' step='100' value={input.advance} onChange={(event) => changeInput('advance', event.target.value)} />
+                              </label>
+                              {(fixed || purchase) && <label className='grid gap-1 text-sm font-semibold text-slate-700'>Удержание, ₽
+                                <Input aria-label={`Удержание: ${row.manager}`} type='number' min='0' step='100' value={fixed ? fixedInput.deduction : purchasePayroll.deduction} onChange={(event) => fixed ? updateFixedPayroll(row.manager, 'deduction', event.target.value) : updatePurchasePayroll('deduction', event.target.value)} />
+                              </label>}
+                              <label className='grid gap-1 text-sm font-semibold text-slate-700 sm:col-span-2 lg:col-span-3'>Комментарий
+                                <Input aria-label={`Комментарий: ${row.manager}`} value={input.comment} onChange={(event) => changeInput('comment', event.target.value)} />
+                              </label>
+                            </fieldset>
+                            <PayrollBonusesEditor
+                              key={`${selectedPayrollPeriodKey}-bonuses-${row.manager}`}
+                              employeeName={row.manager}
+                              employees={[]}
+                              drafts={employeeDrafts}
+                              error=''
+                              disabled={!bonusesReady || isCurrentPeriodClosed || isSavingPayroll}
+                              onChange={(drafts) => replaceBonusDrafts(employeeDrafts, drafts)}
+                              legacyBonus={showsLegacyBonus ? { amount: fixedInput.bonus, onChange: (value) => updateFixedPayroll(row.manager, 'bonus', value) } : undefined}
+                            />
+                            {row.payrollReasons.length > 0 && <p className='rounded-lg bg-amber-50 p-3 text-sm text-amber-900'>{row.payrollReasons.join(' · ')}</p>}
+                            <p className='border-t border-border pt-3 text-sm text-slate-700'>Всего начислено: <strong>{formatMoney(row.grossPay)}</strong> · К выплате: <strong>{formatMoney(row.netPay)}</strong>{bonusValidation.error && ' · разовые премии не учтены до исправления ошибки'}</p>
+                          </div>
+                        </details>
+                      );
+                    })}
                   </div>
-                  <div className='mt-5'>
-                    <div className='mb-3'>
-                      <h3 className='text-base font-bold text-slate-900'>Фиксированная зарплата</h3>
-                      <p className='mt-1 text-sm text-slate-500'>Отдельный ручной блок для сотрудников без расчёта по продажам.</p>
-                    </div>
-                    <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
-                      <table className='w-full min-w-[1180px] text-sm'>
-                        <thead className='bg-slate-50 text-left text-slate-500'>
-                          <tr>
-                            <th className='px-3 py-3'>Сотрудник</th>
-                            <th className='px-3 py-3'>Отдел / должность</th>
-                            <th className='px-3 py-3 text-right'>Оклад</th>
-                            <th className='px-3 py-3'>Премия</th>
-                            <th className='px-3 py-3'>Аванс</th>
-                            <th className='px-3 py-3'>Удержание</th>
-                            <th className='px-3 py-3 text-right'>К выплате</th>
-                            <th className='px-3 py-3'>Комментарий</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {fixedPayrollRows.map((row) => {
-                            const manual = fixedPayroll[row.manager] ?? { bonus: '', advance: '', deduction: '', comment: '' };
-                            return (
-                              <tr key={row.manager} className='border-t border-border/70 align-top'>
-                                <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
-                                <td className='px-3 py-2 text-slate-700'>
-                                  <span className='block font-semibold'>{row.payrollDepartment}</span>
-                                  <span className='text-xs text-slate-500'>{row.position}</span>
-                                </td>
-                                <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.fixedSalary)}</td>
-                                <td className='px-3 py-2'><Input type='number' min='0' step='100' value={manual.bonus} onChange={(event) => updateFixedPayroll(row.manager, 'bonus', event.target.value)} className='h-9 w-32' /></td>
-                                <td className='px-3 py-2'><Input type='number' min='0' step='100' value={manual.advance} onChange={(event) => updateFixedPayroll(row.manager, 'advance', event.target.value)} className='h-9 w-32' /></td>
-                                <td className='px-3 py-2'><Input type='number' min='0' step='100' value={manual.deduction} onChange={(event) => updateFixedPayroll(row.manager, 'deduction', event.target.value)} className='h-9 w-32' /></td>
-                                <td className='px-3 py-2 text-right font-bold'>{formatMoney(row.netPay)}</td>
-                                <td className='px-3 py-2'><Input value={manual.comment} onChange={(event) => updateFixedPayroll(row.manager, 'comment', event.target.value)} placeholder='Комментарий' className='h-9 min-w-[220px]' /></td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div className='mt-5'>
-                    <div className='mb-3'>
-                      <h3 className='text-base font-bold text-slate-900'>Закупщик</h3>
-                      <p className='mt-1 text-sm text-slate-500'>Расчёт по отчёту закупок 1С: дни фиксированы, аванс и удержание заполняются вручную.</p>
-                    </div>
-                    <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
-                      <table className='w-full min-w-[1180px] text-sm'>
-                        <thead className='bg-slate-50 text-left text-slate-500'>
-                          <tr>
-                            <th className='px-3 py-3'>Сотрудник</th>
-                            <th className='px-3 py-3'>Отдел / должность</th>
-                            <th className='px-3 py-3 text-right'>Дни</th>
-                            <th className='px-3 py-3 text-right'>Ставка</th>
-                            <th className='px-3 py-3 text-right'>База закупок</th>
-                            <th className='px-3 py-3 text-right'>1,75%</th>
-                            <th className='px-3 py-3 text-right'>Доведение</th>
-                            <th className='px-3 py-3'>Аванс</th>
-                            <th className='px-3 py-3'>Удержание</th>
-                            <th className='px-3 py-3 text-right'>К выплате</th>
-                            <th className='px-3 py-3'>Комментарий</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className='border-t border-border/70 align-top'>
-                            <td className='px-3 py-2 font-semibold text-slate-900'>{purchasePayrollRow.manager}</td>
-                            <td className='px-3 py-2 text-slate-700'>
-                              <span className='block font-semibold'>{purchasePayrollRow.payrollDepartment}</span>
-                              <span className='text-xs text-slate-500'>{purchasePayrollRow.position}</span>
-                            </td>
-                            <td className='px-3 py-2 text-right'>{purchasePayrollRow.workedDays}</td>
-                            <td className='px-3 py-2 text-right'>{formatMoney(purchasePayrollRow.dayRate)}</td>
-                            <td className='px-3 py-2 text-right'>{purchasePayrollRow.purchaseBase === null ? '—' : formatMoney(purchasePayrollRow.purchaseBase)}</td>
-                            <td className='px-3 py-2 text-right'>{formatMoney(purchasePayrollRow.purchasePercentAmount)}</td>
-                            <td className='px-3 py-2 text-right'>{formatMoney(purchasePayrollRow.purchaseTargetAdjustment)}</td>
-                            <td className='px-3 py-2'><Input type='number' min='0' step='100' value={purchasePayroll.advance} onChange={(event) => updatePurchasePayroll('advance', event.target.value)} className='h-9 w-32' /></td>
-                            <td className='px-3 py-2'><Input type='number' min='0' step='100' value={purchasePayroll.deduction} onChange={(event) => updatePurchasePayroll('deduction', event.target.value)} className='h-9 w-32' /></td>
-                            <td className='px-3 py-2 text-right font-bold'>{formatMoney(purchasePayrollRow.netPay)}</td>
-                            <td className='px-3 py-2'><Input value={purchasePayroll.comment} onChange={(event) => updatePurchasePayroll('comment', event.target.value)} placeholder='Комментарий' className='h-9 min-w-[220px]' /></td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
+                  {unmappedBonusDrafts.length > 0 && <div className='mt-4 rounded-lg border border-amber-200 p-4'>
+                    <PayrollBonusesEditor key={`unmapped-${selectedPayrollPeriodKey}`} drafts={unmappedBonusDrafts} employees={regularPayrollRows.map((row) => row.manager)} error='Выберите сотрудника для оставшихся премий или уберите лишние записи.' disabled={!bonusesReady || isCurrentPeriodClosed || isSavingPayroll} onChange={(drafts) => replaceBonusDrafts(unmappedBonusDrafts, drafts)} />
+                  </div>}
+                  <div className='mt-4 flex flex-wrap items-center gap-3'>
+                    <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || isCurrentPeriodClosed || Boolean(bonusValidation.error)} className='rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'>{isSavingPayroll ? 'Сохранение...' : 'Сохранить расчёт'}</button>
+                    <button type='button' onClick={() => setActivePayrollTab('Итог ЗП')} className='rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700'>К итоговой ведомости</button>
+                    {saveError && <p role='alert' className='text-sm text-red-700'>{saveError}</p>}
+                    {saveStatus && <p className='text-sm text-green-700'>{saveStatus}</p>}
                   </div>
                   <div className='mt-5'>
                     <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
@@ -6623,18 +6645,25 @@ export default function AdminPayrollPage() {
                               ['Отдел', selectedManagerPayroll.payrollDepartment],
                               ['Должность', selectedManagerPayroll.position],
                               ['Тип расчёта', getSalaryTypeLabel(selectedManagerPayroll.salaryType)],
-                              ['Формула расчёта', getSalaryFormulaLabel(selectedManagerPayroll.salaryType)],
+                              ['Формула расчёта', getSalaryFormulaLabel(selectedManagerPayroll.salaryType, selectedPayrollPeriodKey)],
                               ['Ставка', formatMoney(selectedManagerPayroll.dayRate)],
                               ['Источник дней', getPayrollDaysSourceLabel(selectedManagerPayroll.daysSource)],
                               ['Дни', selectedManagerPayroll.workedDays ?? '—'],
                               ['Опоздания', selectedManagerPayroll.lateCount ?? '—'],
                               ['Имя в посещаемости', selectedManagerAttendanceNames.join(', ') || '—'],
-                              ['Правило зарплаты', selectedManagerPayroll.salaryRule === 'belaPercent' ? '12% от итого начислено выбранных сотрудников' : selectedManagerPayroll.salaryRule === 'noDayPay' ? 'Без оплаты выходов по дням' : 'Стандарт'],
+                              ['Правило зарплаты', selectedManagerPayroll.salaryRule === 'belaPercent' ? getSalaryFormulaLabel('vl_percent', selectedPayrollPeriodKey) : selectedManagerPayroll.salaryRule === 'noDayPay' ? 'Без оплаты выходов по дням' : 'Стандарт'],
                               ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
                               ['Бонус продаж', formatMoney(selectedManagerPayroll.salesBonus)],
                               ...(selectedManagerPayroll.agentCreditCommission > 0 ? [['Агентские по кредитам', formatMoney(selectedManagerPayroll.agentCreditCommission)]] : []),
                               ['Бонус дисциплины', formatMoney(selectedManagerPayroll.disciplineBonus)],
                               ['Всего начислено', formatMoney(selectedManagerPayroll.grossPay)],
+                            ]).concat([
+                              ...(selectedManagerPayroll.salaryRule === 'belaPercent' ? [
+                                ['База 12% без разовых премий', formatMoney(selectedManagerPayroll.belaBase ?? 0)],
+                                ['Расчёт 12%', formatMoney(selectedManagerPayroll.belaPercentAmount ?? 0)],
+                                ...(getBelaMinimum(selectedPayrollPeriodKey) ? [['Доведение до 100 000', formatMoney(selectedManagerPayroll.minimumGuaranteeAdjustment ?? 0)]] : []),
+                              ] : []),
+                              ['Разовые премии сверху', formatMoney(selectedManagerPayroll.oneTimeBonus ?? 0)],
                             ]).map(([label, value]) => (
                           <div key={label} className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
                             <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
@@ -6642,6 +6671,7 @@ export default function AdminPayrollPage() {
                           </div>
                         ))}
                       </div>
+                      {bonusValidation.bonuses.filter((bonus) => bonus.employeeName === selectedManagerPayroll.manager).map((bonus) => <p key={bonus.id} className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'>Разовая премия {formatMoney(bonus.amount)}: {bonus.reason}</p>)}
                       {(selectedManagerPayroll.lateCount ?? 0) > 3 && <p className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800'>Бонус дисциплины снят: опозданий больше 3</p>}
                     </Card>
 

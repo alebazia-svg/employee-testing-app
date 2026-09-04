@@ -1,10 +1,13 @@
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
+import { PAYROLL_COMPENSATION_VERSION, validatePayrollBonuses, validatePayrollCompensationSnapshot, validatePayrollCompensationVersion, type PayrollBonus } from '@/lib/payroll-compensation';
 
 export const dynamic = 'force-dynamic';
 
 type PayrollRunPayload = {
+  compensationVersion?: string;
+  bonuses?: unknown;
   period?: {
     year?: unknown;
     month?: unknown;
@@ -48,21 +51,32 @@ function buildPeriodKey(year: number, month: number) {
 export async function POST(req: Request) {
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
-  const payload = (await req.json()) as PayrollRunPayload;
+  const payload = (await req.json().catch(() => null)) as PayrollRunPayload | null;
+  if (!payload) return Response.json({ error: 'Некорректный расчёт.' }, { status: 400 });
   const year = asNumber(payload.period?.year);
   const month = asNumber(payload.period?.month, -1);
 
-  if (!year || month < 0 || month > 11) {
+  if (!Number.isInteger(year) || year < 2020 || year > 2100 || !Number.isInteger(month) || month < 0 || month > 11) {
     return Response.json({ error: 'Invalid payroll period.' }, { status: 400 });
   }
 
-  if (!payload.employeeResults?.length) {
+  if (!Array.isArray(payload.employeeResults) || !payload.employeeResults.length) {
     return Response.json({ error: 'Payroll run has no employee results.' }, { status: 400 });
   }
 
   const employeeResults = payload.employeeResults;
   const periodKey = buildPeriodKey(year, month);
   const totals = payload.totals ?? {};
+  let bonuses: PayrollBonus[] = [];
+  try {
+    validatePayrollCompensationVersion(payload.compensationVersion, payload.bonuses, periodKey);
+    if (payload.compensationVersion === PAYROLL_COMPENSATION_VERSION) {
+      bonuses = validatePayrollBonuses(payload.bonuses, employeeResults.map((row) => asString(row.employeeName)));
+      validatePayrollCompensationSnapshot(employeeResults, bonuses, periodKey, totals);
+    }
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : 'Проверьте премии.' }, { status: 400 });
+  }
 
   try {
   const createdRun = await prisma.$transaction(async (tx) => {
@@ -91,6 +105,7 @@ export async function POST(req: Request) {
         periodId: period.id,
         runNumber: (lastRun?.runNumber ?? 0) + 1,
         status: 'DRAFT',
+        rulesVersion: payload.compensationVersion ?? 'client-snapshot-v1',
         employeeCount: asNumber(totals.employeeCount),
         reviewCount: asNumber(totals.reviewCount),
         grossPay: asNumber(totals.grossPay),
@@ -190,10 +205,25 @@ export async function POST(req: Request) {
       },
       include: {
         period: true,
-        employeeResults: { select: { id: true } },
+        employeeResults: { select: { id: true, employeeName: true } },
         sourceFiles: { select: { id: true } },
       },
     });
+
+    if (bonuses.length) {
+      const employeeIds = new Map(createdRun.employeeResults.map((row) => [row.employeeName, row.id]));
+      await tx.payrollAdjustment.createMany({
+        data: bonuses.map((bonus) => ({
+          runId: createdRun.id,
+          employeeResultId: employeeIds.get(bonus.employeeName)!,
+          type: bonus.type,
+          amount: bonus.amount,
+          reason: bonus.reason,
+          comment: 'Разовая премия сверх обычного расчёта; не входит в базу 12% Бэлы.',
+          createdByUserId: access.user.id,
+        })),
+      });
+    }
 
     const sourceFileIds = new Map<string, number>();
     createdRun.sourceFiles.forEach((file, index) => {
