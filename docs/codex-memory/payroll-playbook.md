@@ -78,6 +78,41 @@ the pay result harder to understand.
 
 ## Data Caveats
 
+### Finbox manual import — approved release, 2026-09-04
+
+- Owner approved the real local form inside Diana's card under
+  `Дни, авансы и премии`, then explicitly authorized its isolated commit and
+  deployment. Do not add a separate tab. Finbox API is deferred.
+- `PayrollFinboxImport` checks pasted TSV/Markdown against opening/closing
+  balances and the selected payroll month. Only confirmation replaces Diana's
+  existing `agentCreditCommission` draft. Repeat imports do not accumulate.
+  Transfers and balances are not earnings or employee advances. Raw pasted text
+  is not stored; the existing payroll save flow persists the confirmed amount.
+- The supplied August example reconciles to RUB 85,373.06 (14 nonzero
+  accruals), with RUB 92,875 transferred. No production manual value was
+  overwritten for verification.
+- Local live UI verified empty input, one-kopeck balance mismatch, cancel,
+  re-entry, confirmation and repeated import. Other payouts stayed unchanged
+  in that fixture; Bela's existing 12% base changed as expected while the floor
+  kept her payout at RUB 100,000. Narrow-screen layout was visually reviewed.
+- Isolated release `25091b6` contains only five Finbox code/test files, based
+  on `2e3250d` (documentation on top of production `fc7f41c`). All 53 release
+  tests, TypeScript, build and diff checks passed. Formula/classification code
+  is byte-identical to `fc7f41c`; schema, migrations and payroll APIs unchanged.
+- Deployed as `25091b6` on 2026-09-04; deploy exit 0 and exact server commit
+  verified. Preflight confirmed schema up to date with 50 migrations; no new
+  migrations are part of release. Upload volume remains mounted at
+  `/app/uploads`. Health returned `200` / `{"ok":true}` and payroll/workday/
+  employee route smoke checks returned 200.
+- Production authenticated UI verified the new form, corrected punctuation,
+  RUB 85,373.06 preview and cancel without changing the agency draft; no
+  browser console errors. Saved August run 6 still shows RUB 915,129.55,
+  status CHECKED. No production payroll save, approval or Finbox application
+  was performed for testing.
+- Daily 1C payroll refresh, supplier selection, Finbox API and 1C writes remain
+  separate phases and are not activated by this release. The local 1C adapter
+  compatibility fix is also excluded from this release.
+
 - Payroll source reports can contain manager names that do not match portal user
   names exactly.
 - Attendance/month period bugs can appear around month boundaries; make sure the
