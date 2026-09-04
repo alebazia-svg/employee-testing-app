@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { queueAdminInboxTelegramDelivery } from '@/lib/admin-inbox';
 import { prisma } from '@/lib/prisma';
 import { probeTBankCabinetSnapshot, TBANK_CABINET_WATCHDOG_SOURCE_ID, tbankCabinetWatchdogCopy } from '@/lib/tbank-cabinet-watchdog';
 
@@ -12,7 +11,8 @@ async function publish(input: { type: string; title: string; body: string; occur
   } });
   const admins = await prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
   await prisma.adminInboxReceipt.createMany({ data: admins.map(({ id }) => ({ eventId: event.id, userId: id })), skipDuplicates: true });
-  await queueAdminInboxTelegramDelivery({ db: prisma, eventId: event.id });
+  // Technical T-Bank events stay in the inbox; web-push policy controls alerts.
+  // Do not create duplicate Telegram notifications.
   return { eventId: event.id, recipients: admins.length };
 }
 

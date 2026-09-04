@@ -2,6 +2,7 @@ import 'server-only';
 
 import { randomUUID } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
+import { TBANK_NOTIFICATION_SOURCE } from '@/lib/tbank-cabinet-notification-policy';
 
 const TELEGRAM_CHANNEL = 'telegram';
 const OWNER_RECIPIENT = 'offonika_control_owner';
@@ -79,7 +80,8 @@ export async function claimAdminInboxTelegramDelivery(db: PrismaClient, now = ne
         channel: TELEGRAM_CHANNEL,
         recipientKey: OWNER_RECIPIENT,
         status: 'pending',
-        event: { type: { in: [...TELEGRAM_EVENT_TYPES] } },
+        event: { type: { in: [...TELEGRAM_EVENT_TYPES] },
+          NOT: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE } },
       },
       orderBy: { createdAt: 'asc' },
       include: { event: true },

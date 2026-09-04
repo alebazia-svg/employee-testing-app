@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
+import { TERMINAL_FISCAL_ADMIN_FIRST } from './terminal-fiscal-admin-gate';
 import type { PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, TerminalFiscalMatchingOutput } from '@/lib/terminal-fiscal-matching';
 import { attributeTerminalFiscalEmployee } from '@/lib/terminal-fiscal-attribution';
@@ -47,6 +48,7 @@ export async function syncTerminalFiscalWorkdayControl(
   prisma: PrismaClient,
   output: TerminalFiscalMatchingOutput,
   now = new Date(output.evaluatedAt),
+  adminFirst = TERMINAL_FISCAL_ADMIN_FIRST,
 ) {
   let opened = 0;
   let resolved = 0;
@@ -55,6 +57,7 @@ export async function syncTerminalFiscalWorkdayControl(
 
   for (const record of output.records) {
     const action = terminalFiscalIssueAction(record);
+    if (adminFirst && action === 'open') continue;
     if (action === 'none') continue;
     const fingerprint = terminalFiscalIssueFingerprint(record);
     if (action === 'resolve') {

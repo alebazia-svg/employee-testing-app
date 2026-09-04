@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
+import { TERMINAL_FISCAL_ADMIN_FIRST, stageFiscalAdminReview } from './terminal-fiscal-admin-gate';
 import type { PrismaClient } from '@prisma/client';
 import type {
   MatchingAuditRecord,
@@ -425,6 +426,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     mapping: TerminalMapping;
     oneCChecks: OneCCheck[];
     mode?: 'notify' | 'shadow';
+    adminFirst?: boolean;
     globalCoverage?: TerminalFiscalGlobalCoverageContext;
   },
 ) {
@@ -440,6 +442,10 @@ export async function syncTerminalFiscalEmployeeReviews(
   const mode = input.mode ?? 'notify';
 
   for (const record of input.output.records) {
+    if ((input.adminFirst ?? TERMINAL_FISCAL_ADMIN_FIRST) && mode === 'notify') {
+      await stageFiscalAdminReview(prisma, record);
+      continue;
+    }
     const reviewKey = terminalFiscalEmployeeReviewKey(record);
     const operationAt = new Date(record.evidence.bankTransactionDate);
     const operationDate = Number.isNaN(operationAt.getTime()) ? null : new Intl.DateTimeFormat('en-CA', {

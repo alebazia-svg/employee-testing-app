@@ -4,6 +4,7 @@ import webpush from 'web-push';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { planWorkdayPushDelivery, suppressUnreadWorkdayPush } from '@/lib/workday-push-delivery';
+import { TERMINAL_FISCAL_ADMIN_FIRST, fiscalApprovalKey } from '@/lib/terminal-fiscal-admin-gate';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -342,6 +343,14 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
+    if (TERMINAL_FISCAL_ADMIN_FIRST) {
+      const unapprovedReview = notification.reviewId && !await prisma.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(notification.reviewId) }, select: { id: true } });
+      if (unapprovedReview || notification.issue?.ruleKey === 'terminal_fiscal_mismatch') {
+        await prisma.workdayNotification.update({ where: { id: notification.id }, data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null } });
+        results.push({ id: notification.id, status: 'cancelled', pushStatus: 'cancelled' });
+        continue;
+      }
+    }
     if (!activeDueIds.has(notification.id)) {
       await prisma.workdayNotification.update({
         where: { id: notification.id },

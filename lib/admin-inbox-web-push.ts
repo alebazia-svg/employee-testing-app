@@ -2,6 +2,7 @@ import 'server-only';
 
 import webpush from 'web-push';
 import { prisma } from '@/lib/prisma';
+import { TBANK_NOTIFICATION_SOURCE, tbankPushEventId } from '@/lib/tbank-cabinet-notification-policy';
 
 export const ADMIN_INBOX_PUSH_READ_GRACE_MS = 30 * 60 * 1000;
 
@@ -21,8 +22,19 @@ function configureWebPush() {
 export async function dispatchAdminInboxWebPush(now = new Date()) {
   if (!configureWebPush()) throw new Error('WEB_PUSH_NOT_CONFIGURED');
   const readGraceCutoff = getAdminInboxPushReadGraceCutoff(now);
+  const latestTbank = await prisma.adminInboxEvent.findFirst({
+    where: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE,
+      type: { in: ['dependency.down', 'dependency.recovered'] } },
+    orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+    select: { id: true, type: true, occurredAt: true },
+  });
+  const allowedTbankId = tbankPushEventId(latestTbank, now);
   const receipts = await prisma.adminInboxReceipt.findMany({
     where: {
+      event: { OR: [
+        { NOT: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE } },
+        ...(allowedTbankId ? [{ id: allowedTbankId }] : []),
+      ] },
       user: { role: 'ADMIN', isActive: true },
       OR: [
         { readAt: null },

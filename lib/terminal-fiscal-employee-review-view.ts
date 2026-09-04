@@ -79,7 +79,7 @@ export function terminalFiscalAdminReviewView(input: {
     const sourceIncomplete = input.match?.reasonCode?.startsWith('SOURCE_') === true;
     return {
       tone: 'admin' as const,
-      statusLabel: sourceIncomplete ? 'Ожидается повторная сверка' : 'Требуется проверить ADMIN',
+      statusLabel: sourceIncomplete ? 'Ожидается повторная сверка' : 'Проверка администратора',
       title: sourceIncomplete ? 'Источник данных временно неполный' : 'Неоднозначная сверка',
       operationMeta,
       message: sourceIncomplete

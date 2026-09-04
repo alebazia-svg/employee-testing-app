@@ -93,7 +93,7 @@ test('builds a compact neutral employee workday summary', () => {
 test('admin review screen distinguishes unresolved ADMIN-only and confirmed late states', () => {
   const common = { bankOperationAt: '2026-08-17T16:26:39.000Z', amountKopecks: 50_000 };
   const admin = terminalFiscalAdminReviewView({ ...common, status: 'admin_review' });
-  assert.equal(admin.statusLabel, 'Требуется проверить ADMIN');
+  assert.equal(admin.statusLabel, 'Проверка администратора');
   assert.match(admin.discussionMessage, /не закрытая ошибка/);
 
   const unavailable = terminalFiscalAdminReviewView({
@@ -471,8 +471,8 @@ test('one review and notification are created without duplicates and a later 1C 
     $transaction: async (callback: any) => callback(db),
   };
   const output = { version: 'mvp-1', evaluatedAt: record().evaluatedAt, records: [record()] };
-  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()] }), { opened: 1, resolved: 0, adminOnly: 0, shadowed: 0 });
-  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()] }), { opened: 0, resolved: 0, adminOnly: 0, shadowed: 0 });
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()], adminFirst: false }), { opened: 1, resolved: 0, adminOnly: 0, shadowed: 0 });
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output, mapping, oneCChecks: [check()], adminFirst: false }), { opened: 0, resolved: 0, adminOnly: 0, shadowed: 0 });
   assert.equal(reviews.length, 1);
   assert.equal(notifications.length, 1);
   assert.equal(adminEvents.length, 1);
@@ -481,7 +481,7 @@ test('one review and notification are created without duplicates and a later 1C 
   assert.equal(JSON.stringify(reviews).includes('secret-operation'), false);
 
   const found = record({ status: 'confirmed', reasonCode: 'MATCH_CONFIRMED', candidateCount: 1, oneCCheckKey: 'check-found' });
-  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output: { ...output, records: [found] }, mapping, oneCChecks: [check()] }), { opened: 0, resolved: 1, adminOnly: 0, shadowed: 0 });
+  assert.deepEqual(await syncTerminalFiscalEmployeeReviews(db as PrismaClient, { output: { ...output, records: [found] }, mapping, oneCChecks: [check()], adminFirst: false }), { opened: 0, resolved: 1, adminOnly: 0, shadowed: 0 });
   assert.equal(reviews[0].status, 'resolved');
   assert.equal(notifications[0].status, 'cancelled');
 });

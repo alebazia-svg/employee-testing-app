@@ -76,8 +76,8 @@ test('issue lifecycle is idempotent and resolves only after confirmed matching',
     sourceCompleteness: { tbank: true, oneC: true, ofd: true }, history: [],
   };
   const mismatchOutput = { version: 'mvp-1', evaluatedAt: mismatchRecord.evaluatedAt, records: [mismatchRecord] };
-  assert.deepEqual(await syncTerminalFiscalWorkdayControl(db as PrismaClient, mismatchOutput), { opened: 1, resolved: 0, reminders: 0, unassigned: 0 });
-  assert.deepEqual(await syncTerminalFiscalWorkdayControl(db as PrismaClient, mismatchOutput), { opened: 0, resolved: 0, reminders: 0, unassigned: 0 });
+  assert.deepEqual(await syncTerminalFiscalWorkdayControl(db as PrismaClient, mismatchOutput, undefined, false), { opened: 1, resolved: 0, reminders: 0, unassigned: 0 });
+  assert.deepEqual(await syncTerminalFiscalWorkdayControl(db as PrismaClient, mismatchOutput, undefined, false), { opened: 0, resolved: 0, reminders: 0, unassigned: 0 });
   assert.equal(issues.length, 1);
   assert.equal(notifications.length, 1);
   assert.equal(JSON.stringify(issues).includes('private-bank-key'), false);
