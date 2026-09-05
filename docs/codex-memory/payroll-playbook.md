@@ -97,6 +97,38 @@ the pay result harder to understand.
   935,129.55; run 1 / ID 4 is retained as superseded by run 3. Payroll formulas,
   employee results and source data were not changed by this release.
 
+### Management workbook and employee report rules — committed, not released, 2026-09-05
+
+- Owner approved the management Excel layout and committed it as `f7d22ac` on
+  `codex/payroll-ux-language`. It has not been deployed and its migration has not
+  been applied to production.
+- The main sheet shows gross pay beside each employee, then days, fixed/day pay,
+  percentage components, discipline, awards/Finbox, already-paid advances and
+  the remaining payout. Employees are grouped as Purchasing, Wholesale Sales,
+  Retail Sales, Operations Management and Fixed Salary, with descending gross
+  pay inside each group.
+- The detail sheet is collapsed by employee by default. Excel outline level 1
+  shows employee totals; level 2 expands every component. Expanded rows show the
+  actual source base, rate, result and a final arithmetic tie to gross pay.
+  Advances are informational and reduce only the remaining payout; they are not
+  review errors.
+- Saved runs export through the same workbook generator and retain their saved
+  report group. New active employees without a configured salary rule remain
+  visible under `Требует настройки` with zero gross pay instead of being omitted
+  or assigned a formula by name inference.
+- Employee salary rule, report group, fixed salary and effective period are
+  administered from the employee record. Migration
+  `20260905214500_add_payroll_employee_report_group` backfills current approved
+  employees and snapshots the report group on payroll results.
+- Verification before commit: 48 payroll tests, TypeScript, Prisma validation,
+  production build, workbook formula scan and visual review of all four sheets
+  passed. The approved August preview reconciled each employee's gross and net
+  totals across Summary and Detail.
+- The proposed retail accessory tier (5% normally, 7% when team accessory sales
+  exceed RUB 1,000,000) is explicitly excluded from this commit. It requires a
+  separate approved formula task, effective-date decision and historical-run
+  handling.
+
 ## Data Caveats
 
 ### Finbox manual import — released, 2026-09-04
