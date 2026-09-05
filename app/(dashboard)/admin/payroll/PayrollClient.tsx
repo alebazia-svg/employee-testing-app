@@ -5890,7 +5890,7 @@ export default function AdminPayrollPage() {
                             <div className='flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                               <div>
                                 <p className='text-sm font-bold text-slate-900'>{months[period.month] ?? period.periodKey} {period.year}</p>
-                                <p className='text-xs text-slate-500'>Период {period.periodKey} · {period.status}</p>
+                                <p className='text-xs text-slate-500'>Период {period.periodKey}</p>
                               </div>
                               <div className='flex flex-wrap gap-2'>
                                 <Badge className={period.status === 'CLOSED' ? 'w-fit bg-amber-100 text-amber-900' : 'w-fit bg-slate-100 text-slate-700'}>{period.status === 'CLOSED' ? 'Период закрыт' : 'Период открыт'}</Badge>
@@ -5906,7 +5906,7 @@ export default function AdminPayrollPage() {
                               {period.runs.map((run) => (
                                 <div key={run.id} className='rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm'>
                                   <div className='flex items-center justify-between gap-2'>
-                                    <span className='font-semibold text-slate-900'>Расчёт №{run.runNumber} · ID {run.id}</span>
+                                    <span className='font-semibold text-slate-900'>Расчёт №{run.runNumber}</span>
                                     <span className='text-xs text-slate-500'>{new Date(run.createdAt).toLocaleString('ru-RU')}</span>
                                   </div>
                                   <div className='mt-2 flex flex-wrap items-center gap-2'>
@@ -7667,13 +7667,13 @@ export default function AdminPayrollPage() {
                           <p className='text-sm font-bold text-slate-900'>{months[period.month] ?? period.periodKey} {period.year}</p>
                           <p className='text-xs text-slate-500'>Период {period.periodKey}</p>
                         </div>
-                        <Badge className={period.status === 'CLOSED' ? 'w-fit bg-amber-100 text-amber-900' : 'w-fit bg-slate-100 text-slate-700'}>{period.status === 'CLOSED' ? 'Период закрыт' : 'OPEN'}</Badge>
+                        <Badge className={period.status === 'CLOSED' ? 'w-fit bg-amber-100 text-amber-900' : 'w-fit bg-slate-100 text-slate-700'}>{period.status === 'CLOSED' ? 'Период закрыт' : 'Период открыт'}</Badge>
                       </div>
                       <div className='grid gap-2 md:grid-cols-2'>
                         {period.runs.map((run) => (
                           <div key={run.id} className='rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm'>
                             <div className='flex items-center justify-between gap-2'>
-                              <span className='font-semibold text-slate-900'>Расчёт №{run.runNumber} · ID {run.id}</span>
+                              <span className='font-semibold text-slate-900'>Расчёт №{run.runNumber}</span>
                               <span className='text-xs text-slate-500'>{new Date(run.createdAt).toLocaleString('ru-RU')}</span>
                             </div>
                             <div className='mt-2 flex flex-wrap items-center gap-2'>
