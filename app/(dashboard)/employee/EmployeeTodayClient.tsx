@@ -41,6 +41,7 @@ import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
 import { colleaguePresence } from '@/lib/workday-presence';
 import { expectedColleagueShiftCode, hasColleagueShiftConflict } from '@/lib/workday-colleague-shift';
 import { formatDurationWithSeconds } from '@/lib/workday-duration';
+import { canRequestWorkdayCloseException } from '@/lib/workday-close-view';
 import { scheduleCoverage, schedulePersonLabel, schedulePersonName, scheduleWorkingCountAfterChange, type ScheduleCoverage } from '@/lib/work-schedule-coverage';
 import { buildBulkScheduleChanges, buildBulkScheduleEditChanges, bulkScheduleCounts, type BulkScheduleStatus } from '@/lib/work-schedule-bulk';
 import {
@@ -4295,7 +4296,7 @@ export function EmployeeTodayClient({
                     <div className='space-y-2'>
                       <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
                       <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' />
-                      <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={isSaving || !closeExceptionReason} onClick={requestCloseException}>Сообщить администратору</Button>
+                      <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={!canRequestWorkdayCloseException({ isSaving, reason: closeExceptionReason, comment: closeExceptionComment })} onClick={requestCloseException}>Сообщить администратору</Button>
                     </div>
                   )}
                 </Card>

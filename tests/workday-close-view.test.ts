@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime, workdayTaskProgressLabel } from '../lib/workday-close-view';
+import { belongsInOperationalTaskOverview, canRequestWorkdayCloseException, hasTechnicalWorkdayClose, technicalWorkdayCloseTime, workdayTaskProgressLabel } from '../lib/workday-close-view';
 
 test('technical workday close recognizes current and historical audit markers', () => {
   assert.equal(hasTechnicalWorkdayClose({ comment: 'Предыдущий рабочий день закрыт позже. Обязательные шаги пропущены.' }), true);
@@ -28,4 +28,12 @@ test('technical close summary describes missed steps instead of unfinished progr
   assert.equal(workdayTaskProgressLabel({ completed: 0, missed: 5, total: 5, technicalClose: true }), 'Пропущено шагов: 5');
   assert.equal(workdayTaskProgressLabel({ completed: 3, missed: 0, total: 5, technicalClose: false }), 'Выполнено 3 из 5');
   assert.equal(workdayTaskProgressLabel({ completed: 0, missed: 0, total: 0, technicalClose: false }), 'Проверок пока нет');
+});
+
+test('technical close request requires both a reason and a non-empty comment', () => {
+  assert.equal(canRequestWorkdayCloseException({ isSaving: false, reason: 'internet', comment: '' }), false);
+  assert.equal(canRequestWorkdayCloseException({ isSaving: false, reason: 'internet', comment: '   ' }), false);
+  assert.equal(canRequestWorkdayCloseException({ isSaving: false, reason: '', comment: 'Нет связи' }), false);
+  assert.equal(canRequestWorkdayCloseException({ isSaving: false, reason: 'internet', comment: 'Нет связи' }), true);
+  assert.equal(canRequestWorkdayCloseException({ isSaving: true, reason: 'internet', comment: 'Нет связи' }), false);
 });

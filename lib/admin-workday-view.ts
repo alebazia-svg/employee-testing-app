@@ -27,3 +27,7 @@ export function resolveAdminWorkdayControlCategory(input: {
 export function isActiveWorkdayTimingViolation(kind: string) {
   return kind === 'task_overdue' || kind === 'missing_checkout' || kind === 'workday_not_started';
 }
+
+export function isAdminTaskOverviewProblem(tone: 'error' | 'attention' | 'pending' | 'normal') {
+  return tone === 'error' || tone === 'attention';
+}

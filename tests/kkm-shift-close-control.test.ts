@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { kkmShiftCloseOneCPeriod, readKkmShiftCloseSimulation, simulateKkmShiftClose } from '../lib/kkm-shift-close-control';
+import { kkmShiftCloseOneCPeriod, readKkmShiftCloseSimulation, simulateKkmShiftClose, simulatedKkmShiftCloseAutoCheck } from '../lib/kkm-shift-close-control';
 
 test('1C KKM check period uses an exclusive next-day upper bound', () => {
   assert.deepEqual(kkmShiftCloseOneCPeriod('2026-08-26'), {
@@ -28,4 +28,16 @@ test('failure simulations remain fail-closed and visibly simulated', () => {
   assert.equal(evidence.status, 'unavailable');
   assert.equal(evidence.simulated, true);
   assert.match(evidence.sourceError, /Dev\/Test/);
+});
+
+test('admin QA check uses the exact stored simulated KKM result', () => {
+  const confirmed = simulateKkmShiftClose({ scenario: 'confirmed', activatedAt });
+  assert.deepEqual(simulatedKkmShiftCloseAutoCheck({ evidence: confirmed }), {
+    status: 'matched',
+    summary: 'Dev/Test: закрытие ККМ подтверждено.',
+    evidence: 'Dev/Test: результат проверки кассы сохранён.',
+  });
+  const open = simulateKkmShiftClose({ scenario: 'one_c_open', activatedAt });
+  assert.equal(simulatedKkmShiftCloseAutoCheck({ evidence: open })?.status, 'mismatch');
+  assert.equal(simulatedKkmShiftCloseAutoCheck({ evidence: { ...confirmed, simulated: false } }), null);
 });

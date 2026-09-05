@@ -27,6 +27,12 @@ export type KkmShiftCloseEvidence = {
 export type KkmShiftCloseSimulationScenario = 'confirmed' | 'delayed' | 'one_c_open' | 'ofd_missing' | 'one_c_unavailable' | 'ofd_unavailable';
 export type KkmShiftCloseSimulation = { scenario: KkmShiftCloseSimulationScenario; activatedAt: string };
 
+export type SimulatedKkmShiftCloseAutoCheck = {
+  status: 'matched' | 'mismatch' | 'unavailable';
+  summary: string;
+  evidence: string;
+};
+
 const simulationScenarios = new Set<KkmShiftCloseSimulationScenario>(['confirmed', 'delayed', 'one_c_open', 'ofd_missing', 'one_c_unavailable', 'ofd_unavailable']);
 
 export function readKkmShiftCloseSimulation(value: unknown): KkmShiftCloseSimulation | null {
@@ -49,6 +55,28 @@ export function simulateKkmShiftClose(simulation: KkmShiftCloseSimulation, now =
   if (simulation.scenario === 'one_c_unavailable') return { ...common, oneCClosedAt: '', status: 'unavailable', sourceError: 'Dev/Test: 1С временно недоступна.' };
   if (simulation.scenario === 'ofd_unavailable') return { ...common, status: 'unavailable', sourceError: 'Dev/Test: сервис проверки чеков временно недоступен.' };
   return { ...common, status: 'ofd_missing', sourceError: 'Dev/Test: чек закрытия смены не найден.' };
+}
+
+export function simulatedKkmShiftCloseAutoCheck(value: unknown): SimulatedKkmShiftCloseAutoCheck | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const audit = value as Record<string, unknown>;
+  const evidence = audit.evidence;
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return null;
+  const source = evidence as Record<string, unknown>;
+  if (source.simulated !== true || typeof source.status !== 'string') return null;
+  const detail = typeof source.sourceError === 'string' && source.sourceError.trim()
+    ? source.sourceError.trim()
+    : 'Dev/Test: результат проверки кассы сохранён.';
+  if (source.status === 'confirmed') {
+    return { status: 'matched', summary: 'Dev/Test: закрытие ККМ подтверждено.', evidence: detail };
+  }
+  if (source.status === 'one_c_open' || source.status === 'ofd_missing') {
+    return { status: 'mismatch', summary: detail, evidence: 'Результат получен из изолированного Dev/Test-сценария.' };
+  }
+  if (source.status === 'unavailable') {
+    return { status: 'unavailable', summary: detail, evidence: 'Результат получен из изолированного Dev/Test-сценария.' };
+  }
+  return null;
 }
 
 function nextDate(date: string) {
@@ -121,10 +149,10 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
   }
   const title = input.evidence.status === 'one_c_open' ? 'Касса не закрыта' : input.evidence.status === 'ofd_missing' ? 'Закрытие кассы не подтверждено' : 'Не удалось проверить кассу';
   const detail = input.evidence.status === 'one_c_open'
-    ? 'Закройте кассовую смену и нажмите «Проверить снова».'
+    ? 'Закройте кассовую смену. Портал проверит её автоматически; если ошибка не исчезнет — сообщите администратору.'
     : input.evidence.status === 'ofd_missing'
       ? 'Если чек закрытия распечатался — приложите фото. Если нет — сообщите администратору.'
-      : 'Портал временно не может подтвердить закрытие кассы. Попробуйте снова; если не получается — сообщите администратору.';
+      : 'Портал временно не может подтвердить закрытие кассы и повторит проверку автоматически. Если проблема не исчезнет — сообщите администратору.';
   const issue = await db.workdayControlIssue.upsert({
     where: { fingerprint },
     create: { userId: input.userId, taskId: input.taskId, fingerprint, ruleKey: 'kkm_shift_not_closed', severity: 'error', status: 'open', title, detail, sourceData: input.evidence as unknown as Prisma.InputJsonValue, employeeActionRequired: true, originDate: input.date, detectedAt: input.now, lastDetectedAt: input.now },

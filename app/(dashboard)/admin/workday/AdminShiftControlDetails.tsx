@@ -18,6 +18,7 @@ import {
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { deviationReasonLabel } from '@/lib/workday-deviation';
 import { belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime } from '@/lib/workday-close-view';
+import { isAdminTaskOverviewProblem } from '@/lib/admin-workday-view';
 
 type ShiftTask = {
   id: number;
@@ -1044,9 +1045,10 @@ export function AdminShiftControlDetails({
       || (left.task.plannedTimeMinutes ?? Number.MAX_SAFE_INTEGER) - (right.task.plannedTimeMinutes ?? Number.MAX_SAFE_INTEGER)
     ));
   }, [autoChecksByTask, detailTasks, timingViolationByTaskId]);
-  const keyProblems = overviewTasks.filter((item) => (
-    taskBusinessState(item).tone === 'error' || item.status === 'overdue'
-  ));
+  const keyProblems = overviewTasks.filter((item) => {
+    const tone = taskBusinessState(item).tone;
+    return isAdminTaskOverviewProblem(tone);
+  });
   const autoSummary = autoCheckSummary(autoChecks);
   const workdayTimingViolations = timingViolations.filter((violation) => violation.taskId === null);
   const activeWorkdayProblems = workdayTimingViolations.filter((violation) => (

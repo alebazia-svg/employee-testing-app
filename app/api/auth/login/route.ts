@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
-import { createSessionToken, sessionCookieName, sessionMaxAgeSeconds } from '@/lib/session';
+import { createPasswordBoundSessionToken, sessionCookieName, sessionMaxAgeSeconds } from '@/lib/session';
 import { clearLoginFailures, loginAllowed, recordLoginFailure } from '@/lib/login-rate-limit';
 
 export async function POST(req: Request) {
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   clearLoginFailures(req, login);
 
   const cookieStore = await cookies();
-  cookieStore.set(sessionCookieName, createSessionToken(user.id), {
+  cookieStore.set(sessionCookieName, createPasswordBoundSessionToken(user.id, user.passwordHash), {
     path: '/',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

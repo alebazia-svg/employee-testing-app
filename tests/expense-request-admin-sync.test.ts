@@ -5,6 +5,8 @@ import { syncExpenseRequestAdminAudit } from '../lib/expense-request-admin-sync'
 import { claimAdminInboxTelegramDelivery, markAdminInboxTelegramDeliverySent } from '../lib/admin-inbox-delivery';
 import type { ExpenseRequestSnapshot, ExpenseRequestSourceRow } from '../lib/expense-request-source';
 
+process.env.ADMIN_INBOX_TELEGRAM_ENABLED = '1';
+
 function sourceRow(statusKey = 'not_approved'): ExpenseRequestSourceRow {
   return {
     ref: 'request-1', number: 'REQ-1', date: '2026-08-17T10:00:00+03:00', amount: 1000,

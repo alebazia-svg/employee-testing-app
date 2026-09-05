@@ -35,3 +35,7 @@ export function workdayTaskProgressLabel(input: {
   if (input.technicalClose && input.missed > 0) return `Пропущено шагов: ${input.missed}`;
   return input.total > 0 ? `Выполнено ${input.completed} из ${input.total}` : 'Проверок пока нет';
 }
+
+export function canRequestWorkdayCloseException(input: { isSaving: boolean; reason: string; comment: string }) {
+  return !input.isSaving && Boolean(input.reason) && Boolean(input.comment.trim());
+}

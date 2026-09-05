@@ -10,7 +10,7 @@ import { Table } from '@/components/ui/table';
 import { getAdminWorkdayRevision } from '@/lib/admin-workday-revision';
 import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, matchesAdminWorkdayControlFilter, resolveAdminWorkdayControlCategory, type AdminWorkdayControlCategory, type AdminWorkdayControlFilter } from '@/lib/admin-workday-view';
 import { getCurrentUser } from '@/lib/auth';
-import { readKkmShiftCloseSimulation } from '@/lib/kkm-shift-close-control';
+import { readKkmShiftCloseSimulation, simulatedKkmShiftCloseAutoCheck } from '@/lib/kkm-shift-close-control';
 import { oneCDateTimestamp, parseOneCDateTime } from '@/lib/one-c-date';
 import {
   DEFAULT_SALES_REALIZATIONS_PARAMS,
@@ -837,6 +837,9 @@ function buildEmployeeAutoChecks({
     const personalCash = handoverData && isRecord(handoverData.personalCash) ? handoverData.personalCash : null;
     const reserveCash = handoverData && isRecord(handoverData.reserveCash) ? handoverData.reserveCash : null;
     const storeClosing = handoverData && isRecord(handoverData.storeClosing) ? handoverData.storeClosing : null;
+    const simulatedKkmClose = handoverData && isRecord(handoverData.kkmCloseCheck)
+      ? simulatedKkmShiftCloseAutoCheck(handoverData.kkmCloseCheck)
+      : null;
     const personalCashBalance = personalCash ? readNumber(personalCash.cashBalance) : null;
     const personalCashAudit = readTaskCashAudit(task, 'personalCash');
     const reserveCashAudit = readTaskCashAudit(task, 'reserveCash');
@@ -1018,7 +1021,14 @@ function buildEmployeeAutoChecks({
       }
     }
 
-    if (storeClosing && department === 'retail') {
+    if (simulatedKkmClose && department === 'retail') {
+      checks.push({
+        id: `handover-z-report-${task.id}`,
+        taskId: task.id,
+        label: 'Закрытие смены ККМ',
+        ...simulatedKkmClose,
+      });
+    } else if (storeClosing && department === 'retail') {
       const closingAssignment = assignmentAt(kkmAssignments, task.completedAt) ?? kkmAssignments.at(-1) ?? null;
       const closingCashRegisterRef = closingAssignment?.oneCCashRegisterRef ?? cashRegisterRef;
       const factualRefs = factualCashRegisterRefs(cashShifts.shifts, employeeName);

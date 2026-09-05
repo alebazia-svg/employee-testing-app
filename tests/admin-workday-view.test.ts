@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, matchesAdminWorkdayControlFilter, resolveAdminWorkdayControlCategory } from '../lib/admin-workday-view';
+import { adminWorkdayControlFilter, isActiveWorkdayTimingViolation, isAdminTaskOverviewProblem, matchesAdminWorkdayControlFilter, resolveAdminWorkdayControlCategory } from '../lib/admin-workday-view';
 
 test('today defaults to active exceptions while historical dates can default to all', () => {
   assert.equal(adminWorkdayControlFilter(undefined, 'active'), 'active');
@@ -38,4 +38,11 @@ test('attention, pending and normal states keep their priority after errors', ()
   assert.equal(resolveAdminWorkdayControlCategory({ hasError: false, needsAttention: false, cannotVerify: true, isPending: true }), 'attention');
   assert.equal(resolveAdminWorkdayControlCategory({ hasError: false, needsAttention: false, cannotVerify: false, isPending: true }), 'pending');
   assert.equal(resolveAdminWorkdayControlCategory({ hasError: false, needsAttention: false, cannotVerify: false, isPending: false }), 'normal');
+});
+
+test('admin detail never presents attention checks as an all-clear state', () => {
+  assert.equal(isAdminTaskOverviewProblem('error'), true);
+  assert.equal(isAdminTaskOverviewProblem('attention'), true);
+  assert.equal(isAdminTaskOverviewProblem('pending'), false);
+  assert.equal(isAdminTaskOverviewProblem('normal'), false);
 });

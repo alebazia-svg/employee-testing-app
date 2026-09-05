@@ -1,12 +1,14 @@
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
-import { readSessionToken, sessionCookieName } from './session';
+import { readSessionToken, sessionCookieName, sessionMatchesPasswordHash } from './session';
 
 export async function getCurrentUser() {
   const cookieStore = await cookies();
   const session = readSessionToken(cookieStore.get(sessionCookieName)?.value);
   if (!session) return null;
-  return prisma.user.findFirst({ where: { id: session.userId, isActive: true } });
+  const user = await prisma.user.findFirst({ where: { id: session.userId, isActive: true } });
+  if (!user || !sessionMatchesPasswordHash(session, user.passwordHash)) return null;
+  return user;
 }
 
 export async function requireCurrentUser() {
