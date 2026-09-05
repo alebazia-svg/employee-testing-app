@@ -246,11 +246,24 @@ the pay result harder to understand.
   page opening, production migration or deploy has been performed.
 - After owner approval, clean code commit `9ce22a4` was created on
   `codex/payroll-one-c-snapshots` directly from production base `eebd6f1`.
-  It contains only the ADMIN control screen, read-only 1C readers, exact
-  Astemir supplier/author scope, two payroll schema migrations and focused
-  tests. The clean candidate passed 53 focused source/snapshot tests, all 34
-  production payroll regressions, TypeScript, build and authenticated browser
-  QA against the isolated demo database. It has not been pushed or deployed.
+  Before release, production had advanced to `b3ff042`, so the same isolated
+  code was replayed without conflicts as `5617b34` and released with its
+  documentation as production commit `09ffd77` on 2026-09-05. This preserved
+  the intervening workday fixes instead of rolling production back.
+- The release contains only the ADMIN control screen, read-only 1C readers,
+  exact Astemir supplier/author scope, two payroll schema migrations and
+  focused tests. All 34 payroll regressions, 53 focused source/snapshot tests,
+  Prisma validation, TypeScript and production build passed. Both migrations
+  applied successfully; production now records 52 migrations, `portal-app` is
+  healthy, uploads remain mounted and payroll/workday/employee routes return
+  200.
+- Authenticated production QA created the first immutable August FINAL control
+  snapshot and reproduced the accepted values: revenue RUB 16,025,679.68,
+  gross profit RUB 4,056,611.76, Astemir purchase base RUB 5,446,712.52, 39
+  exact Astemir documents and 45 other-employee documents excluded. Existing
+  saved payroll runs remained unchanged and browser error logs were empty.
+  The control source is still disconnected from payroll formulas, payroll run
+  saves and 1C writes.
 
 ### Direct 1C source — local shadow only, 2026-09-04
 
