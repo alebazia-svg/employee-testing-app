@@ -17,6 +17,7 @@ import {
 } from '@/lib/terminal-fiscal-reason-view';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { deviationReasonLabel } from '@/lib/workday-deviation';
+import { hasTechnicalWorkdayClose, technicalWorkdayCloseTime } from '@/lib/workday-close-view';
 
 type ShiftTask = {
   id: number;
@@ -34,6 +35,7 @@ type ShiftTask = {
 };
 
 type ShiftRun = {
+  closingComment?: string | null;
   id: number;
   status: string;
   submittedAt: string | null;
@@ -1057,7 +1059,8 @@ export function AdminShiftControlDetails({
     + (terminalFiscalHasError || terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? 1 : 0);
   const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
-  const workdayStateLabel = workDay?.status === 'completed' || workDay?.endedAt
+  const technicalClose = hasTechnicalWorkdayClose(workDay, run);
+  const workdayStateLabel = technicalClose ? 'закрыта позже' : workDay?.status === 'completed' || workDay?.endedAt
     ? 'завершил смену'
     : workDay
       ? 'работает'
@@ -1172,10 +1175,10 @@ export function AdminShiftControlDetails({
               }`}>
                 <p className='text-xs font-bold uppercase text-slate-400'>День</p>
                 <p className='mt-0.5 text-base font-extrabold text-slate-950'>
-                  {workDay?.status === 'completed' || workDay?.endedAt ? 'Завершён' : workDay ? 'Идёт' : 'Не начат'}
+                  {technicalClose ? 'Закрыта позже' : workDay?.status === 'completed' || workDay?.endedAt ? 'Завершён' : workDay ? 'Идёт' : 'Не начат'}
                 </p>
                 <p className='text-xs font-semibold text-slate-500'>
-                  {workDay ? `${formatTime(workDay!.startedAt)}–${formatTime(workDay!.endedAt)}` : 'Нет отметок'}
+                  {technicalClose ? 'Время ухода не зафиксировано' : workDay ? `${formatTime(workDay!.startedAt)}–${formatTime(workDay!.endedAt)}` : 'Нет отметок'}
                 </p>
               </div>
               <div className={`rounded-xl border-l-4 bg-slate-50 px-3 py-2 ring-1 ring-slate-200 ${
@@ -1272,7 +1275,7 @@ export function AdminShiftControlDetails({
                       </div>
                       <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
                         <dt className='font-semibold text-slate-500'>День завершён</dt>
-                        <dd className='font-extrabold text-slate-900'>{workDay?.status === 'completed' || workDay?.endedAt ? 'да' : 'нет'}</dd>
+                        <dd className='font-extrabold text-slate-900'>{technicalClose ? 'закрыт позже' : workDay?.status === 'completed' || workDay?.endedAt ? 'да' : 'нет'}</dd>
                       </div>
                       <div className='flex justify-between gap-3 border-t border-slate-100 pt-2'>
                         <dt className='font-semibold text-slate-500'>Смена сдана</dt>
@@ -1484,7 +1487,10 @@ export function AdminShiftControlDetails({
                     <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
                   </summary>
                   <div className='grid gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600'>
-                    {workDay ? <p>Фактическое время: {formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)}</p> : null}
+                    {workDay ? technicalClose ? <>
+                      <p>Начало: {formatTime(workDay.startedAt)}. Время ухода не зафиксировано.</p>
+                      <p>Запись закрыта: {technicalWorkdayCloseTime(workDay.endedAt)}</p>
+                    </> : <p>Фактическое время: {formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)}</p> : null}
                     {workDay?.deviations.map((deviation) => {
                       const requestedTime = deviation.requestedEndMinutes === null
                         ? ''

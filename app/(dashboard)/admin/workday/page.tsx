@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { hasTechnicalWorkdayClose } from '@/lib/workday-close-view';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, Banknote, CreditCard } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
@@ -88,7 +89,8 @@ function scheduleClass(status: string | undefined) {
   return 'bg-amber-100 text-amber-800';
 }
 
-function shiftState(workDay: { status: string; endedAt: Date | null } | null | undefined, scheduleStatus?: string, onVacation = false) {
+function shiftState(workDay: { status: string; endedAt: Date | null; comment?: string | null } | null | undefined, scheduleStatus?: string, onVacation = false, run?: { closingComment?: string | null } | null) {
+  if (hasTechnicalWorkdayClose(workDay, run)) return { label: 'Закрыта позже', className: 'bg-amber-50 text-amber-800' };
   if (workDay?.endedAt || workDay?.status === 'completed') {
     return { label: 'Завершил смену', className: 'bg-slate-100 text-slate-700' };
   }
@@ -105,6 +107,7 @@ function serializeShiftControlRun(run: any) {
     status: run.status,
     submittedAt: run.submittedAt?.toISOString() ?? null,
     completedAt: run.completedAt?.toISOString() ?? null,
+    closingComment: run.closingComment ?? '',
     tasks: (run.tasks ?? []).map((task: any) => ({
       id: task.id,
       title: task.title,
@@ -460,8 +463,7 @@ function employeeCashboxSearchKey(employeeName: string) {
 }
 
 function hasStaleCloseViolation(workDay: { comment: string } | null | undefined, shiftControlRun: { closingComment?: string | null } | null | undefined) {
-  const text = `${workDay?.comment ?? ''}\n${shiftControlRun?.closingComment ?? ''}`.toLowerCase();
-  return text.includes('закрыт без сдачи смены') || text.includes('закрыт позже без сдачи смены');
+  return hasTechnicalWorkdayClose(workDay, shiftControlRun);
 }
 
 function cashStatementStatus(result: OneCCashStatementSummaryResult | null) {
@@ -1705,7 +1707,7 @@ export default async function AdminWorkdayPage(
           ) : (
             <div className='divide-y divide-slate-100'>
               {filteredEmployeeControlRows.map((row) => {
-                const currentShiftState = shiftState(row.workDay, row.effectiveScheduleStatus, Boolean(row.vacation));
+                const currentShiftState = shiftState(row.workDay, row.effectiveScheduleStatus, Boolean(row.vacation), row.run);
                 const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
                 const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
                 const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
