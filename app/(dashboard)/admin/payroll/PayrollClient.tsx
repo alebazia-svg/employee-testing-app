@@ -15,7 +15,9 @@ import { PayrollDailyOneCControl } from './PayrollDailyOneCControl';
 import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
 import {
   PAYROLL_WORKBOOK_UNCONFIGURED_GROUP,
+  formatPayrollWorkbookBonusReason,
   getPayrollWorkbookComponentLabel,
+  getPayrollWorkbookAccessorySummary,
   formatPayrollWorkbookNote,
   getPayrollWorkbookCalculationText,
   getPayrollWorkbookGroup,
@@ -580,7 +582,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
         const rowInfo = (sheet['!rows'] as Array<Record<string, unknown>>)[rowNumber - 1] ?? {};
         (sheet['!rows'] as Array<Record<string, unknown>>)[rowNumber - 1] = { ...rowInfo, level: 1, hidden: true };
       }
-      const isSectionRow = row?.slice(1).every((value) => value === '' || value === null || value === undefined);
+      const isSectionRow = row?.slice(1, -1).every((value) => value === '' || value === null || value === undefined);
       if (isSectionRow) {
         const sectionName = String(row?.[0] ?? '').toLocaleLowerCase('ru-RU');
         const sectionFill = sectionName.includes('закуп') ? 'FAF3DD'
@@ -589,6 +591,10 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
               : sectionName.includes('операцион') ? 'F1ECF8'
                 : 'F3F4F6';
         setRowStyle(sheet, rowNumber, 0, lastColumn, { fill: { fgColor: { rgb: sectionFill } }, font: { bold: true, color: { rgb: '334155' } }, border: { top: { style: 'medium', color: { rgb: 'CBD5E1' } }, bottom: { style: 'thin', color: { rgb: 'CBD5E1' } } }, alignment: { vertical: 'center' } });
+        if (row?.[lastColumn]) {
+          const rowInfo = (sheet['!rows'] as Array<Record<string, unknown>>)[rowNumber - 1] ?? {};
+          (sheet['!rows'] as Array<Record<string, unknown>>)[rowNumber - 1] = { ...rowInfo, hpt: 30 };
+        }
       }
       if (name === 'Расшифровка') {
         const isEmployeeSummary = Boolean(row?.[0]) && Boolean(row?.[4]);
@@ -619,7 +625,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     if (normalized.includes('закуп')) return 'Отчёт закупок 1С';
     if (normalized.includes('finbox') || normalized.includes('агентск')) return 'Отчёт Finbox';
     if (normalized.includes('прем') || normalized.includes('решени')) return 'Решение руководителя';
-    if (normalized.includes('аванс') || normalized.includes('удержан')) return 'Внесено администратором';
+    if (normalized.includes('аванс') || normalized.includes('удержан')) return 'Ручной ввод в портале';
     if (normalized.includes('фиксирован') || normalized.includes('оклад')) return 'Утверждённый оклад';
     return 'Отчёт продаж 1С';
   };
@@ -629,6 +635,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
   let currentAccrualEmployee = '';
   let currentAccrualComponents: number[] = [];
   const employeeRowsByName = new Map(model.employeeRows.map((row) => [row.employeeName, row]));
+  const retailAccessorySummary = getPayrollWorkbookAccessorySummary(model.sourceRows);
   model.accrualRows.forEach((row) => {
     const employee = String(row[0] ?? '');
     const group = String(row[1] ?? '');
@@ -636,7 +643,10 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     if (group && group !== currentAccrualGroup) {
       currentAccrualGroup = group;
       currentAccrualEmployee = '';
-      workbookAccrualRows.push([group.toLocaleUpperCase('ru-RU'), '', '', '', '', '', '', '', '']);
+      workbookAccrualRows.push([
+        group.toLocaleUpperCase('ru-RU'), '', '', '', '', '', '', '',
+        group === 'Розничные продажи' ? retailAccessorySummary : '',
+      ]);
     }
     if (employee !== currentAccrualEmployee) {
       currentAccrualComponents = [];
@@ -673,7 +683,9 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
         displayedComponent,
         calculation,
         getAccrualSource(component),
-        row[7] ?? '',
+        component === 'Разовая премия'
+          ? formatPayrollWorkbookBonusReason(employee, String(row[7] ?? ''))
+          : row[7] ?? '',
       ]);
       if (!isGrossTotal && component !== 'Аванс' && component !== 'Удержание' && Math.abs(amount) > 0.005) currentAccrualComponents.push(amount);
     }
@@ -743,6 +755,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     ['Розничные продажи', 'Правило портала', 'Дни, проценты за услуги, технику, аксессуары и кредиты', 'Рассчитывается автоматически', model.periodLabel, 'Для кредитов: 10% от валовой прибыли после вычета 9% налогов и издержек'],
     ['Операционное управление', 'Правило портала', '12% от основных начислений выбранных сотрудников', 'Рассчитывается автоматически', model.periodLabel, 'Если результат ниже 100 000 ₽, портал добавляет разницу'],
     ['Фиксированный оклад', 'Карточка сотрудника', 'Утверждённый месячный оклад', 'Подставляется автоматически', model.periodLabel, 'Премии, авансы и удержания показываются отдельно'],
+    ['Разовые премии', 'Решение руководителя', 'Сумма и основание премии', 'Вносится вручную', model.periodLabel, 'Начисляется сверх обычного расчёта и не входит в базу 12% операционного управления'],
   ];
   addTableSheet('Источники и правила', 'Использованные данные и действующие правила расчёта зарплаты.', ['Что рассчитываем', 'Источник', 'Какие показатели берём', 'Как данные попали в расчёт', 'Период', 'Для чего используется'], workbookSourceRows, [34, 28, 52, 38, 18, 72]);
 
@@ -5361,7 +5374,7 @@ export default function AdminPayrollPage() {
       const push = (component: string, base: string | number | null, formula: string, amount: number, comment = '') => {
         rowsForEmployee.push([...baseColumns, component, typeof base === 'number' ? toExportMoney(base) : base, formula, toExportMoney(amount), comment]);
       };
-      const pushBonuses = () => bonusValidation.bonuses.filter((bonus) => bonus.employeeName === row.manager).forEach((bonus) => push('Разовая премия', null, 'сверх обычного расчёта и гарантии; вне базы 12% Бэлы', bonus.amount, bonus.reason));
+      const pushBonuses = () => bonusValidation.bonuses.filter((bonus) => bonus.employeeName === row.manager).forEach((bonus) => push('Разовая премия', null, '', bonus.amount, bonus.reason));
 
       if (row.salaryType === 'fixed_salary') {
         push('Фиксированный оклад', row.fixedSalary, 'оклад', row.fixedSalary);
@@ -5377,7 +5390,7 @@ export default function AdminPayrollPage() {
       if (row.salaryType === 'purchase_manager') {
         push('Оплата по дням', purchaseStandardWorkedDays, `${purchaseStandardWorkedDays} × ${purchaseDayRate}`, row.dayPay);
         push('Закупки 1,75%', row.purchaseBase, 'закупки × 1,75%', row.purchasePercentAmount);
-        push('Доплата закупщику до минимальной зарплаты', row.purchaseTargetSalary, 'минимальная зарплата − оплата дней − бонус с закупок 1,75%', row.purchaseTargetAdjustment);
+        if (Math.abs(row.purchaseTargetAdjustment) > 0.005) push('Доплата закупщику до минимальной зарплаты', row.purchaseTargetSalary, 'минимальная зарплата − оплата дней − бонус с закупок 1,75%', row.purchaseTargetAdjustment);
         pushBonuses();
         push('Начислено за месяц', null, 'оплата за дни + процент с закупок + доплата + премии', row.grossPay);
         if (row.advance) push('Аванс', row.advance, 'вычитается после начисления зарплаты', -row.advance);
@@ -5405,7 +5418,6 @@ export default function AdminPayrollPage() {
             bases.accessory,
             `личная база × ${ratePercent}%`,
             row.accessoryBonus,
-            `Общая база команды ${formatMoney(retailAccessoryTier.teamBase)}; порог ${formatMoney(retailAccessoryTier.threshold)}`,
           );
         }
         if (row.creditBonus) push('Кредитный бонус', bases.credit, 'ВП × 0,91 × 10%', row.creditBonus);
@@ -5643,16 +5655,20 @@ export default function AdminPayrollPage() {
       const accrualRows = sortedRows.flatMap((employee) => {
         const reportGroup = employee.reportGroup || getPayrollWorkbookGroup(employee.salaryType);
         const visibleDetails = employee.calculationDetails
-          .filter((detail) => !(detail.amount === 0 && ['Премия', 'Аванс', 'Удержание'].includes(detail.component)))
+          .filter((detail) => !(detail.amount === 0 && ['Премия', 'Аванс', 'Удержание', 'Доплата закупщику до минимальной зарплаты', 'Доведение закупщика до 100 000'].includes(detail.component)))
           .map((detail) => {
-            const note = ['Фиксированный оклад', 'Оплата по дням'].includes(detail.component) ? '' : detail.comment;
+            const note = ['Фиксированный оклад', 'Оплата по дням'].includes(detail.component)
+              ? ''
+              : detail.component === 'Разовая премия'
+                ? formatPayrollWorkbookBonusReason(employee.employeeName, detail.comment)
+                : detail.comment;
             return [
               employee.employeeName,
               reportGroup,
               employee.position || reportGroup,
               getPayrollWorkbookComponentLabel(detail.component),
               detail.base,
-              detail.formula || 'Не сохранено в этой версии',
+              detail.component === 'Разовая премия' ? '' : detail.formula || 'Не сохранено в этой версии',
               detail.amount,
               note,
             ] as Array<string | number | null>;
@@ -5715,7 +5731,7 @@ export default function AdminPayrollPage() {
           [`дни ${input.workedDays ?? '—'}`, `опоздания ${input.lateCount ?? '—'}`, `аванс ${input.advance ?? input.purchaseAdvance ?? '—'}`, `премия ${input.fixedBonus ?? '—'}`, `удержание ${input.fixedDeduction ?? input.purchaseDeduction ?? '—'}`, input.comment].filter(Boolean).join('; '),
         ]),
       ];
-      const savedRules = Array.from(new Map(sortedRows.flatMap((employee) => employee.calculationDetails).map((detail) => [
+      const savedRules = Array.from(new Map(sortedRows.flatMap((employee) => employee.calculationDetails).filter((detail) => detail.component !== 'Разовая премия').map((detail) => [
         `${detail.component}|${detail.formula}`,
         [getPayrollWorkbookComponentLabel(detail.component), detail.formula || 'Не сохранено в этой версии', 'Формула из зафиксированной расшифровки'],
       ])).values());
@@ -6555,7 +6571,7 @@ export default function AdminPayrollPage() {
                       )}
                       {selectedSavedRun.employeeResults.some((row) => row.adjustments?.length) && <div className='mb-4 rounded-lg border border-border p-3'>
                         <h3 className='font-bold text-slate-900'>Зафиксированные разовые премии</h3>
-                        {selectedSavedRun.employeeResults.flatMap((row) => (row.adjustments ?? []).filter((bonus) => bonus.type === 'ONE_TIME_BONUS').map((bonus) => <p key={bonus.id} className='mt-2 text-sm text-slate-700'>{row.employeeName} · {formatMoney(bonus.amount)} · {bonus.reason}<span className='block text-xs text-slate-500'>Внесено: {new Date(bonus.createdAt).toLocaleString('ru-RU')} · администратор ID {bonus.createdByUserId ?? '—'}</span></p>))}
+                        {selectedSavedRun.employeeResults.flatMap((row) => (row.adjustments ?? []).filter((bonus) => bonus.type === 'ONE_TIME_BONUS').map((bonus) => <p key={bonus.id} className='mt-2 text-sm text-slate-700'>{row.employeeName} · {formatMoney(bonus.amount)} · {formatPayrollWorkbookBonusReason(row.employeeName, bonus.reason)}<span className='block text-xs text-slate-500'>Внесено: {new Date(bonus.createdAt).toLocaleString('ru-RU')} · администратор ID {bonus.createdByUserId ?? '—'}</span></p>))}
                       </div>}
                       {getSavedRunReviewReasons(selectedSavedRun).length > 0 && (
                         <div className='mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>

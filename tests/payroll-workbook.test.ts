@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   formatPayrollWorkbookNote,
+  formatPayrollWorkbookBonusReason,
+  getPayrollWorkbookAccessorySummary,
   getPayrollWorkbookComponentLabel,
   getPayrollWorkbookCalculationText,
   getPayrollWorkbookGroup,
@@ -78,7 +80,17 @@ describe('payroll workbook presentation', () => {
     assert.match(getPayrollWorkbookCalculationText('Бонус опта 1,75%', 6_623_805, 'общая база опта × 1,75%', 115_916.58), /6.623.805,00 ₽ × 1,75% = 115.916,58 ₽/);
     assert.match(getPayrollWorkbookCalculationText('Кредиты: 10% валовой прибыли после вычета 9% налогов и издержек', 10_000, 'ВП × 0,91 × 10%', 910), /10.000,00 ₽ × 91% × 10% = 910,00 ₽/);
     assert.match(getPayrollWorkbookCalculationText('Аксессуары: 7% выручки', 1_186_055, 'личная база × 7%', 83_023.85), /1.186.055,00 ₽ × 7% = 83.023,85 ₽/);
-    assert.match(getPayrollWorkbookCalculationText('Разовая премия', null, 'По решению руководителя', 20_000), /По решению руководителя = 20.000,00 ₽/);
+    assert.match(getPayrollWorkbookCalculationText('Разовая премия', null, '', 20_000), /^20.000,00 ₽$/);
+  });
+
+  it('keeps bonus reasons concise and shows the accessory threshold once at group level', () => {
+    assert.equal(formatPayrollWorkbookBonusReason('Тохов Астемир', 'Рекордные результаты оптового отдела. Решение руководителя.'), 'Первый результат по закупкам свыше 100 000 ₽');
+    assert.equal(formatPayrollWorkbookBonusReason('Ахобекова Залина', 'Рекордные результаты оптового отдела. Основной вклад в продажи; решение руководителя.'), 'Основной вклад в рекордные продажи оптового отдела');
+    assert.equal(formatPayrollWorkbookBonusReason('Другой сотрудник', 'Доплата за проект'), 'Доплата за проект');
+    assert.equal(getPayrollWorkbookAccessorySummary([
+      ['Уровень аксессуаров', '1 186 055,00 ₽ / порог 1 000 000,00 ₽', 'Порог превышен'],
+      ['Ставка аксессуаров', '7%', 'Применяется к рознице'],
+    ]), 'Аксессуары 7%: 1 186 055 ₽ > 1 000 000 ₽');
   });
 
   it('keeps a new employee visible when the salary rule is not configured', () => {

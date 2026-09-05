@@ -54,9 +54,9 @@ export function validatePayrollCompensationVersion(version: unknown, bonuses: un
 export function getInitialPayrollBonuses(periodKey: string): PayrollBonusDraft[] {
   if (periodKey !== '2026-08') return [];
   return [
-    { id: '2026-08-astemir', employeeName: 'Тохов Астемир', amount: '20000', reason: 'Рекордные результаты оптового отдела. Решение руководителя.' },
-    { id: '2026-08-zalina', employeeName: 'Ахобекова Залина', amount: '15000', reason: 'Рекордные результаты оптового отдела. Основной вклад в продажи; решение руководителя.' },
-    { id: '2026-08-liana', employeeName: 'Хурзокова Лиана', amount: '5000', reason: 'Рекордные результаты оптового отдела. С учётом участия в месяце отпуска; решение руководителя.' },
+    { id: '2026-08-astemir', employeeName: 'Тохов Астемир', amount: '20000', reason: 'Первый результат по закупкам свыше 100 000 ₽' },
+    { id: '2026-08-zalina', employeeName: 'Ахобекова Залина', amount: '15000', reason: 'Основной вклад в рекордные продажи оптового отдела' },
+    { id: '2026-08-liana', employeeName: 'Хурзокова Лиана', amount: '5000', reason: 'Участие в рекордных продажах с учётом отпуска' },
   ];
 }
 
@@ -116,7 +116,7 @@ function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses
   } else if (row.salaryType === 'purchase_manager') {
     add('Оплата по дням', 'dayPay');
     add('Закупки 1,75%', 'purchasePercentAmount');
-    add('Доплата закупщику до минимальной зарплаты', 'purchaseTargetAdjustment');
+    add('Доплата закупщику до минимальной зарплаты', 'purchaseTargetAdjustment', true);
   } else {
     add('Оплата по дням', 'dayPay', true);
     if (row.salaryType === 'vl_percent') {

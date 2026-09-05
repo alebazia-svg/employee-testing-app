@@ -355,7 +355,7 @@ describe('employee-scoped premium editor', () => {
     const html = renderToStaticMarkup(createElement(PayrollBonusesEditor, props));
     assert.ok(html.includes('Премии: Тохов Астемир'));
     assert.ok(html.includes('value="20000"'));
-    assert.ok(html.includes('Рекордные результаты'));
+    assert.ok(html.includes('Первый результат по закупкам свыше 100 000 ₽'));
     assert.ok(!html.includes('<select'));
   });
   it('does not create a legacy fixed-pay field for a new award', () => {

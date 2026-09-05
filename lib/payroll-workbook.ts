@@ -59,6 +59,29 @@ export function formatPayrollWorkbookNote(status: string, note: string) {
   return normalized ? `Проверить: ${normalized}` : 'Проверить';
 }
 
+export function formatPayrollWorkbookBonusReason(employeeName: string, reason: string) {
+  const normalizedReason = reason.trim();
+  const normalizedEmployee = employeeName.trim().toLocaleLowerCase('ru-RU');
+  if (normalizedEmployee.includes('астемир') && normalizedReason === 'Рекордные результаты оптового отдела. Решение руководителя.') return 'Первый результат по закупкам свыше 100 000 ₽';
+  if (normalizedEmployee.includes('залин') && normalizedReason === 'Рекордные результаты оптового отдела. Основной вклад в продажи; решение руководителя.') return 'Основной вклад в рекордные продажи оптового отдела';
+  if ((normalizedEmployee.includes('лиан') || normalizedEmployee.includes('лян')) && normalizedReason === 'Рекордные результаты оптового отдела. С учётом участия в месяце отпуска; решение руководителя.') return 'Участие в рекордных продажах с учётом отпуска';
+  return normalizedReason;
+}
+
+export function getPayrollWorkbookAccessorySummary(rows: Array<Array<string | number | null>>) {
+  const tier = rows.find((row) => String(row[0] ?? '') === 'Уровень аксессуаров');
+  const rate = rows.find((row) => String(row[0] ?? '') === 'Ставка аксессуаров');
+  if (!tier || !rate) return '';
+
+  const [teamBase = '', threshold = ''] = String(tier[1] ?? '').split(' / порог ');
+  const rateText = String(rate[1] ?? '');
+  const comparison = String(tier[2] ?? '').includes('не превышен') ? '≤' : '>';
+  const compactMoney = (value: string) => value.replace(',00 ₽', ' ₽');
+  return teamBase && threshold && rateText
+    ? `Аксессуары ${rateText}: ${compactMoney(teamBase)} ${comparison} ${compactMoney(threshold)}`
+    : '';
+}
+
 export function getPayrollWorkbookReviewCount(
   employeeRows: PayrollWorkbookReviewEmployee[],
   checkRows: Array<Array<string | number | null>>,
