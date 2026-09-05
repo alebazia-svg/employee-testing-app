@@ -1161,12 +1161,12 @@ export function AdminShiftControlDetails({
                 {previousEmployee ? (
                   <Link href={previousEmployee.href} className='inline-flex min-w-0 items-center gap-1 text-xs font-extrabold text-slate-700'>
                     <ChevronLeft className='h-4 w-4 shrink-0' />
-                    <span className='truncate'>{previousEmployee.name}</span>
+                    <span className='truncate'>Предыдущий: {previousEmployee.name}</span>
                   </Link>
                 ) : <span />}
                 {nextEmployee ? (
                   <Link href={nextEmployee.href} className='inline-flex min-w-0 items-center gap-1 text-xs font-extrabold text-slate-700'>
-                    <span className='truncate'>{nextEmployee.name}</span>
+                    <span className='truncate'>Следующий: {nextEmployee.name}</span>
                     <ChevronRight className='h-4 w-4 shrink-0' />
                   </Link>
                 ) : <span />}
@@ -1353,7 +1353,7 @@ export function AdminShiftControlDetails({
                   </p>
                   <p className='mt-0.5 text-xs font-semibold text-slate-500'>
                     {technicalClose
-                      ? `Пропущенные шаги сохранены в истории: ${technicalMissedTaskCount}.`
+                      ? `Пропущено шагов: ${technicalMissedTaskCount}`
                       : run
                         ? 'Откройте только ту проверку, по которой нужны подробности.'
                         : 'Данных чек-листа за этот день нет.'}
@@ -1377,14 +1377,8 @@ export function AdminShiftControlDetails({
               </div>
 
               {keyProblemCount > 0 ? (
-                <section className={`mb-4 rounded-xl border px-4 py-3 ${
-                  hasError
-                    ? 'border-rose-200 bg-rose-50'
-                    : 'border-amber-200 bg-amber-50'
-                }`}>
-                  <h4 className={`text-sm font-extrabold ${
-                    hasError ? 'text-rose-950' : 'text-amber-950'
-                  }`}>Ключевые проблемы</h4>
+                <section className='mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3'>
+                  <h4 className='text-sm font-extrabold text-slate-950'>Ключевые проблемы</h4>
                   <div className='mt-2 grid gap-1.5'>
                     {requiredIssues.length > 0 ? (
                       <div className='mb-1 overflow-hidden rounded-lg border border-rose-200 bg-white'>
@@ -1407,23 +1401,23 @@ export function AdminShiftControlDetails({
                       </div>
                     ) : null}
                     {scheduleNeedsAttention ? (
-                      <p className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>График:</span> рабочий график сотрудника не заполнен</p>
+                      <p className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-800'><span className='font-extrabold'>График:</span> рабочий график сотрудника не заполнен</p>
                     ) : null}
                     {activeWorkdayProblems.map((violation) => (
-                      <p key={violation.id} className='text-sm font-semibold text-amber-800'><span className='font-extrabold'>{violation.label}:</span> {violation.detail}</p>
+                      <p key={violation.id} className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-800'><span className='font-extrabold'>{violation.label}:</span> {violation.detail}</p>
                     ))}
                     {terminalFiscalHasError ? (
-                      <p className='text-sm font-semibold text-rose-800'>
+                      <p className='rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-800'>
                         <span className='font-extrabold'>Операции терминала:</span> автоматическая сверка обнаружила расхождений: {terminalFiscalControl!.statuses.mismatch}
                       </p>
                     ) : terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? (
-                      <p className='text-sm font-semibold text-amber-800'>
+                      <p className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-800'>
                         <span className='font-extrabold'>Операции терминала:</span> требуется действие администратора
                       </p>
                     ) : null}
                     {keyProblems.slice(0, 3).map((item) => {
                       const state = taskBusinessState(item);
-                      return <p key={item.task.id} className={`text-sm font-semibold ${state.tone === 'error' ? 'text-rose-800' : 'text-amber-800'}`}><span className='font-extrabold'>{taskDisplayTitle(item.task)}:</span> {state.result}</p>;
+                      return <p key={item.task.id} className={`rounded-lg border px-3 py-2.5 text-sm font-semibold ${state.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}><span className='font-extrabold'>{taskDisplayTitle(item.task)}:</span> {state.result}</p>;
                     })}
                   </div>
                 </section>

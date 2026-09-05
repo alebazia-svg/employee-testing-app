@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { hasTechnicalWorkdayClose } from '@/lib/workday-close-view';
+import { hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workday-close-view';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, Banknote, CreditCard } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
@@ -1708,6 +1708,8 @@ export default async function AdminWorkdayPage(
             <div className='divide-y divide-slate-100'>
               {filteredEmployeeControlRows.map((row) => {
                 const currentShiftState = shiftState(row.workDay, row.effectiveScheduleStatus, Boolean(row.vacation), row.run);
+                const technicalClose = hasTechnicalWorkdayClose(row.workDay, row.run);
+                const missedTaskCount = row.run?.tasks.filter((task) => task.status === 'missed').length ?? 0;
                 const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
                 const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
                 const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
@@ -1728,7 +1730,12 @@ export default async function AdminWorkdayPage(
                         <Badge className={row.requiredIssues.length > 0 ? 'bg-amber-100 text-amber-800' : row.activeWorkDay && row.category === 'normal' ? 'bg-green-100 text-green-800' : row.businessStatus.className}>
                           {row.requiredIssues.length > 0 ? 'Исправляет сотрудник' : row.activeWorkDay && row.category === 'normal' ? 'Идёт по плану' : row.businessStatus.label}
                         </Badge>
-                        <span className='text-xs font-semibold text-slate-400'>{row.totalTaskCount > 0 ? `Выполнено ${row.completedTaskCount} из ${row.totalTaskCount}` : 'Проверок пока нет'}</span>
+                        <span className='text-xs font-semibold text-slate-400'>{workdayTaskProgressLabel({
+                          completed: row.completedTaskCount,
+                          missed: missedTaskCount,
+                          total: row.totalTaskCount,
+                          technicalClose,
+                        })}</span>
                       </div>
                       <p className={`mt-1.5 text-sm font-semibold leading-relaxed ${
                         row.category === 'error' ? 'text-rose-800' : row.category === 'attention' ? 'text-amber-800' : row.category === 'pending' ? 'text-slate-600' : 'text-green-700'

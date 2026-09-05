@@ -25,3 +25,13 @@ export function technicalWorkdayCloseTime(value: string | null) {
 export function belongsInOperationalTaskOverview(taskStatus: string, technicalClose: boolean) {
   return !(technicalClose && taskStatus === 'missed');
 }
+
+export function workdayTaskProgressLabel(input: {
+  completed: number;
+  missed: number;
+  total: number;
+  technicalClose: boolean;
+}) {
+  if (input.technicalClose && input.missed > 0) return `Пропущено шагов: ${input.missed}`;
+  return input.total > 0 ? `Выполнено ${input.completed} из ${input.total}` : 'Проверок пока нет';
+}

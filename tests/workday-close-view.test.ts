@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime } from '../lib/workday-close-view';
+import { belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime, workdayTaskProgressLabel } from '../lib/workday-close-view';
 
 test('technical workday close recognizes current and historical audit markers', () => {
   assert.equal(hasTechnicalWorkdayClose({ comment: 'Предыдущий рабочий день закрыт позже. Обязательные шаги пропущены.' }), true);
@@ -22,4 +22,10 @@ test('missed tasks from a technical close stay in audit but leave the operationa
   assert.equal(belongsInOperationalTaskOverview('missed', true), false);
   assert.equal(belongsInOperationalTaskOverview('done', true), true);
   assert.equal(belongsInOperationalTaskOverview('missed', false), true);
+});
+
+test('technical close summary describes missed steps instead of unfinished progress', () => {
+  assert.equal(workdayTaskProgressLabel({ completed: 0, missed: 5, total: 5, technicalClose: true }), 'Пропущено шагов: 5');
+  assert.equal(workdayTaskProgressLabel({ completed: 3, missed: 0, total: 5, technicalClose: false }), 'Выполнено 3 из 5');
+  assert.equal(workdayTaskProgressLabel({ completed: 0, missed: 0, total: 0, technicalClose: false }), 'Проверок пока нет');
 });
