@@ -95,6 +95,20 @@ type PayrollModule = {
     employeeDirectory: Record<string, { name: string; department: string; position: string; salaryType: 'retail_sales_bonus' | 'vl_percent' }>,
     periodKey: string,
   ) => { summaries: Array<{ manager: string; accessoryBase?: number; accessoryRate?: number; accessoryBonus: number; totalBonus: number }>; tier: { teamBase: number; rate: number; elevated: boolean } };
+  buildPayrollEmployeeDirectory: (
+    users: Array<{
+      name: string;
+      payrollName: string | null;
+      payrollSalaryType: string | null;
+      payrollReportGroup: string | null;
+      payrollFixedSalary: number | null;
+      payrollRuleFrom: string | null;
+      payrollRuleThrough: string | null;
+      isActive: boolean;
+    }>,
+    periodKey: string,
+    reportManagerNames?: Set<string>,
+  ) => Record<string, { name: string; salaryType: string }>;
 };
 
 async function loadPayrollModule(): Promise<PayrollModule> {
@@ -109,7 +123,7 @@ async function loadPayrollModule(): Promise<PayrollModule> {
   const calculationSource = source.slice(start, end);
 
   mkdirSync(dirname(generatedPath), { recursive: true });
-  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
+  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, buildPayrollEmployeeDirectory, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
 
   return import(pathToFileURL(generatedPath).href) as Promise<PayrollModule>;
 }
@@ -120,6 +134,7 @@ let applyBelaPercentRule: PayrollModule['applyBelaPercentRule'];
 let applyPayrollBonuses: PayrollModule['applyPayrollBonuses'];
 let buildPurchasePayrollRow: PayrollModule['buildPurchasePayrollRow'];
 let applyRetailAccessoryTier: PayrollModule['applyRetailAccessoryTier'];
+let buildPayrollEmployeeDirectory: PayrollModule['buildPayrollEmployeeDirectory'];
 
 before(async () => {
   const payrollModule = await loadPayrollModule();
@@ -129,6 +144,7 @@ before(async () => {
   applyPayrollBonuses = payrollModule.applyPayrollBonuses;
   buildPurchasePayrollRow = payrollModule.buildPurchasePayrollRow;
   applyRetailAccessoryTier = payrollModule.applyRetailAccessoryTier;
+  buildPayrollEmployeeDirectory = payrollModule.buildPayrollEmployeeDirectory;
 });
 
 describe('August 2026 minimum and one-time premiums', () => {
@@ -400,6 +416,28 @@ describe('retail accessory team tier', () => {
     assertMoney(result.summaries.find((row) => row.manager === retailManager)!.accessoryBonus, 42_000);
     assertMoney(result.summaries.find((row) => row.manager === diana)!.accessoryBonus, 28_000.0007);
     assert.equal(result.summaries.find((row) => row.manager === diana)!.accessoryRate, 0.07);
+  });
+
+  it('keeps an inactive portal account in payroll only when a current explicit rule has actual report activity', () => {
+    const diana = 'Кумахова Диана';
+    const user = {
+      name: diana,
+      payrollName: diana,
+      payrollSalaryType: 'retail_sales_bonus',
+      payrollReportGroup: 'Розничные продажи',
+      payrollFixedSalary: null,
+      payrollRuleFrom: null,
+      payrollRuleThrough: null,
+      isActive: false,
+    };
+
+    const withSales = buildPayrollEmployeeDirectory([user], '2026-08', new Set([diana]));
+    const withoutSales = buildPayrollEmployeeDirectory([user], '2026-08', new Set());
+    const expired = buildPayrollEmployeeDirectory([{ ...user, payrollRuleThrough: '2026-07' }], '2026-08', new Set([diana]));
+
+    assert.equal(withSales[diana]?.salaryType, 'retail_sales_bonus');
+    assert.equal(withoutSales[diana], undefined);
+    assert.equal(expired[diana], undefined);
   });
 
   it('does not let non-retail salary formulas raise the team tier', () => {

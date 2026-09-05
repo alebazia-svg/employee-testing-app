@@ -1016,23 +1016,26 @@ function isConfiguredSalaryType(value: string | null): value is ConfiguredSalary
   return Boolean(value && isPayrollWorkbookSalaryTypeConfigured(value));
 }
 
-function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey: string) {
+function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey: string, reportManagerNames: Set<string> = new Set()) {
   const directory: Record<string, PayrollEmployee> = { ...payrollEmployees };
   for (const user of users) {
     const name = user.payrollName?.trim() || user.name.trim();
     if (!name) continue;
-    if (!user.isActive || (isConfiguredSalaryType(user.payrollSalaryType) && !isPayrollEmployeeRuleActive(user, periodKey))) {
+    const salaryType = user.payrollSalaryType;
+    const hasConfiguredRule = isConfiguredSalaryType(salaryType);
+    const hasReportActivity = reportManagerNames.has(name);
+    if ((hasConfiguredRule && !isPayrollEmployeeRuleActive(user, periodKey)) || (!user.isActive && !(hasConfiguredRule && hasReportActivity))) {
       delete directory[name];
       continue;
     }
-    if (!isConfiguredSalaryType(user.payrollSalaryType)) continue;
+    if (!hasConfiguredRule) continue;
     const existing = directory[name];
     directory[name] = {
       name,
-      department: user.payrollReportGroup || getPayrollWorkbookGroup(user.payrollSalaryType),
-      position: existing?.position || user.payrollReportGroup || getPayrollWorkbookGroup(user.payrollSalaryType),
-      salaryType: user.payrollSalaryType,
-      salary: user.payrollSalaryType === 'fixed_salary' ? user.payrollFixedSalary ?? 0 : undefined,
+      department: user.payrollReportGroup || getPayrollWorkbookGroup(salaryType),
+      position: existing?.position || user.payrollReportGroup || getPayrollWorkbookGroup(salaryType),
+      salaryType,
+      salary: salaryType === 'fixed_salary' ? user.payrollFixedSalary ?? 0 : undefined,
       activeThroughPeriod: user.payrollRuleThrough ?? existing?.activeThroughPeriod,
     };
   }
@@ -4020,8 +4023,8 @@ export default function AdminPayrollPage() {
   const totalRevenue = useMemo(() => classification.rows.reduce((sum, row) => sum + row.revenue, 0), [classification.rows]);
   const totalGrossProfit = useMemo(() => classification.rows.reduce((sum, row) => sum + row.grossProfit, 0), [classification.rows]);
   const payrollEmployeeDirectory = useMemo(
-    () => buildPayrollEmployeeDirectory(payrollDirectoryUsers, selectedPayrollPeriodKey),
-    [payrollDirectoryUsers, selectedPayrollPeriodKey],
+    () => buildPayrollEmployeeDirectory(payrollDirectoryUsers, selectedPayrollPeriodKey, new Set(classification.rows.map((row) => row.manager))),
+    [classification.rows, payrollDirectoryUsers, selectedPayrollPeriodKey],
   );
   const payrollAccessoryCalculation = useMemo(
     () => applyRetailAccessoryTier(classification.managerSummaries, classification.rows, payrollEmployeeDirectory, selectedPayrollPeriodKey),
