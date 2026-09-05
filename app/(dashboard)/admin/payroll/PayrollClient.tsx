@@ -251,6 +251,15 @@ type SavedPayrollRunSummary = {
   netPay: number;
   sourceSummary?: unknown;
   createdAt: string;
+  finalizedAt?: string | null;
+  supersededAt?: string | null;
+  supersededByRun?: { id: number; runNumber: number } | null;
+};
+
+type PayrollFinalReplacement = {
+  periodKey: string;
+  targetRun: SavedPayrollRunSummary;
+  existingFinal: SavedPayrollRunSummary;
 };
 
 type SavedPayrollPeriod = {
@@ -319,6 +328,8 @@ type SavedPayrollRunDetail = SavedPayrollRunSummary & {
   sourceFiles: SavedPayrollSourceFile[];
   manualInputs: SavedPayrollManualInput[];
   employeeResults: SavedPayrollEmployeeResult[];
+  finalizedBy?: { id: number; name: string } | null;
+  supersededBy?: { id: number; name: string } | null;
 };
 
 function getSavedRunReviewReasons(run: { sourceSummary?: unknown }) {
@@ -3346,6 +3357,7 @@ export default function AdminPayrollPage() {
   const [isSavingPayroll, setIsSavingPayroll] = useState(false);
   const [lastSavedRunId, setLastSavedRunId] = useState<number | null>(null);
   const [payrollHistoryActionId, setPayrollHistoryActionId] = useState<string | null>(null);
+  const [payrollFinalReplacement, setPayrollFinalReplacement] = useState<PayrollFinalReplacement | null>(null);
   const [selectedSavedRun, setSelectedSavedRun] = useState<SavedPayrollRunDetail | null>(null);
   const [isSavedRunLoading, setIsSavedRunLoading] = useState(false);
   const [classificationRules, setClassificationRules] = useState<PayrollClassificationRule[]>([]);
@@ -4855,16 +4867,27 @@ export default function AdminPayrollPage() {
   function getPayrollRunStatusLabel(status: string) {
     if (status === 'FINAL') return 'Финальный';
     if (status === 'CHECKED') return 'Проверен';
+    if (status === 'SUPERSEDED') return 'Заменён';
     return 'Черновик';
   }
 
   function getPayrollRunStatusClass(status: string) {
     if (status === 'FINAL') return 'bg-green-100 text-green-800';
     if (status === 'CHECKED') return 'bg-blue-100 text-blue-800';
+    if (status === 'SUPERSEDED') return 'bg-slate-200 text-slate-700';
     return 'bg-slate-100 text-slate-700';
   }
 
-  async function updatePayrollRunStatus(runId: number, status: 'CHECKED' | 'FINAL') {
+  function requestPayrollRunFinal(period: SavedPayrollPeriod, run: SavedPayrollRunSummary) {
+    const existingFinal = period.runs.find((candidate) => candidate.status === 'FINAL' && candidate.id !== run.id);
+    if (existingFinal) {
+      setPayrollFinalReplacement({ periodKey: period.periodKey, targetRun: run, existingFinal });
+      return;
+    }
+    void updatePayrollRunStatus(run.id, 'FINAL');
+  }
+
+  async function updatePayrollRunStatus(runId: number, status: 'CHECKED' | 'FINAL', replaceExistingFinal = false) {
     setPayrollHistoryActionId(`run-${runId}-${status}`);
     setSaveError('');
     setSaveStatus('');
@@ -4873,15 +4896,27 @@ export default function AdminPayrollPage() {
       const response = await fetch(`/api/admin/payroll/runs/${runId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, replaceExistingFinal }),
       });
 
+      const body = await response.json().catch(() => ({})) as {
+        error?: unknown;
+        runNumber?: unknown;
+        replacedFinal?: { runNumber?: unknown } | null;
+      };
+
       if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
         throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось изменить статус расчёта.');
       }
 
-      setSaveStatus(status === 'FINAL' ? 'Расчёт отмечен как финальный.' : 'Расчёт отмечен как проверенный.');
+      const replacedRunNumber = typeof body.replacedFinal?.runNumber === 'number' ? body.replacedFinal.runNumber : null;
+      const updatedRunNumber = typeof body.runNumber === 'number' ? body.runNumber : null;
+      setSaveStatus(status === 'FINAL'
+        ? replacedRunNumber && updatedRunNumber
+          ? `Расчёт №${updatedRunNumber} назначен финальным. Расчёт №${replacedRunNumber} сохранён в истории как заменённый.`
+          : 'Расчёт отмечен как финальный.'
+        : 'Расчёт отмечен как проверенный.');
+      setPayrollFinalReplacement(null);
       await loadSavedPayrollPeriods();
     } catch (caughtError) {
       setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось изменить статус расчёта.');
@@ -5869,14 +5904,17 @@ export default function AdminPayrollPage() {
                                       </button>
                                     )}
                                     {(run.status === 'DRAFT' || run.status === 'CHECKED') && period.status !== 'CLOSED' && (
-                                      <button type='button' onClick={() => updatePayrollRunStatus(run.id, 'FINAL')} disabled={payrollHistoryActionId === `run-${run.id}-FINAL`} className='rounded-md border border-green-200 bg-white px-2 py-1 text-xs font-bold text-green-800 transition hover:border-green-300 disabled:cursor-not-allowed disabled:opacity-60'>
-                                        Сделать финальным
+                                      <button type='button' onClick={() => requestPayrollRunFinal(period, run)} disabled={payrollHistoryActionId === `run-${run.id}-FINAL`} className='rounded-md border border-green-200 bg-white px-2 py-1 text-xs font-bold text-green-800 transition hover:border-green-300 disabled:cursor-not-allowed disabled:opacity-60'>
+                                        {hasFinalRun ? 'Заменить финальный' : 'Сделать финальным'}
                                       </button>
                                     )}
                                     <button type='button' onClick={() => openSavedPayrollRun(run.id)} disabled={isSavedRunLoading} className='rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 transition hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-60'>
                                       Открыть сохранённый расчёт
                                     </button>
                                   </div>
+                                  {run.status === 'SUPERSEDED' && run.supersededByRun && (
+                                    <p className='mt-2 text-xs font-semibold text-slate-500'>Заменён расчётом №{run.supersededByRun.runNumber}{run.supersededAt ? ` · ${new Date(run.supersededAt).toLocaleString('ru-RU')}` : ''}</p>
+                                  )}
                                   <div className='mt-1 grid gap-1 text-xs text-slate-600 sm:grid-cols-3'>
                                     <span>Сотрудников: {run.employeeCount}</span>
                                     <span>Проверить: {run.reviewCount}</span>
@@ -5915,6 +5953,11 @@ export default function AdminPayrollPage() {
                       <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
                         Это сохранённый снимок расчёта. Исходный Excel-файл не восстанавливается, сохранены итоговые данные расчёта.
                       </p>
+                      {selectedSavedRun.status === 'SUPERSEDED' && selectedSavedRun.supersededByRun && (
+                        <p className='mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700'>
+                          Этот финальный расчёт заменён расчётом №{selectedSavedRun.supersededByRun.runNumber}{selectedSavedRun.supersededAt ? ` ${new Date(selectedSavedRun.supersededAt).toLocaleString('ru-RU')}` : ''}{selectedSavedRun.supersededBy ? ` · ${selectedSavedRun.supersededBy.name}` : ''}.
+                        </p>
+                      )}
                       {selectedSavedRun.employeeResults.some((row) => row.adjustments?.length) && <div className='mb-4 rounded-lg border border-border p-3'>
                         <h3 className='font-bold text-slate-900'>Зафиксированные разовые премии</h3>
                         {selectedSavedRun.employeeResults.flatMap((row) => (row.adjustments ?? []).filter((bonus) => bonus.type === 'ONE_TIME_BONUS').map((bonus) => <p key={bonus.id} className='mt-2 text-sm text-slate-700'>{row.employeeName} · {formatMoney(bonus.amount)} · {bonus.reason}<span className='block text-xs text-slate-500'>Внесено: {new Date(bonus.createdAt).toLocaleString('ru-RU')} · администратор ID {bonus.createdByUserId ?? '—'}</span></p>))}
@@ -7602,7 +7645,9 @@ export default function AdminPayrollPage() {
                 <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>Сохранённых расчётов пока нет.</p>
               ) : (
                 <div className='grid gap-2'>
-                  {savedPeriods.slice(0, 6).map((period) => (
+                  {savedPeriods.slice(0, 6).map((period) => {
+                    const hasFinalRun = period.runs.some((run) => run.status === 'FINAL');
+                    return (
                     <div key={period.id} className='rounded-lg border border-border bg-white px-3 py-2'>
                       <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                         <div>
@@ -7620,10 +7665,23 @@ export default function AdminPayrollPage() {
                             </div>
                             <div className='mt-2 flex flex-wrap items-center gap-2'>
                               <Badge className={getPayrollRunStatusClass(run.status)}>{getPayrollRunStatusLabel(run.status)}</Badge>
+                              {run.status === 'DRAFT' && period.status !== 'CLOSED' && (
+                                <button type='button' onClick={() => updatePayrollRunStatus(run.id, 'CHECKED')} disabled={payrollHistoryActionId === `run-${run.id}-CHECKED`} className='rounded-md border border-blue-200 bg-white px-2 py-1 text-xs font-bold text-blue-800 transition hover:border-blue-300 disabled:cursor-not-allowed disabled:opacity-60'>
+                                  Отметить проверенным
+                                </button>
+                              )}
+                              {(run.status === 'DRAFT' || run.status === 'CHECKED') && period.status !== 'CLOSED' && (
+                                <button type='button' onClick={() => requestPayrollRunFinal(period, run)} disabled={payrollHistoryActionId === `run-${run.id}-FINAL`} className='rounded-md border border-green-200 bg-white px-2 py-1 text-xs font-bold text-green-800 transition hover:border-green-300 disabled:cursor-not-allowed disabled:opacity-60'>
+                                  {hasFinalRun ? 'Заменить финальный' : 'Сделать финальным'}
+                                </button>
+                              )}
                               <button type='button' onClick={() => openSavedPayrollRun(run.id)} disabled={isSavedRunLoading} className='rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 transition hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-60'>
                                 Открыть сохранённый расчёт
                               </button>
                             </div>
+                            {run.status === 'SUPERSEDED' && run.supersededByRun && (
+                              <p className='mt-2 text-xs font-semibold text-slate-500'>Заменён расчётом №{run.supersededByRun.runNumber}{run.supersededAt ? ` · ${new Date(run.supersededAt).toLocaleString('ru-RU')}` : ''}</p>
+                            )}
                             <div className='mt-1 grid gap-1 text-xs text-slate-600 sm:grid-cols-3'>
                               <span>Сотрудников: {run.employeeCount}</span>
                               <span>Проверить: {run.reviewCount}</span>
@@ -7633,7 +7691,8 @@ export default function AdminPayrollPage() {
                         ))}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Card>
@@ -7652,6 +7711,11 @@ export default function AdminPayrollPage() {
                 <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
                   Это сохранённый снимок расчёта. Исходный Excel-файл не восстанавливается, сохранены итоговые данные расчёта.
                 </p>
+                {selectedSavedRun.status === 'SUPERSEDED' && selectedSavedRun.supersededByRun && (
+                  <p className='mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700'>
+                    Этот финальный расчёт заменён расчётом №{selectedSavedRun.supersededByRun.runNumber}{selectedSavedRun.supersededAt ? ` ${new Date(selectedSavedRun.supersededAt).toLocaleString('ru-RU')}` : ''}{selectedSavedRun.supersededBy ? ` · ${selectedSavedRun.supersededBy.name}` : ''}.
+                  </p>
+                )}
                 <div className='mb-4 grid gap-3 md:grid-cols-4'>
                   <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'><p className='text-xs font-semibold uppercase text-slate-500'>Сотрудников</p><p className='mt-1 text-xl font-bold text-slate-900'>{selectedSavedRun.employeeCount}</p></div>
                   <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'><p className='text-xs font-semibold uppercase text-slate-500'>Проверить</p><p className='mt-1 text-xl font-bold text-slate-900'>{selectedSavedRun.reviewCount}</p></div>
@@ -7686,6 +7750,42 @@ export default function AdminPayrollPage() {
         )}
       </div>
       </div>
+      {payrollFinalReplacement && (
+        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-3 backdrop-blur-[1px] sm:items-center' role='presentation'>
+          <div className='w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl' role='dialog' aria-modal='true' aria-labelledby='replace-payroll-final-title'>
+            <div className='flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-xl' aria-hidden='true'>!</div>
+            <h2 id='replace-payroll-final-title' className='mt-4 text-xl font-extrabold text-slate-950'>Заменить финальный расчёт?</h2>
+            <p className='mt-2 text-sm leading-6 text-slate-600'>
+              За период {payrollFinalReplacement.periodKey} уже выбран финальный расчёт. Суммы не пересчитаются: изменится только утверждённая версия, а прежняя останется в истории.
+            </p>
+            <div className='mt-4 grid gap-3 sm:grid-cols-2'>
+              <div className='rounded-xl border border-slate-200 bg-slate-50 p-4'>
+                <p className='text-xs font-bold uppercase tracking-wide text-slate-500'>Сейчас финальный</p>
+                <p className='mt-2 font-extrabold text-slate-900'>Расчёт №{payrollFinalReplacement.existingFinal.runNumber}</p>
+                <p className='mt-1 text-lg font-bold text-slate-700'>{formatMoney(payrollFinalReplacement.existingFinal.netPay)}</p>
+                <p className='mt-1 text-xs text-slate-500'>Получит статус «Заменён»</p>
+              </div>
+              <div className='rounded-xl border border-green-200 bg-green-50 p-4'>
+                <p className='text-xs font-bold uppercase tracking-wide text-green-700'>Станет финальным</p>
+                <p className='mt-2 font-extrabold text-slate-950'>Расчёт №{payrollFinalReplacement.targetRun.runNumber}</p>
+                <p className='mt-1 text-lg font-bold text-green-800'>{formatMoney(payrollFinalReplacement.targetRun.netPay)}</p>
+                <p className='mt-1 text-xs text-green-700'>Будет использоваться как итоговый</p>
+              </div>
+            </div>
+            <p className='mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-5 text-blue-900'>
+              В истории сохранятся администратор, время замены и связь между двумя расчётами.
+            </p>
+            <div className='mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'>
+              <button type='button' onClick={() => setPayrollFinalReplacement(null)} disabled={payrollHistoryActionId !== null} className='rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-60'>
+                Отмена
+              </button>
+              <button type='button' onClick={() => void updatePayrollRunStatus(payrollFinalReplacement.targetRun.id, 'FINAL', true)} disabled={payrollHistoryActionId !== null} className='rounded-lg bg-green-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60'>
+                {payrollHistoryActionId ? 'Сохраняю…' : 'Да, заменить финальный'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminShell>
   );
 }

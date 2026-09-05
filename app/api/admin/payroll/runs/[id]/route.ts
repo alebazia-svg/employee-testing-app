@@ -33,6 +33,9 @@ export async function GET(_req: Request, props: RouteContext) {
         },
       },
       adjustments: { orderBy: { createdAt: 'asc' } },
+      finalizedBy: { select: { id: true, name: true } },
+      supersededBy: { select: { id: true, name: true } },
+      supersededByRun: { select: { id: true, runNumber: true } },
     },
   });
 

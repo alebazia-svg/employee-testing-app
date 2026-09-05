@@ -21,6 +21,8 @@ model User {
   resetTargets                     AttemptReset[]                    @relation("ResetTarget")
   resetByActions                   AttemptReset[]                    @relation("ResetBy")
   payrollRuns                      PayrollRun[]                      @relation("PayrollRunCreatedBy")
+  finalizedPayrollRuns             PayrollRun[]                      @relation("PayrollRunFinalizedBy")
+  supersededPayrollRuns            PayrollRun[]                      @relation("PayrollRunSupersededBy")
   payrollAdjustments               PayrollAdjustment[]               @relation("PayrollAdjustmentCreatedBy")
   workSchedules                    WorkScheduleEntry[]
   workScheduleChanges              WorkScheduleChange[]
@@ -1067,35 +1069,45 @@ model PayrollPeriod {
 }
 
 model PayrollRun {
-  id              Int                     @id @default(autoincrement())
-  periodId        Int
-  runNumber       Int
-  status          String                  @default("DRAFT")
-  rulesVersion    String                  @default("client-snapshot-v1")
-  employeeCount   Int                     @default(0)
-  reviewCount     Int                     @default(0)
-  grossPay        Float                   @default(0)
-  netPay          Float                   @default(0)
-  advance         Float                   @default(0)
-  deductions      Float                   @default(0)
-  dayPay          Float                   @default(0)
-  salesBonus      Float                   @default(0)
-  disciplineBonus Float                   @default(0)
-  sourceSummary   Json?
-  createdByUserId Int?
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  checkedAt       DateTime?
-  closedAt        DateTime?
-  period          PayrollPeriod           @relation(fields: [periodId], references: [id], onDelete: Cascade)
-  createdBy       User?                   @relation("PayrollRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  employeeResults PayrollEmployeeResult[]
-  sourceFiles     PayrollSourceFile[]
-  manualInputs    PayrollManualInput[]
-  adjustments     PayrollAdjustment[]
-  analyticsRows   PayrollAnalyticsRow[]
+  id                 Int                     @id @default(autoincrement())
+  periodId           Int
+  runNumber          Int
+  status             String                  @default("DRAFT")
+  rulesVersion       String                  @default("client-snapshot-v1")
+  employeeCount      Int                     @default(0)
+  reviewCount        Int                     @default(0)
+  grossPay           Float                   @default(0)
+  netPay             Float                   @default(0)
+  advance            Float                   @default(0)
+  deductions         Float                   @default(0)
+  dayPay             Float                   @default(0)
+  salesBonus         Float                   @default(0)
+  disciplineBonus    Float                   @default(0)
+  sourceSummary      Json?
+  createdByUserId    Int?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  checkedAt          DateTime?
+  finalizedAt        DateTime?
+  finalizedByUserId  Int?
+  supersededAt       DateTime?
+  supersededByUserId Int?
+  supersededByRunId  Int?
+  closedAt           DateTime?
+  period             PayrollPeriod           @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  createdBy          User?                   @relation("PayrollRunCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  finalizedBy        User?                   @relation("PayrollRunFinalizedBy", fields: [finalizedByUserId], references: [id], onDelete: SetNull)
+  supersededBy       User?                   @relation("PayrollRunSupersededBy", fields: [supersededByUserId], references: [id], onDelete: SetNull)
+  supersededByRun    PayrollRun?             @relation("PayrollRunReplacement", fields: [supersededByRunId], references: [id], onDelete: SetNull)
+  supersededRuns     PayrollRun[]            @relation("PayrollRunReplacement")
+  employeeResults    PayrollEmployeeResult[]
+  sourceFiles        PayrollSourceFile[]
+  manualInputs       PayrollManualInput[]
+  adjustments        PayrollAdjustment[]
+  analyticsRows      PayrollAnalyticsRow[]
 
   @@unique([periodId, runNumber])
+  @@index([supersededByRunId])
 }
 
 model PayrollEmployeeResult {
