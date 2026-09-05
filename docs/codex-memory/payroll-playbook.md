@@ -76,6 +76,27 @@ The audit/review block is meant for review workflows, not the final payroll
 summary. Avoid mixing "quick product review" into the main summary if it makes
 the pay result harder to understand.
 
+### Replacing a final payroll run — released, 2026-09-05
+
+- An administrator can replace the final run for an open payroll period. The
+  confirmation compares the current and proposed final payouts; it never
+  recalculates employee results.
+- Replacement is atomic: the selected run becomes `FINAL`, the previous final
+  becomes `SUPERSEDED`, and the database keeps the acting administrator,
+  timestamp and replacement-run link. A partial unique index guarantees no more
+  than one `FINAL` run per period, including under concurrent requests.
+- Closed periods remain protected and require their existing separate reopen
+  workflow. A superseded run cannot be promoted through the ordinary status
+  endpoint, so financial history stays immutable.
+- Released as portal commit `ae3f2c3` with migration
+  `20260905183000_add_payroll_run_final_replacement`. The 37 payroll tests,
+  TypeScript, production build, migration rehearsal and isolated browser flow
+  passed. Production routes are healthy and the authenticated payroll screen
+  loads without browser errors.
+- Production August state after release: run 3 / ID 7 is the sole final at RUB
+  935,129.55; run 1 / ID 4 is retained as superseded by run 3. Payroll formulas,
+  employee results and source data were not changed by this release.
+
 ## Data Caveats
 
 ### Finbox manual import — released, 2026-09-04
