@@ -680,7 +680,7 @@ function TaskDetailCard({
                     className='mt-2 inline-flex min-h-8 items-center rounded-lg bg-slate-950 px-3 text-xs font-extrabold text-white transition hover:bg-slate-800'
                     onClick={() => onManualReview(check)}
                   >
-                    Подтвердить вручную
+                    {check.cashOperation ? 'Выбрать действие' : 'Подтвердить вручную'}
                   </button>
                 ) : null}
               </div>
@@ -764,6 +764,12 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
   }
 
   return { tone: 'normal', label: 'Всё нормально', result: matched?.summary || 'Выполнено без замечаний' };
+}
+
+function cashOperationDecisionSummary(summary: string) {
+  const marker = '. Инкассация зафиксирована, но документы 1С не проведены.';
+  const markerIndex = summary.indexOf(marker);
+  return markerIndex >= 0 ? summary.slice(0, markerIndex + marker.length) : summary;
 }
 
 function TaskOverviewRow({
@@ -901,7 +907,7 @@ export function AdminShiftControlDetails({
       setManualReviewSaving(false);
     }
   }
-  async function updateCashOperationControl(action: 'take_manual' | 'release_automatic' | 'retry_now') {
+  async function updateCashOperationControl(action: 'take_manual' | 'return_to_review' | 'retry_now') {
     const operation = manualReviewTarget?.cashOperation;
     if (!operation || cashControlSaving) return;
     setCashControlSaving(true);
@@ -1551,13 +1557,31 @@ export function AdminShiftControlDetails({
                 onClick={(event) => event.stopPropagation()}
                 role='dialog'
                 aria-modal='true'
-                aria-label={`Ручное подтверждение: ${manualReviewTarget.label}`}
+                aria-label={manualReviewTarget.cashOperation
+                  ? `Решение по инкассации: ${manualReviewTarget.label}`
+                  : `Ручное подтверждение: ${manualReviewTarget.label}`}
               >
                 <div className='flex items-start justify-between gap-4'>
                   <div>
-                    <p className='text-xs font-extrabold uppercase text-primary'>Ручное подтверждение</p>
-                    <h4 className='mt-1 text-lg font-extrabold text-slate-950'>{manualReviewTarget.label}</h4>
-                    <p className='mt-2 text-sm font-semibold leading-relaxed text-slate-600'>{manualReviewTarget.summary}</p>
+                    <p className='text-xs font-extrabold uppercase text-primary'>
+                      {manualReviewTarget.cashOperation ? 'Решение администратора' : 'Ручное подтверждение'}
+                    </p>
+                    <h4 className='mt-1 text-lg font-extrabold text-slate-950'>
+                      {manualReviewTarget.cashOperation ? 'Инкассация не проведена' : manualReviewTarget.label}
+                    </h4>
+                    {manualReviewTarget.cashOperation ? (
+                      <p className='mt-1 text-xs font-extrabold text-slate-500'>{manualReviewTarget.label}</p>
+                    ) : null}
+                    <p className='mt-2 text-sm font-semibold leading-relaxed text-slate-600'>
+                      {manualReviewTarget.cashOperation
+                        ? cashOperationDecisionSummary(manualReviewTarget.summary)
+                        : manualReviewTarget.summary}
+                    </p>
+                    {manualReviewTarget.cashOperation && manualReviewTarget.evidence ? (
+                      <p className='mt-2 text-xs font-semibold leading-relaxed text-amber-800'>
+                        <span className='font-extrabold'>Причина:</span> {manualReviewTarget.evidence}
+                      </p>
+                    ) : null}
                   </div>
                   <Button
                     type='button'
@@ -1570,33 +1594,25 @@ export function AdminShiftControlDetails({
                   </Button>
                 </div>
                 {manualReviewTarget.cashOperation ? (
-                  <div className='mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3'>
-                    <p className='text-sm font-extrabold text-amber-950'>Как провести документы в 1С</p>
-                    <p className='mt-1 text-xs font-semibold leading-relaxed text-amber-800'>
-                      Если создаёте РКО и ПКО самостоятельно, сначала возьмите операцию в ручную. Тогда портал не запустит автоматический повтор.
+                  <div className='mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3'>
+                    <p className='text-sm font-extrabold text-slate-950'>Выберите, как провести документы в 1С</p>
+                    <p className='mt-1 text-xs font-semibold leading-relaxed text-slate-600'>
+                      Автоматическое проведение не запустится без вашего выбора.
                     </p>
-                    <div className='mt-3 flex flex-wrap gap-2'>
+                    <div className='mt-3 grid gap-2 sm:grid-cols-2'>
                       {manualReviewTarget.cashOperation.status === 'manual_in_progress' ? (
                         <Button
                           type='button'
-                          className='bg-white text-slate-700 shadow-none ring-1 ring-slate-200 hover:bg-slate-50'
-                          onClick={() => updateCashOperationControl('release_automatic')}
+                          className='sm:col-span-2 bg-white text-slate-700 shadow-none ring-1 ring-slate-200 hover:bg-slate-50'
+                          onClick={() => updateCashOperationControl('return_to_review')}
                           disabled={cashControlSaving || manualReviewSaving}
                         >
-                          Вернуть автоматике
+                          Вернуть к выбору
                         </Button>
                       ) : manualReviewTarget.cashOperation.status === 'retrying_1c' ? (
                         <span className='inline-flex min-h-10 items-center rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200'>Портал проводит документы…</span>
                       ) : (
                         <>
-                          <Button
-                            type='button'
-                            className='bg-slate-950 text-white hover:bg-slate-800'
-                            onClick={() => updateCashOperationControl('take_manual')}
-                            disabled={cashControlSaving || manualReviewSaving}
-                          >
-                            Беру в ручную
-                          </Button>
                           <Button
                             type='button'
                             className='bg-primary text-white hover:bg-primary/90'
@@ -1605,11 +1621,19 @@ export function AdminShiftControlDetails({
                           >
                             Провести автоматически
                           </Button>
+                          <Button
+                            type='button'
+                            className='bg-white text-slate-800 shadow-none ring-1 ring-slate-300 hover:bg-slate-100'
+                            onClick={() => updateCashOperationControl('take_manual')}
+                            disabled={cashControlSaving || manualReviewSaving}
+                          >
+                            Проведу вручную
+                          </Button>
                         </>
                       )}
                     </div>
                   </div>
-                ) : null}
+                ) : <>
                 <fieldset className='mt-4'>
                   <legend className='text-sm font-extrabold text-slate-900'>Результат ручной проверки</legend>
                   <div className='mt-2 grid gap-2 sm:grid-cols-2'>
@@ -1681,6 +1705,12 @@ export function AdminShiftControlDetails({
                     {manualReviewSaving ? 'Сохраняю…' : 'Сохранить решение'}
                   </Button>
                 </div>
+                </>}
+                {manualReviewTarget.cashOperation && manualReviewError ? (
+                  <p className='mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800'>
+                    {manualReviewError}
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : null}

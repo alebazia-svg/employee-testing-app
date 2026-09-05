@@ -1,8 +1,6 @@
 import { prisma } from '@/lib/prisma';
-import { retryCashOperationInOneC } from '@/lib/cash-operation-one-c-retry';
 
 async function main() {
-  const applied = process.argv.includes('--confirm-1c-write');
   const cutoff = new Date(Date.now() - 5 * 60 * 1000);
   const operations = await prisma.cashOperation.findMany({
     where: {
@@ -15,16 +13,16 @@ async function main() {
     orderBy: { updatedAt: 'asc' },
     take: 20,
   });
-  if (!applied) {
-    process.stdout.write(`${JSON.stringify({ ok: true, applied: false, candidates: operations })}\n`);
-    return;
-  }
-  const results = [];
-  for (const operation of operations) {
-    const result = await retryCashOperationInOneC(prisma, operation.id);
-    results.push({ operationId: operation.id, ok: result.ok, reason: result.reason });
-  }
-  process.stdout.write(`${JSON.stringify({ ok: true, applied: true, attempted: results.length, results })}\n`);
+  // Financial writes require an explicit administrator decision in the portal.
+  // The legacy timer may still invoke this script on an older VPS installation,
+  // so the command intentionally remains read-only even when old flags are
+  // present. The admin API owns every requested retry.
+  process.stdout.write(`${JSON.stringify({
+    ok: true,
+    applied: false,
+    automaticRetryDisabled: true,
+    candidates: operations,
+  })}\n`);
 }
 
 main().finally(() => prisma.$disconnect());

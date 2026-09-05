@@ -28,6 +28,24 @@ function readString(value: FormDataEntryValue | null) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function readPositiveInteger(value: FormDataEntryValue | null) {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
+}
+
+function readDateKey(value: FormDataEntryValue | null) {
+  const date = readString(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+function readClientDateKey(value: FormDataEntryValue | null) {
+  const timestamp = readString(value);
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? null : getMoscowDateKey(date);
+}
+
 function isPhoto(value: FormDataEntryValue | null): value is File {
   return value instanceof File && value.size > 0;
 }
@@ -76,18 +94,55 @@ export async function POST(req: Request) {
   const photo = formData.get('photo');
   if (!isPhoto(photo)) return Response.json({ error: 'Сделайте фото' }, { status: 400 });
 
-  const date = getMoscowDateKey();
-  const workDay = await prisma.workDayEntry.findUnique({
-    where: { userId_date: { userId: user.id, date } },
-  });
-  if (!workDay) {
-    return Response.json({ error: 'Сначала начните рабочий день' }, { status: 400 });
-  }
-
   try {
     const existing = await prisma.cashOperation.findUnique({ where: { idempotencyKey } });
     if (existing && existing.userId !== user.id) return Response.json({ error: 'Конфликт ключа операции' }, { status: 409 });
-    const operation = existing ?? await (async () => {
+    if (existing) {
+      if (existing.amount !== amount || existing.direction !== direction) {
+        return Response.json({ error: 'Параметры повторной операции не совпадают с первоначальными' }, { status: 409 });
+      }
+      // A device retry acknowledges the original durable record, even tomorrow.
+      // Only the server retry/control workflow may reprocess it in 1C: that
+      // workflow owns the lease and respects administrator manual takeover.
+      const posted = existing.status === 'posted_1c_pair'
+        && Boolean(existing.oneCDocumentRef && existing.oneCReceiptDocumentRef);
+      if (posted) {
+        await resolveCarriedCashEncashmentExceptions(prisma, {
+          employeeId: user.id, operationId: existing.id, operationDate: existing.date,
+          operationAmount: existing.amount, operationCreatedAt: existing.createdAt,
+        });
+      }
+      return Response.json({
+        operation: { ...existing, createdAt: existing.createdAt.toISOString(), updatedAt: existing.updatedAt.toISOString() },
+        message: 'Инкассация уже сохранена в портале.',
+      }, { status: posted || existing.status === 'resolved_manual' ? 200 : 202 });
+    }
+
+    const submittedWorkDayId = readPositiveInteger(formData.get('workDayEntryId'));
+    const submittedWorkDayDate = readDateKey(formData.get('workDayDate'));
+    const clientDate = readClientDateKey(formData.get('clientCreatedAt'));
+    if ((submittedWorkDayId === null) !== (submittedWorkDayDate === null)) {
+      return Response.json({ error: 'Не удалось подтвердить исходную смену операции' }, { status: 400 });
+    }
+
+    const currentDate = getMoscowDateKey();
+    let date = submittedWorkDayId === null && clientDate ? clientDate : currentDate;
+    let workDay = submittedWorkDayId === null
+      ? await prisma.workDayEntry.findUnique({ where: { userId_date: { userId: user.id, date } } })
+      : await prisma.workDayEntry.findUnique({ where: { id: submittedWorkDayId } });
+
+    if (workDay && submittedWorkDayId !== null) {
+      if (workDay.userId !== user.id || workDay.date !== submittedWorkDayDate) {
+        return Response.json({ error: 'Исходная смена операции не принадлежит сотруднику' }, { status: 409 });
+      }
+      date = workDay.date;
+    }
+    if (!workDay) {
+      return Response.json({
+        error: submittedWorkDayId === null && date === currentDate ? 'Сначала начните рабочий день' : 'Исходная смена операции не найдена',
+      }, { status: submittedWorkDayId === null && date === currentDate ? 400 : 409 });
+    }
+    const operation = await (async () => {
       const photoPath = await savePhoto(photo, workDay.id, direction);
       return prisma.cashOperation.create({
         data: {
@@ -105,10 +160,6 @@ export async function POST(req: Request) {
       });
     })();
 
-    if (operation.amount !== amount || operation.direction !== direction || operation.workDayEntryId !== workDay.id) {
-      return Response.json({ error: 'Параметры повторной операции не совпадают с первоначальными' }, { status: 409 });
-    }
-
     const deferToAdmin = async (message: string) => {
       const failedOperation = await prisma.$transaction(async (tx) => {
         const saved = await tx.cashOperation.update({ where: { id: operation.id }, data: { status: 'one_c_error', oneCError: message } });
@@ -121,6 +172,14 @@ export async function POST(req: Request) {
         message: 'Инкассация зафиксирована и передана администратору.',
       }, { status: 202 });
     };
+
+    // Once the originating shift is closed (or its calendar day has passed),
+    // an administrator may already have created the cash documents manually.
+    // Preserve the employee's amount and photo, but never race that manual work
+    // with a delayed automatic 1C write.
+    if (workDay.date !== currentDate || workDay.status !== 'active' || workDay.endedAt) {
+      return deferToAdmin('Операция поступила после завершения исходной смены. Автоматическое проведение отключено; требуется решение администратора.');
+    }
 
     if (operation.status !== 'posted_1c_pair' || !operation.oneCDocumentRef || !operation.oneCReceiptDocumentRef) {
       const mapping = await prisma.userOneCCashboxMapping.findUnique({ where: { userId: user.id } });

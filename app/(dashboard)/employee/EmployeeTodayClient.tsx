@@ -45,6 +45,7 @@ import { scheduleCoverage, schedulePersonLabel, schedulePersonName, scheduleWork
 import { buildBulkScheduleChanges, buildBulkScheduleEditChanges, bulkScheduleCounts, type BulkScheduleStatus } from '@/lib/work-schedule-bulk';
 import {
   cashOutboxFormData,
+  cashOutboxResponseAcknowledges,
   listEmployeeCashOutboxItems,
   removeEmployeeCashOutboxItem,
   saveEmployeeCashOutboxItem,
@@ -1428,7 +1429,10 @@ export function EmployeeTodayClient({
         .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
       for (const item of items) {
         try {
-          await uploadFormData<{ operation: CashOperation }>(item.url, 'POST', cashOutboxFormData(item), 'Не удалось отправить сохранённую операцию');
+          const result = await uploadFormData<{ operation: CashOperation }>(item.url, 'POST', cashOutboxFormData(item), 'Не удалось отправить сохранённую операцию');
+          if (!cashOutboxResponseAcknowledges(result, item)) {
+            throw new Error('Портал не подтвердил сохранение операции. Сумма и фото остаются на телефоне.');
+          }
           await removeEmployeeCashOutboxItem(item.id);
           saved += 1;
         } catch (reason) {
@@ -2399,6 +2403,10 @@ export function EmployeeTodayClient({
   async function submitCashOperation(file: File | null) {
     if (!cashOperationDraft.direction) return;
     if (!file) return;
+    if (!activeWorkDay) {
+      setError('Сначала начните рабочий день');
+      return;
+    }
 
     const amount = parseMoneyInput(cashOperationDraft.amount);
     if (amount === null) {
@@ -2406,16 +2414,11 @@ export function EmployeeTodayClient({
       return;
     }
 
-    const formData = new FormData();
-    formData.append('direction', cashOperationDraft.direction);
-    formData.append('amount', cashOperationDraft.amount);
-    formData.append('comment', cashOperationDraft.comment);
-    formData.append('idempotencyKey', cashOperationDraft.idempotencyKey);
-    formData.append('photo', file);
-
     const outboxItem: EmployeeCashOutboxItem = {
       id: cashOperationDraft.idempotencyKey,
       userId: user.id,
+      workDayEntryId: activeWorkDay.id,
+      workDayDate: activeWorkDay.date,
       createdAt: new Date().toISOString(),
       url: '/api/employee/cash-operations',
       direction: cashOperationDraft.direction,
@@ -2426,6 +2429,7 @@ export function EmployeeTodayClient({
       photoType: file.type || 'image/jpeg',
       lastError: '',
     };
+    const formData = cashOutboxFormData(outboxItem);
 
     setError('');
     setIsSaving(true);
@@ -2446,22 +2450,25 @@ export function EmployeeTodayClient({
         setUploadProgress,
       );
 
-      if (savedLocally) await removeEmployeeCashOutboxItem(outboxItem.id);
+      if (!cashOutboxResponseAcknowledges(result, outboxItem)) {
+        throw new Error('Портал не подтвердил сохранение операции.');
+      }
+      if (savedLocally) {
+        await removeEmployeeCashOutboxItem(outboxItem.id);
+        savedLocally = false;
+      }
       await refreshCashOutboxCount();
       setCashOperationsState((current) => [result.operation, ...current]);
       setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
       await syncCurrentWorkdayState(true);
       setMessage(result.message ?? `Зафиксировано: ${formatCashOperationAmount(result.operation.amount)} ${cashOperationDirectionLabel(result.operation.direction)}`);
     } catch (reason) {
-      if (reason instanceof EmployeeNetworkError && savedLocally) {
+      if (savedLocally) {
         setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
-        setMessage('Связь прервалась. Операция и фото сохранены на телефоне и отправятся автоматически.');
+        setMessage('Инкассация сохранена на телефоне. Не вводите её повторно.');
+        setCashOutboxError(reason instanceof Error ? reason.message : 'Портал не подтвердил сохранение операции.');
         await refreshCashOutboxCount();
       } else {
-        if (savedLocally) {
-          await removeEmployeeCashOutboxItem(outboxItem.id).catch(() => undefined);
-          await refreshCashOutboxCount();
-        }
         setError(reason instanceof Error ? reason.message : 'Не удалось сохранить кассовую операцию');
       }
     } finally {
@@ -3840,7 +3847,7 @@ export function EmployeeTodayClient({
                       ? cashOutboxSyncing
                         ? 'Сумма и фотография отправляются в портал.'
                         : cashOutboxError
-                          ? `Не удалось отправить: ${cashOutboxError}`
+                          ? cashOutboxError
                           : `Сумма и фото не потеряны. Ожидают отправки: ${cashOutboxCount}.`
                       : cashOutboxCount > 0
                         ? 'Инкассация сохранена на телефоне и отправится после восстановления связи.'

@@ -44,10 +44,10 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     return Response.json({ ok: true, status: 'manual_in_progress' });
   }
 
-  if (action === 'release_automatic') {
+  if (action === 'return_to_review') {
     const current = await prisma.cashOperation.findUnique({ where: { id }, select: { status: true, oneCError: true } });
     if (current?.status !== 'manual_in_progress') return Response.json({ error: 'Операция уже изменила состояние.' }, { status: 409 });
-    const note = `Возвращено в автоматическую обработку администратором ${admin.name} (${new Date().toISOString()}). ${comment}`;
+    const note = `Возвращено к выбору способа обработки администратором ${admin.name} (${new Date().toISOString()}). ${comment}`;
     const updated = await prisma.cashOperation.updateMany({
       where: { id, status: 'manual_in_progress' },
       data: {

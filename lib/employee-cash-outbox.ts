@@ -3,6 +3,8 @@
 export type EmployeeCashOutboxItem = {
   id: string;
   userId: number;
+  workDayEntryId: number;
+  workDayDate: string;
   createdAt: string;
   url: string;
   direction: string;
@@ -32,15 +34,27 @@ function openDatabase() {
 
 function runRequest<T>(mode: IDBTransactionMode, callback: (store: IDBObjectStore) => IDBRequest<T>) {
   return openDatabase().then((database) => new Promise<T>((resolve, reject) => {
-    const transaction = database.transaction(storeName, mode);
-    const request = callback(transaction.objectStore(storeName));
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('OFFLINE_STORAGE_FAILED'));
-    transaction.oncomplete = () => database.close();
-    transaction.onerror = () => {
+    let transaction: IDBTransaction | undefined;
+    const fail = (error: unknown) => {
       database.close();
-      reject(transaction.error ?? new Error('OFFLINE_STORAGE_FAILED'));
+      reject(error ?? new Error('OFFLINE_STORAGE_FAILED'));
     };
+    try {
+      transaction = database.transaction(storeName, mode);
+      const activeTransaction = transaction;
+      activeTransaction.onerror = () => fail(activeTransaction.error);
+      activeTransaction.onabort = () => fail(activeTransaction.error);
+      const request = callback(activeTransaction.objectStore(storeName));
+      request.onerror = () => fail(request.error);
+      // Request success is provisional: the transaction can still abort.
+      activeTransaction.oncomplete = () => {
+        database.close();
+        resolve(request.result);
+      };
+    } catch (error) {
+      try { transaction?.abort(); } catch { /* Transaction may already be inactive. */ }
+      fail(error);
+    }
   }));
 }
 
@@ -54,6 +68,23 @@ export function removeEmployeeCashOutboxItem(id: string) {
 
 export function listEmployeeCashOutboxItems() {
   return runRequest<EmployeeCashOutboxItem[]>('readonly', (store) => store.getAll());
+}
+
+export function cashOutboxResponseAcknowledges(result: unknown, item: EmployeeCashOutboxItem) {
+  if (!result || typeof result !== 'object' || !('operation' in result)) return false;
+  const operation = result.operation;
+  if (!operation || typeof operation !== 'object') return false;
+  const row = operation as Record<string, unknown>;
+  // A successful HTTP response alone is not proof that this exact operation
+  // is durable. A 202 is sufficient when it includes the matching saved row;
+  // posting in 1C is owned by the server, not the phone's upload queue.
+  return typeof row.id === 'number' && Number.isSafeInteger(row.id) && row.id > 0
+    && row.idempotencyKey === item.id
+    && row.userId === item.userId
+    && row.direction === item.direction
+    && row.amount === Number(item.amount.replace(',', '.'))
+    && (!Number.isSafeInteger(item.workDayEntryId) || row.workDayEntryId === item.workDayEntryId)
+    && (!/^\d{4}-\d{2}-\d{2}$/.test(item.workDayDate) || row.date === item.workDayDate);
 }
 
 export function cashOutboxFormData(item: EmployeeCashOutboxItem) {
@@ -70,6 +101,14 @@ export function cashOutboxFormData(item: EmployeeCashOutboxItem) {
   formData.append('amount', item.amount);
   formData.append('comment', item.comment);
   formData.append('idempotencyKey', item.id);
+  // Records created by the previous PWA version do not have these fields.
+  // Keep them retryable on the same day, while every new record is pinned to
+  // the exact workday that was active when the employee took the photo.
+  if (Number.isSafeInteger(item.workDayEntryId) && item.workDayEntryId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(item.workDayDate)) {
+    formData.append('workDayEntryId', String(item.workDayEntryId));
+    formData.append('workDayDate', item.workDayDate);
+  }
+  formData.append('clientCreatedAt', item.createdAt);
   formData.append('photo', photo, photo.name);
   return formData;
 }
