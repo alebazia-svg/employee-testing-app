@@ -45,6 +45,20 @@ export function getPayrollWorkbookStatusLabel(status: string) {
   return status === 'OK' ? 'Готово' : 'Проверить';
 }
 
+export function normalizePayrollWorkbookReviewReason(reason: string) {
+  const normalized = reason.trim().replace(/^(Проверить:\s*)+/i, '');
+  if (normalized === 'расчёт по закупкам выше целевой ЗП') return null;
+  if (normalized === 'Не полностью проверена база расчёта 12%') return null;
+  if (normalized === 'Посещаемость по форме не подтверждена') return 'Не указаны опоздания';
+  return normalized || null;
+}
+
+export function formatPayrollWorkbookNote(status: string, note: string) {
+  const normalized = note.trim().replace(/^(Проверить:\s*)+/i, '');
+  if (status === 'Готово') return normalized;
+  return normalized ? `Проверить: ${normalized}` : 'Проверить';
+}
+
 export function getPayrollWorkbookReviewCount(
   employeeRows: PayrollWorkbookReviewEmployee[],
   checkRows: Array<Array<string | number | null>>,
@@ -122,7 +136,10 @@ export function getPayrollWorkbookComponentLabel(component: string) {
     'Кредитный бонус': 'Кредиты: 10% валовой прибыли после вычета 9% налогов и издержек',
     'Дисциплина': 'Бонус за дисциплину',
     'Начисление 12%': '12% от начислений команды',
+    'ВЛ 12%': '12% от начислений команды',
     'Доплата закупщику до минимальной зарплаты': 'Доплата до минимальной зарплаты',
+    'Доведение закупщика до 100 000': 'Доплата до минимальной зарплаты',
+    'Доведение Бэлы до 100 000': 'Доплата до минимальной зарплаты',
   };
 
   return labels[component] ?? component;

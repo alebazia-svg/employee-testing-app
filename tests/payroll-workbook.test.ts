@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  formatPayrollWorkbookNote,
   getPayrollWorkbookComponentLabel,
   getPayrollWorkbookCalculationText,
   getPayrollWorkbookGroup,
@@ -8,6 +9,7 @@ import {
   getPayrollWorkbookStatusLabel,
   isPayrollWorkbookPaidAdvanceCheck,
   isPayrollWorkbookSalaryTypeConfigured,
+  normalizePayrollWorkbookReviewReason,
   sortPayrollWorkbookEmployees,
 } from '../lib/payroll-workbook';
 
@@ -44,6 +46,17 @@ describe('payroll workbook presentation', () => {
     assert.equal(getPayrollWorkbookStatusLabel('REVIEW'), 'Проверить');
     assert.equal(getPayrollWorkbookComponentLabel('Кредитный бонус'), 'Кредиты: 10% валовой прибыли после вычета 9% налогов и издержек');
     assert.equal(getPayrollWorkbookComponentLabel('Аксессуары 7%'), 'Аксессуары: 7% выручки');
+    assert.equal(getPayrollWorkbookComponentLabel('ВЛ 12%'), '12% от начислений команды');
+    assert.equal(getPayrollWorkbookComponentLabel('Доведение закупщика до 100 000'), 'Доплата до минимальной зарплаты');
+    assert.equal(getPayrollWorkbookComponentLabel('Доведение Бэлы до 100 000'), 'Доплата до минимальной зарплаты');
+  });
+
+  it('keeps only actionable review notes and avoids repeated prefixes', () => {
+    assert.equal(normalizePayrollWorkbookReviewReason('Проверить: расчёт по закупкам выше целевой ЗП'), null);
+    assert.equal(normalizePayrollWorkbookReviewReason('Не полностью проверена база расчёта 12%'), null);
+    assert.equal(normalizePayrollWorkbookReviewReason('Посещаемость по форме не подтверждена'), 'Не указаны опоздания');
+    assert.equal(formatPayrollWorkbookNote('Проверить', 'Проверить: Не указаны опоздания'), 'Проверить: Не указаны опоздания');
+    assert.equal(formatPayrollWorkbookNote('Готово', 'Опоздания: 1'), 'Опоздания: 1');
   });
 
   it('counts review items shown on the control sheet without duplicating an employee', () => {

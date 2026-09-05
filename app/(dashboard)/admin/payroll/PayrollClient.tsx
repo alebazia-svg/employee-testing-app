@@ -16,10 +16,12 @@ import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses,
 import {
   PAYROLL_WORKBOOK_UNCONFIGURED_GROUP,
   getPayrollWorkbookComponentLabel,
+  formatPayrollWorkbookNote,
   getPayrollWorkbookCalculationText,
   getPayrollWorkbookGroup,
   getPayrollWorkbookReviewCount,
   getPayrollWorkbookStatusLabel,
+  normalizePayrollWorkbookReviewReason,
   isPayrollWorkbookPaidAdvanceCheck,
   isPayrollWorkbookSalaryTypeConfigured,
   sortPayrollWorkbookEmployees,
@@ -455,7 +457,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     ['Сотрудников', '', 'Начислено за месяц', '', 'Выплачено / удержано', '', 'Осталось выплатить', '', 'Нужно проверить', ''],
     [model.employeeRows.length, '', totalGross, '', totalWithheld, '', totalNet, '', reviewCount, ''],
   ];
-  const tableHeader = ['Сотрудник', 'Начислено', 'Дни', 'Оплата / оклад / доплата', 'Процентная часть', 'Бонус за дисциплину', 'Премии и агентские', 'Выплачено / удержано', 'Осталось выплатить', 'Комментарий'];
+  const tableHeader = ['Сотрудник', 'Начислено', 'Дни', 'Оплата / оклад / доплата', 'Процентная часть', 'Бонус за дисциплину', 'Премии и агентские', 'Выплачено / удержано', 'Осталось выплатить', 'Примечание'];
   const tableRows: Array<{ kind: 'group' | 'employee'; salaryType: string; values: Array<string | number | null> }> = [];
   let currentCategory = '';
   model.employeeRows.forEach((row) => {
@@ -476,7 +478,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
         row.additionalPay || '',
         row.advance + row.deduction || '',
         row.netPay,
-        row.status === 'Готово' ? row.comment : `Проверить: ${row.comment || 'есть замечания к расчёту'}`,
+        formatPayrollWorkbookNote(row.status, row.comment),
       ],
     });
   });
@@ -677,7 +679,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     }
     currentAccrualEmployee = employee;
   });
-  addTableSheet('Расшифровка', 'По умолчанию видны итоги. Нажмите «+» слева от строк, чтобы раскрыть составляющие и числовые формулы.', ['Сотрудник', 'Начислено', 'Выплачено / удержано', 'Осталось выплатить', 'Статус', 'Составляющая', 'Числовой расчёт', 'Источник', 'Комментарий'], workbookAccrualRows, [28, 18, 20, 20, 16, 38, 58, 28, 48], [1, 2, 3], collapsedAccrualRows);
+  addTableSheet('Расшифровка', 'По умолчанию видны итоги. Нажмите «+» слева от строк, чтобы раскрыть составляющие и числовые формулы.', ['Сотрудник', 'Начислено', 'Выплачено / удержано', 'Осталось выплатить', 'Статус', 'Составляющая', 'Числовой расчёт', 'Источник', 'Примечание'], workbookAccrualRows, [28, 18, 20, 20, 16, 38, 58, 28, 48], [1, 2, 3], collapsedAccrualRows);
   const workbookCheckRows = [
     ...unconfiguredRows.map((row) => [
       row.employeeName,
@@ -757,13 +759,18 @@ function getSavedRunReviewReasons(run: { sourceSummary?: unknown }) {
       if (!item || typeof item !== 'object') return null;
       const reason = (item as { reason?: unknown }).reason;
       const count = (item as { count?: unknown }).count;
-      return typeof reason === 'string' ? { reason, count: Number(count) || 0 } : null;
+      const normalizedReason = typeof reason === 'string' ? normalizePayrollWorkbookReviewReason(reason) : null;
+      return normalizedReason ? { reason: normalizedReason, count: Number(count) || 0 } : null;
     })
     .filter((item): item is { reason: string; count: number } => Boolean(item));
 }
 
 function getSavedEmployeeReasons(row: { reasons?: unknown }) {
-  return Array.isArray(row.reasons) ? row.reasons.filter((reason): reason is string => typeof reason === 'string') : [];
+  if (!Array.isArray(row.reasons)) return [];
+  return Array.from(new Set(row.reasons
+    .filter((reason): reason is string => typeof reason === 'string')
+    .map(normalizePayrollWorkbookReviewReason)
+    .filter((reason): reason is string => Boolean(reason))));
 }
 
 function getSavedInputTypeLabel(inputType: string) {
@@ -3518,7 +3525,7 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
   const netPay = grossPay - advance;
   const payrollReasons = [
     !dayPayNotRequired && workedDays === null ? 'Не заполнены отработанные дни' : '',
-    !dayPayNotRequired && lateCount === null ? 'Посещаемость по форме не подтверждена' : '',
+    !dayPayNotRequired && lateCount === null ? 'Не указаны опоздания' : '',
     advance > grossPay ? 'Аванс больше начислений' : '',
   ].filter(Boolean);
 
@@ -3582,10 +3589,7 @@ function applyBelaPercentRule(rows: FullPayrollRow[], periodKey: string): FullPa
     const minimumGuaranteeAdjustment = minimum ? payrollMoney(Math.max(0, minimum - belaPercentAmount)) : 0;
     const grossPay = belaPercentAmount + minimumGuaranteeAdjustment;
     const netPay = grossPay - row.advance;
-    const payrollReasons = [
-      ...(row.advance > grossPay ? ['Аванс больше начислений'] : []),
-      ...(minimum && baseRows.some((baseRow) => baseRow.payrollReasons.length > 0) ? ['Не полностью проверена база расчёта 12%'] : []),
-    ];
+    const payrollReasons = row.advance > grossPay ? ['Аванс больше начислений'] : [];
     return {
       ...row,
       belaBase: belaBaseGrossPay,
@@ -3691,7 +3695,6 @@ function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined, report
   const netPay = grossPay - advance - fixedDeduction;
   const payrollReasons = [
     purchaseBase === null ? 'Отчёт закупок не загружен или сумма закупок не найдена' : '',
-    rawAdjustment < 0 ? 'Проверить: расчёт по закупкам выше целевой ЗП' : '',
   ].filter(Boolean);
 
   return {
@@ -4944,9 +4947,8 @@ export default function AdminPayrollPage() {
   }
 
   function getPayrollRowExportComment(row: FullPayrollRow) {
-    const comments = [getPayrollExportShortType(row)];
-    const managerRows = classification.rows.filter((item) => item.manager === row.manager);
-    if (row.lateCount !== null) comments.push(`Опозд.: ${row.lateCount}`);
+    const comments: string[] = [];
+    if (row.lateCount !== null) comments.push(`Опоздания: ${row.lateCount}`);
     getPayrollRowReviewReasons(row).forEach((reason) => comments.push(reason));
     if (row.comment) comments.push(row.comment);
     return comments.filter(Boolean).join(' · ');
@@ -5362,7 +5364,7 @@ export default function AdminPayrollPage() {
       const pushBonuses = () => bonusValidation.bonuses.filter((bonus) => bonus.employeeName === row.manager).forEach((bonus) => push('Разовая премия', null, 'сверх обычного расчёта и гарантии; вне базы 12% Бэлы', bonus.amount, bonus.reason));
 
       if (row.salaryType === 'fixed_salary') {
-        push('Фиксированный оклад', row.fixedSalary, 'оклад', row.fixedSalary, row.position);
+        push('Фиксированный оклад', row.fixedSalary, 'оклад', row.fixedSalary);
         if (row.fixedBonus) push('Премия', row.fixedBonus, 'ручной ввод', row.fixedBonus);
         pushBonuses();
         push('Начислено за месяц', null, 'оклад + премии', row.grossPay);
@@ -5373,7 +5375,7 @@ export default function AdminPayrollPage() {
       }
 
       if (row.salaryType === 'purchase_manager') {
-        push('Оплата по дням', purchaseStandardWorkedDays, `${purchaseStandardWorkedDays} × ${purchaseDayRate}`, row.dayPay, `ставка ${formatMoney(purchaseDayRate)}`);
+        push('Оплата по дням', purchaseStandardWorkedDays, `${purchaseStandardWorkedDays} × ${purchaseDayRate}`, row.dayPay);
         push('Закупки 1,75%', row.purchaseBase, 'закупки × 1,75%', row.purchasePercentAmount);
         push('Доплата закупщику до минимальной зарплаты', row.purchaseTargetSalary, 'минимальная зарплата − оплата дней − бонус с закупок 1,75%', row.purchaseTargetAdjustment);
         pushBonuses();
@@ -5384,7 +5386,7 @@ export default function AdminPayrollPage() {
         return rowsForEmployee;
       }
 
-      if (row.dayPay) push('Оплата по дням', row.workedDays, `${row.workedDays ?? 0} × ${row.dayRate}`, row.dayPay, getPayrollDaysSourceLabel(row.daysSource));
+      if (row.dayPay) push('Оплата по дням', row.workedDays, `${row.workedDays ?? 0} × ${row.dayRate}`, row.dayPay);
 
       if (row.salaryType === 'vl_percent') {
         push('Начисление 12%', row.belaBase ?? 0, '12% от обычных начислений выбранных сотрудников, без разовых премий', row.belaPercentAmount ?? 0);
@@ -5428,8 +5430,8 @@ export default function AdminPayrollPage() {
         reason,
         1,
         'Проверить',
-        reason === 'Посещаемость по форме не подтверждена'
-          ? 'Дни рассчитаны по Google Sheets "График посещений". Отметок прихода/ухода из Google-формы нет, поэтому опоздания и фактическое присутствие нужно проверить вручную.'
+        reason === 'Не указаны опоздания'
+          ? 'Рабочие дни заполнены, но количество опозданий не указано. Проверьте его: от этого зависит бонус за дисциплину 3 000 ₽.'
           : reason,
         '',
         '',
@@ -5601,6 +5603,7 @@ export default function AdminPayrollPage() {
       const sortedRows = sortPayrollWorkbookEmployees(selectedSavedRun.employeeResults);
       const savedAccessoryTier = getSavedRetailAccessoryTier(selectedSavedRun.sourceSummary);
       const employeeRows = sortedRows.map((row) => {
+        const reviewReasons = getSavedEmployeeReasons(row);
         const savedDetailAmount = (component: string) => row.calculationDetails
           .filter((detail) => detail.component === component)
           .reduce((sum, detail) => sum + detail.amount, 0);
@@ -5633,24 +5636,27 @@ export default function AdminPayrollPage() {
           advance: toExportMoney(row.advance),
           deduction: toExportMoney(row.fixedDeduction),
           netPay: toExportMoney(row.netPay),
-          status: getPayrollWorkbookStatusLabel(row.status),
-          comment: [row.comment, ...getSavedEmployeeReasons(row)].filter(Boolean).join(' · '),
+          status: reviewReasons.length || !isPayrollWorkbookSalaryTypeConfigured(row.salaryType) ? 'Проверить' : 'Готово',
+          comment: [row.lateCount === null ? '' : `Опоздания: ${row.lateCount}`, row.comment, ...reviewReasons].filter(Boolean).join(' · '),
         };
       });
       const accrualRows = sortedRows.flatMap((employee) => {
         const reportGroup = employee.reportGroup || getPayrollWorkbookGroup(employee.salaryType);
         const visibleDetails = employee.calculationDetails
           .filter((detail) => !(detail.amount === 0 && ['Премия', 'Аванс', 'Удержание'].includes(detail.component)))
-          .map((detail) => [
-            employee.employeeName,
-            reportGroup,
-            employee.position || reportGroup,
-            getPayrollWorkbookComponentLabel(detail.component),
-            detail.base,
-            detail.formula || 'Не сохранено в этой версии',
-            detail.amount,
-            detail.comment,
-          ] as Array<string | number | null>);
+          .map((detail) => {
+            const note = ['Фиксированный оклад', 'Оплата по дням'].includes(detail.component) ? '' : detail.comment;
+            return [
+              employee.employeeName,
+              reportGroup,
+              employee.position || reportGroup,
+              getPayrollWorkbookComponentLabel(detail.component),
+              detail.base,
+              detail.formula || 'Не сохранено в этой версии',
+              detail.amount,
+              note,
+            ] as Array<string | number | null>;
+          });
         const payoutIndex = visibleDetails.findIndex((detail) => detail[3] === 'К выплате');
         if (!visibleDetails.some((detail) => detail[3] === 'Начислено за месяц')) {
           visibleDetails.splice(payoutIndex >= 0 ? payoutIndex : visibleDetails.length, 0, [
@@ -5682,13 +5688,18 @@ export default function AdminPayrollPage() {
         const reasons = getSavedEmployeeReasons(employee);
         return reasons.map((reason) => [employee.employeeName, reason, 1, 'Проверить', reason, '', '', '', '', '', '']);
       });
-      const reviewRows = getSavedRunReviewReasons(selectedSavedRun).map((item) => ['Расчёт в целом', item.reason, item.count, 'Проверить', item.reason, '', '', '', '', '', '']);
+      const employeeReasonSet = new Set(checkRows.map((row) => String(row[1] ?? '')));
+      const reviewRows = getSavedRunReviewReasons(selectedSavedRun)
+        .filter((item) => !employeeReasonSet.has(item.reason))
+        .map((item) => ['Расчёт в целом', item.reason, item.count, 'Проверить', item.reason, '', '', '', '', '', '']);
+      const workbookGrossPay = employeeRows.reduce((sum, row) => sum + row.grossPay, 0);
+      const workbookNetPay = employeeRows.reduce((sum, row) => sum + row.netPay, 0);
       const sourceRows: Array<Array<string | number | null>> = [
         ['Период', selectedSavedRun.period.periodKey, 'Месяц расчёта'],
         ['Версия расчёта', `Расчёт №${selectedSavedRun.runNumber} · ${getPayrollRunStatusLabel(selectedSavedRun.status)}`, 'Экспортируется зафиксированная версия без повторного пересчёта'],
         ['Сохранён', new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU'), 'Дата фиксации расчёта в портале'],
-        ['Всего начислено', selectedSavedRun.grossPay, 'Сохранённый итог по всем сотрудникам'],
-        ['К выплате', selectedSavedRun.netPay, 'После авансов и удержаний'],
+        ['Всего начислено', workbookGrossPay, 'Сумма округлённых начислений сотрудников в ведомости'],
+        ['К выплате', workbookNetPay, 'Сумма округлённых остатков сотрудников после авансов и удержаний'],
         ...(savedAccessoryTier ? [
           ['Уровень аксессуаров', `${formatMoney(savedAccessoryTier.teamBase)} / порог ${formatMoney(savedAccessoryTier.threshold)}`, savedAccessoryTier.elevated ? 'Порог превышен' : 'Порог не превышен'],
           ['Ставка аксессуаров', `${Math.round(savedAccessoryTier.rate * 100)}%`, 'Зафиксированная ставка сохранённого расчёта'],
@@ -6564,7 +6575,7 @@ export default function AdminPayrollPage() {
                         </div>
                         <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
                           <p className='text-xs font-semibold uppercase text-slate-500'>Проверить</p>
-                          <p className='mt-1 text-xl font-bold text-slate-900'>{selectedSavedRun.reviewCount}</p>
+                          <p className='mt-1 text-xl font-bold text-slate-900'>{selectedSavedRun.employeeResults.filter((row) => getSavedEmployeeReasons(row).length > 0 || !isPayrollWorkbookSalaryTypeConfigured(row.salaryType)).length}</p>
                         </div>
                         <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
                           <p className='text-xs font-semibold uppercase text-slate-500'>Начислено</p>
@@ -6593,17 +6604,19 @@ export default function AdminPayrollPage() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {selectedSavedRun.employeeResults.map((row) => (
-                                  <tr key={row.id} className='border-t border-border/70'>
+                                {selectedSavedRun.employeeResults.map((row) => {
+                                  const reasons = getSavedEmployeeReasons(row);
+                                  const needsReview = reasons.length > 0 || !isPayrollWorkbookSalaryTypeConfigured(row.salaryType);
+                                  return <tr key={row.id} className='border-t border-border/70'>
                                     <td className='px-3 py-2 font-semibold text-slate-900'>{row.employeeName}</td>
                                     <td className='px-3 py-2 text-slate-700'>{row.payrollDepartment}</td>
                                     <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
                                     <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossPay)}</td>
                                     <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.netPay)}</td>
-                                    <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status === 'OK' ? 'Готово' : 'Проверить'}</Badge></td>
-                                    <td className='px-3 py-2 text-slate-600'>{getSavedEmployeeReasons(row).join('; ') || '—'}</td>
+                                    <td className='px-3 py-2'><Badge className={needsReview ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>{needsReview ? 'Проверить' : 'Готово'}</Badge></td>
+                                    <td className='px-3 py-2 text-slate-600'>{reasons.join('; ') || '—'}</td>
                                   </tr>
-                                ))}
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -7225,8 +7238,8 @@ export default function AdminPayrollPage() {
                             {selectedManagerCounts.invalidNumbers > 0 && <li>NaN/undefined в расчётах: {selectedManagerCounts.invalidNumbers}</li>}
                             {selectedManagerPayroll.payrollReasons.map((reason) => (
                               <li key={reason}>
-                                {reason === 'Посещаемость по форме не подтверждена'
-                                  ? 'Дни рассчитаны по Google Sheets “График посещений”. Отметок прихода/ухода из Google-формы нет, поэтому опоздания и фактическое присутствие нужно проверить вручную.'
+                                {reason === 'Не указаны опоздания'
+                                  ? 'Рабочие дни заполнены, но количество опозданий не указано. Проверьте его: от этого зависит бонус за дисциплину 3 000 ₽.'
                                   : reason}
                               </li>
                             ))}

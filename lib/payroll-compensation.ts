@@ -112,16 +112,16 @@ function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses
   };
   if (row.salaryType === 'fixed_salary') {
     add('Фиксированный оклад', 'fixedSalary');
-    add('Премия', 'fixedBonus');
+    add('Премия', 'fixedBonus', true);
   } else if (row.salaryType === 'purchase_manager') {
     add('Оплата по дням', 'dayPay');
     add('Закупки 1,75%', 'purchasePercentAmount');
-    add('Доведение закупщика до 100 000', 'purchaseTargetAdjustment');
+    add('Доплата закупщику до минимальной зарплаты', 'purchaseTargetAdjustment');
   } else {
     add('Оплата по дням', 'dayPay', true);
     if (row.salaryType === 'vl_percent') {
-      add('ВЛ 12%', 'belaPercentAmount');
-      if (getBelaMinimum(periodKey)) add('Доведение Бэлы до 100 000', 'minimumGuaranteeAdjustment');
+      add('Начисление 12%', 'belaPercentAmount');
+      if (getBelaMinimum(periodKey)) add('Доплата до минимальной зарплаты', 'minimumGuaranteeAdjustment');
     } else if (row.salaryType === 'wholesale_percent') {
       add('Бонус опта 1,75%', 'wholesaleBonus');
     } else {
@@ -137,11 +137,12 @@ function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses
   for (const bonus of bonuses.filter((item) => item.employeeName === row.employeeName)) {
     expected.push({ component: 'Разовая премия', amount: bonus.amount, comment: bonus.reason });
   }
-  add('Аванс', 'advance', false, -1);
-  if (row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager') add('Удержание', 'fixedDeduction', false, -1);
+  add('Аванс', 'advance', true, -1);
+  if (row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager') add('Удержание', 'fixedDeduction', true, -1);
   // Compare unrounded components first. Displayed components are rounded separately
   // by the existing Excel builder; do not change historical rounding/formulas.
   if (Math.abs(expected.reduce((sum, item) => sum + item.amount, 0) - amount('netPay')) > 0.005) fail();
+  add('Начислено за месяц', 'grossPay');
   add('К выплате', 'netPay');
   if (!Array.isArray(row.calculationDetails) || row.calculationDetails.length !== expected.length) return fail();
   const remaining = [...expected];

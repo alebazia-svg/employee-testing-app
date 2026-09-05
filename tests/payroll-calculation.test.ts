@@ -169,6 +169,14 @@ describe('August 2026 minimum and one-time premiums', () => {
     assertMoney(calculate(700000, '2026-08', 30000)[0].netPay, 70000);
     assertMoney(calculate(100000 / 0.12)[0].minimumGuaranteeAdjustment!, 0);
   });
+  it('names a missing lateness input precisely without claiming that worked days are missing', () => {
+    const row = buildFullPayrollRow(
+      { manager: 'Кумахова Диана', department: 'Розница', revenue: 0, grossProfit: 0, creditBonus: 0, filmBonus: 0, plotterBonus: 0, techBonus: 0, accessoryBonus: 0, wholesaleBonus: 0, totalBonus: 0 },
+      { workedDays: '17', lateCount: '', advance: '', comment: '' },
+    );
+    assert.equal(row.workedDays, 17);
+    assert.deepEqual(row.payrollReasons, ['Не указаны опоздания']);
+  });
   it('keeps premiums outside the 12% base and adds Bela premiums above her guarantee', () => {
     const bonuses = validatePayrollBonuses([
       { id: 'a', employeeName: 'Тохов Астемир', amount: '20000', reason: 'Рекорд' },
@@ -187,7 +195,9 @@ describe('August 2026 minimum and one-time premiums', () => {
     assertMoney(row.grossPay, 100000);
     assertMoney(result.grossPay, 120000);
     assertMoney(result.netPay, 89000);
-    assertMoney(buildPurchasePayrollRow({ advance: '', deduction: '', comment: '' }, { fileName: 'demo.csv', base: 6000000, sourceRow: 2 }).grossPay, 117000);
+    const aboveMinimum = buildPurchasePayrollRow({ advance: '', deduction: '', comment: '' }, { fileName: 'demo.csv', base: 6000000, sourceRow: 2 });
+    assertMoney(aboveMinimum.grossPay, 117000);
+    assert.deepEqual(aboveMinimum.payrollReasons, []);
   });
   it('prefills only the approved August awards and returns independent drafts', () => {
     const drafts = getInitialPayrollBonuses('2026-08');
@@ -209,21 +219,23 @@ describe('August 2026 minimum and one-time premiums', () => {
   it('validates persisted premium totals and rejects an altered guarantee', () => {
     const purchase = buildPurchasePayrollRow({ advance: '', deduction: '', comment: '' }, { fileName: 'demo', base: 4000000, sourceRow: 2 });
     const rows = applyPayrollBonuses(applyBelaPercentRule([payrollRow('Кештова Бэла', 0), purchase], '2026-08'), []).map((row) => ({ ...row, employeeName: row.manager, calculationDetails: row.salaryRule === 'belaPercent' ? [
-      { component: 'ВЛ 12%', amount: 12000 }, { component: 'Доведение Бэлы до 100 000', amount: 88000 },
-      { component: 'Аванс', amount: 0 }, { component: 'К выплате', amount: 100000 },
+      { component: 'Начисление 12%', amount: 12000 }, { component: 'Доплата до минимальной зарплаты', amount: 88000 },
+      { component: 'Начислено за месяц', amount: 100000 },
+      { component: 'К выплате', amount: 100000 },
     ] : [
       { component: 'Оплата по дням', amount: 12000 }, { component: 'Закупки 1,75%', amount: 70000 },
-      { component: 'Доведение закупщика до 100 000', amount: 18000 }, { component: 'Аванс', amount: 0 },
-      { component: 'Удержание', amount: 0 }, { component: 'К выплате', amount: 100000 },
+      { component: 'Доплата закупщику до минимальной зарплаты', amount: 18000 },
+      { component: 'Начислено за месяц', amount: 100000 }, { component: 'К выплате', amount: 100000 },
     ] }));
     const totals = { grossPay: 200000, netPay: 200000, advance: 0 };
     assert.doesNotThrow(() => validatePayrollCompensationSnapshot(rows, [], '2026-08', totals));
     assert.throws(() => validatePayrollCompensationSnapshot([{ ...rows[0], grossPay: 101000, netPay: 101000 }, rows[1]], [], '2026-08', totals));
     assert.throws(() => validatePayrollCompensationSnapshot(rows, [], '2026-08', { ...totals, grossPay: 1 }));
   });
-  it('keeps incomplete source warnings visible rather than declaring the guaranteed result ready', () => {
+  it('keeps source warnings on their owner instead of duplicating them onto Bela', () => {
     const rows = applyBelaPercentRule([payrollRow('Кештова Бэла', 0), { ...payrollRow('Тохов Астемир', 12000), payrollReasons: ['Отчёт закупок не загружен'] }], '2026-08');
-    assert.ok(rows[0].payrollReasons.includes('Не полностью проверена база расчёта 12%'));
+    assert.deepEqual(rows[0].payrollReasons, []);
+    assert.deepEqual(rows[1].payrollReasons, ['Отчёт закупок не загружен']);
   });
 });
 
@@ -243,7 +255,8 @@ describe('payroll save safety gates', () => {
       calculationDetails: [
         { component: 'Фиксированный оклад', amount: 10000 }, { component: 'Премия', amount: 1000 },
         { component: 'Разовая премия', amount: 7000, comment: 'За результат' },
-        { component: 'Аванс', amount: -2000 }, { component: 'Удержание', amount: -500 }, { component: 'К выплате', amount: 15500 },
+        { component: 'Аванс', amount: -2000 }, { component: 'Удержание', amount: -500 },
+        { component: 'Начислено за месяц', amount: 18000 }, { component: 'К выплате', amount: 15500 },
       ],
     };
     return { row, bonuses, totals: { grossPay: 18000, netPay: 15500, advance: 2000 } };
@@ -251,6 +264,19 @@ describe('payroll save safety gates', () => {
   it('accepts regular plus one-time fixed bonuses without double counting', () => {
     const { row, bonuses, totals } = fixture();
     assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], bonuses, '2026-08', totals));
+  });
+  it('accepts an omitted zero advance, deduction and regular bonus in saved details', () => {
+    const row = {
+      employeeName: 'Улубиев Марат', salaryType: 'fixed_salary', salaryRule: 'fixedSalary',
+      fixedSalary: 10000, fixedBonus: 0, fixedDeduction: 0, advance: 0, oneTimeBonus: 0,
+      grossPay: 10000, netPay: 10000,
+      calculationDetails: [
+        { component: 'Фиксированный оклад', amount: 10000 },
+        { component: 'Начислено за месяц', amount: 10000 },
+        { component: 'К выплате', amount: 10000 },
+      ],
+    };
+    assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-08', { grossPay: 10000, netPay: 10000, advance: 0 }));
   });
   it('rejects missing, duplicate, nonfinite and wrong payout details', () => {
     const { row, bonuses, totals } = fixture();
@@ -274,7 +300,7 @@ describe('payroll save safety gates', () => {
   });
   it('preserves existing per-component Excel rounding, including fractional and negative amounts', () => {
     const row = { employeeName: 'Чеченова Милана', salaryType: 'retail_sales_bonus', salaryRule: 'standard', dayPay: 0, filmBonus: 1.004, plotterBonus: 0, techBonus: -0.006, accessoryBonus: 1.004, creditBonus: 0, disciplineBonus: 0, agentCreditCommission: 0, advance: 0, fixedDeduction: 0, oneTimeBonus: 0, grossPay: 2.002, netPay: 2.002,
-      calculationDetails: [{ component: 'Услуги оказываемые 50%', amount: 1 }, { component: 'Техника 10% от ВП', amount: -0.01 }, { component: 'Аксессуары 5%', amount: 1 }, { component: 'Аванс', amount: 0 }, { component: 'К выплате', amount: 2 }],
+      calculationDetails: [{ component: 'Услуги оказываемые 50%', amount: 1 }, { component: 'Техника 10% от ВП', amount: -0.01 }, { component: 'Аксессуары 5%', amount: 1 }, { component: 'Начислено за месяц', amount: 2 }, { component: 'К выплате', amount: 2 }],
     };
     assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-07', { grossPay: 2.002, netPay: 2.002, advance: 0 }));
   });
@@ -286,7 +312,7 @@ describe('payroll save safety gates', () => {
       grossPay: 70_000.07, netPay: 70_000.07,
       calculationDetails: [
         { component: 'Аксессуары 7%', base: 1_000_001, amount: 70_000.07 },
-        { component: 'Аванс', amount: 0 },
+        { component: 'Начислено за месяц', amount: 70_000.07 },
         { component: 'К выплате', amount: 70_000.07 },
       ],
     };
@@ -301,8 +327,8 @@ describe('payroll detail opening', () => {
   const expression = source.match(/const selectedManagerStatus = ([\s\S]*?);\n/)?.[1];
   assert.ok(expression, 'The live detail status selector must exist');
   const selectStatus = new Function('selectedManagerPayroll', 'selectedManagerSummary', 'classification', 'getManagerStatus', `return (${expression});`);
-  it('opens Bela without personal sales and preserves payroll warnings', () => {
-    const row = { salaryType: 'vl_percent', payrollStatus: 'Проверить', payrollReasons: ['Не полностью проверена база расчёта 12%'] };
+  it('opens Bela without personal sales and preserves her own payroll warnings', () => {
+    const row = { salaryType: 'vl_percent', payrollStatus: 'Проверить', payrollReasons: ['Аванс больше начислений'] };
     assert.deepEqual(selectStatus(row, null, {}, () => { throw Error('Bela must not require sales'); }), { status: 'Проверить', reason: row.payrollReasons[0] });
   });
   it('opens Bela without warnings and preserves fixed and purchase detail behavior', () => {
