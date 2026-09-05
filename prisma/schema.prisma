@@ -1347,3 +1347,35 @@ model PayrollClassificationRule {
   @@index([matchType])
   @@index([targetCalculationType])
 }
+
+model PayrollPurchaseSupplierRule {
+  id              Int      @id @default(autoincrement())
+  supplierName    String
+  normalizedName  String   @unique
+  isActive        Boolean  @default(true)
+  source          String   @default("manual")
+  createdByUserId Int?
+  updatedByUserId Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isActive, supplierName])
+}
+
+model PayrollOneCControlSnapshot {
+  id              Int      @id @default(autoincrement())
+  periodKey       String
+  kind            String   @default("DAILY")
+  dateFrom        String
+  dateTo          String
+  payloadVersion  Int      @default(1)
+  payload         Json
+  contentHash     String
+  revision        Int      @default(1)
+  sourceCheckedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([periodKey, kind, dateFrom, dateTo])
+  @@index([periodKey, kind, dateTo])
+}
