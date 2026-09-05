@@ -21,3 +21,7 @@ export function technicalWorkdayCloseTime(value: string | null) {
     minute: '2-digit',
   }).format(new Date(value));
 }
+
+export function belongsInOperationalTaskOverview(taskStatus: string, technicalClose: boolean) {
+  return !(technicalClose && taskStatus === 'missed');
+}

@@ -17,7 +17,7 @@ import {
 } from '@/lib/terminal-fiscal-reason-view';
 import type { WorkdayTimingViolation } from '@/lib/workday-timing';
 import { deviationReasonLabel } from '@/lib/workday-deviation';
-import { hasTechnicalWorkdayClose, technicalWorkdayCloseTime } from '@/lib/workday-close-view';
+import { belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime } from '@/lib/workday-close-view';
 
 type ShiftTask = {
   id: number;
@@ -856,6 +856,8 @@ export function AdminShiftControlDetails({
   const [manualReviewSaving, setManualReviewSaving] = useState(false);
   const [cashControlSaving, setCashControlSaving] = useState(false);
   const canUseShiftControl = department === 'retail' || department === 'wholesale';
+  const technicalClose = hasTechnicalWorkdayClose(workDay, run);
+  const technicalMissedTaskCount = technicalClose ? (run?.tasks.filter((task) => task.status === 'missed').length ?? 0) : 0;
   const shadowPolicyVersion = workDay?.latenessPolicyVersion ?? null;
   const shadowPointsX2 = workDay?.latenessShadowPointsX2 ?? null;
   const qrAcceptedAt = workDay?.qrAcceptedAt ?? null;
@@ -981,8 +983,11 @@ export function AdminShiftControlDetails({
 
   const detailTasks = useMemo(() => {
     if (!run) return [];
-    return run.tasks.filter((task) => !(task.category === 'closing' && hasZReportInHandover));
-  }, [hasZReportInHandover, run]);
+    return run.tasks.filter((task) => (
+      !(task.category === 'closing' && hasZReportInHandover)
+      && belongsInOperationalTaskOverview(task.status, technicalClose)
+    ));
+  }, [hasZReportInHandover, run, technicalClose]);
   const autoChecksByTask = useMemo(() => {
     const result = new Map<number, ShiftAutoCheck[]>();
     for (const check of autoChecks) {
@@ -1059,7 +1064,6 @@ export function AdminShiftControlDetails({
     + (terminalFiscalHasError || terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? 1 : 0);
   const pendingOverviewCount = overviewTasks.filter((item) => taskBusinessState(item).tone === 'pending').length;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
-  const technicalClose = hasTechnicalWorkdayClose(workDay, run);
   const workdayStateLabel = technicalClose ? 'закрыта позже' : workDay?.status === 'completed' || workDay?.endedAt
     ? 'завершил смену'
     : workDay
@@ -1345,10 +1349,14 @@ export function AdminShiftControlDetails({
               <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
                 <div>
                   <p className='text-sm font-extrabold text-slate-950'>
-                    {run ? `Проверки: ${summary.completed} из ${summary.total} выполнено` : 'Чек-лист не используется'}
+                    {technicalClose ? 'Предыдущая смена закрыта позже' : run ? `Проверки: ${summary.completed} из ${summary.total} выполнено` : 'Чек-лист не используется'}
                   </p>
                   <p className='mt-0.5 text-xs font-semibold text-slate-500'>
-                    {run ? 'Откройте только ту проверку, по которой нужны подробности.' : 'Данных чек-листа за этот день нет.'}
+                    {technicalClose
+                      ? `Пропущенные шаги сохранены в истории: ${technicalMissedTaskCount}.`
+                      : run
+                        ? 'Откройте только ту проверку, по которой нужны подробности.'
+                        : 'Данных чек-листа за этот день нет.'}
                   </p>
                 </div>
                 <Badge className={hasError

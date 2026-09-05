@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasTechnicalWorkdayClose, technicalWorkdayCloseTime } from '../lib/workday-close-view';
+import { belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime } from '../lib/workday-close-view';
 
 test('technical workday close recognizes current and historical audit markers', () => {
   assert.equal(hasTechnicalWorkdayClose({ comment: 'Предыдущий рабочий день закрыт позже. Обязательные шаги пропущены.' }), true);
@@ -16,4 +16,10 @@ test('ordinary and explicitly early shift closes are not technical closes', () =
 test('technical closure timestamp is shown as a Moscow audit time with date', () => {
   assert.match(technicalWorkdayCloseTime('2026-09-03T06:42:00.000Z'), /3 сентября 2026 г.*09:42/);
   assert.equal(technicalWorkdayCloseTime(null), 'не указано');
+});
+
+test('missed tasks from a technical close stay in audit but leave the operational overview', () => {
+  assert.equal(belongsInOperationalTaskOverview('missed', true), false);
+  assert.equal(belongsInOperationalTaskOverview('done', true), true);
+  assert.equal(belongsInOperationalTaskOverview('missed', false), true);
 });
