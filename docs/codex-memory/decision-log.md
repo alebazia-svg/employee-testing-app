@@ -273,3 +273,27 @@ read-only sources. It does not use one global transition date.
   as a protected evidence archive outside Git;
 - historical monthly AUSN reports calculate annual turnover only through the
   selected month's cutoff.
+
+## 2026-09-05 - Cash Operation 1C Retry Requires An Administrator Decision
+
+Employee cash operations remain durable when the phone loses connectivity, but
+financial writes to 1C must not resume in the background after an error.
+
+- every employee submission carries the originating workday ID and date;
+- an outbox record created by the immediately previous PWA version recovers its
+  original Moscow date from its stored client timestamp and can only select a
+  workday belonging to the same employee;
+- a delayed submission stays attached to that original workday;
+- if the originating shift is closed or its date has passed, the portal saves
+  the amount and photo but does not attempt a 1C write;
+- a repeated phone upload with the same idempotency key acknowledges the same
+  portal record and never creates a second operation;
+- failed operations wait for an explicit administrator choice:
+  `Провести автоматически` or `Проведу вручную`;
+- scheduled cash-operation jobs are audit-only and may not call the 1C retry
+  writer, even when an older server unit still passes its former write flag;
+- after manual takeover, automatic retry remains blocked until the operation is
+  deliberately returned to review.
+
+This human-in-the-loop rule prevents the portal from duplicating RKO/PKO that an
+administrator may already have created manually while the employee was offline.
