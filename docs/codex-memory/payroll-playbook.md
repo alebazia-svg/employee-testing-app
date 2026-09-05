@@ -141,7 +141,10 @@ the pay result harder to understand.
   `retail_sales_bonus`, not a hard-coded list of names. Diana is included while
   that rule applies to her: only her actual personal accessory sales accrue the
   bonus, her sales contribute to the retail team threshold and Finbox agency
-  earnings stay a separate component.
+  earnings stay a separate component. Portal account activity and payroll
+  activity are separate: an inactive portal account with an explicit current
+  salary rule participates only when the selected source report contains actual
+  sales for that employee; without report activity it remains absent.
 - The portal shows one team-level threshold/rate explanation and the employee
   detail shows personal base x actual rate. Current and saved workbook exports
   use the same actual-rate explanation; the management summary remains compact.
