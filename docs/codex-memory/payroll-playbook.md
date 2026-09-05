@@ -129,7 +129,7 @@ the pay result harder to understand.
   separate approved formula task, effective-date decision and historical-run
   handling.
 
-### Retail accessory team tier — committed, not released, 2026-09-05
+### Retail accessory team tier — released, 2026-09-06
 
 - Owner approved the separate formula change effective from `2026-08`: the
   retail accessory rate is 5% while the eligible team base is at or below RUB
@@ -154,11 +154,18 @@ the pay result harder to understand.
   uses a rate inconsistent with the team base. Existing final/superseded runs
   remain immutable and are not silently recalculated; a changed historical
   result must be saved through the existing versioned replacement workflow.
-- Committed as `27c905c` on `codex/payroll-accessory-tier`; not deployed. All 52
-  payroll tests, TypeScript, production build, workbook formula scan and local
-  authenticated browser review passed. The owner's August upload selected 7%
-  from an eligible team base of RUB 1,166,895 and showed Diana's RUB 103,089
-  personal base as RUB 7,216.23.
+- The main formula was committed as `27c905c`. Production verification exposed
+  that Diana's inactive portal login removed her otherwise-current salary rule
+  from the calculation. The targeted correction `b299f3d` now separates portal
+  login activity from source-backed payroll activity; its regression test keeps
+  inactive/no-sales and expired-rule employees excluded.
+- Final production checkout `4636530` includes the correction and its memory
+  update. The additive employee/report-group migration applied successfully;
+  health, payroll and workday routes return 200. All 53 payroll tests,
+  TypeScript, production build and authenticated production browser QA passed
+  with no browser errors. The owner's August upload selected 7% from the final
+  eligible team base of RUB 1,186,055 and showed Diana's RUB 103,089 personal
+  base as RUB 7,216.23. No payroll run or manual input was saved during QA.
 
 ## Data Caveats
 
