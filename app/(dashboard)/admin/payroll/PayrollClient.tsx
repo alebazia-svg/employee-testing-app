@@ -351,6 +351,19 @@ function getSavedEmployeeReasons(row: { reasons?: unknown }) {
   return Array.isArray(row.reasons) ? row.reasons.filter((reason): reason is string => typeof reason === 'string') : [];
 }
 
+function getSavedInputTypeLabel(inputType: string) {
+  if (inputType === 'sales') return 'Продажи, дни и авансы';
+  if (inputType === 'fixed') return 'Фиксированная зарплата';
+  if (inputType === 'purchase') return 'Закупки и авансы';
+  return 'Ручные данные';
+}
+
+function getSavedSourceTypeLabel(sourceType: string) {
+  if (sourceType === 'sales') return 'Продажи';
+  if (sourceType === 'purchase') return 'Закупки';
+  return 'Источник данных';
+}
+
 type FullPayrollRow = BonusManagerSummary & {
   belaBase?: number;
   belaPercentAmount?: number;
@@ -3195,15 +3208,15 @@ function getPayrollDaysSourceLabel(source: PayrollDaysSource) {
 function getSalaryTypeLabel(salaryType: SalaryType) {
   if (salaryType === 'purchase_manager') return 'Закупщик';
   if (salaryType === 'fixed_salary') return 'Фиксированная зарплата';
-  if (salaryType === 'vl_percent') return 'ВЛ процент';
+  if (salaryType === 'vl_percent') return '12% от начислений сотрудников';
   if (salaryType === 'wholesale_percent') return 'Оптовый процент';
   return 'Розничный бонус продаж';
 }
 
 function getSalaryFormulaLabel(salaryType: SalaryType, periodKey = '') {
-  if (salaryType === 'purchase_manager') return '20 × 600 + закупки × 1,75% + доведение до 100 000 - аванс - удержание';
+  if (salaryType === 'purchase_manager') return '20 × 600 + бонус с закупок 1,75% + доплата до минимальной зарплаты − аванс − удержание';
   if (salaryType === 'fixed_salary') return 'оклад + премия - аванс - удержание';
-  if (salaryType === 'vl_percent') return getBelaMinimum(periodKey) ? '12% от обычных начислений выбранных сотрудников + доведение до 100 000 − аванс; разовая премия сверху' : '12% от итого начислено выбранных сотрудников';
+  if (salaryType === 'vl_percent') return getBelaMinimum(periodKey) ? '12% от обычных начислений выбранных сотрудников + доплата до минимальной зарплаты − аванс; разовая премия сверху' : '12% от обычных начислений выбранных сотрудников';
   if (salaryType === 'wholesale_percent') return 'оптовый бонус + дни + дисциплина - аванс';
   return 'дни + бонусы продаж + дисциплина - аванс';
 }
@@ -4711,7 +4724,7 @@ export default function AdminPayrollPage() {
   function getPayrollExportCategory(row: FullPayrollRow) {
     if (row.salaryType === 'purchase_manager') return 'Закупки';
     if (row.salaryType === 'fixed_salary') return 'Фиксированная ЗП';
-    if (row.salaryType === 'vl_percent') return 'ВЛ';
+    if (row.salaryType === 'vl_percent') return 'Операционное управление';
     if (row.salaryType === 'wholesale_percent') return 'Опт';
     return 'Розница';
   }
@@ -4719,7 +4732,7 @@ export default function AdminPayrollPage() {
   function getPayrollExportShortType(row: FullPayrollRow) {
     if (row.salaryType === 'purchase_manager') return 'Закупщик';
     if (row.salaryType === 'fixed_salary') return 'Оклад';
-    if (row.salaryType === 'vl_percent') return 'ВЛ 12%';
+    if (row.salaryType === 'vl_percent') return 'Начислено 12%';
     if (row.salaryType === 'wholesale_percent') return 'Опт 1,75%';
     return 'Розница';
   }
@@ -4761,7 +4774,7 @@ export default function AdminPayrollPage() {
       if (row.salaryType === 'purchase_manager') {
         push('Оплата по дням', purchaseStandardWorkedDays, `${purchaseStandardWorkedDays} × ${purchaseDayRate}`, row.dayPay, `ставка ${formatMoney(purchaseDayRate)}`);
         push('Закупки 1,75%', row.purchaseBase, 'закупки × 1,75%', row.purchasePercentAmount);
-        push('Доведение закупщика до 100 000', row.purchaseTargetSalary, 'целевая ЗП - дни - закупки 1,75%', row.purchaseTargetAdjustment);
+        push('Доплата закупщику до минимальной зарплаты', row.purchaseTargetSalary, 'минимальная зарплата − оплата дней − бонус с закупок 1,75%', row.purchaseTargetAdjustment);
         pushBonuses();
         push('Аванс', row.advance, 'удержание', -row.advance);
         push('Удержание', row.fixedDeduction, 'ручной ввод', -row.fixedDeduction);
@@ -4772,8 +4785,8 @@ export default function AdminPayrollPage() {
       if (row.dayPay) push('Оплата по дням', row.workedDays, `${row.workedDays ?? 0} × ${row.dayRate}`, row.dayPay, getPayrollDaysSourceLabel(row.daysSource));
 
       if (row.salaryType === 'vl_percent') {
-        push('ВЛ 12%', row.belaBase ?? 0, '12% от обычных начислений выбранных сотрудников, без разовых премий', row.belaPercentAmount ?? 0);
-        if (getBelaMinimum(selectedPayrollPeriodKey)) push('Доведение Бэлы до 100 000', getBelaMinimum(selectedPayrollPeriodKey), 'max(0, 100 000 − расчёт 12%)', row.minimumGuaranteeAdjustment ?? 0);
+        push('Начисление 12%', row.belaBase ?? 0, '12% от обычных начислений выбранных сотрудников, без разовых премий', row.belaPercentAmount ?? 0);
+        if (getBelaMinimum(selectedPayrollPeriodKey)) push('Доплата до минимальной зарплаты', getBelaMinimum(selectedPayrollPeriodKey), 'не менее 100 000 ₽ за месяц', row.minimumGuaranteeAdjustment ?? 0);
       } else if (row.salaryType === 'wholesale_percent') {
         push('Бонус опта 1,75%', classification.wholesale.base, 'общая база опта × 1,75%', row.wholesaleBonus);
       } else {
@@ -5303,10 +5316,10 @@ export default function AdminPayrollPage() {
       ['Дата формирования', '', generatedAt, 'Файл продаж', workbook?.fileName ?? 'не загружен', '', '', 'Файл закупок', purchaseReport?.fileName ?? 'не загружен'],
       [],
       ['Всего сотрудников', '', fullPayrollRows.length, '', 'Всего начислено', '', toExportMoney(payrollTotals.grossPay), '', 'Всего авансов', '', toExportMoney(payrollTotals.advance), ''],
-      ['Всего удержаний', '', toExportMoney(totalDeductions), '', 'Итого к выплате', '', toExportMoney(payrollTotals.netPay), '', 'OK', statusCounts.ok, 'Проверить', statusCounts.review],
+      ['Всего удержаний', '', toExportMoney(totalDeductions), '', 'Итого к выплате', '', toExportMoney(payrollTotals.netPay), '', 'Готово', statusCounts.ok, 'Проверить', statusCounts.review],
       [],
     ];
-    const tableHeader = ['№', 'Сотрудник', 'Категория', 'Итого начислено', 'Фикс / оклад', 'Дни', 'Ставка', 'Оплата дней', 'Продажи / бонус', 'Закупки / бонус', 'Доведение', 'ВЛ', 'Дисциплина', 'Премия', 'Агентские', 'Аванс', 'Удержание', 'К выплате', 'Статус', 'Комментарий'];
+    const tableHeader = ['№', 'Сотрудник', 'Категория', 'Итого начислено', 'Фикс / оклад', 'Дни', 'Ставка', 'Оплата дней', 'Продажи / бонус', 'Закупки / бонус', 'Доплата до минимума', 'Начислено 12%', 'Дисциплина', 'Премия', 'Агентские', 'Аванс', 'Удержание', 'К выплате', 'Статус', 'Комментарий'];
     const tableRows = fullPayrollRows.map((row, index) => [
       index + 1,
       row.manager,
@@ -5467,7 +5480,7 @@ export default function AdminPayrollPage() {
       ['Бонус опта', classification.wholesale.bonusEach, '1,75% от базы опта'],
       ['База закупок', purchasePayrollRow.purchaseBase ?? '', 'Колонка “Увеличение нашего долга”'],
       ['1,75% от закупок', purchasePayrollRow.purchasePercentAmount, 'Аналитика закупщика'],
-      ['Целевая ЗП закупщика', purchaseTargetSalary, 'Тохов Астемир'],
+      ['Минимальная зарплата закупщика', purchaseTargetSalary, 'Тохов Астемир'],
       ['Закупок нужно для 100 000 при 1,75%', purchaseTargetBase, '100000 / 0,0175'],
     ];
     const sourceSheet = XLSX.utils.aoa_to_sheet(sourceRows);
@@ -5491,7 +5504,7 @@ export default function AdminPayrollPage() {
             Расчёт начислений и контроль выплат
           </p>
         </div>
-        <Badge className='w-fit bg-green-100 text-green-800'>Финансовый расчёт</Badge>
+        <Badge className='w-fit bg-green-100 text-green-800'>Рабочий расчёт</Badge>
       </div>
 
       <div className='grid gap-4'>
@@ -5503,8 +5516,8 @@ export default function AdminPayrollPage() {
               <FileSpreadsheet className='h-5 w-5' />
             </span>
             <div>
-              <h2 className='text-lg font-bold text-slate-900'>Загрузка отчёта 1С</h2>
-              <p className='text-sm text-slate-500'>Файл читается временно и не сохраняется в базу.</p>
+              <h2 className='text-lg font-bold text-slate-900'>Ручная загрузка из 1С</h2>
+              <p className='text-sm text-slate-500'>Резервный способ расчёта: файл используется только на этой странице и не сохраняется в базе.</p>
             </div>
           </div>
 
@@ -5667,7 +5680,7 @@ export default function AdminPayrollPage() {
                       <p className='mt-1 text-xl font-bold text-slate-900'>{purchasePayrollRow.purchaseBase === null ? 'Отчёт не загружен' : formatMoney(purchasePayrollRow.purchaseBase)}</p>
                       <div className='mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2'>
                         <span>1,75%: {formatMoney(purchasePayrollRow.purchasePercentAmount)}</span>
-                        <span>Целевая ЗП: {formatMoney(purchaseTargetSalary)}</span>
+                        <span>Минимальная зарплата: {formatMoney(purchaseTargetSalary)}</span>
                         <span>Ориентир базы: {formatMoney(purchaseTargetBase)}</span>
                         <span>Выполнение: {purchaseCompletionPercent.toFixed(2)}%</span>
                       </div>
@@ -5783,7 +5796,7 @@ export default function AdminPayrollPage() {
                         <div>
                           <p className='text-sm font-bold'>{payrollReviewCount > 0 ? 'Требует проверки' : 'Готово к выплате'}</p>
                           <p className='mt-1 text-sm'>
-                            OK: {payrollOkCount} · Проверить: {payrollReviewCount}
+                            Готово: {payrollOkCount} · Проверить: {payrollReviewCount}
                           </p>
                           {payrollReviewReasonCounts.length > 0 && (
                             <div className='mt-2 flex flex-wrap gap-2'>
@@ -5830,7 +5843,7 @@ export default function AdminPayrollPage() {
                                 <td className='max-w-[210px] truncate px-2 py-2 font-semibold text-slate-900' title={`${summary.manager} · ${summary.position}`}>
                                   <span className='block truncate'>{summary.manager}</span>
                                   <span className='block truncate text-[11px] font-medium text-slate-500'>{summary.position}</span>
-                                  {summary.salaryRule === 'belaPercent' && getBelaMinimum(selectedPayrollPeriodKey) > 0 && <span className='block text-[11px] font-medium text-slate-600'>Доведение: {formatMoney(summary.minimumGuaranteeAdjustment ?? 0)}</span>}
+                                  {summary.salaryRule === 'belaPercent' && getBelaMinimum(selectedPayrollPeriodKey) > 0 && <span className='block text-[11px] font-medium text-slate-600'>Доплата до минимума: {formatMoney(summary.minimumGuaranteeAdjustment ?? 0)}</span>}
                                 </td>
                                 <td className='whitespace-nowrap px-2 py-2 text-slate-700'>{summary.payrollDepartment}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.workedDays ?? '—'}</td>
@@ -5841,7 +5854,7 @@ export default function AdminPayrollPage() {
                                 <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{formatMoney(summary.advance)}</td>
                                 <td className='whitespace-nowrap px-2 py-2 text-right font-bold text-slate-900'>{formatMoney(summary.netPay)}</td>
                                 <td className='px-2 py-2'>
-                                  <Badge className={combinedStatus === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{combinedStatus}</Badge>
+                                  <Badge className={combinedStatus === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{combinedStatus === 'OK' ? 'Готово' : 'Проверить'}</Badge>
                                 </td>
                                 <td className='px-2 py-2 text-right'>
                                   <button type='button' onClick={() => setSelectedManager(summary.manager)} className='rounded-lg border border-border px-2 py-1 text-xs font-semibold text-slate-700 hover:border-primary/40'>
@@ -5860,9 +5873,9 @@ export default function AdminPayrollPage() {
                     <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                       <div>
                         <h2 className='text-lg font-bold text-slate-900'>Сохранённые расчёты</h2>
-                        <p className='text-sm text-slate-500'>Последние snapshot-запуски по периодам.</p>
+                        <p className='text-sm text-slate-500'>Последние сохранённые версии по месяцам.</p>
                       </div>
-                      {lastSavedRunId && <Badge className='w-fit bg-green-100 text-green-800'>Последний ID: {lastSavedRunId}</Badge>}
+                      {lastSavedRunId && <Badge className='w-fit bg-green-100 text-green-800'>Последний расчёт: № {lastSavedRunId}</Badge>}
                     </div>
                     {isSavedPeriodsLoading ? (
                       <p className='text-sm text-slate-500'>Загружаю сохранённые расчёты...</p>
@@ -5880,8 +5893,8 @@ export default function AdminPayrollPage() {
                                 <p className='text-xs text-slate-500'>Период {period.periodKey} · {period.status}</p>
                               </div>
                               <div className='flex flex-wrap gap-2'>
-                                <Badge className={period.status === 'CLOSED' ? 'w-fit bg-amber-100 text-amber-900' : 'w-fit bg-slate-100 text-slate-700'}>{period.status === 'CLOSED' ? 'Период закрыт' : 'OPEN'}</Badge>
-                                <Badge className='w-fit bg-slate-100 text-slate-700'>Запусков: {period.runs.length}</Badge>
+                                <Badge className={period.status === 'CLOSED' ? 'w-fit bg-amber-100 text-amber-900' : 'w-fit bg-slate-100 text-slate-700'}>{period.status === 'CLOSED' ? 'Период закрыт' : 'Период открыт'}</Badge>
+                                <Badge className='w-fit bg-slate-100 text-slate-700'>Версий: {period.runs.length}</Badge>
                                 {period.status !== 'CLOSED' && hasFinalRun && (
                                   <button type='button' onClick={() => updatePayrollPeriodStatus(period.id, 'CLOSED')} disabled={payrollHistoryActionId === `period-${period.id}-CLOSED`} className='rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-900 transition hover:border-amber-300 disabled:cursor-not-allowed disabled:opacity-60'>
                                     Закрыть период
@@ -5951,7 +5964,7 @@ export default function AdminPayrollPage() {
                       </div>
 
                       <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
-                        Это сохранённый снимок расчёта. Исходный Excel-файл не восстанавливается, сохранены итоговые данные расчёта.
+                        Это зафиксированная версия расчёта. Сохранены итоговые суммы, расшифровка и сведения об источниках; сам исходный файл не хранится.
                       </p>
                       {selectedSavedRun.status === 'SUPERSEDED' && selectedSavedRun.supersededByRun && (
                         <p className='mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700'>
@@ -6016,7 +6029,7 @@ export default function AdminPayrollPage() {
                                     <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
                                     <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossPay)}</td>
                                     <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.netPay)}</td>
-                                    <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status}</Badge></td>
+                                    <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status === 'OK' ? 'Готово' : 'Проверить'}</Badge></td>
                                     <td className='px-3 py-2 text-slate-600'>{getSavedEmployeeReasons(row).join('; ') || '—'}</td>
                                   </tr>
                                 ))}
@@ -6032,7 +6045,7 @@ export default function AdminPayrollPage() {
                               {selectedSavedRun.sourceFiles.length ? selectedSavedRun.sourceFiles.map((file) => (
                                 <div key={file.id} className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm'>
                                   <p className='font-semibold text-slate-900'>{file.originalName}</p>
-                                  <p className='text-xs text-slate-500'>{file.type} · sheet {file.selectedSheet ?? '—'} · строк {file.rowCount ?? '—'} · распознано {file.parsedRowCount ?? '—'}</p>
+                                  <p className='text-xs text-slate-500'>{getSavedSourceTypeLabel(file.type)} · лист {file.selectedSheet ?? '—'} · строк {file.rowCount ?? '—'} · распознано {file.parsedRowCount ?? '—'}</p>
                                   {file.sha256 && <p className='mt-1 break-all text-xs text-slate-400'>sha256: {file.sha256}</p>}
                                 </div>
                               )) : <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>Файлы не сохранены.</p>}
@@ -6044,7 +6057,7 @@ export default function AdminPayrollPage() {
                             <div className='max-h-52 overflow-auto rounded-lg border border-border'>
                               {selectedSavedRun.manualInputs.length ? selectedSavedRun.manualInputs.map((input) => (
                                 <div key={input.id} className='border-b border-border bg-white px-3 py-2 text-xs last:border-b-0'>
-                                  <p className='font-semibold text-slate-900'>{input.employeeName} · {input.inputType}</p>
+                                  <p className='font-semibold text-slate-900'>{input.employeeName} · {getSavedInputTypeLabel(input.inputType)}</p>
                                   <p className='text-slate-600'>дни {input.workedDays ?? '—'} · опозд. {input.lateCount ?? '—'} · аванс {input.advance ?? input.purchaseAdvance ?? '—'} · премия {input.fixedBonus ?? '—'} · удержание {input.fixedDeduction ?? input.purchaseDeduction ?? '—'}</p>
                                   {input.comment && <p className='mt-1 text-slate-500'>{input.comment}</p>}
                                 </div>
@@ -6117,8 +6130,8 @@ export default function AdminPayrollPage() {
                             <div className='grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3'>
                               <p>Обычное начисление: <strong>{formatMoney(row.grossPay - (row.oneTimeBonus ?? 0))}</strong></p>
                               {fixed && <p>Оклад: <strong>{formatMoney(row.fixedSalary)}</strong></p>}
-                              {purchase && <><p>Дни: {row.workedDays} × {formatMoney(row.dayRate)}</p><p>База закупок: {row.purchaseBase === null ? 'нет отчёта' : formatMoney(row.purchaseBase)}</p><p>Закупки 1,75%: {formatMoney(row.purchasePercentAmount)}</p><p>Доведение: {formatMoney(row.purchaseTargetAdjustment)}</p></>}
-                              {row.salaryRule === 'belaPercent' && <><p>База 12%: {formatMoney(row.belaBase ?? 0)}</p><p>Расчёт 12%: {formatMoney(row.belaPercentAmount ?? 0)}</p>{getBelaMinimum(selectedPayrollPeriodKey) > 0 && <p>Доведение до 100 000: <strong>{formatMoney(row.minimumGuaranteeAdjustment ?? 0)}</strong></p>}</>}
+                              {purchase && <><p>Дни: {row.workedDays} × {formatMoney(row.dayRate)}</p><p>Закупки для расчёта: {row.purchaseBase === null ? 'нет отчёта' : formatMoney(row.purchaseBase)}</p><p>Бонус с закупок — 1,75%: {formatMoney(row.purchasePercentAmount)}</p><p>Доплата до минимума: {formatMoney(row.purchaseTargetAdjustment)}</p></>}
+                              {row.salaryRule === 'belaPercent' && <><p>Начисления сотрудников для расчёта 12%: {formatMoney(row.belaBase ?? 0)}</p><p>Начислено 12%: {formatMoney(row.belaPercentAmount ?? 0)}</p>{getBelaMinimum(selectedPayrollPeriodKey) > 0 && <p>Доплата до минимальной зарплаты: <strong>{formatMoney(row.minimumGuaranteeAdjustment ?? 0)}</strong></p>}</>}
                               {!fixed && !purchase && row.salaryRule === 'standard' && <><p>Оплата по дням: {formatMoney(row.dayPay)}</p><p>Дисциплина: {formatMoney(row.disciplineBonus)}</p><p>Источник дней: {getPayrollDaysSourceLabel(row.daysSource)}</p></>}
                             </div>
                             <fieldset disabled={isCurrentPeriodClosed || isSavingPayroll} className='grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
@@ -6348,7 +6361,7 @@ export default function AdminPayrollPage() {
                     <div className='mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between'>
                       <div>
                         <h2 className='text-lg font-bold text-slate-900'>Аудит расчёта</h2>
-                        <p className='text-sm text-slate-500'>Рабочая проверка зарплаты перед сохранением snapshot: критичные строки, дорогие позиции и ручные исправления.</p>
+                        <p className='text-sm text-slate-500'>Проверка зарплаты перед сохранением: критичные строки, дорогие позиции и ручные исправления.</p>
                         <p className='mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900'>
                           Аудит показывает строки расчёта из ВВП. В некоторых форматах отчёта строка может быть агрегатом по товару/клиенту/менеджеру, если сам ВВП отдаёт её как итог по номенклатуре. Расчёт зарплаты от этого не меняется.
                         </p>
@@ -6676,8 +6689,8 @@ export default function AdminPayrollPage() {
                               ['База закупок', selectedManagerPayroll.purchaseBase === null ? '—' : formatMoney(selectedManagerPayroll.purchaseBase)],
                               ['Процент закупок', '1,75%'],
                               ['Расчёт по закупкам', formatMoney(selectedManagerPayroll.purchasePercentAmount)],
-                              ['Доведение до целевой ЗП', formatMoney(selectedManagerPayroll.purchaseTargetAdjustment)],
-                              ['Целевая ЗП', formatMoney(selectedManagerPayroll.purchaseTargetSalary)],
+                              ['Доплата до минимальной зарплаты', formatMoney(selectedManagerPayroll.purchaseTargetAdjustment)],
+                              ['Минимальная зарплата', formatMoney(selectedManagerPayroll.purchaseTargetSalary)],
                               ['Аванс', formatMoney(selectedManagerPayroll.advance)],
                               ['Удержание', formatMoney(selectedManagerPayroll.fixedDeduction)],
                               ['Формула', getSalaryFormulaLabel(selectedManagerPayroll.salaryType)],
@@ -6715,7 +6728,7 @@ export default function AdminPayrollPage() {
                               ...(selectedManagerPayroll.salaryRule === 'belaPercent' ? [
                                 ['База 12% без разовых премий', formatMoney(selectedManagerPayroll.belaBase ?? 0)],
                                 ['Расчёт 12%', formatMoney(selectedManagerPayroll.belaPercentAmount ?? 0)],
-                                ...(getBelaMinimum(selectedPayrollPeriodKey) ? [['Доведение до 100 000', formatMoney(selectedManagerPayroll.minimumGuaranteeAdjustment ?? 0)]] : []),
+                                ...(getBelaMinimum(selectedPayrollPeriodKey) ? [['Доплата до минимальной зарплаты', formatMoney(selectedManagerPayroll.minimumGuaranteeAdjustment ?? 0)]] : []),
                               ] : []),
                               ['Разовые премии сверху', formatMoney(selectedManagerPayroll.oneTimeBonus ?? 0)],
                             ]).map(([label, value]) => (
@@ -7602,7 +7615,7 @@ export default function AdminPayrollPage() {
                   <tr>
                     <th className='px-4 py-3'>Менеджер</th>
                     <th className='px-4 py-3'>Валовая прибыль по кредитной технике</th>
-                    <th className='px-4 py-3'>База после вычета 9%</th>
+                    <th className='px-4 py-3'>Прибыль после вычета 9% расходов</th>
                     <th className='px-4 py-3'>Бонус 10%</th>
                   </tr>
                 </thead>
@@ -7635,9 +7648,9 @@ export default function AdminPayrollPage() {
               <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                 <div>
                   <h2 className='text-lg font-bold text-slate-900'>Сохранённые расчёты</h2>
-                  <p className='text-sm text-slate-500'>Сохранённые snapshot-запуски доступны без повторной загрузки Excel.</p>
+                  <p className='text-sm text-slate-500'>Сохранённые расчёты доступны без повторной загрузки Excel.</p>
                 </div>
-                {lastSavedRunId && <Badge className='w-fit bg-green-100 text-green-800'>Последний ID: {lastSavedRunId}</Badge>}
+                {lastSavedRunId && <Badge className='w-fit bg-green-100 text-green-800'>Последний расчёт: № {lastSavedRunId}</Badge>}
               </div>
               {isSavedPeriodsLoading ? (
                 <p className='text-sm text-slate-500'>Загружаю сохранённые расчёты...</p>
@@ -7709,7 +7722,7 @@ export default function AdminPayrollPage() {
                   </button>
                 </div>
                 <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
-                  Это сохранённый снимок расчёта. Исходный Excel-файл не восстанавливается, сохранены итоговые данные расчёта.
+                  Это зафиксированная версия расчёта. Сохранены итоговые суммы, расшифровка и сведения об источниках; сам исходный файл не хранится.
                 </p>
                 {selectedSavedRun.status === 'SUPERSEDED' && selectedSavedRun.supersededByRun && (
                   <p className='mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700'>
@@ -7733,15 +7746,15 @@ export default function AdminPayrollPage() {
                           <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
                           <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossPay)}</td>
                           <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.netPay)}</td>
-                          <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status}</Badge></td>
+                          <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status === 'OK' ? 'Готово' : 'Проверить'}</Badge></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
                 <div className='mt-4 grid gap-4 xl:grid-cols-3'>
-                  <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Исходные файлы</h3>{selectedSavedRun.sourceFiles.map((file) => <p key={file.id} className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-slate-600'>{file.originalName} · {file.type} · строк {file.rowCount ?? '—'} · распознано {file.parsedRowCount ?? '—'}</p>)}</div>
-                  <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Ручные вводы</h3><div className='max-h-48 overflow-auto rounded-lg border border-border'>{selectedSavedRun.manualInputs.map((input) => <p key={input.id} className='border-b border-border px-3 py-2 text-xs last:border-b-0'>{input.employeeName} · {input.inputType} · аванс {input.advance ?? input.purchaseAdvance ?? '—'} · {input.comment}</p>)}</div></div>
+                  <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Исходные файлы</h3>{selectedSavedRun.sourceFiles.map((file) => <p key={file.id} className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-slate-600'>{file.originalName} · {getSavedSourceTypeLabel(file.type)} · строк {file.rowCount ?? '—'} · распознано {file.parsedRowCount ?? '—'}</p>)}</div>
+                  <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Ручные данные</h3><div className='max-h-48 overflow-auto rounded-lg border border-border'>{selectedSavedRun.manualInputs.map((input) => <p key={input.id} className='border-b border-border px-3 py-2 text-xs last:border-b-0'>{input.employeeName} · {getSavedInputTypeLabel(input.inputType)} · аванс {input.advance ?? input.purchaseAdvance ?? '—'} · {input.comment}</p>)}</div></div>
                   <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Расшифровка</h3><div className='max-h-48 overflow-auto rounded-lg border border-border'>{selectedSavedRun.employeeResults.flatMap((employee) => employee.calculationDetails.map((detail) => <p key={detail.id} className='border-b border-border px-3 py-2 text-xs last:border-b-0'>{employee.employeeName} · {detail.component} · {formatMoney(detail.amount)}</p>))}</div></div>
                 </div>
               </Card>

@@ -209,10 +209,10 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
           </span>
           <div className='min-w-0'>
             <div className='flex flex-wrap items-center gap-2'>
-              <h2 className='text-lg font-extrabold text-slate-950'>Автоматические данные 1С</h2>
+              <h2 className='text-lg font-extrabold text-slate-950'>Данные из 1С</h2>
               {data && (
                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${data.readyForControl && !isStale ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
-                  {isStale ? 'Предыдущие проверенные данные' : data.readyForControl ? `1С закрыта по ${formatDate(data.period.verifiedThrough)}` : 'Нужно проверить'}
+                  {isStale ? 'Показаны предыдущие данные' : data.readyForControl ? `Данные проверены по ${formatDate(data.period.verifiedThrough)}` : 'Нужно проверить'}
                 </span>
               )}
             </div>
@@ -221,7 +221,7 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
         </div>
         <button type='button' onClick={() => void load(true)} disabled={isLoading} className='inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-60'>
           <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          {isLoading ? 'Проверяю 1С' : 'Перепроверить полностью'}
+          {isLoading ? 'Проверяю 1С' : 'Проверить весь период'}
         </button>
       </div>
 
@@ -243,10 +243,10 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
 
             <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
               {[
-                ['Выручка продаж', formatMoney(data.sales.summary.revenue)],
+                ['Продажи', formatMoney(data.sales.summary.revenue)],
                 ['Валовая прибыль', formatMoney(data.sales.summary.grossProfit)],
-                ['База закупок Астемира', formatMoney(data.purchases.approvedBase)],
-                ['1,75% от закупок', formatMoney(data.purchases.approvedBase * 0.0175)],
+                ['Закупки Астемира для расчёта', formatMoney(data.purchases.approvedBase)],
+                ['Бонус с закупок — 1,75%', formatMoney(data.purchases.approvedBase * 0.0175)],
               ].map(([label, value]) => (
                 <div key={label} className='rounded-xl border border-slate-200 bg-white p-3'>
                   <p className='text-xs font-semibold uppercase tracking-wide text-slate-500'>{label}</p>
@@ -262,10 +262,13 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
               <p><span className='text-slate-500'>Поставщиков в базе:</span> <strong>{data.purchases.approvedSupplierCount}</strong></p>
             </div>
 
-            <div className='rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950'>
-              <p className='font-bold'>{data.snapshot.finalReconciled ? 'Месяц полностью сверен и сохранён' : `Серверный снимок сохранён по ${formatDate(data.snapshot.storedThrough)}`}</p>
-              <p className='mt-0.5'>Последнее сохранение: {formatDateTime(data.snapshot.storedAt)}. {data.snapshot.finalReconciled ? 'Повторное чтение всего месяца выполняется только по вашей команде.' : `При ежедневном обновлении портал читает новый день и перепроверяет последние ${data.snapshot.rollingDays} дня.`}</p>
-            </div>
+            <details className='rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950'>
+              <summary className='cursor-pointer font-bold'>
+                {data.snapshot.finalReconciled ? 'Месяц полностью проверен и сохранён' : `Данные сохранены по ${formatDate(data.snapshot.storedThrough)}`}
+                <span className='ml-2 font-medium text-sky-800'>Подробнее</span>
+              </summary>
+              <p className='mt-2'>Последнее обновление: {formatDateTime(data.snapshot.storedAt)}. {data.snapshot.finalReconciled ? 'Повторная проверка всего месяца запускается только по вашей команде.' : `При ежедневном обновлении портал получает новый день и повторно проверяет последние ${data.snapshot.rollingDays} дня.`}</p>
+            </details>
 
             <div className={`rounded-xl border px-3 py-2 text-sm ${data.purchases.attribution.reviewDocumentCount ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
               <p className='font-bold'>{data.purchases.attribution.reviewDocumentCount ? 'Есть документы для проверки' : 'Автор закупок подтверждён'}</p>
@@ -325,7 +328,7 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
               </div>
             </details>
 
-            <p className='text-xs text-slate-500'>Это контрольный read-only этап. Он не сохраняет расчёт зарплаты, не проводит документы и не меняет утверждённые месяцы.</p>
+            <p className='rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600'>Только проверка данных — зарплата, документы 1С и утверждённые месяцы не изменяются.</p>
           </div>
         )}
       </div>
