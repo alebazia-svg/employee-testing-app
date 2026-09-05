@@ -11,6 +11,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
 import { PayrollBonusesEditor } from './PayrollBonusesEditor';
 import { PayrollFinboxImport } from './PayrollFinboxImport';
+import { PayrollDailyOneCControl } from './PayrollDailyOneCControl';
 import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
 
 type CellValue = string | number | boolean | Date | null | undefined;
@@ -5459,6 +5460,8 @@ export default function AdminPayrollPage() {
       </div>
 
       <div className='grid gap-4'>
+        <PayrollDailyOneCControl month={month} year={year} />
+
         <Card className='p-4'>
           <div className='mb-4 flex items-center gap-3'>
             <span className='flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-700'>

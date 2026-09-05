@@ -22,6 +22,107 @@ type SalesRealizationsParams = {
   includeLines: boolean;
 };
 
+export type PayrollSalesFactsParams = {
+  dateFrom: string;
+  dateTo: string;
+  pageSize?: number;
+  maxPages?: number;
+};
+
+export type OneCPayrollSalesFact = {
+  period: string;
+  recorderRef: string;
+  recorderName: string;
+  recorderType: string;
+  lineNumber: number | null;
+  managerRef: string;
+  managerName: string;
+  customerRef: string;
+  customerName: string;
+  organizationRef: string;
+  organizationName: string;
+  warehouseRef: string;
+  warehouseName: string;
+  productRef: string;
+  productCode: string;
+  productArticle: string;
+  productName: string;
+  productKindRef: string;
+  productKindName: string;
+  productCategoryRef: string;
+  productCategoryName: string;
+  characteristicRef: string;
+  characteristicName: string;
+  quantity: number;
+  revenue: number;
+  baseCost: number;
+  additionalExpenses: number;
+  cost: number;
+  grossProfit: number;
+  vatAmount: number;
+  costReviewRequired: boolean;
+  reportCost: number;
+  reportGrossProfit: number;
+  costCalculationPending: boolean;
+};
+
+export type OneCPayrollSalesFactsResult = {
+  ok: boolean;
+  path: '/payroll-sales-facts';
+  checkedAt: string;
+  params: Required<PayrollSalesFactsParams>;
+  contractVersion: string;
+  extractedAt: string;
+  periodComplete: boolean;
+  pages: number;
+  rows: OneCPayrollSalesFact[];
+  diagnostics: string[];
+  error?: string;
+};
+
+export type PayrollSalesReportParams = PayrollSalesFactsParams;
+
+export type OneCPayrollSalesReportRow = {
+  period?: string;
+  recorderRef?: string;
+  organizationRef?: string;
+  warehouseRef?: string;
+  productCategoryRef?: string;
+  productCategoryName?: string;
+  costReviewRequired?: boolean;
+  costCalculationPending?: boolean;
+  managerRef: string;
+  managerName: string;
+  customerRef: string;
+  customerName: string;
+  productRef: string;
+  productCode: string;
+  productArticle: string;
+  productName: string;
+  productKindRef: string;
+  productKindName: string;
+  characteristicRef: string;
+  characteristicName: string;
+  quantity: number;
+  revenue: number;
+  cost: number;
+  grossProfit: number;
+};
+
+export type OneCPayrollSalesReportResult = {
+  ok: boolean;
+  path: '/payroll-sales-facts';
+  checkedAt: string;
+  params: Required<PayrollSalesReportParams>;
+  contractVersion: string;
+  extractedAt: string;
+  periodComplete: boolean;
+  pages: number;
+  rows: OneCPayrollSalesReportRow[];
+  diagnostics: string[];
+  error?: string;
+};
+
 export type OneCEndpointResult = {
   ok: boolean;
   path: `/${OneCEndpoint}`;
@@ -517,6 +618,154 @@ function readFirstBoolean(source: Record<string, unknown>, keys: string[]) {
   }
   return null;
 }
+
+function normalizePayrollSalesFact(value: unknown): OneCPayrollSalesFact | null {
+  const source = readRecord(value);
+  if (!source) return null;
+
+  const recorderRef = readFirstString(source, ['recorder_ref']);
+  const productRef = readFirstString(source, ['product_ref']);
+  const period = readFirstString(source, ['period']);
+  const lineNumber = readFirstNumber(source, ['line_number']);
+  if (!recorderRef || !productRef || !period || lineNumber === null) return null;
+  // A malformed monetary value must never silently become a plausible zero.
+  const requiredNumbers = ['quantity', 'revenue', 'cost', 'gross_profit', 'report_cost', 'report_gross_profit'];
+  if (requiredNumbers.some((key) => typeof source[key] !== 'number' || !Number.isFinite(source[key]))) return null;
+  if (!Number.isInteger(lineNumber) || lineNumber < 1 || source.active !== true) return null;
+  if (typeof source.cost_calculation_pending !== 'boolean' || typeof source.cost_review_required !== 'boolean') return null;
+  // Ignore only binary floating-point noise, never a whole kopeck mismatch.
+  const revenue = source.revenue as number;
+  for (const [costKey, profitKey] of [['cost', 'gross_profit'], ['report_cost', 'report_gross_profit']]) {
+    const cost = source[costKey] as number;
+    const profit = source[profitKey] as number;
+    const tolerance = Math.min(0.0001, Math.max(1e-7, Number.EPSILON * Math.max(Math.abs(revenue), Math.abs(cost), Math.abs(profit)) * 4));
+    if (Math.abs(revenue - cost - profit) > tolerance) return null;
+  }
+
+  return {
+    period,
+    recorderRef,
+    recorderName: readFirstString(source, ['recorder_name']),
+    recorderType: readFirstString(source, ['recorder_type']),
+    lineNumber,
+    managerRef: readFirstString(source, ['manager_ref']),
+    managerName: readFirstString(source, ['manager_name']),
+    customerRef: readFirstString(source, ['customer_ref']),
+    customerName: readFirstString(source, ['customer_name']),
+    organizationRef: readFirstString(source, ['organization_ref']),
+    organizationName: readFirstString(source, ['organization_name']),
+    warehouseRef: readFirstString(source, ['warehouse_ref']),
+    warehouseName: readFirstString(source, ['warehouse_name']),
+    productRef,
+    productCode: readFirstString(source, ['product_code']),
+    productArticle: readFirstString(source, ['product_article']),
+    productName: readFirstString(source, ['product_name']),
+    productKindRef: readFirstString(source, ['product_kind_ref']),
+    productKindName: readFirstString(source, ['product_kind_name']),
+    productCategoryRef: readFirstString(source, ['product_category_ref']),
+    productCategoryName: readFirstString(source, ['product_category_name']),
+    characteristicRef: readFirstString(source, ['characteristic_ref']),
+    characteristicName: readFirstString(source, ['characteristic_name']),
+    quantity: readFirstNumber(source, ['quantity']) ?? 0,
+    revenue: readFirstNumber(source, ['revenue']) ?? 0,
+    baseCost: readFirstNumber(source, ['base_cost']) ?? 0,
+    additionalExpenses: readFirstNumber(source, ['additional_expenses']) ?? 0,
+    cost: readFirstNumber(source, ['cost']) ?? 0,
+    grossProfit: readFirstNumber(source, ['gross_profit']) ?? 0,
+    vatAmount: readFirstNumber(source, ['vat_amount']) ?? 0,
+    costReviewRequired: readFirstBoolean(source, ['cost_review_required']) === true,
+    reportCost: readFirstNumber(source, ['report_cost'])!,
+    reportGrossProfit: readFirstNumber(source, ['report_gross_profit'])!,
+    costCalculationPending: source.cost_calculation_pending === true,
+  };
+}
+
+type PayrollSalesFactsPageResult = {
+  ok: boolean;
+  status?: number;
+  rows: OneCPayrollSalesFact[];
+  nextCursor: string;
+  complete: boolean;
+  contractVersion: string;
+  extractedAt: string;
+  periodComplete: boolean;
+  diagnostics: string[];
+  error?: string;
+};
+
+async function requestPayrollSalesFactsPage(
+  config: OneCConfig,
+  params: { dateFrom: string; dateTo: string; pageSize: number; cursor: string },
+): Promise<PayrollSalesFactsPageResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(config.timeoutMs, 30_000));
+  const query = new URLSearchParams({
+    date_from: params.dateFrom,
+    date_to: params.dateTo,
+    limit: String(params.pageSize),
+  });
+  if (params.cursor) query.set('cursor', params.cursor);
+
+  try {
+    const response = await fetch(`${config.baseUrl}/payroll-sales-facts?${query.toString()}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, text/plain;q=0.9, */*;q=0.8',
+        Authorization: buildAuthHeader(config),
+      },
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    const payload = readRecord(await readResponseBody(response)) ?? {};
+    const page = readRecord(payload.page) ?? {};
+    const rawRows = readArray(payload.rows);
+    const rows = rawRows.map(normalizePayrollSalesFact).filter((row): row is OneCPayrollSalesFact => row !== null);
+    const diagnostics: string[] = [];
+    if (rows.length !== rawRows.length) diagnostics.push(`Не распознано строк: ${rawRows.length - rows.length}.`);
+
+    if (!response.ok || payload.ok !== true || !Array.isArray(payload.rows) || rows.length !== rawRows.length || payload.date_from !== params.dateFrom || payload.date_to !== params.dateTo || payload.mode !== 'read-only' || typeof page.complete !== 'boolean' || typeof payload.period_complete !== 'boolean' || !readFirstString(payload, ['extracted_at']) || rows.some((row) => row.period.slice(0, 10) < params.dateFrom || row.period.slice(0, 10) > params.dateTo)) {
+      return {
+        ok: false,
+        status: response.status,
+        rows: [],
+        nextCursor: '',
+        complete: false,
+        contractVersion: readFirstString(payload, ['contract_version']),
+        extractedAt: readFirstString(payload, ['extracted_at']),
+        periodComplete: false,
+        diagnostics,
+        error: 'Источник зарплаты недоступен или вернул неполные/некорректные данные.',
+      };
+    }
+
+    return {
+      ok: true,
+      status: response.status,
+      rows,
+      nextCursor: readFirstString(page, ['next_cursor']),
+      complete: readFirstBoolean(page, ['complete']) === true,
+      contractVersion: readFirstString(payload, ['contract_version']),
+      extractedAt: readFirstString(payload, ['extracted_at']),
+      periodComplete: readFirstBoolean(payload, ['period_complete']) === true,
+      diagnostics,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      rows: [],
+      nextCursor: '',
+      complete: false,
+      contractVersion: '',
+      extractedAt: '',
+      periodComplete: false,
+      diagnostics: [],
+      error: formatError(error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 
 function normalizeOneCDateTime(value: string) {
   return normalizeOneCDateTimeValue(value) || value;
@@ -1710,6 +1959,179 @@ export async function getSalesRealizations(
   }
 
   return requestSalesRealizations(config, params);
+}
+
+export async function getPayrollSalesFacts(params: PayrollSalesFactsParams): Promise<OneCPayrollSalesFactsResult> {
+  const normalizedParams: Required<PayrollSalesFactsParams> = {
+    dateFrom: params.dateFrom.trim(),
+    dateTo: params.dateTo.trim(),
+    pageSize: Math.max(1, Math.min(Math.trunc(params.pageSize ?? 1000), 1000)),
+    maxPages: Math.max(1, Math.min(Math.trunc(params.maxPages ?? 100), 100)),
+  };
+  const baseResult = {
+    path: '/payroll-sales-facts' as const,
+    checkedAt: new Date().toISOString(),
+    params: normalizedParams,
+  };
+  const config = getConfig();
+  const missingConfig = getMissingConfig(config);
+
+  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  if (!validDate(normalizedParams.dateFrom) || !validDate(normalizedParams.dateTo) || normalizedParams.dateFrom > normalizedParams.dateTo || normalizedParams.dateTo > today || Date.parse(normalizedParams.dateTo) - Date.parse(normalizedParams.dateFrom) > 30 * 86400000 || !Number.isFinite(normalizedParams.pageSize) || !Number.isFinite(normalizedParams.maxPages)) {
+    return {
+      ...baseResult,
+      ok: false,
+      contractVersion: '',
+      extractedAt: '',
+      periodComplete: false,
+      pages: 0,
+      rows: [],
+      diagnostics: [],
+      error: 'dateFrom and dateTo must use YYYY-MM-DD',
+    };
+  }
+
+  if (missingConfig.length) {
+    return {
+      ...baseResult,
+      ok: false,
+      contractVersion: '',
+      extractedAt: '',
+      periodComplete: false,
+      pages: 0,
+      rows: [],
+      diagnostics: [`Missing env: ${missingConfig.join(', ')}`],
+      error: '1C API configuration is incomplete',
+    };
+  }
+
+  const rows: OneCPayrollSalesFact[] = [];
+  const diagnostics: string[] = [];
+  const keys = new Set<string>();
+  let cursor = '';
+  let pages = 0;
+  let contractVersion = '';
+  let extractedAt = '';
+  let periodComplete = false;
+  const expectedContractVersion = 'payroll-sales-facts-v2';
+  const cursors = new Set<string>();
+
+  while (pages < normalizedParams.maxPages) {
+    const page = await requestPayrollSalesFactsPage(config, {
+      dateFrom: normalizedParams.dateFrom,
+      dateTo: normalizedParams.dateTo,
+      pageSize: normalizedParams.pageSize,
+      cursor,
+    });
+    pages += 1;
+    diagnostics.push(...page.diagnostics);
+
+    if (!page.ok) {
+      return {
+        ...baseResult,
+        ok: false,
+        contractVersion: page.contractVersion || contractVersion,
+        extractedAt: page.extractedAt || extractedAt,
+        periodComplete,
+        pages,
+        rows: [],
+        diagnostics,
+        error: page.status === 404
+          ? 'В рабочей 1С ещё не установлен read-only источник зарплатных данных.'
+          : page.error || 'Не удалось прочитать зарплатные данные из 1С.',
+      };
+    }
+
+    if (page.contractVersion !== expectedContractVersion) {
+      return {
+        ...baseResult,
+        ok: false,
+        contractVersion: page.contractVersion,
+        extractedAt: page.extractedAt || extractedAt,
+        periodComplete: page.periodComplete,
+        pages,
+        rows: [],
+        diagnostics,
+        error: `1C returned unsupported payroll contract ${page.contractVersion || 'без версии'}; expected ${expectedContractVersion}.`,
+      };
+    }
+
+    if (pages > 1 && page.periodComplete !== periodComplete) {
+      return {
+        ...baseResult, ok: false, contractVersion: page.contractVersion,
+        extractedAt: page.extractedAt || extractedAt, periodComplete: false,
+        pages, rows: [], diagnostics,
+        error: 'Страницы 1С сообщают разную готовность периода. Сверка остановлена; загрузите данные заново.',
+      };
+    }
+
+    contractVersion = page.contractVersion || contractVersion;
+    extractedAt = page.extractedAt || extractedAt;
+    periodComplete = page.periodComplete;
+
+    for (const row of page.rows) {
+      const key = `${row.period}|${row.recorderRef}|${row.lineNumber}`;
+      if (keys.has(key)) {
+        return { ...baseResult, ok: false, contractVersion, extractedAt, periodComplete, pages, rows: [], diagnostics, error: 'Повтор строки источника. Сверка остановлена.' };
+      }
+      keys.add(key);
+      rows.push(row);
+    }
+
+    if (page.complete) {
+      return {
+        ...baseResult,
+        ok: true,
+        contractVersion,
+        extractedAt,
+        periodComplete,
+        pages,
+        rows,
+        diagnostics,
+      };
+    }
+
+    if (!page.nextCursor || page.nextCursor === cursor || cursors.has(page.nextCursor)) {
+      return {
+        ...baseResult,
+        ok: false,
+        contractVersion,
+        extractedAt,
+        periodComplete,
+        pages,
+        rows: [],
+        diagnostics,
+        error: '1C вернула незавершённую страницу без корректного продолжения.',
+      };
+    }
+    cursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+  }
+
+  return {
+    ...baseResult,
+    ok: false,
+    contractVersion,
+    extractedAt,
+    periodComplete,
+    pages,
+    rows: [],
+    diagnostics,
+    error: `Превышен безопасный лимит страниц (${normalizedParams.maxPages}).`,
+  };
+}
+
+export async function getPayrollSalesReport(params: PayrollSalesReportParams): Promise<OneCPayrollSalesReportResult> {
+  const facts = await getPayrollSalesFacts(params);
+  return {
+    ...facts,
+    rows: facts.ok ? facts.rows.map((row) => ({
+      ...row,
+      cost: row.reportCost,
+      grossProfit: row.reportGrossProfit,
+    })) : [],
+  };
 }
 
 export async function getSalesRealizationLinks(realizationRef: string): Promise<OneCSalesRealizationLinksResult> {
