@@ -16,14 +16,27 @@ type User = {
   department: string;
   isActive: boolean;
   payrollName: string | null;
+  payrollSalaryType: string | null;
+  payrollReportGroup: string | null;
+  payrollFixedSalary: number | null;
+  payrollRuleFrom: string | null;
+  payrollRuleThrough: string | null;
 };
 
-type Draft = User & { password: string };
+type Draft = Omit<User, 'payrollFixedSalary'> & { password: string; payrollFixedSalary: string };
 
 const departmentLabels: Record<string, string> = {
   retail: 'Розница',
   wholesale: 'Опт',
   operations: 'Операции',
+};
+
+const payrollRuleLabels: Record<string, string> = {
+  purchase_manager: 'Закупки',
+  wholesale_percent: 'Оптовые продажи',
+  retail_sales_bonus: 'Розничные продажи',
+  vl_percent: 'Операционное управление',
+  fixed_salary: 'Фиксированный оклад',
 };
 
 const emptyDraft: Draft = {
@@ -35,6 +48,11 @@ const emptyDraft: Draft = {
   department: 'retail',
   isActive: true,
   payrollName: '',
+  payrollSalaryType: '',
+  payrollReportGroup: '',
+  payrollFixedSalary: '',
+  payrollRuleFrom: '',
+  payrollRuleThrough: '',
 };
 
 export default function EmployeesClient({ initialUsers }: { initialUsers: User[] }) {
@@ -66,7 +84,16 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
   function startEdit(user: User) {
     setError('');
     setEditingId(user.id);
-    setDraft({ ...user, payrollName: user.payrollName ?? '', password: '' });
+    setDraft({
+      ...user,
+      payrollName: user.payrollName ?? '',
+      payrollSalaryType: user.payrollSalaryType ?? '',
+      payrollReportGroup: user.payrollReportGroup ?? '',
+      payrollFixedSalary: user.payrollFixedSalary === null ? '' : String(user.payrollFixedSalary),
+      payrollRuleFrom: user.payrollRuleFrom ?? '',
+      payrollRuleThrough: user.payrollRuleThrough ?? '',
+      password: '',
+    });
   }
 
   async function save() {
@@ -128,6 +155,21 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
               <option value='wholesale'>Опт</option>
               <option value='operations'>Операции</option>
             </select>
+            <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.payrollSalaryType ?? ''} onChange={(event) => setDraft((value) => ({ ...value, payrollSalaryType: event.target.value, payrollReportGroup: payrollRuleLabels[event.target.value] ?? '', payrollFixedSalary: event.target.value === 'fixed_salary' ? value.payrollFixedSalary : '' }))}>
+              <option value=''>Зарплата: требует настройки</option>
+              <option value='purchase_manager'>Закупки</option>
+              <option value='wholesale_percent'>Оптовые продажи</option>
+              <option value='retail_sales_bonus'>Розничные продажи</option>
+              <option value='vl_percent'>Операционное управление</option>
+              <option value='fixed_salary'>Фиксированный оклад</option>
+            </select>
+            {draft.payrollSalaryType === 'fixed_salary' && <Input placeholder='Оклад, ₽' inputMode='decimal' value={draft.payrollFixedSalary} onChange={(event) => setDraft((value) => ({ ...value, payrollFixedSalary: event.target.value }))} />}
+            <label className='grid gap-1 text-xs font-bold text-slate-600'>Правило действует с
+              <Input type='month' value={draft.payrollRuleFrom ?? ''} onChange={(event) => setDraft((value) => ({ ...value, payrollRuleFrom: event.target.value }))} />
+            </label>
+            <label className='grid gap-1 text-xs font-bold text-slate-600'>Действует по (необязательно)
+              <Input type='month' value={draft.payrollRuleThrough ?? ''} onChange={(event) => setDraft((value) => ({ ...value, payrollRuleThrough: event.target.value }))} />
+            </label>
             <label className='flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700'>
               <input type='checkbox' checked={draft.isActive} onChange={(event) => setDraft((value) => ({ ...value, isActive: event.target.checked }))} />
               Активен
@@ -154,7 +196,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
             <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
               <div><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Отдел</p><p className='mt-1 font-bold text-slate-700'>{departmentLabels[user.department] ?? user.department}</p></div>
               <div><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Роль</p><p className='mt-1 font-bold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</p></div>
-              <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Для зарплаты</p><p className='mt-1 font-bold text-slate-700'>{user.payrollName?.trim() || user.name}</p></div>
+              <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Для зарплаты</p><p className='mt-1 font-bold text-slate-700'>{user.payrollName?.trim() || user.name}</p><p className={`mt-0.5 text-xs font-semibold ${user.payrollSalaryType ? 'text-slate-500' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></div>
             </div>
             <Button className='mt-4 h-10 w-full gap-2 bg-white text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}><Pencil className='h-4 w-4' />Настроить</Button>
           </Card>
@@ -181,7 +223,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
                 <td className='px-5 py-4'><p className='font-bold text-slate-950'>{user.name}</p><p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p></td>
                 <td className='px-5 py-4 text-slate-700'>{departmentLabels[user.department] ?? user.department}</td>
                 <td className='px-5 py-4 text-sm font-semibold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</td>
-                <td className='px-5 py-4'><p className='text-sm font-semibold text-slate-700'>{user.payrollName?.trim() || user.name}</p>{!user.payrollName?.trim() && <p className='mt-0.5 text-xs font-medium text-slate-400'>Совпадает с ФИО</p>}</td>
+                <td className='px-5 py-4'><p className='text-sm font-semibold text-slate-700'>{user.payrollName?.trim() || user.name}</p><p className={`mt-0.5 text-xs font-medium ${user.payrollSalaryType ? 'text-slate-400' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></td>
                 <td className='px-5 py-4'><Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}>{user.isActive ? 'Активен' : 'Отключён'}</Badge></td>
                 <td className='px-5 py-4'>
                   <div className='flex gap-2'>

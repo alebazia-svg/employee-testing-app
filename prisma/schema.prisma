@@ -16,6 +16,11 @@ model User {
   department                       String                            @default("retail")
   isActive                         Boolean                           @default(true)
   payrollName                      String?
+  payrollSalaryType                String?
+  payrollReportGroup               String?
+  payrollFixedSalary               Float?
+  payrollRuleFrom                  String?
+  payrollRuleThrough               String?
   results                          Result[]
   progresses                       AttemptProgress[]
   resetTargets                     AttemptReset[]                    @relation("ResetTarget")
@@ -1119,6 +1124,7 @@ model PayrollEmployeeResult {
   payrollDepartment        String
   position                 String
   salaryType               String
+  reportGroup              String                     @default("")
   salaryRule               String
   workedDays               Float?
   lateCount                Float?

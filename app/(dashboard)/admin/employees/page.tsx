@@ -16,6 +16,7 @@ export default async function EmployeesPage() {
     orderBy: [{ isActive: 'desc' }, { role: 'asc' }, { name: 'asc' }],
     select: {
       id: true, name: true, login: true, role: true, department: true, isActive: true, payrollName: true,
+      payrollSalaryType: true, payrollReportGroup: true, payrollFixedSalary: true, payrollRuleFrom: true, payrollRuleThrough: true,
     },
   });
 

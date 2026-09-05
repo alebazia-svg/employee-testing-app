@@ -103,7 +103,7 @@ async function loadPayrollModule(): Promise<PayrollModule> {
   const calculationSource = source.slice(start, end);
 
   mkdirSync(dirname(generatedPath), { recursive: true });
-  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow };\n`, 'utf8');
+  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
 
   return import(pathToFileURL(generatedPath).href) as Promise<PayrollModule>;
 }
@@ -351,6 +351,21 @@ function assertMoney(actual: number, expected: number) {
 }
 
 describe('payroll calculation regression rules', () => {
+  it('keeps an employee from a new 1C report visible without guessing a salary formula', () => {
+    const summary = {
+      manager: 'Новый сотрудник', department: 'Розница', revenue: 100000, grossProfit: 30000,
+      creditBonus: 0, filmBonus: 0, plotterBonus: 0, techBonus: 3000, accessoryBonus: 0,
+      wholesaleBonus: 0, totalBonus: 3000,
+    };
+    const row = (buildFullPayrollRow as unknown as (value: typeof summary, manual: undefined, directory: Record<string, never>) => {
+      salaryType: string; grossPay: number; payrollReasons: string[];
+    })(summary, undefined, {});
+
+    assert.equal(row.salaryType, 'unconfigured');
+    assert.equal(row.grossPay, 0);
+    assert.deepEqual(row.payrollReasons, ['Не настроено правило зарплаты для выбранного периода']);
+  });
+
   it('applies confirmed Finbox kopecks through the existing Diana formula without accumulating or changing advances', () => {
     const preview = parseFinboxReport('Начальный остаток на 2026-08-01\t0\n01.08.2026\tНачисление агентского вознаграждения\t85373.06\nКонечный остаток на 2026-08-31\t85373.06', '2026-08');
     assert.deepEqual(preview.errors, []);

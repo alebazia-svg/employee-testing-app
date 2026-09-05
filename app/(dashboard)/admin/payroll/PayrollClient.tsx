@@ -13,6 +13,18 @@ import { PayrollBonusesEditor } from './PayrollBonusesEditor';
 import { PayrollFinboxImport } from './PayrollFinboxImport';
 import { PayrollDailyOneCControl } from './PayrollDailyOneCControl';
 import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
+import {
+  PAYROLL_WORKBOOK_UNCONFIGURED_GROUP,
+  getPayrollWorkbookComponentLabel,
+  getPayrollWorkbookCalculationText,
+  getPayrollWorkbookGroup,
+  getPayrollWorkbookReviewCount,
+  getPayrollWorkbookStatusLabel,
+  isPayrollWorkbookPaidAdvanceCheck,
+  isPayrollWorkbookSalaryTypeConfigured,
+  sortPayrollWorkbookEmployees,
+} from '@/lib/payroll-workbook';
+import { isPayrollEmployeeRuleActive } from '@/lib/payroll-employee-rules';
 
 type CellValue = string | number | boolean | Date | null | undefined;
 type Row = CellValue[];
@@ -166,15 +178,30 @@ type PayrollManualInput = {
 };
 
 type PayrollDaysSource = 'manual' | 'attendance' | 'schedule' | 'manualCorrection';
-type SalaryType = 'vl_percent' | 'wholesale_percent' | 'retail_sales_bonus' | 'fixed_salary' | 'purchase_manager';
+type ConfiguredSalaryType = 'vl_percent' | 'wholesale_percent' | 'retail_sales_bonus' | 'fixed_salary' | 'purchase_manager';
+type SalaryType = ConfiguredSalaryType | 'unconfigured';
 
 type PayrollEmployee = {
   name: string;
   department: string;
   position: string;
-  salaryType: SalaryType;
+  salaryType: ConfiguredSalaryType;
   salary?: number;
   activeThroughPeriod?: string;
+};
+
+type PayrollDirectoryUser = {
+  id: number;
+  name: string;
+  role: string;
+  department: string;
+  isActive: boolean;
+  payrollName: string | null;
+  payrollSalaryType: string | null;
+  payrollReportGroup: string | null;
+  payrollFixedSalary: number | null;
+  payrollRuleFrom: string | null;
+  payrollRuleThrough: string | null;
 };
 
 type FixedPayrollInput = {
@@ -285,10 +312,37 @@ type SavedPayrollEmployeeResult = {
   id: number;
   employeeName: string;
   payrollDepartment: string;
+  department: string;
   position: string;
   salaryType: string;
+  reportGroup?: string;
+  salaryRule: string;
   workedDays: number | null;
   lateCount: number | null;
+  daysSource: string;
+  dayRate: number;
+  dayPay: number;
+  revenue: number;
+  grossProfit: number;
+  creditBonus: number;
+  filmBonus: number;
+  plotterBonus: number;
+  techBonus: number;
+  accessoryBonus: number;
+  wholesaleBonus: number;
+  salesBonus: number;
+  totalBonus: number;
+  disciplineBonus: number;
+  fixedSalary: number;
+  fixedBonus: number;
+  fixedDeduction: number;
+  purchaseBase: number | null;
+  purchasePercent: number;
+  purchasePercentAmount: number;
+  purchaseTargetAdjustment: number;
+  purchaseTargetSalary: number;
+  agentCreditCommission: number;
+  advance: number;
   grossPay: number;
   netPay: number;
   status: string;
@@ -331,6 +385,365 @@ type SavedPayrollRunDetail = SavedPayrollRunSummary & {
   finalizedBy?: { id: number; name: string } | null;
   supersededBy?: { id: number; name: string } | null;
 };
+
+type PayrollWorkbookMainRow = {
+  employeeName: string;
+  category: string;
+  salaryType: string;
+  grossPay: number;
+  workedDays: number | null;
+  basePay: number;
+  performancePay: number;
+  specialPay: number;
+  disciplinePay: number;
+  additionalPay: number;
+  advance: number;
+  deduction: number;
+  netPay: number;
+  status: string;
+  comment: string;
+};
+
+type PayrollWorkbookModel = {
+  periodLabel: string;
+  versionLabel: string;
+  generatedAt: string;
+  employeeRows: PayrollWorkbookMainRow[];
+  accrualRows: Array<Array<string | number | null>>;
+  checkRows: Array<Array<string | number | null>>;
+  sourceRows: Array<Array<string | number | null>>;
+  fileName: string;
+};
+
+async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
+  const XLSX = (await import('xlsx-js-style')).default;
+  const workbookExport = XLSX.utils.book_new();
+  const moneyFormat = '#,##0.00 "₽";[Red]-#,##0.00 "₽"';
+  const integerFormat = '#,##0';
+  const thinBottom = { bottom: { style: 'thin', color: { rgb: 'E2E8F0' } } };
+  const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } };
+  const totalStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { vertical: 'center' } };
+  const setCellStyle = (sheet: Record<string, unknown>, address: string, style: object) => {
+    const cell = sheet[address] as { s?: object } | undefined;
+    if (cell) cell.s = { ...(cell.s ?? {}), ...style };
+  };
+  const setRowStyle = (sheet: Record<string, unknown>, rowNumber: number, fromCol: number, toCol: number, style: object) => {
+    for (let col = fromCol; col <= toCol; col += 1) setCellStyle(sheet, XLSX.utils.encode_cell({ r: rowNumber - 1, c: col }), style);
+  };
+  const setColumnNumberFormat = (sheet: Record<string, unknown>, firstRow: number, lastRow: number, columns: number[], format: string) => {
+    for (let rowIndex = firstRow - 1; rowIndex <= lastRow - 1; rowIndex += 1) {
+      columns.forEach((col) => {
+        const cell = sheet[XLSX.utils.encode_cell({ r: rowIndex, c: col })] as { z?: string } | undefined;
+        if (cell) {
+          cell.z = format;
+          setCellStyle(sheet, XLSX.utils.encode_cell({ r: rowIndex, c: col }), { numFmt: format });
+        }
+      });
+    }
+  };
+
+  const totalGross = model.employeeRows.reduce((sum, row) => sum + row.grossPay, 0);
+  const totalWithheld = model.employeeRows.reduce((sum, row) => sum + row.advance + row.deduction, 0);
+  const totalNet = model.employeeRows.reduce((sum, row) => sum + row.netPay, 0);
+  const unconfiguredRows = model.employeeRows.filter((row) => !isPayrollWorkbookSalaryTypeConfigured(row.salaryType));
+  const reviewCount = getPayrollWorkbookReviewCount(model.employeeRows, model.checkRows);
+  const summaryRows: Array<Array<string | number | null>> = [
+    [`Зарплатная ведомость — ${model.periodLabel}`],
+    [`${model.versionLabel} · сформировано ${model.generatedAt} · «Начислено» — зарплата до вычета авансов и удержаний.`],
+    ['Сотрудников', '', 'Начислено за месяц', '', 'Выплачено / удержано', '', 'Осталось выплатить', '', 'Нужно проверить', ''],
+    [model.employeeRows.length, '', totalGross, '', totalWithheld, '', totalNet, '', reviewCount, ''],
+  ];
+  const tableHeader = ['Сотрудник', 'Начислено', 'Дни', 'Оплата / оклад / доплата', 'Процентная часть', 'Бонус за дисциплину', 'Премии и агентские', 'Выплачено / удержано', 'Осталось выплатить', 'Комментарий'];
+  const tableRows: Array<{ kind: 'group' | 'employee'; salaryType: string; values: Array<string | number | null> }> = [];
+  let currentCategory = '';
+  model.employeeRows.forEach((row) => {
+    if (row.category !== currentCategory) {
+      currentCategory = row.category;
+      tableRows.push({ kind: 'group', salaryType: row.salaryType, values: [row.category.toLocaleUpperCase('ru-RU'), '', '', '', '', '', '', '', '', ''] });
+    }
+    tableRows.push({
+      kind: 'employee',
+      salaryType: row.salaryType,
+      values: [
+        row.employeeName,
+        row.grossPay,
+        row.workedDays ?? '',
+        row.basePay + row.specialPay || '',
+        row.performancePay || '',
+        row.disciplinePay || '',
+        row.additionalPay || '',
+        row.advance + row.deduction || '',
+        row.netPay,
+        row.status === 'Готово' ? row.comment : `Проверить: ${row.comment || 'есть замечания к расчёту'}`,
+      ],
+    });
+  });
+  const totalRow = [
+    'ИТОГО',
+    totalGross,
+    '',
+    model.employeeRows.reduce((sum, row) => sum + row.basePay + row.specialPay, 0),
+    model.employeeRows.reduce((sum, row) => sum + row.performancePay, 0),
+    model.employeeRows.reduce((sum, row) => sum + row.disciplinePay, 0),
+    model.employeeRows.reduce((sum, row) => sum + row.additionalPay, 0),
+    totalWithheld,
+    totalNet,
+    '',
+  ];
+  const headerRow = summaryRows.length + 1;
+  const totalRowNumber = headerRow + tableRows.length + 1;
+  const sheetRows = [
+    ...summaryRows,
+    tableHeader,
+    ...tableRows.map((row) => row.values),
+    totalRow,
+  ];
+  const summarySheet = XLSX.utils.aoa_to_sheet(sheetRows);
+  for (let rowNumber = 1; rowNumber <= totalRowNumber; rowNumber += 1) {
+    setRowStyle(summarySheet, rowNumber, 0, 9, { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { color: { rgb: '0F172A' } } });
+  }
+  summarySheet['!cols'] = [25, 15, 7, 20, 18, 17, 19, 18, 15, 38].map((wch) => ({ wch }));
+  summarySheet['!rows'] = [{ hpt: 28 }, { hpt: 26 }, { hpt: 24 }, { hpt: 26 }, { hpt: 38 }];
+  summarySheet['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } },
+    ...[0, 2, 4, 6, 8].flatMap((col) => [
+      { s: { r: 2, c: col }, e: { r: 2, c: col + 1 } },
+      { s: { r: 3, c: col }, e: { r: 3, c: col + 1 } },
+    ]),
+    ...tableRows
+      .map((row, index) => row.kind === 'group' ? { s: { r: headerRow + index, c: 0 }, e: { r: headerRow + index, c: 9 } } : null)
+      .filter((merge): merge is { s: { r: number; c: number }; e: { r: number; c: number } } => Boolean(merge)),
+  ];
+  summarySheet['!freeze'] = { xSplit: 0, ySplit: headerRow, topLeftCell: `A${headerRow + 1}`, activePane: 'bottomLeft', state: 'frozen' };
+  setRowStyle(summarySheet, 1, 0, 9, { font: { bold: true, color: { rgb: '0F172A' }, sz: 16 }, alignment: { vertical: 'center' }, border: { bottom: { style: 'medium', color: { rgb: '1E3A5F' } } } });
+  setRowStyle(summarySheet, 2, 0, 9, { font: { italic: true, color: { rgb: '64748B' } }, alignment: { vertical: 'center', wrapText: true } });
+  [0, 2, 4, 6, 8].forEach((col) => {
+    setCellStyle(summarySheet, XLSX.utils.encode_cell({ r: 2, c: col }), { font: { bold: true, color: { rgb: '475569' } }, fill: { fgColor: { rgb: 'F1F5F9' } }, alignment: { horizontal: 'center' } });
+    setCellStyle(summarySheet, XLSX.utils.encode_cell({ r: 3, c: col }), { font: { bold: true, color: { rgb: '0F172A' }, sz: 12 }, fill: { fgColor: { rgb: 'F1F5F9' } }, alignment: { horizontal: 'center' } });
+  });
+  const reviewFill = reviewCount > 0 ? 'FEF3C7' : 'DCFCE7';
+  const reviewColor = reviewCount > 0 ? '92400E' : '166534';
+  [3, 4].forEach((rowIndex) => setCellStyle(summarySheet, XLSX.utils.encode_cell({ r: rowIndex - 1, c: 8 }), { fill: { fgColor: { rgb: reviewFill } }, font: { bold: true, color: { rgb: reviewColor }, sz: rowIndex === 4 ? 12 : 11 }, alignment: { horizontal: 'center' } }));
+  setRowStyle(summarySheet, headerRow, 0, 9, headerStyle);
+  tableRows.forEach((row, index) => {
+    const rowNumber = headerRow + index + 1;
+    const groupFill = row.salaryType === 'purchase_manager' ? 'FAF3DD' : row.salaryType === 'wholesale_percent' ? 'EAF3FA' : row.salaryType === 'retail_sales_bonus' ? 'ECF7F0' : row.salaryType === 'vl_percent' ? 'F1ECF8' : 'F3F4F6';
+    if (row.kind === 'group') {
+      setRowStyle(summarySheet, rowNumber, 0, 9, { fill: { fgColor: { rgb: groupFill } }, font: { bold: true, color: { rgb: '334155' } }, border: { top: { style: 'medium', color: { rgb: 'CBD5E1' } }, bottom: { style: 'thin', color: { rgb: 'CBD5E1' } } }, alignment: { vertical: 'center' } });
+      return;
+    }
+    setRowStyle(summarySheet, rowNumber, 0, 9, { border: thinBottom, alignment: { vertical: 'center', wrapText: true } });
+    setCellStyle(summarySheet, `A${rowNumber}`, { font: { bold: true } });
+    setCellStyle(summarySheet, `B${rowNumber}`, { font: { bold: true, color: { rgb: '166534' } }, fill: { fgColor: { rgb: 'DCFCE7' } }, alignment: { horizontal: 'right' } });
+    setCellStyle(summarySheet, `J${rowNumber}`, { border: { ...thinBottom, left: { style: 'medium', color: { rgb: 'CBD5E1' } } }, alignment: { vertical: 'center', wrapText: true } });
+    if (String(row.values[9] ?? '').startsWith('Проверить:')) {
+      setCellStyle(summarySheet, `J${rowNumber}`, { fill: { fgColor: { rgb: 'FEF3C7' } }, font: { color: { rgb: '92400E' }, bold: true } });
+    }
+  });
+  setRowStyle(summarySheet, totalRowNumber, 0, 9, totalStyle);
+  setColumnNumberFormat(summarySheet, headerRow + 1, totalRowNumber, [1, 3, 4, 5, 6, 7, 8], moneyFormat);
+  setColumnNumberFormat(summarySheet, headerRow + 1, totalRowNumber, [2], integerFormat);
+  setColumnNumberFormat(summarySheet, 4, 4, [2, 4, 6], moneyFormat);
+  XLSX.utils.book_append_sheet(workbookExport, summarySheet, 'Итоги');
+
+  const addTableSheet = (name: string, subtitle: string, header: string[], rows: Array<Array<string | number | null>>, widths: number[], moneyColumns: number[] = [], collapsedRows: Set<number> = new Set()) => {
+    const safeRows = rows.length ? rows : [['—', 'Данных для отображения нет']];
+    const statusColumn = header.indexOf('Статус');
+    const sheet = XLSX.utils.aoa_to_sheet([[`${name} — ${model.periodLabel}`], [subtitle], [], header, ...safeRows]);
+    const lastColumn = header.length - 1;
+    const headerRowNumber = 4;
+    const firstDataRowNumber = 5;
+    for (let rowNumber = 1; rowNumber <= safeRows.length + 4; rowNumber += 1) {
+      setRowStyle(sheet, rowNumber, 0, lastColumn, { fill: { fgColor: { rgb: 'FFFFFF' } }, font: { color: { rgb: '0F172A' } } });
+    }
+    sheet['!cols'] = widths.map((wch) => ({ wch }));
+    sheet['!rows'] = [{ hpt: 28 }, { hpt: 26 }, { hpt: 8 }, { hpt: 38 }];
+    if (collapsedRows.size) sheet['!outline'] = { above: true, left: false };
+    sheet['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: lastColumn } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: lastColumn } },
+    ];
+    sheet['!autofilter'] = { ref: `A${headerRowNumber}:${XLSX.utils.encode_col(lastColumn)}${safeRows.length + 4}` };
+    sheet['!freeze'] = { xSplit: 0, ySplit: headerRowNumber, topLeftCell: `A${firstDataRowNumber}`, activePane: 'bottomLeft', state: 'frozen' };
+    setRowStyle(sheet, 1, 0, lastColumn, { font: { bold: true, color: { rgb: '0F172A' }, sz: 15 }, alignment: { vertical: 'center' }, border: { bottom: { style: 'medium', color: { rgb: '1E3A5F' } } } });
+    setRowStyle(sheet, 2, 0, lastColumn, { font: { italic: true, color: { rgb: '64748B' } }, alignment: { vertical: 'center', wrapText: true } });
+    setRowStyle(sheet, headerRowNumber, 0, lastColumn, headerStyle);
+    for (let rowNumber = firstDataRowNumber; rowNumber <= safeRows.length + 4; rowNumber += 1) {
+      setRowStyle(sheet, rowNumber, 0, lastColumn, { border: thinBottom, alignment: { vertical: 'center', wrapText: true } });
+      const row = safeRows[rowNumber - firstDataRowNumber];
+      if (collapsedRows.has(rowNumber - firstDataRowNumber)) {
+        const rowInfo = (sheet['!rows'] as Array<Record<string, unknown>>)[rowNumber - 1] ?? {};
+        (sheet['!rows'] as Array<Record<string, unknown>>)[rowNumber - 1] = { ...rowInfo, level: 1, hidden: true };
+      }
+      const isSectionRow = row?.slice(1).every((value) => value === '' || value === null || value === undefined);
+      if (isSectionRow) {
+        const sectionName = String(row?.[0] ?? '').toLocaleLowerCase('ru-RU');
+        const sectionFill = sectionName.includes('закуп') ? 'FAF3DD'
+          : sectionName.includes('оптов') ? 'EAF3FA'
+            : sectionName.includes('рознич') ? 'ECF7F0'
+              : sectionName.includes('операцион') ? 'F1ECF8'
+                : 'F3F4F6';
+        setRowStyle(sheet, rowNumber, 0, lastColumn, { fill: { fgColor: { rgb: sectionFill } }, font: { bold: true, color: { rgb: '334155' } }, border: { top: { style: 'medium', color: { rgb: 'CBD5E1' } }, bottom: { style: 'thin', color: { rgb: 'CBD5E1' } } }, alignment: { vertical: 'center' } });
+      }
+      if (name === 'Расшифровка') {
+        const isEmployeeSummary = Boolean(row?.[0]) && Boolean(row?.[4]);
+        if (isEmployeeSummary) {
+          const needsReview = row?.[4] === 'Проверить';
+          const rowInfo = (sheet['!rows'] as Array<Record<string, unknown>>)[rowNumber - 1] ?? {};
+          (sheet['!rows'] as Array<Record<string, unknown>>)[rowNumber - 1] = { ...rowInfo, collapsed: true };
+          setRowStyle(sheet, rowNumber, 0, lastColumn, { fill: { fgColor: { rgb: needsReview ? 'FEF3C7' : 'EFF6FF' } }, font: { bold: true, color: { rgb: needsReview ? '92400E' : '1E3A5F' } }, border: { top: { style: 'medium', color: { rgb: needsReview ? 'FCD34D' : '93C5FD' } }, bottom: { style: 'thin', color: { rgb: needsReview ? 'FDE68A' : 'BFDBFE' } } }, alignment: { vertical: 'center', wrapText: true } });
+        }
+        if (row?.[5] === 'Итого начислено') {
+          setRowStyle(sheet, rowNumber, 0, lastColumn, { fill: { fgColor: { rgb: 'F0FDF4' } }, font: { bold: true, color: { rgb: '166534' } }, border: { top: { style: 'thin', color: { rgb: '86EFAC' } }, bottom: { style: 'thin', color: { rgb: 'BBF7D0' } } }, alignment: { vertical: 'center', wrapText: true } });
+        }
+      }
+      if (name === 'Контроль расчёта' && statusColumn >= 0) {
+        const status = row?.[statusColumn];
+        if (status === 'Ошибка' || status === 'Проверить') setRowStyle(sheet, rowNumber, 0, lastColumn, { fill: { fgColor: { rgb: status === 'Ошибка' ? 'FEE2E2' : 'FEF3C7' } }, border: thinBottom, alignment: { vertical: 'center', wrapText: true } });
+      }
+    }
+    if (moneyColumns.length) setColumnNumberFormat(sheet, firstDataRowNumber, safeRows.length + 4, moneyColumns, moneyFormat);
+    XLSX.utils.book_append_sheet(workbookExport, sheet, name);
+  };
+
+  const getAccrualSource = (component: string) => {
+    const normalized = component.toLocaleLowerCase('ru-RU');
+    if (normalized.includes('начислено за месяц') || normalized.includes('к выплате') || normalized.includes('доплата до миним')) return 'Расчёт портала';
+    if (normalized.includes('12%')) return 'Расчёт зарплаты сотрудников';
+    if (normalized.includes('дисциплин') || normalized.includes('отработанн') || normalized.includes('дн')) return 'Посещаемость';
+    if (normalized.includes('закуп')) return 'Отчёт закупок 1С';
+    if (normalized.includes('finbox') || normalized.includes('агентск')) return 'Отчёт Finbox';
+    if (normalized.includes('прем') || normalized.includes('решени')) return 'Решение руководителя';
+    if (normalized.includes('аванс') || normalized.includes('удержан')) return 'Внесено администратором';
+    if (normalized.includes('фиксирован') || normalized.includes('оклад')) return 'Утверждённый оклад';
+    return 'Отчёт продаж 1С';
+  };
+  const workbookAccrualRows: Array<Array<string | number | null>> = [];
+  const collapsedAccrualRows = new Set<number>();
+  let currentAccrualGroup = '';
+  let currentAccrualEmployee = '';
+  let currentAccrualComponents: number[] = [];
+  const employeeRowsByName = new Map(model.employeeRows.map((row) => [row.employeeName, row]));
+  model.accrualRows.forEach((row) => {
+    const employee = String(row[0] ?? '');
+    const group = String(row[1] ?? '');
+    const component = String(row[3] ?? '');
+    if (group && group !== currentAccrualGroup) {
+      currentAccrualGroup = group;
+      currentAccrualEmployee = '';
+      workbookAccrualRows.push([group.toLocaleUpperCase('ru-RU'), '', '', '', '', '', '', '', '']);
+    }
+    if (employee !== currentAccrualEmployee) {
+      currentAccrualComponents = [];
+      const employeeSummary = employeeRowsByName.get(employee);
+      if (employeeSummary) {
+        workbookAccrualRows.push([
+          employee,
+          employeeSummary.grossPay,
+          employeeSummary.advance + employeeSummary.deduction || '',
+          employeeSummary.netPay,
+          employeeSummary.status,
+          '',
+          '',
+          '',
+          employeeSummary.comment,
+        ]);
+      }
+    }
+    const base = typeof row[4] === 'number' ? row[4] : row[4] ?? null;
+    const amount = Number(row[6] ?? 0);
+    if (component !== 'К выплате') {
+      const isGrossTotal = component === 'Начислено за месяц';
+      const displayedComponent = isGrossTotal ? 'Итого начислено' : component;
+      const calculation = isGrossTotal
+        ? getPayrollWorkbookCalculationText(displayedComponent, null, currentAccrualComponents.map((value) => formatMoney(value)).join(' + '), amount)
+        : getPayrollWorkbookCalculationText(component, base, String(row[5] ?? ''), amount);
+      collapsedAccrualRows.add(workbookAccrualRows.length);
+      workbookAccrualRows.push([
+        '',
+        '',
+        '',
+        '',
+        '',
+        displayedComponent,
+        calculation,
+        getAccrualSource(component),
+        row[7] ?? '',
+      ]);
+      if (!isGrossTotal && component !== 'Аванс' && component !== 'Удержание' && Math.abs(amount) > 0.005) currentAccrualComponents.push(amount);
+    }
+    currentAccrualEmployee = employee;
+  });
+  addTableSheet('Расшифровка', 'По умолчанию видны итоги. Нажмите «+» слева от строк, чтобы раскрыть составляющие и числовые формулы.', ['Сотрудник', 'Начислено', 'Выплачено / удержано', 'Осталось выплатить', 'Статус', 'Составляющая', 'Числовой расчёт', 'Источник', 'Комментарий'], workbookAccrualRows, [28, 18, 20, 20, 16, 38, 58, 28, 48], [1, 2, 3], collapsedAccrualRows);
+  const workbookCheckRows = [
+    ...unconfiguredRows.map((row) => [
+      row.employeeName,
+      'Не настроено правило зарплаты',
+      'Проверить',
+      1,
+      'Сотрудник включён в отчёт, но расчёт нельзя считать полным, пока администратор не выберет правило зарплаты.',
+    ]),
+    ...model.checkRows.map((row) => {
+      const paidAdvance = isPayrollWorkbookPaidAdvanceCheck(row);
+      return [
+        row[0] ?? '',
+        [row[1], row[5], row[6], row[7]].filter(Boolean).join(' · '),
+        paidAdvance ? 'Учтено' : row[3] ?? '',
+        row[2] ?? '',
+        paidAdvance ? 'Аванс уже выплачен и уменьшает только остаток к выплате' : row[4] ?? '',
+      ];
+    }),
+  ];
+  const detailTotals = new Map<string, { gross: number | null; net: number | null }>();
+  model.accrualRows.forEach((row) => {
+    const employeeName = String(row[0] ?? '');
+    if (!employeeName) return;
+    const totals = detailTotals.get(employeeName) ?? { gross: null, net: null };
+    if (row[3] === 'Начислено за месяц') totals.gross = Number(row[6] ?? 0);
+    if (row[3] === 'К выплате') totals.net = Number(row[6] ?? 0);
+    detailTotals.set(employeeName, totals);
+  });
+  const grossMismatchCount = model.employeeRows.filter((row) => {
+    const detailGross = detailTotals.get(row.employeeName)?.gross;
+    return detailGross === null || detailGross === undefined || Math.abs(detailGross - row.grossPay) > 0.011;
+  }).length;
+  const netMismatchCount = model.employeeRows.filter((row) => {
+    const detailNet = detailTotals.get(row.employeeName)?.net;
+    return detailNet === null || detailNet === undefined || Math.abs(detailNet - row.netPay) > 0.011;
+  }).length;
+  workbookCheckRows.push(
+    ['СВЕРКА ИТОГОВ', '', '', '', ''],
+    ['Расчёт в целом', 'Сотрудники в ведомости', 'Готово', model.employeeRows.length, `Включено сотрудников: ${model.employeeRows.length}`],
+    ['Расчёт в целом', 'Начислено: «Итоги» и «Расшифровка»', grossMismatchCount ? 'Ошибка' : 'Готово', grossMismatchCount, grossMismatchCount ? 'Есть расхождения по начисленной зарплате' : 'Начисления по каждому сотруднику совпадают'],
+    ['Расчёт в целом', 'Осталось выплатить: «Итоги» и «Расшифровка»', netMismatchCount ? 'Ошибка' : 'Готово', netMismatchCount, netMismatchCount ? 'Есть расхождения по остатку к выплате' : 'Остатки к выплате по каждому сотруднику совпадают'],
+  );
+  addTableSheet('Контроль расчёта', 'Замечания, которые требуют решения, и выполненные контрольные сверки.', ['Сотрудник', 'Что проверить', 'Статус', 'Количество', 'Что это означает'], workbookCheckRows, [28, 58, 18, 14, 74]);
+  const workbookSourceRows = [
+    ['ИСПОЛЬЗОВАННЫЕ ИСТОЧНИКИ', '', '', '', '', ''],
+    ...model.sourceRows.map((row) => {
+      const sourceName = String(row[0] ?? '');
+      const normalizedSourceName = sourceName.toLocaleLowerCase('ru-RU');
+      const indicators = normalizedSourceName.includes('период')
+        ? 'Месяц и год расчёта'
+        : normalizedSourceName.includes('продаж')
+          ? 'Документы, выручка, валовая прибыль и категории товаров'
+          : normalizedSourceName.includes('дн')
+            ? 'Отработанные дни и опоздания'
+            : 'Показатели, указанные в источнике';
+      return [sourceName, row[1] ?? '', indicators, 'Получено порталом', model.periodLabel, row[2] ?? ''];
+    }),
+    ['ДЕЙСТВУЮЩИЕ ПРАВИЛА', '', '', '', '', ''],
+    ['Закупки', 'Правило портала', 'Дни, 1,75% от утверждённых закупок и доплата до минимума', 'Рассчитывается автоматически', model.periodLabel, 'Только документы закупщика по утверждённым поставщикам'],
+    ['Оптовые продажи', 'Правило портала', 'Дни, 1,75% от базы оптовых продаж и дисциплина', 'Рассчитывается автоматически', model.periodLabel, 'Сотрудники отдела получают одинаковый процент от общей базы опта'],
+    ['Розничные продажи', 'Правило портала', 'Дни, проценты за услуги, технику, аксессуары и кредиты', 'Рассчитывается автоматически', model.periodLabel, 'Для кредитов: 10% от валовой прибыли после вычета 9% налогов и издержек'],
+    ['Операционное управление', 'Правило портала', '12% от основных начислений выбранных сотрудников', 'Рассчитывается автоматически', model.periodLabel, 'Если результат ниже 100 000 ₽, портал добавляет разницу'],
+    ['Фиксированный оклад', 'Карточка сотрудника', 'Утверждённый месячный оклад', 'Подставляется автоматически', model.periodLabel, 'Премии, авансы и удержания показываются отдельно'],
+  ];
+  addTableSheet('Источники и правила', 'Использованные данные и действующие правила расчёта зарплаты.', ['Что рассчитываем', 'Источник', 'Какие показатели берём', 'Как данные попали в расчёт', 'Период', 'Для чего используется'], workbookSourceRows, [34, 28, 52, 38, 18, 72]);
+
+  XLSX.writeFile(workbookExport, model.fileName, { bookType: 'xlsx' });
+}
 
 function getSavedRunReviewReasons(run: { sourceSummary?: unknown }) {
   const summary = run.sourceSummary;
@@ -392,7 +805,7 @@ type FullPayrollRow = BonusManagerSummary & {
   disciplineBonus: number;
   grossPay: number;
   netPay: number;
-  salaryRule: 'standard' | 'noDayPay' | 'belaPercent' | 'fixedSalary' | 'purchaseManager';
+  salaryRule: 'standard' | 'noDayPay' | 'belaPercent' | 'fixedSalary' | 'purchaseManager' | 'unconfigured';
   payrollStatus: 'OK' | 'Проверить';
   payrollReasons: string[];
 };
@@ -582,6 +995,57 @@ const payrollEmployees: Record<string, PayrollEmployee> = {
     salaryType: 'purchase_manager',
   },
 };
+
+function isConfiguredSalaryType(value: string | null): value is ConfiguredSalaryType {
+  return Boolean(value && isPayrollWorkbookSalaryTypeConfigured(value));
+}
+
+function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey: string) {
+  const directory: Record<string, PayrollEmployee> = { ...payrollEmployees };
+  for (const user of users) {
+    const name = user.payrollName?.trim() || user.name.trim();
+    if (!name) continue;
+    if (!user.isActive || (isConfiguredSalaryType(user.payrollSalaryType) && !isPayrollEmployeeRuleActive(user, periodKey))) {
+      delete directory[name];
+      continue;
+    }
+    if (!isConfiguredSalaryType(user.payrollSalaryType)) continue;
+    const existing = directory[name];
+    directory[name] = {
+      name,
+      department: user.payrollReportGroup || getPayrollWorkbookGroup(user.payrollSalaryType),
+      position: existing?.position || user.payrollReportGroup || getPayrollWorkbookGroup(user.payrollSalaryType),
+      salaryType: user.payrollSalaryType,
+      salary: user.payrollSalaryType === 'fixed_salary' ? user.payrollFixedSalary ?? 0 : undefined,
+      activeThroughPeriod: user.payrollRuleThrough ?? existing?.activeThroughPeriod,
+    };
+  }
+  return directory;
+}
+
+function buildUnconfiguredPayrollRows(users: PayrollDirectoryUser[], directory: Record<string, PayrollEmployee>, periodKey: string, accountedEmployeeNames: Set<string>): FullPayrollRow[] {
+  return users
+    .filter((user) => {
+      if (!user.isActive || user.role !== 'EMPLOYEE') return false;
+      const name = user.payrollName?.trim() || user.name.trim();
+      if (!name || directory[name] || accountedEmployeeNames.has(name) || payrollExcludedEmployeeNames.includes(name)) return false;
+      return !isConfiguredSalaryType(user.payrollSalaryType) || !isPayrollEmployeeRuleActive(user, periodKey);
+    })
+    .map((user) => ({
+      manager: user.payrollName?.trim() || user.name.trim(),
+      department: user.department === 'wholesale' ? 'Опт' as const : 'Розница' as const,
+      payrollDepartment: 'Требует настройки',
+      position: 'Сотрудник',
+      salaryType: 'unconfigured' as const,
+      revenue: 0, grossProfit: 0, creditBonus: 0, filmBonus: 0, plotterBonus: 0, techBonus: 0, accessoryBonus: 0,
+      wholesaleBonus: 0, totalBonus: 0, workedDays: null, lateCount: null, advance: 0, agentCreditCommission: 0,
+      fixedSalary: 0, fixedBonus: 0, fixedDeduction: 0, purchaseBase: null, purchasePercent: 0, purchasePercentAmount: 0,
+      purchaseTargetAdjustment: 0, purchaseTargetSalary: 0, comment: '', daysSource: 'manual' as const, dayRate: 0,
+      dayPay: 0, salesBonus: 0, disciplineBonus: 0, grossPay: 0, netPay: 0, salaryRule: 'unconfigured' as const,
+      payrollStatus: 'Проверить' as const,
+      payrollReasons: ['Не настроено правило зарплаты для выбранного периода'],
+    }));
+}
 
 const payrollAttendanceConfig: Record<string, PayrollAttendanceConfig> = {
   'Ахобекова Залина': {
@@ -2940,20 +3404,51 @@ function mergeBonusManagerSummaries(managerSummaries: BonusManagerSummary[]) {
   return Array.from(merged.values());
 }
 
-function buildSalesPayrollSummaries(managerSummaries: BonusManagerSummary[]) {
+function buildSalesPayrollSummaries(managerSummaries: BonusManagerSummary[], employeeDirectory: Record<string, PayrollEmployee> = payrollEmployees) {
   const mergedManagerSummaries = mergeBonusManagerSummaries(managerSummaries);
   const summariesByManager = new Map(mergedManagerSummaries.map((summary) => [summary.manager, summary]));
-  const payrollSalesSummaries = Object.values(payrollEmployees)
+  const payrollSalesSummaries = Object.values(employeeDirectory)
     .filter((employee) => employee.salaryType === 'vl_percent' || employee.salaryType === 'wholesale_percent' || employee.salaryType === 'retail_sales_bonus')
     .map((employee) => summariesByManager.get(employee.name) ?? buildEmptyManagerSummary(employee));
-  const reportOnlySummaries = mergedManagerSummaries.filter((summary) => !payrollEmployees[summary.manager]);
+  const reportOnlySummaries = mergedManagerSummaries.filter((summary) => !employeeDirectory[summary.manager]);
 
   return [...payrollSalesSummaries, ...reportOnlySummaries];
 }
 
-function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManualInput | undefined): FullPayrollRow {
-  const employee = payrollEmployees[summary.manager];
-  const salaryType = employee?.salaryType ?? (summary.department === 'Опт' ? 'wholesale_percent' : 'retail_sales_bonus');
+function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManualInput | undefined, employeeDirectory: Record<string, PayrollEmployee> = payrollEmployees): FullPayrollRow {
+  const employee = employeeDirectory[summary.manager];
+  if (!employee) {
+    return {
+      ...summary,
+      payrollDepartment: PAYROLL_WORKBOOK_UNCONFIGURED_GROUP,
+      position: 'Сотрудник',
+      salaryType: 'unconfigured',
+      workedDays: null,
+      lateCount: null,
+      advance: 0,
+      agentCreditCommission: 0,
+      fixedSalary: 0,
+      fixedBonus: 0,
+      fixedDeduction: 0,
+      purchaseBase: null,
+      purchasePercent: 0,
+      purchasePercentAmount: 0,
+      purchaseTargetAdjustment: 0,
+      purchaseTargetSalary: 0,
+      comment: manual?.comment ?? '',
+      daysSource: 'manual',
+      dayRate: 0,
+      dayPay: 0,
+      salesBonus: 0,
+      disciplineBonus: 0,
+      grossPay: 0,
+      netPay: 0,
+      salaryRule: 'unconfigured',
+      payrollStatus: 'Проверить',
+      payrollReasons: ['Не настроено правило зарплаты для выбранного периода'],
+    };
+  }
+  const salaryType = employee.salaryType;
   const manualWorkedDays = parseManualNumber(manual?.workedDays ?? '');
   const manualLateCount = parseManualNumber(manual?.lateCount ?? '');
   const salaryRule = isBelaManager(summary.manager) ? 'belaPercent' : isNoDayPayManager(summary.manager) ? 'noDayPay' : 'standard';
@@ -3061,8 +3556,8 @@ function applyPayrollBonuses(rows: FullPayrollRow[], bonuses: PayrollBonus[]): F
   });
 }
 
-function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>, periodKey: string): FullPayrollRow[] {
-  return Object.values(payrollEmployees)
+function buildFixedPayrollRows(inputs: Record<string, FixedPayrollInput>, periodKey: string, employeeDirectory: Record<string, PayrollEmployee> = payrollEmployees): FullPayrollRow[] {
+  return Object.values(employeeDirectory)
     .filter((employee) => employee.salaryType === 'fixed_salary' && isPayrollEmployeeActiveForPeriod(employee, periodKey))
     .map((employee) => {
       const input = inputs[employee.name];
@@ -3130,8 +3625,8 @@ function parsePurchaseReport(rows: SheetRow[]) {
   };
 }
 
-function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined, report: PurchaseReportState | null): FullPayrollRow {
-  const employee = payrollEmployees[purchaseManagerName];
+function buildPurchasePayrollRow(input: PurchasePayrollInput | undefined, report: PurchaseReportState | null, employeeDirectory: Record<string, PayrollEmployee> = payrollEmployees): FullPayrollRow {
+  const employee = employeeDirectory[purchaseManagerName] ?? payrollEmployees[purchaseManagerName];
   const purchaseBase = report?.base ?? null;
   const purchasePercentAmount = purchaseBase === null ? 0 : purchaseBase * purchasePercent;
   const dayPay = purchaseStandardWorkedDays * purchaseDayRate;
@@ -3373,11 +3868,15 @@ export default function AdminPayrollPage() {
   const [payrollFinalReplacement, setPayrollFinalReplacement] = useState<PayrollFinalReplacement | null>(null);
   const [selectedSavedRun, setSelectedSavedRun] = useState<SavedPayrollRunDetail | null>(null);
   const [isSavedRunLoading, setIsSavedRunLoading] = useState(false);
+  const [isSavedRunExporting, setIsSavedRunExporting] = useState(false);
   const [classificationRules, setClassificationRules] = useState<PayrollClassificationRule[]>([]);
   const [isClassificationRulesLoading, setIsClassificationRulesLoading] = useState(false);
   const [classificationRuleActionId, setClassificationRuleActionId] = useState<string | null>(null);
   const [classificationRuleMessage, setClassificationRuleMessage] = useState('');
   const [classificationRuleError, setClassificationRuleError] = useState('');
+  const [payrollDirectoryUsers, setPayrollDirectoryUsers] = useState<PayrollDirectoryUser[]>([]);
+  const [payrollDirectoryError, setPayrollDirectoryError] = useState('');
+  const [isPayrollDirectoryLoading, setIsPayrollDirectoryLoading] = useState(true);
   const loadedManualPayrollKey = useRef('');
   const skipNextManualPayrollSave = useRef(true);
 
@@ -3430,6 +3929,14 @@ export default function AdminPayrollPage() {
   useEffect(() => {
     void loadSavedPayrollPeriods();
     void loadClassificationRules();
+    void fetch('/api/admin/employees', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Не удалось загрузить правила сотрудников.');
+        setPayrollDirectoryUsers(await response.json() as PayrollDirectoryUser[]);
+        setPayrollDirectoryError('');
+      })
+      .catch((caughtError) => setPayrollDirectoryError(caughtError instanceof Error ? caughtError.message : 'Не удалось загрузить правила сотрудников.'))
+      .finally(() => setIsPayrollDirectoryLoading(false));
   }, []);
 
   useEffect(() => {
@@ -3463,13 +3970,21 @@ export default function AdminPayrollPage() {
   const totalRevenue = useMemo(() => classification.rows.reduce((sum, row) => sum + row.revenue, 0), [classification.rows]);
   const totalGrossProfit = useMemo(() => classification.rows.reduce((sum, row) => sum + row.grossProfit, 0), [classification.rows]);
   const totalBonus = useMemo(() => classification.managerSummaries.reduce((sum, row) => sum + row.totalBonus, 0), [classification.managerSummaries]);
-  const salesPayrollRows = useMemo(
-    () => buildSalesPayrollSummaries(classification.managerSummaries).map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, manualPayroll))),
-    [classification.managerSummaries, manualPayroll],
+  const payrollEmployeeDirectory = useMemo(
+    () => buildPayrollEmployeeDirectory(payrollDirectoryUsers, selectedPayrollPeriodKey),
+    [payrollDirectoryUsers, selectedPayrollPeriodKey],
   );
-  const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll, selectedPayrollPeriodKey), [fixedPayroll, selectedPayrollPeriodKey]);
-  const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport), [purchasePayroll, purchaseReport]);
-  const regularPayrollRows = useMemo(() => applyBelaPercentRule([...salesPayrollRows, ...fixedPayrollRows, purchasePayrollRow], selectedPayrollPeriodKey), [salesPayrollRows, fixedPayrollRows, purchasePayrollRow, selectedPayrollPeriodKey]);
+  const salesPayrollRows = useMemo(
+    () => buildSalesPayrollSummaries(classification.managerSummaries, payrollEmployeeDirectory).map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, manualPayroll), payrollEmployeeDirectory)),
+    [classification.managerSummaries, manualPayroll, payrollEmployeeDirectory],
+  );
+  const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll, selectedPayrollPeriodKey, payrollEmployeeDirectory), [fixedPayroll, selectedPayrollPeriodKey, payrollEmployeeDirectory]);
+  const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport, payrollEmployeeDirectory), [purchasePayroll, purchaseReport, payrollEmployeeDirectory]);
+  const unconfiguredPayrollRows = useMemo(
+    () => buildUnconfiguredPayrollRows(payrollDirectoryUsers, payrollEmployeeDirectory, selectedPayrollPeriodKey, new Set(salesPayrollRows.map((row) => row.manager))),
+    [payrollDirectoryUsers, payrollEmployeeDirectory, salesPayrollRows, selectedPayrollPeriodKey],
+  );
+  const regularPayrollRows = useMemo(() => applyBelaPercentRule([...salesPayrollRows, ...fixedPayrollRows, purchasePayrollRow, ...unconfiguredPayrollRows], selectedPayrollPeriodKey), [salesPayrollRows, fixedPayrollRows, purchasePayrollRow, unconfiguredPayrollRows, selectedPayrollPeriodKey]);
   const bonusValidation = useMemo(() => {
     try {
       if (!bonusesReady) throw new Error('Загружается черновик премий.');
@@ -4763,10 +5278,11 @@ export default function AdminPayrollPage() {
 
       if (row.salaryType === 'fixed_salary') {
         push('Фиксированный оклад', row.fixedSalary, 'оклад', row.fixedSalary, row.position);
-        push('Премия', row.fixedBonus, 'ручной ввод', row.fixedBonus);
+        if (row.fixedBonus) push('Премия', row.fixedBonus, 'ручной ввод', row.fixedBonus);
         pushBonuses();
-        push('Аванс', row.advance, 'удержание', -row.advance);
-        push('Удержание', row.fixedDeduction, 'ручной ввод', -row.fixedDeduction);
+        push('Начислено за месяц', null, 'оклад + премии', row.grossPay);
+        if (row.advance) push('Аванс', row.advance, 'вычитается после начисления зарплаты', -row.advance);
+        if (row.fixedDeduction) push('Удержание', row.fixedDeduction, 'вычитается после начисления зарплаты', -row.fixedDeduction);
         push('К выплате', row.grossPay, 'оклад + премия - аванс - удержание', row.netPay, row.comment);
         return rowsForEmployee;
       }
@@ -4776,8 +5292,9 @@ export default function AdminPayrollPage() {
         push('Закупки 1,75%', row.purchaseBase, 'закупки × 1,75%', row.purchasePercentAmount);
         push('Доплата закупщику до минимальной зарплаты', row.purchaseTargetSalary, 'минимальная зарплата − оплата дней − бонус с закупок 1,75%', row.purchaseTargetAdjustment);
         pushBonuses();
-        push('Аванс', row.advance, 'удержание', -row.advance);
-        push('Удержание', row.fixedDeduction, 'ручной ввод', -row.fixedDeduction);
+        push('Начислено за месяц', null, 'оплата за дни + процент с закупок + доплата + премии', row.grossPay);
+        if (row.advance) push('Аванс', row.advance, 'вычитается после начисления зарплаты', -row.advance);
+        if (row.fixedDeduction) push('Удержание', row.fixedDeduction, 'вычитается после начисления зарплаты', -row.fixedDeduction);
         push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType), row.netPay, row.comment);
         return rowsForEmployee;
       }
@@ -4801,7 +5318,8 @@ export default function AdminPayrollPage() {
       if (row.disciplineBonus) push('Дисциплина', row.lateCount, 'опозданий ≤ 3', row.disciplineBonus);
       if (row.agentCreditCommission > 0) push('Агентские по кредитам', null, 'ручной ввод', row.agentCreditCommission, 'Отдельное ручное начисление');
       pushBonuses();
-      push('Аванс', row.advance, 'удержание', -row.advance);
+      push('Начислено за месяц', null, 'сумма начислений до аванса и удержаний', row.grossPay);
+      if (row.advance) push('Аванс', row.advance, 'вычитается после начисления зарплаты', -row.advance);
       push('К выплате', row.grossPay, `${getSalaryFormulaLabel(row.salaryType, selectedPayrollPeriodKey)}${row.oneTimeBonus ? '; + разовая премия' : ''}`, row.netPay, row.comment);
 
       return rowsForEmployee;
@@ -4979,6 +5497,138 @@ export default function AdminPayrollPage() {
     }
   }
 
+  async function exportSavedPayrollWorkbook() {
+    if (!selectedSavedRun) return;
+    setIsSavedRunExporting(true);
+    setSaveError('');
+    setSaveStatus('');
+
+    try {
+      const sortedRows = sortPayrollWorkbookEmployees(selectedSavedRun.employeeResults);
+      const employeeRows = sortedRows.map((row) => {
+        const savedDetailAmount = (component: string) => row.calculationDetails
+          .filter((detail) => detail.component === component)
+          .reduce((sum, detail) => sum + detail.amount, 0);
+        const performancePay = row.salaryType === 'purchase_manager'
+          ? row.purchasePercentAmount
+          : row.salaryType === 'wholesale_percent' || row.salaryType === 'retail_sales_bonus'
+            ? row.salesBonus
+            : row.salaryType === 'vl_percent'
+              ? savedDetailAmount('Начисление 12%')
+              : 0;
+        const basePay = row.salaryType === 'fixed_salary' ? row.fixedSalary : row.dayPay;
+        const oneTimeBonus = (row.adjustments ?? []).filter((adjustment) => adjustment.type === 'ONE_TIME_BONUS').reduce((sum, adjustment) => sum + adjustment.amount, 0);
+        const additionalPay = row.fixedBonus + row.agentCreditCommission + oneTimeBonus;
+        const specialPay = row.salaryType === 'purchase_manager'
+          ? row.purchaseTargetAdjustment
+          : row.salaryType === 'vl_percent'
+            ? savedDetailAmount('Доплата до минимальной зарплаты')
+            : row.grossPay - basePay - performancePay - row.disciplineBonus - additionalPay;
+        return {
+          employeeName: row.employeeName,
+          category: row.reportGroup || getPayrollWorkbookGroup(row.salaryType),
+          salaryType: row.salaryType,
+          grossPay: toExportMoney(row.grossPay),
+          workedDays: row.workedDays,
+          basePay: toExportMoney(basePay),
+          performancePay: toExportMoney(performancePay),
+          specialPay: toExportMoney(specialPay),
+          disciplinePay: toExportMoney(row.disciplineBonus),
+          additionalPay: toExportMoney(additionalPay),
+          advance: toExportMoney(row.advance),
+          deduction: toExportMoney(row.fixedDeduction),
+          netPay: toExportMoney(row.netPay),
+          status: getPayrollWorkbookStatusLabel(row.status),
+          comment: [row.comment, ...getSavedEmployeeReasons(row)].filter(Boolean).join(' · '),
+        };
+      });
+      const accrualRows = sortedRows.flatMap((employee) => {
+        const reportGroup = employee.reportGroup || getPayrollWorkbookGroup(employee.salaryType);
+        const visibleDetails = employee.calculationDetails
+          .filter((detail) => !(detail.amount === 0 && ['Премия', 'Аванс', 'Удержание'].includes(detail.component)))
+          .map((detail) => [
+            employee.employeeName,
+            reportGroup,
+            employee.position || reportGroup,
+            getPayrollWorkbookComponentLabel(detail.component),
+            detail.base,
+            detail.formula || 'Не сохранено в этой версии',
+            detail.amount,
+            detail.comment,
+          ] as Array<string | number | null>);
+        const payoutIndex = visibleDetails.findIndex((detail) => detail[3] === 'К выплате');
+        if (!visibleDetails.some((detail) => detail[3] === 'Начислено за месяц')) {
+          visibleDetails.splice(payoutIndex >= 0 ? payoutIndex : visibleDetails.length, 0, [
+            employee.employeeName,
+            reportGroup,
+            employee.position || reportGroup,
+            'Начислено за месяц',
+            null,
+            'сумма начислений до аванса и удержаний',
+            employee.grossPay,
+            '',
+          ]);
+        }
+        if (!visibleDetails.some((detail) => detail[3] === 'К выплате')) {
+          visibleDetails.push([
+            employee.employeeName,
+            reportGroup,
+            employee.position || reportGroup,
+            'К выплате',
+            employee.grossPay,
+            'начислено за месяц − аванс − удержания',
+            employee.netPay,
+            employee.comment,
+          ]);
+        }
+        return visibleDetails;
+      });
+      const checkRows = sortedRows.flatMap((employee) => {
+        const reasons = getSavedEmployeeReasons(employee);
+        return reasons.map((reason) => [employee.employeeName, reason, 1, 'Проверить', reason, '', '', '', '', '', '']);
+      });
+      const reviewRows = getSavedRunReviewReasons(selectedSavedRun).map((item) => ['Расчёт в целом', item.reason, item.count, 'Проверить', item.reason, '', '', '', '', '', '']);
+      const sourceRows: Array<Array<string | number | null>> = [
+        ['Период', selectedSavedRun.period.periodKey, 'Месяц расчёта'],
+        ['Версия расчёта', `Расчёт №${selectedSavedRun.runNumber} · ${getPayrollRunStatusLabel(selectedSavedRun.status)}`, 'Экспортируется зафиксированная версия без повторного пересчёта'],
+        ['Сохранён', new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU'), 'Дата фиксации расчёта в портале'],
+        ['Всего начислено', selectedSavedRun.grossPay, 'Сохранённый итог по всем сотрудникам'],
+        ['К выплате', selectedSavedRun.netPay, 'После авансов и удержаний'],
+        ...selectedSavedRun.sourceFiles.map((file) => [
+          `Источник: ${getSavedSourceTypeLabel(file.type)}`,
+          file.originalName,
+          `Лист: ${file.selectedSheet ?? 'не сохранён'}; строк: ${file.rowCount ?? 'не сохранено'}; распознано: ${file.parsedRowCount ?? 'не сохранено'}`,
+        ]),
+        ...selectedSavedRun.manualInputs.map((input) => [
+          `Ручные данные: ${input.employeeName}`,
+          getSavedInputTypeLabel(input.inputType),
+          [`дни ${input.workedDays ?? '—'}`, `опоздания ${input.lateCount ?? '—'}`, `аванс ${input.advance ?? input.purchaseAdvance ?? '—'}`, `премия ${input.fixedBonus ?? '—'}`, `удержание ${input.fixedDeduction ?? input.purchaseDeduction ?? '—'}`, input.comment].filter(Boolean).join('; '),
+        ]),
+      ];
+      const savedRules = Array.from(new Map(sortedRows.flatMap((employee) => employee.calculationDetails).map((detail) => [
+        `${detail.component}|${detail.formula}`,
+        [getPayrollWorkbookComponentLabel(detail.component), detail.formula || 'Не сохранено в этой версии', 'Формула из зафиксированной расшифровки'],
+      ])).values());
+      sourceRows.push(...savedRules);
+
+      await downloadPayrollWorkbook({
+        periodLabel: `${months[selectedSavedRun.period.month]} ${selectedSavedRun.period.year}`,
+        versionLabel: `Сохранённый расчёт №${selectedSavedRun.runNumber} · ${getPayrollRunStatusLabel(selectedSavedRun.status)}`,
+        generatedAt: new Date().toLocaleString('ru-RU'),
+        employeeRows,
+        accrualRows,
+        checkRows: [...reviewRows, ...checkRows],
+        sourceRows,
+        fileName: `Зарплата_${months[selectedSavedRun.period.month]}_${selectedSavedRun.period.year}_расчёт_${selectedSavedRun.runNumber}.xlsx`,
+      });
+      setSaveStatus(`Ведомость по сохранённому расчёту №${selectedSavedRun.runNumber} скачана.`);
+    } catch (caughtError) {
+      setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось сформировать ведомость сохранённого расчёта.');
+    } finally {
+      setIsSavedRunExporting(false);
+    }
+  }
+
   function buildCalculationDetailsByEmployee() {
     return buildAccrualExportRows().reduce<Record<string, Array<{ component: string; base: number | null; formula: string; amount: number; comment: string; order: number }>>>((acc, detailRow) => {
       const employeeName = String(detailRow[0] ?? '');
@@ -5149,6 +5799,7 @@ export default function AdminPayrollPage() {
         payrollDepartment: row.payrollDepartment,
         position: row.position,
         salaryType: row.salaryType,
+        reportGroup: getPayrollWorkbookGroup(row.salaryType),
         salaryRule: row.salaryRule,
         workedDays: row.workedDays,
         lateCount: row.lateCount,
@@ -5189,6 +5840,8 @@ export default function AdminPayrollPage() {
 
   async function savePayrollSnapshot() {
     if (!fullPayrollRows.length) return;
+    if (isPayrollDirectoryLoading) { setSaveError('Правила сотрудников ещё загружаются. Подождите несколько секунд.'); return; }
+    if (payrollDirectoryError) { setSaveError(`${payrollDirectoryError} Расчёт не сохранён, чтобы не пропустить нового сотрудника.`); return; }
     if (bonusValidation.error) { setSaveError(bonusValidation.error); return; }
     if (isCurrentPeriodClosed) {
       setSaveError('Период закрыт. Новые расчёты за этот месяц запрещены.');
@@ -5224,273 +5877,73 @@ export default function AdminPayrollPage() {
     }
   }
 
-  async function exportPayrollWorkbook() {
+  async function exportCurrentPayrollWorkbook() {
+    if (isPayrollDirectoryLoading) { setSaveError('Правила сотрудников ещё загружаются. Подождите несколько секунд.'); return; }
+    if (payrollDirectoryError) { setSaveError(`${payrollDirectoryError} Ведомость не сформирована, чтобы не пропустить нового сотрудника.`); return; }
     if (bonusValidation.error) { setSaveError(bonusValidation.error); return; }
-    const XLSX = (await import('xlsx-js-style')).default;
-    const workbookExport = XLSX.utils.book_new();
-    const periodLabel = `${months[Number(month)]} ${year}`;
-    const generatedAt = new Date().toLocaleString('ru-RU');
-    const moneyFormat = '# ##0';
-    const accrualMoneyFormat = '# ##0,00 ₽;[Red]-# ##0,00 ₽';
-    const integerFormat = '#,##0';
-    const border = {
-      top: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    };
-    const headerStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border };
-    const titleStyle = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 16 }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center', vertical: 'center' }, border };
-    const summaryLabelStyle = { font: { bold: true, color: { rgb: '475569' } }, fill: { fgColor: { rgb: 'F8FAFC' } }, alignment: { horizontal: 'center' }, border };
-    const summaryValueStyle = { font: { bold: true, color: { rgb: '0F172A' } }, fill: { fgColor: { rgb: 'E2E8F0' } }, alignment: { horizontal: 'center' }, border };
-    const totalStyle = { font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, border };
-    const warningStyle = { fill: { fgColor: { rgb: 'FEF3C7' } } };
-    const retailGroupStyle = { fill: { fgColor: { rgb: 'F3F8F6' } }, border };
-    const wholesaleGroupStyle = { fill: { fgColor: { rgb: 'F2F7FB' } }, border };
-    const purchaseGroupStyle = { fill: { fgColor: { rgb: 'FAF7EF' } }, border };
-    const mutedGroupStyle = { fill: { fgColor: { rgb: 'F5F4F7' } }, border };
-    const fixedColumnStyle = { fill: { fgColor: { rgb: 'E5E7EB' } }, border };
-    const dayColumnStyle = { fill: { fgColor: { rgb: 'FFEDD5' } }, border };
-    const salesColumnStyle = { fill: { fgColor: { rgb: 'DBEAFE' } }, border };
-    const purchaseColumnStyle = { fill: { fgColor: { rgb: 'EDE9FE' } }, border };
-    const greenColumnStyle = { fill: { fgColor: { rgb: 'DCFCE7' } }, border };
-    const deductionColumnStyle = { fill: { fgColor: { rgb: 'FCE7F3' } }, border };
-    const payoutColumnStyle = { font: { bold: true }, fill: { fgColor: { rgb: 'E0F2FE' } }, border };
-    const disciplineRemovedStyle = { font: { bold: true, color: { rgb: '92400E' } }, fill: { fgColor: { rgb: 'FDE68A' } }, border };
-    const checkErrorStyle = { fill: { fgColor: { rgb: 'FEE2E2' } } };
-    const checkWarningStyle = { fill: { fgColor: { rgb: 'FEF3C7' } } };
-    const baseCellStyle = { border, alignment: { vertical: 'center' } };
-    const fileInfoStyle = { border, alignment: { vertical: 'center', wrapText: true }, fill: { fgColor: { rgb: 'F8FAFC' } } };
-    const accrualHeaderStyle = {
-      font: { bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '0F172A' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-      border,
-    };
-    const accrualBlockBorder = {
-      top: { style: 'medium', color: { rgb: '64748B' } },
-      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    };
-    const accrualPayoutBorder = {
-      top: { style: 'medium', color: { rgb: '0F766E' } },
-      bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-    };
-    const setCellStyle = (sheet: Record<string, unknown>, address: string, style: object) => {
-      const cell = sheet[address] as { s?: object } | undefined;
-      if (cell) cell.s = { ...(cell.s ?? {}), ...style };
-    };
-    const mergeCellStyle = (sheet: Record<string, unknown>, rowNumber: number, col: number, style: object) => {
-      setCellStyle(sheet, XLSX.utils.encode_cell({ r: rowNumber - 1, c: col }), style);
-    };
-    const setRowStyle = (sheet: Record<string, unknown>, rowNumber: number, fromCol: number, toCol: number, style: object) => {
-      for (let col = fromCol; col <= toCol; col += 1) setCellStyle(sheet, XLSX.utils.encode_cell({ r: rowNumber - 1, c: col }), style);
-    };
-    const setColumnNumberFormat = (sheet: Record<string, unknown>, firstRow: number, lastRow: number, columns: number[], format: string) => {
-      for (let rowIndex = firstRow - 1; rowIndex <= lastRow - 1; rowIndex += 1) {
-        for (const col of columns) {
-          const cell = sheet[XLSX.utils.encode_cell({ r: rowIndex, c: col })] as { z?: string } | undefined;
-          if (cell) cell.z = format;
-        }
-      }
-    };
-
-    const statusCounts = fullPayrollRows.reduce(
-      (acc, row) => {
-        const status = getPayrollRowStatus(row);
-        if (status === 'OK') acc.ok += 1;
-        else acc.review += 1;
-        return acc;
-      },
-      { ok: 0, review: 0 },
-    );
-    const totalDeductions = fullPayrollRows.reduce((sum, row) => sum + row.fixedDeduction, 0);
-    const totalMainAmount = fullPayrollRows.reduce((sum, row) => sum + getPayrollExportMainAmount(row), 0);
-    const totalFixedBonus = fullPayrollRows.reduce((sum, row) => sum + row.fixedBonus + (row.oneTimeBonus ?? 0), 0);
-
-    const summaryRows = [
-      ['Зарплатная ведомость — ' + periodLabel],
-      ['Дата формирования', '', generatedAt, 'Файл продаж', workbook?.fileName ?? 'не загружен', '', '', 'Файл закупок', purchaseReport?.fileName ?? 'не загружен'],
-      [],
-      ['Всего сотрудников', '', fullPayrollRows.length, '', 'Всего начислено', '', toExportMoney(payrollTotals.grossPay), '', 'Всего авансов', '', toExportMoney(payrollTotals.advance), ''],
-      ['Всего удержаний', '', toExportMoney(totalDeductions), '', 'Итого к выплате', '', toExportMoney(payrollTotals.netPay), '', 'Готово', statusCounts.ok, 'Проверить', statusCounts.review],
-      [],
-    ];
-    const tableHeader = ['№', 'Сотрудник', 'Категория', 'Итого начислено', 'Фикс / оклад', 'Дни', 'Ставка', 'Оплата дней', 'Продажи / бонус', 'Закупки / бонус', 'Доплата до минимума', 'Начислено 12%', 'Дисциплина', 'Премия', 'Агентские', 'Аванс', 'Удержание', 'К выплате', 'Статус', 'Комментарий'];
-    const tableRows = fullPayrollRows.map((row, index) => [
-      index + 1,
-      row.manager,
-      getPayrollExportCategory(row),
-      toExportMoney(row.grossPay),
-      row.salaryType === 'fixed_salary' ? toExportMoney(row.fixedSalary) : '',
-      row.workedDays ?? '',
-      row.dayRate || '',
-      toExportMoney(row.dayPay),
-      row.salaryType === 'retail_sales_bonus' || row.salaryType === 'wholesale_percent' ? toExportMoney(row.salesBonus) : '',
-      row.salaryType === 'purchase_manager' ? toExportMoney(row.purchasePercentAmount) : '',
-      row.salaryType === 'purchase_manager' ? toExportMoney(row.purchaseTargetAdjustment) : row.salaryType === 'vl_percent' ? toExportMoney(row.minimumGuaranteeAdjustment ?? 0) : '',
-      row.salaryType === 'vl_percent' ? toExportMoney(row.belaPercentAmount ?? 0) : '',
-      row.salaryType === 'fixed_salary' || row.salaryType === 'purchase_manager' ? '' : toExportMoney(row.disciplineBonus),
-      toExportMoney(row.fixedBonus + (row.oneTimeBonus ?? 0)),
-      toExportMoney(row.agentCreditCommission),
-      toExportMoney(row.advance),
-      toExportMoney(row.fixedDeduction),
-      toExportMoney(row.netPay),
-      getPayrollRowStatus(row),
-      getPayrollRowExportComment(row),
-    ]);
-    const totalPurchaseBonus = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'purchase_manager' ? row.purchasePercentAmount : 0), 0);
-    const totalPurchaseAdjustment = fullPayrollRows.reduce((sum, row) => sum + row.purchaseTargetAdjustment + (row.minimumGuaranteeAdjustment ?? 0), 0);
-    const totalVlAmount = fullPayrollRows.reduce((sum, row) => sum + (row.belaPercentAmount ?? 0), 0);
-    const totalFixedSalary = fullPayrollRows.reduce((sum, row) => sum + (row.salaryType === 'fixed_salary' ? row.fixedSalary : 0), 0);
-    const totalAgentCreditCommission = fullPayrollRows.reduce((sum, row) => sum + row.agentCreditCommission, 0);
-    const totalRow = ['ИТОГО', '', '', toExportMoney(payrollTotals.grossPay), toExportMoney(totalFixedSalary), '', '', toExportMoney(payrollTotals.dayPay), toExportMoney(totalBonus), toExportMoney(totalPurchaseBonus), toExportMoney(totalPurchaseAdjustment), toExportMoney(totalVlAmount), toExportMoney(payrollTotals.disciplineBonus), toExportMoney(totalFixedBonus), toExportMoney(totalAgentCreditCommission), toExportMoney(payrollTotals.advance), toExportMoney(totalDeductions), toExportMoney(payrollTotals.netPay), '', ''];
-    const summarySheet = XLSX.utils.aoa_to_sheet([...summaryRows, tableHeader, ...tableRows, totalRow]);
-    const tableHeaderRow = summaryRows.length + 1;
-    const totalRowNumber = tableHeaderRow + tableRows.length + 1;
-    summarySheet['!cols'] = [5, 24, 13, 13, 11, 6, 8, 11, 13, 13, 11, 9, 10, 9, 10, 10, 10, 12, 11, 28].map((wch) => ({ wch }));
-    summarySheet['!rows'] = [{ hpt: 28 }, { hpt: 38 }, { hpt: 8 }, { hpt: 26 }, { hpt: 26 }, { hpt: 8 }, { hpt: 38 }];
-    summarySheet['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 19 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
-      { s: { r: 1, c: 4 }, e: { r: 1, c: 6 } },
-      { s: { r: 1, c: 8 }, e: { r: 1, c: 11 } },
-      { s: { r: 3, c: 0 }, e: { r: 3, c: 1 } },
-      { s: { r: 3, c: 2 }, e: { r: 3, c: 3 } },
-      { s: { r: 3, c: 4 }, e: { r: 3, c: 5 } },
-      { s: { r: 3, c: 6 }, e: { r: 3, c: 7 } },
-      { s: { r: 3, c: 8 }, e: { r: 3, c: 9 } },
-      { s: { r: 3, c: 10 }, e: { r: 3, c: 11 } },
-      { s: { r: 4, c: 0 }, e: { r: 4, c: 1 } },
-      { s: { r: 4, c: 2 }, e: { r: 4, c: 3 } },
-      { s: { r: 4, c: 4 }, e: { r: 4, c: 5 } },
-      { s: { r: 4, c: 6 }, e: { r: 4, c: 7 } },
-    ];
-    summarySheet['!autofilter'] = { ref: `A${tableHeaderRow}:T${totalRowNumber}` };
-    summarySheet['!freeze'] = { xSplit: 0, ySplit: tableHeaderRow, topLeftCell: `A${tableHeaderRow + 1}`, activePane: 'bottomLeft', state: 'frozen' };
-    setRowStyle(summarySheet, 1, 0, 19, titleStyle);
-    [0, 2, 3, 4, 7, 8].forEach((col) => mergeCellStyle(summarySheet, 2, col, fileInfoStyle));
-    [0, 3, 7].forEach((col) => mergeCellStyle(summarySheet, 2, col, { ...fileInfoStyle, font: { bold: true, color: { rgb: '475569' } } }));
-    [0, 4, 8].forEach((col) => mergeCellStyle(summarySheet, 4, col, summaryLabelStyle));
-    [2, 6, 10].forEach((col) => mergeCellStyle(summarySheet, 4, col, summaryValueStyle));
-    [0, 4, 8, 10].forEach((col) => mergeCellStyle(summarySheet, 5, col, summaryLabelStyle));
-    [2, 6, 9, 11].forEach((col) => mergeCellStyle(summarySheet, 5, col, summaryValueStyle));
-    setRowStyle(summarySheet, tableHeaderRow, 0, 19, headerStyle);
-    setRowStyle(summarySheet, totalRowNumber, 0, 19, totalStyle);
-    tableRows.forEach(([, , category, , , , , , , , , , , , , , , , status], index) => {
-      const rowNumber = tableHeaderRow + index + 1;
-      for (let col = 0; col <= 19; col += 1) mergeCellStyle(summarySheet, rowNumber, col, baseCellStyle);
-      if (category === 'Розница') [1, 2].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, retailGroupStyle));
-      if (category === 'Опт') [1, 2].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, wholesaleGroupStyle));
-      if (category === 'Закупки') [1, 2].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, purchaseGroupStyle));
-      if (category === 'ВЛ' || category === 'Фиксированная ЗП') [1, 2].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, mutedGroupStyle));
-      mergeCellStyle(summarySheet, rowNumber, 4, fixedColumnStyle);
-      [5, 6, 7].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, dayColumnStyle));
-      mergeCellStyle(summarySheet, rowNumber, 8, salesColumnStyle);
-      [9, 10].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, purchaseColumnStyle));
-      [11, 12].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, greenColumnStyle));
-      [15, 16].forEach((col) => mergeCellStyle(summarySheet, rowNumber, col, deductionColumnStyle));
-      mergeCellStyle(summarySheet, rowNumber, 17, payoutColumnStyle);
-      const payrollRow = fullPayrollRows[index];
-      if (payrollRow.salaryType !== 'fixed_salary' && payrollRow.salaryType !== 'purchase_manager' && payrollRow.lateCount !== null && payrollRow.lateCount > 3 && payrollRow.disciplineBonus === 0) {
-        mergeCellStyle(summarySheet, rowNumber, 12, disciplineRemovedStyle);
-      }
-      if (status === 'Проверить') mergeCellStyle(summarySheet, rowNumber, 18, warningStyle);
-    });
-    mergeCellStyle(summarySheet, tableHeaderRow, 4, { ...headerStyle, fill: { fgColor: { rgb: '6B7280' } } });
-    [5, 6, 7].forEach((col) => mergeCellStyle(summarySheet, tableHeaderRow, col, { ...headerStyle, fill: { fgColor: { rgb: 'C2410C' } } }));
-    mergeCellStyle(summarySheet, tableHeaderRow, 8, { ...headerStyle, fill: { fgColor: { rgb: '1D4ED8' } } });
-    [9, 10].forEach((col) => mergeCellStyle(summarySheet, tableHeaderRow, col, { ...headerStyle, fill: { fgColor: { rgb: '6D28D9' } } }));
-    [11, 12].forEach((col) => mergeCellStyle(summarySheet, tableHeaderRow, col, { ...headerStyle, fill: { fgColor: { rgb: '15803D' } } }));
-    [15, 16].forEach((col) => mergeCellStyle(summarySheet, tableHeaderRow, col, { ...headerStyle, fill: { fgColor: { rgb: 'BE185D' } } }));
-    mergeCellStyle(summarySheet, tableHeaderRow, 17, { ...headerStyle, fill: { fgColor: { rgb: '0F766E' } } });
-    setColumnNumberFormat(summarySheet, tableHeaderRow + 1, totalRowNumber, [3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17], moneyFormat);
-    setColumnNumberFormat(summarySheet, 4, 5, [1, 3, 5, 7], moneyFormat);
-    setColumnNumberFormat(summarySheet, tableHeaderRow + 1, totalRowNumber, [0, 5], integerFormat);
-    XLSX.utils.book_append_sheet(workbookExport, summarySheet, 'Ведомость ЗП');
-
-    const accrualHeader = ['Сотрудник', 'Категория', 'Тип расчёта', 'Компонент', 'База', 'Формула', 'Сумма', 'Комментарий'];
-    const accrualRows = buildAccrualExportRows();
-    const accrualSheet = XLSX.utils.aoa_to_sheet([accrualHeader, ...accrualRows]);
-    accrualSheet['!cols'] = [30, 18, 18, 38, 18, 48, 18, 50].map((wch) => ({ wch }));
-    accrualSheet['!autofilter'] = { ref: `A1:H${accrualRows.length + 1}` };
-    accrualSheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
-    accrualSheet['!rows'] = [{ hpt: 34 }, ...accrualRows.map((row) => ({ hpt: row[3] === 'К выплате' ? 26 : 22 }))];
-    setRowStyle(accrualSheet, 1, 0, 7, accrualHeaderStyle);
-    for (let rowNumber = 2; rowNumber <= accrualRows.length + 1; rowNumber += 1) {
-      const row = accrualRows[rowNumber - 2];
-      const previousRow = accrualRows[rowNumber - 3];
-      const isNewEmployee = !previousRow || previousRow[0] !== row[0];
-      const isPayoutRow = row[3] === 'К выплате';
-      const isZebraRow = rowNumber % 2 === 0;
-      const rowBorder = isPayoutRow ? accrualPayoutBorder : isNewEmployee ? accrualBlockBorder : border;
-      const rowStyle = {
-        border: rowBorder,
-        fill: { fgColor: { rgb: isPayoutRow ? 'E0F2FE' : isNewEmployee ? 'EEF2FF' : isZebraRow ? 'F8FAFC' : 'FFFFFF' } },
-        font: { bold: isPayoutRow },
-        alignment: { vertical: 'center', wrapText: true },
+    const sortedRows = sortPayrollWorkbookEmployees(fullPayrollRows.map((row) => ({ ...row, employeeName: row.manager })));
+    const employeeRows = sortedRows.map((row) => {
+      const performancePay = row.salaryType === 'purchase_manager'
+        ? row.purchasePercentAmount
+        : row.salaryType === 'wholesale_percent' || row.salaryType === 'retail_sales_bonus'
+          ? row.salesBonus
+          : row.salaryType === 'vl_percent'
+            ? row.belaPercentAmount ?? 0
+            : 0;
+      const basePay = row.salaryType === 'fixed_salary' ? row.fixedSalary : row.dayPay;
+      const specialPay = row.salaryType === 'purchase_manager' ? row.purchaseTargetAdjustment : row.salaryType === 'vl_percent' ? row.minimumGuaranteeAdjustment ?? 0 : 0;
+      const additionalPay = row.fixedBonus + (row.oneTimeBonus ?? 0) + row.agentCreditCommission;
+      return {
+        employeeName: row.manager,
+        category: getPayrollWorkbookGroup(row.salaryType),
+        salaryType: row.salaryType,
+        grossPay: toExportMoney(row.grossPay),
+        workedDays: row.workedDays,
+        basePay: toExportMoney(basePay),
+        performancePay: toExportMoney(performancePay),
+        specialPay: toExportMoney(specialPay),
+        disciplinePay: toExportMoney(row.disciplineBonus),
+        additionalPay: toExportMoney(additionalPay),
+        advance: toExportMoney(row.advance),
+        deduction: toExportMoney(row.fixedDeduction),
+        netPay: toExportMoney(row.netPay),
+        status: getPayrollWorkbookStatusLabel(getPayrollRowStatus(row)),
+        comment: getPayrollRowExportComment(row),
       };
-      setRowStyle(accrualSheet, rowNumber, 0, 7, rowStyle);
-      mergeCellStyle(accrualSheet, rowNumber, 0, { font: { bold: isNewEmployee || isPayoutRow } });
-      [4, 6].forEach((col) => {
-        const value = row[col];
-        const isNegative = typeof value === 'number' && value < 0;
-        mergeCellStyle(accrualSheet, rowNumber, col, {
-          alignment: { horizontal: 'right', vertical: 'center', wrapText: true },
-          font: { bold: isPayoutRow, color: isNegative ? { rgb: 'B91C1C' } : { rgb: '0F172A' } },
-        });
-      });
-      [1, 2, 3, 5, 7].forEach((col) => {
-        mergeCellStyle(accrualSheet, rowNumber, col, { alignment: { vertical: 'center', wrapText: true } });
-      });
-    }
-    setColumnNumberFormat(accrualSheet, 2, accrualRows.length + 1, [4, 6], accrualMoneyFormat);
-    XLSX.utils.book_append_sheet(workbookExport, accrualSheet, 'Расшифровка начислений');
-
-    const checkHeader = ['Сотрудник', 'Тип проверки', 'Количество', 'Статус', 'Комментарий', 'Категория', 'Номенклатура', 'Артикул', 'Выручка', 'Себестоимость', 'ВП'];
-    const checkRows = buildPayrollCheckRows();
-    const checkSheet = XLSX.utils.aoa_to_sheet([checkHeader, ...checkRows]);
-    checkSheet['!cols'] = [24, 42, 12, 18, 58, 28, 52, 18, 14, 14, 14].map((wch) => ({ wch }));
-    checkSheet['!autofilter'] = { ref: `A1:K${checkRows.length + 1}` };
-    checkSheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' };
-    setRowStyle(checkSheet, 1, 0, 10, headerStyle);
-    checkRows.forEach((row, index) => {
-      const rowNumber = index + 2;
-      setRowStyle(checkSheet, rowNumber, 0, 10, baseCellStyle);
-      if (row[3] === 'Ошибка') setRowStyle(checkSheet, rowNumber, 0, 10, { ...checkErrorStyle, border });
-      if (row[3] === 'Проверить') setRowStyle(checkSheet, rowNumber, 0, 10, { ...checkWarningStyle, border });
     });
-    setColumnNumberFormat(checkSheet, 2, checkRows.length + 1, [8, 9, 10], moneyFormat);
-    XLSX.utils.book_append_sheet(workbookExport, checkSheet, 'Проверка');
-
-    const sourceRows = [
-      ['Показатель', 'Значение', 'Комментарий'],
-      ['Период', periodLabel, 'Выбранный месяц и год'],
-      ['Файл продаж', workbook?.fileName ?? 'не загружен', 'Основной отчёт 1С'],
-      ['Файл закупок', purchaseReport?.fileName ?? 'не загружен', 'Отчёт по закупкам 1С'],
-      ['Всего товарных строк', parseResult.rows.length, 'После разбора файла продаж'],
-      ['Менеджеров', parseResult.managers.length, 'Распознано в файле продаж'],
-      ['Клиентов', parseResult.clients.length, 'Распознано в файле продаж'],
+    const accrualRows = buildAccrualExportRows()
+      .sort((left, right) => {
+        const order = new Map(sortedRows.map((row, index) => [row.manager, index]));
+        return (order.get(String(left[0])) ?? 999) - (order.get(String(right[0])) ?? 999);
+      })
+      .map((row) => row.map((value, index) => index === 1 ? getPayrollWorkbookGroup(fullPayrollRows.find((employee) => employee.manager === row[0])?.salaryType ?? '') : index === 3 ? getPayrollWorkbookComponentLabel(String(value ?? '')) : value));
+    const sourceRows: Array<Array<string | number | null>> = [
+      ['Период', `${months[Number(month)]} ${year}`, 'Выбранный месяц и год'],
+      ['Источник продаж', workbook?.fileName ?? 'не загружен', 'Резервный отчёт 1С, загруженный вручную'],
+      ['Источник закупок', purchaseReport?.fileName ?? 'не загружен', 'Резервный отчёт по закупкам 1С'],
+      ['Источник дней', 'Google Sheets / ручные корректировки', 'Временный источник; в дальнейшем можно заменить на отметки PWA без изменения ведомости'],
+      ['Всего товарных строк', parseResult.rows.length, 'После разбора отчёта продаж'],
       ['Общая выручка', totalRevenue, 'По строкам продаж'],
       ['Общая валовая прибыль', totalGrossProfit, 'По строкам продаж'],
-      ['База опта', classification.wholesale.base, 'После исключений'],
-      ['Бонус опта', classification.wholesale.bonusEach, '1,75% от базы опта'],
-      ['База закупок', purchasePayrollRow.purchaseBase ?? '', 'Колонка “Увеличение нашего долга”'],
-      ['1,75% от закупок', purchasePayrollRow.purchasePercentAmount, 'Аналитика закупщика'],
-      ['Минимальная зарплата закупщика', purchaseTargetSalary, 'Тохов Астемир'],
-      ['Закупок нужно для 100 000 при 1,75%', purchaseTargetBase, '100000 / 0,0175'],
+      ['База опта', classification.wholesale.base, 'После утверждённых исключений'],
+      ['Бонус менеджера опта', classification.wholesale.bonusEach, '1,75% от общей базы опта'],
+      ['База закупок', purchasePayrollRow.purchaseBase ?? '', 'Только документы закупщика и утверждённые поставщики'],
+      ['Бонус закупщика', purchasePayrollRow.purchasePercentAmount, '1,75% от базы закупок'],
+      ['Минимальная зарплата закупщика', purchaseTargetSalary, 'Если обычное начисление ниже, добавляется доплата'],
+      ['Кредиты', 'Валовая прибыль × 91% × 10%', '10% от прибыли, оставшейся после 9% налогов и издержек'],
+      ['Операционное управление', '12% от обычных начислений выбранных сотрудников', 'Разовые премии в базу не входят; с августа 2026 действует минимум 100 000 ₽'],
     ];
-    const sourceSheet = XLSX.utils.aoa_to_sheet(sourceRows);
-    sourceSheet['!cols'] = [36, 24, 48].map((wch) => ({ wch }));
-    setRowStyle(sourceSheet, 1, 0, 2, headerStyle);
-    for (let rowNumber = 2; rowNumber <= sourceRows.length; rowNumber += 1) setRowStyle(sourceSheet, rowNumber, 0, 2, baseCellStyle);
-    setColumnNumberFormat(sourceSheet, 2, sourceRows.length, [1], moneyFormat);
-    XLSX.utils.book_append_sheet(workbookExport, sourceSheet, 'Исходные итоги');
 
-    XLSX.writeFile(workbookExport, `payroll_${months[Number(month)]}_${year}.xlsx`, { bookType: 'xlsx' });
+    await downloadPayrollWorkbook({
+      periodLabel: `${months[Number(month)]} ${year}`,
+      versionLabel: 'Текущий расчёт из загруженных данных',
+      generatedAt: new Date().toLocaleString('ru-RU'),
+      employeeRows,
+      accrualRows,
+      checkRows: buildPayrollCheckRows(),
+      sourceRows,
+      fileName: `Зарплата_${months[Number(month)]}_${year}.xlsx`,
+    });
   }
 
   return (
@@ -5779,10 +6232,10 @@ export default function AdminPayrollPage() {
                     <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                       <h2 className='text-lg font-bold text-slate-900'>Итог по сотрудникам</h2>
                       <div className='flex flex-wrap gap-2'>
-                        <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0 || isCurrentPeriodClosed || Boolean(bonusValidation.error)} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
+                        <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0 || isCurrentPeriodClosed || Boolean(bonusValidation.error) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError)} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
                           {isSavingPayroll ? 'Сохраняю...' : 'Сохранить расчёт'}
                         </button>
-                        <button type='button' onClick={exportPayrollWorkbook} disabled={Boolean(bonusValidation.error)} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50'>
+                        <button type='button' onClick={exportCurrentPayrollWorkbook} disabled={Boolean(bonusValidation.error) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError)} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50'>
                           Скачать ведомость Excel
                         </button>
                         <button type='button' onClick={() => setActivePayrollTab('Дни, авансы и премии')} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900'>
@@ -5791,6 +6244,7 @@ export default function AdminPayrollPage() {
                       </div>
                     </div>
                     {isCurrentPeriodClosed && <p className='mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900'>Период закрыт. Новые расчёты за этот месяц запрещены.</p>}
+                    {payrollDirectoryError && <p className='mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{payrollDirectoryError} Сохранение и выгрузка текущей ведомости временно недоступны, чтобы не пропустить сотрудника.</p>}
                     <div className={`mb-4 rounded-lg border px-3 py-3 ${payrollReviewCount > 0 ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
                       <div className='flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
                         <div>
@@ -5958,9 +6412,14 @@ export default function AdminPayrollPage() {
                             {selectedSavedRun.period.periodKey} · {getPayrollRunStatusLabel(selectedSavedRun.status)} · {new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU')}
                           </p>
                         </div>
-                        <button type='button' onClick={() => setSelectedSavedRun(null)} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40'>
-                          Закрыть просмотр
-                        </button>
+                        <div className='flex flex-wrap gap-2'>
+                          <button type='button' onClick={exportSavedPayrollWorkbook} disabled={isSavedRunExporting} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50'>
+                            {isSavedRunExporting ? 'Формирую…' : 'Скачать ведомость'}
+                          </button>
+                          <button type='button' onClick={() => setSelectedSavedRun(null)} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40'>
+                            Закрыть просмотр
+                          </button>
+                        </div>
                       </div>
 
                       <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
@@ -6184,7 +6643,7 @@ export default function AdminPayrollPage() {
                     <PayrollBonusesEditor key={`unmapped-${selectedPayrollPeriodKey}`} drafts={unmappedBonusDrafts} employees={regularPayrollRows.map((row) => row.manager)} error='Выберите сотрудника для оставшихся премий или уберите лишние записи.' disabled={!bonusesReady || isCurrentPeriodClosed || isSavingPayroll} onChange={(drafts) => replaceBonusDrafts(unmappedBonusDrafts, drafts)} />
                   </div>}
                   <div className='mt-4 flex flex-wrap items-center gap-3'>
-                    <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || isCurrentPeriodClosed || Boolean(bonusValidation.error)} className='rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'>{isSavingPayroll ? 'Сохранение...' : 'Сохранить расчёт'}</button>
+                    <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || isCurrentPeriodClosed || Boolean(bonusValidation.error) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError)} className='rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50'>{isSavingPayroll ? 'Сохранение...' : 'Сохранить расчёт'}</button>
                     <button type='button' onClick={() => setActivePayrollTab('Итог ЗП')} className='rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700'>К итоговой ведомости</button>
                     {saveError && <p role='alert' className='text-sm text-red-700'>{saveError}</p>}
                     {saveStatus && <p className='text-sm text-green-700'>{saveStatus}</p>}
@@ -7717,9 +8176,14 @@ export default function AdminPayrollPage() {
                     <h2 className='text-lg font-bold text-slate-900'>Сохранённый расчёт №{selectedSavedRun.runNumber}</h2>
                     <p className='mt-1 text-sm text-slate-500'>{selectedSavedRun.period.periodKey} · {getPayrollRunStatusLabel(selectedSavedRun.status)} · {new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU')}</p>
                   </div>
-                  <button type='button' onClick={() => setSelectedSavedRun(null)} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40'>
-                    Закрыть просмотр
-                  </button>
+                  <div className='flex flex-wrap gap-2'>
+                    <button type='button' onClick={exportSavedPayrollWorkbook} disabled={isSavedRunExporting} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50'>
+                      {isSavedRunExporting ? 'Формирую…' : 'Скачать ведомость'}
+                    </button>
+                    <button type='button' onClick={() => setSelectedSavedRun(null)} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40'>
+                      Закрыть просмотр
+                    </button>
+                  </div>
                 </div>
                 <p className='mb-4 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900'>
                   Это зафиксированная версия расчёта. Сохранены итоговые суммы, расшифровка и сведения об источниках; сам исходный файл не хранится.

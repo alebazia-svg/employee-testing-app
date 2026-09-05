@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:payroll": "node --import tsx --test tests/payroll-calculation.test.ts tests/payroll-run-status.test.ts",
+    "test:payroll": "node --import tsx --test tests/payroll-calculation.test.ts tests/payroll-run-status.test.ts tests/payroll-workbook.test.ts tests/payroll-employee-rules.test.ts",
     "test:terminal-fiscal": "node --conditions=react-server --import tsx --test tests/terminal-fiscal-matching.test.ts tests/terminal-fiscal-ofd-adapter.test.ts tests/terminal-fiscal-one-c-adapter.test.ts tests/terminal-fiscal-summary.test.ts tests/terminal-fiscal-summary-api.test.ts tests/terminal-fiscal-admin-summary.test.tsx tests/terminal-fiscal-cli.test.ts tests/terminal-fiscal-auto-run.test.ts tests/terminal-fiscal-workday-control.test.ts tests/terminal-fiscal-employee-review.test.ts tests/terminal-fiscal-equipment.test.ts tests/terminal-reconciliation.test.ts tests/tbank-complete-window.test.ts tests/terminal-fiscal-live-fixture-dry-run.test.ts",
     "test:expense-requests": "node --conditions=react-server --import tsx --test tests/expense-request-completeness.test.ts tests/expense-request-completeness-preview.test.ts tests/expense-request-admin-lifecycle.test.ts tests/expense-request-admin-sync.test.ts",
     "test:credit-control": "node --conditions=react-server --import tsx --test tests/credit-realization-control.test.ts tests/credit-realization-shadow-runner.test.ts tests/credit-realization-workday-control.test.ts tests/workday-required-issues.test.ts",

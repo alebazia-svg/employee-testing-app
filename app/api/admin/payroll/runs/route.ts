@@ -2,6 +2,7 @@ import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
 import { PAYROLL_COMPENSATION_VERSION, validatePayrollBonuses, validatePayrollCompensationSnapshot, validatePayrollCompensationVersion, type PayrollBonus } from '@/lib/payroll-compensation';
+import { getPayrollWorkbookGroup } from '@/lib/payroll-workbook';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,6 +158,7 @@ export async function POST(req: Request) {
             payrollDepartment: asString(row.payrollDepartment),
             position: asString(row.position),
             salaryType: asString(row.salaryType),
+            reportGroup: asString(row.reportGroup) || getPayrollWorkbookGroup(asString(row.salaryType)),
             salaryRule: asString(row.salaryRule),
             workedDays: asNullableNumber(row.workedDays),
             lateCount: asNullableNumber(row.lateCount),
