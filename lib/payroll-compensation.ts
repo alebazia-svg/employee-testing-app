@@ -1,6 +1,10 @@
-export const PAYROLL_COMPENSATION_VERSION = 'payroll-minimum-bonuses-v1';
+export const PAYROLL_COMPENSATION_VERSION = 'payroll-accessory-tier-v2';
 export const BELA_MINIMUM_START_PERIOD = '2026-08';
 export const BELA_MINIMUM = 100_000;
+export const RETAIL_ACCESSORY_TIER_START_PERIOD = '2026-08';
+export const RETAIL_ACCESSORY_TIER_THRESHOLD = 1_000_000;
+export const RETAIL_ACCESSORY_BASE_RATE = 0.05;
+export const RETAIL_ACCESSORY_ELEVATED_RATE = 0.07;
 
 export type PayrollBonusDraft = {
   id: string;
@@ -20,6 +24,22 @@ export function payrollMoney(value: number) {
 
 export function getBelaMinimum(periodKey: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey) && periodKey >= BELA_MINIMUM_START_PERIOD ? BELA_MINIMUM : 0;
+}
+
+export function getRetailAccessoryTier(periodKey: string, teamBase: number) {
+  const normalizedBase = payrollMoney(teamBase);
+  const elevated = /^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey)
+    && periodKey >= RETAIL_ACCESSORY_TIER_START_PERIOD
+    && normalizedBase > RETAIL_ACCESSORY_TIER_THRESHOLD;
+  const rate = elevated ? RETAIL_ACCESSORY_ELEVATED_RATE : RETAIL_ACCESSORY_BASE_RATE;
+
+  return {
+    teamBase: normalizedBase,
+    threshold: RETAIL_ACCESSORY_TIER_THRESHOLD,
+    rate,
+    ratePercent: Math.round(rate * 100),
+    elevated,
+  };
 }
 
 export function validatePayrollCompensationVersion(version: unknown, bonuses: unknown, periodKey: string) {
@@ -78,7 +98,7 @@ export function isBelaBaseEmployee(manager: string) {
   return ['тохов', 'астемир', 'ахобекова', 'залина', 'хурцокова', 'хурзокова', 'ляна', 'лиана', 'кумакова', 'кумахова', 'диана', 'чиченова', 'чеченова', 'милана', 'абшаева', 'зухра', 'икаев', 'асад', 'магомед', 'стажеррозница', 'стажёррозница'].some((part) => normalized.includes(part));
 }
 
-function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses: PayrollBonus[], periodKey: string) {
+function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses: PayrollBonus[], periodKey: string, accessoryRate: number) {
   const fail = () => { throw new Error(`Расшифровка начислений не совпадает с расчётом: ${row.employeeName}. Обновите расчёт перед сохранением.`); };
   const amount = (field: string) => {
     const value = row[field];
@@ -108,7 +128,7 @@ function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses
       add('Услуги оказываемые 50%', 'filmBonus', true);
       add('Плоттерные материалы 50% от с/с', 'plotterBonus', true);
       add('Техника 10% от ВП', 'techBonus', true);
-      add('Аксессуары 5%', 'accessoryBonus', true);
+      add(`Аксессуары ${Math.round(accessoryRate * 100)}%`, 'accessoryBonus', true);
       add('Кредитный бонус', 'creditBonus', true);
     }
     add('Дисциплина', 'disciplineBonus', true);
@@ -145,6 +165,16 @@ export function validatePayrollCompensationSnapshot(rows: Array<Record<string, u
   const equal = (actual: unknown, expected: number) => {
     if (Math.abs(number(actual) - expected) > 0.005) throw new Error('Суммы расчёта и премий не совпадают. Обновите расчёт перед сохранением.');
   };
+  const accessoryTeamBase = rows
+    .filter((row) => row.salaryType === 'retail_sales_bonus')
+    .flatMap((row) => Array.isArray(row.calculationDetails) ? row.calculationDetails : [])
+    .filter((detail): detail is Record<string, unknown> => Boolean(detail) && typeof detail === 'object' && /^Аксессуары (5|7)%$/.test(String(detail.component)))
+    .reduce((sum, detail) => {
+      if (typeof detail.base === 'number' && Number.isFinite(detail.base)) return sum + detail.base;
+      if (periodKey >= RETAIL_ACCESSORY_TIER_START_PERIOD) throw new Error('В расчёте отсутствует база аксессуаров для проверки ставки.');
+      return sum;
+    }, 0);
+  const accessoryTier = getRetailAccessoryTier(periodKey, accessoryTeamBase);
   for (const row of rows) {
     const bonus = getPayrollBonusTotal(bonuses, String(row.employeeName));
     equal(row.oneTimeBonus, bonus);
@@ -159,7 +189,7 @@ export function validatePayrollCompensationSnapshot(rows: Array<Record<string, u
       equal(row.minimumGuaranteeAdjustment, topUp);
       equal(row.grossPay, percent + topUp + bonus);
     }
-    validatePayrollCalculationDetails(row, bonuses, periodKey);
+    validatePayrollCalculationDetails(row, bonuses, periodKey, accessoryTier.rate);
   }
   for (const field of ['grossPay', 'netPay', 'advance']) equal(totals[field], rows.reduce((sum, row) => sum + number(row[field]), 0));
 }

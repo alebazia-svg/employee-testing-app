@@ -7,7 +7,7 @@ import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PayrollBonusesEditor } from '../app/(dashboard)/admin/payroll/PayrollBonusesEditor';
 import { parseFinboxReport } from '../lib/payroll-finbox';
-import { PAYROLL_COMPENSATION_VERSION, getInitialPayrollBonuses, validatePayrollBonuses, validatePayrollCompensationSnapshot, validatePayrollCompensationVersion, type PayrollBonus } from '../lib/payroll-compensation';
+import { PAYROLL_COMPENSATION_VERSION, getInitialPayrollBonuses, getRetailAccessoryTier, validatePayrollBonuses, validatePayrollCompensationSnapshot, validatePayrollCompensationVersion, type PayrollBonus } from '../lib/payroll-compensation';
 
 type SalesRow = {
   manager: string;
@@ -89,6 +89,12 @@ type PayrollModule = {
   applyBelaPercentRule: (rows: ReturnType<PayrollModule['buildFullPayrollRow']>[], periodKey: string) => ReturnType<PayrollModule['buildFullPayrollRow']>[];
   applyPayrollBonuses: (rows: ReturnType<PayrollModule['buildFullPayrollRow']>[], bonuses: PayrollBonus[]) => ReturnType<PayrollModule['buildFullPayrollRow']>[];
   buildPurchasePayrollRow: (input: { advance: string; deduction: string; comment: string }, report: { fileName: string; base: number; sourceRow: number } | null) => ReturnType<PayrollModule['buildFullPayrollRow']>;
+  applyRetailAccessoryTier: (
+    summaries: ReturnType<PayrollModule['classifySalesRows']>['managerSummaries'],
+    rows: Array<SalesRow & { calculationType: string; base: number; bonus: number }>,
+    employeeDirectory: Record<string, { name: string; department: string; position: string; salaryType: 'retail_sales_bonus' | 'vl_percent' }>,
+    periodKey: string,
+  ) => { summaries: Array<{ manager: string; accessoryBase?: number; accessoryRate?: number; accessoryBonus: number; totalBonus: number }>; tier: { teamBase: number; rate: number; elevated: boolean } };
 };
 
 async function loadPayrollModule(): Promise<PayrollModule> {
@@ -103,7 +109,7 @@ async function loadPayrollModule(): Promise<PayrollModule> {
   const calculationSource = source.slice(start, end);
 
   mkdirSync(dirname(generatedPath), { recursive: true });
-  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
+  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
 
   return import(pathToFileURL(generatedPath).href) as Promise<PayrollModule>;
 }
@@ -113,6 +119,7 @@ let classifySalesRows: PayrollModule['classifySalesRows'];
 let applyBelaPercentRule: PayrollModule['applyBelaPercentRule'];
 let applyPayrollBonuses: PayrollModule['applyPayrollBonuses'];
 let buildPurchasePayrollRow: PayrollModule['buildPurchasePayrollRow'];
+let applyRetailAccessoryTier: PayrollModule['applyRetailAccessoryTier'];
 
 before(async () => {
   const payrollModule = await loadPayrollModule();
@@ -121,6 +128,7 @@ before(async () => {
   applyBelaPercentRule = payrollModule.applyBelaPercentRule;
   applyPayrollBonuses = payrollModule.applyPayrollBonuses;
   buildPurchasePayrollRow = payrollModule.buildPurchasePayrollRow;
+  applyRetailAccessoryTier = payrollModule.applyRetailAccessoryTier;
 });
 
 describe('August 2026 minimum and one-time premiums', () => {
@@ -254,6 +262,22 @@ describe('payroll save safety gates', () => {
     };
     assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-07', { grossPay: 2.002, netPay: 2.002, advance: 0 }));
   });
+  it('accepts only the team-derived accessory rate in a new August snapshot', () => {
+    const row = {
+      employeeName: retailManager, salaryType: 'retail_sales_bonus', salaryRule: 'standard', dayPay: 0,
+      filmBonus: 0, plotterBonus: 0, techBonus: 0, accessoryBonus: 70_000.07, creditBonus: 0,
+      disciplineBonus: 0, agentCreditCommission: 0, advance: 0, fixedDeduction: 0, oneTimeBonus: 0,
+      grossPay: 70_000.07, netPay: 70_000.07,
+      calculationDetails: [
+        { component: 'Аксессуары 7%', base: 1_000_001, amount: 70_000.07 },
+        { component: 'Аванс', amount: 0 },
+        { component: 'К выплате', amount: 70_000.07 },
+      ],
+    };
+    const totals = { grossPay: 70_000.07, netPay: 70_000.07, advance: 0 };
+    assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-08', totals));
+    assert.throws(() => validatePayrollCompensationSnapshot([{ ...row, calculationDetails: row.calculationDetails.map((detail) => detail.component === 'Аксессуары 7%' ? { ...detail, component: 'Аксессуары 5%' } : detail) }], [], '2026-08', totals));
+  });
 });
 
 describe('payroll detail opening', () => {
@@ -349,6 +373,51 @@ function managerSummary(rows: SalesRow[], manager: string) {
 function assertMoney(actual: number, expected: number) {
   assert.ok(Math.abs(actual - expected) < 0.000001, `Expected ${actual} to equal ${expected}`);
 }
+
+describe('retail accessory team tier', () => {
+  const retailEmployee = (name: string) => ({ name, department: 'Розничные продажи', position: 'Менеджер', salaryType: 'retail_sales_bonus' as const });
+  const operationsEmployee = (name: string) => ({ name, department: 'Финансы и операционный контроль', position: 'Управляющий', salaryType: 'vl_percent' as const });
+
+  it('starts in August 2026 and requires the team base to be strictly above one million', () => {
+    assert.equal(getRetailAccessoryTier('2026-07', 1_500_000).rate, 0.05);
+    assert.equal(getRetailAccessoryTier('2026-08', 1_000_000).rate, 0.05);
+    assert.equal(getRetailAccessoryTier('2026-08', 1_000_000.01).rate, 0.07);
+  });
+
+  it('applies 7% to every eligible manager personal base, including Diana', () => {
+    const diana = 'Кумахова Диана';
+    const classification = classifySalesRows([
+      salesRow({ manager: retailManager, category: 'Защитные стекла и пленки', revenue: 600_000, cost: 300_000, grossProfit: 300_000 }),
+      salesRow({ manager: diana, category: 'Защитные стекла и пленки', revenue: 400_000.01, cost: 200_000, grossProfit: 200_000.01 }),
+    ]);
+    const result = applyRetailAccessoryTier(classification.managerSummaries, classification.rows, {
+      [retailManager]: retailEmployee(retailManager),
+      [diana]: retailEmployee(diana),
+    }, '2026-08');
+
+    assert.equal(result.tier.elevated, true);
+    assertMoney(result.tier.teamBase, 1_000_000.01);
+    assertMoney(result.summaries.find((row) => row.manager === retailManager)!.accessoryBonus, 42_000);
+    assertMoney(result.summaries.find((row) => row.manager === diana)!.accessoryBonus, 28_000.0007);
+    assert.equal(result.summaries.find((row) => row.manager === diana)!.accessoryRate, 0.07);
+  });
+
+  it('does not let non-retail salary formulas raise the team tier', () => {
+    const bela = 'Кештова Бэла';
+    const classification = classifySalesRows([
+      salesRow({ manager: retailManager, category: 'Защитные стекла и пленки', revenue: 900_000, cost: 450_000, grossProfit: 450_000 }),
+      salesRow({ manager: bela, category: 'Защитные стекла и пленки', revenue: 2_000_000, cost: 1_000_000, grossProfit: 1_000_000 }),
+    ]);
+    const result = applyRetailAccessoryTier(classification.managerSummaries, classification.rows, {
+      [retailManager]: retailEmployee(retailManager),
+      [bela]: operationsEmployee(bela),
+    }, '2026-08');
+
+    assert.equal(result.tier.elevated, false);
+    assertMoney(result.tier.teamBase, 900_000);
+    assertMoney(result.summaries.find((row) => row.manager === retailManager)!.accessoryBonus, 45_000);
+  });
+});
 
 describe('payroll calculation regression rules', () => {
   it('keeps an employee from a new 1C report visible without guessing a salary formula', () => {

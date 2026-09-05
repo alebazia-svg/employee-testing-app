@@ -43,6 +43,7 @@ describe('payroll workbook presentation', () => {
     assert.equal(getPayrollWorkbookStatusLabel('OK'), 'Готово');
     assert.equal(getPayrollWorkbookStatusLabel('REVIEW'), 'Проверить');
     assert.equal(getPayrollWorkbookComponentLabel('Кредитный бонус'), 'Кредиты: 10% валовой прибыли после вычета 9% налогов и издержек');
+    assert.equal(getPayrollWorkbookComponentLabel('Аксессуары 7%'), 'Аксессуары: 7% выручки');
   });
 
   it('counts review items shown on the control sheet without duplicating an employee', () => {
@@ -63,6 +64,7 @@ describe('payroll workbook presentation', () => {
   it('shows the actual base, rate and result in calculation explanations', () => {
     assert.match(getPayrollWorkbookCalculationText('Бонус опта 1,75%', 6_623_805, 'общая база опта × 1,75%', 115_916.58), /6.623.805,00 ₽ × 1,75% = 115.916,58 ₽/);
     assert.match(getPayrollWorkbookCalculationText('Кредиты: 10% валовой прибыли после вычета 9% налогов и издержек', 10_000, 'ВП × 0,91 × 10%', 910), /10.000,00 ₽ × 91% × 10% = 910,00 ₽/);
+    assert.match(getPayrollWorkbookCalculationText('Аксессуары: 7% выручки', 1_186_055, 'личная база × 7%', 83_023.85), /1.186.055,00 ₽ × 7% = 83.023,85 ₽/);
     assert.match(getPayrollWorkbookCalculationText('Разовая премия', null, 'По решению руководителя', 20_000), /По решению руководителя = 20.000,00 ₽/);
   });
 

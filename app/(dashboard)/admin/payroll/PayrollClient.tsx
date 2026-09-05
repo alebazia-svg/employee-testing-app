@@ -12,7 +12,7 @@ import { Table } from '@/components/ui/table';
 import { PayrollBonusesEditor } from './PayrollBonusesEditor';
 import { PayrollFinboxImport } from './PayrollFinboxImport';
 import { PayrollDailyOneCControl } from './PayrollDailyOneCControl';
-import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
+import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
 import {
   PAYROLL_WORKBOOK_UNCONFIGURED_GROUP,
   getPayrollWorkbookComponentLabel,
@@ -163,6 +163,8 @@ type BonusManagerSummary = {
   filmBonus: number;
   plotterBonus: number;
   techBonus: number;
+  accessoryBase?: number;
+  accessoryRate?: number;
   accessoryBonus: number;
   wholesaleBonus: number;
   totalBonus: number;
@@ -777,6 +779,20 @@ function getSavedSourceTypeLabel(sourceType: string) {
   return 'Источник данных';
 }
 
+function getSavedRetailAccessoryTier(sourceSummary: unknown) {
+  if (!sourceSummary || typeof sourceSummary !== 'object' || !('retailAccessoryTier' in sourceSummary)) return null;
+  const value = (sourceSummary as { retailAccessoryTier?: unknown }).retailAccessoryTier;
+  if (!value || typeof value !== 'object') return null;
+  const tier = value as Record<string, unknown>;
+  if (![tier.teamBase, tier.threshold, tier.rate].every((item) => typeof item === 'number' && Number.isFinite(item))) return null;
+  return {
+    teamBase: tier.teamBase as number,
+    threshold: tier.threshold as number,
+    rate: tier.rate as number,
+    elevated: tier.elevated === true,
+  };
+}
+
 type FullPayrollRow = BonusManagerSummary & {
   belaBase?: number;
   belaPercentAmount?: number;
@@ -1278,13 +1294,13 @@ const calculationLabels: Record<CalculationType, string> = {
   WHOLESALE_REVIEW_TECH: 'Опт: спорная техника',
   WHOLESALE_INCLUDED_1_75: 'Опт: база 1.75%',
   CREDIT_GROSS_PROFIT: 'Кредит: ВП × 0.91 × 10%',
-  CREDIT_ACCESSORY_NO_BONUS: 'Кредитный аксессуар: 5% от выручки',
+  CREDIT_ACCESSORY_NO_BONUS: 'Кредитный аксессуар',
   CREDIT_REVIEW_NO_BONUS: 'Кредит: требуется классификация',
   RETAIL_REVIEW_TECH: 'Розница: спорная техника',
   RETAIL_FILM_50: 'Услуги оказываемые: 50%',
   RETAIL_PLOTTER_MATERIAL_COST_50: 'Плоттерные материалы: 50% от с/с',
   RETAIL_GROSS_PROFIT_10: 'Техника: 10% от ВП',
-  RETAIL_ACCESSORY_5: 'Аксессуары: 5%',
+  RETAIL_ACCESSORY_5: 'Аксессуары',
   MANUAL_EXCLUDED: 'Исключено вручную',
 };
 
@@ -1293,13 +1309,13 @@ const calculationFormulas: Record<CalculationType, string> = {
   WHOLESALE_REVIEW_TECH: 'входит в базу опта, требует проверки',
   WHOLESALE_INCLUDED_1_75: 'выручка × 1.75%',
   CREDIT_GROSS_PROFIT: 'ВП × 0.91 × 10%',
-  CREDIT_ACCESSORY_NO_BONUS: 'выручка × 5%',
+  CREDIT_ACCESSORY_NO_BONUS: 'выручка × ставку команды',
   CREDIT_REVIEW_NO_BONUS: 'кредитная строка без начисления до классификации',
   RETAIL_REVIEW_TECH: 'выручка × 5%, требует проверки',
   RETAIL_FILM_50: 'выручка × 50%',
   RETAIL_PLOTTER_MATERIAL_COST_50: 'с/с × 50%',
   RETAIL_GROSS_PROFIT_10: 'ВП × 10%',
-  RETAIL_ACCESSORY_5: 'выручка × 5%',
+  RETAIL_ACCESSORY_5: 'выручка × ставку команды',
   MANUAL_EXCLUDED: 'не входит в начисления',
 };
 
@@ -2923,7 +2939,7 @@ function getRuleTargetDetails(
   return {
     department: currentDetails.department,
     calculationType: target,
-    calculationLabel: isCredit && target === 'RETAIL_ACCESSORY_5' ? 'Кредитная продажа, аксессуар: 5%' : calculationLabels[target],
+    calculationLabel: isCredit && target === 'RETAIL_ACCESSORY_5' ? 'Кредитная продажа, аксессуар' : calculationLabels[target],
     article,
     base,
     percent,
@@ -3413,6 +3429,40 @@ function buildSalesPayrollSummaries(managerSummaries: BonusManagerSummary[], emp
   const reportOnlySummaries = mergedManagerSummaries.filter((summary) => !employeeDirectory[summary.manager]);
 
   return [...payrollSalesSummaries, ...reportOnlySummaries];
+}
+
+function applyRetailAccessoryTier(
+  managerSummaries: BonusManagerSummary[],
+  rows: ClassifiedSalesRow[],
+  employeeDirectory: Record<string, PayrollEmployee>,
+  periodKey: string,
+) {
+  const eligibleManagers = new Set(
+    Object.values(employeeDirectory)
+      .filter((employee) => employee.salaryType === 'retail_sales_bonus')
+      .map((employee) => employee.name),
+  );
+  const eligibleRows = getAccessoryCalculationRows(rows).filter((row) => eligibleManagers.has(row.manager));
+  const tier = getRetailAccessoryTier(periodKey, eligibleRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0));
+  const basesByManager = eligibleRows.reduce<Map<string, number>>((bases, row) => {
+    bases.set(row.manager, (bases.get(row.manager) ?? 0) + getAccessoryCalculationBase(row));
+    return bases;
+  }, new Map());
+
+  const summaries = managerSummaries.map((summary) => {
+    if (!eligibleManagers.has(summary.manager)) return summary;
+    const accessoryBase = basesByManager.get(summary.manager) ?? 0;
+    const accessoryBonus = accessoryBase * tier.rate;
+    return {
+      ...summary,
+      accessoryBase,
+      accessoryRate: tier.rate,
+      accessoryBonus,
+      totalBonus: summary.totalBonus - summary.accessoryBonus + accessoryBonus,
+    };
+  });
+
+  return { summaries, eligibleManagers, eligibleRows, tier };
 }
 
 function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManualInput | undefined, employeeDirectory: Record<string, PayrollEmployee> = payrollEmployees): FullPayrollRow {
@@ -3969,14 +4019,20 @@ export default function AdminPayrollPage() {
   const creditReviewRows = useMemo(() => creditRows.filter((row) => row.creditProductType === 'review'), [creditRows]);
   const totalRevenue = useMemo(() => classification.rows.reduce((sum, row) => sum + row.revenue, 0), [classification.rows]);
   const totalGrossProfit = useMemo(() => classification.rows.reduce((sum, row) => sum + row.grossProfit, 0), [classification.rows]);
-  const totalBonus = useMemo(() => classification.managerSummaries.reduce((sum, row) => sum + row.totalBonus, 0), [classification.managerSummaries]);
   const payrollEmployeeDirectory = useMemo(
     () => buildPayrollEmployeeDirectory(payrollDirectoryUsers, selectedPayrollPeriodKey),
     [payrollDirectoryUsers, selectedPayrollPeriodKey],
   );
+  const payrollAccessoryCalculation = useMemo(
+    () => applyRetailAccessoryTier(classification.managerSummaries, classification.rows, payrollEmployeeDirectory, selectedPayrollPeriodKey),
+    [classification.managerSummaries, classification.rows, payrollEmployeeDirectory, selectedPayrollPeriodKey],
+  );
+  const payrollManagerSummaries = payrollAccessoryCalculation.summaries;
+  const retailAccessoryTier = payrollAccessoryCalculation.tier;
+  const totalBonus = useMemo(() => payrollManagerSummaries.reduce((sum, row) => sum + row.totalBonus, 0), [payrollManagerSummaries]);
   const salesPayrollRows = useMemo(
-    () => buildSalesPayrollSummaries(classification.managerSummaries, payrollEmployeeDirectory).map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, manualPayroll), payrollEmployeeDirectory)),
-    [classification.managerSummaries, manualPayroll, payrollEmployeeDirectory],
+    () => buildSalesPayrollSummaries(payrollManagerSummaries, payrollEmployeeDirectory).map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, manualPayroll), payrollEmployeeDirectory)),
+    [payrollManagerSummaries, manualPayroll, payrollEmployeeDirectory],
   );
   const fixedPayrollRows = useMemo(() => buildFixedPayrollRows(fixedPayroll, selectedPayrollPeriodKey, payrollEmployeeDirectory), [fixedPayroll, selectedPayrollPeriodKey, payrollEmployeeDirectory]);
   const purchasePayrollRow = useMemo(() => buildPurchasePayrollRow(purchasePayroll, purchaseReport, payrollEmployeeDirectory), [purchasePayroll, purchaseReport, payrollEmployeeDirectory]);
@@ -4151,11 +4207,36 @@ export default function AdminPayrollPage() {
   );
   const isCurrentPeriodClosed = currentSavedPeriod?.status === 'CLOSED';
   const wholesaleTotalBonus = classification.wholesale.bonusEach * 2;
-  const retailTotalBonus = classification.managerSummaries.filter((row) => row.department === 'Розница').reduce((sum, row) => sum + row.totalBonus, 0);
+  const retailTotalBonus = payrollManagerSummaries.filter((row) => row.department === 'Розница').reduce((sum, row) => sum + row.totalBonus, 0);
   const wholesaleCategorySummaries = useMemo(() => buildWholesaleCategorySummaries(classification.rows), [classification.rows]);
   const retailRows = useMemo(() => classification.rows.filter((row) => row.department === 'Розница'), [classification.rows]);
   const retailTechSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10')), [retailRows]);
-  const retailAccessorySummary = useMemo(() => sumRows(getAccessoryCalculationRows(retailRows)), [retailRows]);
+  const retailAccessorySummary = useMemo(() => ({
+    ...sumRows(payrollAccessoryCalculation.eligibleRows),
+    base: retailAccessoryTier.teamBase,
+    bonus: payrollManagerSummaries
+      .filter((row) => payrollAccessoryCalculation.eligibleManagers.has(row.manager))
+      .reduce((sum, row) => sum + row.accessoryBonus, 0),
+  }), [payrollAccessoryCalculation, payrollManagerSummaries, retailAccessoryTier.teamBase]);
+  const payrollTypeSummaries = useMemo(
+    () =>
+      classification.typeSummaries.map((summary) => {
+        if (summary.type !== 'RETAIL_ACCESSORY_5' && summary.type !== 'CREDIT_ACCESSORY_NO_BONUS') return summary;
+        const accessoryRows = payrollAccessoryCalculation.eligibleRows.filter((row) => row.calculationType === summary.type);
+        const base = accessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
+        return {
+          ...summary,
+          label: `${summary.type === 'CREDIT_ACCESSORY_NO_BONUS' ? 'Кредитные' : 'Обычные'} аксессуары ${retailAccessoryTier.ratePercent}%`,
+          rows: accessoryRows.length,
+          revenue: accessoryRows.reduce((sum, row) => sum + row.revenue, 0),
+          grossProfit: accessoryRows.reduce((sum, row) => sum + row.grossProfit, 0),
+          base,
+          formula: `выручка × ${retailAccessoryTier.ratePercent}%`,
+          bonus: base * retailAccessoryTier.rate,
+        };
+      }),
+    [classification.typeSummaries, payrollAccessoryCalculation.eligibleRows, retailAccessoryTier.rate, retailAccessoryTier.ratePercent],
+  );
   const retailFilmSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_FILM_50')), [retailRows]);
   const retailPlotterSummary = useMemo(() => sumRows(retailRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50')), [retailRows]);
   const retailCreditSummary = useMemo(() => sumRows(creditTechRows), [creditTechRows]);
@@ -4179,7 +4260,7 @@ export default function AdminPayrollPage() {
   }, [payrollReviewItems]);
   const payrollHasCriticalCostIssue = payrollReviewReasonCounts.some(([reason]) => reason === 'Подозрительно нулевая / неполная себестоимость техники');
   const registrarParseUnsafe = parseResult.isRegistrarReport && (!parseResult.isSafeForPayrollCalculation || payrollReviewCount > 20);
-  const selectedManagerSummary = useMemo(() => classification.managerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [classification.managerSummaries, selectedManager]);
+  const selectedManagerSummary = useMemo(() => payrollManagerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [payrollManagerSummaries, selectedManager]);
   const selectedManagerRows = useMemo(() => classification.rows.filter((row) => row.manager === selectedManager), [classification.rows, selectedManager]);
   const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager' || selectedManagerPayroll.salaryType === 'vl_percent')
     ? { status: selectedManagerPayroll.payrollStatus, reason: selectedManagerPayroll.payrollReasons.join(', ') || 'замечаний нет' }
@@ -4266,6 +4347,7 @@ export default function AdminPayrollPage() {
     const techGrossProfitBase = retailTechGrossProfitBase + creditTechGrossProfitBase;
     const techBonus = retailTechGrossProfitBase * 0.1 + creditTechGrossProfitBase * 0.91 * 0.1;
     const potentialAccessoryRevenue = selectedManagerPotentialAccessoryRows.reduce((sum, row) => sum + row.revenue, 0);
+    const selectedAccessoryRate = selectedManagerSummary?.accessoryRate ?? 0.05;
 
     return {
       serviceIncludedRevenue,
@@ -4279,7 +4361,7 @@ export default function AdminPayrollPage() {
       negativeCreditAccessoryRevenue,
       creditAccessoryRevenue: finalCreditAccessoryRevenue,
       accessoryRevenue: finalAccessoryBase,
-      accessoryBonus: finalAccessoryBase * 0.05,
+      accessoryBonus: finalAccessoryBase * selectedAccessoryRate,
       negativeAccessoryCount: negativeAccessoryRows.length,
       negativeAccessoryRevenue,
       positiveRetailTechGrossProfit,
@@ -4292,10 +4374,10 @@ export default function AdminPayrollPage() {
       negativeTechGrossProfit,
       techGrossProfitBase,
       techBonus,
-      variableSalesBonus: serviceIncludedRevenue * 0.5 + finalAccessoryBase * 0.05 + techBonus,
+      variableSalesBonus: serviceIncludedRevenue * 0.5 + finalAccessoryBase * selectedAccessoryRate + techBonus,
       potentialAccessoryRevenue,
     };
-  }, [selectedManagerAccessoryRows, selectedManagerPotentialAccessoryRows, selectedManagerRows, selectedManagerServiceRows]);
+  }, [selectedManagerAccessoryRows, selectedManagerPotentialAccessoryRows, selectedManagerRows, selectedManagerServiceRows, selectedManagerSummary?.accessoryRate]);
   const payrollDiagnosticsByEmployee = useMemo(
     () =>
       fullPayrollRows.map((payrollRow) => {
@@ -4335,7 +4417,7 @@ export default function AdminPayrollPage() {
           regularAccessoryBase,
           creditAccessoryBase,
           accessoryBase,
-          accessoryBonus: accessoryBase * 0.05,
+          accessoryBonus: accessoryBase * (payrollRow.accessoryRate ?? 0.05),
           negativeAccessoryCount: negativeAccessoryRows.length,
           negativeAccessoryBase,
           techGrossProfitBase,
@@ -5311,7 +5393,16 @@ export default function AdminPayrollPage() {
         if (row.filmBonus) push('Услуги оказываемые 50%', bases.film, 'выручка × 50%', row.filmBonus);
         if (row.plotterBonus) push('Плоттерные материалы 50% от с/с', bases.plotter, 'с/с × 50%', row.plotterBonus);
         if (row.techBonus) push('Техника 10% от ВП', bases.tech, 'ВП × 10%', row.techBonus);
-        if (row.accessoryBonus) push('Аксессуары 5%', bases.accessory, 'выручка × 5%', row.accessoryBonus);
+        if (row.accessoryBonus) {
+          const ratePercent = Math.round((row.accessoryRate ?? 0.05) * 100);
+          push(
+            `Аксессуары ${ratePercent}%`,
+            bases.accessory,
+            `личная база × ${ratePercent}%`,
+            row.accessoryBonus,
+            `Общая база команды ${formatMoney(retailAccessoryTier.teamBase)}; порог ${formatMoney(retailAccessoryTier.threshold)}`,
+          );
+        }
         if (row.creditBonus) push('Кредитный бонус', bases.credit, 'ВП × 0,91 × 10%', row.creditBonus);
       }
 
@@ -5505,6 +5596,7 @@ export default function AdminPayrollPage() {
 
     try {
       const sortedRows = sortPayrollWorkbookEmployees(selectedSavedRun.employeeResults);
+      const savedAccessoryTier = getSavedRetailAccessoryTier(selectedSavedRun.sourceSummary);
       const employeeRows = sortedRows.map((row) => {
         const savedDetailAmount = (component: string) => row.calculationDetails
           .filter((detail) => detail.component === component)
@@ -5594,6 +5686,10 @@ export default function AdminPayrollPage() {
         ['Сохранён', new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU'), 'Дата фиксации расчёта в портале'],
         ['Всего начислено', selectedSavedRun.grossPay, 'Сохранённый итог по всем сотрудникам'],
         ['К выплате', selectedSavedRun.netPay, 'После авансов и удержаний'],
+        ...(savedAccessoryTier ? [
+          ['Уровень аксессуаров', `${formatMoney(savedAccessoryTier.teamBase)} / порог ${formatMoney(savedAccessoryTier.threshold)}`, savedAccessoryTier.elevated ? 'Порог превышен' : 'Порог не превышен'],
+          ['Ставка аксессуаров', `${Math.round(savedAccessoryTier.rate * 100)}%`, 'Зафиксированная ставка сохранённого расчёта'],
+        ] : []),
         ...selectedSavedRun.sourceFiles.map((file) => [
           `Источник: ${getSavedSourceTypeLabel(file.type)}`,
           file.originalName,
@@ -5674,8 +5770,12 @@ export default function AdminPayrollPage() {
         marginPercent,
         markupPercent,
         calculationType: row.calculationType,
-        componentType: row.calculationLabel,
-        commissionAmount: row.bonus,
+        componentType: isAccessoryBonusRow(row) && payrollAccessoryCalculation.eligibleManagers.has(row.manager)
+          ? `Аксессуары: ${retailAccessoryTier.ratePercent}%`
+          : row.calculationLabel,
+        commissionAmount: isAccessoryBonusRow(row) && payrollAccessoryCalculation.eligibleManagers.has(row.manager)
+          ? getAccessoryCalculationBase(row) * retailAccessoryTier.rate
+          : row.bonus,
         isCredit: row.isCreditSale,
         isReturn: hasRegistrarFragment(row, 'Возврат'),
         isNegative: row.revenue < 0 || row.grossProfit < 0,
@@ -5737,6 +5837,13 @@ export default function AdminPayrollPage() {
         totalBonus,
         wholesaleTotalBonus,
         retailTotalBonus,
+        retailAccessoryTier: {
+          teamBase: retailAccessoryTier.teamBase,
+          threshold: retailAccessoryTier.threshold,
+          rate: retailAccessoryTier.rate,
+          elevated: retailAccessoryTier.elevated,
+          eligibleEmployees: Array.from(payrollAccessoryCalculation.eligibleManagers),
+        },
         purchaseBase: purchasePayrollRow.purchaseBase,
         classificationErrorCount,
         payrollReviewCount: reviewCount,
@@ -5931,6 +6038,8 @@ export default function AdminPayrollPage() {
       ['Бонус закупщика', purchasePayrollRow.purchasePercentAmount, '1,75% от базы закупок'],
       ['Минимальная зарплата закупщика', purchaseTargetSalary, 'Если обычное начисление ниже, добавляется доплата'],
       ['Кредиты', 'Валовая прибыль × 91% × 10%', '10% от прибыли, оставшейся после 9% налогов и издержек'],
+      ['Уровень аксессуаров', `${formatMoney(retailAccessoryTier.teamBase)} / порог ${formatMoney(retailAccessoryTier.threshold)}`, retailAccessoryTier.elevated ? 'Порог превышен' : 'Порог не превышен'],
+      ['Ставка аксессуаров', `${retailAccessoryTier.ratePercent}%`, `Применяется ко всей личной базе аксессуаров сотрудников с формулой «Розничные продажи»`],
       ['Операционное управление', '12% от обычных начислений выбранных сотрудников', 'Разовые премии в базу не входят; с августа 2026 действует минимум 100 000 ₽'],
     ];
 
@@ -6992,12 +7101,19 @@ export default function AdminPayrollPage() {
                   <div className='grid gap-3 md:grid-cols-6'>
                     {[
                       ['Техника 10%', `${retailTechSummary.rows} / ${formatMoney(retailTechSummary.base)} / ${formatMoney(retailTechSummary.bonus)}`],
-                      ['Аксессуары 5%', `${retailAccessorySummary.rows} / ${formatMoney(retailAccessorySummary.base)} / ${formatMoney(retailAccessorySummary.bonus)}`],
+                      [`Аксессуары ${retailAccessoryTier.ratePercent}%`, `${retailAccessorySummary.rows} / ${formatMoney(retailAccessorySummary.base)} / ${formatMoney(retailAccessorySummary.bonus)}`],
                       ['Услуги 50%', `${retailFilmSummary.rows} / ${formatMoney(retailFilmSummary.base)} / ${formatMoney(retailFilmSummary.bonus)}`],
                       ['Плоттер 50% с/с', `${retailPlotterSummary.rows} / ${formatMoney(retailPlotterSummary.base)} / ${formatMoney(retailPlotterSummary.bonus)}`],
                       ['Кредиты', `${creditRows.length} строк · техника ${creditTechRows.length} / аксессуары ${creditAccessoryRows.length} / спорные ${creditReviewRows.length} · бонус ${formatMoney(retailCreditSummary.bonus)}`],
                       ['Спорная розница', `${retailReviewSummary.rows} / ${formatMoney(retailReviewSummary.revenue)}`],
                     ].map(([label, value]) => <Card key={label} className='p-4'><p className='text-xs font-semibold uppercase text-slate-500'>{label}</p><p className='mt-1 text-sm font-bold text-slate-900'>{value}</p></Card>)}
+                  </div>
+                  <div className={`rounded-xl border px-4 py-3 ${retailAccessoryTier.elevated ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-800'}`}>
+                    <p className='font-bold'>Ставка команды по аксессуарам: {retailAccessoryTier.ratePercent}%</p>
+                    <p className='mt-1 text-sm'>
+                      База команды {formatMoney(retailAccessoryTier.teamBase)} {retailAccessoryTier.elevated ? 'превысила' : 'не превысила'} порог {formatMoney(retailAccessoryTier.threshold)}.
+                      {' '}Ставка {retailAccessoryTier.ratePercent}% применяется ко всей личной базе аксессуаров всех сотрудников с формулой «Розничные продажи».
+                    </p>
                   </div>
                   <Card>
                     <h2 className='mb-4 text-lg font-bold text-slate-900'>Розничные менеджеры</h2>
@@ -7005,7 +7121,7 @@ export default function AdminPayrollPage() {
                       <table className='w-full min-w-[980px] text-sm'>
                         <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-3'>Менеджер</th><th className='px-3 py-3 text-right'>Выручка</th><th className='px-3 py-3 text-right'>ВП</th><th className='px-3 py-3 text-right'>Кредит</th><th className='px-3 py-3 text-right'>Услуги</th><th className='px-3 py-3 text-right'>Плоттер</th><th className='px-3 py-3 text-right'>Техника</th><th className='px-3 py-3 text-right'>Аксессуары</th><th className='px-3 py-3 text-right'>Итого</th><th className='px-3 py-3 text-right'>Спорные</th></tr></thead>
                         <tbody>
-                          {classification.managerSummaries.filter((row) => row.department === 'Розница').map((row) => (
+                          {payrollManagerSummaries.filter((row) => row.department === 'Розница').map((row) => (
                             <tr key={row.manager} className='border-t border-border/70'><td className='px-3 py-2 font-semibold'>{row.manager}</td><td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.creditBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.filmBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.plotterBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.techBonus)}</td><td className='px-3 py-2 text-right'>{formatMoney(row.accessoryBonus)}</td><td className='px-3 py-2 text-right font-bold'>{formatMoney(row.totalBonus)}</td><td className='px-3 py-2 text-right'>{retailReviewRows.filter((item) => item.manager === row.manager).length}</td></tr>
                           ))}
                         </tbody>
@@ -7233,7 +7349,7 @@ export default function AdminPayrollPage() {
                       <p className='mb-3 text-sm text-slate-600'>
                         {selectedManagerSummary.department === 'Опт'
                           ? 'Схема расчёта: Опт — 1,75% от общей базы опта. Залина и Лиана получают каждая полный бонус, бонус не делится пополам.'
-                          : 'Схема расчёта: Розница — услуги оказываемые 50%, плоттерные материалы Асада 50% от с/с, техника 10% от ВП, аксессуары 5%, кредитный бонус.'}
+                          : `Схема расчёта: Розница — услуги оказываемые 50%, плоттерные материалы Асада 50% от с/с, техника 10% от ВП, аксессуары ${retailAccessoryTier.ratePercent}% по уровню общей базы команды, кредитный бонус.`}
                       </p>
                       <div className='overflow-x-auto rounded-lg border border-border'>
                         <table className='w-full min-w-[620px] text-sm'>
@@ -7245,7 +7361,7 @@ export default function AdminPayrollPage() {
                                   selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? ['Услуги оказываемые 50%', selectedManagerCounts.filmBase, 'выручка × 50%', selectedManagerSummary.filmBonus] : null,
                                   selectedManagerCounts.plotterBase || selectedManagerSummary.plotterBonus ? ['Плоттерные материалы 50% от с/с', selectedManagerCounts.plotterBase, 'с/с × 50%', selectedManagerSummary.plotterBonus] : null,
                                   selectedManagerCounts.techBase || selectedManagerSummary.techBonus ? ['Техника 10% от ВП', selectedManagerCounts.techBase, 'ВП × 10%', selectedManagerSummary.techBonus] : null,
-                                  selectedManagerCounts.accessoryBase || selectedManagerSummary.accessoryBonus ? ['Аксессуары 5%', selectedManagerCounts.accessoryBase, 'выручка × 5%', selectedManagerSummary.accessoryBonus] : null,
+                                  selectedManagerCounts.accessoryBase || selectedManagerSummary.accessoryBonus ? [`Аксессуары ${Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}%`, selectedManagerCounts.accessoryBase, `личная база × ${Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}%`, selectedManagerSummary.accessoryBonus] : null,
                                   selectedManagerCounts.credits || selectedManagerSummary.creditBonus ? ['Кредитный бонус', selectedManagerCounts.creditBase, 'ВП × 0,91 × 10%', selectedManagerSummary.creditBonus] : null,
                                 ].filter((component): component is [string, number, string, number] => Boolean(component))
                             ).map(([component, base, formula, bonus]) => (
@@ -7441,7 +7557,7 @@ export default function AdminPayrollPage() {
 
                         <div>
                           <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
-                            <h4 className='text-sm font-bold text-slate-900'>Аксессуары 5% — вошли в расчёт</h4>
+                            <h4 className='text-sm font-bold text-slate-900'>Аксессуары {Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}% — вошли в расчёт</h4>
                             <p className='text-xs text-slate-500'>База {formatMoney(selectedManagerDiagnostics.accessoryRevenue)} · бонус {formatMoney(selectedManagerDiagnostics.accessoryBonus)}</p>
                           </div>
                           {selectedManagerAccessoryRows.length ? (
@@ -7462,7 +7578,7 @@ export default function AdminPayrollPage() {
                                 ))}</tbody>
                               </table>
                             </div>
-                          ) : <p className='text-sm text-slate-500'>Строк аксессуаров 5% по сотруднику не найдено.</p>}
+                          ) : <p className='text-sm text-slate-500'>Строк аксессуаров по сотруднику не найдено.</p>}
                         </div>
 
                         <div>
@@ -7747,7 +7863,7 @@ export default function AdminPayrollPage() {
                   ['Кредитные строки', classification.counts.credit],
                   ['Услуги оказываемые', classification.counts.film],
                   ['Техника 10%', classification.counts.retailTech],
-                  ['Аксессуары 5%', classification.counts.accessory],
+                  ['Строки аксессуаров', classification.counts.accessory],
                   ['Исключённая техника опта', classification.counts.wholesaleExcludedTech],
                 ].map(([label, value]) => (
                   <div key={label} className='rounded-lg border border-border bg-slate-50 px-3 py-3'>
@@ -7818,7 +7934,7 @@ export default function AdminPayrollPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {classification.typeSummaries.map((summary) => (
+                  {payrollTypeSummaries.map((summary) => (
                     <tr key={summary.type} className='border-t border-border/70'>
                       <td className='px-4 py-3 font-semibold text-slate-900'>{summary.label}</td>
                       <td className='px-4 py-3 text-right text-slate-700'>{summary.rows}</td>
@@ -7846,13 +7962,13 @@ export default function AdminPayrollPage() {
                     <th className='px-4 py-3'>Услуги 50%</th>
                     <th className='px-4 py-3'>Плоттер 50% с/с</th>
                     <th className='px-4 py-3'>Техника 10% от ВП</th>
-                    <th className='px-4 py-3'>Аксессуары 5%</th>
+                    <th className='px-4 py-3'>Аксессуары</th>
                     <th className='px-4 py-3'>Опт 1.75%</th>
                     <th className='px-4 py-3'>Итого бонусов без оклада</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {classification.managerSummaries.map((summary) => (
+                  {payrollManagerSummaries.map((summary) => (
                     <tr key={summary.manager} className='border-t border-border/70'>
                       <td className='px-4 py-3 font-semibold text-slate-900'>{summary.manager}</td>
                       <td className='px-4 py-3 text-slate-700'>{summary.department}</td>
@@ -8079,7 +8195,7 @@ export default function AdminPayrollPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {classification.managerSummaries.filter((summary) => summary.creditBonus !== 0).map((summary) => {
+                  {payrollManagerSummaries.filter((summary) => summary.creditBonus !== 0).map((summary) => {
                     const managerCreditTechRows = creditTechRows.filter((row) => row.manager === summary.manager);
                     const creditGrossProfit = managerCreditTechRows.reduce((sum, row) => sum + row.grossProfit, 0);
                     const creditBase = managerCreditTechRows.reduce((sum, row) => sum + row.base, 0);

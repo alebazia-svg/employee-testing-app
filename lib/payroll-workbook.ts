@@ -96,7 +96,10 @@ export function getPayrollWorkbookCalculationText(
     if (normalized.includes('услуг') && normalized.includes('50%')) return `${formatWorkbookMoney(numericBase)} × 50% = ${result}`;
     if (normalized.includes('плоттер') && normalized.includes('50%')) return `${formatWorkbookMoney(numericBase)} × 50% = ${result}`;
     if (normalized.includes('техник') && normalized.includes('10%')) return `${formatWorkbookMoney(numericBase)} × 10% = ${result}`;
-    if (normalized.includes('аксессуар') && normalized.includes('5%')) return `${formatWorkbookMoney(numericBase)} × 5% = ${result}`;
+    if (normalized.includes('аксессуар') && (normalized.includes('5%') || normalized.includes('7%'))) {
+      const rate = normalized.includes('7%') ? '7%' : '5%';
+      return `${formatWorkbookMoney(numericBase)} × ${rate} = ${result}`;
+    }
     if (normalized.includes('кредит')) return `${formatWorkbookMoney(numericBase)} × 91% × 10% = ${result}`;
     if (normalized.includes('доплата до миним')) return `${formatWorkbookMoney(numericBase)} − ${formatWorkbookMoney(numericBase - amount)} = ${result}`;
     if (normalized.includes('оклад')) return `${formatWorkbookMoney(numericBase)} = ${result}`;
@@ -109,12 +112,13 @@ export function getPayrollWorkbookCalculationText(
 }
 
 export function getPayrollWorkbookComponentLabel(component: string) {
+  const accessoryMatch = component.match(/^Аксессуары (5|7)%$/);
+  if (accessoryMatch) return `Аксессуары: ${accessoryMatch[1]}% выручки`;
   const labels: Record<string, string> = {
     'Фиксированный оклад': 'Оклад',
     'Услуги оказываемые 50%': 'Услуги: 50% выручки',
     'Плоттерные материалы 50% от с/с': 'Плоттер: 50% себестоимости материалов',
     'Техника 10% от ВП': 'Техника: 10% валовой прибыли',
-    'Аксессуары 5%': 'Аксессуары: 5% выручки',
     'Кредитный бонус': 'Кредиты: 10% валовой прибыли после вычета 9% налогов и издержек',
     'Дисциплина': 'Бонус за дисциплину',
     'Начисление 12%': '12% от начислений команды',
