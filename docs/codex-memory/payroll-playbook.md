@@ -129,6 +129,34 @@ the pay result harder to understand.
   separate approved formula task, effective-date decision and historical-run
   handling.
 
+### Retail accessory team tier — committed, not released, 2026-09-05
+
+- Owner approved the separate formula change effective from `2026-08`: the
+  retail accessory rate is 5% while the eligible team base is at or below RUB
+  1,000,000 and 7% when the base is strictly above RUB 1,000,000. The selected
+  rate applies to each eligible employee's entire personal accessory base, not
+  only to the amount above the threshold. Returns remain in the calculation and
+  reduce the team and personal bases.
+- Eligibility follows the versioned employee salary rule
+  `retail_sales_bonus`, not a hard-coded list of names. Diana is included while
+  that rule applies to her: only her actual personal accessory sales accrue the
+  bonus, her sales contribute to the retail team threshold and Finbox agency
+  earnings stay a separate component.
+- The portal shows one team-level threshold/rate explanation and the employee
+  detail shows personal base x actual rate. Current and saved workbook exports
+  use the same actual-rate explanation; the management summary remains compact.
+  Saved source metadata records the team base, threshold, selected rate and
+  eligible employee set.
+- New August-and-later snapshots fail validation if their accessory component
+  uses a rate inconsistent with the team base. Existing final/superseded runs
+  remain immutable and are not silently recalculated; a changed historical
+  result must be saved through the existing versioned replacement workflow.
+- Committed as `27c905c` on `codex/payroll-accessory-tier`; not deployed. All 52
+  payroll tests, TypeScript, production build, workbook formula scan and local
+  authenticated browser review passed. The owner's August upload selected 7%
+  from an eligible team base of RUB 1,166,895 and showed Diana's RUB 103,089
+  personal base as RUB 7,216.23.
+
 ## Data Caveats
 
 ### Finbox manual import — released, 2026-09-04
