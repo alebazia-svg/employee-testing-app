@@ -2,6 +2,7 @@ import { Prisma, type WorkDayEntry } from '@prisma/client';
 import { getCurrentUser } from '@/lib/auth';
 import { buildLatenessShadowSnapshot } from '@/lib/attendance-shadow';
 import { prisma } from '@/lib/prisma';
+import { activeEmployeeShiftTemplateTasks } from '@/lib/shift-control-policy';
 import { getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment, usesWorkdayShiftControl } from '@/lib/workday';
 import { scheduleTaskNotifications } from '@/lib/workday-notifications';
 import { loadWorkdayShiftSelection, permittedWorkdayShiftCodes } from '@/lib/workday-shift-selection';
@@ -62,7 +63,8 @@ async function ensureShiftControlRun(user: { id: number; name: string; login: st
     include: { tasks: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
     orderBy: { version: 'desc' },
   });
-  if (!template || template.tasks.length === 0) return null;
+  const templateTasks = template ? activeEmployeeShiftTemplateTasks(user.department, template.tasks) : [];
+  if (!template || templateTasks.length === 0) return null;
 
   return prisma.shiftControlRun.create({
     data: {
@@ -75,7 +77,7 @@ async function ensureShiftControlRun(user: { id: number; name: string; login: st
       startedAt: now,
       tasks: template
         ? {
-            create: template.tasks.map((task) => ({
+            create: templateTasks.map((task) => ({
               templateTaskId: task.id,
               title: task.title,
               category: task.category,
@@ -195,7 +197,8 @@ export async function POST(req: Request) {
     orderBy: { version: 'desc' },
   });
 
-  if (!template || template.tasks.length === 0) {
+  const templateTasks = template ? activeEmployeeShiftTemplateTasks(user.department, template.tasks) : [];
+  if (!template || templateTasks.length === 0) {
     return Response.json({ error: 'Для этой смены нет чек-листа. Обратитесь к администратору.' }, { status: 400 });
   }
 
@@ -223,7 +226,7 @@ export async function POST(req: Request) {
           status: 'active',
           startedAt: now,
           tasks: {
-            create: template.tasks.map((task) => ({
+            create: templateTasks.map((task) => ({
               templateTaskId: task.id,
               title: task.title,
               category: task.category,

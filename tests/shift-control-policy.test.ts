@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildShiftHandoverSteps, employeeKkmReportPhotosRequired } from '../lib/shift-control-policy';
+import { activeEmployeeShiftTemplateTasks, buildShiftHandoverSteps, employeeKkmReportPhotosRequired } from '../lib/shift-control-policy';
+
+test('retail templates cannot recreate manual acquiring tasks after automatic reconciliation', () => {
+  const tasks = [
+    { category: 'cash', title: 'Пересчитать наличные' },
+    { category: 'acquiring', title: 'Проверка операций терминала' },
+    { category: 'handover', title: 'Сдать смену' },
+  ];
+
+  assert.deepEqual(activeEmployeeShiftTemplateTasks('retail', tasks), [tasks[0], tasks[2]]);
+  assert.deepEqual(activeEmployeeShiftTemplateTasks('wholesale', tasks), tasks);
+});
 
 test('retail store closer recounts reserve without a routine Z-report photo', () => {
   assert.equal(employeeKkmReportPhotosRequired, false);

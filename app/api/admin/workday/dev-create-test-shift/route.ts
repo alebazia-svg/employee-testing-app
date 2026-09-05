@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { activeEmployeeShiftTemplateTasks } from '@/lib/shift-control-policy';
 import { getMoscowDateKey, getMoscowMinutes, getShiftOption, usesWorkdayShiftControl } from '@/lib/workday';
 
 function isDateKey(value: unknown): value is string {
@@ -43,7 +44,8 @@ export async function POST(req: Request) {
     orderBy: { version: 'desc' },
   });
 
-  if (!template) {
+  const templateTasks = template ? activeEmployeeShiftTemplateTasks(user.department, template.tasks) : [];
+  if (!template || templateTasks.length === 0) {
     return Response.json({ error: `No active ${user.department} template for shift ${shift.label}` }, { status: 400 });
   }
 
@@ -82,13 +84,13 @@ export async function POST(req: Request) {
         status: 'active',
         startedAt: now,
         tasks: {
-          create: template.tasks.map((task, index) => ({
+          create: templateTasks.map((task, index) => ({
             templateTaskId: task.id,
             title: task.title,
             category: task.category,
             sortOrder: task.sortOrder,
             required: task.required,
-            plannedTimeMinutes: Math.max(0, nowMinutes - template.tasks.length + index),
+            plannedTimeMinutes: Math.max(0, nowMinutes - templateTasks.length + index),
             status: 'pending',
           })),
         },

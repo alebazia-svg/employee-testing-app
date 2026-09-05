@@ -1,5 +1,12 @@
 export const employeeKkmReportPhotosRequired = false;
 
+const automatedRetailTaskCategories = new Set(['acquiring']);
+
+export function activeEmployeeShiftTemplateTasks<T extends { category: string }>(department: string, tasks: T[]): T[] {
+  if (department !== 'retail') return tasks;
+  return tasks.filter((task) => !automatedRetailTaskCategories.has(task.category));
+}
+
 export type ShiftHandoverStep =
   | 'personalCashBalance'
   | 'discrepancy'

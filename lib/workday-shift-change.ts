@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { buildLatenessShadowSnapshot } from '@/lib/attendance-shadow';
 import { prisma } from '@/lib/prisma';
+import { activeEmployeeShiftTemplateTasks } from '@/lib/shift-control-policy';
 import { getMoscowMinutes, getShiftOption, isShiftSupportedForDepartment } from '@/lib/workday';
 import { scheduleTaskNotifications } from '@/lib/workday-notifications';
 import { loadWorkdayShiftSelection, permittedWorkdayShiftCodes, workdayShiftSelectionHint } from '@/lib/workday-shift-selection';
@@ -171,7 +172,8 @@ export async function changeWorkdayShift(input: {
           orderBy: { version: 'desc' },
         })
       : null;
-    if (input.shiftControlEnabled && (!template || template.tasks.length === 0)) {
+    const templateTasks = template ? activeEmployeeShiftTemplateTasks(input.department, template.tasks) : [];
+    if (input.shiftControlEnabled && (!template || templateTasks.length === 0)) {
       throw new WorkdayShiftChangeError('SHIFT_TEMPLATE_MISSING', 'Для этой смены нет чек-листа. Обратитесь к администратору.');
     }
 
@@ -222,7 +224,7 @@ export async function changeWorkdayShift(input: {
         status: 'active',
         startedAt: now,
         tasks: {
-          create: template.tasks.map((task) => ({
+          create: templateTasks.map((task) => ({
             templateTaskId: task.id,
             title: task.title,
             category: task.category,
