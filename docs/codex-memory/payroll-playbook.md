@@ -410,9 +410,14 @@ the pay result harder to understand.
   deductions or manual corrections, and actionable review warnings. Routine
   formulas, zero lateness, advances and minimum-salary top-ups are shown in
   their dedicated columns or detail rows instead of being repeated as notes.
-- The change is locally prepared and visually reviewed against the approved
-  August workbook layout. No production payroll run, database or deploy was
-  changed at this stage.
+- Code commit `b7bbd4c` and documentation commit `1df27fa` were released to
+  production on 2026-09-06. No migration or database write was required; the
+  health endpoint and payroll, workday and employee routes returned 200, and
+  authenticated browser QA reported no console errors.
+- Existing final August run 5 was created before this release and therefore
+  still records its historical 7% accessory components. The release did not
+  rewrite it; the administrator must deliberately recalculate and replace it
+  to create a new final run with the fixed 5% rule.
 
 ## Before Changing Payroll
 
