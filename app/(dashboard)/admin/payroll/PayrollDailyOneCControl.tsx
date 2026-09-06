@@ -114,6 +114,24 @@ function readCached(periodKey: string) {
   }
 }
 
+async function readControlResponse(response: Response) {
+  const text = await response.text();
+  if (!text.trim()) return null;
+  try {
+    return JSON.parse(text) as DailyControlResponse | FailedControlResponse;
+  } catch {
+    return null;
+  }
+}
+
+function getFriendlyLoadError(error: unknown) {
+  const message = error instanceof Error ? error.message.trim() : '';
+  if (!message || /unexpected|failed to fetch|json|network/i.test(message)) {
+    return 'Не удалось получить ответ от 1С. Попробуйте повторить проверку позже.';
+  }
+  return message;
+}
+
 export function PayrollDailyOneCControl({ month, year }: { month: string; year: string }) {
   const periodKey = `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
   const [data, setData] = useState<DailyControlResponse | null>(null);
@@ -131,19 +149,22 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
       const query = `year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
       const storedResponse = await fetch(`/api/admin/payroll/daily-control?${query}`, { cache: 'no-store' });
       if (storedResponse.ok) {
-        const storedBody = await storedResponse.json() as DailyControlResponse;
-        if (requestVersion.current !== version) return;
-        setData(storedBody);
-        setError('');
-        setIsStale(false);
+        const storedBody = await readControlResponse(storedResponse);
+        if (storedBody?.ok) {
+          if (requestVersion.current !== version) return;
+          setData(storedBody);
+          setError('');
+          setIsStale(false);
+        }
       }
       const response = await fetch(`/api/admin/payroll/daily-control?${query}${force ? '&force=1' : ''}`, {
         method: 'POST', cache: 'no-store',
       });
-      const body = await response.json() as DailyControlResponse | FailedControlResponse;
+      const body = await readControlResponse(response);
+      if (!body) throw new Error('Не удалось получить ответ от 1С. Попробуйте повторить проверку позже.');
       if (!response.ok || !body.ok) {
         const failure = body as FailedControlResponse;
-        throw new Error([failure.error, ...(failure.blockingIssues ?? [])].filter(Boolean).join(' '));
+        throw new Error([failure.error, ...(failure.blockingIssues ?? [])].filter(Boolean).join(' ') || 'Данные 1С пока не готовы к расчёту.');
       }
       if (requestVersion.current !== version) return;
       setData(body);
@@ -165,7 +186,7 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
       const cached = readCached(periodKey);
       setData((current) => current ?? cached);
       setIsStale(true);
-      setError(loadError instanceof Error ? loadError.message : 'Не удалось обновить данные 1С.');
+      setError(getFriendlyLoadError(loadError));
     } finally {
       if (requestVersion.current === version) setIsLoading(false);
     }
@@ -229,7 +250,7 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
         {error && (
           <div role='alert' className='mb-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950'>
             <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
-            <p><strong>{isStale ? 'Новые данные не приняты.' : 'Расчёт пока не готов.'}</strong> {error}{isStale ? ' Ниже оставлены последние проверенные значения.' : ''}</p>
+            <p><strong>{data && isStale ? 'Новые данные не приняты.' : 'Данные пока недоступны.'}</strong> {error}{data && isStale ? ' Ниже оставлены последние проверенные значения.' : ''}</p>
           </div>
         )}
 

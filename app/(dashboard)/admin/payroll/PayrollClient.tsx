@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
@@ -850,6 +850,39 @@ type FullPayrollRow = BonusManagerSummary & {
   payrollStatus: 'OK' | 'Проверить';
   payrollReasons: string[];
 };
+
+const payrollPortalGroupTone: Record<string, string> = {
+  purchase_manager: 'border-amber-200 bg-amber-50 text-amber-950',
+  wholesale_percent: 'border-blue-200 bg-blue-50 text-blue-950',
+  retail_sales_bonus: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+  vl_percent: 'border-violet-200 bg-violet-50 text-violet-950',
+  fixed_salary: 'border-slate-200 bg-slate-100 text-slate-800',
+};
+
+function getPayrollPortalGroupTone(salaryType: string) {
+  return payrollPortalGroupTone[salaryType] ?? 'border-rose-200 bg-rose-50 text-rose-900';
+}
+
+function getPayrollPortalBasePay(row: FullPayrollRow) {
+  if (row.salaryType === 'fixed_salary') return row.fixedSalary;
+  if (row.salaryType === 'vl_percent') return row.minimumGuaranteeAdjustment ?? 0;
+  return row.dayPay;
+}
+
+function getPayrollPortalPerformancePay(row: FullPayrollRow) {
+  if (row.salaryType === 'purchase_manager') return row.purchasePercentAmount;
+  if (row.salaryType === 'vl_percent') return row.belaPercentAmount ?? 0;
+  if (row.salaryType === 'wholesale_percent' || row.salaryType === 'retail_sales_bonus') return row.salesBonus;
+  return 0;
+}
+
+function getPayrollPortalAdditionalPay(row: FullPayrollRow) {
+  return row.fixedBonus + (row.oneTimeBonus ?? 0) + row.agentCreditCommission;
+}
+
+function getPayrollPortalPaidAmount(row: FullPayrollRow) {
+  return row.advance + row.fixedDeduction;
+}
 
 type WholesaleCalculation = {
   zalinaRevenue: number;
@@ -4225,6 +4258,14 @@ export default function AdminPayrollPage() {
       ),
     [fullPayrollRows],
   );
+  const payrollDisplayRows = useMemo(
+    () => sortPayrollWorkbookEmployees(fullPayrollRows.map((row) => ({ ...row, employeeName: row.manager }))),
+    [fullPayrollRows],
+  );
+  const savedPayrollDisplayRows = useMemo(
+    () => selectedSavedRun ? sortPayrollWorkbookEmployees(selectedSavedRun.employeeResults) : [],
+    [selectedSavedRun],
+  );
   const currentSavedPeriod = useMemo(
     () => savedPeriods.find((period) => period.year === Number(year) && period.month === Number(month)) ?? null,
     [savedPeriods, year, month],
@@ -4315,93 +4356,25 @@ export default function AdminPayrollPage() {
     }),
     [selectedManagerRows, classification.accessoryExcludedRows, selectedManager],
   );
-  const selectedManagerServiceRows = useMemo(() => selectedManagerRows.filter(isServiceLikeRow), [selectedManagerRows]);
-  const selectedManagerPlotterRows = useMemo(() => selectedManagerRows.filter(isPlotterCalculationRow), [selectedManagerRows]);
-  const selectedManagerAccessoryRows = useMemo(() => getAccessoryCalculationRows(selectedManagerRows), [selectedManagerRows]);
-  const selectedManagerPotentialAccessoryRows = useMemo(
-    () => selectedManagerRows.filter(isPotentialAccessoryNotIncludedRow),
-    [selectedManagerRows],
-  );
-  const selectedManagerSuspiciousTechCostRows = useMemo(() => selectedManagerRows.filter(isSuspiciousTechCostRow), [selectedManagerRows]);
-  const selectedManagerProblemSalesRows = useMemo(
+  const selectedManagerSourceReviewRows = useMemo(
     () =>
       selectedManagerRows.filter(
         (row) =>
-          row.calculationType === 'WHOLESALE_REVIEW_TECH' ||
-          row.calculationType === 'RETAIL_REVIEW_TECH' ||
-          row.calculationType === 'CREDIT_REVIEW_NO_BONUS' ||
-          row.matchedRule === 'new-expensive-review' ||
-          (row.grossProfit < 0 && !isPlotterCalculationRow(row)) ||
-          !row.calculationType,
+          isUnresolvedReviewRow(row) ||
+          isServiceNotIncludedRow(row) ||
+          isPotentialAccessoryNotIncludedRow(row) ||
+          isCriticalZeroBaseRow(row) ||
+          isSuspiciousTechCostRow(row) ||
+          classification.accessoryExcludedRows.includes(row) ||
+          [row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value)),
       ),
-    [selectedManagerRows],
+    [classification.accessoryExcludedRows, selectedManagerRows],
   );
-  const selectedManagerDiagnostics = useMemo(() => {
-    const includedService = selectedManagerServiceRows.filter((row) => row.calculationType === 'RETAIL_FILM_50');
-    const excludedService = selectedManagerServiceRows.filter((row) => row.calculationType !== 'RETAIL_FILM_50');
-    const serviceIncludedRevenue = includedService.reduce((sum, row) => sum + row.revenue, 0);
-    const serviceExcludedRevenue = excludedService.reduce((sum, row) => sum + row.revenue, 0);
-    const negativeAccessoryRows = selectedManagerAccessoryRows.filter((row) => row.revenue < 0 || row.grossProfit < 0 || row.base < 0);
-    const negativeAccessoryRevenue = negativeAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
-    const negativeCreditAccessoryRows = negativeAccessoryRows.filter((row) => row.isCreditSale && row.creditProductType === 'accessory');
-    const negativeRegularAccessoryRows = negativeAccessoryRows.filter((row) => !negativeCreditAccessoryRows.includes(row));
-    const positiveRegularAccessoryRevenue = selectedManagerAccessoryRows
-      .filter((row) => !row.isCreditSale && getAccessoryCalculationBase(row) > 0)
-      .reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
-    const positiveCreditAccessoryRevenue = selectedManagerAccessoryRows
-      .filter((row) => row.isCreditSale && getAccessoryCalculationBase(row) > 0)
-      .reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
-    const negativeRegularAccessoryRevenue = negativeRegularAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
-    const negativeCreditAccessoryRevenue = negativeCreditAccessoryRows.reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0);
-    const finalRegularAccessoryRevenue = positiveRegularAccessoryRevenue + negativeRegularAccessoryRevenue;
-    const finalCreditAccessoryRevenue = positiveCreditAccessoryRevenue + negativeCreditAccessoryRevenue;
-    const finalAccessoryBase = finalRegularAccessoryRevenue + finalCreditAccessoryRevenue;
-    const retailTechRows = getRetailTechCalculationRows(selectedManagerRows);
-    const creditTechRowsForManager = getCreditTechCalculationRows(selectedManagerRows);
-    const positiveRetailTechGrossProfit = retailTechRows.filter((row) => getRetailTechCalculationBase(row) > 0).reduce((sum, row) => sum + getRetailTechCalculationBase(row), 0);
-    const negativeRetailTechGrossProfit = retailTechRows.filter((row) => getRetailTechCalculationBase(row) < 0).reduce((sum, row) => sum + getRetailTechCalculationBase(row), 0);
-    const negativeRetailTechCount = retailTechRows.filter((row) => getRetailTechCalculationBase(row) < 0).length;
-    const retailTechGrossProfitBase = positiveRetailTechGrossProfit + negativeRetailTechGrossProfit;
-    const positiveCreditTechGrossProfit = creditTechRowsForManager.filter((row) => getCreditTechCalculationBase(row) > 0).reduce((sum, row) => sum + getCreditTechCalculationBase(row), 0);
-    const negativeCreditTechGrossProfit = creditTechRowsForManager.filter((row) => getCreditTechCalculationBase(row) < 0).reduce((sum, row) => sum + getCreditTechCalculationBase(row), 0);
-    const negativeCreditTechCount = creditTechRowsForManager.filter((row) => getCreditTechCalculationBase(row) < 0).length;
-    const creditTechGrossProfitBase = positiveCreditTechGrossProfit + negativeCreditTechGrossProfit;
-    const negativeTechCount = negativeRetailTechCount + negativeCreditTechCount;
-    const negativeTechGrossProfit = negativeRetailTechGrossProfit + negativeCreditTechGrossProfit;
-    const techGrossProfitBase = retailTechGrossProfitBase + creditTechGrossProfitBase;
-    const techBonus = retailTechGrossProfitBase * 0.1 + creditTechGrossProfitBase * 0.91 * 0.1;
-    const potentialAccessoryRevenue = selectedManagerPotentialAccessoryRows.reduce((sum, row) => sum + row.revenue, 0);
-    const selectedAccessoryRate = selectedManagerSummary?.accessoryRate ?? 0.05;
-
-    return {
-      serviceIncludedRevenue,
-      serviceExcludedRevenue,
-      serviceTotalRevenue: serviceIncludedRevenue + serviceExcludedRevenue,
-      serviceBonus: serviceIncludedRevenue * 0.5,
-      positiveRegularAccessoryRevenue,
-      negativeRegularAccessoryRevenue,
-      regularAccessoryRevenue: finalRegularAccessoryRevenue,
-      positiveCreditAccessoryRevenue,
-      negativeCreditAccessoryRevenue,
-      creditAccessoryRevenue: finalCreditAccessoryRevenue,
-      accessoryRevenue: finalAccessoryBase,
-      accessoryBonus: finalAccessoryBase * selectedAccessoryRate,
-      negativeAccessoryCount: negativeAccessoryRows.length,
-      negativeAccessoryRevenue,
-      positiveRetailTechGrossProfit,
-      negativeRetailTechGrossProfit,
-      retailTechGrossProfitBase,
-      positiveCreditTechGrossProfit,
-      negativeCreditTechGrossProfit,
-      creditTechGrossProfitBase,
-      negativeTechCount,
-      negativeTechGrossProfit,
-      techGrossProfitBase,
-      techBonus,
-      variableSalesBonus: serviceIncludedRevenue * 0.5 + finalAccessoryBase * selectedAccessoryRate + techBonus,
-      potentialAccessoryRevenue,
-    };
-  }, [selectedManagerAccessoryRows, selectedManagerPotentialAccessoryRows, selectedManagerRows, selectedManagerServiceRows, selectedManagerSummary?.accessoryRate]);
+  const selectedManagerSourceReviewSet = useMemo(() => new Set(selectedManagerSourceReviewRows), [selectedManagerSourceReviewRows]);
+  const selectedManagerSourceIncludedRows = useMemo(
+    () => selectedManagerRows.filter((row) => !selectedManagerSourceReviewSet.has(row)),
+    [selectedManagerRows, selectedManagerSourceReviewSet],
+  );
   const payrollDiagnosticsByEmployee = useMemo(
     () =>
       fullPayrollRows.map((payrollRow) => {
@@ -5198,6 +5171,92 @@ export default function AdminPayrollPage() {
         </button>
         {row.grossProfit < 0 && <span className='text-[11px] leading-tight text-amber-700'>Отрицательная ВП — проверить отдельно.</span>}
       </div>
+    );
+  }
+
+  function getManagerSourceRowReason(row: ClassifiedSalesRow) {
+    if ([row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))) {
+      return 'В строке есть некорректные числовые значения.';
+    }
+    if (classification.accessoryExcludedRows.includes(row)) return 'Похожий на аксессуар товар исключён из расчёта.';
+    if (isSuspiciousTechCostRow(row)) return getSuspiciousTechCostReason(row);
+    if (isServiceNotIncludedRow(row)) return getNotIncludedInServiceReason(row);
+    if (isPotentialAccessoryNotIncludedRow(row)) return getNotIncludedInAccessoryReason(row);
+    if (isCriticalZeroBaseRow(row)) return 'База для процента равна нулю — нужно проверить классификацию строки.';
+    if (isUnresolvedReviewRow(row)) return row.classificationReason || 'Строка требует классификации.';
+    return row.classificationReason || `Учтено как «${row.calculationLabel}».`;
+  }
+
+  function getManagerSourceProblemType(row: ClassifiedSalesRow): ProblemType {
+    if ([row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))) return 'invalidNumbers';
+    if (classification.accessoryExcludedRows.includes(row)) return 'accessoryExcluded';
+    if (isCriticalZeroBaseRow(row)) return 'zeroBase';
+    if (row.isCreditSale) return 'credit';
+    return 'disputed';
+  }
+
+  function renderManagerSourceRow(row: ClassifiedSalesRow, index: number, needsReview: boolean) {
+    const problemType = getManagerSourceProblemType(row);
+    const hasManualRule = Boolean(getManualRuleId(row));
+
+    return (
+      <article
+        key={`${row.manager}-${row.item}-${row.article}-${index}`}
+        className={`rounded-xl border p-3 ${needsReview ? 'border-amber-200 bg-amber-50/40' : 'border-slate-200 bg-white'}`}
+      >
+        <div className='flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between'>
+          <div className='min-w-0 flex-1'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <p className='min-w-0 font-bold leading-snug text-slate-950' title={row.item}>{row.item || 'Номенклатура не указана'}</p>
+              <Badge className={needsReview ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}>
+                {needsReview ? 'Проверить' : row.calculationLabel || 'Учтено'}
+              </Badge>
+            </div>
+            <p className='mt-1 text-xs text-slate-500'>
+              {[row.client, row.category].filter(Boolean).join(' · ') || 'Клиент и категория не указаны'}
+            </p>
+            {needsReview && <p className='mt-2 text-sm font-medium text-amber-950'>{getManagerSourceRowReason(row)}</p>}
+          </div>
+
+          <dl className='grid shrink-0 grid-cols-3 gap-2 text-right xl:min-w-[420px]'>
+            {[
+              ['Выручка', row.revenue],
+              ['База для %', row.base],
+              ['Начислено', row.bonus],
+            ].map(([label, value]) => (
+              <div key={String(label)} className='rounded-lg bg-slate-50 px-2.5 py-2'>
+                <dt className='text-[11px] font-semibold uppercase tracking-wide text-slate-500'>{label}</dt>
+                <dd className='mt-0.5 text-sm font-bold tabular-nums text-slate-950'>{formatMoney(Number(value))}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        <details className='mt-2 text-xs text-slate-600'>
+          <summary className='cursor-pointer font-semibold text-slate-600'>Технические сведения</summary>
+          <div className='mt-2 grid gap-2 rounded-lg bg-slate-50 p-3 sm:grid-cols-2'>
+            <p><span className='text-slate-500'>Артикул:</span> <strong>{row.article || '—'}</strong></p>
+            <p><span className='text-slate-500'>Валовая прибыль:</span> <strong>{formatMoney(row.grossProfit)}</strong></p>
+            <p><span className='text-slate-500'>Себестоимость:</span> <strong>{formatMoney(row.cost)}</strong></p>
+            <p><span className='text-slate-500'>Формула:</span> <strong>{row.formula || '—'}</strong></p>
+            <p className='sm:col-span-2'><span className='text-slate-500'>Применённое правило:</span> <strong>{hasManualRule ? 'ручное правило' : row.matchedRule || '—'}</strong></p>
+          </div>
+          {needsReview && <div className='mt-2'>{renderAccessoryRuleButton(row, problemType)}</div>}
+        </details>
+
+        {needsReview && (
+          <button
+            type='button'
+            onClick={() => {
+              openProblemRows(problemType, selectedManagerSummary?.manager ?? row.manager);
+              setSelectedManager(null);
+            }}
+            className='mt-3 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-bold text-amber-900 transition hover:bg-amber-50'
+          >
+            Открыть в проверке <ArrowRight className='h-3.5 w-3.5' />
+          </button>
+        )}
+      </article>
     );
   }
 
@@ -6269,42 +6328,36 @@ export default function AdminPayrollPage() {
 
               {activePayrollTab === 'Итог ЗП' && (
                 <div className='grid gap-5'>
-                  <div className='grid gap-3 md:grid-cols-4'>
+                  <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
                     {[
                       ['Период', `${months[Number(month)]} ${year}`],
-                      ['Всего оплаты по дням', formatMoney(payrollTotals.dayPay)],
-                      ['Всего бонусов продаж', formatMoney(payrollTotals.salesBonus)],
-                      ['Всего бонусов дисциплины', formatMoney(payrollTotals.disciplineBonus)],
-                      ['Всего авансов', formatMoney(payrollTotals.advance)],
-                      ['Всего начислено', formatMoney(payrollTotals.grossPay)],
-                      ['Всего к выплате', formatMoney(payrollTotals.netPay)],
-                      ['Проверить сотрудников', fullPayrollRows.filter((row) => row.payrollStatus === 'Проверить').length],
+                      ['Начислено', formatMoney(payrollTotals.grossPay)],
+                      ['Выплачено / удержано', formatMoney(fullPayrollRows.reduce((sum, row) => sum + getPayrollPortalPaidAmount(row), 0))],
+                      ['Осталось выплатить', formatMoney(payrollTotals.netPay)],
+                      ['Нужно проверить', payrollReviewCount],
                     ].map(([label, value]) => (
                       <Card key={label} className='min-w-0 p-4'>
                         <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
                         <p className='mt-1 break-words text-xl font-bold text-slate-900'>{value}</p>
                       </Card>
                     ))}
-                    <Card className='min-w-0 p-4 md:col-span-2'>
-                      <p className='text-xs font-semibold uppercase text-slate-500'>Контроль продаж</p>
-                      <p className='mt-1 text-xl font-bold text-slate-900'>{formatMoney(totalBonus)}</p>
-                      <div className='mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-3'>
-                        <span>Опт: {formatMoney(wholesaleTotalBonus)}</span>
-                        <span>Розница: {formatMoney(retailTotalBonus)}</span>
-                        <span>ВП: {formatMoney(totalGrossProfit)}</span>
-                      </div>
-                    </Card>
-                    <Card className='min-w-0 p-4 md:col-span-2'>
-                      <p className='text-xs font-semibold uppercase text-slate-500'>Контроль закупок</p>
-                      <p className='mt-1 text-xl font-bold text-slate-900'>{purchasePayrollRow.purchaseBase === null ? 'Отчёт не загружен' : formatMoney(purchasePayrollRow.purchaseBase)}</p>
-                      <div className='mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2'>
-                        <span>1,75%: {formatMoney(purchasePayrollRow.purchasePercentAmount)}</span>
-                        <span>Минимальная зарплата: {formatMoney(purchaseTargetSalary)}</span>
-                        <span>Ориентир базы: {formatMoney(purchaseTargetBase)}</span>
-                        <span>Выполнение: {purchaseCompletionPercent.toFixed(2)}%</span>
-                      </div>
-                    </Card>
                   </div>
+
+                  <details className='rounded-xl border border-slate-200 bg-white px-4 py-3'>
+                    <summary className='cursor-pointer text-sm font-bold text-slate-800'>Контроль продаж и закупок</summary>
+                    <div className='mt-3 grid gap-3 md:grid-cols-2'>
+                      <div className='rounded-lg bg-slate-50 p-3'>
+                        <p className='text-xs font-semibold uppercase text-slate-500'>Продажи</p>
+                        <p className='mt-1 text-lg font-bold text-slate-900'>{formatMoney(totalBonus)}</p>
+                        <p className='mt-1 text-xs text-slate-600'>Опт {formatMoney(wholesaleTotalBonus)} · розница {formatMoney(retailTotalBonus)} · ВП {formatMoney(totalGrossProfit)}</p>
+                      </div>
+                      <div className='rounded-lg bg-slate-50 p-3'>
+                        <p className='text-xs font-semibold uppercase text-slate-500'>Закупки</p>
+                        <p className='mt-1 text-lg font-bold text-slate-900'>{purchasePayrollRow.purchaseBase === null ? 'Отчёт не загружен' : formatMoney(purchasePayrollRow.purchaseBase)}</p>
+                        <p className='mt-1 text-xs text-slate-600'>1,75%: {formatMoney(purchasePayrollRow.purchasePercentAmount)} · минимум {formatMoney(purchaseTargetSalary)}</p>
+                      </div>
+                    </div>
+                  </details>
 
                   {productReviewGroups.length > 0 && (
                     <Card className='border-amber-200 bg-amber-50/70'>
@@ -6332,13 +6385,13 @@ export default function AdminPayrollPage() {
                         <div className='flex min-w-0 items-start gap-2'>
                           <ChevronDown className='mt-1 h-5 w-5 shrink-0 text-slate-500 transition group-open:rotate-180' />
                           <div className='min-w-0'>
-                          <h2 className='text-lg font-bold text-slate-900'>Сверка начислений по всем сотрудникам</h2>
-                          <p className='text-sm text-slate-500'>Диагностика по текущему загруженному отчёту: услуги, аксессуары, кредитные аксессуары, техника и дни.</p>
+                          <h2 className='text-lg font-bold text-slate-900'>Проверка источников по сотрудникам</h2>
+                          <p className='text-sm text-slate-500'>Служебная сверка распределения строк 1С. Открывайте её, только если итог сотрудника вызывает вопрос.</p>
                           </div>
                         </div>
                         <div className='flex flex-wrap gap-2 text-xs font-semibold text-slate-500'>
-                          <span className='rounded-full bg-slate-100 px-3 py-1'>Кредитные аксессуары: {payrollDiagnosticsWithCreditAccessories.length}</span>
-                          <span className='rounded-full bg-slate-100 px-3 py-1'>Услуги не вошли: {payrollDiagnosticsWithMissedServices.length}</span>
+                          {payrollDiagnosticsWithCreditAccessories.length > 0 && <span className='rounded-full bg-slate-100 px-3 py-1'>Кредитные аксессуары: {payrollDiagnosticsWithCreditAccessories.length}</span>}
+                          {payrollDiagnosticsWithMissedServices.length > 0 && <span className='rounded-full bg-amber-100 px-3 py-1 text-amber-900'>Услуги не вошли: {payrollDiagnosticsWithMissedServices.length}</span>}
                         </div>
                       </div>
                     </summary>
@@ -6438,50 +6491,55 @@ export default function AdminPayrollPage() {
                     </div>
                     {saveStatus && <p className='mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>{saveStatus}</p>}
                     {saveError && <p className='mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{saveError}</p>}
-                    <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
-                      <table className='w-full min-w-[780px] text-sm'>
+                    <div className='max-w-full overflow-x-auto rounded-xl border border-slate-200'>
+                      <table className='w-full min-w-[1180px] text-sm'>
                         <thead className='bg-slate-50 text-left text-slate-500'>
                           <tr>
-                            <th className='w-[210px] px-2 py-2'>Сотрудник</th>
-                            <th className='w-[80px] px-2 py-2'>Отдел</th>
-                            <th className='w-[54px] px-2 py-2 text-right'>Дни</th>
-                            <th className='w-[60px] px-2 py-2 text-right'>Опозд.</th>
-                            <th className='w-[112px] px-2 py-2 text-right'>Продажи</th>
-                            <th className='w-[96px] px-2 py-2 text-right'>Дисц.</th>
-                            <th className='w-[96px] px-2 py-2 text-right'>Раз. премии</th>
-                            <th className='w-[96px] px-2 py-2 text-right'>Аванс</th>
-                            <th className='w-[112px] px-2 py-2 text-right'>Выплата</th>
-                            <th className='w-[92px] px-2 py-2'>Статус</th>
-                            <th className='w-[76px] px-2 py-2'></th>
+                            <th className='w-[210px] px-3 py-3'>Сотрудник</th>
+                            <th className='w-[120px] px-3 py-3 text-right'>Начислено</th>
+                            <th className='w-[54px] px-3 py-3 text-right'>Дни</th>
+                            <th className='w-[130px] px-3 py-3 text-right'>Оплата / оклад / доплата</th>
+                            <th className='w-[120px] px-3 py-3 text-right'>Процентная часть</th>
+                            <th className='w-[105px] px-3 py-3 text-right'>Дисциплина</th>
+                            <th className='w-[125px] px-3 py-3 text-right'>Премии и агентские</th>
+                            <th className='w-[125px] px-3 py-3 text-right'>Выплачено / удержано</th>
+                            <th className='w-[125px] px-3 py-3 text-right'>Осталось выплатить</th>
+                            <th className='min-w-[210px] px-3 py-3'>Примечание</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {fullPayrollRows.map((summary) => {
-                            const combinedStatus = getPayrollRowStatus(summary);
+                          {payrollDisplayRows.map((summary, index) => {
+                            const group = getPayrollWorkbookGroup(summary.salaryType);
+                            const previousGroup = index > 0 ? getPayrollWorkbookGroup(payrollDisplayRows[index - 1].salaryType) : null;
+                            const note = getPayrollRowExportComment(summary);
                             return (
-                              <tr key={summary.manager} className='border-t border-border/70 align-top'>
-                                <td className='max-w-[210px] truncate px-2 py-2 font-semibold text-slate-900' title={`${summary.manager} · ${summary.position}`}>
-                                  <span className='block truncate'>{summary.manager}</span>
-                                  <span className='block truncate text-[11px] font-medium text-slate-500'>{summary.position}</span>
-                                  {summary.salaryRule === 'belaPercent' && getBelaMinimum(selectedPayrollPeriodKey) > 0 && <span className='block text-[11px] font-medium text-slate-600'>Доплата до минимума: {formatMoney(summary.minimumGuaranteeAdjustment ?? 0)}</span>}
-                                </td>
-                                <td className='whitespace-nowrap px-2 py-2 text-slate-700'>{summary.payrollDepartment}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.workedDays ?? '—'}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.lateCount ?? '—'}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right font-semibold text-slate-900'>{formatMoney(summary.salesBonus)}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{summary.salaryType === 'fixed_salary' || summary.salaryType === 'purchase_manager' ? '—' : formatMoney(summary.disciplineBonus)}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{formatMoney(summary.oneTimeBonus ?? 0)}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right text-slate-700'>{formatMoney(summary.advance)}</td>
-                                <td className='whitespace-nowrap px-2 py-2 text-right font-bold text-slate-900'>{formatMoney(summary.netPay)}</td>
-                                <td className='px-2 py-2'>
-                                  <Badge className={combinedStatus === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{combinedStatus === 'OK' ? 'Готово' : 'Проверить'}</Badge>
-                                </td>
-                                <td className='px-2 py-2 text-right'>
-                                  <button type='button' onClick={() => setSelectedManager(summary.manager)} className='rounded-lg border border-border px-2 py-1 text-xs font-semibold text-slate-700 hover:border-primary/40'>
-                                    Открыть
-                                  </button>
-                                </td>
-                              </tr>
+                              <Fragment key={summary.manager}>
+                                {group !== previousGroup && (
+                                  <tr>
+                                    <td colSpan={10} className={`border-y px-3 py-2 text-xs font-extrabold uppercase tracking-wide ${getPayrollPortalGroupTone(summary.salaryType)}`}>{group}</td>
+                                  </tr>
+                                )}
+                                <tr
+                                  className='cursor-pointer border-t border-slate-100 align-top transition hover:bg-slate-50 focus-within:bg-slate-50'
+                                  onClick={() => setSelectedManager(summary.manager)}
+                                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedManager(summary.manager); }}
+                                  tabIndex={0}
+                                >
+                                  <td className='max-w-[210px] px-3 py-3 font-semibold text-slate-900' title={`${summary.manager} · ${summary.position}`}>
+                                    <span className='block'>{summary.manager}</span>
+                                    <span className='mt-0.5 block truncate text-[11px] font-medium text-slate-500'>{summary.position}</span>
+                                  </td>
+                                  <td className='whitespace-nowrap bg-emerald-50/60 px-3 py-3 text-right font-extrabold text-emerald-800'>{formatMoney(summary.grossPay)}</td>
+                                  <td className='whitespace-nowrap px-3 py-3 text-right text-slate-700'>{summary.workedDays ?? '—'}</td>
+                                  <td className='whitespace-nowrap px-3 py-3 text-right text-slate-700'>{formatMoney(getPayrollPortalBasePay(summary))}</td>
+                                  <td className='whitespace-nowrap px-3 py-3 text-right font-semibold text-slate-900'>{formatMoney(getPayrollPortalPerformancePay(summary))}</td>
+                                  <td className='whitespace-nowrap px-3 py-3 text-right text-slate-700'>{summary.disciplineBonus ? formatMoney(summary.disciplineBonus) : '—'}</td>
+                                  <td className='whitespace-nowrap px-3 py-3 text-right text-slate-700'>{getPayrollPortalAdditionalPay(summary) ? formatMoney(getPayrollPortalAdditionalPay(summary)) : '—'}</td>
+                                  <td className='whitespace-nowrap px-3 py-3 text-right text-slate-700'>{getPayrollPortalPaidAmount(summary) ? formatMoney(getPayrollPortalPaidAmount(summary)) : '—'}</td>
+                                  <td className='whitespace-nowrap px-3 py-3 text-right font-extrabold text-slate-950'>{formatMoney(summary.netPay)}</td>
+                                  <td className={`max-w-[230px] truncate whitespace-nowrap px-3 py-3 text-xs ${note ? 'font-semibold text-amber-800' : 'text-slate-400'}`} title={note || undefined}>{note || '—'}</td>
+                                </tr>
+                              </Fragment>
                             );
                           })}
                         </tbody>
@@ -6634,38 +6692,43 @@ export default function AdminPayrollPage() {
                         <div>
                           <h3 className='mb-2 text-sm font-bold text-slate-900'>Сотрудники</h3>
                           <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
-                            <table className='w-full min-w-[900px] text-xs'>
+                            <table className='w-full min-w-[980px] text-xs'>
                               <thead className='bg-slate-50 text-left text-slate-500'>
                                 <tr>
                                   <th className='px-3 py-2'>Сотрудник</th>
-                                  <th className='px-3 py-2'>Отдел</th>
-                                  <th className='px-3 py-2 text-right'>Дни</th>
                                   <th className='px-3 py-2 text-right'>Начислено</th>
-                                  <th className='px-3 py-2 text-right'>К выплате</th>
-                                  <th className='px-3 py-2'>Статус</th>
-                                  <th className='px-3 py-2'>Причины</th>
+                                  <th className='px-3 py-2 text-right'>Дни</th>
+                                  <th className='px-3 py-2 text-right'>Выплачено / удержано</th>
+                                  <th className='px-3 py-2 text-right'>Осталось выплатить</th>
+                                  <th className='px-3 py-2'>Примечание</th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {selectedSavedRun.employeeResults.map((row) => {
+                                {savedPayrollDisplayRows.map((row, index) => {
+                                  const group = getPayrollWorkbookGroup(row.salaryType);
+                                  const previousGroup = index > 0 ? getPayrollWorkbookGroup(savedPayrollDisplayRows[index - 1].salaryType) : null;
                                   const reasons = getSavedEmployeeReasons(row);
                                   const needsReview = reasons.length > 0 || !isPayrollWorkbookSalaryTypeConfigured(row.salaryType);
-                                  return <tr key={row.id} className='border-t border-border/70'>
-                                    <td className='px-3 py-2 font-semibold text-slate-900'>{row.employeeName}</td>
-                                    <td className='px-3 py-2 text-slate-700'>{row.payrollDepartment}</td>
-                                    <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
-                                    <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossPay)}</td>
-                                    <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.netPay)}</td>
-                                    <td className='px-3 py-2'><Badge className={needsReview ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'}>{needsReview ? 'Проверить' : 'Готово'}</Badge></td>
-                                    <td className='px-3 py-2 text-slate-600'>{reasons.join('; ') || '—'}</td>
-                                  </tr>
+                                  return <Fragment key={row.id}>
+                                    {group !== previousGroup && <tr><td colSpan={6} className={`border-y px-3 py-2 font-extrabold uppercase tracking-wide ${getPayrollPortalGroupTone(row.salaryType)}`}>{group}</td></tr>}
+                                    <tr className='border-t border-border/70'>
+                                      <td className='px-3 py-2 font-semibold text-slate-900'>{row.employeeName}</td>
+                                      <td className='bg-emerald-50/60 px-3 py-2 text-right font-extrabold text-emerald-800'>{formatMoney(row.grossPay)}</td>
+                                      <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
+                                      <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(Math.max(0, row.grossPay - row.netPay))}</td>
+                                      <td className='px-3 py-2 text-right font-extrabold text-slate-900'>{formatMoney(row.netPay)}</td>
+                                      <td className={`px-3 py-2 ${needsReview ? 'font-semibold text-amber-800' : 'text-slate-400'}`}>{needsReview ? reasons.join('; ') || 'Проверьте правило расчёта' : '—'}</td>
+                                    </tr>
+                                  </Fragment>
                                 })}
                               </tbody>
                             </table>
                           </div>
                         </div>
 
-                        <div className='grid gap-4'>
+                        <details className='rounded-lg border border-slate-200 bg-slate-50/60 p-3'>
+                          <summary className='cursor-pointer font-bold text-slate-900'>Источники и сохранённые данные</summary>
+                          <div className='mt-3 grid gap-4'>
                           <div>
                             <h3 className='mb-2 text-sm font-bold text-slate-900'>Исходные файлы</h3>
                             <div className='grid gap-2'>
@@ -6691,7 +6754,8 @@ export default function AdminPayrollPage() {
                               )) : <p className='px-3 py-2 text-sm text-slate-600'>Ручных вводов нет.</p>}
                             </div>
                           </div>
-                        </div>
+                          </div>
+                        </details>
                       </div>
 
                       <div className='mt-4'>
@@ -6723,7 +6787,7 @@ export default function AdminPayrollPage() {
                     <p className='mt-2 text-xs text-slate-500'>Новые премии прибавляются сверх обычного расчёта и доведения до минимума, не входят в базу 12% Бэлы и не переносятся в следующий месяц. «Сохранить расчёт» фиксирует суммы, основания и автора в истории. Записи в 1С не создаются.</p>
                   </div>
                   <div className='grid min-w-0 gap-3'>
-                    {fullPayrollRows.map((row) => {
+                    {payrollDisplayRows.map((row) => {
                       const fixed = row.salaryType === 'fixed_salary';
                       const purchase = row.salaryType === 'purchase_manager';
                       const salesInput = manualPayroll[row.manager] ?? { workedDays: '', lateCount: '', advance: '', comment: '' };
@@ -6816,11 +6880,16 @@ export default function AdminPayrollPage() {
                     {saveError && <p role='alert' className='text-sm text-red-700'>{saveError}</p>}
                     {saveStatus && <p className='text-sm text-green-700'>{saveStatus}</p>}
                   </div>
-                  <div className='mt-5'>
+                  <details className='mt-5 rounded-xl border border-slate-200 bg-slate-50/50 p-4'>
+                    <summary className='cursor-pointer list-none font-bold text-slate-900'>
+                      Источник рабочих дней
+                      <span className='ml-2 text-xs font-medium text-slate-500'>Настройка и проверка</span>
+                    </summary>
+                    <div className='mt-4'>
                     <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
                       <div>
-                        <h3 className='text-base font-bold text-slate-900'>Сопоставление с посещаемостью</h3>
-                        <p className='mt-1 text-sm text-slate-500'>Ручная карта имён для будущей автоподстановки дней. Выбран период: {months[Number(month)]} {year}.</p>
+                        <h3 className='text-base font-bold text-slate-900'>Посещаемость за {months[Number(month)]} {year}</h3>
+                        <p className='mt-1 text-sm text-slate-500'>Проверьте сопоставление имён перед автоматической подстановкой дней.</p>
                       </div>
                       <button
                         type='button'
@@ -6978,7 +7047,8 @@ export default function AdminPayrollPage() {
                         </div>
                       </div>
                     )}
-                  </div>
+                    </div>
+                  </details>
                 </Card>
               )}
 
@@ -6989,22 +7059,19 @@ export default function AdminPayrollPage() {
                       <div>
                         <h2 className='text-lg font-bold text-slate-900'>Аудит расчёта</h2>
                         <p className='text-sm text-slate-500'>Проверка зарплаты перед сохранением: критичные строки, дорогие позиции и ручные исправления.</p>
-                        <p className='mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900'>
-                          Аудит показывает строки расчёта из ВВП. В некоторых форматах отчёта строка может быть агрегатом по товару/клиенту/менеджеру, если сам ВВП отдаёт её как итог по номенклатуре. Расчёт зарплаты от этого не меняется.
-                        </p>
+                        <details className='mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900'>
+                          <summary className='cursor-pointer font-semibold'>Как читать строки аудита</summary>
+                          <p className='mt-2'>Строки взяты из отчёта 1С. Если исходный отчёт уже объединил продажи по товару, клиенту и менеджеру, здесь также будет показан общий итог. На формулу зарплаты это не влияет.</p>
+                        </details>
                       </div>
                     </div>
                     {classificationRuleMessage && <p className='mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700'>{classificationRuleMessage}</p>}
                     {classificationRuleError && <p className='mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700'>{classificationRuleError}</p>}
-                    <div className='grid gap-2 md:grid-cols-3 xl:grid-cols-8'>
+                    <div className='grid gap-2 sm:grid-cols-2 xl:grid-cols-4'>
                       {[
                         ['Требует действия', auditActionRows.length],
-                        ['Аксессуары розницы', topRetailAccessoryAuditRows.length],
-                        ['Аксессуары опта', topWholesaleAccessoryAuditRows.length],
                         ['Большие начисления', topBonusAuditRows.length],
-                        ['Без ручного правила', expensiveAutomaticAuditRows.length],
                         ['Новые дорогие', newExpensiveAuditRows.length],
-                        ['Услуги 50%', serviceAuditRows.length],
                         ['Ручные правила', manualClassificationAuditRows.length],
                       ].map(([label, count]) => (
                         <div key={label} className='rounded-lg border border-border bg-white px-3 py-2'>
@@ -7022,6 +7089,12 @@ export default function AdminPayrollPage() {
 
                   {renderProductReviewCard()}
 
+                  <details className='rounded-xl border border-slate-200 bg-slate-50/60 p-4'>
+                    <summary className='cursor-pointer list-none font-bold text-slate-900'>
+                      Дополнительная сверка строк 1С
+                      <span className='ml-2 text-xs font-medium text-slate-500'>Обычные и технические выборки</span>
+                    </summary>
+                    <div className='mt-4 grid gap-5'>
                   <Card>
                     <h3 className='mb-2 text-base font-bold text-slate-900'>Требует действия</h3>
                     <p className='mb-3 text-sm text-slate-500'>Только строки, где нужно принять решение: классификация, себестоимость, ошибочное исключение или некорректные числа.</p>
@@ -7084,6 +7157,8 @@ export default function AdminPayrollPage() {
                     <p className='mb-3 text-sm text-slate-500'>Строки текущего расчёта, где сработало сохранённое ручное правило classification-rules.</p>
                     {renderAuditRowsTable(manualClassificationAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Ручные правила в текущем расчёте не применялись.' })}
                   </Card>
+                    </div>
+                  </details>
                 </div>
               )}
 
@@ -7256,20 +7331,14 @@ export default function AdminPayrollPage() {
             {selectedManagerStatus && selectedManagerPayroll && (
               <div className='fixed inset-0 z-50 flex justify-end bg-slate-950/45'>
                 <aside className='admin-dialog-panel h-full w-full overflow-y-auto bg-white p-4 shadow-2xl md:w-[62vw] xl:w-[58vw]'>
-                  <div className='mb-4 flex items-start justify-between gap-4 border-b border-border pb-4'>
+                  <div className='mb-4 border-b border-border pb-4'>
+                    <div className='flex items-start justify-between gap-4'>
                     <div className='min-w-0'>
                       <h2 className='truncate text-[22px] font-bold text-slate-900'>{selectedManagerPayroll.manager}</h2>
-                      <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {selectedManagerPayroll.payrollDepartment} · {selectedManagerPayroll.position}</p>
-                      <div className='mt-3 flex flex-wrap items-center gap-2'>
-                        <Badge className={selectedManagerStatus.status === 'OK' && selectedManagerPayroll.payrollStatus === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
-                          {selectedManagerStatus.status === 'OK' && selectedManagerPayroll.payrollStatus === 'OK' ? 'OK' : 'Проверить'}
-                        </Badge>
-                      </div>
-                      <div className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'>
-                        <p className='font-semibold text-slate-900'>Требует проверки</p>
-                        {selectedManagerStatus.status === 'OK' && selectedManagerPayroll.payrollReasons.length === 0 ? (
-                          <p className='mt-1'>Замечаний нет</p>
-                        ) : (
+                      <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {getPayrollWorkbookGroup(selectedManagerPayroll.salaryType)} · {selectedManagerPayroll.position}</p>
+                      {(selectedManagerStatus.status !== 'OK' || selectedManagerPayroll.payrollStatus !== 'OK' || selectedManagerPayroll.payrollReasons.length > 0) && (
+                        <div className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>
+                          <p className='font-bold'>Нужно проверить</p>
                           <ul className='mt-1 grid gap-1'>
                             {selectedManagerCounts.disputed > 0 && <li>Спорные строки: {selectedManagerCounts.disputed}</li>}
                             {selectedManagerCounts.serviceNotIncluded > 0 && <li>Услуги не вошли в 50%: {selectedManagerCounts.serviceNotIncluded}</li>}
@@ -7287,24 +7356,28 @@ export default function AdminPayrollPage() {
                               </li>
                             ))}
                           </ul>
-                        )}
-                      </div>
-                      <div className='mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900'>
-                        <p className='font-semibold'>Контроль / уже учтено</p>
-                        <ul className='mt-1 grid gap-1 text-blue-800'>
-                          {selectedManagerCounts.classifiedCredits > 0 && <li>Кредиты с понятным расчётом: {selectedManagerCounts.classifiedCredits}</li>}
-                          {selectedManagerCounts.accountedNegative > 0 && <li>Отрицательная ВП учтена в своём типе расчёта: {selectedManagerCounts.accountedNegative}</li>}
-                          {selectedManagerCounts.informationalZeroBase > 0 && <li>Нулевая база как контроль: {selectedManagerCounts.informationalZeroBase}</li>}
-                          {selectedManagerCounts.classifiedCredits === 0 && selectedManagerCounts.accountedNegative === 0 && selectedManagerCounts.informationalZeroBase === 0 && <li>Контрольных флагов нет</li>}
-                        </ul>
-                      </div>
+                        </div>
+                      )}
                     </div>
-                    <div className='shrink-0 text-right'>
-                      <p className='text-xs font-semibold uppercase text-slate-500'>К выплате</p>
-                      <p className='text-xl font-bold text-slate-900'>{formatMoney(selectedManagerPayroll.netPay)}</p>
+                    <div className='shrink-0'>
                       <button type='button' onClick={() => setSelectedManager(null)} className='mt-3 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 hover:border-primary/40'>
                         Закрыть
                       </button>
+                    </div>
+                    </div>
+                    <div className='mt-4 grid gap-2 sm:grid-cols-3'>
+                      <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3'>
+                        <p className='text-xs font-bold uppercase tracking-wide text-emerald-700'>Начислено</p>
+                        <p className='mt-1 text-xl font-extrabold text-emerald-950'>{formatMoney(selectedManagerPayroll.grossPay)}</p>
+                      </div>
+                      <div className='rounded-xl border border-slate-200 bg-slate-50 px-4 py-3'>
+                        <p className='text-xs font-bold uppercase tracking-wide text-slate-500'>Выплачено / удержано</p>
+                        <p className='mt-1 text-xl font-extrabold text-slate-900'>{formatMoney(getPayrollPortalPaidAmount(selectedManagerPayroll))}</p>
+                      </div>
+                      <div className='rounded-xl border border-blue-200 bg-blue-50 px-4 py-3'>
+                        <p className='text-xs font-bold uppercase tracking-wide text-blue-700'>Осталось выплатить</p>
+                        <p className='mt-1 text-xl font-extrabold text-blue-950'>{formatMoney(selectedManagerPayroll.netPay)}</p>
+                      </div>
                     </div>
                   </div>
 
@@ -7314,57 +7387,31 @@ export default function AdminPayrollPage() {
                       <div className='grid gap-3 sm:grid-cols-3'>
                         {(selectedManagerPayroll.salaryType === 'purchase_manager'
                           ? [
-                              ['Отдел', selectedManagerPayroll.payrollDepartment],
-                              ['Должность', selectedManagerPayroll.position],
-                              ['Тип расчёта', getSalaryTypeLabel(selectedManagerPayroll.salaryType)],
-                              ['Стандарт дней', purchaseStandardWorkedDays],
-                              ['Ставка за выход', formatMoney(selectedManagerPayroll.dayRate)],
+                              ['Дни × ставка', `${selectedManagerPayroll.workedDays ?? '—'} × ${formatMoney(selectedManagerPayroll.dayRate)}`],
                               ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
                               ['База закупок', selectedManagerPayroll.purchaseBase === null ? '—' : formatMoney(selectedManagerPayroll.purchaseBase)],
-                              ['Процент закупок', '1,75%'],
-                              ['Расчёт по закупкам', formatMoney(selectedManagerPayroll.purchasePercentAmount)],
-                              ['Доплата до минимальной зарплаты', formatMoney(selectedManagerPayroll.purchaseTargetAdjustment)],
-                              ['Минимальная зарплата', formatMoney(selectedManagerPayroll.purchaseTargetSalary)],
-                              ['Аванс', formatMoney(selectedManagerPayroll.advance)],
-                              ['Удержание', formatMoney(selectedManagerPayroll.fixedDeduction)],
-                              ['Формула', getSalaryFormulaLabel(selectedManagerPayroll.salaryType)],
-                              ['К выплате', formatMoney(selectedManagerPayroll.netPay)],
+                              ['1,75% от закупок', formatMoney(selectedManagerPayroll.purchasePercentAmount)],
+                              ['Доплата до 100 000 ₽', formatMoney(selectedManagerPayroll.purchaseTargetAdjustment)],
+                              ...(selectedManagerPayroll.oneTimeBonus ? [['Разовая премия', formatMoney(selectedManagerPayroll.oneTimeBonus)]] : []),
                             ]
                           : selectedManagerPayroll.salaryType === 'fixed_salary'
                           ? [
-                              ['Отдел', selectedManagerPayroll.payrollDepartment],
-                              ['Должность', selectedManagerPayroll.position],
-                              ['Тип расчёта', getSalaryTypeLabel(selectedManagerPayroll.salaryType)],
                               ['Оклад', formatMoney(selectedManagerPayroll.fixedSalary)],
-                              ['Премия', formatMoney(selectedManagerPayroll.fixedBonus)],
-                              ['Аванс', formatMoney(selectedManagerPayroll.advance)],
-                              ['Удержание', formatMoney(selectedManagerPayroll.fixedDeduction)],
-                              ['Формула', getSalaryFormulaLabel(selectedManagerPayroll.salaryType)],
-                              ['К выплате', formatMoney(selectedManagerPayroll.netPay)],
+                              ...(selectedManagerPayroll.fixedBonus ? [['Разовая премия', formatMoney(selectedManagerPayroll.fixedBonus)]] : []),
                             ]
                           : [
-                              ['Отдел', selectedManagerPayroll.payrollDepartment],
-                              ['Должность', selectedManagerPayroll.position],
-                              ['Тип расчёта', getSalaryTypeLabel(selectedManagerPayroll.salaryType)],
-                              ['Формула расчёта', getSalaryFormulaLabel(selectedManagerPayroll.salaryType, selectedPayrollPeriodKey)],
-                              ['Ставка', formatMoney(selectedManagerPayroll.dayRate)],
-                              ['Источник дней', getPayrollDaysSourceLabel(selectedManagerPayroll.daysSource)],
-                              ['Дни', selectedManagerPayroll.workedDays ?? '—'],
-                              ['Опоздания', selectedManagerPayroll.lateCount ?? '—'],
-                              ['Имя в посещаемости', selectedManagerAttendanceNames.join(', ') || '—'],
-                              ['Правило зарплаты', selectedManagerPayroll.salaryRule === 'belaPercent' ? getSalaryFormulaLabel('vl_percent', selectedPayrollPeriodKey) : selectedManagerPayroll.salaryRule === 'noDayPay' ? 'Без оплаты выходов по дням' : 'Стандарт'],
-                              ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
-                              ['Бонус продаж', formatMoney(selectedManagerPayroll.salesBonus)],
-                              ...(selectedManagerPayroll.agentCreditCommission > 0 ? [['Агентские по кредитам', formatMoney(selectedManagerPayroll.agentCreditCommission)]] : []),
-                              ['Бонус дисциплины', formatMoney(selectedManagerPayroll.disciplineBonus)],
-                              ['Всего начислено', formatMoney(selectedManagerPayroll.grossPay)],
-                            ]).concat([
                               ...(selectedManagerPayroll.salaryRule === 'belaPercent' ? [
-                                ['База 12% без разовых премий', formatMoney(selectedManagerPayroll.belaBase ?? 0)],
-                                ['Расчёт 12%', formatMoney(selectedManagerPayroll.belaPercentAmount ?? 0)],
-                                ...(getBelaMinimum(selectedPayrollPeriodKey) ? [['Доплата до минимальной зарплаты', formatMoney(selectedManagerPayroll.minimumGuaranteeAdjustment ?? 0)]] : []),
-                              ] : []),
-                              ['Разовые премии сверху', formatMoney(selectedManagerPayroll.oneTimeBonus ?? 0)],
+                                ['База для 12%', formatMoney(selectedManagerPayroll.belaBase ?? 0)],
+                                ['12% от начислений команды', formatMoney(selectedManagerPayroll.belaPercentAmount ?? 0)],
+                                ...(getBelaMinimum(selectedPayrollPeriodKey) ? [['Доплата до 100 000 ₽', formatMoney(selectedManagerPayroll.minimumGuaranteeAdjustment ?? 0)]] : []),
+                              ] : [
+                                ['Дни × ставка', `${selectedManagerPayroll.workedDays ?? '—'} × ${formatMoney(selectedManagerPayroll.dayRate)}`],
+                                ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
+                                ['Процент с продаж', formatMoney(selectedManagerPayroll.salesBonus)],
+                                ['Бонус за дисциплину', formatMoney(selectedManagerPayroll.disciplineBonus)],
+                              ]),
+                              ...(selectedManagerPayroll.agentCreditCommission > 0 ? [['Агентские по кредитам', formatMoney(selectedManagerPayroll.agentCreditCommission)]] : []),
+                              ...(selectedManagerPayroll.oneTimeBonus ? [['Разовая премия', formatMoney(selectedManagerPayroll.oneTimeBonus)]] : []),
                             ]).map(([label, value]) => (
                           <div key={label} className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
                             <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
@@ -7372,406 +7419,107 @@ export default function AdminPayrollPage() {
                           </div>
                         ))}
                       </div>
-                      {bonusValidation.bonuses.filter((bonus) => bonus.employeeName === selectedManagerPayroll.manager).map((bonus) => <p key={bonus.id} className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'>Разовая премия {formatMoney(bonus.amount)}: {bonus.reason}</p>)}
+                      {bonusValidation.bonuses.filter((bonus) => bonus.employeeName === selectedManagerPayroll.manager).map((bonus) => <p key={bonus.id} className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'><span className='font-semibold'>Основание премии:</span> {bonus.reason}</p>)}
                       {(selectedManagerPayroll.lateCount ?? 0) > 3 && <p className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800'>Бонус дисциплины снят: опозданий больше 3</p>}
                     </Card>
 
-                    <Card>
-                      <h3 className='mb-3 text-base font-bold text-slate-900'>Удержания</h3>
-                      <div className='grid gap-3 sm:grid-cols-2'>
-                        {[
-                          ['Аванс', formatMoney(selectedManagerPayroll.advance)],
-                          ['Удержание', selectedManagerPayroll.salaryType === 'fixed_salary' ? formatMoney(selectedManagerPayroll.fixedDeduction) : '—'],
-                          ['Всего удержано', formatMoney(selectedManagerPayroll.advance + selectedManagerPayroll.fixedDeduction)],
-                        ].map(([label, value]) => (
-                          <div key={label} className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                            <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
-                            <p className='font-bold text-slate-900'>{value}</p>
-                          </div>
-                        ))}
+                    {selectedManagerPayroll.comment && (
+                      <div className='rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-950'>
+                        <p className='text-xs font-bold uppercase tracking-wide text-blue-700'>Важное примечание</p>
+                        <p className='mt-1'>{selectedManagerPayroll.comment}</p>
                       </div>
-                      {selectedManagerPayroll.comment && <p className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600'>{selectedManagerPayroll.comment}</p>}
-                    </Card>
+                    )}
 
+                    {(selectedManagerPayroll.salaryType === 'wholesale_percent' || selectedManagerPayroll.salaryType === 'retail_sales_bonus') && selectedManagerSummary && (
+                      <details className='group rounded-xl border border-slate-200 bg-slate-50/60 p-3'>
+                        <summary className='cursor-pointer list-none font-bold text-slate-900'>
+                          Подробный расчёт процентной части
+                          <span className='ml-2 text-xs font-medium text-slate-500 group-open:hidden'>Показать</span>
+                          <span className='ml-2 hidden text-xs font-medium text-slate-500 group-open:inline'>Скрыть</span>
+                        </summary>
+                        <div className='mt-4 grid gap-5'>
                     <Card>
-                      <h3 className='mb-3 text-base font-bold text-slate-900'>Итог</h3>
-                      <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                        <p className='text-xs font-semibold uppercase text-slate-500'>К выплате</p>
-                        <p className='text-xl font-bold text-slate-900'>{formatMoney(selectedManagerPayroll.netPay)}</p>
-                      </div>
-                    </Card>
-
-                    {selectedManagerPayroll.salaryType !== 'fixed_salary' && selectedManagerSummary && (
-                      <>
-                    <Card>
-                      <h3 className='mb-3 text-base font-bold text-slate-900'>Структура бонусов</h3>
+                      <h3 className='mb-2 text-base font-bold text-slate-900'>Как рассчитан процент с продаж</h3>
                       <p className='mb-3 text-sm text-slate-600'>
                         {selectedManagerSummary.department === 'Опт'
-                          ? 'Схема расчёта: Опт — 1,75% от общей базы опта. Залина и Лиана получают каждая полный бонус, бонус не делится пополам.'
-                          : `Схема расчёта: Розница — услуги оказываемые 50%, плоттерные материалы Асада 50% от с/с, техника 10% от ВП, аксессуары ${retailAccessoryTier.ratePercent}% от личной базы, кредитный бонус.`}
+                          ? 'Показана база отдела, ставка и сумма, начисленная сотруднику. Оптовый бонус не делится между менеджерами.'
+                          : 'Показаны только те виды продаж, которые вошли в начисление сотрудника.'}
                       </p>
-                      <div className='overflow-x-auto rounded-lg border border-border'>
-                        <table className='w-full min-w-[620px] text-sm'>
-                          <thead className='bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-3'>Компонент</th><th className='px-3 py-3 text-right'>База</th><th className='px-3 py-3'>Формула</th><th className='px-3 py-3 text-right'>Бонус</th></tr></thead>
-                          <tbody>
-                            {(selectedManagerSummary.department === 'Опт'
-                              ? [['Опт 1,75%', classification.wholesale.base, 'общая база опта × 1,75%, не делится пополам', selectedManagerSummary.wholesaleBonus]]
-                              : [
-                                  selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? ['Услуги оказываемые 50%', selectedManagerCounts.filmBase, 'выручка × 50%', selectedManagerSummary.filmBonus] : null,
-                                  selectedManagerCounts.plotterBase || selectedManagerSummary.plotterBonus ? ['Плоттерные материалы 50% от с/с', selectedManagerCounts.plotterBase, 'с/с × 50%', selectedManagerSummary.plotterBonus] : null,
-                                  selectedManagerCounts.techBase || selectedManagerSummary.techBonus ? ['Техника 10% от ВП', selectedManagerCounts.techBase, 'ВП × 10%', selectedManagerSummary.techBonus] : null,
-                                  selectedManagerCounts.accessoryBase || selectedManagerSummary.accessoryBonus ? [`Аксессуары ${Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}%`, selectedManagerCounts.accessoryBase, `личная база × ${Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}%`, selectedManagerSummary.accessoryBonus] : null,
-                                  selectedManagerCounts.credits || selectedManagerSummary.creditBonus ? ['Кредитный бонус', selectedManagerCounts.creditBase, 'ВП × 0,91 × 10%', selectedManagerSummary.creditBonus] : null,
-                                ].filter((component): component is [string, number, string, number] => Boolean(component))
-                            ).map(([component, base, formula, bonus]) => (
-                              <tr key={String(component)} className='border-t border-border/70'><td className='px-3 py-2 font-semibold'>{component}</td><td className='px-3 py-2 text-right'>{formatMoney(Number(base))}</td><td className='px-3 py-2'>{formula}</td><td className='px-3 py-2 text-right font-bold'>{formatMoney(Number(bonus))}</td></tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </Card>
-
-
-                    {selectedManagerSummary.department === 'Опт' && (
-                    <Card>
-                      <h3 className='mb-3 text-base font-bold text-slate-900'>Диагностика оптового расчёта</h3>
-                      <p className='mb-4 text-sm text-slate-500'>Показывает оптовую базу 1,75%, исключения и начисления сотрудника. Розничные блоки 5% для опта не применяются.</p>
-                      <div className='grid gap-3 md:grid-cols-3'>
-                        {[
-                          ['База опта', formatMoney(classification.wholesale.base)],
-                          ['Ставка', '1,75%'],
-                          ['Бонус опта', formatMoney(selectedManagerSummary.wholesaleBonus)],
-                          ['Дни', selectedManagerPayroll.workedDays ?? '—'],
-                          ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
-                          ['Бонус дисциплины', formatMoney(selectedManagerPayroll.disciplineBonus)],
-                          ['Всего начислено', formatMoney(selectedManagerPayroll.grossPay)],
-                          ['К выплате', formatMoney(selectedManagerPayroll.netPay)],
-                        ].map(([label, value]) => (
-                          <div key={String(label)} className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                            <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
-                            <p className='font-bold text-slate-900'>{value}</p>
+                      <div className='grid gap-2 md:grid-cols-2'>
+                        {(selectedManagerSummary.department === 'Опт'
+                          ? [['Опт 1,75%', classification.wholesale.base, 'общая база опта × 1,75%, не делится пополам', selectedManagerSummary.wholesaleBonus]]
+                          : [
+                              selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? ['Услуги: 50% выручки', selectedManagerCounts.filmBase, 'выручка × 50%', selectedManagerSummary.filmBonus] : null,
+                              selectedManagerCounts.plotterBase || selectedManagerSummary.plotterBonus ? ['Плоттер: 50% себестоимости', selectedManagerCounts.plotterBase, 'себестоимость × 50%', selectedManagerSummary.plotterBonus] : null,
+                              selectedManagerCounts.techBase || selectedManagerSummary.techBonus ? ['Техника: 10% валовой прибыли', selectedManagerCounts.techBase, 'валовая прибыль × 10%', selectedManagerSummary.techBonus] : null,
+                              selectedManagerCounts.accessoryBase || selectedManagerSummary.accessoryBonus ? [`Аксессуары: ${Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}% выручки`, selectedManagerCounts.accessoryBase, `личная выручка × ${Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}%`, selectedManagerSummary.accessoryBonus] : null,
+                              selectedManagerCounts.credits || selectedManagerSummary.creditBonus ? ['Кредиты: 10% после вычета 9%', selectedManagerCounts.creditBase, 'валовая прибыль − 9%; остаток × 10%', selectedManagerSummary.creditBonus] : null,
+                            ].filter((component): component is [string, number, string, number] => Boolean(component))
+                        ).map(([component, base, formula, bonus]) => (
+                          <div key={String(component)} className='rounded-xl border border-slate-200 bg-slate-50/60 p-3'>
+                            <div className='flex items-start justify-between gap-3'>
+                              <div className='min-w-0'>
+                                <p className='font-bold leading-snug text-slate-900'>{component}</p>
+                                <p className='mt-1 text-xs text-slate-500'>База: {formatMoney(Number(base))}</p>
+                                <p className='mt-1 text-xs text-slate-600'>{formula}</p>
+                              </div>
+                              <p className='shrink-0 text-base font-extrabold tabular-nums text-slate-950'>{formatMoney(Number(bonus))}</p>
+                            </div>
                           </div>
                         ))}
                       </div>
-                      <div className='mt-4 grid gap-3 md:grid-cols-2'>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Строки сотрудника в базе опта</p>
-                          <p className='font-bold text-slate-900'>{selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_INCLUDED_1_75').length}</p>
-                          <p className='mt-1 text-xs text-slate-500'>Сумма строк сотрудника: {formatMoney(selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_INCLUDED_1_75').reduce((sum, row) => sum + row.revenue, 0))}</p>
-                          <p className='mt-1 text-xs text-slate-400'>Бонус считается от общей базы опта: {formatMoney(classification.wholesale.base)}</p>
-                        </div>
-                        <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-amber-700'>Исключено из базы опта</p>
-                          <p className='font-bold text-amber-900'>{selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH').length}</p>
-                          <p className='mt-1 text-xs text-amber-700'>Сумма: {formatMoney(selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH').reduce((sum, row) => sum + row.revenue, 0))}</p>
-                        </div>
-                      </div>
                     </Card>
-                    )}
 
-                    {selectedManagerSummary.department !== 'Опт' && (
-                    <Card>
-                      <h3 className='mb-3 text-base font-bold text-slate-900'>Диагностика расчёта по сотруднику</h3>
-                      <p className='mb-4 text-sm text-slate-500'>Показывает строки текущего загруженного отчёта, из которых портал собирает услуги, аксессуары и спорные позиции. Формулы здесь не меняются.</p>
+                    <details className='rounded-xl border border-slate-200 bg-white p-3'>
+                      <summary className='cursor-pointer list-none'>
+                        <span className='font-bold text-slate-900'>Исходные строки из 1С</span>
+                        <span className='ml-2 text-xs font-semibold text-slate-500'>
+                          {selectedManagerRows.length} строк · {selectedManagerSourceReviewRows.length > 0 ? `проверить ${selectedManagerSourceReviewRows.length}` : 'всё учтено'}
+                        </span>
+                      </summary>
+                      <p className='mt-2 text-sm text-slate-500'>
+                        Сначала показаны только строки, которые могут повлиять на расчёт. Остальные доступны ниже для полной сверки.
+                      </p>
 
-                      <div className='grid gap-3 md:grid-cols-3'>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Услуги вошли</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.serviceIncludedRevenue)}</p>
-                        </div>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Услуги не вошли</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.serviceExcludedRevenue)}</p>
-                        </div>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Все услуги</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.serviceTotalRevenue)}</p>
-                        </div>
-                      </div>
-
-                      <div className='mt-3 grid gap-3 md:grid-cols-4'>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Услуги бонус 50%</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.serviceBonus)}</p>
-                        </div>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Обычные аксессуары</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.regularAccessoryRevenue)}</p>
-                        </div>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Кредитные аксессуары</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.creditAccessoryRevenue)}</p>
-                        </div>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Итого переменная часть</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.variableSalesBonus)}</p>
-                        </div>
-                      </div>
-
-                      <div className='mt-3 grid gap-3 md:grid-cols-3'>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Общая база аксессуаров</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.accessoryRevenue)}</p>
-                        </div>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Бонус аксессуаров 5%</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.accessoryBonus)}</p>
-                        </div>
-                        <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-amber-700'>Отрицательные аксессуары</p>
-                          <p className='font-bold text-amber-900'>{selectedManagerDiagnostics.negativeAccessoryCount} / {formatMoney(selectedManagerDiagnostics.negativeAccessoryRevenue)}</p>
-                        </div>
-                        <div className='rounded-lg border border-border bg-slate-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-slate-500'>Техника ВП / бонус</p>
-                          <p className='font-bold text-slate-900'>{formatMoney(selectedManagerDiagnostics.techGrossProfitBase)} / {formatMoney(selectedManagerDiagnostics.techBonus)}</p>
-                        </div>
-                        <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
-                          <p className='text-xs font-semibold uppercase text-amber-700'>Отрицательная техника ВП</p>
-                          <p className='font-bold text-amber-900'>{selectedManagerDiagnostics.negativeTechCount} / {formatMoney(selectedManagerDiagnostics.negativeTechGrossProfit)}</p>
-                        </div>
-                      </div>
-
-                      <div className='mt-5 space-y-5'>
-                        <div>
-                          <h4 className='mb-2 text-sm font-bold text-slate-900'>Услуги оказываемые — строки</h4>
-                          {selectedManagerServiceRows.length ? (
-                            <div className='max-h-72 overflow-auto rounded-lg border border-border'>
-                              <table className='w-full min-w-[980px] text-xs'>
-                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Тип</th><th className='px-3 py-2'>Вошла?</th></tr></thead>
-                                <tbody>{selectedManagerServiceRows.map((row, index) => (
-                                  <tr key={'service-diagnostic-' + row.item + '-' + index} className='border-t border-border/70'>
-                                    <td className='px-3 py-2'>{row.client || '—'}</td>
-                                    <td className='px-3 py-2'>{row.category}</td>
-                                    <td className='max-w-[320px] truncate px-3 py-2' title={row.item}>{row.item}</td>
-                                    <td className='px-3 py-2'>{row.article || '—'}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
-                                    <td className='px-3 py-2'>{row.calculationLabel}</td>
-                                    <td className='px-3 py-2'>{getNotIncludedInServiceReason(row)} · {row.matchedRule}</td>
-                                  </tr>
-                                ))}</tbody>
-                              </table>
-                            </div>
-                          ) : <p className='text-sm text-slate-500'>Строк “Услуги оказываемые” по сотруднику не найдено.</p>}
-                        </div>
-
-                        {isAsadManager(selectedManagerSummary.manager) && (
-                          <div>
-                            <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
-                              <h4 className='text-sm font-bold text-slate-900'>Плоттерные / антигравийные плёнки Асада</h4>
-                              <p className='text-xs text-slate-500'>База {formatMoney(selectedManagerPlotterRows.reduce((sum, row) => sum + row.base, 0))} · бонус {formatMoney(selectedManagerPlotterRows.reduce((sum, row) => sum + row.bonus, 0))}</p>
-                            </div>
-                            {selectedManagerPlotterRows.length ? (
-                              <div className='max-h-72 overflow-auto rounded-lg border border-border'>
-                                <table className='w-full min-w-[1120px] text-xs'>
-                                  <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>Себестоимость / база</th><th className='px-3 py-2'>Формула</th><th className='px-3 py-2 text-right'>Бонус</th><th className='px-3 py-2'>Статус</th></tr></thead>
-                                  <tbody>{selectedManagerPlotterRows.map((row, index) => {
-                                    const isNegativePlotterRow = row.revenue < 0 || row.cost < 0 || row.base < 0 || row.bonus < 0 || row.grossProfit < 0;
-                                    return (
-                                      <tr key={'plotter-diagnostic-' + row.item + '-' + index} className='border-t border-border/70'>
-                                        <td className='px-3 py-2'>{row.client || '—'}</td>
-                                        <td className='px-3 py-2'>{row.category}</td>
-                                        <td className='max-w-[340px] truncate px-3 py-2' title={row.item}>{row.item}</td>
-                                        <td className='px-3 py-2'>{row.article || '—'}</td>
-                                        <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
-                                        <td className='px-3 py-2 text-right'>{formatMoney(row.base)}</td>
-                                        <td className='px-3 py-2'>себестоимость × 50%</td>
-                                        <td className='px-3 py-2 text-right font-semibold'>{formatMoney(row.bonus)}</td>
-                                        <td className='px-3 py-2'>{isNegativePlotterRow ? <Badge className='bg-amber-100 text-amber-800'>Возврат / минус / отрицательная ВП учтена</Badge> : <Badge className='bg-green-100 text-green-800'>Учтено</Badge>}</td>
-                                      </tr>
-                                    );
-                                  })}</tbody>
-                                </table>
+                      {selectedManagerRows.length === 0 ? (
+                        <p className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600'>Строк продаж из 1С по сотруднику нет.</p>
+                      ) : (
+                        <div className='mt-4 grid gap-4'>
+                          {selectedManagerSourceReviewRows.length > 0 ? (
+                            <section>
+                              <div className='mb-2 flex items-center justify-between gap-3'>
+                                <h4 className='text-sm font-bold text-amber-950'>Требуют решения</h4>
+                                <Badge className='bg-amber-100 text-amber-900'>{selectedManagerSourceReviewRows.length}</Badge>
                               </div>
-                            ) : <p className='text-sm text-slate-500'>Плоттерных / антигравийных строк по Асаду не найдено.</p>}
-                          </div>
-                        )}
+                              <div className='grid gap-2'>
+                                {selectedManagerSourceReviewRows.map((row, index) => renderManagerSourceRow(row, index, true))}
+                              </div>
+                            </section>
+                          ) : (
+                            <p className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800'>
+                              Все исходные строки распределены по понятным правилам.
+                            </p>
+                          )}
 
-                        <div>
-                          <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
-                            <h4 className='text-sm font-bold text-slate-900'>Подозрительная себестоимость техники / проверь 1С</h4>
-                            <p className='text-xs text-slate-500'>{selectedManagerSuspiciousTechCostRows.length} строк</p>
-                          </div>
-                          {selectedManagerSuspiciousTechCostRows.length ? (
-                            <div className='max-h-72 overflow-auto rounded-lg border border-amber-200'>
-                              <table className='w-full min-w-[1180px] text-xs'>
-                                <thead className='sticky top-0 bg-amber-50 text-left text-amber-800'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>Себестоимость</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Тип расчёта</th><th className='px-3 py-2'>Причина</th></tr></thead>
-                                <tbody>{selectedManagerSuspiciousTechCostRows.map((row, index) => (
-                                  <tr key={'suspicious-tech-cost-' + row.item + '-' + index} className='border-t border-amber-100 align-top'>
-                                    <td className='px-3 py-2'>{row.client || '—'}</td>
-                                    <td className='px-3 py-2'>{row.category}</td>
-                                    <td className='max-w-[340px] truncate px-3 py-2' title={row.item}>{row.item}</td>
-                                    <td className='px-3 py-2'>{row.article || '—'}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.cost)}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
-                                    <td className='px-3 py-2'>{row.calculationLabel}</td>
-                                    <td className='px-3 py-2'>{getSuspiciousTechCostReason(row)} / проверь закрытие месяца</td>
-                                  </tr>
-                                ))}</tbody>
-                              </table>
-                            </div>
-                          ) : <p className='text-sm text-slate-500'>Подозрительной себестоимости техники по сотруднику не найдено.</p>}
+                          <details className='rounded-xl border border-slate-200 bg-slate-50/60 p-3'>
+                            <summary className='cursor-pointer font-bold text-slate-800'>
+                              Учтённые строки
+                              <span className='ml-2 text-xs font-semibold text-slate-500'>{selectedManagerSourceIncludedRows.length}</span>
+                            </summary>
+                            {selectedManagerSourceIncludedRows.length > 0 ? (
+                              <div className='mt-3 grid max-h-[520px] gap-2 overflow-y-auto pr-1'>
+                                {selectedManagerSourceIncludedRows.map((row, index) => renderManagerSourceRow(row, index, false))}
+                              </div>
+                            ) : (
+                              <p className='mt-3 text-sm text-slate-500'>Учтённых строк нет.</p>
+                            )}
+                          </details>
                         </div>
+                      )}
+                    </details>
 
-                        <div>
-                          <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
-                            <h4 className='text-sm font-bold text-slate-900'>Аксессуары {Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}% — вошли в расчёт</h4>
-                            <p className='text-xs text-slate-500'>База {formatMoney(selectedManagerDiagnostics.accessoryRevenue)} · бонус {formatMoney(selectedManagerDiagnostics.accessoryBonus)}</p>
-                          </div>
-                          {selectedManagerAccessoryRows.length ? (
-                            <div className='max-h-72 overflow-auto rounded-lg border border-border'>
-                              <table className='w-full min-w-[980px] text-xs'>
-                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Причина / правило</th><th className='px-3 py-2'>Действие</th></tr></thead>
-                                <tbody>{selectedManagerAccessoryRows.map((row, index) => (
-                                  <tr key={'accessory-diagnostic-' + row.item + '-' + index} className='border-t border-border/70'>
-                                    <td className='px-3 py-2'>{row.client || '—'}</td>
-                                    <td className='px-3 py-2'>{row.category}</td>
-                                    <td className='max-w-[360px] truncate px-3 py-2' title={row.item}>{row.item}</td>
-                                    <td className='px-3 py-2'>{row.article || '—'}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
-                                    <td className='px-3 py-2'>{row.classificationReason} · {row.matchedRule.startsWith('manual-rule:') ? 'ручное правило' : row.matchedRule}</td>
-                                    <td className='px-3 py-2'>{renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>
-                                  </tr>
-                                ))}</tbody>
-                              </table>
-                            </div>
-                          ) : <p className='text-sm text-slate-500'>Строк аксессуаров по сотруднику не найдено.</p>}
                         </div>
-
-                        <div>
-                          <div className='mb-2 flex flex-wrap items-center justify-between gap-3'>
-                            <h4 className='text-sm font-bold text-slate-900'>Похоже на аксессуары, но не вошло</h4>
-                            <p className='text-xs text-slate-500'>Потенциальная сумма {formatMoney(selectedManagerDiagnostics.potentialAccessoryRevenue)}</p>
-                          </div>
-                          {selectedManagerPotentialAccessoryRows.length ? (
-                            <div className='max-h-72 overflow-auto rounded-lg border border-border'>
-                              <table className='w-full min-w-[1080px] text-xs'>
-                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2'>Артикул</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2'>Текущий тип</th><th className='px-3 py-2'>Почему не вошла</th><th className='px-3 py-2'>Действие</th></tr></thead>
-                                <tbody>{selectedManagerPotentialAccessoryRows.map((row, index) => (
-                                  <tr key={'potential-accessory-' + row.item + '-' + index} className='border-t border-border/70 align-top'>
-                                    <td className='px-3 py-2'>{row.client || '—'}</td>
-                                    <td className='px-3 py-2'>{row.category}</td>
-                                    <td className='max-w-[320px] truncate px-3 py-2' title={row.item}>{row.item}</td>
-                                    <td className='px-3 py-2'>{row.article || '—'}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
-                                    <td className='px-3 py-2'>{row.calculationLabel}</td>
-                                    <td className='px-3 py-2'>{getNotIncludedInAccessoryReason(row)} · {row.matchedRule}</td>
-                                    <td className='px-3 py-2'>{renderAccessoryRuleButton(row, 'disputed')}</td>
-                                  </tr>
-                                ))}</tbody>
-                              </table>
-                            </div>
-                          ) : <p className='text-sm text-slate-500'>Похожих на аксессуары пропущенных строк не найдено.</p>}
-                        </div>
-
-                        <div>
-                          <h4 className='mb-2 text-sm font-bold text-slate-900'>Спорные строки сотрудника</h4>
-                          {selectedManagerProblemSalesRows.length ? (
-                            <div className='max-h-72 overflow-auto rounded-lg border border-border'>
-                              <table className='w-full min-w-[1040px] text-xs'>
-                                <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Клиент</th><th className='px-3 py-2'>Категория</th><th className='px-3 py-2'>Номенклатура</th><th className='px-3 py-2 text-right'>Выручка</th><th className='px-3 py-2 text-right'>ВП</th><th className='px-3 py-2'>Тип</th><th className='px-3 py-2'>Причина</th><th className='px-3 py-2'>Действие</th></tr></thead>
-                                <tbody>{selectedManagerProblemSalesRows.map((row, index) => (
-                                  <tr key={'problem-sales-' + row.item + '-' + index} className='border-t border-border/70 align-top'>
-                                    <td className='px-3 py-2'>{row.client || '—'}</td>
-                                    <td className='px-3 py-2'>{row.category}</td>
-                                    <td className='max-w-[320px] truncate px-3 py-2' title={row.item}>{row.item}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.revenue)}</td>
-                                    <td className='px-3 py-2 text-right'>{formatMoney(row.grossProfit)}</td>
-                                    <td className='px-3 py-2'>{row.calculationLabel}</td>
-                                    <td className='px-3 py-2'>{row.grossProfit < 0 ? 'Отрицательная ВП — проверить' : row.classificationReason} · {row.matchedRule}</td>
-                                    <td className='px-3 py-2'>{row.grossProfit < 0 && !getManualRuleId(row) ? 'Проверить' : renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>
-                                  </tr>
-                                ))}</tbody>
-                              </table>
-                            </div>
-                          ) : <p className='text-sm text-slate-500'>Спорных строк по сотруднику не найдено.</p>}
-                        </div>
-                      </div>
-                    </Card>
-                    )}
-
-                    <Card>
-                      <h3 className='mb-3 text-base font-bold text-slate-900'>Проверка по сотруднику</h3>
-                      <h4 className='mb-2 text-sm font-bold text-slate-900'>Требует решения</h4>
-                      <div className='grid gap-2 sm:grid-cols-2'>
-                        {[
-                          { label: 'Строки без классификации', count: selectedManagerCounts.unclassified, tone: 'error', problemType: 'unclassified' as ProblemType },
-                          { label: 'NaN/undefined', count: selectedManagerCounts.invalidNumbers, tone: 'error', problemType: 'invalidNumbers' as ProblemType },
-                          { label: 'Спорные товары', count: selectedManagerCounts.disputed, tone: 'warning', problemType: 'disputed' as ProblemType },
-                          { label: 'Услуги не вошли в 50%', count: selectedManagerCounts.serviceNotIncluded, tone: 'warning', problemType: 'disputed' as ProblemType },
-                          { label: 'Похоже на аксессуары, но не вошло', count: selectedManagerCounts.potentialAccessories, tone: 'warning', problemType: 'disputed' as ProblemType },
-                          { label: 'Нулевая база без понятного расчёта', count: selectedManagerCounts.zeroBase, tone: 'warning', problemType: 'zeroBase' as ProblemType },
-                          { label: 'Подозрительно нулевая / неполная себестоимость техники', count: selectedManagerCounts.suspiciousTechCost, tone: 'warning', problemType: 'disputed' as ProblemType },
-                          { label: 'Ошибочно исключённые аксессуары', count: selectedManagerCounts.accessoryExcluded, tone: 'error', problemType: 'accessoryExcluded' as ProblemType },
-                        ].map(({ label, count, tone, problemType }) => {
-                          const status = Number(count) === 0 ? 'OK' : tone === 'error' ? 'Ошибка' : 'Проверить';
-                          const isClickable = Number(count) > 0;
-                          const clickableClass =
-                            tone === 'error'
-                              ? 'cursor-pointer border-red-100 bg-red-50/20 hover:border-red-200 hover:bg-red-50/60 hover:shadow-sm'
-                              : 'cursor-pointer border-amber-100 bg-amber-50/20 hover:border-amber-200 hover:bg-amber-50/60 hover:shadow-sm';
-                          return (
-                            <button
-                              key={label}
-                              type='button'
-                              disabled={!isClickable}
-                              onClick={() => {
-                                openProblemRows(problemType, selectedManagerSummary.manager);
-                                setSelectedManager(null);
-                              }}
-                              className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition ${isClickable ? clickableClass : 'cursor-default border-border bg-white'}`}
-                            >
-                              <span className='min-w-0'>
-                                <span className='block text-sm font-semibold text-slate-700'>{label}</span>
-                                <span className='block text-xs text-slate-500'>{count} строк</span>
-                              </span>
-                              <span className='shrink-0'>
-                                <Badge className={`${getRowStatusClass(status === 'OK' ? 'OK' : status === 'Ошибка' ? 'Отрицательная ВП' : 'Требует проверки')} ${isClickable ? 'ring-1 ring-current/20' : ''}`}>
-                                  {status}
-                                  {isClickable && <ArrowRight className='ml-1 inline h-3.5 w-3.5' />}
-                                </Badge>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <h4 className='mb-2 mt-4 text-sm font-bold text-slate-900'>Контроль / уже учтено</h4>
-                      <div className='grid gap-2 sm:grid-cols-2'>
-                        {[
-                          { label: 'Кредитные продажи с понятным расчётом', count: selectedManagerCounts.classifiedCredits, problemType: 'credit' as ProblemType },
-                          { label: 'Отрицательная ВП учтена в расчёте', count: selectedManagerCounts.accountedNegative, problemType: 'negative' as ProblemType },
-                          { label: 'Нулевая база как контроль', count: selectedManagerCounts.informationalZeroBase, problemType: 'zeroBase' as ProblemType },
-                        ].map(({ label, count, problemType }) => {
-                          const isClickable = Number(count) > 0;
-                          return (
-                            <button
-                              key={label}
-                              type='button'
-                              disabled={!isClickable}
-                              onClick={() => {
-                                openProblemRows(problemType, selectedManagerSummary.manager);
-                                setSelectedManager(null);
-                              }}
-                              className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition ${isClickable ? 'cursor-pointer border-blue-100 bg-blue-50/50 hover:border-blue-200 hover:bg-blue-50 hover:shadow-sm' : 'cursor-default border-border bg-white'}`}
-                            >
-                              <span className='min-w-0'>
-                                <span className='block text-sm font-semibold text-slate-700'>{label}</span>
-                                <span className='block text-xs text-slate-500'>{count} строк</span>
-                              </span>
-                              <span className='shrink-0'>
-                                <Badge className={`${Number(count) === 0 ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'} ${isClickable ? 'ring-1 ring-current/20' : ''}`}>
-                                  {Number(count) === 0 ? 'OK' : 'Учтено'}
-                                  {isClickable && <ArrowRight className='ml-1 inline h-3.5 w-3.5' />}
-                                </Badge>
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </Card>
-                      </>
+                      </details>
                     )}
                   </div>
                 </aside>
@@ -8375,27 +8123,37 @@ export default function AdminPayrollPage() {
                   <div className='rounded-lg border border-border bg-slate-50 px-3 py-3'><p className='text-xs font-semibold uppercase text-slate-500'>К выплате</p><p className='mt-1 text-xl font-bold text-slate-900'>{formatMoney(selectedSavedRun.netPay)}</p></div>
                 </div>
                 <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
-                  <table className='w-full min-w-[760px] text-xs'>
-                    <thead className='bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Сотрудник</th><th className='px-3 py-2'>Отдел</th><th className='px-3 py-2 text-right'>Дни</th><th className='px-3 py-2 text-right'>Начислено</th><th className='px-3 py-2 text-right'>К выплате</th><th className='px-3 py-2'>Статус</th></tr></thead>
+                  <table className='w-full min-w-[900px] text-xs'>
+                    <thead className='bg-slate-50 text-left text-slate-500'><tr><th className='px-3 py-2'>Сотрудник</th><th className='px-3 py-2 text-right'>Начислено</th><th className='px-3 py-2 text-right'>Дни</th><th className='px-3 py-2 text-right'>Выплачено / удержано</th><th className='px-3 py-2 text-right'>Осталось выплатить</th><th className='px-3 py-2'>Примечание</th></tr></thead>
                     <tbody>
-                      {selectedSavedRun.employeeResults.map((row) => (
-                        <tr key={row.id} className='border-t border-border/70'>
-                          <td className='px-3 py-2 font-semibold text-slate-900'>{row.employeeName}</td>
-                          <td className='px-3 py-2 text-slate-700'>{row.payrollDepartment}</td>
-                          <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
-                          <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(row.grossPay)}</td>
-                          <td className='px-3 py-2 text-right font-bold text-slate-900'>{formatMoney(row.netPay)}</td>
-                          <td className='px-3 py-2'><Badge className={row.status === 'OK' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>{row.status === 'OK' ? 'Готово' : 'Проверить'}</Badge></td>
-                        </tr>
-                      ))}
+                      {savedPayrollDisplayRows.map((row, index) => {
+                        const group = getPayrollWorkbookGroup(row.salaryType);
+                        const previousGroup = index > 0 ? getPayrollWorkbookGroup(savedPayrollDisplayRows[index - 1].salaryType) : null;
+                        const reasons = getSavedEmployeeReasons(row);
+                        const needsReview = reasons.length > 0 || !isPayrollWorkbookSalaryTypeConfigured(row.salaryType);
+                        return <Fragment key={row.id}>
+                          {group !== previousGroup && <tr><td colSpan={6} className={`border-y px-3 py-2 font-extrabold uppercase tracking-wide ${getPayrollPortalGroupTone(row.salaryType)}`}>{group}</td></tr>}
+                          <tr className='border-t border-border/70'>
+                            <td className='px-3 py-2 font-semibold text-slate-900'>{row.employeeName}</td>
+                            <td className='bg-emerald-50/60 px-3 py-2 text-right font-extrabold text-emerald-800'>{formatMoney(row.grossPay)}</td>
+                            <td className='px-3 py-2 text-right text-slate-700'>{row.workedDays ?? '—'}</td>
+                            <td className='px-3 py-2 text-right text-slate-700'>{formatMoney(Math.max(0, row.grossPay - row.netPay))}</td>
+                            <td className='px-3 py-2 text-right font-extrabold text-slate-900'>{formatMoney(row.netPay)}</td>
+                            <td className={`px-3 py-2 ${needsReview ? 'font-semibold text-amber-800' : 'text-slate-400'}`}>{needsReview ? reasons.join('; ') || 'Проверьте правило расчёта' : '—'}</td>
+                          </tr>
+                        </Fragment>;
+                      })}
                     </tbody>
                   </table>
                 </div>
-                <div className='mt-4 grid gap-4 xl:grid-cols-3'>
+                <details className='mt-4 rounded-lg border border-slate-200 bg-slate-50/60 p-3'>
+                  <summary className='cursor-pointer font-bold text-slate-900'>Источники и сохранённые данные</summary>
+                  <div className='mt-3 grid gap-4 xl:grid-cols-3'>
                   <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Исходные файлы</h3>{selectedSavedRun.sourceFiles.map((file) => <p key={file.id} className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs text-slate-600'>{file.originalName} · {getSavedSourceTypeLabel(file.type)} · строк {file.rowCount ?? '—'} · распознано {file.parsedRowCount ?? '—'}</p>)}</div>
                   <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Ручные данные</h3><div className='max-h-48 overflow-auto rounded-lg border border-border'>{selectedSavedRun.manualInputs.map((input) => <p key={input.id} className='border-b border-border px-3 py-2 text-xs last:border-b-0'>{input.employeeName} · {getSavedInputTypeLabel(input.inputType)} · аванс {input.advance ?? input.purchaseAdvance ?? '—'} · {input.comment}</p>)}</div></div>
                   <div><h3 className='mb-2 text-sm font-bold text-slate-900'>Расшифровка</h3><div className='max-h-48 overflow-auto rounded-lg border border-border'>{selectedSavedRun.employeeResults.flatMap((employee) => employee.calculationDetails.map((detail) => <p key={detail.id} className='border-b border-border px-3 py-2 text-xs last:border-b-0'>{employee.employeeName} · {detail.component} · {formatMoney(detail.amount)}</p>))}</div></div>
-                </div>
+                  </div>
+                </details>
               </Card>
             )}
           </>
