@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  buildPayrollWorkbookEmployeeComment,
   formatPayrollWorkbookNote,
   formatPayrollWorkbookBonusReason,
   getPayrollWorkbookAccessorySummary,
@@ -84,13 +85,40 @@ describe('payroll workbook presentation', () => {
   });
 
   it('keeps bonus reasons concise and shows the accessory threshold once at group level', () => {
-    assert.equal(formatPayrollWorkbookBonusReason('Тохов Астемир', 'Рекордные результаты оптового отдела. Решение руководителя.'), 'Первый результат по закупкам свыше 100 000 ₽');
-    assert.equal(formatPayrollWorkbookBonusReason('Ахобекова Залина', 'Рекордные результаты оптового отдела. Основной вклад в продажи; решение руководителя.'), 'Основной вклад в рекордные продажи оптового отдела');
+    assert.equal(formatPayrollWorkbookBonusReason('Тохов Астемир', 'Рекордные результаты оптового отдела. Решение руководителя.'), 'Результат по закупкам свыше 100 000 ₽');
+    assert.equal(formatPayrollWorkbookBonusReason('Ахобекова Залина', 'Рекордные результаты оптового отдела. Основной вклад в продажи; решение руководителя.'), 'Основной вклад в рекорд оптовых продаж');
     assert.equal(formatPayrollWorkbookBonusReason('Другой сотрудник', 'Доплата за проект'), 'Доплата за проект');
     assert.equal(getPayrollWorkbookAccessorySummary([
       ['Уровень аксессуаров', '1 186 055,00 ₽ / порог 1 000 000,00 ₽', 'Порог превышен'],
       ['Ставка аксессуаров', '7%', 'Применяется к рознице'],
     ]), 'Аксессуары 7%: 1 186 055 ₽ > 1 000 000 ₽');
+    assert.equal(getPayrollWorkbookAccessorySummary([
+      ['Ставка аксессуаров', '5%', 'Фиксированная ставка'],
+    ]), 'Аксессуары: фиксированная ставка 5%');
+    assert.equal(getPayrollWorkbookAccessorySummary([
+      ['Уровень аксессуаров', '1 186 055,00 ₽ / порог 1 000 000,00 ₽', 'Порог превышен; ставка остаётся фиксированной'],
+      ['Ставка аксессуаров', '5%', 'Фиксированная ставка'],
+    ]), 'Аксессуары 5%: 1 186 055 ₽ > 1 000 000 ₽');
+  });
+
+  it('keeps only exceptional and actionable information in employee comments', () => {
+    assert.equal(buildPayrollWorkbookEmployeeComment({
+      employeeName: 'Тохов Астемир',
+      lateCount: 0,
+      deduction: 0,
+      manualComment: 'Рекордные результаты оптового отдела. Решение руководителя.',
+      reviewReasons: ['расчёт по закупкам выше целевой ЗП', 'Не полностью проверена база расчёта 12%'],
+      bonuses: [{ amount: 20_000, reason: 'Рекордные результаты оптового отдела. Решение руководителя.' }],
+    }), 'Премия 20\u00a0000,00 ₽ — Результат по закупкам свыше 100 000 ₽');
+
+    assert.equal(buildPayrollWorkbookEmployeeComment({
+      employeeName: 'Сотрудник',
+      lateCount: 2,
+      deduction: 1_500,
+      manualComment: 'Возврат подотчётной суммы',
+      reviewReasons: ['Проверить: Не настроено правило зарплаты'],
+      bonuses: [],
+    }), 'Удержание 1\u00a0500,00 ₽ — Возврат подотчётной суммы · Опоздания: 2 · Не настроено правило зарплаты');
   });
 
   it('keeps a new employee visible when the salary rule is not configured', () => {

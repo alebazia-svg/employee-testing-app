@@ -15,6 +15,7 @@ import { PayrollDailyOneCControl } from './PayrollDailyOneCControl';
 import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
 import {
   PAYROLL_WORKBOOK_UNCONFIGURED_GROUP,
+  buildPayrollWorkbookEmployeeComment,
   formatPayrollWorkbookBonusReason,
   getPayrollWorkbookComponentLabel,
   getPayrollWorkbookAccessorySummary,
@@ -810,6 +811,10 @@ function getSavedRetailAccessoryTier(sourceSummary: unknown) {
     threshold: tier.threshold as number,
     rate: tier.rate as number,
     elevated: tier.elevated === true,
+    thresholdExceeded: tier.thresholdExceeded === true || tier.elevated === true,
+    // Saved calculations from the former rule predate this field and must
+    // continue to describe their historical 7% calculation honestly.
+    ruleEnabled: tier.ruleEnabled !== false,
   };
 }
 
@@ -4960,11 +4965,19 @@ export default function AdminPayrollPage() {
   }
 
   function getPayrollRowExportComment(row: FullPayrollRow) {
-    const comments: string[] = [];
-    if (row.lateCount !== null) comments.push(`Опоздания: ${row.lateCount}`);
-    getPayrollRowReviewReasons(row).forEach((reason) => comments.push(reason));
-    if (row.comment) comments.push(row.comment);
-    return comments.filter(Boolean).join(' · ');
+    const bonuses = bonusValidation.bonuses
+      .filter((bonus) => bonus.employeeName === row.manager)
+      .map((bonus) => ({ amount: bonus.amount, reason: bonus.reason }));
+    if (row.fixedBonus > 0) bonuses.unshift({ amount: row.fixedBonus, reason: row.comment });
+
+    return buildPayrollWorkbookEmployeeComment({
+      employeeName: row.manager,
+      lateCount: row.lateCount,
+      deduction: row.fixedDeduction,
+      manualComment: row.comment,
+      reviewReasons: getPayrollRowReviewReasons(row),
+      bonuses,
+    });
   }
 
   async function loadClassificationRules() {
@@ -5649,7 +5662,19 @@ export default function AdminPayrollPage() {
           deduction: toExportMoney(row.fixedDeduction),
           netPay: toExportMoney(row.netPay),
           status: reviewReasons.length || !isPayrollWorkbookSalaryTypeConfigured(row.salaryType) ? 'Проверить' : 'Готово',
-          comment: [row.lateCount === null ? '' : `Опоздания: ${row.lateCount}`, row.comment, ...reviewReasons].filter(Boolean).join(' · '),
+          comment: buildPayrollWorkbookEmployeeComment({
+            employeeName: row.employeeName,
+            lateCount: row.lateCount,
+            deduction: row.fixedDeduction,
+            manualComment: row.comment,
+            reviewReasons,
+            bonuses: [
+              ...(row.fixedBonus > 0 ? [{ amount: row.fixedBonus, reason: row.comment }] : []),
+              ...(row.adjustments ?? [])
+                .filter((adjustment) => adjustment.type === 'ONE_TIME_BONUS')
+                .map((adjustment) => ({ amount: adjustment.amount, reason: adjustment.reason })),
+            ],
+          }),
         };
       });
       const accrualRows = sortedRows.flatMap((employee) => {
@@ -5717,8 +5742,8 @@ export default function AdminPayrollPage() {
         ['Всего начислено', workbookGrossPay, 'Сумма округлённых начислений сотрудников в ведомости'],
         ['К выплате', workbookNetPay, 'Сумма округлённых остатков сотрудников после авансов и удержаний'],
         ...(savedAccessoryTier ? [
-          ['Уровень аксессуаров', `${formatMoney(savedAccessoryTier.teamBase)} / порог ${formatMoney(savedAccessoryTier.threshold)}`, savedAccessoryTier.elevated ? 'Порог превышен' : 'Порог не превышен'],
-          ['Ставка аксессуаров', `${Math.round(savedAccessoryTier.rate * 100)}%`, 'Зафиксированная ставка сохранённого расчёта'],
+          ['Уровень аксессуаров', `${formatMoney(savedAccessoryTier.teamBase)} / порог ${formatMoney(savedAccessoryTier.threshold)}`, savedAccessoryTier.thresholdExceeded ? 'Порог превышен' : 'Порог не превышен'],
+          ['Ставка аксессуаров', `${Math.round(savedAccessoryTier.rate * 100)}%`, savedAccessoryTier.ruleEnabled ? 'Зафиксированная ставка сохранённого расчёта' : 'Фиксированная ставка независимо от общей базы'],
         ] : []),
         ...selectedSavedRun.sourceFiles.map((file) => [
           `Источник: ${getSavedSourceTypeLabel(file.type)}`,
@@ -5872,6 +5897,8 @@ export default function AdminPayrollPage() {
           threshold: retailAccessoryTier.threshold,
           rate: retailAccessoryTier.rate,
           elevated: retailAccessoryTier.elevated,
+          thresholdExceeded: retailAccessoryTier.thresholdExceeded,
+          ruleEnabled: retailAccessoryTier.ruleEnabled,
           eligibleEmployees: Array.from(payrollAccessoryCalculation.eligibleManagers),
         },
         purchaseBase: purchasePayrollRow.purchaseBase,
@@ -6068,8 +6095,8 @@ export default function AdminPayrollPage() {
       ['Бонус закупщика', purchasePayrollRow.purchasePercentAmount, '1,75% от базы закупок'],
       ['Минимальная зарплата закупщика', purchaseTargetSalary, 'Если обычное начисление ниже, добавляется доплата'],
       ['Кредиты', 'Валовая прибыль × 91% × 10%', '10% от прибыли, оставшейся после 9% налогов и издержек'],
-      ['Уровень аксессуаров', `${formatMoney(retailAccessoryTier.teamBase)} / порог ${formatMoney(retailAccessoryTier.threshold)}`, retailAccessoryTier.elevated ? 'Порог превышен' : 'Порог не превышен'],
-      ['Ставка аксессуаров', `${retailAccessoryTier.ratePercent}%`, `Применяется ко всей личной базе аксессуаров сотрудников с формулой «Розничные продажи»`],
+      ['Уровень аксессуаров', `${formatMoney(retailAccessoryTier.teamBase)} / порог ${formatMoney(retailAccessoryTier.threshold)}`, retailAccessoryTier.thresholdExceeded ? 'Порог превышен; ставка остаётся фиксированной' : 'Порог не превышен'],
+      ['Ставка аксессуаров', `${retailAccessoryTier.ratePercent}%`, 'Фиксированная ставка для личной базы аксессуаров розничных сотрудников независимо от общей базы'],
       ['Операционное управление', '12% от обычных начислений выбранных сотрудников', 'Разовые премии в базу не входят; с августа 2026 действует минимум 100 000 ₽'],
     ];
 
@@ -7140,11 +7167,11 @@ export default function AdminPayrollPage() {
                       ['Спорная розница', `${retailReviewSummary.rows} / ${formatMoney(retailReviewSummary.revenue)}`],
                     ].map(([label, value]) => <Card key={label} className='p-4'><p className='text-xs font-semibold uppercase text-slate-500'>{label}</p><p className='mt-1 text-sm font-bold text-slate-900'>{value}</p></Card>)}
                   </div>
-                  <div className={`rounded-xl border px-4 py-3 ${retailAccessoryTier.elevated ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-slate-50 text-slate-800'}`}>
-                    <p className='font-bold'>Ставка команды по аксессуарам: {retailAccessoryTier.ratePercent}%</p>
+                  <div className='rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800'>
+                    <p className='font-bold'>Аксессуары: фиксированная ставка {retailAccessoryTier.ratePercent}%</p>
                     <p className='mt-1 text-sm'>
-                      База команды {formatMoney(retailAccessoryTier.teamBase)} {retailAccessoryTier.elevated ? 'превысила' : 'не превысила'} порог {formatMoney(retailAccessoryTier.threshold)}.
-                      {' '}Ставка {retailAccessoryTier.ratePercent}% применяется ко всей личной базе аксессуаров всех сотрудников с формулой «Розничные продажи».
+                      Общая база {formatMoney(retailAccessoryTier.teamBase)} {retailAccessoryTier.thresholdExceeded ? 'превысила' : 'не превысила'} {formatMoney(retailAccessoryTier.threshold)}.
+                      {' '}Ставка остаётся {retailAccessoryTier.ratePercent}% и применяется к личной базе аксессуаров каждого сотрудника с формулой «Розничные продажи».
                     </p>
                   </div>
                   <Card>
@@ -7381,7 +7408,7 @@ export default function AdminPayrollPage() {
                       <p className='mb-3 text-sm text-slate-600'>
                         {selectedManagerSummary.department === 'Опт'
                           ? 'Схема расчёта: Опт — 1,75% от общей базы опта. Залина и Лиана получают каждая полный бонус, бонус не делится пополам.'
-                          : `Схема расчёта: Розница — услуги оказываемые 50%, плоттерные материалы Асада 50% от с/с, техника 10% от ВП, аксессуары ${retailAccessoryTier.ratePercent}% по уровню общей базы команды, кредитный бонус.`}
+                          : `Схема расчёта: Розница — услуги оказываемые 50%, плоттерные материалы Асада 50% от с/с, техника 10% от ВП, аксессуары ${retailAccessoryTier.ratePercent}% от личной базы, кредитный бонус.`}
                       </p>
                       <div className='overflow-x-auto rounded-lg border border-border'>
                         <table className='w-full min-w-[620px] text-sm'>

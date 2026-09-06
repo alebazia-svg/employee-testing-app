@@ -62,19 +62,56 @@ export function formatPayrollWorkbookNote(status: string, note: string) {
 export function formatPayrollWorkbookBonusReason(employeeName: string, reason: string) {
   const normalizedReason = reason.trim();
   const normalizedEmployee = employeeName.trim().toLocaleLowerCase('ru-RU');
-  if (normalizedEmployee.includes('астемир') && normalizedReason === 'Рекордные результаты оптового отдела. Решение руководителя.') return 'Первый результат по закупкам свыше 100 000 ₽';
-  if (normalizedEmployee.includes('залин') && normalizedReason === 'Рекордные результаты оптового отдела. Основной вклад в продажи; решение руководителя.') return 'Основной вклад в рекордные продажи оптового отдела';
-  if ((normalizedEmployee.includes('лиан') || normalizedEmployee.includes('лян')) && normalizedReason === 'Рекордные результаты оптового отдела. С учётом участия в месяце отпуска; решение руководителя.') return 'Участие в рекордных продажах с учётом отпуска';
+  if (normalizedEmployee.includes('астемир') && normalizedReason === 'Рекордные результаты оптового отдела. Решение руководителя.') return 'Результат по закупкам свыше 100 000 ₽';
+  if (normalizedEmployee.includes('залин') && normalizedReason === 'Рекордные результаты оптового отдела. Основной вклад в продажи; решение руководителя.') return 'Основной вклад в рекорд оптовых продаж';
+  if ((normalizedEmployee.includes('лиан') || normalizedEmployee.includes('лян')) && normalizedReason === 'Рекордные результаты оптового отдела. С учётом участия в месяце отпуска; решение руководителя.') return 'Участие в рекорде опта с учётом отпуска';
   return normalizedReason;
+}
+
+export function buildPayrollWorkbookEmployeeComment(input: {
+  employeeName: string;
+  lateCount: number | null;
+  deduction: number;
+  manualComment: string;
+  reviewReasons: string[];
+  bonuses: Array<{ amount: number; reason: string }>;
+}) {
+  const comments: string[] = [];
+  const manualComment = input.manualComment.trim();
+  const bonuses = input.bonuses.filter((bonus) => Number.isFinite(bonus.amount) && bonus.amount > 0);
+
+  bonuses.forEach((bonus) => {
+    const reason = formatPayrollWorkbookBonusReason(input.employeeName, bonus.reason);
+    comments.push(`Премия ${formatWorkbookMoney(bonus.amount)}${reason ? ` — ${reason}` : ''}`);
+  });
+
+  if (Number.isFinite(input.deduction) && input.deduction > 0) {
+    comments.push(`Удержание ${formatWorkbookMoney(input.deduction)}${manualComment ? ` — ${manualComment}` : ''}`);
+  } else if (manualComment && !bonuses.some((bonus) => bonus.reason.trim() === manualComment)) {
+    comments.push(`Корректировка: ${manualComment}`);
+  }
+
+  if (input.lateCount !== null && Number.isFinite(input.lateCount) && input.lateCount > 0) {
+    comments.push(`Опоздания: ${input.lateCount}`);
+  }
+
+  input.reviewReasons.forEach((reason) => {
+    const normalized = normalizePayrollWorkbookReviewReason(reason);
+    if (normalized) comments.push(normalized);
+  });
+
+  return Array.from(new Set(comments)).join(' · ');
 }
 
 export function getPayrollWorkbookAccessorySummary(rows: Array<Array<string | number | null>>) {
   const tier = rows.find((row) => String(row[0] ?? '') === 'Уровень аксессуаров');
   const rate = rows.find((row) => String(row[0] ?? '') === 'Ставка аксессуаров');
-  if (!tier || !rate) return '';
+  if (!rate) return '';
+
+  const rateText = String(rate[1] ?? '');
+  if (!tier) return rateText ? `Аксессуары: фиксированная ставка ${rateText}` : '';
 
   const [teamBase = '', threshold = ''] = String(tier[1] ?? '').split(' / порог ');
-  const rateText = String(rate[1] ?? '');
   const comparison = String(tier[2] ?? '').includes('не превышен') ? '≤' : '>';
   const compactMoney = (value: string) => value.replace(',00 ₽', ' ₽');
   return teamBase && threshold && rateText

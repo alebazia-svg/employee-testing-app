@@ -94,7 +94,7 @@ type PayrollModule = {
     rows: Array<SalesRow & { calculationType: string; base: number; bonus: number }>,
     employeeDirectory: Record<string, { name: string; department: string; position: string; salaryType: 'retail_sales_bonus' | 'vl_percent' }>,
     periodKey: string,
-  ) => { summaries: Array<{ manager: string; accessoryBase?: number; accessoryRate?: number; accessoryBonus: number; totalBonus: number }>; tier: { teamBase: number; rate: number; elevated: boolean } };
+  ) => { summaries: Array<{ manager: string; accessoryBase?: number; accessoryRate?: number; accessoryBonus: number; totalBonus: number }>; tier: { teamBase: number; rate: number; elevated: boolean; thresholdExceeded: boolean; ruleEnabled: boolean } };
   buildPayrollEmployeeDirectory: (
     users: Array<{
       name: string;
@@ -244,6 +244,7 @@ describe('payroll save safety gates', () => {
     assert.doesNotThrow(() => validatePayrollCompensationVersion(undefined, undefined, '2026-07'));
     for (const period of ['2026-08', '2026-09', '2027-01']) {
       assert.throws(() => validatePayrollCompensationVersion(undefined, undefined, period), /актуальная версия/);
+      assert.throws(() => validatePayrollCompensationVersion('payroll-accessory-tier-v2', [], period), /Неизвестная версия/);
       assert.doesNotThrow(() => validatePayrollCompensationVersion(PAYROLL_COMPENSATION_VERSION, [], period));
     }
     assert.throws(() => validatePayrollCompensationVersion('old', [], '2026-07'), /Неизвестная/);
@@ -304,21 +305,21 @@ describe('payroll save safety gates', () => {
     };
     assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-07', { grossPay: 2.002, netPay: 2.002, advance: 0 }));
   });
-  it('accepts only the team-derived accessory rate in a new August snapshot', () => {
+  it('accepts only the fixed accessory rate in a new August snapshot', () => {
     const row = {
       employeeName: retailManager, salaryType: 'retail_sales_bonus', salaryRule: 'standard', dayPay: 0,
-      filmBonus: 0, plotterBonus: 0, techBonus: 0, accessoryBonus: 70_000.07, creditBonus: 0,
+      filmBonus: 0, plotterBonus: 0, techBonus: 0, accessoryBonus: 50_000.05, creditBonus: 0,
       disciplineBonus: 0, agentCreditCommission: 0, advance: 0, fixedDeduction: 0, oneTimeBonus: 0,
-      grossPay: 70_000.07, netPay: 70_000.07,
+      grossPay: 50_000.05, netPay: 50_000.05,
       calculationDetails: [
-        { component: 'Аксессуары 7%', base: 1_000_001, amount: 70_000.07 },
-        { component: 'Начислено за месяц', amount: 70_000.07 },
-        { component: 'К выплате', amount: 70_000.07 },
+        { component: 'Аксессуары 5%', base: 1_000_001, amount: 50_000.05 },
+        { component: 'Начислено за месяц', amount: 50_000.05 },
+        { component: 'К выплате', amount: 50_000.05 },
       ],
     };
-    const totals = { grossPay: 70_000.07, netPay: 70_000.07, advance: 0 };
+    const totals = { grossPay: 50_000.05, netPay: 50_000.05, advance: 0 };
     assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-08', totals));
-    assert.throws(() => validatePayrollCompensationSnapshot([{ ...row, calculationDetails: row.calculationDetails.map((detail) => detail.component === 'Аксессуары 7%' ? { ...detail, component: 'Аксессуары 5%' } : detail) }], [], '2026-08', totals));
+    assert.throws(() => validatePayrollCompensationSnapshot([{ ...row, calculationDetails: row.calculationDetails.map((detail) => detail.component === 'Аксессуары 5%' ? { ...detail, component: 'Аксессуары 7%' } : detail) }], [], '2026-08', totals));
   });
 });
 
@@ -416,17 +417,21 @@ function assertMoney(actual: number, expected: number) {
   assert.ok(Math.abs(actual - expected) < 0.000001, `Expected ${actual} to equal ${expected}`);
 }
 
-describe('retail accessory team tier', () => {
+describe('retail accessory rate', () => {
   const retailEmployee = (name: string) => ({ name, department: 'Розничные продажи', position: 'Менеджер', salaryType: 'retail_sales_bonus' as const });
   const operationsEmployee = (name: string) => ({ name, department: 'Финансы и операционный контроль', position: 'Управляющий', salaryType: 'vl_percent' as const });
 
-  it('starts in August 2026 and requires the team base to be strictly above one million', () => {
+  it('keeps the former threshold observable but disabled', () => {
     assert.equal(getRetailAccessoryTier('2026-07', 1_500_000).rate, 0.05);
     assert.equal(getRetailAccessoryTier('2026-08', 1_000_000).rate, 0.05);
-    assert.equal(getRetailAccessoryTier('2026-08', 1_000_000.01).rate, 0.07);
+    const tier = getRetailAccessoryTier('2026-08', 1_000_000.01);
+    assert.equal(tier.rate, 0.05);
+    assert.equal(tier.thresholdExceeded, true);
+    assert.equal(tier.ruleEnabled, false);
+    assert.equal(tier.elevated, false);
   });
 
-  it('applies 7% to every eligible manager personal base, including Diana', () => {
+  it('applies the fixed 5% rate to every eligible manager personal base, including Diana', () => {
     const diana = 'Кумахова Диана';
     const classification = classifySalesRows([
       salesRow({ manager: retailManager, category: 'Защитные стекла и пленки', revenue: 600_000, cost: 300_000, grossProfit: 300_000 }),
@@ -437,11 +442,12 @@ describe('retail accessory team tier', () => {
       [diana]: retailEmployee(diana),
     }, '2026-08');
 
-    assert.equal(result.tier.elevated, true);
+    assert.equal(result.tier.elevated, false);
+    assert.equal(result.tier.thresholdExceeded, true);
     assertMoney(result.tier.teamBase, 1_000_000.01);
-    assertMoney(result.summaries.find((row) => row.manager === retailManager)!.accessoryBonus, 42_000);
-    assertMoney(result.summaries.find((row) => row.manager === diana)!.accessoryBonus, 28_000.0007);
-    assert.equal(result.summaries.find((row) => row.manager === diana)!.accessoryRate, 0.07);
+    assertMoney(result.summaries.find((row) => row.manager === retailManager)!.accessoryBonus, 30_000);
+    assertMoney(result.summaries.find((row) => row.manager === diana)!.accessoryBonus, 20_000.0005);
+    assert.equal(result.summaries.find((row) => row.manager === diana)!.accessoryRate, 0.05);
   });
 
   it('keeps an inactive portal account in payroll only when a current explicit rule has actual report activity', () => {

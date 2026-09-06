@@ -1,10 +1,14 @@
-export const PAYROLL_COMPENSATION_VERSION = 'payroll-accessory-tier-v2';
+export const PAYROLL_COMPENSATION_VERSION = 'payroll-accessory-fixed-rate-v3';
 export const BELA_MINIMUM_START_PERIOD = '2026-08';
 export const BELA_MINIMUM = 100_000;
 export const RETAIL_ACCESSORY_TIER_START_PERIOD = '2026-08';
 export const RETAIL_ACCESSORY_TIER_THRESHOLD = 1_000_000;
 export const RETAIL_ACCESSORY_BASE_RATE = 0.05;
 export const RETAIL_ACCESSORY_ELEVATED_RATE = 0.07;
+// The approved calculation currently uses a fixed 5% rate. Keep the former
+// threshold rule explicit and testable so it can be restored by a deliberate
+// versioned change instead of being rebuilt from memory.
+export const RETAIL_ACCESSORY_ELEVATED_RATE_ENABLED = false;
 
 export type PayrollBonusDraft = {
   id: string;
@@ -28,9 +32,10 @@ export function getBelaMinimum(periodKey: string) {
 
 export function getRetailAccessoryTier(periodKey: string, teamBase: number) {
   const normalizedBase = payrollMoney(teamBase);
-  const elevated = /^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey)
+  const thresholdExceeded = /^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey)
     && periodKey >= RETAIL_ACCESSORY_TIER_START_PERIOD
     && normalizedBase > RETAIL_ACCESSORY_TIER_THRESHOLD;
+  const elevated = RETAIL_ACCESSORY_ELEVATED_RATE_ENABLED && thresholdExceeded;
   const rate = elevated ? RETAIL_ACCESSORY_ELEVATED_RATE : RETAIL_ACCESSORY_BASE_RATE;
 
   return {
@@ -39,6 +44,8 @@ export function getRetailAccessoryTier(periodKey: string, teamBase: number) {
     rate,
     ratePercent: Math.round(rate * 100),
     elevated,
+    thresholdExceeded,
+    ruleEnabled: RETAIL_ACCESSORY_ELEVATED_RATE_ENABLED,
   };
 }
 
