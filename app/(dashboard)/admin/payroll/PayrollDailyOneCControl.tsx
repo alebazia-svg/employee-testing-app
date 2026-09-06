@@ -132,7 +132,7 @@ function getFriendlyLoadError(error: unknown) {
   return message;
 }
 
-export function PayrollDailyOneCControl({ month, year }: { month: string; year: string }) {
+export function PayrollDailyOneCControl({ month, year, compactWhenUnavailable = false }: { month: string; year: string; compactWhenUnavailable?: boolean }) {
   const periodKey = `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
   const [data, setData] = useState<DailyControlResponse | null>(null);
   const [error, setError] = useState('');
@@ -221,6 +221,28 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
     }
   }
 
+  if (compactWhenUnavailable && error && !data && !isLoading) {
+    return (
+      <Card className='border border-amber-200 bg-amber-50/70 p-0'>
+        <div className='flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='flex min-w-0 items-start gap-3'>
+            <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700'>
+              <Database className='h-4 w-4' />
+            </span>
+            <div className='min-w-0'>
+              <p className='font-bold text-amber-950'>1С временно недоступна</p>
+              <p className='text-sm text-amber-900'>Расчёт продолжает работать с загруженным резервным файлом. Перепроверьте источник позже.</p>
+            </div>
+          </div>
+          <button type='button' onClick={() => void load(true)} className='inline-flex w-fit shrink-0 items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm font-semibold text-amber-950 shadow-sm transition hover:border-amber-300'>
+            <RefreshCw className='h-4 w-4' />
+            Перепроверить 1С
+          </button>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card className={`overflow-hidden border ${data?.readyForControl && !isStale ? 'border-emerald-200' : error ? 'border-amber-200' : 'border-slate-200'}`}>
       <div className={`flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-start sm:justify-between ${data?.readyForControl && !isStale ? 'border-emerald-100 bg-emerald-50/70' : 'border-slate-100 bg-slate-50'}`}>
@@ -230,19 +252,19 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
           </span>
           <div className='min-w-0'>
             <div className='flex flex-wrap items-center gap-2'>
-              <h2 className='text-lg font-extrabold text-slate-950'>Данные из 1С</h2>
+              <h2 className='text-lg font-extrabold text-slate-950'>Автоматические данные из 1С</h2>
               {data && (
                 <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${data.readyForControl && !isStale ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
                   {isStale ? 'Показаны предыдущие данные' : data.readyForControl ? `Данные проверены по ${formatDate(data.period.verifiedThrough)}` : 'Нужно проверить'}
                 </span>
               )}
             </div>
-            <p className='mt-1 text-sm text-slate-600'>Обновляется при открытии страницы только после успешного вечернего расчёта себестоимости. Текущий Excel-расчёт и сохранённые зарплаты не меняются.</p>
+            <p className='mt-1 text-sm text-slate-600'>Основной источник расчёта. Портал обновляет данные после успешного вечернего расчёта себестоимости.</p>
           </div>
         </div>
         <button type='button' onClick={() => void load(true)} disabled={isLoading} className='inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-60'>
           <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          {isLoading ? 'Проверяю 1С' : 'Проверить весь период'}
+          {isLoading ? 'Проверяю 1С' : 'Перепроверить период'}
         </button>
       </div>
 
@@ -349,7 +371,7 @@ export function PayrollDailyOneCControl({ month, year }: { month: string; year: 
               </div>
             </details>
 
-            <p className='rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600'>Только проверка данных — зарплата, документы 1С и утверждённые месяцы не изменяются.</p>
+            <p className='rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600'>Перепроверка обновляет только исходные показатели. Сохранённые расчёты и документы 1С не изменяются.</p>
           </div>
         )}
       </div>

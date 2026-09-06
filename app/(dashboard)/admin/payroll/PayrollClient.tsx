@@ -3899,7 +3899,7 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
     const reasons = [
       missingClassification ? 'есть строки без классификации' : '',
       accessoryExcluded ? 'ошибочно исключены аксессуары' : '',
-      invalidNumbers ? 'есть NaN/undefined в суммах' : '',
+      invalidNumbers ? 'есть некорректные числовые значения' : '',
       missingContext ? 'не распознан контекст строки' : '',
       !Number.isFinite(summary.totalBonus) ? 'бонус не может быть рассчитан' : '',
     ].filter(Boolean);
@@ -4534,7 +4534,7 @@ export default function AdminPayrollPage() {
       { type: 'zeroBase' as const, label: 'Подозрительная нулевая база', rows: zeroBaseRows },
       { type: 'unclassified' as const, label: 'Без классификации', rows: unclassifiedRows },
       { type: 'accessoryExcluded' as const, label: 'Ошибочно исключённые аксессуары', rows: classification.accessoryExcludedRows },
-      { type: 'invalidNumbers' as const, label: 'NaN/undefined', rows: invalidNumberRows },
+      { type: 'invalidNumbers' as const, label: 'Некорректные числа', rows: invalidNumberRows },
     ],
     [classification.disputedRows, creditRows, wholesaleReviewRows, retailReviewRows, classification.expensiveReviewRows, negativeRows, zeroBaseRows, unclassifiedRows, classification.accessoryExcludedRows, invalidNumberRows],
   );
@@ -4922,7 +4922,7 @@ export default function AdminPayrollPage() {
     const checks = [
       ['Строки без классификации', managerRows.filter((item) => !item.calculationType).length],
       ['Ошибочно исключённые аксессуары', classification.accessoryExcludedRows.filter((item) => item.manager === row.manager).length],
-      ['NaN/undefined в расчётах', managerRows.filter((item) => [item.revenue, item.grossProfit, item.base, item.bonus].some((value) => !Number.isFinite(value))).length],
+      ['Некорректные числа в расчёте', managerRows.filter((item) => [item.revenue, item.grossProfit, item.base, item.bonus].some((value) => !Number.isFinite(value))).length],
       ['Спорные / нерешённые строки', managerRows.filter(isUnresolvedReviewRow).length],
       ['Услуги не вошли в 50%', managerRows.filter(isServiceNotIncludedRow).length],
       ['Похожие на аксессуары, но не вошли', managerRows.filter(isPotentialAccessoryNotIncludedRow).length],
@@ -5263,7 +5263,7 @@ export default function AdminPayrollPage() {
   function getAuditActionReason(row: ClassifiedSalesRow) {
     const reasons = [];
     if (!row.calculationType) reasons.push('нет классификации');
-    if ([row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))) reasons.push('NaN/undefined в числах');
+    if ([row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))) reasons.push('некорректные числа');
     if (isSuspiciousTechCostRow(row)) reasons.push(getSuspiciousTechCostReason(row));
     if (auditClassification.accessoryExcludedRows.includes(row)) reasons.push('аксессуар ошибочно исключён из расчёта');
     if (row.calculationType === 'RETAIL_REVIEW_TECH') reasons.push('спорная техника розницы');
@@ -5280,11 +5280,11 @@ export default function AdminPayrollPage() {
     if (!rows.length) return <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>{options.emptyText}</p>;
 
     return (
-      <div className='max-h-[420px] overflow-auto rounded-lg border border-border'>
+      <div className='max-h-[420px] max-w-full overflow-auto rounded-lg border border-border'>
         <table className='w-full min-w-[1280px] text-sm'>
-          <thead className='sticky top-0 z-10 bg-slate-50 text-left text-slate-500'>
+          <thead className='sticky top-0 z-20 bg-slate-50 text-left text-slate-500'>
             <tr>
-              <th className='px-3 py-2'>Сотрудник</th>
+              <th className='sticky left-0 z-30 min-w-[180px] bg-slate-50 px-3 py-2 shadow-[8px_0_12px_-12px_rgba(15,23,42,0.35)]'>Сотрудник</th>
               <th className='px-3 py-2'>Клиент</th>
               <th className='px-3 py-2'>Категория</th>
               <th className='px-3 py-2'>Номенклатура</th>
@@ -5294,13 +5294,13 @@ export default function AdminPayrollPage() {
               <th className='px-3 py-2'>Тип расчёта</th>
               <th className='px-3 py-2 text-right'>Начисление строки/агрегата</th>
               <th className='px-3 py-2'>Причина / пометка</th>
-              {options.showActions !== false && <th className='px-3 py-2'>Действие</th>}
+              {options.showActions !== false && <th className='sticky right-0 z-30 min-w-[168px] bg-slate-50 px-3 py-2 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]'>Действие</th>}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => (
               <tr key={`${row.manager}-${row.item}-${row.article}-${index}`} className='border-t border-border/70 align-top'>
-                <td className='px-3 py-2 font-semibold text-slate-900'>{row.manager}</td>
+                <td className='sticky left-0 z-10 min-w-[180px] bg-white px-3 py-2 font-semibold text-slate-900 shadow-[8px_0_12px_-12px_rgba(15,23,42,0.35)]'>{row.manager}</td>
                 <td className='px-3 py-2 text-slate-700'>{row.client || '—'}</td>
                 <td className='px-3 py-2 text-slate-700'>{row.category}</td>
                 <td className='max-w-[360px] px-3 py-2 font-semibold leading-snug text-slate-900' title={row.item}>
@@ -5312,7 +5312,7 @@ export default function AdminPayrollPage() {
                 <td className='px-3 py-2 text-slate-700'>{row.calculationLabel}</td>
                 <td className='px-3 py-2 text-right font-semibold text-slate-900'>{formatMoney(row.bonus)}</td>
                 <td className='px-3 py-2 text-slate-600'>{getReason(row)}</td>
-                {options.showActions !== false && <td className='px-3 py-2'>{renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>}
+                {options.showActions !== false && <td className='sticky right-0 z-10 min-w-[168px] bg-white px-3 py-2 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]'>{renderAccessoryRuleButton(row, row.isCreditSale ? 'credit' : 'disputed')}</td>}
               </tr>
             ))}
           </tbody>
@@ -5323,13 +5323,13 @@ export default function AdminPayrollPage() {
 
   function renderProductReviewCard() {
     return (
-      <Card>
+      <Card className='min-w-0'>
         <div className='mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between'>
           <div>
             <h2 className='text-lg font-bold text-slate-900'>Что нужно решить по товарам</h2>
             <p className='mt-1 text-sm text-slate-500'>Одинаковые спорные позиции сгруппированы. Решите товар один раз, и портал создаст точечное правило для следующих расчётов.</p>
           </div>
-          <div className='grid grid-cols-2 gap-2 text-sm sm:grid-cols-4'>
+          <div className='grid grid-cols-2 gap-2 text-sm xl:grid-cols-4'>
             <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2'>
               <p className='text-xs font-semibold uppercase text-amber-700'>Товаров решить</p>
               <p className='text-xl font-bold text-amber-950'>{productReviewGroups.length}</p>
@@ -5350,24 +5350,26 @@ export default function AdminPayrollPage() {
         </div>
 
         {productReviewGroups.length ? (
-          <div className='max-h-[520px] overflow-auto rounded-lg border border-border'>
+          <div>
+          <p className='mb-2 text-xs font-medium text-slate-500 xl:hidden'>Товар и решение закреплены. Прокрутите таблицу в сторону, чтобы сверить остальные показатели.</p>
+          <div className='max-w-full max-h-[520px] overflow-auto rounded-lg border border-border'>
             <table className='w-full min-w-[1080px] text-sm'>
-              <thead className='sticky top-0 bg-slate-50 text-left text-slate-500'>
+              <thead className='sticky top-0 z-20 bg-slate-50 text-left text-slate-500'>
                 <tr>
-                  <th className='px-3 py-3'>Товар</th>
+                  <th className='sticky left-0 z-30 w-[280px] bg-slate-50 px-3 py-3'>Товар</th>
                   <th className='px-3 py-3'>Категория</th>
                   <th className='px-3 py-3'>Менеджеры</th>
                   <th className='px-3 py-3 text-right'>Строк</th>
                   <th className='px-3 py-3 text-right'>Выручка</th>
                   <th className='px-3 py-3 text-right'>ВП</th>
                   <th className='px-3 py-3'>Почему спорно</th>
-                  <th className='px-3 py-3'>Решение</th>
+                  <th className='sticky right-0 z-30 w-[168px] bg-slate-50 px-3 py-3 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]'>Решение</th>
                 </tr>
               </thead>
               <tbody>
                 {productReviewGroups.slice(0, 30).map((group) => (
                   <tr key={group.key} className='border-t border-border/70 align-top'>
-                    <td className='max-w-[340px] px-3 py-3'>
+                    <td className='sticky left-0 z-10 w-[280px] max-w-[280px] bg-white px-3 py-3 shadow-[8px_0_12px_-12px_rgba(15,23,42,0.35)]'>
                       <p className='font-semibold text-slate-900'>{group.item}</p>
                       <p className='mt-1 text-xs text-slate-500'>Артикул: {group.article || '—'} · клиентов: {group.clients.size}</p>
                     </td>
@@ -5384,11 +5386,12 @@ export default function AdminPayrollPage() {
                       </div>
                       <p className='mt-1 text-xs text-slate-500'>{group.actionRow.calculationLabel}</p>
                     </td>
-                    <td className='px-3 py-3'>{renderAccessoryRuleButton(group.actionRow, group.problemType)}</td>
+                    <td className='sticky right-0 z-10 w-[168px] bg-white px-3 py-3 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]'>{renderAccessoryRuleButton(group.actionRow, group.problemType)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
           </div>
         ) : (
           <p className='rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800'>Спорных товаров для решения не найдено.</p>
@@ -5515,7 +5518,7 @@ export default function AdminPayrollPage() {
         1,
         'Проверить',
         reason === 'Не указаны опоздания'
-          ? 'Рабочие дни заполнены, но количество опозданий не указано. Проверьте его: от этого зависит бонус за дисциплину 3 000 ₽.'
+          ? 'Количество опозданий не указано. Проверьте его: от этого зависит бонус за дисциплину 3 000 ₽.'
           : reason,
         '',
         '',
@@ -5530,7 +5533,7 @@ export default function AdminPayrollPage() {
         ['Услуги не вошли в 50%', managerRows.filter(isServiceNotIncludedRow).length, 'Проверить', 'Строка похожа на услуги, но не попала в расчёт услуг'],
         ['Нулевая база без понятного расчёта', managerRows.filter(isCriticalZeroBaseRow).length, 'Проверить', 'База расчёта равна нулю, но строка может влиять на зарплату'],
         ['Строки без классификации', managerRows.filter((item) => !item.calculationType).length, 'Ошибка', 'Нет классификации строки'],
-        ['NaN/undefined в расчётах', managerRows.filter((item) => [item.revenue, item.grossProfit, item.base, item.bonus].some((value) => !Number.isFinite(value))).length, 'Ошибка', 'В строке есть некорректные числовые значения'],
+        ['Некорректные числа в расчёте', managerRows.filter((item) => [item.revenue, item.grossProfit, item.base, item.bonus].some((value) => !Number.isFinite(value))).length, 'Ошибка', 'В строке есть некорректные числовые значения'],
         ['Ошибочно исключённые аксессуары', classification.accessoryExcludedRows.filter((item) => item.manager === row.manager).length, 'Ошибка', 'Аксессуар исключён из расчёта и требует проверки'],
         ['Ручная корректировка дней', row.daysSource === 'manualCorrection' ? 1 : 0, 'Контроль / учтено', 'Дни или опоздания изменены вручную'],
       ];
@@ -6090,7 +6093,7 @@ export default function AdminPayrollPage() {
       const run = await response.json() as { id: number; runNumber: number };
       setLastSavedRunId(run.id);
       setSaveStatus(
-        `Расчёт сохранён в PostgreSQL как ${payrollReviewCount > 0 ? 'черновик / требует проверки' : 'черновик без критичных проверок'}. Его можно открыть в блоке “Сохранённые расчёты”. Запуск #${run.runNumber}.`,
+        `Расчёт сохранён как ${payrollReviewCount > 0 ? 'черновик, требующий проверки' : 'черновик без критичных замечаний'}. Он доступен в истории расчётов. Версия №${run.runNumber}.`,
       );
       await loadSavedPayrollPeriods();
     } catch (caughtError) {
@@ -6174,87 +6177,80 @@ export default function AdminPayrollPage() {
   return (
     <AdminShell>
       <div className='max-w-full overflow-x-hidden'>
-      <div className='mb-5 flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+      <div className='mb-5 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
         <div>
           <AdminBreadcrumbs current='Зарплата' />
           <h1 className='text-[26px] font-extrabold tracking-normal text-slate-950 md:text-[28px]'>Зарплата</h1>
-          <p className='mt-1 max-w-3xl text-base font-medium text-slate-500'>
-            Расчёт начислений и контроль выплат
-          </p>
+          <p className='mt-1 max-w-3xl text-base font-medium text-slate-500'>Начисления, проверка и история выплат</p>
         </div>
-        <Badge className='w-fit bg-green-100 text-green-800'>Рабочий расчёт</Badge>
+        <div className='flex flex-wrap items-end gap-2'>
+          <label className='grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500'>
+            Месяц
+            <select value={month} onChange={(event) => setMonth(event.target.value)} className='min-w-[150px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
+              {months.map((monthName, index) => <option key={monthName} value={index}>{monthName}</option>)}
+            </select>
+          </label>
+          <label className='grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500'>
+            Год
+            <select value={year} onChange={(event) => setYear(event.target.value)} className='min-w-[104px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
+              {years.map((yearValue) => <option key={yearValue} value={yearValue}>{yearValue}</option>)}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className='grid gap-4'>
-        <PayrollDailyOneCControl month={month} year={year} />
+        <PayrollDailyOneCControl month={month} year={year} compactWhenUnavailable={Boolean(workbook)} />
 
-        <Card className='p-4'>
-          <div className='mb-4 flex items-center gap-3'>
-            <span className='flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-700'>
-              <FileSpreadsheet className='h-5 w-5' />
-            </span>
-            <div>
-              <h2 className='text-lg font-bold text-slate-900'>Ручная загрузка из 1С</h2>
-              <p className='text-sm text-slate-500'>Резервный способ расчёта: файл используется только на этой странице и не сохраняется в базе.</p>
+        <details className='rounded-xl border border-slate-200 bg-white shadow-sm' open={!workbook}>
+          <summary className='cursor-pointer list-none p-4'>
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex min-w-0 items-center gap-3'>
+                <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-100 text-green-700'>
+                  <FileSpreadsheet className='h-5 w-5' />
+                </span>
+                <div className='min-w-0'>
+                  <h2 className='font-bold text-slate-900'>Резервная загрузка файлов</h2>
+                  <p className='truncate text-sm text-slate-500'>
+                    {workbook ? `Сейчас используется: ${workbook.fileName}` : 'Используйте, если автоматические данные 1С недоступны'}
+                  </p>
+                </div>
+              </div>
+              <span className='shrink-0 text-xs font-semibold text-slate-500'>{workbook ? 'Файл загружен' : 'Раскрыть'}</span>
             </div>
+          </summary>
+          <div className='border-t border-slate-100 p-4'>
+            <div className='grid gap-3 md:grid-cols-2'>
+              <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
+                Отчёт продаж 1С — Excel или CSV
+                <span className='relative flex items-center'>
+                  <Upload className='pointer-events-none absolute left-3 h-4 w-4 text-slate-400' />
+                  <Input type='file' accept='.xlsx,.csv' onChange={handleFileChange} className='pl-10 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700' />
+                </span>
+              </label>
+              <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
+                Отчёт по закупкам 1С
+                <span className='relative flex items-center'>
+                  <Upload className='pointer-events-none absolute left-3 h-4 w-4 text-slate-400' />
+                  <Input type='file' accept='.xlsx,.csv' onChange={handlePurchaseFileChange} className='pl-10 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700' />
+                </span>
+              </label>
+            </div>
+            {error && <p className='mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{error}</p>}
+            {purchaseError && <p className='mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{purchaseError}</p>}
+            {purchaseReport && <p className='mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>Закупки загружены: {purchaseReport.fileName} · база {formatMoney(purchaseReport.base ?? 0)}{purchaseReport.sourceRow ? ` · строка ${purchaseReport.sourceRow}` : ''}.</p>}
+            <p className='mt-3 text-sm text-slate-600'>Файлы используются временно. Чтобы расчёт появился в истории, сохраните его после проверки.</p>
+            {isParsing && <p className='mt-3 text-sm font-medium text-slate-500'>Читаю файл…</p>}
           </div>
-
-          <div className='grid gap-3 md:grid-cols-[170px_120px_minmax(260px,1fr)_minmax(260px,1fr)]'>
-            <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
-              Месяц
-              <select value={month} onChange={(event) => setMonth(event.target.value)} className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
-                {months.map((monthName, index) => (
-                  <option key={monthName} value={index}>
-                    {monthName}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
-              Год
-              <select value={year} onChange={(event) => setYear(event.target.value)} className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
-                {years.map((yearValue) => (
-                  <option key={yearValue} value={yearValue}>
-                    {yearValue}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
-              Excel или CSV
-              <span className='relative flex items-center'>
-                <Upload className='pointer-events-none absolute left-3 h-4 w-4 text-slate-400' />
-                <Input type='file' accept='.xlsx,.csv' onChange={handleFileChange} className='pl-10 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700' />
-              </span>
-            </label>
-
-            <label className='grid gap-1.5 text-sm font-semibold text-slate-700'>
-              Отчёт по закупкам 1С
-              <span className='relative flex items-center'>
-                <Upload className='pointer-events-none absolute left-3 h-4 w-4 text-slate-400' />
-                <Input type='file' accept='.xlsx,.csv' onChange={handlePurchaseFileChange} className='pl-10 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700' />
-              </span>
-            </label>
-          </div>
-
-          {error && <p className='mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{error}</p>}
-          {purchaseError && <p className='mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{purchaseError}</p>}
-          {purchaseReport && <p className='mt-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>Отчёт закупок загружен: {purchaseReport.fileName}, база {formatMoney(purchaseReport.base ?? 0)}{purchaseReport.sourceRow ? `, строка ${purchaseReport.sourceRow}` : ''}.</p>}
-          <p className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900'>
-            Загруженный Excel и текущий расчёт хранятся на странице временно. Чтобы сохранить расчёт в историю, нажмите “Сохранить расчёт”.
-          </p>
-          {isParsing && <p className='mt-4 text-sm text-slate-500'>Читаю файл...</p>}
-        </Card>
+        </details>
 
         {workbook && (
           <>
             <Card>
               <div className='mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
                 <div>
-                  <h2 className='text-lg font-bold text-slate-900'>Проверка расчёта</h2>
-                  <p className='text-sm text-slate-500'>{workbook.fileName} · {months[Number(month)]} {year}</p>
+                  <h2 className='text-lg font-bold text-slate-900'>Текущий расчёт</h2>
+                  <p className='text-sm text-slate-500'>Источник: {workbook.fileName} · {months[Number(month)]} {year}</p>
                 </div>
                 <Badge className={getCheckStatus(registrarParseUnsafe || classificationErrorCount > 0 ? 'error' : classification.disputedRows.length || creditRows.length ? 'warning' : 'ok')}>
                   {registrarParseUnsafe ? 'Небезопасный файл с регистратором' : classificationErrorCount > 0 ? 'Есть ошибки' : classification.disputedRows.length || creditRows.length ? 'Требует проверки' : 'Готово к проверке'}
@@ -6310,27 +6306,31 @@ export default function AdminPayrollPage() {
             </Card>
 
             <div className='min-w-0'>
-              <div className='mb-5 flex flex-wrap gap-2'>
-                {['Итог ЗП', 'Дни, авансы и премии', 'Аудит расчёта'].map((tab) => (
+              <div className='mb-2 flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5' aria-label='Разделы расчёта зарплаты'>
+                {[
+                  { id: 'Итог ЗП', label: 'Ведомость' },
+                  { id: 'Дни, авансы и премии', label: 'Дни, авансы и премии' },
+                  { id: 'Аудит расчёта', label: 'Проверка данных' },
+                ].map((tab) => (
                   <button
-                    key={tab}
+                    key={tab.id}
                     type='button'
-                    onClick={() => setActivePayrollTab(tab)}
-                    className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition ${activePayrollTab === tab ? 'bg-primary text-white shadow-sm' : 'border border-border bg-white text-slate-600 hover:border-primary/40 hover:text-slate-900'}`}
+                    onClick={() => setActivePayrollTab(tab.id)}
+                    className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition ${activePayrollTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`}
                   >
-                    {tab}
+                    {tab.label}
                   </button>
                 ))}
               </div>
+              <p className='mb-5 text-sm text-slate-500'>Сначала проверьте ведомость, затем при необходимости исправьте ручные данные или откройте проверку исходных строк.</p>
 
               {bonusStorageWarning && <p role='alert' className='mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900'>{bonusStorageWarning}</p>}
               {bonusValidation.error && <p role='alert' className='mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800'>{bonusValidation.error} Премии не включены в итог; сохранение и экспорт недоступны до исправления. {activePayrollTab !== 'Дни, авансы и премии' && <button type='button' onClick={() => setActivePayrollTab('Дни, авансы и премии')} className='font-semibold underline'>Проверить премии</button>}</p>}
 
               {activePayrollTab === 'Итог ЗП' && (
                 <div className='grid gap-5'>
-                  <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-5'>
+                  <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
                     {[
-                      ['Период', `${months[Number(month)]} ${year}`],
                       ['Начислено', formatMoney(payrollTotals.grossPay)],
                       ['Выплачено / удержано', formatMoney(fullPayrollRows.reduce((sum, row) => sum + getPayrollPortalPaidAmount(row), 0))],
                       ['Осталось выплатить', formatMoney(payrollTotals.netPay)],
@@ -6365,7 +6365,7 @@ export default function AdminPayrollPage() {
                         <div>
                           <h2 className='text-base font-bold text-amber-950'>Есть товары для проверки</h2>
                           <p className='mt-1 text-sm text-amber-900'>
-                            Нужно решить {productReviewGroups.length} товарных групп перед финальной выплатой. Подробная проверка находится во вкладке “Аудит расчёта”.
+                            Нужно решить {productReviewGroups.length} товарных групп перед финальной выплатой. Подробности находятся в разделе «Проверка данных».
                           </p>
                         </div>
                         <button
@@ -6373,7 +6373,7 @@ export default function AdminPayrollPage() {
                           onClick={() => setActivePayrollTab('Аудит расчёта')}
                           className='w-fit rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-700'
                         >
-                          Открыть аудит
+                          Открыть проверку
                         </button>
                       </div>
                     </Card>
@@ -6447,9 +6447,12 @@ export default function AdminPayrollPage() {
                     </div>
                   </details>
 
-                  <Card>
+                  <Card className='min-w-0'>
                     <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
-                      <h2 className='text-lg font-bold text-slate-900'>Итог по сотрудникам</h2>
+                      <div>
+                        <h2 className='text-lg font-bold text-slate-900'>Ведомость сотрудников</h2>
+                        <p className='mt-1 text-sm text-slate-500'>Начисления до вычета авансов — рядом с именем; остаток показывает сумму, которую ещё нужно выплатить.</p>
+                      </div>
                       <div className='flex flex-wrap gap-2'>
                         <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0 || isCurrentPeriodClosed || Boolean(bonusValidation.error) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError)} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
                           {isSavingPayroll ? 'Сохраняю...' : 'Сохранить расчёт'}
@@ -6491,12 +6494,13 @@ export default function AdminPayrollPage() {
                     </div>
                     {saveStatus && <p className='mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800'>{saveStatus}</p>}
                     {saveError && <p className='mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700'>{saveError}</p>}
+                    <p className='mb-2 text-xs font-medium text-slate-500 xl:hidden'>Сотрудник и начисленная зарплата закреплены. Прокрутите таблицу в сторону, чтобы увидеть остальные составляющие.</p>
                     <div className='max-w-full overflow-x-auto rounded-xl border border-slate-200'>
                       <table className='w-full min-w-[1180px] text-sm'>
                         <thead className='bg-slate-50 text-left text-slate-500'>
                           <tr>
-                            <th className='w-[210px] px-3 py-3'>Сотрудник</th>
-                            <th className='w-[120px] px-3 py-3 text-right'>Начислено</th>
+                            <th className='sticky left-0 z-20 w-[210px] min-w-[210px] max-w-[210px] bg-slate-50 px-3 py-3 shadow-[8px_0_12px_-12px_rgba(15,23,42,0.35)]'>Сотрудник</th>
+                            <th className='sticky left-[210px] z-20 w-[120px] min-w-[120px] max-w-[120px] bg-emerald-50 px-3 py-3 text-right shadow-[8px_0_12px_-12px_rgba(15,23,42,0.35)]'>Начислено</th>
                             <th className='w-[54px] px-3 py-3 text-right'>Дни</th>
                             <th className='w-[130px] px-3 py-3 text-right'>Оплата / оклад / доплата</th>
                             <th className='w-[120px] px-3 py-3 text-right'>Процентная часть</th>
@@ -6525,11 +6529,11 @@ export default function AdminPayrollPage() {
                                   onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedManager(summary.manager); }}
                                   tabIndex={0}
                                 >
-                                  <td className='max-w-[210px] px-3 py-3 font-semibold text-slate-900' title={`${summary.manager} · ${summary.position}`}>
+                                  <td className='sticky left-0 z-10 w-[210px] min-w-[210px] max-w-[210px] bg-white px-3 py-3 font-semibold text-slate-900 shadow-[8px_0_12px_-12px_rgba(15,23,42,0.35)]' title={`${summary.manager} · ${summary.position}`}>
                                     <span className='block'>{summary.manager}</span>
                                     <span className='mt-0.5 block truncate text-[11px] font-medium text-slate-500'>{summary.position}</span>
                                   </td>
-                                  <td className='whitespace-nowrap bg-emerald-50/60 px-3 py-3 text-right font-extrabold text-emerald-800'>{formatMoney(summary.grossPay)}</td>
+                                  <td className='sticky left-[210px] z-10 w-[120px] min-w-[120px] max-w-[120px] whitespace-nowrap bg-emerald-50 px-3 py-3 text-right font-extrabold text-emerald-800 shadow-[8px_0_12px_-12px_rgba(15,23,42,0.35)]'>{formatMoney(summary.grossPay)}</td>
                                   <td className='whitespace-nowrap px-3 py-3 text-right text-slate-700'>{summary.workedDays ?? '—'}</td>
                                   <td className='whitespace-nowrap px-3 py-3 text-right text-slate-700'>{formatMoney(getPayrollPortalBasePay(summary))}</td>
                                   <td className='whitespace-nowrap px-3 py-3 text-right font-semibold text-slate-900'>{formatMoney(getPayrollPortalPerformancePay(summary))}</td>
@@ -6550,8 +6554,8 @@ export default function AdminPayrollPage() {
                   <Card>
                     <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                       <div>
-                        <h2 className='text-lg font-bold text-slate-900'>Сохранённые расчёты</h2>
-                        <p className='text-sm text-slate-500'>Последние сохранённые версии по месяцам.</p>
+                        <h2 className='text-lg font-bold text-slate-900'>История расчётов</h2>
+                        <p className='text-sm text-slate-500'>Черновики, проверенные и финальные версии по месяцам.</p>
                       </div>
                       {lastSavedRunId && <Badge className='w-fit bg-green-100 text-green-800'>Последний расчёт: № {lastSavedRunId}</Badge>}
                     </div>
@@ -6600,7 +6604,7 @@ export default function AdminPayrollPage() {
                                       </button>
                                     )}
                                     <button type='button' onClick={() => openSavedPayrollRun(run.id)} disabled={isSavedRunLoading} className='rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 transition hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-60'>
-                                      Открыть сохранённый расчёт
+                                      Открыть
                                     </button>
                                   </div>
                                   {run.status === 'SUPERSEDED' && run.supersededByRun && (
@@ -6783,11 +6787,16 @@ export default function AdminPayrollPage() {
                 <Card>
                   <div className='mb-4'>
                     <h2 className='text-lg font-bold text-slate-900'>Дни, авансы и премии</h2>
-                    <p className='mt-1 text-sm text-slate-500'>Раскройте сотрудника: все ручные суммы и итог к выплате находятся в одном месте.</p>
-                    <p className='mt-2 text-xs text-slate-500'>Новые премии прибавляются сверх обычного расчёта и доведения до минимума, не входят в базу 12% Бэлы и не переносятся в следующий месяц. «Сохранить расчёт» фиксирует суммы, основания и автора в истории. Записи в 1С не создаются.</p>
+                    <p className='mt-1 text-sm text-slate-500'>Раскройте сотрудника, чтобы проверить или изменить ручные данные.</p>
+                    <details className='mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-950'>
+                      <summary className='cursor-pointer font-semibold'>Как учитываются ручные премии и авансы</summary>
+                      <p className='mt-2'>Премия прибавляется к начислению текущего месяца, а выплаченный аванс уменьшает остаток к выплате. Премии не входят в базу 12% Бэлы и не переносятся на следующий месяц. Сохранение фиксирует сумму, основание и автора; документы в 1С здесь не создаются.</p>
+                    </details>
                   </div>
                   <div className='grid min-w-0 gap-3'>
-                    {payrollDisplayRows.map((row) => {
+                    {payrollDisplayRows.map((row, index) => {
+                      const group = getPayrollWorkbookGroup(row.salaryType);
+                      const previousGroup = index > 0 ? getPayrollWorkbookGroup(payrollDisplayRows[index - 1].salaryType) : null;
                       const fixed = row.salaryType === 'fixed_salary';
                       const purchase = row.salaryType === 'purchase_manager';
                       const salesInput = manualPayroll[row.manager] ?? { workedDays: '', lateCount: '', advance: '', comment: '' };
@@ -6801,18 +6810,23 @@ export default function AdminPayrollPage() {
                       };
                       const showsLegacyBonus = fixed && (Boolean(fixedInput.bonus) || !getBelaMinimum(selectedPayrollPeriodKey));
                       return (
-                        <details key={`${selectedPayrollPeriodKey}-${row.manager}`} className='min-w-0 rounded-lg border border-border bg-white'>
+                        <Fragment key={`${selectedPayrollPeriodKey}-${row.manager}`}>
+                        {group !== previousGroup && (
+                          <div className={`rounded-lg border px-3 py-2 text-xs font-extrabold uppercase tracking-wide ${getPayrollPortalGroupTone(row.salaryType)}`}>{group}</div>
+                        )}
+                        <details className='min-w-0 rounded-lg border border-border bg-white'>
                           <summary aria-label={`Данные зарплаты: ${row.manager}`} className='cursor-pointer rounded-lg px-4 py-3 text-sm marker:text-slate-400'>
                             <span className='inline-grid w-[calc(100%_-_20px)] min-w-0 gap-2 align-top sm:grid-cols-[minmax(0,1fr)_auto]'>
                               <span className='min-w-0'>
                                 <span className='block font-bold text-slate-900'>{row.manager}</span>
-                                <span className='block text-xs text-slate-500'>{row.payrollDepartment} · {row.position}</span>
+                                <span className='block text-xs text-slate-500'>{row.position}</span>
                                 {row.payrollReasons.length > 0 && <span className='block text-xs text-amber-800'>Требует проверки · {row.payrollReasons.length}</span>}
                                 {employeeDrafts.length > 0 && <span className='block text-xs text-slate-600'>Премии: {bonusValidation.error ? 'проверьте ввод' : formatMoney((row.oneTimeBonus ?? 0) + row.fixedBonus)}</span>}
                               </span>
                               <span className='sm:text-right'>
-                                <span className='block text-xs text-slate-500'>К выплате{bonusValidation.error ? ' · без разовых премий' : ''}</span>
-                                <span className='block font-bold text-slate-900'>{formatMoney(row.netPay)}</span>
+                                <span className='block text-xs text-slate-500'>Начислено{bonusValidation.error ? ' · без разовых премий' : ''}</span>
+                                <span className='block font-bold text-slate-900'>{formatMoney(row.grossPay)}</span>
+                                {getPayrollPortalPaidAmount(row) > 0 && <span className='block text-xs font-semibold text-slate-600'>Осталось: {formatMoney(row.netPay)}</span>}
                                 <span className='block text-xs text-slate-500'>Раскрыть / свернуть</span>
                               </span>
                             </span>
@@ -6868,6 +6882,7 @@ export default function AdminPayrollPage() {
                             <p className='border-t border-border pt-3 text-sm text-slate-700'>Всего начислено: <strong>{formatMoney(row.grossPay)}</strong> · К выплате: <strong>{formatMoney(row.netPay)}</strong>{bonusValidation.error && ' · разовые премии не учтены до исправления ошибки'}</p>
                           </div>
                         </details>
+                        </Fragment>
                       );
                     })}
                   </div>
@@ -7057,10 +7072,10 @@ export default function AdminPayrollPage() {
                   <Card>
                     <div className='mb-4 flex flex-col gap-2 md:flex-row md:items-start md:justify-between'>
                       <div>
-                        <h2 className='text-lg font-bold text-slate-900'>Аудит расчёта</h2>
-                        <p className='text-sm text-slate-500'>Проверка зарплаты перед сохранением: критичные строки, дорогие позиции и ручные исправления.</p>
+                        <h2 className='text-lg font-bold text-slate-900'>Проверка данных</h2>
+                        <p className='text-sm text-slate-500'>Строки, которые требуют решения, и дополнительные выборки для контрольной проверки.</p>
                         <details className='mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900'>
-                          <summary className='cursor-pointer font-semibold'>Как читать строки аудита</summary>
+                          <summary className='cursor-pointer font-semibold'>Как читать исходные строки</summary>
                           <p className='mt-2'>Строки взяты из отчёта 1С. Если исходный отчёт уже объединил продажи по товару, клиенту и менеджеру, здесь также будет показан общий итог. На формулу зарплаты это не влияет.</p>
                         </details>
                       </div>
@@ -7071,8 +7086,8 @@ export default function AdminPayrollPage() {
                       {[
                         ['Требует действия', auditActionRows.length],
                         ['Большие начисления', topBonusAuditRows.length],
-                        ['Новые дорогие', newExpensiveAuditRows.length],
-                        ['Ручные правила', manualClassificationAuditRows.length],
+                        ['Новые товары', newExpensiveAuditRows.length],
+                        ['Ручные исправления', manualClassificationAuditRows.length],
                       ].map(([label, count]) => (
                         <div key={label} className='rounded-lg border border-border bg-white px-3 py-2'>
                           <p className='text-xs font-semibold uppercase text-slate-500'>{label}</p>
@@ -7103,7 +7118,7 @@ export default function AdminPayrollPage() {
 
                   <Card>
                     <h3 className='mb-2 text-base font-bold text-slate-900'>Самые дорогие аксессуары розницы</h3>
-                    <p className='mb-3 text-sm text-slate-500'>TOP-30 розничных строк RETAIL_ACCESSORY_5 по выручке. Пометка не меняет классификацию, только помогает быстро найти технику среди аксессуаров.</p>
+                    <p className='mb-3 text-sm text-slate-500'>30 самых крупных розничных продаж аксессуаров. Пометка помогает найти технику, которая могла ошибочно попасть в аксессуары.</p>
                     {renderAuditRowsTable(
                       topRetailAccessoryAuditRows,
                       (row) => (
@@ -7118,13 +7133,13 @@ export default function AdminPayrollPage() {
 
                   <Card>
                     <h3 className='mb-2 text-base font-bold text-slate-900'>Самые дорогие аксессуары опта</h3>
-                    <p className='mb-3 text-sm text-slate-500'>TOP-30 оптовых строк WHOLESALE_INCLUDED_1_75 по выручке. Блок отделён от розницы, чтобы оптовые позиции Залины и Лианы не мешали проверке розничной зарплаты.</p>
+                    <p className='mb-3 text-sm text-slate-500'>30 самых крупных оптовых продаж, вошедших в базу 1,75%. Опт отделён от розницы для более быстрой проверки.</p>
                     {renderAuditRowsTable(topWholesaleAccessoryAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Оптовые строки в базе 1,75% не найдены.' })}
                   </Card>
 
                   <Card>
                     <h3 className='mb-2 text-base font-bold text-slate-900'>Самые большие начисления</h3>
-                    <p className='mb-3 text-sm text-slate-500'>TOP-30 строк по модулю начисления. Эти позиции сильнее всего влияют на итоговую зарплату.</p>
+                    <p className='mb-3 text-sm text-slate-500'>30 строк, которые сильнее всего увеличили или уменьшили итоговую зарплату.</p>
                     {renderAuditRowsTable(topBonusAuditRows, (row) => `${row.formula} · ${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Начисления по строкам не найдены.' })}
                   </Card>
 
@@ -7136,8 +7151,8 @@ export default function AdminPayrollPage() {
 
                   <Card>
                     <h3 className='mb-2 text-base font-bold text-slate-900'>Новые дорогие товары</h3>
-                    <p className='mb-3 text-sm text-slate-500'>Используется только существующая логика new-expensive-review, без нового порога “дорого”.</p>
-                    {renderAuditRowsTable(newExpensiveAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Новых дорогих товаров по правилу new-expensive-review нет.' })}
+                    <p className='mb-3 text-sm text-slate-500'>Новые крупные позиции, для которых портал ещё не знает постоянного правила расчёта.</p>
+                    {renderAuditRowsTable(newExpensiveAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Новых крупных товаров, требующих классификации, нет.' })}
                   </Card>
 
                   <Card>
@@ -7154,7 +7169,7 @@ export default function AdminPayrollPage() {
 
                   <Card>
                     <h3 className='mb-2 text-base font-bold text-slate-900'>Ручные исправления</h3>
-                    <p className='mb-3 text-sm text-slate-500'>Строки текущего расчёта, где сработало сохранённое ручное правило classification-rules.</p>
+                    <p className='mb-3 text-sm text-slate-500'>Строки текущего расчёта, к которым применилось ранее сохранённое ручное решение.</p>
                     {renderAuditRowsTable(manualClassificationAuditRows, (row) => `${row.classificationReason} · ${row.matchedRule}`, { emptyText: 'Ручные правила в текущем расчёте не применялись.' })}
                   </Card>
                     </div>
@@ -7164,10 +7179,10 @@ export default function AdminPayrollPage() {
 
               <details open={['Опт', 'Розница', 'Детализация строк', 'Диагностика файла'].includes(activePayrollTab)} className='rounded-lg border border-dashed border-slate-300 bg-slate-50/70 px-4 py-3'>
                 <summary className='cursor-pointer text-sm font-bold text-slate-800'>
-                  Техническая диагностика (для отладки)
+                  Служебные отчёты
                 </summary>
                 <p className='mt-1 text-sm text-slate-500'>
-                  Здесь оставлены служебные срезы по опту, рознице, строкам и распознаванию файла. Для ежедневной проверки используйте вкладку “Аудит расчёта”.
+                  Подробные срезы по опту, рознице и распознаванию файла. Для обычной работы используйте раздел «Проверка данных».
                 </p>
                 <div className='mt-3 flex flex-wrap gap-2'>
                   {['Опт', 'Розница', 'Детализация строк', 'Диагностика файла'].map((tab) => (
@@ -7347,11 +7362,11 @@ export default function AdminPayrollPage() {
                             {selectedManagerCounts.suspiciousTechCost > 0 && <li>Подозрительно нулевая / неполная себестоимость техники: {selectedManagerCounts.suspiciousTechCost}</li>}
                             {selectedManagerCounts.unclassified > 0 && <li>Строки без классификации: {selectedManagerCounts.unclassified}</li>}
                             {selectedManagerCounts.accessoryExcluded > 0 && <li>Ошибочно исключённые аксессуары: {selectedManagerCounts.accessoryExcluded}</li>}
-                            {selectedManagerCounts.invalidNumbers > 0 && <li>NaN/undefined в расчётах: {selectedManagerCounts.invalidNumbers}</li>}
+                            {selectedManagerCounts.invalidNumbers > 0 && <li>Некорректные числа в расчёте: {selectedManagerCounts.invalidNumbers}</li>}
                             {selectedManagerPayroll.payrollReasons.map((reason) => (
                               <li key={reason}>
                                 {reason === 'Не указаны опоздания'
-                                  ? 'Рабочие дни заполнены, но количество опозданий не указано. Проверьте его: от этого зависит бонус за дисциплину 3 000 ₽.'
+                                  ? 'Количество опозданий не указано. Проверьте его: от этого зависит бонус за дисциплину 3 000 ₽.'
                                   : reason}
                               </li>
                             ))}
@@ -8029,8 +8044,8 @@ export default function AdminPayrollPage() {
             <Card>
               <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                 <div>
-                  <h2 className='text-lg font-bold text-slate-900'>Сохранённые расчёты</h2>
-                  <p className='text-sm text-slate-500'>Сохранённые расчёты доступны без повторной загрузки Excel.</p>
+                  <h2 className='text-lg font-bold text-slate-900'>История расчётов</h2>
+                  <p className='text-sm text-slate-500'>Откройте нужный месяц и скачайте ведомость без повторной загрузки файла.</p>
                 </div>
                 {lastSavedRunId && <Badge className='w-fit bg-green-100 text-green-800'>Последний расчёт: № {lastSavedRunId}</Badge>}
               </div>
@@ -8071,7 +8086,7 @@ export default function AdminPayrollPage() {
                                 </button>
                               )}
                               <button type='button' onClick={() => openSavedPayrollRun(run.id)} disabled={isSavedRunLoading} className='rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 transition hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-60'>
-                                Открыть сохранённый расчёт
+                                Открыть
                               </button>
                             </div>
                             {run.status === 'SUPERSEDED' && run.supersededByRun && (
