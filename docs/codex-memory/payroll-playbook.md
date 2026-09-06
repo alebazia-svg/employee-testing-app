@@ -395,6 +395,25 @@ the pay result harder to understand.
   selected payroll period drives day counting, not today's month.
 - Keep salary formulas and manual adjustments separate from 1C data-source work.
 
+### Fixed accessory rate and concise payroll notes — approved, 2026-09-06
+
+- After review with Aslan, the owner approved a fixed 5% accessory rate for all
+  eligible retail employees, including Diana. The former 7% rate above a RUB
+  1,000,000 team base remains dormant behind an explicit disabled switch; the
+  portal and workbook still show the team base and threshold for context, but
+  crossing it does not change the calculation.
+- The new version applies only to newly calculated and saved payroll. Existing
+  final runs remain immutable until the administrator deliberately recalculates
+  and replaces one through the audited final-replacement workflow.
+- The main workbook note now contains only exceptional management information:
+  one-time premiums with amount and reason, positive lateness counts, actual
+  deductions or manual corrections, and actionable review warnings. Routine
+  formulas, zero lateness, advances and minimum-salary top-ups are shown in
+  their dedicated columns or detail rows instead of being repeated as notes.
+- The change is locally prepared and visually reviewed against the approved
+  August workbook layout. No production payroll run, database or deploy was
+  changed at this stage.
+
 ## Before Changing Payroll
 
 Ask:
