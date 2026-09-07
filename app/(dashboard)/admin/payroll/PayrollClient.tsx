@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Eye, FileSpreadsheet, Upload } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Database, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
 import { PayrollBonusesEditor } from './PayrollBonusesEditor';
 import { PayrollFinboxImport } from './PayrollFinboxImport';
-import { PayrollDailyOneCControl } from './PayrollDailyOneCControl';
+import { PayrollDailyOneCControl, type DailyControlResponse } from './PayrollDailyOneCControl';
 import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
 import {
   PAYROLL_WORKBOOK_UNCONFIGURED_GROUP,
@@ -66,6 +66,8 @@ type SalesRow = {
   cost: number;
   grossProfit: number;
   profitability: number;
+  sourceCostReviewRows?: number;
+  sourceCostCalculationPendingRows?: number;
 };
 
 type Department = 'Опт' | 'Розница';
@@ -377,11 +379,13 @@ type SavedPayrollManualInput = {
   workedDays: string | null;
   lateCount: string | null;
   advance: string | null;
+  agentCreditCommission: string | null;
   fixedBonus: string | null;
   fixedDeduction: string | null;
   purchaseAdvance: string | null;
   purchaseDeduction: string | null;
   comment: string;
+  source?: string | null;
 };
 
 type SavedPayrollRunDetail = SavedPayrollRunSummary & {
@@ -1448,6 +1452,16 @@ function toNumber(value: CellValue) {
 
 function formatMoney(value: number) {
   return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+}
+
+function formatPayrollDelta(value: number) {
+  const normalized = Math.abs(value) < 0.005 ? 0 : value;
+  return `${normalized > 0 ? '+' : ''}${formatMoney(normalized)}`;
+}
+
+function formatPayrollControlDate(value: string) {
+  const [year, month, day] = value.split('-');
+  return year && month && day ? `${day}.${month}.${year}` : value;
 }
 
 function getFileExtension(fileName: string) {
@@ -3976,6 +3990,10 @@ export default function AdminPayrollPage() {
   const [selectedSavedRun, setSelectedSavedRun] = useState<SavedPayrollRunDetail | null>(null);
   const [isSavedRunLoading, setIsSavedRunLoading] = useState(false);
   const [isSavedRunExporting, setIsSavedRunExporting] = useState(false);
+  const [oneCShadowSource, setOneCShadowSource] = useState<DailyControlResponse | null>(null);
+  const [oneCShadowBaseline, setOneCShadowBaseline] = useState<SavedPayrollRunDetail | null>(null);
+  const [oneCShadowBaselineError, setOneCShadowBaselineError] = useState('');
+  const [isOneCShadowBaselineLoading, setIsOneCShadowBaselineLoading] = useState(false);
   const [classificationRules, setClassificationRules] = useState<PayrollClassificationRule[]>([]);
   const [isClassificationRulesLoading, setIsClassificationRulesLoading] = useState(false);
   const [classificationRuleActionId, setClassificationRuleActionId] = useState<string | null>(null);
@@ -4270,6 +4288,209 @@ export default function AdminPayrollPage() {
     () => savedPeriods.find((period) => period.year === Number(year) && period.month === Number(month)) ?? null,
     [savedPeriods, year, month],
   );
+  const currentFinalRun = useMemo(
+    () => currentSavedPeriod?.runs.find((run) => run.status === 'FINAL') ?? null,
+    [currentSavedPeriod],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setOneCShadowBaseline(null);
+    setOneCShadowBaselineError('');
+    if (!currentFinalRun) {
+      setIsOneCShadowBaselineLoading(false);
+      return () => { cancelled = true; };
+    }
+    setIsOneCShadowBaselineLoading(true);
+    void fetch(`/api/admin/payroll/runs/${currentFinalRun.id}`, { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Не удалось открыть финальный расчёт для сопоставления.');
+        const body = await response.json() as SavedPayrollRunDetail;
+        if (!cancelled) setOneCShadowBaseline(body);
+      })
+      .catch((caughtError) => {
+        if (!cancelled) setOneCShadowBaselineError(caughtError instanceof Error ? caughtError.message : 'Не удалось открыть финальный расчёт для сопоставления.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsOneCShadowBaselineLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [currentFinalRun]);
+
+  const oneCShadowCalculation = useMemo(() => {
+    if (!oneCShadowSource?.sales.rows || !oneCShadowBaseline) return null;
+
+    const shadowSalesRows: SalesRow[] = oneCShadowSource.sales.rows.map((row) => ({
+      manager: row.manager,
+      client: row.client,
+      category: row.category,
+      item: row.item,
+      registrar: '',
+      registrars: [],
+      revenue: row.revenue,
+      cost: row.cost,
+      grossProfit: row.grossProfit,
+      profitability: row.revenue ? (row.grossProfit / row.revenue) * 100 : 0,
+      sourceCostReviewRows: row.costReviewRows,
+      sourceCostCalculationPendingRows: row.costCalculationPendingRows,
+    }));
+    const shadowClassification = classifySalesRows(shadowSalesRows, classificationRules);
+    const shadowEmployeeDirectory = buildPayrollEmployeeDirectory(
+      payrollDirectoryUsers,
+      selectedPayrollPeriodKey,
+      new Set(shadowClassification.rows.map((row) => row.manager)),
+    );
+    const shadowManualPayroll = oneCShadowBaseline.manualInputs
+      .filter((input) => input.inputType === 'sales')
+      .reduce<Record<string, PayrollManualInput>>((inputs, input) => {
+        inputs[input.employeeName] = {
+          workedDays: input.workedDays ?? '',
+          lateCount: input.lateCount ?? '',
+          advance: input.advance ?? '',
+          agentCreditCommission: input.agentCreditCommission ?? '',
+          comment: input.comment,
+          source: (input.source as PayrollDaysSource | null) ?? 'manual',
+        };
+        return inputs;
+      }, {});
+    const shadowFixedPayroll = oneCShadowBaseline.manualInputs
+      .filter((input) => input.inputType === 'fixed')
+      .reduce<Record<string, FixedPayrollInput>>((inputs, input) => {
+        inputs[input.employeeName] = {
+          bonus: input.fixedBonus ?? '',
+          advance: input.advance ?? '',
+          deduction: input.fixedDeduction ?? '',
+          comment: input.comment,
+        };
+        return inputs;
+      }, {});
+    const savedPurchaseInput = oneCShadowBaseline.manualInputs.find((input) => input.inputType === 'purchase');
+    const shadowPurchaseInput: PurchasePayrollInput = {
+      advance: savedPurchaseInput?.purchaseAdvance ?? '',
+      deduction: savedPurchaseInput?.purchaseDeduction ?? '',
+      comment: savedPurchaseInput?.comment ?? '',
+    };
+    const shadowAccessoryCalculation = applyRetailAccessoryTier(
+      shadowClassification.managerSummaries,
+      shadowClassification.rows,
+      shadowEmployeeDirectory,
+      selectedPayrollPeriodKey,
+    );
+    const shadowSalesPayrollRows = buildSalesPayrollSummaries(shadowAccessoryCalculation.summaries, shadowEmployeeDirectory)
+      .map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, shadowManualPayroll), shadowEmployeeDirectory));
+    const shadowFixedPayrollRows = buildFixedPayrollRows(shadowFixedPayroll, selectedPayrollPeriodKey, shadowEmployeeDirectory);
+    const shadowPurchasePayrollRow = buildPurchasePayrollRow(shadowPurchaseInput, {
+      fileName: 'Автоматические данные 1С',
+      base: oneCShadowSource.purchases.approvedBase,
+      sourceRow: null,
+    }, shadowEmployeeDirectory);
+    const shadowUnconfiguredRows = buildUnconfiguredPayrollRows(
+      payrollDirectoryUsers,
+      shadowEmployeeDirectory,
+      selectedPayrollPeriodKey,
+      new Set(shadowSalesPayrollRows.map((row) => row.manager)),
+    );
+    const shadowRegularRows = applyBelaPercentRule(
+      [...shadowSalesPayrollRows, ...shadowFixedPayrollRows, shadowPurchasePayrollRow, ...shadowUnconfiguredRows],
+      selectedPayrollPeriodKey,
+    );
+    const savedBonuses: PayrollBonus[] = oneCShadowBaseline.employeeResults.flatMap((employee) =>
+      (employee.adjustments ?? [])
+        .filter((adjustment) => adjustment.type === 'ONE_TIME_BONUS')
+        .map((adjustment) => ({
+          id: `saved-${adjustment.id}`,
+          employeeName: employee.employeeName,
+          amount: adjustment.amount,
+          reason: adjustment.reason,
+          type: 'ONE_TIME_BONUS' as const,
+        })),
+    );
+    const shadowRows = applyPayrollBonuses(shadowRegularRows, savedBonuses);
+    const baselineByEmployee = new Map(oneCShadowBaseline.employeeResults.map((row) => [row.employeeName, row]));
+    const shadowByEmployee = new Map(shadowRows.map((row) => [row.manager, row]));
+    const employeeNames = Array.from(new Set([...baselineByEmployee.keys(), ...shadowByEmployee.keys()]));
+    const comparisons = sortPayrollWorkbookEmployees(employeeNames.map((employeeName) => {
+      const baseline = baselineByEmployee.get(employeeName);
+      const shadow = shadowByEmployee.get(employeeName);
+      const grossDelta = payrollMoney((shadow?.grossPay ?? 0) - (baseline?.grossPay ?? 0));
+      const netDelta = payrollMoney((shadow?.netPay ?? 0) - (baseline?.netPay ?? 0));
+      return {
+        employeeName,
+        salaryType: shadow?.salaryType ?? baseline?.salaryType ?? 'unconfigured',
+        reportGroup: baseline?.reportGroup,
+        grossPay: shadow?.grossPay ?? baseline?.grossPay ?? 0,
+        baselineGrossPay: baseline?.grossPay ?? 0,
+        shadowGrossPay: shadow?.grossPay ?? 0,
+        grossDelta,
+        baselineNetPay: baseline?.netPay ?? 0,
+        shadowNetPay: shadow?.netPay ?? 0,
+        netDelta,
+        revenueDelta: payrollMoney((shadow?.revenue ?? 0) - (baseline?.revenue ?? 0)),
+        grossProfitDelta: payrollMoney((shadow?.grossProfit ?? 0) - (baseline?.grossProfit ?? 0)),
+        salesBonusDelta: payrollMoney((shadow?.salesBonus ?? 0) - (baseline?.salesBonus ?? 0)),
+        purchaseBaseDelta: payrollMoney((shadow?.purchaseBase ?? 0) - (baseline?.purchaseBase ?? 0)),
+      };
+    }));
+    const comparisonGroups = comparisons.reduce<Array<{
+      name: string;
+      salaryType: string;
+      rows: typeof comparisons;
+    }>>((groups, row) => {
+      const name = row.reportGroup || getPayrollWorkbookGroup(row.salaryType);
+      const current = groups.at(-1);
+      if (current?.name === name) current.rows.push(row);
+      else groups.push({ name, salaryType: row.salaryType, rows: [row] });
+      return groups;
+    }, []);
+    const comparisonColumns = comparisonGroups.reduce<typeof comparisonGroups[]>((columns, group, index) => {
+      const targetWeight = comparisonGroups.reduce((sum, item) => sum + item.rows.length + 1, 0) / 3;
+      const current = columns.at(-1) ?? [];
+      const currentWeight = current.reduce((sum, item) => sum + item.rows.length + 1, 0);
+      const groupsRemaining = comparisonGroups.length - index;
+      const columnsRemaining = 3 - columns.length;
+      if (columns.length < 3 && current.length > 0 && currentWeight + group.rows.length + 1 > targetWeight && groupsRemaining >= columnsRemaining) {
+        columns.push([group]);
+      } else if (columns.length === 0) {
+        columns.push([group]);
+      } else {
+        current.push(group);
+      }
+      return columns;
+    }, []);
+    const costDependentTypes: CalculationType[] = ['CREDIT_GROSS_PROFIT', 'RETAIL_PLOTTER_MATERIAL_COST_50', 'RETAIL_GROSS_PROFIT_10'];
+    const costPendingRows = shadowClassification.rows
+      .filter((row) => costDependentTypes.includes(row.calculationType))
+      .reduce((sum, row) => sum + (row.sourceCostCalculationPendingRows ?? 0), 0);
+    const unresolvedRows = shadowClassification.rows.filter(isUnresolvedReviewRow).length;
+    const totalBaselineGrossPay = payrollMoney(oneCShadowBaseline.employeeResults.reduce((sum, row) => sum + row.grossPay, 0));
+    const totalShadowGrossPay = payrollMoney(shadowRows.reduce((sum, row) => sum + row.grossPay, 0));
+    const totalBaselineNetPay = payrollMoney(oneCShadowBaseline.employeeResults.reduce((sum, row) => sum + row.netPay, 0));
+    const totalShadowNetPay = payrollMoney(shadowRows.reduce((sum, row) => sum + row.netPay, 0));
+    const differentEmployees = comparisons.filter((row) => Math.abs(row.grossDelta) > 0.009 || Math.abs(row.netDelta) > 0.009).length;
+    const blockingIssues = [
+      ...oneCShadowSource.blockingIssues,
+      costPendingRows ? `Себестоимость не завершена в ${costPendingRows} строках, влияющих на зарплату.` : '',
+      unresolvedRows ? `Не классифицировано однозначно: ${unresolvedRows} строк.` : '',
+    ].filter(Boolean);
+
+    return {
+      baselineRunNumber: oneCShadowBaseline.runNumber,
+      comparisons,
+      comparisonGroups,
+      comparisonColumns,
+      differentEmployees,
+      blockingIssues,
+      ready: oneCShadowSource.readyForControl && blockingIssues.length === 0,
+      sourceCostPendingRows: oneCShadowSource.sales.summary.costCalculationPendingRows,
+      payrollCostPendingRows: costPendingRows,
+      totalBaselineGrossPay,
+      totalShadowGrossPay,
+      totalGrossDelta: payrollMoney(totalShadowGrossPay - totalBaselineGrossPay),
+      totalBaselineNetPay,
+      totalShadowNetPay,
+      totalNetDelta: payrollMoney(totalShadowNetPay - totalBaselineNetPay),
+    };
+  }, [classificationRules, oneCShadowBaseline, oneCShadowSource, payrollDirectoryUsers, selectedPayrollPeriodKey]);
   const isCurrentPeriodClosed = currentSavedPeriod?.status === 'CLOSED';
   const wholesaleTotalBonus = classification.wholesale.bonusEach * 2;
   const retailTotalBonus = payrollManagerSummaries.filter((row) => row.department === 'Розница').reduce((sum, row) => sum + row.totalBonus, 0);
@@ -6199,10 +6420,125 @@ export default function AdminPayrollPage() {
         </div>
       </div>
 
-      <div className='grid gap-4'>
-        <PayrollDailyOneCControl month={month} year={year} compactWhenUnavailable={Boolean(workbook)} />
+      <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4'>
+        <Card className='min-w-0 w-full max-w-full overflow-hidden border border-slate-200 bg-white p-0'>
+          <div className='flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-start sm:justify-between'>
+            <div className='flex min-w-0 items-start gap-3'>
+              <span className='mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700'>
+                <CheckCircle2 className='h-5 w-5' />
+              </span>
+              <div className='min-w-0'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <h2 className='text-lg font-extrabold text-slate-950'>Расчёт за {months[Number(month)].toLowerCase()} {year}</h2>
+                  {oneCShadowCalculation?.ready && oneCShadowCalculation.differentEmployees === 0 && (
+                    <span className='rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800'>Готово</span>
+                  )}
+                </div>
+                <p className='mt-1 text-sm text-slate-500'>Контрольный расчёт по данным 1С. Сохранённая ведомость не изменяется.</p>
+              </div>
+            </div>
+          </div>
 
-        <details className='rounded-xl border border-slate-200 bg-white shadow-sm' open={!workbook}>
+          <div className='p-4'>
+            {isOneCShadowBaselineLoading && <p className='text-sm font-medium text-slate-500'>Открываю финальный расчёт для сопоставления…</p>}
+            {!isOneCShadowBaselineLoading && oneCShadowBaselineError && <p role='alert' className='rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950'>{oneCShadowBaselineError}</p>}
+            {!isOneCShadowBaselineLoading && !oneCShadowBaselineError && !currentFinalRun && (
+              <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>За выбранный период нет финального расчёта. Текущий месяц можно считать предварительно, но сопоставлять пока не с чем.</p>
+            )}
+            {!isOneCShadowBaselineLoading && currentFinalRun && !oneCShadowCalculation && !oneCShadowBaselineError && (
+              <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>Подготавливаю детализацию 1С для расчёта по сотрудникам. Если сохранён старый компактный снимок, портал безопасно обновит его без изменения ведомости.</p>
+            )}
+            {oneCShadowCalculation && (
+              <div className='grid gap-4'>
+                <div className='grid gap-2 sm:grid-cols-3 lg:grid-cols-[1.15fr_repeat(3,minmax(0,1fr))]'>
+                  <div className='px-1 py-1 sm:col-span-3 lg:col-span-1 lg:flex lg:flex-col lg:justify-center'>
+                    <p className='text-xs font-semibold uppercase tracking-wide text-slate-500'>Всего начислено</p>
+                    <p className='mt-1 text-3xl font-extrabold tracking-tight text-slate-950'>{formatMoney(oneCShadowCalculation.totalShadowGrossPay)}</p>
+                  </div>
+                  <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5'>
+                    <p className='text-xs font-semibold text-slate-500'>Данные 1С</p>
+                    <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowSource ? `Проверены по ${formatPayrollControlDate(oneCShadowSource.period.verifiedThrough)}` : 'Проверяются'}</p>
+                  </div>
+                  <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5'>
+                    <p className='text-xs font-semibold text-slate-500'>Сотрудники</p>
+                    <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowCalculation.comparisons.length - oneCShadowCalculation.differentEmployees} из {oneCShadowCalculation.comparisons.length} совпали</p>
+                  </div>
+                  <div className={`rounded-lg border px-3 py-2.5 ${oneCShadowCalculation.blockingIssues.length || oneCShadowCalculation.differentEmployees ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+                    <p className='text-xs font-semibold text-slate-500'>Замечания</p>
+                    <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowCalculation.blockingIssues.length + oneCShadowCalculation.differentEmployees || 'Нет'}</p>
+                  </div>
+                </div>
+
+                {oneCShadowCalculation.blockingIssues.length > 0 || oneCShadowCalculation.differentEmployees > 0 ? (
+                  <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950'>
+                    <p className='font-bold'>Расчёт требует проверки</p>
+                    {oneCShadowCalculation.blockingIssues.map((issue) => <p key={issue} className='mt-1'>{issue}</p>)}
+                    {oneCShadowCalculation.differentEmployees > 0 && <p className='mt-1'>Есть различия с финальным расчётом №{oneCShadowCalculation.baselineRunNumber}: {oneCShadowCalculation.differentEmployees} сотрудников.</p>}
+                  </div>
+                ) : (
+                  <div className='flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950'>
+                    <CheckCircle2 className='mt-0.5 h-4 w-4 shrink-0' />
+                    <p><strong>Расчёт подтверждён.</strong> Совпадает с финальной ведомостью №{oneCShadowCalculation.baselineRunNumber}; ошибок, влияющих на зарплату, нет.</p>
+                  </div>
+                )}
+
+                <div className='overflow-hidden rounded-xl border border-slate-200 bg-slate-50/50'>
+                  <div className='border-b border-slate-100 bg-slate-50 px-4 py-3'>
+                    <p className='font-bold text-slate-900'>Начислено сотрудникам</p>
+                    <p className='text-sm text-slate-500'>Сумма до вычета авансов и удержаний.</p>
+                  </div>
+                  <div className='grid gap-3 p-3 lg:grid-cols-2 xl:grid-cols-3'>
+                    {oneCShadowCalculation.comparisonColumns.map((column, columnIndex) => (
+                      <div key={columnIndex} className='grid content-start gap-3'>
+                        {column.map((group) => (
+                          <div key={group.name} className='overflow-hidden rounded-lg border border-slate-200 bg-white'>
+                            <div className={`border-b border-current/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${getPayrollPortalGroupTone(group.salaryType)}`}>{group.name}</div>
+                            <div className='divide-y divide-slate-100'>
+                              {group.rows.map((row) => {
+                                const matches = Math.abs(row.grossDelta) < 0.005;
+                                return (
+                                  <div key={row.employeeName} className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 ${matches ? 'bg-white' : 'bg-amber-50/60'}`}>
+                                    <p className='truncate text-sm font-semibold text-slate-900'>{row.employeeName}</p>
+                                    <div className='flex items-center gap-2'>
+                                      <p className='whitespace-nowrap text-sm font-bold text-slate-950'>{formatMoney(row.shadowGrossPay)}</p>
+                                      {!matches && <span className='rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900'>{formatPayrollDelta(row.grossDelta)}</span>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <details className='rounded-xl border border-slate-200 bg-white shadow-sm'>
+          <summary className='cursor-pointer list-none p-4'>
+            <div className='flex items-center justify-between gap-3'>
+              <div className='flex min-w-0 items-center gap-3'>
+                <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600'>
+                  <Database className='h-5 w-5' />
+                </span>
+                <div className='min-w-0'>
+                  <h2 className='font-bold text-slate-900'>Данные 1С и проверки</h2>
+                  <p className='truncate text-sm text-slate-500'>Себестоимость, закупки, поставщики и технические сведения</p>
+                </div>
+              </div>
+              <span className='shrink-0 text-xs font-semibold text-slate-500'>{oneCShadowSource?.readyForControl ? 'Проверено' : 'Открыть'}</span>
+            </div>
+          </summary>
+          <div className='border-t border-slate-100 p-3'>
+            <PayrollDailyOneCControl month={month} year={year} compactWhenUnavailable={Boolean(workbook)} onDataChange={setOneCShadowSource} />
+          </div>
+        </details>
+
+        <details className='rounded-xl border border-slate-200 bg-white shadow-sm'>
           <summary className='cursor-pointer list-none p-4'>
             <div className='flex items-center justify-between gap-3'>
               <div className='flex min-w-0 items-center gap-3'>

@@ -1,12 +1,12 @@
 import type { PayrollOneCCloseState, PayrollPurchaseAttribution } from '@/lib/payroll-one-c-control-source';
-import type { PayrollOneCPreviewSummary } from '@/lib/payroll-one-c';
+import type { PayrollOneCPreviewRow, PayrollOneCPreviewSummary } from '@/lib/payroll-one-c';
 import type { PayrollSupplierSettlement } from '@/lib/payroll-purchase-suppliers';
 
-export const PAYROLL_ONE_C_SNAPSHOT_VERSION = 1;
+export const PAYROLL_ONE_C_SNAPSHOT_VERSION = 2;
 export const PAYROLL_ONE_C_ROLLING_DAYS = 3;
 
 export type PayrollOneCControlSlice = {
-  version: 1;
+  version: 2;
   dateFrom: string;
   dateTo: string;
   close: PayrollOneCCloseState;
@@ -19,6 +19,7 @@ export type PayrollOneCControlSlice = {
   sales: {
     summary: PayrollOneCPreviewSummary;
     managerKeys: string[];
+    rows: PayrollOneCPreviewRow[];
   };
   purchases: PayrollPurchaseAttribution;
 };
@@ -31,6 +32,57 @@ function addDays(date: string, days: number) {
   const value = new Date(`${date}T12:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
+}
+
+function isPayrollOneCPreviewRow(value: unknown): value is PayrollOneCPreviewRow {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Partial<PayrollOneCPreviewRow>;
+  const finite = (number: unknown) => typeof number === 'number' && Number.isFinite(number);
+  return ['manager', 'managerRef', 'client', 'clientRef', 'category', 'categoryRef', 'item', 'productRef', 'article']
+    .every((key) => typeof row[key as keyof PayrollOneCPreviewRow] === 'string')
+    && ['quantity', 'revenue', 'cost', 'grossProfit', 'sourceRows', 'costReviewRows', 'costCalculationPendingRows']
+      .every((key) => finite(row[key as keyof PayrollOneCPreviewRow]));
+}
+
+export function aggregatePayrollOneCPreviewRows(rows: PayrollOneCPreviewRow[]) {
+  const grouped = new Map<string, PayrollOneCPreviewRow>();
+  for (const row of rows) {
+    const key = JSON.stringify([
+      row.managerRef || row.manager,
+      row.clientRef || row.client,
+      row.productRef,
+      row.item,
+      row.categoryRef || row.category,
+      row.article,
+    ]);
+    const current = grouped.get(key) ?? {
+      ...row,
+      quantity: 0,
+      revenue: 0,
+      cost: 0,
+      grossProfit: 0,
+      sourceRows: 0,
+      costReviewRows: 0,
+      costCalculationPendingRows: 0,
+    };
+    current.quantity += row.quantity;
+    current.revenue += row.revenue;
+    current.cost += row.cost;
+    current.grossProfit += row.grossProfit;
+    current.sourceRows += row.sourceRows;
+    current.costReviewRows += row.costReviewRows;
+    current.costCalculationPendingRows += row.costCalculationPendingRows;
+    grouped.set(key, current);
+  }
+  return Array.from(grouped.values())
+    .map((row) => ({
+      ...row,
+      quantity: roundMoney(row.quantity),
+      revenue: roundMoney(row.revenue),
+      cost: roundMoney(row.cost),
+      grossProfit: roundMoney(row.grossProfit),
+    }))
+    .sort((left, right) => left.manager.localeCompare(right.manager, 'ru') || right.revenue - left.revenue);
 }
 
 export function listDates(dateFrom: string, dateTo: string) {
@@ -72,6 +124,7 @@ export function isPayrollOneCControlSlice(value: unknown): value is PayrollOneCC
       && finite(slice.source.pages))
     && Boolean(summary && summaryKeys.every((key) => finite(summary[key])))
     && Boolean(slice.sales?.managerKeys.every((key) => typeof key === 'string'))
+    && Boolean(Array.isArray(slice.sales?.rows) && slice.sales.rows.every(isPayrollOneCPreviewRow))
     && Boolean(slice.purchases
       && slice.purchases.contractVersion === 'payroll-purchase-attribution-v1'
       && typeof slice.purchases.employeeRef === 'string'
@@ -115,9 +168,11 @@ export function aggregatePayrollOneCControlSlices(slices: PayrollOneCControlSlic
   let documentCount = 0;
   let reviewDocumentCount = 0;
   let ignoredOtherDocumentCount = 0;
+  const salesRows: PayrollOneCPreviewRow[] = [];
 
   for (const slice of ordered) {
     for (const manager of slice.sales.managerKeys) managerKeys.add(manager);
+    salesRows.push(...slice.sales.rows);
     for (const key of Object.keys(salesSummary) as Array<keyof PayrollOneCPreviewSummary>) {
       if (key !== 'managerCount') salesSummary[key] += slice.sales.summary[key];
     }
@@ -133,6 +188,8 @@ export function aggregatePayrollOneCControlSlices(slices: PayrollOneCControlSlic
     }
   }
 
+  const aggregatedSalesRows = aggregatePayrollOneCPreviewRows(salesRows);
+  salesSummary.normalizedRows = aggregatedSalesRows.length;
   salesSummary.managerCount = managerKeys.size;
   salesSummary.revenue = roundMoney(salesSummary.revenue);
   salesSummary.cost = roundMoney(salesSummary.cost);
@@ -148,7 +205,7 @@ export function aggregatePayrollOneCControlSlices(slices: PayrollOneCControlSlic
       extractedAt: ordered.reduce((latestValue, slice) => slice.source.extractedAt > latestValue ? slice.source.extractedAt : latestValue, ''),
       pages: ordered.reduce((sum, slice) => sum + slice.source.pages, 0),
     },
-    sales: { summary: salesSummary },
+    sales: { summary: salesSummary, rows: aggregatedSalesRows },
     purchases: {
       contractVersion: purchaseContract,
       employeeRef: latest.purchases.employeeRef,

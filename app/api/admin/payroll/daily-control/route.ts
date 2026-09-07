@@ -103,6 +103,7 @@ async function readSourceSlice(dateFrom: string, dateTo: string, close: NonNulla
     sales: {
       summary: sales.summary,
       managerKeys: Array.from(new Set(sales.rows.map((row) => row.managerRef || row.manager))).sort(),
+      rows: sales.rows,
     },
     purchases: purchaseSource.data,
   } satisfies PayrollOneCControlSlice;

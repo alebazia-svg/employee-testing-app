@@ -15,7 +15,7 @@ type PurchaseRow = {
   includedInPayrollBase: boolean;
 };
 
-type DailyControlResponse = {
+export type DailyControlResponse = {
   ok: true;
   mode: 'control';
   affectsPayroll: false;
@@ -38,6 +38,24 @@ type DailyControlResponse = {
     pages: number;
   };
   sales: {
+    rows?: Array<{
+      manager: string;
+      managerRef: string;
+      client: string;
+      clientRef: string;
+      category: string;
+      categoryRef: string;
+      item: string;
+      productRef: string;
+      article: string;
+      quantity: number;
+      revenue: number;
+      cost: number;
+      grossProfit: number;
+      sourceRows: number;
+      costReviewRows: number;
+      costCalculationPendingRows: number;
+    }>;
     summary: {
       sourceRows: number;
       normalizedRows: number;
@@ -132,7 +150,17 @@ function getFriendlyLoadError(error: unknown) {
   return message;
 }
 
-export function PayrollDailyOneCControl({ month, year, compactWhenUnavailable = false }: { month: string; year: string; compactWhenUnavailable?: boolean }) {
+export function PayrollDailyOneCControl({
+  month,
+  year,
+  compactWhenUnavailable = false,
+  onDataChange,
+}: {
+  month: string;
+  year: string;
+  compactWhenUnavailable?: boolean;
+  onDataChange?: (data: DailyControlResponse | null) => void;
+}) {
   const periodKey = `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
   const [data, setData] = useState<DailyControlResponse | null>(null);
   const [error, setError] = useState('');
@@ -200,6 +228,10 @@ export function PayrollDailyOneCControl({ month, year, compactWhenUnavailable = 
     void load(false);
   }, [load, periodKey]);
 
+  useEffect(() => {
+    onDataChange?.(data && !isStale && Array.isArray(data.sales.rows) ? data : null);
+  }, [data, isStale, onDataChange]);
+
   const activePurchaseRows = useMemo(() => data?.purchases.rows.filter((row) => row.status !== 'EXCLUDED') ?? [], [data]);
   const excludedPurchaseRows = useMemo(() => data?.purchases.rows.filter((row) => row.status === 'EXCLUDED') ?? [], [data]);
 
@@ -244,103 +276,87 @@ export function PayrollDailyOneCControl({ month, year, compactWhenUnavailable = 
   }
 
   return (
-    <Card className={`overflow-hidden border ${data?.readyForControl && !isStale ? 'border-emerald-200' : error ? 'border-amber-200' : 'border-slate-200'}`}>
-      <div className={`flex flex-col gap-3 border-b px-4 py-4 sm:flex-row sm:items-start sm:justify-between ${data?.readyForControl && !isStale ? 'border-emerald-100 bg-emerald-50/70' : 'border-slate-100 bg-slate-50'}`}>
-        <div className='flex min-w-0 items-start gap-3'>
-          <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${data?.readyForControl && !isStale ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-            {data?.readyForControl && !isStale ? <CheckCircle2 className='h-5 w-5' /> : <Database className='h-5 w-5' />}
+    <Card className={`min-w-0 overflow-hidden border p-0 ${error ? 'border-amber-200' : 'border-slate-200'}`}>
+      <div className='flex flex-col gap-3 border-b border-slate-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between'>
+        <div className='flex min-w-0 items-center gap-3'>
+          <span className='flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600'>
+            <Database className='h-4 w-4' />
           </span>
           <div className='min-w-0'>
             <div className='flex flex-wrap items-center gap-2'>
-              <h2 className='text-lg font-extrabold text-slate-950'>Автоматические данные из 1С</h2>
+              <h3 className='font-bold text-slate-950'>Источник 1С</h3>
               {data && (
-                <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${data.readyForControl && !isStale ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
-                  {isStale ? 'Показаны предыдущие данные' : data.readyForControl ? `Данные проверены по ${formatDate(data.period.verifiedThrough)}` : 'Нужно проверить'}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${data.readyForControl && !isStale ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                  {isStale ? 'Предыдущие данные' : data.readyForControl ? `По ${formatDate(data.period.verifiedThrough)}` : 'Нужна проверка'}
                 </span>
               )}
             </div>
-            <p className='mt-1 text-sm text-slate-600'>Основной источник расчёта. Портал обновляет данные после успешного вечернего расчёта себестоимости.</p>
+            <p className='text-sm text-slate-500'>Продажи, себестоимость и закупки для расчёта.</p>
           </div>
         </div>
-        <button type='button' onClick={() => void load(true)} disabled={isLoading} className='inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 disabled:opacity-60'>
+        <button type='button' onClick={() => void load(true)} disabled={isLoading} className='inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 disabled:opacity-60'>
           <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          {isLoading ? 'Проверяю 1С' : 'Перепроверить период'}
+          {isLoading ? 'Проверяю' : 'Перепроверить'}
         </button>
       </div>
 
       <div className='p-4'>
         {error && (
-          <div role='alert' className='mb-4 flex gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950'>
+          <div role='alert' className='mb-4 flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950'>
             <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0' />
-            <p><strong>{data && isStale ? 'Новые данные не приняты.' : 'Данные пока недоступны.'}</strong> {error}{data && isStale ? ' Ниже оставлены последние проверенные значения.' : ''}</p>
+            <p><strong>{data && isStale ? 'Новые данные не приняты.' : 'Данные пока недоступны.'}</strong> {error}{data && isStale ? ' Ниже показаны последние проверенные значения.' : ''}</p>
           </div>
         )}
 
-        {isLoading && !data && <p className='py-5 text-sm font-medium text-slate-500'>Проверяю закрытие себестоимости и читаю данные 1С…</p>}
+        {isLoading && !data && <p className='py-4 text-sm font-medium text-slate-500'>Проверяю данные 1С…</p>}
 
         {data && (
-          <div className='grid gap-4'>
+          <div className='grid gap-3'>
             {data.period.usingPreviousClose && !isStale && (
-              <p className='rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900'>Сегодняшнее закрытие ещё не завершено. Показаны проверенные данные по {formatDate(data.period.verifiedThrough)}; сегодняшний незакрытый день не включён.</p>
+              <p className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>Сегодняшнее закрытие ещё не завершено. Показаны проверенные данные по {formatDate(data.period.verifiedThrough)}.</p>
             )}
 
-            <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+            <div className='grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4'>
               {[
                 ['Продажи', formatMoney(data.sales.summary.revenue)],
                 ['Валовая прибыль', formatMoney(data.sales.summary.grossProfit)],
-                ['Закупки Астемира для расчёта', formatMoney(data.purchases.approvedBase)],
-                ['Бонус с закупок — 1,75%', formatMoney(data.purchases.approvedBase * 0.0175)],
+                ['База закупок', formatMoney(data.purchases.approvedBase)],
+                ['Бонус закупок 1,75%', formatMoney(data.purchases.approvedBase * 0.0175)],
               ].map(([label, value]) => (
-                <div key={label} className='rounded-xl border border-slate-200 bg-white p-3'>
-                  <p className='text-xs font-semibold uppercase tracking-wide text-slate-500'>{label}</p>
-                  <p className='mt-1 text-xl font-extrabold text-slate-950'>{value}</p>
+                <div key={label} className='min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5'>
+                  <p className='text-xs font-semibold text-slate-500'>{label}</p>
+                  <p className='mt-0.5 text-base font-extrabold text-slate-950 sm:text-lg'>{value}</p>
                 </div>
               ))}
             </div>
 
-            <div className='grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4'>
-              <p><span className='text-slate-500'>Закрытие 1С:</span> <strong>{data.close.finishedAt ?? 'подтверждено'}</strong></p>
-              <p><span className='text-slate-500'>Менеджеров:</span> <strong>{data.sales.summary.managerCount}</strong></p>
-              <p><span className='text-slate-500'>Строк продаж:</span> <strong>{data.sales.summary.sourceRows}</strong></p>
-              <p><span className='text-slate-500'>Поставщиков в базе:</span> <strong>{data.purchases.approvedSupplierCount}</strong></p>
-            </div>
-
-            <details className='rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950'>
-              <summary className='cursor-pointer font-bold'>
-                {data.snapshot.finalReconciled ? 'Месяц полностью проверен и сохранён' : `Данные сохранены по ${formatDate(data.snapshot.storedThrough)}`}
-                <span className='ml-2 font-medium text-sky-800'>Подробнее</span>
-              </summary>
-              <p className='mt-2'>Последнее обновление: {formatDateTime(data.snapshot.storedAt)}. {data.snapshot.finalReconciled ? 'Повторная проверка всего месяца запускается только по вашей команде.' : `При ежедневном обновлении портал получает новый день и повторно проверяет последние ${data.snapshot.rollingDays} дня.`}</p>
-            </details>
-
-            <div className={`rounded-xl border px-3 py-2 text-sm ${data.purchases.attribution.reviewDocumentCount ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}`}>
-              <p className='font-bold'>{data.purchases.attribution.reviewDocumentCount ? 'Есть документы для проверки' : 'Автор закупок подтверждён'}</p>
-              <p className='mt-0.5'>В базу вошли только документы, где автор и менеджер — {data.purchases.attribution.employeeName}: {data.purchases.attribution.documentCount}. Другие документы организации: {data.purchases.attribution.ignoredOtherDocumentCount} — не учитываются.</p>
-            </div>
-
-            {(data.blockingIssues.length > 0 || data.sales.summary.costCalculationPendingRows > 0) && (
-              <div className='rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950'>
-                <p className='font-bold'>Что требует внимания</p>
-                <ul className='mt-1 list-disc space-y-1 pl-5'>
-                  {data.blockingIssues.map((issue) => <li key={issue}>{issue}</li>)}
-                  {data.sales.summary.costCalculationPendingRows > 0 && <li>В источнике есть технические отметки ожидания себестоимости: {data.sales.summary.costCalculationPendingRows}. Перед подключением к формуле проверим только те, от которых зависит зарплата.</li>}
-                </ul>
+            {data.blockingIssues.length > 0 || data.purchases.attribution.reviewDocumentCount > 0 || data.purchases.newSupplierCount > 0 ? (
+              <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950'>
+                <p className='font-bold'>Требуется действие</p>
+                {data.blockingIssues.map((issue) => <p key={issue} className='mt-1'>{issue}</p>)}
+                {data.purchases.attribution.reviewDocumentCount > 0 && <p className='mt-1'>Документы закупок для проверки: {data.purchases.attribution.reviewDocumentCount}.</p>}
+                {data.purchases.newSupplierCount > 0 && <p className='mt-1'>Новые поставщики: {data.purchases.newSupplierCount}.</p>}
+              </div>
+            ) : (
+              <div className='flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950'>
+                <CheckCircle2 className='mt-0.5 h-4 w-4 shrink-0' />
+                <p><strong>Источник готов.</strong> Ошибок, требующих решения, нет.</p>
               </div>
             )}
 
-            <details className='rounded-xl border border-slate-200 bg-white' open={data.purchases.newSupplierCount > 0}>
-              <summary className='cursor-pointer list-none px-4 py-3'>
-                <div className='flex flex-wrap items-center justify-between gap-2'>
-                  <div>
-                    <p className='font-bold text-slate-900'>Поставщики Астемира</p>
-                    <p className='text-sm text-slate-500'>Утверждённые входят в базу; новые ждут вашего решения и сами не добавляются.</p>
+            <details className='rounded-lg border border-slate-200 bg-white' open={data.purchases.newSupplierCount > 0}>
+              <summary className='cursor-pointer list-none px-3 py-2.5'>
+                <div className='flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                  <div className='min-w-0'>
+                    <p className='font-bold text-slate-900'>Поставщики закупок</p>
+                    <p className='text-sm text-slate-500'>Состав базы закупок Астемира</p>
                   </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${data.purchases.newSupplierCount ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-800'}`}>
-                    {data.purchases.newSupplierCount ? `Новых: ${data.purchases.newSupplierCount}` : 'Список проверен'}
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${data.purchases.newSupplierCount ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'}`}>
+                    {data.purchases.newSupplierCount ? `Новых: ${data.purchases.newSupplierCount}` : 'Новых нет'}
                   </span>
                 </div>
               </summary>
-              <div className='border-t border-slate-100 px-4 py-3'>
+              <div className='border-t border-slate-100 px-3 py-3'>
                 <div className='grid gap-2'>
                   {activePurchaseRows.map((row) => (
                     <div key={`${row.supplierName}-${row.organizationName}-${row.currency}`} className={`flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between ${row.status === 'NEW' ? 'border-amber-200 bg-amber-50/70' : 'border-slate-200'}`}>
@@ -371,7 +387,21 @@ export function PayrollDailyOneCControl({ month, year, compactWhenUnavailable = 
               </div>
             </details>
 
-            <p className='rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600'>Перепроверка обновляет только исходные показатели. Сохранённые расчёты и документы 1С не изменяются.</p>
+            <details className='rounded-lg border border-slate-200 bg-white'>
+              <summary className='cursor-pointer px-3 py-2.5 text-sm font-bold text-slate-800'>Технические сведения</summary>
+              <div className='grid gap-2 border-t border-slate-100 px-3 py-3 text-sm sm:grid-cols-2'>
+                <p><span className='text-slate-500'>Закрытие 1С:</span> <strong>{data.close.finishedAt ?? 'подтверждено'}</strong></p>
+                <p><span className='text-slate-500'>Последнее обновление:</span> <strong>{formatDateTime(data.snapshot.storedAt)}</strong></p>
+                <p><span className='text-slate-500'>Менеджеров:</span> <strong>{data.sales.summary.managerCount}</strong></p>
+                <p><span className='text-slate-500'>Строк продаж:</span> <strong>{data.sales.summary.sourceRows}</strong></p>
+                <p><span className='text-slate-500'>Поставщиков в базе:</span> <strong>{data.purchases.approvedSupplierCount}</strong></p>
+                <p><span className='text-slate-500'>Технических отметок себестоимости:</span> <strong>{data.sales.summary.costCalculationPendingRows}</strong></p>
+                <p className='sm:col-span-2'>Документы закупок учитываются только при совпадении автора и менеджера: <strong>{data.purchases.attribution.employeeName}</strong>. Учтено: {data.purchases.attribution.documentCount}; другие документы организации: {data.purchases.attribution.ignoredOtherDocumentCount}.</p>
+                <p className='sm:col-span-2 text-slate-600'>{data.snapshot.finalReconciled ? 'Месяц полностью проверен и сохранён. Повторная проверка запускается только по команде.' : `Портал ежедневно добавляет новый день и повторно проверяет последние ${data.snapshot.rollingDays} дня.`}</p>
+              </div>
+            </details>
+
+            <p className='text-xs font-medium text-slate-500'>Перепроверка обновляет только исходные показатели. Сохранённые расчёты и документы 1С не изменяются.</p>
           </div>
         )}
       </div>
