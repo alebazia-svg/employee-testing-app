@@ -327,7 +327,7 @@ describe('payroll detail opening', () => {
   const source = readFileSync(resolve('app/(dashboard)/admin/payroll/PayrollClient.tsx'), 'utf8');
   const expression = source.match(/const selectedManagerStatus = ([\s\S]*?);\n/)?.[1];
   assert.ok(expression, 'The live detail status selector must exist');
-  const selectStatus = new Function('selectedManagerPayroll', 'selectedManagerSummary', 'classification', 'getManagerStatus', `return (${expression});`);
+  const selectStatus = new Function('selectedManagerPayroll', 'selectedManagerSummary', 'selectedManagerClassification', 'getManagerStatus', `return (${expression});`);
   it('opens Bela without personal sales and preserves her own payroll warnings', () => {
     const row = { salaryType: 'vl_percent', payrollStatus: 'Проверить', payrollReasons: ['Аванс больше начислений'] };
     assert.deepEqual(selectStatus(row, null, {}, () => { throw Error('Bela must not require sales'); }), { status: 'Проверить', reason: row.payrollReasons[0] });

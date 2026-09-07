@@ -3957,6 +3957,7 @@ export default function AdminPayrollPage() {
   const [activePayrollTab, setActivePayrollTab] = useState('Итог ЗП');
   const [expandedManager, setExpandedManager] = useState<string | null>(null);
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
+  const [selectedManagerSource, setSelectedManagerSource] = useState<'manual' | 'oneC'>('manual');
   const [manualPayroll, setManualPayroll] = useState<Record<string, PayrollManualInput>>({});
   const [fixedPayroll, setFixedPayroll] = useState<Record<string, FixedPayrollInput>>({});
   const [purchasePayroll, setPurchasePayroll] = useState<PurchasePayrollInput>({ advance: '', deduction: '', comment: '' });
@@ -4258,8 +4259,6 @@ export default function AdminPayrollPage() {
     });
   }, [attendancePreview, salesPayrollRows]);
   const isAttendancePreviewPeriodCurrent = attendancePreview?.period.periodKey === selectedPayrollPeriodKey;
-  const selectedManagerPayroll = useMemo(() => fullPayrollRows.find((summary) => summary.manager === selectedManager) ?? null, [fullPayrollRows, selectedManager]);
-  const selectedManagerAttendanceNames = selectedManagerPayroll ? payrollAttendanceConfig[selectedManagerPayroll.manager]?.attendanceNames ?? [] : [];
   const payrollTotals = useMemo(
     () =>
       fullPayrollRows.reduce(
@@ -4414,6 +4413,36 @@ export default function AdminPayrollPage() {
       const shadow = shadowByEmployee.get(employeeName);
       const grossDelta = payrollMoney((shadow?.grossPay ?? 0) - (baseline?.grossPay ?? 0));
       const netDelta = payrollMoney((shadow?.netPay ?? 0) - (baseline?.netPay ?? 0));
+      const baselineOneTimeBonus = (baseline?.adjustments ?? [])
+        .filter((adjustment) => adjustment.type === 'ONE_TIME_BONUS')
+        .reduce((sum, adjustment) => sum + adjustment.amount, 0);
+      const detailDifferences = [
+        ['Отработанные дни', shadow?.workedDays, baseline?.workedDays],
+        ['Дневная ставка', shadow?.dayRate, baseline?.dayRate],
+        ['Оплата по дням', shadow?.dayPay, baseline?.dayPay],
+        ['Выручка', shadow?.revenue, baseline?.revenue],
+        ['Валовая прибыль', shadow?.grossProfit, baseline?.grossProfit],
+        ['Услуги', shadow?.filmBonus, baseline?.filmBonus],
+        ['Плоттер', shadow?.plotterBonus, baseline?.plotterBonus],
+        ['Техника', shadow?.techBonus, baseline?.techBonus],
+        ['Аксессуары', shadow?.accessoryBonus, baseline?.accessoryBonus],
+        ['Кредиты', shadow?.creditBonus, baseline?.creditBonus],
+        ['Оптовый процент', shadow?.wholesaleBonus, baseline?.wholesaleBonus],
+        ['Процент с продаж', shadow?.salesBonus, baseline?.salesBonus],
+        ['Бонус за дисциплину', shadow?.disciplineBonus, baseline?.disciplineBonus],
+        ['Фиксированный оклад', shadow?.fixedSalary, baseline?.fixedSalary],
+        ['Доплата по фиксированному окладу', shadow?.fixedBonus, baseline?.fixedBonus],
+        ['Удержание', shadow?.fixedDeduction, baseline?.fixedDeduction],
+        ['База закупок', shadow?.purchaseBase, baseline?.purchaseBase],
+        ['Процент закупок', shadow?.purchasePercentAmount, baseline?.purchasePercentAmount],
+        ['Доплата закупщику', shadow?.purchaseTargetAdjustment, baseline?.purchaseTargetAdjustment],
+        ['Агентские по кредитам', shadow?.agentCreditCommission, baseline?.agentCreditCommission],
+        ['Разовая премия', shadow?.oneTimeBonus, baselineOneTimeBonus],
+        ['Аванс', shadow?.advance, baseline?.advance],
+        ['Начислено', shadow?.grossPay, baseline?.grossPay],
+        ['Осталось выплатить', shadow?.netPay, baseline?.netPay],
+      ].filter(([, shadowValue, baselineValue]) => Math.abs(Number(shadowValue ?? 0) - Number(baselineValue ?? 0)) > 0.009)
+        .map(([label]) => String(label));
       return {
         employeeName,
         salaryType: shadow?.salaryType ?? baseline?.salaryType ?? 'unconfigured',
@@ -4429,6 +4458,7 @@ export default function AdminPayrollPage() {
         grossProfitDelta: payrollMoney((shadow?.grossProfit ?? 0) - (baseline?.grossProfit ?? 0)),
         salesBonusDelta: payrollMoney((shadow?.salesBonus ?? 0) - (baseline?.salesBonus ?? 0)),
         purchaseBaseDelta: payrollMoney((shadow?.purchaseBase ?? 0) - (baseline?.purchaseBase ?? 0)),
+        detailDifferences,
       };
     }));
     const comparisonGroups = comparisons.reduce<Array<{
@@ -4466,7 +4496,10 @@ export default function AdminPayrollPage() {
     const totalShadowGrossPay = payrollMoney(shadowRows.reduce((sum, row) => sum + row.grossPay, 0));
     const totalBaselineNetPay = payrollMoney(oneCShadowBaseline.employeeResults.reduce((sum, row) => sum + row.netPay, 0));
     const totalShadowNetPay = payrollMoney(shadowRows.reduce((sum, row) => sum + row.netPay, 0));
-    const differentEmployees = comparisons.filter((row) => Math.abs(row.grossDelta) > 0.009 || Math.abs(row.netDelta) > 0.009).length;
+    const differentEmployees = comparisons.filter((row) => row.detailDifferences.length > 0).length;
+    const reviewEmployees = shadowRows
+      .filter((row) => row.payrollStatus !== 'OK' || row.payrollReasons.length > 0)
+      .map((row) => ({ employeeName: row.manager, reasons: row.payrollReasons }));
     const blockingIssues = [
       ...oneCShadowSource.blockingIssues,
       costPendingRows ? `Себестоимость не завершена в ${costPendingRows} строках, влияющих на зарплату.` : '',
@@ -4479,6 +4512,7 @@ export default function AdminPayrollPage() {
       comparisonGroups,
       comparisonColumns,
       differentEmployees,
+      reviewEmployees,
       blockingIssues,
       ready: oneCShadowSource.readyForControl && blockingIssues.length === 0,
       sourceCostPendingRows: oneCShadowSource.sales.summary.costCalculationPendingRows,
@@ -4489,8 +4523,25 @@ export default function AdminPayrollPage() {
       totalBaselineNetPay,
       totalShadowNetPay,
       totalNetDelta: payrollMoney(totalShadowNetPay - totalBaselineNetPay),
+      shadowRows,
+      classification: shadowClassification,
+      managerSummaries: shadowAccessoryCalculation.summaries,
+      bonuses: savedBonuses,
     };
   }, [classificationRules, oneCShadowBaseline, oneCShadowSource, payrollDirectoryUsers, selectedPayrollPeriodKey]);
+  const selectedManagerPayroll = useMemo(
+    () => (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows : fullPayrollRows)?.find((summary) => summary.manager === selectedManager) ?? null,
+    [fullPayrollRows, oneCShadowCalculation, selectedManager, selectedManagerSource],
+  );
+  const selectedManagerClassification = selectedManagerSource === 'oneC' && oneCShadowCalculation
+    ? oneCShadowCalculation.classification
+    : classification;
+  const selectedManagerSummaries = selectedManagerSource === 'oneC' && oneCShadowCalculation
+    ? oneCShadowCalculation.managerSummaries
+    : payrollManagerSummaries;
+  const selectedManagerBonuses = selectedManagerSource === 'oneC' && oneCShadowCalculation
+    ? oneCShadowCalculation.bonuses
+    : bonusValidation.bonuses;
   const isCurrentPeriodClosed = currentSavedPeriod?.status === 'CLOSED';
   const wholesaleTotalBonus = classification.wholesale.bonusEach * 2;
   const retailTotalBonus = payrollManagerSummaries.filter((row) => row.department === 'Розница').reduce((sum, row) => sum + row.totalBonus, 0);
@@ -4546,12 +4597,12 @@ export default function AdminPayrollPage() {
   }, [payrollReviewItems]);
   const payrollHasCriticalCostIssue = payrollReviewReasonCounts.some(([reason]) => reason === 'Подозрительно нулевая / неполная себестоимость техники');
   const registrarParseUnsafe = parseResult.isRegistrarReport && (!parseResult.isSafeForPayrollCalculation || payrollReviewCount > 20);
-  const selectedManagerSummary = useMemo(() => payrollManagerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [payrollManagerSummaries, selectedManager]);
-  const selectedManagerRows = useMemo(() => classification.rows.filter((row) => row.manager === selectedManager), [classification.rows, selectedManager]);
+  const selectedManagerSummary = useMemo(() => selectedManagerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [selectedManagerSummaries, selectedManager]);
+  const selectedManagerRows = useMemo(() => selectedManagerClassification.rows.filter((row) => row.manager === selectedManager), [selectedManagerClassification.rows, selectedManager]);
   const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager' || selectedManagerPayroll.salaryType === 'vl_percent')
     ? { status: selectedManagerPayroll.payrollStatus, reason: selectedManagerPayroll.payrollReasons.join(', ') || 'замечаний нет' }
     : selectedManagerSummary
-      ? getManagerStatus(selectedManagerSummary, classification.rows, classification.accessoryExcludedRows)
+      ? getManagerStatus(selectedManagerSummary, selectedManagerClassification.rows, selectedManagerClassification.accessoryExcludedRows)
       : null;
   const selectedManagerCounts = useMemo(
     () => ({
@@ -4560,7 +4611,7 @@ export default function AdminPayrollPage() {
       negative: selectedManagerRows.filter((row) => row.grossProfit < 0).length,
       zeroBase: selectedManagerRows.filter(isCriticalZeroBaseRow).length,
       unclassified: selectedManagerRows.filter((row) => !row.calculationType).length,
-      accessoryExcluded: classification.accessoryExcludedRows.filter((row) => row.manager === selectedManager).length,
+      accessoryExcluded: selectedManagerClassification.accessoryExcludedRows.filter((row) => row.manager === selectedManager).length,
       invalidNumbers: selectedManagerRows.filter((row) => [row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))).length,
       creditReview: selectedManagerRows.filter((row) => row.calculationType === 'CREDIT_REVIEW_NO_BONUS').length,
       potentialAccessories: selectedManagerRows.filter(isPotentialAccessoryNotIncludedRow).length,
@@ -4575,7 +4626,7 @@ export default function AdminPayrollPage() {
       techBase: getRetailTechCalculationRows(selectedManagerRows).reduce((sum, row) => sum + getRetailTechCalculationBase(row), 0),
       accessoryBase: getAccessoryCalculationRows(selectedManagerRows).reduce((sum, row) => sum + getAccessoryCalculationBase(row), 0),
     }),
-    [selectedManagerRows, classification.accessoryExcludedRows, selectedManager],
+    [selectedManagerRows, selectedManagerClassification.accessoryExcludedRows, selectedManager],
   );
   const selectedManagerSourceReviewRows = useMemo(
     () =>
@@ -4586,10 +4637,10 @@ export default function AdminPayrollPage() {
           isPotentialAccessoryNotIncludedRow(row) ||
           isCriticalZeroBaseRow(row) ||
           isSuspiciousTechCostRow(row) ||
-          classification.accessoryExcludedRows.includes(row) ||
+        selectedManagerClassification.accessoryExcludedRows.includes(row) ||
           [row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value)),
       ),
-    [classification.accessoryExcludedRows, selectedManagerRows],
+    [selectedManagerClassification.accessoryExcludedRows, selectedManagerRows],
   );
   const selectedManagerSourceReviewSet = useMemo(() => new Set(selectedManagerSourceReviewRows), [selectedManagerSourceReviewRows]);
   const selectedManagerSourceIncludedRows = useMemo(
@@ -5399,7 +5450,7 @@ export default function AdminPayrollPage() {
     if ([row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))) {
       return 'В строке есть некорректные числовые значения.';
     }
-    if (classification.accessoryExcludedRows.includes(row)) return 'Похожий на аксессуар товар исключён из расчёта.';
+    if (selectedManagerClassification.accessoryExcludedRows.includes(row)) return 'Похожий на аксессуар товар исключён из расчёта.';
     if (isSuspiciousTechCostRow(row)) return getSuspiciousTechCostReason(row);
     if (isServiceNotIncludedRow(row)) return getNotIncludedInServiceReason(row);
     if (isPotentialAccessoryNotIncludedRow(row)) return getNotIncludedInAccessoryReason(row);
@@ -5410,7 +5461,7 @@ export default function AdminPayrollPage() {
 
   function getManagerSourceProblemType(row: ClassifiedSalesRow): ProblemType {
     if ([row.revenue, row.grossProfit, row.base, row.bonus].some((value) => !Number.isFinite(value))) return 'invalidNumbers';
-    if (classification.accessoryExcludedRows.includes(row)) return 'accessoryExcluded';
+    if (selectedManagerClassification.accessoryExcludedRows.includes(row)) return 'accessoryExcluded';
     if (isCriticalZeroBaseRow(row)) return 'zeroBase';
     if (row.isCreditSale) return 'credit';
     return 'disputed';
@@ -6431,7 +6482,7 @@ export default function AdminPayrollPage() {
                 <div className='flex flex-wrap items-center gap-2'>
                   <h2 className='text-lg font-extrabold text-slate-950'>Расчёт за {months[Number(month)].toLowerCase()} {year}</h2>
                   {oneCShadowCalculation?.ready && oneCShadowCalculation.differentEmployees === 0 && (
-                    <span className='rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800'>Готово</span>
+                    <span className='rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800'>Сверено</span>
                   )}
                 </div>
                 <p className='mt-1 text-sm text-slate-500'>Контрольный расчёт по данным 1С. Сохранённая ведомость не изменяется.</p>
@@ -6463,9 +6514,9 @@ export default function AdminPayrollPage() {
                     <p className='text-xs font-semibold text-slate-500'>Сотрудники</p>
                     <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowCalculation.comparisons.length - oneCShadowCalculation.differentEmployees} из {oneCShadowCalculation.comparisons.length} совпали</p>
                   </div>
-                  <div className={`rounded-lg border px-3 py-2.5 ${oneCShadowCalculation.blockingIssues.length || oneCShadowCalculation.differentEmployees ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
-                    <p className='text-xs font-semibold text-slate-500'>Замечания</p>
-                    <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowCalculation.blockingIssues.length + oneCShadowCalculation.differentEmployees || 'Нет'}</p>
+                  <div className={`rounded-lg border px-3 py-2.5 ${oneCShadowCalculation.blockingIssues.length || oneCShadowCalculation.differentEmployees || oneCShadowCalculation.reviewEmployees.length ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
+                    <p className='text-xs font-semibold text-slate-500'>Требует проверки</p>
+                    <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowCalculation.blockingIssues.length + oneCShadowCalculation.differentEmployees + oneCShadowCalculation.reviewEmployees.length || 'Нет'}</p>
                   </div>
                 </div>
 
@@ -6478,14 +6529,23 @@ export default function AdminPayrollPage() {
                 ) : (
                   <div className='flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950'>
                     <CheckCircle2 className='mt-0.5 h-4 w-4 shrink-0' />
-                    <p><strong>Расчёт подтверждён.</strong> Совпадает с финальной ведомостью №{oneCShadowCalculation.baselineRunNumber}; ошибок, влияющих на зарплату, нет.</p>
+                    <p><strong>Сверка подтверждена.</strong> Все составляющие и итоговые суммы совпадают с финальной ведомостью №{oneCShadowCalculation.baselineRunNumber}.</p>
+                  </div>
+                )}
+
+                {oneCShadowCalculation.reviewEmployees.length > 0 && (
+                  <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950'>
+                    <p className='font-bold'>Проверьте ручные данные</p>
+                    {oneCShadowCalculation.reviewEmployees.map((employee) => (
+                      <p key={employee.employeeName} className='mt-1'>{employee.employeeName}: {employee.reasons.join('; ') || 'требуется проверка расчёта'}.</p>
+                    ))}
                   </div>
                 )}
 
                 <div className='overflow-hidden rounded-xl border border-slate-200 bg-slate-50/50'>
                   <div className='border-b border-slate-100 bg-slate-50 px-4 py-3'>
                     <p className='font-bold text-slate-900'>Начислено сотрудникам</p>
-                    <p className='text-sm text-slate-500'>Сумма до вычета авансов и удержаний.</p>
+                    <p className='text-sm text-slate-500'>Сумма до вычета авансов и удержаний. Нажмите на сотрудника, чтобы открыть полный расчёт.</p>
                   </div>
                   <div className='grid gap-3 p-3 lg:grid-cols-2 xl:grid-cols-3'>
                     {oneCShadowCalculation.comparisonColumns.map((column, columnIndex) => (
@@ -6495,15 +6555,23 @@ export default function AdminPayrollPage() {
                             <div className={`border-b border-current/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${getPayrollPortalGroupTone(group.salaryType)}`}>{group.name}</div>
                             <div className='divide-y divide-slate-100'>
                               {group.rows.map((row) => {
-                                const matches = Math.abs(row.grossDelta) < 0.005;
+                                const matches = row.detailDifferences.length === 0;
                                 return (
-                                  <div key={row.employeeName} className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 ${matches ? 'bg-white' : 'bg-amber-50/60'}`}>
+                                  <button
+                                    key={row.employeeName}
+                                    type='button'
+                                    onClick={() => {
+                                      setSelectedManagerSource('oneC');
+                                      setSelectedManager(row.employeeName);
+                                    }}
+                                    className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 ${matches ? 'bg-white' : 'bg-amber-50/60'}`}
+                                  >
                                     <p className='truncate text-sm font-semibold text-slate-900'>{row.employeeName}</p>
                                     <div className='flex items-center gap-2'>
                                       <p className='whitespace-nowrap text-sm font-bold text-slate-950'>{formatMoney(row.shadowGrossPay)}</p>
-                                      {!matches && <span className='rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900'>{formatPayrollDelta(row.grossDelta)}</span>}
+                                      {!matches && <span className='rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900'>{Math.abs(row.grossDelta) >= 0.005 ? formatPayrollDelta(row.grossDelta) : `${row.detailDifferences.length} отлич.`}</span>}
                                     </div>
-                                  </div>
+                                  </button>
                                 );
                               })}
                             </div>
@@ -6861,8 +6929,8 @@ export default function AdminPayrollPage() {
                                 )}
                                 <tr
                                   className='cursor-pointer border-t border-slate-100 align-top transition hover:bg-slate-50 focus-within:bg-slate-50'
-                                  onClick={() => setSelectedManager(summary.manager)}
-                                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedManager(summary.manager); }}
+                                  onClick={() => { setSelectedManagerSource('manual'); setSelectedManager(summary.manager); }}
+                                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { setSelectedManagerSource('manual'); setSelectedManager(summary.manager); } }}
                                   tabIndex={0}
                                 >
                                   <td className='sticky left-0 z-10 w-[210px] min-w-[210px] max-w-[210px] bg-white px-3 py-3 font-semibold text-slate-900 shadow-[8px_0_12px_-12px_rgba(15,23,42,0.35)]' title={`${summary.manager} · ${summary.position}`}>
@@ -7678,6 +7746,8 @@ export default function AdminPayrollPage() {
                 </div>
               </details>
             </div>
+          </>
+        )}
 
             {selectedManagerStatus && selectedManagerPayroll && (
               <div className='fixed inset-0 z-50 flex justify-end bg-slate-950/45'>
@@ -7687,6 +7757,9 @@ export default function AdminPayrollPage() {
                     <div className='min-w-0'>
                       <h2 className='truncate text-[22px] font-bold text-slate-900'>{selectedManagerPayroll.manager}</h2>
                       <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {getPayrollWorkbookGroup(selectedManagerPayroll.salaryType)} · {selectedManagerPayroll.position}</p>
+                      {selectedManagerSource === 'oneC' && (
+                        <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>Автоматический расчёт по данным 1С</p>
+                      )}
                       {(selectedManagerStatus.status !== 'OK' || selectedManagerPayroll.payrollStatus !== 'OK' || selectedManagerPayroll.payrollReasons.length > 0) && (
                         <div className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>
                           <p className='font-bold'>Нужно проверить</p>
@@ -7770,7 +7843,7 @@ export default function AdminPayrollPage() {
                           </div>
                         ))}
                       </div>
-                      {bonusValidation.bonuses.filter((bonus) => bonus.employeeName === selectedManagerPayroll.manager).map((bonus) => <p key={bonus.id} className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'><span className='font-semibold'>Основание премии:</span> {bonus.reason}</p>)}
+                      {selectedManagerBonuses.filter((bonus) => bonus.employeeName === selectedManagerPayroll.manager).map((bonus) => <p key={bonus.id} className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'><span className='font-semibold'>Основание премии:</span> {bonus.reason}</p>)}
                       {(selectedManagerPayroll.lateCount ?? 0) > 3 && <p className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800'>Бонус дисциплины снят: опозданий больше 3</p>}
                     </Card>
 
@@ -7798,7 +7871,7 @@ export default function AdminPayrollPage() {
                       </p>
                       <div className='grid gap-2 md:grid-cols-2'>
                         {(selectedManagerSummary.department === 'Опт'
-                          ? [['Опт 1,75%', classification.wholesale.base, 'общая база опта × 1,75%, не делится пополам', selectedManagerSummary.wholesaleBonus]]
+                          ? [['Опт 1,75%', selectedManagerClassification.wholesale.base, 'общая база опта × 1,75%, не делится пополам', selectedManagerSummary.wholesaleBonus]]
                           : [
                               selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? ['Услуги: 50% выручки', selectedManagerCounts.filmBase, 'выручка × 50%', selectedManagerSummary.filmBonus] : null,
                               selectedManagerCounts.plotterBase || selectedManagerSummary.plotterBonus ? ['Плоттер: 50% себестоимости', selectedManagerCounts.plotterBase, 'себестоимость × 50%', selectedManagerSummary.plotterBonus] : null,
@@ -7877,6 +7950,8 @@ export default function AdminPayrollPage() {
               </div>
             )}
 
+        {workbook && (
+          <>
             {false && (
               <>
             <Card>
