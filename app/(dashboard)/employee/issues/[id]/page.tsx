@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
+import { readIssueIds } from '@/lib/workday-required-issues';
 import { departmentLabel, formatDateLabel, getMoscowDateKey } from '@/lib/workday';
 import { EmployeePortalHeader, employeeHeaderDateLabel } from '../../EmployeePortalHeader';
 
@@ -21,7 +22,26 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
   const issueId = Number(params.id);
   const issue = Number.isInteger(issueId) ? await prisma.workdayControlIssue.findFirst({
     where: { id: issueId, userId: user.id },
-    include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } } },
+    include: {
+      messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } },
+      task: {
+        select: {
+          run: {
+            select: {
+              workDayEntry: {
+                select: {
+                  endedAt: true,
+                  closeExceptionRequests: {
+                    where: { status: 'approved', consumedAt: { not: null } },
+                    select: { issueIds: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   }) : null;
   if (!issue) redirect('/employee');
   const open = issue.status === 'open' && issue.employeeActionRequired;
@@ -31,16 +51,21 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
   const showConversation = !isKkmCloseIssue || issue.messages.length > 0;
   const today = getMoscowDateKey();
   const originLabel = issue.originDate === today ? 'сегодня' : formatDateLabel(issue.originDate);
+  const completedByApprovedException = Boolean(
+    isKkmCloseIssue
+    && issue.task?.run.workDayEntry.endedAt
+    && issue.task.run.workDayEntry.closeExceptionRequests.some((request) => readIssueIds(request.issueIds).includes(issue.id)),
+  );
   return (
     <main className='employee-material-ui min-h-screen bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
       <div className='employee-material-shell relative mx-auto min-h-screen w-full max-w-[520px] shadow-2xl md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
         <EmployeePortalHeader name={user.name} meta={`${departmentLabel(user.department)} · ${employeeHeaderDateLabel(today)}`} />
         <div className='px-4 pb-5 pt-2'>
-          <Link href='/employee' className='inline-flex items-center gap-2 text-sm font-extrabold text-green-700'><ArrowLeft className='h-4 w-4' />Вернуться к рабочему дню</Link>
+          <Link href='/employee' className='inline-flex items-center gap-2 text-sm font-extrabold text-green-700'><ArrowLeft className='h-4 w-4' />{completedByApprovedException ? 'Назад' : 'Вернуться к рабочему дню'}</Link>
           {isCreditIssue && open ? <div className='mt-4'><EmployeeCreditIssueActionCard issueId={issue.id} title={view.actionTitle} instruction={view.instruction} notFoundLabel={view.notFoundLabel} /></div> : <Card className={`mt-4 ${open ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
-            <div className='flex gap-3'><span className={`employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /> : <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-7 w-7' />}</span><div><p className={`text-xs font-extrabold uppercase tracking-wide ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? 'Нужно исправить' : 'Исправлено'}</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>{view.summaryTitle}</h1>{view.summaryMeta && <p className='mt-2 text-sm font-extrabold text-slate-700'>{view.summaryMeta}</p>}<p className='mt-3 text-base font-bold leading-relaxed text-slate-800'>{open ? view.instruction : 'Портал подтвердил исправление. История сохранена.'}</p>{open && <p className='mt-3 border-t border-amber-200 pt-3 text-xs font-semibold leading-relaxed text-slate-500'>Проблема возникла {originLabel}. {isKkmCloseIssue ? 'Портал продолжит проверять закрытие автоматически.' : 'После исправления в 1С она исчезнет автоматически.'}</p>}</div></div>
+            <div className='flex gap-3'><span className={`employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /> : <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-7 w-7' />}</span><div><p className={`text-xs font-extrabold uppercase tracking-wide ${open ? 'text-amber-700' : 'text-green-700'}`}>{completedByApprovedException ? 'Проверяем автоматически' : open ? 'Нужно исправить' : 'Исправлено'}</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>{completedByApprovedException ? 'Закрытие кассы не подтверждено' : view.summaryTitle}</h1>{view.summaryMeta && <p className='mt-2 text-sm font-extrabold text-slate-700'>{view.summaryMeta}</p>}<p className='mt-3 text-base font-bold leading-relaxed text-slate-800'>{completedByApprovedException ? 'Рабочий день завершён по разрешению администратора. Портал продолжит проверку автоматически.' : open ? view.instruction : 'Портал подтвердил исправление. История сохранена.'}</p>{open && <p className='mt-3 border-t border-amber-200 pt-3 text-xs font-semibold leading-relaxed text-slate-500'>Проблема возникла {originLabel}.{!completedByApprovedException && ` ${isKkmCloseIssue ? 'Портал продолжит проверять закрытие автоматически.' : 'После исправления в 1С она исчезнет автоматически.'}`}</p>}</div></div>
           </Card>}
-          {isKkmCloseIssue && open && !showConversation && (
+          {isKkmCloseIssue && open && !showConversation && !completedByApprovedException && (
             <Card className='employee-material-form mt-4 space-y-3'>
               <h2 className='text-lg font-extrabold'>Что делать дальше</h2>
               <p className='text-sm font-semibold leading-relaxed text-slate-600'>{issue.originDate < today ? 'Портал продолжает проверять закрытие кассы автоматически. Если к сдаче сегодняшней смены проблема останется, сообщите администратору с главного экрана.' : 'Вернитесь к рабочему дню: там можно сфотографировать чек или сообщить администратору.'}</p>
