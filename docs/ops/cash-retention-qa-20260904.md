@@ -102,6 +102,23 @@ No layout, icons, workday rules or notification settings were changed.
   the production `portal-app` container was not restarted while the QA endpoint
   was installed.
 
+## QA workday notifications — 2026-09-07
+
+- Configured a dedicated VAPID key pair only for `https://qa.storflow.ru`; the
+  production push configuration and production subscriptions were not changed.
+- Added `/etc/cron.d/offonika-iphone-qa-notifications` on the VPS. Once per
+  minute it runs the existing workday notification dispatcher inside the
+  isolated `qa-app` container.
+- The first scheduled run completed successfully and published due reminders
+  to the QA in-app inbox. Push delivery remained `no_subscription` until the
+  synthetic employee explicitly enables notifications for the QA origin on the
+  test iPhone.
+- QA push subscriptions are origin-specific. Enabling notifications on the
+  production portal does not subscribe the same device to `qa.storflow.ru`.
+- Timestamped backups of the previous QA compose and protected environment
+  files were retained on the VPS for rollback. No database or 1C configuration
+  was changed.
+
 Stop the temporary endpoint without deleting its evidence:
 
 ```sh
