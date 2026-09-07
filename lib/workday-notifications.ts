@@ -5,6 +5,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { planWorkdayPushDelivery, suppressUnreadWorkdayPush } from '@/lib/workday-push-delivery';
 import { TERMINAL_FISCAL_ADMIN_FIRST, fiscalApprovalKey } from '@/lib/terminal-fiscal-admin-gate';
+import { scheduleCoverage } from '@/lib/work-schedule-coverage';
+import { getMoscowDateKey } from '@/lib/workday';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -32,7 +34,48 @@ export function closeExceptionNotificationRef(notification: Pick<NotificationLif
   return match ? { requestId: match[1], decision: match[2] } : null;
 }
 
-export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
+export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(
+  db: DbClient,
+  rows: T[],
+  today = getMoscowDateKey(),
+) {
+  const replacementRefs = rows.flatMap((notification) => {
+    if (notification.kind !== 'schedule_replacement_request') return [];
+    const match = /^schedule-coverage:([^:]+):(\d{4}-\d{2}-\d{2}):(\d+)$/.exec(notification.fingerprint);
+    if (!match || match[2] < today) return [];
+    return [{ notificationId: notification.id, department: match[1], date: match[2], candidateId: Number(match[3]) }];
+  });
+  const replacementScopes = [...new Map(replacementRefs.map((ref) => [`${ref.department}:${ref.date}`, ref])).values()];
+  const activeReplacementIds = new Set<number>();
+  for (const scope of replacementScopes) {
+    const [entries, vacations] = await Promise.all([
+      db.workScheduleEntry.findMany({
+        where: {
+          department: scope.department,
+          date: scope.date,
+          user: { role: 'EMPLOYEE', isActive: true, department: scope.department },
+        },
+        select: { userId: true, status: true },
+      }),
+      db.employeeVacation.findMany({
+        where: {
+          department: scope.department,
+          status: 'active',
+          dateFrom: { lte: scope.date },
+          dateTo: { gte: scope.date },
+        },
+        select: { userId: true },
+      }),
+    ]);
+    const vacationIds = new Set(vacations.map((vacation) => vacation.userId));
+    const workingIds = new Set(entries.filter((entry) => entry.status === 'working' && !vacationIds.has(entry.userId)).map((entry) => entry.userId));
+    if (!scheduleCoverage(scope.department, workingIds.size).needsReplacement) continue;
+    for (const ref of replacementRefs) {
+      if (ref.department === scope.department && ref.date === scope.date && !workingIds.has(ref.candidateId) && !vacationIds.has(ref.candidateId)) {
+        activeReplacementIds.add(ref.notificationId);
+      }
+    }
+  }
   const refs = rows.map(closeExceptionNotificationRef).filter((item): item is NonNullable<typeof item> => Boolean(item));
   const requestIds = [...new Set(refs.map((item) => item.requestId))];
   const referencedRequests = requestIds.length ? await db.workdayCloseExceptionRequest.findMany({
@@ -61,6 +104,11 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
 
   return rows.filter((notification) => {
     if (notification.kind === 'cash_operation_created') return false;
+    if (notification.kind === 'schedule_replacement_request') return activeReplacementIds.has(notification.id);
+    if (notification.kind === 'schedule_replacement_digest') {
+      const month = notification.fingerprint.match(/^schedule-coverage-digest:[^:]+:(\d{4}-\d{2}):/)?.[1];
+      return Boolean(month && month >= today.slice(0, 7));
+    }
     if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
     if (notification.issue) return notification.issue.status === 'open' && notification.issue.employeeActionRequired;
     if (notification.review) return notification.review.status === 'open';

@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { suppressPushBacklogOnNewSubscription } from '@/lib/workday-push-subscription';
 
 function readString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -22,19 +23,21 @@ export async function POST(req: Request) {
   const auth = readString(payload?.keys?.auth);
   if (!endpoint || !p256dh || !auth) return Response.json({ error: 'Некорректная push-подписка' }, { status: 400 });
 
-  const subscription = await prisma.workdayPushSubscription.upsert({
-    where: { endpoint },
-    create: { userId: user.id, endpoint, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '' },
-    update: { userId: user.id, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '', disabledAt: null },
-  });
-  await prisma.workdayNotification.updateMany({
-    where: {
-      userId: user.id,
-      status: 'sent',
-      readAt: null,
-      pushStatus: { in: ['no_subscription', 'retry_pending'] },
-    },
-    data: { pushStatus: 'retry_pending', nextPushAttemptAt: new Date(), lastError: '' },
+  const subscribedAt = new Date();
+  const subscription = await prisma.$transaction(async (tx) => {
+    const existing = await tx.workdayPushSubscription.findUnique({
+      where: { endpoint },
+      select: { userId: true, disabledAt: true },
+    });
+    const saved = await tx.workdayPushSubscription.upsert({
+      where: { endpoint },
+      create: { userId: user.id, endpoint, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '' },
+      update: { userId: user.id, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '', disabledAt: null },
+    });
+    if (!existing || existing.userId !== user.id || existing.disabledAt) {
+      await suppressPushBacklogOnNewSubscription(tx, user.id, subscribedAt);
+    }
+    return saved;
   });
   return Response.json({ ok: true, id: subscription.id });
 }

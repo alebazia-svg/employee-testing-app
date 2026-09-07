@@ -107,6 +107,65 @@ test('successful cash operations do not appear as employee attention notificatio
   assert.deepEqual(await filterActiveWorkdayNotifications(db as never, rows), []);
 });
 
+function replacementNotification(id: number, date: string, candidateId = 5) {
+  return {
+    ...baseNotification,
+    id,
+    kind: 'schedule_replacement_request',
+    fingerprint: `schedule-coverage:retail:${date}:${candidateId}`,
+  };
+}
+
+function replacementDb(entries: Array<{ userId: number; status: string }>, vacationUserIds: number[] = []) {
+  return {
+    workScheduleEntry: { findMany: async () => entries },
+    employeeVacation: { findMany: async () => vacationUserIds.map((userId) => ({ userId })) },
+    workdayCloseExceptionRequest: { findMany: async () => [] },
+  };
+}
+
+test('past schedule replacement requests do not remain active', async () => {
+  const rows = [replacementNotification(20, '2026-09-06')];
+  assert.deepEqual(
+    await filterActiveWorkdayNotifications(replacementDb([{ userId: 2, status: 'working' }]) as never, rows, '2026-09-07'),
+    [],
+  );
+});
+
+test('a current replacement request stays active while retail coverage is reduced', async () => {
+  const rows = [replacementNotification(21, '2026-09-07')];
+  assert.deepEqual(
+    (await filterActiveWorkdayNotifications(replacementDb([{ userId: 2, status: 'working' }]) as never, rows, '2026-09-07')).map((row) => row.id),
+    [21],
+  );
+});
+
+test('schedule replacement requests close after coverage is restored', async () => {
+  const rows = [replacementNotification(22, '2026-09-07')];
+  assert.deepEqual(
+    await filterActiveWorkdayNotifications(replacementDb([
+      { userId: 2, status: 'working' },
+      { userId: 8, status: 'working' },
+    ]) as never, rows, '2026-09-07'),
+    [],
+  );
+});
+
+test('a replacement request closes when its candidate is already working or on vacation', async () => {
+  const rows = [replacementNotification(23, '2026-09-07')];
+  const working = await filterActiveWorkdayNotifications(replacementDb([
+    { userId: 2, status: 'working' },
+    { userId: 5, status: 'working' },
+  ]) as never, rows, '2026-09-07');
+  const vacation = await filterActiveWorkdayNotifications(
+    replacementDb([{ userId: 2, status: 'working' }], [5]) as never,
+    rows,
+    '2026-09-07',
+  );
+  assert.deepEqual(working, []);
+  assert.deepEqual(vacation, []);
+});
+
 test('inactive sent notifications are cancelled without marking them as read', async () => {
   const updates: Array<Record<string, unknown>> = [];
   const rows = [
