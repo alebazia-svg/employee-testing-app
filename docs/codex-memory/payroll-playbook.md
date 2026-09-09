@@ -485,6 +485,27 @@ the pay result harder to understand.
   only when requested; this is independent of the attendance source and was not
   included in the approved attendance release.
 
+### Compact payroll projection — local implementation, 2026-09-10
+
+- The owner approved removing the remaining cold-screen bottleneck without
+  changing formulas, 1C data, supplier rules, attendance, PWA or saved final
+  runs. The stored full 1C aggregate remains the audit source of truth.
+- The default daily-control response now derives a compact server-side payroll
+  projection from the full stored aggregate with the same classification
+  function used by the manual/client calculation. It contains manager component
+  totals, wholesale totals, control counts and costing/review counts, but no
+  detailed product rows. `view=full` remains available for authenticated audit
+  detail and never performs another 1C source read.
+- The main payroll screen calculates its employee rows from the compact
+  projection. Detailed 1C rows are fetched only after an administrator opens an
+  employee card; a detail failure does not hide the already calculated salary.
+- On the isolated real September snapshot, the response fell from 1,392,797
+  bytes and 2,332 sales rows to 8,347 bytes (99.4% smaller). The new and prior
+  screens showed identical amounts for all 13 employees. A repeated compact
+  screen open displayed the employee list in about 0.4 seconds.
+- This stage has no schema migration and is not yet released. Production remains
+  on the earlier payroll runtime until a separate visual and deploy approval.
+
 ## Before Changing Payroll
 
 Ask:
