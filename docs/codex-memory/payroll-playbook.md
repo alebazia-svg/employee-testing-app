@@ -423,6 +423,32 @@ the pay result harder to understand.
   rewrite it; the administrator must deliberately recalculate and replace it
   to create a new final run with the fixed 5% rule.
 
+### Aggregated 1C control view — committed, not released, 2026-09-09
+
+- Production browser QA showed that the current client-side background refresh
+  was insufficient: after a cold page open, September could remain empty for
+  more than 69 seconds, and August also waited while the server rebuilt the
+  detailed control response from source snapshots.
+- Owner approved a server-side aggregate view. It uses the existing
+  `PayrollOneCControlSnapshot` table with separate `AGGREGATE_DAILY` and
+  `AGGREGATE_FINAL` kinds; no migration, formula change, payroll-run write or
+  1C write is involved. Daily and final source snapshots remain the source of
+  truth.
+- A successful refresh writes the source snapshots and aggregate atomically.
+  A failed refresh keeps the previous valid aggregate. The cache is scoped by
+  payroll period and source kind, validates the full response shape and becomes
+  invalid when supplier decisions change. Missing or invalid aggregates are
+  rebuilt from the source snapshots without hiding an otherwise valid response
+  if only cache warming fails.
+- Code commit `614f7bd` is local and not deployed. In the isolated authenticated
+  ADMIN screen, the first rebuild from eight September daily snapshots showed
+  employees in about 1.1 seconds and created one 277 KB aggregate row; a full
+  repeat page open showed them in about 0.36 seconds. When the background 1C
+  refresh failed, the last saved employee list remained visible.
+- Verification: all 59 payroll regressions, 64 focused 1C/control tests, the
+  aggregate-cache tests, TypeScript and the production build passed. Production
+  still runs the previous implementation until a separate deploy approval.
+
 ## Before Changing Payroll
 
 Ask:
