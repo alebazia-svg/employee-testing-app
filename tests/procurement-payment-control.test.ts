@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildPaymentPlanCode, calculateCashPreparation, matchCashEvidence, validatePaymentPlan } from '@/lib/procurement-payment-control';
+import { buildPaymentPlanCode, calculateCashPreparation, calculateOrderPlanning, matchCashEvidence, paymentPlanLeadTime, validatePaymentPlan } from '@/lib/procurement-payment-control';
 
 test('USDT plan can be submitted when only the ruble amount is known', () => {
   const result = validatePaymentPlan({ supplierPartner: 'China Mobile', orderRefs: ['order-1'], orderNumbers: ['1'], plannedDate: '2026-09-10', plannedAmount: 400000, condition: 'Перед отправкой', paymentMethod: 'USDT' });
@@ -39,6 +39,48 @@ test('cash evidence aggregates split posted RKO and ignores deleted RKO', () => 
   assert.equal(result.state, 'ISSUED_BY_ONE_C');
   assert.equal(result.issuedAmount, 400000);
   assert.deepEqual(result.cashOrders.map((order) => order.ref), ['rko-1', 'rko-2']);
+});
+
+test('partial payment keeps the unpaid part of the same order available for another plan', () => {
+  const [order] = calculateOrderPlanning(
+    [{ ref: 'order-1', orderPaymentGap: 700000 }],
+    [{ orderRefs: ['order-1'], plannedAmount: 200000, status: 'APPROVED' }],
+  );
+  assert.equal(order.plannedActiveAmount, 200000);
+  assert.equal(order.unplannedAmount, 500000);
+});
+
+test('issued part is not reserved twice after 1C reduces the order gap', () => {
+  const [order] = calculateOrderPlanning(
+    [{ ref: 'order-1', orderPaymentGap: 500000 }],
+    [{ orderRefs: ['order-1'], plannedAmount: 200000, issuedAmount: 200000, status: 'APPROVED' }],
+  );
+  assert.equal(order.plannedActiveAmount, 0);
+  assert.equal(order.unplannedAmount, 500000);
+});
+
+test('legacy plan covering several orders is allocated without exceeding an order gap', () => {
+  const rows = calculateOrderPlanning(
+    [{ ref: 'one', orderPaymentGap: 100000 }, { ref: 'two', orderPaymentGap: 300000 }],
+    [{ orderRefs: ['one', 'two'], plannedAmount: 250000, status: 'SUBMITTED' }],
+  );
+  assert.deepEqual(rows.map((row) => row.unplannedAmount), [0, 150000]);
+});
+
+test('lead time distinguishes advance, next-day and same-day requests automatically', () => {
+  assert.equal(paymentPlanLeadTime('2026-09-09T10:00:00Z', '2026-09-12').state, 'ADVANCE');
+  assert.equal(paymentPlanLeadTime('2026-09-09T10:00:00Z', '2026-09-10').state, 'NEXT_DAY');
+  assert.equal(paymentPlanLeadTime('2026-09-09T10:00:00Z', '2026-09-09').state, 'SAME_DAY');
+  assert.equal(paymentPlanLeadTime('2026-09-08T21:30:00Z', '2026-09-09').state, 'SAME_DAY');
+});
+
+test('1C payment to another supplier is returned as a mismatch instead of a false match', () => {
+  const result = matchCashEvidence({ planCode: 'PAY-1', supplierPartner: 'V12', supplierCounterparty: '', plannedAmount: 39500, managerName: 'Тохов Астемир', plannedDate: '2026-09-09' }, [{
+    ref: 'request-p43', amount: 39500, payment_date: '2026-09-09', requested_by: { name: 'Тохов Астемир' }, counterparty: { name: 'P43' },
+    linked_cash_expense_orders: { rows: [{ ref: 'rko-p43', number: '99', posted: true, deletion_mark: false, amount: 39500 }] },
+  }]);
+  assert.equal(result.state, 'MISMATCH');
+  assert.equal(result.actualSupplier, 'P43');
 });
 
 test('plan code is recognizable for 1C comment matching', () => {

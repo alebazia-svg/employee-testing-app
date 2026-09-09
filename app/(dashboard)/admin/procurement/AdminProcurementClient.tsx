@@ -7,10 +7,11 @@ import {
   CalendarCheck,
   Check,
   RefreshCw,
+  Undo2,
   WalletCards,
   X,
 } from "lucide-react";
-import { calculateCashPreparation } from "@/lib/procurement-payment-control";
+import { calculateCashPreparation, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 
 type Plan = {
   id: string;
@@ -30,10 +31,13 @@ type Plan = {
   exchangerName: string;
   supplierConfirmation: string;
   status: string;
+  createdAt: string;
+  correctionReason?: string;
   manager: { name: string };
   evidence: {
     state: string;
     issuedAmount: number;
+    actualSupplier?: string;
     cashOrders: {
       number: string;
       date: string;
@@ -79,6 +83,7 @@ export default function AdminProcurementClient({
   sourceWarnings,
   unplannedOrderCount,
   unplannedCashCount,
+  supplierDebtTotal,
   usdtBalance,
   accountableBalance,
   usdtRateReference,
@@ -89,6 +94,7 @@ export default function AdminProcurementClient({
   sourceWarnings: string[];
   unplannedOrderCount: number | null;
   unplannedCashCount: number | null;
+  supplierDebtTotal: number | null;
   usdtBalance: UsdtBalance;
   accountableBalance: UsdtBalance;
   usdtRateReference?: UsdtRateReference;
@@ -96,9 +102,14 @@ export default function AdminProcurementClient({
 }) {
   const [plans, setPlans] = useState(initialPlans);
   const [busy, setBusy] = useState("");
+  const [returningId, setReturningId] = useState("");
+  const [returnReason, setReturnReason] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
   const active = plans.filter((plan) => plan.status !== "CANCELLED");
   const submitted = active.filter((plan) => plan.status === "SUBMITTED");
-  const calendarPlans = active.filter((plan) => plan.status !== "SUBMITTED");
+  const completedPlans = active.filter((plan) => plan.status === "APPROVED" && plan.evidence.state === "ISSUED_BY_ONE_C");
+  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && plan.evidence.state !== "ISSUED_BY_ONE_C");
+  const urgentSubmitted = submitted.filter((plan) => ["SAME_DAY", "LATE"].includes(paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state));
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const estimatedUsdtPlanIds = new Set(
     active
@@ -128,16 +139,22 @@ export default function AdminProcurementClient({
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [calendarPlans]);
   const preparation = calculateCashPreparation(
-    active.map((plan) => ({
-      id: plan.id,
-      plannedDate: plan.plannedDate,
-      plannedAmount: Number(plan.plannedAmount),
-      paymentMethod: plan.paymentMethod,
-      foreignAmount: Number(plan.foreignAmount || 0) || (estimatedUsdtPlanIds.has(plan.id) ? Number(plan.plannedAmount) / referenceUsdtRate : 0),
-      exchangeRate: Number(plan.exchangeRate || 0) || (referenceRatePlanIds.has(plan.id) ? referenceUsdtRate : 0),
-      commissionAmount: Number(plan.commissionAmount || 0),
-      issued: plan.evidence.state === "ISSUED_BY_ONE_C",
-    })),
+    active.map((plan) => {
+      const plannedRub = Number(plan.plannedAmount);
+      const remainingRub = Math.max(0, plannedRub - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0)));
+      const remainingRatio = plannedRub > 0 ? Math.min(1, remainingRub / plannedRub) : 0;
+      const fullForeignAmount = Number(plan.foreignAmount || 0) || (estimatedUsdtPlanIds.has(plan.id) ? plannedRub / referenceUsdtRate : 0);
+      return {
+        id: plan.id,
+        plannedDate: plan.plannedDate,
+        plannedAmount: remainingRub,
+        paymentMethod: plan.paymentMethod,
+        foreignAmount: fullForeignAmount * remainingRatio,
+        exchangeRate: Number(plan.exchangeRate || 0) || (referenceRatePlanIds.has(plan.id) ? referenceUsdtRate : 0),
+        commissionAmount: Number(plan.commissionAmount || 0),
+        issued: plan.evidence.state === "ISSUED_BY_ONE_C",
+      };
+    }),
     usdtBalance.balance,
     todayKey,
   );
@@ -164,8 +181,8 @@ export default function AdminProcurementClient({
       ? null
       : Math.max(0, usdtBalance.balance - plannedUsdt);
   const plannedQr = active
-    .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR" && dateKey(plan.plannedDate) >= todayKey)
-    .reduce((sum, plan) => sum + Number(plan.plannedAmount || 0), 0);
+    .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR" && dateKey(plan.plannedDate) >= todayKey && plan.evidence.state !== "ISSUED_BY_ONE_C")
+    .reduce((sum, plan) => sum + Math.max(0, Number(plan.plannedAmount || 0) - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0))), 0);
   const qrShortfall = accountableBalance.balance == null ? null : Math.max(0, plannedQr - accountableBalance.balance);
   const groupTitle = (key: string) =>
     key < todayKey
@@ -203,13 +220,18 @@ export default function AdminProcurementClient({
       ? plan.condition
       : "";
 
-  async function act(id: string, action: "APPROVE" | "CANCEL") {
+  async function act(id: string, action: "APPROVE" | "RETURN" | "CANCEL") {
     if (action === "CANCEL" && !window.confirm("Отменить эту оплату? Она исчезнет из рабочего календаря.")) return;
+    if (action === "RETURN" && returnReason.trim().length < 3) {
+      setActionMessage("Коротко укажите, что Астемиру нужно исправить.");
+      return;
+    }
     setBusy(id);
+    setActionMessage("");
     const response = await fetch(`/api/admin/procurement/payment-plans/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, reason: action === "RETURN" ? returnReason : undefined }),
     });
     if (response.ok) {
       const updated = await response.json();
@@ -218,6 +240,11 @@ export default function AdminProcurementClient({
           plan.id === id ? { ...plan, ...updated } : plan,
         ),
       );
+      setReturningId("");
+      setReturnReason("");
+    } else {
+      const payload = await response.json().catch(() => ({}));
+      setActionMessage(payload.error || "Не удалось выполнить действие.");
     }
     setBusy("");
   }
@@ -231,7 +258,7 @@ export default function AdminProcurementClient({
         </div>
       ) : null}
 
-      <section className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(180px,.7fr)_minmax(180px,.7fr)]">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(170px,.65fr))]">
         <div className="admin-material-card rounded-2xl bg-white p-5">
           <div className="flex items-start gap-4">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-primary">
@@ -263,11 +290,17 @@ export default function AdminProcurementClient({
           <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ждут решения</p>
           <p className="mt-1 text-2xl font-black text-slate-950">{submitted.length}</p>
           <p className="mt-1 text-sm font-medium text-slate-500">заявок Астемира</p>
+          {urgentSubmitted.length ? <p className="mt-1 text-xs font-black text-red-700">Из них срочно сегодня: {urgentSubmitted.length}</p> : null}
         </div>
         <div className="admin-material-card rounded-2xl bg-white p-5">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Без даты оплаты</p>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Не запланировано</p>
           <p className="mt-1 text-2xl font-black text-slate-950">{unplannedOrderCount == null ? "—" : unplannedOrderCount}</p>
-          <p className="mt-1 text-sm font-medium text-slate-500">заказов с долгом в 1С</p>
+          <p className="mt-1 text-sm font-medium text-slate-500">заказов с остатком к оплате</p>
+        </div>
+        <div className="admin-material-card rounded-2xl bg-white p-5">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Задолженность в 1С</p>
+          <p className="mt-1 text-xl font-black text-slate-950">{supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}</p>
+          <p className="mt-1 text-sm font-medium text-slate-500">по поставщикам Астемира</p>
         </div>
       </section>
 
@@ -334,11 +367,15 @@ export default function AdminProcurementClient({
                 <div><p className="text-xs font-bold text-slate-400">Подготовить к</p><p className="mt-0.5 font-extrabold text-slate-800">{date(plan.plannedDate)}</p></div>
                 <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" ? <p className="text-xs font-semibold text-violet-700">{Number(plan.foreignAmount || 0) > 0 ? `Ориентир: ${rub.format(Number(plan.plannedAmount))}` : usdtEstimateNote(plan)}</p> : null}</div>
                 <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
-                <div className="flex gap-2 lg:justify-end">
+                <div className="flex flex-wrap gap-2 lg:justify-end">
                   <button disabled={busy === plan.id} onClick={() => act(plan.id, "APPROVE")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-green-700 disabled:opacity-50"><Check className="h-4 w-4" />Согласовать</button>
+                  <button disabled={busy === plan.id} onClick={() => { setReturningId(plan.id); setReturnReason(""); setActionMessage(""); }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-amber-50 px-3 text-sm font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"><Undo2 className="h-4 w-4" />Исправить</button>
                   <button disabled={busy === plan.id} onClick={() => act(plan.id, "CANCEL")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50" aria-label={`Отменить оплату ${plan.supplierPartner}`}><X className="h-4 w-4" />Отменить</button>
                 </div>
               </div>
+              <p className={`mt-2 text-xs font-black ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "ADVANCE" ? "text-green-700" : "text-red-700"}`}>
+                {paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "SAME_DAY" ? "Срочно: заявка внесена в день оплаты" : paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "NEXT_DAY" ? "Заявка внесена за один день" : paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "LATE" ? "Дата оплаты уже прошла" : `Внесено заранее: за ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).days} дн.`}
+              </p>
               {planComment(plan) || plan.supplierConfirmation || (plan.paymentMethod === "USDT" && plan.exchangeRate) ? (
                 <p className="mt-2 text-sm font-medium text-slate-600">
                   {plan.paymentMethod === "USDT" && plan.exchangeRate ? `Курс: ${plan.exchangeRate} ₽. ` : ""}
@@ -346,9 +383,21 @@ export default function AdminProcurementClient({
                   {plan.supplierConfirmation || ""}
                 </p>
               ) : null}
+              {returningId === plan.id ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <label className="block text-sm font-bold text-amber-950">Что исправить
+                    <input autoFocus value={returnReason} onChange={(event) => setReturnReason(event.target.value)} placeholder="Например: выбери оплату в USDT" maxLength={300} className="mt-1.5 w-full rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-slate-950" />
+                  </label>
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button type="button" onClick={() => { setReturningId(""); setReturnReason(""); }} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-600">Отмена</button>
+                    <button type="button" disabled={busy === plan.id || returnReason.trim().length < 3} onClick={() => act(plan.id, "RETURN")} className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-black text-white disabled:opacity-40">Вернуть Астемиру</button>
+                  </div>
+                </div>
+              ) : null}
             </article>
           )) : <p className="p-6 text-center text-sm font-semibold text-slate-500">Новых заявок нет.</p>}
         </div>
+        {actionMessage ? <p className="mt-3 text-sm font-bold text-red-700">{actionMessage}</p> : null}
       </section>
 
       <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
@@ -367,7 +416,7 @@ export default function AdminProcurementClient({
               <div className="divide-y divide-slate-200 rounded-xl border border-slate-200">
                 {datePlans.map((plan) => (
                   <article key={plan.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(180px,1.25fr)_minmax(150px,.8fr)_minmax(150px,1fr)_auto] sm:items-center">
-                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-950">{plan.supplierPartner}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${plan.evidence.state === "ISSUED_BY_ONE_C" ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"}`}>{plan.evidence.state === "ISSUED_BY_ONE_C" ? "ВЫДАНО ПО 1С" : "СОГЛАСОВАНО"}</span></div><p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">Заказы: {orderLabel(plan)}</p></div>
+                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-950">{plan.supplierPartner}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${plan.evidence.state === "MISMATCH" ? "bg-red-100 text-red-800" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "bg-blue-100 text-blue-800" : plan.evidence.state === "PARTIALLY_ISSUED" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>{plan.evidence.state === "MISMATCH" ? "НЕ СОВПАДАЕТ С 1С" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "ОПЛАЧЕНО ПО 1С" : plan.evidence.state === "PARTIALLY_ISSUED" ? "ЧАСТИЧНО ПО 1С" : "СОГЛАСОВАНО"}</span></div><p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">Заказы: {orderLabel(plan)}</p>{plan.evidence.state === "MISMATCH" ? <p className="mt-1 text-xs font-black text-red-700">В заявке: {plan.supplierPartner} · в 1С: {plan.evidence.actualSupplier || "другой поставщик"}</p> : plan.evidence.state === "PARTIALLY_ISSUED" ? <p className="mt-1 text-xs font-bold text-amber-800">По 1С оплачено {rub.format(plan.evidence.issuedAmount)} из {rub.format(Number(plan.plannedAmount))}</p> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <p className="text-xs font-semibold text-violet-700">{usdtEstimateNote(plan)}</p> : null}{planComment(plan) ? <p className="mt-1 text-xs font-medium text-slate-600">{planComment(plan)}</p> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                     <div className="text-left sm:text-right"><p className="text-xs font-bold text-slate-400">Ответственный</p><p className="mt-0.5 text-sm font-extrabold text-slate-700">{plan.manager.name}</p></div>
@@ -375,8 +424,16 @@ export default function AdminProcurementClient({
                 ))}
               </div>
             </div>
-          )) : <p className="rounded-xl bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">Согласованных оплат пока нет.</p>}
+          )) : <p className="rounded-xl bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">Текущих согласованных оплат нет.</p>}
         </div>
+        {completedPlans.length ? (
+          <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {completedPlans.length}</summary>
+            <div className="mt-3 divide-y divide-slate-200">
+              {completedPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold text-slate-950">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказы: {orderLabel(plan)}</p></div><div className="sm:text-right"><p className="font-black text-blue-800">Оплачено по 1С · {rub.format(plan.evidence.issuedAmount)}</p><p className="text-xs font-semibold text-slate-500">{plan.manager.name}</p></div></div>)}
+            </div>
+          </details>
+        ) : null}
       </section>
     </div>
   );

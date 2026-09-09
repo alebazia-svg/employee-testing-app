@@ -66,6 +66,16 @@ export function ordersRequiringPayment(rows: SupplierOrderFinanceRow[]) {
   return rows.filter((row) => row.orderPaymentGap > 0.009);
 }
 
+export function normalizeSupplierOrders(active: RawRow[], fulfilled: RawRow[]) {
+  const rawRows = [...active, ...fulfilled];
+  const normalizedRows = rawRows.map(normalizeSupplierOrder).filter((row): row is SupplierOrderFinanceRow => Boolean(row));
+  return {
+    rawCount: rawRows.length,
+    invalidCount: rawRows.length - normalizedRows.length,
+    rows: [...new Map(normalizedRows.map((row) => [row.ref, row])).values()],
+  };
+}
+
 export async function fetchSupplierOrderFinance(): Promise<SupplierOrderFinanceSnapshot> {
   const env = readOneCRuntimeEnv();
   if (!env.baseUrl || !env.user || !env.password) throw new Error('SUPPLIER_ORDER_SOURCE_UNCONFIGURED');
@@ -76,11 +86,14 @@ export async function fetchSupplierOrderFinance(): Promise<SupplierOrderFinanceS
       headers: { Accept: 'application/json', Authorization: `Basic ${Buffer.from(`${env.user}:${env.password}`, 'utf8').toString('base64')}` },
       cache: 'no-store', signal: controller.signal,
     });
-    const payload = await response.json() as { ok?: boolean; active_goods_orders?: RawRow[]; completeness?: { complete?: boolean } };
+    const payload = await response.json() as { ok?: boolean; active_goods_orders?: RawRow[]; fulfilled_goods_orders?: RawRow[]; completeness?: { complete?: boolean } };
     if (!response.ok || payload.ok === false) throw new Error(`SUPPLIER_ORDER_SOURCE_HTTP_${response.status}`);
-    const rawRows = Array.isArray(payload.active_goods_orders) ? payload.active_goods_orders : [];
-    const rows = rawRows.map(normalizeSupplierOrder).filter((row): row is SupplierOrderFinanceRow => Boolean(row));
-    const errors = rows.length === rawRows.length ? [] : ['ROW_REF_MISSING'];
+    const normalized = normalizeSupplierOrders(
+      Array.isArray(payload.active_goods_orders) ? payload.active_goods_orders : [],
+      Array.isArray(payload.fulfilled_goods_orders) ? payload.fulfilled_goods_orders : [],
+    );
+    const rows = normalized.rows;
+    const errors = normalized.invalidCount === 0 ? [] : ['ROW_REF_MISSING'];
     return { rows, checkedAt: new Date().toISOString(), complete: payload.completeness?.complete !== false && errors.length === 0, errors };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw new Error('SUPPLIER_ORDER_SOURCE_TIMEOUT');

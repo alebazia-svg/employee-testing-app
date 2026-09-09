@@ -96,19 +96,24 @@ export async function notifyAdminsAboutProcurementPlans(input: {
 export async function notifyProcurementManagerAboutDecision(input: {
   db: NotificationDb;
   plan: PaymentPlanSummary;
-  decision: 'APPROVED' | 'CANCELLED';
+  decision: 'APPROVED' | 'CANCELLED' | 'NEEDS_CHANGES';
+  reason?: string;
+  eventKey?: string;
   now?: Date;
 }) {
   const now = input.now ?? new Date();
   const approved = input.decision === 'APPROVED';
+  const needsChanges = input.decision === 'NEEDS_CHANGES';
   await input.db.workdayNotification.upsert({
-    where: { fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}` },
+    where: { fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}:${input.eventKey || 'decision'}` },
     create: {
       userId: input.plan.managerUserId,
-      fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}`,
-      kind: approved ? 'procurement_payment_approved' : 'procurement_payment_cancelled',
-      title: approved ? 'Оплата согласована' : 'Оплата отменена',
-      body: `${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)}`,
+      fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}:${input.eventKey || 'decision'}`,
+      kind: approved ? 'procurement_payment_approved' : needsChanges ? 'procurement_payment_needs_changes' : 'procurement_payment_cancelled',
+      title: approved ? 'Оплата согласована' : needsChanges ? 'Исправьте оплату' : 'Оплата отменена',
+      body: needsChanges
+        ? `${input.plan.supplierPartner} · ${input.reason || 'уточните данные заявки'}`
+        : `${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)}`,
       status: 'pending',
       scheduledAt: now,
       nextPushAttemptAt: now,

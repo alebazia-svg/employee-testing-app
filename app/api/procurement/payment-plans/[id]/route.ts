@@ -27,9 +27,9 @@ export async function PATCH(
   });
   if (!existing)
     return Response.json({ error: "План не найден." }, { status: 404 });
-  if (existing.status !== "SUBMITTED")
+  if (!["SUBMITTED", "NEEDS_CHANGES"].includes(existing.status))
     return Response.json(
-      { error: "Изменить можно только заявку, которая ещё ожидает согласования." },
+      { error: "Изменить можно только заявку на согласовании или возвращённую на исправление." },
       { status: 409 },
     );
   const checked = validatePaymentPlan(await req.json());
@@ -66,7 +66,7 @@ export async function PATCH(
   const plan = await prisma
     .$transaction(async (tx) => {
       const changed = await tx.supplierPaymentPlan.updateMany({
-        where: { id, managerUserId: user.id, status: "SUBMITTED" },
+        where: { id, managerUserId: user.id, status: { in: ["SUBMITTED", "NEEDS_CHANGES"] } },
         data: {
           supplierPartner: checked.data.supplierPartner,
           supplierCounterparty: checked.data.supplierCounterparty,
@@ -91,6 +91,9 @@ export async function PATCH(
               : new Prisma.Decimal(checked.data.commissionAmount),
           exchangerName: checked.data.exchangerName,
           supplierConfirmation: checked.data.supplierConfirmation,
+          status: "SUBMITTED",
+          approvedAt: null,
+          approvedById: null,
         },
       });
       if (changed.count !== 1) throw new Error("PLAN_STATUS_CHANGED");
@@ -124,5 +127,5 @@ export async function PATCH(
       { error: "План уже рассмотрен и больше не может быть изменён." },
       { status: 409 },
     );
-  return Response.json(jsonPlan(plan));
+  return Response.json({ ...jsonPlan(plan), correctionReason: "" });
 }

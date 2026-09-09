@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
+import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 
 type Order = {
   ref: string;
@@ -24,6 +25,7 @@ type Order = {
   receiptAmount: number;
   paymentAmount: number;
   orderPaymentGap: number;
+  supplierDebt: number;
   currentState: string;
 };
 type Plan = {
@@ -44,6 +46,13 @@ type Plan = {
   exchangerName: string;
   supplierConfirmation: string;
   status: string;
+  createdAt: string;
+  correctionReason?: string;
+  evidence?: {
+    state: string;
+    issuedAmount: number;
+    actualSupplier?: string;
+  };
 };
 type UsdtBalance = {
   balance: number | null;
@@ -136,6 +145,13 @@ const commentHint = (method: string) =>
       : method === "BANK"
         ? "Например: реквизиты пришлют завтра"
         : "Например: 42 112 юаней по курсу 13,55 ₽";
+const leadTimeLabel = (plan: Plan) => {
+  const timing = paymentPlanLeadTime(plan.createdAt, plan.plannedDate);
+  if (timing.state === "SAME_DAY") return "Внесено в день оплаты";
+  if (timing.state === "NEXT_DAY") return "Внесено за день";
+  if (timing.state === "LATE") return "Дата оплаты уже прошла";
+  return timing.days == null ? "" : `Внесено заранее · за ${timing.days} дн.`;
+};
 
 export default function ProcurementPaymentCalendarClient({
   initialOrders,
@@ -192,13 +208,43 @@ export default function ProcurementPaymentCalendarClient({
     (order) => order.supplierPartner === draft.supplier,
   );
   const activePlans = plans.filter((plan) => plan.status !== "CANCELLED");
-  const plannedRefs = new Set(activePlans.flatMap((plan) => plan.orderRefs));
-  const missingOrders = initialOrders.filter(
-    (order) => !plannedRefs.has(order.ref),
+  const paidPlans = activePlans.filter((plan) => plan.evidence?.state === "ISSUED_BY_ONE_C");
+  const workingPlans = activePlans.filter((plan) => plan.evidence?.state !== "ISSUED_BY_ONE_C");
+  const planningOrders = calculateOrderPlanning(
+    initialOrders,
+    activePlans.map((plan) => ({
+      orderRefs: plan.orderRefs,
+      plannedAmount: Number(plan.plannedAmount),
+      status: plan.status,
+      issuedAmount: plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0),
+    })),
   );
+  const missingOrders = planningOrders.filter((order) => order.unplannedAmount > 0.009);
+  const supplierDebtTotals = initialOrders.reduce<Record<string, number>>((totals, order) => {
+    totals[order.supplierPartner] = Number(totals[order.supplierPartner] || 0) + Number(order.supplierDebt || 0);
+    return totals;
+  }, {});
+  const totalSupplierDebt = Object.values(supplierDebtTotals).reduce((sum, value) => sum + value, 0);
+  const unpaidActivePlans = activePlans.map((plan) => ({
+    ...plan,
+    remainingRub: Math.max(0, Number(plan.plannedAmount) - (plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0))),
+  })).filter((plan) => plan.remainingRub > 0.009);
+  const plannedQr = unpaidActivePlans
+    .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR")
+    .reduce((sum, plan) => sum + plan.remainingRub, 0);
+  const plannedUsdt = unpaidActivePlans
+    .filter((plan) => plan.paymentMethod === "USDT")
+    .reduce((sum, plan) => {
+      const originalRub = Number(plan.plannedAmount || 0);
+      const knownUsdt = Number(plan.foreignAmount || 0);
+      if (knownUsdt > 0 && originalRub > 0) return sum + knownUsdt * Math.min(1, plan.remainingRub / originalRub);
+      return sum + (referenceUsdtRate > 0 ? plan.remainingRub / referenceUsdtRate : 0);
+    }, 0);
+  const freeQr = accountableBalance.balance == null ? null : accountableBalance.balance - plannedQr;
+  const freeUsdt = usdtBalance.balance == null ? null : usdtBalance.balance - plannedUsdt;
   const groupedPlans = useMemo(() => {
     const groups = new Map<string, Plan[]>();
-    [...activePlans]
+    [...workingPlans]
       .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate))
       .forEach((plan) => {
         const key = dateKey(plan.plannedDate);
@@ -209,9 +255,9 @@ export default function ProcurementPaymentCalendarClient({
   const mappingBlocked = managerMappingError && !sourceError;
 
   const estimateRoubles = (refs: string[]) => {
-    const selected = initialOrders.filter((order) => refs.includes(order.ref));
+    const selected = planningOrders.filter((order) => refs.includes(order.ref));
     const gaps = selected.reduce(
-      (sum, order) => sum + Math.max(0, order.orderPaymentGap),
+      (sum, order) => sum + Math.max(0, order.unplannedAmount),
       0,
     );
     return (
@@ -424,10 +470,15 @@ export default function ProcurementPaymentCalendarClient({
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric
           label="Заказы с остатком к оплате"
           value={mappingBlocked || sourceError ? "—" : missingOrders.length}
+        />
+        <Metric
+          label="Общая задолженность в 1С"
+          value={mappingBlocked || sourceError ? "—" : rub.format(totalSupplierDebt)}
+          compact
         />
         <Metric
           label="Ожидают согласования"
@@ -481,6 +532,9 @@ export default function ProcurementPaymentCalendarClient({
                           {plan.orderNumbers.filter(Boolean).join(", ") ||
                             "без номера"}
                         </p>
+                        <p className={`mt-1 text-xs font-bold ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "ADVANCE" ? "text-green-700" : "text-amber-700"}`}>
+                          {leadTimeLabel(plan)}
+                        </p>
                       </div>
                       <div>
                         <p className="text-xl font-black">
@@ -501,14 +555,17 @@ export default function ProcurementPaymentCalendarClient({
                             : ""}
                         </p>
                       </div>
-                      <span
-                        className={`w-fit shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${plan.status === "APPROVED" ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}
-                      >
-                        {plan.status === "APPROVED"
-                          ? "СОГЛАСОВАНО"
-                          : "НА СОГЛАСОВАНИИ"}
-                      </span>
-                      {plan.status === "SUBMITTED" ? (
+                      <div className="space-y-1">
+                        <span
+                          className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
+                        >
+                          {plan.status === "APPROVED"
+                            ? plan.evidence?.state === "MISMATCH" ? "ПРОВЕРЯЕТ РУКОВОДИТЕЛЬ" : plan.evidence?.state === "PARTIALLY_ISSUED" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "СОГЛАСОВАНО"
+                            : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "НА СОГЛАСОВАНИИ"}
+                        </span>
+                        {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
+                      </div>
+                      {plan.status === "SUBMITTED" || plan.status === "NEEDS_CHANGES" ? (
                         <button
                           onClick={() => editPlan(plan)}
                           className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 md:justify-self-end"
@@ -535,6 +592,15 @@ export default function ProcurementPaymentCalendarClient({
           )}
         </div>
       </section>
+
+      {paidPlans.length ? (
+        <details className="rounded-2xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {paidPlans.length}</summary>
+          <div className="mt-3 divide-y divide-slate-100">
+            {paidPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказ: {plan.orderNumbers.filter(Boolean).join(", ") || "без номера"}</p></div><p className="font-black text-blue-800">Оплачено по 1С · {rub.format(Number(plan.evidence?.issuedAmount || plan.plannedAmount))}</p></div>)}
+          </div>
+        </details>
+      ) : null}
 
       {formOpen ? <section
         id="payment-plan-form"
@@ -773,6 +839,7 @@ export default function ProcurementPaymentCalendarClient({
           <ProcurementPaymentBatchForm
             key={batchSeedRefs.join("|")}
             orders={missingOrders}
+            supplierDebtTotals={supplierDebtTotals}
             initialSelectedRefs={batchSeedRefs}
             usdtRateReference={usdtRateReference}
             onCancel={() => {
@@ -799,9 +866,13 @@ export default function ProcurementPaymentCalendarClient({
       <div className="flex items-start gap-3">
         <RussianRuble className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <p className="font-black text-blue-950">Доступно для оплат по QR</p>
-            <p className="text-xl font-black text-blue-950">{accountableBalance.balance == null ? "Данные недоступны" : rub.format(accountableBalance.balance)}</p>
+          <div>
+            <p className="font-black text-blue-950">Деньги для оплат по QR</p>
+            <div className="mt-3 grid grid-cols-3 gap-3">
+              <BalanceValue label="На карте" value={accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)} />
+              <BalanceValue label="В заявках" value={rub.format(plannedQr)} />
+              <BalanceValue label={freeQr != null && freeQr < 0 ? "Не хватает" : "Свободно"} value={freeQr == null ? "—" : rub.format(Math.abs(freeQr))} critical={freeQr != null && freeQr < 0} />
+            </div>
           </div>
         </div>
       </div>
@@ -810,17 +881,13 @@ export default function ProcurementPaymentCalendarClient({
         <div className="flex items-start gap-3">
           <CircleDollarSign className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" />
           <div className="min-w-0 flex-1">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-black text-violet-950">
-                  Доступно для оплат в USDT
-                </p>
+            <div>
+              <p className="font-black text-violet-950">Деньги для оплат в USDT</p>
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                <BalanceValue label="Доступно" value={usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} />
+                <BalanceValue label="В заявках" value={`${plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} />
+                <BalanceValue label={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Свободно"} value={freeUsdt == null ? "—" : `${Math.abs(freeUsdt).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} critical={freeUsdt != null && freeUsdt < 0} />
               </div>
-              <p className="text-xl font-black text-violet-950">
-                {usdtBalance.balance == null
-                  ? "Данные недоступны"
-                  : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`}
-              </p>
             </div>
           </div>
         </div>
@@ -843,11 +910,11 @@ export default function ProcurementPaymentCalendarClient({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string | number }) {
+function Metric({ label, value, compact = false }: { label: string; value: string | number; compact?: boolean }) {
   return (
     <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
       <p className="text-xs font-bold text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-black">{value}</p>
+      <p className={`mt-2 font-black ${compact ? "text-xl sm:text-2xl" : "text-3xl"}`}>{value}</p>
     </div>
   );
 }
@@ -871,4 +938,11 @@ function Notice({
       </div>
     </div>
   );
+}
+
+function BalanceValue({ label, value, critical = false }: { label: string; value: string; critical?: boolean }) {
+  return <div className="min-w-0">
+    <p className="text-[11px] font-bold text-slate-500">{label}</p>
+    <p className={`mt-1 truncate text-sm font-black sm:text-base ${critical ? "text-red-700" : "text-slate-950"}`}>{value}</p>
+  </div>;
 }

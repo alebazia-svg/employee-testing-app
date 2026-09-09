@@ -7,8 +7,9 @@ import {
 } from "@/lib/procurement-payment-source";
 import ProcurementPaymentCalendarClient from "./ProcurementPaymentCalendarClient";
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
-import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
+import { expenseRequestMoscowCalendarDate, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
+import { matchCashEvidence } from "@/lib/procurement-payment-control";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +17,20 @@ export default async function ProcurementPage() {
   const user = await getCurrentUser();
   if (!user) return null;
   const todayKey = expenseRequestMoscowCalendarDate(new Date());
-  const [plansResult, ordersResult, balancesResult, rateResult] = await Promise.allSettled([
+  const requestTo = new Date();
+  requestTo.setDate(requestTo.getDate() + 1);
+  const requestFrom = new Date(requestTo);
+  requestFrom.setDate(requestFrom.getDate() - 31);
+  const [plansResult, ordersResult, balancesResult, rateResult, requestsResult] = await Promise.allSettled([
     prisma.supplierPaymentPlan.findMany({
       where: { managerUserId: user.id },
+      include: { events: { orderBy: { createdAt: "desc" }, take: 1 } },
       orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
     }),
     fetchSupplierOrderFinance(),
     getProcurementBalances(todayKey),
     getLatestProcurementUsdtRate(todayKey),
+    fetchExpenseRequestSnapshot({ from: requestFrom, to: requestTo }),
   ]);
   const plans = plansResult.status === "fulfilled" ? plansResult.value : [];
   const source =
@@ -53,10 +60,29 @@ export default async function ProcurementPage() {
     balancesResult.status === "fulfilled"
       ? balancesResult.value.accountable
       : { balance: null, checkedAt: "", sourceLabel: "1С · Касса Подотчетника", error: "ACCOUNTABLE_BALANCE_UNAVAILABLE" };
+  const requests = requestsResult.status === "fulfilled" ? requestsResult.value.rows : [];
+  const serializedPlans = plans.map((plan) => {
+    const latestSnapshot = plan.events[0]?.snapshot;
+    const snapshot = latestSnapshot && typeof latestSnapshot === "object" && !Array.isArray(latestSnapshot)
+      ? latestSnapshot as Record<string, unknown>
+      : {};
+    return {
+      ...JSON.parse(JSON.stringify(plan)),
+      correctionReason: typeof snapshot.correctionReason === "string" ? snapshot.correctionReason : "",
+      evidence: matchCashEvidence({
+        planCode: plan.planCode,
+        supplierPartner: plan.supplierPartner,
+        supplierCounterparty: plan.supplierCounterparty,
+        plannedAmount: Number(plan.plannedAmount),
+        managerName: user.oneCManagerName || user.name,
+        plannedDate: plan.plannedDate.toISOString(),
+      }, requests),
+    };
+  });
   return (
     <ProcurementPaymentCalendarClient
       initialOrders={orders}
-      initialPlans={JSON.parse(JSON.stringify(plans))}
+      initialPlans={serializedPlans}
       checkedAt={source?.checkedAt || ""}
       sourceError={sourceError}
       managerMappingError={managerMappingError}

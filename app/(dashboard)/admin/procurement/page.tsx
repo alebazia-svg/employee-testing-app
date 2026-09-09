@@ -3,7 +3,7 @@ import { AdminBreadcrumbs } from "@/components/AdminBreadcrumbs";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { prisma } from "@/lib/prisma";
 import { fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
-import { matchCashEvidence } from "@/lib/procurement-payment-control";
+import { calculateOrderPlanning, matchCashEvidence } from "@/lib/procurement-payment-control";
 import {
   fetchSupplierOrderFinance,
   normalizeManagerName,
@@ -77,18 +77,18 @@ export default async function AdminProcurementPage() {
       normalizeManagerName(manager.oneCManagerName || manager.name),
     ),
   );
-  const plannedOrderRefs = new Set(
-    plans
-      .filter((plan) => plan.status !== "CANCELLED")
-      .flatMap((plan) => plan.orderRefs as string[]),
-  );
-  const unplannedOrderCount = ordersSource
-    ? ordersRequiringPayment(ordersSource.rows).filter(
-        (order) =>
-          managerNames.has(normalizeManagerName(order.manager)) &&
-          !plannedOrderRefs.has(order.ref),
-      ).length
-    : null;
+  const scopedOrders = ordersSource
+    ? ordersRequiringPayment(ordersSource.rows).filter((order) => managerNames.has(normalizeManagerName(order.manager)))
+    : [];
+  const planEvidenceById = new Map(serialized.map((plan) => [plan.id, plan.evidence]));
+  const planningRows = calculateOrderPlanning(scopedOrders, plans.map((plan) => ({
+    orderRefs: plan.orderRefs as string[],
+    plannedAmount: Number(plan.plannedAmount),
+    status: plan.status,
+    issuedAmount: planEvidenceById.get(plan.id)?.state === "MISMATCH" ? 0 : Number(planEvidenceById.get(plan.id)?.issuedAmount || 0),
+  })));
+  const unplannedOrderCount = ordersSource ? planningRows.filter((order) => order.unplannedAmount > 0.009).length : null;
+  const supplierDebtTotal = ordersSource ? scopedOrders.reduce((sum, order) => sum + Number(order.supplierDebt || 0), 0) : null;
   const unplannedCashCount = requestSource
     ? requests
         .filter((request) =>
@@ -137,6 +137,7 @@ export default async function AdminProcurementPage() {
           sourceWarnings={warnings}
           unplannedOrderCount={unplannedOrderCount}
           unplannedCashCount={unplannedCashCount}
+          supplierDebtTotal={supplierDebtTotal}
           usdtBalance={usdtBalance}
           accountableBalance={accountableBalance}
           usdtRateReference={usdtRateReference}

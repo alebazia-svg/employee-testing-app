@@ -9,6 +9,9 @@ type Order = {
   supplierPartner: string;
   supplierCounterparty: string;
   orderPaymentGap: number;
+  supplierDebt: number;
+  plannedActiveAmount: number;
+  unplannedAmount: number;
 };
 
 type CreatedPlan = {
@@ -42,12 +45,14 @@ const commentHint = (method: string) =>
 
 export function ProcurementPaymentBatchForm({
   orders,
+  supplierDebtTotals,
   initialSelectedRefs,
   onCreated,
   onCancel,
   usdtRateReference,
 }: {
   orders: Order[];
+  supplierDebtTotals: Record<string, number>;
   initialSelectedRefs: string[];
   onCreated: (plans: CreatedPlan[]) => void;
   onCancel: () => void;
@@ -60,7 +65,7 @@ export function ProcurementPaymentBatchForm({
         order.ref,
         {
           selected: initialSelectedRefs.includes(order.ref),
-          plannedAmount: String(Math.max(0, order.orderPaymentGap) || ""),
+          plannedAmount: String(Math.max(0, order.unplannedAmount) || ""),
           paymentMethod: "CASH",
           foreignAmount: "",
           condition: "",
@@ -236,9 +241,9 @@ export function ProcurementPaymentBatchForm({
                   aria-pressed={rows[order.ref]?.selected}
                   className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 hover:bg-slate-50 ${rows[order.ref]?.selected ? "bg-green-50/60" : ""}`}
                 >
-                  <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">Заказ № {order.number || "без номера"}</span></span>
+                  <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">Заказ № {order.number || "без номера"}</span><span className="block text-[11px] font-semibold text-slate-400">Поставщику по данным 1С: {rub.format(supplierDebtTotals[order.supplierPartner] || 0)}</span></span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-sm font-extrabold text-slate-700">{rub.format(order.orderPaymentGap)}</span>
+                    <span className="text-sm font-extrabold text-slate-700">{rub.format(order.unplannedAmount)}</span>
                     <span className={`flex h-8 w-8 items-center justify-center rounded-full ${rows[order.ref]?.selected ? "bg-green-600 text-white" : "bg-slate-100 text-slate-700"}`} aria-hidden="true">
                       {rows[order.ref]?.selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                     </span>
@@ -261,7 +266,10 @@ export function ProcurementPaymentBatchForm({
                 <div className="min-w-0 pr-9 lg:pr-0">
                   <span className="block font-black text-slate-950">{order.supplierPartner}</span>
                   <span className="block text-sm font-semibold text-slate-600">Заказ № {order.number || "без номера"}</span>
-                  <span className="block text-xs font-semibold text-slate-500">Остаток в 1С: {rub.format(order.orderPaymentGap)}</span>
+                  <span className="block text-xs font-semibold text-slate-500">Поставщику по данным 1С: {rub.format(supplierDebtTotals[order.supplierPartner] || 0)}</span>
+                  <span className="block text-xs font-semibold text-slate-500">Остаток по заказу в 1С: {rub.format(order.orderPaymentGap)}</span>
+                  {order.plannedActiveAmount > 0 ? <span className="block text-xs font-semibold text-amber-700">Уже в заявках: {rub.format(order.plannedActiveAmount)}</span> : null}
+                  <span className="block text-xs font-black text-green-700">Можно запланировать: {rub.format(order.unplannedAmount)}</span>
                 </div>
                 <label className="text-xs font-bold text-slate-600">
                       Способ
@@ -295,6 +303,9 @@ export function ProcurementPaymentBatchForm({
                         className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold"
                       />
                   </label>
+                  {Number(row.plannedAmount || 0) > order.unplannedAmount + 0.009 ? (
+                    <p className="text-[11px] font-bold text-red-700">Сумма больше незапланированного остатка на {rub.format(Number(row.plannedAmount) - order.unplannedAmount)}. Проверьте сумму перед отправкой.</p>
+                  ) : null}
                   {row.paymentMethod === "USDT" ? (
                     <div>
                       <label className="block text-xs font-bold text-violet-800">
