@@ -257,6 +257,10 @@ the pay result harder to understand.
   in the isolated local demo database; production was not changed. The local
   September 1-4 purchase base is now RUB 814,225.83 (RUB 14,248.95 at 1.75%)
   and the screen reports `Список проверен`.
+- On 2026-09-09, after the owner reconfirmed the supplier scope, `Kuzoom Lucy`
+  and `Техноуспех` were saved in production as active `admin-decision` rules
+  with administrator audit. Future verified 1C snapshots include them in
+  Astemir's purchase base; no other supplier decisions were changed.
 - Important attribution limit: `/supplier-settlements` is an aggregated debt
   movement register by supplier. It does not prove that Astemir created each
   underlying purchase document. Supplier approval reproduces the accepted
