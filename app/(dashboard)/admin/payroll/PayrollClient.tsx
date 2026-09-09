@@ -4227,7 +4227,7 @@ export default function AdminPayrollPage() {
           const preview = refreshedPayload as PayrollAttendancePreviewResponse;
           setAttendancePreview(preview);
           setAttendancePreviewError(preview.snapshot.refreshError
-            ? `Показаны сохранённые данные. Обновление Google Sheets не выполнено: ${preview.snapshot.refreshError}`
+            ? `Показаны сохранённые данные. ${preview.snapshot.refreshError}`
             : '');
         }
       } catch (caught) {
@@ -5180,7 +5180,7 @@ export default function AdminPayrollPage() {
       const preview = payload as PayrollAttendancePreviewResponse;
       setAttendancePreview(preview);
       setAttendancePreviewError(preview.snapshot.refreshError
-        ? `Показаны сохранённые данные. Обновление Google Sheets не выполнено: ${preview.snapshot.refreshError}`
+        ? `Показаны сохранённые данные. ${preview.snapshot.refreshError}`
         : '');
     } catch (caught) {
       setAttendancePreviewError(caught instanceof Error
@@ -7563,7 +7563,7 @@ export default function AdminPayrollPage() {
                         className='inline-flex w-fit items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60'
                       >
                         <Eye className='h-4 w-4' />
-                        {isAttendancePreviewLoading ? 'Открываю сохранённые данные...' : isAttendancePreviewRefreshing ? 'Обновляю Google Sheets...' : 'Обновить дни из Google Sheets'}
+                        {isAttendancePreviewLoading ? 'Открываю сохранённые данные...' : isAttendancePreviewRefreshing ? 'Обновляю источник...' : 'Обновить рабочие дни'}
                       </button>
                     </div>
                     <div className='max-w-full overflow-x-auto rounded-lg border border-border'>

@@ -287,7 +287,7 @@ export async function POST(request: Request) {
     }));
   } catch (caught) {
     console.error('Payroll attendance snapshot refresh failed.', caught);
-    const refreshError = 'Не удалось обновить Google Sheets. Сохранённые дни и опоздания оставлены без изменений.';
+    const refreshError = 'Не удалось обновить источник рабочих дней. Сохранённые дни и опоздания оставлены без изменений.';
     if (saved && savedPayload) {
       return Response.json(attachPayrollAttendanceSnapshotMeta(savedPayload, {
         servedFrom: 'stored',
