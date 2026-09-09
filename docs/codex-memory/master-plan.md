@@ -181,8 +181,8 @@ After the two-person pilot passes:
 
 ### Supplier payment calendar limited rollout
 
-- Release the dedicated procurement workspace first for Astemir and the ADMIN
-  payment-control screen.
+- The dedicated procurement workspace for Astemir and the ADMIN payment-control
+  screen was released to production on 2026-09-09.
 - Keep 1C access read-only and require the exact manager mapping `Тохов Астемир`.
 - Observe whether known supplier payments are entered early enough to let the
   owner prepare cash; do not expand to Diana or automate 1C writes during this

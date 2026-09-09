@@ -298,7 +298,7 @@ financial writes to 1C must not resume in the background after an error.
 This human-in-the-loop rule prevents the portal from duplicating RKO/PKO that an
 administrator may already have created manually while the employee was offline.
 
-## 2026-09-09 - Supplier Payment Calendar Pilot
+## 2026-09-09 - Supplier Payment Calendar Production Release
 
 The first procurement portal stage is a narrow payment-planning workflow for
 Astemir and administrators.
@@ -319,3 +319,25 @@ Astemir and administrators.
   not write to 1C and does not grant Diana safe access.
 - The production release adds a dedicated employee portal area and an exact 1C
   manager-name setting to the existing employee administration screen.
+- The employee and ADMIN screens were released in code commit `90eaee2`; hotfix
+  `4194f6b` normalizes the `DD.MM.YYYY HH:mm:ss` date returned by 1C conversion
+  documents. Production remains pinned to the hotfix commit.
+- A USDT plan may be entered with a known RUB amount, a known USDT amount, or
+  both. The portal calculates only an estimate from the latest posted 1C
+  conversion and never hard-codes a rate. The authenticated production check on
+  release day read 88.8 RUB/USDT from the 2026-08-31 conversion; this value is
+  evidence from that check, not a permanent business setting.
+- The existing read-only `currency-cash-costing-plan` 1C endpoint supplies the
+  latest conversion evidence. No new 1C endpoint, 1C write or database migration
+  was introduced by this release.
+- Procurement notifications reuse the existing portal web-push service worker.
+  Astemir can receive approval/cancellation updates and administrators can
+  receive new/updated-plan alerts after each user enables browser or PWA
+  notifications once on their device.
+- The live Tural request that existed before final UI approval remains correctly
+  stored as `CASH` with the comment `перевод в usdt`. Free text is deliberately
+  not used to infer or silently change a payment method; the manager must edit
+  that plan and explicitly select USDT before USDT estimates apply.
+- Release verification passed TypeScript, production build, 21 focused tests,
+  `/api/health`, `/procurement`, `/admin/procurement`, and an authenticated ADMIN
+  screen check against real read-only 1C data.
