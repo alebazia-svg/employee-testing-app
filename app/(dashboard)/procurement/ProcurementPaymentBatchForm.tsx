@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Check, Plus, Search, X } from "lucide-react";
+import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 
 type Order = {
   ref: string;
@@ -45,24 +46,27 @@ const commentHint = (method: string) =>
 
 export function ProcurementPaymentBatchForm({
   orders,
-  supplierDebtTotals,
+  supplierBalances,
+  supplierOrderGapTotals,
   initialSelectedRefs,
   onCreated,
   onCancel,
   usdtRateReference,
 }: {
   orders: Order[];
-  supplierDebtTotals: Record<string, number>;
+  supplierBalances: Record<string, SupplierBalance>;
+  supplierOrderGapTotals: Record<string, number>;
   initialSelectedRefs: string[];
   onCreated: (plans: CreatedPlan[]) => void;
   onCancel: () => void;
   usdtRateReference?: { rate: number | null; checkedAt: string; sourceLabel: string; conversionAt?: string };
 }) {
   const supplierBalanceText = (supplier: string) => {
-    const balance = Number(supplierDebtTotals[supplier] || 0);
-    return balance < -0.009
-      ? `Аванс поставщику: ${rub.format(Math.abs(balance))}`
-      : `Долг поставщику в 1С: ${rub.format(balance)}`;
+    const balance = supplierBalances[supplier];
+    if (!balance) return "Взаиморасчёты: нет данных из 1С";
+    if (balance.debt > 0.009) return `Задолженность перед поставщиком: ${rub.format(balance.debt)}`;
+    if (balance.advance > 0.009) return `Аванс поставщику: ${rub.format(balance.advance)}`;
+    return "Задолженности перед поставщиком нет";
   };
   const [plannedDate, setPlannedDate] = useState("");
   const [rows, setRows] = useState<Record<string, RowDraft>>(() =>
@@ -273,6 +277,7 @@ export function ProcurementPaymentBatchForm({
                   <span className="block font-black text-slate-950">{order.supplierPartner}</span>
                   <span className="block text-sm font-semibold text-slate-600">Заказ № {order.number || "без номера"}</span>
                   <span className="block text-xs font-semibold text-slate-500">{supplierBalanceText(order.supplierPartner)}</span>
+                  <span className="block text-xs font-semibold text-slate-500">По всем заказам поставщика осталось оплатить: {rub.format(supplierOrderGapTotals[order.supplierPartner] || 0)}</span>
                   <span className="block text-xs font-semibold text-slate-500">Остаток по заказу в 1С: {rub.format(order.orderPaymentGap)}</span>
                   {order.plannedActiveAmount > 0 ? <span className="block text-xs font-semibold text-amber-700">Уже в заявках: {rub.format(order.plannedActiveAmount)}</span> : null}
                   <span className="block text-xs font-black text-green-700">Можно запланировать: {rub.format(order.unplannedAmount)}</span>

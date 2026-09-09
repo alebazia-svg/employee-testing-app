@@ -3,7 +3,7 @@ import { AdminBreadcrumbs } from "@/components/AdminBreadcrumbs";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { prisma } from "@/lib/prisma";
 import { fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
-import { calculateOrderPlanning, matchCashEvidence, summarizeSupplierBalances } from "@/lib/procurement-payment-control";
+import { calculateOrderPlanning, matchCashEvidence } from "@/lib/procurement-payment-control";
 import {
   fetchSupplierOrderFinance,
   normalizeManagerName,
@@ -13,6 +13,7 @@ import AdminProcurementClient from "./AdminProcurementClient";
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
+import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/procurement-supplier-settlements";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ export default async function AdminProcurementPage() {
   to.setDate(to.getDate() + 1);
   const from = new Date(to);
   from.setDate(from.getDate() - 31);
-  const [plansResult, managersResult, ordersResult, requestsResult, balancesResult, rateResult] =
+  const [plansResult, managersResult, ordersResult, settlementsResult, requestsResult, balancesResult, rateResult] =
     await Promise.allSettled([
       prisma.supplierPaymentPlan.findMany({
         include: { manager: { select: { name: true, oneCManagerName: true } } },
@@ -33,6 +34,7 @@ export default async function AdminProcurementPage() {
         select: { name: true, oneCManagerName: true },
       }),
       fetchSupplierOrderFinance(),
+      fetchSupplierSettlements(),
       fetchExpenseRequestSnapshot({ from, to }),
       getProcurementBalances(todayKey),
       getLatestProcurementUsdtRate(todayKey),
@@ -80,6 +82,17 @@ export default async function AdminProcurementPage() {
   const scopedOrders = ordersSource
     ? ordersRequiringPayment(ordersSource.rows).filter((order) => managerNames.has(normalizeManagerName(order.manager)))
     : [];
+  const managerOrders = ordersSource
+    ? ordersSource.rows.filter((order) => managerNames.has(normalizeManagerName(order.manager)))
+    : [];
+  const settlementSummary = settlementsResult.status === "fulfilled"
+    ? summarizeSupplierSettlements(
+        settlementsResult.value.rows,
+        managerOrders.map((order) => order.supplierPartner || order.supplierCounterparty).filter(Boolean),
+      )
+    : null;
+  if (settlementsResult.status === "rejected") warnings.push("взаиморасчёты с поставщиками");
+  else if (!settlementsResult.value.complete || settlementSummary?.unsupportedCurrencyRows) warnings.push("неполные взаиморасчёты с поставщиками");
   const planEvidenceById = new Map(serialized.map((plan) => [plan.id, plan.evidence]));
   const planningRows = calculateOrderPlanning(scopedOrders, plans.map((plan) => ({
     orderRefs: plan.orderRefs as string[],
@@ -88,7 +101,8 @@ export default async function AdminProcurementPage() {
     issuedAmount: planEvidenceById.get(plan.id)?.state === "MISMATCH" ? 0 : Number(planEvidenceById.get(plan.id)?.issuedAmount || 0),
   })));
   const unplannedOrderCount = ordersSource ? planningRows.filter((order) => order.unplannedAmount > 0.009).length : null;
-  const supplierDebtTotal = ordersSource ? summarizeSupplierBalances(scopedOrders).debtTotal : null;
+  const orderPaymentGapTotal = ordersSource ? scopedOrders.reduce((sum, order) => sum + Number(order.orderPaymentGap || 0), 0) : null;
+  const supplierDebtTotal = settlementSummary?.debtTotal ?? null;
   const unplannedCashCount = requestSource
     ? requests
         .filter((request) =>
@@ -136,6 +150,8 @@ export default async function AdminProcurementPage() {
           sourceCheckedAt={ordersSource?.checkedAt || ""}
           sourceWarnings={warnings}
           unplannedOrderCount={unplannedOrderCount}
+          openOrderCount={ordersSource ? scopedOrders.length : null}
+          orderPaymentGapTotal={orderPaymentGapTotal}
           unplannedCashCount={unplannedCashCount}
           supplierDebtTotal={supplierDebtTotal}
           usdtBalance={usdtBalance}

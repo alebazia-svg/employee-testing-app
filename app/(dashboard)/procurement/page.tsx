@@ -10,6 +10,7 @@ import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { matchCashEvidence } from "@/lib/procurement-payment-control";
+import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/procurement-supplier-settlements";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +22,14 @@ export default async function ProcurementPage() {
   requestTo.setDate(requestTo.getDate() + 1);
   const requestFrom = new Date(requestTo);
   requestFrom.setDate(requestFrom.getDate() - 31);
-  const [plansResult, ordersResult, balancesResult, rateResult, requestsResult] = await Promise.allSettled([
+  const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult] = await Promise.allSettled([
     prisma.supplierPaymentPlan.findMany({
       where: { managerUserId: user.id },
       include: { events: { orderBy: { createdAt: "desc" }, take: 1 } },
       orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
     }),
     fetchSupplierOrderFinance(),
+    fetchSupplierSettlements(),
     getProcurementBalances(todayKey),
     getLatestProcurementUsdtRate(todayKey),
     fetchExpenseRequestSnapshot({ from: requestFrom, to: requestTo }),
@@ -38,6 +40,10 @@ export default async function ProcurementPage() {
   const managerName = user.oneCManagerName?.trim() || user.name;
   const managerOrders = source ? ordersForManager(source.rows, managerName) : [];
   const orders = ordersRequiringPayment(managerOrders);
+  const supplierNames = managerOrders.map((order) => order.supplierPartner || order.supplierCounterparty).filter(Boolean);
+  const settlementSummary = settlementsResult.status === "fulfilled"
+    ? summarizeSupplierSettlements(settlementsResult.value.rows, supplierNames)
+    : null;
   const managerMappingError = Boolean(
     source?.rows.length && managerOrders.length === 0,
   );
@@ -86,6 +92,9 @@ export default async function ProcurementPage() {
       checkedAt={source?.checkedAt || ""}
       sourceError={sourceError}
       managerMappingError={managerMappingError}
+      supplierBalances={settlementSummary?.bySupplier || {}}
+      supplierDebtTotal={settlementSummary?.debtTotal ?? null}
+      supplierDebtError={settlementsResult.status === "rejected" || settlementsResult.value.complete === false || Boolean(settlementSummary?.unsupportedCurrencyRows)}
       usdtBalance={usdtBalance}
       accountableBalance={accountableBalance}
       usdtRateReference={rateResult.status === "fulfilled" ? rateResult.value : undefined}

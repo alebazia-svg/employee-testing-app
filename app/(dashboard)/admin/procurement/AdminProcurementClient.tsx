@@ -82,6 +82,8 @@ export default function AdminProcurementClient({
   sourceCheckedAt,
   sourceWarnings,
   unplannedOrderCount,
+  openOrderCount,
+  orderPaymentGapTotal,
   unplannedCashCount,
   supplierDebtTotal,
   usdtBalance,
@@ -93,6 +95,8 @@ export default function AdminProcurementClient({
   sourceCheckedAt: string;
   sourceWarnings: string[];
   unplannedOrderCount: number | null;
+  openOrderCount: number | null;
+  orderPaymentGapTotal: number | null;
   unplannedCashCount: number | null;
   supplierDebtTotal: number | null;
   usdtBalance: UsdtBalance;
@@ -293,14 +297,14 @@ export default function AdminProcurementClient({
           {urgentSubmitted.length ? <p className="mt-1 text-xs font-black text-red-700">Из них срочно сегодня: {urgentSubmitted.length}</p> : null}
         </div>
         <div className="admin-material-card rounded-2xl bg-white p-5">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Не запланировано</p>
-          <p className="mt-1 text-2xl font-black text-slate-950">{unplannedOrderCount == null ? "—" : unplannedOrderCount}</p>
-          <p className="mt-1 text-sm font-medium text-slate-500">заказов с остатком к оплате</p>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Осталось оплатить по заказам</p>
+          <p className="mt-1 text-xl font-black text-slate-950">{orderPaymentGapTotal == null ? "—" : rub.format(orderPaymentGapTotal)}</p>
+          <p className="mt-1 text-sm font-medium text-slate-500">{openOrderCount == null ? "Нет данных" : `${openOrderCount} заказов · не включено в календарь: ${unplannedOrderCount ?? "—"}`}</p>
         </div>
         <div className="admin-material-card rounded-2xl bg-white p-5">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Задолженность в 1С</p>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Долг за полученный товар</p>
           <p className="mt-1 text-xl font-black text-slate-950">{supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}</p>
-          <p className="mt-1 text-sm font-medium text-slate-500">по поставщикам Астемира</p>
+          <p className="mt-1 text-sm font-medium text-slate-500">По взаиморасчётам с поставщиками Астемира в 1С</p>
         </div>
       </section>
 

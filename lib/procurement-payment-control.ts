@@ -65,18 +65,6 @@ export type OrderPlanningPlan = {
   issuedAmount?: number | null;
 };
 
-export function summarizeSupplierBalances<T extends { supplierPartner: string; supplierDebt: number }>(orders: T[]) {
-  const bySupplier = orders.reduce<Record<string, number>>((totals, order) => {
-    totals[order.supplierPartner] = Number(totals[order.supplierPartner] || 0) + Number(order.supplierDebt || 0);
-    return totals;
-  }, {});
-  return {
-    bySupplier,
-    debtTotal: Object.values(bySupplier).reduce((sum, value) => sum + Math.max(0, value), 0),
-    advanceTotal: Object.values(bySupplier).reduce((sum, value) => sum + Math.max(0, -value), 0),
-  };
-}
-
 export function calculateOrderPlanning<T extends OrderPlanningOrder>(
   orders: T[],
   plans: OrderPlanningPlan[],

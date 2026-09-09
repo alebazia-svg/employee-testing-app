@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildPaymentPlanCode, calculateCashPreparation, calculateOrderPlanning, matchCashEvidence, paymentPlanLeadTime, summarizeSupplierBalances, validatePaymentPlan } from '@/lib/procurement-payment-control';
+import { buildPaymentPlanCode, calculateCashPreparation, calculateOrderPlanning, matchCashEvidence, paymentPlanLeadTime, validatePaymentPlan } from '@/lib/procurement-payment-control';
 
 test('USDT plan can be submitted when only the ruble amount is known', () => {
   const result = validatePaymentPlan({ supplierPartner: 'China Mobile', orderRefs: ['order-1'], orderNumbers: ['1'], plannedDate: '2026-09-10', plannedAmount: 400000, condition: 'Перед отправкой', paymentMethod: 'USDT' });
@@ -65,17 +65,6 @@ test('legacy plan covering several orders is allocated without exceeding an orde
     [{ orderRefs: ['one', 'two'], plannedAmount: 250000, status: 'SUBMITTED' }],
   );
   assert.deepEqual(rows.map((row) => row.unplannedAmount), [0, 150000]);
-});
-
-test('supplier debt excludes supplier advances from the amount owed', () => {
-  const summary = summarizeSupplierBalances([
-    { supplierPartner: 'Luxo', supplierDebt: 300000 },
-    { supplierPartner: 'Luxo', supplierDebt: -50000 },
-    { supplierPartner: 'P17', supplierDebt: -338435 },
-  ]);
-  assert.deepEqual(summary.bySupplier, { Luxo: 250000, P17: -338435 });
-  assert.equal(summary.debtTotal, 250000);
-  assert.equal(summary.advanceTotal, 338435);
 });
 
 test('lead time distinguishes advance, next-day and same-day requests automatically', () => {

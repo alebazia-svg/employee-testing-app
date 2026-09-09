@@ -13,7 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
-import { calculateOrderPlanning, paymentPlanLeadTime, summarizeSupplierBalances } from "@/lib/procurement-payment-control";
+import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
+import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 
 type Order = {
   ref: string;
@@ -159,6 +160,9 @@ export default function ProcurementPaymentCalendarClient({
   checkedAt,
   sourceError,
   managerMappingError,
+  supplierBalances,
+  supplierDebtTotal,
+  supplierDebtError,
   usdtBalance,
   accountableBalance,
   usdtRateReference,
@@ -169,6 +173,9 @@ export default function ProcurementPaymentCalendarClient({
   checkedAt: string;
   sourceError: string;
   managerMappingError: boolean;
+  supplierBalances: Record<string, SupplierBalance>;
+  supplierDebtTotal: number | null;
+  supplierDebtError: boolean;
   usdtBalance: UsdtBalance;
   accountableBalance: UsdtBalance;
   usdtRateReference?: UsdtRateReference;
@@ -220,9 +227,11 @@ export default function ProcurementPaymentCalendarClient({
     })),
   );
   const missingOrders = planningOrders.filter((order) => order.unplannedAmount > 0.009);
-  const supplierBalances = summarizeSupplierBalances(initialOrders);
-  const supplierDebtTotals = supplierBalances.bySupplier;
-  const totalSupplierDebt = supplierBalances.debtTotal;
+  const orderPaymentGapTotal = initialOrders.reduce((sum, order) => sum + Number(order.orderPaymentGap || 0), 0);
+  const supplierOrderGapTotals = initialOrders.reduce<Record<string, number>>((totals, order) => {
+    totals[order.supplierPartner] = Number(totals[order.supplierPartner] || 0) + Number(order.orderPaymentGap || 0);
+    return totals;
+  }, {});
   const unpaidActivePlans = activePlans.map((plan) => ({
     ...plan,
     remainingRub: Math.max(0, Number(plan.plannedAmount) - (plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0))),
@@ -470,12 +479,15 @@ export default function ProcurementPaymentCalendarClient({
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric
-          label="Заказы с остатком к оплате"
-          value={mappingBlocked || sourceError ? "—" : missingOrders.length}
+          label="Осталось оплатить по заказам"
+          value={mappingBlocked || sourceError ? "—" : rub.format(orderPaymentGapTotal)}
+          hint={mappingBlocked || sourceError ? undefined : `${orderCountLabel(initialOrders.length)} в 1С`}
+          compact
         />
         <Metric
-          label="Общая задолженность в 1С"
-          value={mappingBlocked || sourceError ? "—" : rub.format(totalSupplierDebt)}
+          label="Долг за полученный товар"
+          value={mappingBlocked || supplierDebtError || supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}
+          hint="По взаиморасчётам в 1С"
           compact
         />
         <Metric
@@ -837,7 +849,8 @@ export default function ProcurementPaymentCalendarClient({
           <ProcurementPaymentBatchForm
             key={batchSeedRefs.join("|")}
             orders={missingOrders}
-            supplierDebtTotals={supplierDebtTotals}
+            supplierBalances={supplierBalances}
+            supplierOrderGapTotals={supplierOrderGapTotals}
             initialSelectedRefs={batchSeedRefs}
             usdtRateReference={usdtRateReference}
             onCancel={() => {
@@ -908,11 +921,12 @@ export default function ProcurementPaymentCalendarClient({
   );
 }
 
-function Metric({ label, value, compact = false }: { label: string; value: string | number; compact?: boolean }) {
+function Metric({ label, value, hint, compact = false }: { label: string; value: string | number; hint?: string; compact?: boolean }) {
   return (
     <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
       <p className="text-xs font-bold text-slate-500">{label}</p>
       <p className={`mt-2 font-black ${compact ? "text-xl sm:text-2xl" : "text-3xl"}`}>{value}</p>
+      {hint ? <p className="mt-1 text-xs font-semibold text-slate-500">{hint}</p> : null}
     </div>
   );
 }
