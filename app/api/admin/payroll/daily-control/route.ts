@@ -14,6 +14,15 @@ import {
   type PayrollOneCControlSlice,
 } from '@/lib/payroll-one-c-control-snapshots';
 import { buildPayrollOneCPreview } from '@/lib/payroll-one-c';
+import {
+  createPayrollOneCControlAggregate,
+  getPayrollOneCAggregateKind,
+  getPayrollOneCSourceFingerprint,
+  getPayrollOneCSupplierRulesFingerprint,
+  PAYROLL_ONE_C_AGGREGATE_VERSION,
+  readPayrollOneCControlAggregate,
+  type PayrollOneCAggregateSourceKind,
+} from '@/lib/payroll-one-c-control-aggregate';
 import { buildPayrollPurchaseSupplierPreview } from '@/lib/payroll-purchase-suppliers';
 import { prisma } from '@/lib/prisma';
 
@@ -153,6 +162,21 @@ type StoredSnapshot = {
   updatedAt: Date;
 };
 
+type ControlResponse = ReturnType<typeof buildControlResponse>;
+
+function isControlResponse(value: unknown): value is ControlResponse {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const response = value as Partial<ControlResponse>;
+  return response.ok === true
+    && response.mode === 'control'
+    && response.affectsPayroll === false
+    && typeof response.period?.periodKey === 'string'
+    && typeof response.period?.verifiedThrough === 'string'
+    && Array.isArray(response.sales?.rows)
+    && Array.isArray(response.purchases?.rows)
+    && Array.isArray(response.blockingIssues);
+}
+
 function buildControlResponse(
   period: NonNullable<ReturnType<typeof readPeriod>>,
   rows: StoredSnapshot[],
@@ -220,18 +244,124 @@ async function loadStored(period: NonNullable<ReturnType<typeof readPeriod>>) {
   });
 }
 
+function getSourceKind(period: NonNullable<ReturnType<typeof readPeriod>>): PayrollOneCAggregateSourceKind {
+  return period.currentPeriod ? 'DAILY' : 'FINAL';
+}
+
+function aggregateSnapshotKey(
+  period: NonNullable<ReturnType<typeof readPeriod>>,
+  sourceKind = getSourceKind(period),
+) {
+  return {
+    periodKey: period.periodKey,
+    kind: getPayrollOneCAggregateKind(sourceKind),
+    dateFrom: period.dateFrom,
+    dateTo: period.lastDate,
+  };
+}
+
+function asStoredResponse(response: ControlResponse): ControlResponse {
+  return {
+    ...response,
+    snapshot: {
+      ...response.snapshot,
+      servedFrom: 'stored',
+      refreshedDates: [],
+    },
+  };
+}
+
+async function loadAggregateResponse(
+  period: NonNullable<ReturnType<typeof readPeriod>>,
+  supplierRules: Awaited<ReturnType<typeof prisma.payrollPurchaseSupplierRule.findMany>>,
+) {
+  const sourceKind = getSourceKind(period);
+  const key = aggregateSnapshotKey(period, sourceKind);
+  const row = await prisma.payrollOneCControlSnapshot.findUnique({
+    where: { periodKey_kind_dateFrom_dateTo: key },
+    select: { payload: true },
+  });
+  const envelope = readPayrollOneCControlAggregate(
+    row?.payload,
+    {
+      periodKey: period.periodKey,
+      sourceKind,
+      supplierRulesFingerprint: getPayrollOneCSupplierRulesFingerprint(supplierRules),
+    },
+    (response): response is ControlResponse => isControlResponse(response)
+      && response.period.periodKey === period.periodKey
+      && response.period.verifiedThrough.startsWith(`${period.periodKey}-`)
+      && response.snapshot.kind === sourceKind,
+  );
+  return envelope ? asStoredResponse(envelope.response) : null;
+}
+
+function buildAggregateWrite(
+  period: NonNullable<ReturnType<typeof readPeriod>>,
+  rows: StoredSnapshot[],
+  supplierRules: Awaited<ReturnType<typeof prisma.payrollPurchaseSupplierRule.findMany>>,
+  response: ControlResponse,
+  existing: { contentHash: string; revision: number } | null,
+) {
+  const sourceKind = getSourceKind(period);
+  const key = aggregateSnapshotKey(period, sourceKind);
+  const sourceFingerprint = getPayrollOneCSourceFingerprint(rows);
+  const supplierRulesFingerprint = getPayrollOneCSupplierRulesFingerprint(supplierRules);
+  const contentHash = createHash('sha256')
+    .update(`${sourceFingerprint}:${supplierRulesFingerprint}`)
+    .digest('hex');
+  const revision = existing && existing.contentHash !== contentHash ? existing.revision + 1 : existing?.revision ?? 1;
+  const payload = createPayrollOneCControlAggregate({
+    periodKey: period.periodKey,
+    sourceKind,
+    sourceFingerprint,
+    supplierRulesFingerprint,
+    response,
+  }) as unknown as Prisma.InputJsonValue;
+  const sourceCheckedAt = new Date(response.source.checkedAt);
+  return prisma.payrollOneCControlSnapshot.upsert({
+    where: { periodKey_kind_dateFrom_dateTo: key },
+    create: {
+      ...key,
+      payloadVersion: PAYROLL_ONE_C_AGGREGATE_VERSION,
+      payload,
+      contentHash,
+      revision,
+      sourceCheckedAt,
+    },
+    update: {
+      payloadVersion: PAYROLL_ONE_C_AGGREGATE_VERSION,
+      payload,
+      contentHash,
+      revision,
+      sourceCheckedAt,
+    },
+  });
+}
+
 export async function GET(request: Request) {
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const period = readPeriod(request);
   if (!period) return Response.json({ error: 'Не выбран корректный период.' }, { status: 400 });
-  const [rows, supplierRules] = await Promise.all([
-    loadStored(period),
-    prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] }),
-  ]);
+  const supplierRules = await prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] });
+  const aggregate = await loadAggregateResponse(period, supplierRules);
+  if (aggregate) return Response.json(aggregate);
+  const rows = await loadStored(period);
   if (!rows.length) return Response.json({ ok: false, error: 'Серверный снимок ещё не создан.' }, { status: 404 });
   try {
-    return Response.json(buildControlResponse(period, rows, supplierRules, { servedFrom: 'stored' }));
+    const response = buildControlResponse(period, rows, supplierRules, { servedFrom: 'stored' });
+    const key = aggregateSnapshotKey(period);
+    const existing = await prisma.payrollOneCControlSnapshot.findUnique({
+      where: { periodKey_kind_dateFrom_dateTo: key },
+      select: { contentHash: true, revision: true },
+    });
+    try {
+      await buildAggregateWrite(period, rows, supplierRules, response, existing);
+    } catch (cacheError) {
+      console.error('Failed to warm payroll 1C aggregate snapshot', cacheError);
+    }
+    return Response.json(response);
   } catch (error) {
     return Response.json({ ok: false, error: error instanceof Error ? error.message : 'Снимок 1С не читается.' }, { status: 503 });
   }
@@ -243,11 +373,26 @@ export async function POST(request: Request) {
   const period = readPeriod(request);
   if (!period) return Response.json({ error: 'Не выбран корректный период.' }, { status: 400 });
 
+  const supplierRulesBefore = await prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] });
+  if (!period.currentPeriod && !period.force) {
+    const aggregate = await loadAggregateResponse(period, supplierRulesBefore);
+    if (aggregate) return Response.json(aggregate);
+  }
   const storedBefore = await loadStored(period);
   if (!period.currentPeriod && storedBefore.length && !period.force) {
-    const supplierRules = await prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] });
     try {
-      return Response.json(buildControlResponse(period, storedBefore, supplierRules, { servedFrom: 'stored' }));
+      const response = buildControlResponse(period, storedBefore, supplierRulesBefore, { servedFrom: 'stored' });
+      const key = aggregateSnapshotKey(period);
+      const existing = await prisma.payrollOneCControlSnapshot.findUnique({
+        where: { periodKey_kind_dateFrom_dateTo: key },
+        select: { contentHash: true, revision: true },
+      });
+      try {
+        await buildAggregateWrite(period, storedBefore, supplierRulesBefore, response, existing);
+      } catch (cacheError) {
+        console.error('Failed to warm payroll 1C aggregate snapshot', cacheError);
+      }
+      return Response.json(response);
     } catch {
       // A malformed or obsolete final snapshot must be rebuilt from 1C rather
       // than returned as a zero/partial control result.
@@ -279,13 +424,27 @@ export async function POST(request: Request) {
       ? [await readSourceSlice(period.dateFrom, verifiedThrough, close.data)]
       : await mapWithLimit(refreshDates, 3, (date) => readSourceSlice(date, date, close.data!));
     const existingByKey = new Map(storedBefore.map((row) => [`${row.kind}|${row.dateFrom}|${row.dateTo}`, row]));
-    await prisma.$transaction(slices.map((slice) => {
+    const refreshedAt = new Date();
+    const nextRowsByKey = new Map<string, StoredSnapshot>(
+      storedBefore.map((row) => [`${row.kind}|${row.dateFrom}|${row.dateTo}`, row]),
+    );
+    const snapshotWrites = slices.map((slice) => {
       const kind = final ? 'FINAL' : 'DAILY';
       const key = `${kind}|${slice.dateFrom}|${slice.dateTo}`;
       const existing = existingByKey.get(key);
       const contentHash = hashPayload(slice);
       const revision = existing && existing.contentHash !== contentHash ? existing.revision + 1 : existing?.revision ?? 1;
       const payload = slice as unknown as Prisma.InputJsonValue;
+      nextRowsByKey.set(key, {
+        periodKey: period.periodKey,
+        kind,
+        dateFrom: slice.dateFrom,
+        dateTo: slice.dateTo,
+        payload: slice as unknown as Prisma.JsonValue,
+        contentHash,
+        revision,
+        updatedAt: refreshedAt,
+      });
       return prisma.payrollOneCControlSnapshot.upsert({
         where: { periodKey_kind_dateFrom_dateTo: { periodKey: period.periodKey, kind, dateFrom: slice.dateFrom, dateTo: slice.dateTo } },
         create: {
@@ -298,14 +457,23 @@ export async function POST(request: Request) {
           sourceCheckedAt: new Date(slice.source.checkedAt),
         },
       });
-    }));
-    const [rows, supplierRules] = await Promise.all([
-      loadStored(period),
-      prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] }),
-    ]);
-    return Response.json(buildControlResponse(period, rows, supplierRules, {
+    });
+    const rows = Array.from(nextRowsByKey.values())
+      .filter((row) => row.kind === getSourceKind(period))
+      .sort((left, right) => left.dateFrom.localeCompare(right.dateFrom) || left.dateTo.localeCompare(right.dateTo));
+    const response = buildControlResponse(period, rows, supplierRulesBefore, {
       servedFrom: 'refreshed', refreshedDates: refreshDates, usingPreviousClose,
-    }));
+    });
+    const aggregateKey = aggregateSnapshotKey(period);
+    const existingAggregate = await prisma.payrollOneCControlSnapshot.findUnique({
+      where: { periodKey_kind_dateFrom_dateTo: aggregateKey },
+      select: { contentHash: true, revision: true },
+    });
+    await prisma.$transaction([
+      ...snapshotWrites,
+      buildAggregateWrite(period, rows, supplierRulesBefore, response, existingAggregate),
+    ]);
+    return Response.json(response);
   } catch (error) {
     return Response.json({
       ok: false,
