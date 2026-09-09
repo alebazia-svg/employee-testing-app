@@ -423,7 +423,7 @@ the pay result harder to understand.
   rewrite it; the administrator must deliberately recalculate and replace it
   to create a new final run with the fixed 5% rule.
 
-### Aggregated 1C control view — committed, not released, 2026-09-09
+### Aggregated 1C control view — released, 2026-09-09
 
 - Production browser QA showed that the current client-side background refresh
   was insufficient: after a cold page open, September could remain empty for
@@ -440,14 +440,25 @@ the pay result harder to understand.
   invalid when supplier decisions change. Missing or invalid aggregates are
   rebuilt from the source snapshots without hiding an otherwise valid response
   if only cache warming fails.
-- Code commit `614f7bd` is local and not deployed. In the isolated authenticated
+- Code commit `2944410` and documentation commit `3a7c0ac` were released after
+  rebasing on the newer procurement commit; production checkout and the four
+  basic routes were verified. In the isolated authenticated
   ADMIN screen, the first rebuild from eight September daily snapshots showed
   employees in about 1.1 seconds and created one 277 KB aggregate row; a full
   repeat page open showed them in about 0.36 seconds. When the background 1C
   refresh failed, the last saved employee list remained visible.
 - Verification: all 59 payroll regressions, 64 focused 1C/control tests, the
-  aggregate-cache tests, TypeScript and the production build passed. Production
-  still runs the previous implementation until a separate deploy approval.
+  aggregate-cache tests, TypeScript and the production build passed.
+- Production validation found one September `AGGREGATE_DAILY` row with 2,332
+  sales groups and 11 supplier rows. Its period, source kind, response shape and
+  supplier-rule fingerprint are valid; the 1.39 MB JSON row was read and parsed
+  inside the container in about 159 ms. The first production warm-up still took
+  about 106 seconds, and later full screen opens remained slow even though the
+  aggregate itself was valid. The remaining wait is outside this aggregate:
+  the current preliminary payroll calculation also waits for the separate live
+  Google Sheets attendance/schedule preview. Do not misdiagnose that delay as a
+  repeated 1C read. A last-good attendance snapshot with explicit freshness is
+  a separate owner decision because days and lateness affect payroll.
 
 ## Before Changing Payroll
 
