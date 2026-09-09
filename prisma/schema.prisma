@@ -14,6 +14,8 @@ model User {
   passwordHash                     String
   role                             String
   department                       String                            @default("retail")
+  portalArea                       String                            @default("WORKDAY")
+  oneCManagerName                  String?
   isActive                         Boolean                           @default(true)
   payrollName                      String?
   payrollSalaryType                String?
@@ -59,6 +61,59 @@ model User {
   employeeVacationChanges          EmployeeVacationChange[]          @relation("EmployeeVacationChangeEmployee")
   authoredEmployeeVacationChanges  EmployeeVacationChange[]          @relation("EmployeeVacationChangeActor")
   workdayDeviations                WorkdayDeviation[]
+  procurementPaymentPlans          SupplierPaymentPlan[]             @relation("SupplierPaymentPlanManager")
+  approvedProcurementPaymentPlans  SupplierPaymentPlan[]             @relation("SupplierPaymentPlanApprovedBy")
+  procurementPaymentEvents         SupplierPaymentPlanEvent[]
+}
+
+model SupplierPaymentPlan {
+  id                       String                     @id @default(cuid())
+  planCode                 String                     @unique
+  managerUserId            Int
+  supplierPartner          String
+  supplierCounterparty     String                     @default("")
+  orderRefs                Json
+  orderNumbers             Json
+  plannedDate              DateTime                   @db.Date
+  plannedAmount            Decimal                    @db.Decimal(18, 2)
+  condition                String
+  paymentMethod            String
+  currency                 String                     @default("RUB")
+  foreignAmount            Decimal?                   @db.Decimal(18, 4)
+  exchangeRate             Decimal?                   @db.Decimal(18, 6)
+  commissionAmount         Decimal?                   @db.Decimal(18, 2)
+  exchangerName            String                     @default("")
+  supplierConfirmation     String                     @default("")
+  status                   String                     @default("SUBMITTED")
+  approvedAt               DateTime?
+  approvedById             Int?
+  oneCExpenseRequestRef    String?
+  oneCCashEvidence         Json?
+  oneCIssuedAmount         Decimal?                   @db.Decimal(18, 2)
+  oneCCashMatchedAt        DateTime?
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  manager                  User                       @relation("SupplierPaymentPlanManager", fields: [managerUserId], references: [id], onDelete: Restrict)
+  approvedBy               User?                      @relation("SupplierPaymentPlanApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  events                   SupplierPaymentPlanEvent[]
+
+  @@index([managerUserId, plannedDate])
+  @@index([status, plannedDate])
+  @@index([supplierPartner, plannedDate])
+}
+
+model SupplierPaymentPlanEvent {
+  id          String              @id @default(cuid())
+  planId      String
+  actorUserId Int
+  action      String
+  snapshot    Json
+  createdAt   DateTime            @default(now())
+  plan        SupplierPaymentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  actor       User                @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([planId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model ExpenseRequestSyncRun {

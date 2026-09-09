@@ -33,5 +33,5 @@ export async function POST(req: Request) {
   });
   cookieStore.delete('userId');
 
-  return Response.json({ role: user.role });
+  return Response.json({ role: user.role, portalArea: user.portalArea });
 }

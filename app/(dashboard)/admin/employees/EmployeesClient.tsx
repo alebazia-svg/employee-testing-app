@@ -21,6 +21,8 @@ type User = {
   payrollFixedSalary: number | null;
   payrollRuleFrom: string | null;
   payrollRuleThrough: string | null;
+  portalArea: string;
+  oneCManagerName: string | null;
 };
 
 type Draft = Omit<User, 'payrollFixedSalary'> & { password: string; payrollFixedSalary: string };
@@ -53,6 +55,8 @@ const emptyDraft: Draft = {
   payrollFixedSalary: '',
   payrollRuleFrom: '',
   payrollRuleThrough: '',
+  portalArea: 'WORKDAY',
+  oneCManagerName: '',
 };
 
 export default function EmployeesClient({ initialUsers }: { initialUsers: User[] }) {
@@ -155,6 +159,11 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
               <option value='wholesale'>Опт</option>
               <option value='operations'>Операции</option>
             </select>
+            {draft.role === 'EMPLOYEE' ? <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.portalArea} onChange={(event) => setDraft((value) => ({ ...value, portalArea: event.target.value }))}>
+              <option value='WORKDAY'>Рабочий день розницы</option>
+              <option value='PROCUREMENT'>Закупки и оплаты</option>
+            </select> : null}
+            {draft.role === 'EMPLOYEE' && draft.portalArea === 'PROCUREMENT' ? <Input placeholder='Имя менеджера в 1С, точно' value={draft.oneCManagerName ?? ''} onChange={(event) => setDraft((value) => ({ ...value, oneCManagerName: event.target.value }))} /> : null}
             <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.payrollSalaryType ?? ''} onChange={(event) => setDraft((value) => ({ ...value, payrollSalaryType: event.target.value, payrollReportGroup: payrollRuleLabels[event.target.value] ?? '', payrollFixedSalary: event.target.value === 'fixed_salary' ? value.payrollFixedSalary : '' }))}>
               <option value=''>Зарплата: требует настройки</option>
               <option value='purchase_manager'>Закупки</option>
@@ -196,6 +205,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
             <div className='mt-4 grid grid-cols-2 gap-3 text-sm'>
               <div><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Отдел</p><p className='mt-1 font-bold text-slate-700'>{departmentLabels[user.department] ?? user.department}</p></div>
               <div><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Роль</p><p className='mt-1 font-bold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</p></div>
+              <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Рабочий экран</p><p className='mt-1 font-bold text-slate-700'>{user.role === 'ADMIN' ? 'Админка' : user.portalArea === 'PROCUREMENT' ? 'Закупки и оплаты' : 'Рабочий день'}</p></div>
               <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Для зарплаты</p><p className='mt-1 font-bold text-slate-700'>{user.payrollName?.trim() || user.name}</p><p className={`mt-0.5 text-xs font-semibold ${user.payrollSalaryType ? 'text-slate-500' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></div>
             </div>
             <Button className='mt-4 h-10 w-full gap-2 bg-white text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}><Pencil className='h-4 w-4' />Настроить</Button>
@@ -211,6 +221,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
               <th className='px-5 py-4'>Сотрудник</th>
               <th className='px-5 py-4'>Отдел</th>
               <th className='px-5 py-4'>Роль</th>
+              <th className='px-5 py-4'>Рабочий экран</th>
               <th className='px-5 py-4'>Для зарплаты</th>
               <th className='px-5 py-4'>Доступ</th>
               <th className='px-5 py-4'>Действия</th>
@@ -223,6 +234,7 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
                 <td className='px-5 py-4'><p className='font-bold text-slate-950'>{user.name}</p><p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p></td>
                 <td className='px-5 py-4 text-slate-700'>{departmentLabels[user.department] ?? user.department}</td>
                 <td className='px-5 py-4 text-sm font-semibold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</td>
+                <td className='px-5 py-4 text-sm font-semibold text-slate-700'>{user.role === 'ADMIN' ? 'Админка' : user.portalArea === 'PROCUREMENT' ? 'Закупки и оплаты' : 'Рабочий день'}</td>
                 <td className='px-5 py-4'><p className='text-sm font-semibold text-slate-700'>{user.payrollName?.trim() || user.name}</p><p className={`mt-0.5 text-xs font-medium ${user.payrollSalaryType ? 'text-slate-400' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></td>
                 <td className='px-5 py-4'><Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}>{user.isActive ? 'Активен' : 'Отключён'}</Badge></td>
                 <td className='px-5 py-4'>

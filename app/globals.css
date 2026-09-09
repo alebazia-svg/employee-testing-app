@@ -261,6 +261,26 @@ select {
 .admin-mobile-nav-item.is-active svg { color: #5eb70b; }
 .admin-mobile-more-item.is-active { box-shadow: 0 0 0 2px rgba(94, 183, 11, 0.34), 4px 6px 12px rgba(76, 87, 82, 0.13); }
 
+.admin-workspace .procurement-account-logout {
+  min-height: 0 !important;
+  justify-content: flex-start !important;
+  padding: 0 !important;
+  color: #647078 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.admin-workspace .procurement-account-logout:hover {
+  color: #273137 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.procurement-account-logout svg { width: 13px; height: 13px; }
+
 @media (max-width: 767px) {
   .admin-sidebar { background: linear-gradient(155deg, #364147, #202a2f); }
   .admin-workspace footer { display: none; }

@@ -17,6 +17,7 @@ export default async function EmployeesPage() {
     select: {
       id: true, name: true, login: true, role: true, department: true, isActive: true, payrollName: true,
       payrollSalaryType: true, payrollReportGroup: true, payrollFixedSalary: true, payrollRuleFrom: true, payrollRuleThrough: true,
+      portalArea: true, oneCManagerName: true,
     },
   });
 

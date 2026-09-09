@@ -19,3 +19,8 @@ export async function getCurrentAdmin() {
   const user = await getCurrentUser();
   return user?.role === 'ADMIN' ? user : null;
 }
+
+export function portalHomePath(user: { role: string; portalArea?: string | null }) {
+  if (user.role === 'ADMIN') return '/admin';
+  return user.portalArea === 'PROCUREMENT' ? '/procurement' : '/employee';
+}

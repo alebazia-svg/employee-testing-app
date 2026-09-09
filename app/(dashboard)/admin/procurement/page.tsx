@@ -32,7 +32,7 @@ export default async function AdminProcurementPage() {
         select: { name: true, oneCManagerName: true },
       }),
       fetchSupplierOrderFinance(),
-      fetchExpenseRequestSnapshot({ from, to, timeoutMs: 4_000 }),
+      fetchExpenseRequestSnapshot({ from, to }),
       getProcurementBalances(todayKey),
     ]);
   const plans = plansResult.status === "fulfilled" ? plansResult.value : [];

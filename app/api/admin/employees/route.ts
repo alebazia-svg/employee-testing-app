@@ -7,6 +7,7 @@ import { parsePayrollEmployeeRuleInput, PayrollEmployeeRuleValidationError } fro
 const employeeSelect = {
   id: true, name: true, login: true, role: true, department: true, isActive: true, payrollName: true,
   payrollSalaryType: true, payrollReportGroup: true, payrollFixedSalary: true, payrollRuleFrom: true, payrollRuleThrough: true,
+  portalArea: true, oneCManagerName: true,
 } as const;
 
 export async function GET() {
@@ -24,8 +25,8 @@ export async function POST(req: Request) {
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const payload = await req.json() as Record<string, unknown>;
-  const { name, login, password, role, department, isActive, payrollName } = payload as {
-    name?: string; login?: string; password?: string; role?: string; department?: string; isActive?: boolean; payrollName?: string;
+  const { name, login, password, role, department, isActive, payrollName, portalArea, oneCManagerName } = payload as {
+    name?: string; login?: string; password?: string; role?: string; department?: string; isActive?: boolean; payrollName?: string; portalArea?: string; oneCManagerName?: string;
   };
   if (!name?.trim() || !login?.trim() || !password?.trim()) {
     return Response.json({ error: 'Заполните имя, логин и пароль' }, { status: 400 });
@@ -42,6 +43,8 @@ export async function POST(req: Request) {
         department: typeof department === 'string' ? department : 'retail',
         isActive: typeof isActive === 'boolean' ? isActive : true,
         payrollName: typeof payrollName === 'string' && payrollName.trim() ? payrollName.trim() : null,
+        portalArea: role === 'ADMIN' ? 'WORKDAY' : portalArea === 'PROCUREMENT' ? 'PROCUREMENT' : 'WORKDAY',
+        oneCManagerName: portalArea === 'PROCUREMENT' && typeof oneCManagerName === 'string' && oneCManagerName.trim() ? oneCManagerName.trim() : null,
         ...payrollRule,
       },
       select: employeeSelect,

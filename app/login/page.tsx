@@ -38,7 +38,7 @@ export default function Login() {
         return;
       }
 
-      router.replace(data.role === 'ADMIN' ? '/admin' : '/employee');
+      router.replace(data.role === 'ADMIN' ? '/admin' : data.portalArea === 'PROCUREMENT' ? '/procurement' : '/employee');
       router.refresh();
     } catch {
       setError('Не удалось связаться с порталом. Проверьте интернет и попробуйте ещё раз.');

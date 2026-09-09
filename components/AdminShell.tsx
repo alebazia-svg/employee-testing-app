@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Users, Wrench, X } from 'lucide-react';
+import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Truck, Users, Wrench, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
 import { AdminInboxBell } from '@/components/AdminInboxBell';
@@ -17,6 +17,7 @@ const dailyNavigation: NavigationItem[] = [
   { href: '/admin', label: 'Главная', icon: Home },
   { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness },
   { href: '/admin/expense-requests', label: 'Заявки', icon: FileClock },
+  { href: '/admin/procurement', label: 'Оплаты поставщикам', icon: Truck },
   { href: '/admin/attendance', label: 'График', icon: CalendarDays },
   { href: '/admin/employees', label: 'Сотрудники', icon: Users },
 ];
