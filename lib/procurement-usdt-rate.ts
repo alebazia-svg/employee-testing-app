@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
+import { normalizeOneCDateTime } from '@/lib/one-c-date';
 
 type RawEvent = Record<string, unknown>;
 
@@ -35,7 +36,7 @@ export function latestUsdtRateFromPayload(payload: unknown, checkedAt = new Date
         rate: documentRate || (currencyAmount && rubValue ? rubValue / currencyAmount : null),
         currencyAmount,
         rubValue,
-        conversionAt: text(event.date),
+        conversionAt: normalizeOneCDateTime(text(event.date)) || text(event.date),
       };
     })
     .filter((item) => item.rate)

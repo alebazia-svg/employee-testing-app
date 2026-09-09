@@ -175,8 +175,9 @@ export default function ProcurementPaymentCalendarClient({
     ? enteredUsdt * referenceUsdtRate
     : 0;
   const rateDate = usdtRateReference?.conversionAt || usdtRateReference?.checkedAt || "";
-  const rateDateLabel = rateDate
-    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(rateDate))
+  const parsedRateDate = rateDate ? new Date(rateDate) : null;
+  const rateDateLabel = parsedRateDate && !Number.isNaN(parsedRateDate.getTime())
+    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" }).format(parsedRateDate)
     : "";
   const suppliers = useMemo(
     () =>
