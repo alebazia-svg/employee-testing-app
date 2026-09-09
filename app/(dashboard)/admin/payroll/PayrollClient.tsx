@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Database, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
@@ -1271,6 +1271,17 @@ function getDefaultPayrollPeriod(currentDate = new Date()) {
     month: String(payrollDate.getMonth()),
     year: String(payrollDate.getFullYear()),
   };
+}
+
+function getCurrentMoscowPayrollPeriodKey(currentDate = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(currentDate);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  return year && month ? `${year}-${month}` : '';
 }
 
 const purchaseManagerName = 'Тохов Астемир';
@@ -3846,6 +3857,55 @@ function findAttendanceMatches<T extends { employee: string }>(rows: T[], attend
   });
 }
 
+function applyAutomaticAttendanceInputs(
+  employeeNames: string[],
+  currentInputs: Record<string, PayrollManualInput>,
+  preview: PayrollAttendancePreviewResponse | null,
+  periodKey: string,
+) {
+  if (!preview || preview.period.periodKey !== periodKey) return currentInputs;
+
+  const next = { ...currentInputs };
+  for (const employeeName of employeeNames) {
+    const config = payrollAttendanceConfig[employeeName];
+    if (!config || config.sourceType === 'manual_excluded' || config.sourceType === 'manual_special') continue;
+
+    const previous = {
+      ...(getPayrollManualInput(employeeName, currentInputs) ?? {
+        workedDays: '',
+        lateCount: '',
+        advance: '',
+        comment: '',
+      }),
+    };
+    if (previous.source === 'manualCorrection') continue;
+
+    if (config.sourceType === 'form') {
+      const matches = Array.from(new Map(
+        findAttendanceMatches(preview.formSummaries, config.attendanceNames)
+          .map((match) => [normalizePersonName(match.employee), match]),
+      ).values());
+      if (matches.length !== 1) continue;
+      previous.workedDays = String(matches[0].uniqueFormDates);
+      previous.lateCount = String(matches[0].lateCount);
+      previous.source = 'attendance';
+      next[employeeName] = previous;
+      continue;
+    }
+
+    const matches = Array.from(new Map(
+      findAttendanceMatches(preview.scheduleSummaries, config.attendanceNames)
+        .map((match) => [normalizePersonName(match.employee), match]),
+    ).values());
+    if (matches.length !== 1) continue;
+    previous.workedDays = String(matches[0].scheduleDays);
+    previous.source = 'schedule';
+    next[employeeName] = previous;
+  }
+
+  return next;
+}
+
 function buildProblemRows(definitions: Array<{ type: SalesProblemType; label: string; rows: ClassifiedSalesRow[] }>) {
   return definitions.flatMap(({ type, label, rows }) =>
     rows.map((row) => ({
@@ -3992,6 +4052,7 @@ export default function AdminPayrollPage() {
   const [isSavedRunLoading, setIsSavedRunLoading] = useState(false);
   const [isSavedRunExporting, setIsSavedRunExporting] = useState(false);
   const [oneCShadowSource, setOneCShadowSource] = useState<DailyControlResponse | null>(null);
+  const [oneCShadowSourceIsStale, setOneCShadowSourceIsStale] = useState(false);
   const [oneCShadowBaseline, setOneCShadowBaseline] = useState<SavedPayrollRunDetail | null>(null);
   const [oneCShadowBaselineError, setOneCShadowBaselineError] = useState('');
   const [isOneCShadowBaselineLoading, setIsOneCShadowBaselineLoading] = useState(false);
@@ -4005,12 +4066,24 @@ export default function AdminPayrollPage() {
   const [isPayrollDirectoryLoading, setIsPayrollDirectoryLoading] = useState(true);
   const loadedManualPayrollKey = useRef('');
   const skipNextManualPayrollSave = useRef(true);
+  const loadedFixedPayrollKey = useRef('');
+  const skipNextFixedPayrollSave = useRef(true);
+  const loadedPurchasePayrollKey = useRef('');
+  const skipNextPurchasePayrollSave = useRef(true);
 
   const rows = selectedSheet && workbook ? workbook.sheets[selectedSheet] ?? [] : [];
   const payrollManualStorageKey = `payroll-manual-${year}-${month}`;
+  const payrollFixedStorageKey = `payroll-fixed-${year}-${month}`;
+  const payrollPurchaseStorageKey = `payroll-purchase-${year}-${month}`;
   const selectedPayrollPeriodKey = `${year}-${formatPayrollMonthKey(Number(month))}`;
+  const isSelectedPayrollPeriodCurrent = selectedPayrollPeriodKey === getCurrentMoscowPayrollPeriodKey();
   const bonusesReady = bonusState.periodKey === selectedPayrollPeriodKey;
   const bonusDrafts = bonusesReady ? bonusState.drafts : [];
+  const handleOneCShadowDataChange = useCallback((data: DailyControlResponse | null, state: { isStale: boolean }) => {
+    const belongsToSelectedPeriod = data?.period.verifiedThrough.startsWith(`${selectedPayrollPeriodKey}-`) ?? false;
+    setOneCShadowSource(belongsToSelectedPeriod ? data : null);
+    setOneCShadowSourceIsStale(belongsToSelectedPeriod && state.isStale);
+  }, [selectedPayrollPeriodKey]);
 
   useEffect(() => {
     try {
@@ -4053,6 +4126,46 @@ export default function AdminPayrollPage() {
   }, [manualPayroll, payrollManualStorageKey]);
 
   useEffect(() => {
+    skipNextFixedPayrollSave.current = true;
+    try {
+      const saved = window.localStorage.getItem(payrollFixedStorageKey);
+      setFixedPayroll(saved ? JSON.parse(saved) as Record<string, FixedPayrollInput> : {});
+    } catch {
+      setFixedPayroll({});
+    }
+    loadedFixedPayrollKey.current = payrollFixedStorageKey;
+  }, [payrollFixedStorageKey]);
+
+  useEffect(() => {
+    if (loadedFixedPayrollKey.current !== payrollFixedStorageKey) return;
+    if (skipNextFixedPayrollSave.current) {
+      skipNextFixedPayrollSave.current = false;
+      return;
+    }
+    window.localStorage.setItem(payrollFixedStorageKey, JSON.stringify(fixedPayroll));
+  }, [fixedPayroll, payrollFixedStorageKey]);
+
+  useEffect(() => {
+    skipNextPurchasePayrollSave.current = true;
+    try {
+      const saved = window.localStorage.getItem(payrollPurchaseStorageKey);
+      setPurchasePayroll(saved ? JSON.parse(saved) as PurchasePayrollInput : { advance: '', deduction: '', comment: '' });
+    } catch {
+      setPurchasePayroll({ advance: '', deduction: '', comment: '' });
+    }
+    loadedPurchasePayrollKey.current = payrollPurchaseStorageKey;
+  }, [payrollPurchaseStorageKey]);
+
+  useEffect(() => {
+    if (loadedPurchasePayrollKey.current !== payrollPurchaseStorageKey) return;
+    if (skipNextPurchasePayrollSave.current) {
+      skipNextPurchasePayrollSave.current = false;
+      return;
+    }
+    window.localStorage.setItem(payrollPurchaseStorageKey, JSON.stringify(purchasePayroll));
+  }, [payrollPurchaseStorageKey, purchasePayroll]);
+
+  useEffect(() => {
     void loadSavedPayrollPeriods();
     void loadClassificationRules();
     void fetch('/api/admin/employees', { cache: 'no-store' })
@@ -4070,6 +4183,26 @@ export default function AdminPayrollPage() {
     setAttendancePreviewError('');
     setAttendanceApplyResult(null);
   }, [selectedPayrollPeriodKey]);
+
+  useEffect(() => {
+    if (!isSelectedPayrollPeriodCurrent) return;
+    let cancelled = false;
+    setAttendancePreviewError('');
+    setIsAttendancePreviewLoading(true);
+    void fetch(`/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`, { cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error || 'Не удалось загрузить данные о рабочих днях.');
+        if (!cancelled) setAttendancePreview(payload as PayrollAttendancePreviewResponse);
+      })
+      .catch((caught) => {
+        if (!cancelled) setAttendancePreviewError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные о рабочих днях.');
+      })
+      .finally(() => {
+        if (!cancelled) setIsAttendancePreviewLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [isSelectedPayrollPeriodCurrent, month, selectedPayrollPeriodKey, year]);
 
   const parseResult = useMemo(() => mapLegacyRetailTraineeForPeriod(parsePayrollReport(rows), month, year), [rows, month, year]);
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
@@ -4317,7 +4450,8 @@ export default function AdminPayrollPage() {
   }, [currentFinalRun]);
 
   const oneCShadowCalculation = useMemo(() => {
-    if (!oneCShadowSource?.sales.rows || !oneCShadowBaseline) return null;
+    if (!oneCShadowSource?.sales.rows || (!oneCShadowBaseline && !isSelectedPayrollPeriodCurrent)) return null;
+    const isPreliminary = !oneCShadowBaseline;
 
     const shadowSalesRows: SalesRow[] = oneCShadowSource.sales.rows.map((row) => ({
       manager: row.manager,
@@ -4339,35 +4473,46 @@ export default function AdminPayrollPage() {
       selectedPayrollPeriodKey,
       new Set(shadowClassification.rows.map((row) => row.manager)),
     );
-    const shadowManualPayroll = oneCShadowBaseline.manualInputs
-      .filter((input) => input.inputType === 'sales')
-      .reduce<Record<string, PayrollManualInput>>((inputs, input) => {
-        inputs[input.employeeName] = {
-          workedDays: input.workedDays ?? '',
-          lateCount: input.lateCount ?? '',
-          advance: input.advance ?? '',
-          agentCreditCommission: input.agentCreditCommission ?? '',
-          comment: input.comment,
-          source: (input.source as PayrollDaysSource | null) ?? 'manual',
-        };
-        return inputs;
-      }, {});
-    const shadowFixedPayroll = oneCShadowBaseline.manualInputs
-      .filter((input) => input.inputType === 'fixed')
-      .reduce<Record<string, FixedPayrollInput>>((inputs, input) => {
-        inputs[input.employeeName] = {
-          bonus: input.fixedBonus ?? '',
-          advance: input.advance ?? '',
-          deduction: input.fixedDeduction ?? '',
-          comment: input.comment,
-        };
-        return inputs;
-      }, {});
-    const savedPurchaseInput = oneCShadowBaseline.manualInputs.find((input) => input.inputType === 'purchase');
+    const shadowManualPayroll = oneCShadowBaseline
+      ? oneCShadowBaseline.manualInputs
+        .filter((input) => input.inputType === 'sales')
+        .reduce<Record<string, PayrollManualInput>>((inputs, input) => {
+          inputs[input.employeeName] = {
+            workedDays: input.workedDays ?? '',
+            lateCount: input.lateCount ?? '',
+            advance: input.advance ?? '',
+            agentCreditCommission: input.agentCreditCommission ?? '',
+            comment: input.comment,
+            source: (input.source as PayrollDaysSource | null) ?? 'manual',
+          };
+          return inputs;
+        }, {})
+      : applyAutomaticAttendanceInputs(
+        Object.values(shadowEmployeeDirectory)
+          .filter((employee) => employee.salaryType === 'wholesale_percent' || employee.salaryType === 'retail_sales_bonus' || employee.salaryType === 'vl_percent')
+          .map((employee) => employee.name),
+        manualPayroll,
+        attendancePreview,
+        selectedPayrollPeriodKey,
+      );
+    const shadowFixedPayroll = oneCShadowBaseline
+      ? oneCShadowBaseline.manualInputs
+        .filter((input) => input.inputType === 'fixed')
+        .reduce<Record<string, FixedPayrollInput>>((inputs, input) => {
+          inputs[input.employeeName] = {
+            bonus: input.fixedBonus ?? '',
+            advance: input.advance ?? '',
+            deduction: input.fixedDeduction ?? '',
+            comment: input.comment,
+          };
+          return inputs;
+        }, {})
+      : fixedPayroll;
+    const savedPurchaseInput = oneCShadowBaseline?.manualInputs.find((input) => input.inputType === 'purchase');
     const shadowPurchaseInput: PurchasePayrollInput = {
-      advance: savedPurchaseInput?.purchaseAdvance ?? '',
-      deduction: savedPurchaseInput?.purchaseDeduction ?? '',
-      comment: savedPurchaseInput?.comment ?? '',
+      advance: oneCShadowBaseline ? savedPurchaseInput?.purchaseAdvance ?? '' : purchasePayroll.advance,
+      deduction: oneCShadowBaseline ? savedPurchaseInput?.purchaseDeduction ?? '' : purchasePayroll.deduction,
+      comment: oneCShadowBaseline ? savedPurchaseInput?.comment ?? '' : purchasePayroll.comment,
     };
     const shadowAccessoryCalculation = applyRetailAccessoryTier(
       shadowClassification.managerSummaries,
@@ -4393,19 +4538,21 @@ export default function AdminPayrollPage() {
       [...shadowSalesPayrollRows, ...shadowFixedPayrollRows, shadowPurchasePayrollRow, ...shadowUnconfiguredRows],
       selectedPayrollPeriodKey,
     );
-    const savedBonuses: PayrollBonus[] = oneCShadowBaseline.employeeResults.flatMap((employee) =>
-      (employee.adjustments ?? [])
-        .filter((adjustment) => adjustment.type === 'ONE_TIME_BONUS')
-        .map((adjustment) => ({
-          id: `saved-${adjustment.id}`,
-          employeeName: employee.employeeName,
-          amount: adjustment.amount,
-          reason: adjustment.reason,
-          type: 'ONE_TIME_BONUS' as const,
-        })),
-    );
+    const savedBonuses: PayrollBonus[] = oneCShadowBaseline
+      ? oneCShadowBaseline.employeeResults.flatMap((employee) =>
+        (employee.adjustments ?? [])
+          .filter((adjustment) => adjustment.type === 'ONE_TIME_BONUS')
+          .map((adjustment) => ({
+            id: `saved-${adjustment.id}`,
+            employeeName: employee.employeeName,
+            amount: adjustment.amount,
+            reason: adjustment.reason,
+            type: 'ONE_TIME_BONUS' as const,
+          })),
+      )
+      : bonusValidation.bonuses;
     const shadowRows = applyPayrollBonuses(shadowRegularRows, savedBonuses);
-    const baselineByEmployee = new Map(oneCShadowBaseline.employeeResults.map((row) => [row.employeeName, row]));
+    const baselineByEmployee = new Map((oneCShadowBaseline?.employeeResults ?? []).map((row) => [row.employeeName, row]));
     const shadowByEmployee = new Map(shadowRows.map((row) => [row.manager, row]));
     const employeeNames = Array.from(new Set([...baselineByEmployee.keys(), ...shadowByEmployee.keys()]));
     const comparisons = sortPayrollWorkbookEmployees(employeeNames.map((employeeName) => {
@@ -4416,7 +4563,7 @@ export default function AdminPayrollPage() {
       const baselineOneTimeBonus = (baseline?.adjustments ?? [])
         .filter((adjustment) => adjustment.type === 'ONE_TIME_BONUS')
         .reduce((sum, adjustment) => sum + adjustment.amount, 0);
-      const detailDifferences = [
+      const detailDifferences = !baseline ? [] : [
         ['Отработанные дни', shadow?.workedDays, baseline?.workedDays],
         ['Дневная ставка', shadow?.dayRate, baseline?.dayRate],
         ['Оплата по дням', shadow?.dayPay, baseline?.dayPay],
@@ -4446,7 +4593,7 @@ export default function AdminPayrollPage() {
       return {
         employeeName,
         salaryType: shadow?.salaryType ?? baseline?.salaryType ?? 'unconfigured',
-        reportGroup: baseline?.reportGroup,
+        reportGroup: baseline?.reportGroup ?? getPayrollWorkbookGroup(shadow?.salaryType ?? 'unconfigured'),
         grossPay: shadow?.grossPay ?? baseline?.grossPay ?? 0,
         baselineGrossPay: baseline?.grossPay ?? 0,
         shadowGrossPay: shadow?.grossPay ?? 0,
@@ -4459,6 +4606,7 @@ export default function AdminPayrollPage() {
         salesBonusDelta: payrollMoney((shadow?.salesBonus ?? 0) - (baseline?.salesBonus ?? 0)),
         purchaseBaseDelta: payrollMoney((shadow?.purchaseBase ?? 0) - (baseline?.purchaseBase ?? 0)),
         detailDifferences,
+        requiresReview: Boolean(shadow && (shadow.payrollStatus !== 'OK' || shadow.payrollReasons.length > 0)),
       };
     }));
     const comparisonGroups = comparisons.reduce<Array<{
@@ -4492,29 +4640,37 @@ export default function AdminPayrollPage() {
       .filter((row) => costDependentTypes.includes(row.calculationType))
       .reduce((sum, row) => sum + (row.sourceCostCalculationPendingRows ?? 0), 0);
     const unresolvedRows = shadowClassification.rows.filter(isUnresolvedReviewRow).length;
-    const totalBaselineGrossPay = payrollMoney(oneCShadowBaseline.employeeResults.reduce((sum, row) => sum + row.grossPay, 0));
+    const totalBaselineGrossPay = payrollMoney((oneCShadowBaseline?.employeeResults ?? []).reduce((sum, row) => sum + row.grossPay, 0));
     const totalShadowGrossPay = payrollMoney(shadowRows.reduce((sum, row) => sum + row.grossPay, 0));
-    const totalBaselineNetPay = payrollMoney(oneCShadowBaseline.employeeResults.reduce((sum, row) => sum + row.netPay, 0));
+    const totalBaselineNetPay = payrollMoney((oneCShadowBaseline?.employeeResults ?? []).reduce((sum, row) => sum + row.netPay, 0));
     const totalShadowNetPay = payrollMoney(shadowRows.reduce((sum, row) => sum + row.netPay, 0));
     const differentEmployees = comparisons.filter((row) => row.detailDifferences.length > 0).length;
     const reviewEmployees = shadowRows
       .filter((row) => row.payrollStatus !== 'OK' || row.payrollReasons.length > 0)
       .map((row) => ({ employeeName: row.manager, reasons: row.payrollReasons }));
+    if (isPreliminary && !String(getPayrollManualInput(agentCreditCommissionEmployee, shadowManualPayroll)?.agentCreditCommission ?? '').trim()) {
+      const existingReview = reviewEmployees.find((employee) => employee.employeeName === agentCreditCommissionEmployee);
+      if (existingReview) existingReview.reasons = [...existingReview.reasons, 'Агентские Finbox пока не внесены'];
+      else reviewEmployees.push({ employeeName: agentCreditCommissionEmployee, reasons: ['Агентские Finbox пока не внесены'] });
+    }
     const blockingIssues = [
       ...oneCShadowSource.blockingIssues,
       costPendingRows ? `Себестоимость не завершена в ${costPendingRows} строках, влияющих на зарплату.` : '',
       unresolvedRows ? `Не классифицировано однозначно: ${unresolvedRows} строк.` : '',
+      oneCShadowSourceIsStale ? 'Новые данные 1С временно недоступны. Показан последний сохранённый расчёт.' : '',
+      isPreliminary && attendancePreviewError ? `Дни и опоздания не обновлены: ${attendancePreviewError}` : '',
     ].filter(Boolean);
 
     return {
-      baselineRunNumber: oneCShadowBaseline.runNumber,
+      mode: isPreliminary ? 'preliminary' as const : 'comparison' as const,
+      baselineRunNumber: oneCShadowBaseline?.runNumber ?? null,
       comparisons,
       comparisonGroups,
       comparisonColumns,
       differentEmployees,
       reviewEmployees,
       blockingIssues,
-      ready: oneCShadowSource.readyForControl && blockingIssues.length === 0,
+      ready: oneCShadowSource.readyForControl && blockingIssues.length === 0 && !oneCShadowSourceIsStale,
       sourceCostPendingRows: oneCShadowSource.sales.summary.costCalculationPendingRows,
       payrollCostPendingRows: costPendingRows,
       totalBaselineGrossPay,
@@ -4528,7 +4684,7 @@ export default function AdminPayrollPage() {
       managerSummaries: shadowAccessoryCalculation.summaries,
       bonuses: savedBonuses,
     };
-  }, [classificationRules, oneCShadowBaseline, oneCShadowSource, payrollDirectoryUsers, selectedPayrollPeriodKey]);
+  }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodCurrent, manualPayroll, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey]);
   const selectedManagerPayroll = useMemo(
     () => (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows : fullPayrollRows)?.find((summary) => summary.manager === selectedManager) ?? null,
     [fullPayrollRows, oneCShadowCalculation, selectedManager, selectedManagerSource],
@@ -6481,11 +6637,20 @@ export default function AdminPayrollPage() {
               <div className='min-w-0'>
                 <div className='flex flex-wrap items-center gap-2'>
                   <h2 className='text-lg font-extrabold text-slate-950'>Расчёт за {months[Number(month)].toLowerCase()} {year}</h2>
-                  {oneCShadowCalculation?.ready && oneCShadowCalculation.differentEmployees === 0 && (
+                  {oneCShadowCalculation?.mode === 'preliminary' && (
+                    <span className='rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800'>Предварительно</span>
+                  )}
+                  {oneCShadowCalculation?.mode === 'comparison' && oneCShadowCalculation.ready && oneCShadowCalculation.differentEmployees === 0 && (
                     <span className='rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800'>Сверено</span>
                   )}
                 </div>
-                <p className='mt-1 text-sm text-slate-500'>Контрольный расчёт по данным 1С. Сохранённая ведомость не изменяется.</p>
+                <p className='mt-1 text-sm text-slate-500'>
+                  {isSelectedPayrollPeriodCurrent && !currentFinalRun
+                    ? oneCShadowCalculation
+                      ? 'Текущая оценка по закрытым данным 1С и доступным ручным сведениям. Это ещё не финальная ведомость.'
+                      : 'Предварительный расчёт строится только по закрытым данным 1С за выбранный месяц.'
+                    : 'Контрольный расчёт по данным 1С. Сохранённая ведомость не изменяется.'}
+                </p>
               </div>
             </div>
           </div>
@@ -6493,26 +6658,34 @@ export default function AdminPayrollPage() {
           <div className='p-4'>
             {isOneCShadowBaselineLoading && <p className='text-sm font-medium text-slate-500'>Открываю финальный расчёт для сопоставления…</p>}
             {!isOneCShadowBaselineLoading && oneCShadowBaselineError && <p role='alert' className='rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950'>{oneCShadowBaselineError}</p>}
-            {!isOneCShadowBaselineLoading && !oneCShadowBaselineError && !currentFinalRun && (
-              <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>За выбранный период нет финального расчёта. Текущий месяц можно считать предварительно, но сопоставлять пока не с чем.</p>
+            {!isOneCShadowBaselineLoading && !oneCShadowBaselineError && !currentFinalRun && !isSelectedPayrollPeriodCurrent && (
+              <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>За выбранный прошлый период нет сохранённого финального расчёта.</p>
             )}
-            {!isOneCShadowBaselineLoading && currentFinalRun && !oneCShadowCalculation && !oneCShadowBaselineError && (
-              <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>Подготавливаю детализацию 1С для расчёта по сотрудникам. Если сохранён старый компактный снимок, портал безопасно обновит его без изменения ведомости.</p>
+            {!isOneCShadowBaselineLoading && !oneCShadowCalculation && !oneCShadowBaselineError && (currentFinalRun || isSelectedPayrollPeriodCurrent) && (
+              <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>
+                {isSelectedPayrollPeriodCurrent && !currentFinalRun
+                  ? `Предварительный расчёт появится после получения закрытых данных 1С за ${months[Number(month)].toLowerCase()}. Данные другого месяца не используются.`
+                  : 'Подготавливаю детализацию 1С для расчёта по сотрудникам. Если сохранён старый компактный снимок, портал безопасно обновит его без изменения ведомости.'}
+              </p>
             )}
             {oneCShadowCalculation && (
               <div className='grid gap-4'>
                 <div className='grid gap-2 sm:grid-cols-3 lg:grid-cols-[1.15fr_repeat(3,minmax(0,1fr))]'>
                   <div className='px-1 py-1 sm:col-span-3 lg:col-span-1 lg:flex lg:flex-col lg:justify-center'>
-                    <p className='text-xs font-semibold uppercase tracking-wide text-slate-500'>Всего начислено</p>
+                    <p className='text-xs font-semibold uppercase tracking-wide text-slate-500'>{oneCShadowCalculation.mode === 'preliminary' ? 'Предварительно начислено' : 'Всего начислено'}</p>
                     <p className='mt-1 text-3xl font-extrabold tracking-tight text-slate-950'>{formatMoney(oneCShadowCalculation.totalShadowGrossPay)}</p>
                   </div>
                   <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5'>
                     <p className='text-xs font-semibold text-slate-500'>Данные 1С</p>
-                    <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowSource ? `Проверены по ${formatPayrollControlDate(oneCShadowSource.period.verifiedThrough)}` : 'Проверяются'}</p>
+                    <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowSource ? `${oneCShadowSourceIsStale ? 'Последние сохранённые по' : 'Проверены по'} ${formatPayrollControlDate(oneCShadowSource.period.verifiedThrough)}` : 'Проверяются'}</p>
                   </div>
                   <div className='rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5'>
                     <p className='text-xs font-semibold text-slate-500'>Сотрудники</p>
-                    <p className='mt-0.5 text-sm font-bold text-slate-900'>{oneCShadowCalculation.comparisons.length - oneCShadowCalculation.differentEmployees} из {oneCShadowCalculation.comparisons.length} совпали</p>
+                    <p className='mt-0.5 text-sm font-bold text-slate-900'>
+                      {oneCShadowCalculation.mode === 'preliminary'
+                        ? `${oneCShadowCalculation.comparisons.length} в расчёте`
+                        : `${oneCShadowCalculation.comparisons.length - oneCShadowCalculation.differentEmployees} из ${oneCShadowCalculation.comparisons.length} совпали`}
+                    </p>
                   </div>
                   <div className={`rounded-lg border px-3 py-2.5 ${oneCShadowCalculation.blockingIssues.length || oneCShadowCalculation.differentEmployees || oneCShadowCalculation.reviewEmployees.length ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'}`}>
                     <p className='text-xs font-semibold text-slate-500'>Требует проверки</p>
@@ -6520,11 +6693,16 @@ export default function AdminPayrollPage() {
                   </div>
                 </div>
 
-                {oneCShadowCalculation.blockingIssues.length > 0 || oneCShadowCalculation.differentEmployees > 0 ? (
+                {oneCShadowCalculation.blockingIssues.length > 0 || (oneCShadowCalculation.mode === 'comparison' && oneCShadowCalculation.differentEmployees > 0) ? (
                   <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950'>
                     <p className='font-bold'>Расчёт требует проверки</p>
                     {oneCShadowCalculation.blockingIssues.map((issue) => <p key={issue} className='mt-1'>{issue}</p>)}
-                    {oneCShadowCalculation.differentEmployees > 0 && <p className='mt-1'>Есть различия с финальным расчётом №{oneCShadowCalculation.baselineRunNumber}: {oneCShadowCalculation.differentEmployees} сотрудников.</p>}
+                    {oneCShadowCalculation.mode === 'comparison' && oneCShadowCalculation.differentEmployees > 0 && <p className='mt-1'>Есть различия с финальным расчётом №{oneCShadowCalculation.baselineRunNumber}: {oneCShadowCalculation.differentEmployees} сотрудников.</p>}
+                  </div>
+                ) : oneCShadowCalculation.mode === 'preliminary' ? (
+                  <div className='flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-950'>
+                    <CheckCircle2 className='mt-0.5 h-4 w-4 shrink-0' />
+                    <p><strong>Предварительный расчёт сформирован.</strong> Он обновляется по закрытым данным 1С и не заменяет финальную ведомость.</p>
                   </div>
                 ) : (
                   <div className='flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-950'>
@@ -6534,18 +6712,28 @@ export default function AdminPayrollPage() {
                 )}
 
                 {oneCShadowCalculation.reviewEmployees.length > 0 && (
-                  <div className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950'>
-                    <p className='font-bold'>Проверьте ручные данные</p>
-                    {oneCShadowCalculation.reviewEmployees.map((employee) => (
-                      <p key={employee.employeeName} className='mt-1'>{employee.employeeName}: {employee.reasons.join('; ') || 'требуется проверка расчёта'}.</p>
-                    ))}
-                  </div>
+                  <details className='rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-950'>
+                    <summary className='cursor-pointer list-none px-3 py-2.5'>
+                      <div className='flex items-center justify-between gap-3'>
+                        <p>
+                          <strong>{oneCShadowCalculation.mode === 'preliminary' ? 'Сотрудников с незаполненными данными:' : 'Сотрудников для проверки:'}</strong>{' '}
+                          {oneCShadowCalculation.reviewEmployees.length}
+                        </p>
+                        <span className='shrink-0 text-xs font-bold'>Показать</span>
+                      </div>
+                    </summary>
+                    <div className='border-t border-amber-200 px-3 pb-3 pt-2'>
+                      {oneCShadowCalculation.reviewEmployees.map((employee) => (
+                        <p key={employee.employeeName} className='mt-1'><strong>{employee.employeeName}:</strong> {employee.reasons.join('; ') || 'требуется проверка расчёта'}.</p>
+                      ))}
+                    </div>
+                  </details>
                 )}
 
                 <div className='overflow-hidden rounded-xl border border-slate-200 bg-slate-50/50'>
                   <div className='border-b border-slate-100 bg-slate-50 px-4 py-3'>
-                    <p className='font-bold text-slate-900'>Начислено сотрудникам</p>
-                    <p className='text-sm text-slate-500'>Сумма до вычета авансов и удержаний. Нажмите на сотрудника, чтобы открыть полный расчёт.</p>
+                    <p className='font-bold text-slate-900'>{oneCShadowCalculation.mode === 'preliminary' ? 'Предварительно начислено сотрудникам' : 'Начислено сотрудникам'}</p>
+                    <p className='text-sm text-slate-500'>Сумма до вычета авансов и удержаний. Месячные гарантии показаны полностью. Нажмите на сотрудника, чтобы открыть расчёт.</p>
                   </div>
                   <div className='grid gap-3 p-3 lg:grid-cols-2 xl:grid-cols-3'>
                     {oneCShadowCalculation.comparisonColumns.map((column, columnIndex) => (
@@ -6556,6 +6744,7 @@ export default function AdminPayrollPage() {
                             <div className='divide-y divide-slate-100'>
                               {group.rows.map((row) => {
                                 const matches = row.detailDifferences.length === 0;
+                                const needsAttention = oneCShadowCalculation.mode === 'preliminary' ? row.requiresReview : !matches;
                                 return (
                                   <button
                                     key={row.employeeName}
@@ -6564,12 +6753,12 @@ export default function AdminPayrollPage() {
                                       setSelectedManagerSource('oneC');
                                       setSelectedManager(row.employeeName);
                                     }}
-                                    className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 ${matches ? 'bg-white' : 'bg-amber-50/60'}`}
+                                    className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 ${needsAttention ? 'bg-amber-50/60' : 'bg-white'}`}
                                   >
                                     <p className='truncate text-sm font-semibold text-slate-900'>{row.employeeName}</p>
                                     <div className='flex items-center gap-2'>
                                       <p className='whitespace-nowrap text-sm font-bold text-slate-950'>{formatMoney(row.shadowGrossPay)}</p>
-                                      {!matches && <span className='rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900'>{Math.abs(row.grossDelta) >= 0.005 ? formatPayrollDelta(row.grossDelta) : `${row.detailDifferences.length} отлич.`}</span>}
+                                      {needsAttention && <span className='rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900'>{oneCShadowCalculation.mode === 'preliminary' ? 'Проверить' : Math.abs(row.grossDelta) >= 0.005 ? formatPayrollDelta(row.grossDelta) : `${row.detailDifferences.length} отлич.`}</span>}
                                     </div>
                                   </button>
                                 );
@@ -6598,11 +6787,20 @@ export default function AdminPayrollPage() {
                   <p className='truncate text-sm text-slate-500'>Себестоимость, закупки, поставщики и технические сведения</p>
                 </div>
               </div>
-              <span className='shrink-0 text-xs font-semibold text-slate-500'>{oneCShadowSource?.readyForControl ? 'Проверено' : 'Открыть'}</span>
+              <span className='shrink-0 text-xs font-semibold text-slate-500'>
+                {oneCShadowSource
+                  ? oneCShadowSourceIsStale ? 'Предыдущие данные' : oneCShadowSource.readyForControl ? 'Проверено' : 'Нужно проверить'
+                  : 'Открыть'}
+              </span>
             </div>
           </summary>
           <div className='border-t border-slate-100 p-3'>
-            <PayrollDailyOneCControl month={month} year={year} compactWhenUnavailable={Boolean(workbook)} onDataChange={setOneCShadowSource} />
+            <PayrollDailyOneCControl
+              month={month}
+              year={year}
+              compactWhenUnavailable={Boolean(workbook)}
+              onDataChange={handleOneCShadowDataChange}
+            />
           </div>
         </details>
 

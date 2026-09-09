@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   aggregatePayrollOneCControlSlices,
+  getPayrollOneCReportedCloseDate,
   getPayrollOneCRefreshDates,
   isPayrollOneCControlSlice,
+  normalizePayrollOneCExecutionDate,
   type PayrollOneCControlSlice,
 } from '../lib/payroll-one-c-control-snapshots';
 
@@ -39,6 +41,16 @@ function slice(date: string, options: { manager?: string; revenue?: number; supp
 }
 
 describe('daily 1C payroll control snapshots', () => {
+  it('normalizes the execution date reported by 1C before using the latest successful close', () => {
+    assert.equal(normalizePayrollOneCExecutionDate('05.09.2026'), '2026-09-05');
+    assert.equal(normalizePayrollOneCExecutionDate('2026-09-05'), '2026-09-05');
+    assert.equal(normalizePayrollOneCExecutionDate('05/09/2026'), null);
+    assert.equal(getPayrollOneCReportedCloseDate('2026-09', '2026-09-09', '05.09.2026'), '2026-09-05');
+    assert.equal(getPayrollOneCReportedCloseDate('2026-09', '2026-09-09', '31.08.2026'), null);
+    assert.equal(getPayrollOneCReportedCloseDate('2026-09', '2026-09-09', '10.09.2026'), null);
+    assert.equal(getPayrollOneCReportedCloseDate('2026-09', '2026-09-09', '09.09.2026'), null);
+  });
+
   it('reads only missing dates and the rolling three-day correction window', () => {
     assert.deepEqual(
       getPayrollOneCRefreshDates('2026-09', '2026-09-05', ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04']),

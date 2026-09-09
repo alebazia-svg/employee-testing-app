@@ -34,6 +34,20 @@ function addDays(date: string, days: number) {
   return value.toISOString().slice(0, 10);
 }
 
+export function normalizePayrollOneCExecutionDate(value: string | null | undefined) {
+  const normalized = value?.trim() ?? '';
+  const iso = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const russian = normalized.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (russian) return `${russian[3]}-${russian[2]}-${russian[1]}`;
+  return null;
+}
+
+export function getPayrollOneCReportedCloseDate(periodKey: string, candidateDate: string, executionDate: string | null | undefined) {
+  const normalized = normalizePayrollOneCExecutionDate(executionDate);
+  return normalized && normalized.startsWith(`${periodKey}-`) && normalized < candidateDate ? normalized : null;
+}
+
 function isPayrollOneCPreviewRow(value: unknown): value is PayrollOneCPreviewRow {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const row = value as Partial<PayrollOneCPreviewRow>;

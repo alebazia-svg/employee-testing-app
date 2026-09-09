@@ -159,7 +159,7 @@ export function PayrollDailyOneCControl({
   month: string;
   year: string;
   compactWhenUnavailable?: boolean;
-  onDataChange?: (data: DailyControlResponse | null) => void;
+  onDataChange?: (data: DailyControlResponse | null, state: { isStale: boolean }) => void;
 }) {
   const periodKey = `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
   const [data, setData] = useState<DailyControlResponse | null>(null);
@@ -168,6 +168,10 @@ export function PayrollDailyOneCControl({
   const [isLoading, setIsLoading] = useState(true);
   const [actionSupplier, setActionSupplier] = useState('');
   const requestVersion = useRef(0);
+  const belongsToSelectedPeriod = useCallback(
+    (response: DailyControlResponse | null | undefined) => Boolean(response?.period.verifiedThrough.startsWith(`${periodKey}-`)),
+    [periodKey],
+  );
 
   const load = useCallback(async (force = false) => {
     const version = requestVersion.current + 1;
@@ -178,7 +182,7 @@ export function PayrollDailyOneCControl({
       const storedResponse = await fetch(`/api/admin/payroll/daily-control?${query}`, { cache: 'no-store' });
       if (storedResponse.ok) {
         const storedBody = await readControlResponse(storedResponse);
-        if (storedBody?.ok) {
+        if (storedBody?.ok && belongsToSelectedPeriod(storedBody)) {
           if (requestVersion.current !== version) return;
           setData(storedBody);
           setError('');
@@ -193,6 +197,9 @@ export function PayrollDailyOneCControl({
       if (!response.ok || !body.ok) {
         const failure = body as FailedControlResponse;
         throw new Error([failure.error, ...(failure.blockingIssues ?? [])].filter(Boolean).join(' ') || 'Данные 1С пока не готовы к расчёту.');
+      }
+      if (!belongsToSelectedPeriod(body)) {
+        throw new Error('За выбранный месяц ещё нет закрытых данных 1С. Данные прошлого месяца в расчёт не включены.');
       }
       if (requestVersion.current !== version) return;
       setData(body);
@@ -211,25 +218,27 @@ export function PayrollDailyOneCControl({
       }
     } catch (loadError) {
       if (requestVersion.current !== version) return;
-      const cached = readCached(periodKey);
+      const cachedCandidate = readCached(periodKey);
+      const cached = belongsToSelectedPeriod(cachedCandidate) ? cachedCandidate : null;
       setData((current) => current ?? cached);
       setIsStale(true);
       setError(getFriendlyLoadError(loadError));
     } finally {
       if (requestVersion.current === version) setIsLoading(false);
     }
-  }, [month, periodKey, year]);
+  }, [belongsToSelectedPeriod, month, periodKey, year]);
 
   useEffect(() => {
-    const cached = readCached(periodKey);
+    const cachedCandidate = readCached(periodKey);
+    const cached = belongsToSelectedPeriod(cachedCandidate) ? cachedCandidate : null;
     setData(cached);
     setIsStale(Boolean(cached));
     setError('');
     void load(false);
-  }, [load, periodKey]);
+  }, [belongsToSelectedPeriod, load, periodKey]);
 
   useEffect(() => {
-    onDataChange?.(data && !isStale && Array.isArray(data.sales.rows) ? data : null);
+    onDataChange?.(data && Array.isArray(data.sales.rows) ? data : null, { isStale });
   }, [data, isStale, onDataChange]);
 
   const activePurchaseRows = useMemo(() => data?.purchases.rows.filter((row) => row.status !== 'EXCLUDED') ?? [], [data]);

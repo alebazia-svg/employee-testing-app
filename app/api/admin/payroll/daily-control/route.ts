@@ -5,6 +5,7 @@ import { getPayrollSalesReport } from '@/lib/one-c';
 import { getPayrollOneCCloseState, getPayrollPurchaseAttribution } from '@/lib/payroll-one-c-control-source';
 import {
   aggregatePayrollOneCControlSlices,
+  getPayrollOneCReportedCloseDate,
   getPayrollOneCRefreshDates,
   isPayrollOneCControlSlice,
   listDates,
@@ -67,6 +68,13 @@ async function resolveClose(period: NonNullable<ReturnType<typeof readPeriod>>) 
   let verifiedThrough = candidateDate;
   let usingPreviousClose = false;
   if (period.currentPeriod && (!close.ok || !close.data?.ready)) {
+    const reportedExecutionDate = getPayrollOneCReportedCloseDate(period.periodKey, candidateDate, close.data?.executionDate);
+    if (reportedExecutionDate) {
+      const reportedClose = await getPayrollOneCCloseState(reportedExecutionDate, { requireExecutionDate: true });
+      if (reportedClose.ok && reportedClose.data?.ready) {
+        return { close: reportedClose, candidateDate, verifiedThrough: reportedExecutionDate, usingPreviousClose: true };
+      }
+    }
     const fallbackDate = previousDate(candidateDate);
     if (fallbackDate.startsWith(period.periodKey)) {
       const fallback = await getPayrollOneCCloseState(fallbackDate, { requireExecutionDate: true });
