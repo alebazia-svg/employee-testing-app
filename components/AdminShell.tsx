@@ -17,7 +17,7 @@ const dailyNavigation: NavigationItem[] = [
   { href: '/admin', label: 'Главная', icon: Home },
   { href: '/admin/workday', label: 'Контроль дня', icon: BriefcaseBusiness },
   { href: '/admin/expense-requests', label: 'Заявки', icon: FileClock },
-  { href: '/admin/procurement', label: 'Оплаты поставщикам', icon: Truck },
+  { href: '/admin/procurement', label: 'Закупки', icon: Truck },
   { href: '/admin/attendance', label: 'График', icon: CalendarDays },
   { href: '/admin/employees', label: 'Сотрудники', icon: Users },
 ];

@@ -120,11 +120,11 @@ export default async function AdminProcurementPage() {
   if (accountableBalance.error) warnings.push("остаток кассы подотчётника");
   return (
     <AdminShell>
-      <AdminBreadcrumbs current="Оплаты поставщикам" />
+      <AdminBreadcrumbs current="Закупки" />
       <AdminPageHeader
         eyebrow="Закупки"
-        title="Оплаты поставщикам"
-        description="Когда приехать, сколько подготовить и что уже выдано по данным 1С."
+        title="Платёжный календарь"
+        description="Когда подготовить деньги, какие оплаты согласовать и что уже подтверждено в 1С."
       />
       <div className="mt-5">
         <AdminProcurementClient
