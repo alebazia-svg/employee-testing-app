@@ -191,7 +191,8 @@ After the two-person pilot passes:
   accounting documents in 1C.
 - Partial deposits, repeat plans for the same order, return-for-correction,
   recent payment history and read-only supplier debt context are deployed.
-  Supplier advances remain separate from total positive debt.
+  Supplier debt comes from the 1C supplier-settlement register; contracts are
+  netted within each supplier, and supplier advances remain separate from debt.
 
 These items are useful but do not block employee rollout:
 
