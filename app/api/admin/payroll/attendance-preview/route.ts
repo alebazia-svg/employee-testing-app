@@ -1,5 +1,13 @@
 import { getAttendanceRows, getScheduleRows, type AttendanceRow, type ScheduleRow } from '@/lib/google-sheets';
 import { requireAdminApi } from '@/lib/admin-api-auth';
+import { prisma } from '@/lib/prisma';
+import {
+  PAYROLL_ATTENDANCE_SNAPSHOT_VERSION,
+  attachPayrollAttendanceSnapshotMeta,
+  createPayrollAttendanceSnapshotPayload,
+  getPayrollAttendanceSnapshotReplacementError,
+  readPayrollAttendanceSnapshotPayload,
+} from '@/lib/payroll-attendance-snapshot';
 
 export const dynamic = 'force-dynamic';
 
@@ -214,9 +222,39 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [attendanceData, scheduleData] = await Promise.all([getAttendanceRows(), getScheduleRows()]);
+    const saved = await prisma.payrollAttendanceSnapshot.findUnique({ where: { periodKey: period.periodKey } });
+    const payload = saved ? readPayrollAttendanceSnapshotPayload(saved.payload, period.periodKey) : null;
+    if (!saved || !payload) {
+      return Response.json({ error: 'Сохранённых данных о рабочих днях за этот месяц пока нет.' }, { status: 404 });
+    }
 
-    return Response.json({
+    return Response.json(attachPayrollAttendanceSnapshotMeta(payload, {
+      servedFrom: 'stored',
+      sourceCheckedAt: saved.sourceCheckedAt.toISOString(),
+      savedAt: saved.updatedAt.toISOString(),
+    }));
+  } catch (caught) {
+    console.error('Payroll attendance snapshot read failed.', caught);
+    return Response.json({ error: 'Не удалось открыть сохранённые данные о рабочих днях.' }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  const access = await requireAdminApi();
+  if (!access.ok) return access.response;
+  const period = getPeriod(new URL(request.url).searchParams);
+
+  if (!period) {
+    return Response.json({ error: 'Не выбран период для обновления посещаемости.' }, { status: 400 });
+  }
+
+  const saved = await prisma.payrollAttendanceSnapshot.findUnique({ where: { periodKey: period.periodKey } });
+  const savedPayload = saved ? readPayrollAttendanceSnapshotPayload(saved.payload, period.periodKey) : null;
+
+  try {
+    const [attendanceData, scheduleData] = await Promise.all([getAttendanceRows(), getScheduleRows()]);
+    const sourceCheckedAt = new Date();
+    const payload = createPayrollAttendanceSnapshotPayload({
       period,
       attendanceMode: attendanceData.mode,
       attendanceMessage: attendanceData.message,
@@ -225,12 +263,39 @@ export async function GET(request: Request) {
       formSummaries: buildFormSummaries(attendanceData.rows, period.periodKey),
       scheduleSummaries: buildScheduleSummaries(scheduleData.rows, period.periodKey),
     });
-  } catch (caught) {
-    return Response.json(
-      {
-        error: caught instanceof Error ? caught.message : 'Не удалось загрузить предпросмотр посещаемости.',
+    const replacementError = getPayrollAttendanceSnapshotReplacementError(payload, savedPayload);
+    if (replacementError) throw new Error(replacementError);
+    const stored = await prisma.payrollAttendanceSnapshot.upsert({
+      where: { periodKey: period.periodKey },
+      create: {
+        periodKey: period.periodKey,
+        payloadVersion: PAYROLL_ATTENDANCE_SNAPSHOT_VERSION,
+        payload,
+        sourceCheckedAt,
       },
-      { status: 500 },
-    );
+      update: {
+        payloadVersion: PAYROLL_ATTENDANCE_SNAPSHOT_VERSION,
+        payload,
+        sourceCheckedAt,
+      },
+    });
+
+    return Response.json(attachPayrollAttendanceSnapshotMeta(payload, {
+      servedFrom: 'refreshed',
+      sourceCheckedAt: sourceCheckedAt.toISOString(),
+      savedAt: stored.updatedAt.toISOString(),
+    }));
+  } catch (caught) {
+    console.error('Payroll attendance snapshot refresh failed.', caught);
+    const refreshError = 'Не удалось обновить Google Sheets. Сохранённые дни и опоздания оставлены без изменений.';
+    if (saved && savedPayload) {
+      return Response.json(attachPayrollAttendanceSnapshotMeta(savedPayload, {
+        servedFrom: 'stored',
+        sourceCheckedAt: saved.sourceCheckedAt.toISOString(),
+        savedAt: saved.updatedAt.toISOString(),
+        refreshError,
+      }));
+    }
+    return Response.json({ error: refreshError }, { status: 502 });
   }
 }

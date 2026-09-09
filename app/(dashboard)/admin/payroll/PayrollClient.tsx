@@ -1196,6 +1196,12 @@ type PayrollAttendancePreviewResponse = {
   scheduleMessage: string;
   formSummaries: PayrollAttendanceFormSummary[];
   scheduleSummaries: PayrollAttendanceScheduleSummary[];
+  snapshot: {
+    servedFrom: 'stored' | 'refreshed';
+    sourceCheckedAt: string;
+    savedAt: string;
+    refreshError?: string;
+  };
 };
 
 type AttendanceApplyResult = {
@@ -1473,6 +1479,13 @@ function formatPayrollDelta(value: number) {
 function formatPayrollControlDate(value: string) {
   const [year, month, day] = value.split('-');
   return year && month && day ? `${day}.${month}.${year}` : value;
+}
+
+function formatPayrollSourceTimestamp(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function getFileExtension(fileName: string) {
@@ -4024,6 +4037,7 @@ export default function AdminPayrollPage() {
   const [attendancePreview, setAttendancePreview] = useState<PayrollAttendancePreviewResponse | null>(null);
   const [attendancePreviewError, setAttendancePreviewError] = useState('');
   const [isAttendancePreviewLoading, setIsAttendancePreviewLoading] = useState(false);
+  const [isAttendancePreviewRefreshing, setIsAttendancePreviewRefreshing] = useState(false);
   const [attendanceApplyResult, setAttendanceApplyResult] = useState<AttendanceApplyResult | null>(null);
   const [problemManagerFilter, setProblemManagerFilter] = useState('all');
   const [problemDepartmentFilter, setProblemDepartmentFilter] = useState('all');
@@ -4183,18 +4197,47 @@ export default function AdminPayrollPage() {
     let cancelled = false;
     setAttendancePreviewError('');
     setIsAttendancePreviewLoading(true);
-    void fetch(`/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`, { cache: 'no-store' })
-      .then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || 'Не удалось загрузить данные о рабочих днях.');
-        if (!cancelled) setAttendancePreview(payload as PayrollAttendancePreviewResponse);
-      })
-      .catch((caught) => {
-        if (!cancelled) setAttendancePreviewError(caught instanceof Error ? caught.message : 'Не удалось загрузить данные о рабочих днях.');
-      })
-      .finally(() => {
-        if (!cancelled) setIsAttendancePreviewLoading(false);
-      });
+    const endpoint = `/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`;
+
+    void (async () => {
+      let hasStoredPreview = false;
+      try {
+        const storedResponse = await fetch(endpoint, { cache: 'no-store' });
+        const storedPayload = await storedResponse.json();
+        if (storedResponse.ok && !cancelled) {
+          hasStoredPreview = true;
+          setAttendancePreview(storedPayload as PayrollAttendancePreviewResponse);
+        } else if (storedResponse.status !== 404 && !cancelled) {
+          setAttendancePreviewError(storedPayload?.error || 'Не удалось открыть сохранённые данные о рабочих днях.');
+        }
+      } catch (caught) {
+        if (!cancelled) setAttendancePreviewError(caught instanceof Error ? caught.message : 'Не удалось открыть сохранённые данные о рабочих днях.');
+      } finally {
+        if (!cancelled) {
+          setIsAttendancePreviewLoading(false);
+          setIsAttendancePreviewRefreshing(true);
+        }
+      }
+
+      try {
+        const refreshResponse = await fetch(endpoint, { method: 'POST', cache: 'no-store' });
+        const refreshedPayload = await refreshResponse.json();
+        if (!refreshResponse.ok) throw new Error(refreshedPayload?.error || 'Не удалось обновить данные о рабочих днях.');
+        if (!cancelled) {
+          const preview = refreshedPayload as PayrollAttendancePreviewResponse;
+          setAttendancePreview(preview);
+          setAttendancePreviewError(preview.snapshot.refreshError
+            ? `Показаны сохранённые данные. Обновление Google Sheets не выполнено: ${preview.snapshot.refreshError}`
+            : '');
+        }
+      } catch (caught) {
+        if (!cancelled) setAttendancePreviewError(caught instanceof Error
+          ? `${hasStoredPreview ? 'Показаны последние сохранённые данные. ' : ''}${caught.message}`
+          : 'Не удалось обновить данные о рабочих днях.');
+      } finally {
+        if (!cancelled) setIsAttendancePreviewRefreshing(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [isSelectedPayrollPeriodCurrent, month, selectedPayrollPeriodKey, year]);
 
@@ -5124,23 +5167,27 @@ export default function AdminPayrollPage() {
   async function loadAttendancePreview() {
     setAttendancePreviewError('');
     setAttendanceApplyResult(null);
-    setAttendancePreview(null);
-    setIsAttendancePreviewLoading(true);
+    setIsAttendancePreviewRefreshing(true);
 
     try {
-      const response = await fetch(`/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`, { cache: 'no-store' });
+      const response = await fetch(`/api/admin/payroll/attendance-preview?month=${encodeURIComponent(month)}&year=${encodeURIComponent(year)}`, { method: 'POST', cache: 'no-store' });
       const payload = await response.json();
 
       if (!response.ok) {
         throw new Error(payload?.error || 'Не удалось загрузить предпросмотр посещаемости.');
       }
 
-      setAttendancePreview(payload as PayrollAttendancePreviewResponse);
+      const preview = payload as PayrollAttendancePreviewResponse;
+      setAttendancePreview(preview);
+      setAttendancePreviewError(preview.snapshot.refreshError
+        ? `Показаны сохранённые данные. Обновление Google Sheets не выполнено: ${preview.snapshot.refreshError}`
+        : '');
     } catch (caught) {
-      setAttendancePreview(null);
-      setAttendancePreviewError(caught instanceof Error ? caught.message : 'Не удалось загрузить предпросмотр посещаемости.');
+      setAttendancePreviewError(caught instanceof Error
+        ? `${attendancePreview ? 'Сохранённые данные оставлены без изменений. ' : ''}${caught.message}`
+        : 'Не удалось обновить данные о рабочих днях.');
     } finally {
-      setIsAttendancePreviewLoading(false);
+      setIsAttendancePreviewRefreshing(false);
     }
   }
 
@@ -6646,6 +6693,12 @@ export default function AdminPayrollPage() {
                       : 'Предварительный расчёт строится только по закрытым данным 1С за выбранный месяц.'
                     : 'Контрольный расчёт по данным 1С. Сохранённая ведомость не изменяется.'}
                 </p>
+                {isSelectedPayrollPeriodCurrent && attendancePreview && (
+                  <p className='mt-1 text-xs font-medium text-slate-500'>
+                    Дни и опоздания проверены {formatPayrollSourceTimestamp(attendancePreview.snapshot.sourceCheckedAt)}
+                    {isAttendancePreviewRefreshing ? ' · обновляются в фоне' : attendancePreview.snapshot.servedFrom === 'stored' ? ' · показаны сохранённые данные' : ''}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -7506,11 +7559,11 @@ export default function AdminPayrollPage() {
                       <button
                         type='button'
                         onClick={loadAttendancePreview}
-                        disabled={isAttendancePreviewLoading}
+                        disabled={isAttendancePreviewLoading || isAttendancePreviewRefreshing}
                         className='inline-flex w-fit items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60'
                       >
                         <Eye className='h-4 w-4' />
-                        {isAttendancePreviewLoading ? 'Загрузка...' : 'Предпросмотр дней из посещаемости'}
+                        {isAttendancePreviewLoading ? 'Открываю сохранённые данные...' : isAttendancePreviewRefreshing ? 'Обновляю Google Sheets...' : 'Обновить дни из Google Sheets'}
                       </button>
                     </div>
                     <div className='max-w-full overflow-x-auto rounded-lg border border-border'>
@@ -7547,13 +7600,16 @@ export default function AdminPayrollPage() {
                         <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
                           <div className='flex flex-wrap gap-2'>
                             <Badge className={attendancePreview.attendanceMode === 'google-sheets' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
-                              Посещаемость: {attendancePreview.attendanceMode}
+                              Отметки: {attendancePreview.attendanceMode === 'google-sheets' ? 'Google Sheets' : 'демо'}
                             </Badge>
                             <Badge className={attendancePreview.scheduleMode === 'google-sheets' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
-                              График: {attendancePreview.scheduleMode}
+                              График: {attendancePreview.scheduleMode === 'google-sheets' ? 'Google Sheets' : 'не подключён'}
                             </Badge>
                             <Badge className={isAttendancePreviewPeriodCurrent ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-700'}>
                               Период посещаемости: {attendancePreview.period.periodKey}
+                            </Badge>
+                            <Badge className='bg-slate-100 text-slate-700'>
+                              Проверено: {formatPayrollSourceTimestamp(attendancePreview.snapshot.sourceCheckedAt)}
                             </Badge>
                           </div>
                           <button

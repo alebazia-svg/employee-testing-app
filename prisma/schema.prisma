@@ -1452,3 +1452,15 @@ model PayrollOneCControlSnapshot {
   @@unique([periodKey, kind, dateFrom, dateTo])
   @@index([periodKey, kind, dateTo])
 }
+
+model PayrollAttendanceSnapshot {
+  id              Int      @id @default(autoincrement())
+  periodKey       String   @unique
+  payloadVersion  Int      @default(1)
+  payload         Json
+  sourceCheckedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sourceCheckedAt])
+}
