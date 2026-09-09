@@ -189,6 +189,9 @@ After the two-person pilot passes:
   first stage.
 - Treat the calendar as operational planning, not as a replacement for posted
   accounting documents in 1C.
+- Partial deposits, repeat plans for the same order, return-for-correction,
+  recent payment history and read-only supplier debt context are deployed.
+  Supplier advances remain separate from total positive debt.
 
 These items are useful but do not block employee rollout:
 

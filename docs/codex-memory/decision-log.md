@@ -341,3 +341,32 @@ Astemir and administrators.
 - Release verification passed TypeScript, production build, 21 focused tests,
   `/api/health`, `/procurement`, `/admin/procurement`, and an authenticated ADMIN
   screen check against real read-only 1C data.
+
+## 2026-09-10 - Partial Supplier Payments And Debt Context
+
+The procurement calendar was extended without changing its narrow operating
+scope or writing to 1C.
+
+- One supplier order may now have several planned deposits. Active reservations
+  are subtracted from the current 1C payment gap, while amounts already confirmed
+  by posted 1C expense documents are not reserved twice.
+- The order selector shows the net 1C balance for the selected supplier, the
+  payment gap for the order, the amount already in plans and the remainder that
+  can still be planned. Fulfilled-goods orders returned separately by the 1C
+  endpoint are included alongside active orders.
+- The ADMIN screen shows the total positive debt across Astemir's suppliers.
+  Negative supplier balances are treated as advances and cannot turn the total
+  debt negative; the employee selector labels a negative supplier balance as an
+  advance.
+- Administrators can return a submitted plan with a reason. Astemir can correct
+  and resubmit it. Recent fully issued plans move to payment history.
+- Same-day and late submissions are labelled automatically. A cautious 1C
+  evidence mismatch is shown for review when the same manager, date and amount
+  point to another supplier; this is a control signal rather than a guaranteed
+  accounting match.
+- Code commits `eafbe6b` and corrective hotfix `9167a4c` were released. No
+  database migration, 1C write or 1C extension change was required. Production
+  verification passed 22 focused tests, TypeScript, the production build,
+  `/api/health`, `/procurement`, `/admin/procurement`, and an authenticated ADMIN
+  check against real 1C data. The verified total positive debt was RUB 706,715;
+  this is a live observation, not a hard-coded value.
