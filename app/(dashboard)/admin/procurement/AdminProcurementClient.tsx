@@ -48,6 +48,12 @@ type UsdtBalance = {
   sourceLabel: string;
   error: string;
 };
+type UsdtRateReference = {
+  rate: number | null;
+  checkedAt: string;
+  sourceLabel: string;
+  conversionAt?: string;
+};
 const rub = new Intl.NumberFormat("ru-RU", {
   style: "currency",
   currency: "RUB",
@@ -75,6 +81,7 @@ export default function AdminProcurementClient({
   unplannedCashCount,
   usdtBalance,
   accountableBalance,
+  usdtRateReference,
   todayKey,
 }: {
   initialPlans: Plan[];
@@ -84,6 +91,7 @@ export default function AdminProcurementClient({
   unplannedCashCount: number | null;
   usdtBalance: UsdtBalance;
   accountableBalance: UsdtBalance;
+  usdtRateReference?: UsdtRateReference;
   todayKey: string;
 }) {
   const [plans, setPlans] = useState(initialPlans);
@@ -91,6 +99,21 @@ export default function AdminProcurementClient({
   const active = plans.filter((plan) => plan.status !== "CANCELLED");
   const submitted = active.filter((plan) => plan.status === "SUBMITTED");
   const calendarPlans = active.filter((plan) => plan.status !== "SUBMITTED");
+  const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
+  const estimatedUsdtPlanIds = new Set(
+    active
+      .filter((plan) => plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) && referenceUsdtRate > 0 && Number(plan.plannedAmount) > 0)
+      .map((plan) => plan.id),
+  );
+  const referenceRatePlanIds = new Set(
+    active
+      .filter((plan) => plan.paymentMethod === "USDT" && !Number(plan.exchangeRate || 0) && referenceUsdtRate > 0)
+      .map((plan) => plan.id),
+  );
+  const rateDate = usdtRateReference?.conversionAt || usdtRateReference?.checkedAt || "";
+  const rateDateLabel = rateDate
+    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(rateDate))
+    : "";
   const groupedPlans = useMemo(() => {
     const ordered = [...calendarPlans].sort(
       (a, b) =>
@@ -109,8 +132,8 @@ export default function AdminProcurementClient({
       plannedDate: plan.plannedDate,
       plannedAmount: Number(plan.plannedAmount),
       paymentMethod: plan.paymentMethod,
-      foreignAmount: Number(plan.foreignAmount || 0),
-      exchangeRate: Number(plan.exchangeRate || 0),
+      foreignAmount: Number(plan.foreignAmount || 0) || (estimatedUsdtPlanIds.has(plan.id) ? Number(plan.plannedAmount) / referenceUsdtRate : 0),
+      exchangeRate: Number(plan.exchangeRate || 0) || (referenceRatePlanIds.has(plan.id) ? referenceUsdtRate : 0),
       commissionAmount: Number(plan.commissionAmount || 0),
       issued: plan.evidence.state === "ISSUED_BY_ONE_C",
     })),
@@ -124,11 +147,19 @@ export default function AdminProcurementClient({
       )
     : [];
   const nextAmount = nextPlans.reduce((sum, row) => sum + row.cashRequired, 0);
-  const nextAmountEstimated = nextPlans.some((row) => row.estimated);
+  const nextAmountEstimated = nextPlans.some((row) => row.estimated || referenceRatePlanIds.has(row.planId));
+  const nextPlanMethods = nextPlans.map((row) => active.find((plan) => plan.id === row.planId)?.paymentMethod).filter(Boolean);
+  const nextPreparationLabel = nextPlanMethods.every((method) => method === "CASH")
+    ? "Наличные из сейфа"
+    : nextPlanMethods.every((method) => method === "USDT")
+      ? "Ориентир на пополнение USDT"
+      : "Наличные и пополнение USDT";
   const plannedUsdt = preparation.plannedUsdt;
+  const unknownUsdtCount = preparation.unknownUsdtCount;
+  const estimatedUsdtCount = estimatedUsdtPlanIds.size;
   const usdtDeficit = preparation.usdtDeficit;
   const usdtRemainder =
-    usdtBalance.balance == null
+    usdtBalance.balance == null || unknownUsdtCount > 0
       ? null
       : Math.max(0, usdtBalance.balance - plannedUsdt);
   const plannedQr = active
@@ -155,10 +186,21 @@ export default function AdminProcurementClient({
     plan.paymentMethod === "USDT" && Number(plan.foreignAmount || 0) > 0
       ? `${Number(plan.foreignAmount).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`
       : rub.format(Number(plan.plannedAmount));
+  const estimatedUsdtForPlan = (plan: Plan) =>
+    estimatedUsdtPlanIds.has(plan.id) ? Number(plan.plannedAmount) / referenceUsdtRate : 0;
+  const usdtEstimateNote = (plan: Plan) => {
+    const amount = estimatedUsdtForPlan(plan);
+    if (!amount) return "Сумма USDT и курс уточняются";
+    return `Примерно ${amount.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT · последний курс ${referenceUsdtRate.toLocaleString("ru-RU")} ₽${rateDateLabel ? ` от ${rateDateLabel}` : ""} в 1С`;
+  };
   const orderLabel = (plan: Plan) =>
     plan.orderNumbers?.filter(Boolean).length
       ? plan.orderNumbers.filter(Boolean).join(", ")
       : "Без номера";
+  const planComment = (plan: Plan) =>
+    plan.condition && plan.condition !== "Оплата по выбранным заказам"
+      ? plan.condition
+      : "";
 
   async function act(id: string, action: "APPROVE" | "CANCEL") {
     if (action === "CANCEL" && !window.confirm("Отменить эту оплату? Она исчезнет из рабочего календаря.")) return;
@@ -203,7 +245,7 @@ export default function AdminProcurementClient({
                     <p className="text-base font-extrabold text-slate-700">к {date(nextDate)}</p>
                   </div>
                   <p className="mt-1 text-sm font-medium text-slate-500">
-                    Наличные из сейфа · {nextPlans.length} {nextPlans.length === 1 ? "оплата" : "оплаты"}
+                    {nextPreparationLabel} · {nextPlans.length} {nextPlans.length === 1 ? "оплата" : "оплаты"}
                     {nextAmountEstimated ? " · сумма ориентировочная" : ""}
                   </p>
                 </>
@@ -265,8 +307,8 @@ export default function AdminProcurementClient({
             </div>
             <div className="mt-3 grid grid-cols-3 gap-3">
               <div><p className="text-xs font-bold text-slate-500">Доступно</p><p className="mt-1 font-black text-slate-950">{usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`}</p></div>
-              <div><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-1 font-black text-slate-950">{plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT</p></div>
-              <div><p className="text-xs font-bold text-slate-500">{usdtDeficit && usdtDeficit > 0 ? "Не хватает" : "Останется"}</p><p className={`mt-1 font-black ${usdtDeficit && usdtDeficit > 0 ? "text-red-700" : "text-slate-950"}`}>{usdtDeficit == null || usdtRemainder == null ? "—" : `${(usdtDeficit > 0 ? usdtDeficit : usdtRemainder).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`}</p></div>
+              <div><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-1 font-black text-slate-950">{plannedUsdt > 0 ? `${estimatedUsdtCount > 0 ? "≈ " : ""}${plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT` : unknownUsdtCount > 0 ? "Уточняется" : "0 USDT"}</p>{unknownUsdtCount > 0 ? <p className="mt-0.5 text-xs font-semibold text-violet-700">Оплат без суммы: {unknownUsdtCount}</p> : estimatedUsdtCount > 0 ? <p className="mt-0.5 text-xs font-semibold text-violet-700">По последнему курсу из 1С</p> : null}</div>
+              <div><p className="text-xs font-bold text-slate-500">{unknownUsdtCount > 0 ? "Расчёт остатка" : usdtDeficit && usdtDeficit > 0 ? "Не хватает" : "Останется"}</p><p className={`mt-1 font-black ${usdtDeficit && usdtDeficit > 0 ? "text-red-700" : "text-slate-950"}`}>{usdtDeficit == null || usdtRemainder == null ? "—" : `${estimatedUsdtCount > 0 ? "≈ " : ""}${(usdtDeficit > 0 ? usdtDeficit : usdtRemainder).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}</p></div>
             </div>
           </div>
         </div>
@@ -289,16 +331,17 @@ export default function AdminProcurementClient({
                   <p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">Заказы: {orderLabel(plan)}</p>
                 </div>
                 <div><p className="text-xs font-bold text-slate-400">Подготовить к</p><p className="mt-0.5 font-extrabold text-slate-800">{date(plan.plannedDate)}</p></div>
-                <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" ? <p className="text-xs font-semibold text-slate-500">{rub.format(Number(plan.plannedAmount))}</p> : null}</div>
+                <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" ? <p className="text-xs font-semibold text-violet-700">{Number(plan.foreignAmount || 0) > 0 ? `Ориентир: ${rub.format(Number(plan.plannedAmount))}` : usdtEstimateNote(plan)}</p> : null}</div>
                 <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                 <div className="flex gap-2 lg:justify-end">
                   <button disabled={busy === plan.id} onClick={() => act(plan.id, "APPROVE")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-green-700 disabled:opacity-50"><Check className="h-4 w-4" />Согласовать</button>
                   <button disabled={busy === plan.id} onClick={() => act(plan.id, "CANCEL")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50" aria-label={`Отменить оплату ${plan.supplierPartner}`}><X className="h-4 w-4" />Отменить</button>
                 </div>
               </div>
-              {plan.supplierConfirmation || (plan.paymentMethod === "USDT" && plan.exchangeRate) ? (
+              {planComment(plan) || plan.supplierConfirmation || (plan.paymentMethod === "USDT" && plan.exchangeRate) ? (
                 <p className="mt-2 text-sm font-medium text-slate-600">
                   {plan.paymentMethod === "USDT" && plan.exchangeRate ? `Курс: ${plan.exchangeRate} ₽. ` : ""}
+                  {planComment(plan)}{planComment(plan) && plan.supplierConfirmation ? " · " : ""}
                   {plan.supplierConfirmation || ""}
                 </p>
               ) : null}
@@ -324,7 +367,7 @@ export default function AdminProcurementClient({
                 {datePlans.map((plan) => (
                   <article key={plan.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(180px,1.25fr)_minmax(150px,.8fr)_minmax(150px,1fr)_auto] sm:items-center">
                     <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-950">{plan.supplierPartner}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${plan.evidence.state === "ISSUED_BY_ONE_C" ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"}`}>{plan.evidence.state === "ISSUED_BY_ONE_C" ? "ВЫДАНО ПО 1С" : "СОГЛАСОВАНО"}</span></div><p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">Заказы: {orderLabel(plan)}</p></div>
-                    <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p></div>
+                    <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <p className="text-xs font-semibold text-violet-700">{usdtEstimateNote(plan)}</p> : null}{planComment(plan) ? <p className="mt-1 text-xs font-medium text-slate-600">{planComment(plan)}</p> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                     <div className="text-left sm:text-right"><p className="text-xs font-bold text-slate-400">Ответственный</p><p className="mt-0.5 text-sm font-extrabold text-slate-700">{plan.manager.name}</p></div>
                   </article>

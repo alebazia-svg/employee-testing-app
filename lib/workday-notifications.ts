@@ -264,6 +264,7 @@ function notificationTargetKey(notification: { id: number; taskId: number | null
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  if (notification.kind?.startsWith('procurement_payment_')) return '/procurement';
   if (notification.reviewId) return `/employee/payment-checks/${notification.reviewId}`;
   if (notification.issueId) return `/employee/issues/${notification.issueId}`;
   if (notification.kind === 'schedule_replacement_request') {

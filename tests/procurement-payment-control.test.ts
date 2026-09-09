@@ -2,10 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildPaymentPlanCode, calculateCashPreparation, matchCashEvidence, validatePaymentPlan } from '@/lib/procurement-payment-control';
 
-test('USDT plan only requires the supplier amount, not accounting details', () => {
+test('USDT plan can be submitted when only the ruble amount is known', () => {
   const result = validatePaymentPlan({ supplierPartner: 'China Mobile', orderRefs: ['order-1'], orderNumbers: ['1'], plannedDate: '2026-09-10', plannedAmount: 400000, condition: 'Перед отправкой', paymentMethod: 'USDT' });
-  assert.equal(result.ok, false);
-  assert.deepEqual(result.errors, ['Укажите сумму в USDT.']);
+  assert.equal(result.ok, true);
+  assert.equal(result.data.foreignAmount, null);
+});
+
+test('USDT plan can be submitted when only the USDT amount is known', () => {
+  const result = validatePaymentPlan({ supplierPartner: 'Luxo', orderRefs: ['order-1'], plannedDate: '2026-09-10', foreignAmount: 8000, paymentMethod: 'USDT' });
+  assert.equal(result.ok, true);
+  assert.equal(result.data.plannedAmount, null);
+  assert.equal(result.data.foreignAmount, 8000);
 });
 
 test('a routine condition is supplied automatically for a short form', () => {
@@ -51,4 +58,18 @@ test('USDT deficit is converted to rubles with planned commission', () => {
   const result = calculateCashPreparation([{ id: 'usdt', plannedDate: '2026-09-10', plannedAmount: 400000, paymentMethod: 'USDT', foreignAmount: 4800, exchangeRate: 83, commissionAmount: 2500 }], 3000, '2026-09-09');
   assert.equal(result.rows[0].cashRequired, 151900);
   assert.equal(result.usdtDeficit, 1800);
+});
+
+test('unknown USDT amount keeps the requested rubles in cash preparation', () => {
+  const result = calculateCashPreparation([
+    { id: 'usdt-pending', plannedDate: '2026-09-11', plannedAmount: 700000, paymentMethod: 'USDT' },
+  ], 3400, '2026-09-09');
+  assert.deepEqual(result.rows, [{
+    planId: 'usdt-pending',
+    plannedDate: '2026-09-11',
+    cashRequired: 700000,
+    estimated: true,
+  }]);
+  assert.equal(result.unknownUsdtCount, 1);
+  assert.equal(result.usdtDeficit, null);
 });

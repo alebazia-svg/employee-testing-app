@@ -7,6 +7,9 @@ import {
   ordersForManager,
   ordersRequiringPayment,
 } from "@/lib/procurement-payment-source";
+import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-notifications";
+import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
+import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 
 const jsonPlan = (plan: unknown) => JSON.parse(JSON.stringify(plan));
 
@@ -30,8 +33,15 @@ export async function PATCH(
       { status: 409 },
     );
   const checked = validatePaymentPlan(await req.json());
-  if (!checked.ok || !checked.data.plannedAmount)
+  if (!checked.ok)
     return Response.json({ error: checked.errors.join(" ") }, { status: 400 });
+  let plannedAmount = checked.data.plannedAmount;
+  if (!plannedAmount && checked.data.paymentMethod === "USDT" && checked.data.foreignAmount) {
+    const rate = await getLatestProcurementUsdtRate(expenseRequestMoscowCalendarDate(new Date()));
+    if (!rate.rate) return Response.json({ error: "Курс пока недоступен. Укажите примерную сумму в рублях." }, { status: 400 });
+    plannedAmount = checked.data.foreignAmount * rate.rate;
+  }
+  if (!plannedAmount) return Response.json({ error: "Укажите сумму оплаты." }, { status: 400 });
   const source = await fetchSupplierOrderFinance();
   const managerName = user.oneCManagerName?.trim() || user.name;
   const allowed = new Map(
@@ -63,7 +73,7 @@ export async function PATCH(
           orderRefs: checked.data.orderRefs,
           orderNumbers: checked.data.orderNumbers,
           plannedDate: new Date(`${checked.data.plannedDate}T00:00:00.000Z`),
-          plannedAmount: new Prisma.Decimal(checked.data.plannedAmount!),
+          plannedAmount: new Prisma.Decimal(plannedAmount),
           condition: checked.data.condition,
           paymentMethod: checked.data.paymentMethod,
           currency: checked.data.currency,
@@ -87,13 +97,20 @@ export async function PATCH(
       const updated = await tx.supplierPaymentPlan.findUniqueOrThrow({
         where: { id },
       });
-      await tx.supplierPaymentPlanEvent.create({
+      const planEvent = await tx.supplierPaymentPlanEvent.create({
         data: {
           planId: id,
           actorUserId: user.id,
           action: "UPDATED",
           snapshot: jsonPlan(updated),
         },
+      });
+      await notifyAdminsAboutProcurementPlans({
+        db: tx,
+        eventKey: `procurement-payment:${planEvent.id}:updated`,
+        action: "UPDATED",
+        managerName: user.name,
+        plans: [updated],
       });
       return updated;
     })

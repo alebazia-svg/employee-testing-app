@@ -2,6 +2,7 @@
 
 import { BrandBlock } from '@/components/BrandBlock';
 import { LogoutButton } from '@/components/LogoutButton';
+import { ProcurementNotificationsButton } from '@/components/ProcurementNotificationsButton';
 
 export function ProcurementShell({ userName, children }: { userName: string; children: React.ReactNode }) {
   const initials = userName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
@@ -10,12 +11,15 @@ export function ProcurementShell({ userName, children }: { userName: string; chi
       <div className='mx-auto w-full max-w-[1280px]'>
         <header className='mb-5 flex items-start justify-between gap-3'>
           <div className='w-[125px] pt-2 sm:w-[160px]'><BrandBlock size='employee' /></div>
-          <div className='admin-account-chip flex items-center gap-2.5 rounded-2xl px-3 py-2.5 sm:gap-3 sm:px-4'>
-            <div className='hidden h-10 w-10 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-primary sm:flex'>{initials}</div>
-            <div className='min-w-0'>
-              <p className='truncate text-sm font-bold text-slate-950'>{userName}</p>
-              <p className='text-xs font-medium text-slate-500'>Закупки</p>
-              <LogoutButton className='procurement-account-logout mt-1 text-xs font-bold' />
+          <div className='flex items-start gap-2.5'>
+            <div className='pt-1.5'><ProcurementNotificationsButton /></div>
+            <div className='admin-account-chip flex items-center gap-2.5 rounded-2xl px-3 py-2.5 sm:gap-3 sm:px-4'>
+              <div className='hidden h-10 w-10 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-primary sm:flex'>{initials}</div>
+              <div className='min-w-0'>
+                <p className='truncate text-sm font-bold text-slate-950'>{userName}</p>
+                <p className='text-xs font-medium text-slate-500'>Закупки</p>
+                <LogoutButton className='procurement-account-logout mt-1 text-xs font-bold' />
+              </div>
             </div>
           </div>
         </header>

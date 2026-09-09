@@ -40,11 +40,10 @@ export function validatePaymentPlan(input: PaymentPlanInput) {
   if (!data.supplierPartner) errors.push('Выберите поставщика из заказов 1С.');
   if (!data.orderRefs.length) errors.push('Выберите хотя бы один заказ 1С.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data.plannedDate)) errors.push('Укажите плановую дату оплаты.');
-  if (!data.plannedAmount) errors.push('Укажите сумму оплаты в рублях.');
-  if (!PAYMENT_METHODS.includes(method)) errors.push('Выберите способ оплаты.');
   if (method === 'USDT') {
-    if (!data.foreignAmount) errors.push('Укажите сумму в USDT.');
-  }
+    if (!data.plannedAmount && !data.foreignAmount) errors.push('Укажите сумму в рублях или USDT.');
+  } else if (!data.plannedAmount) errors.push('Укажите сумму оплаты в рублях.');
+  if (!PAYMENT_METHODS.includes(method)) errors.push('Выберите способ оплаты.');
   return { ok: errors.length === 0, errors, data };
 }
 
@@ -60,6 +59,7 @@ export function calculateCashPreparation(plans: CashPreparationPlan[], usdtBalan
   const rows = eligible.map((plan) => {
     if (plan.paymentMethod === 'CASH') return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount };
     if (plan.paymentMethod !== 'USDT') return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: 0 };
+    if (!Number(plan.foreignAmount || 0)) return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount, estimated: true };
     if (remainingUsdt == null) return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount, estimated: true };
     const requiredUsdt = Number(plan.foreignAmount || 0);
     const coveredUsdt = Math.min(remainingUsdt, requiredUsdt);
@@ -72,7 +72,8 @@ export function calculateCashPreparation(plans: CashPreparationPlan[], usdtBalan
       : { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount, estimated: true };
   }).filter((row) => row.cashRequired > 0.009);
   const plannedUsdt = eligible.filter((plan) => plan.paymentMethod === 'USDT').reduce((sum, plan) => sum + Number(plan.foreignAmount || 0), 0);
-  return { rows, plannedUsdt, usdtDeficit: usdtBalance == null ? null : Math.max(0, plannedUsdt - usdtBalance) };
+  const unknownUsdtCount = eligible.filter((plan) => plan.paymentMethod === 'USDT' && !Number(plan.foreignAmount || 0)).length;
+  return { rows, plannedUsdt, unknownUsdtCount, usdtDeficit: usdtBalance == null || unknownUsdtCount > 0 ? null : Math.max(0, plannedUsdt - usdtBalance) };
 }
 
 const normalized = (value: unknown) => clean(value).toLocaleLowerCase('ru-RU').replaceAll('ё', 'е').replace(/\s+/g, ' ');

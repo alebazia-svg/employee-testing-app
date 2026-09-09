@@ -12,6 +12,7 @@ import {
 import AdminProcurementClient from "./AdminProcurementClient";
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
+import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export default async function AdminProcurementPage() {
   to.setDate(to.getDate() + 1);
   const from = new Date(to);
   from.setDate(from.getDate() - 31);
-  const [plansResult, managersResult, ordersResult, requestsResult, balancesResult] =
+  const [plansResult, managersResult, ordersResult, requestsResult, balancesResult, rateResult] =
     await Promise.allSettled([
       prisma.supplierPaymentPlan.findMany({
         include: { manager: { select: { name: true, oneCManagerName: true } } },
@@ -34,6 +35,7 @@ export default async function AdminProcurementPage() {
       fetchSupplierOrderFinance(),
       fetchExpenseRequestSnapshot({ from, to }),
       getProcurementBalances(todayKey),
+      getLatestProcurementUsdtRate(todayKey),
     ]);
   const plans = plansResult.status === "fulfilled" ? plansResult.value : [];
   const procurementManagers =
@@ -118,6 +120,8 @@ export default async function AdminProcurementPage() {
       ? balancesResult.value.accountable
       : { balance: null, checkedAt: "", sourceLabel: "1С · Касса Подотчетника", error: "ACCOUNTABLE_BALANCE_UNAVAILABLE" };
   if (accountableBalance.error) warnings.push("остаток кассы подотчётника");
+  const usdtRateReference = rateResult.status === "fulfilled" ? rateResult.value : undefined;
+  if (!usdtRateReference?.rate) warnings.push("курс последней конвертации USDT");
   return (
     <AdminShell>
       <AdminBreadcrumbs current="Закупки" />
@@ -135,6 +139,7 @@ export default async function AdminProcurementPage() {
           unplannedCashCount={unplannedCashCount}
           usdtBalance={usdtBalance}
           accountableBalance={accountableBalance}
+          usdtRateReference={usdtRateReference}
           todayKey={todayKey}
         />
       </div>

@@ -2,6 +2,9 @@ import { Prisma } from '@prisma/client';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { buildPaymentPlanCode, validatePaymentPlan } from '@/lib/procurement-payment-control';
+import { notifyAdminsAboutProcurementPlans } from '@/lib/procurement-payment-notifications';
+import { getLatestProcurementUsdtRate } from '@/lib/procurement-usdt-rate';
+import { expenseRequestMoscowCalendarDate } from '@/lib/expense-request-source';
 import { fetchSupplierOrderFinance, ordersForManager, ordersRequiringPayment } from '@/lib/procurement-payment-source';
 
 function jsonPlan(plan: unknown) { return JSON.parse(JSON.stringify(plan, (_, value) => typeof value === 'bigint' ? String(value) : value)); }
@@ -19,8 +22,14 @@ export async function POST(req: Request) {
   if (!user) return Response.json({ error: 'Необходим вход' }, { status: 401 });
   if (user.role !== 'EMPLOYEE' || user.portalArea !== 'PROCUREMENT') return Response.json({ error: 'Нет доступа' }, { status: 403 });
   const checked = validatePaymentPlan(await req.json());
-  if (!checked.ok || !checked.data.plannedAmount) return Response.json({ error: checked.errors.join(' ') }, { status: 400 });
-  const plannedAmount = checked.data.plannedAmount;
+  if (!checked.ok) return Response.json({ error: checked.errors.join(' ') }, { status: 400 });
+  let plannedAmount = checked.data.plannedAmount;
+  if (!plannedAmount && checked.data.paymentMethod === 'USDT' && checked.data.foreignAmount) {
+    const rate = await getLatestProcurementUsdtRate(expenseRequestMoscowCalendarDate(new Date()));
+    if (!rate.rate) return Response.json({ error: 'Курс пока недоступен. Укажите примерную сумму в рублях.' }, { status: 400 });
+    plannedAmount = checked.data.foreignAmount * rate.rate;
+  }
+  if (!plannedAmount) return Response.json({ error: 'Укажите сумму оплаты.' }, { status: 400 });
   const managerName = user.oneCManagerName?.trim() || user.name;
   const source = await fetchSupplierOrderFinance();
   const allowed = new Map(ordersRequiringPayment(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]));
@@ -38,7 +47,14 @@ export async function POST(req: Request) {
       commissionAmount: checked.data.commissionAmount == null ? null : new Prisma.Decimal(checked.data.commissionAmount),
       exchangerName: checked.data.exchangerName, supplierConfirmation: checked.data.supplierConfirmation,
     } });
-    await tx.supplierPaymentPlanEvent.create({ data: { planId: created.id, actorUserId: user.id, action: 'SUBMITTED', snapshot: JSON.parse(JSON.stringify(created)) } });
+    const planEvent = await tx.supplierPaymentPlanEvent.create({ data: { planId: created.id, actorUserId: user.id, action: 'SUBMITTED', snapshot: JSON.parse(JSON.stringify(created)) } });
+    await notifyAdminsAboutProcurementPlans({
+      db: tx,
+      eventKey: `procurement-payment:${planEvent.id}:submitted`,
+      action: 'SUBMITTED',
+      managerName: user.name,
+      plans: [created],
+    });
     return created;
   });
   return Response.json(jsonPlan(plan), { status: 201 });

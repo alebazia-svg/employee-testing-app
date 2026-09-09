@@ -51,6 +51,12 @@ type UsdtBalance = {
   sourceLabel: string;
   error: string;
 };
+type UsdtRateReference = {
+  rate: number | null;
+  checkedAt: string;
+  sourceLabel: string;
+  conversionAt?: string;
+};
 type Draft = {
   supplier: string;
   orderRefs: string[];
@@ -124,7 +130,7 @@ const methodLabel = (method: string) =>
         : "Перевод поставщику";
 const commentHint = (method: string) =>
   method === "USDT"
-    ? "Например: курс валютчика 89 ₽"
+    ? "Например: курс уточняется"
     : method === "ACCOUNTABLE_QR"
       ? "Например: QR пришлют после 15:00"
       : method === "BANK"
@@ -139,6 +145,7 @@ export default function ProcurementPaymentCalendarClient({
   managerMappingError,
   usdtBalance,
   accountableBalance,
+  usdtRateReference,
   todayKey,
 }: {
   initialOrders: Order[];
@@ -148,6 +155,7 @@ export default function ProcurementPaymentCalendarClient({
   managerMappingError: boolean;
   usdtBalance: UsdtBalance;
   accountableBalance: UsdtBalance;
+  usdtRateReference?: UsdtRateReference;
   todayKey: string;
 }) {
   const [plans, setPlans] = useState(initialPlans);
@@ -157,6 +165,19 @@ export default function ProcurementPaymentCalendarClient({
   const [batchSeedRefs, setBatchSeedRefs] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
+  const enteredRoubles = Number(draft.plannedAmount || 0);
+  const enteredUsdt = Number(draft.foreignAmount || 0);
+  const estimatedUsdt = referenceUsdtRate > 0 && enteredRoubles > 0
+    ? enteredRoubles / referenceUsdtRate
+    : 0;
+  const estimatedRoubles = referenceUsdtRate > 0 && enteredUsdt > 0
+    ? enteredUsdt * referenceUsdtRate
+    : 0;
+  const rateDate = usdtRateReference?.conversionAt || usdtRateReference?.checkedAt || "";
+  const rateDateLabel = rateDate
+    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(rateDate))
+    : "";
   const suppliers = useMemo(
     () =>
       [
@@ -463,11 +484,16 @@ export default function ProcurementPaymentCalendarClient({
                       <div>
                         <p className="text-xl font-black">
                           {plan.paymentMethod === "USDT"
-                            ? `${Number(plan.foreignAmount || 0).toLocaleString("ru-RU")} USDT`
+                            ? Number(plan.foreignAmount || 0) > 0
+                              ? `${Number(plan.foreignAmount).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`
+                              : rub.format(Number(plan.plannedAmount))
                             : rub.format(Number(plan.plannedAmount))}
                         </p>
                         <p className="mt-0.5 text-sm font-semibold text-slate-600">
                           {methodLabel(plan.paymentMethod)}
+                          {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0)
+                            ? " · сумма USDT уточняется"
+                            : ""}
                           {plan.condition &&
                           plan.condition !== "Оплата по выбранным заказам"
                             ? ` · ${plan.condition}`
@@ -631,26 +657,13 @@ export default function ProcurementPaymentCalendarClient({
               </label>
             </div>
             {draft.paymentMethod === "USDT" ? (
-              <label className="block text-sm font-bold">
-                Сколько USDT нужно отправить
-                <input
-                  value={draft.foreignAmount}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      foreignAmount: event.target.value,
-                    }))
-                  }
-                  type="number"
-                  min="0.0001"
-                  step="0.0001"
-                  required
-                  className="mt-1.5 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-3"
-                />
-              </label>
-            ) : (
-              <label className="block text-sm font-bold">
-                Сколько запросил поставщик, ₽
+              <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-sm text-violet-950">
+                <p className="font-bold">Укажите известную сумму — в рублях или USDT.</p>
+              </div>
+            ) : null}
+            <label className="block text-sm font-bold">
+                {draft.paymentMethod === "USDT" ? "Сумма в рублях" : "Сколько рублей подготовить"}
+                {draft.paymentMethod === "USDT" ? <span className="font-medium text-slate-400"> (если известна)</span> : null}
                 <input
                   value={draft.plannedAmount}
                   onChange={(event) =>
@@ -662,11 +675,45 @@ export default function ProcurementPaymentCalendarClient({
                   type="number"
                   min="0.01"
                   step="0.01"
-                  required
+                  required={draft.paymentMethod !== "USDT"}
+                  placeholder={draft.paymentMethod === "USDT" ? "Можно оставить пустым" : undefined}
                   className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3"
                 />
-              </label>
-            )}
+            </label>
+            {draft.paymentMethod === "USDT" ? (
+              <>
+                <label className="block text-sm font-bold text-violet-900">
+                  Сколько USDT отправить <span className="font-medium text-violet-500">(если известно)</span>
+                  <input
+                    value={draft.foreignAmount}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        foreignAmount: event.target.value,
+                      }))
+                    }
+                    type="number"
+                    min="0.0001"
+                    step="0.0001"
+                    placeholder="Можно оставить пустым"
+                    className="mt-1.5 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-3"
+                  />
+                </label>
+                {referenceUsdtRate > 0 && (enteredRoubles > 0 || enteredUsdt > 0) ? (
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-sm font-black text-slate-950">
+                      {enteredUsdt > 0 && enteredRoubles <= 0
+                        ? `Примерно: ${rub.format(estimatedRoubles)}`
+                        : `Примерно: ${estimatedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      По последнему курсу {referenceUsdtRate.toLocaleString("ru-RU")} ₽{rateDateLabel ? ` от ${rateDateLabel}` : ""} в 1С.
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">Фактическая сумма определится после обмена.</p>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
             <label className="block text-sm font-bold">
               Комментарий — если есть важная деталь{" "}
               <span className="font-medium text-slate-400">
@@ -705,7 +752,11 @@ export default function ProcurementPaymentCalendarClient({
               </button>
               <button
                 disabled={
-                  saving || !draft.orderRefs.length || !draft.plannedAmount
+                  saving || !draft.orderRefs.length || (
+                    draft.paymentMethod === "USDT"
+                      ? !draft.plannedAmount && !draft.foreignAmount
+                      : !draft.plannedAmount
+                  )
                 }
                 className="admin-material-primary rounded-xl bg-green-600 px-5 py-3 font-black text-white disabled:opacity-40"
               >
@@ -722,6 +773,7 @@ export default function ProcurementPaymentCalendarClient({
             key={batchSeedRefs.join("|")}
             orders={missingOrders}
             initialSelectedRefs={batchSeedRefs}
+            usdtRateReference={usdtRateReference}
             onCancel={() => {
               setFormOpen(false);
               setBatchSeedRefs([]);

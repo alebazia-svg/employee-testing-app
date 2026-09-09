@@ -33,7 +33,7 @@ const rub = new Intl.NumberFormat("ru-RU", {
 
 const commentHint = (method: string) =>
   method === "USDT"
-    ? "Курс валютчика 89 ₽"
+    ? "Например: курс уточняется"
     : method === "ACCOUNTABLE_QR"
       ? "QR пришлют после 15:00"
       : method === "BANK"
@@ -45,11 +45,13 @@ export function ProcurementPaymentBatchForm({
   initialSelectedRefs,
   onCreated,
   onCancel,
+  usdtRateReference,
 }: {
   orders: Order[];
   initialSelectedRefs: string[];
   onCreated: (plans: CreatedPlan[]) => void;
   onCancel: () => void;
+  usdtRateReference?: { rate: number | null; checkedAt: string; sourceLabel: string; conversionAt?: string };
 }) {
   const [plannedDate, setPlannedDate] = useState("");
   const [rows, setRows] = useState<Record<string, RowDraft>>(() =>
@@ -93,11 +95,20 @@ export function ProcurementPaymentBatchForm({
       qr: selected
         .filter((order) => rows[order.ref].paymentMethod === "ACCOUNTABLE_QR")
         .reduce((sum, order) => sum + Number(rows[order.ref].plannedAmount || 0), 0),
-      usdt: selected
+      usdtRub: selected
+        .filter((order) => rows[order.ref].paymentMethod === "USDT")
+        .reduce((sum, order) => sum + Number(rows[order.ref].plannedAmount || 0), 0),
+      usdtKnown: selected
         .filter((order) => rows[order.ref].paymentMethod === "USDT")
         .reduce((sum, order) => sum + Number(rows[order.ref].foreignAmount || 0), 0),
+      usdtUnknown: selected
+        .filter((order) => rows[order.ref].paymentMethod === "USDT" && !Number(rows[order.ref].foreignAmount || 0))
+        .length,
+      usdtEstimatedRub: selected
+        .filter((order) => rows[order.ref].paymentMethod === "USDT")
+        .reduce((sum, order) => sum + (Number(rows[order.ref].plannedAmount || 0) || Number(rows[order.ref].foreignAmount || 0) * Number(usdtRateReference?.rate || 0)), 0),
     }),
-    [orders, rows, selected],
+    [orders, rows, selected, usdtRateReference?.rate],
   );
 
   function change(ref: string, patch: Partial<RowDraft>) {
@@ -261,22 +272,53 @@ export function ProcurementPaymentBatchForm({
                       >
                         <option value="CASH">Наличные</option>
                         <option value="ACCOUNTABLE_QR">QR</option>
-                        <option value="USDT">USDT</option>
+                        <option value="USDT">Оплата в USDT</option>
                         <option value="BANK">Перевод поставщику</option>
                       </select>
+                      {row.paymentMethod === "USDT" ? (
+                        <span className="mt-1.5 block text-[11px] font-semibold leading-snug text-violet-700">
+                          Достаточно указать рубли или USDT.
+                        </span>
+                      ) : null}
                 </label>
-                <label className="text-xs font-bold text-slate-600">
-                      {row.paymentMethod === "USDT" ? "Сколько USDT отправить" : "Сколько подготовить, ₽"}
+                <div className="space-y-2">
+                  <label className="block text-xs font-bold text-slate-600">
+                      {row.paymentMethod === "USDT" ? "Сумма в рублях (если известна)" : "Сколько рублей подготовить"}
                       <input
-                        value={row.paymentMethod === "USDT" ? row.foreignAmount : row.plannedAmount}
-                        onChange={(event) => change(order.ref, row.paymentMethod === "USDT" ? { foreignAmount: event.target.value } : { plannedAmount: event.target.value })}
+                        value={row.plannedAmount}
+                        onChange={(event) => change(order.ref, { plannedAmount: event.target.value })}
                         type="number"
                         min="0.01"
-                        step={row.paymentMethod === "USDT" ? "0.0001" : "0.01"}
-                        required
+                        step="0.01"
+                        required={row.paymentMethod !== "USDT"}
+                        placeholder={row.paymentMethod === "USDT" ? "Можно оставить пустым" : undefined}
                         className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold"
                       />
-                </label>
+                  </label>
+                  {row.paymentMethod === "USDT" ? (
+                    <div>
+                      <label className="block text-xs font-bold text-violet-800">
+                        Сколько USDT отправить <span className="font-medium text-violet-500">(если известно)</span>
+                        <input
+                          value={row.foreignAmount}
+                          onChange={(event) => change(order.ref, { foreignAmount: event.target.value })}
+                          type="number"
+                          min="0.0001"
+                          step="0.0001"
+                          placeholder="Можно оставить пустым"
+                          className="mt-1 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm font-semibold text-slate-900"
+                        />
+                      </label>
+                      {Number(usdtRateReference?.rate || 0) > 0 && (Number(row.plannedAmount || 0) > 0 || Number(row.foreignAmount || 0) > 0) ? (
+                        <p className="mt-1.5 text-[11px] font-bold text-slate-600">
+                          {Number(row.foreignAmount || 0) > 0 && !Number(row.plannedAmount || 0)
+                            ? `≈ ${rub.format(Number(row.foreignAmount) * Number(usdtRateReference?.rate))}`
+                            : `≈ ${(Number(row.plannedAmount) / Number(usdtRateReference?.rate)).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} по последнему курсу {Number(usdtRateReference?.rate).toLocaleString("ru-RU")} ₽ в 1С
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
                 <label className="text-xs font-bold text-slate-600">
                       Комментарий <span className="font-medium text-slate-400">(необязательно)</span>
                       <input
@@ -310,7 +352,7 @@ export function ProcurementPaymentBatchForm({
           {totals.cash > 0 ? <p className="text-sm font-semibold text-slate-700">Наличными: <span className="font-black text-slate-950">{rub.format(totals.cash)}</span></p> : null}
           {totals.qr > 0 ? <p className="text-sm font-semibold text-slate-700">По QR: <span className="font-black text-slate-950">{rub.format(totals.qr)}</span></p> : null}
           {totals.bank > 0 ? <p className="text-sm font-semibold text-slate-700">Перевод поставщику: <span className="font-black text-slate-950">{rub.format(totals.bank)}</span></p> : null}
-          {totals.usdt > 0 ? <p className="text-sm font-semibold text-slate-700">В USDT: <span className="font-black text-slate-950">{totals.usdt.toLocaleString("ru-RU")} USDT</span></p> : null}
+          {totals.usdtEstimatedRub > 0 || totals.usdtKnown > 0 ? <p className="text-sm font-semibold text-slate-700">Для оплаты в USDT: <span className="font-black text-slate-950">{totals.usdtEstimatedRub > 0 ? `${totals.usdtRub <= 0 ? "≈ " : ""}${rub.format(totals.usdtEstimatedRub)}` : "сумма в рублях уточняется"}</span>{totals.usdtKnown > 0 ? ` · ${totals.usdtKnown.toLocaleString("ru-RU")} USDT` : ""}{totals.usdtUnknown > 0 ? ` · сумма USDT уточняется: ${totals.usdtUnknown}` : ""}</p> : null}
         </div>
       ) : null}
       {message ? <p className="text-sm font-bold text-red-600">{message}</p> : null}

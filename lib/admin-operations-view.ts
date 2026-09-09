@@ -13,6 +13,16 @@ export type AdminInboxSourceState = {
 };
 
 const eventMeta: Record<string, AdminInboxEventMeta> = {
+  'procurement.payment_submitted': {
+    category: 'requests',
+    typeLabel: 'Оплата поставщику',
+    actionLabel: 'Открыть закупки',
+  },
+  'procurement.payment_updated': {
+    category: 'requests',
+    typeLabel: 'Оплата поставщику',
+    actionLabel: 'Открыть закупки',
+  },
   'expense_request.created': {
     category: 'requests',
     typeLabel: 'Заявка на расход',

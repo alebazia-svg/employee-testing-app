@@ -8,6 +8,7 @@ import {
 import ProcurementPaymentCalendarClient from "./ProcurementPaymentCalendarClient";
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
+import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +16,14 @@ export default async function ProcurementPage() {
   const user = await getCurrentUser();
   if (!user) return null;
   const todayKey = expenseRequestMoscowCalendarDate(new Date());
-  const [plansResult, ordersResult, balancesResult] = await Promise.allSettled([
+  const [plansResult, ordersResult, balancesResult, rateResult] = await Promise.allSettled([
     prisma.supplierPaymentPlan.findMany({
       where: { managerUserId: user.id },
       orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
     }),
     fetchSupplierOrderFinance(),
     getProcurementBalances(todayKey),
+    getLatestProcurementUsdtRate(todayKey),
   ]);
   const plans = plansResult.status === "fulfilled" ? plansResult.value : [];
   const source =
@@ -60,6 +62,7 @@ export default async function ProcurementPage() {
       managerMappingError={managerMappingError}
       usdtBalance={usdtBalance}
       accountableBalance={accountableBalance}
+      usdtRateReference={rateResult.status === "fulfilled" ? rateResult.value : undefined}
       todayKey={todayKey}
     />
   );

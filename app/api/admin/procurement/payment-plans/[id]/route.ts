@@ -1,5 +1,6 @@
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
+import { notifyProcurementManagerAboutDecision } from '@/lib/procurement-payment-notifications';
 
 export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
   const access = await requireAdminApi();
@@ -11,6 +12,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
   const plan = await prisma.$transaction(async (tx) => {
     const updated = await tx.supplierPaymentPlan.update({ where: { id }, data: { status, approvedAt: action === 'APPROVE' ? new Date() : null, approvedById: action === 'APPROVE' ? access.user.id : null } });
     await tx.supplierPaymentPlanEvent.create({ data: { planId: id, actorUserId: access.user.id, action: status, snapshot: JSON.parse(JSON.stringify(updated)) } });
+    await notifyProcurementManagerAboutDecision({ db: tx, plan: updated, decision: status });
     return updated;
   });
   return Response.json(JSON.parse(JSON.stringify(plan)));
