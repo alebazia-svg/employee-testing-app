@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -8,13 +8,13 @@ import {
   CircleDollarSign,
   Pencil,
   Plus,
-  RefreshCw,
   RussianRuble,
   X,
 } from "lucide-react";
 import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
 import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
+import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
 
 type Order = {
   ref: string;
@@ -188,6 +188,7 @@ export default function ProcurementPaymentCalendarClient({
   const [batchSeedRefs, setBatchSeedRefs] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  useEffect(() => setPlans(initialPlans), [initialPlans]);
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const enteredRoubles = Number(draft.plannedAmount || 0);
   const enteredUsdt = Number(draft.foreignAmount || 0);
@@ -416,13 +417,7 @@ export default function ProcurementPaymentCalendarClient({
             Укажите дату и сумму заранее, чтобы деньги успели подготовить.
           </p>
         </div>
-        <div className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
-          <RefreshCw className="mr-1.5 inline h-3.5 w-3.5" />
-          Заказы 1С:{" "}
-          {checkedAt
-            ? new Date(checkedAt).toLocaleString("ru-RU")
-            : "данные недоступны"}
-        </div>
+        <ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" />
       </header>
       {sourceError ? (
         <Notice
@@ -477,35 +472,19 @@ export default function ProcurementPaymentCalendarClient({
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric
-          label="Осталось оплатить по заказам"
-          value={mappingBlocked || sourceError ? "—" : rub.format(orderPaymentGapTotal)}
-          hint={mappingBlocked || sourceError ? undefined : `${orderCountLabel(initialOrders.length)} в 1С`}
-          compact
-        />
-        <Metric
-          label="Долг за полученный товар"
-          value={mappingBlocked || supplierDebtError || supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}
-          hint="По взаиморасчётам в 1С"
-          compact
-        />
-        <Metric
-          label="Ожидают согласования"
-          value={plans.filter((plan) => plan.status === "SUBMITTED").length}
-        />
-        <Metric
-          label="Согласовано к оплате"
-          value={plans.filter((plan) => plan.status === "APPROVED").length}
-        />
-      </section>
-      {message && !formOpen ? (
-        <p className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-800">
-          {message}
-        </p>
-      ) : null}
+      <div className="grid gap-5 min-[1180px]:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.72fr)] min-[1180px]:items-start">
+        <div className="flex min-w-0 flex-col gap-5">
+          {message && !formOpen ? (
+            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-800">
+              {message}
+            </p>
+          ) : null}
 
-      <section className="rounded-2xl bg-white p-4 ring-1 ring-slate-200 sm:p-5">
+      <section
+        className="rounded-2xl bg-green-50/30 p-4 ring-1 ring-green-200/70 sm:p-5"
+        aria-hidden={formOpen || undefined}
+        inert={formOpen || undefined}
+      >
         <h2 className="text-lg font-black">Календарь оплат</h2>
         <p className="mt-1 text-sm text-slate-500">
           Оплаты сгруппированы по дате, когда нужно подготовить деньги.
@@ -604,7 +583,11 @@ export default function ProcurementPaymentCalendarClient({
       </section>
 
       {paidPlans.length ? (
-        <details className="rounded-2xl border border-slate-200 bg-white p-4">
+        <details
+          className="rounded-2xl border border-slate-200 bg-white p-4"
+          aria-hidden={formOpen || undefined}
+          inert={formOpen || undefined}
+        >
           <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {paidPlans.length}</summary>
           <div className="mt-3 divide-y divide-slate-100">
             {paidPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказ: {plan.orderNumbers.filter(Boolean).join(", ") || "без номера"}</p></div><p className="font-black text-blue-800">Оплачено по 1С · {rub.format(Number(plan.evidence?.issuedAmount || plan.plannedAmount))}</p></div>)}
@@ -614,13 +597,10 @@ export default function ProcurementPaymentCalendarClient({
 
       {formOpen ? <section
         id="payment-plan-form"
-        className="scroll-mt-4 rounded-2xl bg-white ring-1 ring-slate-200"
+        className="order-first w-full max-w-[1080px] self-center scroll-mt-4 rounded-2xl bg-white ring-1 ring-slate-200"
       >
         <div className="flex w-full items-center justify-between gap-4 p-4 sm:p-5">
-          <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-green-100 p-2 text-green-700">
-              <Plus className="h-5 w-5" />
-            </span>
+          <div>
             <span>
               <span className="block font-black">
                 {editingId ? "Изменить оплату" : "Новый список оплат"}
@@ -872,33 +852,58 @@ export default function ProcurementPaymentCalendarClient({
           />
         )}
       </section> : null}
+        </div>
 
-    <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-      <div className="flex items-start gap-3">
-        <RussianRuble className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
-        <div className="min-w-0 flex-1">
-          <div>
-            <p className="font-black text-blue-950">Деньги для оплат по QR</p>
-            <div className="mt-3 grid grid-cols-3 gap-3">
-              <BalanceValue label="На карте" value={accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)} />
-              <BalanceValue label="В заявках" value={rub.format(plannedQr)} />
-              <BalanceValue label={freeQr != null && freeQr < 0 ? "Не хватает" : "Свободно"} value={freeQr == null ? "—" : rub.format(Math.abs(freeQr))} critical={freeQr != null && freeQr < 0} />
+        <aside
+          className="space-y-5 min-[1180px]:sticky min-[1180px]:top-6"
+        >
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 min-[1180px]:grid-cols-2">
+            <Metric
+              label="Осталось оплатить по заказам"
+              value={mappingBlocked || sourceError ? "—" : rub.format(orderPaymentGapTotal)}
+              hint={mappingBlocked || sourceError ? undefined : `${orderCountLabel(initialOrders.length)} в 1С`}
+              compact
+            />
+            <Metric
+              label="Долг за полученный товар"
+              value={mappingBlocked || supplierDebtError || supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}
+              hint="По взаиморасчётам в 1С"
+              compact
+            />
+            <Metric
+              label="Ожидают согласования"
+              value={plans.filter((plan) => plan.status === "SUBMITTED").length}
+            />
+            <Metric
+              label="Согласовано к оплате"
+              value={plans.filter((plan) => plan.status === "APPROVED").length}
+            />
+          </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <h2 className="text-lg font-black text-slate-900">Доступно для оплат</h2>
+        <p className="mt-1 text-sm font-medium text-slate-500">Текущие остатки с учётом заявок в календаре.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 min-[1180px]:grid-cols-1">
+          <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+            <div className="flex items-center gap-2">
+              <RussianRuble className="h-4 w-4 text-slate-500" />
+              <p className="font-black text-slate-900">Для оплат по QR</p>
+            </div>
+            <div className="mt-3 space-y-2">
+              <BalanceRow label="На карте" value={accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)} />
+              <BalanceRow label="В заявках" value={rub.format(plannedQr)} />
+              <BalanceRow label={freeQr != null && freeQr < 0 ? "Не хватает" : "Свободно"} value={freeQr == null ? "—" : rub.format(Math.abs(freeQr))} critical={freeQr != null && freeQr < 0} />
             </div>
           </div>
-        </div>
-      </div>
-    </section>
-    <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
-        <div className="flex items-start gap-3">
-          <CircleDollarSign className="mt-0.5 h-5 w-5 shrink-0 text-violet-700" />
-          <div className="min-w-0 flex-1">
-            <div>
-              <p className="font-black text-violet-950">Деньги для оплат в USDT</p>
-              <div className="mt-3 grid grid-cols-3 gap-3">
-                <BalanceValue label="Доступно" value={usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} />
-                <BalanceValue label="В заявках" value={`${plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} />
-                <BalanceValue label={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Свободно"} value={freeUsdt == null ? "—" : `${Math.abs(freeUsdt).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} critical={freeUsdt != null && freeUsdt < 0} />
-              </div>
+          <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+            <div className="flex items-center gap-2">
+              <CircleDollarSign className="h-4 w-4 text-slate-500" />
+              <p className="font-black text-slate-900">Для оплат в USDT</p>
+            </div>
+            <div className="mt-3 space-y-2">
+              <BalanceRow label="Доступно" value={usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} />
+              <BalanceRow label="В заявках" value={`${plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} />
+              <BalanceRow label={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Свободно"} value={freeUsdt == null ? "—" : `${Math.abs(freeUsdt).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} critical={freeUsdt != null && freeUsdt < 0} />
             </div>
           </div>
         </div>
@@ -917,6 +922,8 @@ export default function ProcurementPaymentCalendarClient({
           </div>
         </div>
       </section>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -952,9 +959,9 @@ function Notice({
   );
 }
 
-function BalanceValue({ label, value, critical = false }: { label: string; value: string; critical?: boolean }) {
-  return <div className="min-w-0">
-    <p className="text-[11px] font-bold text-slate-500">{label}</p>
-    <p className={`mt-1 truncate text-sm font-black sm:text-base ${critical ? "text-red-700" : "text-slate-950"}`}>{value}</p>
+function BalanceRow({ label, value, critical = false }: { label: string; value: string; critical?: boolean }) {
+  return <div className="flex items-baseline justify-between gap-3 border-t border-slate-200/80 pt-2 first:border-0 first:pt-0">
+    <p className="text-xs font-bold text-slate-500">{label}</p>
+    <p className={`text-right text-sm font-black ${critical ? "text-red-700" : "text-slate-950"}`}>{value}</p>
   </div>;
 }

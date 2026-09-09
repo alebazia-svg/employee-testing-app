@@ -1,17 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Banknote,
   CalendarCheck,
   Check,
-  RefreshCw,
   Undo2,
   WalletCards,
   X,
 } from "lucide-react";
 import { calculateCashPreparation, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
+import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
 
 type Plan = {
   id: string;
@@ -109,6 +109,7 @@ export default function AdminProcurementClient({
   const [returningId, setReturningId] = useState("");
   const [returnReason, setReturnReason] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  useEffect(() => setPlans(initialPlans), [initialPlans]);
   const active = plans.filter((plan) => plan.status !== "CANCELLED");
   const submitted = active.filter((plan) => plan.status === "SUBMITTED");
   const completedPlans = active.filter((plan) => plan.status === "APPROVED" && plan.evidence.state === "ISSUED_BY_ONE_C");
@@ -321,10 +322,7 @@ export default function AdminProcurementClient({
             <h2 className="text-lg font-black text-slate-950">Остатки для оплат</h2>
             <p className="text-sm font-medium text-slate-500">Фактические остатки и уже запланированные суммы.</p>
           </div>
-          <p className="text-xs font-semibold text-slate-500">
-            <RefreshCw className="mr-1 inline h-3.5 w-3.5" />
-            Обновлено из 1С: {sourceCheckedAt ? new Date(sourceCheckedAt).toLocaleString("ru-RU") : "данные недоступны"}
-          </p>
+          <ProcurementDataRefresh checkedAt={sourceCheckedAt} />
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">

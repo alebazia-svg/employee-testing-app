@@ -271,9 +271,9 @@ export function ProcurementPaymentBatchForm({
             return (
               <div
                 key={order.ref}
-                className="relative grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(190px,0.9fr)_minmax(140px,0.65fr)_minmax(180px,0.8fr)_minmax(220px,1.2fr)_32px] lg:items-end"
+                className="relative grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(220px,1.2fr)_minmax(140px,0.7fr)_minmax(180px,0.85fr)_32px] md:items-end"
               >
-                <div className="min-w-0 pr-9 lg:pr-0">
+                <div className="min-w-0 pr-9 md:row-span-2 md:pr-0">
                   <span className="block font-black text-slate-950">{order.supplierPartner}</span>
                   <span className="block text-sm font-semibold text-slate-600">Заказ № {order.number || "без номера"}</span>
                   <span className="block text-xs font-semibold text-slate-500">{supplierBalanceText(order.supplierPartner)}</span>
@@ -341,7 +341,7 @@ export function ProcurementPaymentBatchForm({
                     </div>
                   ) : null}
                 </div>
-                <label className="text-xs font-bold text-slate-600">
+                <label className="text-xs font-bold text-slate-600 md:col-span-2 md:col-start-2">
                       Комментарий <span className="font-medium text-slate-400">(необязательно)</span>
                       <input
                         value={row.condition}
@@ -353,7 +353,7 @@ export function ProcurementPaymentBatchForm({
                 <button
                   type="button"
                   onClick={() => change(order.ref, { selected: false })}
-                  className="admin-material-control absolute mr-3 mt-3 flex h-8 w-8 justify-self-end rounded-full bg-white text-slate-500 lg:static lg:mr-0 lg:mt-0 lg:items-center lg:justify-center"
+                  className="admin-material-control absolute mr-3 mt-3 flex h-8 w-8 justify-self-end rounded-full bg-white text-slate-500 md:static md:col-start-4 md:row-start-1 md:mr-0 md:mt-0 md:items-center md:justify-center"
                   aria-label={`Убрать заказ ${order.number}`}
                 >
                   <X className="m-auto h-4 w-4" />
