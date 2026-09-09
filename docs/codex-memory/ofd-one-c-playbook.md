@@ -120,6 +120,10 @@ production without employee UI, notifications or incidents.
 - `offonika-terminal-fiscal-current.timer` runs every 5 minutes using a
   completed bucket with a 10-minute source delay. The practical first complete
   check therefore happens about 10-15 minutes after a bank operation.
+- The aQsi chain (`portal terminal key 1010808747019437`, aQsi terminal
+  `10693079`) reads successful card and SBP slips directly from the read-only
+  aQsi V4 API. It falls back to the T-Business cabinet snapshot only when the
+  aQsi read is incomplete. The PAX D230 chain still uses the cabinet snapshot.
 - `offonika-terminal-fiscal-final.timer` finalizes the previous Moscow day at
   00:14.
 - T-Bank calendar-day reads are split into windows no longer than 12 hours to
