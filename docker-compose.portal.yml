@@ -41,6 +41,8 @@ services:
       CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED: "true"
       TBANK_CABINET_SNAPSHOT_ENABLED: "true"
       TBANK_CABINET_SNAPSHOT_PATH: /app/runtime/tbank-cabinet/current.json
+      AQSI_PORTAL_TERMINAL_KEY: "1010808747019437"
+      AQSI_TERMINAL_ID: "10693079"
     volumes:
       - portal-uploads:/app/uploads
       - /home/bela/offonika-tbank-cabinet:/app/runtime/tbank-cabinet:ro

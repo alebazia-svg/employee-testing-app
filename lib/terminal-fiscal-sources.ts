@@ -9,6 +9,7 @@ import { normalizePlatformaOfdReceipt, normalizePlatformaOfdZReport, type Normal
 import { normalizeOneCDateTime } from '@/lib/terminal-fiscal-one-c-adapter';
 import { getMoscowDateKey } from '@/lib/workday';
 import { loadTBankCabinetOperations } from '@/lib/tbank-cabinet-snapshot';
+import { loadAqsiOperations } from '@/lib/aqsi-acquiring';
 
 export type SourceSnapshot<T> = {
   complete: boolean;
@@ -79,6 +80,21 @@ export async function loadCompleteTBankOperations(input: {
   to: string;
   loadPage?: TBankPageLoader;
 }): Promise<SourceSnapshot<BankOperation>> {
+  const aqsiApiKey = process.env.AQSI_API_KEY?.trim();
+  const aqsiPortalTerminalKey = process.env.AQSI_PORTAL_TERMINAL_KEY?.trim();
+  const aqsiTerminalId = process.env.AQSI_TERMINAL_ID?.trim();
+  if (!input.loadPage && aqsiApiKey && aqsiPortalTerminalKey === input.terminalKey && aqsiTerminalId) {
+    const aqsi = await loadAqsiOperations({
+      apiKey: aqsiApiKey,
+      portalTerminalKey: input.terminalKey,
+      aqsiTerminalId,
+      from: input.from,
+      to: input.to,
+    });
+    if (aqsi.complete) return aqsi;
+    const cabinetSnapshotPath = process.env.TBANK_CABINET_SNAPSHOT_PATH?.trim();
+    if (process.env.TBANK_CABINET_SNAPSHOT_ENABLED !== 'true' || !cabinetSnapshotPath) return aqsi;
+  }
   const cabinetSnapshotPath = process.env.TBANK_CABINET_SNAPSHOT_PATH?.trim();
   if (process.env.TBANK_CABINET_SNAPSHOT_ENABLED === 'true' && cabinetSnapshotPath && !input.loadPage) {
     return loadTBankCabinetOperations({
