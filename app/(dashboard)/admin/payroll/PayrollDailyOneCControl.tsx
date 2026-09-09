@@ -205,6 +205,7 @@ export function PayrollDailyOneCControl({
     setIsLoading(true);
     try {
       const query = `year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}`;
+      let restoredStoredResponse = false;
       const storedResponse = await fetch(`/api/admin/payroll/daily-control?${query}`, { cache: 'no-store' });
       if (storedResponse.ok) {
         const storedBody = await readControlResponse(storedResponse);
@@ -214,7 +215,15 @@ export function PayrollDailyOneCControl({
           setData(storedBody);
           setError('');
           setIsStale(false);
+          restoredStoredResponse = true;
         }
+      }
+      if (restoredStoredResponse && !force) {
+        // Let React render the saved server snapshot before the slower 1C refresh starts.
+        // The refresh remains read-only and replaces the snapshot only after a valid response.
+        setIsLoading(false);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        if (requestVersion.current !== version) return;
       }
       const response = await fetch(`/api/admin/payroll/daily-control?${query}${force ? '&force=1' : ''}`, {
         method: 'POST', cache: 'no-store',
