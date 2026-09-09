@@ -454,11 +454,10 @@ the pay result harder to understand.
   supplier-rule fingerprint are valid; the 1.39 MB JSON row was read and parsed
   inside the container in about 159 ms. The first production warm-up still took
   about 106 seconds, and later full screen opens remained slow even though the
-  aggregate itself was valid. The remaining wait is outside this aggregate:
-  the current preliminary payroll calculation also waits for the separate live
-  Google Sheets attendance/schedule preview. Do not misdiagnose that delay as a
-  repeated 1C read. A last-good attendance snapshot with explicit freshness is
-  a separate owner decision because days and lateness affect payroll.
+  aggregate itself was valid. One additional wait was outside this aggregate:
+  the current preliminary payroll calculation also waited for the separate live
+  Google Sheets attendance/schedule preview. Do not misdiagnose either wait as
+  repeated 1C source reads.
 - The owner approved that next performance stage. Normalized attendance and
   schedule summaries are stored per payroll period in a dedicated
   `PayrollAttendanceSnapshot`. The payroll screen reads this last-good snapshot
@@ -474,6 +473,17 @@ the pay result harder to understand.
   saved attendance snapshot in about 0.4 seconds. With Google Sheets
   deliberately disabled, the saved list and calculation remained visible and
   were labeled as previous data.
+- The attendance snapshot was released in production at portal commit
+  `492cf39` after rebasing over the procurement calendar release. Migration
+  `20260909170000_add_payroll_attendance_snapshots` was applied before the
+  running container was replaced. Production returned the stored September
+  attendance response (about 1 KB) in roughly 0.54 seconds and displayed its
+  freshness. The complete employee screen can still take tens of seconds on a
+  cold browser because the otherwise valid server-side 1C aggregate is sent as
+  one roughly 1.2 MB JSON response. The next performance decision should split
+  the compact employee payroll summary from detailed 1C rows and load details
+  only when requested; this is independent of the attendance source and was not
+  included in the approved attendance release.
 
 ## Before Changing Payroll
 
