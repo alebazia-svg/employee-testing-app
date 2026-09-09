@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import type { PayrollSalesCompactSnapshot } from '@/lib/payroll-sales-classification';
 
 type PurchaseRow = {
   supplierName: string;
@@ -38,6 +39,7 @@ export type DailyControlResponse = {
     pages: number;
   };
   sales: {
+    payroll?: PayrollSalesCompactSnapshot;
     rows?: Array<{
       manager: string;
       managerRef: string;
@@ -117,7 +119,7 @@ function readFullResponseFromMemory(periodKey: string) {
 }
 
 function rememberFullResponse(periodKey: string, response: DailyControlResponse) {
-  if (!Array.isArray(response.sales.rows)) return;
+  if (!Array.isArray(response.sales.rows) && !response.sales.payroll) return;
   fullResponseMemory.delete(periodKey);
   fullResponseMemory.set(periodKey, { response, savedAt: Date.now() });
   while (fullResponseMemory.size > FULL_RESPONSE_MEMORY_LIMIT) {
@@ -275,7 +277,7 @@ export function PayrollDailyOneCControl({
   }, [belongsToSelectedPeriod, load, periodKey]);
 
   useEffect(() => {
-    onDataChange?.(data && Array.isArray(data.sales.rows) ? data : null, { isStale });
+    onDataChange?.(data && (Array.isArray(data.sales.rows) || data.sales.payroll) ? data : null, { isStale });
   }, [data, isStale, onDataChange]);
 
   const activePurchaseRows = useMemo(() => data?.purchases.rows.filter((row) => row.status !== 'EXCLUDED') ?? [], [data]);

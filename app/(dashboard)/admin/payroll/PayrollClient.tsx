@@ -30,6 +30,7 @@ import {
   sortPayrollWorkbookEmployees,
 } from '@/lib/payroll-workbook';
 import { isPayrollEmployeeRuleActive } from '@/lib/payroll-employee-rules';
+import { classifyPayrollSalesRows } from '@/lib/payroll-sales-classification';
 
 type CellValue = string | number | boolean | Date | null | undefined;
 type Row = CellValue[];
@@ -3121,89 +3122,7 @@ function applyClassificationRules(
 }
 
 function classifySalesRows(rows: SalesRow[], classificationRules: PayrollClassificationRule[] = []): ClassificationResult {
-  const normalizedRows = rows
-    .map((row) => ({ ...row, manager: getPayrollManagerName(row.manager) }))
-    .filter((row) => !isPayrollExcludedEmployee(row.manager));
-  const classifiedRows = normalizedRows.map((row) => {
-    const details = getCalculationDetails(row);
-    return { ...row, ...applyClassificationRules(row, details, classificationRules) };
-  });
-  const wholesaleRows = classifiedRows.filter((row) => row.department === 'Опт');
-  const zalinaRevenue = wholesaleRows.filter((row) => normalizeText(row.manager) === normalizeText('Ахобекова Залина')).reduce((sum, row) => sum + row.revenue, 0);
-  const lianaRevenue = wholesaleRows.filter((row) => normalizeText(row.manager) === normalizeText('Хурзокова Лиана')).reduce((sum, row) => sum + row.revenue, 0);
-  const wholesale = {
-    zalinaRevenue,
-    lianaRevenue,
-    totalRevenue: wholesaleRows.reduce((sum, row) => sum + row.revenue, 0),
-    excludedTechRevenue: wholesaleRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH').reduce((sum, row) => sum + row.revenue, 0),
-    base: 0,
-    bonusEach: 0,
-  };
-  wholesale.base = wholesale.totalRevenue - wholesale.excludedTechRevenue;
-  wholesale.bonusEach = wholesale.base * 0.0175;
-
-  const typeSummaries = (Object.keys(calculationLabels) as CalculationType[]).map((type) => {
-    const typeRows = classifiedRows.filter((row) => row.calculationType === type);
-    const base = type === 'WHOLESALE_INCLUDED_1_75' ? wholesale.base : typeRows.reduce((sum, row) => sum + row.base, 0);
-    const bonus = type === 'WHOLESALE_INCLUDED_1_75' ? wholesale.bonusEach : typeRows.reduce((sum, row) => sum + row.bonus, 0);
-
-    return {
-      type,
-      label: calculationLabels[type],
-      rows: typeRows.length,
-      revenue: typeRows.reduce((sum, row) => sum + row.revenue, 0),
-      grossProfit: typeRows.reduce((sum, row) => sum + row.grossProfit, 0),
-      base,
-      formula: calculationFormulas[type],
-      bonus,
-    };
-  });
-
-  const managers = Array.from(new Set(classifiedRows.map((row) => row.manager)));
-  const managerSummaries = managers.map((manager) => {
-    const managerRows = classifiedRows.filter((row) => row.manager === manager);
-    const department: Department = isWholesaleManager(manager) ? 'Опт' : 'Розница';
-    const creditBonus = getCreditTechCalculationRows(managerRows).reduce((sum, row) => sum + getCreditTechCalculationBase(row) * 0.91 * 0.1, 0);
-    const filmBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').reduce((sum, row) => sum + row.bonus, 0);
-    const plotterBonus = managerRows.filter((row) => row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50').reduce((sum, row) => sum + row.bonus, 0);
-    const techBonus = getRetailTechCalculationRows(managerRows).reduce((sum, row) => sum + getRetailTechCalculationBase(row) * 0.1, 0);
-    const accessoryBonus = getAccessoryCalculationRows(managerRows).reduce((sum, row) => sum + getAccessoryCalculationBase(row) * 0.05, 0);
-    const wholesaleBonus = department === 'Опт' ? wholesale.bonusEach : 0;
-
-    return {
-      manager,
-      department,
-      revenue: managerRows.reduce((sum, row) => sum + row.revenue, 0),
-      grossProfit: managerRows.reduce((sum, row) => sum + row.grossProfit, 0),
-      creditBonus,
-      filmBonus,
-      plotterBonus,
-      techBonus,
-      accessoryBonus,
-      wholesaleBonus,
-      totalBonus: creditBonus + filmBonus + plotterBonus + techBonus + accessoryBonus + wholesaleBonus,
-    };
-  });
-
-  return {
-    rows: classifiedRows,
-    wholesale,
-    typeSummaries,
-    managerSummaries,
-    disputedRows: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH' || row.calculationType === 'CREDIT_REVIEW_NO_BONUS' || (hasDisputeMarkers(row) && row.matchedRule === 'default-category')),
-    accessoryExcludedRows: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH' && isAccessoryCategory(row.category)),
-    expensiveReviewRows: classifiedRows.filter((row) => row.matchedRule === 'new-expensive-review'),
-    counts: {
-      total: classifiedRows.length,
-      wholesale: classifiedRows.filter((row) => row.department === 'Опт').length,
-      retail: classifiedRows.filter((row) => row.department === 'Розница').length,
-      credit: classifiedRows.filter((row) => row.isCreditSale).length,
-      film: classifiedRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').length,
-      retailTech: classifiedRows.filter((row) => row.calculationType === 'RETAIL_GROSS_PROFIT_10').length,
-      accessory: classifiedRows.filter((row) => isAccessoryBonusRow(row) || row.calculationType === 'RETAIL_REVIEW_TECH').length,
-      wholesaleExcludedTech: classifiedRows.filter((row) => row.calculationType === 'WHOLESALE_EXCLUDED_TECH').length,
-    },
-  };
+  return classifyPayrollSalesRows(rows, classificationRules) as ClassificationResult;
 }
 
 function getCheckStatus(status: 'ok' | 'warning' | 'error') {
@@ -4061,6 +3980,12 @@ export default function AdminPayrollPage() {
   const [isSavedRunExporting, setIsSavedRunExporting] = useState(false);
   const [oneCShadowSource, setOneCShadowSource] = useState<DailyControlResponse | null>(null);
   const [oneCShadowSourceIsStale, setOneCShadowSourceIsStale] = useState(false);
+  const [oneCDetailClassification, setOneCDetailClassification] = useState<ClassificationResult | null>(null);
+  const [oneCDetailPeriodKey, setOneCDetailPeriodKey] = useState('');
+  const [oneCDetailEmployeeName, setOneCDetailEmployeeName] = useState('');
+  const [isOneCDetailLoading, setIsOneCDetailLoading] = useState(false);
+  const [oneCDetailError, setOneCDetailError] = useState('');
+  const oneCDetailRequestVersion = useRef(0);
   const [oneCShadowBaseline, setOneCShadowBaseline] = useState<SavedPayrollRunDetail | null>(null);
   const [oneCShadowBaselineError, setOneCShadowBaselineError] = useState('');
   const [isOneCShadowBaselineLoading, setIsOneCShadowBaselineLoading] = useState(false);
@@ -4091,6 +4016,56 @@ export default function AdminPayrollPage() {
     const belongsToSelectedPeriod = data?.period.verifiedThrough.startsWith(`${selectedPayrollPeriodKey}-`) ?? false;
     setOneCShadowSource(belongsToSelectedPeriod ? data : null);
     setOneCShadowSourceIsStale(belongsToSelectedPeriod && state.isStale);
+  }, [selectedPayrollPeriodKey]);
+
+  const openOneCManagerDetails = useCallback(async (employeeName: string) => {
+    setSelectedManagerSource('oneC');
+    setSelectedManager(employeeName);
+    if (oneCDetailClassification && oneCDetailPeriodKey === selectedPayrollPeriodKey && oneCDetailEmployeeName === employeeName) return;
+    const requestVersion = oneCDetailRequestVersion.current + 1;
+    oneCDetailRequestVersion.current = requestVersion;
+    setIsOneCDetailLoading(true);
+    setOneCDetailError('');
+    try {
+      const query = `year=${encodeURIComponent(year)}&month=${encodeURIComponent(month)}&view=employee&employee=${encodeURIComponent(employeeName)}`;
+      const response = await fetch(`/api/admin/payroll/daily-control?${query}`, { cache: 'no-store' });
+      const body = await response.json().catch(() => null) as DailyControlResponse | { error?: string } | null;
+      if (!response.ok || !body || !('ok' in body) || body.ok !== true || !Array.isArray(body.sales.rows)) {
+        throw new Error(body && 'error' in body && body.error ? body.error : 'Подробные строки 1С пока недоступны.');
+      }
+      const detailRows: SalesRow[] = body.sales.rows.map((row) => ({
+        manager: row.manager,
+        client: row.client,
+        category: row.category,
+        item: row.item,
+        registrar: '',
+        registrars: [],
+        revenue: row.revenue,
+        cost: row.cost,
+        grossProfit: row.grossProfit,
+        profitability: row.revenue ? (row.grossProfit / row.revenue) * 100 : 0,
+        sourceCostReviewRows: row.costReviewRows,
+        sourceCostCalculationPendingRows: row.costCalculationPendingRows,
+      }));
+      const periodRows = mapLegacyRetailTraineeRowsForPeriod(detailRows, month, year);
+      if (oneCDetailRequestVersion.current !== requestVersion) return;
+      setOneCDetailClassification(classifySalesRows(periodRows, classificationRules));
+      setOneCDetailPeriodKey(selectedPayrollPeriodKey);
+      setOneCDetailEmployeeName(employeeName);
+    } catch (detailError) {
+      if (oneCDetailRequestVersion.current !== requestVersion) return;
+      setOneCDetailError(detailError instanceof Error ? detailError.message : 'Подробные строки 1С пока недоступны.');
+    } finally {
+      if (oneCDetailRequestVersion.current === requestVersion) setIsOneCDetailLoading(false);
+    }
+  }, [classificationRules, month, oneCDetailClassification, oneCDetailEmployeeName, oneCDetailPeriodKey, selectedPayrollPeriodKey, year]);
+
+  useEffect(() => {
+    oneCDetailRequestVersion.current += 1;
+    setOneCDetailClassification(null);
+    setOneCDetailPeriodKey('');
+    setOneCDetailEmployeeName('');
+    setOneCDetailError('');
   }, [selectedPayrollPeriodKey]);
 
   useEffect(() => {
@@ -4487,10 +4462,10 @@ export default function AdminPayrollPage() {
   }, [currentFinalRun]);
 
   const oneCShadowCalculation = useMemo(() => {
-    if (!oneCShadowSource?.sales.rows || (!oneCShadowBaseline && !isSelectedPayrollPeriodCurrent)) return null;
+    if ((!oneCShadowSource?.sales.payroll && !oneCShadowSource?.sales.rows) || (!oneCShadowBaseline && !isSelectedPayrollPeriodCurrent)) return null;
     const isPreliminary = !oneCShadowBaseline;
 
-    const shadowSalesRows: SalesRow[] = oneCShadowSource.sales.rows.map((row) => ({
+    const shadowSalesRows: SalesRow[] = (oneCShadowSource.sales.rows ?? []).map((row) => ({
       manager: row.manager,
       client: row.client,
       category: row.category,
@@ -4505,11 +4480,23 @@ export default function AdminPayrollPage() {
       sourceCostCalculationPendingRows: row.costCalculationPendingRows,
     }));
     const shadowPeriodSalesRows = mapLegacyRetailTraineeRowsForPeriod(shadowSalesRows, month, year);
-    const shadowClassification = classifySalesRows(shadowPeriodSalesRows, classificationRules);
+    const compactSales = oneCShadowSource.sales.payroll;
+    const shadowClassification: ClassificationResult = compactSales
+      ? {
+        rows: [],
+        wholesale: compactSales.wholesale,
+        typeSummaries: compactSales.typeSummaries,
+        managerSummaries: compactSales.managerSummaries,
+        disputedRows: [],
+        accessoryExcludedRows: [],
+        expensiveReviewRows: [],
+        counts: compactSales.counts,
+      }
+      : classifySalesRows(shadowPeriodSalesRows, classificationRules);
     const shadowEmployeeDirectory = buildPayrollEmployeeDirectory(
       payrollDirectoryUsers,
       selectedPayrollPeriodKey,
-      new Set(shadowClassification.rows.map((row) => row.manager)),
+      new Set(compactSales ? compactSales.managerSummaries.map((row) => row.manager) : shadowClassification.rows.map((row) => row.manager)),
     );
     const shadowManualPayroll = oneCShadowBaseline
       ? oneCShadowBaseline.manualInputs
@@ -4552,13 +4539,15 @@ export default function AdminPayrollPage() {
       deduction: oneCShadowBaseline ? savedPurchaseInput?.purchaseDeduction ?? '' : purchasePayroll.deduction,
       comment: oneCShadowBaseline ? savedPurchaseInput?.comment ?? '' : purchasePayroll.comment,
     };
-    const shadowAccessoryCalculation = applyRetailAccessoryTier(
-      shadowClassification.managerSummaries,
-      shadowClassification.rows,
-      shadowEmployeeDirectory,
-      selectedPayrollPeriodKey,
-    );
-    const shadowSalesPayrollRows = buildSalesPayrollSummaries(shadowAccessoryCalculation.summaries, shadowEmployeeDirectory)
+    const shadowManagerSummaries = compactSales
+      ? compactSales.managerSummaries
+      : applyRetailAccessoryTier(
+        shadowClassification.managerSummaries,
+        shadowClassification.rows,
+        shadowEmployeeDirectory,
+        selectedPayrollPeriodKey,
+      ).summaries;
+    const shadowSalesPayrollRows = buildSalesPayrollSummaries(shadowManagerSummaries, shadowEmployeeDirectory)
       .map((summary) => buildFullPayrollRow(summary, getPayrollManualInput(summary.manager, shadowManualPayroll), shadowEmployeeDirectory));
     const shadowFixedPayrollRows = buildFixedPayrollRows(shadowFixedPayroll, selectedPayrollPeriodKey, shadowEmployeeDirectory);
     const shadowPurchasePayrollRow = buildPurchasePayrollRow(shadowPurchaseInput, {
@@ -4674,10 +4663,10 @@ export default function AdminPayrollPage() {
       return columns;
     }, []);
     const costDependentTypes: CalculationType[] = ['CREDIT_GROSS_PROFIT', 'RETAIL_PLOTTER_MATERIAL_COST_50', 'RETAIL_GROSS_PROFIT_10'];
-    const costPendingRows = shadowClassification.rows
+    const costPendingRows = compactSales?.costPendingRows ?? shadowClassification.rows
       .filter((row) => costDependentTypes.includes(row.calculationType))
       .reduce((sum, row) => sum + (row.sourceCostCalculationPendingRows ?? 0), 0);
-    const unresolvedRows = shadowClassification.rows.filter(isUnresolvedReviewRow).length;
+    const unresolvedRows = compactSales?.unresolvedRows ?? shadowClassification.rows.filter(isUnresolvedReviewRow).length;
     const totalBaselineGrossPay = payrollMoney((oneCShadowBaseline?.employeeResults ?? []).reduce((sum, row) => sum + row.grossPay, 0));
     const totalShadowGrossPay = payrollMoney(shadowRows.reduce((sum, row) => sum + row.grossPay, 0));
     const totalBaselineNetPay = payrollMoney((oneCShadowBaseline?.employeeResults ?? []).reduce((sum, row) => sum + row.netPay, 0));
@@ -4719,7 +4708,7 @@ export default function AdminPayrollPage() {
       totalNetDelta: payrollMoney(totalShadowNetPay - totalBaselineNetPay),
       shadowRows,
       classification: shadowClassification,
-      managerSummaries: shadowAccessoryCalculation.summaries,
+      managerSummaries: shadowManagerSummaries,
       bonuses: savedBonuses,
     };
   }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodCurrent, manualPayroll, month, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey, year]);
@@ -4728,7 +4717,9 @@ export default function AdminPayrollPage() {
     [fullPayrollRows, oneCShadowCalculation, selectedManager, selectedManagerSource],
   );
   const selectedManagerClassification = selectedManagerSource === 'oneC' && oneCShadowCalculation
-    ? oneCShadowCalculation.classification
+    ? oneCDetailPeriodKey === selectedPayrollPeriodKey && oneCDetailEmployeeName === selectedManager && oneCDetailClassification
+      ? oneCDetailClassification
+      : oneCShadowCalculation.classification
     : classification;
   const selectedManagerSummaries = selectedManagerSource === 'oneC' && oneCShadowCalculation
     ? oneCShadowCalculation.managerSummaries
@@ -6798,8 +6789,7 @@ export default function AdminPayrollPage() {
                                     key={row.employeeName}
                                     type='button'
                                     onClick={() => {
-                                      setSelectedManagerSource('oneC');
-                                      setSelectedManager(row.employeeName);
+                                      void openOneCManagerDetails(row.employeeName);
                                     }}
                                     className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 ${needsAttention ? 'bg-amber-50/60' : 'bg-white'}`}
                                   >
@@ -8154,7 +8144,14 @@ export default function AdminPayrollPage() {
                         Сначала показаны только строки, которые могут повлиять на расчёт. Остальные доступны ниже для полной сверки.
                       </p>
 
-                      {selectedManagerRows.length === 0 ? (
+                      {selectedManagerSource === 'oneC' && isOneCDetailLoading && (
+                        <p className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600'>Загружаю подробные строки сотрудника…</p>
+                      )}
+                      {selectedManagerSource === 'oneC' && oneCDetailError && (
+                        <p className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>{oneCDetailError} Итог начисления при этом остаётся доступен.</p>
+                      )}
+
+                      {!isOneCDetailLoading && selectedManagerRows.length === 0 ? (
                         <p className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600'>Строк продаж из 1С по сотруднику нет.</p>
                       ) : (
                         <div className='mt-4 grid gap-4'>

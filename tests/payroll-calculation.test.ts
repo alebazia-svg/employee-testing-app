@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { PayrollBonusesEditor } from '../app/(dashboard)/admin/payroll/PayrollBonusesEditor';
 import { parseFinboxReport } from '../lib/payroll-finbox';
 import { PAYROLL_COMPENSATION_VERSION, getInitialPayrollBonuses, getRetailAccessoryTier, validatePayrollBonuses, validatePayrollCompensationSnapshot, validatePayrollCompensationVersion, type PayrollBonus } from '../lib/payroll-compensation';
+import { buildPayrollSalesCompactSnapshot } from '../lib/payroll-sales-classification';
 
 type SalesRow = {
   manager: string;
@@ -20,6 +21,8 @@ type SalesRow = {
   cost: number;
   grossProfit: number;
   profitability: number;
+  sourceCostReviewRows?: number;
+  sourceCostCalculationPendingRows?: number;
 };
 
 type PayrollModule = {
@@ -30,6 +33,17 @@ type PayrollModule = {
       excludedTechRevenue: number;
       base: number;
       bonusEach: number;
+    };
+    typeSummaries: Array<{ type: string; label: string; rows: number; revenue: number; grossProfit: number; base: number; formula: string; bonus: number }>;
+    counts: {
+      total: number;
+      wholesale: number;
+      retail: number;
+      credit: number;
+      film: number;
+      retailTech: number;
+      accessory: number;
+      wholesaleExcludedTech: number;
     };
     managerSummaries: Array<{
       manager: string;
@@ -124,7 +138,7 @@ async function loadPayrollModule(): Promise<PayrollModule> {
   const calculationSource = source.slice(start, end);
 
   mkdirSync(dirname(generatedPath), { recursive: true });
-  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, buildPayrollEmployeeDirectory, mapLegacyRetailTraineeRowsForPeriod, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
+  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\nimport { classifyPayrollSalesRows } from '../../lib/payroll-sales-classification';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, buildPayrollEmployeeDirectory, mapLegacyRetailTraineeRowsForPeriod, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
 
   return import(pathToFileURL(generatedPath).href) as Promise<PayrollModule>;
 }
@@ -148,6 +162,31 @@ before(async () => {
   applyRetailAccessoryTier = payrollModule.applyRetailAccessoryTier;
   buildPayrollEmployeeDirectory = payrollModule.buildPayrollEmployeeDirectory;
   mapLegacyRetailTraineeRowsForPeriod = payrollModule.mapLegacyRetailTraineeRowsForPeriod;
+});
+
+describe('compact 1C payroll projection', () => {
+  it('keeps the same manager components while omitting detailed sales rows', () => {
+    const rows: SalesRow[] = [
+      { manager: 'Ахобекова Залина', client: 'Опт', category: 'Кабели', item: 'Кабель', registrar: '', registrars: [], revenue: 100000, cost: 60000, grossProfit: 40000, profitability: 40 },
+      { manager: 'Хурзокова Лиана', client: 'Опт', category: 'Смартфоны (хар-ки)', item: 'iPhone 17', registrar: '', registrars: [], revenue: 200000, cost: 180000, grossProfit: 20000, profitability: 10 },
+      { manager: 'Чеченова Милана', client: 'Розница', category: 'Кабели', item: 'Кабель USB-C', registrar: '', registrars: [], revenue: 10000, cost: 4000, grossProfit: 6000, profitability: 60 },
+      { manager: 'Чеченова Милана', client: 'Кредит/Рассрочка', category: 'Смартфоны (хар-ки)', item: 'iPhone 17', registrar: '', registrars: [], revenue: 120000, cost: 100000, grossProfit: 20000, profitability: 16.67, sourceCostCalculationPendingRows: 2 },
+    ];
+    const full = classifySalesRows(rows);
+    const compact = buildPayrollSalesCompactSnapshot(rows, [], '2026-09');
+    assert.deepEqual(compact.managerSummaries.map(({ accessoryBase: _base, accessoryRate: _rate, ...summary }) => summary), full.managerSummaries);
+    assert.deepEqual(compact.wholesale, full.wholesale);
+    assert.deepEqual(compact.typeSummaries, full.typeSummaries);
+    assert.deepEqual(compact.counts, full.rows.length ? full.counts : compact.counts);
+    assert.equal(compact.costPendingRows, 2);
+    assert.equal('rows' in compact, false);
+  });
+
+  it('does not expose the legacy trainee outside the approved June mapping', () => {
+    const row: SalesRow = { manager: 'СтажерРозница', client: 'Розница', category: 'Кабели', item: 'Кабель', registrar: '', registrars: [], revenue: 1000, cost: 500, grossProfit: 500, profitability: 50 };
+    assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-09').managerSummaries.length, 0);
+    assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-06').managerSummaries[0]?.manager, 'Костеренко Магомед');
+  });
 });
 
 describe('August 2026 minimum and one-time premiums', () => {

@@ -25,6 +25,7 @@ import {
 } from '@/lib/payroll-one-c-control-aggregate';
 import { buildPayrollPurchaseSupplierPreview } from '@/lib/payroll-purchase-suppliers';
 import { prisma } from '@/lib/prisma';
+import { buildPayrollSalesCompactSnapshot, getPayrollSalesManagerNameForPeriod, type PayrollSalesClassificationRule } from '@/lib/payroll-sales-classification';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -163,6 +164,58 @@ type StoredSnapshot = {
 };
 
 type ControlResponse = ReturnType<typeof buildControlResponse>;
+
+function isFullView(request: Request) {
+  return new URL(request.url).searchParams.get('view') === 'full';
+}
+
+function getEmployeeView(request: Request) {
+  const searchParams = new URL(request.url).searchParams;
+  const employeeName = searchParams.get('view') === 'employee' ? searchParams.get('employee')?.trim() : '';
+  return employeeName && employeeName.length <= 200 ? employeeName : null;
+}
+
+function buildEmployeeControlResponse(response: ControlResponse, employeeName: string) {
+  return {
+    ...response,
+    sales: {
+      ...response.sales,
+      rows: response.sales.rows.filter((row) => getPayrollSalesManagerNameForPeriod(row.manager, response.period.periodKey) === employeeName),
+    },
+  };
+}
+
+function presentControlResponse(response: ControlResponse, request: Request, classificationRules: PayrollSalesClassificationRule[]) {
+  const employeeName = getEmployeeView(request);
+  if (employeeName) return buildEmployeeControlResponse(response, employeeName);
+  return isFullView(request) ? response : buildCompactControlResponse(response, classificationRules);
+}
+
+function buildCompactControlResponse(
+  response: ControlResponse,
+  classificationRules: PayrollSalesClassificationRule[],
+) {
+  return {
+    ...response,
+    sales: {
+      summary: response.sales.summary,
+      payroll: buildPayrollSalesCompactSnapshot(response.sales.rows.map((row) => ({
+        manager: row.manager,
+        client: row.client,
+        category: row.category,
+        item: row.item,
+        registrar: '',
+        registrars: [],
+        revenue: row.revenue,
+        cost: row.cost,
+        grossProfit: row.grossProfit,
+        profitability: row.revenue ? (row.grossProfit / row.revenue) * 100 : 0,
+        sourceCostReviewRows: row.costReviewRows,
+        sourceCostCalculationPendingRows: row.costCalculationPendingRows,
+      })), classificationRules, response.period.periodKey),
+    },
+  };
+}
 
 function isControlResponse(value: unknown): value is ControlResponse {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -344,9 +397,12 @@ export async function GET(request: Request) {
   if (!access.ok) return access.response;
   const period = readPeriod(request);
   if (!period) return Response.json({ error: 'Не выбран корректный период.' }, { status: 400 });
-  const supplierRules = await prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] });
+  const [supplierRules, classificationRules] = await Promise.all([
+    prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] }),
+    prisma.payrollClassificationRule.findMany({ orderBy: [{ priority: 'asc' }, { id: 'asc' }] }),
+  ]);
   const aggregate = await loadAggregateResponse(period, supplierRules);
-  if (aggregate) return Response.json(aggregate);
+  if (aggregate) return Response.json(presentControlResponse(aggregate, request, classificationRules as unknown as PayrollSalesClassificationRule[]));
   const rows = await loadStored(period);
   if (!rows.length) return Response.json({ ok: false, error: 'Серверный снимок ещё не создан.' }, { status: 404 });
   try {
@@ -361,7 +417,7 @@ export async function GET(request: Request) {
     } catch (cacheError) {
       console.error('Failed to warm payroll 1C aggregate snapshot', cacheError);
     }
-    return Response.json(response);
+    return Response.json(presentControlResponse(response, request, classificationRules as unknown as PayrollSalesClassificationRule[]));
   } catch (error) {
     return Response.json({ ok: false, error: error instanceof Error ? error.message : 'Снимок 1С не читается.' }, { status: 503 });
   }
@@ -373,10 +429,13 @@ export async function POST(request: Request) {
   const period = readPeriod(request);
   if (!period) return Response.json({ error: 'Не выбран корректный период.' }, { status: 400 });
 
-  const supplierRulesBefore = await prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] });
+  const [supplierRulesBefore, classificationRules] = await Promise.all([
+    prisma.payrollPurchaseSupplierRule.findMany({ orderBy: [{ isActive: 'desc' }, { supplierName: 'asc' }] }),
+    prisma.payrollClassificationRule.findMany({ orderBy: [{ priority: 'asc' }, { id: 'asc' }] }),
+  ]);
   if (!period.currentPeriod && !period.force) {
     const aggregate = await loadAggregateResponse(period, supplierRulesBefore);
-    if (aggregate) return Response.json(aggregate);
+    if (aggregate) return Response.json(presentControlResponse(aggregate, request, classificationRules as unknown as PayrollSalesClassificationRule[]));
   }
   const storedBefore = await loadStored(period);
   if (!period.currentPeriod && storedBefore.length && !period.force) {
@@ -392,7 +451,7 @@ export async function POST(request: Request) {
       } catch (cacheError) {
         console.error('Failed to warm payroll 1C aggregate snapshot', cacheError);
       }
-      return Response.json(response);
+      return Response.json(presentControlResponse(response, request, classificationRules as unknown as PayrollSalesClassificationRule[]));
     } catch {
       // A malformed or obsolete final snapshot must be rebuilt from 1C rather
       // than returned as a zero/partial control result.
@@ -473,7 +532,7 @@ export async function POST(request: Request) {
       ...snapshotWrites,
       buildAggregateWrite(period, rows, supplierRulesBefore, response, existingAggregate),
     ]);
-    return Response.json(response);
+    return Response.json(presentControlResponse(response, request, classificationRules as unknown as PayrollSalesClassificationRule[]));
   } catch (error) {
     return Response.json({
       ok: false,
