@@ -297,3 +297,25 @@ financial writes to 1C must not resume in the background after an error.
 
 This human-in-the-loop rule prevents the portal from duplicating RKO/PKO that an
 administrator may already have created manually while the employee was offline.
+
+## 2026-09-09 - Supplier Payment Calendar Pilot
+
+The first procurement portal stage is a narrow payment-planning workflow for
+Astemir and administrators.
+
+- Astemir sees only supplier orders whose exact 1C manager mapping matches his
+  portal profile; Diana and other managers remain out of scope.
+- One submitted list has one preparation date and may contain several supplier
+  orders. Orders are chosen through a searchable multi-select; no full catalogue
+  is rendered on the main screen.
+- Employee input is limited to order, payment method, amount and optional useful
+  comment. Purchase percentages and delivery-cost allocation from private Excel
+  files are not part of the payment calendar.
+- Cash, supplier QR, direct supplier transfer and USDT remain distinct methods.
+  Yuan details are comments because there is no CNY cashbox in 1C.
+- QR and USDT balances are read-only facts from 1C. Posted 1C expense evidence
+  confirms issued money; the employee does not manually mark payment as issued.
+- Administrators approve plans and see preparation needs. The integration does
+  not write to 1C and does not grant Diana safe access.
+- The production release adds a dedicated employee portal area and an exact 1C
+  manager-name setting to the existing employee administration screen.

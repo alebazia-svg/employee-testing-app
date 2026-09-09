@@ -179,6 +179,17 @@ After the two-person pilot passes:
 
 ## After Launch Roadmap
 
+### Supplier payment calendar limited rollout
+
+- Release the dedicated procurement workspace first for Astemir and the ADMIN
+  payment-control screen.
+- Keep 1C access read-only and require the exact manager mapping `Тохов Астемир`.
+- Observe whether known supplier payments are entered early enough to let the
+  owner prepare cash; do not expand to Diana or automate 1C writes during this
+  first stage.
+- Treat the calendar as operational planning, not as a replacement for posted
+  accounting documents in 1C.
+
 These items are useful but do not block employee rollout:
 
 1. Replace Google Sheets attendance/schedule history with portal WorkDayEntry
