@@ -102,6 +102,31 @@ type FailedControlResponse = {
   checkedAt?: string;
 };
 
+const FULL_RESPONSE_MEMORY_TTL_MS = 30 * 60 * 1000;
+const FULL_RESPONSE_MEMORY_LIMIT = 3;
+const fullResponseMemory = new Map<string, { response: DailyControlResponse; savedAt: number }>();
+
+function readFullResponseFromMemory(periodKey: string) {
+  const cached = fullResponseMemory.get(periodKey);
+  if (!cached) return null;
+  if (Date.now() - cached.savedAt > FULL_RESPONSE_MEMORY_TTL_MS) {
+    fullResponseMemory.delete(periodKey);
+    return null;
+  }
+  return cached.response;
+}
+
+function rememberFullResponse(periodKey: string, response: DailyControlResponse) {
+  if (!Array.isArray(response.sales.rows)) return;
+  fullResponseMemory.delete(periodKey);
+  fullResponseMemory.set(periodKey, { response, savedAt: Date.now() });
+  while (fullResponseMemory.size > FULL_RESPONSE_MEMORY_LIMIT) {
+    const oldestKey = fullResponseMemory.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    fullResponseMemory.delete(oldestKey);
+  }
+}
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 2 }).format(value);
 }
@@ -162,9 +187,10 @@ export function PayrollDailyOneCControl({
   onDataChange?: (data: DailyControlResponse | null, state: { isStale: boolean }) => void;
 }) {
   const periodKey = `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
-  const [data, setData] = useState<DailyControlResponse | null>(null);
+  const initialMemoryResponse = readFullResponseFromMemory(periodKey);
+  const [data, setData] = useState<DailyControlResponse | null>(initialMemoryResponse);
   const [error, setError] = useState('');
-  const [isStale, setIsStale] = useState(false);
+  const [isStale, setIsStale] = useState(Boolean(initialMemoryResponse));
   const [isLoading, setIsLoading] = useState(true);
   const [actionSupplier, setActionSupplier] = useState('');
   const requestVersion = useRef(0);
@@ -184,6 +210,7 @@ export function PayrollDailyOneCControl({
         const storedBody = await readControlResponse(storedResponse);
         if (storedBody?.ok && belongsToSelectedPeriod(storedBody)) {
           if (requestVersion.current !== version) return;
+          rememberFullResponse(periodKey, storedBody);
           setData(storedBody);
           setError('');
           setIsStale(false);
@@ -202,6 +229,7 @@ export function PayrollDailyOneCControl({
         throw new Error('За выбранный месяц ещё нет закрытых данных 1С. Данные прошлого месяца в расчёт не включены.');
       }
       if (requestVersion.current !== version) return;
+      rememberFullResponse(periodKey, body);
       setData(body);
       setError('');
       setIsStale(false);
@@ -218,7 +246,7 @@ export function PayrollDailyOneCControl({
       }
     } catch (loadError) {
       if (requestVersion.current !== version) return;
-      const cachedCandidate = readCached(periodKey);
+      const cachedCandidate = readFullResponseFromMemory(periodKey) ?? readCached(periodKey);
       const cached = belongsToSelectedPeriod(cachedCandidate) ? cachedCandidate : null;
       setData((current) => current ?? cached);
       setIsStale(true);
@@ -229,7 +257,7 @@ export function PayrollDailyOneCControl({
   }, [belongsToSelectedPeriod, month, periodKey, year]);
 
   useEffect(() => {
-    const cachedCandidate = readCached(periodKey);
+    const cachedCandidate = readFullResponseFromMemory(periodKey) ?? readCached(periodKey);
     const cached = belongsToSelectedPeriod(cachedCandidate) ? cachedCandidate : null;
     setData(cached);
     setIsStale(Boolean(cached));
