@@ -58,6 +58,12 @@ export function ProcurementPaymentBatchForm({
   onCancel: () => void;
   usdtRateReference?: { rate: number | null; checkedAt: string; sourceLabel: string; conversionAt?: string };
 }) {
+  const supplierBalanceText = (supplier: string) => {
+    const balance = Number(supplierDebtTotals[supplier] || 0);
+    return balance < -0.009
+      ? `Аванс поставщику: ${rub.format(Math.abs(balance))}`
+      : `Долг поставщику в 1С: ${rub.format(balance)}`;
+  };
   const [plannedDate, setPlannedDate] = useState("");
   const [rows, setRows] = useState<Record<string, RowDraft>>(() =>
     Object.fromEntries(
@@ -241,7 +247,7 @@ export function ProcurementPaymentBatchForm({
                   aria-pressed={rows[order.ref]?.selected}
                   className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 hover:bg-slate-50 ${rows[order.ref]?.selected ? "bg-green-50/60" : ""}`}
                 >
-                  <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">Заказ № {order.number || "без номера"}</span><span className="block text-[11px] font-semibold text-slate-400">Поставщику по данным 1С: {rub.format(supplierDebtTotals[order.supplierPartner] || 0)}</span></span>
+                  <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">Заказ № {order.number || "без номера"}</span><span className="block text-[11px] font-semibold text-slate-400">{supplierBalanceText(order.supplierPartner)}</span></span>
                   <span className="flex shrink-0 items-center gap-2">
                     <span className="text-sm font-extrabold text-slate-700">{rub.format(order.unplannedAmount)}</span>
                     <span className={`flex h-8 w-8 items-center justify-center rounded-full ${rows[order.ref]?.selected ? "bg-green-600 text-white" : "bg-slate-100 text-slate-700"}`} aria-hidden="true">
@@ -266,7 +272,7 @@ export function ProcurementPaymentBatchForm({
                 <div className="min-w-0 pr-9 lg:pr-0">
                   <span className="block font-black text-slate-950">{order.supplierPartner}</span>
                   <span className="block text-sm font-semibold text-slate-600">Заказ № {order.number || "без номера"}</span>
-                  <span className="block text-xs font-semibold text-slate-500">Поставщику по данным 1С: {rub.format(supplierDebtTotals[order.supplierPartner] || 0)}</span>
+                  <span className="block text-xs font-semibold text-slate-500">{supplierBalanceText(order.supplierPartner)}</span>
                   <span className="block text-xs font-semibold text-slate-500">Остаток по заказу в 1С: {rub.format(order.orderPaymentGap)}</span>
                   {order.plannedActiveAmount > 0 ? <span className="block text-xs font-semibold text-amber-700">Уже в заявках: {rub.format(order.plannedActiveAmount)}</span> : null}
                   <span className="block text-xs font-black text-green-700">Можно запланировать: {rub.format(order.unplannedAmount)}</span>

@@ -3,7 +3,7 @@ import { AdminBreadcrumbs } from "@/components/AdminBreadcrumbs";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { prisma } from "@/lib/prisma";
 import { fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
-import { calculateOrderPlanning, matchCashEvidence } from "@/lib/procurement-payment-control";
+import { calculateOrderPlanning, matchCashEvidence, summarizeSupplierBalances } from "@/lib/procurement-payment-control";
 import {
   fetchSupplierOrderFinance,
   normalizeManagerName,
@@ -88,7 +88,7 @@ export default async function AdminProcurementPage() {
     issuedAmount: planEvidenceById.get(plan.id)?.state === "MISMATCH" ? 0 : Number(planEvidenceById.get(plan.id)?.issuedAmount || 0),
   })));
   const unplannedOrderCount = ordersSource ? planningRows.filter((order) => order.unplannedAmount > 0.009).length : null;
-  const supplierDebtTotal = ordersSource ? scopedOrders.reduce((sum, order) => sum + Number(order.supplierDebt || 0), 0) : null;
+  const supplierDebtTotal = ordersSource ? summarizeSupplierBalances(scopedOrders).debtTotal : null;
   const unplannedCashCount = requestSource
     ? requests
         .filter((request) =>

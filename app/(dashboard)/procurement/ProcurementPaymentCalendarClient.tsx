@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
-import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
+import { calculateOrderPlanning, paymentPlanLeadTime, summarizeSupplierBalances } from "@/lib/procurement-payment-control";
 
 type Order = {
   ref: string;
@@ -220,11 +220,9 @@ export default function ProcurementPaymentCalendarClient({
     })),
   );
   const missingOrders = planningOrders.filter((order) => order.unplannedAmount > 0.009);
-  const supplierDebtTotals = initialOrders.reduce<Record<string, number>>((totals, order) => {
-    totals[order.supplierPartner] = Number(totals[order.supplierPartner] || 0) + Number(order.supplierDebt || 0);
-    return totals;
-  }, {});
-  const totalSupplierDebt = Object.values(supplierDebtTotals).reduce((sum, value) => sum + value, 0);
+  const supplierBalances = summarizeSupplierBalances(initialOrders);
+  const supplierDebtTotals = supplierBalances.bySupplier;
+  const totalSupplierDebt = supplierBalances.debtTotal;
   const unpaidActivePlans = activePlans.map((plan) => ({
     ...plan,
     remainingRub: Math.max(0, Number(plan.plannedAmount) - (plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0))),
