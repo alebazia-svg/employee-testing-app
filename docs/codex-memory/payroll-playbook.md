@@ -459,6 +459,21 @@ the pay result harder to understand.
   Google Sheets attendance/schedule preview. Do not misdiagnose that delay as a
   repeated 1C read. A last-good attendance snapshot with explicit freshness is
   a separate owner decision because days and lateness affect payroll.
+- The owner approved that next performance stage. Normalized attendance and
+  schedule summaries are stored per payroll period in a dedicated
+  `PayrollAttendanceSnapshot`. The payroll screen reads this last-good snapshot
+  first and refreshes Google Sheets in a separate background request. A failed
+  refresh never overwrites or clears saved days/lateness, and the screen shows
+  when the source was last checked. Raw Google Sheets rows are not stored.
+  This snapshot is an adapter boundary: the current Google Sheets reader can be
+  replaced by PWA attendance later without changing payroll formulas or the
+  normalized payload consumed by the calculation.
+- This implementation adds a database migration, so its production release
+  must run `prisma migrate deploy` before rebuilding `portal-app`. In isolated
+  browser QA, a repeat September screen open showed the employee list from the
+  saved attendance snapshot in about 0.4 seconds. With Google Sheets
+  deliberately disabled, the saved list and calculation remained visible and
+  were labeled as previous data.
 
 ## Before Changing Payroll
 
