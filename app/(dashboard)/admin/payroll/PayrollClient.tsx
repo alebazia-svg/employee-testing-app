@@ -1618,27 +1618,21 @@ function shouldMapLegacyRetailTraineeToMagomed(month: string, year: string) {
   return month === '5' && year === '2026';
 }
 
-function mapLegacyRetailTraineeForPeriod(result: PayrollParseResult, month: string, year: string): PayrollParseResult {
+function mapLegacyRetailTraineeRowsForPeriod<T extends SalesRow>(rows: T[], month: string, year: string): T[] {
   if (!shouldMapLegacyRetailTraineeToMagomed(month, year)) {
-    const rows = result.rows.filter((row) => !isLegacyRetailTraineeSource(row.manager));
-    const detailRows = result.detailRows.filter((row) => !isLegacyRetailTraineeSource(row.manager));
-
-    return {
-      ...result,
-      rows,
-      detailRows,
-      managers: Array.from(new Set(rows.map((row) => row.manager))),
-    };
+    return rows.filter((row) => !isLegacyRetailTraineeSource(row.manager));
   }
 
-  const mapRow = (row: SalesRow): SalesRow => (
+  return rows.map((row) => (
     isLegacyRetailTraineeSource(row.manager)
       ? { ...row, manager: retailTraineePayrollName }
       : row
-  );
+  ));
+}
 
-  const rows = result.rows.map(mapRow);
-  const detailRows = result.detailRows.map(mapRow);
+function mapLegacyRetailTraineeForPeriod(result: PayrollParseResult, month: string, year: string): PayrollParseResult {
+  const rows = mapLegacyRetailTraineeRowsForPeriod(result.rows, month, year);
+  const detailRows = mapLegacyRetailTraineeRowsForPeriod(result.detailRows, month, year);
 
   return {
     ...result,
@@ -4467,7 +4461,8 @@ export default function AdminPayrollPage() {
       sourceCostReviewRows: row.costReviewRows,
       sourceCostCalculationPendingRows: row.costCalculationPendingRows,
     }));
-    const shadowClassification = classifySalesRows(shadowSalesRows, classificationRules);
+    const shadowPeriodSalesRows = mapLegacyRetailTraineeRowsForPeriod(shadowSalesRows, month, year);
+    const shadowClassification = classifySalesRows(shadowPeriodSalesRows, classificationRules);
     const shadowEmployeeDirectory = buildPayrollEmployeeDirectory(
       payrollDirectoryUsers,
       selectedPayrollPeriodKey,
@@ -4684,7 +4679,7 @@ export default function AdminPayrollPage() {
       managerSummaries: shadowAccessoryCalculation.summaries,
       bonuses: savedBonuses,
     };
-  }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodCurrent, manualPayroll, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey]);
+  }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodCurrent, manualPayroll, month, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey, year]);
   const selectedManagerPayroll = useMemo(
     () => (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows : fullPayrollRows)?.find((summary) => summary.manager === selectedManager) ?? null,
     [fullPayrollRows, oneCShadowCalculation, selectedManager, selectedManagerSource],

@@ -109,6 +109,7 @@ type PayrollModule = {
     periodKey: string,
     reportManagerNames?: Set<string>,
   ) => Record<string, { name: string; salaryType: string }>;
+  mapLegacyRetailTraineeRowsForPeriod: (rows: SalesRow[], month: string, year: string) => SalesRow[];
 };
 
 async function loadPayrollModule(): Promise<PayrollModule> {
@@ -123,7 +124,7 @@ async function loadPayrollModule(): Promise<PayrollModule> {
   const calculationSource = source.slice(start, end);
 
   mkdirSync(dirname(generatedPath), { recursive: true });
-  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, buildPayrollEmployeeDirectory, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
+  writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, buildPayrollEmployeeDirectory, mapLegacyRetailTraineeRowsForPeriod, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
 
   return import(pathToFileURL(generatedPath).href) as Promise<PayrollModule>;
 }
@@ -135,6 +136,7 @@ let applyPayrollBonuses: PayrollModule['applyPayrollBonuses'];
 let buildPurchasePayrollRow: PayrollModule['buildPurchasePayrollRow'];
 let applyRetailAccessoryTier: PayrollModule['applyRetailAccessoryTier'];
 let buildPayrollEmployeeDirectory: PayrollModule['buildPayrollEmployeeDirectory'];
+let mapLegacyRetailTraineeRowsForPeriod: PayrollModule['mapLegacyRetailTraineeRowsForPeriod'];
 
 before(async () => {
   const payrollModule = await loadPayrollModule();
@@ -145,6 +147,7 @@ before(async () => {
   buildPurchasePayrollRow = payrollModule.buildPurchasePayrollRow;
   applyRetailAccessoryTier = payrollModule.applyRetailAccessoryTier;
   buildPayrollEmployeeDirectory = payrollModule.buildPayrollEmployeeDirectory;
+  mapLegacyRetailTraineeRowsForPeriod = payrollModule.mapLegacyRetailTraineeRowsForPeriod;
 });
 
 describe('August 2026 minimum and one-time premiums', () => {
@@ -636,6 +639,13 @@ describe('payroll calculation regression rules', () => {
     assert.equal(traineeSummary.grossProfit, 600);
     assert.equal(magomedSummary.revenue, 22000);
     assert.equal(magomedSummary.grossProfit, 13200);
+  });
+
+  it('applies the June-only trainee mapping equally to automatic 1C rows', () => {
+    const traineeRow = salesRow({ manager: traineeManager, revenue: 1000, cost: 400, grossProfit: 600 });
+
+    assert.deepEqual(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '8', '2026'), []);
+    assert.equal(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '5', '2026')[0]?.manager, 'Костеренко Магомед');
   });
 
   it('excludes non-payroll people from payroll summaries', () => {

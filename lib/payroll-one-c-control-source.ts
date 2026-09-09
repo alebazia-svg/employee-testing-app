@@ -109,14 +109,17 @@ function normalizeOperation(value: string) {
   return value.toLocaleLowerCase('ru').replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
 }
 
+function operationMatches(operation: Record<string, unknown>, fragment: string) {
+  const name = normalizeOperation(readString(operation, ['operation', 'presentation', 'name', 'Операция']));
+  return name.includes(normalizeOperation(fragment));
+}
+
 function operationCompleted(operations: Record<string, unknown>[], fragment: string) {
-  const expected = normalizeOperation(fragment);
   return operations.some((operation) => {
-    const name = normalizeOperation(readString(operation, ['operation', 'presentation', 'name', 'Операция']));
     const running = readBoolean(operation, ['running', 'Выполняется']) === true;
     const hadErrors = readBoolean(operation, ['had_errors', 'has_errors', 'Ошибки']) === true;
     const finished = Boolean(readString(operation, ['end_time', 'finished_at', 'ДатаОкончания']));
-    return name.includes(expected) && finished && !running && !hadErrors;
+    return operationMatches(operation, fragment) && finished && !running && !hadErrors;
   });
 }
 
@@ -163,10 +166,12 @@ export async function getPayrollOneCCloseState(
     .sort()
     .at(-1) ?? null;
   const expectedExecutionDate = formatRussianDate(date);
-  const executionDates = Array.from(new Set(operations
+  const costCalculationDates = operations
+    .filter((operation) => operationMatches(operation, 'Расчет себестоимости'))
     .map((operation) => readString(operation, ['start_time', 'started_at', 'ДатаНачала']).slice(0, 10))
-    .filter(Boolean)));
-  const executionDate = executionDates.length === 1 ? executionDates[0] : null;
+    .filter(Boolean)
+    .sort();
+  const executionDate = costCalculationDates.at(-1) ?? null;
   const blockingIssues = [
     options.requireExecutionDate !== false && executionDate !== expectedExecutionDate
       ? 'Последнее закрытие выполнено не за выбранную дату.' : '',
