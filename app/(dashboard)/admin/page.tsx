@@ -109,7 +109,7 @@ export default async function AdminPage() {
       <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
         <Card className='admin-material-surface overflow-hidden p-0'>
           <SectionHeader title='Нужно моё решение' count={actions.length} />
-          {actions.length ? <div className='divide-y divide-slate-100'>{actions.slice(0, 6).map((item) => <ActionRow key={item.key} item={item} />)}</div> : <Empty title='Моих действий сейчас нет' text='Новые сообщения, запросы на решение и заявки появятся здесь.' compact />}
+          {actions.length ? <div className='max-h-[640px] divide-y divide-slate-100 overflow-y-auto'>{actions.map((item) => <ActionRow key={item.key} item={item} />)}</div> : <Empty title='Моих действий сейчас нет' text='Новые сообщения, запросы на решение и заявки появятся здесь.' compact />}
         </Card>
         <Card className='admin-material-surface overflow-hidden p-0'>
           <SectionHeader title='Сотрудникам нужно исправить' count={issues.length + reviews.filter((item) => item.status === 'open').length} href='/admin/workday' />

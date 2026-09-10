@@ -7,6 +7,7 @@ import type { MatchingAuditRecord, TerminalMapping } from './terminal-fiscal-mat
 export const TERMINAL_FISCAL_ADMIN_FIRST = true;
 const TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS = 20 * 60_000;
 export const fiscalApprovalKey = (id: string) => `terminal-fiscal-review:${id}:admin-approved`;
+export const fiscalTestPaymentKey = (id: string) => `terminal-fiscal-review:${id}:test-payment`;
 
 type ProposedUser = { id: number; name: string };
 export type FiscalProposedRecipients = {
@@ -153,5 +154,25 @@ export async function approveFiscalReview(db: PrismaClient, id: string, adminId:
       fingerprint: `${review.reviewKey}:approved:${u.id}`, userId: u.id, reviewId: id, kind: 'terminal_fiscal_review',
       title: 'В 1С нет чека', body: bodyFor(review.bankOperationAt, review.amountKopecks, proposed.confidence !== 'high'), scheduledAt: now }, update: {} });
     return { alreadyApproved: false };
+  });
+}
+
+export async function dismissFiscalReviewAsTestPayment(db: PrismaClient, id: string, adminId: number) {
+  return db.$transaction(async (tx) => {
+    const admin = await tx.user.findFirst({ where: { id: adminId, role: 'ADMIN', isActive: true }, select: { id: true } });
+    if (!admin) throw new Error('FORBIDDEN');
+    const review = await tx.terminalFiscalEmployeeReview.findUnique({ where: { id } });
+    if (!review || review.status === 'resolved') throw new Error('REVIEW_NOT_AVAILABLE');
+    const now = new Date();
+    await tx.terminalFiscalEmployeeReview.update({ where: { id }, data: { status: 'resolved', resolvedAt: now, lastCheckedAt: now } });
+    await tx.workdayNotification.updateMany({ where: { reviewId: id, status: 'pending' }, data: { status: 'cancelled' } });
+    await tx.adminInboxEvent.upsert({
+      where: { eventKey: fiscalTestPaymentKey(id) },
+      create: { eventKey: fiscalTestPaymentKey(id), type: 'terminal_fiscal_review.test_payment', title: 'Тестовая оплата исключена из контроля',
+        body: `Администратор ${adminId} подтвердил тестовую операцию ${money(review.amountKopecks)}.`, href: `/admin/workday/payment-checks/${id}`,
+        sourceType: 'terminal_fiscal_review', sourceId: id, occurredAt: now },
+      update: {},
+    });
+    return { resolvedAt: now };
   });
 }

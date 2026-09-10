@@ -5,6 +5,7 @@ import { AdminShell } from '@/components/AdminShell';
 import { TerminalFiscalReviewConversation } from '@/components/TerminalFiscalReviewConversation';
 import { Card } from '@/components/ui/card';
 import { FiscalAdminApproval } from '@/components/FiscalAdminApproval';
+import { FiscalTestPaymentButton } from '@/components/FiscalTestPaymentButton';
 import { TERMINAL_FISCAL_ADMIN_FIRST, fiscalProposedRecipients } from '@/lib/terminal-fiscal-admin-gate';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -63,6 +64,7 @@ export default async function AdminPaymentCheckPage(props: { params: Promise<{ i
           {!resolved && !pendingAdmin && <p className='mt-4 text-xs font-semibold leading-relaxed text-amber-800'>{shared ? 'Это общая задача сотрудникам Розницы, а не персональное обвинение. Она закроется у всех после появления чека в 1С.' : 'Это нейтральная проверка, а не подтверждённая ошибка сотрудника.'}</p>}
           {match?.reasonCode === 'BANK_OPERATION_UNSUPPORTED' && match.bankOperationRawType ? <p className='mt-3 text-xs font-semibold text-slate-600'>Исходный тип операции Т-Банка: {match.bankOperationRawType}</p> : null}
           {pendingAdmin && !match?.oneCSourceRef && <FiscalAdminApproval reviewId={review.id} recipients={proposed?.users ?? []} primary={proposed?.primary ?? null} confidence={proposed?.confidence ?? 'uncertain'} />}
+          {pendingAdmin && !match?.oneCSourceRef && <FiscalTestPaymentButton reviewId={review.id} />}
           {pendingAdmin && match?.oneCSourceRef && <p className='mt-4 text-sm font-bold text-amber-900'>Чек уже есть в 1С. Сначала проверьте расхождение; просьба пробить новый чек сотрудникам не отправляется.</p>}
         </Card>
         {showDiscussion && <Card>

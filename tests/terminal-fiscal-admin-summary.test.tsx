@@ -69,15 +69,17 @@ test('ADMIN Workday terminal summary has a neutral no-run state', () => {
   assert.equal(result.label, 'Сверка ещё не запускалась');
 });
 
-test('ADMIN Workday treats a bank operation without a 1C check as an admin-only acquiring problem', () => {
+test('ADMIN Workday names a missing 1C check without blaming acquiring', () => {
   const result = presentTerminalFiscalWorkdaySummary({
     ...base,
     statuses: { confirmed: 3, pending: 0, mismatch: 0, unavailable: 0, needs_review: 1 },
     reasonCodes: { MATCH_CONFIRMED: 3, ONE_C_CANDIDATE_NOT_FOUND: 1 },
   });
   assert.equal(result.status, 'mismatch');
-  assert.equal(result.label, 'Есть проблема эквайринга');
+  assert.equal(result.label, 'В 1С не найдены чеки');
   assert.match(result.detail, /оплат без покрытия чеком 1С 1/);
+  assert.doesNotMatch(result.detail, /проверить 1/);
+  assert.match(result.detail, /aQsi → 1С → ОФД/);
 });
 
 test('ADMIN separates period-covered operations from genuinely uncovered payments', () => {

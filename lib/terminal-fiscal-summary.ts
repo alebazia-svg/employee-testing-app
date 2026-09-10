@@ -112,7 +112,7 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
   const itemReviews = legacyItemReviews
     + (summary.reasonCodes.OFD_ITEM_PRESENTATION_DIFFERENCE ?? 0)
     + (summary.reasonCodes.OFD_ITEM_VALUES_MISMATCH ?? 0);
-  const otherNeedsReview = Math.max(0, summary.statuses.needs_review - legacyItemReviews - periodCoveredChecks);
+  const otherNeedsReview = Math.max(0, summary.statuses.needs_review - itemReviews - missingOneCChecks);
   const status = summary.statuses.mismatch > 0 || uncoveredOneCChecks > 0
     ? 'mismatch'
     : otherNeedsReview > 0 || itemReviews > 0
@@ -126,7 +126,7 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
     return {
       status,
       label: 'Ожидаются данные',
-      detail: 'Сверка Т-Банк → 1С → ОФД пока не завершена. Операций для подтверждения ещё нет.',
+      detail: 'Сверка aQsi → 1С → ОФД пока не завершена. Операций для подтверждения ещё нет.',
     };
   }
   const labels = {
@@ -149,11 +149,11 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
   return {
     status,
     label: uncoveredOneCChecks > 0 && summary.statuses.mismatch === 0
-      ? 'Есть проблема эквайринга'
+      ? 'В 1С не найдены чеки'
       : itemReviews > 0 && status === 'needs_review' && otherNeedsReview === 0
         ? 'Проверить состав чека'
         : labels[status],
-    detail: `Т-Банк → 1С → ОФД: ${parts.join(' · ')}.`,
+    detail: `aQsi → 1С → ОФД: ${parts.join(' · ')}.`,
   };
 }
 
