@@ -14,6 +14,7 @@ import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-p
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
 import { buildProcurementReviewQueue } from "@/lib/procurement-payment-priority";
+import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
 
 type Order = {
   ref: string;
@@ -87,6 +88,12 @@ const rub = new Intl.NumberFormat("ru-RU", {
   currency: "RUB",
   maximumFractionDigits: 0,
 });
+
+function OrderComment({ value }: { value: string }) {
+  const comment = procurementOrderCommentText(value);
+  if (!comment) return null;
+  return <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600" title={comment}>Комментарий из 1С: {comment}</p>;
+}
 const dateLabel = (value: string) =>
   new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
@@ -501,7 +508,7 @@ export default function ProcurementPaymentCalendarClient({
                   {datePlans.map((plan) => (
                     <article
                       key={plan.id}
-                      className={`grid gap-3 rounded-xl border p-3 sm:p-4 md:grid-cols-[minmax(240px,1fr)_minmax(190px,220px)_minmax(150px,180px)_112px] md:items-center ${key < todayKey ? "border-red-200 bg-red-50/40" : "border-slate-200"}`}
+                      className={`grid gap-3 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(170px,.72fr)] sm:items-center sm:p-4 min-[960px]:grid-cols-[minmax(190px,1fr)_minmax(165px,.85fr)_minmax(145px,.72fr)_104px] ${key < todayKey ? "border-red-200 bg-red-50/40" : "border-slate-200"}`}
                     >
                       <div className="min-w-0">
                         <h4 className="font-black">{plan.supplierPartner}</h4>
@@ -529,11 +536,12 @@ export default function ProcurementPaymentCalendarClient({
                           {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0)
                             ? " · сумма USDT уточняется"
                             : ""}
-                          {plan.condition &&
-                          plan.condition !== "Оплата по выбранным заказам"
-                            ? ` · ${plan.condition}`
-                            : ""}
                         </p>
+                        {plan.condition && plan.condition !== "Оплата по выбранным заказам" ? (
+                          <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600" title={plan.condition}>
+                            Комментарий: {plan.condition}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="space-y-1">
                         <span
@@ -589,7 +597,7 @@ export default function ProcurementPaymentCalendarClient({
             <div>
               <h2 className="text-lg font-black text-slate-900">Что стоит проверить</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Заказы с повышенным риском по данным 1С. Точную дату уточните у поставщика.
+                Укажите дату оплаты и нажмите «Запланировать».
               </p>
             </div>
             {reviewOrders.length ? (
@@ -611,11 +619,7 @@ export default function ProcurementPaymentCalendarClient({
                     <p className="mt-0.5 text-xs font-semibold text-slate-500">
                       Заказ № {order.number || "без номера"} · {orderDateLabel(order.date)}
                     </p>
-                    {order.orderComment ? (
-                      <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600" title={order.orderComment}>
-                        Комментарий: {order.orderComment}
-                      </p>
-                    ) : null}
+                    <OrderComment value={order.orderComment} />
                     <p className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-200">
                       {order.reviewReason}
                     </p>

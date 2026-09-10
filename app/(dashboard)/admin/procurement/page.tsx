@@ -14,6 +14,7 @@ import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/procurement-supplier-settlements";
+import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
 
 export const dynamic = "force-dynamic";
 
@@ -85,6 +86,17 @@ export default async function AdminProcurementPage() {
   const managerOrders = ordersSource
     ? ordersSource.rows.filter((order) => managerNames.has(normalizeManagerName(order.manager)))
     : [];
+  const managerOrderByRef = new Map(managerOrders.map((order) => [order.ref, order]));
+  const plansWithOrderContext = serialized.map((plan) => ({
+    ...plan,
+    orderContext: (plan.orderRefs as string[]).flatMap((ref) => {
+      const order = managerOrderByRef.get(ref);
+      const comment = procurementOrderCommentText(order?.orderComment || "");
+      return order && comment
+        ? [{ number: order.number || "без номера", text: comment }]
+        : [];
+    }),
+  }));
   const settlementSummary = settlementsResult.status === "fulfilled"
     ? summarizeSupplierSettlements(
         settlementsResult.value.rows,
@@ -146,7 +158,7 @@ export default async function AdminProcurementPage() {
       />
       <div className="mt-5">
         <AdminProcurementClient
-          initialPlans={serialized}
+          initialPlans={plansWithOrderContext}
           sourceCheckedAt={ordersSource?.checkedAt || ""}
           sourceWarnings={warnings}
           unplannedOrderCount={unplannedOrderCount}

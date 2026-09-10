@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Check, Plus, Search, X } from "lucide-react";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
+import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
 
 type Order = {
   ref: string;
@@ -44,6 +45,19 @@ const commentHint = (method: string) =>
       : method === "BANK"
         ? "Реквизиты пришлют завтра"
         : "42 112 юаней по курсу 13,55 ₽";
+
+function OrderComment({ value, compact = false }: { value: string; compact?: boolean }) {
+  const comment = procurementOrderCommentText(value);
+  if (!comment) return null;
+  return (
+    <span
+      className={`mt-1 block text-xs font-semibold text-slate-700 ${compact ? "max-w-xl truncate" : "line-clamp-2"}`}
+      title={comment}
+    >
+      Комментарий из 1С: {comment}
+    </span>
+  );
+}
 
 export function ProcurementPaymentBatchForm({
   orders,
@@ -252,7 +266,7 @@ export function ProcurementPaymentBatchForm({
                   aria-pressed={rows[order.ref]?.selected}
                   className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 hover:bg-slate-50 ${rows[order.ref]?.selected ? "bg-green-50/60" : ""}`}
                 >
-                  <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">Заказ № {order.number || "без номера"}</span>{order.orderComment ? <span className="mt-0.5 block max-w-xl truncate text-[11px] font-semibold text-slate-600" title={order.orderComment}>Комментарий: {order.orderComment}</span> : null}<span className="block text-[11px] font-semibold text-slate-400">{supplierBalanceText(order.supplierPartner)}</span></span>
+                  <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">Заказ № {order.number || "без номера"}</span><OrderComment value={order.orderComment} compact /><span className="block text-[11px] font-semibold text-slate-400">{supplierBalanceText(order.supplierPartner)}</span></span>
                   <span className="flex shrink-0 items-center gap-2">
                     <span className="text-sm font-extrabold text-slate-700">{rub.format(order.unplannedAmount)}</span>
                     <span className={`flex h-8 w-8 items-center justify-center rounded-full ${rows[order.ref]?.selected ? "bg-green-600 text-white" : "bg-slate-100 text-slate-700"}`} aria-hidden="true">
@@ -277,7 +291,7 @@ export function ProcurementPaymentBatchForm({
                 <div className="min-w-0 pr-9 md:row-span-2 md:pr-0">
                   <span className="block font-black text-slate-950">{order.supplierPartner}</span>
                   <span className="block text-sm font-semibold text-slate-600">Заказ № {order.number || "без номера"}</span>
-                  {order.orderComment ? <span className="mt-1 block line-clamp-2 text-xs font-semibold text-slate-700" title={order.orderComment}>Комментарий: {order.orderComment}</span> : null}
+                  <OrderComment value={order.orderComment} />
                   <span className="block text-xs font-semibold text-slate-500">{supplierBalanceText(order.supplierPartner)}</span>
                   <span className="block text-xs font-semibold text-slate-500">По всем заказам поставщика осталось оплатить: {rub.format(supplierOrderGapTotals[order.supplierPartner] || 0)}</span>
                   <span className="block text-xs font-semibold text-slate-500">Остаток по заказу в 1С: {rub.format(order.orderPaymentGap)}</span>

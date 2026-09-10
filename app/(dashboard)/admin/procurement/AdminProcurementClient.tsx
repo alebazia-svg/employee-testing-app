@@ -33,6 +33,10 @@ type Plan = {
   status: string;
   createdAt: string;
   correctionReason?: string;
+  orderContext?: {
+    number: string;
+    text: string;
+  }[];
   manager: { name: string };
   evidence: {
     state: string;
@@ -384,6 +388,21 @@ export default function AdminProcurementClient({
                   {planComment(plan)}{planComment(plan) && plan.supplierConfirmation ? " · " : ""}
                   {plan.supplierConfirmation || ""}
                 </p>
+              ) : null}
+              {plan.orderContext?.length ? (
+                <details className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <summary className="cursor-pointer font-bold text-slate-600">
+                    Данные из {plan.orderContext.length === 1 ? "заказа" : `${plan.orderContext.length} заказов`} в 1С
+                  </summary>
+                  <div className="mt-2 space-y-1.5 border-t border-slate-200 pt-2">
+                    {plan.orderContext.map((item, index) => (
+                      <p key={`${item.number}-${index}`} className="text-slate-700">
+                        <span className="font-bold">№ {item.number}:</span>{" "}
+                        {item.text}
+                      </p>
+                    ))}
+                  </div>
+                </details>
               ) : null}
               {returningId === plan.id ? (
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
