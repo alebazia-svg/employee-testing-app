@@ -24,6 +24,7 @@ import {
   oneCChecksAvailableForEmployeeReview,
   syncTerminalFiscalEmployeeReviews,
 } from '@/lib/terminal-fiscal-employee-review';
+import { syncTerminalFiscalSourceHealth } from '@/lib/terminal-fiscal-source-health';
 
 function dateOnly(value: Date) {
   return getMoscowDateKey(value);
@@ -125,6 +126,16 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
         output,
         sourceCheckedAt: { tbank: tbank.checkedAt, oneC: oneC.checkedAt, ofd: ofd.checkedAt },
         sourceCompleteness: { tbank: tbank.complete, oneC: oneC.complete, ofd: ofd.complete },
+      });
+      await syncTerminalFiscalSourceHealth(prisma, {
+        mappingId: mapping.id,
+        mappingLabel: mappingRow.label,
+        checkedAt: new Date(now),
+        sources: {
+          aqsi: { complete: tbank.complete, errorCode: tbank.errorCode },
+          oneC: { complete: oneC.complete, errorCode: oneC.errorCode },
+          ofd: { complete: ofd.complete, errorCode: ofd.errorCode },
+        },
       });
       if (input.syncWorkdayControl === true) {
         await syncTerminalFiscalWorkdayControl(prisma, output);

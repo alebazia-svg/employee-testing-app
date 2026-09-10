@@ -10,7 +10,7 @@ import type {
   TerminalMapping,
 } from '@/lib/terminal-fiscal-matching';
 
-export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 15 * 60 * 1000;
+export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 20 * 60 * 1000;
 export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_WINDOW_MS = 15 * 60 * 1000;
 const EMPLOYEE_REVIEW_REMINDER_MS = 60 * 60 * 1000;
 // Do not turn already-known historical gaps into surprise employee pushes when
@@ -442,10 +442,6 @@ export async function syncTerminalFiscalEmployeeReviews(
   const mode = input.mode ?? 'notify';
 
   for (const record of input.output.records) {
-    if ((input.adminFirst ?? TERMINAL_FISCAL_ADMIN_FIRST) && mode === 'notify') {
-      await stageFiscalAdminReview(prisma, record);
-      continue;
-    }
     const reviewKey = terminalFiscalEmployeeReviewKey(record);
     const operationAt = new Date(record.evidence.bankTransactionDate);
     const operationDate = Number.isNaN(operationAt.getTime()) ? null : new Intl.DateTimeFormat('en-CA', {
@@ -472,6 +468,15 @@ export async function syncTerminalFiscalEmployeeReviews(
       kkmResponsibilities,
       globalCoverage: input.globalCoverage,
     });
+    const adminFirst = (input.adminFirst ?? TERMINAL_FISCAL_ADMIN_FIRST) && mode === 'notify';
+    if (adminFirst) {
+      if (decision.action === 'wait') continue;
+      if (decision.action === 'notify' || decision.action === 'admin_only') {
+        await stageFiscalAdminReview(prisma, record, input.mapping);
+        adminOnly += 1;
+        continue;
+      }
+    }
     if (decision.action === 'wait') continue;
     if (decision.action === 'resolve') {
       const count = await prisma.$transaction(async (tx) => {

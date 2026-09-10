@@ -1,10 +1,11 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
-import type { MatchingAuditRecord } from './terminal-fiscal-matching';
+import type { MatchingAuditRecord, TerminalMapping } from './terminal-fiscal-matching';
 
 // Temporary pilot policy. Returning to automatic delivery requires an owner decision.
 export const TERMINAL_FISCAL_ADMIN_FIRST = true;
+const TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS = 20 * 60_000;
 export const fiscalApprovalKey = (id: string) => `terminal-fiscal-review:${id}:admin-approved`;
 
 type ProposedUser = { id: number; name: string };
@@ -16,7 +17,11 @@ export type FiscalProposedRecipients = {
   reason: 'manual_kkm_assignment' | 'home_workstation' | 'floating_employee' | 'ambiguous';
 };
 
-export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingAuditRecord) {
+function money(value: number) {
+  return `${(value / 100).toLocaleString('ru-RU')} ₽`;
+}
+
+export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingAuditRecord, mapping?: TerminalMapping) {
   const hash = createHash('sha256').update(record.matchingKey).digest('hex');
   const reviewKey = `terminal-fiscal-review:${hash}`;
   const now = new Date(record.evaluatedAt);
@@ -31,7 +36,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       }
       return;
     }
-    if (now.getTime() - at.getTime() < 15 * 60_000) return;
+    if (now.getTime() - at.getTime() < TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS) return;
     const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true }, orderBy: { id: 'asc' } });
     if (!admins.length) throw new Error('TERMINAL_FISCAL_ADMIN_RECIPIENT_MISSING');
     const approved = existing && await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(existing.id) } });
@@ -47,10 +52,23 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
     });
     if (!keepOpen) await tx.workdayNotification.updateMany({ where: { reviewId: review.id, status: 'pending' }, data: { status: 'cancelled' } });
     const when = at.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+    const elapsedMinutes = Math.max(0, Math.floor((now.getTime() - at.getTime()) / 60_000));
+    const proposed = await fiscalProposedRecipients(tx, at, record.mappingId);
+    const workstation = proposed.confidence === 'high' && proposed.primary
+      ? `Рабочее место: ${proposed.primary.name}. ` : '';
+    const terminal = mapping?.terminalKey ? `Терминал ${mapping.terminalKey}. ` : '';
+    const definitelyMissing = record.candidateCount === 0
+      && ['ONE_C_CANDIDATE_PENDING', 'ONE_C_CANDIDATE_NOT_FOUND'].includes(record.reasonCode)
+      && record.sourceCompleteness.tbank
+      && record.sourceCompleteness.oneC;
+    const uncertain = !definitelyMissing;
     const event = await tx.adminInboxEvent.upsert({
       where: { eventKey: `${reviewKey}:admin-first` },
       create: { eventKey: `${reviewKey}:admin-first`, type: 'terminal_fiscal_review.created',
-        title: 'Проверьте чек', body: `${record.amountKopecks / 100} ₽ · ${when}. Проверка ожидает решения администратора.`,
+        title: uncertain ? 'Нужна проверка сопоставления' : 'В 1С нет чека',
+        body: `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${uncertain
+          ? 'Портал не смог однозначно сопоставить оплату и чек; требуется проверка администратора.'
+          : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`,
         href: `/admin/workday/payment-checks/${review.id}`, sourceType: 'terminal_fiscal_review', sourceId: review.id, occurredAt: now },
       update: {},
     });
