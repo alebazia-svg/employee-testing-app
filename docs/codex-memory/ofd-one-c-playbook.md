@@ -111,6 +111,17 @@ Ask:
 The isolated read-only `T-Bank -> 1C -> Platforma OFD` matching audit runs in
 production without employee UI, notifications or incidents.
 
+- Both physical acquiring workplaces now use aQsi devices in one aQsi account.
+  The direct read-only aQsi API is the primary source for both card and SBP/QR
+  operations. Portal terminal key `1010808747019437` maps to aQsi terminal
+  `10693079`; the former PAX workplace key `2332022071` maps to replacement
+  aQsi terminal `11085322`. Keeping the portal keys stable preserves the
+  historical 1C/KKM mapping across the equipment replacement.
+- The dedicated Mac cabinet collector and the VPS cabinet-freshness watchdog
+  were disabled after the second aQsi API source passed a live card/QR read.
+  The cabinet snapshot remains a code-level fail-safe only; it is no longer a
+  scheduled production source and must not generate freshness notifications.
+
 - `portal-app` and `agentapi-read-proxy` share the internal Docker network
   `offonika-agentapi-read`; no proxy port is published externally.
 - `PLATFORMA_OFD_PROXY_BASE_URL` in portal `server.env` contains only the
