@@ -15,6 +15,13 @@ test('order without 1C ref is rejected', () => {
   assert.equal(normalizeSupplierOrder({ manager: 'Астемир Тохов' }), null);
 });
 
+test('supplier order comment is normalized when the 1C endpoint provides it', () => {
+  assert.equal(
+    normalizeSupplierOrder({ ref: 'commented', order_comment: 'Депозит перед отправкой' })?.orderComment,
+    'Депозит перед отправкой',
+  );
+});
+
 test('only orders with a positive payment gap require a payment date', () => {
   const rows = [
     normalizeSupplierOrder({ ref: 'paid', order_payment_gap: 0 }),

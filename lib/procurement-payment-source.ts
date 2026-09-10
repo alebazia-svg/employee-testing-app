@@ -17,6 +17,7 @@ export type SupplierOrderFinanceRow = {
   supplierDebt: number;
   controlGroup: string;
   controlReason: string;
+  orderComment: string;
 };
 
 export type SupplierOrderFinanceSnapshot = {
@@ -53,6 +54,7 @@ export function normalizeSupplierOrder(row: RawRow): SupplierOrderFinanceRow | n
     supplierDebt: amount(row.supplier_debt),
     controlGroup: text(row.control_group),
     controlReason: text(row.control_reason),
+    orderComment: text(row.order_comment ?? row.comment),
   };
 }
 

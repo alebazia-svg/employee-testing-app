@@ -13,6 +13,7 @@ import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
 import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
+import { buildProcurementReviewQueue } from "@/lib/procurement-payment-priority";
 
 type Order = {
   ref: string;
@@ -26,6 +27,9 @@ type Order = {
   orderPaymentGap: number;
   supplierDebt: number;
   currentState: string;
+  controlGroup: string;
+  controlReason: string;
+  orderComment: string;
 };
 type Plan = {
   id: string;
@@ -185,6 +189,7 @@ export default function ProcurementPaymentCalendarClient({
   const [batchSeedRefs, setBatchSeedRefs] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showAllReviewOrders, setShowAllReviewOrders] = useState(false);
   useEffect(() => setPlans(initialPlans), [initialPlans]);
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const enteredRoubles = Number(draft.plannedAmount || 0);
@@ -225,6 +230,17 @@ export default function ProcurementPaymentCalendarClient({
     })),
   );
   const missingOrders = planningOrders.filter((order) => order.unplannedAmount > 0.009);
+  const reviewOrders = buildProcurementReviewQueue(missingOrders, todayKey);
+  const primaryReviewOrders = reviewOrders.reduce<typeof reviewOrders>((selected, order) => {
+    if (selected.length >= 3 || selected.some((item) => item.reviewReason === order.reviewReason)) return selected;
+    return [...selected, order];
+  }, []);
+  const visibleReviewOrders = showAllReviewOrders
+    ? reviewOrders
+    : reviewOrders.reduce<typeof reviewOrders>((selected, order) => {
+        if (selected.length >= 3 || selected.some((item) => item.ref === order.ref)) return selected;
+        return [...selected, order];
+      }, primaryReviewOrders);
   const orderPaymentGapTotal = initialOrders.reduce((sum, order) => sum + Number(order.orderPaymentGap || 0), 0);
   const supplierOrderGapTotals = initialOrders.reduce<Record<string, number>>((totals, order) => {
     totals[order.supplierPartner] = Number(totals[order.supplierPartner] || 0) + Number(order.orderPaymentGap || 0);
@@ -278,8 +294,8 @@ export default function ProcurementPaymentCalendarClient({
           ?.scrollIntoView({ behavior: "smooth", block: "start" }),
       0,
     );
-  function openNew(supplier = "") {
-    const refs = missingOrders
+  function openNew(supplier = "", selectedRefs?: string[]) {
+    const refs = selectedRefs || missingOrders
       .filter((order) => order.supplierPartner === supplier)
       .map((order) => order.ref);
     setEditingId("");
@@ -566,6 +582,80 @@ export default function ProcurementPaymentCalendarClient({
           ) : null}
         </div>
       </section>
+
+      {!mappingBlocked && !sourceError ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div className="flex flex-col gap-1 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+            <div>
+              <h2 className="text-lg font-black text-slate-900">Что стоит проверить</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Заказы с повышенным риском по данным 1С. Точную дату уточните у поставщика.
+              </p>
+            </div>
+            {reviewOrders.length ? (
+              <p className="shrink-0 text-xs font-bold text-slate-500">
+                Найдено: {orderCountLabel(reviewOrders.length)}
+              </p>
+            ) : null}
+          </div>
+
+          {visibleReviewOrders.length ? (
+            <div className="mt-2 divide-y divide-slate-100">
+              {visibleReviewOrders.map((order) => (
+                <article
+                  key={order.ref}
+                  className="grid gap-3 py-3 sm:grid-cols-[minmax(220px,1fr)_minmax(160px,0.55fr)_auto] sm:items-center"
+                >
+                  <div className="min-w-0">
+                    <p className="font-black text-slate-950">{order.supplierPartner}</p>
+                    <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                      Заказ № {order.number || "без номера"} · {orderDateLabel(order.date)}
+                    </p>
+                    {order.orderComment ? (
+                      <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600" title={order.orderComment}>
+                        Комментарий: {order.orderComment}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-200">
+                      {order.reviewReason}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500">Не запланировано</p>
+                    <p className="mt-0.5 text-base font-black text-slate-950">
+                      {rub.format(order.unplannedAmount)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openNew(order.supplierPartner, [order.ref])}
+                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 transition hover:bg-green-50 hover:text-green-800"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Запланировать
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-600">
+              Нет заказов, требующих первоочередной проверки.
+            </div>
+          )}
+
+          {reviewOrders.length > 3 ? (
+            <button
+              type="button"
+              onClick={() => setShowAllReviewOrders((current) => !current)}
+              className="mt-2 text-sm font-black text-slate-600 hover:text-green-800"
+            >
+              {showAllReviewOrders
+                ? "Свернуть список"
+                : `Показать остальные ${reviewOrders.length - 3}`}
+            </button>
+          ) : null}
+        </section>
+      ) : null}
 
       {paidPlans.length ? (
         <details
