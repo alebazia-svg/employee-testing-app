@@ -205,16 +205,15 @@ The integration provides:
 
 - `lib/tbank-acquiring.ts` reads card operations from the official T-API
   trading acquiring endpoints;
-- T-Bank does not expose QR acquiring operations through that public API. A
-  least-privilege observer account in a dedicated Edge profile on the always-on
-  Mac reads the cabinet's own combined operations register. The collector sends
-  only operation ID, time, amount, sale/refund type, payment source and mapped
-  terminal ID to an atomic read-only snapshot on VPS. Browser credentials,
-  cookies, phone numbers and card data never leave the Mac;
-- `TBANK_CABINET_SNAPSHOT_ENABLED=true` switches matching to that combined
-  card-and-QR snapshot. A missing, stale, malformed, period-incomplete or
-  unknown-terminal snapshot fails closed as an incomplete T-Bank source and
-  cannot create an employee accusation;
+- T-Bank does not expose QR acquiring operations through its public terminal
+  API. Both current retail devices are aQsi terminals, so the production source
+  reads their card and QR operations directly through the aQsi API. The explicit
+  `AQSI_TERMINAL_MAPPINGS` list maps each physical aQsi terminal to the stable
+  portal terminal identity used by historical matching;
+- the former Edge/T-Bank-cabinet collector is retained only as an unscheduled
+  code fallback. Its Mac launch agent and VPS watchdog timer are disabled;
+- a missing, stale, malformed, period-incomplete or unknown-terminal source
+  fails closed and cannot create an employee accusation;
 - `/admin/workday/tbank` is an admin-only diagnostic page for selecting a
   terminal and viewing its operations for the last 24 hours;
 - `/api/admin/workday/tbank-probe` exposes the same diagnostic data to an
@@ -230,7 +229,17 @@ The integration provides:
 - no employee attribution from OFD operator, workstation or employee-to-device
   assignment. Ambiguous or incomplete cases remain ADMIN-only.
 
-Employee delivery for the neutral missing-check review is enabled in production.
+Employee delivery for the neutral missing-check review is enabled in production
+behind an administrator-first pilot gate. The administrator card proposes one
+responsible employee when the evidence is unambiguous: a dated KKM assignment
+takes precedence, then the active employee whose home KKM matches, then the only
+floating employee covering an absent fixed workstation owner. Both employees
+working that day remain participants, so `Не моя оплата` forwards the review to
+the colleague; a second rejection returns it to the administrator. If staffing,
+assignment or mapping is ambiguous, approval keeps the shared two-employee
+delivery instead of guessing. Automatic delivery without administrator approval
+must remain disabled until the owner reviews 3-5 working days of pilot accuracy.
+
 After the first complete 1C read at least fifteen minutes after the bank operation,
 the runner first applies one aggregate guard across every active retail terminal
 and KKM. Either known terminal may be used with either known KKM; the guard
