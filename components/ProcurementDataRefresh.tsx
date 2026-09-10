@@ -50,7 +50,7 @@ export function ProcurementDataRefresh({
     >
       <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${isPending ? 'animate-spin' : ''}`} />
       <span>
-        {label}: {checkedAt ? new Date(checkedAt).toLocaleString('ru-RU') : 'данные недоступны'}
+        {label}: {checkedAt ? new Date(checkedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : 'данные недоступны'}
       </span>
     </button>
   );
