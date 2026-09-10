@@ -74,6 +74,26 @@ function tbankIdentity(operation: TBankTerminalOperation, terminalKey: string) {
   return [terminalKey, operation.rrn, operation.transactionDate, operation.type, operation.amountKopecks].join('|');
 }
 
+export function aqsiTerminalIdForPortalKey(input: {
+  portalTerminalKey: string;
+  mappings?: string;
+  legacyPortalTerminalKey?: string;
+  legacyTerminalId?: string;
+}) {
+  const configured = new Map<string, string>();
+  for (const entry of (input.mappings ?? '').split(',')) {
+    const [portalKey, terminalId, ...extra] = entry.split('=').map((value) => value.trim());
+    if (!portalKey || !terminalId || extra.length > 0) continue;
+    configured.set(portalKey, terminalId);
+  }
+  const mapped = configured.get(input.portalTerminalKey);
+  if (mapped) return mapped;
+  if (input.legacyPortalTerminalKey?.trim() === input.portalTerminalKey) {
+    return input.legacyTerminalId?.trim() || null;
+  }
+  return null;
+}
+
 export async function loadCompleteTBankOperations(input: {
   terminalKey: string;
   from: string;
@@ -82,8 +102,13 @@ export async function loadCompleteTBankOperations(input: {
 }): Promise<SourceSnapshot<BankOperation>> {
   const aqsiApiKey = process.env.AQSI_API_KEY?.trim();
   const aqsiPortalTerminalKey = process.env.AQSI_PORTAL_TERMINAL_KEY?.trim();
-  const aqsiTerminalId = process.env.AQSI_TERMINAL_ID?.trim();
-  if (!input.loadPage && aqsiApiKey && aqsiPortalTerminalKey === input.terminalKey && aqsiTerminalId) {
+  const aqsiTerminalId = aqsiTerminalIdForPortalKey({
+    portalTerminalKey: input.terminalKey,
+    mappings: process.env.AQSI_TERMINAL_MAPPINGS,
+    legacyPortalTerminalKey: aqsiPortalTerminalKey,
+    legacyTerminalId: process.env.AQSI_TERMINAL_ID,
+  });
+  if (!input.loadPage && aqsiApiKey && aqsiTerminalId) {
     const aqsi = await loadAqsiOperations({
       apiKey: aqsiApiKey,
       portalTerminalKey: input.terminalKey,

@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { collectCompleteTBankWindow, splitIntoFixedWindows, TBANK_MATCHING_PAGE_LIMIT } from '../lib/tbank-complete-window';
-import { loadCompleteTBankOperations, TBANK_MAX_WINDOW_MS } from '../lib/terminal-fiscal-sources';
+import { aqsiTerminalIdForPortalKey, loadCompleteTBankOperations, TBANK_MAX_WINDOW_MS } from '../lib/terminal-fiscal-sources';
+
+test('resolves both aQsi devices while retaining the legacy single-terminal configuration', () => {
+  const mappings = 'old-portal=10693079,new-portal=11085322';
+  assert.equal(aqsiTerminalIdForPortalKey({ portalTerminalKey: 'old-portal', mappings }), '10693079');
+  assert.equal(aqsiTerminalIdForPortalKey({ portalTerminalKey: 'new-portal', mappings }), '11085322');
+  assert.equal(aqsiTerminalIdForPortalKey({
+    portalTerminalKey: 'legacy-portal', legacyPortalTerminalKey: 'legacy-portal', legacyTerminalId: '10693079',
+  }), '10693079');
+  assert.equal(aqsiTerminalIdForPortalKey({ portalTerminalKey: 'unknown', mappings }), null);
+});
 
 test('pre-splits long source periods into fixed provider windows', () => {
   assert.deepEqual(splitIntoFixedWindows(0, 25, 10), [

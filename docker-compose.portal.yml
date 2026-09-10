@@ -43,6 +43,7 @@ services:
       TBANK_CABINET_SNAPSHOT_PATH: /app/runtime/tbank-cabinet/current.json
       AQSI_PORTAL_TERMINAL_KEY: "1010808747019437"
       AQSI_TERMINAL_ID: "10693079"
+      AQSI_TERMINAL_MAPPINGS: "1010808747019437=10693079,2332022071=11085322"
     volumes:
       - portal-uploads:/app/uploads
       - /home/bela/offonika-tbank-cabinet:/app/runtime/tbank-cabinet:ro
