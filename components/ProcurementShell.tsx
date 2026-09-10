@@ -8,9 +8,9 @@ export function ProcurementShell({ userName, children }: { userName: string; chi
   const initials = userName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   return <main className='admin-workspace min-h-[100dvh] overflow-x-clip text-slate-950'>
     <section className='min-w-0 px-3 pb-10 pt-4 sm:px-6 lg:px-8 lg:py-6'>
-      <div className='mx-auto w-full max-w-[1760px]'>
-        <header className='mb-5 flex items-start justify-between gap-3'>
-          <div className='w-[125px] pt-2 sm:w-[160px]'><BrandBlock size='employee' /></div>
+      <div className='mx-auto w-full max-w-[1320px]'>
+        <header className='mb-4 flex items-center justify-between gap-3'>
+          <div className='w-[125px] sm:w-[150px]'><BrandBlock size='employee' /></div>
           <div className='flex items-start gap-2.5'>
             <div className='pt-1.5'><ProcurementNotificationsButton /></div>
             <div className='admin-account-chip flex items-center gap-2.5 rounded-2xl px-3 py-2.5 sm:gap-3 sm:px-4'>

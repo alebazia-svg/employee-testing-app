@@ -5,10 +5,8 @@ import {
   AlertTriangle,
   CalendarDays,
   CheckCircle2,
-  CircleDollarSign,
   Pencil,
   Plus,
-  RussianRuble,
   X,
 } from "lucide-react";
 import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
@@ -80,7 +78,6 @@ type Draft = {
   exchangerName: string;
   supplierConfirmation: string;
 };
-
 const rub = new Intl.NumberFormat("ru-RU", {
   style: "currency",
   currency: "RUB",
@@ -405,19 +402,27 @@ export default function ProcurementPaymentCalendarClient({
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#58a908]">
-            Закупки
-          </p>
-          <h1 className="mt-1 text-2xl font-black sm:text-3xl">
+          <h1 className="text-2xl font-black sm:text-3xl">
             Платёжный календарь
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-600">
-            Укажите дату и сумму заранее, чтобы деньги успели подготовить.
+            Запланируйте известные оплаты, чтобы деньги подготовили вовремя.
           </p>
         </div>
-        <ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" />
+        <div className="flex flex-col gap-2 sm:items-end">
+          {!mappingBlocked && !sourceError && !formOpen ? (
+            <button
+              onClick={() => openNew()}
+              className="admin-material-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 font-black text-white"
+            >
+              <Plus className="h-5 w-5" />
+              Добавить оплаты
+            </button>
+          ) : null}
+          <ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" />
+        </div>
       </header>
       {sourceError ? (
         <Notice
@@ -433,45 +438,6 @@ export default function ProcurementPaymentCalendarClient({
         />
       ) : null}
 
-      <section
-        className="rounded-2xl border border-slate-200 bg-white p-5"
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p
-              className="text-xs font-black uppercase tracking-wide text-slate-500"
-            >
-              Ближайшее действие
-            </p>
-            <h2 className="mt-1 text-xl font-black">
-              {mappingBlocked
-                ? "Нужно исправить связь с 1С"
-                : missingOrders.length
-                  ? "Добавьте следующую известную оплату"
-                  : "Все известные оплаты уже в календаре"}
-            </h2>
-            <p
-              className="mt-1 text-sm font-medium text-slate-600"
-            >
-              {mappingBlocked
-                ? "Количество намеренно не показывается."
-                : missingOrders.length
-                  ? `В 1С сейчас ${orderCountLabel(missingOrders.length)} с остатком к оплате. Не нужно заполнять их все сразу.`
-                  : "Новых действий сейчас нет."}
-            </p>
-          </div>
-          {!mappingBlocked && !sourceError ? (
-            <button
-              onClick={() => openNew()}
-              className="admin-material-primary inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-3 font-black text-white"
-            >
-              <Plus className="h-5 w-5" />
-              Добавить оплаты
-            </button>
-          ) : null}
-        </div>
-      </section>
-
       <div className="grid gap-5 min-[1180px]:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.72fr)] min-[1180px]:items-start">
         <div className="flex min-w-0 flex-col gap-5">
           {message && !formOpen ? (
@@ -481,14 +447,23 @@ export default function ProcurementPaymentCalendarClient({
           ) : null}
 
       <section
-        className="rounded-2xl bg-green-50/30 p-4 ring-1 ring-green-200/70 sm:p-5"
+        className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
         aria-hidden={formOpen || undefined}
         inert={formOpen || undefined}
       >
-        <h2 className="text-lg font-black">Календарь оплат</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Оплаты сгруппированы по дате, когда нужно подготовить деньги.
-        </p>
+        <div className="flex flex-col gap-2 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-black">Календарь оплат</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              По датам, когда нужно подготовить деньги.
+            </p>
+          </div>
+          {!mappingBlocked && !sourceError ? (
+            <p className="text-xs font-bold text-slate-500">
+              Ещё не запланировано: {orderCountLabel(missingOrders.length)}
+            </p>
+          ) : null}
+        </div>
         <div className="mt-5 space-y-6">
           {groupedPlans.length ? (
             groupedPlans.map(([key, datePlans]) => (
@@ -510,7 +485,7 @@ export default function ProcurementPaymentCalendarClient({
                   {datePlans.map((plan) => (
                     <article
                       key={plan.id}
-                      className={`grid gap-3 rounded-xl border p-3 sm:p-4 md:grid-cols-[minmax(220px,1.2fr)_minmax(190px,0.8fr)_auto_auto] md:items-center ${key < todayKey ? "border-red-200 bg-red-50/40" : "border-slate-200"}`}
+                      className={`grid gap-3 rounded-xl border p-3 sm:p-4 md:grid-cols-[minmax(240px,1fr)_minmax(190px,220px)_minmax(150px,180px)_112px] md:items-center ${key < todayKey ? "border-red-200 bg-red-50/40" : "border-slate-200"}`}
                     >
                       <div className="min-w-0">
                         <h4 className="font-black">{plan.supplierPartner}</h4>
@@ -557,7 +532,7 @@ export default function ProcurementPaymentCalendarClient({
                       {plan.status === "SUBMITTED" || plan.status === "NEEDS_CHANGES" ? (
                         <button
                           onClick={() => editPlan(plan)}
-                          className="inline-flex w-fit items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 md:justify-self-end"
+                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Изменить
@@ -579,6 +554,16 @@ export default function ProcurementPaymentCalendarClient({
               </p>
             </div>
           )}
+          {!mappingBlocked && !sourceError && !formOpen ? (
+            <button
+              type="button"
+              onClick={() => openNew()}
+              className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-3 text-sm font-black text-slate-600 transition hover:border-green-400 hover:bg-green-50/50 hover:text-green-800"
+            >
+              <Plus className="h-4 w-4" />
+              {workingPlans.length ? "Добавить ещё одну оплату" : "Добавить первую оплату"}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -857,82 +842,71 @@ export default function ProcurementPaymentCalendarClient({
         <aside
           className="space-y-5 min-[1180px]:sticky min-[1180px]:top-6"
         >
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 min-[1180px]:grid-cols-2">
-            <Metric
-              label="Осталось оплатить по заказам"
-              value={mappingBlocked || sourceError ? "—" : rub.format(orderPaymentGapTotal)}
-              hint={mappingBlocked || sourceError ? undefined : `${orderCountLabel(initialOrders.length)} в 1С`}
-              compact
-            />
-            <Metric
-              label="Долг за полученный товар"
-              value={mappingBlocked || supplierDebtError || supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}
-              hint="По взаиморасчётам в 1С"
-              compact
-            />
-            <Metric
-              label="Ожидают согласования"
-              value={plans.filter((plan) => plan.status === "SUBMITTED").length}
-            />
-            <Metric
-              label="Согласовано к оплате"
-              value={plans.filter((plan) => plan.status === "APPROVED").length}
-            />
-          </section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+            <h2 className="text-lg font-black text-slate-900">Сводка</h2>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <SummaryMetric
+                label="Осталось оплатить по заказам"
+                value={mappingBlocked || sourceError ? "—" : rub.format(orderPaymentGapTotal)}
+                hint={mappingBlocked || sourceError ? undefined : `${orderCountLabel(initialOrders.length)} с остатком в 1С`}
+              />
+              <SummaryMetric
+                label="Долг за полученный товар"
+                value={mappingBlocked || supplierDebtError || supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}
+                hint="Взаиморасчёты 1С"
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800 ring-1 ring-amber-200">
+                На согласовании: {plans.filter((plan) => plan.status === "SUBMITTED").length}
+              </span>
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
+                Согласовано: {plans.filter((plan) => plan.status === "APPROVED").length}
+              </span>
+            </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-        <h2 className="text-lg font-black text-slate-900">Доступно для оплат</h2>
-        <p className="mt-1 text-sm font-medium text-slate-500">Текущие остатки с учётом заявок в календаре.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 min-[1180px]:grid-cols-1">
-          <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
-            <div className="flex items-center gap-2">
-              <RussianRuble className="h-4 w-4 text-slate-500" />
-              <p className="font-black text-slate-900">Для оплат по QR</p>
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-black text-slate-900">Доступно для оплат</h3>
+              <div className="mt-3 space-y-3">
+                <BalanceSummary
+                  title="QR · рубли"
+                  availableLabel="На карте"
+                  available={accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)}
+                  planned={rub.format(plannedQr)}
+                  freeLabel={freeQr != null && freeQr < 0 ? "Не хватает" : "Свободно"}
+                  free={freeQr == null ? "—" : rub.format(Math.abs(freeQr))}
+                  critical={freeQr != null && freeQr < 0}
+                />
+                <BalanceSummary
+                  title="USDT"
+                  availableLabel="Доступно"
+                  available={usdtBalance.balance == null ? "—" : usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
+                  planned={plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
+                  freeLabel={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Свободно"}
+                  free={freeUsdt == null ? "—" : Math.abs(freeUsdt).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
+                  critical={freeUsdt != null && freeUsdt < 0}
+                />
+              </div>
             </div>
-            <div className="mt-3 space-y-2">
-              <BalanceRow label="На карте" value={accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)} />
-              <BalanceRow label="В заявках" value={rub.format(plannedQr)} />
-              <BalanceRow label={freeQr != null && freeQr < 0 ? "Не хватает" : "Свободно"} value={freeQr == null ? "—" : rub.format(Math.abs(freeQr))} critical={freeQr != null && freeQr < 0} />
+
+            <div className="mt-4 flex gap-2.5 border-t border-slate-200 pt-4">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-slate-500" />
+              <p className="text-xs font-semibold leading-relaxed text-slate-600">
+                После оплаты ничего отмечать не нужно — подтверждение появится из 1С.
+              </p>
             </div>
-          </div>
-          <div className="rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
-            <div className="flex items-center gap-2">
-              <CircleDollarSign className="h-4 w-4 text-slate-500" />
-              <p className="font-black text-slate-900">Для оплат в USDT</p>
-            </div>
-            <div className="mt-3 space-y-2">
-              <BalanceRow label="Доступно" value={usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} />
-              <BalanceRow label="В заявках" value={`${plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} />
-              <BalanceRow label={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Свободно"} value={freeUsdt == null ? "—" : `${Math.abs(freeUsdt).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} critical={freeUsdt != null && freeUsdt < 0} />
-            </div>
-          </div>
-        </div>
-      </section>
-      <section className="rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="flex gap-3">
-          <CheckCircle2 className="h-5 w-5 shrink-0 text-slate-500" />
-          <div>
-            <p className="font-extrabold text-slate-800">
-              После оплаты ничего отмечать не нужно
-            </p>
-            <p className="mt-1 text-sm text-slate-600">
-              Портал получит подтверждение из проведённого расходного документа
-              в 1С.
-            </p>
-          </div>
-        </div>
-      </section>
+          </section>
         </aside>
       </div>
     </div>
   );
 }
 
-function Metric({ label, value, hint, compact = false }: { label: string; value: string | number; hint?: string; compact?: boolean }) {
+function SummaryMetric({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
-    <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-      <p className="text-xs font-bold text-slate-500">{label}</p>
-      <p className={`mt-2 font-black ${compact ? "text-xl sm:text-2xl" : "text-3xl"}`}>{value}</p>
+    <div className="min-w-0 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+      <p className="min-h-8 text-xs font-bold leading-4 text-slate-500">{label}</p>
+      <p className="mt-1.5 text-lg font-black text-slate-950">{value}</p>
       {hint ? <p className="mt-1 text-xs font-semibold text-slate-500">{hint}</p> : null}
     </div>
   );
@@ -959,9 +933,36 @@ function Notice({
   );
 }
 
-function BalanceRow({ label, value, critical = false }: { label: string; value: string; critical?: boolean }) {
-  return <div className="flex items-baseline justify-between gap-3 border-t border-slate-200/80 pt-2 first:border-0 first:pt-0">
-    <p className="text-xs font-bold text-slate-500">{label}</p>
-    <p className={`text-right text-sm font-black ${critical ? "text-red-700" : "text-slate-950"}`}>{value}</p>
+function BalanceSummary({
+  title,
+  availableLabel,
+  available,
+  planned,
+  freeLabel,
+  free,
+  critical = false,
+}: {
+  title: string;
+  availableLabel: string;
+  available: string;
+  planned: string;
+  freeLabel: string;
+  free: string;
+  critical?: boolean;
+}) {
+  return <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+    <p className="text-sm font-black text-slate-900">{title}</p>
+    <div className="mt-2 grid grid-cols-3 gap-2">
+      <SmallBalanceValue label={availableLabel} value={available} />
+      <SmallBalanceValue label="В заявках" value={planned} />
+      <SmallBalanceValue label={freeLabel} value={free} critical={critical} />
+    </div>
+  </div>;
+}
+
+function SmallBalanceValue({ label, value, critical = false }: { label: string; value: string; critical?: boolean }) {
+  return <div className="min-w-0">
+    <p className="text-[10px] font-bold text-slate-500">{label}</p>
+    <p className={`mt-0.5 truncate text-xs font-black ${critical ? "text-red-700" : "text-slate-950"}`} title={value}>{value}</p>
   </div>;
 }
