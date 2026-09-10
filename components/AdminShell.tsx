@@ -20,9 +20,6 @@ const dailyNavigation: NavigationItem[] = [
   { href: '/admin/procurement', label: 'Закупки', icon: Truck },
   { href: '/admin/attendance', label: 'График', icon: CalendarDays },
   { href: '/admin/employees', label: 'Сотрудники', icon: Users },
-];
-
-const periodicNavigation: NavigationItem[] = [
   { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
 ];
 
@@ -65,7 +62,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileMoreActive = [...dailyNavigation.slice(3), ...periodicNavigation, ...serviceNavigation].some((item) => isActive(pathname, item.href));
+  const mobileMoreActive = [...dailyNavigation.slice(3), ...serviceNavigation].some((item) => isActive(pathname, item.href));
 
   useEffect(() => {
     setSidebarCollapsed(window.localStorage.getItem('admin-sidebar-collapsed') === 'true');
@@ -115,26 +112,12 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <LogoutButton className='shrink-0 gap-2 bg-white/8 text-white ring-1 ring-white/10 hover:bg-white/12 md:hidden' />
         </div>
 
-        <nav className={cn('mt-5 min-h-0 overflow-y-auto md:flex-1 md:pr-1', sidebarCollapsed ? 'md:mt-7' : 'md:mt-6')}>
+        <nav className={cn('mt-5 min-h-0 overflow-y-auto md:flex md:flex-1 md:flex-col md:pr-1', sidebarCollapsed ? 'md:mt-7' : 'md:mt-6')}>
           <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-1'>
             {dailyNavigation.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} sidebarCollapsed={sidebarCollapsed} />)}
           </div>
 
-          <details className='group mt-4 border-t border-white/10 pt-3 md:mt-5' open={periodicNavigation.some((item) => isActive(pathname, item.href)) || undefined}>
-            <summary className={cn(
-              'flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-400 transition hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 marker:content-none md:justify-start md:gap-3 md:px-4',
-              sidebarCollapsed && 'md:px-0 md:justify-center',
-            )}>
-              <Banknote className='h-5 w-5 shrink-0' />
-              <span className={cn('flex-1 text-left', sidebarCollapsed && 'md:hidden')}>Периодически</span>
-              <ChevronDown className={cn('h-4 w-4 transition group-open:rotate-180', sidebarCollapsed && 'md:hidden')} />
-            </summary>
-            <div className='mt-1 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-1'>
-              {periodicNavigation.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} sidebarCollapsed={sidebarCollapsed} />)}
-            </div>
-          </details>
-
-          <details className='group mt-4 border-t border-white/10 pt-3 md:mt-5' open={serviceNavigation.some((item) => isActive(pathname, item.href)) || undefined}>
+          <details className='group mt-4 border-t border-white/10 pt-3 md:mt-auto' open={serviceNavigation.some((item) => isActive(pathname, item.href)) || undefined}>
             <summary className={cn(
               'flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-400 transition hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 marker:content-none md:justify-start md:gap-3 md:px-4',
               sidebarCollapsed && 'md:px-0 md:justify-center',
@@ -198,11 +181,21 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
               <button type='button' onClick={() => setMobileMenuOpen(false)} className='admin-material-control flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Закрыть меню'><X className='h-5 w-5' /></button>
             </div>
             <div className='grid grid-cols-2 gap-2'>
-              {[...dailyNavigation.slice(3), ...periodicNavigation, ...serviceNavigation].map((item) => {
+              {dailyNavigation.slice(3).map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, item.href);
                 return <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#5eb70b]' /><span>{item.label}</span></Link>;
               })}
+            </div>
+            <div className='mt-4 border-t border-slate-200 pt-3'>
+              <p className='mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-500'>Служебное</p>
+              <div className='grid grid-cols-2 gap-2'>
+                {serviceNavigation.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(pathname, item.href);
+                  return <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#5eb70b]' /><span>{item.label}</span></Link>;
+                })}
+              </div>
             </div>
             <LogoutButton className='admin-material-filter-active mt-3 w-full gap-2 bg-slate-950 text-white hover:bg-slate-900' />
           </section>
