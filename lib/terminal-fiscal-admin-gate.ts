@@ -30,6 +30,12 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
   if (!Number.isFinite(at.getTime())) return;
   await db.$transaction(async (tx) => {
     const existing = await tx.terminalFiscalEmployeeReview.findUnique({ where: { reviewKey } });
+    const markedAsTest = existing && await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalTestPaymentKey(existing.id) } });
+    if (markedAsTest) {
+      if (existing.status !== 'resolved') await tx.terminalFiscalEmployeeReview.update({ where: { id: existing.id }, data: { status: 'resolved', resolvedAt: existing.resolvedAt ?? now, lastCheckedAt: now } });
+      await tx.workdayNotification.updateMany({ where: { reviewId: existing.id, status: 'pending' }, data: { status: 'cancelled' } });
+      return;
+    }
     if (record.status === 'confirmed') {
       if (existing) {
         await tx.terminalFiscalEmployeeReview.update({ where: { id: existing.id }, data: { status: 'resolved', resolvedAt: now, lastCheckedAt: now } });

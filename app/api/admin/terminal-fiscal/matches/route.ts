@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     select: {
       id: true, matchingId: true, runId: true, mappingId: true, algorithmVersion: true, status: true,
       reasonCode: true, operationType: true, bankOperationAt: true, bankOperationHash: true, oneCSourceRef: true,
+      oneCCashierRef: true,
       oneCSourceHash: true, ofdFiscalKeyHash: true, candidateCount: true, timeDifferenceSeconds: true,
       graceUntil: true, tbankComplete: true, oneCComplete: true, ofdComplete: true, checkedAt: true,
       createdAt: true, updatedAt: true,
