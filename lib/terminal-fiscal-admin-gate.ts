@@ -7,6 +7,15 @@ import type { MatchingAuditRecord } from './terminal-fiscal-matching';
 export const TERMINAL_FISCAL_ADMIN_FIRST = true;
 export const fiscalApprovalKey = (id: string) => `terminal-fiscal-review:${id}:admin-approved`;
 
+type ProposedUser = { id: number; name: string };
+export type FiscalProposedRecipients = {
+  scope: 'workstation_shift' | 'retail_shift' | 'retail_day';
+  users: ProposedUser[];
+  primary: ProposedUser | null;
+  confidence: 'high' | 'uncertain';
+  reason: 'manual_kkm_assignment' | 'home_workstation' | 'floating_employee' | 'ambiguous';
+};
+
 export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingAuditRecord) {
   const hash = createHash('sha256').update(record.matchingKey).digest('hex');
   const reviewKey = `terminal-fiscal-review:${hash}`;
@@ -49,16 +58,57 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
   });
 }
 
-export async function fiscalProposedRecipients(db: Pick<PrismaClient, 'workDayEntry'>, at: Date) {
+export async function fiscalProposedRecipients(db: Pick<PrismaClient,
+  'workDayEntry' | 'terminalFiscalMapping' | 'workdayKkmAssignment' | 'userOneCCashboxMapping'
+>, at: Date, mappingId?: string | null): Promise<FiscalProposedRecipients> {
   const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
   const entries = await db.workDayEntry.findMany({ where: { date, department: 'retail', status: { in: ['active', 'completed'] }, user: { role: 'EMPLOYEE', isActive: true } },
     select: { userId: true, startedAt: true, endedAt: true, user: { select: { name: true } } }, orderBy: { userId: 'asc' } });
   const active = entries.filter((e) => e.startedAt <= at && (!e.endedAt || e.endedAt >= at));
   const selected = active.length ? active : entries;
-  return { scope: active.length ? 'retail_shift' : 'retail_day', users: [...new Map(selected.map((e) => [e.userId, { id: e.userId, name: e.user.name }])).values()] };
+  const users = [...new Map(selected.map((e) => [e.userId, { id: e.userId, name: e.user.name }])).values()];
+  const ambiguous = (): FiscalProposedRecipients => ({
+    scope: active.length ? 'retail_shift' : 'retail_day', users, primary: null, confidence: 'uncertain', reason: 'ambiguous',
+  });
+  // A personal proposal is safe only for the normal two-person retail shift.
+  // Otherwise the ADMIN keeps the existing shared delivery instead of guessing.
+  if (!mappingId || active.length !== 2 || users.length !== 2) return ambiguous();
+  const mapping = await db.terminalFiscalMapping.findUnique({
+    where: { id: mappingId }, select: { oneCCashRegisterRef: true },
+  });
+  if (!mapping?.oneCCashRegisterRef) return ambiguous();
+  const userIds = users.map((user) => user.id);
+  const assignments = await db.workdayKkmAssignment.findMany({
+    where: { date, userId: { in: userIds }, oneCCashRegisterRef: mapping.oneCCashRegisterRef,
+      effectiveFrom: { lte: at }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] },
+    select: { userId: true }, take: 2,
+  });
+  const assignedIds = [...new Set(assignments.map((item) => item.userId))];
+  const ordered = (primaryId: number, reason: FiscalProposedRecipients['reason']): FiscalProposedRecipients => {
+    const primary = users.find((user) => user.id === primaryId) ?? null;
+    return primary ? { scope: 'workstation_shift', users: [primary, ...users.filter((user) => user.id !== primaryId)], primary, confidence: 'high', reason } : ambiguous();
+  };
+  if (assignedIds.length === 1) return ordered(assignedIds[0], 'manual_kkm_assignment');
+  if (assignedIds.length > 1) return ambiguous();
+
+  const homeMappings = await db.userOneCCashboxMapping.findMany({
+    where: { userId: { in: userIds }, isActive: true }, select: { userId: true, oneCCashRegisterRef: true },
+  });
+  const directIds = [...new Set(homeMappings.filter((item) => item.oneCCashRegisterRef === mapping.oneCCashRegisterRef).map((item) => item.userId))];
+  if (directIds.length === 1) return ordered(directIds[0], 'home_workstation');
+  if (directIds.length > 1) return ambiguous();
+
+  const activeMappings = await db.terminalFiscalMapping.findMany({
+    where: { isActive: true, effectiveFrom: { lte: at }, OR: [{ effectiveTo: null }, { effectiveTo: { gt: at } }] },
+    select: { oneCCashRegisterRef: true },
+  });
+  const knownWorkstations = new Set(activeMappings.map((item) => item.oneCCashRegisterRef));
+  const fixedEmployeeIds = new Set(homeMappings.filter((item) => item.oneCCashRegisterRef && knownWorkstations.has(item.oneCCashRegisterRef)).map((item) => item.userId));
+  const floating = users.filter((user) => !fixedEmployeeIds.has(user.id));
+  return floating.length === 1 ? ordered(floating[0].id, 'floating_employee') : ambiguous();
 }
 
-export async function approveFiscalReview(db: PrismaClient, id: string, adminId: number, expectedIds: number[], bodyFor: (at: Date, amount: number) => string) {
+export async function approveFiscalReview(db: PrismaClient, id: string, adminId: number, expectedIds: number[], bodyFor: (at: Date, amount: number, shared: boolean) => string) {
   return db.$transaction(async (tx) => {
     const admin = await tx.user.findFirst({ where: { id: adminId, role: 'ADMIN', isActive: true }, select: { id: true } });
     if (!admin) throw new Error('FORBIDDEN');
@@ -68,20 +118,22 @@ export async function approveFiscalReview(db: PrismaClient, id: string, adminId:
     if (match && (match.status === 'confirmed' || match.oneCSourceRef)) throw new Error('CHECK_ALREADY_EXISTS');
     const approved = await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(id) } });
     if (approved && review.status === 'open') return { alreadyApproved: true };
-    const proposed = await fiscalProposedRecipients(tx, review.bankOperationAt);
+    const proposed = await fiscalProposedRecipients(tx, review.bankOperationAt, review.mappingId);
     if (!proposed.users.length) throw new Error('NO_RECIPIENTS');
     if (JSON.stringify(proposed.users.map((u) => u.id).sort((a,b)=>a-b)) !== JSON.stringify([...expectedIds].sort((a,b)=>a-b))) throw new Error('RECIPIENTS_CHANGED');
-    const changed = await tx.terminalFiscalEmployeeReview.updateMany({ where: { id, status: 'admin_review' }, data: { status: 'open', employeeId: proposed.users[0].id, assignmentScope: proposed.scope } });
+    const primary = proposed.primary ?? proposed.users[0];
+    const recipients = proposed.confidence === 'high' ? [primary] : proposed.users;
+    const changed = await tx.terminalFiscalEmployeeReview.updateMany({ where: { id, status: 'admin_review' }, data: { status: 'open', employeeId: primary.id, assignmentScope: proposed.scope } });
     if (changed.count !== 1) throw new Error('REVIEW_NOT_AVAILABLE');
     await tx.terminalFiscalReviewParticipant.deleteMany({ where: { reviewId: id } });
     await tx.terminalFiscalReviewParticipant.createMany({ data: proposed.users.map((u) => ({ reviewId: id, userId: u.id })), skipDuplicates: true });
     const now = new Date();
     await tx.adminInboxEvent.upsert({ where: { eventKey: fiscalApprovalKey(id) }, create: {
-      eventKey: fiscalApprovalKey(id), type: 'terminal_fiscal_review.approved', title: 'Проверка передана менеджерам',
-      body: `Администратор ${adminId} · ${proposed.users.map((u) => u.name).join(', ')}`, href: `/admin/workday/payment-checks/${id}`, sourceType: 'terminal_fiscal_review', sourceId: id, occurredAt: now }, update: {} });
-    for (const u of proposed.users) await tx.workdayNotification.upsert({ where: { fingerprint: `${review.reviewKey}:approved:${u.id}` }, create: {
+      eventKey: fiscalApprovalKey(id), type: 'terminal_fiscal_review.approved', title: proposed.confidence === 'high' ? 'Проверка передана менеджеру' : 'Проверка передана менеджерам',
+      body: `Администратор ${adminId} · ${recipients.map((u) => u.name).join(', ')}`, href: `/admin/workday/payment-checks/${id}`, sourceType: 'terminal_fiscal_review', sourceId: id, occurredAt: now }, update: {} });
+    for (const u of recipients) await tx.workdayNotification.upsert({ where: { fingerprint: `${review.reviewKey}:approved:${u.id}` }, create: {
       fingerprint: `${review.reviewKey}:approved:${u.id}`, userId: u.id, reviewId: id, kind: 'terminal_fiscal_review',
-      title: 'В 1С нет чека', body: bodyFor(review.bankOperationAt, review.amountKopecks), scheduledAt: now }, update: {} });
+      title: 'В 1С нет чека', body: bodyFor(review.bankOperationAt, review.amountKopecks, proposed.confidence !== 'high'), scheduledAt: now }, update: {} });
     return { alreadyApproved: false };
   });
 }

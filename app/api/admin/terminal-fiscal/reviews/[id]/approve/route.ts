@@ -10,7 +10,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!Array.isArray(payload?.recipientIds) || !payload.recipientIds.every(Number.isInteger)) return Response.json({ error: 'Обновите список получателей.' }, { status: 400 });
   try {
     return Response.json({ ok: true, ...await approveFiscalReview(prisma, (await context.params).id, admin.id, payload.recipientIds,
-      (operationAt, amountKopecks) => terminalFiscalEmployeeReviewText({ operationAt, amountKopecks, sharedShift: true })) });
+      (operationAt, amountKopecks, sharedShift) => terminalFiscalEmployeeReviewText({ operationAt, amountKopecks, sharedShift })) });
   } catch (error) {
     const messages: Record<string, string> = { FORBIDDEN: 'Нет доступа.', REVIEW_NOT_AVAILABLE: 'Проверка уже закрыта или изменена. Обновите страницу.',
       NO_RECIPIENTS: 'За этот день нет отмеченных сотрудников розницы. Проверка остаётся у администратора.',

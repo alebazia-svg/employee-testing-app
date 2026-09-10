@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { stageFiscalAdminReview, approveFiscalReview, fiscalApprovalKey } from '../lib/terminal-fiscal-admin-gate';
+import { stageFiscalAdminReview, approveFiscalReview, fiscalApprovalKey, fiscalProposedRecipients } from '../lib/terminal-fiscal-admin-gate';
 import type { MatchingAuditRecord } from '../lib/terminal-fiscal-matching';
 
 function fixture() {
@@ -74,4 +74,58 @@ test('confirmed match resolves staged review without employee delivery', async (
   const f = fixture(); await stageFiscalAdminReview(f.db, f.record);
   await stageFiscalAdminReview(f.db, { ...f.record, status: 'confirmed' });
   assert.equal(f.reviews[0].status, 'resolved'); assert.equal(f.notifications.length, 0);
+});
+
+function routingDb(input: {
+  target: string;
+  workers: Array<{ id: number; name: string; home: string | null }>;
+  assignedUserId?: number;
+}) {
+  const at = new Date('2026-09-10T10:00:00.000Z');
+  return { at, db: {
+    workDayEntry: { findMany: async () => input.workers.map((worker) => ({
+      userId: worker.id, startedAt: new Date('2026-09-10T06:00:00.000Z'), endedAt: null, user: { name: worker.name },
+    })) },
+    terminalFiscalMapping: {
+      findUnique: async () => ({ oneCCashRegisterRef: input.target }),
+      findMany: async () => [{ oneCCashRegisterRef: 'kkm-zukhra' }, { oneCCashRegisterRef: 'kkm-milana' }],
+    },
+    workdayKkmAssignment: { findMany: async () => input.assignedUserId ? [{ userId: input.assignedUserId }] : [] },
+    userOneCCashboxMapping: { findMany: async () => input.workers.map((worker) => ({ userId: worker.id, oneCCashRegisterRef: worker.home })) },
+  } as any };
+}
+
+test('proposes the fixed employee when her home workstation is active', async () => {
+  const f = routingDb({ target: 'kkm-zukhra', workers: [
+    { id: 2, name: 'Зухра', home: 'kkm-zukhra' }, { id: 3, name: 'Магомед', home: null },
+  ] });
+  const result = await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra');
+  assert.equal(result.confidence, 'high');
+  assert.equal(result.reason, 'home_workstation');
+  assert.equal(result.primary?.name, 'Зухра');
+  assert.deepEqual(result.users.map((user) => user.name), ['Зухра', 'Магомед']);
+});
+
+test('proposes the floating employee for the absent fixed employee workstation', async () => {
+  const f = routingDb({ target: 'kkm-zukhra', workers: [
+    { id: 1, name: 'Милана', home: 'kkm-milana' }, { id: 3, name: 'Магомед', home: null },
+  ] });
+  const result = await fiscalProposedRecipients(f.db, f.at, 'mapping-zukhra');
+  assert.equal(result.confidence, 'high');
+  assert.equal(result.reason, 'floating_employee');
+  assert.equal(result.primary?.name, 'Магомед');
+  assert.deepEqual(result.users.map((user) => user.name), ['Магомед', 'Милана']);
+});
+
+test('manual KKM assignment wins and nonstandard staffing stays shared', async () => {
+  const assigned = routingDb({ target: 'kkm-zukhra', assignedUserId: 3, workers: [
+    { id: 2, name: 'Зухра', home: 'kkm-zukhra' }, { id: 3, name: 'Магомед', home: null },
+  ] });
+  assert.equal((await fiscalProposedRecipients(assigned.db, assigned.at, 'mapping-zukhra')).primary?.name, 'Магомед');
+  const uncertain = routingDb({ target: 'kkm-zukhra', workers: [
+    { id: 1, name: 'Милана', home: 'kkm-milana' }, { id: 2, name: 'Зухра', home: 'kkm-zukhra' }, { id: 3, name: 'Магомед', home: null },
+  ] });
+  const result = await fiscalProposedRecipients(uncertain.db, uncertain.at, 'mapping-zukhra');
+  assert.equal(result.confidence, 'uncertain');
+  assert.equal(result.primary, null);
 });
