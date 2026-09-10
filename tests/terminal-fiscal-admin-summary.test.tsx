@@ -50,16 +50,16 @@ test('ADMIN does not show a scary zero-of-zero source error while data is still 
   assert.doesNotMatch(result.detail, /0 из 0|источник недоступен/i);
 });
 
-test('ADMIN sees item review separately while the financial match remains confirmed', () => {
+test('ADMIN keeps item presentation differences informational when the financial match is confirmed', () => {
   const result = presentTerminalFiscalWorkdaySummary({
     ...base,
     statuses: { confirmed: 4, pending: 0, mismatch: 0, unavailable: 0, needs_review: 0 },
     reasonCodes: { MATCH_CONFIRMED: 3, OFD_ITEM_PRESENTATION_DIFFERENCE: 1 },
   });
-  assert.equal(result.status, 'needs_review');
-  assert.equal(result.label, 'Проверить состав чека');
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.label, 'Всё подтверждено');
   assert.match(result.detail, /точно сопоставлено 4 из 4/);
-  assert.match(result.detail, /состав проверить 1/);
+  assert.match(result.detail, /строки представлены иначе 1/);
   assert.doesNotMatch(result.detail, /оплат без чека/);
 });
 
@@ -122,10 +122,10 @@ test('today production shape shows coverage and content review without a missing
       oneCCashierRef: 'cashier-zukhra',
     })),
   });
-  assert.equal(result.status, 'needs_review');
-  assert.equal(result.label, 'Проверить состав чека');
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.label, 'Всё подтверждено');
   assert.match(result.detail, /точно сопоставлено 5 из 10/);
   assert.match(result.detail, /покрыто общей сверкой 5/);
-  assert.match(result.detail, /состав проверить 1/);
+  assert.match(result.detail, /строки представлены иначе 1/);
   assert.doesNotMatch(result.detail, /без покрытия/);
 });

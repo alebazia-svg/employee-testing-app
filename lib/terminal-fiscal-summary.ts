@@ -115,7 +115,7 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
   const otherNeedsReview = Math.max(0, summary.statuses.needs_review - itemReviews - missingOneCChecks);
   const status = summary.statuses.mismatch > 0 || uncoveredOneCChecks > 0
     ? 'mismatch'
-    : otherNeedsReview > 0 || itemReviews > 0
+    : otherNeedsReview > 0
       ? 'needs_review'
       : !sourcesComplete || summary.statuses.unavailable > 0
         ? 'unavailable'
@@ -141,7 +141,7 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
     periodCoveredChecks > 0 ? `покрыто общей сверкой ${periodCoveredChecks}` : '',
     summary.statuses.pending > 0 ? `ожидают ${summary.statuses.pending}` : '',
     otherNeedsReview > 0 ? `проверить ${otherNeedsReview}` : '',
-    itemReviews > 0 ? `состав проверить ${itemReviews}` : '',
+    itemReviews > 0 ? `строки представлены иначе ${itemReviews}` : '',
     summary.statuses.mismatch > 0 ? `расхождений ${summary.statuses.mismatch}` : '',
     summary.statuses.unavailable > 0 ? `ещё нельзя проверить ${summary.statuses.unavailable}` : '',
   ].filter(Boolean);
@@ -150,9 +150,7 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
     status,
     label: uncoveredOneCChecks > 0 && summary.statuses.mismatch === 0
       ? 'В 1С не найдены чеки'
-      : itemReviews > 0 && status === 'needs_review' && otherNeedsReview === 0
-        ? 'Проверить состав чека'
-        : labels[status],
+      : labels[status],
     detail: `aQsi → 1С → ОФД: ${parts.join(' · ')}.`,
   };
 }
