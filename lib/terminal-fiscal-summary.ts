@@ -228,6 +228,7 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
   const matches = await prisma.terminalFiscalMatch.findMany({
     where: { runId: { in: latestByMapping.map((run) => run.id) } },
     select: {
+      matchingId: true,
       status: true,
       reasonCode: true,
       candidateCount: true,
@@ -235,7 +236,19 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
       oneCCashierRef: true,
     },
   });
-  const attributionRecords: TerminalFiscalAttributionRecord[] = matches.map((match) => ({
+  const matchingIds = matches.map((match) => match.matchingId);
+  const testReviews = matchingIds.length ? await prisma.terminalFiscalEmployeeReview.findMany({
+    where: { matchingHash: { in: matchingIds }, status: 'resolved' },
+    select: { matchingHash: true, id: true },
+  }) : [];
+  const testEvents = testReviews.length ? await prisma.adminInboxEvent.findMany({
+    where: { type: 'terminal_fiscal_review.test_payment', sourceId: { in: testReviews.map((review) => review.id) } },
+    select: { sourceId: true },
+  }) : [];
+  const testReviewIds = new Set(testEvents.map((event) => event.sourceId).filter((id): id is string => Boolean(id)));
+  const testMatchingIds = new Set(testReviews.filter((review) => testReviewIds.has(review.id)).map((review) => review.matchingHash));
+  const effectiveMatches = matches.filter((match) => !testMatchingIds.has(match.matchingId));
+  const attributionRecords: TerminalFiscalAttributionRecord[] = effectiveMatches.map((match) => ({
     status: match.status as MatchingStatus,
     reasonCode: match.reasonCode as MatchingReasonCode,
     candidateCount: match.candidateCount,
@@ -254,6 +267,6 @@ export async function getTerminalFiscalWorkdaySummary(input: { periodFrom: Date;
       run.completedAt && (!latest || run.completedAt > latest) ? run.completedAt : latest
     ), null),
     attributionRecords,
-    ...aggregateTerminalFiscalRecords(matches),
+    ...aggregateTerminalFiscalRecords(effectiveMatches),
   };
 }
