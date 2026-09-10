@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod, terminalFiscalAutomaticPeriods } from '../lib/terminal-fiscal-auto-run';
+import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod, terminalFiscalAutomaticPeriods, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
 
 test('automatic current period uses Moscow midnight and a completed five-minute bucket after source delay', () => {
   const period = terminalFiscalAutomaticPeriod('current', new Date('2026-08-13T09:28:00.000Z'));
@@ -43,4 +43,23 @@ test('current automation also revisits the previous day for late checks', () => 
     { periodFrom: new Date('2026-08-11T21:00:00.000Z'), periodTo: new Date('2026-08-12T21:00:00.000Z') },
     { periodFrom: new Date('2026-08-12T21:00:00.000Z'), periodTo: new Date('2026-08-13T09:15:00.000Z') },
   ]);
+});
+
+test('unresolved reviews add unique completed days from the rolling seven-day window', () => {
+  assert.deepEqual(terminalFiscalUnresolvedPeriods([
+    new Date('2026-08-07T10:00:00.000Z'),
+    new Date('2026-08-08T10:00:00.000Z'),
+    new Date('2026-08-08T12:00:00.000Z'),
+    new Date('2026-08-11T10:00:00.000Z'),
+    new Date('2026-08-12T10:00:00.000Z'),
+  ], new Date('2026-08-13T09:28:00.000Z')), [
+    { periodFrom: new Date('2026-08-06T21:00:00.000Z'), periodTo: new Date('2026-08-07T21:00:00.000Z') },
+    { periodFrom: new Date('2026-08-07T21:00:00.000Z'), periodTo: new Date('2026-08-08T21:00:00.000Z') },
+    { periodFrom: new Date('2026-08-10T21:00:00.000Z'), periodTo: new Date('2026-08-11T21:00:00.000Z') },
+  ]);
+});
+
+test('rolling unresolved sweep is limited to one five-minute slot per hour', () => {
+  assert.equal(terminalFiscalShouldRunUnresolvedSweep(new Date('2026-08-13T09:02:00.000Z')), true);
+  assert.equal(terminalFiscalShouldRunUnresolvedSweep(new Date('2026-08-13T09:07:00.000Z')), false);
 });

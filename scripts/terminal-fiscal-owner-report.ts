@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { terminalFiscalOwnerMessage } from '../lib/terminal-fiscal-owner-report';
+import { loadCompleteTBankOperations, loadOneCKkmChecks } from '../lib/terminal-fiscal-sources';
 
 function moscowDayBounds(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -17,7 +18,7 @@ async function main() {
   const { from, to } = moscowDayBounds();
   const [open, resolved, runs] = await Promise.all([
     prisma.terminalFiscalEmployeeReview.findMany({
-      where: { status: 'open', bankOperationAt: { lt: to } },
+      where: { status: { in: ['open', 'admin_review'] }, bankOperationAt: { gte: from, lt: to } },
       select: { amountKopecks: true },
     }),
     prisma.terminalFiscalEmployeeReview.findMany({
@@ -33,11 +34,33 @@ async function main() {
   const latest = new Map<string, (typeof runs)[number]>();
   for (const run of runs) if (!latest.has(run.mappingId)) latest.set(run.mappingId, run);
   const selected = [...latest.values()];
+  const mappings = selected.length ? await prisma.terminalFiscalMapping.findMany({
+    where: { id: { in: selected.map((run) => run.mappingId) } },
+    select: { id: true, label: true, terminalKey: true, oneCAcquiringTerminalRef: true, oneCCashRegisterRef: true },
+  }) : [];
   const matches = selected.length ? await prisma.terminalFiscalMatch.findMany({
     where: { runId: { in: selected.map((run) => run.id) } },
     select: { status: true, reasonCode: true, oneCCashierRef: true, timeDifferenceSeconds: true },
   }) : [];
   const itemReasons = new Set(['OFD_ITEMS_MISMATCH', 'OFD_ITEM_PRESENTATION_DIFFERENCE', 'OFD_ITEM_VALUES_MISMATCH']);
+  const oneC = mappings.length ? await loadOneCKkmChecks({
+    fromDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(from),
+    toDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(to),
+  }) : { complete: true, data: [] };
+  const terminals = await Promise.all(mappings.map(async (mapping) => {
+    const aqsi = await loadCompleteTBankOperations({ terminalKey: mapping.terminalKey, from: from.toISOString(), to: to.toISOString() });
+    const aqsiKopecks = aqsi.data.reduce((sum, operation) => sum + (operation.type === 'Debit' ? operation.amountKopecks : operation.type === 'Credit' ? -operation.amountKopecks : 0), 0);
+    const oneCKopecks = oneC.data.reduce((sum, check) => {
+      if (check.cashRegisterRef !== mapping.oneCCashRegisterRef) return sum;
+      const at = new Date(check.dateTime);
+      if (!(at >= from && at < to)) return sum;
+      const payments = check.cardPayments.filter((payment) => payment.acquiringTerminalRef === mapping.oneCAcquiringTerminalRef)
+        .reduce((paymentSum, payment) => paymentSum + payment.amountKopecks, 0);
+      return sum + (check.operationType === 'refund' ? -payments : payments);
+    }, 0);
+    return { label: mapping.label || mapping.terminalKey, aqsiKopecks, oneCKopecks,
+      differenceKopecks: aqsiKopecks - oneCKopecks, complete: aqsi.complete && oneC.complete };
+  }));
   const input = {
     day: dayLabel(from),
     openCount: open.length,
@@ -53,6 +76,7 @@ async function main() {
     mismatches: matches.filter((row) => row.status === 'mismatch').length,
     total: matches.length,
     sourcesComplete: selected.length > 0 && selected.every((run) => run.tbankComplete && run.oneCComplete && run.ofdComplete),
+    terminals,
   };
   process.stdout.write(`${JSON.stringify({ ok: true, input, text: terminalFiscalOwnerMessage(input) })}\n`);
 }

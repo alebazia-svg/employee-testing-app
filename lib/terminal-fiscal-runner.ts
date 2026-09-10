@@ -69,7 +69,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   }) : null;
   if (input.persist === true && !lease) return { acquired: false as const };
   try {
-    const lateMatchTo = new Date(input.periodTo.getTime() + TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS);
+    const lateMatchTo = new Date(Math.min(Date.now(), input.periodTo.getTime() + TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS));
     const [tbank, oneC, ofd] = await Promise.all([
       (dependencies.loadTbank ?? loadCompleteTBankOperations)({ terminalKey: mapping.terminalKey, from: input.periodFrom.toISOString(), to: input.periodTo.toISOString() }),
       (dependencies.loadOneC ?? loadOneCKkmChecks)({ fromDate: dateOnly(input.periodFrom), toDate: nextDateKey(dateOnly(lateMatchTo)) }),

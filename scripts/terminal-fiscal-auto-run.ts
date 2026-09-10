@@ -1,11 +1,19 @@
 import { prisma } from '../lib/prisma';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods } from '../lib/terminal-fiscal-auto-run';
+import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
 import { runTerminalFiscalHistoricalDryRun } from '../lib/terminal-fiscal-runner';
 import { syncTerminalFiscalEmployeeReviews } from '../lib/terminal-fiscal-employee-review';
 
 async function main() {
   const options = parseTerminalFiscalAutoRunCli(process.argv.slice(2));
-  const periods = terminalFiscalAutomaticPeriods(options.mode);
+  const now = new Date();
+  const periods = terminalFiscalAutomaticPeriods(options.mode, now);
+  if (options.mode === 'current' && options.persist && terminalFiscalShouldRunUnresolvedSweep(now)) {
+    const unresolved = await prisma.terminalFiscalEmployeeReview.findMany({
+      where: { status: { in: ['admin_review', 'open'] } },
+      select: { bankOperationAt: true },
+    });
+    periods.push(...terminalFiscalUnresolvedPeriods(unresolved.map((item) => item.bankOperationAt)));
+  }
   if (periods.length === 0) {
     process.stdout.write(`${JSON.stringify({ ok: true, skipped: true, reason: 'PERIOD_NOT_READY' })}\n`);
     return;

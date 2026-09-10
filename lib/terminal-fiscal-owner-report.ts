@@ -13,6 +13,13 @@ export type OwnerFiscalReportInput = {
   mismatches: number;
   total: number;
   sourcesComplete: boolean;
+  terminals?: Array<{
+    label: string;
+    aqsiKopecks: number;
+    oneCKopecks: number;
+    differenceKopecks: number;
+    complete: boolean;
+  }>;
 };
 
 function rubles(kopecks: number) {
@@ -25,7 +32,7 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
   const lines = [
     `${ok ? '✅' : '⚠️'} Контроль оплат по терминалу за ${input.day}`,
     ok ? 'Итог: денежного расхождения не найдено.' : 'Итог: есть операции, которые требуют проверки.',
-    `Операций банка: ${input.total}`,
+    `Операций aQsi: ${input.total}`,
     `• подтверждены отдельными чеками: ${input.confirmed}`,
     `• подтверждены общей суммой за день: ${input.coveredByDayTotal}`,
     input.openCount > 0
@@ -37,8 +44,17 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
     input.mismatches > 0 ? `• подтверждённых денежных расхождений: ${input.mismatches}` : '',
     input.linkedLateCount > 0 ? `Чеков, связанных с оплатой после задержки: ${input.linkedLateCount}` : 'Поздних чеков за день: нет',
     input.resolvedLateCount > 0 ? `Автоматически закрыто напоминаний: ${input.resolvedLateCount} на ${rubles(input.resolvedLateAmountKopecks)} ₽` : '',
-    input.sourcesComplete ? 'Данные Т-Банка, 1С и ОФД получены полностью.' : 'Не все источники доступны — итог предварительный.',
+    input.sourcesComplete ? 'Данные aQsi, 1С и ОФД получены полностью.' : 'Не все источники доступны — итог предварительный.',
   ].filter(Boolean);
+  if (input.terminals?.length) {
+    lines.push('Суммы aQsi ↔ 1С:');
+    for (const terminal of input.terminals) {
+      lines.push(terminal.complete
+        ? `• ${terminal.label}: aQsi ${rubles(terminal.aqsiKopecks)} ₽ · 1С ${rubles(terminal.oneCKopecks)} ₽ · разница ${rubles(terminal.differenceKopecks)} ₽`
+        : `• ${terminal.label}: итог предварительный — aQsi или 1С получены не полностью`);
+    }
+    lines.push('Банковское возмещение проверяется отдельно после фактического зачисления: сроки и комиссия не относятся к контролю пробития чеков.');
+  }
   lines.push(input.openCount > 0
     ? 'Что делать: проверить указанные оплаты в портале и пробить отсутствующие чеки.'
     : 'Что делать: ничего, расхождений по чекам нет.');

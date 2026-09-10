@@ -14,10 +14,13 @@ test('owner report explains open and late payments in money', () => {
 test('owner report is calm when everything matches', () => {
   const text = terminalFiscalOwnerMessage({ day: '18.08.2026', openCount: 0, openAmountKopecks: 0,
     resolvedLateCount: 0, resolvedLateAmountKopecks: 0, linkedLateCount: 0, confirmed: 5, coveredByDayTotal: 5,
-    itemReview: 1, pending: 0, unavailable: 0, mismatches: 0, total: 10, sourcesComplete: true });
+    itemReview: 1, pending: 0, unavailable: 0, mismatches: 0, total: 10, sourcesComplete: true,
+    terminals: [{ label: 'Рабочее место Миланы', aqsiKopecks: 100_000, oneCKopecks: 100_000, differenceKopecks: 0, complete: true }] });
   assert.match(text, /^✅/);
   assert.match(text, /денежного расхождения не найдено/);
   assert.match(text, /подтверждены общей суммой за день: 5/);
   assert.match(text, /состав товаров: 1/);
   assert.match(text, /ничего, расхождений по чекам нет/);
+  assert.match(text, /aQsi 1[\s ]000,00 ₽ · 1С 1[\s ]000,00 ₽ · разница 0,00 ₽/);
+  assert.match(text, /Банковское возмещение проверяется отдельно/);
 });

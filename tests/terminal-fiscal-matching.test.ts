@@ -248,6 +248,17 @@ test('links a unique check created on the following Moscow day', () => {
   assert.equal(result.oneCCheckKey, 'next-day');
 });
 
+test('links an unambiguous delayed check within seven days but not after the window', () => {
+  const withinWindow = {
+    ...check, sourceRef: 'six-days-late', dateTime: '2026-08-16T06:00:00.000Z',
+    fiscalDocumentNumber: 'fd-six-days', fiscalSign: 'fp-six-days',
+  };
+  const withinReceipt = { ...receipt, fiscalDocumentNumber: 'fd-six-days', fiscalSign: 'fp-six-days' };
+  assert.equal(only({ now: '2026-08-16T07:00:00.000Z', oneCChecks: [withinWindow], ofdReceipts: [withinReceipt] }).reasonCode, 'MATCH_CONFIRMED_LATE');
+  const outsideWindow = { ...withinWindow, sourceRef: 'too-late', dateTime: '2026-08-17T08:00:01.000Z' };
+  assert.equal(only({ now: '2026-08-17T09:00:00.000Z', oneCChecks: [outsideWindow], ofdReceipts: [] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+});
+
 test('does not pair repeated same-day checks when one check predates its ordered payment', () => {
   const banks = [
     { ...bank, rrn: 'bank-a', transactionDate: '2026-08-10T07:00:00.000Z' },

@@ -46,3 +46,24 @@ export function terminalFiscalAutomaticPeriods(mode: TerminalFiscalAutoRunMode, 
     selected,
   ];
 }
+
+export function terminalFiscalUnresolvedPeriods(operationDates: Date[], now = new Date()) {
+  const todayFrom = moscowMidnightUtc(now);
+  const yesterdayFrom = new Date(todayFrom.getTime() - 24 * 60 * 60 * 1000);
+  const oldestFrom = new Date(todayFrom.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const days = new Map<number, { periodFrom: Date; periodTo: Date }>();
+  for (const operationAt of operationDates) {
+    if (!Number.isFinite(operationAt.getTime())) continue;
+    const periodFrom = moscowMidnightUtc(operationAt);
+    if (periodFrom < oldestFrom || periodFrom >= yesterdayFrom) continue;
+    days.set(periodFrom.getTime(), {
+      periodFrom,
+      periodTo: new Date(periodFrom.getTime() + 24 * 60 * 60 * 1000),
+    });
+  }
+  return [...days.values()].sort((a, b) => a.periodFrom.getTime() - b.periodFrom.getTime());
+}
+
+export function terminalFiscalShouldRunUnresolvedSweep(now = new Date()) {
+  return now.getUTCMinutes() < 5;
+}
