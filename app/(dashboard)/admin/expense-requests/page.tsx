@@ -113,7 +113,7 @@ export default async function ExpenseRequestsAdminPage(props: { searchParams?: P
                 <label className='relative min-w-0 flex-1 sm:w-72'>
                   <span className='sr-only'>Поиск заявок</span>
                   <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400' />
-                  <input name='q' defaultValue={query} placeholder='Номер, сотрудник или комментарий' className='w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-green-500 focus:ring-2 focus:ring-green-100' />
+                  <input name='q' defaultValue={query} placeholder='Номер, сотрудник или комментарий' className='w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#263b5c] focus:ring-2 focus:ring-[#d8dfe8]' />
                 </label>
                 <button type='submit' className='rounded-xl bg-slate-900 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800'>Найти</button>
               </form>
@@ -129,7 +129,7 @@ export default async function ExpenseRequestsAdminPage(props: { searchParams?: P
             <CheckCircle2 className='mx-auto h-10 w-10 text-green-600' />
             <p className='mt-3 font-extrabold text-slate-950'>{query ? 'Ничего не найдено' : view === 'current' ? 'Текущих заявок нет' : 'Заявок в этом разделе нет'}</p>
             <p className='mt-1 text-sm text-slate-500'>{query ? 'Попробуйте изменить запрос.' : 'Новая рабочая заявка появится после ближайшего автоматического обновления.'}</p>
-            {query && <Link href={view === 'current' ? '/admin/expense-requests' : `/admin/expense-requests?view=${view}`} className='mt-4 inline-flex text-sm font-bold text-green-700 hover:text-green-800'>Сбросить поиск</Link>}
+            {query && <Link href={view === 'current' ? '/admin/expense-requests' : `/admin/expense-requests?view=${view}`} className='mt-4 inline-flex text-sm font-bold text-[#263b5c] hover:text-[#1d304e]'>Сбросить поиск</Link>}
           </div>
         ) : (
           <div className='divide-y divide-slate-100'>

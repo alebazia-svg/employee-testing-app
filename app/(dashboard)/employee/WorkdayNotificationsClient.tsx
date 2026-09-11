@@ -2,17 +2,17 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  BellIcon as PremiumBellIcon,
   BillListIcon as PremiumBillListIcon,
   ChatRoundDotsIcon as PremiumChatIcon,
   CheckCircleIcon as PremiumCheckCircleIcon,
   ClockCircleIcon as PremiumClockIcon,
   DangerTriangleIcon as PremiumDangerTriangleIcon,
 } from '@solar-icons/react/bold-duotone';
-import { ChevronRight, X } from 'lucide-react';
+import { Bell, ChevronRight, X } from 'lucide-react';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
+import { cn } from '@/lib/utils';
 
 type WorkdayNotification = {
   id: number;
@@ -28,23 +28,23 @@ type WorkdayNotification = {
 
 function NotificationMarker({ notification }: { notification: WorkdayNotification }) {
   if (notification.kind.endsWith('_reply')) {
-    return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><PremiumChatIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /></span>;
+    return <span className='employee-material-state-marker employee-material-state-marker-success flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><PremiumChatIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /></span>;
   }
   if (notification.kind === 'workday_close_exception_decision') {
     const rejected = notification.title.includes('не согласовано');
     return rejected
-      ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
-      : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /></span>;
+      ? <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
+      : <span className='employee-material-state-marker employee-material-state-marker-success flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /></span>;
   }
   if (['issue_detected', 'issue_reminder', 'terminal_fiscal_review'].includes(notification.kind)) {
     return notification.kind === 'terminal_fiscal_review'
-      ? <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
-      : <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
+      ? <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
+      : <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
   }
   if (['planned', 'overdue', 'overdue_repeat'].includes(notification.kind)) {
-    return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumClockIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
+    return <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumClockIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
   }
-  return <span className='employee-material-icon flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><PremiumClockIcon color='#455158' secondaryColor='#b9c2bf' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
+  return <span className='employee-material-state-marker employee-material-state-marker-info flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><PremiumClockIcon color='#455b78' secondaryColor='#b9cbe0' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
 }
 
 function urlBase64ToUint8Array(value: string) {
@@ -66,6 +66,9 @@ function syncAppBadge(count: number) {
 
 export function WorkdayNotificationsClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const palette = searchParams.get('palette');
+  const moboPreview = palette === null || palette.startsWith('mobo');
   const [notifications, setNotifications] = useState<WorkdayNotification[]>([]);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const [pushConnected, setPushConnected] = useState(false);
@@ -160,30 +163,30 @@ export function WorkdayNotificationsClient() {
       <button
         type='button'
         onClick={() => setOpen((current) => !current)}
-        className='employee-material-header-action relative flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.08] text-white ring-1 ring-white/10 hover:bg-white/[0.12]'
+        className={cn('employee-material-header-action relative flex h-11 w-11 items-center justify-center rounded-full text-slate-600', open && 'is-open')}
         aria-label='Уведомления'
         aria-expanded={open}
       >
-        <PremiumBellIcon color='#ffffff' secondaryColor='#b9c2bf' secondaryOpacity={0.9} className='h-5 w-5' />
+        <Bell className='h-[21px] w-[21px]' strokeWidth={2} />
         {notifications.length > 0 && (
           <span className='absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#e4534d] px-1 text-[10px] font-black text-white ring-2 ring-[#f5f4ef] shadow-[0_3px_8px_rgba(135,48,43,0.28)]'>
             {notifications.length > 9 ? '9+' : notifications.length}
           </span>
         )}
-        {!pushConnected && notifications.length === 0 && <span className='absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-[#111821]' />}
+        {!pushConnected && notifications.length === 0 && <span className='absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-[#f5f4ef]' />}
       </button>
 
       {open && createPortal(
-        <div role='dialog' aria-label='Уведомления' className='employee-material-popover fixed left-1/2 top-[6.5rem] z-50 w-[calc(100%-2rem)] max-w-[488px] -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl'>
-          <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3'>
-            <p className='text-sm font-black'>Уведомления</p>
-            <button type='button' onClick={() => setOpen(false)} className='rounded-md p-1 text-slate-500' aria-label='Закрыть уведомления'><X className='h-4 w-4' /></button>
+        <div role='dialog' aria-label='Уведомления' className={cn('employee-material-popover fixed left-1/2 top-[6.5rem] z-50 w-[calc(100%-2rem)] max-w-[488px] -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl', moboPreview && 'employee-material-popover-mobo')}>
+          <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3.5'>
+            <p className='text-base font-bold'>Уведомления</p>
+            <button type='button' onClick={() => setOpen(false)} className='employee-material-popover-close flex h-8 w-8 items-center justify-center rounded-lg text-slate-500' aria-label='Закрыть уведомления'><X className='h-[18px] w-[18px]' /></button>
           </div>
 
           {!pushConnected && (
-            <div className='border-b border-slate-200 bg-slate-50 px-4 py-3'>
-              <p className='text-xs font-bold text-slate-800'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
-              <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='employee-material-green-action mt-2 rounded-lg bg-green-700 px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>
+            <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>
+              <p className='text-sm font-semibold leading-snug text-slate-800'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
+              <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='employee-material-green-action mt-3 rounded-lg bg-green-700 px-3.5 py-2.5 text-sm font-bold text-white disabled:opacity-50'>
                 {busy ? 'Подключаем…' : permission === 'granted' ? 'Подключить уведомления' : 'Разрешить уведомления'}
               </button>
               {error && <p className='mt-2 text-xs font-bold text-rose-700'>{error}</p>}
@@ -191,15 +194,15 @@ export function WorkdayNotificationsClient() {
           )}
 
           {notifications.length === 0 ? (
-            <p className='px-4 py-5 text-center text-xs font-semibold text-slate-500'>Нет актуальных уведомлений</p>
+            <p className='px-4 py-6 text-center text-sm font-medium text-slate-500'>Нет актуальных уведомлений</p>
           ) : (
             <div className='max-h-80 overflow-y-auto'>
               {notifications.map((notification) => (
                 <button key={notification.id} type='button' onClick={() => void openNotification(notification)} className='employee-material-notification-item flex w-full items-start gap-3 border-b border-slate-200/60 px-3 py-3.5 text-left last:border-b-0'>
                   <NotificationMarker notification={notification} />
                   <span className='min-w-0 flex-1'>
-                    <p className='text-sm font-black leading-snug text-[#273137]'>{notification.title}</p>
-                    <p className='mt-1 text-xs font-semibold leading-snug text-[#59646b]'>{notification.body}</p>
+                    <p className='text-sm font-bold leading-snug text-[#273137]'>{notification.title}</p>
+                    <p className='mt-1 text-[13px] font-medium leading-snug text-[#59646b]'>{notification.body}</p>
                   </span>
                   <ChevronRight className='mt-1 h-4 w-4 shrink-0 text-[#455158]' />
                 </button>

@@ -68,7 +68,7 @@ export default async function AdminPaymentCheckPage(props: { params: Promise<{ i
           {pendingAdmin && match?.oneCSourceRef && <p className='mt-4 text-sm font-bold text-amber-900'>Чек уже есть в 1С. Сначала проверьте расхождение; просьба пробить новый чек сотрудникам не отправляется.</p>}
         </Card>
         {showDiscussion && <Card>
-          <div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-green-700' /><h2 className='text-lg font-extrabold'>Обсуждение</h2></div>
+          <div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-[#263b5c]' /><h2 className='text-lg font-extrabold'>Обсуждение</h2></div>
           <TerminalFiscalReviewConversation
             initialMessages={review.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))}
             currentUserId={admin.id}

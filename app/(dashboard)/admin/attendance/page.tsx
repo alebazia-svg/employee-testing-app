@@ -943,11 +943,11 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
         </Badge>
       </div>
 
-      <Card className='mb-4 flex gap-3 border-green-100 bg-green-50/60 text-sm text-green-900'>
+      <Card className={`mb-4 flex gap-3 text-sm ${error ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-green-100 bg-green-50/60 text-green-900'}`}>
         {error ? <AlertCircle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' /> : <CheckCircle2 className='mt-0.5 h-5 w-5 shrink-0 text-green-700' />}
         <div>
           <p className='font-semibold'>{error ? 'Google Sheets пока не подключён' : data.message}</p>
-          {error && <p className='mt-1 break-words text-green-800'>{error}</p>}
+          {error && <p className='mt-1 break-words text-amber-800'>{error}</p>}
         </div>
       </Card>
 

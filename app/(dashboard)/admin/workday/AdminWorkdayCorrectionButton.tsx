@@ -55,7 +55,7 @@ export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, w
         }}>
           <div className='max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[28px] bg-[#f7f7f3] p-5 shadow-2xl sm:rounded-[24px]'>
             <div className='flex items-start justify-between gap-3'>
-              <div><p className='text-xs font-black uppercase tracking-[0.12em] text-green-700'>Изменение с историей</p><h2 className='mt-1 text-xl font-black text-slate-950'>{employee.name}</h2><p className='mt-1 text-sm font-semibold text-slate-500'>{date}</p></div>
+              <div><p className='text-xs font-black uppercase tracking-[0.12em] text-[#263b5c]'>Изменение с историей</p><h2 className='mt-1 text-xl font-black text-slate-950'>{employee.name}</h2><p className='mt-1 text-sm font-semibold text-slate-500'>{date}</p></div>
               <button type='button' className='flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-white' onClick={() => setOpen(false)} disabled={busy} aria-label='Закрыть'><X className='h-5 w-5' /></button>
             </div>
             {error && <p className='mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-bold text-rose-800 ring-1 ring-rose-200'>{error}</p>}

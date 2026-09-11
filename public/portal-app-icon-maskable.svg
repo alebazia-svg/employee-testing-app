@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Портал команды">
+  <rect width="512" height="512" fill="#171c24"/>
+  <g transform="translate(64 64) scale(.75)">
+    <rect x="112" y="128" width="72" height="256" rx="36" fill="#fff"/>
+    <rect x="328" y="128" width="72" height="256" rx="36" fill="#fff"/>
+    <rect x="177" y="139" width="68" height="174" rx="34" fill="#fff" transform="rotate(-42 211 226)"/>
+    <rect x="267" y="139" width="68" height="174" rx="34" fill="#ffc247" transform="rotate(42 301 226)"/>
+  </g>
+</svg>

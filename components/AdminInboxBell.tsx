@@ -104,8 +104,8 @@ export function AdminInboxBell() {
             {unreadCount > 0 && <button type='button' onClick={() => void markAll()} className='admin-material-control inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-[#263b5c]'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
           </div>
           {!pushConnected && (
-            <div className='border-b border-green-100 bg-green-50 px-4 py-3'>
-              <p className='text-xs font-bold leading-relaxed text-green-950'>Получайте новые заявки и запросы сотрудников, даже когда портал закрыт.</p>
+            <div className='border-b border-[#d8dfe8] bg-[#f2f5f9] px-4 py-3'>
+              <p className='text-xs font-bold leading-relaxed text-[#263b5c]'>Получайте новые заявки и запросы сотрудников, даже когда портал закрыт.</p>
               <button type='button' disabled={pushBusy} onClick={() => void connectPush(true)} className='admin-material-primary mt-2 rounded-lg px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>{pushBusy ? 'Подключаем…' : 'Включить уведомления'}</button>
               {pushError && <p className='mt-2 text-xs font-bold text-rose-700'>{pushError}</p>}
             </div>

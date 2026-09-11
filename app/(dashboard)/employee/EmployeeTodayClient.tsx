@@ -11,21 +11,31 @@ import {
   ClockCircleIcon as PremiumClockIcon,
   ClipboardCheckIcon as PremiumClipboardCheckIcon,
   DangerTriangleIcon as PremiumDangerTriangleIcon,
-  Home2Icon as PremiumHomeIcon,
   UserRoundedIcon as PremiumUserIcon,
+  UsersGroupRoundedIcon as PremiumUsersGroupIcon,
 } from '@solar-icons/react/bold-duotone';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import {
+  ArrowLeft,
+  BadgePercent,
+  Banknote,
   CalendarDays,
   Camera,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  ClipboardCheck,
+  Clock3,
+  CreditCard,
+  HandCoins,
+  LogOut,
   Pencil,
+  ReceiptText,
   RefreshCw,
   ScanQrCode,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -431,8 +441,8 @@ type CashOperationDraft = {
   idempotencyKey: string;
 };
 
-const tabs: Array<{ id: Tab; label: string; icon: typeof PremiumHomeIcon }> = [
-  { id: 'day', label: 'Рабочий день', icon: PremiumHomeIcon },
+const tabs: Array<{ id: Tab; label: string; icon: typeof PremiumClockIcon }> = [
+  { id: 'day', label: 'Рабочий день', icon: PremiumClockIcon },
   { id: 'schedule', label: 'График', icon: PremiumCalendarIcon },
 ];
 
@@ -561,7 +571,7 @@ function WorkdayQrScanner({
       <div className='mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-5'>
         <div className='mb-4 flex items-center justify-between gap-3'>
           <div>
-            <p className='text-xs font-black uppercase tracking-[0.22em] text-green-300'>Начало дня</p>
+            <p className='text-xs font-black uppercase tracking-[0.22em] text-[#efbd37]'>Начало дня</p>
             <h2 className='mt-1 text-2xl font-black leading-tight'>Отсканируйте QR отдела</h2>
           </div>
           <button type='button' onClick={onCancel} className='flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white' aria-label='Закрыть сканер'>
@@ -573,14 +583,14 @@ function WorkdayQrScanner({
           <video ref={videoRef} className='h-full w-full object-cover' muted playsInline autoPlay />
           <canvas ref={canvasRef} className='hidden' />
           <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
-            <div className='employee-material-scan-frame h-56 w-56 rounded-3xl border-4 border-green-300 shadow-[0_0_0_999px_rgba(2,6,23,0.42)]' />
+            <div className='employee-material-scan-frame h-56 w-56 rounded-3xl border-4 border-[#efbd37] shadow-[0_0_0_999px_rgba(2,6,23,0.42)]' />
           </div>
           <div className='absolute inset-x-4 top-4 rounded-2xl bg-slate-950/70 px-4 py-3 text-center backdrop-blur'>
             <p className='text-sm font-extrabold'>Наведите камеру на QR-код на рабочем месте</p>
           </div>
           {state === 'starting' && (
             <div className='absolute inset-x-4 bottom-4 rounded-2xl bg-slate-950/80 px-4 py-3 text-center text-sm font-extrabold backdrop-blur'>
-              <RefreshCw className='mx-auto mb-2 h-5 w-5 animate-spin text-green-300' />
+              <RefreshCw className='mx-auto mb-2 h-5 w-5 animate-spin text-[#efbd37]' />
               Открываю камеру
             </div>
           )}
@@ -597,7 +607,7 @@ function WorkdayQrScanner({
         {error && (
           <div className='employee-material-scanner-warning mt-4 rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-50'>
             {error}
-            <button type='button' onClick={startCamera} className='mt-3 flex min-h-11 w-full items-center justify-center rounded-xl bg-amber-400 px-3 font-black text-slate-950'>
+            <button type='button' onClick={startCamera} className='mt-3 flex min-h-11 w-full items-center justify-center rounded-xl bg-[#efbd37] px-3 font-black text-[#17202a]'>
               Попробовать ещё раз
             </button>
           </div>
@@ -762,25 +772,14 @@ function shiftTaskStatusLabel(status: string) {
   return 'ожидает';
 }
 
-function CashRubleIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox='0 0 24 24' fill='none' aria-hidden='true'>
-      <rect x='5' y='3.5' width='16' height='13' rx='3.25' fill='#b7e9ac' />
-      <rect x='2' y='7.5' width='17' height='13' rx='3.25' fill='#68ce4f' />
-      <circle cx='10.5' cy='14' r='4.1' fill='#278f18' />
-      <text x='10.5' y='17' fill='white' fontSize='8.5' fontWeight='900' textAnchor='middle'>₽</text>
-    </svg>
-  );
-}
-
 function shiftTaskIcon(task: ShiftControlTask) {
-  if (task.category === 'cash') return CashRubleIcon;
-  if (task.category === 'credit') return PremiumBillListIcon;
-  if (task.category === 'acquiring') return PremiumCardIcon;
-  if (task.category === 'opening') return PremiumCameraIcon;
-  if (task.category === 'handover') return PremiumClipboardCheckIcon;
-  if (task.category === 'closing') return PremiumCameraIcon;
-  return PremiumClockIcon;
+  if (task.category === 'cash') return Banknote;
+  if (task.category === 'credit') return BadgePercent;
+  if (task.category === 'acquiring') return CreditCard;
+  if (task.category === 'opening') return Camera;
+  if (task.category === 'handover') return ClipboardCheck;
+  if (task.category === 'closing') return Camera;
+  return Clock3;
 }
 
 function shiftTaskTitle(task: ShiftControlTask) {
@@ -1185,6 +1184,16 @@ export function EmployeeTodayClient({
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const paletteClass = {
+    indigo: 'portal-palette-indigo',
+    cobalt: 'portal-palette-cobalt',
+    plum: 'portal-palette-plum',
+    refined: 'portal-palette-refined',
+    azure: 'portal-palette-azure',
+    mobo: 'portal-palette-mobo',
+    'mobo-type': 'portal-palette-mobo portal-typography-refined',
+  }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
+
   const [activeTab, setActiveTab] = useState<Tab>('day');
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -1792,7 +1801,7 @@ export function EmployeeTodayClient({
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
           </div>
-          <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', ownVacation ? 'bg-[#ddd5ea] text-[#4e4661] ring-1 ring-[#aa9fbd]' : scheduleTone(ownEntry?.status))}>
+          <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', ownVacation ? 'bg-[#e8f1fb] text-[#24476b] ring-1 ring-[#b8cee5]' : scheduleTone(ownEntry?.status))}>
             {statusCopy}
           </Badge>
         </div>
@@ -1801,7 +1810,10 @@ export function EmployeeTodayClient({
           <div className='m-0 flex justify-end'>
             <Button
               type='button'
-              className='employee-material-secondary-action h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold'
+              className={cn(
+                'h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold',
+                ownEntry || ownVacation ? 'employee-material-secondary-action' : 'employee-material-green-action',
+              )}
               onClick={() => ownVacation ? openVacationEditor(ownVacation) : setEditingScheduleDate(date)}
             >
               {ownVacation ? 'Изменить отпуск' : ownEntry ? 'Изменить' : 'Выбрать'}
@@ -1811,7 +1823,7 @@ export function EmployeeTodayClient({
 
         {vacationNames && (
           <p className={cn(
-            'rounded-lg bg-[#eee9f5] px-2 py-1.5 text-xs font-extrabold text-[#574e69]',
+            'rounded-lg bg-[#eef5fc] px-2 py-1.5 text-xs font-extrabold text-[#365b7d]',
             compact ? 'col-span-2 m-0' : 'mt-2',
           )}>
             В отпуске: {vacationNames}
@@ -3327,14 +3339,14 @@ export function EmployeeTodayClient({
     };
     const handoverIcon =
       step === 'personalCashBalance' || step === 'reserveCashBalance' || step === 'encashment'
-        ? CashRubleIcon
+        ? Banknote
         : step === 'terminalQuestion' || step === 'terminalReconciliation' || step === 'terminalReceipts'
-          ? PremiumCardIcon
+          ? CreditCard
           : step === 'tbankQuestion' || step === 'tbankReceipts' || step === 'tbankTerminal'
-            ? PremiumBillListIcon
+            ? ReceiptText
             : step === 'discrepancy'
-              ? PremiumDangerTriangleIcon
-              : PremiumBillListIcon;
+              ? TriangleAlert
+              : ReceiptText;
     const HandoverIcon = handoverIcon;
     const photoFieldForStep: Partial<Record<string, HandoverPhotoKey>> = {
       encashment: 'encashmentDocumentPhoto',
@@ -3355,7 +3367,7 @@ export function EmployeeTodayClient({
       <div className='employee-material-focus employee-material-focus-current employee-material-form rounded-xl border-l-[5px] p-3 ring-1'>
         <div className='mb-3 flex items-start justify-between gap-3'>
           <div className='flex items-start gap-2'>
-            <span className='mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
+            <span className='employee-material-task-glyph mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
               <HandoverIcon className='h-[26px] w-[26px]' />
             </span>
             <div>
@@ -3683,7 +3695,7 @@ export function EmployeeTodayClient({
   }
 
   return (
-    <main className='employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
+    <main className={cn('portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass)}>
       {deviationSheetKind && (() => {
         const isLate = deviationSheetKind === 'late_arrival';
         const reasons = isLate ? lateArrivalReasons : earlyFinishReasons;
@@ -4148,12 +4160,12 @@ export function EmployeeTodayClient({
             <div className='space-y-3'>
               {!workDay && !unfinished && (
                 <Card className='space-y-3 p-4'>
-                  <p className='text-[13px] font-extrabold leading-[18px] text-[#278f18]'>
+                  <p className='employee-material-greeting text-[17px] font-semibold leading-6 text-slate-800'>
                     {greetingForMoscowTime(displayNow)}, {schedulePersonName(user.name)}
                   </p>
                   <div className='flex items-start gap-3'>
-                    <span className='employee-material-heading-icon employee-material-accent-icon mt-0.5 text-primary'>
-                      <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-8 w-8' />
+                    <span className='employee-material-start-clock mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center text-[#263b5c]'>
+                      <Clock3 className='h-7 w-7' strokeWidth={1.9} />
                     </span>
                     <div className='min-w-0'>
                       <h2 className='text-xl font-black leading-tight text-slate-950'>Рабочий день не начат</h2>
@@ -4168,7 +4180,7 @@ export function EmployeeTodayClient({
                     onClick={openQrStart}
                     disabled={isSaving || Boolean(unfinished)}
                   >
-                    <ScanQrCode className='mr-2 h-7 w-7' strokeWidth={2.35} aria-hidden='true' />
+                    <ScanQrCode className='employee-material-brand-action-icon mr-2 h-7 w-7' strokeWidth={2.35} aria-hidden='true' />
                     Начать рабочий день
                   </Button>
                   {unfinished && (
@@ -4180,7 +4192,7 @@ export function EmployeeTodayClient({
               {activeWorkDay && (
                 <div className='grid gap-1.5'>
                   <div className='employee-material-status-strip flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold text-green-900'>
-                    <span className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-green-700 ring-1 ring-green-100'>
+                    <span className='employee-material-status-strip-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-green-700 ring-1 ring-green-100'>
                       <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-5 w-5' />
                     </span>
                     <span className='min-w-0 truncate'>Рабочий день · {workDay?.shiftLabel} · {activeElapsedLabel}</span>
@@ -4219,7 +4231,7 @@ export function EmployeeTodayClient({
                           href={`/employee/issues/${issue.id}`}
                           className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm transition hover:bg-amber-100/70'
                         >
-                          <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
+                          <span className='employee-material-state-marker employee-material-state-marker-warning flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
                           <span className='min-w-0 flex-1'>
                             <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить</span>
                             <span className='block text-sm font-black leading-tight'>{issueView.bannerTitle}</span>
@@ -4250,7 +4262,7 @@ export function EmployeeTodayClient({
                   href={`/employee/payment-checks/${primaryPaymentCheck.id}`}
                   className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'
                 >
-                  <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
+                  <span className='employee-material-state-marker employee-material-state-marker-warning flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
                   <span className='min-w-0 flex-1'>
                     <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно проверить{paymentChecksState.length > 1 ? ` · ${paymentChecksState.length}` : ''}</span>
                     <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryPaymentCheckView.title}</span>
@@ -4304,7 +4316,7 @@ export function EmployeeTodayClient({
               {activeWorkDay && !showShiftControl && (
                 <Card className='space-y-3 border-green-100 bg-white p-4'>
                   <div className='flex items-start gap-3'>
-                    <span className='employee-material-heading-icon employee-material-accent-icon h-11 w-11 shrink-0 rounded-xl text-green-700'>
+                    <span className='employee-material-heading-icon employee-material-accent-icon employee-material-status-icon employee-material-state-marker employee-material-state-marker-success h-11 w-11 shrink-0 rounded-xl text-green-700'>
                       <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-8 w-8' />
                     </span>
                     <div className='min-w-0'>
@@ -4327,7 +4339,7 @@ export function EmployeeTodayClient({
 
               {isCompleted && (
                 <Card className='flex items-center gap-3 p-3.5'>
-                  <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-green-700'>
+                  <span className='employee-material-state-marker employee-material-state-marker-success flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-green-700'>
                     <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-7 w-7' />
                   </span>
                   <div className='min-w-0'>
@@ -4356,8 +4368,8 @@ export function EmployeeTodayClient({
                         {primaryShiftControlTask && (() => {
                           const Icon = shiftTaskIcon(primaryShiftControlTask);
                           return (
-                            <span className={cn('employee-material-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1', shiftTaskIconClass(primaryShiftControlTask.category))}>
-                              <Icon className='h-8 w-8' />
+                            <span className={cn('employee-material-icon employee-material-task-glyph flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1', shiftTaskIconClass(primaryShiftControlTask.category))}>
+                              <Icon className='h-7 w-7' strokeWidth={1.9} />
                             </span>
                           );
                         })()}
@@ -4394,8 +4406,8 @@ export function EmployeeTodayClient({
                       const Icon = shiftTaskIcon(task);
                       return (
                         <div key={task.id} className={cn('flex gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-slate-600 ring-1 ring-slate-200/80', uiStatus === 'done' && 'opacity-75')}>
-                          <div className={cn('employee-material-icon mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', shiftTaskIconClass(task.category))}>
-                            {uiStatus === 'done' ? <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /> : <Icon className='h-4 w-4' />}
+                          <div className={cn('employee-material-icon employee-material-task-glyph mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', shiftTaskIconClass(task.category))}>
+                            {uiStatus === 'done' ? <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /> : <Icon className='h-4 w-4' strokeWidth={1.9} />}
                           </div>
                           <div className='min-w-0 flex-1'>
                             <div className='flex items-start justify-between gap-2'>
@@ -4432,7 +4444,7 @@ export function EmployeeTodayClient({
                       </p>
                     </div>
                     <span className='employee-material-heading-icon employee-material-accent-icon h-11 w-11 shrink-0'>
-                      <DepositSafeGlyph />
+                      <HandCoins className='h-7 w-7' color='var(--portal-brand-strong)' strokeWidth={1.9} aria-hidden='true' />
                     </span>
                   </div>
 
@@ -4586,7 +4598,7 @@ export function EmployeeTodayClient({
 
               <Card className='space-y-2.5 p-4'>
                 <div className='flex items-center gap-2'>
-                  <span className='employee-material-heading-icon employee-material-accent-icon' aria-hidden='true'>
+                  <span className='employee-material-heading-icon employee-material-accent-icon employee-material-neutral-icon' aria-hidden='true'>
                     <ColleaguesGlyph />
                   </span>
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
@@ -4606,7 +4618,7 @@ export function EmployeeTodayClient({
 
           {activeTab === 'schedule' && (
             <div className='space-y-3'>
-              <Card className='p-1.5'>
+              <Card className='employee-material-schedule-switch-card p-1.5'>
                 <div className='employee-material-segment grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1'>
                   {[
                     { id: 'list' as const, label: 'Ближайшие дни' },
@@ -4624,10 +4636,8 @@ export function EmployeeTodayClient({
                         }
                       }}
                       className={cn(
-                        'h-10 rounded-xl text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-70',
-                        scheduleMode === mode.id
-                          ? 'bg-[#111821] text-white shadow-[0_8px_18px_rgba(15,23,42,0.16)]'
-                          : 'bg-green-50/80 text-green-800 hover:bg-green-100',
+                        'employee-material-segment-option h-10 rounded-xl text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-70',
+                        scheduleMode === mode.id ? 'is-active' : 'text-slate-500',
                       )}
                     >
                       {mode.label}
@@ -4648,7 +4658,7 @@ export function EmployeeTodayClient({
                 <>
                   {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && !bulkScheduleMode && (
                     <Card className='employee-material-alert-card flex items-center gap-2.5 border-amber-200 bg-amber-50 p-2'>
-                        <span className='employee-material-heading-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-amber-700'>
+                        <span className='employee-material-heading-icon employee-material-state-marker employee-material-state-marker-warning flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-amber-700'>
                           <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' />
                         </span>
                         <div className='min-w-0 flex-1'>
@@ -4656,7 +4666,7 @@ export function EmployeeTodayClient({
                         </div>
                       <Button
                         type='button'
-                        className='employee-material-green-action h-10 shrink-0 rounded-xl px-3 text-xs font-black'
+                        className='employee-material-schedule-fill h-10 shrink-0 rounded-xl px-3 text-xs font-black'
                         onClick={startBulkSchedule}
                       >
                         Заполнить
@@ -4674,7 +4684,7 @@ export function EmployeeTodayClient({
                       </div>
                     </Card>
                   )}
-                  <Card className='space-y-2 p-2.5'>
+                  <Card className='employee-material-calendar-card space-y-2 p-2.5'>
                   <div className='flex items-center justify-between gap-2'>
                     <button
                       type='button'
@@ -4766,14 +4776,14 @@ export function EmployeeTodayClient({
                           : bulkEligible
                             ? 'bg-[#e7ebe9] text-slate-800 ring-[#c7cfcb]'
                           : ownVacation
-                            ? 'bg-[#ddd5ea] text-[#4e4661] ring-[#aa9fbd]'
+                            ? 'bg-[#e8f1fb] text-[#24476b] ring-[#b8cee5]'
                           : ownEntry?.status === 'working'
                           ? 'bg-[#d9f1dc] text-[#123d21] ring-[#9ed1a7]'
                           : ownEntry?.status === 'off'
                             ? 'bg-[#dce2df] text-[#26332d] ring-[#aebbb5]'
                             : isLockedMissing
                               ? 'bg-[#eef0ed] text-slate-500 ring-[#d9ddda]'
-                            : 'bg-amber-50 text-amber-800 ring-amber-100';
+                            : 'employee-material-calendar-missing bg-[#fbfcfe] text-slate-600 ring-[#dfe4ea]';
 
                       return (
                         <button
@@ -4819,7 +4829,7 @@ export function EmployeeTodayClient({
                             {scheduleMonthLoaded && !isOutsideMonth && workingInitials.extraCount > 0 ? ` +${workingInitials.extraCount}` : ''}
                           </span>
                           {scheduleMonthLoaded && !isOutsideMonth && vacationInitials.count > 0 && (
-                            <span className='mt-0.5 max-w-full truncate text-[9px] font-extrabold leading-[10px] text-[#59476f]'>
+                            <span className='mt-0.5 max-w-full truncate text-[9px] font-extrabold leading-[10px] text-[#365b7d]'>
                               {vacationInitials.initials.join(' ')}{vacationInitials.extraCount > 0 ? ` +${vacationInitials.extraCount}` : ''} отп.
                             </span>
                           )}
@@ -4839,7 +4849,7 @@ export function EmployeeTodayClient({
                     upcomingOwnVacation ? (
                       <button
                         type='button'
-                        className='flex w-full items-center justify-between gap-3 rounded-xl bg-[#eee9f5] px-3 py-2.5 text-left text-[#4e4661] ring-1 ring-[#c8bdd8]'
+                        className='flex w-full items-center justify-between gap-3 rounded-xl bg-[#eef5fc] px-3 py-2.5 text-left text-[#365b7d] ring-1 ring-[#bfd2e6]'
                         onClick={() => openVacationEditor(upcomingOwnVacation)}
                       >
                         <span className='flex min-w-0 items-center gap-2'>
@@ -4924,19 +4934,19 @@ export function EmployeeTodayClient({
                     setActiveTab(item.id);
                   }}
                   className={cn(
-                    'employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-1 px-2 text-xs font-extrabold transition',
+                    'employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-0 px-2 text-xs font-extrabold transition',
                     active ? 'is-active' : 'text-slate-500',
                   )}
                 >
-                  <span className='relative flex h-6 w-6 items-center justify-center' aria-hidden='true'>
+                  <span className={cn('relative flex h-6 w-6 items-center justify-center', `employee-material-nav-icon-${item.id}`)} aria-hidden='true'>
                     <Icon
                       className='h-6 w-6'
-                      color={active ? '#2da915' : '#68746f'}
-                      secondaryColor={active ? '#69d644' : '#aab2ae'}
-                      secondaryOpacity={active ? 0.92 : 0.82}
+                      color={active ? 'var(--portal-brand-accent)' : '#687078'}
+                      secondaryColor={active ? 'var(--portal-brand-strong)' : '#b6babd'}
+                      secondaryOpacity={active ? 1 : 0.82}
                     />
                   </span>
-                  <span>{item.label}</span>
+                  <span className='employee-material-tab-label'>{item.label}</span>
                 </button>
               );
             })}

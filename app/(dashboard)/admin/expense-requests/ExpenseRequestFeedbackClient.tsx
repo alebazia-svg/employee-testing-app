@@ -44,18 +44,18 @@ export function ExpenseRequestFeedbackClient({ caseId, reasonCodes }: { caseId: 
       </div>
       <div className='grid gap-2 sm:grid-cols-2'>
         {decisions.map((item) => (
-          <button key={item.key} type='button' onClick={() => setDecision(item.key)} className={`rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${decision === item.key ? 'border-green-600 bg-green-50 text-green-900 ring-2 ring-green-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>
+          <button key={item.key} type='button' onClick={() => setDecision(item.key)} className={`rounded-xl border px-4 py-3 text-left text-sm font-bold transition ${decision === item.key ? 'border-[#263b5c] bg-[#eef2f8] text-[#263b5c] ring-2 ring-[#d8dfe8]' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}>
             {item.label}
           </button>
         ))}
       </div>
       {decision === 'rule_change_required' && (
-        <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} rows={3} placeholder='Как именно нужно изменить правило?' className='w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100' />
+        <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} rows={3} placeholder='Как именно нужно изменить правило?' className='w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#263b5c] focus:ring-2 focus:ring-[#d8dfe8]' />
       )}
       <Button type='button' disabled={saving} onClick={() => void save('overall')}>{saving ? 'Сохраняем…' : 'Сохранить оценку'}</Button>
       {reasonCodes.length > 0 && (
         <div className='border-t border-slate-200 pt-4'>
-          <button type='button' onClick={() => setDetailOpen((value) => !value)} className='text-sm font-bold text-green-700 hover:text-green-800'>
+          <button type='button' onClick={() => setDetailOpen((value) => !value)} className='text-sm font-bold text-[#263b5c] hover:text-[#1d304e]'>
             {detailOpen ? 'Скрыть детализацию' : 'При желании уточнить конкретную подсказку'}
           </button>
           {detailOpen && (

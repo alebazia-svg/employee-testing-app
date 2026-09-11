@@ -2090,7 +2090,7 @@ export default async function AdminWorkdayPage(
           <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between'>
             <div>
               <div className='flex items-center gap-2'>
-                <span className='flex h-9 w-9 items-center justify-center rounded-lg bg-green-50 text-green-700'>
+                <span className='flex h-9 w-9 items-center justify-center rounded-lg bg-[#eef2f8] text-[#263b5c]'>
                   <Banknote className='h-5 w-5' />
                 </span>
                 <div>

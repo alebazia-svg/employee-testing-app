@@ -133,8 +133,8 @@ export default function AttestationEditor({ attestation }: { attestation: Attest
               key={tab.id}
               type='button'
               className={cn(
-                'rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-200',
-                activeTab === tab.id ? 'bg-green-50 text-green-700 ring-1 ring-green-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900',
+                'rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#d8dfe8]',
+                activeTab === tab.id ? 'bg-[#eef2f8] text-[#263b5c] ring-1 ring-[#d8dfe8]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900',
               )}
               onClick={() => setActiveTab(tab.id)}
             >
@@ -263,7 +263,7 @@ function QuestionEditor({
   }
 
   return (
-    <div className='rounded-lg border border-green-200 bg-green-50/80 p-5'>
+    <div className='rounded-lg border border-[#d8dfe8] bg-[#f2f5f9] p-5'>
       <h2 className='mb-3 text-lg font-semibold text-slate-900'>{editingQuestion.questionId === 'new' ? 'Новый вопрос' : 'Редактирование вопроса'}</h2>
       <label className='block text-sm font-medium text-slate-700'>
         Текст вопроса

@@ -270,7 +270,7 @@ export default function AdminProcurementClient({
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(170px,.65fr))]">
         <div className="admin-material-card rounded-2xl bg-white p-5">
           <div className="flex items-start gap-4">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-50 text-primary">
+            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${sourceWarnings.length ? "bg-amber-50 text-amber-700" : nextDate ? "bg-[#eef2f8] text-[#263b5c]" : "bg-green-50 text-green-700"}`}>
               <Banknote className="h-5 w-5" />
             </span>
             <div className="min-w-0">
@@ -374,7 +374,7 @@ export default function AdminProcurementClient({
                 <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" ? <p className="text-xs font-semibold text-violet-700">{Number(plan.foreignAmount || 0) > 0 ? `Ориентир: ${rub.format(Number(plan.plannedAmount))}` : usdtEstimateNote(plan)}</p> : null}</div>
                 <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                 <div className="flex flex-wrap gap-2 lg:justify-end">
-                  <button disabled={busy === plan.id} onClick={() => act(plan.id, "APPROVE")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-green-700 disabled:opacity-50"><Check className="h-4 w-4" />Согласовать</button>
+                  <button disabled={busy === plan.id} onClick={() => act(plan.id, "APPROVE")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-[#1d304e] disabled:opacity-50"><Check className="h-4 w-4" />Согласовать</button>
                   <button disabled={busy === plan.id} onClick={() => { setReturningId(plan.id); setReturnReason(""); setActionMessage(""); }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-amber-50 px-3 text-sm font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"><Undo2 className="h-4 w-4" />Исправить</button>
                   <button disabled={busy === plan.id} onClick={() => act(plan.id, "CANCEL")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50" aria-label={`Отменить оплату ${plan.supplierPartner}`}><X className="h-4 w-4" />Отменить</button>
                 </div>

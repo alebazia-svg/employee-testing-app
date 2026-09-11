@@ -1,10 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Lock, User } from 'lucide-react';
-import { BrandBlock } from '@/components/BrandBlock';
+import { BriefcaseBusiness, ClipboardCheck, Eye, EyeOff, Lock, PackageSearch, User } from 'lucide-react';
+import { PortalIdentityBlock } from '@/components/PortalIdentityBlock';
 import { Button } from '@/components/ui/button';
 
 export default function Login() {
@@ -48,32 +47,37 @@ export default function Login() {
   }
 
   return (
-    <main className='login-material-page relative min-h-[100svh] overflow-hidden px-4 py-6 text-[#273137] sm:px-6 lg:px-8'>
-      <div className='login-material-plane pointer-events-none absolute inset-0' />
-      <div className='login-material-rings pointer-events-none absolute' />
-      <div className='login-material-mark pointer-events-none absolute' aria-hidden='true'>
-        <Image src='/offonika-o-white.png' alt='' width={1024} height={1024} priority />
-      </div>
+    <main className='portal-neutral-design login-material-page relative min-h-[100svh] overflow-hidden p-3 text-[#202936] sm:p-6 lg:p-8'>
+      <div className='login-portal-shell relative mx-auto grid min-h-[calc(100svh-1.5rem)] w-full max-w-[1180px] overflow-hidden sm:min-h-[calc(100svh-3rem)] lg:grid-cols-[1.08fr_0.92fr]'>
+        <section className='login-portal-hero relative flex min-h-[230px] flex-col overflow-hidden p-6 text-white sm:p-8 lg:min-h-0 lg:p-12'>
+          <div className='login-portal-glow pointer-events-none absolute inset-0' />
+          <div className='relative z-10'>
+            <PortalIdentityBlock />
+          </div>
 
-      <div className='relative mx-auto flex min-h-[calc(100svh-3rem)] w-full max-w-[1180px] flex-col justify-center'>
-        <div className='grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,440px)] lg:gap-14 xl:gap-20'>
-          <section className='text-center lg:text-left'>
-            <div className='mx-auto w-[190px] sm:w-[220px] lg:mx-0 lg:w-[250px]'>
-              <BrandBlock size='employee' />
-            </div>
-            <p className='mt-4 text-xs font-extrabold uppercase tracking-[0.16em] text-primary lg:mt-7'>Портал для сотрудников</p>
-            <h1 className='mx-auto mt-2 max-w-xl text-[22px] font-extrabold leading-tight text-[#273137] sm:text-2xl lg:mx-0 lg:mt-3 lg:text-[42px] lg:leading-[1.08]'>
-              Рабочий день и задачи — в одном месте
+          <div className='relative z-10 mt-auto pt-7 sm:pt-10 lg:pb-8'>
+            <p className='text-xs font-extrabold uppercase tracking-[0.18em] text-[#ffc247]'>Внутренняя рабочая система</p>
+            <h1 className='mt-3 max-w-[560px] text-[28px] font-black leading-[1.05] tracking-[-0.035em] text-white sm:text-[34px] lg:text-[52px]'>
+              Работа команды.<br />В одном месте.
             </h1>
-            <p className='mx-auto mt-4 hidden max-w-lg text-base font-medium leading-relaxed text-[#657077] lg:mx-0 lg:block'>
-              Вход для сотрудников и администратора. После входа портал сразу откроет ваш рабочий экран.
+            <p className='mt-4 max-w-md text-sm font-semibold leading-relaxed text-white/68 sm:text-base'>
+              Рабочий день, закупки и контроль — без лишних чатов и потерянных задач.
             </p>
-          </section>
+          </div>
 
-          <section className='login-material-card mx-auto w-full max-w-[440px] rounded-[26px] p-5 sm:p-7 lg:p-8'>
+          <div className='login-portal-modules relative z-10 mt-7 hidden grid-cols-3 gap-3 sm:grid'>
+            <div className='login-portal-module'><BriefcaseBusiness className='h-5 w-5' /><span>Рабочий день</span></div>
+            <div className='login-portal-module'><PackageSearch className='h-5 w-5' /><span>Закупки</span></div>
+            <div className='login-portal-module'><ClipboardCheck className='h-5 w-5' /><span>Контроль</span></div>
+          </div>
+        </section>
+
+        <section className='login-portal-form-panel flex items-center justify-center p-5 sm:p-8 lg:p-12'>
+          <div className='w-full max-w-[420px]'>
             <div className='mb-6'>
-              <h2 className='text-2xl font-extrabold tracking-normal text-[#273137] sm:text-[28px]'>Вход в портал</h2>
-              <p className='mt-1.5 text-sm font-medium text-[#748087]'>Введите логин и пароль</p>
+              <p className='mb-2 text-xs font-extrabold uppercase tracking-[0.16em] text-[#8b6a20]'>Доступ сотрудника</p>
+              <h2 className='text-[28px] font-black tracking-[-0.025em] text-[#202936] sm:text-[34px]'>Войти в портал</h2>
+            <p className='mt-2 text-sm font-medium text-[#667085]'>Используйте данные, которые выдал администратор.</p>
             </div>
 
             <form onSubmit={submit} className='space-y-4'>
@@ -82,7 +86,7 @@ export default function Login() {
                 <span className='login-material-field flex min-h-[54px] items-center gap-3 rounded-2xl px-3.5 transition focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/15'>
                   <span className='login-material-field-icon'><User className='h-4 w-4' /></span>
                   <input
-                    className='offonika-login-input min-w-0 flex-1 bg-transparent text-base font-semibold text-[#273137] outline-none placeholder:text-[#929a9d]'
+                    className='portal-login-input min-w-0 flex-1 bg-transparent text-base font-semibold text-[#273137] outline-none placeholder:text-[#929a9d]'
                     name='username'
                     placeholder='Ваш логин'
                     value={login}
@@ -102,7 +106,7 @@ export default function Login() {
                 <span className='login-material-field flex min-h-[54px] items-center gap-3 rounded-2xl px-3.5 transition focus-within:border-primary focus-within:ring-4 focus-within:ring-primary/15'>
                   <span className='login-material-field-icon'><Lock className='h-4 w-4' /></span>
                   <input
-                    className='offonika-login-input min-w-0 flex-1 bg-transparent text-base font-semibold text-[#273137] outline-none placeholder:text-[#929a9d]'
+                    className='portal-login-input min-w-0 flex-1 bg-transparent text-base font-semibold text-[#273137] outline-none placeholder:text-[#929a9d]'
                     name='password'
                     placeholder='Ваш пароль'
                     type={showPassword ? 'text' : 'password'}
@@ -132,11 +136,11 @@ export default function Login() {
               </Button>
             </form>
 
-            <p className='mt-4 text-center text-xs font-medium leading-relaxed text-[#7d878b]'>Логин и пароль выдаёт администратор</p>
-          </section>
-        </div>
-
-        <p className='login-material-footer mt-7 text-center text-xs lg:mt-10'>© 2026 <span className='font-extrabold text-primary'>OFFONIKA</span></p>
+            <div className='mt-5 flex items-center justify-center gap-2 text-xs font-semibold text-[#7b818c]'>
+              <Lock className='h-3.5 w-3.5' /> Защищённый вход
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );

@@ -127,7 +127,7 @@ export default async function AdminTBankAcquiringPage(
               <Link
                 key={terminal.key}
                 href={`/admin/workday/tbank?terminalKey=${encodeURIComponent(terminal.key)}&date=${selectedDate}`}
-                className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm font-bold transition ${selectedTerminal === terminal.key ? 'border-green-300 bg-green-50 text-green-900' : 'border-slate-200 bg-white text-slate-800 hover:border-green-200 hover:bg-green-50/60'}`}
+                className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm font-bold transition ${selectedTerminal === terminal.key ? 'border-[#9fadc2] bg-[#eef2f8] text-[#263b5c]' : 'border-slate-200 bg-white text-slate-800 hover:border-[#c8d0dc] hover:bg-[#f7f9fc]'}`}
               >
                 <span className='flex items-center gap-2'><CreditCard className='h-4 w-4' />{terminal.key}</span>
                 <span className='text-xs text-slate-500'>ID {terminal.id}</span>

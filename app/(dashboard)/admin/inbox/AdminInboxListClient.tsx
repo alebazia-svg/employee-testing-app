@@ -79,9 +79,9 @@ export function AdminInboxListClient({ initialItems }: { initialItems: AdminInbo
               <span className='flex flex-wrap items-center gap-2'><span className='text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-extrabold ${stateClass(item.sourceState.tone)}`}>{item.sourceState.label}</span></span>
               <span className='mt-1 block text-sm font-medium leading-relaxed text-slate-600'>{item.event.body}</span>
               <span className='mt-1 block text-xs font-semibold text-slate-400'>{when(item.event.occurredAt)} · {item.meta.typeLabel}</span>
-              <span className='mt-2 block text-xs font-extrabold text-green-700'>{item.meta.actionLabel}</span>
+              <span className='mt-2 block text-xs font-extrabold text-[#263b5c]'>{item.meta.actionLabel}</span>
             </button>
-            {!item.readAt && <button type='button' onClick={() => void markRead(item.id)} title='Отметить прочитанным' className='rounded-lg p-2 text-slate-400 hover:bg-white hover:text-green-700'><Check className='h-4 w-4' /></button>}
+            {!item.readAt && <button type='button' onClick={() => void markRead(item.id)} title='Отметить прочитанным' className='rounded-lg p-2 text-slate-400 hover:bg-white hover:text-[#263b5c]'><Check className='h-4 w-4' /></button>}
             <button type='button' onClick={() => void open(item)} title='Открыть объект' className='rounded-lg p-2 text-slate-400 hover:bg-white hover:text-slate-900'><ChevronRight className='h-4 w-4' /></button>
           </div>
         ))}</div>{shown < filtered.length && <div className='border-t border-slate-100 px-4 py-4 text-center'><button type='button' onClick={() => setShown((value) => value + PAGE_SIZE)} className='rounded-xl bg-slate-100 px-4 py-2 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'>Показать ещё {Math.min(PAGE_SIZE, filtered.length - shown)}</button></div>}</>

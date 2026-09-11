@@ -9,16 +9,16 @@ const workdayQrCodes = [
     id: 'retail',
     title: 'Розница',
     description: 'QR для старта рабочего дня сотрудников розницы.',
-    posterFile: '/print/offonika-workday-retail-a5.png',
-    printFile: '/print/offonika-workday-retail-a5.pdf',
+    posterFile: '/print/portal-workday-retail-a5.png',
+    printFile: '/print/portal-workday-retail-a5.pdf',
     value: 'offonika-workday-start:retail',
   },
   {
     id: 'wholesale',
     title: 'Опт',
     description: 'QR для старта рабочего дня сотрудников опта.',
-    posterFile: '/print/offonika-workday-wholesale-a5.png',
-    printFile: '/print/offonika-workday-wholesale-a5.pdf',
+    posterFile: '/print/portal-workday-wholesale-a5.png',
+    printFile: '/print/portal-workday-wholesale-a5.pdf',
     value: 'offonika-workday-start:wholesale',
   },
 ] as const;
@@ -70,7 +70,7 @@ export function WorkdayQrCodes() {
         onClick={() => setExpanded(true)}
         className='inline-flex min-h-10 items-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'
       >
-        <QrCode className='h-4 w-4 text-green-700' />
+        <QrCode className='h-4 w-4 text-[#263b5c]' />
         QR-коды отделов
       </button>
 
@@ -79,7 +79,7 @@ export function WorkdayQrCodes() {
           <div className='admin-dialog-panel max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-2xl' onClick={(event) => event.stopPropagation()}>
             <div className='flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4'>
               <div className='flex items-start gap-3'>
-                <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 text-green-700'>
+                <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#eef2f8] text-[#263b5c]'>
                   <QrCode className='h-5 w-5' />
                 </span>
                 <div>
@@ -114,7 +114,7 @@ export function WorkdayQrCodes() {
                         href={item.posterFile}
                         target='_blank'
                         rel='noreferrer'
-                        className='group relative aspect-[1480/2100] w-full shrink-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:ring-green-300 sm:w-40'
+                        className='group relative aspect-[1480/2100] w-full shrink-0 overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200 transition hover:ring-[#9fadc2] sm:w-40'
                         aria-label={`Открыть макет ${item.title}`}
                       >
                         <img src={item.posterFile} alt={`Менюхолдер A5 — ${item.title}`} className='h-full w-full object-cover' />
@@ -135,7 +135,7 @@ export function WorkdayQrCodes() {
                         </a>
                         <a
                           href={item.posterFile}
-                          download={`offonika-workday-${item.id}-a5.png`}
+                          download={`portal-workday-${item.id}-a5.png`}
                           className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
                         >
                           <Download className='h-4 w-4' />
@@ -143,7 +143,7 @@ export function WorkdayQrCodes() {
                         </a>
                         <a
                           href={image || '#'}
-                          download={`offonika-workday-${item.id}-qr.png`}
+                          download={`portal-workday-${item.id}-qr.png`}
                           className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50'
                         >
                           <Download className='h-4 w-4' />
@@ -152,7 +152,7 @@ export function WorkdayQrCodes() {
                         <button
                           type='button'
                           onClick={() => printQr(item)}
-                          className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-green-600 px-3 text-sm font-extrabold text-white hover:bg-green-700'
+                          className='inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#263b5c] px-3 text-sm font-extrabold text-white hover:bg-[#1d304e]'
                         >
                           <Printer className='h-4 w-4' />
                           Печать A5 / PDF

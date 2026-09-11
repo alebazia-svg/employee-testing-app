@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, CheckCircle2, CircleAlert, History, Info } from 'lucide-react';
+import { ArrowLeft, CircleAlert, History, Info } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { getCurrentUser } from '@/lib/auth';
@@ -141,7 +141,7 @@ export default async function ExpenseRequestDetailPage(props: { params: Promise<
               <div className='mt-4 space-y-3'>{item.feedback.map((entry) => <div key={entry.id} className='rounded-xl border border-slate-200 px-4 py-3'><div className='flex flex-wrap items-center justify-between gap-2'><p className='text-sm font-extrabold text-slate-900'>{feedbackLabel(entry.decision)}</p><span className='text-xs font-medium text-slate-400'>{dateTime(entry.createdAt)}</span></div><p className='mt-1 text-xs font-semibold text-slate-500'>{entry.scope === 'reason' ? `По причине: ${entry.reasonCode}` : 'Общий вывод'} · {entry.reviewedBy.name}</p>{entry.comment && <p className='mt-2 text-sm leading-relaxed text-slate-700'>{entry.comment}</p>}</div>)}</div>
             )}
           </section>
-          <div className='rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-medium leading-relaxed text-green-900'><div className='flex gap-2'><CheckCircle2 className='mt-0.5 h-5 w-5 shrink-0' /><p>Ваш вывод сохраняется в истории портала. Он не согласует, не отклоняет и не изменяет заявку в 1С.</p></div></div>
+          <div className='rounded-2xl border border-[#d8dfe8] bg-[#f2f5f9] p-4 text-sm font-medium leading-relaxed text-[#263b5c]'><div className='flex gap-2'><Info className='mt-0.5 h-5 w-5 shrink-0' /><p>Ваш вывод сохраняется в истории портала. Он не согласует, не отклоняет и не изменяет заявку в 1С.</p></div></div>
         </div>
       </div>
     </AdminShell>

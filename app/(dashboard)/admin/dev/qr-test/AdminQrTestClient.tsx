@@ -9,7 +9,7 @@ type CameraState = 'idle' | 'starting' | 'scanning' | 'found' | 'error';
 
 function explainCameraError(error: unknown) {
   if (!(error instanceof DOMException)) return 'Не удалось открыть камеру. Попробуйте обновить страницу и разрешить доступ к камере.';
-  if (error.name === 'NotAllowedError' || error.name === 'SecurityError') return 'Доступ к камере запрещён. Разрешите камеру для portal.alebazia.xyz.';
+  if (error.name === 'NotAllowedError' || error.name === 'SecurityError') return 'Доступ к камере запрещён. Разрешите камеру для этого сайта.';
   if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') return 'Камера не найдена на этом устройстве.';
   if (error.name === 'NotReadableError' || error.name === 'TrackStartError') return 'Камера занята другим приложением или недоступна.';
   if (error.name === 'OverconstrainedError') return 'Не удалось выбрать заднюю камеру. Попробуйте ещё раз.';

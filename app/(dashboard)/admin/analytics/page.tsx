@@ -1350,7 +1350,7 @@ export default async function AdminAnalyticsPage(props: { searchParams?: Promise
           <p className='mt-1 text-base font-medium text-slate-500'>Продажи месяца по выбранному read-only источнику для аналитики продаж.</p>
           <ReadingHelp />
         </div>
-        <Link href='/admin/payroll' className='inline-flex w-fit items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-primary ring-1 ring-green-200 transition hover:bg-green-50'>
+        <Link href='/admin/payroll' className='inline-flex w-fit items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-primary ring-1 ring-[#d8dfe8] transition hover:bg-[#f7f9fc]'>
           Открыть зарплату
           <ChevronRight className='h-4 w-4' />
         </Link>
