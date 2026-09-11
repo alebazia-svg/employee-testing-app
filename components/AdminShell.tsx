@@ -78,7 +78,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <main className='portal-neutral-design admin-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
       <header className='admin-mobile-header sticky top-0 z-40 flex items-center justify-between gap-3 px-4 py-3 md:hidden'>
-        <PortalIdentityBlock className='admin-mobile-identity' />
+        <PortalIdentityBlock className='admin-mobile-identity' label='МОБО' subtitle='Центр управления' />
         <div className='flex items-center gap-2'>
           <AdminInboxBell />
           <button type='button' onClick={() => setMobileMenuOpen(true)} className='admin-material-control flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Открыть разделы админки'>
@@ -95,7 +95,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       >
         <div className={cn('flex items-center justify-between gap-3', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:flex-row')}>
           <div className={cn(sidebarCollapsed ? 'md:flex md:justify-center' : '')}>
-            <PortalIdentityBlock className={cn('admin-sidebar-identity', sidebarCollapsed && 'is-collapsed')} />
+            <PortalIdentityBlock className={cn('admin-sidebar-identity', sidebarCollapsed && 'is-collapsed')} label='МОБО' subtitle='Центр управления' />
           </div>
           <button
             type='button'
