@@ -101,7 +101,7 @@ export function AdminInboxBell() {
         <div className='admin-dialog-panel fixed inset-x-3 top-4 z-50 max-h-[calc(100vh-2rem)] w-auto overflow-hidden rounded-2xl bg-white text-left ring-1 ring-slate-200 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:max-h-none sm:w-[min(92vw,400px)]'>
           <div className='flex items-center justify-between border-b border-slate-200 px-4 py-3'>
             <div><p className='font-extrabold text-slate-950'>Уведомления</p><p className='text-xs font-medium text-slate-500'>{unreadCount ? `Непрочитанных: ${unreadCount}` : 'Новых нет'}</p></div>
-            {unreadCount > 0 && <button type='button' onClick={() => void markAll()} className='admin-material-control inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-green-700'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
+            {unreadCount > 0 && <button type='button' onClick={() => void markAll()} className='admin-material-control inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-[#263b5c]'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
           </div>
           {!pushConnected && (
             <div className='border-b border-green-100 bg-green-50 px-4 py-3'>

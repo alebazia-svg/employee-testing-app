@@ -556,7 +556,7 @@ export default function ProcurementPaymentCalendarClient({
                       {plan.status === "SUBMITTED" || plan.status === "NEEDS_CHANGES" ? (
                         <button
                           onClick={() => editPlan(plan)}
-                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+                          className="procurement-secondary-action inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                           Изменить

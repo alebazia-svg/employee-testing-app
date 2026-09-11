@@ -139,7 +139,7 @@ export default async function AdminPage() {
 }
 
 function SectionHeader({ title, count, href, actionLabel = 'Открыть всё' }: { title: string; count: number; href?: string; actionLabel?: string }) {
-  return <div className='flex items-center justify-between border-b border-slate-200 px-5 py-4'><div className='flex items-center gap-2'><h2 className='text-lg font-extrabold text-slate-950'>{title}</h2>{count > 0 && <span className='rounded-full bg-amber-100 px-2 py-0.5 text-xs font-extrabold text-amber-800'>{count}</span>}</div>{href && <Link href={href} className='text-xs font-bold text-green-700 hover:text-green-800'>{actionLabel}</Link>}</div>;
+  return <div className='flex items-center justify-between border-b border-slate-200 px-5 py-4'><div className='flex items-center gap-2'><h2 className='text-lg font-extrabold text-slate-950'>{title}</h2>{count > 0 && <span className='rounded-full bg-amber-100 px-2 py-0.5 text-xs font-extrabold text-amber-800'>{count}</span>}</div>{href && <Link href={href} className='text-xs font-bold text-[#263b5c] hover:text-[#1d304e]'>{actionLabel}</Link>}</div>;
 }
 
 function ActionRow({ item }: { item: ActionItem }) {

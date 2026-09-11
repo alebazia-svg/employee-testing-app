@@ -1,14 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Truck, Users, Wrench, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { BrandBlock } from '@/components/BrandBlock';
 import { AdminInboxBell } from '@/components/AdminInboxBell';
 import { LogoutButton } from '@/components/LogoutButton';
+import { PortalIdentityBlock } from '@/components/PortalIdentityBlock';
 import { cn } from '@/lib/utils';
 
 type NavigationItem = { href: string; label: string; icon: LucideIcon };
@@ -45,14 +44,14 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
       href={item.href}
       title={sidebarCollapsed ? item.label : undefined}
       className={cn(
-        'admin-nav-item relative flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-slate-200 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 md:justify-start md:gap-2.5 md:px-3',
+        'admin-nav-item relative flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-slate-200 transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-300/25 md:justify-start md:gap-2.5 md:px-3',
         sidebarCollapsed && 'md:px-0 md:justify-center',
         active
-          ? 'admin-nav-item-active text-slate-900 before:absolute before:left-0 before:top-2 before:h-7 before:w-1 before:rounded-r-full before:bg-primary'
+          ? 'admin-nav-item-active text-slate-900 before:absolute before:left-0 before:top-2 before:h-7 before:w-1 before:rounded-r-full'
           : 'hover:bg-white/[0.07] hover:text-white',
       )}
     >
-      <Icon className={cn('h-5 w-5 shrink-0 md:h-[21px] md:w-[21px]', active ? 'text-primary' : 'text-slate-300')} />
+      <Icon className={cn('h-5 w-5 shrink-0 md:h-[21px] md:w-[21px]', active ? 'text-[#263b5c]' : 'text-slate-300')} />
       <span className={cn('leading-tight md:whitespace-nowrap', sidebarCollapsed && 'md:hidden')}>{item.label}</span>
     </Link>
   );
@@ -77,9 +76,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <main className='admin-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
+    <main className='portal-neutral-design admin-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
       <header className='admin-mobile-header sticky top-0 z-40 flex items-center justify-between gap-3 px-4 py-3 md:hidden'>
-        <div className='w-[150px]'><BrandBlock size='employee' /></div>
+        <PortalIdentityBlock className='admin-mobile-identity' />
         <div className='flex items-center gap-2'>
           <AdminInboxBell />
           <button type='button' onClick={() => setMobileMenuOpen(true)} className='admin-material-control flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Открыть разделы админки'>
@@ -96,10 +95,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       >
         <div className={cn('flex items-center justify-between gap-3', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:flex-row')}>
           <div className={cn(sidebarCollapsed ? 'md:flex md:justify-center' : '')}>
-            {sidebarCollapsed && <Image src='/logo-offonika-icon.png' alt='OFFONIKA' width={32} height={32} className='hidden h-8 w-8 bg-transparent object-contain md:block' />}
-            <div className={sidebarCollapsed ? 'md:hidden' : ''}>
-              <BrandBlock size='sidebar' />
-            </div>
+            <PortalIdentityBlock className={cn('admin-sidebar-identity', sidebarCollapsed && 'is-collapsed')} />
           </div>
           <button
             type='button'
@@ -119,7 +115,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
           <details className='group mt-4 border-t border-white/10 pt-3 md:mt-auto' open={serviceNavigation.some((item) => isActive(pathname, item.href)) || undefined}>
             <summary className={cn(
-              'flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-400 transition hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-400/20 marker:content-none md:justify-start md:gap-3 md:px-4',
+              'flex min-h-11 cursor-pointer list-none items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-400 transition hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-amber-300/25 marker:content-none md:justify-start md:gap-3 md:px-4',
               sidebarCollapsed && 'md:px-0 md:justify-center',
             )}>
               <Wrench className='h-5 w-5 shrink-0' />
@@ -149,7 +145,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <div className='mb-3 hidden items-center justify-end gap-3 md:flex'>
             <AdminInboxBell />
             <div className='admin-account-chip hidden items-center gap-3 rounded-full px-4 py-2 sm:flex'>
-              <div className='flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-primary'>АД</div>
+              <div className='admin-account-avatar flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold'>АД</div>
               <div>
                 <p className='text-sm font-bold text-slate-950'>Администратор</p>
                 <p className='text-xs font-medium text-slate-500'>admin</p>
@@ -158,7 +154,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className='flex-1'>{children}</div>
           <footer className='mt-8 flex flex-col gap-2 border-t border-slate-200/80 pt-5 text-xs font-medium text-slate-500 sm:flex-row sm:items-center sm:justify-between'>
-            <span>© 2026 <span className='font-extrabold text-primary'>OFFONIKA</span>. Все права защищены.</span>
+            <span>© 2026 <span className='font-extrabold text-[#263b5c]'>Портал команды</span>. Все права защищены.</span>
             <span>Версия 1.0.0</span>
           </footer>
         </div>
@@ -177,14 +173,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className='fixed inset-0 z-50 flex items-end bg-slate-950/45 p-3 backdrop-blur-sm md:hidden' onClick={() => setMobileMenuOpen(false)}>
           <section className='admin-dialog-panel max-h-[86dvh] w-full overflow-y-auto rounded-3xl p-4' onClick={(event) => event.stopPropagation()} aria-label='Все разделы админки'>
             <div className='mb-4 flex items-center justify-between gap-3'>
-              <div><p className='text-xs font-extrabold uppercase tracking-wide text-[#5eb70b]'>OFFONIKA</p><h2 className='text-xl font-extrabold text-slate-950'>Все разделы</h2></div>
+              <div><p className='text-xs font-extrabold uppercase tracking-wide text-[#263b5c]'>Портал команды</p><h2 className='text-xl font-extrabold text-slate-950'>Все разделы</h2></div>
               <button type='button' onClick={() => setMobileMenuOpen(false)} className='admin-material-control flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Закрыть меню'><X className='h-5 w-5' /></button>
             </div>
             <div className='grid grid-cols-2 gap-2'>
               {dailyNavigation.slice(3).map((item) => {
                 const Icon = item.icon;
                 const active = isActive(pathname, item.href);
-                return <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#5eb70b]' /><span>{item.label}</span></Link>;
+                return <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#263b5c]' /><span>{item.label}</span></Link>;
               })}
             </div>
             <div className='mt-4 border-t border-slate-200 pt-3'>
@@ -193,7 +189,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 {serviceNavigation.map((item) => {
                   const Icon = item.icon;
                   const active = isActive(pathname, item.href);
-                  return <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#5eb70b]' /><span>{item.label}</span></Link>;
+                  return <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)} className={cn('admin-mobile-more-item admin-material-control flex min-h-24 flex-col justify-between rounded-2xl bg-white p-3 text-sm font-extrabold text-slate-800', active && 'is-active')}><Icon className='h-5 w-5 text-[#263b5c]' /><span>{item.label}</span></Link>;
                 })}
               </div>
             </div>
