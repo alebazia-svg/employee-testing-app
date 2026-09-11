@@ -1408,6 +1408,30 @@ select {
   box-shadow: 0 18px 44px rgba(23, 28, 36, 0.22) !important;
 }
 
+.portal-neutral-design.admin-shell .admin-disclosure-action {
+  display: inline-flex;
+  min-height: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid #d8dfe8;
+  border-radius: 0.55rem;
+  padding: 0.35rem 0.65rem;
+  color: var(--portal-action);
+  background: #f7f9fc;
+  box-shadow: 0 1px 3px rgba(38, 59, 92, 0.08);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.portal-neutral-design.admin-shell summary:hover .admin-disclosure-action,
+.portal-neutral-design.admin-shell a:hover .admin-disclosure-action {
+  border-color: #bcc8d8;
+  background: #fff;
+}
+
 .portal-neutral-design.admin-shell .admin-material-primary,
 .portal-neutral-design.admin-shell .admin-workspace :where(button, a).bg-primary,
 .portal-neutral-design.admin-shell .admin-workspace :where(button, a).bg-green-600,

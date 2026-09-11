@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, ArrowRight, Bell, CheckCircle2, Clock3, CreditCard, FileText, ShieldAlert, UserCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Bell, CalendarDays, CheckCircle2, Clock3, CreditCard, FileText, ShieldAlert, UserCheck } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminMetricCard } from '@/components/admin/AdminMetricCard';
 import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
@@ -10,7 +10,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycle';
 import { prisma } from '@/lib/prisma';
 import { getTerminalFiscalWorkdaySummary, presentTerminalFiscalWorkdaySummary } from '@/lib/terminal-fiscal-summary';
-import { getMoscowDateKey } from '@/lib/workday';
+import { formatDateLabel, getMoscowDateKey } from '@/lib/workday';
 import { cashEncashmentExceptionPrefix, isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
 
 export const dynamic = 'force-dynamic';
@@ -94,16 +94,26 @@ export default async function AdminPage() {
 
   const terminal = presentTerminalFiscalWorkdaySummary(terminalSummary);
   const terminalAttention = terminal.status !== 'confirmed' && terminal.status !== 'not_run';
+  const dashboardUpdatedAt = new Date();
+  const scheduledToday = scheduledIds.size;
+  const notStartedEmptyText = scheduledToday === 0
+    ? 'На сегодня сотрудники не запланированы'
+    : 'Все запланированные сотрудники уже начали';
 
   return (
     <AdminShell>
       <AdminPageHeader eyebrow='Операционная сводка' title='Сегодня' description='Кто работает, что требует исправления и где необходимо именно ваше решение.' />
 
+      <div className='mt-3 flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 shadow-sm'>
+        <CalendarDays className='h-4 w-4 text-[#263b5c]' />
+        <span>Данные за {formatDateLabel(today)} · обновлены в {time(dashboardUpdatedAt)}</span>
+      </div>
+
       <section className='mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4'>
-        <AdminMetricCard icon={UserCheck} label='Работают сейчас' value={todaySummary.working} detail={workingNames.join(', ') || 'Никто не начал день'} tone='green' />
-        <AdminMetricCard icon={AlertTriangle} label='Нужно моё решение' value={actions.length} detail={actions.length ? 'Откройте карточки ниже' : 'Моих действий сейчас нет'} tone={actions.length ? 'red' : 'slate'} />
-        <AdminMetricCard icon={ShieldAlert} label='Исправляют сотрудники' value={issues.length + reviews.filter((item) => item.status === 'open').length} detail={employeeProblems.length ? 'Проблемы остаются активными до исправления' : 'Активных проблем нет'} tone={employeeProblems.length ? 'amber' : 'slate'} />
-        <AdminMetricCard icon={Clock3} label='Запланированы, ещё не начали' value={todaySummary.notStarted} detail={notStartedNames.join(', ') || 'Все запланированные сотрудники уже начали'} tone='slate' />
+        <AdminMetricCard icon={UserCheck} label='Работают сейчас' value={todaySummary.working} detail={workingNames.join(', ') || 'Сейчас никто не работает'} tone='green' />
+        <AdminMetricCard icon={AlertTriangle} label='Нужно моё решение' value={actions.length} detail={actions.length ? 'Откройте карточки ниже' : 'Новых решений и сообщений нет'} tone={actions.length ? 'red' : 'slate'} />
+        <AdminMetricCard icon={ShieldAlert} label='Нужно исправить сотрудникам' value={issues.length + reviews.filter((item) => item.status === 'open').length} detail={employeeProblems.length ? 'Проблемы остаются активными до исправления' : 'Активных проблем нет'} tone={employeeProblems.length ? 'amber' : 'slate'} />
+        <AdminMetricCard icon={Clock3} label='Запланированы, ещё не начали' value={todaySummary.notStarted} detail={notStartedNames.join(', ') || notStartedEmptyText} tone='slate' />
       </section>
 
       <section className='mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)]'>
@@ -122,7 +132,7 @@ export default async function AdminPage() {
           <SectionHeader title='Команда сегодня' count={todaySummary.working + todaySummary.completed + todaySummary.notStarted} href='/admin/workday' actionLabel='Контроль дня' />
           <div className='grid gap-0 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0'>
             <TeamState label='Работают' names={workingNames} empty='Никто не работает' tone='green' />
-            <TeamState label='Ещё не начали' names={notStartedNames} empty='Все запланированные сотрудники уже начали' tone='slate' />
+            <TeamState label='Ещё не начали' names={notStartedNames} empty={notStartedEmptyText} tone='slate' />
             <TeamState label='Завершили' names={completedNames} empty='Пока никто' tone='slate' />
           </div>
         </Card>

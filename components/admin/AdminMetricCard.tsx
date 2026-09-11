@@ -30,7 +30,7 @@ export function AdminMetricCard({
         <div className='min-w-0'>
           <p className='text-[10px] font-extrabold uppercase leading-[1.25] tracking-[0.04em] text-slate-500 sm:text-xs sm:tracking-[0.08em]'>{label}</p>
           <p className='mt-1 text-2xl font-extrabold text-slate-950'>{value}</p>
-          {detail && <p className='mt-1 hidden line-clamp-2 text-xs font-medium leading-relaxed text-slate-500 sm:block'>{detail}</p>}
+          {detail && <p className='mt-1 hidden line-clamp-2 text-xs font-medium leading-relaxed text-slate-600 sm:block'>{detail}</p>}
         </div>
       </div>
     </div>

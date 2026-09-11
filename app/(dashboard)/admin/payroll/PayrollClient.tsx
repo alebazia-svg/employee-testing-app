@@ -4,6 +4,7 @@ import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useS
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Database, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
+import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -6701,11 +6702,14 @@ export default function AdminPayrollPage() {
               <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>За выбранный прошлый период нет сохранённого финального расчёта.</p>
             )}
             {!isOneCShadowBaselineLoading && !oneCShadowCalculation && !oneCShadowBaselineError && (currentFinalRun || isSelectedPayrollPeriodCurrent) && (
-              <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>
-                {isSelectedPayrollPeriodCurrent && !currentFinalRun
-                  ? `Предварительный расчёт появится после получения закрытых данных 1С за ${months[Number(month)].toLowerCase()}. Данные другого месяца не используются.`
-                  : 'Подготавливаю детализацию 1С для расчёта по сотрудникам. Если сохранён старый компактный снимок, портал безопасно обновит его без изменения ведомости.'}
-              </p>
+              isSelectedPayrollPeriodCurrent && !currentFinalRun ? (
+                <div className='rounded-xl border border-[#cfdbea] bg-[#f4f7fb] px-4 py-3 text-sm text-[#263b5c]'>
+                  <p className='font-extrabold'>Расчёт за {months[Number(month)].toLowerCase()} пока недоступен</p>
+                  <p className='mt-1 leading-relaxed'>Закрытые данные 1С за этот период ещё не получены. Ничего загружать не нужно: вернитесь после закрытия данных в 1С или выберите завершённый месяц.</p>
+                </div>
+              ) : (
+                <p className='rounded-xl bg-slate-50 p-3 text-sm text-slate-600'>Подготавливаю детализацию 1С для расчёта по сотрудникам. Если сохранён старый компактный снимок, портал безопасно обновит его без изменения ведомости.</p>
+              )
             )}
             {oneCShadowCalculation && (
               <div className='grid gap-4'>
@@ -6813,7 +6817,7 @@ export default function AdminPayrollPage() {
           </div>
         </Card>
 
-        <details className='rounded-xl border border-slate-200 bg-white shadow-sm'>
+        <details className='group rounded-xl border border-slate-200 bg-white shadow-sm'>
           <summary className='cursor-pointer list-none p-4'>
             <div className='flex items-center justify-between gap-3'>
               <div className='flex min-w-0 items-center gap-3'>
@@ -6825,11 +6829,9 @@ export default function AdminPayrollPage() {
                   <p className='truncate text-sm text-slate-500'>Себестоимость, закупки, поставщики и технические сведения</p>
                 </div>
               </div>
-              <span className='shrink-0 text-xs font-semibold text-slate-500'>
-                {oneCShadowSource
-                  ? oneCShadowSourceIsStale ? 'Предыдущие данные' : oneCShadowSource.readyForControl ? 'Проверено' : 'Нужно проверить'
-                  : 'Открыть'}
-              </span>
+              <AdminDisclosureAction closedLabel={oneCShadowSource
+                ? oneCShadowSourceIsStale ? 'Предыдущие данные' : oneCShadowSource.readyForControl ? 'Проверено' : 'Нужно проверить'
+                : 'Открыть'} />
             </div>
           </summary>
           <div className='border-t border-slate-100 p-3'>
@@ -6842,11 +6844,11 @@ export default function AdminPayrollPage() {
           </div>
         </details>
 
-        <details className='rounded-xl border border-slate-200 bg-white shadow-sm'>
+        <details className='group rounded-xl border border-slate-200 bg-white shadow-sm'>
           <summary className='cursor-pointer list-none p-4'>
             <div className='flex items-center justify-between gap-3'>
               <div className='flex min-w-0 items-center gap-3'>
-                <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-100 text-green-700'>
+                <span className='flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#edf2f8] text-[#263b5c]'>
                   <FileSpreadsheet className='h-5 w-5' />
                 </span>
                 <div className='min-w-0'>
@@ -6856,7 +6858,7 @@ export default function AdminPayrollPage() {
                   </p>
                 </div>
               </div>
-              <span className='shrink-0 text-xs font-semibold text-slate-500'>{workbook ? 'Файл загружен' : 'Раскрыть'}</span>
+              <AdminDisclosureAction closedLabel={workbook ? 'Файл загружен' : 'Открыть'} />
             </div>
           </summary>
           <div className='border-t border-slate-100 p-4'>

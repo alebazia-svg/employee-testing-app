@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { AlertTriangle, Banknote, CreditCard } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
+import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
@@ -1612,49 +1613,6 @@ export default async function AdminWorkdayPage(
           </>}
         />
 
-        <details className='admin-material-surface rounded-xl ring-1 ring-slate-200'>
-          <summary className='cursor-pointer list-none px-5 py-4'>
-            <div className='flex flex-wrap items-center justify-between gap-2'>
-              <div>
-                <p className='text-sm font-extrabold text-slate-950'>Комбинация смен · тестовый режим</p>
-                <p className='mt-1 text-xs font-semibold text-slate-500'>Наблюдение по отделу без блокировок, нарушений и влияния на зарплату.</p>
-              </div>
-              <span className='text-xs font-extrabold text-slate-500'>Показать</span>
-            </div>
-          </summary>
-          <div className='grid gap-3 border-t border-slate-200 px-5 py-4 md:grid-cols-2'>
-            {shiftCombinationEvaluations.map((evaluation) => {
-              const label = evaluation.status === 'valid'
-                ? 'Комбинация совпала'
-                : evaluation.status === 'waiting'
-                  ? 'Ожидаются отметки'
-                  : evaluation.status === 'mismatch'
-                    ? 'Необычная комбинация'
-                    : 'Недостаточно данных';
-              const expected = evaluation.expectedShiftCodes.map((code) => getShiftOption(code).label).join(' + ') || 'нет правила';
-              const actual = evaluation.actualShiftCodes.map((code) => getShiftOption(code).label).join(' + ') || 'пока нет стартов';
-              return (
-                <div key={evaluation.department} className='rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200'>
-                  <div className='flex items-center justify-between gap-3'>
-                    <p className='font-extrabold text-slate-950'>{departmentLabel(evaluation.department)}</p>
-                    <Badge className={evaluation.status === 'valid' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>{label}</Badge>
-                  </div>
-                  <dl className='mt-3 grid gap-1 text-xs font-semibold text-slate-600'>
-                    <div className='flex justify-between gap-3'><dt>По графику</dt><dd>{evaluation.scheduledCount}</dd></div>
-                    <div className='flex justify-between gap-3'><dt>Ожидается</dt><dd className='text-right'>{expected}</dd></div>
-                    <div className='flex justify-between gap-3'><dt>Выбрано</dt><dd className='text-right'>{actual}</dd></div>
-                    {evaluation.unexpectedStartCount > 0 ? (
-                      <div className='flex justify-between gap-3'><dt>Вне рабочего графика</dt><dd>{evaluation.unexpectedStartCount}</dd></div>
-                    ) : null}
-                  </dl>
-                </div>
-              );
-            })}
-          </div>
-        </details>
-
-        {showTerminalFiscalSummary && <TerminalFiscalAdminSummary summary={terminalFiscalSummary} />}
-
         {unfinishedWorkDays.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>
             <div className='flex items-start gap-3'>
@@ -1830,6 +1788,49 @@ export default async function AdminWorkdayPage(
             </div>
           )}
         </Card>
+
+        <details className='group admin-material-surface rounded-xl ring-1 ring-slate-200'>
+          <summary className='cursor-pointer list-none px-5 py-4'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <div>
+                <p className='text-sm font-extrabold text-slate-950'>Комбинация смен · тестовый режим</p>
+                <p className='mt-1 text-sm font-medium text-slate-600'>Наблюдение по отделу без блокировок, нарушений и влияния на зарплату.</p>
+              </div>
+              <AdminDisclosureAction closedLabel='Показать' />
+            </div>
+          </summary>
+          <div className='grid gap-3 border-t border-slate-200 px-5 py-4 md:grid-cols-2'>
+            {shiftCombinationEvaluations.map((evaluation) => {
+              const label = evaluation.status === 'valid'
+                ? 'Комбинация совпала'
+                : evaluation.status === 'waiting'
+                  ? 'Ожидаются отметки'
+                  : evaluation.status === 'mismatch'
+                    ? 'Необычная комбинация'
+                    : 'Недостаточно данных';
+              const expected = evaluation.expectedShiftCodes.map((code) => getShiftOption(code).label).join(' + ') || 'нет правила';
+              const actual = evaluation.actualShiftCodes.map((code) => getShiftOption(code).label).join(' + ') || 'пока нет стартов';
+              return (
+                <div key={evaluation.department} className='rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200'>
+                  <div className='flex items-center justify-between gap-3'>
+                    <p className='font-extrabold text-slate-950'>{departmentLabel(evaluation.department)}</p>
+                    <Badge className={evaluation.status === 'valid' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>{label}</Badge>
+                  </div>
+                  <dl className='mt-3 grid gap-1 text-xs font-semibold text-slate-600'>
+                    <div className='flex justify-between gap-3'><dt>По графику</dt><dd>{evaluation.scheduledCount}</dd></div>
+                    <div className='flex justify-between gap-3'><dt>Ожидается</dt><dd className='text-right'>{expected}</dd></div>
+                    <div className='flex justify-between gap-3'><dt>Выбрано</dt><dd className='text-right'>{actual}</dd></div>
+                    {evaluation.unexpectedStartCount > 0 ? (
+                      <div className='flex justify-between gap-3'><dt>Вне рабочего графика</dt><dd>{evaluation.unexpectedStartCount}</dd></div>
+                    ) : null}
+                  </dl>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+
+        {showTerminalFiscalSummary && <TerminalFiscalAdminSummary summary={terminalFiscalSummary} />}
 
         {vacationHistory.length > 0 && (
           <details className='group rounded-xl bg-white ring-1 ring-slate-200'>
@@ -2263,7 +2264,7 @@ export default async function AdminWorkdayPage(
         </Card>
 
           </div>
-        </details> : <Link href={`/admin/workday?date=${selectedDate}&technical=1#kkm-assignments`} className='flex items-center justify-between gap-3 rounded-xl bg-white px-5 py-4 text-sm font-extrabold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-950'><span><span className='block text-slate-950'>Служебные настройки</span><span className='mt-0.5 block text-xs font-semibold text-slate-500'>Привязки касс, наличные по 1С и технические таблицы</span></span><span>Открыть →</span></Link>}
+        </details> : <Link href={`/admin/workday?date=${selectedDate}&technical=1#kkm-assignments`} className='flex items-center justify-between gap-3 rounded-xl bg-white px-5 py-4 text-sm font-extrabold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-950'><span><span className='block text-slate-950'>Служебные настройки</span><span className='mt-0.5 block text-sm font-medium text-slate-600'>Привязки касс, наличные по 1С и технические таблицы</span></span><span className='admin-disclosure-action'>Открыть <span aria-hidden='true'>→</span></span></Link>}
 
       </div>
     </AdminShell>
