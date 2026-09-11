@@ -45,7 +45,7 @@ export function ProcurementDataRefresh({
       type='button'
       onClick={() => refresh(true)}
       disabled={isPending}
-      className='admin-material-control inline-flex min-h-9 items-center gap-2 rounded-xl bg-white px-3 py-2 text-left text-xs font-semibold text-slate-500 transition hover:text-slate-800 disabled:cursor-wait disabled:opacity-70'
+      className='admin-material-control procurement-data-refresh inline-flex min-h-9 self-start items-center gap-2 rounded-xl bg-white px-3 py-2 text-left text-xs font-semibold text-slate-500 transition hover:text-slate-800 disabled:cursor-wait disabled:opacity-70 sm:self-auto'
       title='Обновить данные сейчас'
     >
       <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${isPending ? 'animate-spin' : ''}`} />

@@ -1114,3 +1114,137 @@ select {
   mask: url('/offonika-wordmark-print.png') center / 100% 100% no-repeat;
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.32)) drop-shadow(0 2px 1px rgba(40, 111, 16, 0.2));
 }
+
+/* Approved neutral identity, scoped to the procurement employee cabinet. */
+.portal-neutral-design {
+  --portal-canvas: #f2efe9;
+  --portal-surface: #fffdf9;
+  --portal-surface-muted: #f7f3ec;
+  --portal-border: #d8d1c6;
+  --portal-text: #202936;
+  --portal-text-muted: #667085;
+  --portal-action: #263b5c;
+  --portal-action-hover: #1d304e;
+  --portal-action-soft: #edf2f8;
+  --portal-brand-accent: #efbd37;
+  --portal-focus-ring: rgba(38, 59, 92, 0.2);
+}
+
+.portal-neutral-design.procurement-shell {
+  background:
+    radial-gradient(circle at 9% 0%, rgba(239, 189, 55, 0.08), transparent 24rem),
+    var(--portal-canvas);
+}
+
+.portal-neutral-design.procurement-shell .admin-workspace {
+  background:
+    radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.72), transparent 28%),
+    linear-gradient(145deg, #faf8f4 0%, var(--portal-canvas) 56%, #ebe5dc 100%);
+}
+
+.portal-neutral-design.procurement-shell .procurement-shell-header {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(239, 189, 55, 0.1), transparent 15rem),
+    linear-gradient(150deg, #272e38 0%, #171c24 72%, #11151b 100%);
+  box-shadow: 0 14px 34px rgba(23, 28, 36, 0.18), inset 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-label {
+  color: #fff;
+}
+
+.portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-mark {
+  background: #303844;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 7px 18px rgba(0, 0, 0, 0.28);
+}
+
+.portal-neutral-design.procurement-shell .procurement-shell-header .admin-account-chip {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.portal-neutral-design.procurement-shell .procurement-shell-header .admin-account-chip > div:first-child {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.portal-neutral-design.procurement-shell .procurement-shell-header .admin-account-chip p:first-child {
+  color: #fff;
+}
+
+.portal-neutral-design.procurement-shell .procurement-shell-header .admin-account-chip p:nth-child(2) {
+  color: #b8c0cb;
+}
+
+.portal-neutral-design.procurement-shell .procurement-notification-trigger,
+.portal-neutral-design.procurement-shell .procurement-header-logout {
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #e9edf2 !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05) !important;
+}
+
+.portal-neutral-design.procurement-shell .procurement-notification-trigger:hover,
+.portal-neutral-design.procurement-shell .procurement-header-logout:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.13) !important;
+}
+
+.portal-neutral-design.procurement-shell .procurement-notification-trigger > span {
+  box-shadow: 0 0 0 2px #171c24;
+}
+
+.portal-neutral-design.procurement-shell .procurement-data-refresh {
+  border: 1px solid rgba(38, 59, 92, 0.1);
+  color: #637083;
+  background: rgba(237, 242, 248, 0.74);
+  box-shadow: none;
+}
+
+.portal-neutral-design.procurement-shell .procurement-data-refresh:hover {
+  border-color: rgba(38, 59, 92, 0.2);
+  color: var(--portal-action);
+  background: var(--portal-action-soft);
+}
+
+@media (max-width: 519px) {
+  .portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-label {
+    display: none;
+  }
+}
+
+.portal-neutral-design.procurement-shell .admin-material-primary {
+  border-color: var(--portal-action) !important;
+  color: #fff !important;
+  background: var(--portal-action) !important;
+  box-shadow: 0 8px 18px rgba(27, 32, 40, 0.2), inset 0 1px rgba(255, 255, 255, 0.2) !important;
+}
+
+.portal-neutral-design.procurement-shell .admin-material-primary:hover {
+  background: var(--portal-action-hover) !important;
+  transform: none;
+}
+
+.portal-neutral-design.procurement-shell .procurement-calendar-icon,
+.portal-neutral-design.procurement-shell .procurement-text-action:hover {
+  color: var(--portal-action);
+}
+
+.portal-neutral-design.procurement-shell .procurement-secondary-action:hover {
+  border-color: var(--portal-action);
+  color: var(--portal-action);
+  background: var(--portal-action-soft);
+}
+
+.portal-neutral-design.procurement-shell .procurement-order-selected {
+  background: color-mix(in srgb, var(--portal-action-soft) 78%, white);
+}
+
+.portal-neutral-design.procurement-shell .procurement-order-check {
+  color: white;
+  background: var(--portal-action);
+}

@@ -100,7 +100,7 @@ export function ProcurementNotificationsButton() {
         onClick={() => setOpen((current) => !current)}
         aria-label="Уведомления"
         aria-expanded={open}
-        className="admin-material-control relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 transition hover:-translate-y-0.5 hover:text-slate-950"
+        className="admin-material-control procurement-notification-trigger relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 transition hover:-translate-y-0.5 hover:text-slate-950"
       >
         <Bell className="h-5 w-5" />
         {items.length > 0 ? (

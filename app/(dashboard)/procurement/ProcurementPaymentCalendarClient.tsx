@@ -438,7 +438,7 @@ export default function ProcurementPaymentCalendarClient({
           {!mappingBlocked && !sourceError && !formOpen ? (
             <button
               onClick={() => openNew()}
-              className="admin-material-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 font-black text-white"
+              className="admin-material-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-black text-white"
             >
               <Plus className="h-5 w-5" />
               Добавить оплаты
@@ -493,7 +493,7 @@ export default function ProcurementPaymentCalendarClient({
               <div key={key}>
                 <div className="mb-2 flex items-center gap-2">
                   <CalendarDays
-                    className={`h-4 w-4 ${key < todayKey ? "text-red-600" : "text-[#58a908]"}`}
+                    className={`h-4 w-4 ${key < todayKey ? "text-red-600" : "procurement-calendar-icon"}`}
                   />
                   <h3
                     className={`text-sm font-black uppercase tracking-wide ${key < todayKey ? "text-red-700" : "text-slate-700"}`}
@@ -570,8 +570,8 @@ export default function ProcurementPaymentCalendarClient({
               </div>
             ))
           ) : (
-            <div className="rounded-2xl bg-slate-50 p-6 text-center">
-              <CalendarDays className="mx-auto h-7 w-7 text-slate-400" />
+            <div className="rounded-2xl bg-slate-50 p-5 text-center">
+              <CalendarDays className="mx-auto h-6 w-6 text-slate-400" />
               <p className="mt-2 font-black text-slate-700">Заявок пока нет</p>
               <p className="mt-1 text-sm text-slate-500">
                 Экран пуст, потому что оплаты ещё не вносили.
@@ -582,7 +582,7 @@ export default function ProcurementPaymentCalendarClient({
             <button
               type="button"
               onClick={() => openNew()}
-              className="flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-3 text-sm font-black text-slate-600 transition hover:border-green-400 hover:bg-green-50/50 hover:text-green-800"
+              className="procurement-secondary-action flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-3 text-sm font-black text-slate-600 transition"
             >
               <Plus className="h-4 w-4" />
               {workingPlans.length ? "Добавить ещё одну оплату" : "Добавить первую оплату"}
@@ -633,7 +633,7 @@ export default function ProcurementPaymentCalendarClient({
                   <button
                     type="button"
                     onClick={() => openNew(order.supplierPartner, [order.ref])}
-                    className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 transition hover:bg-green-50 hover:text-green-800"
+                    className="procurement-secondary-action inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 transition"
                   >
                     <Plus className="h-4 w-4" />
                     Запланировать
@@ -651,7 +651,7 @@ export default function ProcurementPaymentCalendarClient({
             <button
               type="button"
               onClick={() => setShowAllReviewOrders((current) => !current)}
-              className="mt-2 text-sm font-black text-slate-600 hover:text-green-800"
+              className="procurement-text-action mt-2 text-sm font-black text-slate-600"
             >
               {showAllReviewOrders
                 ? "Свернуть список"
@@ -894,7 +894,7 @@ export default function ProcurementPaymentCalendarClient({
                       : !draft.plannedAmount
                   )
                 }
-                className="admin-material-primary rounded-xl bg-green-600 px-5 py-3 font-black text-white disabled:opacity-40"
+                className="admin-material-primary rounded-xl px-5 py-3 font-black text-white disabled:opacity-40"
               >
                 {saving
                   ? "Сохраняю…"

@@ -264,12 +264,12 @@ export function ProcurementPaymentBatchForm({
                     });
                   }}
                   aria-pressed={rows[order.ref]?.selected}
-                  className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 hover:bg-slate-50 ${rows[order.ref]?.selected ? "bg-green-50/60" : ""}`}
+                  className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 hover:bg-slate-50 ${rows[order.ref]?.selected ? "procurement-order-selected" : ""}`}
                 >
                   <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">Заказ № {order.number || "без номера"}</span><OrderComment value={order.orderComment} compact /><span className="block text-[11px] font-semibold text-slate-400">{supplierBalanceText(order.supplierPartner)}</span></span>
                   <span className="flex shrink-0 items-center gap-2">
                     <span className="text-sm font-extrabold text-slate-700">{rub.format(order.unplannedAmount)}</span>
-                    <span className={`flex h-8 w-8 items-center justify-center rounded-full ${rows[order.ref]?.selected ? "bg-green-600 text-white" : "bg-slate-100 text-slate-700"}`} aria-hidden="true">
+                    <span className={`flex h-8 w-8 items-center justify-center rounded-full ${rows[order.ref]?.selected ? "procurement-order-check" : "bg-slate-100 text-slate-700"}`} aria-hidden="true">
                       {rows[order.ref]?.selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                     </span>
                   </span>
@@ -396,7 +396,7 @@ export function ProcurementPaymentBatchForm({
       {message ? <p className="text-sm font-bold text-red-600">{message}</p> : null}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <button type="button" onClick={onCancel} className="rounded-xl bg-slate-100 px-5 py-3 font-black text-slate-700">Отмена</button>
-        <button disabled={saving || !plannedDate || !selected.length} className="admin-material-primary rounded-xl bg-green-600 px-5 py-3 font-black text-white disabled:opacity-40">
+        <button disabled={saving || !plannedDate || !selected.length} className="admin-material-primary rounded-xl px-5 py-3 font-black text-white disabled:opacity-40">
           {saving ? "Сохраняю…" : `Передать на согласование · ${selected.length}`}
         </button>
       </div>
