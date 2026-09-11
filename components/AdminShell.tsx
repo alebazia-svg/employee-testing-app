@@ -52,7 +52,7 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
       )}
     >
       <Icon className={cn('h-5 w-5 shrink-0 md:h-[21px] md:w-[21px]', active ? 'text-[#263b5c]' : 'text-slate-300')} />
-      <span className={cn('leading-tight md:whitespace-nowrap', sidebarCollapsed && 'md:hidden')}>{item.label}</span>
+      <span className={cn('min-w-0 truncate leading-tight md:whitespace-nowrap', sidebarCollapsed && 'md:hidden')}>{item.label}</span>
     </Link>
   );
 }
@@ -90,7 +90,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <aside
         className={cn(
           'admin-sidebar hidden border-b border-white/10 p-4 text-white transition-[width] duration-200 md:fixed md:inset-y-0 md:left-0 md:z-30 md:flex md:h-screen md:flex-col md:border-b-0',
-          sidebarCollapsed ? 'md:w-[76px] md:p-4' : 'md:w-[228px] md:p-4',
+          sidebarCollapsed ? 'md:w-[76px] md:p-4' : 'md:w-[240px] md:p-4',
         )}
       >
         <div className={cn('flex items-center justify-between gap-3', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:flex-row')}>
@@ -108,7 +108,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <LogoutButton className='shrink-0 gap-2 bg-white/8 text-white ring-1 ring-white/10 hover:bg-white/12 md:hidden' />
         </div>
 
-        <nav className={cn('mt-5 min-h-0 overflow-y-auto md:flex md:flex-1 md:flex-col md:pr-1', sidebarCollapsed ? 'md:mt-7' : 'md:mt-6')}>
+        <nav className={cn('mt-5 min-h-0 overflow-x-hidden overflow-y-auto md:flex md:flex-1 md:flex-col md:pr-1', sidebarCollapsed ? 'md:mt-7' : 'md:mt-6')}>
           <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-1'>
             {dailyNavigation.map((item) => <NavigationLink key={item.href} item={item} pathname={pathname} sidebarCollapsed={sidebarCollapsed} />)}
           </div>
@@ -140,7 +140,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <section className={cn('admin-workspace min-w-0 px-3 pb-28 pt-4 transition-[margin] duration-200 sm:px-4 md:min-h-screen md:rounded-l-[24px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[228px]')}>
+      <section className={cn('admin-workspace min-w-0 px-3 pb-28 pt-4 transition-[margin] duration-200 sm:px-4 md:min-h-screen md:rounded-l-[24px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[240px]')}>
         <div className='flex min-h-[calc(100vh-4rem)] w-full max-w-none flex-col'>
           <div className='mb-3 hidden items-center justify-end gap-3 md:flex'>
             <AdminInboxBell />
@@ -154,7 +154,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className='flex-1'>{children}</div>
           <footer className='mt-8 flex flex-col gap-2 border-t border-slate-200/80 pt-5 text-xs font-medium text-slate-500 sm:flex-row sm:items-center sm:justify-between'>
-            <span>© 2026 <span className='font-extrabold text-[#263b5c]'>Портал команды</span>. Все права защищены.</span>
+            <span>© 2026 <span className='font-extrabold text-[#263b5c]'>МОБО · Центр управления</span>. Все права защищены.</span>
             <span>Версия 1.0.0</span>
           </footer>
         </div>

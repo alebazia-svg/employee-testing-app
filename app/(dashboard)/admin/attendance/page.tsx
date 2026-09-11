@@ -547,6 +547,14 @@ function planStats(rows: PlanFactRow[]) {
   ];
 }
 
+function summaryIconTone(label: string) {
+  const normalized = label.toLocaleLowerCase('ru-RU');
+  if (label === 'Нет явки по графику' || label === 'Дней с неполными отметками') return 'bg-rose-50 text-rose-700';
+  if (normalized.includes('опоздан') || label === 'Нет отметки ухода' || label === 'Работ вне графика') return 'bg-amber-50 text-amber-700';
+  if (label === 'Явок подтверждено' || label === 'Полных дней' || label === 'Общее отработанное время') return 'bg-emerald-50 text-emerald-700';
+  return 'bg-[#edf2f8] text-[#263b5c]';
+}
+
 function FilterBar({
   months,
   employees,
@@ -957,7 +965,7 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
             const Icon = item.icon;
             return (
               <Card key={item.label} className='flex items-center gap-3 p-4'>
-                <div className='flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-700'>
+                <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${summaryIconTone(item.label)}`}>
                   <Icon className='h-5 w-5' />
                 </div>
                 <div>

@@ -7202,7 +7202,10 @@ export default function AdminPayrollPage() {
                     {isSavedPeriodsLoading ? (
                       <p className='text-sm text-slate-500'>Загружаю сохранённые расчёты...</p>
                     ) : savedPeriods.length === 0 ? (
-                      <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>Сохранённых расчётов пока нет.</p>
+                      <div className='rounded-xl border border-slate-200 bg-white px-4 py-4'>
+                        <p className='text-sm font-bold text-slate-800'>Список расчётов пока пуст</p>
+                        <p className='mt-1 text-xs font-medium text-slate-500'>Для выбранного месяца нет сохранённой ведомости. После первого сохранения расчёт появится здесь.</p>
+                      </div>
                     ) : (
                       <div className='grid gap-2'>
                         {savedPeriods.slice(0, 6).map((period) => {
@@ -8709,7 +8712,10 @@ export default function AdminPayrollPage() {
               {isSavedPeriodsLoading ? (
                 <p className='text-sm text-slate-500'>Загружаю сохранённые расчёты...</p>
               ) : savedPeriods.length === 0 ? (
-                <p className='rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm text-slate-600'>Сохранённых расчётов пока нет.</p>
+                <div className='rounded-xl border border-slate-200 bg-white px-4 py-4'>
+                  <p className='text-sm font-bold text-slate-800'>Список расчётов пока пуст</p>
+                  <p className='mt-1 text-xs font-medium text-slate-500'>Для выбранного месяца нет сохранённой ведомости. После первого сохранения расчёт появится здесь.</p>
+                </div>
               ) : (
                 <div className='grid gap-2'>
                   {savedPeriods.slice(0, 6).map((period) => {
