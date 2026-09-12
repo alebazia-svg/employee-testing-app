@@ -11,7 +11,6 @@ import {
   ClockCircleIcon as PremiumClockIcon,
   ClipboardCheckIcon as PremiumClipboardCheckIcon,
   DangerTriangleIcon as PremiumDangerTriangleIcon,
-  UserRoundedIcon as PremiumUserIcon,
   UsersGroupRoundedIcon as PremiumUsersGroupIcon,
 } from '@solar-icons/react/bold-duotone';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -620,7 +619,7 @@ function WorkdayQrScanner({
 function scheduleTone(status: string | null | undefined) {
   if (status === 'working') return 'employee-material-status employee-material-status-green';
   if (status === 'off') return 'employee-material-status employee-material-status-slate';
-  return 'employee-material-status employee-material-status-amber';
+  return 'employee-material-status employee-material-status-unselected';
 }
 
 function scheduleLabel(status: string | null | undefined) {
@@ -1083,13 +1082,13 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
 
 function ColleaguesGlyph() {
   return (
-    <span className='relative block h-8 w-8' aria-hidden='true'>
-      <span className='absolute bottom-0 right-[-1px] flex h-6 w-6'>
-        <PremiumUserIcon color='#68ce4f' secondaryColor='#b7e9ac' secondaryOpacity={0.96} className='h-full w-full' />
-      </span>
-      <span className='absolute bottom-0 left-[-1px] z-[1] flex h-6 w-6'>
-        <PremiumUserIcon color='#278f18' secondaryColor='#68ce4f' secondaryOpacity={0.96} className='h-full w-full' />
-      </span>
+    <span className='flex h-8 w-8 items-center justify-center' aria-hidden='true'>
+      <PremiumUsersGroupIcon
+        color='var(--portal-brand-strong)'
+        secondaryColor='var(--portal-brand-accent)'
+        secondaryOpacity={0.96}
+        className='h-7 w-7'
+      />
     </span>
   );
 }
@@ -2854,7 +2853,7 @@ export function EmployeeTodayClient({
     }
 
     return (
-      <div className='employee-material-subcard mt-2 grid gap-2 rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200/80'>
+      <div className='employee-material-subcard employee-material-task-form mt-2 grid gap-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/80'>
         {isCash && (
           <div className='grid gap-2'>
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
@@ -3032,7 +3031,7 @@ export function EmployeeTodayClient({
         <div className={cn('grid gap-2', photoCompletesTaskAutomatically ? 'grid-cols-1' : 'grid-cols-2')}>
           <Button
             type='button'
-            className='h-9 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
+            className='employee-material-secondary-action min-h-11 text-sm font-extrabold'
             onClick={() => {
               setOpenShiftTaskId(null);
               setEditingShiftTaskId(null);
@@ -3043,7 +3042,7 @@ export function EmployeeTodayClient({
             Назад
           </Button>
           {!photoCompletesTaskAutomatically && (
-            <Button type='button' className='h-9 text-xs font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
+            <Button type='button' className='employee-material-primary-action min-h-11 text-sm font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
               {isEditing ? 'Сохранить исправление' : 'Сохранить результат'}
             </Button>
           )}
@@ -3371,7 +3370,7 @@ export function EmployeeTodayClient({
               <HandoverIcon className='h-[26px] w-[26px]' />
             </span>
             <div>
-              <p className='text-xs font-extrabold uppercase text-green-700'>{sectionTitle}</p>
+              <p className='text-xs font-extrabold uppercase text-slate-600'>{sectionTitle}</p>
               <h3 className='mt-0.5 text-base font-extrabold text-slate-950'>{handoverStepTitle[step] ?? `Шаг ${handoverStep + 1} из ${handoverSteps.length}`}</h3>
               <p className='mt-1 text-xs font-semibold leading-snug text-slate-500'>
                 {step === 'reserveCashBalance' ? 'Общий резерв' : 'Только ваша касса'}
@@ -3701,16 +3700,15 @@ export function EmployeeTodayClient({
         const reasons = isLate ? lateArrivalReasons : earlyFinishReasons;
         const valid = Boolean(deviationReason) && (deviationReason !== 'other' || Boolean(deviationComment.trim()));
         return (
-          <div className='fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label={isLate ? 'Причина опоздания' : 'Завершить раньше'}>
+          <div className='fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label={isLate ? 'Опоздание' : 'Завершить раньше'}>
             <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
               <BottomSheetDragHandle onDismiss={() => setDeviationSheetKind(null)} disabled={isSaving} />
               <div className='flex items-start justify-between gap-3'>
                 <div className='min-w-0'>
-                  <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>Рабочий день</p>
-                  <h2 className='mt-1 text-2xl font-black leading-tight text-slate-950'>{isLate ? 'Причина опоздания' : 'Завершить раньше'}</h2>
-                  <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>{isLate ? 'Выберите короткую причину, чтобы продолжить.' : 'Укажите время — откроется сдача смены.'}</p>
+                  <h2 className='employee-material-sheet-title text-2xl font-black leading-tight text-slate-950'>{isLate ? 'Опоздание' : 'Завершить раньше'}</h2>
+                  <p className='employee-material-sheet-description mt-1 text-sm font-semibold leading-snug text-slate-500'>{isLate ? 'Начало смены уже зафиксировано.' : 'Укажите время — откроется сдача смены.'}</p>
                 </div>
-                <button type='button' onClick={() => setDeviationSheetKind(null)} disabled={isSaving} className='flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'>
+                <button type='button' onClick={() => setDeviationSheetKind(null)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'>
                   <X className='h-5 w-5' />
                 </button>
               </div>
@@ -3725,10 +3723,10 @@ export function EmployeeTodayClient({
                   </label>
                 )}
                 <fieldset className='employee-material-form rounded-xl p-3'>
-                  <legend className='px-1 text-sm font-extrabold text-slate-800'>Причина</legend>
+                  <legend className='px-1 text-sm font-extrabold text-slate-800'>{isLate ? 'Почему опоздали?' : 'Почему завершаете раньше?'}</legend>
                   <div className='mt-1 grid grid-cols-2 gap-2'>
                     {Object.entries(reasons).map(([value, label]) => (
-                      <button key={value} type='button' onClick={() => setDeviationReason(value)} className={cn('flex h-14 items-center justify-center rounded-xl px-2 text-center text-xs font-extrabold leading-tight ring-1 transition', value === 'other' && 'col-span-2', deviationReason === value ? 'bg-green-100 text-green-900 ring-green-300' : 'bg-white text-slate-600 ring-slate-200')}>{label}</button>
+                      <button key={value} type='button' aria-pressed={deviationReason === value} onClick={() => setDeviationReason(value)} className={cn('employee-material-reason-choice flex h-14 items-center justify-center rounded-xl px-2 text-center text-sm font-bold leading-tight ring-1 transition', value === 'other' && 'col-span-2', deviationReason === value ? 'is-selected bg-blue-50 text-slate-900 ring-blue-300' : 'bg-white text-slate-600 ring-slate-200')}>{label}</button>
                     ))}
                   </div>
                   {deviationReason === 'other' && <textarea value={deviationComment} onChange={(event) => setDeviationComment(event.target.value)} rows={2} className='mt-3 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100' placeholder='Коротко опишите причину' />}
@@ -3942,7 +3940,7 @@ export function EmployeeTodayClient({
               <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setVacationEditorOpen(false)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
-                  <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>График</p>
+                  <p className='text-xs font-black uppercase tracking-[0.14em] text-slate-600'>График</p>
                   <button type='button' className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100' aria-label='Закрыть без изменений' disabled={isSaving} onClick={() => setVacationEditorOpen(false)}>
                     <X className='h-5 w-5' />
                   </button>
@@ -3990,7 +3988,7 @@ export function EmployeeTodayClient({
               <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setEditingScheduleDate(null)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
-                  <p className='text-xs font-black uppercase tracking-[0.14em] text-green-700'>Изменить мой день</p>
+                  <p className='text-xs font-black uppercase tracking-[0.14em] text-slate-600'>Изменить мой день</p>
                   <button
                     type='button'
                     className='flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100'
@@ -4007,9 +4005,9 @@ export function EmployeeTodayClient({
                   <Button
                     type='button'
                     className={cn(
-                      'h-14 rounded-xl text-base font-black',
+                      'employee-material-schedule-choice h-14 rounded-xl text-base font-black',
                       ownScheduleByDate.get(editingScheduleDate)?.status === 'working'
-                        ? 'employee-material-green-action'
+                        ? 'is-working'
                         : 'employee-material-secondary-action text-slate-800',
                     )}
                     disabled={isSaving}
@@ -4020,9 +4018,9 @@ export function EmployeeTodayClient({
                   <Button
                     type='button'
                     className={cn(
-                      'h-14 rounded-xl text-base font-black',
+                      'employee-material-schedule-choice h-14 rounded-xl text-base font-black',
                       ownScheduleByDate.get(editingScheduleDate)?.status === 'off'
-                        ? 'bg-slate-800 text-white hover:bg-slate-900'
+                        ? 'is-off'
                         : 'employee-material-secondary-action text-slate-800',
                     )}
                     disabled={isSaving}
@@ -4092,7 +4090,7 @@ export function EmployeeTodayClient({
               <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setBulkScheduleConfirmOpen(false)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
-                  <p className='text-xs font-black uppercase tracking-[0.12em] text-green-700'>{monthTitle(calendarMonth)}</p>
+                  <p className='text-xs font-black uppercase tracking-[0.12em] text-slate-600'>{monthTitle(calendarMonth)}</p>
                   <button type='button' className='shrink-0 text-xs font-extrabold text-slate-500' onClick={() => setBulkScheduleConfirmOpen(false)}>Изменить выбор</button>
                 </div>
                 <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>{bulkScheduleKind === 'edit' ? 'Проверьте изменения' : 'Проверьте график'}</h2>
@@ -4204,15 +4202,6 @@ export function EmployeeTodayClient({
                       onClick={() => { setDeviationReason(''); setDeviationComment(''); setDeviationSheetKind('late_arrival'); }}
                     >
                       Указать причину опоздания
-                    </button>
-                  )}
-                  {activeWorkDay && shiftControlState.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) < shiftEnd && (
-                    <button
-                      type='button'
-                      className='mx-auto w-fit px-2 py-1 text-xs font-extrabold text-slate-500 underline decoration-slate-300 underline-offset-4'
-                      onClick={openEarlyFinishSheet}
-                    >
-                      Завершить раньше
                     </button>
                   )}
                   {earlyFinishDeviation && (
@@ -4593,6 +4582,18 @@ export function EmployeeTodayClient({
                   >
                     Изменить смену
                   </button>
+                )}
+                {activeWorkDay && shiftControlState.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) < shiftEnd && (
+                  <div className='mt-3 border-t border-slate-200 pt-1'>
+                    <button
+                      type='button'
+                      className='employee-material-day-change-in-details inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-[#455a78]'
+                      onClick={openEarlyFinishSheet}
+                    >
+                      Завершить раньше
+                      <ChevronRight className='h-4 w-4' aria-hidden='true' />
+                    </button>
+                  </div>
                 )}
               </Card>}
 

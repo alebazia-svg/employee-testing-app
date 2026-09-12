@@ -29,7 +29,7 @@ export function EmployeePortalHeader({
           <PremiumUserIcon
             color='var(--portal-brand-strong)'
             secondaryColor='var(--portal-brand-accent)'
-            secondaryOpacity={0.92}
+            secondaryOpacity={0.96}
             className='employee-material-profile-glyph'
             aria-hidden='true'
           />

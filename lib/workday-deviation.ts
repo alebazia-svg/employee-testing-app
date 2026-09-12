@@ -2,14 +2,14 @@ export const lateArrivalThresholdMinutes = 6;
 
 export const lateArrivalReasons = {
   forgot_mark: 'Забыл отметить начало',
-  personal: 'Личная причина',
+  personal: 'Личные обстоятельства',
   connection: 'Не было интернета',
   portal: 'Портал не открывался',
   other: 'Другое',
 } as const;
 
 export const earlyFinishReasons = {
-  personal: 'Личная причина',
+  personal: 'Личные обстоятельства',
   health: 'Самочувствие',
   other: 'Другое',
 } as const;

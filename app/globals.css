@@ -592,6 +592,13 @@ select {
   background: linear-gradient(145deg, rgba(247, 247, 243, 0.97), rgba(220, 222, 219, 0.9)) !important;
 }
 
+.employee-material-status-unselected {
+  border-color: #dfe4ea !important;
+  color: #667085 !important;
+  background: #fbfcfe !important;
+  box-shadow: none !important;
+}
+
 .employee-material-status-strip {
   border: 1px solid rgba(255, 255, 255, 0.82);
   background: linear-gradient(145deg, rgba(240, 251, 236, 0.95), rgba(214, 239, 205, 0.86));
@@ -1954,6 +1961,13 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
   --solar-secondary-color: var(--portal-brand-accent) !important;
 }
 
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-profile-glyph {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  filter: none;
+}
+
 .portal-neutral-design.employee-material-ui .employee-material-tab.is-active {
   color: var(--portal-action) !important;
   background: transparent !important;
@@ -2156,21 +2170,6 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
   transform: translateX(-50%);
 }
 
-.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-day-change {
-  border: 1px solid #dce4ee !important;
-  border-radius: 999px !important;
-  color: #455a78 !important;
-  background: #f4f7fb !important;
-  background-image: none !important;
-  box-shadow: none !important;
-  text-decoration: none !important;
-}
-
-.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-day-change:hover {
-  border-color: #c9d5e4 !important;
-  background: #edf2f8 !important;
-}
-
 .portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-form,
 .portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-secondary-action {
   border-radius: 14px !important;
@@ -2216,6 +2215,92 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
 
 .portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-calendar-day {
   border-radius: 9px !important;
+}
+
+/* Keep secondary actions and form controls consistent across the employee PWA. */
+.portal-neutral-design.employee-material-ui.portal-palette-mobo button.employee-material-secondary-action.bg-primary {
+  border: 1px solid #d9e0e8 !important;
+  color: #263b5c !important;
+  background: #f8fafc !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo button.employee-material-secondary-action.bg-primary:hover,
+.portal-neutral-design.employee-material-ui.portal-palette-mobo button.employee-material-secondary-action.bg-primary:active {
+  border-color: #c6d2e1 !important;
+  color: #263b5c !important;
+  background: #edf2f8 !important;
+  box-shadow: none !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-task-form {
+  border: 1px solid #d9e0e8 !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-task-form :is(input:not([type='file']):not([type='checkbox']):not([type='radio']), textarea, select),
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-sheet :is(input:not([type='file']):not([type='checkbox']):not([type='radio']), textarea, select),
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-form :is(input:not([type='file']):not([type='checkbox']):not([type='radio']), textarea, select) {
+  min-height: 44px;
+  border: 1px solid #d9e0e8 !important;
+  color: #263b5c !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-task-form :is(input:not([type='file']):not([type='checkbox']):not([type='radio']), textarea, select):focus,
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-sheet :is(input:not([type='file']):not([type='checkbox']):not([type='radio']), textarea, select):focus,
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-form :is(input:not([type='file']):not([type='checkbox']):not([type='radio']), textarea, select):focus {
+  border-color: #7893b5 !important;
+  box-shadow: 0 0 0 3px rgba(38, 59, 92, 0.16) !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-primary-action {
+  border-color: #203451 !important;
+  color: #ffffff !important;
+  background: #263b5c !important;
+  background-image: none !important;
+  box-shadow: 0 5px 14px rgba(38, 59, 92, 0.2) !important;
+  text-shadow: none !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-primary-action:hover {
+  background: #1d304e !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-scan-frame {
+  border-color: #7893b5 !important;
+  box-shadow: 0 0 0 999px rgba(12, 18, 21, 0.5), 0 0 24px rgba(38, 59, 92, 0.1) !important;
+}
+
+/* Status colors represent saved schedule choices, not the action to select them. */
+.portal-neutral-design.employee-material-ui.portal-palette-mobo button.employee-material-schedule-choice {
+  border: 1px solid #d9e0e8 !important;
+  color: #263b5c !important;
+  background: #f8fafc !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo button.employee-material-schedule-choice.is-working {
+  border-color: #b9ddc5 !important;
+  color: #20653a !important;
+  background: #eef8f1 !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo button.employee-material-schedule-choice.is-off {
+  border-color: #cbd5e1 !important;
+  color: #344054 !important;
+  background: #f1f5f9 !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo button.employee-material-schedule-choice.is-working:hover,
+.portal-neutral-design.employee-material-ui.portal-palette-mobo button.employee-material-schedule-choice.is-off:hover {
+  filter: brightness(0.97);
 }
 
 /* Semantic markers are intentionally distinct from flat informational icons. */

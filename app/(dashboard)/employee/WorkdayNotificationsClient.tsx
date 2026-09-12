@@ -41,7 +41,10 @@ function NotificationMarker({ notification }: { notification: WorkdayNotificatio
       ? <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
       : <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
   }
-  if (['planned', 'overdue', 'overdue_repeat'].includes(notification.kind)) {
+  if (notification.kind === 'planned') {
+    return <span className='employee-material-state-marker employee-material-state-marker-info flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><PremiumClockIcon color='#455b78' secondaryColor='#b9cbe0' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
+  }
+  if (['overdue', 'overdue_repeat'].includes(notification.kind)) {
     return <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumClockIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
   }
   return <span className='employee-material-state-marker employee-material-state-marker-info flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><PremiumClockIcon color='#455b78' secondaryColor='#b9cbe0' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
