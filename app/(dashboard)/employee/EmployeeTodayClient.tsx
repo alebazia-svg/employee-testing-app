@@ -440,6 +440,10 @@ type CashOperationDraft = {
   idempotencyKey: string;
 };
 
+const EMPTY_CASH_FORM_IDLE_MS = 2 * 60_000;
+const CASH_FORM_BACKGROUND_RESET_MS = 5 * 60_000;
+const OTHER_TASKS_IDLE_MS = 45_000;
+
 const tabs: Array<{ id: Tab; label: string; icon: typeof PremiumClockIcon }> = [
   { id: 'day', label: 'Рабочий день', icon: PremiumClockIcon },
   { id: 'schedule', label: 'График', icon: PremiumCalendarIcon },
@@ -1221,6 +1225,7 @@ export function EmployeeTodayClient({
   const [cashEncashmentExceptionComment, setCashEncashmentExceptionComment] = useState('');
   const [showCashEncashmentExceptionForm, setShowCashEncashmentExceptionForm] = useState(false);
   const [cashOperationDraft, setCashOperationDraft] = useState<CashOperationDraft>({ direction: null, amount: '', comment: '', idempotencyKey: '' });
+  const [cashFormFocused, setCashFormFocused] = useState(false);
   const [selectedShift, setSelectedShift] = useState('');
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const [qrDepartmentConfirmed, setQrDepartmentConfirmed] = useState<string | null>(null);
@@ -1258,6 +1263,7 @@ export function EmployeeTodayClient({
   const [shiftTaskDrafts, setShiftTaskDrafts] = useState<Record<number, ShiftTaskDraft>>({});
   const [shiftTaskErrors, setShiftTaskErrors] = useState<Record<number, Record<string, string>>>({});
   const [showFullShiftPlan, setShowFullShiftPlan] = useState(false);
+  const [shiftPlanInteraction, setShiftPlanInteraction] = useState(0);
   const [activeHandoverTaskId, setActiveHandoverTaskId] = useState<number | null>(null);
   const [handoverStep, setHandoverStep] = useState(0);
   const [handoverAttemptedStep, setHandoverAttemptedStep] = useState<string | null>(null);
@@ -1279,6 +1285,9 @@ export function EmployeeTodayClient({
   const approvedCashExceptionAutoFinishRef = useRef<string | null>(null);
   const approvedRequiredIssuesAutoFinishRef = useRef<string | null>(null);
   const cashOutboxSyncingRef = useRef(false);
+  const cashFormHiddenAtRef = useRef<number | null>(null);
+  const cashPhotoPickerActiveRef = useRef(false);
+  const cashPhotoInputRef = useRef<HTMLInputElement | null>(null);
   const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
   const displayNow = now ?? initialRenderNow;
 
@@ -1317,6 +1326,56 @@ export function EmployeeTodayClient({
     }, 4000);
     return () => window.clearTimeout(timer);
   }, [message]);
+
+  useEffect(() => {
+    if (!cashOperationDraft.direction || cashOperationDraft.amount.trim() || cashOperationDraft.comment.trim() || cashFormFocused || isSaving) return;
+    const timer = window.setTimeout(() => {
+      if (cashPhotoPickerActiveRef.current) return;
+      setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
+    }, EMPTY_CASH_FORM_IDLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [cashOperationDraft.direction, cashOperationDraft.amount, cashOperationDraft.comment, cashFormFocused, isSaving]);
+
+  useEffect(() => {
+    if (!showFullShiftPlan || activeTab !== 'day' || openShiftTaskId !== null || editingShiftTaskId !== null || activeHandoverTaskId !== null || isSaving) return;
+    const timer = window.setTimeout(() => setShowFullShiftPlan(false), OTHER_TASKS_IDLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [showFullShiftPlan, activeTab, openShiftTaskId, editingShiftTaskId, activeHandoverTaskId, isSaving, shiftPlanInteraction]);
+
+  useEffect(() => {
+    if (activeTab !== 'day') setShowFullShiftPlan(false);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const onReturn = () => {
+      if (document.visibilityState === 'hidden') {
+        cashFormHiddenAtRef.current = Date.now();
+        return;
+      }
+      const hiddenAt = cashFormHiddenAtRef.current;
+      if (hiddenAt === null || cashPhotoPickerActiveRef.current) return;
+      cashFormHiddenAtRef.current = null;
+      if (!cashOperationDraft.direction || isSaving || Date.now() - hiddenAt < CASH_FORM_BACKGROUND_RESET_MS) return;
+      setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
+      setCashFormFocused(false);
+      setMessage('Незавершённая инкассация сброшена. Деньги не учтены.');
+    };
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
+    return () => {
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
+    };
+  }, [cashOperationDraft.direction, isSaving]);
+
+  useEffect(() => {
+    const input = cashPhotoInputRef.current;
+    if (!input) return;
+    const onCancel = () => handleCashPhotoPickerReturn(null);
+    input.addEventListener('cancel', onCancel);
+    return () => input.removeEventListener('cancel', onCancel);
+  }, [cashOperationDraft.direction]);
+
 
   const dates = useMemo(() => buildDateRange(today, 31), [today]);
   const previewDates = dates.slice(0, 7);
@@ -2406,9 +2465,31 @@ export function EmployeeTodayClient({
   }
 
   function openCashOperation(direction: CashOperation['direction']) {
+    cashFormHiddenAtRef.current = null;
+    cashPhotoPickerActiveRef.current = false;
+    setCashFormFocused(false);
     setCashOperationDraft({ direction, amount: '', comment: '', idempotencyKey: createIdempotencyKey() });
     setError('');
     setMessage('');
+  }
+
+  function resetCashOperationDraft(showNotice = false) {
+    cashFormHiddenAtRef.current = null;
+    cashPhotoPickerActiveRef.current = false;
+    setCashFormFocused(false);
+    setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' });
+    if (showNotice) setMessage('Незавершённая инкассация сброшена. Деньги не учтены.');
+  }
+
+  function handleCashPhotoPickerReturn(file: File | null) {
+    cashPhotoPickerActiveRef.current = false;
+    const hiddenAt = cashFormHiddenAtRef.current;
+    if (!file && hiddenAt !== null && Date.now() - hiddenAt >= CASH_FORM_BACKGROUND_RESET_MS) {
+      resetCashOperationDraft(true);
+      return;
+    }
+    cashFormHiddenAtRef.current = null;
+    if (file) void submitCashOperation(file);
   }
 
   async function submitCashOperation(file: File | null) {
@@ -3042,8 +3123,8 @@ export function EmployeeTodayClient({
             Назад
           </Button>
           {!photoCompletesTaskAutomatically && (
-            <Button type='button' className='employee-material-primary-action min-h-11 text-sm font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving}>
-              {isEditing ? 'Сохранить исправление' : 'Сохранить результат'}
+            <Button type='button' className='employee-material-primary-action min-h-11 whitespace-nowrap px-2 text-sm font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving} aria-label={isEditing ? 'Сохранить исправление' : 'Сохранить результат'}>
+              Сохранить
             </Button>
           )}
         </div>
@@ -4382,6 +4463,7 @@ export function EmployeeTodayClient({
                       type='button'
                       className='employee-material-secondary-action h-10 w-full gap-2 text-xs font-extrabold'
                       onClick={() => setShowFullShiftPlan((current) => !current)}
+                      aria-expanded={showFullShiftPlan}
                     >
                       {showFullShiftPlan ? 'Скрыть задачи' : `Остальные задачи (${otherShiftControlTaskCount})`}
                       <ChevronDown className={cn('h-4 w-4 transition-transform', showFullShiftPlan && 'rotate-180')} aria-hidden='true' />
@@ -4389,7 +4471,7 @@ export function EmployeeTodayClient({
                   )}
 
                   {!activeHandoverTask && showFullShiftPlan && (
-                    <div className='grid gap-2'>
+                    <div className='grid gap-2' onPointerDownCapture={() => setShiftPlanInteraction((value) => value + 1)} onKeyDownCapture={() => setShiftPlanInteraction((value) => value + 1)}>
                       {visibleShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).map((task) => {
                       const uiStatus = shiftTaskStatus(task, displayNow);
                       const Icon = shiftTaskIcon(task);
@@ -4465,7 +4547,13 @@ export function EmployeeTodayClient({
                   )}
 
                   {cashOperationDraft.direction && (
-                    <div className='employee-material-form grid gap-2 rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200/80'>
+                    <div
+                      className='employee-material-form grid gap-2 rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200/80'
+                      onFocusCapture={() => setCashFormFocused(true)}
+                      onBlurCapture={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget)) setCashFormFocused(false);
+                      }}
+                    >
                       <div className='flex items-center justify-between gap-2'>
                         <p className='text-sm font-extrabold text-slate-950'>
                           {cashOperationDraft.direction === 'phone_reserve' ? 'Пополнить резерв' : 'В депозитный сейф'}
@@ -4473,7 +4561,7 @@ export function EmployeeTodayClient({
                         <button
                           type='button'
                           className='text-xs font-extrabold text-slate-400 hover:text-slate-700'
-                          onClick={() => setCashOperationDraft({ direction: null, amount: '', comment: '', idempotencyKey: '' })}
+                          onClick={() => resetCashOperationDraft()}
                         >
                           Отмена
                         </button>
@@ -4511,14 +4599,16 @@ export function EmployeeTodayClient({
                         {isSaving ? photoSavingLabel(uploadProgress) : 'Сделать фото'}
                         <input
                           type='file'
+                          ref={cashPhotoInputRef}
                           accept='image/*'
                           capture='environment'
                           className='sr-only'
                           disabled={parseMoneyInput(cashOperationDraft.amount) === null || isSaving}
+                          onClick={() => { cashPhotoPickerActiveRef.current = true; }}
                           onChange={(event) => {
                             const file = event.target.files?.[0] ?? null;
                             event.currentTarget.value = '';
-                            submitCashOperation(file);
+                            handleCashPhotoPickerReturn(file);
                           }}
                         />
                       </label>
@@ -4658,12 +4748,12 @@ export function EmployeeTodayClient({
               {scheduleMode === 'month' && (
                 <>
                   {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && !bulkScheduleMode && (
-                    <Card className='employee-material-alert-card flex items-center gap-2.5 border-amber-200 bg-amber-50 p-2'>
-                        <span className='employee-material-heading-icon employee-material-state-marker employee-material-state-marker-warning flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-amber-700'>
-                          <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' />
+                    <Card className='flex items-center gap-2.5 border-slate-200 bg-white p-2'>
+                        <span className='employee-material-heading-icon employee-material-state-marker employee-material-state-marker-info flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-700'>
+                          <PremiumCalendarIcon color='#263b5c' secondaryColor='#cad8e8' secondaryOpacity={0.9} className='h-7 w-7' />
                         </span>
                         <div className='min-w-0 flex-1'>
-                          <p className='text-sm font-extrabold text-amber-950'>Осталось выбрать {incompleteScheduleDates.length} дн.</p>
+                          <p className='text-sm font-extrabold text-slate-800'>Осталось выбрать {incompleteScheduleDates.length} дн.</p>
                         </div>
                       <Button
                         type='button'
@@ -4748,13 +4838,13 @@ export function EmployeeTodayClient({
                     </div>
                   )}
 
-                  <div className='grid grid-cols-7 gap-0.5 text-center text-xs font-extrabold text-slate-500'>
+                  <div className='grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-slate-500'>
                     {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => (
                       <span key={day}>{day}</span>
                     ))}
                   </div>
 
-                  <div className='grid grid-cols-7 gap-x-1 gap-y-0.5'>
+                  <div className='grid grid-cols-7 gap-1'>
                     {calendarDays.map((cell) => {
                       const ownEntry = ownScheduleByDate.get(cell.date);
                       const ownVacation = ownVacationForDate(cell.date);
@@ -4797,12 +4887,11 @@ export function EmployeeTodayClient({
                           aria-pressed={bulkEligible ? bulkWorking : undefined}
                           disabled={isOutsideMonth || (bulkScheduleMode && !bulkEligible)}
                           className={cn(
-                            'employee-material-calendar-day flex min-h-[48px] min-w-0 flex-col rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
+                            'employee-material-calendar-day flex h-[60px] min-w-0 flex-col overflow-hidden rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
                             statusClass,
                             isOutsideMonth && 'opacity-30',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
                             bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
-                            vacationInitials.count > 0 && 'min-h-[60px]',
                             !bulkScheduleMode && selected && !isToday && 'is-selected',
                             !bulkScheduleMode && isToday && 'is-today',
                           )}
@@ -4822,7 +4911,7 @@ export function EmployeeTodayClient({
                               : '…'}
                           </span>
                           <span className={cn(
-                            'mt-auto max-w-full text-[10px] font-extrabold leading-none',
+                            'mt-auto max-w-full truncate text-[10px] font-extrabold leading-none',
                             scheduleMonthLoaded && workingInitials.count === 0 && workingInitials.complete ? 'text-amber-700' : 'text-green-800',
                           )}>
                             {scheduleMonthLoaded && !isOutsideMonth && workingInitials.count === 0 && workingInitials.complete ? 'Никого' : ''}
@@ -4839,11 +4928,11 @@ export function EmployeeTodayClient({
                     })}
                   </div>
 
-                  <div className='flex flex-nowrap items-center justify-center gap-3 px-0.5 text-[10px] font-extrabold text-slate-600'>
-                    <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#d9f1dc] ring-1 ring-[#9ed1a7]' />Работаю</span>
-                    <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#dce2df] ring-1 ring-[#aebbb5]' />Выходной</span>
-                    <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-[#ddd5ea] ring-1 ring-[#aa9fbd]' />Отпуск</span>
-                    {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex shrink-0 items-center gap-0.5 whitespace-nowrap'><span className='h-2.5 w-2.5 rounded bg-amber-100 ring-1 ring-amber-300' />Нужно выбрать</span>}
+                  <div className='grid grid-cols-2 gap-x-3 gap-y-2 px-1 text-[11px] font-extrabold text-slate-600'>
+                    <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#d9f1dc] ring-1 ring-[#9ed1a7]' />Работаю</span>
+                    <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#dce2df] ring-1 ring-[#aebbb5]' />Выходной</span>
+                    <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#ddd5ea] ring-1 ring-[#aa9fbd]' />Отпуск</span>
+                    {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#fbfcfe] ring-1 ring-[#dfe4ea]' />Нужно выбрать</span>}
                   </div>
 
                   {scheduleMonthLoaded && !bulkScheduleMode && (

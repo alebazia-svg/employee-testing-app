@@ -6,9 +6,9 @@ export function employeeHeaderDateLabel(dateKey: string) {
   const [year, month, day] = dateKey.split('-').map(Number);
   return new Intl.DateTimeFormat('ru-RU', {
     timeZone: 'Europe/Moscow',
-    weekday: 'long',
+    weekday: 'short',
     day: 'numeric',
-    month: 'long',
+    month: 'short',
   }).format(new Date(Date.UTC(year, month - 1, day, 12)));
 }
 
@@ -21,6 +21,7 @@ export function EmployeePortalHeader({
 }) {
   const [metaLead, ...metaRest] = meta.split(' · ');
   const metaTail = metaRest.join(' · ');
+  const compactMetaTail = metaTail.replace(/^[^,]+,\s*/, '');
 
   return (
     <header className='employee-material-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]'>
@@ -38,7 +39,10 @@ export function EmployeePortalHeader({
           <p className='truncate text-sm font-extrabold leading-tight text-[#273137]'>{name}</p>
           <p className='employee-material-profile-meta mt-1 flex min-w-0 items-center gap-2 text-[11px] font-bold leading-[1.2] text-[#758084]'>
             <span className='employee-material-profile-role shrink-0 rounded-full bg-[#e4e7e4]/90 px-1.5 py-0.5 text-[9px] font-extrabold uppercase leading-none tracking-[0.05em] text-[#59645f] ring-1 ring-white/80'>{metaLead}</span>
-            {metaTail ? <span className='min-w-0 truncate'>{metaTail}</span> : null}
+            {metaTail ? <>
+              <span className='min-w-0 truncate max-[360px]:hidden'>{metaTail}</span>
+              <span className='hidden min-w-0 truncate max-[360px]:inline'>{compactMetaTail}</span>
+            </> : null}
           </p>
         </div>
       </div>
