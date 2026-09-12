@@ -9,7 +9,8 @@ import ProcurementPaymentCalendarClient from "./ProcurementPaymentCalendarClient
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
-import { matchCashEvidence } from "@/lib/procurement-payment-control";
+import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
+import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/procurement-supplier-settlements";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export default async function ProcurementPage() {
   requestTo.setDate(requestTo.getDate() + 1);
   const requestFrom = new Date(requestTo);
   requestFrom.setDate(requestFrom.getDate() - 31);
-  const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult] = await Promise.allSettled([
+  const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult, currencyPaymentsResult] = await Promise.allSettled([
     prisma.supplierPaymentPlan.findMany({
       where: { managerUserId: user.id },
       include: { events: { orderBy: { createdAt: "desc" }, take: 1 } },
@@ -33,6 +34,7 @@ export default async function ProcurementPage() {
     getProcurementBalances(todayKey),
     getLatestProcurementUsdtRate(todayKey),
     fetchExpenseRequestSnapshot({ from: requestFrom, to: requestTo }),
+    fetchSupplierCurrencyPaymentSnapshot({ from: requestFrom, to: requestTo, timeoutMs: 6_000 }),
   ]);
   const plans = plansResult.status === "fulfilled" ? plansResult.value : [];
   const source =
@@ -67,6 +69,26 @@ export default async function ProcurementPage() {
       ? balancesResult.value.accountable
       : { balance: null, checkedAt: "", sourceLabel: "1С · Касса Подотчетника", error: "ACCOUNTABLE_BALANCE_UNAVAILABLE" };
   const requests = requestsResult.status === "fulfilled" ? requestsResult.value.rows : [];
+  const currencySource = currencyPaymentsResult.status === "fulfilled" ? currencyPaymentsResult.value : null;
+  const paymentEvidence = matchProcurementPaymentEvidence(
+    plans.map((plan) => ({
+      id: plan.id,
+      planCode: plan.planCode,
+      supplierPartner: plan.supplierPartner,
+      supplierCounterparty: plan.supplierCounterparty,
+      orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [],
+      plannedAmount: Number(plan.plannedAmount),
+      paymentMethod: plan.paymentMethod,
+      foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
+      managerName: managerName,
+      plannedDate: plan.plannedDate.toISOString(),
+      createdAt: plan.createdAt.toISOString(),
+      status: plan.status,
+    })),
+    requests,
+    currencySource?.payments || [],
+    currencySource?.conversions || [],
+  );
   const serializedPlans = plans.map((plan) => {
     const latestSnapshot = plan.events[0]?.snapshot;
     const snapshot = latestSnapshot && typeof latestSnapshot === "object" && !Array.isArray(latestSnapshot)
@@ -75,14 +97,7 @@ export default async function ProcurementPage() {
     return {
       ...JSON.parse(JSON.stringify(plan)),
       correctionReason: typeof snapshot.correctionReason === "string" ? snapshot.correctionReason : "",
-      evidence: matchCashEvidence({
-        planCode: plan.planCode,
-        supplierPartner: plan.supplierPartner,
-        supplierCounterparty: plan.supplierCounterparty,
-        plannedAmount: Number(plan.plannedAmount),
-        managerName: user.oneCManagerName || user.name,
-        plannedDate: plan.plannedDate.toISOString(),
-      }, requests),
+      evidence: paymentEvidence.get(plan.id)!,
     };
   });
   return (
@@ -91,6 +106,7 @@ export default async function ProcurementPage() {
       initialPlans={serializedPlans}
       checkedAt={source?.checkedAt || ""}
       sourceError={sourceError}
+      evidenceSourceError={!currencySource || !currencySource.complete}
       managerMappingError={managerMappingError}
       supplierBalances={settlementSummary?.bySupplier || {}}
       supplierDebtTotal={settlementSummary?.debtTotal ?? null}

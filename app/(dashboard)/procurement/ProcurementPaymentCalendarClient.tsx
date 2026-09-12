@@ -56,6 +56,11 @@ type Plan = {
     state: string;
     issuedAmount: number;
     actualSupplier?: string;
+    paidAmount: number;
+    paidForeignAmount: number;
+    remainingAmount: number;
+    remainingForeignAmount: number | null;
+    actualExchangeRate: number | null;
   };
 };
 type UsdtBalance = {
@@ -167,6 +172,7 @@ export default function ProcurementPaymentCalendarClient({
   initialPlans,
   checkedAt,
   sourceError,
+  evidenceSourceError,
   managerMappingError,
   supplierBalances,
   supplierDebtTotal,
@@ -180,6 +186,7 @@ export default function ProcurementPaymentCalendarClient({
   initialPlans: Plan[];
   checkedAt: string;
   sourceError: string;
+  evidenceSourceError: boolean;
   managerMappingError: boolean;
   supplierBalances: Record<string, SupplierBalance>;
   supplierDebtTotal: number | null;
@@ -225,15 +232,16 @@ export default function ProcurementPaymentCalendarClient({
     (order) => order.supplierPartner === draft.supplier,
   );
   const activePlans = plans.filter((plan) => plan.status !== "CANCELLED");
-  const paidPlans = activePlans.filter((plan) => plan.evidence?.state === "ISSUED_BY_ONE_C");
-  const workingPlans = activePlans.filter((plan) => plan.evidence?.state !== "ISSUED_BY_ONE_C");
+  const isCurrencyPaid = (plan: Plan) => plan.evidence?.state === "PAID_BY_ONE_C";
+  const paidPlans = activePlans.filter((plan) => plan.evidence?.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan));
+  const workingPlans = activePlans.filter((plan) => plan.evidence?.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan));
   const planningOrders = calculateOrderPlanning(
     initialOrders,
     activePlans.map((plan) => ({
       orderRefs: plan.orderRefs,
       plannedAmount: Number(plan.plannedAmount),
       status: plan.status,
-      issuedAmount: plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0),
+      issuedAmount: plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0) + Number(plan.evidence?.paidAmount || 0),
     })),
   );
   const missingOrders = planningOrders.filter((order) => order.unplannedAmount > 0.009);
@@ -255,7 +263,7 @@ export default function ProcurementPaymentCalendarClient({
   }, {});
   const unpaidActivePlans = activePlans.map((plan) => ({
     ...plan,
-    remainingRub: Math.max(0, Number(plan.plannedAmount) - (plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0))),
+    remainingRub: isCurrencyPaid(plan) ? 0 : Math.max(0, Number(plan.plannedAmount) - (plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0) + Number(plan.evidence?.paidAmount || 0))),
   })).filter((plan) => plan.remainingRub > 0.009);
   const plannedQr = unpaidActivePlans
     .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR")
@@ -265,6 +273,7 @@ export default function ProcurementPaymentCalendarClient({
     .reduce((sum, plan) => {
       const originalRub = Number(plan.plannedAmount || 0);
       const knownUsdt = Number(plan.foreignAmount || 0);
+      if (knownUsdt > 0 && plan.evidence?.remainingForeignAmount != null) return sum + plan.evidence.remainingForeignAmount;
       if (knownUsdt > 0 && originalRub > 0) return sum + knownUsdt * Math.min(1, plan.remainingRub / originalRub);
       return sum + (referenceUsdtRate > 0 ? plan.remainingRub / referenceUsdtRate : 0);
     }, 0);
@@ -453,6 +462,9 @@ export default function ProcurementPaymentCalendarClient({
           text="Сохранённые заявки видны, но создать новую можно после восстановления связи."
         />
       ) : null}
+      {evidenceSourceError ? (
+        <Notice title="Оплаты из 1С сейчас не проверены" text="Заявки доступны, но подтверждение фактической оплаты появится после восстановления связи." />
+      ) : null}
       {mappingBlocked ? (
         <Notice
           critical
@@ -548,10 +560,11 @@ export default function ProcurementPaymentCalendarClient({
                           className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
                         >
                           {plan.status === "APPROVED"
-                            ? plan.evidence?.state === "MISMATCH" ? "ПРОВЕРЯЕТ РУКОВОДИТЕЛЬ" : plan.evidence?.state === "PARTIALLY_ISSUED" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "СОГЛАСОВАНО"
+                            ? plan.evidence?.state === "MISMATCH" ? "ПРОВЕРЯЕТ РУКОВОДИТЕЛЬ" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "СОГЛАСОВАНО"
                             : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "НА СОГЛАСОВАНИИ"}
                         </span>
                         {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
+                        {plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}
                       </div>
                       {plan.status === "SUBMITTED" || plan.status === "NEEDS_CHANGES" ? (
                         <button
@@ -572,9 +585,9 @@ export default function ProcurementPaymentCalendarClient({
           ) : (
             <div className="rounded-2xl bg-slate-50 p-5 text-center">
               <CalendarDays className="mx-auto h-6 w-6 text-slate-400" />
-              <p className="mt-2 font-black text-slate-700">Заявок пока нет</p>
+              <p className="mt-2 font-black text-slate-700">{paidPlans.length ? "Текущих оплат нет" : "Заявок пока нет"}</p>
               <p className="mt-1 text-sm text-slate-500">
-                Экран пуст, потому что оплаты ещё не вносили.
+                {paidPlans.length ? "Оплаченные заявки сохранены в истории ниже." : "Экран пуст, потому что оплаты ещё не вносили."}
               </p>
             </div>
           )}
@@ -585,7 +598,7 @@ export default function ProcurementPaymentCalendarClient({
               className="procurement-secondary-action flex min-h-14 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 px-4 py-3 text-sm font-black text-slate-600 transition"
             >
               <Plus className="h-4 w-4" />
-              {workingPlans.length ? "Добавить ещё одну оплату" : "Добавить первую оплату"}
+              {activePlans.length ? "Добавить ещё одну оплату" : "Добавить первую оплату"}
             </button>
           ) : null}
         </div>
@@ -667,9 +680,9 @@ export default function ProcurementPaymentCalendarClient({
           aria-hidden={formOpen || undefined}
           inert={formOpen || undefined}
         >
-          <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {paidPlans.length}</summary>
+          <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {paidPlans.length}{paidPlans.some(isCurrencyPaid) ? ` · ${paidPlans.find(isCurrencyPaid)?.supplierPartner}: ${Number(paidPlans.find(isCurrencyPaid)?.evidence?.paidForeignAmount || 0).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : ""}</summary>
           <div className="mt-3 divide-y divide-slate-100">
-            {paidPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказ: {plan.orderNumbers.filter(Boolean).join(", ") || "без номера"}</p></div><p className="font-black text-blue-800">Оплачено по 1С · {rub.format(Number(plan.evidence?.issuedAmount || plan.plannedAmount))}</p></div>)}
+            {paidPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказ: {plan.orderNumbers.filter(Boolean).join(", ") || "без номера"}</p></div><p className="font-black text-blue-800">{isCurrencyPaid(plan) ? `Оплачено по 1С · ${plan.evidence?.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT${plan.evidence?.actualExchangeRate ? ` · курс ${plan.evidence.actualExchangeRate.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽` : ""}${plan.evidence?.paidAmount ? ` · ≈ ${rub.format(plan.evidence.paidAmount)} по курсу конвертации` : ""}` : `Оплачено по 1С · ${rub.format(Number(plan.evidence?.issuedAmount || plan.plannedAmount))}`}</p></div>)}
           </div>
         </details>
       ) : null}
@@ -955,7 +968,7 @@ export default function ProcurementPaymentCalendarClient({
                 На согласовании: {plans.filter((plan) => plan.status === "SUBMITTED").length}
               </span>
               <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
-                Согласовано: {plans.filter((plan) => plan.status === "APPROVED").length}
+                Согласовано: {plans.filter((plan) => plan.status === "APPROVED" && !isCurrencyPaid(plan)).length}
               </span>
             </div>
 

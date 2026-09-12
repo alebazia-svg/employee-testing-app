@@ -3,7 +3,9 @@ import { AdminBreadcrumbs } from "@/components/AdminBreadcrumbs";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { prisma } from "@/lib/prisma";
 import { fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
-import { calculateOrderPlanning, matchCashEvidence } from "@/lib/procurement-payment-control";
+import { calculateOrderPlanning } from "@/lib/procurement-payment-control";
+import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
+import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
 import {
   fetchSupplierOrderFinance,
   normalizeManagerName,
@@ -24,7 +26,7 @@ export default async function AdminProcurementPage() {
   to.setDate(to.getDate() + 1);
   const from = new Date(to);
   from.setDate(from.getDate() - 31);
-  const [plansResult, managersResult, ordersResult, settlementsResult, requestsResult, balancesResult, rateResult] =
+  const [plansResult, managersResult, ordersResult, settlementsResult, requestsResult, balancesResult, rateResult, currencyPaymentsResult] =
     await Promise.allSettled([
       prisma.supplierPaymentPlan.findMany({
         include: { manager: { select: { name: true, oneCManagerName: true } } },
@@ -39,6 +41,7 @@ export default async function AdminProcurementPage() {
       fetchExpenseRequestSnapshot({ from, to }),
       getProcurementBalances(todayKey),
       getLatestProcurementUsdtRate(todayKey),
+      fetchSupplierCurrencyPaymentSnapshot({ from, to, timeoutMs: 6_000 }),
     ]);
   const plans = plansResult.status === "fulfilled" ? plansResult.value : [];
   const procurementManagers =
@@ -54,19 +57,31 @@ export default async function AdminProcurementPage() {
   if (!requestSource) warnings.push("расходные кассовые ордера");
   else if (!requestSource.complete) warnings.push("неполная выгрузка РКО");
   const requests = requestSource?.rows || [];
+  const currencySource = currencyPaymentsResult.status === "fulfilled" ? currencyPaymentsResult.value : null;
+  if (!currencySource) warnings.push("валютные оплаты поставщикам");
+  else if (!currencySource.complete) warnings.push("неполная выгрузка валютных оплат");
+  const paymentEvidence = matchProcurementPaymentEvidence(
+    plans.map((plan) => ({
+      id: plan.id,
+      planCode: plan.planCode,
+      supplierPartner: plan.supplierPartner,
+      supplierCounterparty: plan.supplierCounterparty,
+      orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [],
+      plannedAmount: Number(plan.plannedAmount),
+      paymentMethod: plan.paymentMethod,
+      foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
+      managerName: plan.manager.oneCManagerName || plan.manager.name,
+      plannedDate: plan.plannedDate.toISOString(),
+      createdAt: plan.createdAt.toISOString(),
+      status: plan.status,
+    })),
+    requests,
+    currencySource?.payments || [],
+    currencySource?.conversions || [],
+  );
   const serialized = plans.map((plan) => ({
     ...JSON.parse(JSON.stringify(plan)),
-    evidence: matchCashEvidence(
-      {
-        planCode: plan.planCode,
-        supplierPartner: plan.supplierPartner,
-        supplierCounterparty: plan.supplierCounterparty,
-        plannedAmount: Number(plan.plannedAmount),
-        managerName: plan.manager.oneCManagerName || plan.manager.name,
-        plannedDate: plan.plannedDate.toISOString(),
-      },
-      requests,
-    ),
+    evidence: paymentEvidence.get(plan.id)!,
   }));
   const matchedRefs = new Set(
     serialized
@@ -110,7 +125,7 @@ export default async function AdminProcurementPage() {
     orderRefs: plan.orderRefs as string[],
     plannedAmount: Number(plan.plannedAmount),
     status: plan.status,
-    issuedAmount: planEvidenceById.get(plan.id)?.state === "MISMATCH" ? 0 : Number(planEvidenceById.get(plan.id)?.issuedAmount || 0),
+    issuedAmount: planEvidenceById.get(plan.id)?.state === "MISMATCH" ? 0 : Number(planEvidenceById.get(plan.id)?.issuedAmount || 0) + Number(planEvidenceById.get(plan.id)?.paidAmount || 0),
   })));
   const unplannedOrderCount = ordersSource ? planningRows.filter((order) => order.unplannedAmount > 0.009).length : null;
   const orderPaymentGapTotal = ordersSource ? scopedOrders.reduce((sum, order) => sum + Number(order.orderPaymentGap || 0), 0) : null;

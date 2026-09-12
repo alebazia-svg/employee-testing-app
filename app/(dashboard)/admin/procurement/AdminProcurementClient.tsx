@@ -42,6 +42,11 @@ type Plan = {
     state: string;
     issuedAmount: number;
     actualSupplier?: string;
+    paidAmount: number;
+    paidForeignAmount: number;
+    remainingAmount: number;
+    remainingForeignAmount: number | null;
+    actualExchangeRate: number | null;
     cashOrders: {
       number: string;
       date: string;
@@ -115,18 +120,21 @@ export default function AdminProcurementClient({
   const [actionMessage, setActionMessage] = useState("");
   useEffect(() => setPlans(initialPlans), [initialPlans]);
   const active = plans.filter((plan) => plan.status !== "CANCELLED");
-  const submitted = active.filter((plan) => plan.status === "SUBMITTED");
-  const completedPlans = active.filter((plan) => plan.status === "APPROVED" && plan.evidence.state === "ISSUED_BY_ONE_C");
-  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && plan.evidence.state !== "ISSUED_BY_ONE_C");
+  const isCurrencyPaid = (plan: Plan) => plan.evidence.state === "PAID_BY_ONE_C";
+  const submitted = active.filter((plan) => plan.status === "SUBMITTED" && !isCurrencyPaid(plan));
+  const completedPlans = active.filter((plan) => plan.status === "APPROVED" && (plan.evidence.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan)));
+  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && plan.evidence.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan));
   const urgentSubmitted = submitted.filter((plan) => ["SAME_DAY", "LATE"].includes(paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state));
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const estimatedUsdtPlanIds = new Set(
     active
+      .filter((plan) => !isCurrencyPaid(plan))
       .filter((plan) => plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) && referenceUsdtRate > 0 && Number(plan.plannedAmount) > 0)
       .map((plan) => plan.id),
   );
   const referenceRatePlanIds = new Set(
     active
+      .filter((plan) => !isCurrencyPaid(plan))
       .filter((plan) => plan.paymentMethod === "USDT" && !Number(plan.exchangeRate || 0) && referenceUsdtRate > 0)
       .map((plan) => plan.id),
   );
@@ -150,18 +158,22 @@ export default function AdminProcurementClient({
   const preparation = calculateCashPreparation(
     active.map((plan) => {
       const plannedRub = Number(plan.plannedAmount);
-      const remainingRub = Math.max(0, plannedRub - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0)));
+      const remainingRub = isCurrencyPaid(plan) ? 0 : Math.max(0, plannedRub - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0) + Number(plan.evidence.paidAmount || 0)));
       const remainingRatio = plannedRub > 0 ? Math.min(1, remainingRub / plannedRub) : 0;
-      const fullForeignAmount = Number(plan.foreignAmount || 0) || (estimatedUsdtPlanIds.has(plan.id) ? plannedRub / referenceUsdtRate : 0);
+      const fullForeignAmount = plan.evidence.remainingForeignAmount != null && plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C"
+        ? plan.evidence.remainingForeignAmount
+        : Number(plan.foreignAmount || 0) || (estimatedUsdtPlanIds.has(plan.id) ? plannedRub / referenceUsdtRate : 0);
       return {
         id: plan.id,
         plannedDate: plan.plannedDate,
         plannedAmount: remainingRub,
         paymentMethod: plan.paymentMethod,
-        foreignAmount: fullForeignAmount * remainingRatio,
+        foreignAmount: plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" && plan.evidence.remainingForeignAmount != null
+          ? fullForeignAmount
+          : fullForeignAmount * remainingRatio,
         exchangeRate: Number(plan.exchangeRate || 0) || (referenceRatePlanIds.has(plan.id) ? referenceUsdtRate : 0),
         commissionAmount: Number(plan.commissionAmount || 0),
-        issued: plan.evidence.state === "ISSUED_BY_ONE_C",
+        issued: plan.evidence.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan),
       };
     }),
     usdtBalance.balance,
@@ -437,7 +449,7 @@ export default function AdminProcurementClient({
               <div className="divide-y divide-slate-200 rounded-xl border border-slate-200">
                 {datePlans.map((plan) => (
                   <article key={plan.id} className="grid gap-3 p-4 sm:grid-cols-[minmax(180px,1.25fr)_minmax(150px,.8fr)_minmax(150px,1fr)_auto] sm:items-center">
-                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-950">{plan.supplierPartner}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${plan.evidence.state === "MISMATCH" ? "bg-red-100 text-red-800" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "bg-blue-100 text-blue-800" : plan.evidence.state === "PARTIALLY_ISSUED" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>{plan.evidence.state === "MISMATCH" ? "НЕ СОВПАДАЕТ С 1С" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "ОПЛАЧЕНО ПО 1С" : plan.evidence.state === "PARTIALLY_ISSUED" ? "ЧАСТИЧНО ПО 1С" : "СОГЛАСОВАНО"}</span></div><p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">Заказы: {orderLabel(plan)}</p>{plan.evidence.state === "MISMATCH" ? <p className="mt-1 text-xs font-black text-red-700">В заявке: {plan.supplierPartner} · в 1С: {plan.evidence.actualSupplier || "другой поставщик"}</p> : plan.evidence.state === "PARTIALLY_ISSUED" ? <p className="mt-1 text-xs font-bold text-amber-800">По 1С оплачено {rub.format(plan.evidence.issuedAmount)} из {rub.format(Number(plan.plannedAmount))}</p> : null}</div>
+                    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-950">{plan.supplierPartner}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${plan.evidence.state === "MISMATCH" ? "bg-red-100 text-red-800" : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? "bg-blue-100 text-blue-800" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "bg-blue-100 text-blue-800" : plan.evidence.state === "PARTIALLY_ISSUED" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>{plan.evidence.state === "MISMATCH" ? "НЕ СОВПАДАЕТ С 1С" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "ОПЛАЧЕНО ПО 1С" : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : plan.evidence.state === "PARTIALLY_ISSUED" ? "ЧАСТИЧНО ПО 1С" : "СОГЛАСОВАНО"}</span></div><p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">Заказы: {orderLabel(plan)}</p>{plan.evidence.state === "MISMATCH" ? <p className="mt-1 text-xs font-black text-red-700">В заявке: {plan.supplierPartner} · в 1С: {plan.evidence.actualSupplier || "другой поставщик"}</p> : plan.evidence.state === "PARTIALLY_ISSUED" ? <p className="mt-1 text-xs font-bold text-amber-800">По 1С оплачено {rub.format(plan.evidence.issuedAmount)} из {rub.format(Number(plan.plannedAmount))}</p> : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="mt-1 text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <p className="text-xs font-semibold text-violet-700">{usdtEstimateNote(plan)}</p> : null}{planComment(plan) ? <p className="mt-1 text-xs font-medium text-slate-600">{planComment(plan)}</p> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                     <div className="text-left sm:text-right"><p className="text-xs font-bold text-slate-400">Ответственный</p><p className="mt-0.5 text-sm font-extrabold text-slate-700">{plan.manager.name}</p></div>
@@ -449,9 +461,9 @@ export default function AdminProcurementClient({
         </div>
         {completedPlans.length ? (
           <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {completedPlans.length}</summary>
+            <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {completedPlans.length}{completedPlans.some(isCurrencyPaid) ? ` · ${completedPlans.find(isCurrencyPaid)?.supplierPartner}: ${Number(completedPlans.find(isCurrencyPaid)?.evidence.paidForeignAmount || 0).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : ""}</summary>
             <div className="mt-3 divide-y divide-slate-200">
-              {completedPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold text-slate-950">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказы: {orderLabel(plan)}</p></div><div className="sm:text-right"><p className="font-black text-blue-800">Оплачено по 1С · {rub.format(plan.evidence.issuedAmount)}</p><p className="text-xs font-semibold text-slate-500">{plan.manager.name}</p></div></div>)}
+            {completedPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold text-slate-950">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказы: {orderLabel(plan)}</p></div><div className="sm:text-right"><p className="font-black text-blue-800">{isCurrencyPaid(plan) ? `Оплачено по 1С · ${plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT${plan.evidence.actualExchangeRate ? ` · курс ${plan.evidence.actualExchangeRate.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽` : ""}${plan.evidence.paidAmount > 0 ? ` · ≈ ${rub.format(plan.evidence.paidAmount)} по курсу конвертации` : ""}` : `Оплачено по 1С · ${rub.format(plan.evidence.issuedAmount)}`}</p><p className="text-xs font-semibold text-slate-500">{plan.manager.name}</p></div></div>)}
             </div>
           </details>
         ) : null}
