@@ -48,3 +48,42 @@ test('semantic state icons keep the approved color system', async () => {
   assert.match(globalStyles, /employee-material-state-marker-success[\s\S]*?background: #eef8f1 !important;/);
   assert.match(globalStyles, /employee-material-state-marker-info[\s\S]*?background: #eef4fb !important;/);
 });
+
+test('KKM close failure uses the approved real-employee sheet, not the legacy inline form', async () => {
+  const source = await readFile(employeeSourcePath, 'utf8');
+
+  assert.match(source, /closeResolutionOpen && showCloseResolution && kkmCloseIssue/);
+  assert.match(source, /closeResolutionPath === null[\s\S]*?Чек распечатался[\s\S]*?Чек не распечатался/);
+  assert.match(source, /Закрытие кассы не подтверждено/);
+  assert.match(source, /Закройте смену на ККМ\. Если чек уже есть — приложите фото\./);
+  assert.match(source, /Чек закрытия распечатался\?/);
+  assert.match(source, /Фото отправлено\. Ждём решения администратора\./);
+  assert.match(source, /Указать, что с чеком/);
+  assert.match(source, /currentCloseExceptionStatus === 'pending'[\s\S]*?currentCloseExceptionStatus === 'approved'[\s\S]*?currentCloseExceptionStatus === 'rejected'/);
+  assert.match(source, /showCloseResolution && !kkmCloseIssue/);
+  assert.match(source, /showShiftControl && !kkmCloseIssue/);
+});
+
+test('other required issues keep the technical request in a sheet across re-entry', async () => {
+  const source = await readFile(employeeSourcePath, 'utf8');
+
+  assert.match(source, /requiredIssuesState\.length > 0 && \(closeBlocked \|\| Boolean\(kkmCloseIssue\) \|\| Boolean\(closeExceptionRequestState\)\)/);
+  assert.match(source, /closeResolutionOpen && showCloseResolution && !kkmCloseIssue/);
+  assert.match(source, /Откройте ошибку выше и исправьте её\./);
+  assert.match(source, /Не получается исправить/);
+  assert.match(source, /activeWorkDay && !showShiftControl && !showCloseResolution/);
+});
+
+test('employee sheets reserve room for mobile browser chrome', async () => {
+  const [source, css] = await Promise.all([
+    readFile(employeeSourcePath, 'utf8'),
+    readFile(globalStylesPath, 'utf8'),
+  ]);
+
+  for (const label of ['Выбор смены', 'Исправление смены', 'Изменение графика', 'Проверка графика', 'Выход из заполнения графика']) {
+    assert.match(source, new RegExp(`employee-workday-sheet-overlay[^\\n]*role='dialog'[^\\n]*aria-label='${label}'`));
+  }
+  assert.match(css, /--employee-sheet-browser-clearance: 5rem;/);
+  assert.match(css, /@media \(display-mode: standalone\), \(display-mode: fullscreen\)/);
+  assert.match(css, /--employee-sheet-browser-clearance: 0rem;/);
+});

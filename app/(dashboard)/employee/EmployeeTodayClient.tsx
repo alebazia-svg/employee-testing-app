@@ -15,6 +15,7 @@ import {
 } from '@solar-icons/react/bold-duotone';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   BadgePercent,
@@ -886,6 +887,10 @@ function emptyHandoverDraft(): HandoverDraft {
   };
 }
 
+function hasUnsavedHandoverChanges(current: HandoverDraft, saved: HandoverDraft) {
+  return (Object.keys(current) as (keyof HandoverDraft)[]).some((key) => current[key] !== saved[key]);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -1219,6 +1224,8 @@ export function EmployeeTodayClient({
   const latePromptWorkdayIdRef = useRef<number | null>(null);
   const [shiftCorrectionState, setShiftCorrectionState] = useState<ShiftCorrectionState>(shiftCorrection ?? { canCorrect: false, allowedShiftCodes: [], hint: '' });
   const [closeBlocked, setCloseBlocked] = useState(false);
+  const [closeResolutionOpen, setCloseResolutionOpen] = useState(false);
+  const [closeResolutionPath, setCloseResolutionPath] = useState<'photo' | 'technical' | null>(null);
   const [closeExceptionReason, setCloseExceptionReason] = useState('');
   const [closeExceptionComment, setCloseExceptionComment] = useState('');
   const [cashEncashmentExceptionReason, setCashEncashmentExceptionReason] = useState('');
@@ -1268,7 +1275,10 @@ export function EmployeeTodayClient({
   const [handoverStep, setHandoverStep] = useState(0);
   const [handoverAttemptedStep, setHandoverAttemptedStep] = useState<string | null>(null);
   const [handoverSaveError, setHandoverSaveError] = useState('');
+  const [isHandoverKkmCheckPending, setIsHandoverKkmCheckPending] = useState(false);
   const [handoverDraft, setHandoverDraft] = useState<HandoverDraft>(() => emptyHandoverDraft());
+  const [handoverSavedDraft, setHandoverSavedDraft] = useState<HandoverDraft>(() => emptyHandoverDraft());
+  const [handoverExitPromptOpen, setHandoverExitPromptOpen] = useState(false);
   const [openingPhotoTaskId, setOpeningPhotoTaskId] = useState<number | null>(null);
   const [openingPhotoFile, setOpeningPhotoFile] = useState<File | null>(null);
   const [message, setMessage] = useState('');
@@ -1375,7 +1385,6 @@ export function EmployeeTodayClient({
     input.addEventListener('cancel', onCancel);
     return () => input.removeEventListener('cancel', onCancel);
   }, [cashOperationDraft.direction]);
-
 
   const dates = useMemo(() => buildDateRange(today, 31), [today]);
   const previewDates = dates.slice(0, 7);
@@ -1623,10 +1632,17 @@ export function EmployeeTodayClient({
   const kkmCloseIssue = requiredIssuesState.find((issue) => (
     issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === activeWorkDay?.date
   )) ?? null;
-  const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || Boolean(kkmCloseIssue));
+  const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState));
   const requiredIssuesForBanner = showCloseResolution
     ? requiredIssuesState.filter((issue) => issue.ruleKey !== 'kkm_shift_not_closed')
     : requiredIssuesState;
+
+  useEffect(() => {
+    if (openShiftTaskId === null && (!activeHandoverTaskId || showCloseResolution) && !cashOperationDraft.direction && !closeResolutionOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [openShiftTaskId, activeHandoverTaskId, showCloseResolution, cashOperationDraft.direction, closeResolutionOpen]);
 
   useEffect(() => {
     if (!needsLateArrivalReason || !activeWorkDay || latePromptWorkdayIdRef.current === activeWorkDay.id) return;
@@ -1688,6 +1704,7 @@ export function EmployeeTodayClient({
     closeExceptionRequestState
     && sameIssueIds(normalizedIssueIds(closeExceptionRequestState.issueIds), currentRequiredIssueIds),
   );
+  const currentCloseExceptionStatus = closeExceptionMatchesCurrentIssues ? closeExceptionRequestState?.status : null;
   function buildHandoverSteps(draft = handoverDraft) {
     const draftCashBalance = parseMoneyInput(draft.personalCashBalance);
     return buildShiftHandoverSteps({
@@ -1736,13 +1753,6 @@ export function EmployeeTodayClient({
   });
   const bulkReducedCount = bulkCoverage.filter(({ coverage }) => coverage.state === 'reduced').length;
   const bulkEmptyCount = bulkCoverage.filter(({ coverage }) => coverage.state === 'empty').length;
-
-  useEffect(() => {
-    if (!handoverTask || handoverTask.status === 'done' || activeHandoverTaskId) return;
-    if (isRecord(handoverTask.handoverData) && handoverTask.handoverData.draft !== false) {
-      startHandoverWizard(handoverTask);
-    }
-  }, [activeHandoverTaskId, handoverTask?.id, handoverTask?.status]);
 
   function getColleagueRows(date: string) {
     const entries = departmentScheduleByDate.get(date) ?? [];
@@ -2376,6 +2386,7 @@ export function EmployeeTodayClient({
       setCloseExceptionRequestState(payload.request);
       setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен администратору');
       await syncCurrentWorkdayState(true);
+      setCloseResolutionOpen(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось отправить запрос');
     } finally {
@@ -2430,6 +2441,22 @@ export function EmployeeTodayClient({
     setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
   }
 
+  function closeShiftTaskSheet() {
+    if (isSaving) return;
+    setOpenShiftTaskId(null);
+    setEditingShiftTaskId(null);
+    setShiftTaskDrafts((current) => {
+      const next = { ...current };
+      if (openShiftTaskId !== null) delete next[openShiftTaskId];
+      return next;
+    });
+    setShiftTaskErrors((current) => {
+      const next = { ...current };
+      if (openShiftTaskId !== null) delete next[openShiftTaskId];
+      return next;
+    });
+  }
+
   function editCompletedShiftTask(task: ShiftControlTask) {
     if (!activeWorkDay || task.category === 'handover' || task.category === 'closing') return;
     setEditingShiftTaskId(task.id);
@@ -2451,12 +2478,31 @@ export function EmployeeTodayClient({
     const restoredDraft = isRecord(task.handoverData) ? draftFromHandoverData(task.handoverData) : emptyHandoverDraft();
     setActiveHandoverTaskId(task.id);
     setHandoverDraft(restoredDraft);
+    setHandoverSavedDraft(restoredDraft);
     setHandoverStep(firstIncompleteHandoverStep(restoredDraft));
     setHandoverAttemptedStep(null);
     setHandoverSaveError('');
     setShowFullShiftPlan(false);
     setError('');
     setMessage('');
+  }
+
+  function closeHandoverSheet() {
+    if (isSaving) return;
+    if (!hasUnsavedHandoverChanges(handoverDraft, handoverSavedDraft)) {
+      confirmHandoverExit();
+      return;
+    }
+    setHandoverExitPromptOpen(true);
+  }
+
+  function confirmHandoverExit() {
+    if (isSaving) return;
+    setHandoverExitPromptOpen(false);
+    setActiveHandoverTaskId(null);
+    setHandoverDraft(handoverSavedDraft);
+    setHandoverAttemptedStep(null);
+    setHandoverSaveError('');
   }
 
   function updateHandoverDraft(patch: Partial<HandoverDraft>) {
@@ -2607,6 +2653,7 @@ export function EmployeeTodayClient({
       ...current,
       tasks: current.tasks.map((item) => (item.id === result.task.id ? result.task : item)),
     }));
+    setHandoverSavedDraft(isRecord(result.task.handoverData) ? draftFromHandoverData(result.task.handoverData) : draft);
     return result.task as ShiftControlTask;
   }
 
@@ -2853,7 +2900,7 @@ export function EmployeeTodayClient({
     );
   }
 
-  function renderShiftTaskAction(task: ShiftControlTask, compact = false) {
+  function renderShiftTaskAction(task: ShiftControlTask, compact = false, inSheet = false) {
     const isEditing = editingShiftTaskId === task.id;
     if (task.status === 'done' && !isEditing) return renderShiftTaskAnswer(task);
     if (!canActOnShiftTask(task)) return null;
@@ -2864,7 +2911,9 @@ export function EmployeeTodayClient({
     const isAcquiring = task.category === 'acquiring';
     const isCredit = task.category === 'credit';
     const isOpening = task.category === 'opening';
-    const simpleLabel = task.category === 'handover' ? 'Начать сдачу смены' : 'Подтвердить';
+    const simpleLabel = task.category === 'handover'
+      ? (isRecord(task.handoverData) && task.handoverData.draft === true ? 'Продолжить сдачу смены' : 'Начать сдачу смены')
+      : 'Подтвердить';
     const errors = shiftTaskErrors[task.id] ?? {};
     const showTerminalReconciliation = isAcquiring && draft.integerValue !== '' && draft.integerValue !== '0';
     const showTerminalPhoto = isAcquiring && ['1', '2'].includes(draft.integerValue);
@@ -2933,15 +2982,17 @@ export function EmployeeTodayClient({
       );
     }
 
+    if (!inSheet) return null;
+
     return (
       <div className='employee-material-subcard employee-material-task-form mt-2 grid gap-2 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/80'>
         {isCash && (
           <div className='grid gap-2'>
             <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
-              Наличные в кассе
-              <span className='text-xs font-semibold leading-snug text-slate-500'>
+              {inSheet ? 'Фактический остаток, ₽' : 'Наличные в кассе'}
+              {!inSheet && <span className='text-xs font-semibold leading-snug text-slate-500'>
                 Пересчитайте деньги и внесите фактическую сумму.
-              </span>
+              </span>}
               <input
                 type='number'
                 inputMode='decimal'
@@ -3113,14 +3164,10 @@ export function EmployeeTodayClient({
           <Button
             type='button'
             className='employee-material-secondary-action min-h-11 text-sm font-extrabold'
-            onClick={() => {
-              setOpenShiftTaskId(null);
-              setEditingShiftTaskId(null);
-              setShiftTaskErrors((current) => ({ ...current, [task.id]: {} }));
-            }}
+            onClick={closeShiftTaskSheet}
             disabled={isSaving}
           >
-            Назад
+            {inSheet ? 'Отмена' : 'Назад'}
           </Button>
           {!photoCompletesTaskAutomatically && (
             <Button type='button' className='employee-material-primary-action min-h-11 whitespace-nowrap px-2 text-sm font-extrabold' onClick={() => completeShiftControlTask(task)} disabled={isSaving} aria-label={isEditing ? 'Сохранить исправление' : 'Сохранить результат'}>
@@ -3202,6 +3249,7 @@ export function EmployeeTodayClient({
 
     setError('');
     setHandoverSaveError('');
+    setIsHandoverKkmCheckPending(false);
     setIsSaving(true);
     try {
       let result: {
@@ -3227,8 +3275,7 @@ export function EmployeeTodayClient({
           );
         } catch (reason) {
           if (reason instanceof EmployeeApiError && reason.code === 'KKM_SHIFT_CHECK_PENDING') {
-            setMessage('Ожидаем подтверждение кассы · проверяем автоматически…');
-            setHandoverSaveError('Касса может передать чек с небольшой задержкой. Проверяем автоматически — ничего нажимать не нужно.');
+            setIsHandoverKkmCheckPending(true);
             await new Promise((resolve) => window.setTimeout(resolve, 15_000));
             continue;
           }
@@ -3236,6 +3283,7 @@ export function EmployeeTodayClient({
         }
       }
 
+      setIsHandoverKkmCheckPending(false);
       setShiftControlState((current) => ({
         run: result.run ?? current.run,
         tasks: result.tasks ?? current.tasks.map((item) => (item.id === result.task.id ? result.task : item)),
@@ -3253,9 +3301,12 @@ export function EmployeeTodayClient({
       if (reason instanceof EmployeeApiError && reason.code === 'OPEN_REQUIRED_ISSUES') {
         setCloseBlocked(true);
         if (isRecord(reason.payload) && Array.isArray(reason.payload.issues)) setRequiredIssuesState(reason.payload.issues as RequiredWorkdayIssue[]);
+        setHandoverSaveError('Обязательная ошибка. Исправьте её или запросите разрешение администратора.');
+      } else {
+        setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
       }
-      setHandoverSaveError(reason instanceof Error ? reason.message : 'Не удалось сдать смену');
     } finally {
+      setIsHandoverKkmCheckPending(false);
       setIsSaving(false);
     }
   }
@@ -3348,8 +3399,9 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось отправить фото администратору');
       setCloseExceptionRequestState(payload.request);
-      setMessage('Фото отправлено администратору · ожидайте решения');
+      setMessage('Фото отправлено. Ждём решения администратора.');
       await syncCurrentWorkdayState(true);
+      setCloseResolutionOpen(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Не удалось отправить фото администратору');
     } finally {
@@ -3451,11 +3503,8 @@ export function EmployeeTodayClient({
               <HandoverIcon className='h-[26px] w-[26px]' />
             </span>
             <div>
-              <p className='text-xs font-extrabold uppercase text-slate-600'>{sectionTitle}</p>
-              <h3 className='mt-0.5 text-base font-extrabold text-slate-950'>{handoverStepTitle[step] ?? `Шаг ${handoverStep + 1} из ${handoverSteps.length}`}</h3>
-              <p className='mt-1 text-xs font-semibold leading-snug text-slate-500'>
-                {step === 'reserveCashBalance' ? 'Общий резерв' : 'Только ваша касса'}
-              </p>
+              <p className='sr-only'>{sectionTitle}</p>
+              <h3 className='mt-0.5 text-base font-extrabold text-slate-950'>{step === 'encashment' && showCashEncashmentExceptionForm ? 'Не удаётся выполнить инкассацию' : handoverStepTitle[step] ?? `Шаг ${handoverStep + 1} из ${handoverSteps.length}`}</h3>
             </div>
           </div>
         </div>
@@ -3464,10 +3513,7 @@ export function EmployeeTodayClient({
 
         {step === 'personalCashBalance' && (
           <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
-            Наличные в кассе
-            <span className='text-xs font-semibold leading-snug text-slate-500'>
-              Пересчитайте кассу и внесите фактический остаток.
-            </span>
+            Фактический остаток, ₽
             <input
               type='number'
               inputMode='decimal'
@@ -3484,10 +3530,7 @@ export function EmployeeTodayClient({
 
         {step === 'reserveCashBalance' && (
           <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
-            Наличные в резерве
-            <span className='text-xs font-semibold leading-snug text-slate-500'>
-              Пересчитайте резерв и внесите фактический остаток.
-            </span>
+            Фактический остаток, ₽
             <input
               type='number'
               inputMode='decimal'
@@ -3520,29 +3563,26 @@ export function EmployeeTodayClient({
 
         {step === 'encashment' && (
           <div className='grid min-w-0 gap-3'>
-            <p className='break-words rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>
-              Остаток наличных в моей кассе больше 50 000 ₽, нужна инкассация.
-            </p>
+            {!showCashEncashmentExceptionForm && <p className='break-words rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200'>В кассе больше 50 000 ₽</p>}
             {cashEncashmentExceptionRequestState?.status === 'approved' ? (
               <p className='rounded-lg bg-green-50 px-3 py-2 text-xs font-bold text-green-800 ring-1 ring-green-200'>Администратор разрешил завершить день без инкассации. РКО и ПКО не будут созданы; ситуация останется на контроле.</p>
             ) : cashEncashmentExceptionRequestState?.status === 'pending' ? (
               <div className='grid min-w-0 gap-2 rounded-lg bg-amber-50 p-3 ring-1 ring-amber-200'>
                 <p className='text-xs font-bold text-amber-800'>Запрос отправлен администратору · ожидает решения.</p>
-                <Button type='button' className='h-9 bg-white text-xs font-extrabold text-slate-800 ring-1 ring-amber-200 shadow-none hover:bg-amber-50' onClick={() => setShowCashEncashmentExceptionForm(false)}>Выполнить инкассацию</Button>
+                <Button type='button' className='employee-material-secondary-action min-h-10 text-xs font-extrabold' onClick={() => setShowCashEncashmentExceptionForm(false)}>Выполнить инкассацию</Button>
               </div>
             ) : showCashEncashmentExceptionForm ? (
               <div className='grid min-w-0 gap-2 rounded-lg bg-slate-50 p-3 ring-1 ring-slate-200'>
-                <p className='text-xs font-extrabold text-slate-800'>Не удаётся выполнить инкассацию?</p>
                 <select value={cashEncashmentExceptionReason} onChange={(event) => setCashEncashmentExceptionReason(event.target.value)} className='h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите причину</option><option value='safe_access'>Нет доступа к депозитному сейфу</option><option value='handover'>Деньги переданы ответственному сотруднику</option><option value='other'>Другая причина</option></select>
-                <textarea value={cashEncashmentExceptionComment} onChange={(event) => setCashEncashmentExceptionComment(event.target.value)} rows={2} maxLength={1000} placeholder='Где сейчас деньги и почему инкассация невозможна' className='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' />
-                <div className='grid grid-cols-2 gap-2'><Button type='button' className='h-10 bg-white text-xs font-extrabold text-slate-700 ring-1 ring-slate-200 shadow-none hover:bg-slate-50' disabled={isSaving} onClick={() => setShowCashEncashmentExceptionForm(false)}>Назад</Button><Button type='button' className='h-10 text-xs font-extrabold' disabled={isSaving} onClick={requestCashEncashmentException}>Отправить</Button></div>
+                <textarea value={cashEncashmentExceptionComment} onChange={(event) => setCashEncashmentExceptionComment(event.target.value)} rows={2} maxLength={1000} placeholder='Где сейчас деньги?' className='w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' />
+                <div className='grid grid-cols-2 gap-2'><Button type='button' className='employee-material-secondary-action min-h-10 text-xs font-extrabold' disabled={isSaving} onClick={() => setShowCashEncashmentExceptionForm(false)}>Назад</Button><Button type='button' className='employee-material-primary-action min-h-10 text-xs font-extrabold' disabled={isSaving} onClick={requestCashEncashmentException}>Отправить</Button></div>
               </div>
             ) : (
-              <Button type='button' className='h-10 bg-white text-xs font-extrabold text-slate-800 ring-1 ring-slate-200 shadow-none hover:bg-slate-50' onClick={() => setShowCashEncashmentExceptionForm(true)}>Не можете выполнить инкассацию?</Button>
+              <Button type='button' className='employee-material-secondary-action min-h-10 text-xs font-extrabold' onClick={() => setShowCashEncashmentExceptionForm(true)}>Не могу выполнить</Button>
             )}
             {cashEncashmentExceptionRequestState?.status !== 'approved' && !showCashEncashmentExceptionForm && <>
               <label className='grid min-w-0 gap-1 text-xs font-extrabold text-slate-700'>
-                Сумма инкассации
+                Сумма, ₽
                 <input
                   type='number'
                   inputMode='decimal'
@@ -3557,20 +3597,22 @@ export function EmployeeTodayClient({
               </label>
             {user.department === 'retail' ? (
               <div className='grid grid-cols-2 gap-2'>
-                <Button
+                <button
                   type='button'
-                  className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.encashmentDirection === 'phone_reserve' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                  className='employee-material-reason-choice min-h-11 rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold shadow-none'
+                  aria-pressed={handoverDraft.encashmentDirection === 'phone_reserve'}
                   onClick={() => updateHandoverDraft({ encashmentDirection: 'phone_reserve' })}
                 >
                   Резерв на телефоны
-                </Button>
-                <Button
+                </button>
+                <button
                   type='button'
-                  className={cn('h-10 px-2 text-xs shadow-none', handoverDraft.encashmentDirection === 'deposit_safe' ? '' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')}
+                  className='employee-material-reason-choice min-h-11 rounded-xl border border-slate-200 bg-white px-2 text-xs font-bold shadow-none'
+                  aria-pressed={handoverDraft.encashmentDirection === 'deposit_safe'}
                   onClick={() => updateHandoverDraft({ encashmentDirection: 'deposit_safe' })}
                 >
                   Депозитный сейф
-                </Button>
+                </button>
               </div>
             ) : (
               <p className='rounded-lg bg-slate-50 px-3 py-2 text-xs font-extrabold text-slate-700 ring-1 ring-slate-200'>
@@ -3578,14 +3620,12 @@ export function EmployeeTodayClient({
               </p>
             )}
             {renderPhotoInput(
-              'Инкассация',
+              'Фото денег',
               'encashmentDocumentPhoto',
               task,
-              user.department === 'retail'
-                ? 'Сфотографируйте деньги перед помещением в резерв или депозитный сейф.'
-                : 'Сфотографируйте деньги перед помещением в депозитный сейф.',
+              'Сфотографируйте до перемещения.',
               stepError && parseMoneyInput(handoverDraft.encashmentAmount) !== null ? stepError : undefined,
-              parseMoneyInput(handoverDraft.encashmentAmount) === null ? 'Сначала укажите сумму инкассации' : undefined,
+              parseMoneyInput(handoverDraft.encashmentAmount) === null ? 'Сначала укажите сумму' : undefined,
             )}
             </>}
           </div>
@@ -3705,7 +3745,13 @@ export function EmployeeTodayClient({
           </div>
         )}
 
-        {handoverSaveError && (
+        {isHandoverKkmCheckPending && (
+          <p role='status' className='mt-4 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200'>
+            <RefreshCw className='h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none' aria-hidden='true' />
+            Проверяем кассу…
+          </p>
+        )}
+        {!isHandoverKkmCheckPending && handoverSaveError && (
           <p className='mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-bold leading-snug text-red-800 ring-1 ring-red-200'>
             {handoverSaveError}
           </p>
@@ -3713,16 +3759,14 @@ export function EmployeeTodayClient({
 
         {approvedCashEncashmentStep ? (
           <p className='mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-xs font-extrabold text-slate-600 ring-1 ring-slate-200'>Завершаем рабочий день…</p>
-        ) : (
+        ) : showCashEncashmentExceptionForm ? null : (
         <div className={cn('mt-4 grid gap-2', photoCompletesHandoverStep ? 'grid-cols-1' : 'grid-cols-2')}>
           <Button
             type='button'
-            className='h-10 bg-slate-100 text-xs font-extrabold text-slate-700 shadow-none hover:bg-slate-200'
+            className='employee-material-secondary-action min-h-10 text-xs font-extrabold'
             onClick={() => {
               if (handoverStep === 0) {
-                setActiveHandoverTaskId(null);
-                setHandoverAttemptedStep(null);
-                setHandoverSaveError('');
+                closeHandoverSheet();
                 return;
               }
               setHandoverStep((current) => Math.max(0, current - 1));
@@ -3736,7 +3780,7 @@ export function EmployeeTodayClient({
           </Button>
           {!photoCompletesHandoverStep && <Button
             type='button'
-            className='h-10 text-xs font-extrabold'
+            className='employee-material-primary-action min-h-10 text-xs font-extrabold'
             onClick={async () => {
               const currentError = getHandoverStepError();
               if (currentError) {
@@ -3776,12 +3820,132 @@ export function EmployeeTodayClient({
 
   return (
     <main className={cn('portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass)}>
+      {closeResolutionOpen && showCloseResolution && kkmCloseIssue && (
+        <div className='employee-workday-sheet-overlay fixed inset-0 z-[125] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6' role='dialog' aria-modal='true' aria-labelledby='kkm-resolution-title'>
+          <div className='employee-material-sheet flex w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:rounded-[28px]'>
+            <div className='shrink-0 px-5 pt-4'>
+              <BottomSheetDragHandle onDismiss={() => setCloseResolutionOpen(false)} disabled={isSaving} />
+              <div className='flex items-start justify-between gap-3'>
+                <div>
+                  <h2 id='kkm-resolution-title' className='text-xl font-black leading-tight text-slate-950'>Закрытие кассы</h2>
+                </div>
+                <button type='button' onClick={() => setCloseResolutionOpen(false)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
+              </div>
+            </div>
+            <div className='min-w-0 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+              {closeResolutionPath === null ? (
+                <div className='grid gap-3'>
+                  <p className='text-sm font-bold text-slate-700'>Чек закрытия распечатался?</p>
+                  <button type='button' className='employee-material-secondary-action min-h-12 rounded-xl px-4 text-left font-extrabold' onClick={() => setCloseResolutionPath('photo')}>Чек распечатался</button>
+                  <button type='button' className='employee-material-secondary-action min-h-12 rounded-xl px-4 text-left font-extrabold' onClick={() => setCloseResolutionPath('technical')}>Чек не распечатался</button>
+                </div>
+              ) : (
+                <div className='grid gap-4'>
+                  <button type='button' className='flex min-h-11 items-center gap-1 text-left text-sm font-bold text-slate-600' onClick={() => setCloseResolutionPath(null)} disabled={isSaving}><ChevronLeft className='h-4 w-4' />Назад</button>
+                  {closeResolutionPath === 'photo' ? (
+                    <div className='grid gap-3'>
+                      {hasHandoverPhoto(handoverDraft.zReportPhoto) && <p className='text-sm font-semibold text-slate-600'>Предыдущее фото уже прикреплено.</p>}
+                      {handoverTask && <label className='employee-material-secondary-action flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-extrabold'>
+                        <Camera className='h-5 w-5' />{isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}
+                        <input type='file' accept='image/*' capture='environment' className='sr-only' disabled={isSaving} onChange={(event) => { const file = event.target.files?.[0] ?? null; event.currentTarget.value = ''; void sendKkmClosePhotoToAdmin(handoverTask, file); }} />
+                      </label>}
+                    </div>
+                  ) : (
+                    <div className='grid gap-3'>
+                      <h3 className='text-base font-black text-slate-950'>Почему не распечатался чек?</h3>
+                      <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
+                      <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />
+                      <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || !closeExceptionComment.trim()} onClick={requestCloseException}>Сообщить администратору</Button>
+                    </div>
+                  )}
+                  {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {closeResolutionOpen && showCloseResolution && !kkmCloseIssue && (
+        <div className='employee-workday-sheet-overlay fixed inset-0 z-[125] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6' role='dialog' aria-modal='true' aria-labelledby='close-exception-sheet-title'>
+          <div className='employee-material-sheet flex w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:rounded-[28px]'>
+            <div className='shrink-0 px-5 pt-4'>
+              <BottomSheetDragHandle onDismiss={() => setCloseResolutionOpen(false)} disabled={isSaving} />
+              <div className='flex items-start justify-between gap-3'>
+                <div>
+                  <h2 id='close-exception-sheet-title' className='text-xl font-black leading-tight text-slate-950'>Почему не получается исправить?</h2>
+                </div>
+                <button type='button' onClick={() => setCloseResolutionOpen(false)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
+              </div>
+            </div>
+            <div className='min-w-0 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+              <div className='grid gap-3'>
+                {unfinished && <p className='text-sm font-semibold text-slate-600'>После разрешения администратора портал закроет предыдущий день.</p>}
+                <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold' aria-label='Техническая причина'><option value=''>Выберите причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
+                <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />
+                {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
+                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || !closeExceptionComment.trim()} onClick={requestCloseException}>Сообщить администратору</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {activeHandoverTask && !showCloseResolution && (
+        <div className='employee-workday-sheet-overlay fixed inset-0 z-[115] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6' role='dialog' aria-modal='true' aria-hidden={handoverExitPromptOpen} aria-labelledby='handover-sheet-title'>
+          <div className='employee-material-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:max-h-[calc(100dvh-3rem)] md:rounded-[28px]'>
+            <div className='shrink-0 px-5 pt-4'>
+              <BottomSheetDragHandle onDismiss={closeHandoverSheet} disabled={isSaving} />
+              <div className='flex items-start justify-between gap-3'>
+                <div>
+                  <h2 id='handover-sheet-title' className='text-xl font-black leading-tight text-slate-950'>Сдача смены</h2>
+                  <p className='mt-1 text-sm font-semibold text-slate-500'>Шаг {handoverStep + 1} из {handoverSteps.length}</p>
+                </div>
+                <button type='button' onClick={closeHandoverSheet} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
+              </div>
+            </div>
+            <div className='min-w-0 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]'>
+              {renderHandoverStep(activeHandoverTask)}
+            </div>
+          </div>
+        </div>
+      )}
+      {handoverExitPromptOpen && (
+        <div className='employee-workday-sheet-overlay fixed inset-0 z-[125] flex items-end justify-center bg-slate-950/50 md:items-center md:p-6' role='alertdialog' aria-modal='true' aria-labelledby='handover-exit-title' aria-describedby='handover-exit-description'>
+          <div className='employee-material-sheet w-full max-w-[420px] rounded-t-[28px] bg-white p-5 shadow-2xl md:rounded-[28px]'>
+            <h2 id='handover-exit-title' className='text-lg font-black text-slate-950'>Выйти из сдачи смены?</h2>
+            <p id='handover-exit-description' className='mt-2 text-sm font-medium leading-snug text-slate-600'>Данные текущего шага не сохранятся. Пройденные шаги останутся.</p>
+            <div className='mt-5 grid grid-cols-2 gap-2'>
+              <Button type='button' className='employee-material-secondary-action min-h-11' onClick={() => setHandoverExitPromptOpen(false)}>Продолжить</Button>
+              <Button type='button' className='employee-material-primary-action min-h-11' onClick={confirmHandoverExit}>Выйти</Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {openShiftTaskId !== null && (() => {
+        const task = shiftControlState.tasks.find((item) => item.id === openShiftTaskId);
+        if (!task || task.category === 'opening' || task.category === 'handover') return null;
+        return (
+          <div className='employee-workday-sheet-overlay fixed inset-0 z-[115] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6' role='dialog' aria-modal='true' aria-labelledby='shift-task-sheet-title'>
+            <div className='employee-material-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:max-h-[calc(100dvh-3rem)] md:rounded-[28px]'>
+              <div className='shrink-0 px-5 pt-4'>
+                <BottomSheetDragHandle onDismiss={closeShiftTaskSheet} disabled={isSaving} />
+                <div className='flex items-start justify-between gap-3'>
+                  <h2 id='shift-task-sheet-title' className='text-xl font-black leading-tight text-slate-950'>{shiftTaskTitle(task)}</h2>
+                  <button type='button' onClick={closeShiftTaskSheet} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
+                </div>
+              </div>
+              <div className='overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]'>
+                {renderShiftTaskAction(task, true, true)}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {deviationSheetKind && (() => {
         const isLate = deviationSheetKind === 'late_arrival';
         const reasons = isLate ? lateArrivalReasons : earlyFinishReasons;
         const valid = Boolean(deviationReason) && (deviationReason !== 'other' || Boolean(deviationComment.trim()));
         return (
-          <div className='fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label={isLate ? 'Опоздание' : 'Завершить раньше'}>
+          <div className='employee-workday-sheet-overlay fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label={isLate ? 'Опоздание' : 'Завершить раньше'}>
             <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
               <BottomSheetDragHandle onDismiss={() => setDeviationSheetKind(null)} disabled={isSaving} />
               <div className='flex items-start justify-between gap-3'>
@@ -3829,8 +3993,8 @@ export function EmployeeTodayClient({
         />
       )}
       {shiftPickerOpen && !workDay && (
-        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Выбор смены'>
-          <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
+        <div className='employee-workday-sheet-overlay fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Выбор смены'>
+          <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
             <BottomSheetDragHandle onDismiss={() => setShiftPickerOpen(false)} disabled={isSaving} />
             <div className='flex items-start justify-between gap-3'>
               <div>
@@ -3882,8 +4046,8 @@ export function EmployeeTodayClient({
         </div>
       )}
       {shiftCorrectionOpen && workDay && (
-        <div className='fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Исправление смены'>
-          <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
+        <div className='employee-workday-sheet-overlay fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Исправление смены'>
+          <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
             <BottomSheetDragHandle onDismiss={() => setShiftCorrectionOpen(false)} disabled={isSaving} />
             <div className='flex items-start justify-between gap-3'>
               <div>
@@ -4010,7 +4174,7 @@ export function EmployeeTodayClient({
 
           {vacationEditorOpen && (
             <div
-              className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'
+              className='employee-workday-sheet-overlay fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'
               role='dialog'
               aria-modal='true'
               aria-label={editingVacation ? 'Изменить отпуск' : 'Отметить отпуск'}
@@ -4018,7 +4182,7 @@ export function EmployeeTodayClient({
                 if (event.target === event.currentTarget && !isSaving) setVacationEditorOpen(false);
               }}
             >
-              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+              <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setVacationEditorOpen(false)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
                   <p className='text-xs font-black uppercase tracking-[0.14em] text-slate-600'>График</p>
@@ -4058,7 +4222,7 @@ export function EmployeeTodayClient({
 
           {editingScheduleDate && !pendingScheduleChange && (
             <div
-              className='fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'
+              className='employee-workday-sheet-overlay fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]'
               role='dialog'
               aria-modal='true'
               aria-label='Изменить мой день'
@@ -4066,7 +4230,7 @@ export function EmployeeTodayClient({
                 if (event.target === event.currentTarget && !isSaving) setEditingScheduleDate(null);
               }}
             >
-              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+              <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setEditingScheduleDate(null)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
                   <p className='text-xs font-black uppercase tracking-[0.14em] text-slate-600'>Изменить мой день</p>
@@ -4123,8 +4287,8 @@ export function EmployeeTodayClient({
           )}
 
           {pendingScheduleChange && (
-            <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Изменение графика'>
-              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+            <div className='employee-workday-sheet-overlay fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Изменение графика'>
+              <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => {
                   setPendingScheduleChange(null);
                   setEditingScheduleDate(null);
@@ -4167,7 +4331,7 @@ export function EmployeeTodayClient({
           )}
 
           {bulkScheduleConfirmOpen && (
-            <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Проверка графика'>
+            <div className='employee-workday-sheet-overlay fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Проверка графика'>
               <div className='employee-material-sheet max-h-[92dvh] w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setBulkScheduleConfirmOpen(false)} disabled={isSaving} />
                 <div className='flex items-center justify-between gap-3'>
@@ -4209,8 +4373,8 @@ export function EmployeeTodayClient({
           )}
 
           {bulkScheduleExitConfirmOpen && (
-            <div className='fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Выход из заполнения графика'>
-              <div className='employee-material-sheet w-full max-w-[520px] rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
+            <div className='employee-workday-sheet-overlay fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Выход из заполнения графика'>
+              <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
                 <BottomSheetDragHandle onDismiss={() => setBulkScheduleExitConfirmOpen(false)} />
                 <p className='text-xs font-black uppercase tracking-[0.12em] text-amber-700'>График не сохранён</p>
                 <h2 className='mt-2 text-2xl font-black leading-tight text-slate-950'>Выйти без сохранения?</h2>
@@ -4343,47 +4507,44 @@ export function EmployeeTodayClient({
                 </a>
               )}
 
-              {(activeWorkDay || unfinished) && showCloseResolution && (
-                <Card id='employee-close-exception' className='mb-6 space-y-3 border-amber-200 bg-white p-4 scroll-mb-[calc(7rem+env(safe-area-inset-bottom))] scroll-mt-4'>
-                  <div>
-                    <h2 className='text-base font-black text-slate-950'>{unfinished ? 'Как закрыть предыдущий день' : kkmCloseIssue ? 'Закрытие кассы не подтверждено' : 'Завершение рабочего дня'}</h2>
-                    <p className='mt-1 text-sm font-semibold leading-relaxed text-slate-600'>
-                      {unfinished
-                        ? 'В закрываемой смене осталась обязательная проблема. Откройте её выше и исправьте. Если это технически невозможно, отправьте администратору запрос — после одобрения портал закроет именно предыдущий день.'
-                        : kkmCloseIssue
-                          ? 'Рабочий день пока нельзя завершить.'
-                          : 'Исправьте проблему или сообщите администратору.'}
-                    </p>
+              {activeWorkDay && showCloseResolution && kkmCloseIssue && (
+                <Card id='employee-close-exception' className='mb-6 border-amber-200 border-l-4 border-l-amber-400 bg-white p-4 scroll-mt-4'>
+                  <div className='flex items-start justify-between gap-3'>
+                    <div className='min-w-0'>
+                      <h2 className='text-base font-black text-slate-950'>Закрытие кассы не подтверждено</h2>
+                      <p className='mt-1 text-sm font-semibold text-slate-600'>
+                        {currentCloseExceptionStatus === 'pending' ? hasHandoverPhoto(handoverDraft.zReportPhoto) ? 'Фото отправлено. Ждём решения администратора.' : 'Сообщение получено. Ждём ответа.'
+                          : currentCloseExceptionStatus === 'approved' ? 'Администратор разрешил завершить смену. Завершаем…'
+                            : currentCloseExceptionStatus === 'rejected' ? 'Запрос не согласован. Проверьте чек и укажите, что произошло.'
+                              : 'Закройте смену на ККМ. Если чек уже есть — приложите фото.'}
+                      </p>
+                      {currentCloseExceptionStatus === 'rejected' && closeExceptionRequestState?.decisionComment && <p className='mt-2 text-sm font-semibold text-red-800'>{closeExceptionRequestState.decisionComment}</p>}
+                    </div>
                   </div>
-                  {kkmCloseIssue && handoverTask && !hasHandoverPhoto(handoverDraft.zReportPhoto) && (
-                    <div className='space-y-2 rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200'>
-                      <p className='text-sm font-black text-slate-950'>Чек закрытия смены распечатался?</p>
-                      <p className='text-xs font-semibold leading-relaxed text-slate-600'>Да — сфотографируйте чек. Нет — выберите причину ниже.</p>
-                      <label className='block'>
-                        <span className='employee-material-secondary-action flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-3 text-sm font-extrabold text-slate-800 shadow-sm ring-1 ring-slate-200'>
-                          <Camera className='h-4 w-4 text-green-700' />
-                          {isSaving ? photoSavingLabel(uploadProgress) : 'Сфотографировать чек'}
-                        </span>
-                        <input type='file' accept='image/*' capture='environment' className='sr-only' disabled={isSaving} onChange={(event) => { const file = event.target.files?.[0] ?? null; event.currentTarget.value = ''; void sendKkmClosePhotoToAdmin(handoverTask, file); }} />
-                      </label>
-                    </div>
-                  )}
-                  {kkmCloseIssue && hasHandoverPhoto(handoverDraft.zReportPhoto) && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Фото чека прикреплено и будет доступно администратору.</p>}
-                  {closeExceptionRequestState?.status === 'pending' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold text-amber-800'>Запрос отправлен · ожидает решения администратора</p>}
-                  {closeExceptionRequestState?.status === 'approved' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-green-50 px-3 py-2 text-sm font-extrabold text-green-800'>Администратор разрешил завершить день. Портал завершает смену автоматически; сами проблемы останутся открытыми.</p>}
-                  {closeExceptionRequestState?.status === 'rejected' && closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-red-50 px-3 py-2 text-sm font-extrabold text-red-800'>Запрос не согласован{closeExceptionRequestState.decisionComment ? `: ${closeExceptionRequestState.decisionComment}` : ''}</p>}
-                  {closeExceptionRequestState && !closeExceptionMatchesCurrentIssues && <p className='rounded-xl bg-amber-50 px-3 py-2 text-sm font-extrabold leading-relaxed text-amber-800'>После предыдущего запроса появилась новая обязательная проблема. Старое разрешение её не включает — отправьте новый запрос по текущим проблемам.</p>}
-                  {(!closeExceptionRequestState || closeExceptionRequestState.status === 'rejected' || !closeExceptionMatchesCurrentIssues) && (
-                    <div className='space-y-2'>
-                      <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите техническую причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
-                      <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' />
-                      <Button type='button' className='employee-material-primary-action h-11 w-full font-extrabold' disabled={isSaving || !closeExceptionReason} onClick={requestCloseException}>Сообщить администратору</Button>
-                    </div>
-                  )}
+                  {currentCloseExceptionStatus === 'pending' || currentCloseExceptionStatus === 'approved'
+                    ? null
+                    : <Button type='button' className='employee-material-primary-action mt-3 min-h-11 w-full text-sm font-extrabold' onClick={() => { setCloseResolutionPath(null); setCloseResolutionOpen(true); }}>Указать, что с чеком</Button>}
                 </Card>
               )}
 
-              {activeWorkDay && !showShiftControl && (
+              {(activeWorkDay || unfinished) && showCloseResolution && !kkmCloseIssue && (
+                <Card id='employee-close-exception' className='mb-6 border-amber-200 border-l-4 border-l-amber-400 bg-white p-4 scroll-mt-4'>
+                  <div>
+                    <h2 className='text-base font-black text-slate-950'>{unfinished ? 'Прошлый день не закрыт' : 'Смену пока не закрыть'}</h2>
+                    <p className={`mt-1 text-sm font-semibold ${currentCloseExceptionStatus === 'rejected' ? 'text-red-800' : 'text-slate-600'}`}>
+                      {currentCloseExceptionStatus === 'pending' ? 'Ждём ответа администратора.'
+                        : currentCloseExceptionStatus === 'approved' ? 'Разрешение получено. Закрываем смену…'
+                          : currentCloseExceptionStatus === 'rejected' && closeExceptionRequestState?.decisionComment ? `Администратор: ${closeExceptionRequestState.decisionComment}`
+                            : currentCloseExceptionStatus === 'rejected' ? 'Запрос отклонён. Исправьте ошибку выше.'
+                              : 'Откройте ошибку выше и исправьте её.'}
+                    </p>
+                  </div>
+                  {closeExceptionRequestState && !closeExceptionMatchesCurrentIssues && <p className='mt-2 text-sm font-semibold text-amber-800'>Появилась новая ошибка. Сообщите о ней.</p>}
+                  {currentCloseExceptionStatus !== 'pending' && currentCloseExceptionStatus !== 'approved' && <Button type='button' className='employee-material-secondary-action mt-3 min-h-11 w-full text-sm font-extrabold' onClick={() => { setError(''); setCloseResolutionOpen(true); }}>Не получается исправить</Button>}
+                </Card>
+              )}
+
+              {activeWorkDay && !showShiftControl && !showCloseResolution && (
                 <Card className='space-y-3 border-green-100 bg-white p-4'>
                   <div className='flex items-start gap-3'>
                     <span className='employee-material-heading-icon employee-material-accent-icon employee-material-status-icon employee-material-state-marker employee-material-state-marker-success h-11 w-11 shrink-0 rounded-xl text-green-700'>
@@ -4419,7 +4580,7 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
-              {showShiftControl && !(activeHandoverTask && showCloseResolution) && (
+              {showShiftControl && !kkmCloseIssue && !(activeHandoverTask && showCloseResolution) && (
                 <Card className='space-y-3 bg-white p-4'>
                   <div>
                     <div>
@@ -4455,8 +4616,6 @@ export function EmployeeTodayClient({
                       {actionableShiftControlTask && renderShiftTaskAction(actionableShiftControlTask, true)}
                     </div>
                   )}
-
-                  {activeHandoverTask && renderHandoverStep(activeHandoverTask)}
 
                   {!activeHandoverTask && otherShiftControlTaskCount > 0 && (
                     <Button
@@ -4546,26 +4705,24 @@ export function EmployeeTodayClient({
                     </p>
                   )}
 
-                  {cashOperationDraft.direction && (
+                  {cashOperationDraft.direction && typeof document !== 'undefined' && createPortal(
+                    <div className={cn('portal-neutral-design employee-material-ui employee-workday-sheet-overlay fixed inset-0 z-[115] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6', paletteClass)} role='dialog' aria-modal='true' aria-labelledby='cash-operation-sheet-title'>
+                    <div className='employee-material-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:max-h-[calc(100dvh-3rem)] md:rounded-[28px]'>
+                    <div className='shrink-0 px-5 pt-4'>
+                      <BottomSheetDragHandle onDismiss={() => resetCashOperationDraft()} disabled={isSaving} />
+                      <div className='flex items-start justify-between gap-3'>
+                        <h2 id='cash-operation-sheet-title' className='text-xl font-black leading-tight text-slate-950'>{cashOperationDraft.direction === 'phone_reserve' ? 'Пополнить резерв' : 'В депозитный сейф'}</h2>
+                        <button type='button' onClick={() => resetCashOperationDraft()} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
+                      </div>
+                    </div>
                     <div
-                      className='employee-material-form grid gap-2 rounded-lg bg-slate-50 p-2.5 ring-1 ring-slate-200/80'
+                      className='employee-material-form grid gap-3 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4'
                       onFocusCapture={() => setCashFormFocused(true)}
                       onBlurCapture={(event) => {
                         if (!event.currentTarget.contains(event.relatedTarget)) setCashFormFocused(false);
                       }}
                     >
-                      <div className='flex items-center justify-between gap-2'>
-                        <p className='text-sm font-extrabold text-slate-950'>
-                          {cashOperationDraft.direction === 'phone_reserve' ? 'Пополнить резерв' : 'В депозитный сейф'}
-                        </p>
-                        <button
-                          type='button'
-                          className='text-xs font-extrabold text-slate-400 hover:text-slate-700'
-                          onClick={() => resetCashOperationDraft()}
-                        >
-                          Отмена
-                        </button>
-                      </div>
+                      {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
                       <label className='grid gap-1 text-xs font-extrabold text-slate-700'>
                         Сумма
                         <input
@@ -4596,7 +4753,7 @@ export function EmployeeTodayClient({
                             : 'cursor-pointer bg-[#111821] text-white',
                         )}
                       >
-                        {isSaving ? photoSavingLabel(uploadProgress) : 'Сделать фото'}
+                        {isSaving ? photoSavingLabel(uploadProgress) : 'Сделать фото и отправить'}
                         <input
                           type='file'
                           ref={cashPhotoInputRef}
@@ -4613,7 +4770,8 @@ export function EmployeeTodayClient({
                         />
                       </label>
                     </div>
-                  )}
+                    </div>
+                    </div>, document.body)}
 
                   {cashOperationsState.length > 0 && (
                     <div className='grid gap-1.5'>

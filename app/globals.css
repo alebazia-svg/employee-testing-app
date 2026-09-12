@@ -2841,3 +2841,29 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
   color: white;
   background: var(--portal-action);
 }
+
+/* Keep operational sheets above iPhone browser chrome; standalone PWAs use the full viewport. */
+.employee-workday-sheet-overlay {
+  --employee-sheet-browser-clearance: 5rem;
+  padding-bottom: var(--employee-sheet-browser-clearance);
+}
+
+.employee-workday-sheet-overlay > .employee-material-sheet {
+  max-height: calc(90dvh - var(--employee-sheet-browser-clearance));
+}
+
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .employee-workday-sheet-overlay {
+    --employee-sheet-browser-clearance: 0rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .employee-workday-sheet-overlay {
+    --employee-sheet-browser-clearance: 0rem;
+  }
+
+  .employee-workday-sheet-overlay > .employee-material-sheet {
+    max-height: calc(100dvh - 3rem);
+  }
+}
