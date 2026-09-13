@@ -2,20 +2,20 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Портал команды',
-  applicationName: 'Портал команды',
+  title: 'МОБО · Портал компании',
+  applicationName: 'МОБО',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Портал',
+    title: 'МОБО',
   },
   icons: {
     icon: [
-      { url: '/portal-app-icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/portal-app-icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/brand/mobo/pwa-wordmark-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/brand/mobo/pwa-wordmark-512.png', sizes: '512x512', type: 'image/png' },
     ],
-    apple: [{ url: '/portal-app-icon-180.png', sizes: '180x180', type: 'image/png' }],
+    apple: [{ url: '/brand/mobo/pwa-wordmark-180.png', sizes: '180x180', type: 'image/png' }],
   },
 };
 

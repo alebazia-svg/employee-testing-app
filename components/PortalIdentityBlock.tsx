@@ -1,8 +1,9 @@
 import { cn } from '@/lib/utils';
+import { PortalWordmark } from '@/components/PortalWordmark';
 
 export function PortalIdentityBlock({
   className,
-  label = 'Портал команды',
+  label = 'МОБО',
   subtitle,
 }: {
   className?: string;
@@ -12,14 +13,12 @@ export function PortalIdentityBlock({
   return (
     <div className={cn('inline-flex items-center gap-2.5', className)} aria-label={subtitle ? `${label}. ${subtitle}` : label}>
       <span className='portal-identity-mark relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-[11px] bg-[#171c24] shadow-[0_7px_16px_rgba(23,28,36,0.18)]' aria-hidden='true'>
-        <svg viewBox='0 0 36 36' className='h-7 w-7'>
-          <path d='M8 26V10M28 10v16M8 10l10 10' fill='none' stroke='white' strokeWidth='5.1' strokeLinecap='round' strokeLinejoin='round' />
-          <path d='M18 20l10-10' fill='none' stroke='#ffc247' strokeWidth='5.1' strokeLinecap='round' />
-        </svg>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src='/brand/mobo/mark-white.svg' alt='' className='h-7 w-7 object-contain' />
       </span>
       <span className='portal-identity-copy min-w-0'>
-        <span className='portal-identity-label block whitespace-nowrap text-[18px] font-extrabold leading-none tracking-[-0.035em] text-[#202936] sm:text-[20px]'>{label}</span>
-        {subtitle ? <span className='portal-identity-subtitle mt-1 block whitespace-nowrap text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-slate-500'>{subtitle}</span> : null}
+        <span className='portal-identity-label block whitespace-nowrap text-[18px] font-extrabold leading-none tracking-[-0.035em] text-[#202936] sm:text-[20px]'>{label === 'МОБО' ? <PortalWordmark className='portal-identity-wordmark' decorative /> : label}</span>
+        {subtitle ? <span className='portal-identity-subtitle mt-0.5 block whitespace-nowrap text-[12px] font-semibold leading-[1.2] tracking-[0.015em] text-slate-500'>{subtitle}</span> : null}
       </span>
     </div>
   );

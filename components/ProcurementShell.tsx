@@ -11,7 +11,7 @@ export function ProcurementShell({ userName, children }: { userName: string; chi
       <div className='mx-auto w-full max-w-[1320px]'>
         <header className='procurement-shell-header mb-4 flex items-center justify-between gap-3 lg:rounded-2xl lg:border lg:border-slate-200/80 lg:bg-white/75 lg:px-5 lg:py-3 lg:shadow-[0_12px_32px_rgba(15,23,42,0.05)]'>
           <div className='flex items-center gap-4'>
-            <PortalIdentityBlock className='origin-left scale-[0.86] sm:scale-100' />
+            <PortalIdentityBlock className='origin-left scale-[0.86] sm:scale-100' subtitle='Портал компании' />
           </div>
           <div className='flex shrink-0 items-center gap-2 sm:gap-2.5'>
             <div><ProcurementNotificationsButton /></div>
@@ -19,7 +19,7 @@ export function ProcurementShell({ userName, children }: { userName: string; chi
               <div className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-extrabold text-slate-700'>{initials}</div>
               <div className='hidden min-w-0 min-[520px]:block'>
                 <p className='truncate text-sm font-bold text-slate-950'>{userName}</p>
-                <p className='text-xs font-medium text-slate-500'>Закупки</p>
+                <p className='text-xs font-medium text-slate-500'>Закупщик</p>
               </div>
             </div>
             <LogoutButton

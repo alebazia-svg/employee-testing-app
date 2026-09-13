@@ -3,17 +3,31 @@ import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 test('PWA identity is neutral and every declared icon exists', async () => {
-  const manifest = JSON.parse(await readFile('public/manifest.webmanifest', 'utf8'));
+  const [manifestSource, layout, identity, procurement, admin] = await Promise.all([
+    readFile('public/manifest.webmanifest', 'utf8'),
+    readFile('app/layout.tsx', 'utf8'),
+    readFile('components/PortalIdentityBlock.tsx', 'utf8'),
+    readFile('components/ProcurementShell.tsx', 'utf8'),
+    readFile('components/AdminShell.tsx', 'utf8'),
+  ]);
+  const manifest = JSON.parse(manifestSource);
 
-  assert.equal(manifest.name, 'Портал команды');
-  assert.equal(manifest.short_name, 'Портал');
+  assert.equal(manifest.name, 'МОБО · Портал компании');
+  assert.equal(manifest.short_name, 'МОБО');
   assert.equal(manifest.theme_color, '#171c24');
+  assert.match(layout, /title: 'МОБО · Портал компании'/);
+  assert.match(layout, /title: 'МОБО'/);
+  assert.match(identity, /label = 'МОБО'/);
+  assert.match(procurement, /PortalIdentityBlock/);
+  assert.match(admin, /МОБО/);
+  assert.doesNotMatch(admin, /Портал команды/);
   await Promise.all(manifest.icons.map((icon) => access(`public${icon.src}`)));
 });
 
 test('offline recovery keeps automatic and manual connection checks', async () => {
   const offline = await readFile('public/offline.html', 'utf8');
 
+  assert.match(offline, /<strong>МОБО<\/strong><span>Портал компании<\/span>/);
   assert.match(offline, /fetch\('\/api\/health\?connection-check=1'/);
   assert.match(offline, /window\.addEventListener\('online', checkConnection\)/);
   assert.match(offline, /window\.setInterval\(checkConnection, 10000\)/);
@@ -25,7 +39,7 @@ test('service worker keeps push delivery and notification navigation', async () 
   const worker = await readFile('public/workday-sw.js', 'utf8');
 
   assert.match(worker, /self\.addEventListener\('push'/);
-  assert.match(worker, /showNotification\(data\.title \|\| 'Портал команды'/);
+  assert.match(worker, /showNotification\(data\.title \|\| 'МОБО'/);
   assert.match(worker, /self\.addEventListener\('notificationclick'/);
   assert.match(worker, /clients\.openWindow\(targetUrl\)/);
 });
@@ -40,8 +54,15 @@ test('workday posters keep scanner payloads while using neutral files', async ()
 });
 
 test('login keeps role-based routing after visual redesign', async () => {
-  const login = await readFile('app/login/page.tsx', 'utf8');
+  const [login, identity, wordmark] = await Promise.all([
+    readFile('app/login/page.tsx', 'utf8'),
+    readFile('components/PortalIdentityBlock.tsx', 'utf8'),
+    readFile('components/PortalWordmark.tsx', 'utf8'),
+  ]);
 
   assert.match(login, /data\.role === 'ADMIN' \? '\/admin'/);
   assert.match(login, /data\.portalArea === 'PROCUREMENT' \? '\/procurement' : '\/employee'/);
+  assert.match(login, /<PortalWordmark variant='blue' \/>/);
+  assert.match(identity, /<PortalWordmark className='portal-identity-wordmark' decorative \/>/);
+  assert.match(wordmark, /\/brand\/mobo\//);
 });

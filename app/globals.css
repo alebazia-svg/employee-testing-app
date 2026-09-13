@@ -1175,11 +1175,8 @@ select {
 }
 
 .login-portal-hero {
-  background: linear-gradient(150deg, #272e38 0%, #171c24 68%, #11151b 100%);
+  background: #fffdf9;
 }
-
-.login-portal-hero .portal-identity-label { color: #fff; }
-.login-portal-hero .portal-identity-mark { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.13), 0 9px 22px rgba(0, 0, 0, 0.28); }
 
 .login-portal-glow {
   background:
@@ -1292,7 +1289,7 @@ select {
   color: #c8cfd6;
 }
 
-.portal-neutral-design .admin-sidebar .admin-nav-item:hover,
+.portal-neutral-design .admin-sidebar .admin-nav-item:not(.admin-nav-item-active):hover,
 .portal-neutral-design .admin-sidebar details > summary:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.07);
@@ -2370,13 +2367,41 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
 }
 
 .login-portal-hero {
-  background: linear-gradient(150deg, #272e38 0%, #171c24 68%, #11151b 100%);
+  background: #fffdf9;
 }
 
-.login-portal-hero .portal-identity-label { color: #fff; }
-.login-portal-hero .portal-identity-mark { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.13), 0 9px 22px rgba(0, 0, 0, 0.28); }
+.login-portal-wordmark {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
 
+.login-portal-wordmark-name {
+  display: block;
+}
+
+.login-portal-wordmark-name svg,
+.login-portal-wordmark-name .portal-approved-wordmark {
+  display: block;
+  width: 179px;
+  height: 52px;
+}
+
+.portal-identity-wordmark {
+  display: block;
+  width: 120px;
+  height: 36px;
+}
+
+.login-portal-wordmark-subtitle {
+  color: #667085;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.025em;
+}
 .login-portal-glow {
+  display: none;
   background:
     radial-gradient(circle at 84% 18%, rgba(255, 194, 71, 0.2), transparent 25%),
     radial-gradient(circle at 8% 92%, rgba(255, 255, 255, 0.08), transparent 28%),
@@ -2481,7 +2506,12 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
   color: #fff;
 }
 
+.portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-subtitle {
+  color: #cbd2da;
+}
+
 .portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-mark {
+  display: none;
   background: #303844;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 7px 18px rgba(0, 0, 0, 0.28);
 }
@@ -2537,7 +2567,11 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
 }
 
 @media (max-width: 519px) {
-  .portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-label {
+  .portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-mark {
+    display: grid;
+  }
+
+  .portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-copy {
     display: none;
   }
 }
@@ -2586,7 +2620,7 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
 }
 
 .portal-neutral-design.admin-shell .admin-sidebar-identity .portal-identity-subtitle {
-  color: #aeb7c2;
+  color: #cbd2da;
 }
 
 .portal-neutral-design.admin-shell .admin-sidebar-identity .portal-identity-mark {
@@ -2594,11 +2628,16 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 7px 18px rgba(0, 0, 0, 0.28);
 }
 
+.portal-neutral-design.admin-shell .admin-sidebar-identity:not(.is-collapsed) .portal-identity-mark {
+  display: none;
+}
+
 .portal-neutral-design.admin-shell .admin-sidebar-identity.is-collapsed .portal-identity-copy {
   display: none;
 }
 
 .portal-neutral-design.admin-shell .admin-nav-item-active {
+  color: var(--portal-action) !important;
   background: linear-gradient(145deg, #fffdf9, #eee9df);
   border-color: rgba(255, 255, 255, 0.8);
   box-shadow: 7px 9px 18px rgba(8, 15, 18, 0.46), -2px -2px 8px rgba(255, 255, 255, 0.1), inset 0 1px rgba(255, 255, 255, 0.86);
@@ -2792,10 +2831,11 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
 }
 
 .portal-neutral-design.admin-shell .admin-mobile-header .portal-identity-subtitle {
-  color: #aeb7c2;
+  color: #cbd2da;
 }
 
 .portal-neutral-design.admin-shell .admin-mobile-header .portal-identity-mark {
+  display: none;
   background: #303844;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
 }

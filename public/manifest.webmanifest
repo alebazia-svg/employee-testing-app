@@ -1,6 +1,6 @@
 {
-  "name": "Портал команды",
-  "short_name": "Портал",
+  "name": "МОБО · Портал компании",
+  "short_name": "МОБО",
   "description": "Рабочий день, закупки и контроль в одном месте",
   "start_url": "/",
   "scope": "/",
@@ -10,17 +10,17 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/portal-app-icon-192.png",
+      "src": "/brand/mobo/pwa-wordmark-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/portal-app-icon-512.png",
+      "src": "/brand/mobo/pwa-wordmark-512.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "/portal-app-icon-maskable-512.png",
+      "src": "/brand/mobo/pwa-wordmark-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

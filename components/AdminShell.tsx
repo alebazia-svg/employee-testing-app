@@ -78,7 +78,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   return (
     <main className='portal-neutral-design admin-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
       <header className='admin-mobile-header sticky top-0 z-40 flex items-center justify-between gap-3 px-4 py-3 md:hidden'>
-        <PortalIdentityBlock className='admin-mobile-identity' label='МОБО' subtitle='Центр управления' />
+        <PortalIdentityBlock className='admin-mobile-identity' label='МОБО' subtitle='Портал компании' />
         <div className='flex items-center gap-2'>
           <AdminInboxBell />
           <button type='button' onClick={() => setMobileMenuOpen(true)} className='admin-material-control flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Открыть разделы админки'>
@@ -95,7 +95,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       >
         <div className={cn('flex items-center justify-between gap-3', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:flex-row')}>
           <div className={cn(sidebarCollapsed ? 'md:flex md:justify-center' : '')}>
-            <PortalIdentityBlock className={cn('admin-sidebar-identity', sidebarCollapsed && 'is-collapsed')} label='МОБО' subtitle='Центр управления' />
+            <PortalIdentityBlock className={cn('admin-sidebar-identity', sidebarCollapsed && 'is-collapsed')} label='МОБО' subtitle='Портал компании' />
           </div>
           <button
             type='button'
@@ -154,7 +154,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className='flex-1'>{children}</div>
           <footer className='mt-8 flex flex-col gap-2 border-t border-slate-200/80 pt-5 text-xs font-medium text-slate-500 sm:flex-row sm:items-center sm:justify-between'>
-            <span>© 2026 <span className='font-extrabold text-[#263b5c]'>МОБО · Центр управления</span>. Все права защищены.</span>
+            <span>© 2026 <span className='font-extrabold text-[#263b5c]'>МОБО · Портал компании</span>. Все права защищены.</span>
             <span>Версия 1.0.0</span>
           </footer>
         </div>
@@ -173,7 +173,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className='fixed inset-0 z-50 flex items-end bg-slate-950/45 p-3 backdrop-blur-sm md:hidden' onClick={() => setMobileMenuOpen(false)}>
           <section className='admin-dialog-panel max-h-[86dvh] w-full overflow-y-auto rounded-3xl p-4' onClick={(event) => event.stopPropagation()} aria-label='Все разделы админки'>
             <div className='mb-4 flex items-center justify-between gap-3'>
-              <div><p className='text-xs font-extrabold uppercase tracking-wide text-[#263b5c]'>Портал команды</p><h2 className='text-xl font-extrabold text-slate-950'>Все разделы</h2></div>
+              <div><p className='text-xs font-extrabold uppercase tracking-wide text-[#263b5c]'>МОБО</p><h2 className='text-xl font-extrabold text-slate-950'>Все разделы</h2></div>
               <button type='button' onClick={() => setMobileMenuOpen(false)} className='admin-material-control flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700' aria-label='Закрыть меню'><X className='h-5 w-5' /></button>
             </div>
             <div className='grid grid-cols-2 gap-2'>

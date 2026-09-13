@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CircleHelp, Eye, EyeOff, Lock, User } from 'lucide-react';
-import { PortalIdentityBlock } from '@/components/PortalIdentityBlock';
+import { PortalWordmark } from '@/components/PortalWordmark';
 import { Button } from '@/components/ui/button';
 
 export default function Login() {
@@ -52,7 +52,10 @@ export default function Login() {
         <section className='login-portal-hero relative flex min-h-[124px] flex-col overflow-hidden p-6 text-white sm:min-h-[148px] sm:p-8'>
           <div className='login-portal-glow pointer-events-none absolute inset-0' />
           <div className='login-portal-context relative z-10 flex flex-1 flex-col items-center justify-center text-center'>
-            <PortalIdentityBlock />
+            <div className='login-portal-wordmark'>
+              <div className='login-portal-wordmark-name'><PortalWordmark variant='blue' /></div>
+              <span className='login-portal-wordmark-subtitle'>Портал компании</span>
+            </div>
           </div>
         </section>
 

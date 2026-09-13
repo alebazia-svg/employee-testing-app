@@ -15,7 +15,7 @@ const globals = readFileSync(new URL('../app/globals.css', import.meta.url), 'ut
 test('admin neutral identity preserves navigation and interactive controls', () => {
   assert.match(shell, /portal-neutral-design admin-shell/);
   assert.match(shell, /PortalIdentityBlock/);
-  assert.match(shell, /label='МОБО' subtitle='Центр управления'/);
+  assert.match(shell, /label='МОБО' subtitle='Портал компании'/);
   assert.match(shell, /AdminInboxBell/);
   assert.match(shell, /admin-sidebar-collapsed/);
   assert.match(shell, /md:w-\[240px\]/);
@@ -34,7 +34,7 @@ test('admin neutral identity preserves navigation and interactive controls', () 
 });
 
 test('admin visual polish keeps operational meaning visible', () => {
-  assert.match(shell, /МОБО · Центр управления/);
+  assert.match(shell, /МОБО · Портал компании/);
   assert.match(breadcrumbs, /text-\[#263b5c\]/);
   assert.match(attendance, /function summaryIconTone/);
   assert.match(attendance, /Опозданий/);
@@ -45,6 +45,9 @@ test('admin visual polish keeps operational meaning visible', () => {
   assert.equal((payroll.match(/После первого сохранения расчёт появится здесь\./g) ?? []).length, 2);
   assert.match(globals, /\.portal-neutral-design\.admin-shell \.admin-workspace table thead/);
   assert.match(globals, /\.portal-neutral-design\.admin-shell \.admin-dialog-panel/);
+  assert.match(globals, /\.portal-neutral-design\.admin-shell \.admin-nav-item-active \{\s*color: var\(--portal-action\) !important;/);
+  assert.match(globals, /\.admin-sidebar-identity:not\(\.is-collapsed\) \.portal-identity-mark \{\s*display: none;/);
+  assert.match(globals, /\.admin-sidebar-identity\.is-collapsed \.portal-identity-copy \{\s*display: none;/);
 });
 
 test('admin first-visit guidance is current, actionable and consistently presented', () => {
