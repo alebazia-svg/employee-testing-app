@@ -2,6 +2,10 @@
 
 Application commit: `8f1275a5765407ad25da08d49a10299b9711e379`.
 
+Deployment completed with exit 0. Server checkout matches the application
+commit; public health, login and manifest checks pass. All eight published
+logo/icon files checked match the local release hashes.
+
 The owner approved the frozen MOBO letterforms, blue/amber on the warm light
 login background, white on the existing dark admin and procurement headers,
 and the full word on the installed PWA icon. Graphite/amber remains available.
