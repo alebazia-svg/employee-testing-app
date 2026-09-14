@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-test('PWA identity is neutral and every declared icon exists', async () => {
+test('PWA identity uses the approved MOBO wordmark icon on solid blue', async () => {
   const [manifestSource, layout, identity, procurement, admin] = await Promise.all([
     readFile('public/manifest.webmanifest', 'utf8'),
     readFile('app/layout.tsx', 'utf8'),
@@ -15,13 +15,38 @@ test('PWA identity is neutral and every declared icon exists', async () => {
   assert.equal(manifest.name, 'МОБО · Портал компании');
   assert.equal(manifest.short_name, 'МОБО');
   assert.equal(manifest.theme_color, '#171c24');
+  assert.deepEqual(manifest.icons.map((icon) => icon.src), [
+    '/brand/mobo/pwa-wordmark-blue-192.png',
+    '/brand/mobo/pwa-wordmark-blue-512.png',
+    '/brand/mobo/pwa-wordmark-blue-maskable-512.png',
+  ]);
   assert.match(layout, /title: 'МОБО · Портал компании'/);
   assert.match(layout, /title: 'МОБО'/);
+  assert.match(layout, /pwa-wordmark-blue-180\.png/);
   assert.match(identity, /label = 'МОБО'/);
   assert.match(procurement, /PortalIdentityBlock/);
   assert.match(admin, /МОБО/);
   assert.doesNotMatch(admin, /Портал команды/);
   await Promise.all(manifest.icons.map((icon) => access(`public${icon.src}`)));
+  const [regular, maskable, worker, offline, appleFallback, appleIcon] = await Promise.all([
+    readFile('public/brand/mobo/pwa-wordmark-blue.svg', 'utf8'),
+    readFile('public/brand/mobo/pwa-wordmark-blue-maskable.svg', 'utf8'),
+    readFile('public/workday-sw.js', 'utf8'),
+    readFile('public/offline.html', 'utf8'),
+    readFile('public/apple-touch-icon.png'),
+    readFile('public/brand/mobo/pwa-wordmark-blue-180.png'),
+  ]);
+  for (const icon of [regular, maskable]) {
+    assert.match(icon, /<rect width="256" height="256" fill="#263B5C"\/>/);
+    assert.match(icon, /fill="#F8F7F3"/);
+    assert.match(icon, /fill="url\(#amber\)"/);
+  }
+  assert.match(worker, /portal-offline-v4/);
+  assert.match(worker, /pwa-wordmark-blue-192\.png/);
+  assert.match(offline, /pwa-wordmark-blue-192\.png/);
+  assert.equal(appleFallback.readUInt32BE(16), 180);
+  assert.equal(appleFallback.readUInt32BE(20), 180);
+  assert.ok(appleFallback.equals(appleIcon));
 });
 
 test('offline recovery keeps automatic and manual connection checks', async () => {
