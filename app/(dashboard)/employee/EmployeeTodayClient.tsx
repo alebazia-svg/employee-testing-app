@@ -65,6 +65,14 @@ import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalH
 import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
 import { earlyFinishReasons, lateArrivalReasons, lateArrivalThresholdMinutes, type WorkdayDeviationKind } from '@/lib/workday-deviation';
 
+const lateArrivalChoiceLabels: Record<keyof typeof lateArrivalReasons, string> = {
+  forgot_mark: 'Забыл отметить',
+  personal: 'Личная причина',
+  connection: 'Нет интернета',
+  portal: 'Сбой портала',
+  other: 'Другое',
+};
+
 function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () => void; disabled?: boolean }) {
   const startYRef = useRef<number | null>(null);
   const startTimeRef = useRef(0);
@@ -96,7 +104,10 @@ function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () 
       sheet.style.transition = 'transform 180ms ease-in';
       sheet.style.transform = 'translateY(110%)';
     }
-    dismissTimerRef.current = window.setTimeout(onDismiss, 180);
+    dismissTimerRef.current = window.setTimeout(() => {
+      resetSheet();
+      onDismiss();
+    }, 180);
   }, [disabled, onDismiss, resetSheet]);
 
   useEffect(() => () => {
@@ -105,7 +116,7 @@ function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () 
 
   function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (disabled) return;
-    const sheet = event.currentTarget.parentElement;
+    const sheet = event.currentTarget.closest<HTMLElement>('.employee-material-sheet');
     if (!sheet) return;
     sheetRef.current = sheet;
     startYRef.current = event.clientY;
@@ -130,7 +141,7 @@ function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () 
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={finishDrag}
-      onPointerCancel={finishDrag}
+      onPointerCancel={() => { startYRef.current = null; resetSheet(); }}
     >
       <span className='h-1.5 w-12 rounded-full bg-slate-300' />
     </div>
@@ -1638,11 +1649,11 @@ export function EmployeeTodayClient({
     : requiredIssuesState;
 
   useEffect(() => {
-    if (openShiftTaskId === null && (!activeHandoverTaskId || showCloseResolution) && !cashOperationDraft.direction && !closeResolutionOpen) return;
+    if (openShiftTaskId === null && (!activeHandoverTaskId || showCloseResolution) && !cashOperationDraft.direction && !closeResolutionOpen && !staleCloseOpen && !deviationSheetKind) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = previousOverflow; };
-  }, [openShiftTaskId, activeHandoverTaskId, showCloseResolution, cashOperationDraft.direction, closeResolutionOpen]);
+  }, [openShiftTaskId, activeHandoverTaskId, showCloseResolution, cashOperationDraft.direction, closeResolutionOpen, staleCloseOpen, deviationSheetKind]);
 
   useEffect(() => {
     if (!needsLateArrivalReason || !activeWorkDay || latePromptWorkdayIdRef.current === activeWorkDay.id) return;
@@ -3889,6 +3900,17 @@ export function EmployeeTodayClient({
           </div>
         </div>
       )}
+      <StaleWorkdayCloseSheet
+        open={staleCloseOpen}
+        shiftLabel={unfinished?.shiftLabel || ''}
+        reason={staleCloseReason}
+        comment={staleCloseComment}
+        saving={isSaving}
+        onReasonChange={(reason) => { setStaleCloseReason(reason); if (reason !== 'other') setStaleCloseComment(''); }}
+        onCommentChange={setStaleCloseComment}
+        onClose={() => setStaleCloseOpen(false)}
+        onSubmit={finishUnfinishedWorkDay}
+      />
       {activeHandoverTask && !showCloseResolution && (
         <div className='employee-workday-sheet-overlay fixed inset-0 z-[115] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6' role='dialog' aria-modal='true' aria-hidden={handoverExitPromptOpen} aria-labelledby='handover-sheet-title'>
           <div className='employee-material-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:max-h-[calc(100dvh-3rem)] md:rounded-[28px]'>
@@ -3951,7 +3973,7 @@ export function EmployeeTodayClient({
               <div className='flex items-start justify-between gap-3'>
                 <div className='min-w-0'>
                   <h2 className='employee-material-sheet-title text-2xl font-black leading-tight text-slate-950'>{isLate ? 'Опоздание' : 'Завершить раньше'}</h2>
-                  <p className='employee-material-sheet-description mt-1 text-sm font-semibold leading-snug text-slate-500'>{isLate ? 'Начало смены уже зафиксировано.' : 'Укажите время — откроется сдача смены.'}</p>
+                  {!isLate && <p className='employee-material-sheet-description mt-1 text-sm font-semibold leading-snug text-slate-500'>Укажите время — откроется сдача смены.</p>}
                 </div>
                 <button type='button' onClick={() => setDeviationSheetKind(null)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'>
                   <X className='h-5 w-5' />
@@ -3971,7 +3993,7 @@ export function EmployeeTodayClient({
                   <legend className='px-1 text-sm font-extrabold text-slate-800'>{isLate ? 'Почему опоздали?' : 'Почему завершаете раньше?'}</legend>
                   <div className='mt-1 grid grid-cols-2 gap-2'>
                     {Object.entries(reasons).map(([value, label]) => (
-                      <button key={value} type='button' aria-pressed={deviationReason === value} onClick={() => setDeviationReason(value)} className={cn('employee-material-reason-choice flex h-14 items-center justify-center rounded-xl px-2 text-center text-sm font-bold leading-tight ring-1 transition', value === 'other' && 'col-span-2', deviationReason === value ? 'is-selected bg-blue-50 text-slate-900 ring-blue-300' : 'bg-white text-slate-600 ring-slate-200')}>{label}</button>
+                      <button key={value} type='button' aria-pressed={deviationReason === value} onClick={() => setDeviationReason(value)} className={cn('employee-material-reason-choice flex min-h-12 items-center justify-center rounded-xl px-2 text-center text-sm font-bold leading-tight ring-1 transition', value === 'other' && 'col-span-2', deviationReason === value ? 'is-selected bg-blue-50 text-slate-900 ring-blue-300' : 'bg-white text-slate-600 ring-slate-200')}>{isLate ? lateArrivalChoiceLabels[value as keyof typeof lateArrivalReasons] : label}</button>
                     ))}
                   </div>
                   {deviationReason === 'other' && <textarea value={deviationComment} onChange={(event) => setDeviationComment(event.target.value)} rows={2} className='mt-3 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-950 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-100' placeholder='Коротко опишите причину' />}
@@ -4131,17 +4153,6 @@ export function EmployeeTodayClient({
               <Button className='employee-material-green-action mt-3 h-12 w-full rounded-xl text-sm font-black' onClick={() => setStaleCloseOpen(true)}>
                 Закрыть предыдущую смену
               </Button>
-              <StaleWorkdayCloseSheet
-                open={staleCloseOpen}
-                shiftLabel={unfinished?.shiftLabel || ''}
-                reason={staleCloseReason}
-                comment={staleCloseComment}
-                saving={isSaving}
-                onReasonChange={(reason) => { setStaleCloseReason(reason); if (reason !== 'other') setStaleCloseComment(''); }}
-                onCommentChange={setStaleCloseComment}
-                onClose={() => setStaleCloseOpen(false)}
-                onSubmit={finishUnfinishedWorkDay}
-              />
             </Card>
           )}
 
