@@ -29,3 +29,20 @@ workday changes, payment-calendar changes, database and integrations.
 
 This decision supersedes the temporary neutral-identity wording in the older
 design-system document; operational colors and workflows remain unchanged.
+
+## PWA icon follow-up — 2026-09-14
+
+The owner selected the full MOBO wordmark on a solid ink-blue `#263B5C`
+background for the installed PWA icon. The letters are white; the approved
+amber gradient inside M retains its original shape and color. A single M,
+diagonal wordmark, decorative background effect and flat amber substitution
+were considered but not selected. The master logo and shell identity are
+unchanged.
+
+Application commit: `e25cc15` (icon assets, metadata, manifest, Apple touch
+fallback, offline/push icon references and cache version). The ordinary icon
+uses a slightly larger wordmark than the first white-background export; the
+maskable icon keeps the established safe-area geometry. No workflows, QR data,
+database or integrations change. Physical installed-icon verification remains
+necessary on the owner's device because PWA icon refresh behavior is
+device-dependent.
