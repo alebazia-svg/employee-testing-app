@@ -2,7 +2,7 @@
 
 ## Master identity follow-up — 2026-09-15
 
-Application commit: `cee3a46`.
+Application commits: `cee3a46`, followed by optical correction `6d8bd42`.
 
 The owner approved a new master identity based on the four-piece graphite
 symbol and Latin `MOBO` wordmark. It replaces the earlier blue/amber shell logo
@@ -23,6 +23,13 @@ procurement uses the dimensional mark on the light header. Installed PWA,
 Apple-touch and favicon assets use the opaque stone-background 3D symbol. The
 service-worker cache version was bumped so the new icon can replace the old
 asset, though physical installed-icon refresh remains device-dependent.
+
+The optical correction increases the negative space between the four symbol
+elements in dimensional, flat and compact lockups without changing their
+letterforms. It also increases the login wordmark, balances it against the
+symbol and gives the `Портал компании` descriptor a deliberate baseline and
+spacing. PWA rasters were regenerated from the same corrected dimensional
+master; the maskable export keeps a smaller safe-area mark.
 
 The same application commit includes the already approved employee PWA visual
 corrections: profile initials, a clean two-tone blue colleagues glyph,
