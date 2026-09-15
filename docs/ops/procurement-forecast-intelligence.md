@@ -50,3 +50,21 @@ or Astemir manager mapping blocks persistence completely.
 The repository includes a local systemd service and a 15-minute timer. They are
 not installed or enabled in production until the migration and release are
 separately approved.
+
+## Funding Guidance And Assistant Boundary
+
+The funding calculation is deterministic. It first reserves the verified
+salary remainder, the monthly rent estimate, and approved procurement plans.
+Only the remaining verified owner money may be allocated to supplier debt.
+
+For the next mandatory cash payment, the preparation route uses the deposit
+safe first, then the VTB daily card-withdrawal capacity, existing T-Bank card
+money, and finally only the currently verified T-Bank transfer tier. It stops
+at an unverified tariff boundary instead of understating commission.
+
+The finance assistant is a presentation and prioritisation layer over those
+calculations. It selects one primary action and explains its evidence. It must
+abstain when required 1C data is incomplete, and it must request priority
+review before recommending payment to an unclassified supplier. It cannot
+approve a request, move money, write to 1C, or learn a supplier classification
+from an unconfirmed decision.
