@@ -48,6 +48,8 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
   assert.match(loginSource, /mobo-symbol-3d-ui\.svg/);
   assert.match(loginSource, /mobo-wordmark\.svg/);
   assert.match(loginSource, /grid w-\[314px\][\s\S]*?sm:w-\[74px\][\s\S]*?text-\[13px\][\s\S]*?Портал компании/);
+  assert.match(loginSource, /min-h-\[164px\][\s\S]*?sm:min-h-\[176px\]/);
+  assert.match(loginSource, /px-6 pb-6 pt-3 sm:px-10 sm:pb-10 sm:pt-4/);
   assert.doesNotMatch(loginSource, /blur-\[12px\]/);
   assert.match(loginSource, /radial-gradient\(ellipse at 28% 4%[\s\S]*?linear-gradient\(145deg, #fffefa 0%, #faf7f1 50%, #f1ebe2 100%\)/);
   assert.match(loginSource, /inset_0_1px_0_rgba\(255,255,255,0\.92\)/);
@@ -69,6 +71,10 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
   assert.match(adminSource, /mobo-symbol-3d-light-ui\.svg/);
   assert.match(procurementSource, /PortalIdentityBlock variant='mobo-master'/);
   assert.match(brandStyles, /\.mobo-master-admin \.admin-mobile-header \.mobo-master-wordmark/);
+  assert.match(brandStyles, /\.portal-neutral-design\.admin-shell\.mobo-master-admin \.admin-nav-item-active \{/);
+  assert.match(brandStyles, /background: linear-gradient\(145deg, rgba\(130, 159, 189, 0\.23\), rgba\(255, 255, 255, 0\.07\)\) !important;/);
+  assert.match(brandStyles, /\.portal-neutral-design\.admin-shell\.mobo-master-admin \.admin-mobile-nav-item\.is-active \{[\s\S]*?background: #e5edf6 !important;[\s\S]*?box-shadow: none !important;/);
+  assert.match(brandStyles, /\.portal-neutral-design\.admin-shell\.mobo-master-admin \.admin-mobile-nav-item\.is-active::after \{[\s\S]*?display: none !important;[\s\S]*?content: none !important;/);
   assert.match(brandStyles, /\.procurement-shell-header \.mobo-master-wordmark[\s\S]*?brightness\(0\) invert\(1\)/);
   assert.match(employeeHeaderSource, /employee-material-profile-initials/);
   assert.match(employeeSource, /function ColleaguesGlyph\(\)[\s\S]*?portal-brand-strong[\s\S]*?portal-brand-colleague-blue/);

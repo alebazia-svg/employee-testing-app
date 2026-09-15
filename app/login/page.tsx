@@ -55,7 +55,7 @@ export default function Login() {
           background: 'radial-gradient(ellipse at 28% 4%, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.28) 38%, transparent 62%), linear-gradient(145deg, #fffefa 0%, #faf7f1 50%, #f1ebe2 100%)',
         }}
       >
-        <section className='relative flex min-h-[200px] items-center justify-center overflow-hidden p-5 sm:min-h-[214px] sm:p-8'>
+        <section className='relative flex min-h-[164px] items-center justify-center overflow-hidden p-5 sm:min-h-[176px] sm:p-8'>
           <div className='pointer-events-none absolute left-1/2 top-1/2 h-[150px] w-[390px] max-w-[88%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#d8d0c4]/20 blur-[42px]' aria-hidden='true' />
           <div className='relative grid w-[314px] max-w-full justify-items-center gap-[17px] min-[440px]:w-[350px] sm:w-[366px]' aria-label='MOBO · Портал компании'>
             <span className='flex w-full items-center gap-[12px] min-[440px]:gap-[14px]'>
@@ -68,7 +68,7 @@ export default function Login() {
           </div>
         </section>
 
-        <section className='flex items-center justify-center p-6 sm:p-10'>
+        <section className='flex items-center justify-center px-6 pb-6 pt-3 sm:px-10 sm:pb-10 sm:pt-4'>
           <div className='w-full max-w-[420px]'>
             <div className='mb-6'>
               <h1 className='text-[28px] font-black tracking-[-0.025em] text-[#1b1e22] sm:text-[34px]'>Войти</h1>
