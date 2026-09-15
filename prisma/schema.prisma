@@ -1464,3 +1464,18 @@ model PayrollAttendanceSnapshot {
 
   @@index([sourceCheckedAt])
 }
+
+model ProcurementForecastSnapshot {
+  id              Int      @id @default(autoincrement())
+  snapshotDate    String
+  payloadVersion  Int      @default(1)
+  payload         Json
+  contentHash     String
+  revision        Int      @default(1)
+  sourceCheckedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([snapshotDate, createdAt])
+  @@index([contentHash])
+}

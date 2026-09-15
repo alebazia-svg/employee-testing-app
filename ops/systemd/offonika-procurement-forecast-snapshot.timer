@@ -1,0 +1,11 @@
+[Unit]
+Description=Check procurement forecast inputs every fifteen minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/15:00 Europe/Moscow
+Persistent=false
+AccuracySec=30s
+Unit=offonika-procurement-forecast-snapshot.service
+
+[Install]
+WantedBy=timers.target

@@ -29,7 +29,8 @@
     "matching:run": "node --conditions=react-server --env-file=.env --import tsx scripts/terminal-fiscal-run.ts",
     "matching:auto-run": "node --conditions=react-server --env-file=.env --import tsx scripts/terminal-fiscal-auto-run.ts",
     "expense-requests:preview": "node --import tsx scripts/expense-request-completeness-preview.ts",
-    "expense-requests:admin-sync": "node --conditions=react-server --env-file=.env --import tsx scripts/expense-request-admin-sync.ts"
+    "expense-requests:admin-sync": "node --conditions=react-server --env-file=.env --import tsx scripts/expense-request-admin-sync.ts",
+    "procurement:forecast-snapshot": "node --conditions=react-server --env-file=.env --import tsx scripts/procurement-forecast-snapshot.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

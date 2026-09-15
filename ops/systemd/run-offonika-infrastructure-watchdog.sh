@@ -48,6 +48,7 @@ units=(
   offonika-credit-realization-shadow
   offonika-dependency-watchdog
   offonika-expense-request-sync
+  offonika-procurement-forecast-snapshot
   offonika-portal-offsite-backup
   offonika-terminal-fiscal-current
   offonika-terminal-fiscal-final
@@ -64,6 +65,7 @@ declare -A unit_labels=(
   [offonika-credit-realization-shadow]="Проверка кредитных продаж"
   [offonika-dependency-watchdog]="Контроль подключений к внешним сервисам"
   [offonika-expense-request-sync]="Проверка заявок на расходы"
+  [offonika-procurement-forecast-snapshot]="Обновление финансового прогноза"
   [offonika-portal-offsite-backup]="Внешняя резервная копия портала"
   [offonika-terminal-fiscal-current]="Текущая сверка оплат по терминалу"
   [offonika-terminal-fiscal-final]="Итоговая сверка оплат по терминалу"
