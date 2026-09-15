@@ -1,4 +1,5 @@
-.mobo-master-admin .admin-sidebar .mobo-master-wordmark {
+.mobo-master-admin .admin-sidebar .mobo-master-wordmark,
+.mobo-master-admin .admin-mobile-header .mobo-master-wordmark {
   filter: brightness(0) invert(1);
 }
 
@@ -48,5 +49,17 @@
 }
 
 .portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-tab.is-active .employee-material-tab-label::after {
-  background: #829fbd;
+  display: none !important;
+  content: none !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-segment-option.is-active {
+  color: #263b5c !important;
+  background: #dfe8f3 !important;
+  box-shadow: none !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-segment-option.is-active::after {
+  display: none !important;
+  content: none !important;
 }

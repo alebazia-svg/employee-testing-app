@@ -58,6 +58,7 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
   assert.match(identitySource, /\/brand\/mobo-master\/mobo-wordmark\.svg/);
   assert.match(adminSource, /PortalIdentityBlock variant='mobo-master'/);
   assert.match(procurementSource, /PortalIdentityBlock variant='mobo-master'/);
+  assert.match(brandStyles, /\.mobo-master-admin \.admin-mobile-header \.mobo-master-wordmark/);
   assert.match(brandStyles, /\.procurement-shell-header \.mobo-master-wordmark[\s\S]*?brightness\(0\) invert\(1\)/);
   assert.match(employeeHeaderSource, /employee-material-profile-initials/);
   assert.match(employeeSource, /function ColleaguesGlyph\(\)[\s\S]*?portal-brand-strong[\s\S]*?portal-brand-colleague-blue/);

@@ -1852,7 +1852,7 @@ export function EmployeeTodayClient({
     return true;
   }
 
-  function ScheduleDayCard({ date, selected = false, compact = false }: { date: string; selected?: boolean; compact?: boolean }) {
+  function ScheduleDayCard({ date, selected = false, compact = false, listView = false }: { date: string; selected?: boolean; compact?: boolean; listView?: boolean }) {
     const ownEntry = ownScheduleByDate.get(date);
     const ownVacation = ownVacationForDate(date);
     const colleagueRows = getColleagueRows(date);
@@ -1880,7 +1880,7 @@ export function EmployeeTodayClient({
     return (
       <div className={cn(
         'employee-material-day-card rounded-lg border bg-white',
-        compact ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1.5 p-2.5' : 'p-3',
+        compact ? `grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 ${listView ? 'gap-y-1' : 'gap-y-1.5'} p-2.5` : 'p-3',
         selected ? 'border-slate-400 ring-2 ring-slate-200' : 'border-slate-200',
       )}>
         <div className={cn('flex items-center justify-between gap-3', compact && 'col-span-2')}>
@@ -1891,18 +1891,20 @@ export function EmployeeTodayClient({
             {statusCopy}
           </Badge>
         </div>
-        <p className={cn('text-sm font-semibold leading-snug text-slate-600', compact ? 'm-0 min-w-0' : 'mt-2')}>{peopleCopy}</p>
+        <p className={cn('text-sm font-semibold leading-snug text-slate-600', compact ? 'm-0 min-w-0' : 'mt-2')}>
+          {listView && !ownVacation && ownEntry?.status !== 'working' && !workingNames ? 'Пока никто не работает' : peopleCopy}
+        </p>
         {compact && canEdit && (
           <div className='m-0 flex justify-end'>
             <Button
               type='button'
               className={cn(
-                'h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold',
-                ownEntry || ownVacation ? 'employee-material-secondary-action' : 'employee-material-green-action',
+                listView ? 'h-11 shrink-0 rounded-lg px-3 text-xs font-extrabold' : 'h-9 shrink-0 rounded-lg px-3 text-xs font-extrabold',
+                listView || ownEntry || ownVacation ? 'employee-material-secondary-action' : 'employee-material-green-action',
               )}
               onClick={() => ownVacation ? openVacationEditor(ownVacation) : setEditingScheduleDate(date)}
             >
-              {ownVacation ? 'Изменить отпуск' : ownEntry ? 'Изменить' : 'Выбрать'}
+              {ownVacation ? 'Изменить отпуск' : ownEntry ? 'Изменить' : listView ? 'Выбрать день' : 'Выбрать'}
             </Button>
           </div>
         )}
@@ -4944,7 +4946,7 @@ export function EmployeeTodayClient({
               {scheduleMode === 'list' && (
                 <div className='grid gap-2.5'>
                   {previewDates.map((date) => (
-                    <ScheduleDayCard key={date} date={date} />
+                    <ScheduleDayCard key={date} date={date} compact listView />
                   ))}
                 </div>
               )}
@@ -5091,7 +5093,7 @@ export function EmployeeTodayClient({
                           aria-pressed={bulkEligible ? bulkWorking : undefined}
                           disabled={isOutsideMonth || (bulkScheduleMode && !bulkEligible)}
                           className={cn(
-                            'employee-material-calendar-day flex h-[60px] min-w-0 flex-col overflow-hidden rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
+                            'employee-material-calendar-day flex aspect-square min-w-0 flex-col overflow-hidden rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
                             statusClass,
                             isOutsideMonth && 'opacity-30',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
@@ -5100,31 +5102,35 @@ export function EmployeeTodayClient({
                             !bulkScheduleMode && isToday && 'is-today',
                           )}
                         >
-                          <span className='text-[13px] font-extrabold leading-none'>{cell.day}</span>
-                          <span className='mt-1 truncate text-[10px] font-extrabold leading-none'>
-                            {scheduleMonthLoaded
-                              ? isOutsideMonth
-                                ? ''
-                                : bulkEligible
-                                  ? (bulkWorking ? 'Раб.' : 'Вых.')
-                                  : ownVacation
-                                    ? 'Отп.'
-                                  : isLockedMissing
-                                    ? '—'
-                                    : scheduleCellLabel(ownEntry?.status)
-                              : '…'}
+                          <span className='flex w-full min-w-0 items-start justify-between gap-0.5'>
+                            <span className='text-[13px] font-extrabold leading-none'>{cell.day}</span>
+                            <span className='text-[9px] font-extrabold leading-none'>
+                              {scheduleMonthLoaded
+                                ? isOutsideMonth
+                                  ? ''
+                                  : bulkEligible
+                                    ? (bulkWorking ? 'Раб.' : 'Вых.')
+                                    : ownVacation
+                                      ? 'Отп.'
+                                    : isLockedMissing
+                                      ? '—'
+                                      : scheduleCellLabel(ownEntry?.status)
+                                : '…'}
+                            </span>
                           </span>
                           <span className={cn(
-                            'mt-auto max-w-full truncate text-[10px] font-extrabold leading-none',
+                            'mt-auto flex max-w-full flex-wrap items-end gap-x-1 gap-y-0 text-[9px] font-extrabold leading-[10px]',
                             scheduleMonthLoaded && workingInitials.count === 0 && workingInitials.complete ? 'text-amber-700' : 'text-green-800',
                           )}>
-                            {scheduleMonthLoaded && !isOutsideMonth && workingInitials.count === 0 && workingInitials.complete ? 'Никого' : ''}
-                            {scheduleMonthLoaded && !isOutsideMonth ? workingInitials.initials.join(' ') : ''}
-                            {scheduleMonthLoaded && !isOutsideMonth && workingInitials.extraCount > 0 ? ` +${workingInitials.extraCount}` : ''}
+                            {scheduleMonthLoaded && !isOutsideMonth && workingInitials.count === 0 && workingInitials.complete && <span>Никого</span>}
+                            {scheduleMonthLoaded && !isOutsideMonth && workingInitials.initials.map((value, index) => <span key={`${cell.date}-working-${index}`}>{value}</span>)}
+                            {scheduleMonthLoaded && !isOutsideMonth && workingInitials.extraCount > 0 && <span>+{workingInitials.extraCount}</span>}
                           </span>
                           {scheduleMonthLoaded && !isOutsideMonth && vacationInitials.count > 0 && (
-                            <span className='mt-0.5 max-w-full truncate text-[9px] font-extrabold leading-[10px] text-[#365b7d]'>
-                              {vacationInitials.initials.join(' ')}{vacationInitials.extraCount > 0 ? ` +${vacationInitials.extraCount}` : ''} отп.
+                            <span className='mt-0.5 flex max-w-full flex-wrap gap-x-1 gap-y-0 text-[8px] font-extrabold leading-[9px] text-[#365b7d]'>
+                              {vacationInitials.initials.map((value, index) => <span key={`${cell.date}-vacation-${index}`}>{value}</span>)}
+                              {vacationInitials.extraCount > 0 && <span>+{vacationInitials.extraCount}</span>}
+                              <span>отп.</span>
                             </span>
                           )}
                         </button>
@@ -5132,10 +5138,10 @@ export function EmployeeTodayClient({
                     })}
                   </div>
 
-                  <div className='grid grid-cols-2 gap-x-3 gap-y-2 px-1 text-[11px] font-extrabold text-slate-600'>
+                  <div className='flex flex-nowrap items-center justify-center gap-3 px-0.5 text-[10px] font-extrabold text-slate-600'>
                     <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#d9f1dc] ring-1 ring-[#9ed1a7]' />Работаю</span>
                     <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#dce2df] ring-1 ring-[#aebbb5]' />Выходной</span>
-                    <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#ddd5ea] ring-1 ring-[#aa9fbd]' />Отпуск</span>
+                    <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#e8f1fb] ring-1 ring-[#b8cee5]' />Отпуск</span>
                     {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#fbfcfe] ring-1 ring-[#dfe4ea]' />Нужно выбрать</span>}
                   </div>
 

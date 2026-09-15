@@ -5,6 +5,7 @@ import test from 'node:test';
 const employeeSourcePath = 'app/(dashboard)/employee/EmployeeTodayClient.tsx';
 const notificationsSourcePath = 'app/(dashboard)/employee/WorkdayNotificationsClient.tsx';
 const globalStylesPath = 'app/globals.css';
+const brandStylesPath = 'app/mobo-brand.css';
 
 test('approved employee PWA palette remains the default', async () => {
   const [employeeSource, notificationsSource, globalStyles] = await Promise.all([
@@ -20,18 +21,41 @@ test('approved employee PWA palette remains the default', async () => {
   assert.match(globalStyles, /--portal-brand-accent: #efbd37;/);
 });
 
-test('approved employee PWA navigation semantics remain intact', async () => {
-  const [employeeSource, globalStyles] = await Promise.all([
+test('approved employee PWA navigation semantics remain intact without decorative underlines', async () => {
+  const [employeeSource, globalStyles, brandStyles] = await Promise.all([
     readFile(employeeSourcePath, 'utf8'),
     readFile(globalStylesPath, 'utf8'),
+    readFile(brandStylesPath, 'utf8'),
   ]);
 
   assert.match(employeeSource, /label: 'Рабочий день', icon: PremiumClockIcon/);
   assert.match(employeeSource, /label: 'График', icon: PremiumCalendarIcon/);
   assert.match(employeeSource, /employee-material-tab-label/);
   assert.match(globalStyles, /employee-material-nav-icon-day svg[\s\S]*?transform: scale\(1\.12\)/);
-  assert.match(globalStyles, /employee-material-tab\.is-active \.employee-material-tab-label::after[\s\S]*?width: 34px;[\s\S]*?height: 3px;/);
+  assert.match(brandStyles, /employee-material-tab\.is-active \.employee-material-tab-label::after[\s\S]*?display: none !important;[\s\S]*?content: none !important;/);
   assert.match(globalStyles, /--solar-secondary-color: #263b5c !important;/);
+});
+
+test('approved schedule controls use the compact list and a line-free muted-blue segment', async () => {
+  const [employeeSource, brandStyles] = await Promise.all([
+    readFile(employeeSourcePath, 'utf8'),
+    readFile(brandStylesPath, 'utf8'),
+  ]);
+
+  assert.match(employeeSource, /<ScheduleDayCard key=\{date\} date=\{date\} compact listView \/>/);
+  assert.match(employeeSource, /flex flex-nowrap items-center justify-center gap-3 px-0\.5 text-\[10px\]/);
+  assert.match(employeeSource, /bg-\[#e8f1fb\] ring-1 ring-\[#b8cee5\]' \/>Отпуск/);
+  assert.match(brandStyles, /employee-material-segment-option\.is-active \{[\s\S]*?background: #dfe8f3 !important;[\s\S]*?box-shadow: none !important;/);
+  assert.match(brandStyles, /employee-material-segment-option\.is-active::after[\s\S]*?display: none !important;[\s\S]*?content: none !important;/);
+});
+
+test('month calendar cells are square and show initials without ellipsis', async () => {
+  const employeeSource = await readFile(employeeSourcePath, 'utf8');
+
+  assert.match(employeeSource, /employee-material-calendar-day flex aspect-square/);
+  assert.match(employeeSource, /workingInitials\.initials\.map/);
+  assert.match(employeeSource, /vacationInitials\.initials\.map/);
+  assert.doesNotMatch(employeeSource, /mt-auto max-w-full truncate text-\[10px\]/);
 });
 
 test('semantic state icons keep the approved color system', async () => {
