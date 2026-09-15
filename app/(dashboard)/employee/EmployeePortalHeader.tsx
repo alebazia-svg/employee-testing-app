@@ -1,4 +1,3 @@
-import { UserRoundedIcon as PremiumUserIcon } from '@solar-icons/react/bold-duotone';
 import { LogoutButton } from '@/components/LogoutButton';
 import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
 
@@ -22,18 +21,16 @@ export function EmployeePortalHeader({
   const [metaLead, ...metaRest] = meta.split(' · ');
   const metaTail = metaRest.join(' · ');
   const compactMetaTail = metaTail.replace(/^[^,]+,\s*/, '');
+  const nameParts = name.trim().split(/\s+/).filter(Boolean);
+  const avatarInitials = (nameParts.length > 1
+    ? `${nameParts[1][0]}${nameParts[0][0]}`
+    : nameParts[0]?.slice(0, 1) ?? '?').toLocaleUpperCase('ru-RU');
 
   return (
     <header className='employee-material-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]'>
       <div className='employee-material-header-profile grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2.5'>
-        <div className='employee-material-profile-avatar flex h-11 w-11 items-center justify-center' aria-hidden='true'>
-          <PremiumUserIcon
-            color='var(--portal-brand-strong)'
-            secondaryColor='var(--portal-brand-accent)'
-            secondaryOpacity={0.96}
-            className='employee-material-profile-glyph'
-            aria-hidden='true'
-          />
+        <div className='employee-material-profile-avatar employee-material-profile-initials flex h-11 w-11 items-center justify-center' aria-hidden='true'>
+          {avatarInitials}
         </div>
         <div className='employee-material-profile-copy min-w-0'>
           <p className='truncate text-sm font-extrabold leading-tight text-[#273137]'>{name}</p>

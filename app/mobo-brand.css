@@ -1,0 +1,48 @@
+.mobo-master-admin .admin-sidebar .mobo-master-wordmark {
+  filter: brightness(0) invert(1);
+}
+
+.mobo-master-admin .admin-nav-item-active::before {
+  background: #88a1bd !important;
+}
+
+.mobo-master-admin .admin-nav-item-active svg {
+  color: #9ab1ca !important;
+}
+
+.mobo-master-admin .admin-mobile-nav-item.is-active::after {
+  background: #829fbd !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo {
+  --portal-brand-colleague-blue: #829fbd;
+  --portal-brand-qr-blue: #b8cce0;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-profile-initials {
+  color: var(--portal-brand-strong);
+  background: #eaf1fa;
+  box-shadow: 0 0 0 3px #fff;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-brand-action-icon {
+  color: var(--portal-brand-qr-blue) !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-tab.is-active svg {
+  color: #263b5c !important;
+  --solar-secondary-color: #829fbd !important;
+  --solar-secondary-opacity: 1 !important;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-tab.is-active::after {
+  display: none;
+  content: none;
+}
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-tab.is-active .employee-material-tab-label::after {
+  background: #829fbd;
+}

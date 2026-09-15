@@ -1,8 +1,8 @@
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open('portal-offline-v4').then((cache) => cache.addAll([
+    caches.open('portal-offline-v5').then((cache) => cache.addAll([
       '/offline.html',
-      '/brand/mobo/pwa-wordmark-blue-192.png',
+      '/portal-app-icon-192.png',
     ])).then(() => self.skipWaiting()),
   );
 });
@@ -11,7 +11,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys
-        .filter((key) => (key.startsWith('offonika-offline-') || key.startsWith('portal-offline-')) && key !== 'portal-offline-v4')
+        .filter((key) => (key.startsWith('offonika-offline-') || key.startsWith('portal-offline-')) && key !== 'portal-offline-v5')
         .map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
@@ -44,9 +44,9 @@ self.addEventListener('push', (event) => {
   if ('setAppBadge' in self.navigator && Number.isFinite(Number(data.badgeCount))) {
     actions.push(self.navigator.setAppBadge(Math.max(0, Number(data.badgeCount))));
   }
-  actions.push(self.registration.showNotification(data.title || 'МОБО', {
+  actions.push(self.registration.showNotification(data.title || 'MOBO', {
     body: data.body || 'Откройте портал, чтобы продолжить рабочий день.',
-    icon: '/brand/mobo/pwa-wordmark-blue-192.png',
+    icon: '/portal-app-icon-192.png',
     badge: '/portal-app-icon-192.png',
     data: { url: data.url || '/employee', notificationId: data.notificationId || null },
     tag: data.notificationId ? `${data.tagPrefix || 'workday'}-${data.notificationId}` : (data.tagPrefix || 'workday'),

@@ -11,7 +11,6 @@ import {
   ClockCircleIcon as PremiumClockIcon,
   ClipboardCheckIcon as PremiumClipboardCheckIcon,
   DangerTriangleIcon as PremiumDangerTriangleIcon,
-  UsersGroupRoundedIcon as PremiumUsersGroupIcon,
 } from '@solar-icons/react/bold-duotone';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
@@ -1108,12 +1107,12 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
 function ColleaguesGlyph() {
   return (
     <span className='flex h-8 w-8 items-center justify-center' aria-hidden='true'>
-      <PremiumUsersGroupIcon
-        color='var(--portal-brand-strong)'
-        secondaryColor='var(--portal-brand-accent)'
-        secondaryOpacity={0.96}
-        className='h-7 w-7'
-      />
+      <svg className='h-7 w-7' viewBox='0 0 28 28' fill='none' aria-hidden='true'>
+        <circle cx='11' cy='9' r='4' fill='var(--portal-brand-strong)' />
+        <path d='M3.8 22.2c0-4.2 3.2-6.4 7.2-6.4s7.2 2.2 7.2 6.4v.6H3.8v-.6Z' fill='var(--portal-brand-strong)' />
+        <circle cx='20.8' cy='11.2' r='3' fill='var(--portal-brand-colleague-blue)' />
+        <path d='M18.4 18c3.5-.2 6 1.7 6 4.6H20c0-1.9-.6-3.4-1.6-4.6Z' fill='var(--portal-brand-colleague-blue)' />
+      </svg>
     </span>
   );
 }
@@ -5236,8 +5235,8 @@ export function EmployeeTodayClient({
                   <span className={cn('relative flex h-6 w-6 items-center justify-center', `employee-material-nav-icon-${item.id}`)} aria-hidden='true'>
                     <Icon
                       className='h-6 w-6'
-                      color={active ? 'var(--portal-brand-accent)' : '#687078'}
-                      secondaryColor={active ? 'var(--portal-brand-strong)' : '#b6babd'}
+                      color={active ? 'var(--portal-brand-strong)' : '#687078'}
+                      secondaryColor={active ? 'var(--portal-brand-colleague-blue)' : '#b6babd'}
                       secondaryOpacity={active ? 1 : 0.82}
                     />
                   </span>

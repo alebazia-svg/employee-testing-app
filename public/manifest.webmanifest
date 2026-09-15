@@ -1,26 +1,26 @@
 {
-  "name": "МОБО · Портал компании",
-  "short_name": "МОБО",
+  "name": "MOBO · Портал компании",
+  "short_name": "MOBO",
   "description": "Рабочий день, закупки и контроль в одном месте",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f5f6f5",
-  "theme_color": "#171c24",
+  "background_color": "#eee9e1",
+  "theme_color": "#1b2028",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/brand/mobo/pwa-wordmark-blue-192.png",
+      "src": "/portal-app-icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/brand/mobo/pwa-wordmark-blue-512.png",
+      "src": "/portal-app-icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "/brand/mobo/pwa-wordmark-blue-maskable-512.png",
+      "src": "/portal-app-icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
