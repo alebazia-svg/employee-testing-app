@@ -388,7 +388,7 @@ export default function AdminProcurementClient({
               tone: "prepare" as const,
             }
     : {
-        title: financialAssistant.title,
+        title: `${financialAssistant.title}${financialAssistant.amountMinor == null ? "" : ` · ${rub.format(financialAssistant.amountMinor / 100)}`}`,
         detail: financialAssistant.explanation,
         tone: financialAssistant.state === "ready" ? "ready" as const : financialAssistant.state === "review" ? "gap" as const : "prepare" as const,
       };
@@ -534,7 +534,7 @@ export default function AdminProcurementClient({
 
         <aside className="space-y-4">
           <section id="supplier-control" className="admin-material-card scroll-mt-24 rounded-2xl bg-white p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">После обязательных выплат</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Кому платить дальше</h2><p className="mt-1 text-xs font-semibold text-slate-500">Поставщики с долгом от 300 000 ₽</p></div><div className="text-right"><p className="text-xs font-bold text-slate-500">Общий долг</p><p className="mt-0.5 text-sm font-black text-slate-950">{supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}</p></div></div>
+            <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">После обязательных выплат</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Кому платить дальше</h2><p className="mt-1 text-xs font-semibold text-slate-500">Поставщики с долгом от 300 000 ₽</p></div><div className="text-right"><p className="text-xs font-bold text-slate-500">Долг всем поставщикам</p><p className="mt-0.5 text-sm font-black text-slate-950">{debtAllocation.totalDebtMinor == null ? "—" : rub.format(debtAllocation.totalDebtMinor / 100)}</p></div></div>
             {controlledSupplierDebts.length ? <div className="mt-3 divide-y divide-slate-200">{controlledSupplierDebts.slice(0, 5).map((debt, index) => { const allocation = supplierAllocationByName.get(debt.supplier); return <div key={debt.supplier} className="py-3"><div className="flex items-center justify-between gap-3"><p className="min-w-0 truncate text-sm font-black text-slate-950">{index + 1}. {debt.supplier}</p><p className="shrink-0 text-sm font-black text-slate-950">{rub.format(debt.debtMinor / 100)}</p></div><p className={`mt-1 text-xs font-semibold ${allocation?.recommendedMinor ? "text-green-700" : "text-slate-500"}`}>{allocation?.recommendedMinor ? `${allocation.result === "full" ? "Закрыть полностью" : "Оплатить частично"}: ${rub.format(allocation.recommendedMinor / 100)}` : debt.priority <= 1 ? "Высокий приоритет · сумма оплаты рассчитывается" : debt.priority >= 4 ? "Крупный долг · подтвердить приоритет" : "Сумма оплаты рассчитывается"}</p></div>; })}</div> : <p className={`mt-3 rounded-xl px-3.5 py-3 text-sm font-semibold ${sourceWarnings.length ? "bg-amber-50 text-amber-900" : "bg-green-50 text-green-900"}`}>{sourceWarnings.length ? "Долги появятся после получения актуальных взаиморасчётов из 1С." : "Крупных долгов сейчас нет."}</p>}
           </section>
 
