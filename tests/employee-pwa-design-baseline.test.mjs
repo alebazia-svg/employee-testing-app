@@ -118,10 +118,10 @@ test('KKM close failure uses the approved real-employee sheet, not the legacy in
 test('other required issues keep the technical request in a sheet across re-entry', async () => {
   const source = await readFile(employeeSourcePath, 'utf8');
 
-  assert.match(source, /requiredIssuesState\.length > 0 && \(closeBlocked \|\| handoverHasSavedProgress \|\| Boolean\(kkmCloseIssue\) \|\| Boolean\(closeExceptionRequestState\)\)/);
+  assert.match(source, /requiredIssuesState\.length > 0 && \(closeBlocked \|\| handoverWasBlocked \|\| Boolean\(kkmCloseIssue\) \|\| Boolean\(closeExceptionRequestState\)\)/);
   assert.match(source, /closeResolutionOpen && showCloseResolution && !kkmCloseIssue/);
-  assert.match(source, /Сообщить о проблеме/);
-  assert.match(source, /Смена останется открытой\./);
+  assert.match(source, /Почему не получается\?/);
+  assert.match(source, /Администратор решит, можно ли закрыть смену с ошибкой\./);
   assert.match(source, /activeWorkDay && !showShiftControl && !showCloseResolution/);
 });
 

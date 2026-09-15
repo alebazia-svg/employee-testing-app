@@ -44,7 +44,7 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
     handoverTask?.handoverData
     && typeof handoverTask.handoverData === 'object'
     && !Array.isArray(handoverTask.handoverData)
-    && (handoverTask.handoverData as Record<string, unknown>).draft === true,
+    && typeof (handoverTask.handoverData as Record<string, unknown>).closeBlockedAt === 'string',
   );
   return (
     <main className='portal-neutral-design portal-palette-mobo portal-typography-refined employee-material-ui min-h-screen bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>

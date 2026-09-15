@@ -539,6 +539,14 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       ? await findApprovedCloseException(prisma, task.run.workDayEntryId, requiredIssueIds)
       : null;
     if (requiredIssueIds.length && !closeException) {
+      await prisma.shiftControlTask.update({
+        where: { id: task.id },
+        data: { handoverData: {
+          ...(isRecord(handoverData) ? handoverData : {}),
+          ...(kkmCloseCheckAudit ? { kkmCloseCheck: kkmCloseCheckAudit } : {}),
+          closeBlockedAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue },
+      });
       return Response.json({
         error: 'Есть обязательная неисправленная ошибка. Исправьте её или запросите разрешение администратора при технической невозможности.',
         code: 'OPEN_REQUIRED_ISSUES',

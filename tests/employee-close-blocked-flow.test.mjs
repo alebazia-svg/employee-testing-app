@@ -9,7 +9,7 @@ const issueView = readFileSync(new URL('../lib/workday-control-issue-view.ts', i
 test('failed handover keeps a compact persistent close-blocked state', () => {
   assert.match(todayClient, /setCloseBlocked\(true\)/);
   assert.match(todayClient, /setCloseBlockedSheetOpen\(true\)/);
-  assert.match(todayClient, /closeBlocked \|\| handoverHasSavedProgress/);
+  assert.match(todayClient, /closeBlocked \|\| handoverWasBlocked/);
   assert.match(todayClient, /title=\{showCloseResolution \? 'Смена открыта'/);
   assert.match(todayClient, /Закрытие заблокировано/);
   assert.doesNotMatch(todayClient, /showAllRequiredIssues/);
@@ -20,8 +20,8 @@ test('blocked sheet has one clear correction route and a safe help state', () =>
   assert.match(blockedSheet, /items\.map/);
   assert.match(todayClient, /items=\{attentionItems\}/);
   assert.match(todayClient, /paymentChecksState\.map/);
-  assert.match(blockedSheet, /Сообщить о проблеме/);
-  assert.match(blockedSheet, /Администратор уведомлён/);
+  assert.match(blockedSheet, /Не могу исправить/);
+  assert.match(blockedSheet, /Запрос отправлен/);
   assert.match(blockedSheet, /disabled=\{helpPending\}/);
 });
 

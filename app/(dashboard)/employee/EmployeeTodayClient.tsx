@@ -1663,7 +1663,8 @@ export function EmployeeTodayClient({
   const kkmCloseIssue = requiredIssuesState.find((issue) => (
     issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === activeWorkDay?.date
   )) ?? null;
-  const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || handoverHasSavedProgress || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState));
+  const handoverWasBlocked = isRecord(handoverTask?.handoverData) && typeof handoverTask.handoverData.closeBlockedAt === 'string';
+  const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || handoverWasBlocked || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState));
   const requiredIssuesForBanner = showCloseResolution
     ? requiredIssuesState.filter((issue) => issue.ruleKey !== 'kkm_shift_not_closed')
     : requiredIssuesState;
@@ -3962,8 +3963,8 @@ export function EmployeeTodayClient({
               <BottomSheetDragHandle onDismiss={() => setCloseResolutionOpen(false)} disabled={isSaving} />
               <div className='flex items-start justify-between gap-3'>
                 <div>
-                  <h2 id='close-exception-sheet-title' className='text-xl font-black leading-tight text-slate-950'>Сообщить о проблеме</h2>
-                  <p className='mt-1 text-sm font-semibold text-slate-500'>Смена останется открытой.</p>
+                  <h2 id='close-exception-sheet-title' className='text-xl font-black leading-tight text-slate-950'>Почему не получается?</h2>
+                  <p className='mt-1 text-sm font-semibold text-slate-500'>Администратор решит, можно ли закрыть смену с ошибкой.</p>
                 </div>
                 <button type='button' onClick={() => setCloseResolutionOpen(false)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
               </div>
@@ -3974,7 +3975,7 @@ export function EmployeeTodayClient({
                 <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold' aria-label='Техническая причина'><option value=''>Выберите причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
                 <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />
                 {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
-                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || !closeExceptionComment.trim()} onClick={requestCloseException}>Отправить</Button>
+                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || !closeExceptionComment.trim()} onClick={requestCloseException}>Отправить администратору</Button>
               </div>
             </div>
           </div>
@@ -4551,9 +4552,11 @@ export function EmployeeTodayClient({
                   title={showCloseResolution ? 'Смена открыта' : 'Требуют внимания'}
                   subtitle={showCloseResolution
                     ? currentCloseExceptionStatus === 'pending'
-                      ? 'Закрытие заблокировано · администратор уведомлён.'
+                      ? 'Ждём разрешения закрыть смену.'
                       : `Закрытие заблокировано · ${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`
-                    : `${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`}
+                    : requiredIssuesForBanner.length
+                      ? `${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`
+                      : `${paymentChecksState.length} ${countWord(paymentChecksState.length, 'проверка', 'проверки', 'проверок')}.`}
                   count={attentionCount}
                   actionLabel={showCloseResolution ? 'Продолжить' : 'Открыть'}
                   tone={showCloseResolution ? 'blocked' : 'neutral'}
