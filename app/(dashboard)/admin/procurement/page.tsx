@@ -23,6 +23,8 @@ import { fetchPayrollForecastEvidence } from "@/lib/procurement-payroll-one-c";
 import { fetchTBankOwnerTransferControl } from "@/lib/tbank-owner-transfer-one-c";
 import { fetchProcurementPriorityDebts } from "@/lib/procurement-cash-forecast-settlements";
 import { buildSupplierIntelligence } from "@/lib/procurement-supplier-intelligence";
+import { buildProcurementDebtAllocation } from "@/lib/procurement-debt-allocation";
+import { buildProcurementCashPreparation } from "@/lib/procurement-cash-preparation";
 
 export const dynamic = "force-dynamic";
 
@@ -195,9 +197,18 @@ export default async function AdminProcurementPage() {
   const ownerForecast = ownerForecastResult.status === "fulfilled" ? ownerForecastResult.value : null;
   const ownerMoney = ownerForecast?.money?.complete ? ownerForecast.money : null;
   const safeMinor = ownerBalance(ownerMoney, "Сейф Депозитный");
-  const cardParts = ["Банк Альфа КБР", "Банк ВТБ КБР", "Банк ТБанк КБР"].map((name) => ownerBalance(ownerMoney, name));
+  const alfaCardMinor = ownerBalance(ownerMoney, "Банк Альфа КБР");
+  const vtbCardMinor = ownerBalance(ownerMoney, "Банк ВТБ КБР");
+  const tbankCardMinor = ownerBalance(ownerMoney, "Банк ТБанк КБР");
+  const cardParts = [alfaCardMinor, vtbCardMinor, tbankCardMinor];
   const cardsMinor = cardParts.every((value) => value !== null)
     ? cardParts.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+    : null;
+  const tbankAccountMinor = ownerBalance(ownerMoney, "Т-Банк КБР");
+  const vtbAccountMinor = ownerBalance(ownerMoney, "ВТБ КБР");
+  const bankParts = [tbankAccountMinor, vtbAccountMinor];
+  const bankAccountsMinor = bankParts.every((value) => value !== null)
+    ? bankParts.reduce<number>((sum, value) => sum + (value ?? 0), 0)
     : null;
   const payroll = payrollResult.status === "fulfilled" ? payrollResult.value : null;
   const salaryMinor = payroll?.sourceComplete ? payroll.payableMinor : null;
@@ -285,6 +296,25 @@ export default async function AdminProcurementPage() {
   });
   const firstGap = forecastRows.find((row) => row.gapMinor > 0) ?? null;
   const tbank = tbankResult.status === "fulfilled" ? tbankResult.value : null;
+  const cashPreparation = buildProcurementCashPreparation({
+    asOf: todayKey,
+    dueOn: salaryDate,
+    requiredMinor: salaryMinor,
+    safeMinor,
+    vtbCardMinor,
+    vtbAccountMinor,
+    tbankCardMinor,
+    tbankAccountMinor,
+    tbankTransferStatus: tbank?.status ?? "unavailable",
+    tbankCurrentRateBps: tbank?.currentRateBps ?? null,
+    tbankCurrentTierRemainingMinor: tbank?.currentRateBps === 0
+      ? tbank?.freeRemainingMinor ?? null
+      : tbank?.currentRateBps === 100
+        ? tbank?.tierOneRemainingMinor ?? null
+        : tbank?.currentRateBps === 500
+          ? tbank?.tierFiveRemainingMinor ?? null
+          : tbank?.currentRateBps === 1500 ? tbankAccountMinor : null,
+  });
   const priorityDebts = priorityDebtsResult.status === "fulfilled" ? priorityDebtsResult.value : null;
   const scopedSupplierNames = new Set([
     ...managerOrders.map((order) => normalizeManagerName(order.supplierPartner || order.supplierCounterparty)),
@@ -331,6 +361,36 @@ export default async function AdminProcurementPage() {
     });
   }
   supplierWarnings.sort((left, right) => (left.level === right.level ? right.amountMinor - left.amountMinor : left.level === "urgent" ? -1 : 1));
+  const warningPriority = new Map(supplierWarnings.map((warning) => [
+    normalizeManagerName(warning.supplier).replace(/[‐‑–—]/g, "-"),
+    warning.level === "urgent" ? 1 : 2,
+  ]));
+  const approvedPlanReserveMinor = forecastPlans
+    .filter((plan) => plan.status === "APPROVED")
+    .reduce((sum, plan) => sum + Math.round(Number(plan.requestedRub) * 100), 0);
+  const mandatoryReserveMinor = salaryMinor === null || plansResult.status !== "fulfilled"
+    ? null
+    : salaryMinor + 23_500_000 + approvedPlanReserveMinor;
+  const resourcesMinor = safeMinor === null || cardsMinor === null || bankAccountsMinor === null
+    ? null
+    : safeMinor + cardsMinor + bankAccountsMinor;
+  const debtAllocation = buildProcurementDebtAllocation({
+    resourcesMinor,
+    mandatoryReserveMinor,
+    resourcesComplete: ownerMoney !== null,
+    debtsComplete: Boolean(priorityDebts && !priorityDebts.sourceDraft),
+    debts: (priorityDebts?.supplierDebts ?? []).map((debt) => {
+      const key = normalizeManagerName(debt.name).replace(/[‐‑–—]/g, "-");
+      const isNinetyFive = /^95[\s-]*ru$/.test(key);
+      const isZelim = key === "зелим чечня";
+      return {
+        supplier: debt.name,
+        debtMinor: Math.round(debt.amountRub * 100),
+        priority: isNinetyFive ? 0 : isZelim ? 1 : (warningPriority.get(key) ?? 3) + 1,
+        verified: !priorityDebts?.sourceDraft,
+      };
+    }),
+  });
   const forecast30Days = {
     asOf: todayKey,
     horizonEnd,
@@ -388,6 +448,13 @@ export default async function AdminProcurementPage() {
           forecast30Days={forecast30Days}
           supplierWarnings={supplierWarnings}
           supplierWarningsReady={Boolean(priorityDebts && ordersSource?.complete)}
+          debtAllocation={debtAllocation}
+          cashPreparation={cashPreparation}
+          debtReserveBreakdown={{
+            salaryMinor,
+            rentMinor: 23_500_000,
+            approvedPlansMinor: approvedPlanReserveMinor,
+          }}
         />
       </div>
     </AdminShell>

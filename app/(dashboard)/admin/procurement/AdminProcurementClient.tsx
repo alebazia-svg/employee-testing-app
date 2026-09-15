@@ -19,6 +19,8 @@ import { useRouter } from "next/navigation";
 import { calculateCashPreparation, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
 import type { ProcurementForecastHistoryView } from "@/lib/procurement-forecast-history";
+import type { ProcurementDebtAllocation } from "@/lib/procurement-debt-allocation";
+import type { ProcurementCashPreparation } from "@/lib/procurement-cash-preparation";
 
 type Plan = {
   id: string;
@@ -150,6 +152,9 @@ export default function AdminProcurementClient({
   forecast30Days,
   supplierWarnings,
   supplierWarningsReady,
+  debtAllocation,
+  debtReserveBreakdown,
+  cashPreparation,
 }: {
   initialPlans: Plan[];
   sourceCheckedAt: string;
@@ -167,6 +172,13 @@ export default function AdminProcurementClient({
   forecast30Days: Forecast30Days;
   supplierWarnings: SupplierWarning[];
   supplierWarningsReady: boolean;
+  debtAllocation: ProcurementDebtAllocation;
+  cashPreparation: ProcurementCashPreparation;
+  debtReserveBreakdown: {
+    salaryMinor: number | null;
+    rentMinor: number;
+    approvedPlansMinor: number;
+  };
 }) {
   const router = useRouter();
   const [plans, setPlans] = useState(initialPlans);
@@ -536,6 +548,93 @@ export default function AdminProcurementClient({
               <p className="mt-0.5 text-xs font-semibold text-slate-500">Т‑Банк{forecast30Days.tbank?.renewsOn ? ` · обновление ${shortDay(forecast30Days.tbank.renewsOn)}` : " · по выписке 1С"}</p>
               <p className="mt-0.5 text-xs font-semibold text-slate-500">ВТБ · на карту до 350 000 ₽ в день</p>
             </div>
+          </div>
+          <div className={`mt-4 rounded-xl border p-3.5 ${cashPreparation.state === "ready" && (cashPreparation.unresolvedMinor ?? 0) > 0 ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Как подготовить ближайшую обязательную выплату</h3>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500">Зарплата к {shortDay(cashPreparation.dueOn)} · деньги в сейфе проверяются отдельно от карт.</p>
+              </div>
+              {cashPreparation.state === "ready" ? (
+                <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${(cashPreparation.unresolvedMinor ?? 0) > 0 ? "bg-red-100 text-red-800" : (cashPreparation.prepareMinor ?? 0) > 0 ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>
+                  {(cashPreparation.unresolvedMinor ?? 0) > 0
+                    ? `Нужно решить, откуда взять ${rub.format((cashPreparation.unresolvedMinor ?? 0) / 100)}`
+                    : (cashPreparation.prepareMinor ?? 0) > 0
+                      ? `Нужно снять ${rub.format((cashPreparation.prepareMinor ?? 0) / 100)}`
+                      : "Наличных достаточно"}
+                </span>
+              ) : <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900">Нужны свежие остатки 1С</span>}
+            </div>
+            {cashPreparation.state === "ready" ? (
+              <>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-bold text-slate-500">На зарплату</p><p className="mt-0.5 text-base font-black text-slate-950">{rub.format((cashPreparation.requiredMinor ?? 0) / 100)}</p></div>
+                  <div className="rounded-lg bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-bold text-slate-500">Уже есть в сейфе</p><p className="mt-0.5 text-base font-black text-slate-950">{rub.format((cashPreparation.safeCoveredMinor ?? 0) / 100)}</p></div>
+                  <div className={`rounded-lg px-3 py-2.5 ${(cashPreparation.prepareMinor ?? 0) > 0 ? "bg-amber-50" : "bg-green-50"}`}><p className="text-[11px] font-bold text-slate-500">Нужно подготовить наличными</p><p className={`mt-0.5 text-base font-black ${(cashPreparation.prepareMinor ?? 0) > 0 ? "text-amber-900" : "text-green-800"}`}>{rub.format((cashPreparation.prepareMinor ?? 0) / 100)}</p></div>
+                </div>
+                {cashPreparation.steps.length ? (
+                  <div className="mt-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50/50 px-3">
+                    {cashPreparation.steps.map((step) => (
+                      <div key={step.source} className="grid gap-1 py-2.5 sm:grid-cols-[minmax(155px,.75fr)_minmax(135px,.55fr)_minmax(0,1.4fr)] sm:items-center sm:gap-3">
+                        <p className="text-sm font-black text-slate-950">{step.source === "safe" ? "Оставить в сейфе" : step.source === "vtb" ? "Снять через ВТБ" : step.source === "tbank_card" ? "Снять с карты Т‑Банка" : "Перевести и снять через Т‑Банк"}</p>
+                        <p className="text-sm font-black text-[#263b5c]">{rub.format(step.amountMinor / 100)}</p>
+                        <p className="text-xs font-semibold leading-relaxed text-slate-500">{step.transferFromAccountMinor > 0 ? `С расчётного счёта на карту ${rub.format(step.transferFromAccountMinor / 100)}. ` : ""}{step.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="mt-3 text-xs font-semibold text-green-800">В сейфе уже достаточно наличных — снимать деньги с карт не нужно.</p>}
+                {(cashPreparation.tbankEstimatedFeeMinor ?? 0) > 0 ? <p className="mt-2 text-[11px] font-semibold text-slate-500">Ориентировочная комиссия Т‑Банка по текущему подтверждённому уровню: {rub.format((cashPreparation.tbankEstimatedFeeMinor ?? 0) / 100)}.</p> : null}
+                {cashPreparation.diagnostics.includes("tbank_tariff_needs_review") ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Часть суммы есть на расчётном счёте Т‑Банка, но текущий тариф не подтверждён. Портал не предлагает перевод, пока лимит не будет сверён.</p> : null}
+                {cashPreparation.diagnostics.includes("tbank_next_tier_needs_review") ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Оставшаяся сумма переходит на следующий тарифный уровень Т‑Банка. Портал не занижает комиссию и оставляет эту часть на проверку.</p> : null}
+              </>
+            ) : <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Портал покажет точный маршрут после получения суммы зарплаты и сегодняшних остатков сейфа, карт и расчётных счетов из 1С.</p>}
+          </div>
+          <div className={`mt-4 rounded-xl border p-3.5 ${debtAllocation.state === "ready" && debtAllocation.availableForDebtMinor === 0 ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Сколько можно направить поставщикам</h3>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500">После зарплаты, аренды и уже согласованных заявок Астемира.</p>
+              </div>
+              {debtAllocation.state === "ready" ? (
+                <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${debtAllocation.availableForDebtMinor === 0 ? "bg-red-100 text-red-800" : "bg-[#eef2f8] text-[#263b5c]"}`}>
+                  {debtAllocation.availableForDebtMinor === 0 ? "Для новых оплат денег не остаётся" : `Можно распределить до ${rub.format((debtAllocation.availableForDebtMinor ?? 0) / 100)}`}
+                </span>
+              ) : (
+                <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900">Расчёт пока недоступен</span>
+              )}
+            </div>
+            {debtAllocation.state === "ready" ? (
+              <>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-bold text-slate-500">Деньги в сейфе, на картах и счетах</p><p className="mt-0.5 text-base font-black text-slate-950">{rub.format((debtAllocation.resourcesMinor ?? 0) / 100)}</p></div>
+                  <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+                    <p className="text-[11px] font-bold text-slate-500">Сначала оставить на обязательные выплаты</p>
+                    <p className="mt-0.5 text-base font-black text-slate-950">− {rub.format((debtAllocation.mandatoryReserveMinor ?? 0) / 100)}</p>
+                    <p className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-500">
+                      Зарплата {debtReserveBreakdown.salaryMinor === null ? "не сверена" : rub.format(debtReserveBreakdown.salaryMinor / 100)} · аренда {rub.format(debtReserveBreakdown.rentMinor / 100)} · заявки {rub.format(debtReserveBreakdown.approvedPlansMinor / 100)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-bold text-slate-500">Долг поставщикам по 1С</p><p className="mt-0.5 text-base font-black text-slate-950">{rub.format((debtAllocation.totalDebtMinor ?? 0) / 100)}</p></div>
+                  <div className={`rounded-lg px-3 py-2.5 ${(debtAllocation.uncoveredDebtMinor ?? 0) > 0 ? "bg-amber-50" : "bg-green-50"}`}><p className="text-[11px] font-bold text-slate-500">Если закрывать все долги</p><p className={`mt-0.5 text-base font-black ${(debtAllocation.uncoveredDebtMinor ?? 0) > 0 ? "text-amber-900" : "text-green-800"}`}>{(debtAllocation.uncoveredDebtMinor ?? 0) > 0 ? `Не хватает ${rub.format((debtAllocation.uncoveredDebtMinor ?? 0) / 100)}` : "Денег достаточно"}</p></div>
+                </div>
+                {debtAllocation.recommendations.length ? (
+                  <div className="mt-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50/50 px-3">
+                    {debtAllocation.recommendations.slice(0, 4).map((item) => (
+                      <div key={item.supplier} className="grid gap-1 py-2.5 sm:grid-cols-[minmax(140px,.8fr)_minmax(150px,.7fr)_minmax(0,1fr)] sm:items-center sm:gap-3">
+                        <div className="min-w-0"><p className="truncate text-sm font-black text-slate-950" title={item.supplier}>{item.supplier}</p>{item.priority <= 1 ? <p className="text-[10px] font-bold text-slate-500">Телефонный поставщик · закрывать максимально быстро</p> : null}</div>
+                        <p className="text-xs font-semibold text-slate-500">Долг {rub.format(item.debtMinor / 100)}</p>
+                        <p className={`text-sm font-black sm:text-right ${item.result === "no_capacity" ? "text-red-700" : item.result === "partial" ? "text-amber-800" : "text-green-800"}`}>
+                          {item.result === "full" ? `Можно закрыть полностью · ${rub.format(item.recommendedMinor / 100)}` : item.result === "partial" ? `Частично · до ${rub.format(item.recommendedMinor / 100)}` : "После резервов денег не остаётся"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : <p className="mt-3 text-xs font-semibold text-slate-500">Долгов поставщикам по подтверждённому срезу 1С нет.</p>}
+                <p className="mt-2 text-[11px] font-semibold leading-relaxed text-slate-500">Это верхняя граница по текущим остаткам, а не команда на оплату. Будущие поступления и ещё не заведённые расходы здесь не учтены.</p>
+              </>
+            ) : (
+              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Чтобы дать рекомендацию, портал должен одновременно получить свежие остатки денег, зарплату и полное сальдо поставщиков из 1С.</p>
+            )}
           </div>
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
