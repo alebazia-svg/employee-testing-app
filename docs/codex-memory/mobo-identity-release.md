@@ -2,7 +2,8 @@
 
 ## Master identity follow-up — 2026-09-15
 
-Application commits: `cee3a46`, followed by optical correction `6d8bd42`.
+Application commits: `cee3a46`, optical correction `6d8bd42`, and lockup
+hierarchy correction `137557c`.
 
 The owner approved a new master identity based on the four-piece graphite
 symbol and Latin `MOBO` wordmark. It replaces the earlier blue/amber shell logo
@@ -30,6 +31,13 @@ letterforms. It also increases the login wordmark, balances it against the
 symbol and gives the `Портал компании` descriptor a deliberate baseline and
 spacing. PWA rasters were regenerated from the same corrected dimensional
 master; the maskable export keeps a smaller safe-area mark.
+
+The final login lockup places the dimensional symbol and `MOBO` together on one
+optical row. `Портал компании` is a separate centered descriptor below the
+whole row, not a subline belonging only to the wordmark. The approved wordmark
+geometry remains recognizable, but its strokes are optically thickened and
+softened to balance the rounded dimensional symbol. The same wordmark weight is
+used in the compact horizontal ADMIN asset.
 
 The same application commit includes the already approved employee PWA visual
 corrections: profile initials, a clean two-tone blue colleagues glyph,
