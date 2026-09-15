@@ -96,9 +96,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         <div className={cn('flex items-center justify-between gap-3', sidebarCollapsed ? 'md:flex-col md:gap-3' : 'md:flex-row')}>
           <div className={cn(sidebarCollapsed ? 'md:flex md:justify-center' : '')}>
             {sidebarCollapsed ? (
-              <span className='hidden h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-white md:flex'>
+              <span className='hidden h-8 w-8 items-center justify-center md:flex'>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src='/brand/mobo-master/mobo-symbol.svg' alt='' className='h-5 w-5' />
+                <img src='/brand/mobo-master/mobo-symbol-3d-light-ui.svg' alt='' className='h-7 w-7' />
               </span>
             ) : <PortalIdentityBlock variant='mobo-master' className='admin-sidebar-identity w-[154px]' />}
           </div>

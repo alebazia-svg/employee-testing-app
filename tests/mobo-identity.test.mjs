@@ -7,6 +7,7 @@ const requiredIdentityAssets = [
   'public/brand/mobo-master/mobo-wordmark.svg',
   'public/brand/mobo-master/mobo-symbol-3d-premium.svg',
   'public/brand/mobo-master/mobo-symbol-3d-ui.svg',
+  'public/brand/mobo-master/mobo-symbol-3d-light-ui.svg',
   'public/portal-app-icon-180.png',
   'public/portal-app-icon-192.png',
   'public/portal-app-icon-512.png',
@@ -17,7 +18,7 @@ const requiredIdentityAssets = [
 test('approved MOBO identity assets and PWA metadata stay connected', async () => {
   await Promise.all(requiredIdentityAssets.map((path) => access(path)));
 
-  const [manifestText, layoutSource, loginSource, identitySource, adminSource, procurementSource, employeeHeaderSource, employeeSource, brandStyles, serviceWorkerSource, dimensionalSymbol, uiDimensionalSymbol, flatSymbol, wordmark] = await Promise.all([
+  const [manifestText, layoutSource, loginSource, identitySource, adminSource, procurementSource, employeeHeaderSource, employeeSource, brandStyles, serviceWorkerSource, dimensionalSymbol, uiDimensionalSymbol, lightUiSymbol, flatSymbol, wordmark] = await Promise.all([
     readFile('public/manifest.webmanifest', 'utf8'),
     readFile('app/layout.tsx', 'utf8'),
     readFile('app/login/page.tsx', 'utf8'),
@@ -30,6 +31,7 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
     readFile('public/workday-sw.js', 'utf8'),
     readFile('public/brand/mobo-master/mobo-symbol-3d-premium.svg', 'utf8'),
     readFile('public/brand/mobo-master/mobo-symbol-3d-ui.svg', 'utf8'),
+    readFile('public/brand/mobo-master/mobo-symbol-3d-light-ui.svg', 'utf8'),
     readFile('public/brand/mobo-master/mobo-symbol.svg', 'utf8'),
     readFile('public/brand/mobo-master/mobo-wordmark.svg', 'utf8'),
   ]);
@@ -56,11 +58,15 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
   assert.match(uiDimensionalSymbol, /feDropShadow dx="5" dy="6" stdDeviation="2\.2"/);
   assert.doesNotMatch(uiDimensionalSymbol, /feTurbulence|feGaussianBlur|feMorphology/);
   assert.match(uiDimensionalSymbol, /<use href="#ui-shape" fill="url\(#ui-face\)"\/>/);
+  assert.match(lightUiSymbol, /linearGradient id="pearl-face"/);
+  assert.match(lightUiSymbol, /stdDeviation="1\.8"/);
+  assert.doesNotMatch(lightUiSymbol, /feMorphology|feGaussianBlur/);
   assert.match(wordmark, /stroke-width="12"/);
   assert.match(wordmark, /<rect x="116" y="10" width="72" height="62" rx="31"/);
-  assert.match(identitySource, /\/brand\/mobo-master\/mobo-symbol\.svg/);
+  assert.match(identitySource, /\/brand\/mobo-master\/mobo-symbol-3d-light-ui\.svg/);
   assert.match(identitySource, /\/brand\/mobo-master\/mobo-wordmark\.svg/);
   assert.match(adminSource, /PortalIdentityBlock variant='mobo-master'/);
+  assert.match(adminSource, /mobo-symbol-3d-light-ui\.svg/);
   assert.match(procurementSource, /PortalIdentityBlock variant='mobo-master'/);
   assert.match(brandStyles, /\.mobo-master-admin \.admin-mobile-header \.mobo-master-wordmark/);
   assert.match(brandStyles, /\.procurement-shell-header \.mobo-master-wordmark[\s\S]*?brightness\(0\) invert\(1\)/);
