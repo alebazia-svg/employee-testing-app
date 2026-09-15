@@ -1,6 +1,7 @@
 # Procurement Forecast Intelligence
 
-Status: approved local implementation; not released.
+Status: released to production on 2026-09-15; finance-assistant runtime commit
+`2d258b9`.
 
 ## Current-Snapshot Rules
 
@@ -68,3 +69,8 @@ abstain when required 1C data is incomplete, and it must request priority
 review before recommending payment to an unclassified supplier. It cannot
 approve a request, move money, write to 1C, or learn a supplier classification
 from an unconfirmed decision.
+
+Production verification confirmed the authenticated ADMIN page, real payroll
+remainder and owner balances, and an explicit abstention while the supplier
+settlement snapshot was still marked preliminary. The assistant must retain
+that fail-closed behavior until the source is complete.
