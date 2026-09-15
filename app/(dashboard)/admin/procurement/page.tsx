@@ -25,6 +25,7 @@ import { fetchProcurementPriorityDebts } from "@/lib/procurement-cash-forecast-s
 import { buildSupplierIntelligence } from "@/lib/procurement-supplier-intelligence";
 import { buildProcurementDebtAllocation } from "@/lib/procurement-debt-allocation";
 import { buildProcurementCashPreparation } from "@/lib/procurement-cash-preparation";
+import { buildProcurementFinancialAssistant } from "@/lib/procurement-financial-assistant";
 
 export const dynamic = "force-dynamic";
 
@@ -391,6 +392,11 @@ export default async function AdminProcurementPage() {
       };
     }),
   });
+  const financialAssistant = buildProcurementFinancialAssistant({
+    cashPreparation,
+    debtAllocation,
+    dataWarnings: [],
+  });
   const forecast30Days = {
     asOf: todayKey,
     horizonEnd,
@@ -450,6 +456,7 @@ export default async function AdminProcurementPage() {
           supplierWarningsReady={Boolean(priorityDebts && ordersSource?.complete)}
           debtAllocation={debtAllocation}
           cashPreparation={cashPreparation}
+          financialAssistant={financialAssistant}
           debtReserveBreakdown={{
             salaryMinor,
             rentMinor: 23_500_000,

@@ -21,6 +21,7 @@ import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
 import type { ProcurementForecastHistoryView } from "@/lib/procurement-forecast-history";
 import type { ProcurementDebtAllocation } from "@/lib/procurement-debt-allocation";
 import type { ProcurementCashPreparation } from "@/lib/procurement-cash-preparation";
+import type { ProcurementFinancialAssistant } from "@/lib/procurement-financial-assistant";
 
 type Plan = {
   id: string;
@@ -155,6 +156,7 @@ export default function AdminProcurementClient({
   debtAllocation,
   debtReserveBreakdown,
   cashPreparation,
+  financialAssistant,
 }: {
   initialPlans: Plan[];
   sourceCheckedAt: string;
@@ -174,6 +176,7 @@ export default function AdminProcurementClient({
   supplierWarningsReady: boolean;
   debtAllocation: ProcurementDebtAllocation;
   cashPreparation: ProcurementCashPreparation;
+  financialAssistant: ProcurementFinancialAssistant;
   debtReserveBreakdown: {
     salaryMinor: number | null;
     rentMinor: number;
@@ -547,6 +550,32 @@ export default function AdminProcurementClient({
               <p className={`mt-1 text-lg font-black ${forecast30Days.tbank?.status === "verified" ? "text-slate-950" : "text-amber-800"}`}>{currentTbankLabel}</p>
               <p className="mt-0.5 text-xs font-semibold text-slate-500">Т‑Банк{forecast30Days.tbank?.renewsOn ? ` · обновление ${shortDay(forecast30Days.tbank.renewsOn)}` : " · по выписке 1С"}</p>
               <p className="mt-0.5 text-xs font-semibold text-slate-500">ВТБ · на карту до 350 000 ₽ в день</p>
+            </div>
+          </div>
+          <div className={`mt-4 rounded-xl border p-3.5 ${financialAssistant.state === "unavailable" ? "border-amber-200 bg-amber-50/70" : financialAssistant.state === "review" ? "border-red-200 bg-red-50/50" : "border-[#cbd5e1] bg-[#f8fafc]"}`}>
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(250px,.85fr)] lg:items-start">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-black text-slate-950">Рекомендация помощника</h3>
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${financialAssistant.state === "ready" ? "bg-green-100 text-green-800" : financialAssistant.state === "review" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}>
+                    {financialAssistant.state === "ready" ? "Можно действовать" : financialAssistant.state === "review" ? "Требует решения" : "Нужны данные"}
+                  </span>
+                </div>
+                <p className="mt-2 text-base font-black leading-snug text-slate-950">
+                  {financialAssistant.title}{financialAssistant.amountMinor !== null ? ` · ${rub.format(financialAssistant.amountMinor / 100)}` : ""}
+                </p>
+                <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">{financialAssistant.explanation}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                {financialAssistant.findings.slice(0, 3).map((finding) => (
+                  <p key={`${finding.kind}:${finding.text}`} className="flex gap-2 py-1 text-xs font-semibold leading-relaxed text-slate-600 first:pt-0 last:pb-0">
+                    <span aria-hidden="true" className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${finding.kind === "cash_gap" ? "bg-red-500" : finding.kind === "supplier_review" ? "bg-amber-500" : "bg-[#263b5c]"}`} />
+                    <span>{finding.text}</span>
+                  </p>
+                ))}
+                {!financialAssistant.findings.length ? <p className="text-xs font-semibold text-slate-500">Детальный расчёт показан ниже.</p> : null}
+                <p className="mt-2 border-t border-slate-100 pt-2 text-[10px] font-bold leading-relaxed text-slate-400">Основание: {financialAssistant.evidence.join(" · ")}. Решение и оплату портал не выполняет.</p>
+              </div>
             </div>
           </div>
           <div className={`mt-4 rounded-xl border p-3.5 ${cashPreparation.state === "ready" && (cashPreparation.unresolvedMinor ?? 0) > 0 ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
