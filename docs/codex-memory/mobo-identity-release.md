@@ -2,8 +2,8 @@
 
 ## Master identity follow-up — 2026-09-15
 
-Application commits: `cee3a46`, optical correction `6d8bd42`, and lockup
-hierarchy correction `137557c`.
+Application commits: `cee3a46`, optical correction `6d8bd42`, lockup hierarchy
+correction `137557c`, and rounded wordmark correction `ee52375`.
 
 The owner approved a new master identity based on the four-piece graphite
 symbol and Latin `MOBO` wordmark. It replaces the earlier blue/amber shell logo
@@ -19,11 +19,11 @@ The new system deliberately separates brand and interface roles:
   blue for visual uniformity.
 
 The login uses the larger dimensional symbol and graphite wordmark on a warm
-neutral card. ADMIN uses the restrained flat master mark in its shell;
-procurement uses the dimensional mark on the light header. Installed PWA,
-Apple-touch and favicon assets use the opaque stone-background 3D symbol. The
-service-worker cache version was bumped so the new icon can replace the old
-asset, though physical installed-icon refresh remains device-dependent.
+neutral card. ADMIN and procurement use the restrained flat white master mark
+on their dark graphite shell surfaces. Installed PWA, Apple-touch and favicon
+assets use the opaque stone-background 3D symbol. The service-worker cache
+version was bumped so the new icon can replace the old asset, though physical
+installed-icon refresh remains device-dependent.
 
 The optical correction increases the negative space between the four symbol
 elements in dimensional, flat and compact lockups without changing their
@@ -33,11 +33,12 @@ spacing. PWA rasters were regenerated from the same corrected dimensional
 master; the maskable export keeps a smaller safe-area mark.
 
 The final login lockup places the dimensional symbol and `MOBO` together on one
-optical row. `Портал компании` is a separate centered descriptor below the
-whole row, not a subline belonging only to the wordmark. The approved wordmark
-geometry remains recognizable, but its strokes are optically thickened and
-softened to balance the rounded dimensional symbol. The same wordmark weight is
-used in the compact horizontal ADMIN asset.
+optical row and gives them the same perceived height. `Портал компании` is a
+readable 13–14 px separate centered descriptor below the whole row, not a
+subline belonging only to the wordmark. The final custom monoline wordmark uses
+near-circular `O` forms and rounded terminals instead of the earlier elongated
+oval construction. The same vector wordmark is reused by ADMIN and procurement
+so the three shells cannot drift apart.
 
 The same application commit includes the already approved employee PWA visual
 corrections: profile initials, a clean two-tone blue colleagues glyph,
@@ -46,10 +47,11 @@ not change roles, settings, data, APIs, Prisma schema or business workflows.
 
 Verification passed the production build, TypeScript, 152 Workday tests, seven
 identity/PWA design tests, HTTP checks for login and manifest, and exact image
-dimension/opacity checks. The login was visually inspected from the clean
-integration branch. ADMIN and procurement preserve the current production
-components; their final authenticated production verification remains part of
-the eventual deployment procedure.
+dimension/opacity checks. Login, ADMIN and procurement shells were visually
+inspected from the clean integration branch with the real shell components;
+the ADMIN and procurement body values in that inspection were demo data. Final
+authenticated production verification remains part of the eventual deployment
+procedure.
 
 Application commit: `8f1275a5765407ad25da08d49a10299b9711e379`.
 
