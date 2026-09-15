@@ -1676,6 +1676,7 @@ export function EmployeeTodayClient({
     return { id: issue.id, href: `/employee/issues/${issue.id}`, title: issueView.bannerTitle, meta: issueView.summaryMeta || issue.detail };
   });
   const attentionCount = requiredIssuesForBanner.length + paymentChecksState.length;
+  const attentionIsReceiptsOnly = requiredIssuesForBanner.every((issue) => issue.ruleKey === 'credit_realization_mismatch');
   const attentionItems: EmployeeBlockingItem[] = [
     ...blockingItems.map((item) => ({ ...item, blocking: showCloseResolution })),
     ...paymentChecksState.map((check) => {
@@ -4548,14 +4549,15 @@ export function EmployeeTodayClient({
 
               {attentionCount > 0 && !showCloseResolution && (
                 <EmployeeAttentionSummaryCard
-                  title='Требуют внимания'
-                  subtitle={requiredIssuesForBanner.length
+                  title={attentionCount === 1 ? attentionItems[0].title : attentionIsReceiptsOnly ? `Проверьте ${attentionCount} ${countWord(attentionCount, 'чек', 'чека', 'чеков')}` : `Проверьте задачи: ${attentionCount}`}
+                  subtitle={attentionCount === 1 ? attentionItems[0].meta : attentionIsReceiptsOnly ? '' : requiredIssuesForBanner.length
                       ? `${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`
                       : `${paymentChecksState.length} ${countWord(paymentChecksState.length, 'проверка', 'проверки', 'проверок')}.`}
                   count={attentionCount}
-                  actionLabel='Открыть'
-                  tone='neutral'
+                  actionLabel={attentionCount === 1 ? 'Открыть' : attentionIsReceiptsOnly ? 'Проверить чеки' : 'Посмотреть задачи'}
+                  tone='attention'
                   onAction={() => {
+                    if (attentionCount === 1) { router.push(attentionItems[0].href); return; }
                     setCloseBlockedSheetOpen(true);
                   }}
                 />
