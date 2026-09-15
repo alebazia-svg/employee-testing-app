@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Check, CheckCircle, Circle, Clock3, XCircle } from 'lucide-react';
+import {
+  CheckCircleIcon as PremiumCheckCircleIcon,
+  ClockCircleIcon as PremiumClockIcon,
+  CloseCircleIcon as PremiumCloseCircleIcon,
+} from '@solar-icons/react/bold-duotone';
+import { ArrowLeft, ArrowRight, Check, Circle } from 'lucide-react';
 import { BrandBlock } from '@/components/BrandBlock';
 import { LogoutButton } from '@/components/LogoutButton';
 import { Badge } from '@/components/ui/badge';
@@ -136,8 +141,10 @@ export default function EmployeeAttestationPage() {
         <Card className={passed ? 'overflow-hidden border-green-100 bg-green-50/70 p-0' : 'overflow-hidden border-red-100 bg-red-50/70 p-0'}>
           <div className='grid gap-6 p-6 md:grid-cols-[1fr_1fr] md:p-8'>
             <div className='flex items-center gap-5'>
-              <div className={passed ? 'flex h-24 w-24 items-center justify-center rounded-full border-4 border-green-500 text-green-600' : 'flex h-24 w-24 items-center justify-center rounded-full border-4 border-red-500 text-red-600'}>
-                {passed ? <CheckCircle className='h-14 w-14' /> : <XCircle className='h-14 w-14' />}
+              <div className='flex h-24 w-24 items-center justify-center'>
+                {passed
+                  ? <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-20 w-20' />
+                  : <PremiumCloseCircleIcon color='#b42318' secondaryColor='#f3b7b1' secondaryOpacity={0.92} className='h-20 w-20' />}
               </div>
               <div>
                 <h1 className={passed ? 'text-3xl font-bold text-green-700' : 'text-3xl font-bold text-red-700'}>{result.status}</h1>
@@ -196,7 +203,7 @@ export default function EmployeeAttestationPage() {
           </div>
           <div className='flex flex-col items-stretch gap-2 sm:flex-row sm:items-center'>
             <div className={timeLeft <= 60 ? 'flex h-10 items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-bold text-red-700' : 'flex h-10 items-center justify-center gap-2 rounded-lg border border-green-100 bg-green-50 px-3 text-sm font-bold text-green-700'}>
-              <Clock3 className='h-4 w-4' />
+              <PremiumClockIcon color={timeLeft <= 60 ? '#b42318' : '#278f18'} secondaryColor={timeLeft <= 60 ? '#f3b7b1' : '#b7e9ac'} secondaryOpacity={0.9} className='h-4 w-4' />
               {timerText}
             </div>
             <Button className='bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900' onClick={() => router.push('/employee')}>

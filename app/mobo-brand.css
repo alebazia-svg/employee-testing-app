@@ -63,3 +63,9 @@
   display: none !important;
   content: none !important;
 }
+
+.portal-neutral-design.employee-material-ui.portal-palette-mobo .employee-material-alert-symbol {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}

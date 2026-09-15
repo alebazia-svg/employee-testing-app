@@ -4172,8 +4172,8 @@ export function EmployeeTodayClient({
           {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
             <Card className='employee-material-alert-card mb-4 border-amber-200 bg-amber-50'>
               <div className='flex items-center gap-3'>
-                <span className='employee-material-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'>
-                  <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' />
+                <span className='employee-material-alert-symbol flex h-6 w-6 shrink-0 items-center justify-center text-amber-700'>
+                  <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-5 w-5' />
                 </span>
                 <div className='flex-1'>
                   <p className='font-extrabold text-amber-950'>Предыдущая смена не закрыта</p>
@@ -4506,7 +4506,7 @@ export function EmployeeTodayClient({
                           href={`/employee/issues/${issue.id}`}
                           className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm transition hover:bg-amber-100/70'
                         >
-                          <span className='employee-material-state-marker employee-material-state-marker-warning flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
+                          <span className='employee-material-alert-symbol flex h-6 w-6 shrink-0 items-center justify-center text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-5 w-5' /></span>
                           <span className='min-w-0 flex-1'>
                             <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить</span>
                             <span className='block text-sm font-black leading-tight'>{issueView.bannerTitle}</span>
@@ -4537,7 +4537,7 @@ export function EmployeeTodayClient({
                   href={`/employee/payment-checks/${primaryPaymentCheck.id}`}
                   className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'
                 >
-                  <span className='employee-material-state-marker employee-material-state-marker-warning flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-7 w-7' /></span>
+                  <span className='employee-material-alert-symbol flex h-6 w-6 shrink-0 items-center justify-center text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-5 w-5' /></span>
                   <span className='min-w-0 flex-1'>
                     <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно проверить{paymentChecksState.length > 1 ? ` · ${paymentChecksState.length}` : ''}</span>
                     <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryPaymentCheckView.title}</span>

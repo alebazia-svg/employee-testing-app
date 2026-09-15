@@ -65,12 +65,39 @@ test('semantic state icons keep the approved color system', async () => {
     readFile(globalStylesPath, 'utf8'),
   ]);
 
-  assert.match(employeeSource, /employee-material-state-marker-warning/);
   assert.match(employeeSource, /employee-material-state-marker-success/);
+  assert.match(notificationsSource, /employee-material-state-marker-warning/);
   assert.match(notificationsSource, /employee-material-state-marker-info/);
   assert.match(globalStyles, /employee-material-state-marker-warning[\s\S]*?background: #fff7e3 !important;/);
   assert.match(globalStyles, /employee-material-state-marker-success[\s\S]*?background: #eef8f1 !important;/);
   assert.match(globalStyles, /employee-material-state-marker-info[\s\S]*?background: #eef4fb !important;/);
+});
+
+test('PWA alert cards use standalone semantic symbols without nested tiles', async () => {
+  const [employeeSource, creditCardSource, paymentCardSource, issuePageSource, paymentPageSource, brandStyles] = await Promise.all([
+    readFile(employeeSourcePath, 'utf8'),
+    readFile('components/EmployeeCreditIssueActionCard.tsx', 'utf8'),
+    readFile('components/EmployeePaymentCheckActionCard.tsx', 'utf8'),
+    readFile('app/(dashboard)/employee/issues/[id]/page.tsx', 'utf8'),
+    readFile('app/(dashboard)/employee/payment-checks/[id]/page.tsx', 'utf8'),
+    readFile(brandStylesPath, 'utf8'),
+  ]);
+
+  for (const source of [employeeSource, creditCardSource, paymentCardSource, issuePageSource, paymentPageSource]) {
+    assert.match(source, /employee-material-alert-symbol/);
+  }
+  assert.doesNotMatch(employeeSource, /employee-material-state-marker employee-material-state-marker-warning flex h-11 w-11/);
+  assert.match(issuePageSource, /PremiumChatIcon color='#263b5c' secondaryColor='#b9cbe0'/);
+  assert.match(brandStyles, /employee-material-alert-symbol[\s\S]*?background: transparent !important;[\s\S]*?box-shadow: none !important;/);
+});
+
+test('employee attestation status pictograms use the shared Solar duotone family', async () => {
+  const source = await readFile('app/(dashboard)/employee/attestations/[id]/page.tsx', 'utf8');
+
+  assert.match(source, /CheckCircleIcon as PremiumCheckCircleIcon/);
+  assert.match(source, /CloseCircleIcon as PremiumCloseCircleIcon/);
+  assert.match(source, /ClockCircleIcon as PremiumClockIcon/);
+  assert.doesNotMatch(source, /\b(CheckCircle|XCircle|Clock3)\b/);
 });
 
 test('KKM close failure uses the approved real-employee sheet, not the legacy inline form', async () => {
