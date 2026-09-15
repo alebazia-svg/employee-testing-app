@@ -47,14 +47,11 @@ export default function Login() {
   return (
     <main
       className='flex min-h-[100svh] items-center justify-center overflow-hidden p-3 text-[#1b1e22] sm:p-6'
-      style={{ background: 'radial-gradient(circle at 50% 34%, #f4f0e9 0%, #e8e3da 54%, #ddd6cc 100%)' }}
+      style={{ background: 'radial-gradient(circle at 50% 31%, #f7f4ee 0%, #ece8e1 50%, #ded8ce 100%)' }}
     >
       <div className='grid w-full max-w-[520px] overflow-hidden rounded-[30px] border border-white/70 bg-[#fffdf9] shadow-[0_32px_78px_rgba(38,34,28,0.16),0_5px_16px_rgba(38,34,28,0.07)] max-sm:rounded-3xl'>
-        <section
-          className='relative flex min-h-[200px] items-center justify-center overflow-hidden p-5 sm:min-h-[214px] sm:p-8'
-          style={{ background: 'radial-gradient(ellipse 72% 105% at 22% 6%, rgba(255, 255, 255, 0.88), transparent 58%), radial-gradient(ellipse 50% 85% at 88% 10%, rgba(183, 173, 158, 0.16), transparent 68%), linear-gradient(155deg, #eee9e1 0%, #f8f5ef 52%, #fffdf9 100%)' }}
-        >
-          <div className='pointer-events-none absolute inset-0 opacity-[0.035]' style={{ backgroundImage: 'repeating-linear-gradient(118deg, transparent 0 7px, rgba(75,67,58,0.16) 7px 8px)' }} aria-hidden='true' />
+        <section className='relative flex min-h-[200px] items-center justify-center overflow-hidden p-5 sm:min-h-[214px] sm:p-8'>
+          <div className='pointer-events-none absolute left-1/2 top-1/2 h-[150px] w-[390px] max-w-[88%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#d8d0c4]/20 blur-[42px]' aria-hidden='true' />
           <div className='relative grid w-[314px] max-w-full justify-items-center gap-[17px] min-[440px]:w-[350px] sm:w-[366px]' aria-label='MOBO · Портал компании'>
             <span className='flex w-full items-center gap-[14px] min-[440px]:gap-[16px]'>
               <span className='relative w-[62px] shrink-0 min-[440px]:w-[68px] sm:w-[70px]'>
@@ -67,7 +64,7 @@ export default function Login() {
           </div>
         </section>
 
-        <section className='flex items-center justify-center bg-[#fffdf9] p-6 sm:p-10'>
+        <section className='flex items-center justify-center p-6 sm:p-10'>
           <div className='w-full max-w-[420px]'>
             <div className='mb-6'>
               <h1 className='text-[28px] font-black tracking-[-0.025em] text-[#1b1e22] sm:text-[34px]'>Войти</h1>
