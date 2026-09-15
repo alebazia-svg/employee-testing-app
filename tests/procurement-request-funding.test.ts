@@ -6,6 +6,35 @@ const base = { asOf: "2026-09-15", salary: { dueOn: "2026-09-16", amountMinor: 5
 const plan = (data: Partial<FundingPlan> & Pick<FundingPlan, "id" | "paymentMethod">): FundingPlan => ({ status: "SUBMITTED", plannedDate: "2026-09-18", remainingMinor: 10_000_000, foreignAmount: null, ...data });
 
 test("shows the USDT shortfall after already approved payments", () => { const plans = [plan({ id: "approved", status: "APPROVED", paymentMethod: "USDT", foreignAmount: 1_000 }), plan({ id: "request", paymentMethod: "USDT", remainingMinor: 44_500_000, foreignAmount: 5_000 })]; const [result] = assessProcurementRequests({ ...base, plans }); assert.equal(result.state, "prepare"); assert.equal(result.foreignAmount, 1_000); assert.equal(result.amountMinor, 8_900_000); });
-test("cash request includes salary and gives a VTB then T-Bank preparation route", () => { const [result] = assessProcurementRequests({ ...base, plans: [plan({ id: "cash", paymentMethod: "CASH", remainingMinor: 70_000_000 })], safeMinor: 10_000_000 }); assert.equal(result.state, "prepare"); assert.equal(result.amountMinor, 110_000_000); assert.deepEqual(result.steps.map((step) => step.source), ["vtb", "tbank_card", "tbank_account"]); });
+test("cash request includes salary and gives a VTB then T-Bank preparation route when the full reserve is covered", () => { const [result] = assessProcurementRequests({ ...base, plans: [plan({ id: "cash", paymentMethod: "CASH", remainingMinor: 70_000_000 })], safeMinor: 10_000_000, bankAccountsMinor: 120_000_000 }); assert.equal(result.state, "prepare"); assert.equal(result.amountMinor, 110_000_000); assert.deepEqual(result.steps.map((step) => step.source), ["vtb", "tbank_card", "tbank_account"]); });
 test("QR request tells how much to transfer to Astemir", () => { const [result] = assessProcurementRequests({ ...base, plans: [plan({ id: "qr", paymentMethod: "ACCOUNTABLE_QR", remainingMinor: 25_000_000 })] }); assert.equal(result.state, "prepare"); assert.equal(result.amountMinor, 5_000_000); });
 test("never claims coverage when a required balance is unavailable", () => { const [result] = assessProcurementRequests({ ...base, plans: [plan({ id: "cash", paymentMethod: "CASH" })], safeMinor: null }); assert.equal(result.state, "unavailable"); });
+test("rejects a cash request that would consume the rent reserve", () => {
+  const [result] = assessProcurementRequests({ ...base, plans: [plan({ id: "cash-gap", paymentMethod: "CASH", remainingMinor: 70_000_000 })], safeMinor: 10_000_000 });
+  assert.equal(result.state, "gap");
+  assert.equal(result.amountMinor, 3_500_000);
+});
+test("rejects a USDT request when rubles are insufficient after salary and rent", () => {
+  const [result] = assessProcurementRequests({
+    ...base,
+    plans: [plan({ id: "usdt-gap", paymentMethod: "USDT", remainingMinor: 44_500_000, foreignAmount: 5_000 })],
+    safeMinor: 20_000_000,
+    cardsMinor: 20_000_000,
+    bankAccountsMinor: 40_000_000,
+    usdtBalance: 0,
+  });
+  assert.equal(result.state, "gap");
+  assert.equal(result.amountMinor, 38_000_000);
+});
+test("rejects a QR top-up when mandatory reserves consume available rubles", () => {
+  const [result] = assessProcurementRequests({
+    ...base,
+    plans: [plan({ id: "qr-gap", paymentMethod: "ACCOUNTABLE_QR", remainingMinor: 40_000_000 })],
+    safeMinor: 20_000_000,
+    cardsMinor: 20_000_000,
+    bankAccountsMinor: 40_000_000,
+    accountableBalanceMinor: 0,
+  });
+  assert.equal(result.state, "gap");
+  assert.equal(result.amountMinor, 33_500_000);
+});

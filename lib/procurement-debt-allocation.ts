@@ -15,6 +15,7 @@ export type SupplierDebtRecommendation = {
 
 export type ProcurementDebtAllocation = {
   state: "ready" | "unavailable";
+  debts: SupplierDebtForAllocation[];
   resourcesMinor: number | null;
   mandatoryReserveMinor: number | null;
   availableForDebtMinor: number | null;
@@ -73,6 +74,7 @@ export function buildProcurementDebtAllocation(input: {
   if (diagnostics.length) {
     return {
       state: "unavailable",
+      debts,
       resourcesMinor: input.resourcesMinor,
       mandatoryReserveMinor: input.mandatoryReserveMinor,
       availableForDebtMinor: null,
@@ -98,6 +100,7 @@ export function buildProcurementDebtAllocation(input: {
   });
   return {
     state: "ready",
+    debts,
     resourcesMinor: input.resourcesMinor,
     mandatoryReserveMinor: input.mandatoryReserveMinor,
     availableForDebtMinor,

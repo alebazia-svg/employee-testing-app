@@ -13,7 +13,9 @@ const cash = (overrides: Partial<ProcurementCashPreparation> = {}): ProcurementC
 const debt = (overrides: Partial<ProcurementDebtAllocation> = {}): ProcurementDebtAllocation => ({
   state: "ready", resourcesMinor: 200_000_000, mandatoryReserveMinor: 50_000_000,
   availableForDebtMinor: 150_000_000, totalDebtMinor: 200_000_000,
-  uncoveredDebtMinor: 50_000_000, diagnostics: [], recommendations: [
+  uncoveredDebtMinor: 50_000_000, diagnostics: [], debts: [
+    { supplier: "95-RU", debtMinor: 200_000_000, priority: 0, verified: true },
+  ], recommendations: [
     { supplier: "95-RU", debtMinor: 200_000_000, recommendedMinor: 150_000_000, result: "partial", priority: 0 },
   ], ...overrides,
 });
@@ -58,20 +60,21 @@ test("unknown supplier is not silently classified", () => {
   assert.ok(result.findings.some((item) => item.text.includes("не считается рекомендацией к оплате")));
 });
 
-test("abstains when core evidence is incomplete", () => {
+test("keeps a large supplier debt visible when core evidence is incomplete", () => {
   const result = buildProcurementFinancialAssistant({
     cashPreparation: cash({ state: "unavailable", prepareMinor: null, unresolvedMinor: null }),
     debtAllocation: debt(), dataWarnings: ["остатки касс"],
   });
-  assert.equal(result.state, "unavailable");
-  assert.equal(result.amountMinor, null);
-  assert.match(result.explanation, /не даёт финансовую рекомендацию/);
+  assert.equal(result.state, "review");
+  assert.equal(result.amountMinor, 200_000_000);
+  assert.equal(result.title, "На контроле долг 95-RU");
+  assert.match(result.explanation, /Точную сумму платежа/);
 });
 
 test("returns a calm no-action state when no debt exists", () => {
   const result = buildProcurementFinancialAssistant({
     cashPreparation: cash(),
-    debtAllocation: debt({ recommendations: [], totalDebtMinor: 0, uncoveredDebtMinor: 0 }),
+    debtAllocation: debt({ recommendations: [], debts: [], totalDebtMinor: 0, uncoveredDebtMinor: 0 }),
     dataWarnings: [],
   });
   assert.equal(result.title, "Срочных финансовых действий нет");

@@ -9,6 +9,35 @@ const approvedBefore = (plans: FundingPlan[], candidate: FundingPlan, method: st
 const sumMinor = (plans: FundingPlan[]) => plans.reduce((sum, plan) => sum + Math.max(0, plan.remainingMinor), 0);
 const planUsdt = (plan: FundingPlan, rate: number | null) => plan.foreignAmount && plan.foreignAmount > 0 ? plan.foreignAmount : rate && rate > 0 && plan.remainingMinor > 0 ? plan.remainingMinor / 100 / rate : null;
 
+const allApproved = (plans: FundingPlan[], candidate: FundingPlan) => plans.filter((plan) => plan.id !== candidate.id && plan.status === "APPROVED");
+
+function rubleCapacity(input: MoneyInput, candidate: FundingPlan) {
+  if (input.salary.amountMinor === null || input.safeMinor === null || input.cardsMinor === null || input.bankAccountsMinor === null) return null;
+  const approved = allApproved(input.plans, candidate);
+  const directRublesMinor = sumMinor(approved.filter((plan) => plan.paymentMethod === "CASH" || plan.paymentMethod === "BANK"));
+  const qrTotalMinor = sumMinor(approved.filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR"));
+  const qrTopUpMinor = input.accountableBalanceMinor === null ? null : Math.max(0, qrTotalMinor - input.accountableBalanceMinor);
+  const approvedUsdt = approved.filter((plan) => plan.paymentMethod === "USDT").map((plan) => planUsdt(plan, input.usdtRate));
+  const usdtTopUpMinor = input.usdtBalance === null || input.usdtRate === null || approvedUsdt.some((amount) => amount === null)
+    ? null
+    : Math.round(Math.max(0, approvedUsdt.reduce<number>((sum, amount) => sum + (amount ?? 0), 0) - input.usdtBalance) * input.usdtRate * 100);
+  if (qrTopUpMinor === null || usdtTopUpMinor === null) return null;
+  return {
+    totalMinor: input.safeMinor + input.cardsMinor + input.bankAccountsMinor,
+    mandatoryMinor: input.salary.amountMinor + input.rent.amountMinor,
+    directRublesMinor,
+    qrTopUpMinor,
+    usdtTopUpMinor,
+  };
+}
+
+const remainingAfter = (capacity: NonNullable<ReturnType<typeof rubleCapacity>>, extraMinor: number, exclude: "qr" | "usdt" | null = null) => capacity.totalMinor
+  - capacity.mandatoryMinor
+  - capacity.directRublesMinor
+  - (exclude === "qr" ? 0 : capacity.qrTopUpMinor)
+  - (exclude === "usdt" ? 0 : capacity.usdtTopUpMinor)
+  - extraMinor;
+
 export function assessProcurementRequests(input: MoneyInput): RequestFundingAssessment[] {
   return input.plans.filter((plan) => plan.status === "SUBMITTED").map((candidate) => {
     const dueOn = candidate.plannedDate.slice(0, 10);
@@ -20,15 +49,28 @@ export function assessProcurementRequests(input: MoneyInput): RequestFundingAsse
       const shortfall = Math.max(0, required - input.usdtBalance);
       if (!shortfall) return { planId: candidate.id, state: "covered", title: "USDT достаточно", detail: `После этой и уже согласованных оплат останется ${(input.usdtBalance - required).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT.`, amountMinor: 0, foreignAmount: 0, steps: [] };
       const rubMinor = input.usdtRate ? Math.round(shortfall * input.usdtRate * 100) : null;
-      return { planId: candidate.id, state: "prepare", title: `Не хватает ${shortfall.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`, detail: rubMinor === null ? "Нужно пополнить кассу USDT; рублёвый ориентир появится после получения курса 1С." : `Для покупки потребуется примерно ${(rubMinor / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽ по последнему курсу 1С.`, amountMinor: rubMinor, foreignAmount: shortfall, steps: [] };
+      const capacity = rubleCapacity(input, candidate);
+      if (rubMinor === null || capacity === null) return { planId: candidate.id, state: "unavailable", title: "Пополнение USDT пока не рассчитано", detail: "Нужны курс, остатки денег и суммы обязательных выплат из 1С.", amountMinor: null, foreignAmount: shortfall, steps: [] };
+      const uncoveredMinor = Math.max(0, -remainingAfter(capacity, rubMinor, "usdt"));
+      if (uncoveredMinor > 0) return { planId: candidate.id, state: "gap", title: `Не хватает ${(uncoveredMinor / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: `После резерва на зарплату, аренду и согласованные оплаты рублей для покупки ${shortfall.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT недостаточно.`, amountMinor: uncoveredMinor, foreignAmount: shortfall, steps: [] };
+      return { planId: candidate.id, state: "prepare", title: `Купить ${shortfall.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`, detail: `Потребуется примерно ${(rubMinor / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽ по последнему курсу 1С; обязательный резерв сохранится.`, amountMinor: rubMinor, foreignAmount: shortfall, steps: [] };
     }
     if (candidate.paymentMethod === "ACCOUNTABLE_QR") {
       if (input.accountableBalanceMinor === null) return { planId: candidate.id, state: "unavailable", title: "Остаток денег на QR уточняется", detail: "Нужен актуальный остаток денег на карте Астемира из 1С.", amountMinor: null, foreignAmount: null, steps: [] };
       const required = candidate.remainingMinor + sumMinor(approvedBefore(input.plans, candidate, "ACCOUNTABLE_QR"));
       const shortfall = Math.max(0, required - input.accountableBalanceMinor);
-      return shortfall > 0 ? { planId: candidate.id, state: "prepare", title: `Нужно перевести Астемиру ${(shortfall / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "С учётом уже согласованных QR-оплат текущего остатка на карте не хватит.", amountMinor: shortfall, foreignAmount: null, steps: [] } : { planId: candidate.id, state: "covered", title: "Денег на QR достаточно", detail: `После этой и уже согласованных QR-оплат останется ${((input.accountableBalanceMinor - required) / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽.`, amountMinor: 0, foreignAmount: null, steps: [] };
+      if (!shortfall) return { planId: candidate.id, state: "covered", title: "Денег на QR достаточно", detail: `После этой и уже согласованных QR-оплат останется ${((input.accountableBalanceMinor - required) / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽.`, amountMinor: 0, foreignAmount: null, steps: [] };
+      const capacity = rubleCapacity(input, candidate);
+      if (capacity === null) return { planId: candidate.id, state: "unavailable", title: "Перевод на QR пока не рассчитан", detail: "Нужны остатки денег и суммы обязательных выплат из 1С.", amountMinor: null, foreignAmount: null, steps: [] };
+      const uncoveredMinor = Math.max(0, -remainingAfter(capacity, shortfall, "qr"));
+      if (uncoveredMinor > 0) return { planId: candidate.id, state: "gap", title: `Не хватает ${(uncoveredMinor / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "После зарплаты, аренды и согласованных оплат денег для перевода Астемиру недостаточно.", amountMinor: uncoveredMinor, foreignAmount: null, steps: [] };
+      return { planId: candidate.id, state: "prepare", title: `Перевести Астемиру ${(shortfall / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "С учётом уже согласованных QR-оплат текущего остатка на карте не хватит, но обязательный резерв сохранится.", amountMinor: shortfall, foreignAmount: null, steps: [] };
     }
     if (candidate.paymentMethod === "CASH") {
+      const capacity = rubleCapacity(input, candidate);
+      if (capacity === null) return { planId: candidate.id, state: "unavailable", title: "Наличие денег уточняется", detail: "Нужны сумма зарплаты и актуальные остатки сейфа, карт и счетов из 1С.", amountMinor: null, foreignAmount: null, steps: [] };
+      const globalGapMinor = Math.max(0, -remainingAfter(capacity, candidate.remainingMinor));
+      if (globalGapMinor > 0) return { planId: candidate.id, state: "gap", title: `Не хватает ${(globalGapMinor / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "После зарплаты, аренды и уже согласованных оплат денег на эту заявку недостаточно.", amountMinor: globalGapMinor, foreignAmount: null, steps: [] };
       const approvedCash = sumMinor(approvedBefore(input.plans, candidate, "CASH"));
       const salaryMinor = beforeOrOn(input.salary.dueOn, dueOn) ? input.salary.amountMinor : 0;
       const requiredMinor = salaryMinor === null ? null : salaryMinor + approvedCash + candidate.remainingMinor;
@@ -38,7 +80,10 @@ export function assessProcurementRequests(input: MoneyInput): RequestFundingAsse
       if ((route.prepareMinor ?? 0) > 0) return { planId: candidate.id, state: "prepare", title: `Нужно подготовить наличными ${((route.prepareMinor ?? 0) / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "Расчёт учитывает зарплату и уже согласованные наличные оплаты до этой даты.", amountMinor: route.prepareMinor, foreignAmount: null, steps: route.steps };
       return { planId: candidate.id, state: "covered", title: "Наличных достаточно", detail: "Заявка обеспечена деньгами в сейфе с учётом обязательных выплат.", amountMinor: 0, foreignAmount: null, steps: [] };
     }
-    if (input.cardsMinor === null || input.bankAccountsMinor === null) return { planId: candidate.id, state: "unavailable", title: "Деньги для перевода уточняются", detail: "Нужны актуальные остатки карт и расчётных счетов из 1С.", amountMinor: null, foreignAmount: null, steps: [] };
+    const capacity = rubleCapacity(input, candidate);
+    if (input.cardsMinor === null || input.bankAccountsMinor === null || capacity === null) return { planId: candidate.id, state: "unavailable", title: "Деньги для перевода уточняются", detail: "Нужны актуальные остатки карт и расчётных счетов из 1С.", amountMinor: null, foreignAmount: null, steps: [] };
+    const globalGapMinor = Math.max(0, -remainingAfter(capacity, candidate.remainingMinor));
+    if (globalGapMinor > 0) return { planId: candidate.id, state: "gap", title: `Не хватает ${(globalGapMinor / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "После зарплаты, аренды и уже согласованных оплат денег на этот перевод недостаточно.", amountMinor: globalGapMinor, foreignAmount: null, steps: [] };
     const approvedBank = sumMinor(approvedBefore(input.plans, candidate, "BANK"));
     const rentMinor = beforeOrOn(input.rent.dueOn, dueOn) ? input.rent.amountMinor : 0;
     const required = approvedBank + rentMinor + candidate.remainingMinor;

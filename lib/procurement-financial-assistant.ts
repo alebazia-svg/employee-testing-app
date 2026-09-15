@@ -40,7 +40,30 @@ export function buildProcurementFinancialAssistant(input: {
   if (input.cashPreparation.state !== "ready") diagnostics.push("cash_preparation_unavailable");
   if (input.debtAllocation.state !== "ready") diagnostics.push("debt_allocation_unavailable");
 
+  const controlledDebts = input.debtAllocation.debts.filter((item) => item.debtMinor >= 30_000_000);
+  const leadingDebt = controlledDebts[0];
+
   if (input.cashPreparation.state !== "ready" || input.debtAllocation.state !== "ready") {
+    if (leadingDebt) {
+      const missing: string[] = [];
+      if (input.cashPreparation.state !== "ready") missing.push("остатки и обязательные выплаты");
+      if (input.debtAllocation.state !== "ready") missing.push("подтверждение расчёта свободных денег");
+      return {
+        state: "review",
+        title: `На контроле долг ${leadingDebt.supplier}`,
+        amountMinor: leadingDebt.debtMinor,
+        explanation: `Долг уже виден в текущей выгрузке 1С. Точную сумму платежа портал рассчитает после получения: ${missing.join(" и ")}.`,
+        evidence: ["Текущая выгрузка сальдо поставщиков", "Порог крупного долга 300 000 ₽"],
+        findings: [
+          { kind: "supplier_review", text: "Не терять долг из контроля, даже пока источник денег или окончательная сумма оплаты уточняются." },
+          ...controlledDebts.slice(1, 3).map((item) => ({
+            kind: "supplier_review" as const,
+            text: `Следующий крупный долг: ${item.supplier}.`,
+          })),
+        ],
+        diagnostics,
+      };
+    }
     return {
       state: "unavailable",
       title: "Сначала обновить данные",

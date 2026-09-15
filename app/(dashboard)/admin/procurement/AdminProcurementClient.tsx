@@ -359,13 +359,47 @@ export default function AdminProcurementClient({
   const sevenDaysEndKey = sevenDaysEnd.toISOString().slice(0, 10);
   const upcomingSevenDays = forecast30Days.rows.filter((row) => row.date >= todayKey && row.date <= sevenDaysEndKey);
   const firstSupplierRecommendation = debtAllocation.recommendations.find((item) => item.recommendedMinor > 0);
+  const controlledSupplierDebts = debtAllocation.debts.filter((item) => item.debtMinor >= 30_000_000);
+  const supplierAllocationByName = new Map(debtAllocation.recommendations.map((item) => [item.supplier, item]));
+  const firstSupplierControl = firstSupplierRecommendation ?? controlledSupplierDebts[0];
   const firstSubmittedFunding = submitted[0] ? fundingByPlanId.get(submitted[0].id) : undefined;
-  const hasImmediateAction = submitted.length > 0 || (cashPreparation.state === "ready" && ((cashPreparation.prepareMinor ?? 0) > 0 || (cashPreparation.unresolvedMinor ?? 0) > 0)) || Boolean(firstSupplierRecommendation);
+  const primaryDecision = submitted[0] && firstSubmittedFunding
+    ? firstSubmittedFunding.state === "covered"
+      ? {
+          title: `Согласовать заявку ${submitted[0].supplierPartner}`,
+          detail: `${amountLabel(submitted[0])} · деньги предусмотрены с учётом обязательных выплат.`,
+          tone: "ready" as const,
+        }
+      : firstSubmittedFunding.state === "prepare"
+        ? {
+            title: `Согласовать после подготовки денег`,
+            detail: `${submitted[0].supplierPartner} · ${firstSubmittedFunding.title}. ${firstSubmittedFunding.detail}`,
+            tone: "prepare" as const,
+          }
+        : firstSubmittedFunding.state === "gap"
+          ? {
+              title: `Перенести или вернуть заявку ${submitted[0].supplierPartner}`,
+              detail: `${firstSubmittedFunding.title}. ${firstSubmittedFunding.detail}`,
+              tone: "gap" as const,
+            }
+          : {
+              title: `Не принимать решение по заявке без актуальных остатков`,
+              detail: `${submitted[0].supplierPartner} · ${firstSubmittedFunding.detail}`,
+              tone: "prepare" as const,
+            }
+    : {
+        title: financialAssistant.title,
+        detail: financialAssistant.explanation,
+        tone: financialAssistant.state === "ready" ? "ready" as const : financialAssistant.state === "review" ? "gap" as const : "prepare" as const,
+      };
+  const hasImmediateAction = submitted.length > 0 || (cashPreparation.state === "ready" && ((cashPreparation.prepareMinor ?? 0) > 0 || (cashPreparation.unresolvedMinor ?? 0) > 0)) || Boolean(firstSupplierControl);
   const immediateStateUnavailable = financialAssistant.state === "unavailable";
 
   function openForecastDetail(targetId: string) {
     const target = document.getElementById(targetId);
-    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const collapsedParent = target?.closest("details");
+    if (collapsedParent instanceof HTMLDetailsElement) collapsedParent.open = true;
+    requestAnimationFrame(() => target?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }
 
   async function act(id: string, action: "APPROVE" | "RETURN" | "CANCEL") {
@@ -399,30 +433,171 @@ export default function AdminProcurementClient({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-5">
       {sourceWarnings.length ? (
-        <details className="group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
+        <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-bold"><span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 shrink-0" />Не получены данные из {sourceWarnings.length} {sourceWarnings.length === 1 ? "источника" : "источников"} 1С — рекомендации временно ограничены</span><ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" /></summary>
           <p className="mt-2 border-t border-amber-200 pt-2 text-xs font-semibold leading-relaxed">Не получены: {sourceWarnings.join(", ")}. Портал не подставляет старые суммы вместо актуальных.</p>
         </details>
       ) : null}
 
-      <details className="admin-material-card group rounded-2xl bg-white">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5"><div className="flex items-center gap-2"><WalletCards className="h-4 w-4 text-slate-500" /><div><h2 className="text-sm font-black text-slate-950">Остатки QR и USDT</h2><p className="text-xs font-semibold text-slate-500">Вспомогательные деньги для выбранных способов оплаты</p></div></div><ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
-      <section className="border-t border-slate-200 p-4 sm:p-5">
+      <section className="order-1 grid items-stretch gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(330px,.75fr)]">
+        <div className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Сегодня</p>
+              <h2 className="mt-0.5 text-xl font-black text-slate-950">Что нужно сделать</h2>
+            </div>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-black ${immediateStateUnavailable || hasImmediateAction ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>
+              {immediateStateUnavailable ? "Расчёт ограничен" : hasImmediateAction ? "Есть действия" : "Всё под контролем"}
+            </span>
+          </div>
+
+          <div className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200 px-3">
+            {submitted.length ? (
+              <button type="button" onClick={() => document.getElementById(`payment-plan-${submitted[0]?.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} className="grid w-full gap-2 py-3 text-left transition hover:bg-slate-50 sm:grid-cols-[34px_minmax(0,1fr)_auto] sm:items-center sm:px-1">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 text-sm font-black text-amber-900">1</span>
+                <span className="min-w-0"><span className="block font-black text-slate-950">Рассмотреть {submitted.length} {submitted.length === 1 ? "заявку" : "заявки"} Астемира</span><span className="mt-0.5 block text-xs font-semibold text-slate-500">На {formatMinor(submitted.reduce((sum, plan) => sum + Math.round(Number(plan.plannedAmount || 0) * 100), 0))}{urgentSubmitted.length ? ` · срочных: ${urgentSubmitted.length}` : ""}</span>{firstSubmittedFunding ? <span className={`mt-1 block text-xs font-black ${firstSubmittedFunding.state === "covered" ? "text-green-700" : firstSubmittedFunding.state === "gap" ? "text-red-700" : "text-amber-800"}`}>{firstSubmittedFunding.state === "covered" ? "Можно согласовать: деньги есть" : firstSubmittedFunding.state === "gap" ? `Не согласовывать сейчас: ${firstSubmittedFunding.title.toLocaleLowerCase("ru-RU")}` : firstSubmittedFunding.state === "prepare" ? `Перед оплатой: ${firstSubmittedFunding.title.toLocaleLowerCase("ru-RU")}` : "Сначала получить актуальные остатки"}</span> : null}</span>
+                <span className="inline-flex items-center gap-1 text-sm font-black text-[#263b5c]">Открыть <ArrowRight className="h-4 w-4" /></span>
+              </button>
+            ) : (
+              <div className="grid gap-2 py-3 sm:grid-cols-[34px_minmax(0,1fr)_auto] sm:items-center sm:px-1">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 text-sm font-black text-green-800">✓</span>
+                <span><span className="block font-black text-slate-950">Новых заявок Астемира нет</span><span className="mt-0.5 block text-xs font-semibold text-slate-500">Появятся здесь сразу после отправки</span></span>
+              </div>
+            )}
+
+            <div className="grid gap-2 py-3 sm:grid-cols-[34px_minmax(0,1fr)_auto] sm:items-center sm:px-1">
+              <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-black ${cashPreparation.state === "ready" && (cashPreparation.prepareMinor ?? 0) === 0 ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>2</span>
+              <span>
+                <span className="block font-black text-slate-950">Подготовить ближайшую обязательную выплату</span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-500">Зарплата к {shortDay(cashPreparation.dueOn)} · {cashPreparation.state === "ready" ? (cashPreparation.prepareMinor ?? 0) > 0 ? `нужно снять ${rub.format((cashPreparation.prepareMinor ?? 0) / 100)}` : "наличных достаточно" : "нужны свежие остатки 1С"}</span>
+              </span>
+              <button type="button" onClick={() => document.getElementById("cash-route")?.scrollIntoView({ behavior: "smooth", block: "center" })} className="inline-flex items-center gap-1 text-sm font-black text-[#263b5c]">Расчёт <ArrowRight className="h-4 w-4" /></button>
+            </div>
+
+            <div className="grid gap-2 py-3 sm:grid-cols-[34px_minmax(0,1fr)_auto] sm:items-center sm:px-1">
+              <span className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-black ${firstSupplierControl ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}>3</span>
+              <span>
+                <span className="block font-black text-slate-950">{firstSupplierControl ? `${firstSupplierRecommendation ? "Рассмотреть оплату" : "Проверить долг"} ${firstSupplierControl.supplier}` : "Крупные долги поставщикам"}</span>
+                <span className="mt-0.5 block text-xs font-semibold text-slate-500">{firstSupplierControl ? firstSupplierRecommendation ? `Рекомендуемая сумма ${rub.format(firstSupplierRecommendation.recommendedMinor / 100)}` : `Долг ${rub.format(firstSupplierControl.debtMinor / 100)} · сумма оплаты рассчитывается` : sourceWarnings.length ? "Нужна актуальная выгрузка 1С" : "Долгов выше 300 000 ₽ нет"}</span>
+              </span>
+              <button type="button" onClick={() => document.getElementById("supplier-control")?.scrollIntoView({ behavior: "smooth", block: "center" })} className="inline-flex items-center gap-1 text-sm font-black text-[#263b5c]">Список <ArrowRight className="h-4 w-4" /></button>
+            </div>
+          </div>
+
+          <div className={`mt-3 rounded-xl border px-3.5 py-3 ${primaryDecision.tone === "gap" ? "border-red-200 bg-red-50" : primaryDecision.tone === "prepare" ? "border-amber-200 bg-amber-50" : "border-blue-100 bg-[#f3f6fa]"}`}>
+            <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Рекомендация портала</p><span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-slate-600 ring-1 ring-black/5">Обновляется автоматически</span></div>
+            <p className="mt-1 font-black text-slate-950">{primaryDecision.title}</p>
+            <p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-600">{primaryDecision.detail}</p>
+          </div>
+        </div>
+
+        <aside className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Финансовая картина</p>
+          <h2 className="mt-0.5 text-xl font-black text-slate-950">Хватит ли денег</h2>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-end justify-between gap-3 border-b border-slate-200 pb-3"><div><p className="text-xs font-bold text-slate-500">Доступно сейчас</p><p className="mt-1 text-xl font-black text-slate-950">{debtAllocation.resourcesMinor == null ? "Нужны данные" : rub.format(debtAllocation.resourcesMinor / 100)}</p></div><p className="text-xs font-semibold text-slate-500">Сейф, карты и счета</p></div>
+            <div className="flex items-end justify-between gap-3 border-b border-slate-200 pb-3"><div><p className="text-xs font-bold text-slate-500">Зарезервировать</p><p className="mt-1 text-xl font-black text-slate-950">{debtAllocation.mandatoryReserveMinor == null ? "Нужны данные" : rub.format(debtAllocation.mandatoryReserveMinor / 100)}</p></div><p className="max-w-[150px] text-right text-xs font-semibold text-slate-500">Зарплата, аренда и согласованные заявки</p></div>
+            <div className={`rounded-xl px-3.5 py-3 ${debtAllocation.state === "ready" && (debtAllocation.availableForDebtMinor ?? 0) > 0 ? "bg-green-50" : "bg-amber-50"}`}><p className="text-xs font-bold text-slate-500">Можно направить поставщикам</p><p className={`mt-1 text-2xl font-black ${debtAllocation.state === "ready" && (debtAllocation.availableForDebtMinor ?? 0) > 0 ? "text-green-800" : "text-amber-900"}`}>{debtAllocation.state === "ready" ? rub.format((debtAllocation.availableForDebtMinor ?? 0) / 100) : "Расчёт уточняется"}</p></div>
+            <div className={`rounded-xl px-3.5 py-3 ${forecast30Days.firstGap ? "bg-red-50" : "bg-slate-50"}`}><p className="text-xs font-bold text-slate-500">Кассовый разрыв на 30 дней</p><p className={`mt-1 text-lg font-black ${forecast30Days.firstGap ? "text-red-800" : "text-slate-950"}`}>{forecast30Days.firstGap ? `${rub.format(forecast30Days.firstGap.amountMinor / 100)} к ${shortDay(forecast30Days.firstGap.date)}` : forecast30Days.coverageReady ? "Не обнаружен" : "Нужны остатки 1С"}</p></div>
+          </div>
+        </aside>
+      </section>
+
+      <section className="order-3 grid items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(330px,.7fr)]">
+        <div className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ближайшие 30 дней</p><h2 className="mt-0.5 text-xl font-black text-slate-950">План платежей</h2><p className="mt-1 text-sm font-medium text-slate-500">Все известные обязательные выплаты и заявки — открыты сразу.</p></div>
+            <div className="text-right"><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-0.5 text-xl font-black text-slate-950">{rub.format(forecast30Days.scheduledOutMinor / 100)}</p></div>
+          </div>
+          <div className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200 px-3">
+            {forecast30Days.rows.map((row) => (
+              <div key={row.date} className="grid gap-2 py-3 sm:grid-cols-[105px_minmax(0,1fr)_150px_165px] sm:items-center">
+                <p className="text-sm font-black text-slate-950">{shortDay(row.date)}</p>
+                <div className="space-y-1">{row.items.map((item) => <div key={item.id}><p className="text-sm font-extrabold text-slate-950">{item.title}</p><p className="text-[11px] font-semibold text-slate-500">{item.source}</p></div>)}</div>
+                <div className="sm:text-right"><p className="text-sm font-black text-slate-950">{row.items.every((item) => item.amountMinor == null) ? "Сумма уточняется" : rub.format(row.items.reduce((sum, item) => sum + (item.amountMinor ?? 0), 0) / 100)}</p></div>
+                <div className="sm:text-right">{row.gapMinor > 0 ? <><p className="text-sm font-black text-red-800">Не хватает {rub.format(row.gapMinor / 100)}</p><p className="text-[11px] font-semibold text-red-700">Найти деньги или перенести</p></> : forecast30Days.coverageReady ? <p className="text-sm font-black text-green-800">Деньги предусмотрены</p> : <><p className="text-sm font-black text-amber-800">Источник уточняется</p><p className="text-[11px] font-semibold text-slate-500">Нужны остатки 1С</p></>}</div>
+              </div>
+            ))}
+          </div>
+          <div id="cash-route" className="scroll-mt-24 mt-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-black text-slate-950">Как подготовить наличные к зарплате</p><p className="mt-0.5 text-xs font-semibold text-slate-500">Портал сначала использует сейф, затем учитывает ВТБ и лимиты Т‑Банка.</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black ${cashPreparation.state === "ready" ? (cashPreparation.unresolvedMinor ?? 0) > 0 ? "bg-red-100 text-red-800" : (cashPreparation.prepareMinor ?? 0) > 0 ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>{cashPreparation.state === "ready" ? (cashPreparation.unresolvedMinor ?? 0) > 0 ? `Не найдено ${rub.format((cashPreparation.unresolvedMinor ?? 0) / 100)}` : (cashPreparation.prepareMinor ?? 0) > 0 ? `Снять ${rub.format((cashPreparation.prepareMinor ?? 0) / 100)}` : "Наличных достаточно" : "Нужны данные 1С"}</span></div>
+            {cashPreparation.state === "ready" && cashPreparation.steps.length ? <div className="mt-2 flex flex-wrap gap-2">{cashPreparation.steps.map((step) => <span key={step.source} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200">{step.source === "safe" ? "Оставить в сейфе" : step.source === "vtb" ? "Снять через ВТБ" : step.source === "tbank_card" ? "Снять с карты Т‑Банка" : "Счёт → карта Т‑Банка"}: {rub.format(step.amountMinor / 100)}</span>)}</div> : null}
+          </div>
+        </div>
+
+        <aside className="space-y-4">
+          <section id="supplier-control" className="admin-material-card scroll-mt-24 rounded-2xl bg-white p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">После обязательных выплат</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Кому платить дальше</h2><p className="mt-1 text-xs font-semibold text-slate-500">Поставщики с долгом от 300 000 ₽</p></div><div className="text-right"><p className="text-xs font-bold text-slate-500">Общий долг</p><p className="mt-0.5 text-sm font-black text-slate-950">{supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}</p></div></div>
+            {controlledSupplierDebts.length ? <div className="mt-3 divide-y divide-slate-200">{controlledSupplierDebts.slice(0, 5).map((debt, index) => { const allocation = supplierAllocationByName.get(debt.supplier); return <div key={debt.supplier} className="py-3"><div className="flex items-center justify-between gap-3"><p className="min-w-0 truncate text-sm font-black text-slate-950">{index + 1}. {debt.supplier}</p><p className="shrink-0 text-sm font-black text-slate-950">{rub.format(debt.debtMinor / 100)}</p></div><p className={`mt-1 text-xs font-semibold ${allocation?.recommendedMinor ? "text-green-700" : "text-slate-500"}`}>{allocation?.recommendedMinor ? `${allocation.result === "full" ? "Закрыть полностью" : "Оплатить частично"}: ${rub.format(allocation.recommendedMinor / 100)}` : debt.priority <= 1 ? "Высокий приоритет · сумма оплаты рассчитывается" : debt.priority >= 4 ? "Крупный долг · подтвердить приоритет" : "Сумма оплаты рассчитывается"}</p></div>; })}</div> : <p className={`mt-3 rounded-xl px-3.5 py-3 text-sm font-semibold ${sourceWarnings.length ? "bg-amber-50 text-amber-900" : "bg-green-50 text-green-900"}`}>{sourceWarnings.length ? "Долги появятся после получения актуальных взаиморасчётов из 1С." : "Крупных долгов сейчас нет."}</p>}
+          </section>
+
+          <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
+            <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Специальные способы оплаты</p>
+            <div className="mt-3 space-y-3">
+              <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black text-slate-950">QR · карта Астемира</p><p className="text-xs font-semibold text-slate-500">Запланировано {rub.format(plannedQr)}</p></div><p className="text-sm font-black text-slate-950">{accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)}</p></div>
+              <div className="border-t border-slate-200 pt-3"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black text-slate-950">Оплаты в USDT</p><p className="text-xs font-semibold text-slate-500">Запланировано {plannedUsdt > 0 ? `${plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT` : "0 USDT"}</p></div><p className="text-sm font-black text-slate-950">{usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}</p></div></div>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <section className="hidden admin-material-card rounded-2xl bg-white p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Сегодня</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Требуется ваше решение</h2></div><span className={`rounded-full px-2.5 py-1 text-xs font-black ${immediateStateUnavailable || hasImmediateAction ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>{immediateStateUnavailable ? "Нужны данные" : hasImmediateAction ? "Есть действия" : "Срочных действий нет"}</span></div>
         <div className="mt-3 space-y-2.5">
           {submitted.length ? <button type="button" onClick={() => document.getElementById(`payment-plan-${submitted[0]?.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} className="flex w-full items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition hover:bg-amber-100"><span className="min-w-0"><span className="block text-base font-black text-amber-950">Проверить {submitted.length} {submitted.length === 1 ? "заявку" : "заявки"} Астемира</span><span className="mt-0.5 block truncate text-xs font-semibold text-amber-800">{formatMinor(submitted.reduce((sum, plan) => sum + Math.round(Number(plan.plannedAmount || 0) * 100), 0))}{urgentSubmitted.length ? ` · срочно сегодня: ${urgentSubmitted.length}` : " · ожидают вашего решения"}</span>{firstSubmittedFunding ? <span className="mt-1 block truncate text-xs font-black text-amber-950">Если согласовать: {firstSubmittedFunding.title.toLocaleLowerCase("ru-RU")}</span> : null}</span><span className="inline-flex shrink-0 items-center gap-1 text-sm font-black text-amber-900">Открыть <ArrowRight className="h-4 w-4" /></span></button> : null}
           {cashPreparation.state === "ready" && ((cashPreparation.prepareMinor ?? 0) > 0 || (cashPreparation.unresolvedMinor ?? 0) > 0) ? <button type="button" onClick={() => openForecastDetail("cash-preparation")} className="flex w-full items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left"><span><span className="block text-base font-black text-slate-950">{(cashPreparation.unresolvedMinor ?? 0) > 0 ? "Найти источник для обязательной выплаты" : "Подготовить наличные"}</span><span className="mt-0.5 block text-xs font-semibold text-slate-600">К {shortDay(cashPreparation.dueOn)} · {rub.format(((cashPreparation.unresolvedMinor ?? 0) > 0 ? cashPreparation.unresolvedMinor : cashPreparation.prepareMinor)! / 100)}</span></span><span className="inline-flex items-center gap-1 text-sm font-black">Расчёт <ArrowRight className="h-4 w-4" /></span></button> : null}
-          {firstSupplierRecommendation ? <button type="button" onClick={() => openForecastDetail("supplier-attention")} className="flex w-full items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left"><span><span className="block text-base font-black text-slate-950">Рассмотреть оплату {firstSupplierRecommendation.supplier}</span><span className="mt-0.5 block text-xs font-semibold text-slate-600">Рекомендуемая сумма · {rub.format(firstSupplierRecommendation.recommendedMinor / 100)}</span></span><span className="inline-flex items-center gap-1 text-sm font-black">Почему <ArrowRight className="h-4 w-4" /></span></button> : null}
+          {firstSupplierControl ? <button type="button" onClick={() => openForecastDetail("supplier-attention")} className="flex w-full items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left"><span><span className="block text-base font-black text-slate-950">{firstSupplierRecommendation ? "Рассмотреть оплату" : "Держать на контроле долг"} {firstSupplierControl.supplier}</span><span className="mt-0.5 block text-xs font-semibold text-slate-600">{firstSupplierRecommendation ? `Рекомендуемая сумма · ${rub.format(firstSupplierRecommendation.recommendedMinor / 100)}` : `Долг по текущей выгрузке 1С · ${rub.format(firstSupplierControl.debtMinor / 100)} · сумма оплаты рассчитывается`}</span></span><span className="inline-flex shrink-0 items-center gap-1 text-sm font-black">Почему <ArrowRight className="h-4 w-4" /></span></button> : null}
           {!hasImmediateAction && !immediateStateUnavailable ? <div className="rounded-xl border border-green-200 bg-green-50/60 px-4 py-3"><p className="font-black text-green-900">На сегодня обязательных действий нет</p><p className="mt-0.5 text-xs font-semibold text-green-800">Портал пересчитает очередь после новых заявок и обновления 1С.</p></div> : null}
           {immediateStateUnavailable ? <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"><p className="text-sm font-black text-amber-950">Для финансовой рекомендации нужны свежие данные 1С</p><p className="mt-0.5 text-xs font-semibold text-amber-800">Какие именно источники не получены, показано в предупреждении выше.</p></div> : null}
         </div>
       </section>
 
-      <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,.75fr)]">
+      <section className={`hidden admin-material-card rounded-2xl border p-4 sm:p-5 ${financialAssistant.state === "unavailable" ? "border-amber-200 bg-amber-50/60" : financialAssistant.state === "review" ? "border-red-200 bg-red-50/40" : "border-slate-200 bg-white"}`}>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(330px,.65fr)] xl:items-center">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-black text-slate-950">Умный финансовый помощник</h2>
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${financialAssistant.state === "ready" ? "bg-green-100 text-green-800" : financialAssistant.state === "review" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}>
+                {financialAssistant.state === "ready" ? "Можно действовать" : financialAssistant.state === "review" ? "Требует решения" : "Нужны данные"}
+              </span>
+            </div>
+            <p className="mt-2 text-xl font-black leading-snug text-slate-950">{financialAssistant.title}{financialAssistant.amountMinor !== null ? ` · ${rub.format(financialAssistant.amountMinor / 100)}` : ""}</p>
+            <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-600">{financialAssistant.explanation}</p>
+            {financialAssistant.findings.length ? <div className="mt-3 flex flex-wrap gap-2">{financialAssistant.findings.slice(0, 3).map((finding) => <span key={`${finding.kind}:${finding.text}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">{finding.text}</span>)}</div> : null}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-white px-3.5 py-3 ring-1 ring-slate-200"><p className="text-[11px] font-bold text-slate-500">Расходы на 30 дней</p><p className="mt-1 text-base font-black text-slate-950">{rub.format(forecast30Days.scheduledOutMinor / 100)}</p></div>
+            <div className={`rounded-xl px-3.5 py-3 ring-1 ${forecast30Days.firstGap ? "bg-red-50 ring-red-200" : "bg-white ring-slate-200"}`}><p className="text-[11px] font-bold text-slate-500">Кассовый разрыв</p><p className={`mt-1 text-base font-black ${forecast30Days.firstGap ? "text-red-800" : "text-slate-950"}`}>{forecast30Days.firstGap ? rub.format(forecast30Days.firstGap.amountMinor / 100) : forecast30Days.coverageReady ? "Не обнаружен" : "Нужны данные"}</p></div>
+            <button type="button" onClick={() => openForecastDetail("forecast-30-title")} className="col-span-2 flex items-center justify-between rounded-xl bg-[#263b5c] px-4 py-3 text-left text-sm font-black text-white transition hover:bg-[#1f3150]"><span>Открыть прогноз по датам</span><ArrowRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+      </section>
+
+      <section className="hidden items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,.75fr)]">
         <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5"><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ближайшие 7 дней</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Какие деньги понадобятся</h2></div><p className="text-xs font-semibold text-slate-500">С {shortDay(todayKey)} по {shortDay(sevenDaysEndKey)}</p></div>{upcomingSevenDays.length ? <div className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 px-3">{upcomingSevenDays.map((row) => <div key={row.date} className="grid gap-2 py-3 sm:grid-cols-[105px_minmax(0,1fr)_minmax(150px,.65fr)] sm:items-center"><p className="text-sm font-black">{shortDay(row.date)}</p><div>{row.items.map((item) => <div key={item.id}><p className="text-sm font-extrabold">{item.title}</p><p className="text-sm font-black">{item.amountMinor == null ? "Сумма уточняется" : `${item.certainty === "estimate" ? "≈ " : ""}${rub.format(item.amountMinor / 100)}`}</p></div>)}</div><div className="sm:text-right">{row.gapMinor > 0 ? <><p className="text-sm font-black text-red-800">Не хватает {rub.format(row.gapMinor / 100)}</p><p className="text-xs font-semibold text-red-700">Найти источник или перенести оплату</p></> : <><p className="text-sm font-black text-amber-800">Источник уточняется</p><p className="text-xs font-semibold text-slate-500">Пока не подтверждён по данным 1С</p></>}</div></div>)}</div> : <p className="mt-3 rounded-xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">На ближайшие семь дней выплат с известной датой нет.</p>}</section>
         <aside className="admin-material-card rounded-2xl bg-white p-4 sm:p-5"><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Сколько денег свободно</p><div className="mt-3 space-y-2.5"><div className="flex justify-between gap-3"><p className="text-sm font-bold text-slate-600">Доступно сейчас</p><p className="font-black">{debtAllocation.resourcesMinor == null ? "—" : rub.format(debtAllocation.resourcesMinor / 100)}</p></div><div className="rounded-xl bg-slate-50 px-3 py-2.5"><div className="flex justify-between gap-3"><p className="text-sm font-bold text-slate-600">Оставить на обязательные выплаты</p><p className="font-black">{debtAllocation.mandatoryReserveMinor == null ? "—" : `− ${rub.format(debtAllocation.mandatoryReserveMinor / 100)}`}</p></div><p className="mt-1 text-[11px] font-semibold text-slate-500">Зарплата {debtReserveBreakdown.salaryMinor == null ? "уточняется" : rub.format(debtReserveBreakdown.salaryMinor / 100)} · аренда {rub.format(debtReserveBreakdown.rentMinor / 100)} · заявки {rub.format(debtReserveBreakdown.approvedPlansMinor / 100)}</p></div><div className="border-t-2 border-slate-200 pt-3"><p className="text-xs font-bold text-slate-500">Можно направить поставщикам</p><p className="mt-1 text-2xl font-black">{debtAllocation.state === "ready" ? rub.format((debtAllocation.availableForDebtMinor ?? 0) / 100) : "Расчёт уточняется"}</p></div><div className="grid grid-cols-2 gap-3 border-t pt-3"><div><p className="text-[11px] font-bold text-slate-500">Долг по 1С</p><p className="text-sm font-black">{supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}</p></div><div><p className="text-[11px] font-bold text-slate-500">Остаток по заказам</p><p className="text-sm font-black">{orderPaymentGapTotal == null ? "—" : rub.format(orderPaymentGapTotal)}</p></div></div></div></aside>
+      </section>
+
+      <section id="supplier-attention" className="hidden admin-material-card scroll-mt-24 rounded-2xl bg-white p-4 sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Контроль долгов</p>
+            <h2 className="mt-0.5 text-lg font-black text-slate-950">Поставщики с долгом от 300 000 ₽</h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">Показываются всегда. Если остатков недостаточно для точного расчёта, портал не скрывает долг — только помечает сумму оплаты как неподтверждённую.</p>
+          </div>
+          <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${controlledSupplierDebts.some((item) => !item.verified) ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-700"}`}>{controlledSupplierDebts.some((item) => !item.verified) ? "Предварительная выгрузка 1С" : `На контроле: ${controlledSupplierDebts.length}`}</span>
+        </div>
+        {controlledSupplierDebts.length ? <div className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200 px-3">{controlledSupplierDebts.slice(0, 6).map((debt, index) => {
+          const allocation = supplierAllocationByName.get(debt.supplier);
+          return <div key={debt.supplier} className="grid gap-2 py-3 sm:grid-cols-[32px_minmax(0,1fr)_minmax(170px,.7fr)_minmax(210px,1fr)] sm:items-center">
+            <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${index === 0 ? "bg-red-100 text-red-800" : "bg-slate-100 text-slate-600"}`}>{index + 1}</span>
+            <div><p className="text-sm font-black text-slate-950">{debt.supplier}</p><p className="text-xs font-semibold text-slate-500">Долг по взаиморасчётам 1С</p></div>
+            <p className="text-sm font-black text-slate-950 sm:text-right">{rub.format(debt.debtMinor / 100)}</p>
+            <div className="sm:text-right">{allocation && allocation.recommendedMinor > 0 ? <><p className="text-sm font-black text-[#263b5c]">{allocation.result === "full" ? "Можно закрыть полностью" : `Рекомендуется частично · ${rub.format(allocation.recommendedMinor / 100)}`}</p><p className="text-xs font-semibold text-slate-500">После обязательного резерва</p></> : <><p className="text-sm font-black text-amber-800">Сумма оплаты рассчитывается</p><p className="text-xs font-semibold text-slate-500">Долг остаётся на контроле</p></>}</div>
+          </div>;
+        })}</div> : <p className="mt-3 rounded-xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">Крупных долгов выше установленного порога сейчас нет.</p>}
       </section>
 
       <section className="hidden">
@@ -537,7 +712,7 @@ export default function AdminProcurementClient({
         )}
       </section>
 
-      <details className="admin-material-card group rounded-2xl bg-white">
+      <details className="hidden admin-material-card group rounded-2xl bg-white">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5"><div className="flex min-w-0 items-center gap-2"><CalendarDays className="h-5 w-5 shrink-0 text-[#263b5c]" /><div><h2 className="text-base font-black text-slate-950">Полный план на 30 дней</h2><p className="text-xs font-semibold text-slate-500">Известные выплаты: {rub.format(forecast30Days.scheduledOutMinor / 100)} · до {date(forecast30Days.horizonEnd)}</p></div></div><ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" /></summary>
       <section className="overflow-hidden border-t border-slate-200" aria-labelledby="forecast-30-title">
         <div className="border-b border-slate-200 p-4 sm:p-5">
@@ -580,32 +755,6 @@ export default function AdminProcurementClient({
               <p className={`mt-1 text-lg font-black ${forecast30Days.tbank?.status === "verified" ? "text-slate-950" : "text-amber-800"}`}>{currentTbankLabel}</p>
               <p className="mt-0.5 text-xs font-semibold text-slate-500">Т‑Банк{forecast30Days.tbank?.renewsOn ? ` · обновление ${shortDay(forecast30Days.tbank.renewsOn)}` : " · по выписке 1С"}</p>
               <p className="mt-0.5 text-xs font-semibold text-slate-500">ВТБ · на карту до 350 000 ₽ в день</p>
-            </div>
-          </div>
-          <div className={`mt-4 rounded-xl border p-3.5 ${financialAssistant.state === "unavailable" ? "border-amber-200 bg-amber-50/70" : financialAssistant.state === "review" ? "border-red-200 bg-red-50/50" : "border-[#cbd5e1] bg-[#f8fafc]"}`}>
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(250px,.85fr)] lg:items-start">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-black text-slate-950">Рекомендация помощника</h3>
-                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${financialAssistant.state === "ready" ? "bg-green-100 text-green-800" : financialAssistant.state === "review" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}>
-                    {financialAssistant.state === "ready" ? "Можно действовать" : financialAssistant.state === "review" ? "Требует решения" : "Нужны данные"}
-                  </span>
-                </div>
-                <p className="mt-2 text-base font-black leading-snug text-slate-950">
-                  {financialAssistant.title}{financialAssistant.amountMinor !== null ? ` · ${rub.format(financialAssistant.amountMinor / 100)}` : ""}
-                </p>
-                <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-600">{financialAssistant.explanation}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                {financialAssistant.findings.slice(0, 3).map((finding) => (
-                  <p key={`${finding.kind}:${finding.text}`} className="flex gap-2 py-1 text-xs font-semibold leading-relaxed text-slate-600 first:pt-0 last:pb-0">
-                    <span aria-hidden="true" className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${finding.kind === "cash_gap" ? "bg-red-500" : finding.kind === "supplier_review" ? "bg-amber-500" : "bg-[#263b5c]"}`} />
-                    <span>{finding.text}</span>
-                  </p>
-                ))}
-                {!financialAssistant.findings.length ? <p className="text-xs font-semibold text-slate-500">Детальный расчёт показан ниже.</p> : null}
-                <p className="mt-2 border-t border-slate-100 pt-2 text-[10px] font-bold leading-relaxed text-slate-400">Основание: {financialAssistant.evidence.join(" · ")}. Решение и оплату портал не выполняет.</p>
-              </div>
             </div>
           </div>
           <div id="cash-preparation" className={`scroll-mt-24 mt-4 rounded-xl border p-3.5 ${cashPreparation.state === "ready" && (cashPreparation.unresolvedMinor ?? 0) > 0 ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
@@ -695,36 +844,6 @@ export default function AdminProcurementClient({
               <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Чтобы дать рекомендацию, портал должен одновременно получить свежие остатки денег, зарплату и полное сальдо поставщиков из 1С.</p>
             )}
           </div>
-          <div id="supplier-attention" className="scroll-mt-24 mt-4 rounded-xl border border-slate-200 bg-white p-3.5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-black text-slate-950">Поставщики, которым пора уделить внимание</h3>
-                <p className="mt-0.5 text-xs font-semibold text-slate-500">Долг без согласованной даты не создаёт вымышленный расход в календаре.</p>
-              </div>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-black ${supplierWarnings.some((item) => item.level === "urgent") ? "bg-red-100 text-red-800" : supplierWarnings.length ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-600"}`}>
-                {supplierWarnings.length ? `${supplierWarnings.length} требуют решения` : supplierWarningsReady ? "Выше порога нет" : "Данные обновляются"}
-              </span>
-            </div>
-            {supplierWarnings.length ? (
-              <div className="mt-3 divide-y divide-slate-200">
-                {supplierWarnings.slice(0, 4).map((warning) => (
-                  <div key={warning.supplier} className="grid gap-2 py-3 first:pt-0 last:pb-0 lg:grid-cols-[minmax(150px,.75fr)_minmax(170px,.7fr)_minmax(0,1.35fr)] lg:items-center lg:gap-4">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${warning.level === "urgent" ? "bg-red-500" : "bg-amber-500"}`} />
-                      <div className="min-w-0"><p className="truncate text-sm font-black text-slate-950" title={warning.supplier}>{warning.supplier}</p><p className={`text-[10px] font-black uppercase tracking-wide ${warning.level === "urgent" ? "text-red-700" : "text-amber-800"}`}>{warning.level === "urgent" ? "Срочно спланировать" : "Проверить"}</p></div>
-                    </div>
-                    <div><p className="text-xs font-bold text-slate-500">{warning.metric}</p><p className="text-base font-black tabular-nums text-slate-950">{rub.format(warning.amountMinor / 100)}</p></div>
-                    <div><p className="text-xs font-semibold leading-relaxed text-slate-600">{warning.action}</p>{warning.confidence === "needs_review" ? <p className="mt-0.5 text-[10px] font-black text-amber-800">Сальдо предварительное — сверить перед оплатой</p> : null}</div>
-                  </div>
-                ))}
-                {supplierWarnings.length > 4 ? <p className="pt-2 text-xs font-semibold text-slate-500">Ещё поставщиков выше порога: {supplierWarnings.length - 4}</p> : null}
-              </div>
-            ) : !supplierWarningsReady ? (
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Сальдо и текущие заказы из 1С получены не полностью. Портал не показывает старые цифры как актуальные.</p>
-            ) : (
-              <p className="mt-3 text-xs font-semibold text-slate-500">Сейчас ни один поставщик не превысил свой порог внимания.</p>
-            )}
-          </div>
         </div>
 
         <div className="p-4 sm:p-5">
@@ -779,7 +898,9 @@ export default function AdminProcurementClient({
         </div>
       ) : null}
 
-      <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
+      <details className="hidden admin-material-card group rounded-2xl bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5"><div className="flex items-center gap-2"><WalletCards className="h-4 w-4 text-slate-500" /><div><h2 className="text-sm font-black text-slate-950">Остатки QR и USDT</h2><p className="text-xs font-semibold text-slate-500">Вспомогательные деньги для выбранных способов оплаты</p></div></div><ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
+      <section className="border-t border-slate-200 p-4 sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-lg font-black text-slate-950">Остатки для оплат</h2>
@@ -814,7 +935,7 @@ export default function AdminProcurementClient({
       </section>
       </details>
 
-      <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
+      <section className="order-2 admin-material-card rounded-2xl bg-white p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-black text-slate-950">Нужно согласовать</h2>
@@ -883,7 +1004,7 @@ export default function AdminProcurementClient({
         {actionMessage ? <p className="mt-3 text-sm font-bold text-red-700">{actionMessage}</p> : null}
       </section>
 
-      <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
+      <section className="order-4 admin-material-card rounded-2xl bg-white p-4 sm:p-5">
         <div>
           <h2 className="text-lg font-black text-slate-950">Календарь согласованных оплат</h2>
           <p className="text-sm font-medium text-slate-500">Факт выдачи появится автоматически после проведения расходного документа в 1С.</p>

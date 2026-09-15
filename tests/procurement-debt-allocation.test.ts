@@ -33,6 +33,7 @@ test("does not recommend payments when money, reserve, or debt evidence is incom
   assert.equal(result.state, "unavailable");
   assert.equal(result.availableForDebtMinor, null);
   assert.deepEqual(result.recommendations, []);
+  assert.equal(result.debts[0]?.supplier, "95-RU");
 });
 
 test("deduplicates one supplier and preserves the strongest priority", () => {
