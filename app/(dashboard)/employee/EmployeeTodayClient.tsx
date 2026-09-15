@@ -1429,6 +1429,8 @@ export function EmployeeTodayClient({
 
   const isCompleted = workDay?.status === 'completed' || Boolean(workDay?.endedAt);
   const activeWorkDay = workDay && !isCompleted ? workDay : null;
+  const previousWorkDay = unfinished ?? (activeWorkDay && activeWorkDay.date < today ? activeWorkDay : null);
+  const hasPreviousWorkday = Boolean(previousWorkDay);
   const lateArrivalDeviation = workDay?.deviations?.find((item) => item.kind === 'late_arrival') ?? null;
   const earlyFinishDeviation = workDay?.deviations?.find((item) => item.kind === 'early_finish') ?? null;
   const needsLateArrivalReason = Boolean(activeWorkDay && activeWorkDay.lateMinutes >= lateArrivalThresholdMinutes && !lateArrivalDeviation);
@@ -1629,6 +1631,7 @@ export function EmployeeTodayClient({
   const shiftControlBelongsToToday = shiftControlState.run?.date === today;
   const shiftControlCompleted = shiftControlState.run?.status === 'completed' || shiftControlState.run?.completedAt;
   const showShiftControl =
+    !hasPreviousWorkday &&
     shiftControlEnabled &&
     Boolean(shiftControlState.run) &&
     shiftControlBelongsToToday &&
@@ -1664,7 +1667,7 @@ export function EmployeeTodayClient({
     issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === activeWorkDay?.date
   )) ?? null;
   const handoverWasBlocked = isRecord(handoverTask?.handoverData) && typeof handoverTask.handoverData.closeBlockedAt === 'string';
-  const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || handoverWasBlocked || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState));
+  const showCloseResolution = !hasPreviousWorkday && requiredIssuesState.length > 0 && (closeBlocked || handoverWasBlocked || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState));
   const requiredIssuesForBanner = showCloseResolution
     ? requiredIssuesState.filter((issue) => issue.ruleKey !== 'kkm_shift_not_closed')
     : requiredIssuesState;
@@ -2369,7 +2372,7 @@ export function EmployeeTodayClient({
   }
 
   async function finishUnfinishedWorkDay() {
-    if (!unfinished) return;
+    if (!previousWorkDay) return;
     setError('');
     setMessage('');
     if (!staleCloseReason) {
@@ -2386,7 +2389,7 @@ export function EmployeeTodayClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          workDayId: unfinished.id,
+          workDayId: previousWorkDay.id,
           closeStale: true,
           staleCloseReason,
           staleCloseComment,
@@ -3983,7 +3986,7 @@ export function EmployeeTodayClient({
       )}
       <StaleWorkdayCloseSheet
         open={staleCloseOpen}
-        shiftLabel={unfinished?.shiftLabel || ''}
+        shiftLabel={previousWorkDay?.shiftLabel || ''}
         reason={staleCloseReason}
         comment={staleCloseComment}
         saving={isSaving}
@@ -4220,19 +4223,15 @@ export function EmployeeTodayClient({
               </div>
             </div>
           ) : null}
-          {(unfinished || (activeWorkDay && activeWorkDay.date !== today)) && (
-            <Card className='employee-material-alert-card mb-4 border-amber-200 bg-amber-50'>
-              <div className='flex items-center gap-3'>
-                <span className='employee-material-alert-symbol flex h-6 w-6 shrink-0 items-center justify-center text-amber-700'>
-                  <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-5 w-5' />
-                </span>
-                <div className='flex-1'>
-                  <p className='font-extrabold text-amber-950'>Предыдущая смена не закрыта</p>
-                  <p className='mt-1 text-sm font-semibold leading-snug text-amber-900'>Закройте её, чтобы начать сегодняшний рабочий день.</p>
-                </div>
+          {previousWorkDay && (
+            <Card className='mb-4 space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
+              <h2 className='text-xl font-black text-slate-950'>Сдать смену · {formatDateLabel(previousWorkDay.date)}</h2>
+              <div className='rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3' role='status'>
+                <p className='text-base font-black text-amber-950'>Предыдущая смена не закрыта</p>
+                <p className='mt-1 text-sm font-semibold leading-snug text-amber-900'>Укажите причину, чтобы закрыть её.</p>
               </div>
-              <Button className='employee-material-green-action mt-3 h-12 w-full rounded-xl text-sm font-black' onClick={() => setStaleCloseOpen(true)}>
-                Закрыть предыдущую смену
+              <Button className='employee-material-primary-action min-h-12 w-full text-sm font-extrabold' onClick={() => setStaleCloseOpen(true)}>
+                Продолжить сдачу смены
               </Button>
             </Card>
           )}
@@ -4547,46 +4546,48 @@ export function EmployeeTodayClient({
                 </div>
               )}
 
-              {attentionCount > 0 && (
+              {attentionCount > 0 && !showCloseResolution && (
                 <EmployeeAttentionSummaryCard
-                  title={showCloseResolution ? 'Смена открыта' : 'Требуют внимания'}
-                  subtitle={showCloseResolution
-                    ? currentCloseExceptionStatus === 'pending'
-                      ? 'Ждём разрешения закрыть смену.'
-                      : `Закрытие заблокировано · ${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`
-                    : requiredIssuesForBanner.length
+                  title='Требуют внимания'
+                  subtitle={requiredIssuesForBanner.length
                       ? `${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`
                       : `${paymentChecksState.length} ${countWord(paymentChecksState.length, 'проверка', 'проверки', 'проверок')}.`}
                   count={attentionCount}
-                  actionLabel={showCloseResolution ? 'Продолжить' : 'Открыть'}
-                  tone={showCloseResolution ? 'blocked' : 'neutral'}
+                  actionLabel='Открыть'
+                  tone='neutral'
                   onAction={() => {
                     setCloseBlockedSheetOpen(true);
                   }}
                 />
               )}
 
-              {activeWorkDay && showCloseResolution && kkmCloseIssue && (
-                <Card id='employee-close-exception' className='mb-6 border-amber-200 border-l-4 border-l-amber-400 bg-white p-4 scroll-mt-4'>
-                  <div className='flex items-start justify-between gap-3'>
-                    <div className='min-w-0'>
-                      <h2 className='text-base font-black text-slate-950'>Закрытие кассы не подтверждено</h2>
-                      <p className='mt-1 text-sm font-semibold text-slate-600'>
-                        {currentCloseExceptionStatus === 'pending' ? hasHandoverPhoto(handoverDraft.zReportPhoto) ? 'Фото отправлено. Ждём решения администратора.' : 'Сообщение получено. Ждём ответа.'
-                          : currentCloseExceptionStatus === 'approved' ? 'Администратор разрешил завершить смену. Завершаем…'
-                            : currentCloseExceptionStatus === 'rejected' ? 'Запрос не согласован. Проверьте чек и укажите, что произошло.'
-                              : 'Закройте смену на ККМ. Если чек уже есть — приложите фото.'}
-                      </p>
-                      {currentCloseExceptionStatus === 'rejected' && closeExceptionRequestState?.decisionComment && <p className='mt-2 text-sm font-semibold text-red-800'>{closeExceptionRequestState.decisionComment}</p>}
-                    </div>
+              {activeWorkDay && showCloseResolution && (
+                <Card className='space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
+                  <h2 className='text-xl font-black text-slate-950'>Сдать смену</h2>
+                  <div className='rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3' role='status'>
+                    <p className='text-base font-black text-amber-950'>Смена не закрыта</p>
+                    <p className='mt-1 text-sm font-semibold leading-snug text-amber-900'>
+                      {currentCloseExceptionStatus === 'pending'
+                        ? 'Ждём решения администратора.'
+                        : currentCloseExceptionStatus === 'approved'
+                          ? 'Закрытие разрешено. Завершаем смену…'
+                          : currentCloseExceptionStatus === 'rejected'
+                            ? 'Администратор не разрешил закрытие. Исправьте ошибку.'
+                            : kkmCloseIssue
+                              ? 'Закрытие кассы не подтверждено. Закройте смену на ККМ. Если чек уже есть — приложите фото.'
+                              : 'Исправьте чек или запросите закрытие смены.'}
+                    </p>
+                    {currentCloseExceptionStatus === 'rejected' && closeExceptionRequestState?.decisionComment && <p className='mt-2 text-sm font-semibold text-amber-950'>{closeExceptionRequestState.decisionComment}</p>}
                   </div>
-                  {currentCloseExceptionStatus === 'pending' || currentCloseExceptionStatus === 'approved'
-                    ? null
-                    : <Button type='button' className='employee-material-primary-action mt-3 min-h-11 w-full text-sm font-extrabold' onClick={() => { setCloseResolutionPath(null); setCloseResolutionOpen(true); }}>Указать, что с чеком</Button>}
+                  <Button type='button' className='employee-material-primary-action min-h-12 w-full text-sm font-extrabold' disabled={isSaving || currentCloseExceptionStatus === 'approved'} onClick={() => {
+                    if (kkmCloseIssue) { setCloseResolutionPath(null); setCloseResolutionOpen(true); }
+                    else setCloseBlockedSheetOpen(true);
+                  }}>{currentCloseExceptionStatus === 'pending' ? 'Посмотреть задачи' : 'Продолжить сдачу смены'}</Button>
+                  {kkmCloseIssue && attentionCount > 0 && <Button type='button' className='employee-material-secondary-action min-h-12 w-full text-sm font-extrabold' onClick={() => setCloseBlockedSheetOpen(true)}>Другие задачи ({attentionCount})</Button>}
                 </Card>
               )}
 
-              {activeWorkDay && !showShiftControl && !showCloseResolution && (
+              {activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution && (
                 <Card className='space-y-3 border-green-100 bg-white p-4'>
                   <div className='flex items-start gap-3'>
                     <span className='employee-material-heading-icon employee-material-accent-icon employee-material-status-icon employee-material-state-marker employee-material-state-marker-success h-11 w-11 shrink-0 rounded-xl text-green-700'>
@@ -4616,18 +4617,18 @@ export function EmployeeTodayClient({
                     <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-7 w-7' />
                   </span>
                   <div className='min-w-0'>
-                    <p className='text-sm font-black text-slate-950'>Рабочий день завершён</p>
+                    <p className='text-sm font-black text-slate-950'>Смена закрыта</p>
                     {kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : null}
                   </div>
                 </Card>
               )}
 
               {showShiftControl && !kkmCloseIssue && !showCloseResolution && (
-                <Card className='space-y-3 bg-white p-4'>
+                <Card className='space-y-3 rounded-[24px] bg-white p-4'>
                   <div>
                     <div>
                       <h2 className='text-xl font-black text-slate-950'>
-                        {cashEncashmentExceptionRequestState?.status === 'pending' && primaryShiftControlTask?.category === 'handover' ? 'Ждём администратора' : activeHandoverTask || actionableShiftControlTask ? 'Сейчас нужно' : 'Следующая проверка'}
+                        {primaryShiftControlTask?.category === 'handover' || activeHandoverTask ? 'Сдать смену' : actionableShiftControlTask ? 'Сейчас нужно' : 'Следующая проверка'}
                       </h2>
                       <p className='mt-0.5 text-xs font-bold text-slate-500'>
                         {cashEncashmentExceptionRequestState?.status === 'pending' && primaryShiftControlTask?.category === 'handover' ? 'Смена пока открыта' : activeHandoverTask ? `Сдача смены · шаг ${handoverStep + 1} из ${handoverSteps.length}` : remainingTasksLabel(remainingShiftControlCount)}

@@ -83,7 +83,7 @@ test('PWA alert cards use standalone semantic symbols without nested tiles', asy
     readFile(brandStylesPath, 'utf8'),
   ]);
 
-  for (const source of [employeeSource, creditCardSource, paymentCardSource, issuePageSource, paymentPageSource]) {
+  for (const source of [creditCardSource, paymentCardSource, issuePageSource, paymentPageSource]) {
     assert.match(source, /employee-material-alert-symbol/);
   }
   assert.doesNotMatch(employeeSource, /employee-material-state-marker employee-material-state-marker-warning flex h-11 w-11/);
@@ -108,8 +108,8 @@ test('KKM close failure uses the approved real-employee sheet, not the legacy in
   assert.match(source, /Закрытие кассы не подтверждено/);
   assert.match(source, /Закройте смену на ККМ\. Если чек уже есть — приложите фото\./);
   assert.match(source, /Чек закрытия распечатался\?/);
-  assert.match(source, /Фото отправлено\. Ждём решения администратора\./);
-  assert.match(source, /Указать, что с чеком/);
+  assert.match(source, /Ждём решения администратора\./);
+  assert.match(source, /Продолжить сдачу смены/);
   assert.match(source, /currentCloseExceptionStatus === 'pending'[\s\S]*?currentCloseExceptionStatus === 'approved'[\s\S]*?currentCloseExceptionStatus === 'rejected'/);
   assert.match(source, /showCloseResolution && !kkmCloseIssue/);
   assert.match(source, /showShiftControl && !kkmCloseIssue/);
@@ -122,7 +122,7 @@ test('other required issues keep the technical request in a sheet across re-entr
   assert.match(source, /closeResolutionOpen && showCloseResolution && !kkmCloseIssue/);
   assert.match(source, /Почему не получается\?/);
   assert.match(source, /Администратор решит, можно ли закрыть смену с ошибкой\./);
-  assert.match(source, /activeWorkDay && !showShiftControl && !showCloseResolution/);
+  assert.match(source, /activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution/);
 });
 
 test('employee sheets reserve room for mobile browser chrome', async () => {

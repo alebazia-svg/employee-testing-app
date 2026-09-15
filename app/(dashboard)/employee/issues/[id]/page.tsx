@@ -35,7 +35,7 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
     where: {
       category: 'handover',
       status: { not: 'done' },
-      run: { userId: user.id, status: 'active', workDayEntry: { status: 'active' } },
+      run: { userId: user.id, status: 'active', workDayEntry: { status: 'active', date: today } },
     },
     select: { handoverData: true },
     orderBy: { updatedAt: 'desc' },

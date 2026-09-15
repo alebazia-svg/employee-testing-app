@@ -26,7 +26,7 @@ export default async function EmployeePaymentCheckPage(props: { params: Promise<
   const blockedHandover = await prisma.shiftControlTask.findFirst({
     where: {
       category: 'handover', status: { not: 'done' },
-      run: { userId: user.id, workDayEntry: { status: 'active' }, user: {
+      run: { userId: user.id, workDayEntry: { status: 'active', date: today }, user: {
         workdayControlIssues: { some: { status: 'open', employeeActionRequired: true } },
       } },
     },

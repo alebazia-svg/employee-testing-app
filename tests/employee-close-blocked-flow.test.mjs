@@ -10,8 +10,11 @@ test('failed handover keeps a compact persistent close-blocked state', () => {
   assert.match(todayClient, /setCloseBlocked\(true\)/);
   assert.match(todayClient, /setCloseBlockedSheetOpen\(true\)/);
   assert.match(todayClient, /closeBlocked \|\| handoverWasBlocked/);
-  assert.match(todayClient, /title=\{showCloseResolution \? 'Смена открыта'/);
-  assert.match(todayClient, /Закрытие заблокировано/);
+  assert.match(todayClient, /attentionCount > 0 && !showCloseResolution/);
+  assert.match(todayClient, /Смена не закрыта/);
+  assert.match(todayClient, /Продолжить сдачу смены/);
+  assert.match(todayClient, /Ждём решения администратора\./);
+  assert.match(todayClient, /Смена закрыта/);
   assert.doesNotMatch(todayClient, /showAllRequiredIssues/);
 });
 
@@ -23,6 +26,14 @@ test('blocked sheet has one clear correction route and a safe help state', () =>
   assert.match(blockedSheet, /Не могу исправить/);
   assert.match(blockedSheet, /Запрос отправлен/);
   assert.match(blockedSheet, /disabled=\{helpPending\}/);
+});
+
+test('previous shift keeps reason-based closure without a competing blocked card', () => {
+  assert.match(todayClient, /const showCloseResolution = !hasPreviousWorkday &&/);
+  assert.match(todayClient, /Сдать смену · \{formatDateLabel\(previousWorkDay.date\)\}/);
+  assert.match(todayClient, /workDayId: previousWorkDay.id/);
+  assert.match(todayClient, /closeStale: true/);
+  assert.doesNotMatch(todayClient, />\s*Закрыть предыдущую смену\s*</);
 });
 
 test('source-backed receipt instructions remain unchanged', () => {
