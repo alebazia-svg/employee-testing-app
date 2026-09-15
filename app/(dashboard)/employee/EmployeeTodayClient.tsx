@@ -3,7 +3,6 @@
 import jsQR from 'jsqr';
 import { parseWorkdayQrDepartment } from '@/lib/workday-qr';
 import {
-  BillListIcon as PremiumBillListIcon,
   CalendarMarkIcon as PremiumCalendarIcon,
   CameraIcon as PremiumCameraIcon,
   Card2Icon as PremiumCardIcon,
@@ -24,7 +23,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   ClipboardCheck,
   Clock3,
   CreditCard,
@@ -40,9 +38,10 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { EmployeeAttentionSummaryCard } from '@/components/EmployeeAttentionSummaryCard';
+import { EmployeeCloseBlockedSheet, type EmployeeBlockingItem } from '@/components/EmployeeCloseBlockedSheet';
 import { startVisibleSync } from '@/lib/visible-sync';
 import { createIdempotencyKey } from '@/lib/idempotency-key';
-import { terminalFiscalEmployeeReviewSummary } from '@/lib/terminal-fiscal-employee-review-view';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
@@ -857,6 +856,15 @@ function formatShiftMoney(value: number | null | undefined) {
   return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
 }
 
+function countWord(count: number, one: string, few: string, many: string) {
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
 function formatTaskCompletedAt(value: string | Date | null | undefined) {
   if (!value) return null;
   return formatTime(value);
@@ -1228,7 +1236,6 @@ export function EmployeeTodayClient({
   const [shiftControlState, setShiftControlState] = useState(shiftControl);
   const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
   const [requiredIssuesState, setRequiredIssuesState] = useState(requiredIssues);
-  const [showAllRequiredIssues, setShowAllRequiredIssues] = useState(false);
   const [paymentChecksState, setPaymentChecksState] = useState(paymentChecks);
   const [closeExceptionRequestState, setCloseExceptionRequestState] = useState(closeExceptionRequest);
   const [cashEncashmentExceptionRequestState, setCashEncashmentExceptionRequestState] = useState(cashEncashmentExceptionRequest);
@@ -1239,6 +1246,7 @@ export function EmployeeTodayClient({
   const latePromptWorkdayIdRef = useRef<number | null>(null);
   const [shiftCorrectionState, setShiftCorrectionState] = useState<ShiftCorrectionState>(shiftCorrection ?? { canCorrect: false, allowedShiftCodes: [], hint: '' });
   const [closeBlocked, setCloseBlocked] = useState(false);
+  const [closeBlockedSheetOpen, setCloseBlockedSheetOpen] = useState(false);
   const [closeResolutionOpen, setCloseResolutionOpen] = useState(false);
   const [closeResolutionPath, setCloseResolutionPath] = useState<'photo' | 'technical' | null>(null);
   const [closeExceptionReason, setCloseExceptionReason] = useState('');
@@ -1635,6 +1643,12 @@ export function EmployeeTodayClient({
     : pendingShiftControlTasks.find((task) => task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(displayNow) >= task.plannedTimeMinutes) ?? null;
   const handoverTask = shiftControlTasks.find((task) => task.category === 'handover') ?? null;
   const isHandoverDone = handoverTask?.status === 'done';
+  const handoverHasSavedProgress = Boolean(
+    handoverTask
+    && handoverTask.status !== 'done'
+    && isRecord(handoverTask.handoverData)
+    && handoverTask.handoverData.draft === true,
+  );
   const activeHandoverTask = activeHandoverTaskId ? shiftControlTasks.find((task) => task.id === activeHandoverTaskId) ?? null : null;
   const nextShiftControlTask =
     actionableShiftControlTask
@@ -1645,22 +1659,31 @@ export function EmployeeTodayClient({
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
   const completedKkmCloseCheck = readRecord(handoverTask?.handoverData, 'kkmCloseCheck');
   const kkmClosureConfirmed = completedKkmCloseCheck?.status === 'confirmed';
-  const primaryPaymentCheck = paymentChecksState[0] ?? null;
-  const primaryPaymentCheckView = primaryPaymentCheck ? terminalFiscalEmployeeReviewSummary(primaryPaymentCheck) : null;
   const kkmCloseIssue = requiredIssuesState.find((issue) => (
     issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === activeWorkDay?.date
   )) ?? null;
-  const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState));
+  const showCloseResolution = requiredIssuesState.length > 0 && (closeBlocked || handoverHasSavedProgress || Boolean(kkmCloseIssue) || Boolean(closeExceptionRequestState));
   const requiredIssuesForBanner = showCloseResolution
     ? requiredIssuesState.filter((issue) => issue.ruleKey !== 'kkm_shift_not_closed')
     : requiredIssuesState;
+  const blockingItems: EmployeeBlockingItem[] = requiredIssuesForBanner.map((issue) => {
+    const issueView = workdayIssueView(issue);
+    return { id: issue.id, href: `/employee/issues/${issue.id}`, title: issueView.bannerTitle, meta: issueView.summaryMeta || issue.detail };
+  });
+  const attentionCount = requiredIssuesForBanner.length + paymentChecksState.length;
+  const persistedHandoverDraft = handoverHasSavedProgress && handoverTask && isRecord(handoverTask.handoverData)
+    ? draftFromHandoverData(handoverTask.handoverData)
+    : handoverDraft;
+  const savedBalanceValue = parseMoneyInput(handoverDraft.personalCashBalance || persistedHandoverDraft.personalCashBalance);
+  const savedBalanceLabel = savedBalanceValue === null ? 'Остаток' : `Остаток ${formatShiftMoney(savedBalanceValue)} ₽`;
+  const checksSuffix = paymentChecksState.length > 0 ? ` · ещё ${paymentChecksState.length} ${countWord(paymentChecksState.length, 'проверка', 'проверки', 'проверок')}` : '';
 
   useEffect(() => {
-    if (openShiftTaskId === null && (!activeHandoverTaskId || showCloseResolution) && !cashOperationDraft.direction && !closeResolutionOpen && !staleCloseOpen && !deviationSheetKind) return;
+    if (openShiftTaskId === null && (!activeHandoverTaskId || showCloseResolution) && !cashOperationDraft.direction && !closeResolutionOpen && !closeBlockedSheetOpen && !staleCloseOpen && !deviationSheetKind) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = previousOverflow; };
-  }, [openShiftTaskId, activeHandoverTaskId, showCloseResolution, cashOperationDraft.direction, closeResolutionOpen, staleCloseOpen, deviationSheetKind]);
+  }, [openShiftTaskId, activeHandoverTaskId, showCloseResolution, cashOperationDraft.direction, closeResolutionOpen, closeBlockedSheetOpen, staleCloseOpen, deviationSheetKind]);
 
   useEffect(() => {
     if (!needsLateArrivalReason || !activeWorkDay || latePromptWorkdayIdRef.current === activeWorkDay.id) return;
@@ -2319,7 +2342,7 @@ export function EmployeeTodayClient({
         if (payload.code === 'OPEN_REQUIRED_ISSUES') {
           setCloseBlocked(true);
           if (Array.isArray(payload.issues)) setRequiredIssuesState(payload.issues);
-          window.setTimeout(() => document.getElementById('employee-close-exception')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+          if (!payload.issues?.some?.((issue: RequiredWorkdayIssue) => issue.ruleKey === 'kkm_shift_not_closed')) setCloseBlockedSheetOpen(true);
           return;
         }
         throw new Error(payload.error || 'Не удалось завершить рабочий день');
@@ -2365,7 +2388,7 @@ export function EmployeeTodayClient({
         if (payload.code === 'OPEN_REQUIRED_ISSUES') {
           setCloseBlocked(true);
           if (Array.isArray(payload.issues)) setRequiredIssuesState(payload.issues);
-          window.setTimeout(() => document.getElementById('employee-close-exception')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+          if (!payload.issues?.some?.((issue: RequiredWorkdayIssue) => issue.ruleKey === 'kkm_shift_not_closed')) setCloseBlockedSheetOpen(true);
           return;
         }
         throw new Error(payload.error || 'Не удалось завершить предыдущий рабочий день');
@@ -3339,8 +3362,13 @@ export function EmployeeTodayClient({
       }
       if (reason instanceof EmployeeApiError && reason.code === 'OPEN_REQUIRED_ISSUES') {
         setCloseBlocked(true);
-        if (isRecord(reason.payload) && Array.isArray(reason.payload.issues)) setRequiredIssuesState(reason.payload.issues as RequiredWorkdayIssue[]);
-        setHandoverSaveError('Обязательная ошибка. Исправьте её или запросите разрешение администратора.');
+        const nextIssues = isRecord(reason.payload) && Array.isArray(reason.payload.issues)
+          ? reason.payload.issues as RequiredWorkdayIssue[]
+          : requiredIssuesState;
+        setRequiredIssuesState(nextIssues);
+        setActiveHandoverTaskId(null);
+        setHandoverSaveError('');
+        if (!nextIssues.some((issue) => issue.ruleKey === 'kkm_shift_not_closed')) setCloseBlockedSheetOpen(true);
       } else {
         setHandoverSaveError(reason instanceof TypeError || reason instanceof EmployeeNetworkError
           ? 'Нет связи с порталом. Когда связь появится, нажмите «Сдать смену» ещё раз.'
@@ -3861,6 +3889,18 @@ export function EmployeeTodayClient({
 
   return (
     <main className={cn('portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass)}>
+      <EmployeeCloseBlockedSheet
+        open={closeBlockedSheetOpen}
+        items={blockingItems}
+        savedBalanceLabel={savedBalanceLabel}
+        helpPending={currentCloseExceptionStatus === 'pending'}
+        onClose={() => setCloseBlockedSheetOpen(false)}
+        onRequestHelp={() => {
+          setCloseBlockedSheetOpen(false);
+          setError('');
+          setCloseResolutionOpen(true);
+        }}
+      />
       {closeResolutionOpen && showCloseResolution && kkmCloseIssue && (
         <div className='employee-workday-sheet-overlay fixed inset-0 z-[125] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6' role='dialog' aria-modal='true' aria-labelledby='kkm-resolution-title'>
           <div className='employee-material-sheet flex w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:rounded-[28px]'>
@@ -3913,7 +3953,8 @@ export function EmployeeTodayClient({
               <BottomSheetDragHandle onDismiss={() => setCloseResolutionOpen(false)} disabled={isSaving} />
               <div className='flex items-start justify-between gap-3'>
                 <div>
-                  <h2 id='close-exception-sheet-title' className='text-xl font-black leading-tight text-slate-950'>Почему не получается исправить?</h2>
+                  <h2 id='close-exception-sheet-title' className='text-xl font-black leading-tight text-slate-950'>Сообщить о проблеме</h2>
+                  <p className='mt-1 text-sm font-semibold text-slate-500'>Смена останется открытой.</p>
                 </div>
                 <button type='button' onClick={() => setCloseResolutionOpen(false)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
               </div>
@@ -3924,7 +3965,7 @@ export function EmployeeTodayClient({
                 <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold' aria-label='Техническая причина'><option value=''>Выберите причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
                 <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />
                 {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
-                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || !closeExceptionComment.trim()} onClick={requestCloseException}>Сообщить администратору</Button>
+                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || !closeExceptionComment.trim()} onClick={requestCloseException}>Отправить</Button>
               </div>
             </div>
           </div>
@@ -4496,56 +4537,26 @@ export function EmployeeTodayClient({
                 </div>
               )}
 
-              {requiredIssuesForBanner.length > 0 && (
-                <section className='space-y-2'>
-                    {(showAllRequiredIssues ? requiredIssuesForBanner : requiredIssuesForBanner.slice(0, 1)).map((issue) => {
-                      const issueView = workdayIssueView(issue);
-                      return (
-                        <a
-                          key={issue.id}
-                          href={`/employee/issues/${issue.id}`}
-                          className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm transition hover:bg-amber-100/70'
-                        >
-                          <span className='employee-material-alert-symbol flex h-6 w-6 shrink-0 items-center justify-center text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-5 w-5' /></span>
-                          <span className='min-w-0 flex-1'>
-                            <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно исправить</span>
-                            <span className='block text-sm font-black leading-tight'>{issueView.bannerTitle}</span>
-                            {issue.originDate < today && <span className='mt-1 block text-xs font-extrabold text-slate-600'>Ошибка от {formatDateLabel(issue.originDate).replace(/^.*?,\s*/, '')}{issueView.summaryMeta ? ` · ${issueView.summaryMeta}` : ''}</span>}
-                            {issue.originDate >= today && issueView.summaryMeta && <span className='mt-1 block text-xs font-extrabold text-slate-600'>{issueView.summaryMeta}</span>}
-                          </span>
-                          <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span>
-                          <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
-                        </a>
-                      );
-                    })}
-                    {requiredIssuesForBanner.length > 1 && (
-                      <button
-                        type='button'
-                        onClick={() => setShowAllRequiredIssues((current) => !current)}
-                        className='flex w-full items-center justify-center gap-2 rounded-2xl px-3.5 py-3 text-sm font-extrabold text-amber-900 transition hover:bg-amber-50'
-                        aria-expanded={showAllRequiredIssues}
-                      >
-                        {showAllRequiredIssues ? 'Свернуть список' : `Показать остальные · ${requiredIssuesForBanner.length - 1}`}
-                        {showAllRequiredIssues ? <ChevronUp className='h-4 w-4' /> : <ChevronDown className='h-4 w-4' />}
-                      </button>
-                    )}
-                </section>
-              )}
-
-              {primaryPaymentCheck && primaryPaymentCheckView && (
-                <a
-                  href={`/employee/payment-checks/${primaryPaymentCheck.id}`}
-                  className='flex select-none items-center gap-3 rounded-[24px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-slate-950 shadow-sm'
-                >
-                  <span className='employee-material-alert-symbol flex h-6 w-6 shrink-0 items-center justify-center text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-5 w-5' /></span>
-                  <span className='min-w-0 flex-1'>
-                    <span className='block text-xs font-extrabold uppercase tracking-wide text-amber-700'>Нужно проверить{paymentChecksState.length > 1 ? ` · ${paymentChecksState.length}` : ''}</span>
-                    <span className='mt-0.5 block text-sm font-black leading-tight'>{primaryPaymentCheckView.title}</span>
-                    <span className='mt-1 block text-xs font-extrabold text-slate-600'>{primaryPaymentCheckView.meta}</span>
-                  </span>
-                  <span className='shrink-0 text-xs font-extrabold text-amber-800'>Открыть</span>
-                  <ChevronRight className='h-4 w-4 shrink-0 text-amber-700' />
-                </a>
+              {attentionCount > 0 && (
+                <EmployeeAttentionSummaryCard
+                  title={showCloseResolution ? 'Смена открыта' : 'Требуют внимания'}
+                  subtitle={showCloseResolution
+                    ? currentCloseExceptionStatus === 'pending'
+                      ? 'Закрытие заблокировано · администратор уведомлён.'
+                      : `Закрытие заблокировано · ${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`
+                    : `${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`}
+                  count={attentionCount}
+                  actionLabel={showCloseResolution ? 'Продолжить' : 'Открыть'}
+                  tone={showCloseResolution ? 'blocked' : 'neutral'}
+                  onAction={() => {
+                    if (showCloseResolution && blockingItems.length > 0) {
+                      setCloseBlockedSheetOpen(true);
+                      return;
+                    }
+                    if (blockingItems[0]) router.push(blockingItems[0].href);
+                    else if (paymentChecksState[0]) router.push(`/employee/payment-checks/${paymentChecksState[0].id}`);
+                  }}
+                />
               )}
 
               {activeWorkDay && showCloseResolution && kkmCloseIssue && (
@@ -4565,23 +4576,6 @@ export function EmployeeTodayClient({
                   {currentCloseExceptionStatus === 'pending' || currentCloseExceptionStatus === 'approved'
                     ? null
                     : <Button type='button' className='employee-material-primary-action mt-3 min-h-11 w-full text-sm font-extrabold' onClick={() => { setCloseResolutionPath(null); setCloseResolutionOpen(true); }}>Указать, что с чеком</Button>}
-                </Card>
-              )}
-
-              {(activeWorkDay || unfinished) && showCloseResolution && !kkmCloseIssue && (
-                <Card id='employee-close-exception' className='mb-6 border-amber-200 border-l-4 border-l-amber-400 bg-white p-4 scroll-mt-4'>
-                  <div>
-                    <h2 className='text-base font-black text-slate-950'>{unfinished ? 'Прошлый день не закрыт' : 'Смену пока не закрыть'}</h2>
-                    <p className={`mt-1 text-sm font-semibold ${currentCloseExceptionStatus === 'rejected' ? 'text-red-800' : 'text-slate-600'}`}>
-                      {currentCloseExceptionStatus === 'pending' ? 'Ждём ответа администратора.'
-                        : currentCloseExceptionStatus === 'approved' ? 'Разрешение получено. Закрываем смену…'
-                          : currentCloseExceptionStatus === 'rejected' && closeExceptionRequestState?.decisionComment ? `Администратор: ${closeExceptionRequestState.decisionComment}`
-                            : currentCloseExceptionStatus === 'rejected' ? 'Запрос отклонён. Исправьте ошибку выше.'
-                              : 'Откройте ошибку выше и исправьте её.'}
-                    </p>
-                  </div>
-                  {closeExceptionRequestState && !closeExceptionMatchesCurrentIssues && <p className='mt-2 text-sm font-semibold text-amber-800'>Появилась новая ошибка. Сообщите о ней.</p>}
-                  {currentCloseExceptionStatus !== 'pending' && currentCloseExceptionStatus !== 'approved' && <Button type='button' className='employee-material-secondary-action mt-3 min-h-11 w-full text-sm font-extrabold' onClick={() => { setError(''); setCloseResolutionOpen(true); }}>Не получается исправить</Button>}
                 </Card>
               )}
 
@@ -4621,7 +4615,7 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
-              {showShiftControl && !kkmCloseIssue && !(activeHandoverTask && showCloseResolution) && (
+              {showShiftControl && !kkmCloseIssue && !showCloseResolution && (
                 <Card className='space-y-3 bg-white p-4'>
                   <div>
                     <div>

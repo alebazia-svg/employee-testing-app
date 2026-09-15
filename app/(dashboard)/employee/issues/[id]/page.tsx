@@ -31,13 +31,29 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
   const showConversation = !isKkmCloseIssue || issue.messages.length > 0;
   const today = getMoscowDateKey();
   const originLabel = issue.originDate === today ? 'сегодня' : formatDateLabel(issue.originDate);
+  const handoverTask = isCreditIssue && open ? await prisma.shiftControlTask.findFirst({
+    where: {
+      category: 'handover',
+      status: { not: 'done' },
+      run: { userId: user.id, status: 'active', workDayEntry: { status: 'active' } },
+    },
+    select: { handoverData: true },
+    orderBy: { updatedAt: 'desc' },
+  }) : null;
+  const closeBlocked = Boolean(
+    handoverTask?.handoverData
+    && typeof handoverTask.handoverData === 'object'
+    && !Array.isArray(handoverTask.handoverData)
+    && (handoverTask.handoverData as Record<string, unknown>).draft === true,
+  );
   return (
     <main className='portal-neutral-design portal-palette-mobo portal-typography-refined employee-material-ui min-h-screen bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
       <div className='employee-material-shell relative mx-auto min-h-screen w-full max-w-[520px] shadow-2xl md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
         <EmployeePortalHeader name={user.name} meta={`${departmentLabel(user.department)} · ${employeeHeaderDateLabel(today)}`} />
         <div className='px-4 pb-5 pt-2'>
+          {closeBlocked && <div className='mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3'><p className='text-sm font-black text-amber-950'>Смена открыта</p><p className='mt-0.5 text-xs font-bold text-amber-800'>Закрытие заблокировано</p></div>}
           <Link href='/employee' className='inline-flex items-center gap-2 text-sm font-extrabold text-[#455a78]'><ArrowLeft className='h-4 w-4' />Вернуться к рабочему дню</Link>
-          {isCreditIssue && open ? <div className='mt-4'><EmployeeCreditIssueActionCard issueId={issue.id} title={view.actionTitle} instruction={view.instruction} notFoundLabel={view.notFoundLabel} /></div> : <Card className={`mt-4 ${open ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
+          {isCreditIssue && open ? <div className='mt-4'><EmployeeCreditIssueActionCard issueId={issue.id} title={view.actionTitle} instruction={view.instruction} notFoundLabel={view.notFoundLabel} closeBlocked={closeBlocked} /></div> : <Card className={`mt-4 ${open ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50'}`}>
             <div className='flex gap-3'><span className={`employee-material-alert-symbol flex h-7 w-7 shrink-0 items-center justify-center ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? <PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-6 w-6' /> : <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-6 w-6' />}</span><div><p className={`text-xs font-extrabold uppercase tracking-wide ${open ? 'text-amber-700' : 'text-green-700'}`}>{open ? 'Нужно исправить' : 'Исправлено'}</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>{view.summaryTitle}</h1>{view.summaryMeta && <p className='mt-2 text-sm font-extrabold text-slate-700'>{view.summaryMeta}</p>}<p className='mt-3 text-base font-bold leading-relaxed text-slate-800'>{open ? view.instruction : 'Портал подтвердил исправление. История сохранена.'}</p>{open && <p className='mt-3 border-t border-amber-200 pt-3 text-xs font-semibold leading-relaxed text-slate-500'>Проблема возникла {originLabel}. {isKkmCloseIssue ? 'Портал продолжит проверять закрытие автоматически.' : 'После исправления в 1С она исчезнет автоматически.'}</p>}</div></div>
           </Card>}
           {isKkmCloseIssue && open && !showConversation && (
