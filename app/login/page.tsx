@@ -56,7 +56,7 @@ export default function Login() {
             <span className='flex w-full items-center gap-[14px] min-[440px]:gap-[16px]'>
               <span className='relative w-[62px] shrink-0 min-[440px]:w-[68px] sm:w-[70px]'>
                 <span className='absolute inset-[4%] rounded-[28%] bg-[#756d63]/16 blur-[12px]' aria-hidden='true' />
-                <img src='/brand/mobo-master/mobo-symbol-3d-premium.svg' alt='' className='relative h-auto w-full' />
+                <img src='/brand/mobo-master/mobo-symbol-3d-ui.svg' alt='' className='relative h-auto w-full' />
               </span>
               <img src='/brand/mobo-master/mobo-wordmark.svg' alt='MOBO' className='h-auto w-0 min-w-0 flex-1 opacity-[0.97]' />
             </span>

@@ -6,6 +6,7 @@ const requiredIdentityAssets = [
   'public/brand/mobo-master/mobo-symbol.svg',
   'public/brand/mobo-master/mobo-wordmark.svg',
   'public/brand/mobo-master/mobo-symbol-3d-premium.svg',
+  'public/brand/mobo-master/mobo-symbol-3d-ui.svg',
   'public/portal-app-icon-180.png',
   'public/portal-app-icon-192.png',
   'public/portal-app-icon-512.png',
@@ -16,7 +17,7 @@ const requiredIdentityAssets = [
 test('approved MOBO identity assets and PWA metadata stay connected', async () => {
   await Promise.all(requiredIdentityAssets.map((path) => access(path)));
 
-  const [manifestText, layoutSource, loginSource, identitySource, adminSource, procurementSource, employeeHeaderSource, employeeSource, brandStyles, serviceWorkerSource, dimensionalSymbol, flatSymbol, wordmark] = await Promise.all([
+  const [manifestText, layoutSource, loginSource, identitySource, adminSource, procurementSource, employeeHeaderSource, employeeSource, brandStyles, serviceWorkerSource, dimensionalSymbol, uiDimensionalSymbol, flatSymbol, wordmark] = await Promise.all([
     readFile('public/manifest.webmanifest', 'utf8'),
     readFile('app/layout.tsx', 'utf8'),
     readFile('app/login/page.tsx', 'utf8'),
@@ -28,6 +29,7 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
     readFile('app/mobo-brand.css', 'utf8'),
     readFile('public/workday-sw.js', 'utf8'),
     readFile('public/brand/mobo-master/mobo-symbol-3d-premium.svg', 'utf8'),
+    readFile('public/brand/mobo-master/mobo-symbol-3d-ui.svg', 'utf8'),
     readFile('public/brand/mobo-master/mobo-symbol.svg', 'utf8'),
     readFile('public/brand/mobo-master/mobo-wordmark.svg', 'utf8'),
   ]);
@@ -41,13 +43,15 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
     '/portal-app-icon-maskable-512.png',
   ]);
   assert.match(layoutSource, /applicationName: 'MOBO'/);
-  assert.match(loginSource, /mobo-symbol-3d-premium\.svg/);
+  assert.match(loginSource, /mobo-symbol-3d-ui\.svg/);
   assert.match(loginSource, /mobo-wordmark\.svg/);
   assert.match(loginSource, /grid w-\[314px\][\s\S]*?sm:w-\[70px\][\s\S]*?text-\[13px\][\s\S]*?Портал компании/);
   assert.match(loginSource, /data\.portalArea === 'PROCUREMENT' \? '\/procurement'/);
   for (const symbolSource of [dimensionalSymbol, flatSymbol]) {
     assert.match(symbolSource, /feMorphology[\s\S]*?operator="erode" radius="5"/);
   }
+  assert.match(uiDimensionalSymbol, /feDropShadow dx="8" dy="10" stdDeviation="7"/);
+  assert.doesNotMatch(uiDimensionalSymbol, /feTurbulence|feGaussianBlur/);
   assert.match(wordmark, /stroke-width="12"/);
   assert.match(wordmark, /<rect x="116" y="10" width="72" height="62" rx="31"/);
   assert.match(identitySource, /\/brand\/mobo-master\/mobo-symbol\.svg/);
