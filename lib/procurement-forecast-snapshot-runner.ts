@@ -101,7 +101,7 @@ export async function collectProcurementForecastSnapshot(now = new Date()) {
       .map((debt) => ({
         supplier: debt.name,
         debtMinor: Math.round(debt.amountRub * 100),
-        verified: !debts!.sourceDraft,
+        verified: debts!.calculationReady,
       })),
     tbank: {
       renewsOn: tbank?.renewsOn ?? '',

@@ -353,7 +353,7 @@ export default async function AdminProcurementPage() {
       .map((debt) => ({
         supplier: debt.name,
         debtMinor: Math.round(debt.amountRub * 100),
-        verified: !priorityDebts?.sourceDraft,
+        verified: priorityDebts?.calculationReady === true,
       })),
   });
   const warningKeys = new Set(astemirSupplierWarnings.map((item) => normalizeManagerName(item.supplier)));
@@ -380,7 +380,7 @@ export default async function AdminProcurementPage() {
       action: debt.amountRub >= debt.urgent
         ? "Определить сумму ближайшей частичной оплаты после обязательных выплат."
         : "Проверить договорённость и решить, нужен ли частичный платёж.",
-      confidence: priorityDebts?.sourceDraft ? "needs_review" : "current_snapshot",
+      confidence: priorityDebts?.calculationReady ? "current_snapshot" : "needs_review",
     });
   }
   supplierWarnings.sort((left, right) => (left.level === right.level ? right.amountMinor - left.amountMinor : left.level === "urgent" ? -1 : 1));
@@ -401,7 +401,7 @@ export default async function AdminProcurementPage() {
     resourcesMinor,
     mandatoryReserveMinor,
     resourcesComplete: ownerMoney !== null,
-    debtsComplete: Boolean(priorityDebts && !priorityDebts.sourceDraft),
+    debtsComplete: priorityDebts?.calculationReady === true,
     debts: (priorityDebts?.supplierDebts ?? []).map((debt) => {
       const key = normalizeManagerName(debt.name).replace(/[‐‑–—]/g, "-");
       const isNinetyFive = /^95[\s-]*ru$/.test(key);
@@ -410,7 +410,7 @@ export default async function AdminProcurementPage() {
         supplier: debt.name,
         debtMinor: Math.round(debt.amountRub * 100),
         priority: isNinetyFive ? 0 : isZelim ? 1 : (warningPriority.get(key) ?? 3) + 1,
-        verified: !priorityDebts?.sourceDraft,
+        verified: priorityDebts?.calculationReady === true,
       };
     }),
   });
@@ -427,7 +427,8 @@ export default async function AdminProcurementPage() {
     firstGap: firstGap ? { date: firstGap.date, amountMinor: firstGap.gapMinor } : null,
     safeMinor,
     cardsMinor,
-    coverageReady: safeMinor !== null && cardsMinor !== null,
+    coverageReady: safeMinor !== null && cardsMinor !== null && unallocatedPlanCount === 0
+      && plansResult.status === "fulfilled" && forecastRows.every(row => row.items.every(item => item.amountMinor !== null)),
     allocatedOutMinor: forecastRows.reduce((sum, row) => sum + row.safeOutMinor + row.cardsOutMinor, 0),
     scheduledOutMinor: forecastRows.reduce((sum, row) => sum + row.items.reduce((itemSum, item) => itemSum + (item.amountMinor ?? 0), 0), 0),
     unallocatedPlanCount,

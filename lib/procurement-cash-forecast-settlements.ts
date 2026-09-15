@@ -16,7 +16,28 @@ export type ProcurementPriorityDebts = {
   zelimChechnya: number | null;
   supplierDebts: Array<{ name: string; amountRub: number }>;
   sourceDraft: boolean;
+  calculationReady: boolean;
 };
+
+/** Validate the report contract and monetary reconciliation, independently of its release label. */
+export function settlementCalculationReady(payload: unknown): boolean {
+  const p = payload as Record<string, any> | null;
+  if (!p || p.ok !== true || p.endpoint !== 'supplier-settlements' || !Array.isArray(p.rows)
+    || p.totals?.is_limited !== false || p.totals.rows_count !== p.rows.length
+    || p.sign_convention !== 'Supplier debt is negative; overpayment or positive balance is positive. closing_balance = opening_balance - debt_increase + debt_decrease.') return false;
+  const fields = ['opening_balance', 'debt_increase', 'debt_decrease', 'closing_balance'] as const;
+  const valid = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+    && Number.isSafeInteger(Math.round(n * 100)) && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
+  const cents = (n: number) => Math.round(n * 100);
+  const totals = { opening_balance: 0, debt_increase: 0, debt_decrease: 0, closing_balance: 0 };
+  for (const row of p.rows) {
+    if (!row || row.currency !== 'руб' || !(row.supplier_partner || row.supplier_counterparty)
+      || fields.some(key => !valid(row[key]))) return false;
+    if (cents(row.opening_balance) - cents(row.debt_increase) + cents(row.debt_decrease) !== cents(row.closing_balance)) return false;
+    for (const key of fields) totals[key] += cents(row[key]);
+  }
+  return fields.every(key => valid(p.totals[key]) && totals[key] === cents(p.totals[key]));
+}
 
 const normalized = (value: unknown) => typeof value === 'string'
   ? value.trim().toLocaleLowerCase('ru-RU').replaceAll('ё', 'е').replace(/\s+/g, ' ')
@@ -83,6 +104,7 @@ export async function fetchProcurementPriorityDebts(asOf: string): Promise<Procu
         .filter((row) => row.amountRub > 0.009)
         .sort((left, right) => right.amountRub - left.amountRub || left.name.localeCompare(right.name, 'ru-RU')),
       sourceDraft: payload.status === 'draft',
+      calculationReady: settlementCalculationReady(payload),
     };
   } finally {
     clearTimeout(timeout);
