@@ -26,6 +26,7 @@ import { buildSupplierIntelligence } from "@/lib/procurement-supplier-intelligen
 import { buildProcurementDebtAllocation } from "@/lib/procurement-debt-allocation";
 import { buildProcurementCashPreparation } from "@/lib/procurement-cash-preparation";
 import { buildProcurementFinancialAssistant } from "@/lib/procurement-financial-assistant";
+import { assessProcurementRequests } from "@/lib/procurement-request-funding";
 
 export const dynamic = "force-dynamic";
 
@@ -297,6 +298,13 @@ export default async function AdminProcurementPage() {
   });
   const firstGap = forecastRows.find((row) => row.gapMinor > 0) ?? null;
   const tbank = tbankResult.status === "fulfilled" ? tbankResult.value : null;
+  const tbankCurrentTierRemainingMinor = tbank?.currentRateBps === 0
+    ? tbank?.freeRemainingMinor ?? null
+    : tbank?.currentRateBps === 100
+      ? tbank?.tierOneRemainingMinor ?? null
+      : tbank?.currentRateBps === 500
+        ? tbank?.tierFiveRemainingMinor ?? null
+        : tbank?.currentRateBps === 1500 ? tbankAccountMinor : null;
   const cashPreparation = buildProcurementCashPreparation({
     asOf: todayKey,
     dueOn: salaryDate,
@@ -308,13 +316,27 @@ export default async function AdminProcurementPage() {
     tbankAccountMinor,
     tbankTransferStatus: tbank?.status ?? "unavailable",
     tbankCurrentRateBps: tbank?.currentRateBps ?? null,
-    tbankCurrentTierRemainingMinor: tbank?.currentRateBps === 0
-      ? tbank?.freeRemainingMinor ?? null
-      : tbank?.currentRateBps === 100
-        ? tbank?.tierOneRemainingMinor ?? null
-        : tbank?.currentRateBps === 500
-          ? tbank?.tierFiveRemainingMinor ?? null
-          : tbank?.currentRateBps === 1500 ? tbankAccountMinor : null,
+    tbankCurrentTierRemainingMinor,
+  });
+  const fundingPlans = plansWithOrderContext
+    .filter((plan) => plan.status === "SUBMITTED" || plan.status === "APPROVED")
+    .filter((plan) => plan.evidence.state !== "PAID_BY_ONE_C" && plan.evidence.state !== "ISSUED_BY_ONE_C")
+    .map((plan) => {
+      const plannedMinor = Math.round(Number(plan.plannedAmount || 0) * 100);
+      const reflectedMinor = plan.evidence.state === "MISMATCH" ? 0 : Math.round((Number(plan.evidence.issuedAmount || 0) + Number(plan.evidence.paidAmount || 0)) * 100);
+      const remainingMinor = Math.max(0, plannedMinor - reflectedMinor);
+      const initialForeign = Number(plan.foreignAmount || 0);
+      const foreignAmount = plan.evidence.remainingForeignAmount != null ? Number(plan.evidence.remainingForeignAmount) : initialForeign > 0 && plannedMinor > 0 ? initialForeign * Math.min(1, remainingMinor / plannedMinor) : null;
+      return { id: plan.id, status: plan.status, paymentMethod: plan.paymentMethod, plannedDate: plan.plannedDate.slice(0, 10), remainingMinor, foreignAmount };
+    });
+  const requestFundingAssessments = assessProcurementRequests({
+    asOf: todayKey, plans: fundingPlans,
+    salary: { dueOn: salaryDate, amountMinor: salaryMinor }, rent: { dueOn: rentDate, amountMinor: 23_500_000 },
+    safeMinor, cardsMinor, bankAccountsMinor, vtbCardMinor, vtbAccountMinor, tbankCardMinor, tbankAccountMinor,
+    tbankTransferStatus: tbank?.status ?? "unavailable", tbankCurrentRateBps: tbank?.currentRateBps ?? null, tbankCurrentTierRemainingMinor,
+    usdtBalance: usdtBalance.balance,
+    accountableBalanceMinor: accountableBalance.balance == null ? null : Math.round(accountableBalance.balance * 100),
+    usdtRate: usdtRateReference?.rate ?? null,
   });
   const priorityDebts = priorityDebtsResult.status === "fulfilled" ? priorityDebtsResult.value : null;
   const scopedSupplierNames = new Set([
@@ -457,6 +479,7 @@ export default async function AdminProcurementPage() {
           debtAllocation={debtAllocation}
           cashPreparation={cashPreparation}
           financialAssistant={financialAssistant}
+          requestFundingAssessments={requestFundingAssessments}
           debtReserveBreakdown={{
             salaryMinor,
             rentMinor: 23_500_000,

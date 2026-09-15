@@ -3,12 +3,13 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 test('current procurement workflow keeps its structure under the neutral identity', async () => {
-  const [shell, notifications, refresh, calendar, batch, styles] = await Promise.all([
+  const [shell, notifications, refresh, calendar, batch, adminCalendar, styles] = await Promise.all([
     readFile('components/ProcurementShell.tsx', 'utf8'),
     readFile('components/ProcurementNotificationsButton.tsx', 'utf8'),
     readFile('components/ProcurementDataRefresh.tsx', 'utf8'),
     readFile('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx', 'utf8'),
     readFile('app/(dashboard)/procurement/ProcurementPaymentBatchForm.tsx', 'utf8'),
+    readFile('app/(dashboard)/admin/procurement/AdminProcurementClient.tsx', 'utf8'),
     readFile('app/globals.css', 'utf8'),
   ]);
 
@@ -22,6 +23,11 @@ test('current procurement workflow keeps its structure under the neutral identit
   assert.match(calendar, /Добавить ещё одну оплату/);
   assert.match(calendar, /ProcurementDataRefresh/);
   assert.match(batch, /procurement-order-selected/);
+  assert.match(adminCalendar, /Требуется ваше решение/);
+  assert.match(adminCalendar, /Сколько денег свободно/);
+  assert.match(adminCalendar, /Ближайшие 7 дней/);
+  assert.match(adminCalendar, /Если согласовать/);
+  assert.match(adminCalendar, /id=\{`payment-plan-\$\{plan\.id\}`\}/);
   assert.match(styles, /\.portal-neutral-design\.procurement-shell/);
   assert.match(styles, /linear-gradient\(150deg, #272e38 0%, #171c24 72%, #11151b 100%\)/);
   assert.doesNotMatch(shell, /BrandBlock/);

@@ -14,6 +14,7 @@ import {
   X,
   CalendarDays,
   ChevronDown,
+  ArrowRight,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { calculateCashPreparation, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
@@ -22,6 +23,7 @@ import type { ProcurementForecastHistoryView } from "@/lib/procurement-forecast-
 import type { ProcurementDebtAllocation } from "@/lib/procurement-debt-allocation";
 import type { ProcurementCashPreparation } from "@/lib/procurement-cash-preparation";
 import type { ProcurementFinancialAssistant } from "@/lib/procurement-financial-assistant";
+import type { RequestFundingAssessment } from "@/lib/procurement-request-funding";
 
 type Plan = {
   id: string;
@@ -157,6 +159,7 @@ export default function AdminProcurementClient({
   debtReserveBreakdown,
   cashPreparation,
   financialAssistant,
+  requestFundingAssessments,
 }: {
   initialPlans: Plan[];
   sourceCheckedAt: string;
@@ -177,6 +180,7 @@ export default function AdminProcurementClient({
   debtAllocation: ProcurementDebtAllocation;
   cashPreparation: ProcurementCashPreparation;
   financialAssistant: ProcurementFinancialAssistant;
+  requestFundingAssessments: RequestFundingAssessment[];
   debtReserveBreakdown: {
     salaryMinor: number | null;
     rentMinor: number;
@@ -184,6 +188,7 @@ export default function AdminProcurementClient({
   };
 }) {
   const router = useRouter();
+  const fundingByPlanId = new Map(requestFundingAssessments.map((assessment) => [assessment.planId, assessment]));
   const [plans, setPlans] = useState(initialPlans);
   const [busy, setBusy] = useState("");
   const [returningId, setReturningId] = useState("");
@@ -265,19 +270,11 @@ export default function AdminProcurementClient({
     todayKey,
   );
   const nextDate = preparation.rows[0]?.plannedDate.slice(0, 10);
-  const nextPlans = nextDate
-    ? preparation.rows.filter(
-        (row) => row.plannedDate.slice(0, 10) === nextDate,
-      )
-    : [];
+  const nextPlans = nextDate ? preparation.rows.filter((row) => row.plannedDate.slice(0, 10) === nextDate) : [];
   const nextAmount = nextPlans.reduce((sum, row) => sum + row.cashRequired, 0);
   const nextAmountEstimated = nextPlans.some((row) => row.estimated || referenceRatePlanIds.has(row.planId));
   const nextPlanMethods = nextPlans.map((row) => active.find((plan) => plan.id === row.planId)?.paymentMethod).filter(Boolean);
-  const nextPreparationLabel = nextPlanMethods.every((method) => method === "CASH")
-    ? "Наличные из сейфа"
-    : nextPlanMethods.every((method) => method === "USDT")
-      ? "Ориентир на пополнение USDT"
-      : "Наличные и пополнение USDT";
+  const nextPreparationLabel = nextPlanMethods.every((method) => method === "CASH") ? "Наличные из сейфа" : nextPlanMethods.every((method) => method === "USDT") ? "Ориентир на пополнение USDT" : "Наличные и пополнение USDT";
   const plannedUsdt = preparation.plannedUsdt;
   const unknownUsdtCount = preparation.unknownUsdtCount;
   const estimatedUsdtCount = estimatedUsdtPlanIds.size;
@@ -357,6 +354,19 @@ export default function AdminProcurementClient({
     : forecast30Days.tbank.currentRateBps === 0
       ? `Без комиссии: ${rub.format((forecast30Days.tbank.freeRemainingMinor ?? 0) / 100)}`
       : `${(forecast30Days.tbank.currentRateBps ?? 0) / 100}% + 59 ₽`;
+  const sevenDaysEnd = new Date(`${todayKey}T12:00:00.000Z`);
+  sevenDaysEnd.setUTCDate(sevenDaysEnd.getUTCDate() + 6);
+  const sevenDaysEndKey = sevenDaysEnd.toISOString().slice(0, 10);
+  const upcomingSevenDays = forecast30Days.rows.filter((row) => row.date >= todayKey && row.date <= sevenDaysEndKey);
+  const firstSupplierRecommendation = debtAllocation.recommendations.find((item) => item.recommendedMinor > 0);
+  const firstSubmittedFunding = submitted[0] ? fundingByPlanId.get(submitted[0].id) : undefined;
+  const hasImmediateAction = submitted.length > 0 || (cashPreparation.state === "ready" && ((cashPreparation.prepareMinor ?? 0) > 0 || (cashPreparation.unresolvedMinor ?? 0) > 0)) || Boolean(firstSupplierRecommendation);
+  const immediateStateUnavailable = financialAssistant.state === "unavailable";
+
+  function openForecastDetail(targetId: string) {
+    const target = document.getElementById(targetId);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
 
   async function act(id: string, action: "APPROVE" | "RETURN" | "CANCEL") {
     if (action === "CANCEL" && !window.confirm("Отменить эту оплату? Она исчезнет из рабочего календаря.")) return;
@@ -391,13 +401,31 @@ export default function AdminProcurementClient({
   return (
     <div className="space-y-5">
       {sourceWarnings.length ? (
-        <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
-          <AlertTriangle className="h-5 w-5 shrink-0" />
-          Часть данных 1С сейчас недоступна: {sourceWarnings.join(", ")}.
-        </div>
+        <details className="group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-bold"><span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 shrink-0" />Не получены данные из {sourceWarnings.length} {sourceWarnings.length === 1 ? "источника" : "источников"} 1С — рекомендации временно ограничены</span><ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" /></summary>
+          <p className="mt-2 border-t border-amber-200 pt-2 text-xs font-semibold leading-relaxed">Не получены: {sourceWarnings.join(", ")}. Портал не подставляет старые суммы вместо актуальных.</p>
+        </details>
       ) : null}
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_repeat(3,minmax(170px,.65fr))]">
+      <details className="admin-material-card group rounded-2xl bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5"><div className="flex items-center gap-2"><WalletCards className="h-4 w-4 text-slate-500" /><div><h2 className="text-sm font-black text-slate-950">Остатки QR и USDT</h2><p className="text-xs font-semibold text-slate-500">Вспомогательные деньги для выбранных способов оплаты</p></div></div><ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
+      <section className="border-t border-slate-200 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Сегодня</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Требуется ваше решение</h2></div><span className={`rounded-full px-2.5 py-1 text-xs font-black ${immediateStateUnavailable || hasImmediateAction ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>{immediateStateUnavailable ? "Нужны данные" : hasImmediateAction ? "Есть действия" : "Срочных действий нет"}</span></div>
+        <div className="mt-3 space-y-2.5">
+          {submitted.length ? <button type="button" onClick={() => document.getElementById(`payment-plan-${submitted[0]?.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} className="flex w-full items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition hover:bg-amber-100"><span className="min-w-0"><span className="block text-base font-black text-amber-950">Проверить {submitted.length} {submitted.length === 1 ? "заявку" : "заявки"} Астемира</span><span className="mt-0.5 block truncate text-xs font-semibold text-amber-800">{formatMinor(submitted.reduce((sum, plan) => sum + Math.round(Number(plan.plannedAmount || 0) * 100), 0))}{urgentSubmitted.length ? ` · срочно сегодня: ${urgentSubmitted.length}` : " · ожидают вашего решения"}</span>{firstSubmittedFunding ? <span className="mt-1 block truncate text-xs font-black text-amber-950">Если согласовать: {firstSubmittedFunding.title.toLocaleLowerCase("ru-RU")}</span> : null}</span><span className="inline-flex shrink-0 items-center gap-1 text-sm font-black text-amber-900">Открыть <ArrowRight className="h-4 w-4" /></span></button> : null}
+          {cashPreparation.state === "ready" && ((cashPreparation.prepareMinor ?? 0) > 0 || (cashPreparation.unresolvedMinor ?? 0) > 0) ? <button type="button" onClick={() => openForecastDetail("cash-preparation")} className="flex w-full items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left"><span><span className="block text-base font-black text-slate-950">{(cashPreparation.unresolvedMinor ?? 0) > 0 ? "Найти источник для обязательной выплаты" : "Подготовить наличные"}</span><span className="mt-0.5 block text-xs font-semibold text-slate-600">К {shortDay(cashPreparation.dueOn)} · {rub.format(((cashPreparation.unresolvedMinor ?? 0) > 0 ? cashPreparation.unresolvedMinor : cashPreparation.prepareMinor)! / 100)}</span></span><span className="inline-flex items-center gap-1 text-sm font-black">Расчёт <ArrowRight className="h-4 w-4" /></span></button> : null}
+          {firstSupplierRecommendation ? <button type="button" onClick={() => openForecastDetail("supplier-attention")} className="flex w-full items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left"><span><span className="block text-base font-black text-slate-950">Рассмотреть оплату {firstSupplierRecommendation.supplier}</span><span className="mt-0.5 block text-xs font-semibold text-slate-600">Рекомендуемая сумма · {rub.format(firstSupplierRecommendation.recommendedMinor / 100)}</span></span><span className="inline-flex items-center gap-1 text-sm font-black">Почему <ArrowRight className="h-4 w-4" /></span></button> : null}
+          {!hasImmediateAction && !immediateStateUnavailable ? <div className="rounded-xl border border-green-200 bg-green-50/60 px-4 py-3"><p className="font-black text-green-900">На сегодня обязательных действий нет</p><p className="mt-0.5 text-xs font-semibold text-green-800">Портал пересчитает очередь после новых заявок и обновления 1С.</p></div> : null}
+          {immediateStateUnavailable ? <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"><p className="text-sm font-black text-amber-950">Для финансовой рекомендации нужны свежие данные 1С</p><p className="mt-0.5 text-xs font-semibold text-amber-800">Какие именно источники не получены, показано в предупреждении выше.</p></div> : null}
+        </div>
+      </section>
+
+      <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,.75fr)]">
+        <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5"><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ближайшие 7 дней</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Какие деньги понадобятся</h2></div><p className="text-xs font-semibold text-slate-500">С {shortDay(todayKey)} по {shortDay(sevenDaysEndKey)}</p></div>{upcomingSevenDays.length ? <div className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 px-3">{upcomingSevenDays.map((row) => <div key={row.date} className="grid gap-2 py-3 sm:grid-cols-[105px_minmax(0,1fr)_minmax(150px,.65fr)] sm:items-center"><p className="text-sm font-black">{shortDay(row.date)}</p><div>{row.items.map((item) => <div key={item.id}><p className="text-sm font-extrabold">{item.title}</p><p className="text-sm font-black">{item.amountMinor == null ? "Сумма уточняется" : `${item.certainty === "estimate" ? "≈ " : ""}${rub.format(item.amountMinor / 100)}`}</p></div>)}</div><div className="sm:text-right">{row.gapMinor > 0 ? <><p className="text-sm font-black text-red-800">Не хватает {rub.format(row.gapMinor / 100)}</p><p className="text-xs font-semibold text-red-700">Найти источник или перенести оплату</p></> : <><p className="text-sm font-black text-amber-800">Источник уточняется</p><p className="text-xs font-semibold text-slate-500">Пока не подтверждён по данным 1С</p></>}</div></div>)}</div> : <p className="mt-3 rounded-xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">На ближайшие семь дней выплат с известной датой нет.</p>}</section>
+        <aside className="admin-material-card rounded-2xl bg-white p-4 sm:p-5"><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Сколько денег свободно</p><div className="mt-3 space-y-2.5"><div className="flex justify-between gap-3"><p className="text-sm font-bold text-slate-600">Доступно сейчас</p><p className="font-black">{debtAllocation.resourcesMinor == null ? "—" : rub.format(debtAllocation.resourcesMinor / 100)}</p></div><div className="rounded-xl bg-slate-50 px-3 py-2.5"><div className="flex justify-between gap-3"><p className="text-sm font-bold text-slate-600">Оставить на обязательные выплаты</p><p className="font-black">{debtAllocation.mandatoryReserveMinor == null ? "—" : `− ${rub.format(debtAllocation.mandatoryReserveMinor / 100)}`}</p></div><p className="mt-1 text-[11px] font-semibold text-slate-500">Зарплата {debtReserveBreakdown.salaryMinor == null ? "уточняется" : rub.format(debtReserveBreakdown.salaryMinor / 100)} · аренда {rub.format(debtReserveBreakdown.rentMinor / 100)} · заявки {rub.format(debtReserveBreakdown.approvedPlansMinor / 100)}</p></div><div className="border-t-2 border-slate-200 pt-3"><p className="text-xs font-bold text-slate-500">Можно направить поставщикам</p><p className="mt-1 text-2xl font-black">{debtAllocation.state === "ready" ? rub.format((debtAllocation.availableForDebtMinor ?? 0) / 100) : "Расчёт уточняется"}</p></div><div className="grid grid-cols-2 gap-3 border-t pt-3"><div><p className="text-[11px] font-bold text-slate-500">Долг по 1С</p><p className="text-sm font-black">{supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}</p></div><div><p className="text-[11px] font-bold text-slate-500">Остаток по заказам</p><p className="text-sm font-black">{orderPaymentGapTotal == null ? "—" : rub.format(orderPaymentGapTotal)}</p></div></div></div></aside>
+      </section>
+
+      <section className="hidden">
         <div className="admin-material-card rounded-2xl bg-white p-5">
           <div className="flex items-start gap-4">
             <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${sourceWarnings.length ? "bg-amber-50 text-amber-700" : nextDate ? "bg-[#eef2f8] text-[#263b5c]" : "bg-green-50 text-green-700"}`}>
@@ -443,7 +471,7 @@ export default function AdminProcurementClient({
         </div>
       </section>
 
-      <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
+      <section className="hidden">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="flex items-center gap-2">
             <History className="h-4 w-4 text-slate-500" />
@@ -509,7 +537,9 @@ export default function AdminProcurementClient({
         )}
       </section>
 
-      <section className="admin-material-card overflow-hidden rounded-2xl bg-white" aria-labelledby="forecast-30-title">
+      <details className="admin-material-card group rounded-2xl bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5"><div className="flex min-w-0 items-center gap-2"><CalendarDays className="h-5 w-5 shrink-0 text-[#263b5c]" /><div><h2 className="text-base font-black text-slate-950">Полный план на 30 дней</h2><p className="text-xs font-semibold text-slate-500">Известные выплаты: {rub.format(forecast30Days.scheduledOutMinor / 100)} · до {date(forecast30Days.horizonEnd)}</p></div></div><ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" /></summary>
+      <section className="overflow-hidden border-t border-slate-200" aria-labelledby="forecast-30-title">
         <div className="border-b border-slate-200 p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -578,7 +608,7 @@ export default function AdminProcurementClient({
               </div>
             </div>
           </div>
-          <div className={`mt-4 rounded-xl border p-3.5 ${cashPreparation.state === "ready" && (cashPreparation.unresolvedMinor ?? 0) > 0 ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
+          <div id="cash-preparation" className={`scroll-mt-24 mt-4 rounded-xl border p-3.5 ${cashPreparation.state === "ready" && (cashPreparation.unresolvedMinor ?? 0) > 0 ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h3 className="text-sm font-black text-slate-950">Как подготовить ближайшую обязательную выплату</h3>
@@ -665,7 +695,7 @@ export default function AdminProcurementClient({
               <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Чтобы дать рекомендацию, портал должен одновременно получить свежие остатки денег, зарплату и полное сальдо поставщиков из 1С.</p>
             )}
           </div>
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3.5">
+          <div id="supplier-attention" className="scroll-mt-24 mt-4 rounded-xl border border-slate-200 bg-white p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h3 className="text-sm font-black text-slate-950">Поставщики, которым пора уделить внимание</h3>
@@ -740,6 +770,7 @@ export default function AdminProcurementClient({
           </details>
         </div>
       </section>
+      </details>
 
       {unplannedCashCount && unplannedCashCount > 0 ? (
         <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-900">
@@ -781,6 +812,7 @@ export default function AdminProcurementClient({
           </div>
         </div>
       </section>
+      </details>
 
       <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
         <div className="flex items-center justify-between gap-3">
@@ -791,8 +823,9 @@ export default function AdminProcurementClient({
           <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-extrabold text-amber-900">{submitted.length}</span>
         </div>
         <div className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200">
-          {submitted.length ? submitted.map((plan) => (
-            <article key={plan.id} className="p-4">
+          {submitted.length ? submitted.map((plan) => {
+            const funding = fundingByPlanId.get(plan.id);
+            return <article id={`payment-plan-${plan.id}`} key={plan.id} className="scroll-mt-24 p-4">
               <div className="grid gap-3 lg:grid-cols-[minmax(190px,1.35fr)_minmax(130px,.8fr)_minmax(140px,.85fr)_minmax(150px,1fr)_auto] lg:items-center">
                 <div className="min-w-0">
                   <p className="font-black text-slate-950">{plan.supplierPartner}</p>
@@ -810,6 +843,7 @@ export default function AdminProcurementClient({
               <p className={`mt-2 text-xs font-black ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "ADVANCE" ? "text-green-700" : "text-red-700"}`}>
                 {paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "SAME_DAY" ? "Срочно: заявка внесена в день оплаты" : paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "NEXT_DAY" ? "Заявка внесена за один день" : paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "LATE" ? "Дата оплаты уже прошла" : `Внесено заранее: за ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).days} дн.`}
               </p>
+              {funding ? <div className={`mt-3 rounded-xl border px-3.5 py-3 ${funding.state === "covered" ? "border-green-200 bg-green-50/70" : funding.state === "gap" ? "border-red-200 bg-red-50/70" : funding.state === "prepare" ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50"}`}><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Если согласовать</p><p className={`mt-0.5 text-sm font-black ${funding.state === "covered" ? "text-green-900" : funding.state === "gap" ? "text-red-900" : funding.state === "prepare" ? "text-amber-950" : "text-slate-800"}`}>{funding.title}</p></div><p className="max-w-xl text-xs font-semibold leading-relaxed text-slate-600 sm:text-right">{funding.detail}</p></div>{funding.steps.length ? <div className="mt-2 flex flex-wrap gap-1.5 border-t border-black/5 pt-2">{funding.steps.map((step) => <span key={step.source} className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-black/5">{step.source === "vtb" ? "ВТБ" : step.source === "tbank_card" ? "Карта Т‑Банка" : step.source === "tbank_account" ? "Счёт → карта Т‑Банка" : "Сейф"}: {rub.format(step.amountMinor / 100)}</span>)}</div> : null}</div> : null}
               {planComment(plan) || plan.supplierConfirmation || (plan.paymentMethod === "USDT" && plan.exchangeRate) ? (
                 <p className="mt-2 text-sm font-medium text-slate-600">
                   {plan.paymentMethod === "USDT" && plan.exchangeRate ? `Курс: ${plan.exchangeRate} ₽. ` : ""}
@@ -843,8 +877,8 @@ export default function AdminProcurementClient({
                   </div>
                 </div>
               ) : null}
-            </article>
-          )) : <p className="p-6 text-center text-sm font-semibold text-slate-500">Новых заявок нет.</p>}
+            </article>;
+          }) : <p className="p-6 text-center text-sm font-semibold text-slate-500">Новых заявок нет.</p>}
         </div>
         {actionMessage ? <p className="mt-3 text-sm font-bold text-red-700">{actionMessage}</p> : null}
       </section>
