@@ -125,11 +125,40 @@ test('compares balances, outstanding requests and supplier measures separately',
   });
   const change = compareProcurementForecastSnapshots(previous, current);
   assert.equal(change.liquidityDeltaMinor, -5_000_000);
+  assert.equal(change.tbankTransferCapacityDeltaMinor, 0);
   assert.equal(change.planOutstandingDeltaMinor, -30_000_000);
+  assert.deepEqual(change.planChanges, [{
+    id: 'one', code: 'ZP-1', supplier: 'Турал', date: '2026-09-17', status: 'APPROVED',
+    paymentMethod: 'USDT', currency: 'RUB', previousOutstandingMinor: 70_000_000,
+    currentOutstandingMinor: 40_000_000, deltaMinor: -30_000_000, kind: 'reduced',
+  }]);
   assert.deepEqual(change.supplierChanges[0], {
     key: 'турал', name: 'Турал', openOrdersDeltaMinor: -20_000_000,
     debtDeltaMinor: -30_000_000, previousLevel: 'urgent', currentLevel: 'attention',
   });
+});
+
+test('reports a new request independently from the total outstanding change', () => {
+  const previous = snapshot({
+    plans: [{
+      id: 'old', code: 'ZP-1', supplier: 'Luxo', date: '2026-09-16', status: 'APPROVED',
+      requestedMinor: 70_000_000, issuedMinor: 0, outstandingMinor: 70_000_000,
+      paymentMethod: 'CASH', currency: 'RUB',
+    }],
+  });
+  const current = snapshot({
+    plans: [{
+      id: 'new', code: 'ZP-2', supplier: 'Турал', date: '2026-09-18', status: 'SUBMITTED',
+      requestedMinor: 70_000_000, issuedMinor: 0, outstandingMinor: 70_000_000,
+      paymentMethod: 'USDT', currency: 'RUB',
+    }],
+  });
+  const change = compareProcurementForecastSnapshots(previous, current);
+  assert.equal(change.planOutstandingDeltaMinor, 0);
+  assert.deepEqual(change.planChanges.map((row) => [row.id, row.kind]), [
+    ['new', 'new'],
+    ['old', 'closed'],
+  ]);
 });
 
 test('does not invent deltas for incomplete supplier or salary sources', () => {
@@ -137,5 +166,6 @@ test('does not invent deltas for incomplete supplier or salary sources', () => {
   const current = snapshot({ sourceStatus: { ...sourceStatus, supplierDebts: false, payroll: false } });
   const change = compareProcurementForecastSnapshots(previous, current);
   assert.equal(change.salaryDeltaMinor, null);
+  assert.equal(change.tbankTransferCapacityDeltaMinor, 0);
   assert.deepEqual(change.supplierChanges, []);
 });

@@ -170,8 +170,22 @@ export function procurementForecastSnapshotReady(payload: ProcurementForecastSna
 
 export type ProcurementForecastSnapshotChange = {
   liquidityDeltaMinor: number | null;
+  tbankTransferCapacityDeltaMinor: number | null;
   salaryDeltaMinor: number | null;
   planOutstandingDeltaMinor: number;
+  planChanges: Array<{
+    id: string;
+    code: string;
+    supplier: string;
+    date: string;
+    status: string;
+    paymentMethod: string;
+    currency: string;
+    previousOutstandingMinor: number;
+    currentOutstandingMinor: number;
+    deltaMinor: number;
+    kind: 'new' | 'closed' | 'increased' | 'reduced';
+  }>;
   supplierChanges: Array<{
     key: string;
     name: string;
@@ -189,12 +203,59 @@ export function compareProcurementForecastSnapshots(
 ): ProcurementForecastSnapshotChange {
   const liquidityDeltaMinor = previous.liquidity.totalMinor === null || current.liquidity.totalMinor === null
     ? null : current.liquidity.totalMinor - previous.liquidity.totalMinor;
+  const tbankCapacity = (payload: ProcurementForecastSnapshotPayload) => {
+    const values = [
+      payload.liquidity.tbank.freeRemainingMinor,
+      payload.liquidity.tbank.tierOneRemainingMinor,
+      payload.liquidity.tbank.tierFiveRemainingMinor,
+    ];
+    return values.some((value) => value === null)
+      ? null
+      : values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
+  };
+  const previousTbankCapacity = tbankCapacity(previous);
+  const currentTbankCapacity = tbankCapacity(current);
+  const tbankTransferCapacityDeltaMinor = previousTbankCapacity === null || currentTbankCapacity === null
+    ? null : currentTbankCapacity - previousTbankCapacity;
   const salaryDeltaMinor = !previous.sources.payroll || !current.sources.payroll
     || previous.commitments.salaryPayableMinor === null || current.commitments.salaryPayableMinor === null
     ? null : current.commitments.salaryPayableMinor - previous.commitments.salaryPayableMinor;
   const planTotal = (payload: ProcurementForecastSnapshotPayload) => payload.commitments.plans
     .reduce((sum, plan) => checkedMinor(sum + plan.outstandingMinor), 0);
   const planOutstandingDeltaMinor = planTotal(current) - planTotal(previous);
+  const plans = new Map<string, {
+    previous?: ProcurementForecastSnapshotPayload['commitments']['plans'][number];
+    current?: ProcurementForecastSnapshotPayload['commitments']['plans'][number];
+  }>();
+  for (const plan of previous.commitments.plans) plans.set(plan.id, { previous: plan });
+  for (const plan of current.commitments.plans) plans.set(plan.id, { ...plans.get(plan.id), current: plan });
+  const planChanges = [...plans.values()].flatMap((rows) => {
+    const previousOutstandingMinor = rows.previous?.outstandingMinor ?? 0;
+    const currentOutstandingMinor = rows.current?.outstandingMinor ?? 0;
+    const deltaMinor = currentOutstandingMinor - previousOutstandingMinor;
+    if (deltaMinor === 0) return [];
+    const plan = rows.current ?? rows.previous!;
+    return [{
+      id: plan.id,
+      code: plan.code,
+      supplier: plan.supplier,
+      date: plan.date,
+      status: plan.status,
+      paymentMethod: plan.paymentMethod,
+      currency: plan.currency,
+      previousOutstandingMinor,
+      currentOutstandingMinor,
+      deltaMinor,
+      kind: !rows.previous ? 'new' as const
+        : !rows.current || currentOutstandingMinor === 0 ? 'closed' as const
+          : deltaMinor > 0 ? 'increased' as const : 'reduced' as const,
+    }];
+  }).sort((left, right) => {
+    const priority = { new: 0, increased: 1, reduced: 2, closed: 3 };
+    return priority[left.kind] - priority[right.kind]
+      || Math.abs(right.deltaMinor) - Math.abs(left.deltaMinor)
+      || left.supplier.localeCompare(right.supplier, 'ru-RU');
+  });
   const suppliers = new Map<string, {
     previous?: ProcurementForecastSnapshotPayload['suppliers'][number];
     current?: ProcurementForecastSnapshotPayload['suppliers'][number];
@@ -215,7 +276,7 @@ export function compareProcurementForecastSnapshots(
     const magnitude = (row: typeof left) => Math.max(Math.abs(row.openOrdersDeltaMinor), Math.abs(row.debtDeltaMinor ?? 0));
     return magnitude(right) - magnitude(left) || left.name.localeCompare(right.name, 'ru-RU');
   }) : [];
-  return { liquidityDeltaMinor, salaryDeltaMinor, planOutstandingDeltaMinor, supplierChanges };
+  return { liquidityDeltaMinor, tbankTransferCapacityDeltaMinor, salaryDeltaMinor, planOutstandingDeltaMinor, planChanges, supplierChanges };
 }
 
 export function isProcurementForecastSnapshot(value: unknown): value is ProcurementForecastSnapshotPayload {
