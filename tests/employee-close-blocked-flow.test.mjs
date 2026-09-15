@@ -16,8 +16,10 @@ test('failed handover keeps a compact persistent close-blocked state', () => {
 });
 
 test('blocked sheet has one clear correction route and a safe help state', () => {
-  assert.match(blockedSheet, /href=\{first\.href\}/);
-  assert.match(blockedSheet, />Исправить чек<\/a>/);
+  assert.match(blockedSheet, /href=\{item\.href\}/);
+  assert.match(blockedSheet, /items\.map/);
+  assert.match(todayClient, /items=\{attentionItems\}/);
+  assert.match(todayClient, /paymentChecksState\.map/);
   assert.match(blockedSheet, /Сообщить о проблеме/);
   assert.match(blockedSheet, /Администратор уведомлён/);
   assert.match(blockedSheet, /disabled=\{helpPending\}/);
@@ -25,6 +27,6 @@ test('blocked sheet has one clear correction route and a safe help state', () =>
 
 test('source-backed receipt instructions remain unchanged', () => {
   assert.match(issueView, /Откройте реализацию \$\{documentNumber\} в 1С и пробейте чек с передачей всей суммы \$\{amount\} в кредит/);
-  assert.match(issueView, /Откройте ПКО \$\{paymentDocumentNumber \|\| 'по этой реализации'\} в 1С и пробейте чек из него/);
+  assert.match(issueView, /Откройте приходник \$\{paymentDocumentNumber \|\| 'по этой реализации'\} в 1С и пробейте чек из него/);
   assert.match(issueView, /Откройте эквайринговую операцию \$\{paymentDocumentNumber \|\| 'по этой реализации'\} в 1С и пробейте чек из неё/);
 });

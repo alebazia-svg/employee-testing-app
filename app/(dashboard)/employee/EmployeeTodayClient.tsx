@@ -43,6 +43,7 @@ import { EmployeeCloseBlockedSheet, type EmployeeBlockingItem } from '@/componen
 import { startVisibleSync } from '@/lib/visible-sync';
 import { createIdempotencyKey } from '@/lib/idempotency-key';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
+import { terminalFiscalEmployeeReviewSummary } from '@/lib/terminal-fiscal-employee-review-view';
 import { buildDateRange, formatDateLabel, formatTime, getMoscowMinutes, getShiftOptionsForDepartment, shiftOptions, usesWorkdayShiftControl } from '@/lib/workday';
 import { cn } from '@/lib/utils';
 import { buildShiftHandoverSteps } from '@/lib/shift-control-policy';
@@ -1671,11 +1672,18 @@ export function EmployeeTodayClient({
     return { id: issue.id, href: `/employee/issues/${issue.id}`, title: issueView.bannerTitle, meta: issueView.summaryMeta || issue.detail };
   });
   const attentionCount = requiredIssuesForBanner.length + paymentChecksState.length;
+  const attentionItems: EmployeeBlockingItem[] = [
+    ...blockingItems.map((item) => ({ ...item, blocking: showCloseResolution })),
+    ...paymentChecksState.map((check) => {
+      const view = terminalFiscalEmployeeReviewSummary(check);
+      return { id: check.id, href: `/employee/payment-checks/${check.id}`, title: view.title, meta: view.meta, blocking: false };
+    }),
+  ];
   const persistedHandoverDraft = handoverHasSavedProgress && handoverTask && isRecord(handoverTask.handoverData)
     ? draftFromHandoverData(handoverTask.handoverData)
     : handoverDraft;
   const savedBalanceValue = parseMoneyInput(handoverDraft.personalCashBalance || persistedHandoverDraft.personalCashBalance);
-  const savedBalanceLabel = savedBalanceValue === null ? 'Остаток' : `Остаток ${formatShiftMoney(savedBalanceValue)} ₽`;
+  const savedBalanceLabel = savedBalanceValue === null ? '' : `Остаток ${formatShiftMoney(savedBalanceValue)} ₽`;
   const checksSuffix = paymentChecksState.length > 0 ? ` · ещё ${paymentChecksState.length} ${countWord(paymentChecksState.length, 'проверка', 'проверки', 'проверок')}` : '';
 
   useEffect(() => {
@@ -3891,7 +3899,8 @@ export function EmployeeTodayClient({
     <main className={cn('portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass)}>
       <EmployeeCloseBlockedSheet
         open={closeBlockedSheetOpen}
-        items={blockingItems}
+        items={attentionItems}
+        blocked={showCloseResolution}
         savedBalanceLabel={savedBalanceLabel}
         helpPending={currentCloseExceptionStatus === 'pending'}
         onClose={() => setCloseBlockedSheetOpen(false)}
@@ -4549,12 +4558,7 @@ export function EmployeeTodayClient({
                   actionLabel={showCloseResolution ? 'Продолжить' : 'Открыть'}
                   tone={showCloseResolution ? 'blocked' : 'neutral'}
                   onAction={() => {
-                    if (showCloseResolution && blockingItems.length > 0) {
-                      setCloseBlockedSheetOpen(true);
-                      return;
-                    }
-                    if (blockingItems[0]) router.push(blockingItems[0].href);
-                    else if (paymentChecksState[0]) router.push(`/employee/payment-checks/${paymentChecksState[0].id}`);
+                    setCloseBlockedSheetOpen(true);
                   }}
                 />
               )}

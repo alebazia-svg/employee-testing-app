@@ -30,19 +30,19 @@ export function workdayIssueView(value: { title: string; detail: string; sourceD
   const missingReceiptInstructions: Record<string, string> = {
     REQUIRED_FISCAL_RECEIPT_MISSING: 'Чек по реализации не найден. Откройте документ в 1С и проверьте оформление продажи.',
     REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING: `Откройте реализацию ${documentNumber} в 1С и пробейте чек с передачей всей суммы ${amount} в кредит.`,
-    REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING: `Откройте ПКО ${paymentDocumentNumber || 'по этой реализации'} в 1С и пробейте чек из него${exactPaymentSuffix ? `: ${exactPaymentSuffix}` : ''}.`,
+    REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING: `Откройте приходник ${paymentDocumentNumber || 'по этой реализации'} в 1С и пробейте чек из него${exactPaymentSuffix ? `: ${exactPaymentSuffix}` : ''}.`,
     REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING: `Откройте эквайринговую операцию ${paymentDocumentNumber || 'по этой реализации'} в 1С и пробейте чек из неё${exactPaymentSuffix ? `: ${exactPaymentSuffix}` : ''}.`,
   };
   const instruction = missingReceiptInstructions[reasonCode] ?? value.detail;
   const actionTitle = reasonCode === 'REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING'
-    ? 'Пробейте чек из ПКО'
+    ? 'Пробейте чек из приходника'
     : reasonCode === 'REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING'
       ? 'Пробейте чек из эквайринговой операции'
       : reasonCode === 'REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING'
         ? 'Пробейте чек из реализации'
         : isCreditRealization ? 'Исправьте кредитный чек' : value.title;
   const notFoundLabel = reasonCode === 'REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING'
-    ? 'Не нахожу ПКО'
+    ? 'Не нахожу приходник'
     : reasonCode === 'REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING'
       ? 'Не нахожу операцию'
       : 'Не нахожу реализацию';
