@@ -399,3 +399,15 @@ scope or writing to 1C.
   their open-order payment gaps totalled RUB 5,678,492.90. These are live
   observations, not hard-coded values. No database migration, 1C write or 1C
   extension change was required.
+## 2026-09-15 - Employee PWA Close-Blocked State And Action-First Copy
+
+When required 1C issues prevent shift handover, the employee PWA keeps the
+shift visibly open after the handover sheet closes. The main screen shows one
+compact persistent attention card instead of stacking every issue, and a
+dedicated sheet offers one direct correction route plus a separate request for
+administrator help. Saved handover progress remains available on re-entry.
+
+Employee-facing status copy must be brief and action-first: status, reason,
+then the next action. This rule does not permit shortening source-backed 1C
+instructions for a realization, cash receipt order or acquiring operation;
+those exact document-specific instructions remain complete.
