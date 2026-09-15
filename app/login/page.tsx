@@ -49,7 +49,12 @@ export default function Login() {
       className='flex min-h-[100svh] items-center justify-center overflow-hidden p-3 text-[#1b1e22] sm:p-6'
       style={{ background: 'radial-gradient(circle at 50% 31%, #f7f4ee 0%, #ece8e1 50%, #ded8ce 100%)' }}
     >
-      <div className='grid w-full max-w-[520px] overflow-hidden rounded-[30px] border border-white/70 bg-[#fffdf9] shadow-[0_32px_78px_rgba(38,34,28,0.16),0_5px_16px_rgba(38,34,28,0.07)] max-sm:rounded-3xl'>
+      <div
+        className='grid w-full max-w-[520px] overflow-hidden rounded-[30px] border border-white/80 shadow-[0_32px_78px_rgba(38,34,28,0.16),0_5px_16px_rgba(38,34,28,0.07),inset_0_1px_0_rgba(255,255,255,0.92)] max-sm:rounded-3xl'
+        style={{
+          background: 'radial-gradient(ellipse at 28% 4%, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.28) 38%, transparent 62%), linear-gradient(145deg, #fffefa 0%, #faf7f1 50%, #f1ebe2 100%)',
+        }}
+      >
         <section className='relative flex min-h-[200px] items-center justify-center overflow-hidden p-5 sm:min-h-[214px] sm:p-8'>
           <div className='pointer-events-none absolute left-1/2 top-1/2 h-[150px] w-[390px] max-w-[88%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#d8d0c4]/20 blur-[42px]' aria-hidden='true' />
           <div className='relative grid w-[314px] max-w-full justify-items-center gap-[17px] min-[440px]:w-[350px] sm:w-[366px]' aria-label='MOBO · Портал компании'>

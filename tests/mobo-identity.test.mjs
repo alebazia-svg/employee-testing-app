@@ -47,6 +47,8 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
   assert.match(loginSource, /mobo-wordmark\.svg/);
   assert.match(loginSource, /grid w-\[314px\][\s\S]*?sm:w-\[74px\][\s\S]*?text-\[13px\][\s\S]*?Портал компании/);
   assert.doesNotMatch(loginSource, /blur-\[12px\]/);
+  assert.match(loginSource, /radial-gradient\(ellipse at 28% 4%[\s\S]*?linear-gradient\(145deg, #fffefa 0%, #faf7f1 50%, #f1ebe2 100%\)/);
+  assert.match(loginSource, /inset_0_1px_0_rgba\(255,255,255,0\.92\)/);
   assert.match(loginSource, /data\.portalArea === 'PROCUREMENT' \? '\/procurement'/);
   for (const symbolSource of [dimensionalSymbol, flatSymbol]) {
     assert.match(symbolSource, /feMorphology[\s\S]*?operator="erode" radius="5"/);
