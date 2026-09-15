@@ -55,15 +55,15 @@ export default function Login() {
           style={{ background: 'radial-gradient(ellipse 72% 105% at 22% 6%, rgba(255, 255, 255, 0.88), transparent 58%), radial-gradient(ellipse 50% 85% at 88% 10%, rgba(183, 173, 158, 0.16), transparent 68%), linear-gradient(155deg, #eee9e1 0%, #f8f5ef 52%, #fffdf9 100%)' }}
         >
           <div className='pointer-events-none absolute inset-0 opacity-[0.035]' style={{ backgroundImage: 'repeating-linear-gradient(118deg, transparent 0 7px, rgba(75,67,58,0.16) 7px 8px)' }} aria-hidden='true' />
-          <div className='relative grid w-[326px] max-w-full justify-items-center gap-[15px] min-[440px]:w-[382px] sm:w-[398px]' aria-label='MOBO · Портал компании'>
-            <span className='flex w-full items-center gap-[14px] min-[440px]:gap-[16px] sm:gap-[18px]'>
-              <span className='relative w-[92px] shrink-0 min-[440px]:w-[106px] sm:w-[110px]'>
+          <div className='relative grid w-[314px] max-w-full justify-items-center gap-[17px] min-[440px]:w-[350px] sm:w-[366px]' aria-label='MOBO · Портал компании'>
+            <span className='flex w-full items-center gap-[14px] min-[440px]:gap-[16px]'>
+              <span className='relative w-[62px] shrink-0 min-[440px]:w-[68px] sm:w-[70px]'>
                 <span className='absolute inset-[4%] rounded-[28%] bg-[#756d63]/16 blur-[12px]' aria-hidden='true' />
                 <img src='/brand/mobo-master/mobo-symbol-3d-premium.svg' alt='' className='relative h-auto w-full' />
               </span>
               <img src='/brand/mobo-master/mobo-wordmark.svg' alt='MOBO' className='h-auto w-0 min-w-0 flex-1 opacity-[0.97]' />
             </span>
-            <span className='whitespace-nowrap text-[11px] font-semibold tracking-[0.15em] text-[#666660] min-[440px]:text-[12px]'>Портал компании</span>
+            <span className='whitespace-nowrap text-[13px] font-semibold leading-none tracking-[0.075em] text-[#565752] min-[440px]:text-[14px]'>Портал компании</span>
           </div>
         </section>
 

@@ -11,7 +11,7 @@ export function ProcurementShell({ userName, children }: { userName: string; chi
       <div className='mx-auto w-full max-w-[1320px]'>
         <header className='procurement-shell-header mb-4 flex items-center justify-between gap-3 lg:rounded-2xl lg:border lg:border-slate-200/80 lg:bg-white/75 lg:px-5 lg:py-3 lg:shadow-[0_12px_32px_rgba(15,23,42,0.05)]'>
           <div className='flex items-center gap-4'>
-            <PortalIdentityBlock variant='mobo-master-material' className='origin-left scale-[0.86] sm:scale-100' />
+            <PortalIdentityBlock variant='mobo-master' className='w-[176px] origin-left scale-[0.86] sm:scale-100' />
           </div>
           <div className='flex shrink-0 items-center gap-2 sm:gap-2.5'>
             <div><ProcurementNotificationsButton /></div>

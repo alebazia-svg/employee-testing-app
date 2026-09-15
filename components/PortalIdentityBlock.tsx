@@ -28,9 +28,11 @@ export function PortalIdentityBlock({
 
   if (variant === 'mobo-master') {
     return (
-      <div className={cn('inline-flex items-center', className)} aria-label='MOBO'>
+      <div className={cn('inline-flex items-center gap-2.5', className)} aria-label='MOBO'>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src='/brand/mobo-master/mobo-logo-horizontal.svg' alt='MOBO' className='mobo-master-wordmark h-auto w-[190px] max-w-full' />
+        <img src='/brand/mobo-master/mobo-symbol.svg' alt='' className='mobo-master-wordmark h-auto w-[34px] shrink-0' />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src='/brand/mobo-master/mobo-wordmark.svg' alt='MOBO' className='mobo-master-wordmark h-auto w-0 min-w-0 flex-1' />
       </div>
     );
   }

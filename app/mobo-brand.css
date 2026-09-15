@@ -2,6 +2,10 @@
   filter: brightness(0) invert(1);
 }
 
+.procurement-shell-header .mobo-master-wordmark {
+  filter: brightness(0) invert(1);
+}
+
 .mobo-master-admin .admin-nav-item-active::before {
   background: #88a1bd !important;
 }
