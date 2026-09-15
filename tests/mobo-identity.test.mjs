@@ -45,13 +45,15 @@ test('approved MOBO identity assets and PWA metadata stay connected', async () =
   assert.match(layoutSource, /applicationName: 'MOBO'/);
   assert.match(loginSource, /mobo-symbol-3d-ui\.svg/);
   assert.match(loginSource, /mobo-wordmark\.svg/);
-  assert.match(loginSource, /grid w-\[314px\][\s\S]*?sm:w-\[70px\][\s\S]*?text-\[13px\][\s\S]*?Портал компании/);
+  assert.match(loginSource, /grid w-\[314px\][\s\S]*?sm:w-\[74px\][\s\S]*?text-\[13px\][\s\S]*?Портал компании/);
+  assert.doesNotMatch(loginSource, /blur-\[12px\]/);
   assert.match(loginSource, /data\.portalArea === 'PROCUREMENT' \? '\/procurement'/);
   for (const symbolSource of [dimensionalSymbol, flatSymbol]) {
     assert.match(symbolSource, /feMorphology[\s\S]*?operator="erode" radius="5"/);
   }
-  assert.match(uiDimensionalSymbol, /feDropShadow dx="8" dy="10" stdDeviation="7"/);
-  assert.doesNotMatch(uiDimensionalSymbol, /feTurbulence|feGaussianBlur/);
+  assert.match(uiDimensionalSymbol, /feDropShadow dx="5" dy="6" stdDeviation="2\.2"/);
+  assert.doesNotMatch(uiDimensionalSymbol, /feTurbulence|feGaussianBlur|feMorphology/);
+  assert.match(uiDimensionalSymbol, /<use href="#ui-shape" fill="url\(#ui-face\)"\/>/);
   assert.match(wordmark, /stroke-width="12"/);
   assert.match(wordmark, /<rect x="116" y="10" width="72" height="62" rx="31"/);
   assert.match(identitySource, /\/brand\/mobo-master\/mobo-symbol\.svg/);

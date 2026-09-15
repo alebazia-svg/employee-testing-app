@@ -53,9 +53,8 @@ export default function Login() {
         <section className='relative flex min-h-[200px] items-center justify-center overflow-hidden p-5 sm:min-h-[214px] sm:p-8'>
           <div className='pointer-events-none absolute left-1/2 top-1/2 h-[150px] w-[390px] max-w-[88%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#d8d0c4]/20 blur-[42px]' aria-hidden='true' />
           <div className='relative grid w-[314px] max-w-full justify-items-center gap-[17px] min-[440px]:w-[350px] sm:w-[366px]' aria-label='MOBO · Портал компании'>
-            <span className='flex w-full items-center gap-[14px] min-[440px]:gap-[16px]'>
-              <span className='relative w-[62px] shrink-0 min-[440px]:w-[68px] sm:w-[70px]'>
-                <span className='absolute inset-[4%] rounded-[28%] bg-[#756d63]/16 blur-[12px]' aria-hidden='true' />
+            <span className='flex w-full items-center gap-[12px] min-[440px]:gap-[14px]'>
+              <span className='relative w-[66px] shrink-0 min-[440px]:w-[72px] sm:w-[74px]'>
                 <img src='/brand/mobo-master/mobo-symbol-3d-ui.svg' alt='' className='relative h-auto w-full' />
               </span>
               <img src='/brand/mobo-master/mobo-wordmark.svg' alt='MOBO' className='h-auto w-0 min-w-0 flex-1 opacity-[0.97]' />
