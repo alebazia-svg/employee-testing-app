@@ -1,5 +1,41 @@
 # MOBO identity release — 2026-09-14
 
+## Master identity follow-up — 2026-09-15
+
+Application commit: `cee3a46`.
+
+The owner approved a new master identity based on the four-piece graphite
+symbol and Latin `MOBO` wordmark. It replaces the earlier blue/amber shell logo
+and the solid-blue wordmark PWA icon described below.
+
+The new system deliberately separates brand and interface roles:
+
+- graphite and warm porcelain are the brand's primary material language;
+- deep ink blue remains the portal's functional action color;
+- muted blue is the secondary tone for employee navigation, colleague and QR
+  icon details;
+- warning, error and success retain their semantic colors and must not be made
+  blue for visual uniformity.
+
+The login uses the larger dimensional symbol and graphite wordmark on a warm
+neutral card. ADMIN uses the restrained flat master mark in its shell;
+procurement uses the dimensional mark on the light header. Installed PWA,
+Apple-touch and favicon assets use the opaque stone-background 3D symbol. The
+service-worker cache version was bumped so the new icon can replace the old
+asset, though physical installed-icon refresh remains device-dependent.
+
+The same application commit includes the already approved employee PWA visual
+corrections: profile initials, a clean two-tone blue colleagues glyph,
+ink/muted-blue active bottom navigation and a muted-blue QR affordance. It does
+not change roles, settings, data, APIs, Prisma schema or business workflows.
+
+Verification passed the production build, TypeScript, 152 Workday tests, seven
+identity/PWA design tests, HTTP checks for login and manifest, and exact image
+dimension/opacity checks. The login was visually inspected from the clean
+integration branch. ADMIN and procurement preserve the current production
+components; their final authenticated production verification remains part of
+the eventual deployment procedure.
+
 Application commit: `8f1275a5765407ad25da08d49a10299b9711e379`.
 
 Deployment completed with exit 0. Server checkout matches the application

@@ -1,5 +1,25 @@
 ﻿# Portal Decision Log
 
+## 2026-09-15 - MOBO Master Identity
+
+The owner approved the new MOBO master identity for the portal. The four-part
+graphite symbol and Latin `MOBO` wordmark replace the prior blue/amber mark on
+the login, ADMIN and procurement shells and on installed PWA icons.
+
+- the login uses the dimensional graphite symbol on a warm porcelain surface;
+- ADMIN uses a restrained flat white/dark master mark appropriate to its shell;
+- procurement uses the dimensional graphite symbol on its light header;
+- the installed icon uses the graphite 3D symbol on the same warm neutral field;
+- deep ink blue remains the functional interface color for buttons and active
+  states, not an additional logo color;
+- employee navigation, the colleagues glyph and QR affordance use ink blue plus
+  muted blue instead of decorative amber;
+- semantic warning, error and success colors remain unchanged.
+
+This decision supersedes the 2026-09-14 solid-blue PWA icon and blue/amber logo
+follow-up. It changes presentation and PWA metadata only; roles, settings, data,
+API behavior, database schema and business workflows remain unchanged.
+
 ## 2026-07-02 - Codex Memory Split
 
 The AIAgentAPI/1C extension memory lives in:
