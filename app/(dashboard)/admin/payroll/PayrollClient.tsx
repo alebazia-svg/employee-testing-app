@@ -31,7 +31,8 @@ import {
   sortPayrollWorkbookEmployees,
 } from '@/lib/payroll-workbook';
 import { isPayrollEmployeeRuleActive } from '@/lib/payroll-employee-rules';
-import { classifyPayrollSalesRows } from '@/lib/payroll-sales-classification';
+import { classifyPayrollSalesRows, getPayrollSalesManagerNameForPeriod } from '@/lib/payroll-sales-classification';
+import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, isFilmTrainee, getPayrollServicePercent } from '@/lib/payroll-trainee';
 
 type CellValue = string | number | boolean | Date | null | undefined;
 type Row = CellValue[];
@@ -1082,6 +1083,11 @@ function isConfiguredSalaryType(value: string | null): value is ConfiguredSalary
 
 function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey: string, reportManagerNames: Set<string> = new Set()) {
   const directory: Record<string, PayrollEmployee> = { ...payrollEmployees };
+  if (periodKey === FILM_TRAINEE_PERIOD) directory[FILM_TRAINEE_NAME] = {
+    name: FILM_TRAINEE_NAME, department: 'Розничные продажи',
+    position: 'Стажёр по поклейке · услуги 70%', salaryType: 'retail_sales_bonus',
+    activeThroughPeriod: FILM_TRAINEE_PERIOD,
+  };
   for (const user of users) {
     const name = user.payrollName?.trim() || user.name.trim();
     if (!name) continue;
@@ -1634,15 +1640,11 @@ function shouldMapLegacyRetailTraineeToMagomed(month: string, year: string) {
 }
 
 function mapLegacyRetailTraineeRowsForPeriod<T extends SalesRow>(rows: T[], month: string, year: string): T[] {
-  if (!shouldMapLegacyRetailTraineeToMagomed(month, year)) {
-    return rows.filter((row) => !isLegacyRetailTraineeSource(row.manager));
-  }
-
-  return rows.map((row) => (
-    isLegacyRetailTraineeSource(row.manager)
-      ? { ...row, manager: retailTraineePayrollName }
-      : row
-  ));
+  const periodKey = `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
+  return rows.flatMap((row) => {
+    const manager = getPayrollSalesManagerNameForPeriod(row.manager, periodKey);
+    return manager ? [{ ...row, manager }] : [];
+  });
 }
 
 function mapLegacyRetailTraineeForPeriod(result: PayrollParseResult, month: string, year: string): PayrollParseResult {
@@ -3232,7 +3234,7 @@ function looksLikeTechAuditRow(row: ClassifiedSalesRow) {
 }
 
 function getNotIncludedInServiceReason(row: ClassifiedSalesRow) {
-  if (row.calculationType === 'RETAIL_FILM_50') return 'Вошла в услуги 50%';
+  if (row.calculationType === 'RETAIL_FILM_50') return `Вошла в услуги ${getPayrollServicePercent(row.manager)}%`;
   if (row.grossProfit < 0) return 'Не вошла: отрицательная ВП, требуется проверка';
   return 'Не вошла: текущий тип расчёта ' + row.calculationLabel;
 }
@@ -3241,7 +3243,7 @@ function getNotIncludedInAccessoryReason(row: ClassifiedSalesRow) {
   if (row.calculationType === 'RETAIL_ACCESSORY_5' || row.calculationType === 'CREDIT_ACCESSORY_NO_BONUS') return 'Вошла в аксессуары 5%';
   if (row.grossProfit < 0) return 'Не вошла: отрицательная ВП, требуется проверка';
   if (row.calculationType === 'CREDIT_GROSS_PROFIT') return 'Не вошла: классифицирована как кредитная техника';
-  if (row.calculationType === 'RETAIL_FILM_50') return 'Не вошла: классифицирована как услуга 50%';
+  if (row.calculationType === 'RETAIL_FILM_50') return `Не вошла: классифицирована как услуга ${getPayrollServicePercent(row.manager)}%`;
   if (row.calculationType === 'RETAIL_PLOTTER_MATERIAL_COST_50') return 'Не вошла: плоттерные материалы Асада 50% от с/с';
   return 'Не вошла: текущий тип расчёта ' + row.calculationLabel;
 }
@@ -3377,7 +3379,7 @@ function isBelaManager(manager: string) {
 }
 
 function isNoDayPayManager(manager: string) {
-  return normalizePersonName(manager).includes('асад');
+  return normalizePersonName(manager).includes('асад') || isFilmTrainee(manager);
 }
 
 function getDayRate(department: Department) {
@@ -3767,7 +3769,8 @@ function getSalaryTypeLabel(salaryType: SalaryType) {
   return 'Розничный бонус продаж';
 }
 
-function getSalaryFormulaLabel(salaryType: SalaryType, periodKey = '') {
+function getSalaryFormulaLabel(salaryType: SalaryType, periodKey = '', manager = '') {
+  if (isFilmTrainee(manager)) return 'выручка всех услуг × 70% − выплаченный аванс; товары без начисления';
   if (salaryType === 'purchase_manager') return '20 × 600 + бонус с закупок 1,75% + доплата до минимальной зарплаты − аванс − удержание';
   if (salaryType === 'fixed_salary') return 'оклад + премия - аванс - удержание';
   if (salaryType === 'vl_percent') return getBelaMinimum(periodKey) ? '12% от обычных начислений выбранных сотрудников + доплата до минимальной зарплаты − аванс; разовая премия сверху' : '12% от обычных начислений выбранных сотрудников';
@@ -5386,7 +5389,7 @@ export default function AdminPayrollPage() {
       ['Ошибочно исключённые аксессуары', classification.accessoryExcludedRows.filter((item) => item.manager === row.manager).length],
       ['Некорректные числа в расчёте', managerRows.filter((item) => [item.revenue, item.grossProfit, item.base, item.bonus].some((value) => !Number.isFinite(value))).length],
       ['Спорные / нерешённые строки', managerRows.filter(isUnresolvedReviewRow).length],
-      ['Услуги не вошли в 50%', managerRows.filter(isServiceNotIncludedRow).length],
+      ['Услуги не вошли в расчёт', managerRows.filter(isServiceNotIncludedRow).length],
       ['Похожие на аксессуары, но не вошли', managerRows.filter(isPotentialAccessoryNotIncludedRow).length],
       ['Нулевая база без понятного расчёта', managerRows.filter(isCriticalZeroBaseRow).length],
       ['Подозрительно нулевая / неполная себестоимость техники', managerRows.filter(isSuspiciousTechCostRow).length],
@@ -5945,7 +5948,7 @@ export default function AdminPayrollPage() {
         push('Бонус опта 1,75%', classification.wholesale.base, 'общая база опта × 1,75%', row.wholesaleBonus);
       } else {
         const bases = getManagerComponentBases(row.manager);
-        if (row.filmBonus) push('Услуги оказываемые 50%', bases.film, 'выручка × 50%', row.filmBonus);
+        if (row.filmBonus) push(`Услуги оказываемые ${getPayrollServicePercent(row.manager)}%`, bases.film, `выручка × ${getPayrollServicePercent(row.manager)}%`, row.filmBonus);
         if (row.plotterBonus) push('Плоттерные материалы 50% от с/с', bases.plotter, 'с/с × 50%', row.plotterBonus);
         if (row.techBonus) push('Техника 10% от ВП', bases.tech, 'ВП × 10%', row.techBonus);
         if (row.accessoryBonus) {
@@ -5965,7 +5968,7 @@ export default function AdminPayrollPage() {
       pushBonuses();
       push('Начислено за месяц', null, 'сумма начислений до аванса и удержаний', row.grossPay);
       if (row.advance) push('Аванс', row.advance, 'вычитается после начисления зарплаты', -row.advance);
-      push('К выплате', row.grossPay, `${getSalaryFormulaLabel(row.salaryType, selectedPayrollPeriodKey)}${row.oneTimeBonus ? '; + разовая премия' : ''}`, row.netPay, row.comment);
+      push('К выплате', row.grossPay, `${getSalaryFormulaLabel(row.salaryType, selectedPayrollPeriodKey, row.manager)}${row.oneTimeBonus ? '; + разовая премия' : ''}`, row.netPay, row.comment);
 
       return rowsForEmployee;
     });
@@ -5992,7 +5995,7 @@ export default function AdminPayrollPage() {
       const checks = [
         ['Спорные / нерешённые строки', managerRows.filter(isUnresolvedReviewRow).length, 'Проверить', 'Требуется ручная классификация строки'],
         ['Похожие на аксессуары, но не вошли', managerRows.filter(isPotentialAccessoryNotIncludedRow).length, 'Проверить', 'Проверьте, нужно ли создать ручное правило'],
-        ['Услуги не вошли в 50%', managerRows.filter(isServiceNotIncludedRow).length, 'Проверить', 'Строка похожа на услуги, но не попала в расчёт услуг'],
+        ['Услуги не вошли в расчёт', managerRows.filter(isServiceNotIncludedRow).length, 'Проверить', 'Строка похожа на услуги, но не попала в расчёт услуг'],
         ['Нулевая база без понятного расчёта', managerRows.filter(isCriticalZeroBaseRow).length, 'Проверить', 'База расчёта равна нулю, но строка может влиять на зарплату'],
         ['Строки без классификации', managerRows.filter((item) => !item.calculationType).length, 'Ошибка', 'Нет классификации строки'],
         ['Некорректные числа в расчёте', managerRows.filter((item) => [item.revenue, item.grossProfit, item.base, item.bonus].some((value) => !Number.isFinite(value))).length, 'Ошибка', 'В строке есть некорректные числовые значения'],
@@ -7044,7 +7047,7 @@ export default function AdminPayrollPage() {
                           <tr>
                             <th className='px-3 py-2'>Сотрудник</th>
                             <th className='px-3 py-2 text-right'>Услуги база</th>
-                            <th className='px-3 py-2 text-right'>Услуги 50%</th>
+                            <th className='px-3 py-2 text-right'>Услуги</th>
                             <th className='px-3 py-2 text-right'>Услуги не вошли</th>
                             <th className='px-3 py-2 text-right'>Аксессуары</th>
                             <th className='px-3 py-2 text-right'>Кредитные акс.</th>
@@ -7804,9 +7807,9 @@ export default function AdminPayrollPage() {
                   </Card>
 
                   <Card>
-                    <h3 className='mb-2 text-base font-bold text-slate-900'>Услуги 50%</h3>
-                    <p className='mb-3 text-sm text-slate-500'>Строки, вошедшие в услуги 50%, включая отрицательные строки с минусом.</p>
-                    {renderAuditRowsTable(serviceAuditRows, (row) => `${row.revenue < 0 ? 'Отрицательная строка учтена · ' : ''}${row.classificationReason} · ${row.matchedRule}`, { showActions: false, emptyText: 'Строк услуг 50% не найдено.' })}
+                    <h3 className='mb-2 text-base font-bold text-slate-900'>Услуги</h3>
+                    <p className='mb-3 text-sm text-slate-500'>Начисления за услуги по ставке сотрудника. Возвраты уменьшают начисления.</p>
+                    {renderAuditRowsTable(serviceAuditRows, (row) => `${row.revenue < 0 ? 'Отрицательная строка учтена · ' : ''}${row.classificationReason} · ${row.matchedRule}`, { showActions: false, emptyText: 'Строк услуг не найдено.' })}
                   </Card>
 
                   <Card>
@@ -7899,7 +7902,7 @@ export default function AdminPayrollPage() {
                     {[
                       ['Техника 10%', `${retailTechSummary.rows} / ${formatMoney(retailTechSummary.base)} / ${formatMoney(retailTechSummary.bonus)}`],
                       [`Аксессуары ${retailAccessoryTier.ratePercent}%`, `${retailAccessorySummary.rows} / ${formatMoney(retailAccessorySummary.base)} / ${formatMoney(retailAccessorySummary.bonus)}`],
-                      ['Услуги 50%', `${retailFilmSummary.rows} / ${formatMoney(retailFilmSummary.base)} / ${formatMoney(retailFilmSummary.bonus)}`],
+                      ['Услуги', `${retailFilmSummary.rows} / ${formatMoney(retailFilmSummary.base)} / ${formatMoney(retailFilmSummary.bonus)}`],
                       ['Плоттер 50% с/с', `${retailPlotterSummary.rows} / ${formatMoney(retailPlotterSummary.base)} / ${formatMoney(retailPlotterSummary.bonus)}`],
                       ['Кредиты', `${creditRows.length} строк · техника ${creditTechRows.length} / аксессуары ${creditAccessoryRows.length} / спорные ${creditReviewRows.length} · бонус ${formatMoney(retailCreditSummary.bonus)}`],
                       ['Спорная розница', `${retailReviewSummary.rows} / ${formatMoney(retailReviewSummary.revenue)}`],
@@ -8009,7 +8012,7 @@ export default function AdminPayrollPage() {
                           <p className='font-bold'>Нужно проверить</p>
                           <ul className='mt-1 grid gap-1'>
                             {selectedManagerCounts.disputed > 0 && <li>Спорные строки: {selectedManagerCounts.disputed}</li>}
-                            {selectedManagerCounts.serviceNotIncluded > 0 && <li>Услуги не вошли в 50%: {selectedManagerCounts.serviceNotIncluded}</li>}
+                            {selectedManagerCounts.serviceNotIncluded > 0 && <li>Услуги не вошли в расчёт: {selectedManagerCounts.serviceNotIncluded}</li>}
                             {selectedManagerCounts.potentialAccessories > 0 && <li>Похоже на аксессуары, но не вошло: {selectedManagerCounts.potentialAccessories}</li>}
                             {selectedManagerCounts.zeroBase > 0 && <li>Нулевая база без понятного расчёта: {selectedManagerCounts.zeroBase}</li>}
                             {selectedManagerCounts.suspiciousTechCost > 0 && <li>Подозрительно нулевая / неполная себестоимость техники: {selectedManagerCounts.suspiciousTechCost}</li>}
@@ -8072,6 +8075,9 @@ export default function AdminPayrollPage() {
                                 ['База для 12%', formatMoney(selectedManagerPayroll.belaBase ?? 0)],
                                 ['12% от начислений команды', formatMoney(selectedManagerPayroll.belaPercentAmount ?? 0)],
                                 ...(getBelaMinimum(selectedPayrollPeriodKey) ? [['Доплата до 100 000 ₽', formatMoney(selectedManagerPayroll.minimumGuaranteeAdjustment ?? 0)]] : []),
+                              ] : isFilmTrainee(selectedManagerPayroll.manager) ? [
+                                ['Услуги · 70% выручки', formatMoney(selectedManagerPayroll.filmBonus)],
+                                ['Правило на период обучения', 'Все услуги; товары и материалы без начисления'],
                               ] : [
                                 ['Дни × ставка', `${selectedManagerPayroll.workedDays ?? '—'} × ${formatMoney(selectedManagerPayroll.dayRate)}`],
                                 ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
@@ -8117,7 +8123,7 @@ export default function AdminPayrollPage() {
                         {(selectedManagerSummary.department === 'Опт'
                           ? [['Опт 1,75%', selectedManagerClassification.wholesale.base, 'общая база опта × 1,75%, не делится пополам', selectedManagerSummary.wholesaleBonus]]
                           : [
-                              selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? ['Услуги: 50% выручки', selectedManagerCounts.filmBase, 'выручка × 50%', selectedManagerSummary.filmBonus] : null,
+                              selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? [`Услуги: ${getPayrollServicePercent(selectedManagerSummary.manager)}% выручки`, selectedManagerCounts.filmBase, `выручка × ${getPayrollServicePercent(selectedManagerSummary.manager)}%`, selectedManagerSummary.filmBonus] : null,
                               selectedManagerCounts.plotterBase || selectedManagerSummary.plotterBonus ? ['Плоттер: 50% себестоимости', selectedManagerCounts.plotterBase, 'себестоимость × 50%', selectedManagerSummary.plotterBonus] : null,
                               selectedManagerCounts.techBase || selectedManagerSummary.techBonus ? ['Техника: 10% валовой прибыли', selectedManagerCounts.techBase, 'валовая прибыль × 10%', selectedManagerSummary.techBonus] : null,
                               selectedManagerCounts.accessoryBase || selectedManagerSummary.accessoryBonus ? [`Аксессуары: ${Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}% выручки`, selectedManagerCounts.accessoryBase, `личная выручка × ${Math.round((selectedManagerSummary.accessoryRate ?? 0.05) * 100)}%`, selectedManagerSummary.accessoryBonus] : null,
@@ -8443,7 +8449,7 @@ export default function AdminPayrollPage() {
                     <th className='px-4 py-3'>Выручка</th>
                     <th className='px-4 py-3'>Валовая прибыль</th>
                     <th className='px-4 py-3'>Кредитный бонус</th>
-                    <th className='px-4 py-3'>Услуги 50%</th>
+                    <th className='px-4 py-3'>Услуги</th>
                     <th className='px-4 py-3'>Плоттер 50% с/с</th>
                     <th className='px-4 py-3'>Техника 10% от ВП</th>
                     <th className='px-4 py-3'>Аксессуары</th>

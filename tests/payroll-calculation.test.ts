@@ -9,6 +9,7 @@ import { PayrollBonusesEditor } from '../app/(dashboard)/admin/payroll/PayrollBo
 import { parseFinboxReport } from '../lib/payroll-finbox';
 import { PAYROLL_COMPENSATION_VERSION, getInitialPayrollBonuses, getRetailAccessoryTier, validatePayrollBonuses, validatePayrollCompensationSnapshot, validatePayrollCompensationVersion, type PayrollBonus } from '../lib/payroll-compensation';
 import { buildPayrollSalesCompactSnapshot } from '../lib/payroll-sales-classification';
+import { FILM_TRAINEE_NAME } from '../lib/payroll-trainee';
 
 type SalesRow = {
   manager: string;
@@ -82,6 +83,7 @@ type PayrollModule = {
           agentCreditCommission?: string;
         }
       | undefined,
+    employeeDirectory?: ReturnType<PayrollModule['buildPayrollEmployeeDirectory']>,
   ) => {
     workedDays: number | null;
     lateCount: number | null;
@@ -135,7 +137,7 @@ async function loadPayrollModule(): Promise<PayrollModule> {
   const start = source.indexOf('type CellValue =');
   const end = source.indexOf('export default function AdminPayrollPage()');
   assert.ok(start > 0 && end > start, 'Payroll calculation boundaries must exist');
-  const calculationSource = source.slice(start, end);
+  const calculationSource = `import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, isFilmTrainee, getPayrollServicePercent } from '../../lib/payroll-trainee';\nimport { getPayrollSalesManagerNameForPeriod } from '../../lib/payroll-sales-classification';\n` + source.slice(start, end);
 
   mkdirSync(dirname(generatedPath), { recursive: true });
   writeFileSync(generatedPath, `import { getBelaMinimum, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, type PayrollBonus } from '../../lib/payroll-compensation';\nimport { PAYROLL_WORKBOOK_UNCONFIGURED_GROUP, getPayrollWorkbookCalculationText, getPayrollWorkbookComponentLabel, getPayrollWorkbookGroup, getPayrollWorkbookReviewCount, getPayrollWorkbookStatusLabel, isPayrollWorkbookPaidAdvanceCheck, isPayrollWorkbookSalaryTypeConfigured, sortPayrollWorkbookEmployees } from '../../lib/payroll-workbook';\nimport { isPayrollEmployeeRuleActive } from '../../lib/payroll-employee-rules';\nimport { classifyPayrollSalesRows } from '../../lib/payroll-sales-classification';\n${calculationSource}\nexport { classifySalesRows, buildFullPayrollRow, buildPayrollEmployeeDirectory, mapLegacyRetailTraineeRowsForPeriod, applyRetailAccessoryTier, applyBelaPercentRule, applyPayrollBonuses, buildPurchasePayrollRow, downloadPayrollWorkbook };\n`, 'utf8');
@@ -182,10 +184,51 @@ describe('compact 1C payroll projection', () => {
     assert.equal('rows' in compact, false);
   });
 
-  it('does not expose the legacy trainee outside the approved June mapping', () => {
+  it('keeps September trainee separate from June Magomed and other periods', () => {
     const row: SalesRow = { manager: 'СтажерРозница', client: 'Розница', category: 'Кабели', item: 'Кабель', registrar: '', registrars: [], revenue: 1000, cost: 500, grossProfit: 500, profitability: 50 };
-    assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-09').managerSummaries.length, 0);
+    assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-09').managerSummaries[0]?.manager, FILM_TRAINEE_NAME);
+    assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-08').managerSummaries.length, 0);
+    assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-10').managerSummaries.length, 0);
     assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-06').managerSummaries[0]?.manager, 'Костеренко Магомед');
+  });
+});
+
+describe('September service-only trainee', () => {
+  it('reproduces the verified service base and validates saved 70% details', () => {
+    const row = { employeeName: FILM_TRAINEE_NAME, salaryType: 'retail_sales_bonus', salaryRule: 'noDayPay', dayPay: 0, disciplineBonus: 0, filmBonus: 30240, plotterBonus: 0, techBonus: 0, accessoryBonus: 0, creditBonus: 0, agentCreditCommission: 0, oneTimeBonus: 0, fixedDeduction: 0, advance: 0, grossPay: 30240, netPay: 30240,
+      calculationDetails: [{ component: 'Услуги оказываемые 70%', base: 43200, amount: 30240 }, { component: 'Начислено за месяц', amount: 30240 }, { component: 'К выплате', amount: 30240 }] };
+    const totals = { grossPay: 30240, netPay: 30240, advance: 0 };
+    assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-09', totals));
+    assert.throws(() => validatePayrollCompensationSnapshot([row], [], '2026-08', totals));
+    assert.throws(() => validatePayrollCompensationSnapshot([{ ...row, dayPay: 600 }], [], '2026-09', totals));
+    assert.throws(() => validatePayrollCompensationSnapshot([{ ...row, accessoryBonus: 50 }], [], '2026-09', totals));
+    assert.throws(() => validatePayrollCompensationSnapshot([{ ...row, calculationDetails: row.calculationDetails.map(detail => ({ ...detail, component: detail.component.replace('70%', '50%') })) }], [], '2026-09', totals));
+  });
+  it('pays 70% of all services including returns, never goods or day/discipline pay', () => {
+    const make = (category: string, item: string, revenue: number): SalesRow => ({ manager: 'СтажерРозница', client: 'Розница', category, item, revenue, cost: 0, grossProfit: revenue, profitability: 100, registrar: '', registrars: [] });
+    const source = [make('Услуги оказываемые', 'Поклейка брони', 400), make('Услуги оказываемые', 'Другая услуга без слова поклейка', 1000), make('Услуги оказываемые', 'Возврат услуги', -100), make('Защитные стекла и пленки', 'Защитная пленка плоттера', 5000), make('Смартфоны', 'iPhone', 100000), make('Кабели', 'Кабель', 1000)];
+    const mapped = mapLegacyRetailTraineeRowsForPeriod(source, '8', '2026');
+    const full = classifySalesRows(mapped);
+    const compact = buildPayrollSalesCompactSnapshot(source, [], '2026-09');
+    const summary = full.managerSummaries[0];
+    assert.equal(summary.manager, FILM_TRAINEE_NAME);
+    assertMoney(summary.filmBonus, 910);
+    assertMoney(summary.totalBonus, 910);
+    assertMoney(compact.managerSummaries[0].totalBonus, 910);
+    assert.equal(full.rows.filter(row => row.calculationType === 'MANUAL_EXCLUDED').length, 3);
+    const directory = buildPayrollEmployeeDirectory([], '2026-09');
+    assert.equal(buildPayrollEmployeeDirectory([], '2026-08')[FILM_TRAINEE_NAME], undefined);
+    assert.equal(buildPayrollEmployeeDirectory([], '2026-10')[FILM_TRAINEE_NAME], undefined);
+    const result = buildFullPayrollRow(summary, { workedDays: '20', lateCount: '0', advance: '0', comment: '' }, directory);
+    assertMoney(result.grossPay, 910);
+    assertMoney(result.netPay, 910);
+    assertMoney(result.dayPay, 0);
+    assert.deepEqual(result.payrollReasons, []);
+    const paid = buildFullPayrollRow(summary, { workedDays: '', lateCount: '', advance: '300', comment: '' }, directory);
+    assertMoney(paid.grossPay, 910);
+    assertMoney(paid.netPay, 610);
+    const other = classifySalesRows(source.slice(0, 2).map(row => ({ ...row, manager: 'Чеченова Милана' })));
+    assertMoney(other.managerSummaries[0].filmBonus, 700);
   });
 });
 
@@ -683,7 +726,8 @@ describe('payroll calculation regression rules', () => {
   it('applies the June-only trainee mapping equally to automatic 1C rows', () => {
     const traineeRow = salesRow({ manager: traineeManager, revenue: 1000, cost: 400, grossProfit: 600 });
 
-    assert.deepEqual(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '8', '2026'), []);
+    assert.equal(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '8', '2026')[0]?.manager, FILM_TRAINEE_NAME);
+    assert.deepEqual(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '9', '2026'), []);
     assert.equal(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '5', '2026')[0]?.manager, 'Костеренко Магомед');
   });
 

@@ -167,6 +167,7 @@ export function getPayrollWorkbookCalculationText(
   if (numericBase !== null) {
     if (normalized.includes('1,75%')) return `${formatWorkbookMoney(numericBase)} × 1,75% = ${result}`;
     if (normalized.includes('12%')) return `${formatWorkbookMoney(numericBase)} × 12% = ${result}`;
+    if (normalized.includes('услуг') && normalized.includes('70%')) return `${formatWorkbookMoney(numericBase)} × 70% = ${result}`;
     if (normalized.includes('услуг') && normalized.includes('50%')) return `${formatWorkbookMoney(numericBase)} × 50% = ${result}`;
     if (normalized.includes('плоттер') && normalized.includes('50%')) return `${formatWorkbookMoney(numericBase)} × 50% = ${result}`;
     if (normalized.includes('техник') && normalized.includes('10%')) return `${formatWorkbookMoney(numericBase)} × 10% = ${result}`;
@@ -191,6 +192,7 @@ export function getPayrollWorkbookComponentLabel(component: string) {
   const labels: Record<string, string> = {
     'Фиксированный оклад': 'Оклад',
     'Услуги оказываемые 50%': 'Услуги: 50% выручки',
+    'Услуги оказываемые 70%': 'Услуги: 70% выручки',
     'Плоттерные материалы 50% от с/с': 'Плоттер: 50% себестоимости материалов',
     'Техника 10% от ВП': 'Техника: 10% валовой прибыли',
     'Кредитный бонус': 'Кредиты: 10% валовой прибыли после вычета 9% налогов и издержек',

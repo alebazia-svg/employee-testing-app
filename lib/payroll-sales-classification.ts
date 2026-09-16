@@ -1,3 +1,5 @@
+import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, isFilmTrainee, isFilmTraineeService } from './payroll-trainee';
+
 export type PayrollSalesSourceRow = {
   manager: string;
   client: string;
@@ -82,7 +84,7 @@ function getPayrollManagerName(manager: string) {
 }
 export function getPayrollSalesManagerNameForPeriod(manager: string, periodKey: string) {
   if (normalizeText(manager) === normalizeText(legacyRetailTraineeSourceName)) {
-    return periodKey === '2026-06' ? retailTraineePayrollName : null;
+    return periodKey === '2026-06' ? retailTraineePayrollName : periodKey === FILM_TRAINEE_PERIOD ? FILM_TRAINEE_NAME : null;
   }
   return getPayrollManagerName(manager);
 }
@@ -881,6 +883,21 @@ export function classifyPayrollSalesRows(rows: SalesRow[], classificationRules: 
     .filter((row) => !isPayrollExcludedEmployee(row.manager));
   const classifiedRows = normalizedRows.map((row) => {
     const details = getCalculationDetails(row);
+    if (isFilmTrainee(row.manager)) {
+      const service = isFilmTraineeService(row.category);
+      // Keep the legacy service bucket for source/audit compatibility; the
+      // explicit rate, label and saved component describe the actual 70% rule.
+      return { ...row, ...details, department: 'Розница' as const,
+        calculationType: service ? 'RETAIL_FILM_50' as const : 'MANUAL_EXCLUDED' as const,
+        calculationLabel: service ? 'Услуги: 70% выручки' : 'Товары — без начисления',
+        base: service ? row.revenue : 0, percent: service ? 0.7 : 0,
+        bonus: service ? row.revenue * 0.7 : 0,
+        formula: service ? 'выручка услуг × 70%' : 'не начисляется',
+        classificationReason: service ? 'Все услуги стажёра: временное правило за сентябрь 2026' : 'Материалы и товары не входят в оплату услуг стажёра',
+        matchedRule: service ? 'film-trainee-september-service' : 'film-trainee-september-excluded',
+        includedInWholesaleBase: null, creditIncludedInBonus: false, creditProductType: null,
+      };
+    }
     return { ...row, ...applyClassificationRules(row, details, classificationRules) };
   });
   const wholesaleRows = classifiedRows.filter((row) => row.department === 'Опт');
@@ -904,12 +921,12 @@ export function classifyPayrollSalesRows(rows: SalesRow[], classificationRules: 
 
     return {
       type,
-      label: calculationLabels[type],
+      label: type === 'RETAIL_FILM_50' && typeRows.some(row => isFilmTrainee(row.manager)) ? 'Услуги по ставке сотрудника' : calculationLabels[type],
       rows: typeRows.length,
       revenue: typeRows.reduce((sum, row) => sum + row.revenue, 0),
       grossProfit: typeRows.reduce((sum, row) => sum + row.grossProfit, 0),
       base,
-      formula: calculationFormulas[type],
+      formula: type === 'RETAIL_FILM_50' && typeRows.some(row => isFilmTrainee(row.manager)) ? 'выручка услуг × ставка сотрудника (50% / 70%)' : calculationFormulas[type],
       bonus,
     };
   });

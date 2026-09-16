@@ -1,3 +1,5 @@
+import { FILM_TRAINEE_PERIOD, isFilmTrainee, getPayrollServicePercent } from './payroll-trainee';
+
 export const PAYROLL_COMPENSATION_VERSION = 'payroll-accessory-fixed-rate-v3';
 export const BELA_MINIMUM_START_PERIOD = '2026-08';
 export const BELA_MINIMUM = 100_000;
@@ -113,6 +115,12 @@ function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses
     return value;
   };
   const expected: Array<{ component: string; amount: number; comment?: string }> = [];
+  if (isFilmTrainee(String(row.employeeName))) {
+    if (periodKey !== FILM_TRAINEE_PERIOD || row.salaryType !== 'retail_sales_bonus') fail();
+    for (const field of ['dayPay', 'disciplineBonus', 'plotterBonus', 'techBonus', 'accessoryBonus', 'creditBonus', 'agentCreditCommission']) {
+      if (amount(field) !== 0) fail();
+    }
+  }
   const add = (component: string, field: string, optional = false, sign = 1) => {
     const value = amount(field) * sign;
     if (!optional || value !== 0) expected.push({ component, amount: value });
@@ -132,7 +140,7 @@ function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses
     } else if (row.salaryType === 'wholesale_percent') {
       add('Бонус опта 1,75%', 'wholesaleBonus');
     } else {
-      add('Услуги оказываемые 50%', 'filmBonus', true);
+      add(`Услуги оказываемые ${getPayrollServicePercent(String(row.employeeName))}%`, 'filmBonus', true);
       add('Плоттерные материалы 50% от с/с', 'plotterBonus', true);
       add('Техника 10% от ВП', 'techBonus', true);
       add(`Аксессуары ${Math.round(accessoryRate * 100)}%`, 'accessoryBonus', true);
