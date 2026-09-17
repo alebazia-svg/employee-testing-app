@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
+import { ProcurementChangeHistory, type PlanChangeEvent } from './ProcurementChangeHistory';
 
 type HistoryPlan = {
   id: string; supplierPartner: string; orderNumbers: string[]; plannedAmount: string | number;
   manager?: { name: string };
+  events?: PlanChangeEvent[];
   evidence?: {
     issuedAmount: number; paidAmount: number; paidForeignAmount: number;
     actualExchangeRate: number | null; manualPaymentCount?: number;
@@ -37,6 +39,7 @@ export function ProcurementPaymentHistory({ plans, hidden = false, showManager =
           {usdt && evidence?.actualExchangeRate ? <p>Курс: {rub.format(evidence.actualExchangeRate)} · Рублёвый эквивалент: ≈ {rub.format(evidence.paidAmount)}</p> : null}
           <p>Заявка оплачена полностью. Остаток по заказу учитывается отдельно.</p>
         </div></details>
+        <div className="col-span-2"><ProcurementChangeHistory events={plan.events} /></div>
       </article>;
     })}</div>
     {plans.length > 3 ? <button type="button" onClick={() => setExpanded(!expanded)} className="mt-3 text-sm font-bold text-slate-600">{expanded ? "Свернуть историю" : `Показать все (${plans.length})`}</button> : null}

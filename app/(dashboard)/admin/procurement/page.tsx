@@ -9,6 +9,8 @@ import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-paym
 import { paymentEvidenceFrom, paymentTimestamp, uniqueSupplierPayments } from "@/lib/procurement-ruble-payment-evidence";
 import { manualPaymentLinks, samePaymentSupplier } from "@/lib/procurement-manual-payment-links";
 import { ProcurementUnlinkedPayments } from "@/components/ProcurementUnlinkedPayments";
+import { readPaymentRevision, paymentMatchCreatedAt } from "@/lib/procurement-plan-revision";
+import { ProcurementRevisionReview } from "@/components/ProcurementRevisionReview";
 import {
   fetchSupplierOrderFinance,
   normalizeManagerName,
@@ -58,7 +60,7 @@ export default async function AdminProcurementPage() {
   const from = new Date(to);
   from.setDate(from.getDate() - 31);
   const plansQuery = prisma.supplierPaymentPlan.findMany({
-    include: { manager: { select: { name: true, oneCManagerName: true } } },
+    include: { events: {orderBy:{createdAt:"desc"},take:20}, manager: { select: { name: true, oneCManagerName: true } } },
     orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
   });
   const [plansResult, managersResult, ordersResult, settlementsResult, requestsResult, balancesResult, rateResult, currencyPaymentsResult, forecastHistoryResult, ownerForecastResult, payrollResult, tbankResult, priorityDebtsResult] =
@@ -110,7 +112,7 @@ export default async function AdminProcurementPage() {
       foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
       managerName: plan.manager.oneCManagerName || plan.manager.name,
       plannedDate: plan.plannedDate.toISOString(),
-      createdAt: plan.createdAt.toISOString(),
+      createdAt: paymentMatchCreatedAt(plan),
       status: plan.status,
       manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
     })),
@@ -460,6 +462,7 @@ export default async function AdminProcurementPage() {
         description="Когда подготовить деньги, какие оплаты согласовать и что уже подтверждено в 1С."
       />
       <div className="mt-5 space-y-4">
+        <ProcurementRevisionReview items={plans.flatMap(plan => {const revision=readPaymentRevision(plan.oneCCashEvidence);return revision ? [{id:plan.id,supplierPartner:plan.supplierPartner,revision}] : [];})} />
         <ProcurementUnlinkedPayments
           payments={uniqueSupplierPayments(currencySource?.complete ? currencySource.payments : [])
             .filter((payment) => ['РУБ', 'USDT'].includes(payment.documentCurrency) && payment.posted && !payment.deleted && payment.documentAmount > 0 &&

@@ -1,0 +1,45 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {PrismaClient} from '@prisma/client';
+import {build} from 'esbuild';
+import {validatePaymentPlan} from '../lib/procurement-payment-control';
+test('approved revisions preserve active terms until decision and recheck payments on approval',async()=>{
+  assert.equal(process.env.DATABASE_URL,'postgresql://postgres:local-test-only@127.0.0.1:55437/payment_test');
+  const db=new PrismaClient(); const g=globalThis as any;g.revisionDb=db;
+  g.revisionSource={complete:true,payments:[],conversions:[]};g.revisionRequests={complete:true,rows:[]};g.revisionNotifications=[];
+  const marker=`revision-${Date.now()}`;
+  const user=await db.user.create({data:{name:marker,login:marker,passwordHash:'not-login',role:'EMPLOYEE'}});
+  const data=validatePaymentPlan({supplierPartner:'MEMS',orderRefs:['order'],orderNumbers:['393'],plannedDate:'2026-09-19',plannedAmount:700000,paymentMethod:'CASH'}).data;
+  const plan=await db.supplierPaymentPlan.create({data:{...data,plannedAmount:700000,plannedDate:new Date('2026-09-19'),planCode:marker,managerUserId:user.id,status:'APPROVED',createdAt:new Date('2026-09-15')}});
+  try{
+    const mocks:Record<string,string>={prisma:'export const prisma=globalThis.revisionDb;', 'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>globalThis.revisionSource;', 'expense-request-source':'export const fetchExpenseRequestSnapshot=async()=>globalThis.revisionRequests;', 'procurement-payment-notifications':'export const notifyAdminsAboutProcurementPlans=async(x)=>globalThis.revisionNotifications.push(x.action);export const notifyProcurementManagerAboutDecision=async(x)=>globalThis.revisionNotifications.push(x.decision);'};
+    const bundle=await build({entryPoints:['lib/procurement-plan-revision-server.ts'],bundle:true,write:false,format:'esm',platform:'node',plugins:[{name:'revision-test',setup(b){b.onResolve({filter:/^\.\//},a=>mocks[a.path.slice(2)]?{path:a.path.slice(2),namespace:'mock'}:null);b.onLoad({filter:/.*/,namespace:'mock'},a=>({contents:mocks[a.path],loader:'js'}));}}]});
+    const api=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+    const current=()=>db.supplierPaymentPlan.findUniqueOrThrow({where:{id:plan.id}});
+    const propose=async(change:any,reason='Поставщик изменил сумму')=>api.proposeApprovedRevision(plan.id,user,{...data,...change},reason,(await current()).updatedAt.toISOString());
+    await assert.rejects(()=>propose({plannedAmount:800000},''));
+    const pending=await propose({plannedAmount:800000});
+    assert.equal(Number((await current()).plannedAmount),700000);
+    assert.equal((await current()).status,'APPROVED');
+    await assert.rejects(()=>propose({plannedAmount:900000}));
+    await api.decideApprovedRevision(plan.id,user.id,pending.revision.id,true,'');
+    assert.equal(Number((await current()).plannedAmount),800000);
+    await assert.rejects(()=>api.decideApprovedRevision(plan.id,user.id,pending.revision.id,true,''));
+    const comment=await propose({plannedAmount:800000,condition:'Уточнение для руководителя'});
+    assert.equal(comment.revision,null);assert.equal((await current()).status,'APPROVED');
+    const decline=await propose({plannedAmount:900000});
+    await api.decideApprovedRevision(plan.id,user.id,decline.revision.id,false,'Оставляем согласованную сумму');
+    assert.equal(Number((await current()).plannedAmount),800000);
+    g.revisionSource.payments=[{ref:'paid',number:'TEST',date:'16.09.2026 18:00:00',posted:true,deleted:false,documentCurrency:'РУБ',documentAmount:100000,baseDocumentRef:'order'}];
+    await assert.rejects(()=>propose({plannedAmount:50000}));
+    const partial=await propose({plannedAmount:200000});
+    g.revisionSource.payments[0].documentAmount=300000;
+    await assert.rejects(()=>api.decideApprovedRevision(plan.id,user.id,partial.revision.id,true,''));
+    assert.equal(Number((await current()).plannedAmount),800000);
+    await api.decideApprovedRevision(plan.id,user.id,partial.revision.id,false,'Оплата уже изменилась');
+    g.revisionSource.complete=false;
+    await assert.rejects(()=>propose({plannedAmount:900000}));
+    assert.ok(g.revisionNotifications.length>=5);
+    assert.ok(await db.supplierPaymentPlanEvent.count({where:{planId:plan.id}})>=5);
+  }finally{await db.supplierPaymentPlan.delete({where:{id:plan.id}});await db.user.delete({where:{id:user.id}});await db.$disconnect();}
+});

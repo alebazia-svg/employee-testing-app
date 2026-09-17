@@ -46,6 +46,7 @@ export async function notifyAdminsAboutProcurementPlans(input: {
   db: NotificationDb;
   eventKey: string;
   action: 'SUBMITTED' | 'UPDATED';
+  revisionProposal?: boolean;
   managerName: string;
   plans: PaymentPlanSummary[];
   now?: Date;
@@ -56,7 +57,7 @@ export async function notifyAdminsAboutProcurementPlans(input: {
   const first = input.plans[0];
   const single = input.plans.length === 1;
   const comment = single ? meaningfulComment(first.condition) : '';
-  const title = input.action === 'UPDATED' ? 'Оплата поставщику изменена' : 'Новая оплата поставщику';
+  const title = input.revisionProposal ? 'Изменения оплаты на согласование' : input.action === 'UPDATED' ? 'Оплата поставщику изменена' : 'Новая оплата поставщику';
   const body = single
     ? [
         input.managerName,
@@ -97,6 +98,7 @@ export async function notifyProcurementManagerAboutDecision(input: {
   db: NotificationDb;
   plan: PaymentPlanSummary;
   decision: 'APPROVED' | 'CANCELLED' | 'NEEDS_CHANGES';
+  revisionDecision?: boolean;
   reason?: string;
   eventKey?: string;
   now?: Date;
@@ -110,7 +112,7 @@ export async function notifyProcurementManagerAboutDecision(input: {
       userId: input.plan.managerUserId,
       fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}:${input.eventKey || 'decision'}`,
       kind: approved ? 'procurement_payment_approved' : needsChanges ? 'procurement_payment_needs_changes' : 'procurement_payment_cancelled',
-      title: approved ? 'Оплата согласована' : needsChanges ? 'Исправьте оплату' : 'Оплата отменена',
+      title: input.revisionDecision ? approved ? 'Изменения оплаты согласованы' : 'Сохраняются прежние условия оплаты' : approved ? 'Оплата согласована' : needsChanges ? 'Исправьте оплату' : 'Оплата отменена',
       body: needsChanges
         ? `${input.plan.supplierPartner} · ${input.reason || 'уточните данные заявки'}`
         : `${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)}`,

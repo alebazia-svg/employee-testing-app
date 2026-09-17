@@ -10,6 +10,7 @@ import {
 import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-notifications";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
+import { proposeApprovedRevision } from "@/lib/procurement-plan-revision-server";
 
 const jsonPlan = (plan: unknown) => JSON.parse(JSON.stringify(plan));
 
@@ -27,12 +28,13 @@ export async function PATCH(
   });
   if (!existing)
     return Response.json({ error: "План не найден." }, { status: 404 });
-  if (!["SUBMITTED", "NEEDS_CHANGES"].includes(existing.status))
+  if (!["SUBMITTED", "NEEDS_CHANGES", "APPROVED"].includes(existing.status))
     return Response.json(
-      { error: "Изменить можно только заявку на согласовании или возвращённую на исправление." },
+      { error: "Эту заявку уже нельзя изменить." },
       { status: 409 },
     );
-  const checked = validatePaymentPlan(await req.json());
+  const payload = await req.json();
+  const checked = validatePaymentPlan(payload);
   if (!checked.ok)
     return Response.json({ error: checked.errors.join(" ") }, { status: 400 });
   let plannedAmount = checked.data.plannedAmount;
@@ -42,6 +44,19 @@ export async function PATCH(
     plannedAmount = checked.data.foreignAmount * rate.rate;
   }
   if (!plannedAmount) return Response.json({ error: "Укажите сумму оплаты." }, { status: 400 });
+  if (existing.status === 'APPROVED') {
+    try {
+      const unchangedOrders = JSON.stringify([...checked.data.orderRefs].sort()) === JSON.stringify((Array.isArray(existing.orderRefs) ? existing.orderRefs.map(String) : []).sort()) && checked.data.supplierPartner === existing.supplierPartner;
+      if (!unchangedOrders) {
+        const source = await fetchSupplierOrderFinance();
+        if (!source.complete) throw new Error('Заказы 1С получены не полностью. Повторите изменение позже.');
+        const allowed = ordersForManager(source.rows, user.oneCManagerName?.trim() || user.name);
+        if (!checked.data.orderRefs.every(ref => allowed.some(o => o.ref === ref && o.supplierPartner === checked.data.supplierPartner))) throw new Error('Выберите заказы вашего поставщика из 1С.');
+        checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.find(o => o.ref === ref)!.number);
+      } else checked.data.orderNumbers = Array.isArray(existing.orderNumbers) ? existing.orderNumbers.map(String) : [];
+      return Response.json(await proposeApprovedRevision(id, user, {...checked.data, plannedAmount}, String(payload.changeReason || ''), String(payload.version || '')));
+    } catch (error) { return Response.json({ error: error instanceof Error && /^[А-ЯЁ]/.test(error.message) ? error.message : 'Не удалось проверить изменение. Повторите позже.' }, {status:409}); }
+  }
   const source = await fetchSupplierOrderFinance();
   const managerName = user.oneCManagerName?.trim() || user.name;
   const allowed = new Map(

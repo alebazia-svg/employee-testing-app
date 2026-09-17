@@ -13,6 +13,7 @@ import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
 import { paymentEvidenceFrom } from "@/lib/procurement-ruble-payment-evidence";
 import { manualPaymentLinks } from "@/lib/procurement-manual-payment-links";
+import { readPaymentRevision, paymentMatchCreatedAt } from "@/lib/procurement-plan-revision";
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/procurement-supplier-settlements";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export default async function ProcurementPage() {
   // Match globally so an RKO cannot independently close requests in two cabinets.
   // Only the authenticated manager's plans are serialized below.
   const plansQuery = prisma.supplierPaymentPlan.findMany({
-    include: { events: { orderBy: { createdAt: "desc" }, take: 1 }, manager: { select: { name: true, oneCManagerName: true } } },
+    include: { events: { orderBy: { createdAt: "desc" }, take: 20 }, manager: { select: { name: true, oneCManagerName: true } } },
     orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
   });
   const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult, currencyPaymentsResult] = await Promise.allSettled([
@@ -87,7 +88,7 @@ export default async function ProcurementPage() {
       foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
       managerName: plan.manager.oneCManagerName?.trim() || plan.manager.name,
       plannedDate: plan.plannedDate.toISOString(),
-      createdAt: plan.createdAt.toISOString(),
+      createdAt: paymentMatchCreatedAt(plan),
       status: plan.status,
       manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
     })),
@@ -102,6 +103,7 @@ export default async function ProcurementPage() {
       : {};
     return {
       ...JSON.parse(JSON.stringify(plan)),
+      revision: readPaymentRevision(plan.oneCCashEvidence),
       correctionReason: typeof snapshot.correctionReason === "string" ? snapshot.correctionReason : "",
       evidence: paymentEvidence.get(plan.id)!,
     };

@@ -1,3 +1,4 @@
+import { paymentMatchCreatedAt } from '@/lib/procurement-plan-revision';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
 import { fetchSupplierCurrencyPaymentSnapshot } from '@/lib/procurement-currency-payment-source';
@@ -45,7 +46,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
         const evidencePlans = rows.map((row) => ({
           ...row, orderRefs: Array.isArray(row.orderRefs) ? row.orderRefs.map(String) : [],
           plannedAmount: Number(row.plannedAmount), foreignAmount: row.foreignAmount == null ? null : Number(row.foreignAmount),
-          plannedDate: row.plannedDate.toISOString(), createdAt: row.createdAt.toISOString(),
+          plannedDate: row.plannedDate.toISOString(), createdAt: paymentMatchCreatedAt(row),
           managerName: row.manager.oneCManagerName || row.manager.name, manualRubleLinks: manualPaymentLinks(row.oneCCashEvidence),
         }));
         const evidence = matchProcurementPaymentEvidence(evidencePlans, requests!.rows, source!.payments, source!.conversions);

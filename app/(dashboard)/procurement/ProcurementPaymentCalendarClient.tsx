@@ -1,5 +1,9 @@
 "use client";
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
+import { ProcurementUsdtEstimate } from "@/components/ProcurementUsdtEstimate";
+import type { PaymentRevision } from "@/lib/procurement-plan-revision";
+import { ProcurementChangeHistory, type PlanChangeEvent } from "@/components/ProcurementChangeHistory";
+import { useRouter } from "next/navigation";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -53,6 +57,9 @@ type Plan = {
   status: string;
   createdAt: string;
   correctionReason?: string;
+  updatedAt: string;
+  revision?: PaymentRevision | null;
+  events?: PlanChangeEvent[];
   evidence?: {
     state: string;
     issuedAmount: number;
@@ -204,6 +211,8 @@ export default function ProcurementPaymentCalendarClient({
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState("");
+  const router = useRouter();
+  const [changeReason, setChangeReason] = useState("");
   const [batchSeedRefs, setBatchSeedRefs] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -331,6 +340,7 @@ export default function ProcurementPaymentCalendarClient({
     openForm();
   }
   function editPlan(plan: Plan) {
+    setChangeReason("");
     setEditingId(plan.id);
     setDraft({
       supplier: plan.supplierPartner,
@@ -380,8 +390,10 @@ export default function ProcurementPaymentCalendarClient({
       draft.orderRefs.includes(order.ref),
     );
     const body = {
+      changeReason,
+      version: plans.find(plan => plan.id === editingId)?.updatedAt,
       supplierPartner: draft.supplier,
-      supplierCounterparty: selected[0]?.supplierCounterparty || "",
+      supplierCounterparty: selected[0]?.supplierCounterparty || plans.find(plan => plan.id === editingId)?.supplierCounterparty || "",
       orderRefs: draft.orderRefs,
       orderNumbers: selected.map((order) => order.number),
       plannedDate: draft.plannedDate,
@@ -395,6 +407,7 @@ export default function ProcurementPaymentCalendarClient({
       exchangerName: draft.exchangerName,
       supplierConfirmation: draft.supplierConfirmation,
     };
+    try {
     const response = await fetch(
       editingId
         ? `/api/procurement/payment-plans/${editingId}`
@@ -412,6 +425,7 @@ export default function ProcurementPaymentCalendarClient({
       return;
     }
     const wasEditing = Boolean(editingId);
+    router.refresh();
     setPlans((current) =>
       (wasEditing
         ? current.map((plan) =>
@@ -424,8 +438,10 @@ export default function ProcurementPaymentCalendarClient({
     setEditingId("");
     setFormOpen(false);
     setMessage(
-      wasEditing ? "Изменения сохранены." : "Заявка передана на согласование.",
+      data.revision ? "Изменения отправлены руководителю. До согласования действуют прежние условия." : wasEditing ? "Изменения сохранены." : "Заявка передана на согласование.",
     );
+    } catch { setMessage("Нет связи с порталом. Изменения не подтверждены — проверьте заявку перед повторной отправкой."); }
+    finally { setSaving(false); }
   }
   const groupTitle = (key: string) =>
     key < todayKey
@@ -552,10 +568,8 @@ export default function ProcurementPaymentCalendarClient({
                         </p>
                         <p className="mt-0.5 text-sm font-semibold text-slate-600">
                           {methodLabel(plan.paymentMethod)}
-                          {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0)
-                            ? " · сумма USDT уточняется"
-                            : ""}
                         </p>
+                        {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}
                         {plan.condition && plan.condition !== "Оплата по выбранным заказам" ? (
                           <p className="mt-1 line-clamp-2 text-xs font-semibold text-slate-600" title={plan.condition}>
                             Комментарий: {plan.condition}
@@ -571,9 +585,11 @@ export default function ProcurementPaymentCalendarClient({
                             : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "НА СОГЛАСОВАНИИ"}
                         </span>
                         {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
+                        {plan.revision ? <p className="max-w-[240px] text-xs font-bold text-amber-800">Изменения на согласовании. Пока действуют прежние условия.</p> : null}
+                        <ProcurementChangeHistory events={plan.events} />
                         {plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}
                       </div>
-                      {plan.status === "SUBMITTED" || plan.status === "NEEDS_CHANGES" ? (
+                      {!plan.revision && ["SUBMITTED", "NEEDS_CHANGES", "APPROVED"].includes(plan.status) ? (
                         <button
                           onClick={() => editPlan(plan)}
                           className="procurement-secondary-action inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition"
@@ -881,6 +897,7 @@ export default function ProcurementPaymentCalendarClient({
                 Поставщика, заказ, дату и сумму повторять не нужно.
               </span>
             </label>
+            {plans.find(plan => plan.id === editingId)?.status === "APPROVED" ? <label className="block text-sm font-bold">Причина изменения *<textarea required minLength={3} maxLength={500} value={changeReason} onChange={event => setChangeReason(event.target.value)} rows={2} placeholder="Например: поставщик перенёс отгрузку" className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3"/><span className="mt-1 block text-xs font-normal text-slate-500">Изменение условий требует повторного согласования. Комментарий сохраняется без него. При частичной оплате укажите новую общую сумму, включая уже оплаченную часть.</span></label> : null}
             {message ? (
               <p className="text-sm font-bold text-red-600">{message}</p>
             ) : null}
@@ -967,6 +984,7 @@ export default function ProcurementPaymentCalendarClient({
               <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
                 Согласовано: {plans.filter((plan) => plan.status === "APPROVED" && plan.evidence?.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan)).length}
               </span>
+              {plans.some(plan => plan.revision) ? <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">Изменения на согласовании: {plans.filter(plan => plan.revision).length}</span> : null}
             </div>
 
             <div className="mt-4 border-t border-slate-200 pt-4">
