@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BriefcaseBusiness, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Truck, Users, Wrench, X } from 'lucide-react';
+import { Banknote, BriefcaseBusiness, Building2, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Truck, Users, Wrench, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AdminInboxBell } from '@/components/AdminInboxBell';
 import { LogoutButton } from '@/components/LogoutButton';
@@ -23,6 +23,7 @@ const dailyNavigation: NavigationItem[] = [
 ];
 
 const serviceNavigation: NavigationItem[] = [
+  { href: '/admin/company-details', label: 'Реквизиты', icon: Building2 },
   { href: '/admin/ofd', label: 'Чеки: 1С и OFD', icon: ReceiptText },
   { href: '/admin/workday/tbank', label: 'Эквайринг T-Банк', icon: CreditCard },
   { href: '/admin/inbox', label: 'История уведомлений', icon: History },
