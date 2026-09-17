@@ -1,4 +1,5 @@
 "use client";
+import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -61,6 +62,9 @@ type Plan = {
     remainingAmount: number;
     remainingForeignAmount: number | null;
     actualExchangeRate: number | null;
+    manualPaymentCount?: number;
+    cashOrders?: { ref: string; number: string; date?: string }[];
+    currencyPayments?: { ref: string; number: string; date: string }[];
   };
 };
 type UsdtBalance = {
@@ -465,6 +469,9 @@ export default function ProcurementPaymentCalendarClient({
       {evidenceSourceError ? (
         <Notice title="Оплаты из 1С сейчас не проверены" text="Заявки доступны, но подтверждение фактической оплаты появится после восстановления связи." />
       ) : null}
+      {plans.some((plan) => Number(plan.evidence?.manualPaymentCount) > 0) ? (
+        <p className="text-sm text-slate-600">Оплаты по договору зачтены руководителем в заявки: {plans.filter((plan) => Number(plan.evidence?.manualPaymentCount) > 0).map((plan) => `${plan.supplierPartner} (${plan.orderNumbers.join(', ')})`).join('; ')}.</p>
+      ) : null}
       {mappingBlocked ? (
         <Notice
           critical
@@ -604,6 +611,8 @@ export default function ProcurementPaymentCalendarClient({
         </div>
       </section>
 
+      <ProcurementPaymentHistory plans={paidPlans} hidden={formOpen} />
+
       {!mappingBlocked && !sourceError ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <div className="flex flex-col gap-1 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
@@ -674,18 +683,6 @@ export default function ProcurementPaymentCalendarClient({
         </section>
       ) : null}
 
-      {paidPlans.length ? (
-        <details
-          className="rounded-2xl border border-slate-200 bg-white p-4"
-          aria-hidden={formOpen || undefined}
-          inert={formOpen || undefined}
-        >
-          <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {paidPlans.length}{paidPlans.some(isCurrencyPaid) ? ` · ${paidPlans.find(isCurrencyPaid)?.supplierPartner}: ${Number(paidPlans.find(isCurrencyPaid)?.evidence?.paidForeignAmount || 0).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : ""}</summary>
-          <div className="mt-3 divide-y divide-slate-100">
-            {paidPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказ: {plan.orderNumbers.filter(Boolean).join(", ") || "без номера"}</p></div><p className="font-black text-blue-800">{isCurrencyPaid(plan) ? `Оплачено по 1С · ${plan.evidence?.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT${plan.evidence?.actualExchangeRate ? ` · курс ${plan.evidence.actualExchangeRate.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽` : ""}${plan.evidence?.paidAmount ? ` · ≈ ${rub.format(plan.evidence.paidAmount)} по курсу конвертации` : ""}` : `Оплачено по 1С · ${rub.format(Number(plan.evidence?.issuedAmount || plan.plannedAmount))}`}</p></div>)}
-          </div>
-        </details>
-      ) : null}
 
       {formOpen ? <section
         id="payment-plan-form"

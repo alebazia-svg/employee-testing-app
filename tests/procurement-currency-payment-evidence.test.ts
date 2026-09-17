@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { matchProcurementPaymentEvidence } from '@/lib/procurement-currency-payment-evidence';
 import type { CurrencyConversionRow, SupplierCurrencyPaymentRow } from '@/lib/procurement-currency-payment-source';
+import { paymentFingerprint } from '@/lib/procurement-manual-payment-links';
 
 const plan = {
   id: 'tural',
@@ -59,4 +60,14 @@ test('known USDT amount can close from wallet balance without a new conversion, 
   assert.equal(result.paidForeignAmount, 7865.17);
   assert.equal(result.paidAmount, 0);
   assert.equal(result.actualExchangeRate, null);
+});
+
+test('USDT contract payment closes only with owner confirmation and a live unchanged document', () => {
+  const contractPayment = { ...payment, baseDocumentRef: '', supplier: 'Tural', contract: 'Tural contract' };
+  const confirmed = { ...plan, foreignAmount: 7865.17, manualRubleLinks: [{ ref: payment.ref, fingerprint: paymentFingerprint(contractPayment) }] };
+  assert.equal(matchProcurementPaymentEvidence([plan], [], [contractPayment], [conversion]).get(plan.id)!.state, 'NO_EVIDENCE');
+  const result = matchProcurementPaymentEvidence([confirmed], [], [contractPayment], []).get(plan.id)!;
+  assert.equal(result.state, 'PAID_BY_ONE_C');
+  assert.equal(result.manualPaymentCount, 1);
+  assert.equal(matchProcurementPaymentEvidence([confirmed], [], [{ ...contractPayment, documentAmount: 5000 }], []).get(plan.id)!.paidForeignAmount, 0);
 });

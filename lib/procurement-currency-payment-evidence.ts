@@ -1,6 +1,8 @@
 import type { ExpenseRequestSourceRow } from '@/lib/expense-request-source';
 import { matchCashEvidence } from '@/lib/procurement-payment-control';
 import type { CurrencyConversionRow, SupplierCurrencyPaymentRow } from '@/lib/procurement-currency-payment-source';
+import { applyRublePaymentEvidence, uniqueSupplierPayments } from './procurement-ruble-payment-evidence';
+import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 
 export type EvidencePlan = {
   id: string;
@@ -15,6 +17,7 @@ export type EvidencePlan = {
   plannedDate?: string;
   createdAt?: string;
   status?: string;
+  manualRubleLinks?: import('./procurement-manual-payment-links').ManualPaymentLink[];
 };
 
 export type ProcurementPaymentEvidence = Omit<ReturnType<typeof matchCashEvidence>, 'state'> & {
@@ -25,6 +28,7 @@ export type ProcurementPaymentEvidence = Omit<ReturnType<typeof matchCashEvidenc
   remainingForeignAmount: number | null;
   actualExchangeRate: number | null;
   currencyPayments: { ref: string; number: string; date: string; foreignAmount: number }[];
+  manualPaymentCount?: number;
 };
 
 function oneCDateTimestamp(value: string) {
@@ -73,17 +77,21 @@ export function matchProcurementPaymentEvidence(
   const eligiblePlans = plans
     .filter((plan) => plan.status !== 'CANCELLED' && plan.paymentMethod === 'USDT')
     .sort((a, b) => (a.plannedDate || '').localeCompare(b.plannedDate || '') || (a.createdAt || '').localeCompare(b.createdAt || '') || a.planCode.localeCompare(b.planCode));
-  const payments = currencyPayments
-    .filter((payment) => payment.posted && !payment.deleted && payment.documentCurrency === 'USDT' && payment.documentAmount > 0 && payment.baseDocumentRef)
+  const payments = uniqueSupplierPayments(currencyPayments)
+    .filter((payment) => payment.posted && !payment.deleted && payment.documentCurrency === 'USDT' && payment.documentAmount > 0)
     .sort((a, b) => oneCDateTimestamp(a.date) - oneCDateTimestamp(b.date));
 
   for (const payment of payments) {
+    const manualOwners = plans.filter((plan) => plan.manualRubleLinks?.some((link) => link.ref.toLowerCase() === payment.ref.toLowerCase()));
     const rate = conversionRateBefore(payment, conversions);
     let availableForeign = payment.documentAmount;
     const paymentAt = oneCDateTimestamp(payment.date);
     for (const plan of eligiblePlans) {
       if (availableForeign <= 0.0000001) break;
-      if (!plan.orderRefs.some((ref) => ref.trim().toLowerCase() === payment.baseDocumentRef)) continue;
+      if (manualOwners.length) {
+        if (manualOwners.length !== 1 || manualOwners[0].id !== plan.id || plan.status !== 'APPROVED' ||
+            !plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) || !samePaymentSupplier(plan, payment)) continue;
+      } else if (!payment.baseDocumentRef || !plan.orderRefs.some((ref) => ref.trim().toLowerCase() === payment.baseDocumentRef)) continue;
       const createdAt = plan.createdAt ? new Date(plan.createdAt).getTime() : Number.NaN;
       if (Number.isFinite(createdAt) && Number.isFinite(paymentAt) && createdAt > paymentAt) continue;
       const allocation = allocations.get(plan.id)!;
@@ -122,7 +130,9 @@ export function matchProcurementPaymentEvidence(
       remainingForeignAmount: targetForeign > 0 ? Math.max(0, targetForeign - allocation.foreign) : null,
       actualExchangeRate: allocation.rateForeign > 0 ? allocation.rateRubles / allocation.rateForeign : null,
       currencyPayments: allocation.payments,
+      manualPaymentCount: allocation.payments.filter((row) => plan.manualRubleLinks?.some((link) => link.ref === row.ref)).length,
     });
   }
+  applyRublePaymentEvidence(plans, currencyPayments, evidence);
   return evidence;
 }

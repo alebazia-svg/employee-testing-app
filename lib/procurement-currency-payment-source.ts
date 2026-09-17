@@ -12,6 +12,10 @@ export type SupplierCurrencyPaymentRow = {
   documentAmount: number;
   documentCurrency: string;
   baseDocumentRef: string;
+  cashbox?: string;
+  supplier?: string;
+  counterparty?: string;
+  contract?: string;
 };
 
 export type CurrencyConversionRow = {
@@ -59,11 +63,12 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     date_to: expenseRequestMoscowCalendarDate(input.to),
     limit: '1000',
   };
-  const [paymentPayload, conversionPayload] = await Promise.all([
+  const [paymentPayload, conversionPayload, rubPayload] = await Promise.all([
     fetchOneCJson('supplier-currency-payment-diagnostics', new URLSearchParams(common), input.timeoutMs ?? 15_000),
     fetchOneCJson('currency-exchange-diagnostics', new URLSearchParams({ ...common, counterparty_search: 'Обменник' }), input.timeoutMs ?? 15_000),
+    fetchOneCJson('currency-cash-costing-plan', new URLSearchParams({ ...common, currency: 'руб' }), input.timeoutMs ?? 15_000),
   ]);
-  if (!Array.isArray(paymentPayload.rows) || !Array.isArray(conversionPayload.cash_expense_orders)) {
+  if (!Array.isArray(paymentPayload.rows) || !Array.isArray(conversionPayload.cash_expense_orders) || !Array.isArray(rubPayload.events)) {
     throw new Error('CURRENCY_PAYMENT_SOURCE_SHAPE_MISMATCH');
   }
   const rawPayments = Array.isArray(paymentPayload.rows) ? paymentPayload.rows as RawRow[] : [];
@@ -71,7 +76,10 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     ? conversionPayload.cash_expense_orders as RawRow[] : [];
   const payments: SupplierCurrencyPaymentRow[] = rawPayments.flatMap((row) => {
     const ref = text(row.ref);
-    return ref ? [{
+    const valid = ref && typeof row.posted === 'boolean' && typeof row.deleted === 'boolean' &&
+      typeof row.document_amount === 'number' && Number.isFinite(row.document_amount) &&
+      text(row.document_currency) && text(row.date);
+    return valid ? [{
       ref,
       date: text(row.date),
       number: text(row.number),
@@ -80,6 +88,10 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       documentAmount: amount(row.document_amount),
       documentCurrency: text(row.document_currency).toUpperCase(),
       baseDocumentRef: text(row.base_document_ref).toLowerCase(),
+      cashbox: text(row.cashbox),
+      supplier: text(row.supplier_partner),
+      counterparty: text(row.supplier_counterparty),
+      contract: text(row.contract),
     }] : [];
   });
   const conversions: CurrencyConversionRow[] = rawConversions.map((row) => ({
@@ -91,10 +103,24 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     conversionRate: amount(row.conversion_rate),
     linkedCashbox: text(row.linked_cashbox),
   }));
+  // Existing GET filters to posted supplier RKOs. Ignore costing estimates:
+  // for RUB only the original document amount and exact basis are evidence.
+  const rawRub = (rubPayload.events as RawRow[]).filter((row) => row.event_type === 'supplier_payment');
+  const rubPayments: SupplierCurrencyPaymentRow[] = rawRub.flatMap((row) =>
+    text(row.ref) && text(row.date) && typeof row.currency_amount === 'number' && Number.isFinite(row.currency_amount)
+      ? [{ ref: text(row.ref), number: text(row.number), date: text(row.date),
+        posted: true, deleted: false, documentCurrency: 'РУБ', documentAmount: row.currency_amount,
+        baseDocumentRef: text(row.base_document_ref).toLowerCase(), cashbox: text(row.cashbox),
+        supplier: text(row.partner), counterparty: text(row.counterparty), contract: text(row.contract) }]
+      : []);
   return {
-    payments,
+    payments: [...payments, ...rubPayments],
     conversions,
     checkedAt: new Date().toISOString(),
-    complete: payments.length === rawPayments.length && rawPayments.length < 1000 && rawConversions.length < 1000,
+    rubPaymentsSupported: true,
+    complete: paymentPayload.complete !== false && paymentPayload.truncated !== true &&
+      (!Array.isArray(paymentPayload.source_errors) || paymentPayload.source_errors.length === 0) &&
+      payments.length === rawPayments.length && rawPayments.length < 1000 && rawConversions.length < 1000 &&
+      rubPayments.length === rawRub.length && rubPayload.events.length < 1000,
   };
 }

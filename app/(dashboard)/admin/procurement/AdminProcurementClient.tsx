@@ -1,4 +1,5 @@
 "use client";
+import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -1036,14 +1037,7 @@ export default function AdminProcurementClient({
             </div>
           )) : <p className="rounded-xl bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">Текущих согласованных оплат нет.</p>}
         </div>
-        {completedPlans.length ? (
-          <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <summary className="cursor-pointer font-black text-slate-800">История оплаченных · {completedPlans.length}{completedPlans.some(isCurrencyPaid) ? ` · ${completedPlans.find(isCurrencyPaid)?.supplierPartner}: ${Number(completedPlans.find(isCurrencyPaid)?.evidence.paidForeignAmount || 0).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : ""}</summary>
-            <div className="mt-3 divide-y divide-slate-200">
-            {completedPlans.map((plan) => <div key={plan.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-extrabold text-slate-950">{plan.supplierPartner}</p><p className="text-xs font-semibold text-slate-500">Заказы: {orderLabel(plan)}</p></div><div className="sm:text-right"><p className="font-black text-blue-800">{isCurrencyPaid(plan) ? `Оплачено по 1С · ${plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT${plan.evidence.actualExchangeRate ? ` · курс ${plan.evidence.actualExchangeRate.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ₽` : ""}${plan.evidence.paidAmount > 0 ? ` · ≈ ${rub.format(plan.evidence.paidAmount)} по курсу конвертации` : ""}` : `Оплачено по 1С · ${rub.format(plan.evidence.issuedAmount)}`}</p><p className="text-xs font-semibold text-slate-500">{plan.manager.name}</p></div></div>)}
-            </div>
-          </details>
-        ) : null}
+        <div className="mt-4"><ProcurementPaymentHistory plans={completedPlans} /></div>
       </section>
     </div>
   );

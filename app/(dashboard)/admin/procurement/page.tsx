@@ -6,6 +6,9 @@ import { fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { calculateOrderPlanning } from "@/lib/procurement-payment-control";
 import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
+import { paymentEvidenceFrom, paymentTimestamp, uniqueSupplierPayments } from "@/lib/procurement-ruble-payment-evidence";
+import { manualPaymentLinks, samePaymentSupplier } from "@/lib/procurement-manual-payment-links";
+import { ProcurementUnlinkedPayments } from "@/components/ProcurementUnlinkedPayments";
 import {
   fetchSupplierOrderFinance,
   normalizeManagerName,
@@ -54,12 +57,13 @@ export default async function AdminProcurementPage() {
   to.setDate(to.getDate() + 1);
   const from = new Date(to);
   from.setDate(from.getDate() - 31);
+  const plansQuery = prisma.supplierPaymentPlan.findMany({
+    include: { manager: { select: { name: true, oneCManagerName: true } } },
+    orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
+  });
   const [plansResult, managersResult, ordersResult, settlementsResult, requestsResult, balancesResult, rateResult, currencyPaymentsResult, forecastHistoryResult, ownerForecastResult, payrollResult, tbankResult, priorityDebtsResult] =
     await Promise.allSettled([
-      prisma.supplierPaymentPlan.findMany({
-        include: { manager: { select: { name: true, oneCManagerName: true } } },
-        orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
-      }),
+      plansQuery,
       prisma.user.findMany({
         where: { portalArea: "PROCUREMENT" },
         select: { name: true, oneCManagerName: true },
@@ -69,7 +73,7 @@ export default async function AdminProcurementPage() {
       fetchExpenseRequestSnapshot({ from, to }),
       getProcurementBalances(todayKey),
       getLatestProcurementUsdtRate(todayKey),
-      fetchSupplierCurrencyPaymentSnapshot({ from, to, timeoutMs: 6_000 }),
+      plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, from), to, timeoutMs: 15_000 })),
       loadProcurementForecastHistory(),
       loadOwnerCashForecastShadow(todayKey),
       fetchPayrollForecastEvidence(todayKey),
@@ -91,8 +95,9 @@ export default async function AdminProcurementPage() {
   else if (!requestSource.complete) warnings.push("неполная выгрузка РКО");
   const requests = requestSource?.rows || [];
   const currencySource = currencyPaymentsResult.status === "fulfilled" ? currencyPaymentsResult.value : null;
-  if (!currencySource) warnings.push("валютные оплаты поставщикам");
-  else if (!currencySource.complete) warnings.push("неполная выгрузка валютных оплат");
+  if (!currencySource) warnings.push("оплаты поставщикам");
+  else if (!currencySource.complete) warnings.push("неполная выгрузка оплат поставщикам");
+  else if (!currencySource.rubPaymentsSupported) warnings.push("для сверки рублёвых оплат требуется обновление API 1С");
   const paymentEvidence = matchProcurementPaymentEvidence(
     plans.map((plan) => ({
       id: plan.id,
@@ -107,9 +112,10 @@ export default async function AdminProcurementPage() {
       plannedDate: plan.plannedDate.toISOString(),
       createdAt: plan.createdAt.toISOString(),
       status: plan.status,
+      manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
     })),
     requests,
-    currencySource?.payments || [],
+    currencySource?.complete ? currencySource.payments : [],
     currencySource?.conversions || [],
   );
   const serialized = plans.map((plan) => ({
@@ -453,7 +459,23 @@ export default async function AdminProcurementPage() {
         title="Платёжный календарь"
         description="Когда подготовить деньги, какие оплаты согласовать и что уже подтверждено в 1С."
       />
-      <div className="mt-5">
+      <div className="mt-5 space-y-4">
+        <ProcurementUnlinkedPayments
+          payments={uniqueSupplierPayments(currencySource?.complete ? currencySource.payments : [])
+            .filter((payment) => ['РУБ', 'USDT'].includes(payment.documentCurrency) && payment.posted && !payment.deleted && payment.documentAmount > 0 &&
+              plans.some((plan) => plan.status === 'APPROVED' && samePaymentSupplier(plan, payment) && plan.createdAt.getTime() <= paymentTimestamp(payment.date) &&
+                !['ISSUED_BY_ONE_C', 'PAID_BY_ONE_C'].includes(paymentEvidence.get(plan.id)?.state || '')) &&
+              ![...paymentEvidence.values()].some((item) => [...item.cashOrders, ...item.currencyPayments].some((order) => order.ref === payment.ref)) &&
+              !plans.some((plan) => manualPaymentLinks(plan.oneCCashEvidence).some((link) => link.ref === payment.ref)))
+            .slice().reverse()}
+          plans={plans.map((plan) => ({ id: plan.id, supplierPartner: plan.supplierPartner,
+            supplierCounterparty: plan.supplierCounterparty, orderNumbers: Array.isArray(plan.orderNumbers) ? plan.orderNumbers.map(String) : [],
+            remaining: paymentEvidence.get(plan.id)?.remainingAmount || 0, remainingForeign: paymentEvidence.get(plan.id)?.remainingForeignAmount ?? null, status: plan.status, paymentMethod: plan.paymentMethod }))}
+          linked={plans.flatMap((plan) => manualPaymentLinks(plan.oneCCashEvidence).map((link) => ({
+            planId: plan.id, ref: link.ref,
+            label: `${plan.supplierPartner} · ${plan.planCode} · ${[...(paymentEvidence.get(plan.id)?.cashOrders || []), ...(paymentEvidence.get(plan.id)?.currencyPayments || [])].some((order) => order.ref === link.ref) ? 'зачёт подтверждён' : 'оплата изменилась или сейчас не подтверждена — проверьте'}`,
+          })))}
+        />
         <AdminProcurementClient
           initialPlans={plansWithOrderContext}
           sourceCheckedAt={ordersSource?.checkedAt || ""}

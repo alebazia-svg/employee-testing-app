@@ -11,6 +11,8 @@ import { expenseRequestMoscowCalendarDate, fetchExpenseRequestSnapshot } from "@
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
+import { paymentEvidenceFrom } from "@/lib/procurement-ruble-payment-evidence";
+import { manualPaymentLinks } from "@/lib/procurement-manual-payment-links";
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/procurement-supplier-settlements";
 
 export const dynamic = "force-dynamic";
@@ -23,20 +25,23 @@ export default async function ProcurementPage() {
   requestTo.setDate(requestTo.getDate() + 1);
   const requestFrom = new Date(requestTo);
   requestFrom.setDate(requestFrom.getDate() - 31);
+  // Match globally so an RKO cannot independently close requests in two cabinets.
+  // Only the authenticated manager's plans are serialized below.
+  const plansQuery = prisma.supplierPaymentPlan.findMany({
+    include: { events: { orderBy: { createdAt: "desc" }, take: 1 }, manager: { select: { name: true, oneCManagerName: true } } },
+    orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
+  });
   const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult, currencyPaymentsResult] = await Promise.allSettled([
-    prisma.supplierPaymentPlan.findMany({
-      where: { managerUserId: user.id },
-      include: { events: { orderBy: { createdAt: "desc" }, take: 1 } },
-      orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
-    }),
+    plansQuery,
     fetchSupplierOrderFinance(),
     fetchSupplierSettlements(),
     getProcurementBalances(todayKey),
     getLatestProcurementUsdtRate(todayKey),
     fetchExpenseRequestSnapshot({ from: requestFrom, to: requestTo }),
-    fetchSupplierCurrencyPaymentSnapshot({ from: requestFrom, to: requestTo, timeoutMs: 6_000 }),
+    plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, timeoutMs: 15_000 })),
   ]);
-  const plans = plansResult.status === "fulfilled" ? plansResult.value : [];
+  const allPlans = plansResult.status === "fulfilled" ? plansResult.value : [];
+  const plans = allPlans.filter((plan) => plan.managerUserId === user.id);
   const source =
     ordersResult.status === "fulfilled" ? ordersResult.value : null;
   const managerName = user.oneCManagerName?.trim() || user.name;
@@ -71,7 +76,7 @@ export default async function ProcurementPage() {
   const requests = requestsResult.status === "fulfilled" ? requestsResult.value.rows : [];
   const currencySource = currencyPaymentsResult.status === "fulfilled" ? currencyPaymentsResult.value : null;
   const paymentEvidence = matchProcurementPaymentEvidence(
-    plans.map((plan) => ({
+    allPlans.map((plan) => ({
       id: plan.id,
       planCode: plan.planCode,
       supplierPartner: plan.supplierPartner,
@@ -80,13 +85,14 @@ export default async function ProcurementPage() {
       plannedAmount: Number(plan.plannedAmount),
       paymentMethod: plan.paymentMethod,
       foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
-      managerName: managerName,
+      managerName: plan.manager.oneCManagerName?.trim() || plan.manager.name,
       plannedDate: plan.plannedDate.toISOString(),
       createdAt: plan.createdAt.toISOString(),
       status: plan.status,
+      manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
     })),
     requests,
-    currencySource?.payments || [],
+    currencySource?.complete ? currencySource.payments : [],
     currencySource?.conversions || [],
   );
   const serializedPlans = plans.map((plan) => {
@@ -106,7 +112,7 @@ export default async function ProcurementPage() {
       initialPlans={serializedPlans}
       checkedAt={source?.checkedAt || ""}
       sourceError={sourceError}
-      evidenceSourceError={!currencySource || !currencySource.complete}
+      evidenceSourceError={!currencySource || !currencySource.complete || !currencySource.rubPaymentsSupported}
       managerMappingError={managerMappingError}
       supplierBalances={settlementSummary?.bySupplier || {}}
       supplierDebtTotal={settlementSummary?.debtTotal ?? null}
