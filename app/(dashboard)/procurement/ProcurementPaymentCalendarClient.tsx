@@ -965,7 +965,7 @@ export default function ProcurementPaymentCalendarClient({
                 На согласовании: {plans.filter((plan) => plan.status === "SUBMITTED").length}
               </span>
               <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
-                Согласовано: {plans.filter((plan) => plan.status === "APPROVED" && !isCurrencyPaid(plan)).length}
+                Согласовано: {plans.filter((plan) => plan.status === "APPROVED" && plan.evidence?.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan)).length}
               </span>
             </div>
 

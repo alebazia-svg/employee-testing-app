@@ -1037,7 +1037,7 @@ export default function AdminProcurementClient({
             </div>
           )) : <p className="rounded-xl bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">Текущих согласованных оплат нет.</p>}
         </div>
-        <div className="mt-4"><ProcurementPaymentHistory plans={completedPlans} /></div>
+        <div className="mt-4"><ProcurementPaymentHistory plans={completedPlans} showManager /></div>
       </section>
     </div>
   );
