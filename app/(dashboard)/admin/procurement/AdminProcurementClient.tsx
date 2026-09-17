@@ -233,10 +233,10 @@ export default function AdminProcurementClient({
       .filter((plan) => plan.paymentMethod === "USDT" && !Number(plan.exchangeRate || 0) && referenceUsdtRate > 0)
       .map((plan) => plan.id),
   );
-  const rateDate = usdtRateReference?.conversionAt || usdtRateReference?.checkedAt || "";
+  const rateDate = usdtRateReference?.conversionAt || "";
   const parsedRateDate = rateDate ? new Date(rateDate) : null;
   const rateDateLabel = parsedRateDate && !Number.isNaN(parsedRateDate.getTime())
-    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" }).format(parsedRateDate)
+    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "Europe/Moscow" }).format(parsedRateDate)
     : "";
   const groupedPlans = useMemo(() => {
     const ordered = [...calendarPlans].sort(

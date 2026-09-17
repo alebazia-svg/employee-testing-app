@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { latestUsdtRateFromPayload } from '../lib/procurement-usdt-rate';
+
+test('rate date keeps the Moscow calendar day in cards and form, not the UTC day or fetch date', () => {
+  const rate = latestUsdtRateFromPayload({events:[{event_type:'buy',date:'12.09.2026 00:00:00',currency_amount:1000,rub_value:89000}]});
+  assert.equal(rate.conversionAt, '2026-09-11T21:00:00.000Z');
+  assert.equal(new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'}).format(new Date(rate.conversionAt)), '12 сентября');
+  for (const file of ['app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx','app/(dashboard)/admin/procurement/AdminProcurementClient.tsx']) {
+    const source=readFileSync(file,'utf8');
+    assert.match(source,/month: "long", timeZone: "Europe\/Moscow"/);
+    assert.doesNotMatch(source,/conversionAt \|\| usdtRateReference\?\.checkedAt/);
+  }
+});
 
 test('latest posted conversion rate is selected from the 1C costing payload', () => {
   const result = latestUsdtRateFromPayload({ events: [

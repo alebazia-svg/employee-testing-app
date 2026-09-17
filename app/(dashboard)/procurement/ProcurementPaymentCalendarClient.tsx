@@ -227,10 +227,10 @@ export default function ProcurementPaymentCalendarClient({
   const estimatedRoubles = referenceUsdtRate > 0 && enteredUsdt > 0
     ? enteredUsdt * referenceUsdtRate
     : 0;
-  const rateDate = usdtRateReference?.conversionAt || usdtRateReference?.checkedAt || "";
+  const rateDate = usdtRateReference?.conversionAt || "";
   const parsedRateDate = rateDate ? new Date(rateDate) : null;
   const rateDateLabel = parsedRateDate && !Number.isNaN(parsedRateDate.getTime())
-    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" }).format(parsedRateDate)
+    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "Europe/Moscow" }).format(parsedRateDate)
     : "";
   const suppliers = useMemo(
     () =>
