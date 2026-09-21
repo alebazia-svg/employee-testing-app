@@ -1,5 +1,6 @@
 "use client";
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
+import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { ProcurementUsdtEstimate } from "@/components/ProcurementUsdtEstimate";
 import type { PaymentRevision } from "@/lib/procurement-plan-revision";
 import { ProcurementChangeHistory, type PlanChangeEvent } from "@/components/ProcurementChangeHistory";
@@ -66,6 +67,7 @@ type Plan = {
     actualSupplier?: string;
     paidAmount: number;
     paidForeignAmount: number;
+    paymentAmountNeedsConfirmation?: boolean;
     remainingAmount: number;
     remainingForeignAmount: number | null;
     actualExchangeRate: number | null;
@@ -192,6 +194,8 @@ export default function ProcurementPaymentCalendarClient({
   accountableBalance,
   usdtRateReference,
   todayKey,
+  basisPreview = false,
+  otherUsdtReserve = null,
 }: {
   initialOrders: Order[];
   initialPlans: Plan[];
@@ -206,6 +210,8 @@ export default function ProcurementPaymentCalendarClient({
   accountableBalance: UsdtBalance;
   usdtRateReference?: UsdtRateReference;
   todayKey: string;
+  basisPreview?: boolean;
+  otherUsdtReserve?: number | null;
 }) {
   const [plans, setPlans] = useState(initialPlans);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -281,17 +287,12 @@ export default function ProcurementPaymentCalendarClient({
   const plannedQr = unpaidActivePlans
     .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR")
     .reduce((sum, plan) => sum + plan.remainingRub, 0);
-  const plannedUsdt = unpaidActivePlans
-    .filter((plan) => plan.paymentMethod === "USDT")
-    .reduce((sum, plan) => {
-      const originalRub = Number(plan.plannedAmount || 0);
-      const knownUsdt = Number(plan.foreignAmount || 0);
-      if (knownUsdt > 0 && plan.evidence?.remainingForeignAmount != null) return sum + plan.evidence.remainingForeignAmount;
-      if (knownUsdt > 0 && originalRub > 0) return sum + knownUsdt * Math.min(1, plan.remainingRub / originalRub);
-      return sum + (referenceUsdtRate > 0 ? plan.remainingRub / referenceUsdtRate : 0);
-    }, 0);
+  const ownUsdtReserve = usdtReservedByPlans(activePlans, referenceUsdtRate);
+  const plannedUsdt = evidenceSourceError || ownUsdtReserve == null || otherUsdtReserve == null
+    ? null : ownUsdtReserve + otherUsdtReserve;
   const freeQr = accountableBalance.balance == null ? null : accountableBalance.balance - plannedQr;
-  const freeUsdt = usdtBalance.balance == null ? null : usdtBalance.balance - plannedUsdt;
+  const freeUsdt = usdtBalance.error || usdtBalance.balance == null || plannedUsdt == null
+    ? null : usdtBalance.balance - plannedUsdt;
   const groupedPlans = useMemo(() => {
     const groups = new Map<string, Plan[]>();
     [...workingPlans]
@@ -513,7 +514,7 @@ export default function ProcurementPaymentCalendarClient({
           <div>
             <h2 className="text-lg font-black">Календарь оплат</h2>
             <p className="mt-1 text-sm text-slate-500">
-              По датам, когда нужно подготовить деньги.
+              Согласовано — деньги одобрены, но оплата ещё не подтверждена.
             </p>
           </div>
           {!mappingBlocked && !sourceError ? (
@@ -587,6 +588,7 @@ export default function ProcurementPaymentCalendarClient({
                         {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
                         {plan.revision ? <p className="max-w-[240px] text-xs font-bold text-amber-800">Изменения на согласовании. Пока действуют прежние условия.</p> : null}
                         <ProcurementChangeHistory events={plan.events} />
+                        {plan.evidence?.paymentAmountNeedsConfirmation ? <p className="text-xs font-bold text-amber-800">Оплата найдена: {plan.evidence.paidForeignAmount.toLocaleString('ru-RU')} USDT. Руководитель проверит выполнение заявки.</p> : null}
                         {plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}
                       </div>
                       {!plan.revision && ["SUBMITTED", "NEEDS_CHANGES", "APPROVED"].includes(plan.status) ? (
@@ -630,7 +632,7 @@ export default function ProcurementPaymentCalendarClient({
       <ProcurementPaymentHistory plans={paidPlans} hidden={formOpen} />
 
       {!mappingBlocked && !sourceError ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" inert={formOpen || undefined} aria-hidden={formOpen || undefined}>
           <div className="flex flex-col gap-1 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <div>
               <h2 className="text-lg font-black text-slate-900">Что стоит проверить</h2>
@@ -711,7 +713,7 @@ export default function ProcurementPaymentCalendarClient({
                 {editingId ? "Изменить оплату" : "Новый список оплат"}
               </span>
               <span className="block text-sm font-medium text-slate-500">
-                Только самое необходимое
+                {editingId ? 'Измените данные оплаты' : 'Выберите поставщиков, укажите суммы и дату подготовки денег.'}
               </span>
             </span>
           </div>
@@ -719,6 +721,7 @@ export default function ProcurementPaymentCalendarClient({
             type="button"
             aria-label="Закрыть форму"
             onClick={() => {
+              if (!window.confirm('Закрыть форму? Несохранённые данные будут потеряны.')) return;
               setFormOpen(false);
               setEditingId("");
               setBatchSeedRefs([]);
@@ -933,6 +936,7 @@ export default function ProcurementPaymentCalendarClient({
           </form>
         ) : (
           <ProcurementPaymentBatchForm
+            basisPreview={basisPreview}
             key={batchSeedRefs.join("|")}
             orders={missingOrders}
             supplierBalances={supplierBalances}
@@ -940,6 +944,7 @@ export default function ProcurementPaymentCalendarClient({
             initialSelectedRefs={batchSeedRefs}
             usdtRateReference={usdtRateReference}
             onCancel={() => {
+              if (!window.confirm('Отменить заполнение? Несохранённые данные будут потеряны.')) return;
               setFormOpen(false);
               setBatchSeedRefs([]);
             }}
@@ -972,11 +977,12 @@ export default function ProcurementPaymentCalendarClient({
                 hint={mappingBlocked || sourceError ? undefined : `${orderCountLabel(initialOrders.length)} с остатком в 1С`}
               />
               <SummaryMetric
-                label="Долг за полученный товар"
+                label="Долг поставщикам"
                 value={mappingBlocked || supplierDebtError || supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}
                 hint="Взаиморасчёты 1С"
               />
             </div>
+            <p className="mt-2 text-xs text-slate-500">Долг и остатки по заказам могут пересекаться — складывать их не нужно.</p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
               <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800 ring-1 ring-amber-200">
                 На согласовании: {plans.filter((plan) => plan.status === "SUBMITTED").length}
@@ -1003,7 +1009,7 @@ export default function ProcurementPaymentCalendarClient({
                   title="USDT"
                   availableLabel="Доступно"
                   available={usdtBalance.balance == null ? "—" : usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
-                  planned={plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
+                  planned={plannedUsdt == null ? "—" : plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
                   freeLabel={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Свободно"}
                   free={freeUsdt == null ? "—" : Math.abs(freeUsdt).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
                   critical={freeUsdt != null && freeUsdt < 0}

@@ -29,6 +29,8 @@ export type ProcurementPaymentEvidence = Omit<ReturnType<typeof matchCashEvidenc
   actualExchangeRate: number | null;
   currencyPayments: { ref: string; number: string; date: string; foreignAmount: number }[];
   manualPaymentCount?: number;
+  paymentAmountNeedsConfirmation?: boolean;
+  completionByRubleEstimate?: boolean;
 };
 
 function oneCDateTimestamp(value: string) {
@@ -38,7 +40,7 @@ function oneCDateTimestamp(value: string) {
     : Number.NaN;
 }
 
-function conversionRateBefore(payment: SupplierCurrencyPaymentRow, conversions: CurrencyConversionRow[]) {
+function conversionRateBefore(payment: SupplierCurrencyPaymentRow, conversions: CurrencyConversionRow[], referenceOnly = false) {
   const paymentAt = oneCDateTimestamp(payment.date);
   if (!Number.isFinite(paymentAt)) return null;
   const conversion = conversions
@@ -46,7 +48,7 @@ function conversionRateBefore(payment: SupplierCurrencyPaymentRow, conversions: 
       const at = oneCDateTimestamp(row.date);
       return row.posted && !row.deleted && row.currency.includes('РУБ') &&
         row.conversionCurrency === 'USDT' && row.linkedCashbox.toLocaleLowerCase('ru-RU').includes('usdt') &&
-        Number.isFinite(at) && at <= paymentAt && paymentAt - at <= 24 * 60 * 60 * 1000 && row.conversionRate > 0;
+        Number.isFinite(at) && at <= paymentAt && (referenceOnly || paymentAt - at <= 24 * 60 * 60 * 1000) && row.conversionRate > 0;
     })
     .sort((a, b) => oneCDateTimestamp(b.date) - oneCDateTimestamp(a.date))[0];
   return conversion?.conversionRate || null;
@@ -61,7 +63,7 @@ export function matchProcurementPaymentEvidence(
   conversions: CurrencyConversionRow[],
 ) {
   const evidence = new Map<string, ProcurementPaymentEvidence>();
-  const allocations = new Map<string, { rubles: number; foreign: number; rateRubles: number; rateForeign: number; payments: ProcurementPaymentEvidence['currencyPayments'] }>();
+  const allocations = new Map<string, { rubles: number; foreign: number; referenceRubles: number; rateRubles: number; rateForeign: number; unknownEquivalent: boolean; payments: ProcurementPaymentEvidence['currencyPayments'] }>();
   for (const plan of plans) {
     evidence.set(plan.id, {
       ...matchCashEvidence(plan, requests),
@@ -72,7 +74,7 @@ export function matchProcurementPaymentEvidence(
       actualExchangeRate: null,
       currencyPayments: [],
     });
-    allocations.set(plan.id, { rubles: 0, foreign: 0, rateRubles: 0, rateForeign: 0, payments: [] });
+    allocations.set(plan.id, { rubles: 0, foreign: 0, referenceRubles: 0, rateRubles: 0, rateForeign: 0, unknownEquivalent: false, payments: [] });
   }
   const eligiblePlans = plans
     .filter((plan) => plan.status !== 'CANCELLED' && plan.paymentMethod === 'USDT')
@@ -96,6 +98,23 @@ export function matchProcurementPaymentEvidence(
       if (Number.isFinite(createdAt) && Number.isFinite(paymentAt) && createdAt > paymentAt) continue;
       const allocation = allocations.get(plan.id)!;
       const targetForeign = Number(plan.foreignAmount || 0);
+      // A posted payment is evidence even without a recent exchange. Do not
+      // invent a ruble equivalent or assign one payment to ambiguous requests.
+      if (!targetForeign && !rate) {
+        const uniqueOwner = manualOwners.length === 1 || eligiblePlans.filter(candidate =>
+          candidate.orderRefs.some(ref => ref.trim().toLowerCase() === payment.baseDocumentRef.toLowerCase()),
+        ).length === 1;
+        if (plan.status !== 'APPROVED' || !uniqueOwner) continue;
+        allocation.foreign += availableForeign;
+        // The owner plans a RUB budget, not an exact exchange transaction.
+        // A historical reference can prove coverage of that budget, but must
+        // never be exposed as an actual RUB payment or actual exchange rate.
+        allocation.referenceRubles += availableForeign * (conversionRateBefore(payment, conversions, true) || 0);
+        allocation.unknownEquivalent = true;
+        allocation.payments.push({ref: payment.ref, number: payment.number, date: payment.date, foreignAmount: availableForeign});
+        availableForeign = 0;
+        continue;
+      }
       const takeForeign = targetForeign > 0
         ? Math.min(availableForeign, Math.max(0, targetForeign - allocation.foreign))
         : rate
@@ -118,15 +137,19 @@ export function matchProcurementPaymentEvidence(
     const current = evidence.get(plan.id)!;
     const allocation = allocations.get(plan.id)!;
     const targetForeign = Number(plan.foreignAmount || 0);
+    const estimateCovered = allocation.unknownEquivalent && targetForeign <= 0 &&
+      allocation.rubles + allocation.referenceRubles + tolerance(plan.plannedAmount) >= plan.plannedAmount;
     const complete = targetForeign > 0
       ? allocation.foreign + tolerance(targetForeign) >= targetForeign
-      : allocation.rubles + tolerance(plan.plannedAmount) >= plan.plannedAmount;
+      : estimateCovered || allocation.rubles + tolerance(plan.plannedAmount) >= plan.plannedAmount;
     evidence.set(plan.id, {
       ...current,
-      state: allocation.foreign > 0 ? complete ? 'PAID_BY_ONE_C' : 'PARTIALLY_PAID_BY_ONE_C' : current.state,
+      state: allocation.unknownEquivalent && !estimateCovered ? 'NEEDS_REVIEW' : allocation.foreign > 0 ? complete ? 'PAID_BY_ONE_C' : 'PARTIALLY_PAID_BY_ONE_C' : current.state,
+      paymentAmountNeedsConfirmation: allocation.unknownEquivalent && !estimateCovered,
+      completionByRubleEstimate: estimateCovered,
       paidAmount: allocation.rubles,
       paidForeignAmount: allocation.foreign,
-      remainingAmount: Math.max(0, plan.plannedAmount - allocation.rubles),
+      remainingAmount: estimateCovered ? 0 : Math.max(0, plan.plannedAmount - allocation.rubles),
       remainingForeignAmount: targetForeign > 0 ? Math.max(0, targetForeign - allocation.foreign) : null,
       actualExchangeRate: allocation.rateForeign > 0 ? allocation.rateRubles / allocation.rateForeign : null,
       currencyPayments: allocation.payments,

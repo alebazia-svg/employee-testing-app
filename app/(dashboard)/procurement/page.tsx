@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { prisma } from "@/lib/prisma";
 import {
   fetchSupplierOrderFinance,
@@ -108,10 +109,20 @@ export default async function ProcurementPage() {
       evidence: paymentEvidence.get(plan.id)!,
     };
   });
+  // Expose only the aggregate reserve of other managers, never their requests.
+  const otherUsdtReserve = plansResult.status !== 'fulfilled' ? null : usdtReservedByPlans(
+    allPlans.filter(plan => plan.managerUserId !== user.id).map(plan => ({
+      status: plan.status, paymentMethod: plan.paymentMethod,
+      plannedAmount: Number(plan.plannedAmount),
+      foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
+      evidence: paymentEvidence.get(plan.id),
+    })), rateResult.status === 'fulfilled' ? rateResult.value.rate : null,
+  );
   return (
     <ProcurementPaymentCalendarClient
       initialOrders={orders}
       initialPlans={serializedPlans}
+      otherUsdtReserve={otherUsdtReserve}
       checkedAt={source?.checkedAt || ""}
       sourceError={sourceError}
       evidenceSourceError={!currencySource || !currencySource.complete || !currencySource.rubPaymentsSupported}

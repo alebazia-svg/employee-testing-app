@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Check, Plus, Search, X } from "lucide-react";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
+import { summarizeDraftUsdt } from '@/lib/procurement-draft-summary';
 
 type Order = {
   ref: string;
@@ -60,13 +61,14 @@ function OrderComment({ value, compact = false }: { value: string; compact?: boo
 }
 
 export function ProcurementPaymentBatchForm({
-  orders,
+  orders: sourceOrders,
   supplierBalances,
   supplierOrderGapTotals,
   initialSelectedRefs,
   onCreated,
   onCancel,
   usdtRateReference,
+  basisPreview = false,
 }: {
   orders: Order[];
   supplierBalances: Record<string, SupplierBalance>;
@@ -75,7 +77,14 @@ export function ProcurementPaymentBatchForm({
   onCreated: (plans: CreatedPlan[]) => void;
   onCancel: () => void;
   usdtRateReference?: { rate: number | null; checkedAt: string; sourceLabel: string; conversionAt?: string };
+  basisPreview?: boolean;
 }) {
+  // Debt entries remain confined to the non-submitting layout review until
+  // the server supports supplier-scoped authorization and duplicate checks.
+  const orders = useMemo(() => basisPreview ? [...sourceOrders, ...Object.entries(supplierBalances)
+    .filter(([, balance]) => balance.debt > 0)
+    .map(([supplierPartner, balance]) => ({ref: `debt:${supplierPartner}`, number: '', supplierPartner, supplierCounterparty: '', orderPaymentGap: 0, supplierDebt: balance.debt, plannedActiveAmount: 0, unplannedAmount: balance.debt, orderComment: ''}))] : sourceOrders, [sourceOrders, supplierBalances, basisPreview]);
+  const [pickerBasis, setPickerBasis] = useState<'ORDER' | 'DEBT'>('ORDER');
   const supplierBalanceText = (supplier: string) => {
     const balance = supplierBalances[supplier];
     if (!balance) return "Взаиморасчёты: нет данных из 1С";
@@ -84,13 +93,15 @@ export function ProcurementPaymentBatchForm({
     return "Задолженности перед поставщиком нет";
   };
   const [plannedDate, setPlannedDate] = useState("");
+  const [commentFields, setCommentFields] = useState<Record<string, boolean>>({});
+  const [bases, setBases] = useState<Record<string, 'ORDER' | 'DEBT'>>({});
   const [rows, setRows] = useState<Record<string, RowDraft>>(() =>
     Object.fromEntries(
       orders.map((order) => [
         order.ref,
         {
           selected: initialSelectedRefs.includes(order.ref),
-          plannedAmount: String(Math.max(0, order.unplannedAmount) || ""),
+          plannedAmount: order.ref.startsWith('debt:') ? '' : String(Math.max(0, order.unplannedAmount) || ""),
           paymentMethod: "CASH",
           foreignAmount: "",
           condition: "",
@@ -102,10 +113,19 @@ export function ProcurementPaymentBatchForm({
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const selected = orders.filter((order) => rows[order.ref]?.selected);
+  const selectedOrders = orders.filter((order) => rows[order.ref]?.selected);
+  const selected = Array.from(new Set(selectedOrders.map(order => order.supplierPartner)))
+    .flatMap(supplier => selectedOrders.filter(order => order.supplierPartner === supplier));
+  useEffect(() => {
+    if (!selected.length && !plannedDate) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [selected.length, plannedDate]);
   const candidates = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ru-RU");
     return orders
+      .filter(order => !basisPreview || order.ref.startsWith('debt:') === (pickerBasis === 'DEBT'))
       .filter(
         (order) =>
           !needle ||
@@ -113,7 +133,7 @@ export function ProcurementPaymentBatchForm({
               .toLocaleLowerCase("ru-RU")
               .includes(needle),
       );
-  }, [orders, query, rows]);
+  }, [orders, query, rows, pickerBasis, basisPreview]);
   const totals = useMemo(
     () => ({
       cash: selected
@@ -149,14 +169,21 @@ export function ProcurementPaymentBatchForm({
     setMessage("");
   }
 
+  const usdtSummary = summarizeDraftUsdt(selected.map(order => rows[order.ref]), usdtRateReference?.rate ?? null);
+
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (basisPreview) {
+      setMessage('Проверка интерфейса: отправка отключена.');
+      return;
+    }
     if (!plannedDate || !selected.length) {
       setMessage("Укажите дату и выберите хотя бы один заказ.");
       return;
     }
     setSaving(true);
     setMessage("");
+    try {
     const response = await fetch("/api/procurement/payment-plans/batch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -178,6 +205,11 @@ export function ProcurementPaymentBatchForm({
       return;
     }
     onCreated(data.plans || []);
+    } catch {
+      setMessage('Не удалось подтвердить отправку. Введённые данные сохранены в форме. Проверьте календарь перед повторной отправкой, чтобы не создать дубликат.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -191,24 +223,26 @@ export function ProcurementPaymentBatchForm({
           required
           className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3"
         />
+        <span className="mt-1 block text-xs font-normal text-slate-500">Одна дата для всех оплат в этом списке.</span>
       </label>
 
       <div>
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h3 className="font-black text-slate-950">Добавьте заказы</h3>
-            <p className="text-sm text-slate-500">Найдите поставщика или номер заказа.</p>
+            <h3 className="font-black text-slate-950">{basisPreview ? 'Кому запланировать оплату' : 'Добавьте заказы'}</h3>
+            <p className="text-sm text-slate-500">{pickerBasis === 'DEBT' ? 'Если платите поставщику без конкретного заказа.' : 'Можно выбрать несколько заказов и поставщиков.'}</p>
           </div>
           <p className="text-sm font-extrabold text-slate-600">Выбрано: {selected.length}</p>
         </div>
-        <div className="relative mt-3 max-w-2xl">
+        {basisPreview ? <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Что добавить"><button type="button" aria-pressed={pickerBasis === 'ORDER'} onClick={() => {setPickerBasis('ORDER'); setPickerOpen(true);}} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${pickerBasis === 'ORDER' ? 'border-slate-700 bg-slate-100' : 'border-slate-200'}`}>По заказу</button><button type="button" aria-pressed={pickerBasis === 'DEBT'} onClick={() => {setPickerBasis('DEBT'); setPickerOpen(true);}} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${pickerBasis === 'DEBT' ? 'border-slate-700 bg-slate-100' : 'border-slate-200'}`}>В счёт долга поставщику</button></div> : null}
+        <div className="relative mt-3 max-w-2xl" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPickerOpen(false); }}>
           <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onFocus={() => setPickerOpen(true)}
-            onBlur={() => window.setTimeout(() => setPickerOpen(false), 100)}
-            placeholder="Поставщик или номер заказа"
+            placeholder={pickerBasis === 'DEBT' ? 'Название поставщика' : 'Поставщик или номер заказа'}
+            aria-label="Поставщик или номер заказа"
             className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-11 font-semibold"
           />
           {query ? (
@@ -266,7 +300,7 @@ export function ProcurementPaymentBatchForm({
                   aria-pressed={rows[order.ref]?.selected}
                   className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 text-left last:border-b-0 hover:bg-slate-50 ${rows[order.ref]?.selected ? "procurement-order-selected" : ""}`}
                 >
-                  <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">Заказ № {order.number || "без номера"}</span><OrderComment value={order.orderComment} compact /><span className="block text-[11px] font-semibold text-slate-400">{supplierBalanceText(order.supplierPartner)}</span></span>
+                  <span><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">{order.ref.startsWith('debt:') ? 'В счёт долга · заказ не нужен' : `Заказ № ${order.number || 'без номера'}`}</span><OrderComment value={order.orderComment} compact /><span className="block text-[11px] font-semibold text-slate-400">{supplierBalanceText(order.supplierPartner)}</span></span>
                   <span className="flex shrink-0 items-center gap-2">
                     <span className="text-sm font-extrabold text-slate-700">{rub.format(order.unplannedAmount)}</span>
                     <span className={`flex h-8 w-8 items-center justify-center rounded-full ${rows[order.ref]?.selected ? "procurement-order-check" : "bg-slate-100 text-slate-700"}`} aria-hidden="true">
@@ -280,26 +314,29 @@ export function ProcurementPaymentBatchForm({
             </div>
           ) : null}
         </div>
-        <div className="mt-3 space-y-2">
-          {selected.length ? selected.map((order) => {
+        <div className="mt-3">
+          {selected.length ? selected.map((order, index) => {
             const row = rows[order.ref];
+            const debtBasis = basisPreview && (order.ref.startsWith('debt:') || bases[order.ref] === 'DEBT');
+            const orderComment = procurementOrderCommentText(order.orderComment);
+            const groupStart = index === 0 || selected[index - 1].supplierPartner !== order.supplierPartner;
+            const groupEnd = index === selected.length - 1 || selected[index + 1].supplierPartner !== order.supplierPartner;
             return (
+              <Fragment key={order.ref}>
+              {groupStart ? <div className="mt-4 flex flex-wrap items-baseline justify-between gap-1 rounded-t-2xl border border-b-0 border-slate-200 bg-slate-50 px-4 pb-2 pt-3"><span className="font-black text-slate-950">{order.supplierPartner}</span><span className="text-xs text-slate-500">{supplierBalanceText(order.supplierPartner)}</span></div> : null}
               <div
-                key={order.ref}
-                className="relative grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(220px,1.2fr)_minmax(140px,0.7fr)_minmax(180px,0.85fr)_32px] md:items-end"
+                id={`payment-row-${encodeURIComponent(order.ref)}`}
+                className={`relative grid items-start gap-x-4 gap-y-2 border border-slate-200 bg-slate-50 px-4 py-3 sm:grid-cols-3 ${groupEnd ? 'rounded-b-2xl' : 'border-b-0'}`}
               >
-                <div className="min-w-0 pr-9 md:row-span-2 md:pr-0">
-                  <span className="block font-black text-slate-950">{order.supplierPartner}</span>
-                  <span className="block text-sm font-semibold text-slate-600">Заказ № {order.number || "без номера"}</span>
-                  <OrderComment value={order.orderComment} />
-                  <span className="block text-xs font-semibold text-slate-500">{supplierBalanceText(order.supplierPartner)}</span>
-                  <span className="block text-xs font-semibold text-slate-500">По всем заказам поставщика осталось оплатить: {rub.format(supplierOrderGapTotals[order.supplierPartner] || 0)}</span>
-                  <span className="block text-xs font-semibold text-slate-500">Остаток по заказу в 1С: {rub.format(order.orderPaymentGap)}</span>
-                  {order.plannedActiveAmount > 0 ? <span className="block text-xs font-semibold text-amber-700">Уже в заявках: {rub.format(order.plannedActiveAmount)}</span> : null}
-                  <span className="block text-xs font-black text-green-700">Можно запланировать: {rub.format(order.unplannedAmount)}</span>
+                <div className="min-w-0 sm:col-span-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pr-9">
+                  <div>{!debtBasis ? <><span className="block text-sm font-semibold text-slate-700">Заказ № {order.number || 'без номера'}</span><span className="text-xs text-slate-500">Осталось: {rub.format(order.orderPaymentGap)}</span></> : <span className="text-sm font-semibold text-slate-700">Оплата долга без привязки к заказу</span>}</div>
+                  {basisPreview ? <span className="text-xs font-semibold text-slate-500">{debtBasis ? 'В счёт долга' : 'По заказу'}</span> : null}
+                  </div>
+                  {!debtBasis && order.plannedActiveAmount > 0 ? <span className="block text-xs font-semibold text-amber-700">Уже в заявках: {rub.format(order.plannedActiveAmount)}</span> : null}
                 </div>
-                <label className="text-xs font-bold text-slate-600">
-                      Способ
+                <label className="block text-xs font-bold text-slate-600">
+                      Способ оплаты
                       <select
                         value={row.paymentMethod}
                         onChange={(event) => change(order.ref, { paymentMethod: event.target.value })}
@@ -310,15 +347,10 @@ export function ProcurementPaymentBatchForm({
                         <option value="USDT">Оплата в USDT</option>
                         <option value="BANK">Перевод поставщику</option>
                       </select>
-                      {row.paymentMethod === "USDT" ? (
-                        <span className="mt-1.5 block text-[11px] font-semibold leading-snug text-violet-700">
-                          Достаточно указать рубли или USDT.
-                        </span>
-                      ) : null}
                 </label>
-                <div className="space-y-2">
+                <div className={row.paymentMethod === "USDT" ? "grid items-start gap-x-4 gap-y-2 sm:col-span-2 sm:grid-cols-2" : "sm:col-span-2"}>
                   <label className="block text-xs font-bold text-slate-600">
-                      {row.paymentMethod === "USDT" ? "Сумма в рублях (если известна)" : "Сколько рублей подготовить"}
+                      {row.paymentMethod === 'USDT' ? 'Ориентир в рублях' : 'Сумма этой оплаты, ₽'}
                       <input
                         value={row.plannedAmount}
                         onChange={(event) => change(order.ref, { plannedAmount: event.target.value })}
@@ -326,38 +358,45 @@ export function ProcurementPaymentBatchForm({
                         min="0.01"
                         step="0.01"
                         required={row.paymentMethod !== "USDT"}
-                        placeholder={row.paymentMethod === "USDT" ? "Можно оставить пустым" : undefined}
+                        placeholder={row.paymentMethod === "USDT" ? "Если известна" : undefined}
                         className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold"
                       />
                   </label>
-                  {Number(row.plannedAmount || 0) > order.unplannedAmount + 0.009 ? (
-                    <p className="text-[11px] font-bold text-red-700">Сумма больше незапланированного остатка на {rub.format(Number(row.plannedAmount) - order.unplannedAmount)}. Проверьте сумму перед отправкой.</p>
-                  ) : null}
                   {row.paymentMethod === "USDT" ? (
-                    <div>
-                      <label className="block text-xs font-bold text-violet-800">
-                        Сколько USDT отправить <span className="font-medium text-violet-500">(если известно)</span>
+                    <>
+                      <label className="block text-xs font-bold text-slate-600">
+                        Отправить USDT
                         <input
                           value={row.foreignAmount}
                           onChange={(event) => change(order.ref, { foreignAmount: event.target.value })}
                           type="number"
                           min="0.0001"
                           step="0.0001"
-                          placeholder="Можно оставить пустым"
-                          className="mt-1 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-sm font-semibold text-slate-900"
+                          placeholder="Если известно"
+                          className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-900"
                         />
                       </label>
+                      <div className="sm:col-span-2">
+                      <p className="text-xs font-medium text-slate-600">Достаточно указать рубли или USDT.</p>
                       {Number(usdtRateReference?.rate || 0) > 0 && (Number(row.plannedAmount || 0) > 0 || Number(row.foreignAmount || 0) > 0) ? (
-                        <p className="mt-1.5 text-[11px] font-bold text-slate-600">
-                          {Number(row.foreignAmount || 0) > 0 && !Number(row.plannedAmount || 0)
+                        <p className="mt-1.5 text-xs font-semibold leading-relaxed text-slate-600">
+                          {Number(row.foreignAmount || 0) > 0
                             ? `≈ ${rub.format(Number(row.foreignAmount) * Number(usdtRateReference?.rate))}`
                             : `≈ ${(Number(row.plannedAmount) / Number(usdtRateReference?.rate)).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`} по последнему курсу {Number(usdtRateReference?.rate).toLocaleString("ru-RU")} ₽ в 1С
                         </p>
                       ) : null}
-                    </div>
+                      </div>
+                    </>
+                  ) : null}
+                  {!debtBasis && Number(row.plannedAmount || 0) > order.unplannedAmount + 0.009 ? (
+                    <p className="text-xs font-bold text-red-700 sm:col-span-2">Сумма больше незапланированного остатка на {rub.format(Number(row.plannedAmount) - order.unplannedAmount)}. Проверьте сумму перед отправкой.</p>
                   ) : null}
                 </div>
-                <label className="text-xs font-bold text-slate-600 md:col-span-2 md:col-start-2">
+                {!debtBasis && orderComment ? orderComment.length > 100 ? <details className="group min-w-0 text-xs text-slate-600 sm:col-span-3">
+                  <summary className="flex cursor-pointer items-baseline gap-2"><span className="shrink-0 font-semibold">Комментарий 1С</span><span className="min-w-0 truncate group-open:hidden">{orderComment}</span><span className="shrink-0 underline group-open:hidden">Полностью</span><span className="hidden underline group-open:inline">Свернуть</span></summary>
+                  <p className="mt-2 whitespace-pre-wrap break-words">{orderComment}</p>
+                </details> : <p className="break-words text-xs text-slate-600 sm:col-span-3"><span className="font-semibold">Комментарий 1С: </span>{orderComment}</p> : null}
+                {commentFields[order.ref] || row.condition ? <label className="text-xs font-bold text-slate-600 sm:col-span-3">
                       Комментарий <span className="font-medium text-slate-400">(необязательно)</span>
                       <input
                         value={row.condition}
@@ -365,16 +404,17 @@ export function ProcurementPaymentBatchForm({
                         placeholder={commentHint(row.paymentMethod)}
                         className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
                       />
-                </label>
+                </label> : <button type="button" onClick={() => setCommentFields(current => ({...current, [order.ref]: true}))} className="justify-self-start text-xs font-semibold text-slate-600 underline sm:col-span-3">Добавить комментарий</button>}
                 <button
                   type="button"
                   onClick={() => change(order.ref, { selected: false })}
-                  className="admin-material-control absolute mr-3 mt-3 flex h-8 w-8 justify-self-end rounded-full bg-white text-slate-500 md:static md:col-start-4 md:row-start-1 md:mr-0 md:mt-0 md:items-center md:justify-center"
-                  aria-label={`Убрать заказ ${order.number}`}
+                  className="admin-material-control absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-500"
+                  aria-label={debtBasis ? `Убрать оплату ${order.supplierPartner}` : `Убрать заказ ${order.number}`}
                 >
                   <X className="m-auto h-4 w-4" />
                 </button>
               </div>
+              </Fragment>
             );
           }) : (
             <div className="rounded-xl border border-dashed border-slate-300 px-4 py-5 text-center text-sm font-semibold text-slate-500">
@@ -384,13 +424,23 @@ export function ProcurementPaymentBatchForm({
         </div>
       </div>
 
-      {selected.length ? (
+      {selected.length > 1 ? <section className="rounded-xl border border-slate-200 p-4">
+        <h3 className="mb-2 font-bold">Проверьте перед отправкой</h3>
+        <p className="mb-2 text-xs text-slate-500">Нажмите на поставщика, чтобы изменить оплату.</p>
+        <p className="mb-3 text-xs text-slate-600">{plannedDate ? `Подготовить деньги: ${plannedDate.split('-').reverse().join('.')}` : 'Дата подготовки денег ещё не указана'}</p>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b border-slate-200 text-xs text-slate-500"><th className="pb-2">Поставщик / основание</th><th className="pb-2">Способ</th><th className="pb-2 text-right">Сумма заявки</th></tr></thead><tbody>{selected.map(order => {
+          const row = rows[order.ref];
+          return <tr key={order.ref} className="border-b border-slate-100 last:border-0"><td className="py-2 pr-3"><button type="button" className="text-left font-semibold underline decoration-slate-300 underline-offset-4" aria-label={`Изменить оплату ${order.supplierPartner} ${order.number || 'в счёт долга'}`} onClick={() => {const target = document.getElementById(`payment-row-${encodeURIComponent(order.ref)}`); target?.scrollIntoView({block:'center', behavior:'smooth'}); target?.querySelector<HTMLInputElement>('input')?.focus({preventScroll:true});}}>{order.supplierPartner}</button><span className="block text-xs text-slate-500">{order.ref.startsWith('debt:') || bases[order.ref] === 'DEBT' ? 'В счёт долга' : `Заказ ${order.number}`}</span></td><td className="py-2 pr-3">{{CASH:'Наличные',BANK:'Перевод',ACCOUNTABLE_QR:'QR',USDT:'USDT'}[row.paymentMethod]}</td><td className="py-2 text-right font-semibold">{row.paymentMethod === 'USDT' && Number(row.foreignAmount) > 0 ? `${Number(row.foreignAmount).toLocaleString('ru-RU')} USDT` : Number(row.plannedAmount) > 0 ? `${rub.format(Number(row.plannedAmount))}${row.paymentMethod === 'USDT' ? ' · оплата в USDT' : ''}` : 'Укажите сумму'}</td></tr>;
+        })}</tbody></table></div>
+      </section> : null}
+      {selected.length > 1 ? (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
           <p className="text-sm font-black text-slate-950">Итого по списку</p>
           {totals.cash > 0 ? <p className="text-sm font-semibold text-slate-700">Наличными: <span className="font-black text-slate-950">{rub.format(totals.cash)}</span></p> : null}
           {totals.qr > 0 ? <p className="text-sm font-semibold text-slate-700">По QR: <span className="font-black text-slate-950">{rub.format(totals.qr)}</span></p> : null}
           {totals.bank > 0 ? <p className="text-sm font-semibold text-slate-700">Перевод поставщику: <span className="font-black text-slate-950">{rub.format(totals.bank)}</span></p> : null}
-          {totals.usdtEstimatedRub > 0 || totals.usdtKnown > 0 ? <p className="text-sm font-semibold text-slate-700">Для оплаты в USDT: <span className="font-black text-slate-950">{totals.usdtEstimatedRub > 0 ? `${totals.usdtRub <= 0 ? "≈ " : ""}${rub.format(totals.usdtEstimatedRub)}` : "сумма в рублях уточняется"}</span>{totals.usdtKnown > 0 ? ` · ${totals.usdtKnown.toLocaleString("ru-RU")} USDT` : ""}{totals.usdtUnknown > 0 ? ` · сумма USDT уточняется: ${totals.usdtUnknown}` : ""}</p> : null}
+          {usdtSummary.exactUsdt > 0 ? <p className="text-sm font-semibold text-slate-700">Отправить: {usdtSummary.exactUsdt.toLocaleString('ru-RU')} USDT</p> : null}
+          {usdtSummary.rublesAwaitingUsdt > 0 ? <p className="text-sm font-semibold text-slate-700">{usdtSummary.exactUsdt > 0 ? 'Дополнительно на оплату в USDT' : 'На оплату в USDT'}: ≈ {rub.format(usdtSummary.rublesAwaitingUsdt)}</p> : null}
         </div>
       ) : null}
       {message ? <p className="text-sm font-bold text-red-600">{message}</p> : null}

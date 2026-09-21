@@ -28,6 +28,33 @@ const conversion: CurrencyConversionRow = {
   linkedCashbox: 'Касса USDT',
 };
 
+test('Remax budget closes from linked USDT payment using older reference without claiming actual RUB payment', () => {
+  const result = matchProcurementPaymentEvidence([plan], [], [{...payment, documentAmount:7852.64}], [{...conversion,date:'09.09.2026 2:24:27',conversionRate:89.5}]).get(plan.id)!;
+  assert.equal(result.state, 'PAID_BY_ONE_C');
+  assert.equal(result.paidForeignAmount, 7852.64);
+  assert.equal(result.paymentAmountNeedsConfirmation, false);
+  assert.equal(result.completionByRubleEstimate, true);
+  assert.equal(result.remainingAmount, 0);
+  assert.equal(result.actualExchangeRate, null);
+  assert.equal(result.paidAmount, 0);
+  assert.equal(result.currencyPayments[0].ref, payment.ref);
+});
+
+test('small payment or missing reference cannot close a ruble budget',()=>{
+  for (const conversions of [[],[{...conversion,date:'09.09.2026 2:24:27'}]]) {
+    const result=matchProcurementPaymentEvidence([plan],[],[{...payment,documentAmount:100}],conversions).get(plan.id)!;
+    assert.equal(result.state,'NEEDS_REVIEW');
+    assert.equal(result.paidForeignAmount,100);
+    assert.equal(result.remainingAmount,700000);
+  }
+});
+
+test('unknown equivalent does not assign payment arbitrarily between two requests', () => {
+  const results = matchProcurementPaymentEvidence([plan,{...plan,id:'other',planCode:'other'}], [], [payment], []);
+  assert.equal(results.get(plan.id)!.paidForeignAmount, 0);
+  assert.equal(results.get('other')!.paidForeignAmount, 0);
+});
+
 test('Tural payment closes the linked ruble-estimate plan using the exchange rate, not accounting settlement', () => {
   const result = matchProcurementPaymentEvidence([plan], [], [payment], [conversion]).get('tural')!;
   assert.equal(result.state, 'PAID_BY_ONE_C');
