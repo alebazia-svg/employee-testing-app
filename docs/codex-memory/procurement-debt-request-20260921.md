@@ -1,4 +1,4 @@
-# Supplier-debt requests — local implementation, release pending
+# Supplier-debt requests — deployed 2026-09-22
 
 Owner approved completing the existing “В счёт долга поставщику” draft and
 flattening procurement action buttons. Explicitly requested a visible local
@@ -31,7 +31,7 @@ approval, required revision reason, manual partial/full RKO links, zero remainde
 Only source/auth/notification boundaries are mocked; production data untouched.
 Browser sign-in/full live 1C integration and mobile layout still unverified for
 this addition. Mixed order/debt drafts show a double-planning warning. Visual
-review in Edge ongoing. No commit/deploy.
+review in Edge was interrupted; subsequent in-app review is recorded below.
 
 ## Owner decisions — 2026-09-22
 
@@ -58,3 +58,12 @@ mark settlements closed was approved. Closed-order work remains deferred.
 Pre-release checks: 37 unit/boundary/sorting tests and one real test-DB lifecycle
 test passed. Local review route is excluded from the release commit. No schema
 migration, 1C writes, closed-order change or forecast/payroll WIP in this release.
+
+## Deployment result
+
+Code commit `6c08ac0`, deployed release `5a9d378be7a234cc590d5b03c774af69847989e0`.
+Native Terminal SSH ran the saved remote script with hidden sudo input; exit 0.
+Only portal-app rebuilt/recreated. Deployed bundle checks confirmed supplier-debt
+label and `orderPaymentGap > 500`. Public admin/procurement, procurement and login
+routes returned HTTP 200. These are availability checks, not authenticated
+production create/approve/payment tests. No production requests were created.
