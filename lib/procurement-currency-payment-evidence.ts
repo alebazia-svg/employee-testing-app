@@ -66,7 +66,10 @@ export function matchProcurementPaymentEvidence(
   const allocations = new Map<string, { rubles: number; foreign: number; referenceRubles: number; rateRubles: number; rateForeign: number; unknownEquivalent: boolean; payments: ProcurementPaymentEvidence['currencyPayments'] }>();
   for (const plan of plans) {
     evidence.set(plan.id, {
-      ...matchCashEvidence(plan, requests),
+      // A supplier-only request has no unique order anchor. Never infer its
+      // payment from supplier/date/amount; require the plan code or owner link.
+      ...matchCashEvidence(plan, plan.orderRefs.length ? requests : requests.filter(request =>
+        `${request.comment || ''} ${request.payment_purpose || ''}`.toUpperCase().includes(plan.planCode.toUpperCase()))),
       paidAmount: 0,
       paidForeignAmount: 0,
       remainingAmount: Math.max(0, plan.plannedAmount),

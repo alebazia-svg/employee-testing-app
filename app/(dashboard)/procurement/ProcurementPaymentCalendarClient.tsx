@@ -19,7 +19,7 @@ import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
 import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
-import { buildProcurementReviewQueue } from "@/lib/procurement-payment-priority";
+import { buildProcurementReviewQueue, ordersForNewPayment, sortByUnplannedAmount } from "@/lib/procurement-payment-priority";
 import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
 
 type Order = {
@@ -263,18 +263,11 @@ export default function ProcurementPaymentCalendarClient({
       issuedAmount: plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0) + Number(plan.evidence?.paidAmount || 0),
     })),
   );
-  const missingOrders = planningOrders.filter((order) => order.unplannedAmount > 0.009);
-  const reviewOrders = buildProcurementReviewQueue(missingOrders, todayKey);
-  const primaryReviewOrders = reviewOrders.reduce<typeof reviewOrders>((selected, order) => {
-    if (selected.length >= 3 || selected.some((item) => item.reviewReason === order.reviewReason)) return selected;
-    return [...selected, order];
-  }, []);
+  const missingOrders = ordersForNewPayment(planningOrders);
+  const reviewOrders = sortByUnplannedAmount(buildProcurementReviewQueue(missingOrders, todayKey));
   const visibleReviewOrders = showAllReviewOrders
     ? reviewOrders
-    : reviewOrders.reduce<typeof reviewOrders>((selected, order) => {
-        if (selected.length >= 3 || selected.some((item) => item.ref === order.ref)) return selected;
-        return [...selected, order];
-      }, primaryReviewOrders);
+    : reviewOrders.slice(0, 3);
   const orderPaymentGapTotal = initialOrders.reduce((sum, order) => sum + Number(order.orderPaymentGap || 0), 0);
   const supplierOrderGapTotals = initialOrders.reduce<Record<string, number>>((totals, order) => {
     totals[order.supplierPartner] = Number(totals[order.supplierPartner] || 0) + Number(order.orderPaymentGap || 0);
@@ -454,7 +447,7 @@ export default function ProcurementPaymentCalendarClient({
           : dateLabel(key);
 
   return (
-    <div className="space-y-5">
+    <div className="procurement-calendar space-y-5">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-black sm:text-3xl">
@@ -549,11 +542,11 @@ export default function ProcurementPaymentCalendarClient({
                       <div className="min-w-0">
                         <h4 className="font-black">{plan.supplierPartner}</h4>
                         <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                          {plan.orderNumbers.filter(Boolean).length > 1
+                          {!plan.orderRefs.length ? 'В счёт долга поставщику' : <>{plan.orderNumbers.filter(Boolean).length > 1
                             ? "Заказы"
                             : "Заказ"}: {" "}
                           {plan.orderNumbers.filter(Boolean).join(", ") ||
-                            "без номера"}
+                            "без номера"}</>}
                         </p>
                         <p className={`mt-1 text-xs font-bold ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "ADVANCE" ? "text-green-700" : "text-amber-700"}`}>
                           {leadTimeLabel(plan)}
@@ -741,17 +734,18 @@ export default function ProcurementPaymentCalendarClient({
               Поставщик
               <select
                 value={draft.supplier}
+                disabled={Boolean(editingId && !plans.find(plan => plan.id === editingId)?.orderRefs.length)}
                 onChange={(event) => chooseSupplier(event.target.value)}
                 className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold"
                 required
               >
                 <option value="">Выберите поставщика</option>
-                {suppliers.map((name) => (
+                {Array.from(new Set([draft.supplier, ...suppliers])).filter(Boolean).map((name) => (
                   <option key={name}>{name}</option>
                 ))}
               </select>
             </label>
-            {draft.supplier ? (
+            {editingId && !plans.find(plan => plan.id === editingId)?.orderRefs.length ? <p className="text-sm text-slate-600">В счёт долга поставщику · без заказа</p> : draft.supplier ? (
               <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
                 <div className="flex items-center justify-between gap-3 text-sm font-bold">
                   <span>Заказы поставщика</span>
@@ -918,7 +912,7 @@ export default function ProcurementPaymentCalendarClient({
               </button>
               <button
                 disabled={
-                  saving || !draft.orderRefs.length || (
+                  saving || (!draft.orderRefs.length && Boolean(plans.find(plan => plan.id === editingId)?.orderRefs.length)) || (
                     draft.paymentMethod === "USDT"
                       ? !draft.plannedAmount && !draft.foreignAmount
                       : !draft.plannedAmount
@@ -937,6 +931,7 @@ export default function ProcurementPaymentCalendarClient({
         ) : (
           <ProcurementPaymentBatchForm
             basisPreview={basisPreview}
+            supplierDebtError={supplierDebtError}
             key={batchSeedRefs.join("|")}
             orders={missingOrders}
             supplierBalances={supplierBalances}
@@ -1020,7 +1015,7 @@ export default function ProcurementPaymentCalendarClient({
             <div className="mt-4 flex gap-2.5 border-t border-slate-200 pt-4">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-slate-500" />
               <p className="text-xs font-semibold leading-relaxed text-slate-600">
-                После оплаты ничего отмечать не нужно — подтверждение появится из 1С.
+                Оплаты поступают из 1С. Если связь с заявкой неясна, её подтвердит руководитель.
               </p>
             </div>
           </section>

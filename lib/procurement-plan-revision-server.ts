@@ -8,7 +8,7 @@ import { manualPaymentLinks } from './procurement-manual-payment-links';
 import { assertRevisionPaymentSafety, readPaymentRevision, revisionChanges, paymentMatchCreatedAt, type RevisionData } from './procurement-plan-revision';
 import { notifyAdminsAboutProcurementPlans, notifyProcurementManagerAboutDecision } from './procurement-payment-notifications';
 
-async function freshEvidence() {
+export async function freshEvidence() {
   const plans = await prisma.supplierPaymentPlan.findMany({ include: { manager: true } });
   const to = new Date(); const from = paymentEvidenceFrom(plans, new Date(to.getTime() - 31 * 86400000));
   const [source, requests] = await Promise.all([fetchSupplierCurrencyPaymentSnapshot({ from, to }), fetchExpenseRequestSnapshot({ from, to })]);

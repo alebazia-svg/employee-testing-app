@@ -43,7 +43,7 @@ export function ProcurementUnlinkedPayments({ payments, plans, linked }: {
           <p className="text-xs text-slate-500">{payment.baseDocumentRef ? 'Есть документ-основание; заявка не определена' : 'Без привязки к заказу'}</p></div>
         {options.length ? <><select aria-label={`Заявка для РКО ${payment.number}`} className="min-w-0 rounded-lg border border-slate-200 p-2 text-sm"
           value={choices[payment.ref] || ''} onChange={(event) => setChoices({ ...choices, [payment.ref]: event.target.value })}>
-          <option value="">Выберите заявку</option>{options.map((plan) => <option key={plan.id} value={plan.id}>Заказ {plan.orderNumbers.join(', ')} · остаток {foreign && plan.remainingForeign != null ? `${plan.remainingForeign} USDT` : money(plan.remaining)}</option>)}</select>
+          <option value="">Выберите заявку</option>{options.map((plan) => <option key={plan.id} value={plan.id}>{plan.orderNumbers.length ? `Заказ ${plan.orderNumbers.join(', ')}` : 'В счёт долга поставщику'} · остаток {foreign && plan.remainingForeign != null ? `${plan.remainingForeign} USDT` : money(plan.remaining)}</option>)}</select>
           <button disabled={Boolean(busy) || !choices[payment.ref]} onClick={() => save(choices[payment.ref], payment.ref, 'LINK')}
             className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-40">Подтвердить</button></> :
           <p className="text-sm text-slate-500">Нет подходящей согласованной заявки. Оплата остаётся видна здесь.</p>}

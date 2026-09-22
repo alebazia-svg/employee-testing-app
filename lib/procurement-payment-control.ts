@@ -23,7 +23,7 @@ export type PaymentPlanInput = {
 const clean = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const positive = (value: unknown) => { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? parsed : null; };
 
-export function validatePaymentPlan(input: PaymentPlanInput) {
+export function validatePaymentPlan(input: PaymentPlanInput, allowSupplierDebt = false) {
   const method = clean(input.paymentMethod).toUpperCase() as PaymentMethod;
   const refs = Array.isArray(input.orderRefs) ? input.orderRefs.map(clean).filter(Boolean) : [];
   const numbers = Array.isArray(input.orderNumbers) ? input.orderNumbers.map(clean).filter(Boolean) : [];
@@ -31,14 +31,15 @@ export function validatePaymentPlan(input: PaymentPlanInput) {
   const data = {
     supplierPartner: clean(input.supplierPartner), supplierCounterparty: clean(input.supplierCounterparty),
     orderRefs: refs, orderNumbers: numbers, plannedDate: date, plannedAmount: positive(input.plannedAmount),
-    condition: clean(input.condition) || 'Оплата по выбранным заказам', paymentMethod: method, currency: clean(input.currency).toUpperCase() || (method === 'USDT' ? 'USDT' : 'RUB'),
+    condition: clean(input.condition) || (allowSupplierDebt && !refs.length ? 'В счёт долга поставщику' : 'Оплата по выбранным заказам'), paymentMethod: method, currency: clean(input.currency).toUpperCase() || (method === 'USDT' ? 'USDT' : 'RUB'),
     foreignAmount: positive(input.foreignAmount), exchangeRate: positive(input.exchangeRate),
     commissionAmount: input.commissionAmount === '' || input.commissionAmount == null ? null : Number(input.commissionAmount),
     exchangerName: clean(input.exchangerName), supplierConfirmation: clean(input.supplierConfirmation),
   };
   const errors: string[] = [];
   if (!data.supplierPartner) errors.push('Выберите поставщика из заказов 1С.');
-  if (!data.orderRefs.length) errors.push('Выберите хотя бы один заказ 1С.');
+  if (!data.orderRefs.length && !allowSupplierDebt) errors.push('Выберите хотя бы один заказ 1С.');
+  if (!data.orderRefs.length && data.orderNumbers.length) errors.push('Для оплаты долга не указывайте номера заказов.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data.plannedDate)) errors.push('Укажите плановую дату оплаты.');
   if (method === 'USDT') {
     if (!data.plannedAmount && !data.foreignAmount) errors.push('Укажите сумму в рублях или USDT.');

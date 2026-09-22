@@ -8,6 +8,32 @@ type ReviewableOrder = {
   controlGroup?: string;
 };
 
+/** Display order only: never changes balances or payment urgency signals. */
+export const SMALL_ORDER_PAYMENT_BALANCE_RUB = 500;
+
+/** Hide small order balances only from new planning, never from accounting or existing plans. */
+export function ordersForNewPayment<T extends { orderPaymentGap: number; unplannedAmount: number }>(orders: T[]): T[] {
+  return orders.filter(order => order.orderPaymentGap > SMALL_ORDER_PAYMENT_BALANCE_RUB && order.unplannedAmount > 0.009);
+}
+
+export function sortByUnplannedAmount<T extends { unplannedAmount: number }>(orders: T[]): T[] {
+  return [...orders].sort((a, b) => b.unplannedAmount - a.unplannedAmount);
+}
+
+export function sortPaymentPickerOrders<T extends { supplierPartner: string; orderPaymentGap: number; unplannedAmount: number; ref: string }>(orders: T[]): T[] {
+  const amount = (order: T) => order.ref.startsWith('debt:') ? order.unplannedAmount : order.orderPaymentGap;
+  const groups = new Map<string, T[]>();
+  for (const order of orders) {
+    const group = groups.get(order.supplierPartner) || [];
+    group.push(order);
+    groups.set(order.supplierPartner, group);
+  }
+  return [...groups.entries()]
+    .map(([supplier, rows]) => ({ supplier, rows, total: rows.reduce((sum, row) => sum + amount(row), 0) }))
+    .sort((a, b) => b.total - a.total || a.supplier.localeCompare(b.supplier, 'ru'))
+    .flatMap(group => [...group.rows].sort((a, b) => amount(b) - amount(a)));
+}
+
 export type ProcurementReviewOrder<T extends ReviewableOrder> = T & {
   reviewReason: string;
   reviewPriority: number;

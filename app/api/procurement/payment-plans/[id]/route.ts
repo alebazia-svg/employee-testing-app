@@ -11,6 +11,7 @@ import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-not
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { proposeApprovedRevision } from "@/lib/procurement-plan-revision-server";
+import { isSupplierDebtPlan } from '@/lib/procurement-debt-request';
 
 const jsonPlan = (plan: unknown) => JSON.parse(JSON.stringify(plan));
 
@@ -34,7 +35,14 @@ export async function PATCH(
       { status: 409 },
     );
   const payload = await req.json();
-  const checked = validatePaymentPlan(payload);
+  const debt = isSupplierDebtPlan(existing);
+  const checked = validatePaymentPlan(payload, debt);
+  if (debt && (checked.data.orderRefs.length || checked.data.supplierPartner !== existing.supplierPartner))
+    return Response.json({ error: 'В этой заявке сохраняется оплата долга выбранному поставщику. Для другого основания создайте отдельную заявку.' }, { status: 400 });
+  if (debt) {
+    checked.data.supplierCounterparty = existing.supplierCounterparty;
+    checked.data.orderNumbers = [];
+  }
   if (!checked.ok)
     return Response.json({ error: checked.errors.join(" ") }, { status: 400 });
   let plannedAmount = checked.data.plannedAmount;
@@ -57,6 +65,7 @@ export async function PATCH(
       return Response.json(await proposeApprovedRevision(id, user, {...checked.data, plannedAmount}, String(payload.changeReason || ''), String(payload.version || '')));
     } catch (error) { return Response.json({ error: error instanceof Error && /^[А-ЯЁ]/.test(error.message) ? error.message : 'Не удалось проверить изменение. Повторите позже.' }, {status:409}); }
   }
+  if (!debt) {
   const source = await fetchSupplierOrderFinance();
   const managerName = user.oneCManagerName?.trim() || user.name;
   const allowed = new Map(
@@ -78,6 +87,7 @@ export async function PATCH(
       { error: "Заказы должны относиться к выбранному поставщику." },
       { status: 400 },
     );
+  }
   const plan = await prisma
     .$transaction(async (tx) => {
       const changed = await tx.supplierPaymentPlan.updateMany({
