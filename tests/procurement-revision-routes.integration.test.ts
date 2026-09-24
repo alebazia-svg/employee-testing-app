@@ -20,6 +20,8 @@ test('revision routes enforce roles, ownership, reason and repeat approval with 
       'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,payments:[],conversions:[]});',
       'expense-request-source':'export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});export const expenseRequestMoscowCalendarDate=()=>"2026-09-17";',
       'procurement-payment-source':'export const fetchSupplierOrderFinance=async()=>({complete:true,rows:[]});export const ordersForManager=x=>x;export const ordersRequiringPayment=x=>x;',
+      'procurement-request-catalogue':'export const fetchRequestOrderCatalogue=async()=>({complete:true,rows:[]});',
+      'procurement-planning-sync':'export const verifySelectedPlanningOrders=async x=>x;',
       'procurement-usdt-rate':'export const getLatestProcurementUsdtRate=async()=>({rate:89});',
       'procurement-payment-notifications':'export const notifyAdminsAboutProcurementPlans=async()=>{};export const notifyProcurementManagerAboutDecision=async()=>{};',
     };

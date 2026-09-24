@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { preservePaymentReview } from '@/lib/procurement-buyer-comment';
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { validatePaymentPlan } from "@/lib/procurement-payment-control";
@@ -97,6 +98,7 @@ export async function PATCH(
     );
   }
   const overlapEvidence = await freshEvidence().catch(() => null);
+  checked.data.condition = preservePaymentReview(existing.condition, checked.data.condition);
   if (!overlapEvidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Изменения не сохранены; повторите позже.' }, { status: 503 });
   let overlap = false;
   const plan = await prisma

@@ -1,12 +1,15 @@
 import 'server-only';
 import type { SupplierOrderFinanceRow } from './procurement-payment-source';
 import { verifySelectedPlanningOrders } from './procurement-planning-sync';
+import { hasCurrentPaidClosure, hasRecordedPaidClosure } from './procurement-order-payment-closure';
 
 export async function planningSubmissionError(rows: SupplierOrderFinanceRow[], requested: { refs: string[]; amount: number; condition?: string }[], onVerified?: (rows: SupplierOrderFinanceRow[]) => void) {
   if (new Set(rows.map(row => row.ref)).size > 20) return 'За одну отправку можно проверить до 20 заказов. Разделите список оплат.';
   try {
     const unique = [...new Map(rows.map(row => [row.ref, row])).values()];
     const checked = await verifySelectedPlanningOrders(unique);
+    if (checked.some(row => hasCurrentPaidClosure(row))) return 'Приобретения уже оплачены. Обновите список заказов.';
+    if (checked.some(row => hasRecordedPaidClosure(row))) return 'Ранее полная оплата уже подтверждалась. Повторная заявка недоступна до обновления сверки с 1С.';
     const allowed = new Map(checked.map(row => [row.ref, row]));
     const used = new Set<string>();
     for (const request of requested) {

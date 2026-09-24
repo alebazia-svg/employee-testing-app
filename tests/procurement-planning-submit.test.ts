@@ -23,5 +23,12 @@ test('fresh selection allows any balance but blocks duplicate/missing identity a
   assert.equal(await run(1000, ['one'], 'Оплата по выбранным заказам'), null);
   assert.ok(await run(1000, ['missing'], 'Счёт поставщика'));
   state.rows[0].planningState = 'prepayment'; assert.equal(await run(), null);
+  state.rows[0].paymentClosure = { state:'paid',remainingRub:0,checkedAt:new Date().toISOString(),receipts:[{number:'771'}] };
+  assert.ok(await run(), 'a newly paid receipt blocks a stale selection at submission');
+  state.rows[0].paymentClosure.checkedAt = new Date(Date.now() - 3600000).toISOString();
+  assert.match(await run(), /до обновления сверки/, 'old payment proof cannot silently allow duplicate payment');
+  state.rows[0].paymentClosure = { state:'small_balance',remainingRub:200,checkedAt:new Date().toISOString(),receipts:[{number:'771'}] };
+  assert.equal(await run(), null, 'a real small remainder stays available for planning');
+  delete state.rows[0].paymentClosure;
   state.fail = true; assert.ok(await run());
 });

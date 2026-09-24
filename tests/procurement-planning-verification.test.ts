@@ -40,13 +40,34 @@ test('live prepayment is preserved; closed or incomplete source is not prepaymen
   const f = fixture(); f.detail.receipts = []; f.detail.order_links = []; f.discovery.balances = []; f.discovery.order_links = []; f.row.receiptAmount = 0;
   f.detail.order[0].status_name = 'К поступлению';
   assert.equal(run(f).planningState, 'prepayment');
+  assert.deepEqual(run(f).noAcquisitions, {checkedAt:'2026-09-24T09:00:00Z'});
   f.supplier.document_balances[0].raw_prepayment_balance = 100;
   f.supplier.ledger_balances[0].raw_balance = -900;
   assert.equal(run(f).planningState, 'needs_review', 'existing advance cannot become another automatic prepayment');
+  assert.ok(run(f).noAcquisitions, 'an advance does not hide the verified absence of acquisitions');
   f.supplier.document_balances[0].raw_prepayment_balance = 0;
   f.supplier.ledger_balances[0].raw_balance = -1000;
   f.detail.order[0].status_name = 'Закрыт'; assert.equal(run(f).planningState, 'needs_review');
   f.detail.complete = false; assert.equal(run(f).planningState, 'needs_review');
+  assert.equal(run(f).noAcquisitions, undefined);
+});
+
+test('no-acquisition label requires complete consistent links and clears stale evidence', () => {
+  for (const mutate of [
+    (f: ReturnType<typeof fixture>) => { f.detail.complete = false; },
+    (f: ReturnType<typeof fixture>) => { f.detail.ok = false; },
+    (f: ReturnType<typeof fixture>) => { f.detail.order_links_complete = false; },
+    (f: ReturnType<typeof fixture>) => { f.detail.order[0].supplier_name = 'Другой'; },
+    (f: ReturnType<typeof fixture>) => { f.row.receiptAmount = 5000; },
+    (f: ReturnType<typeof fixture>) => { f.detail.order_links = [{order_ref:f.row.ref}]; },
+    (f: ReturnType<typeof fixture>) => { f.discovery = fixture().discovery; },
+  ]) {
+    const f = fixture(); f.detail.receipts = []; f.detail.order_links = [];
+    f.discovery.balances = []; f.discovery.order_links = []; f.row.receiptAmount = 0;
+    f.row.noAcquisitions = {checkedAt:'old'};
+    mutate(f);
+    assert.equal(run(f).noAcquisitions, undefined);
+  }
 });
 test('settled requires full recognized acquisition and equal offset, not empty debt alone', () => {
   const f = fixture(); f.discovery.balances = []; f.discovery.order_links = [];
@@ -62,4 +83,17 @@ test('fresh balance disagreement and foreign currency cannot be hidden as closed
   const f = fixture(); f.detail.due_date_balances[0].raw_debt_balance = 999;
   assert.equal(run(f).planningState, 'needs_review');
   const g = fixture(); g.detail.receipts[0].currency_name = 'USDT'; assert.equal(run(g).planningState, 'needs_review');
+});
+test('an advance on another settlement document preserves measured receipt debt but requires allocation review', () => {
+  const f=fixture();
+  f.supplier.document_balances.push({...f.supplier.document_balances[0],settlement_document_ref:id(30),raw_debt_balance:0,raw_prepayment_balance:700});
+  f.supplier.ledger_balances[0].raw_balance=-300;
+  const r=run(f);
+  assert.equal(r.planningState,'needs_review');
+  assert.equal(r.receiptSettlement?.debtRub,1000);
+  assert.equal(r.orderPaymentGap,1000,'supplier advances do not replace the measured receipt balance with the raw order gap');
+  assert.equal(r.receiptSettlement?.requiresAdvanceReview,true);
+  assert.deepEqual(r.receiptSettlement?.supplier,{ref:id(7),grossDebtRub:1000,creditsRub:700,netOwedRub:300});
+  f.detail.complete=false; f.row={...r};
+  assert.equal(run(f).receiptSettlement,undefined,'failed rechecks never retain an apparently fresh amount');
 });

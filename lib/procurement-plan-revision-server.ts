@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { preservePaymentReview } from './procurement-buyer-comment';
 import { prisma } from './prisma';
 import { fetchSupplierCurrencyPaymentSnapshot } from './procurement-currency-payment-source';
 import { fetchExpenseRequestSnapshot } from './expense-request-source';
@@ -28,8 +29,9 @@ export async function proposeApprovedRevision(id: string, user: {id: number; nam
     const before = await tx.supplierPaymentPlan.findFirst({ where: {id, managerUserId: user.id, status: 'APPROVED'} });
     if (!before || before.updatedAt.toISOString() !== version) throw new Error('Заявка изменилась. Обновите страницу и повторите.');
     if(evidence.versions.get(id)!==before.updatedAt.toISOString()) throw new Error('Данные оплаты изменились. Обновите страницу.');
-    if (readPaymentRevision(before.oneCCashEvidence)) throw new Error('Изменения уже ожидают решения руководителя.');
+    if (readPaymentRevision(before.oneCCashEvidence)) throw new Error('Изменения уже на согласовании.');
     const paid = evidence.get(id); if (!paid) throw new Error('Не удалось проверить оплату заявки.');
+    data = { ...data, condition: preservePaymentReview(before.condition, data.condition) };
     assertRevisionPaymentSafety(before, data, paid);
     const changes = revisionChanges(before, data);
     if (!changes.length) throw new Error('Данные заявки не изменились.');

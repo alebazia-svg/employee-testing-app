@@ -27,3 +27,11 @@ test('manager receives review warning, original order number and purchaser expla
   assert.match(note, /Новая поставка/);
   assert.equal(reviewRequestCondition([{ planningState: 'receipt_debt' }], 'обычная оплата'), 'обычная оплата');
 });
+
+test('old unpaid acquisition membership survives age; old order nominal debt alone does not',()=>{
+  const outstandingAcquisitions={checkedAt:'2026-09-25T09:00:00Z'};
+  const rows=[{ref:'old',date:'28.10.2023 9:14:09',outstandingAcquisitions},
+    {ref:'nominal-only',date:'2023-10-28',orderPaymentGap:900000},
+    {ref:'future',date:'2027-01-01',outstandingAcquisitions}];
+  assert.deepEqual(ordersForRequest(rows,'2026-09-25').map(r=>r.ref),['old']);
+});

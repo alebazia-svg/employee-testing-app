@@ -18,8 +18,11 @@ test('supplier debt: real DB create, duplicate, edit, approve, partial/full paym
     auth:'export const getCurrentUser=async()=>globalThis.debtLifecycle.user;',
     'admin-api-auth':`export const requireAdminApi=async()=>{const user=globalThis.debtLifecycle.user;return user?.role==='ADMIN'?{ok:true,user}:{ok:false,response:Response.json({}, {status:403})}};`,
     prisma:'export const prisma=globalThis.debtLifecycle.db;',
-    'procurement-payment-source':`export const fetchSupplierOrderFinance=async()=>({complete:true,rows:[{ref:'order',number:'397',supplierPartner:globalThis.debtLifecycle.supplier,supplierCounterparty:'',orderPaymentGap:0}]});export const ordersForManager=x=>x;export const ordersRequiringPayment=x=>x.filter(o=>o.orderPaymentGap>0);`,
-    'procurement-supplier-settlements':`export const fetchSupplierSettlements=async()=>({complete:true,rows:[]});export const summarizeSupplierSettlements=()=>({bySupplier:{[globalThis.debtLifecycle.supplier]:{debt:657000}},unsupportedCurrencyRows:0});`,
+    'procurement-payment-source':`export const ordersForManager=x=>x;export const normalizeSupplierOrder=x=>({ref:x.ref,number:'',supplierPartner:x.supplier_partner,supplierCounterparty:'',manager:x.manager});`,
+    'procurement-request-catalogue':`export const fetchRequestOrderCatalogue=async()=>({complete:true,rows:[]});`,
+    'procurement-planning-sync':`export const verifySelectedPlanningOrders=async x=>x;`,
+    'procurement-supplier-roster':`export const fetchManagerSupplierNames=async()=>[globalThis.debtLifecycle.supplier];`,
+    'procurement-supplier-settlements':`export const fetchSupplierSettlements=async()=>({complete:true,rows:[]});export const summarizeSupplierSettlements=()=>({bySupplier:{[globalThis.debtLifecycle.supplier]:{debt:657000,advance:0,closingBalance:-657000,reviewRequired:false}},unsupportedCurrencyRows:0});`,
     'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,payments:globalThis.debtLifecycle.payments,conversions:[]});',
     'expense-request-source':'export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});export const expenseRequestMoscowCalendarDate=()=>"2026-09-21";',
     'procurement-usdt-rate':'export const getLatestProcurementUsdtRate=async()=>({rate:89.5});',
@@ -65,6 +68,14 @@ test('supplier debt: real DB create, duplicate, edit, approve, partial/full paym
     state.payments.push({...state.payments[0],ref:'22222222-2222-2222-2222-222222222222',documentAmount:150000});
     assert.equal((await link.POST(req({ref:state.payments[1].ref,action:'LINK'}),params)).status,200);
     assert.equal((await evidence()).state,'ISSUED_BY_ONE_C');
+    assert.equal((await evidence()).remainingAmount,0);
+    state.payments[1].deleted=true;
+    assert.equal((await evidence()).state,'PARTIALLY_ISSUED');
+    assert.equal((await evidence()).remainingAmount,150000,'cancelled document reopens the remaining payment');
+    state.payments[1].deleted=false;
+    state.payments[1].posted=false;
+    assert.equal((await evidence()).remainingAmount,150000);
+    state.payments[1].posted=true;
     assert.equal((await evidence()).remainingAmount,0);
     assert.equal(await db.supplierPaymentPlanEvent.count({where:{planId:plan.id,action:'PAYMENT_LINKED'}}),2);
   } finally {

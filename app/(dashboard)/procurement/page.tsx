@@ -1,10 +1,12 @@
 import { getCurrentUser } from "@/lib/auth";
+import { procurementSourceHealth } from '@/lib/procurement-source-health';
 import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { prisma } from "@/lib/prisma";
 import {
   ordersForManager,
 } from "@/lib/procurement-payment-source";
 import { fetchRequestOrderCatalogue } from '@/lib/procurement-request-catalogue';
+import { fetchManagerSupplierNames } from '@/lib/procurement-supplier-roster';
 import ProcurementPaymentCalendarClient from "./ProcurementPaymentCalendarClient";
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
@@ -32,7 +34,7 @@ export default async function ProcurementPage() {
     include: { events: { orderBy: { createdAt: "desc" }, take: 20 }, manager: { select: { name: true, oneCManagerName: true } } },
     orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
   });
-  const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult, currencyPaymentsResult] = await Promise.allSettled([
+  const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult, currencyPaymentsResult, rosterResult] = await Promise.allSettled([
     plansQuery,
     fetchRequestOrderCatalogue(),
     fetchSupplierSettlements(),
@@ -40,7 +42,9 @@ export default async function ProcurementPage() {
     getLatestProcurementUsdtRate(todayKey),
     fetchExpenseRequestSnapshot({ from: requestFrom, to: requestTo }),
     plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, timeoutMs: 15_000 })),
+    fetchManagerSupplierNames(user.oneCManagerName?.trim() || user.name),
   ]);
+  const { plansSourceError, evidenceSourceError } = procurementSourceHealth(plansResult, requestsResult, currencyPaymentsResult);
   const allPlans = plansResult.status === "fulfilled" ? plansResult.value : [];
   const plans = allPlans.filter((plan) => plan.managerUserId === user.id);
   const source =
@@ -48,7 +52,7 @@ export default async function ProcurementPage() {
   const managerName = user.oneCManagerName?.trim() || user.name;
   const managerOrders = source ? ordersForManager(source.rows, managerName) : [];
   const orders = managerOrders;
-  const supplierNames = managerOrders.map((order) => order.supplierPartner || order.supplierCounterparty).filter(Boolean);
+  const supplierNames = rosterResult.status === 'fulfilled' ? rosterResult.value : [];
   const settlementSummary = settlementsResult.status === "fulfilled"
     ? summarizeSupplierSettlements(settlementsResult.value.rows, supplierNames)
     : null;
@@ -105,7 +109,7 @@ export default async function ProcurementPage() {
       ...JSON.parse(JSON.stringify(plan)),
       revision: readPaymentRevision(plan.oneCCashEvidence),
       correctionReason: typeof snapshot.correctionReason === "string" ? snapshot.correctionReason : "",
-      evidence: paymentEvidence.get(plan.id)!,
+      evidence: evidenceSourceError ? undefined : paymentEvidence.get(plan.id),
     };
   });
   // Expose only the aggregate reserve of other managers, never their requests.
@@ -126,11 +130,12 @@ export default async function ProcurementPage() {
       otherUsdtReserve={otherUsdtReserve}
       checkedAt={source?.checkedAt || ""}
       sourceError={sourceError}
-      evidenceSourceError={!currencySource || !currencySource.complete || !currencySource.rubPaymentsSupported}
+      plansSourceError={plansSourceError}
+      evidenceSourceError={evidenceSourceError}
       managerMappingError={managerMappingError}
       supplierBalances={settlementSummary?.bySupplier || {}}
       supplierDebtTotal={settlementSummary?.debtTotal ?? null}
-      supplierDebtError={settlementsResult.status === "rejected" || settlementsResult.value.complete === false || Boolean(settlementSummary?.unsupportedCurrencyRows)}
+      supplierDebtError={rosterResult.status === 'rejected' || settlementsResult.status === "rejected" || settlementsResult.value.complete === false || Boolean(settlementSummary?.unsupportedCurrencyRows)}
       usdtBalance={usdtBalance}
       accountableBalance={accountableBalance}
       usdtRateReference={rateResult.status === "fulfilled" ? rateResult.value : undefined}

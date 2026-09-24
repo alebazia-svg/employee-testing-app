@@ -2921,6 +2921,19 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
   outline-offset: 3px;
 }
 
+/* Picker rows are a compact list, not raised action cards. */
+.portal-neutral-design .procurement-calendar .procurement-picker-option {
+  border-radius: 0;
+  background: transparent;
+  min-height: 44px;
+}
+.portal-neutral-design .procurement-calendar .procurement-picker-option:hover {
+  background: var(--portal-action-soft, #f1f5f9);
+}
+.portal-neutral-design .procurement-calendar .procurement-picker-option[aria-pressed="true"] {
+  background: var(--portal-action-soft, #f1f5f9);
+}
+
 @media (min-width: 768px) {
   .employee-workday-sheet-overlay {
     --employee-sheet-browser-clearance: 0rem;

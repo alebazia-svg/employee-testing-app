@@ -11,6 +11,8 @@ import { planningSubmissionError } from '@/lib/procurement-planning-submit';
 import { freshEvidence } from '@/lib/procurement-plan-revision-server';
 import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
 import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
+import { fetchSupplierSettlements, summarizeSupplierSettlements } from '@/lib/procurement-supplier-settlements';
+import { buyerOrderPurpose } from '@/lib/procurement-supplier-position';
 
 function jsonPlan(plan: unknown) { return JSON.parse(JSON.stringify(plan, (_, value) => typeof value === 'bigint' ? String(value) : value)); }
 
@@ -42,6 +44,11 @@ export async function POST(req: Request) {
   if (!checked.data.orderRefs.every((ref) => allowed.has(ref))) return Response.json({ error: 'Один из заказов не относится к вашему менеджеру в 1С.' }, { status: 400 });
   const partners = new Set(checked.data.orderRefs.map((ref) => allowed.get(ref)?.supplierPartner));
   if (partners.size !== 1 || !partners.has(checked.data.supplierPartner)) return Response.json({ error: 'Заказы должны относиться к выбранному поставщику.' }, { status: 400 });
+  const settlements = await fetchSupplierSettlements();
+  if (!settlements.complete) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503 });
+  const balances = summarizeSupplierSettlements(settlements.rows, [checked.data.supplierPartner]);
+  if (balances.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503 });
+  if (checked.data.orderRefs.some(ref => !['order', 'prepayment'].includes(buyerOrderPurpose(allowed.get(ref)!, balances.bySupplier[checked.data.supplierPartner])))) return Response.json({ error: 'Заказ не предлагается для новой оплаты: долга нет или расчёты на сверке. Обновите список.' }, { status: 400 });
   checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.get(ref)!.number);
   const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); });
   if (planningError) return Response.json({ error: planningError }, { status: 409 });

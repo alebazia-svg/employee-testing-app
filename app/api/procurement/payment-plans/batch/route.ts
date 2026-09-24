@@ -7,6 +7,7 @@ import {
 } from "@/lib/procurement-payment-control";
 import {
   ordersForManager,
+  normalizeSupplierOrder,
 } from "@/lib/procurement-payment-source";
 import { fetchRequestOrderCatalogue as fetchSupplierOrderFinance } from '@/lib/procurement-request-catalogue';
 import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-notifications";
@@ -15,10 +16,12 @@ import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from '@/lib/procurement-supplier-settlements';
 import { freshEvidence } from '@/lib/procurement-plan-revision-server';
 import { debtRequestConflict } from '@/lib/procurement-debt-request';
+import { buyerOrderPurpose, supplierPosition } from '@/lib/procurement-supplier-position';
 import { mixedPaymentBasisSuppliers, mixedPaymentBasisMessage } from '@/lib/procurement-payment-basis';
 import { planningSubmissionError } from '@/lib/procurement-planning-submit';
 import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
 import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
+import { fetchManagerSupplierNames } from '@/lib/procurement-supplier-roster';
 
 function jsonValue(value: unknown) {
   return JSON.parse(
@@ -48,9 +51,10 @@ export async function POST(req: Request) {
   if (!source.complete) return Response.json({ error: 'Данные 1С получены не полностью. Повторите отправку позже.' }, { status: 503 });
   const managerOrders = ordersForManager(source.rows, managerName);
   const hasDebt = payload.rows.some(row => row.basis === 'DEBT');
-  const settlements = hasDebt ? await fetchSupplierSettlements() : null;
-  const supplierBalances = settlements ? summarizeSupplierSettlements(settlements.rows, managerOrders.map(order => order.supplierPartner)) : null;
-  if (hasDebt && (!settlements?.complete || supplierBalances?.unsupportedCurrencyRows)) return Response.json({ error: 'Не удалось подтвердить долг поставщикам. Повторите позже.' }, { status: 503 });
+  const settlements = await fetchSupplierSettlements();
+  const supplierNames = hasDebt ? await fetchManagerSupplierNames(managerName) : [...new Set(managerOrders.map(order=>order.supplierPartner))];
+  const supplierBalances = settlements ? summarizeSupplierSettlements(settlements.rows, supplierNames) : null;
+  if (!settlements?.complete || supplierBalances?.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщикам. Повторите позже.' }, { status: 503 });
   const allowed = new Map(
     ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]),
   );
@@ -60,10 +64,12 @@ export async function POST(req: Request) {
     const ref = typeof row.orderRef === "string" ? row.orderRef.trim() : "";
     const debt = row.basis === 'DEBT';
     const supplier = typeof row.supplierPartner === 'string' ? row.supplierPartner.trim() : '';
-    const order = debt ? managerOrders.find(order => order.supplierPartner === supplier) : allowed.get(ref);
+    const order = debt ? (supplierNames.includes(supplier)
+      ? normalizeSupplierOrder({ref: `debt:${supplier}`, supplier_partner: supplier, manager: managerName}) : undefined) : allowed.get(ref);
     const rowKey = debt ? `debt:${supplier}` : ref;
     if (!order || seen.has(rowKey)) return { error: "В списке есть недоступная или повторяющаяся оплата." } as const;
-    if (debt && (ref || !(Number(supplierBalances?.bySupplier[supplier]?.debt) > 500))) return { error: 'Подтверждённый долг поставщику должен быть больше 500 ₽.' } as const;
+    if (!debt && !['order','prepayment'].includes(buyerOrderPurpose(order, supplierBalances?.bySupplier[order.supplierPartner]))) return {error:'Заказ не предлагается для новой оплаты: долга нет или расчёты на сверке. Обновите список.'} as const;
+    if (debt && (ref || supplierPosition(supplierBalances?.bySupplier[supplier]) !== 'debt')) return { error: 'Долг поставщику отсутствует или находится на сверке. Обновите данные.' } as const;
     seen.add(rowKey);
     const method = typeof row.paymentMethod === "string" ? row.paymentMethod : "";
     const checked = validatePaymentPlan({

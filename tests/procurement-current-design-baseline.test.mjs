@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 test('current procurement workflow keeps its structure under the neutral identity', async () => {
-  const [shell, notifications, refresh, calendar, batch, adminCalendar, styles] = await Promise.all([
+  const [shell, notifications, refresh, calendar, batch, adminCalendar, styles, revisionServer, verification] = await Promise.all([
     readFile('components/ProcurementShell.tsx', 'utf8'),
     readFile('components/ProcurementNotificationsButton.tsx', 'utf8'),
     readFile('components/ProcurementDataRefresh.tsx', 'utf8'),
@@ -11,6 +11,8 @@ test('current procurement workflow keeps its structure under the neutral identit
     readFile('app/(dashboard)/procurement/ProcurementPaymentBatchForm.tsx', 'utf8'),
     readFile('app/(dashboard)/admin/procurement/AdminProcurementClient.tsx', 'utf8'),
     readFile('app/globals.css', 'utf8'),
+    readFile('lib/procurement-plan-revision-server.ts', 'utf8'),
+    readFile('lib/procurement-planning-verification.ts', 'utf8'),
   ]);
 
   assert.match(shell, /PortalIdentityBlock/);
@@ -19,8 +21,26 @@ test('current procurement workflow keeps its structure under the neutral identit
   assert.match(notifications, /procurement-notification-trigger/);
   assert.match(refresh, /procurement-data-refresh/);
   assert.match(shell, /procurement-header-logout inline-flex/);
-  assert.match(calendar, /Что стоит проверить/);
-  assert.match(calendar, /Добавить ещё одну оплату/);
+  assert.match(calendar, /Запланировать оплату/);
+  assert.match(calendar, /Добавить оплаты/);
+  assert.match(calendar, /Долг поставщикам по 1С/);
+  assert.doesNotMatch(calendar + batch, /поступлен|поступившим/i);
+  assert.match(calendar, /supplierPositionSummary\(supplierBalances\)/);
+  assert.match(calendar, /На сверке/);
+  assert.doesNotMatch(calendar + batch, /Сумму доплаты|Доплату уточните|Остаток к оплате по приобретениям|Заказы без долга по приобретениям|setShowPaid/i);
+  assert.match(batch, /const historyVisible = Boolean\(query\.trim\(\)\) && matchingHistory.length > 0/);
+  assert.doesNotMatch(calendar, /label="По приобретениям в 1С"|receiptSummary\.debtRub/);
+  assert.match(calendar, /Не включены: на сверке/);
+  assert.doesNotMatch(calendar, /независимо от возраста заказов/);
+  assert.doesNotMatch(calendar, /Заказы за последние 90 дней/);
+  assert.doesNotMatch(calendar + batch + revisionServer + verification, /руководител/i);
+  assert.doesNotMatch(calendar, /label="Перед новой оплатой"|проверить авансы|Проверить зачёт авансов/);
+  assert.match(calendar, /Сумму новой оплаты выбираете вы/);
+  assert.match(batch, /Сколько перечислить сейчас/);
+  assert.doesNotMatch(batch, /Почему\?|проверьте зачёт|Перед оплатой проверить зачёт/);
+  assert.doesNotMatch(calendar, /label="Подтверждённый долг по заказам"|72 для планирования/);
+  assert.match(calendar, /reservesUnavailable \? '—' : rub\.format\(plannedQr\)/);
+  assert.match(calendar, /ProcurementReceiptEvidence/);
   assert.match(calendar, /ProcurementDataRefresh/);
   assert.match(batch, /procurement-order-selected/);
   assert.match(adminCalendar, /Требуется ваше решение/);

@@ -74,13 +74,27 @@ test('lead time distinguishes advance, next-day and same-day requests automatica
   assert.equal(paymentPlanLeadTime('2026-09-08T21:30:00Z', '2026-09-09').state, 'SAME_DAY');
 });
 
-test('1C payment to another supplier is returned as a mismatch instead of a false match', () => {
+test('similar 1C payment to another supplier is a review candidate, never allocated', () => {
   const result = matchCashEvidence({ planCode: 'PAY-1', supplierPartner: 'V12', supplierCounterparty: '', plannedAmount: 39500, managerName: 'Тохов Астемир', plannedDate: '2026-09-09' }, [{
     ref: 'request-p43', amount: 39500, payment_date: '2026-09-09', requested_by: { name: 'Тохов Астемир' }, counterparty: { name: 'P43' },
     linked_cash_expense_orders: { rows: [{ ref: 'rko-p43', number: '99', posted: true, deletion_mark: false, amount: 39500 }] },
   }]);
-  assert.equal(result.state, 'MISMATCH');
-  assert.equal(result.actualSupplier, 'P43');
+  assert.equal(result.state, 'NEEDS_REVIEW');
+  assert.equal(result.issuedAmount, 0);
+  assert.deepEqual(result.cashOrders, []);
+});
+
+test('matching supplier manager date amount cannot prove payment without an explicit link',()=>{
+  const plan={planCode:'PAY-1',supplierPartner:'Supplier',supplierCounterparty:'',plannedAmount:10000,managerName:'Buyer',plannedDate:'2026-09-25'};
+  const request={ref:'unrelated',amount:10000,payment_date:'2026-09-25',requested_by:{name:'Buyer'},counterparty:{name:'Supplier'},
+    linked_cash_expense_orders:{rows:[{ref:'rko',posted:true,deletion_mark:false,amount:10000}]}};
+  for(const comment of ['', 'PAY-10', 'XPAY-1']) {
+    const result=matchCashEvidence(plan,[{...request,comment}]);
+    assert.equal(result.state,'NEEDS_REVIEW');assert.equal(result.issuedAmount,0);assert.deepEqual(result.cashOrders,[]);
+  }
+  assert.equal(matchCashEvidence(plan,[{...request,comment:'Оплата (PAY-1).'}]).state,'ISSUED_BY_ONE_C');
+  assert.equal(matchCashEvidence(plan,[{...request,comment:'PAY-1',counterparty:{name:'Other'}}]).state,'MISMATCH');
+  assert.equal(matchCashEvidence(plan,[{...request,comment:'PAY-1',linked_cash_expense_orders:{rows:[{ref:'rko',posted:false,amount:10000}]}}]).issuedAmount,0);
 });
 
 test('plan code is recognizable for 1C comment matching', () => {

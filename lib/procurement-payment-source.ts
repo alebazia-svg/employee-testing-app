@@ -3,6 +3,11 @@ import 'server-only';
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 
 export type SupplierOrderFinanceRow = {
+  /** Fresh all-history discovery membership, NOT an allocated/payable amount. */
+  outstandingAcquisitions?: { checkedAt: string };
+  noAcquisitions?: { checkedAt: string };
+  paymentClosure?: import('./procurement-order-payment-closure').OrderPaymentClosure;
+  receiptSettlement?: import('./procurement-planning-verification').OrderReceiptSettlement;
   planningState?: 'prepayment' | 'receipt_debt' | 'settled' | 'needs_review' | 'small_balance';
   planningReason?: string;
   verifiedAt?: string;
@@ -24,6 +29,8 @@ export type SupplierOrderFinanceRow = {
 };
 
 export type SupplierOrderFinanceSnapshot = {
+  /** Complete discovery population; absence of this contract means old debt coverage is unknown. */
+  outstandingOrderRefs?: string[];
   planningVerified?: boolean;
   rows: SupplierOrderFinanceRow[];
   checkedAt: string;

@@ -145,7 +145,11 @@ const normalized = (value: unknown) => clean(value).toLocaleLowerCase('ru-RU').r
 
 export function matchCashEvidence(plan: { planCode: string; supplierPartner: string; supplierCounterparty: string; plannedAmount: number; managerName?: string; plannedDate?: string }, requests: ExpenseRequestSourceRow[]) {
   const expectedSuppliers = [plan.supplierPartner, plan.supplierCounterparty].map(normalized).filter(Boolean);
-  const hasPlanCode = (request: ExpenseRequestSourceRow) => `${clean(request.comment)} ${clean(request.payment_purpose)}`.toUpperCase().includes(plan.planCode.toUpperCase());
+  const hasPlanCode = (request: ExpenseRequestSourceRow) => {
+    const code = clean(plan.planCode).toUpperCase();
+    if (!code) return false;
+    return `${clean(request.comment)} ${clean(request.payment_purpose)}`.toUpperCase().split(/[^A-Z0-9-]+/).includes(code);
+  };
   const supplierFor = (request: ExpenseRequestSourceRow) => clean(request.counterparty?.name || request.partner?.name);
   const sameManagerDateAmount = (request: ExpenseRequestSourceRow) => {
     const managerMatches = Boolean(plan.managerName) && normalized(request.requested_by?.name) === normalized(plan.managerName);
@@ -153,17 +157,15 @@ export function matchCashEvidence(plan: { planCode: string; supplierPartner: str
     return managerMatches && Boolean(plan.plannedDate) && requestDate === clean(plan.plannedDate).slice(0, 10) && Math.abs(Number(request.amount || 0) - plan.plannedAmount) < 0.01;
   };
   const candidates = requests.filter((request) => {
-    const haystack = `${clean(request.comment)} ${clean(request.payment_purpose)}`;
-    if (haystack.toUpperCase().includes(plan.planCode.toUpperCase())) return true;
+    if (hasPlanCode(request)) return true;
     const supplier = normalized(supplierFor(request));
     return Boolean(supplier) && expectedSuppliers.includes(supplier) && Math.abs(Number(request.amount || 0) - plan.plannedAmount) < 0.01;
   });
   const strong = candidates.filter(hasPlanCode);
-  const exactFallback = candidates.filter((request) => {
-    return sameManagerDateAmount(request);
-  });
   const possibleMismatch = requests.filter((request) => sameManagerDateAmount(request) && !expectedSuppliers.includes(normalized(supplierFor(request))));
-  const selected = strong.length ? strong : exactFallback.length === 1 ? exactFallback : possibleMismatch.length === 1 ? possibleMismatch : [];
+  // A date/amount/manager match is only a review candidate, never payment proof.
+  // Explicit order/manual links are processed by applyRublePaymentEvidence.
+  const selected = strong;
   const orders = selected.flatMap((request) => request.linked_cash_expense_orders?.rows || []).filter((order) => order.posted === true && order.deletion_mark !== true);
   const issuedAmount = orders.reduce((sum, order) => sum + Number(order.executed_amount ?? order.amount ?? 0), 0);
   const actualSupplier = selected.length === 1 ? supplierFor(selected[0]) : '';
@@ -174,7 +176,7 @@ export function matchCashEvidence(plan: { planCode: string; supplierPartner: str
       : issuedAmount + 0.009 < plan.plannedAmount
         ? 'PARTIALLY_ISSUED'
         : 'ISSUED_BY_ONE_C'
-    : candidates.length > 0 && !strong.length
+    : (candidates.length > 0 || possibleMismatch.length > 0) && !strong.length
       ? 'NEEDS_REVIEW'
       : 'NO_EVIDENCE';
   return {

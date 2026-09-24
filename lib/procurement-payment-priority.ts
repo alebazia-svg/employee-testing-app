@@ -1,3 +1,5 @@
+import { hasRecordedPaidClosure } from './procurement-order-payment-closure';
+
 type ReviewableOrder = {
   planningState?: string;
   ref: string;
@@ -11,23 +13,72 @@ type ReviewableOrder = {
 
 /** Display order only: never changes balances or payment urgency signals. */
 export const SMALL_ORDER_PAYMENT_BALANCE_RUB = 500;
+export const MIN_SUGGESTED_PAYMENT_RUB = 1000;
 
-/** Hide small order balances only from new planning, never from accounting or existing plans. */
-export function ordersForNewPayment<T extends { orderPaymentGap: number; unplannedAmount: number; planningState?: string }>(orders: T[]): T[] {
-  return orders.filter(order => order.planningState !== 'needs_review' && order.planningState !== 'settled' && order.orderPaymentGap > SMALL_ORDER_PAYMENT_BALANCE_RUB && order.unplannedAmount > 0.009);
+/** Presentation only: unknown amounts and prepayments must stay discoverable. */
+export function isSmallPaymentSuggestion(order: {ref: string; unplannedAmount: number; noAcquisitions?: unknown; receiptSettlement?: {debtRub: number}}) {
+  if (order.noAcquisitions) return false;
+  const amount = order.ref.startsWith('debt:') ? order.unplannedAmount : order.receiptSettlement?.debtRub;
+  return typeof amount === 'number' && Number.isFinite(amount) && amount >= 0 && amount < MIN_SUGGESTED_PAYMENT_RUB;
+}
+
+type BuyerArchiveOrder = {
+  paymentClosure?: import('./procurement-order-payment-closure').OrderPaymentClosure;
+  receiptSettlement?: import('./procurement-planning-verification').OrderReceiptSettlement;
+};
+/** Measured zero is not cash-payment proof. Keep both kinds in searchable history. */
+export function isBuyerPaymentHistory(order: BuyerArchiveOrder): boolean {
+  const e = order.receiptSettlement;
+  return hasRecordedPaidClosure(order) || Boolean(e && e.debtRub === 0 && e.receipts.length
+    && e.receipts.every(r => r.remainingRub === 0));
+}
+
+export function orderMissingAmountLabel(order: {noAcquisitions?: {checkedAt: string}; planningState?: string}) {
+  return order.noAcquisitions ? 'Приобретений пока нет' : 'Остаток по заказу не подтверждён';
+}
+
+/** Filter suggestions only, never the evidence catalogue or existing plans. */
+export function ordersForNewPayment<T extends BuyerArchiveOrder & { orderPaymentGap: number; unplannedAmount: number; planningState?: string }>(orders: T[]): T[] {
+  return orders.filter(order => {
+    if (isBuyerPaymentHistory(order)) return false;
+    if (order.planningState === 'receipt_debt') {
+      return order.orderPaymentGap > SMALL_ORDER_PAYMENT_BALANCE_RUB && order.unplannedAmount > 0.009;
+    }
+    return true;
+  });
 }
 
 export function sortByUnplannedAmount<T extends { unplannedAmount: number }>(orders: T[]): T[] {
   return [...orders].sort((a, b) => b.unplannedAmount - a.unplannedAmount);
 }
 
-export function sortPaymentPickerOrders<T extends { supplierPartner: string; orderPaymentGap: number; unplannedAmount: number; ref: string; planningState?: string }>(orders: T[]): T[] {
+export function sortPaymentPickerOrders<T extends { supplierPartner: string; orderPaymentGap: number; unplannedAmount: number; ref: string; date?: string; planningState?: string; receiptSettlement?: {debtRub: number} }>(orders: T[]): T[] {
   const amount = (order: T) => order.ref.startsWith('debt:') ? order.unplannedAmount : order.orderPaymentGap;
-  const unknown = (order: T) => order.planningState === 'needs_review' || !Number.isFinite(amount(order));
+  const confirmed = (order: T) => order.ref.startsWith('debt:') || order.planningState === 'receipt_debt';
   return [...orders].sort((a, b) => {
-    if (unknown(a) !== unknown(b)) return unknown(a) ? 1 : -1;
-    return unknown(a) ? 0 : amount(b) - amount(a);
+    if (!a.ref.startsWith('debt:') && !b.ref.startsWith('debt:')) {
+      const aDate = orderDateKey(a.date || '');
+      const bDate = orderDateKey(b.date || '');
+      if (aDate || bDate) return bDate.localeCompare(aDate);
+    }
+    const tier = (order: T) => confirmed(order) && amount(order) > 500 ? 0
+      : order.receiptSettlement && order.receiptSettlement.debtRub > 500 ? 1
+      : order.planningState === 'prepayment' ? 2
+      : order.receiptSettlement && order.receiptSettlement.debtRub > 0 ? 3
+      : order.receiptSettlement?.debtRub === 0 ? 5 : 4;
+    if (tier(a) !== tier(b)) return tier(a) - tier(b);
+    return amount(b) - amount(a);
   });
+}
+
+/** A display window only, never a cutoff for debt or evidence validity. */
+export function isRecentPaymentOrder(order: {date?: string}, today: string) {
+  const age = ageInDays(order.date || '', today);
+  return age !== null && age < 90 && orderDateKey(order.date || '') <= today;
+}
+
+export function paymentActionPriority(plan: { status: string }) {
+  return plan.status === 'NEEDS_CHANGES' ? 0 : plan.status === 'SUBMITTED' ? 1 : 2;
 }
 
 /** A short numeric query matches the order suffix, never a supplier's digits. */

@@ -51,7 +51,7 @@ export function planningDiscovery(p: Row) {
 }
 
 /** Strict payable candidate, never authority to close a request. No name-based netting. */
-export function verifiedOrderDebt(discovery: ReturnType<typeof planningDiscovery>, orderRef: string, detail: Row, supplier: Row, minimumDebtMinor = 50000) {
+export function verifiedOrderDebt(discovery: ReturnType<typeof planningDiscovery>, orderRef: string, detail: Row, supplier: Row, minimumDebtMinor = 50000, allowSupplierCredits = false) {
   const link = discovery.orders.get(orderRef);
   if (!link || !link.order_posted || link.order_deleted || discovery.ambiguousManagers.has(norm(link.manager_name))) return null;
   if (detail?.ok !== true || detail.complete !== true || detail.write_operations !== false
@@ -64,7 +64,9 @@ export function verifiedOrderDebt(discovery: ReturnType<typeof planningDiscovery
     || order.posted !== true || order.deleted !== false || norm(order.manager_name || '') !== norm(link.manager_name)) return null;
   const reconciliation = reconcileSupplier(supplier, link.order_supplier_ref);
   // Any supplier advance can represent a historical payment not yet allocated.
-  if (reconciliation.state !== 'available' || reconciliation.buckets.some(b => b.advanceMinor > 0)) return null;
+  // Measurement and payment eligibility are different. A supplier credit does
+  // not erase a receipt's recorded debt; callers must flag it for allocation.
+  if (reconciliation.state !== 'available' || (!allowSupplierCredits && reconciliation.buckets.some(b => b.advanceMinor > 0))) return null;
   const receipts = new Set<string>();
   for (const receipt of detail.receipts) {
     if (receipts.has(receipt.receipt_ref) || receipt.posted !== true) return null;

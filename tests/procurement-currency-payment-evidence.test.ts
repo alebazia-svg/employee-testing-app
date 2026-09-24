@@ -28,6 +28,15 @@ const conversion: CurrencyConversionRow = {
   linkedCashbox: 'Касса USDT',
 };
 
+test('full matcher does not promote a coincidental expense request to a paid ORDER plan',()=>{
+  const p={...plan,paymentMethod:'CASH',plannedAmount:10000,managerName:'Buyer'};
+  const request={ref:'unrelated',amount:10000,desired_payment_date:p.plannedDate,requested_by:{name:'Buyer'},counterparty:{name:'Tural'},
+    linked_cash_expense_orders:{rows:[{ref:'unrelated-rko',posted:true,deletion_mark:false,amount:10000}]}};
+  const result=matchProcurementPaymentEvidence([p],[request],[],[]).get(p.id)!;
+  assert.equal(result.state,'NEEDS_REVIEW');assert.equal(result.issuedAmount,0);
+  assert.equal(result.remainingAmount,10000);assert.deepEqual(result.cashOrders,[]);
+});
+
 test('Remax budget closes from linked USDT payment using older reference without claiming actual RUB payment', () => {
   const result = matchProcurementPaymentEvidence([plan], [], [{...payment, documentAmount:7852.64}], [{...conversion,date:'09.09.2026 2:24:27',conversionRate:89.5}]).get(plan.id)!;
   assert.equal(result.state, 'PAID_BY_ONE_C');
