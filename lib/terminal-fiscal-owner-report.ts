@@ -12,6 +12,8 @@ export type OwnerFiscalReportInput = {
   unavailable: number;
   mismatches: number;
   total: number;
+  terminalCountExpected: number;
+  terminalCountReported: number;
   sourcesComplete: boolean;
   terminals?: Array<{
     label: string;
@@ -32,6 +34,7 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
   const lines = [
     `${ok ? '✅' : '⚠️'} Контроль оплат по терминалу за ${input.day}`,
     ok ? 'Итог: денежного расхождения не найдено.' : 'Итог: есть операции, которые требуют проверки.',
+    `Аппараты aQsi в отчёте: ${input.terminalCountReported}/${input.terminalCountExpected}`,
     `Операций aQsi: ${input.total}`,
     `• подтверждены отдельными чеками: ${input.confirmed}`,
     `• подтверждены общей суммой за день: ${input.coveredByDayTotal}`,
@@ -44,7 +47,9 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
     input.mismatches > 0 ? `• подтверждённых денежных расхождений: ${input.mismatches}` : '',
     input.linkedLateCount > 0 ? `Чеков, связанных с оплатой после задержки: ${input.linkedLateCount}` : 'Поздних чеков за день: нет',
     input.resolvedLateCount > 0 ? `Автоматически закрыто напоминаний: ${input.resolvedLateCount} на ${rubles(input.resolvedLateAmountKopecks)} ₽` : '',
-    input.sourcesComplete ? 'Данные aQsi, 1С и ОФД получены полностью.' : 'Не все источники доступны — итог предварительный.',
+    input.sourcesComplete
+      ? 'Данные обоих аппаратов aQsi, 1С и ОФД получены полностью.'
+      : 'Не все аппараты aQsi или связанные источники доступны — итог предварительный.',
   ].filter(Boolean);
   if (input.terminals?.length) {
     lines.push('Суммы aQsi ↔ 1С:');
@@ -57,6 +62,8 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
   }
   lines.push(input.openCount > 0
     ? 'Что делать: проверить указанные оплаты в портале и пробить отсутствующие чеки.'
-    : 'Что делать: ничего, расхождений по чекам нет.');
+    : !input.sourcesComplete
+      ? 'Что делать: восстановить данные отсутствующего аппарата или источника и дождаться повторной сверки.'
+      : 'Что делать: ничего, расхождений по чекам нет.');
   return lines.join('\n');
 }

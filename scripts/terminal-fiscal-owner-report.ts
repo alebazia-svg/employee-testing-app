@@ -16,7 +16,7 @@ function dayLabel(value: Date) {
 
 async function main() {
   const { from, to } = moscowDayBounds();
-  const [open, resolved, runs] = await Promise.all([
+  const [open, resolved, activeMappings] = await Promise.all([
     prisma.terminalFiscalEmployeeReview.findMany({
       where: { status: { in: ['open', 'admin_review'] }, bankOperationAt: { gte: from, lt: to } },
       select: { amountKopecks: true },
@@ -25,16 +25,28 @@ async function main() {
       where: { resolvedAt: { gte: from, lt: to } },
       select: { amountKopecks: true },
     }),
-    prisma.terminalFiscalMatchRun.findMany({
-      where: { periodFrom: { gte: from }, periodTo: { lte: to } },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, mappingId: true, tbankComplete: true, oneCComplete: true, ofdComplete: true },
+    prisma.terminalFiscalMapping.findMany({
+      where: {
+        isActive: true,
+        effectiveFrom: { lt: to },
+        OR: [{ effectiveTo: null }, { effectiveTo: { gt: from } }],
+      },
+      select: { id: true },
     }),
   ]);
+  const runs = await prisma.terminalFiscalMatchRun.findMany({
+    where: {
+      mappingId: { in: activeMappings.map((mapping) => mapping.id) },
+      periodFrom: { gte: from },
+      periodTo: { lte: to },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, mappingId: true, tbankComplete: true, oneCComplete: true, ofdComplete: true },
+  });
   const latest = new Map<string, (typeof runs)[number]>();
   for (const run of runs) if (!latest.has(run.mappingId)) latest.set(run.mappingId, run);
   const selected = [...latest.values()];
-  const mappings = selected.length ? await prisma.terminalFiscalMapping.findMany({
+  const reportedMappings = selected.length ? await prisma.terminalFiscalMapping.findMany({
     where: { id: { in: selected.map((run) => run.mappingId) } },
     select: { id: true, label: true, terminalKey: true, oneCAcquiringTerminalRef: true, oneCCashRegisterRef: true },
   }) : [];
@@ -43,11 +55,11 @@ async function main() {
     select: { status: true, reasonCode: true, oneCCashierRef: true, timeDifferenceSeconds: true },
   }) : [];
   const itemReasons = new Set(['OFD_ITEMS_MISMATCH', 'OFD_ITEM_PRESENTATION_DIFFERENCE', 'OFD_ITEM_VALUES_MISMATCH']);
-  const oneC = mappings.length ? await loadOneCKkmChecks({
+  const oneC = reportedMappings.length ? await loadOneCKkmChecks({
     fromDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(from),
     toDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(to),
   }) : { complete: true, data: [] };
-  const terminals = await Promise.all(mappings.map(async (mapping) => {
+  const terminals = await Promise.all(reportedMappings.map(async (mapping) => {
     const aqsi = await loadCompleteTBankOperations({ terminalKey: mapping.terminalKey, from: from.toISOString(), to: to.toISOString() });
     const aqsiKopecks = aqsi.data.reduce((sum, operation) => sum + (operation.type === 'Debit' ? operation.amountKopecks : operation.type === 'Credit' ? -operation.amountKopecks : 0), 0);
     const oneCKopecks = oneC.data.reduce((sum, check) => {
@@ -75,7 +87,11 @@ async function main() {
     unavailable: matches.filter((row) => row.status === 'unavailable').length,
     mismatches: matches.filter((row) => row.status === 'mismatch').length,
     total: matches.length,
-    sourcesComplete: selected.length > 0 && selected.every((run) => run.tbankComplete && run.oneCComplete && run.ofdComplete),
+    terminalCountExpected: activeMappings.length,
+    terminalCountReported: selected.length,
+    sourcesComplete: activeMappings.length > 0 && selected.length === activeMappings.length
+      && selected.every((run) => run.tbankComplete && run.oneCComplete && run.ofdComplete)
+      && terminals.length === activeMappings.length && terminals.every((terminal) => terminal.complete),
     terminals,
   };
   process.stdout.write(`${JSON.stringify({ ok: true, input, text: terminalFiscalOwnerMessage(input) })}\n`);

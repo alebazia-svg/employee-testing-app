@@ -39,7 +39,10 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       PORT: "3000"
       CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED: "true"
-      TBANK_CABINET_SNAPSHOT_ENABLED: "true"
+      # Both retail workplaces use the direct read-only aQsi API.  Keep the
+      # historical cabinet mount only as an emergency artifact; never silently
+      # fall back to it in production reconciliation.
+      TBANK_CABINET_SNAPSHOT_ENABLED: "false"
       TBANK_CABINET_SNAPSHOT_PATH: /app/runtime/tbank-cabinet/current.json
       AQSI_PORTAL_TERMINAL_KEY: "1010808747019437"
       AQSI_TERMINAL_ID: "10693079"
