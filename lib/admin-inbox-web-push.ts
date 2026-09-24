@@ -2,13 +2,15 @@ import 'server-only';
 
 import webpush from 'web-push';
 import { prisma } from '@/lib/prisma';
+import {
+  ADMIN_INBOX_TECHNICAL_DEDUPE_MS,
+  eligibleAdminInboxWebPushTypes,
+  getAdminInboxPushEventCutoff,
+  isAdminInboxWebPushEligible,
+  isTechnicalAdminInboxDownEvent,
+  subscriptionExistedWhenAdminInboxEventWasCreated,
+} from '@/lib/admin-inbox-web-push-policy';
 import { TBANK_NOTIFICATION_SOURCE, tbankPushEventId } from '@/lib/tbank-cabinet-notification-policy';
-
-export const ADMIN_INBOX_PUSH_READ_GRACE_MS = 30 * 60 * 1000;
-
-export function getAdminInboxPushReadGraceCutoff(now: Date) {
-  return new Date(now.getTime() - ADMIN_INBOX_PUSH_READ_GRACE_MS);
-}
 
 function configureWebPush() {
   const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim() ?? '';
@@ -19,9 +21,52 @@ function configureWebPush() {
   return true;
 }
 
+async function isCurrentTechnicalIncident(input: {
+  id: string;
+  type: string;
+  sourceType: string;
+  sourceId: string;
+  occurredAt: Date;
+}, now: Date) {
+  if (!isTechnicalAdminInboxDownEvent(input.type)) return true;
+  const recoveredType = input.type === 'dependency.down'
+    ? 'dependency.recovered'
+    : 'infrastructure.recovered';
+  const latestState = await prisma.adminInboxEvent.findFirst({
+    where: {
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      type: { in: [input.type, recoveredType] },
+      occurredAt: { lte: now },
+    },
+    orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+    select: { id: true },
+  });
+  if (latestState?.id !== input.id) return false;
+
+  const duplicateCutoff = new Date(input.occurredAt.getTime() - ADMIN_INBOX_TECHNICAL_DEDUPE_MS);
+  const recentSentIncident = await prisma.adminInboxDelivery.findFirst({
+    where: {
+      channel: 'web_push',
+      status: 'sent',
+      event: {
+        id: { not: input.id },
+        type: input.type,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+        occurredAt: { gte: duplicateCutoff, lte: input.occurredAt },
+      },
+    },
+    select: { id: true },
+  });
+  return recentSentIncident === null;
+}
+
 export async function dispatchAdminInboxWebPush(now = new Date()) {
   if (!configureWebPush()) throw new Error('WEB_PUSH_NOT_CONFIGURED');
-  const readGraceCutoff = getAdminInboxPushReadGraceCutoff(now);
+  const eligibleTypes = eligibleAdminInboxWebPushTypes(now);
+  if (eligibleTypes.length === 0) return { receipts: 0, sent: 0, failed: 0 };
+  const eventCutoff = getAdminInboxPushEventCutoff(now);
   const latestTbank = await prisma.adminInboxEvent.findFirst({
     where: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE,
       type: { in: ['dependency.down', 'dependency.recovered'] } },
@@ -31,15 +76,15 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
   const allowedTbankId = tbankPushEventId(latestTbank, now);
   const receipts = await prisma.adminInboxReceipt.findMany({
     where: {
-      event: { OR: [
-        { NOT: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE } },
-        ...(allowedTbankId ? [{ id: allowedTbankId }] : []),
-      ] },
+      event: {
+        type: { in: eligibleTypes },
+        createdAt: { gte: eventCutoff, lte: now },
+        OR: [
+          { NOT: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE } },
+          ...(allowedTbankId ? [{ id: allowedTbankId }] : []),
+        ],
+      },
       user: { role: 'ADMIN', isActive: true },
-      OR: [
-        { readAt: null },
-        { createdAt: { gte: readGraceCutoff } },
-      ],
     },
     include: { event: true, user: { include: { pushSubscriptions: { where: { disabledAt: null } } } } },
     orderBy: { createdAt: 'asc' },
@@ -48,7 +93,17 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
   let sent = 0;
   let failed = 0;
   for (const receipt of receipts) {
+    if (!isAdminInboxWebPushEligible({
+      type: receipt.event.type,
+      eventCreatedAt: receipt.event.createdAt,
+      now,
+    })) continue;
+    if (!await isCurrentTechnicalIncident(receipt.event, now)) continue;
     for (const subscription of receipt.user.pushSubscriptions) {
+      if (!subscriptionExistedWhenAdminInboxEventWasCreated({
+        subscriptionCreatedAt: subscription.createdAt,
+        eventCreatedAt: receipt.event.createdAt,
+      })) continue;
       const recipientKey = `admin:${receipt.userId}:push:${subscription.id}`;
       const delivery = await prisma.adminInboxDelivery.upsert({
         where: { eventId_channel_recipientKey: { eventId: receipt.eventId, channel: 'web_push', recipientKey } },
