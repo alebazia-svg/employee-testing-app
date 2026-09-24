@@ -19,7 +19,7 @@ export function ProcurementShell({ userName, children }: { userName: string; chi
               <div className='flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-extrabold text-slate-700'>{initials}</div>
               <div className='hidden min-w-0 min-[520px]:block'>
                 <p className='truncate text-sm font-bold text-slate-950'>{userName}</p>
-                <p className='text-xs font-medium text-slate-500'>Закупщик</p>
+                <p className='text-xs font-medium text-slate-500'>Закупки</p>
               </div>
             </div>
             <LogoutButton

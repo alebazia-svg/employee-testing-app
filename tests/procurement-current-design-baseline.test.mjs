@@ -16,6 +16,8 @@ test('current procurement workflow keeps its structure under the neutral identit
   ]);
 
   assert.match(shell, /PortalIdentityBlock/);
+  assert.match(shell, />Закупки<\/p>/);
+  assert.doesNotMatch(shell, /Закупщик/);
   assert.match(shell, /ProcurementNotificationsButton/);
   assert.match(shell, /portal-neutral-design procurement-shell/);
   assert.match(notifications, /procurement-notification-trigger/);
