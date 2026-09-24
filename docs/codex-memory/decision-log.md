@@ -411,3 +411,24 @@ Employee-facing status copy must be brief and action-first: status, reason,
 then the next action. This rule does not permit shortening source-backed 1C
 instructions for a realization, cash receipt order or acquiring operation;
 those exact document-specific instructions remain complete.
+
+## 2026-09-24 - ADMIN Web Push Uses An Explicit Priority Policy
+
+The ADMIN inbox remains the complete operational record, while device push is
+reserved for fresh events that require timely attention.
+
+- ordinary business and confirmed-down technical push is allowed from 09:00 to
+  22:00 Moscow time;
+- shift-closing blockers remain push-eligible until 23:00, then stay inbox-only;
+- recovery, access-expiry, routine fiscal-review, schedule-gap and payment-update
+  events stay in the inbox and do not create immediate device push;
+- a technical down event is pushed only while it is the latest state for that
+  source, and a second down event for the same source is suppressed for two hours;
+- events older than thirty minutes are not replayed as push, and a newly created
+  browser/PWA subscription never receives events created before that subscription;
+- Telegram policy, database schema, business-event creation and employee push are
+  unchanged by this decision.
+
+This policy was introduced after a 30-day production audit found that 221 of 249
+night web-push deliveries were technical and that recovery messages dominated
+the ADMIN unread backlog.
