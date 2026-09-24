@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ordersForNewPayment, sortByUnplannedAmount, sortPaymentPickerOrders } from '../lib/procurement-payment-priority';
+import { matchesPaymentOrderSearch, ordersForNewPayment, sortByUnplannedAmount, sortPaymentPickerOrders } from '../lib/procurement-payment-priority';
 
 const row = (ref: string, supplierPartner: string, orderPaymentGap: number, unplannedAmount = orderPaymentGap) =>
   ({ ref, supplierPartner, orderPaymentGap, unplannedAmount });
@@ -23,10 +23,22 @@ test('planning shows largest unplanned amounts first without removing small bala
   assert.deepEqual(rows, before);
 });
 
-test('picker ranks supplier totals then order balances and preserves groups', () => {
+test('picker ranks individual outstanding balances across suppliers', () => {
   const rows = [row('a-small', 'A', .4), row('b', 'B', 10000), row('a-large', 'A', 9000), row('a-medium', 'A', 5000), row('c', 'C', 500)];
-  assert.deepEqual(sortPaymentPickerOrders(rows).map(x => x.ref), ['a-large', 'a-medium', 'a-small', 'b', 'c']);
+  assert.deepEqual(sortPaymentPickerOrders(rows).map(x => x.ref), ['b', 'a-large', 'a-medium', 'c', 'a-small']);
   assert.equal(rows[0].ref, 'a-small');
+});
+
+test('unverified balances remain selectable without being ranked as confirmed debt', () => {
+  const rows = [{ ...row('review', 'A', 900000), planningState: 'needs_review' }, row('small', 'B', 10), row('large', 'C', 5000)];
+  assert.deepEqual(sortPaymentPickerOrders(rows).map(x => x.ref), ['large', 'small', 'review']);
+});
+
+test('search accepts suffix, full number and supplier without numeric prefix false matches', () => {
+  const order = { number: '000F-000397', supplierPartner: 'Поставщик 123' };
+  for (const query of ['397', ' 397 ', '97', '000F-000397', 'поставщик']) assert.equal(matchesPaymentOrderSearch(order, query), true);
+  for (const query of ['123', '000', '398']) assert.equal(matchesPaymentOrderSearch(order, query), false);
+  assert.equal(matchesPaymentOrderSearch({ ...order, number: '' }, '123'), true);
 });
 
 test('debt-only picker uses supplier debt and equal amounts keep stable order', () => {

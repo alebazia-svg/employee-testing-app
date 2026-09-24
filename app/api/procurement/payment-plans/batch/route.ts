@@ -6,10 +6,9 @@ import {
   validatePaymentPlan,
 } from "@/lib/procurement-payment-control";
 import {
-  fetchSupplierOrderFinance,
   ordersForManager,
-  ordersRequiringPayment,
 } from "@/lib/procurement-payment-source";
+import { fetchRequestOrderCatalogue as fetchSupplierOrderFinance } from '@/lib/procurement-request-catalogue';
 import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-notifications";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
@@ -19,6 +18,7 @@ import { debtRequestConflict } from '@/lib/procurement-debt-request';
 import { mixedPaymentBasisSuppliers, mixedPaymentBasisMessage } from '@/lib/procurement-payment-basis';
 import { planningSubmissionError } from '@/lib/procurement-planning-submit';
 import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
+import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
 
 function jsonValue(value: unknown) {
   return JSON.parse(
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   const supplierBalances = settlements ? summarizeSupplierSettlements(settlements.rows, managerOrders.map(order => order.supplierPartner)) : null;
   if (hasDebt && (!settlements?.complete || supplierBalances?.unsupportedCurrencyRows)) return Response.json({ error: 'Не удалось подтвердить долг поставщикам. Повторите позже.' }, { status: 503 });
   const allowed = new Map(
-    ordersRequiringPayment(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]),
+    ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]),
   );
   const seen = new Set<string>();
   const checkedRows = payload.rows.map((row) => {
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     const order = debt ? managerOrders.find(order => order.supplierPartner === supplier) : allowed.get(ref);
     const rowKey = debt ? `debt:${supplier}` : ref;
     if (!order || seen.has(rowKey)) return { error: "В списке есть недоступная или повторяющаяся оплата." } as const;
-    if (debt && (ref || !(Number(supplierBalances?.bySupplier[supplier]?.debt) > 0))) return { error: 'Долг выбранному поставщику не подтверждён в 1С.' } as const;
+    if (debt && (ref || !(Number(supplierBalances?.bySupplier[supplier]?.debt) > 500))) return { error: 'Подтверждённый долг поставщику должен быть больше 500 ₽.' } as const;
     seen.add(rowKey);
     const method = typeof row.paymentMethod === "string" ? row.paymentMethod : "";
     const checked = validatePaymentPlan({
@@ -92,7 +92,9 @@ export async function POST(req: Request) {
   if (needsUsdtRate && !rateReference?.rate) return Response.json({ error: "Курс пока недоступен. Укажите примерную сумму в рублях." }, { status: 400 });
   const planningRows = checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length ? [row.order] : []);
   const planningError = await planningSubmissionError(planningRows, checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length
-    ? [{ refs: row.data.orderRefs, amount: row.data.plannedAmount || Number(row.data.foreignAmount) * Number(rateReference?.rate) }] : []));
+    ? [{ refs: row.data.orderRefs, amount: row.data.plannedAmount || Number(row.data.foreignAmount) * Number(rateReference?.rate), condition: row.data.condition }] : []), verified => {
+      for (const row of checkedRows) if ('data' in row && row.data) row.data.condition = reviewRequestCondition(verified.filter(order => row.data!.orderRefs.includes(order.ref)), row.data.condition);
+    });
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
 
   // Verify all existing allocations before accepting another debt request.

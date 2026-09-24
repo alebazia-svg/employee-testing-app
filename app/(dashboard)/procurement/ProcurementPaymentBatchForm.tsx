@@ -5,11 +5,12 @@ import { Check, Plus, Search, X } from "lucide-react";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
 import { summarizeDraftUsdt } from '@/lib/procurement-draft-summary';
-import { sortPaymentPickerOrders } from '@/lib/procurement-payment-priority';
+import { matchesPaymentOrderSearch, sortPaymentPickerOrders } from '@/lib/procurement-payment-priority';
 import { mixedPaymentBasisSuppliers, mixedPaymentBasisMessage } from '@/lib/procurement-payment-basis';
-import { procurementWorkingOrders } from '@/lib/procurement-working-orders';
 
 type Order = {
+  planningState?: string;
+  planningReason?: string;
   date?: string;
   controlGroup?: string;
   ref: string;
@@ -90,12 +91,8 @@ export function ProcurementPaymentBatchForm({
   todayKey?: string;
   activeOrderRefs?: string[];
 }) {
-  const catalogue = procurementWorkingOrders(sourceOrders, todayKey, activeOrderRefs);
-  const historicalRefs = new Set(catalogue.historical.map(order => order.ref));
-  const workingRefs = new Set(catalogue.working.map(order => order.ref));
-  const [showHistorical, setShowHistorical] = useState(false);
-  const orders = useMemo(() => [...sourceOrders, ...Object.entries(supplierDebtError ? {} : supplierBalances)
-    .filter(([, balance]) => balance.debt > 0)
+  const orders: Order[] = useMemo(() => [...sourceOrders, ...Object.entries(supplierDebtError ? {} : supplierBalances)
+    .filter(([, balance]) => balance.debt > 500)
     .map(([supplierPartner, balance]) => ({ref: `debt:${supplierPartner}`, number: '', supplierPartner, supplierCounterparty: '', orderPaymentGap: 0, supplierDebt: balance.debt, plannedActiveAmount: 0, unplannedAmount: balance.debt, orderComment: ''}))], [sourceOrders, supplierBalances, supplierDebtError]);
   const [pickerBasis, setPickerBasis] = useState<'ORDER' | 'DEBT'>('ORDER');
   const supplierBalanceText = (supplier: string) => {
@@ -113,7 +110,7 @@ export function ProcurementPaymentBatchForm({
         order.ref,
         {
           selected: initialSelectedRefs.includes(order.ref),
-          plannedAmount: order.ref.startsWith('debt:') || historicalRefs.has(order.ref) ? '' : String(Math.max(0, order.unplannedAmount) || ""),
+          plannedAmount: order.ref.startsWith('debt:') || order.planningState === 'needs_review' ? '' : String(Math.max(0, order.unplannedAmount) || ""),
           paymentMethod: "CASH",
           foreignAmount: "",
           condition: "",
@@ -138,18 +135,10 @@ export function ProcurementPaymentBatchForm({
     return () => window.removeEventListener('beforeunload', warn);
   }, [selected.length, plannedDate]);
   const candidates = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase("ru-RU");
     return sortPaymentPickerOrders(orders
-      .filter(order => order.ref.startsWith('debt:') || (showHistorical ? historicalRefs : workingRefs).has(order.ref))
       .filter(order => order.ref.startsWith('debt:') === (pickerBasis === 'DEBT')))
-      .filter(
-        (order) =>
-          !needle ||
-            `${order.supplierPartner} ${order.number}`
-              .toLocaleLowerCase("ru-RU")
-              .includes(needle),
-      );
-  }, [orders, query, rows, pickerBasis, showHistorical, todayKey, activeOrderRefs]);
+      .filter(order => matchesPaymentOrderSearch(order, query));
+  }, [orders, query, pickerBasis]);
   const totals = useMemo(
     () => ({
       cash: selected
@@ -259,18 +248,14 @@ export function ProcurementPaymentBatchForm({
         </div>
         <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Что добавить"><button type="button" aria-pressed={pickerBasis === 'ORDER'} onClick={() => {setPickerBasis('ORDER'); setQuery(''); setPickerOpen(true);}} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${pickerBasis === 'ORDER' ? 'border-slate-700 bg-slate-100' : 'border-slate-200'}`}>По заказу</button><button type="button" aria-pressed={pickerBasis === 'DEBT'} onClick={() => {setPickerBasis('DEBT'); setQuery(''); setPickerOpen(true);}} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${pickerBasis === 'DEBT' ? 'border-slate-700 bg-slate-100' : 'border-slate-200'}`}>В счёт долга поставщику</button></div>
         {pickerBasis === 'DEBT' && supplierDebtError ? <p role="status" className="mt-2 text-sm text-amber-800">Долги из 1С пока недоступны. Выбор поставщика появится после обновления.</p> : null}
-        {pickerBasis === 'ORDER' ? <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Период заказов">
-          <button type="button" aria-pressed={!showHistorical} onClick={() => { setShowHistorical(false); setQuery(''); setPickerOpen(true); }} className={`rounded-lg px-3 py-2 text-xs font-semibold ${!showHistorical ? 'bg-slate-100 text-slate-900' : 'text-slate-500'}`}>В работе · {catalogue.working.length}</button>
-          <button type="button" aria-pressed={showHistorical} onClick={() => { setShowHistorical(true); setQuery(''); setPickerOpen(true); }} className={`rounded-lg px-3 py-2 text-xs font-semibold ${showHistorical ? 'bg-slate-100 text-slate-900' : 'text-slate-500'}`}>Старше 90 дней · {catalogue.historical.length}</button>
-        </div> : null}
-        {pickerBasis === 'ORDER' && showHistorical ? <p className="mt-2 text-xs text-amber-800">Старый заказ не означает оплаченный. Выбирайте его, только если оплата ещё нужна; сумму укажите после сверки.</p> : null}
+        {pickerBasis === 'ORDER' ? <p className="mt-3 text-xs text-slate-500">Заказы за 90 дней · {sourceOrders.length}. Сначала — больший неоплаченный остаток.</p> : null}
         <div data-payment-picker className="relative mt-3 max-w-2xl" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPickerOpen(false); }}>
           <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onFocus={() => setPickerOpen(true)}
-            placeholder={pickerBasis === 'DEBT' ? 'Название поставщика' : 'Поставщик или номер заказа'}
+            placeholder={pickerBasis === 'DEBT' ? 'Название поставщика' : 'Поставщик или последние 3 цифры заказа'}
             aria-label="Поставщик или номер заказа"
             className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-11 font-semibold"
           />
@@ -331,7 +316,7 @@ export function ProcurementPaymentBatchForm({
                 >
                   <span className="min-w-0 flex-1 break-words"><span className="block font-black text-slate-950">{order.supplierPartner}</span><span className="block text-xs font-semibold text-slate-500">{order.ref.startsWith('debt:') ? 'В счёт долга · заказ не нужен' : `Заказ № ${order.number || 'без номера'}`}</span><OrderComment value={order.orderComment} compact /><span className="block text-[11px] font-semibold text-slate-400">{supplierBalanceText(order.supplierPartner)}</span></span>
                   <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-sm font-extrabold text-slate-700">{rub.format(order.unplannedAmount)}</span>
+                    <span className="text-sm font-extrabold text-slate-700">{order.planningState === 'needs_review' ? 'Укажите сумму' : rub.format(order.unplannedAmount)}</span>
                     <span className={`flex h-8 w-8 items-center justify-center rounded-full ${rows[order.ref]?.selected ? "procurement-order-check" : "bg-slate-100 text-slate-700"}`} aria-hidden="true">
                       {rows[order.ref]?.selected ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                     </span>
@@ -359,7 +344,7 @@ export function ProcurementPaymentBatchForm({
               >
                 <div className="min-w-0 sm:col-span-3">
                   <div className="flex flex-wrap items-center justify-between gap-2 pr-9">
-                  <div>{!debtBasis ? <><span className="block text-sm font-semibold text-slate-700">Заказ № {order.number || 'без номера'}</span><span className="text-xs text-slate-500">{historicalRefs.has(order.ref) ? 'Старый заказ · остаток в 1С' : 'Осталось'}: {rub.format(order.orderPaymentGap)}</span></> : <span className="text-sm font-semibold text-slate-700">Оплата долга без привязки к заказу</span>}</div>
+                  <div>{!debtBasis ? <><span className="block text-sm font-semibold text-slate-700">Заказ № {order.number || 'без номера'}</span><span className="text-xs text-slate-500">{order.planningState === 'needs_review' ? 'Сумму заявки укажите вручную' : `Осталось: ${rub.format(order.orderPaymentGap)}`}</span></> : <span className="text-sm font-semibold text-slate-700">Оплата долга без привязки к заказу</span>}</div>
                   </div>
                   {!debtBasis && order.plannedActiveAmount > 0 ? <span className="block text-xs font-semibold text-amber-700">Уже в заявках: {rub.format(order.plannedActiveAmount)}</span> : null}
                 </div>
@@ -416,7 +401,7 @@ export function ProcurementPaymentBatchForm({
                       </div>
                     </>
                   ) : null}
-                  {!debtBasis && Number(row.plannedAmount || 0) > order.unplannedAmount + 0.009 ? (
+                  {!debtBasis && order.planningState !== 'needs_review' && Number(row.plannedAmount || 0) > order.unplannedAmount + 0.009 ? (
                     <p className="text-xs font-bold text-red-700 sm:col-span-2">Сумма больше незапланированного остатка на {rub.format(Number(row.plannedAmount) - order.unplannedAmount)}. Проверьте сумму перед отправкой.</p>
                   ) : null}
                   {debtBasis && (Number(row.plannedAmount) || Number(row.foreignAmount) * Number(usdtRateReference?.rate)) > order.supplierDebt + 0.009 ? <p className="text-xs font-semibold text-amber-800 sm:col-span-3">Сумма выше текущего долга в 1С. Проверьте её перед отправкой.</p> : null}
@@ -425,8 +410,9 @@ export function ProcurementPaymentBatchForm({
                   <summary className="flex cursor-pointer items-baseline gap-2"><span className="shrink-0 font-semibold">Комментарий 1С</span><span className="min-w-0 truncate group-open:hidden">{orderComment}</span><span className="shrink-0 underline group-open:hidden">Полностью</span><span className="hidden underline group-open:inline">Свернуть</span></summary>
                   <p className="mt-2 whitespace-pre-wrap break-words">{orderComment}</p>
                 </details> : <p className="break-words text-xs text-slate-600 sm:col-span-3"><span className="font-semibold">Комментарий 1С: </span>{orderComment}</p> : null}
+                {order.planningState === 'needs_review' ? <p className="text-xs text-amber-800 sm:col-span-3">{order.planningReason || 'Расчёты требуют сверки'}. Заказ будет прикреплён к заявке; руководитель проверит сумму.</p> : null}
                 {commentFields[order.ref] || row.condition ? <label className="text-xs font-bold text-slate-600 sm:col-span-3">
-                      Комментарий <span className="font-medium text-slate-400">(необязательно)</span>
+                      Комментарий (необязательно)
                       <input
                         value={row.condition}
                         onChange={(event) => change(order.ref, { condition: event.target.value })}

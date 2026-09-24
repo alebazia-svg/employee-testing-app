@@ -5,10 +5,12 @@ import { buildPaymentPlanCode, validatePaymentPlan } from '@/lib/procurement-pay
 import { notifyAdminsAboutProcurementPlans } from '@/lib/procurement-payment-notifications';
 import { getLatestProcurementUsdtRate } from '@/lib/procurement-usdt-rate';
 import { expenseRequestMoscowCalendarDate } from '@/lib/expense-request-source';
-import { fetchSupplierOrderFinance, ordersForManager, ordersRequiringPayment } from '@/lib/procurement-payment-source';
+import { ordersForManager } from '@/lib/procurement-payment-source';
+import { fetchRequestOrderCatalogue as fetchSupplierOrderFinance } from '@/lib/procurement-request-catalogue';
 import { planningSubmissionError } from '@/lib/procurement-planning-submit';
 import { freshEvidence } from '@/lib/procurement-plan-revision-server';
 import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
+import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
 
 function jsonPlan(plan: unknown) { return JSON.parse(JSON.stringify(plan, (_, value) => typeof value === 'bigint' ? String(value) : value)); }
 
@@ -36,11 +38,12 @@ export async function POST(req: Request) {
   const managerName = user.oneCManagerName?.trim() || user.name;
   const source = await fetchSupplierOrderFinance();
   if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
-  const allowed = new Map(ordersRequiringPayment(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]));
+  const allowed = new Map(ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]));
   if (!checked.data.orderRefs.every((ref) => allowed.has(ref))) return Response.json({ error: 'Один из заказов не относится к вашему менеджеру в 1С.' }, { status: 400 });
   const partners = new Set(checked.data.orderRefs.map((ref) => allowed.get(ref)?.supplierPartner));
   if (partners.size !== 1 || !partners.has(checked.data.supplierPartner)) return Response.json({ error: 'Заказы должны относиться к выбранному поставщику.' }, { status: 400 });
-  const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount }]);
+  checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.get(ref)!.number);
+  const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); });
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
   const evidence = await freshEvidence().catch(() => null);
   if (!evidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Заявка не отправлена; повторите позже.' }, { status: 503 });

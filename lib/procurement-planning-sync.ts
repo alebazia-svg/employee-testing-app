@@ -96,25 +96,18 @@ export async function collectPlanningSnapshot(previous: SupplierOrderFinanceSnap
   return { rows: [...output.values()], checkedAt: now.toISOString(), complete: true, errors: [], planningVerified: true };
 }
 
-/** Called only after ownership has been checked from the snapshot. Fresh
- * selected-order verification never trusts submitted supplier names or sums. */
-export async function verifySelectedPlanningOrders(rows: SupplierOrderFinanceRow[], now = new Date()) {
-  if (process.env.PROCUREMENT_PLANNING_MODE !== 'snapshot' || !rows.length) return rows;
+/** Recheck selection identity only. Reconciliation never blocks a request. */
+export async function verifySelectedPlanningOrders(rows: SupplierOrderFinanceRow[]) {
+  if (!rows.length) return rows;
   if (rows.length > 20) throw Error('SELECTION_LIMIT');
-  const reader = planningReader(now, 60000);
-  const [discovery, live] = await Promise.all([reader.discovery(), fetchRawSupplierOrderFinance()]);
-  if (!live.complete) throw Error('INCOMPLETE_FINANCE_SOURCE');
-  const result = new Map<string, SupplierOrderFinanceRow>();
-  const pending = [...rows];
-  const verify = async () => { while (pending.length) {
-    const row = pending.shift()!;
-    const detail = await reader.detail(row.ref);
-    const supplier = await reader.supplier(row.ref, detail.order?.[0]?.supplier_ref);
-    const liveRow = live.rows.find(r => r.ref === row.ref);
-    const checked = verifyPlanningOrder(liveRow || row, discovery, detail, supplier, now.toISOString());
-    result.set(row.ref, !liveRow && checked.planningState === 'prepayment'
-      ? { ...checked, planningState: 'needs_review', planningReason: 'Заказ больше не доступен для предоплаты' } : checked);
-  } };
-  await Promise.all(Array.from({ length: Math.min(4, rows.length) }, verify));
-  return rows.map(row => result.get(row.ref)!);
+  const { fetchRequestOrderCatalogue } = await import('./procurement-request-catalogue');
+  const catalogue = await fetchRequestOrderCatalogue();
+  const live = new Map(catalogue.rows.map(row => [row.ref, row]));
+  const normalize = (value: string) => value.trim().toLocaleLowerCase('ru').replaceAll('ё', 'е').replace(/\s+/g, ' ');
+  return rows.map(row => {
+    const current = live.get(row.ref);
+    if (!current || normalize(current.manager) !== normalize(row.manager)
+      || normalize(current.supplierPartner) !== normalize(row.supplierPartner)) throw Error('ORDER_IDENTITY');
+    return current;
+  });
 }

@@ -3,10 +3,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { validatePaymentPlan } from "@/lib/procurement-payment-control";
 import {
-  fetchSupplierOrderFinance,
   ordersForManager,
-  ordersRequiringPayment,
 } from "@/lib/procurement-payment-source";
+import { fetchRequestOrderCatalogue as fetchSupplierOrderFinance } from '@/lib/procurement-request-catalogue';
 import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-notifications";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
@@ -14,6 +13,7 @@ import { proposeApprovedRevision, freshEvidence } from "@/lib/procurement-plan-r
 import { isSupplierDebtPlan } from '@/lib/procurement-debt-request';
 import { planningSubmissionError } from '@/lib/procurement-planning-submit';
 import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
+import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
 
 const jsonPlan = (plan: unknown) => JSON.parse(JSON.stringify(plan));
 
@@ -60,10 +60,10 @@ export async function PATCH(
       if (!unchangedOrders) {
         const source = await fetchSupplierOrderFinance();
         if (!source.complete) throw new Error('Заказы 1С получены не полностью. Повторите изменение позже.');
-        const allowed = ordersForManager(source.planningVerified ? ordersRequiringPayment(source.rows) : source.rows, user.oneCManagerName?.trim() || user.name);
+        const allowed = ordersForManager(ordersForRequest(source.rows), user.oneCManagerName?.trim() || user.name);
         if (!checked.data.orderRefs.every(ref => allowed.some(o => o.ref === ref && o.supplierPartner === checked.data.supplierPartner))) throw new Error('Выберите заказы вашего поставщика из 1С.');
         checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.find(o => o.ref === ref)!.number);
-        const planningError = await planningSubmissionError(allowed.filter(o => checked.data.orderRefs.includes(o.ref)), [{ refs: checked.data.orderRefs, amount: plannedAmount }]);
+        const planningError = await planningSubmissionError(allowed.filter(o => checked.data.orderRefs.includes(o.ref)), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); });
         if (planningError) throw new Error(planningError);
       } else checked.data.orderNumbers = Array.isArray(existing.orderNumbers) ? existing.orderNumbers.map(String) : [];
       return Response.json(await proposeApprovedRevision(id, user, {...checked.data, plannedAmount}, String(payload.changeReason || ''), String(payload.version || '')));
@@ -74,7 +74,7 @@ export async function PATCH(
   if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
   const managerName = user.oneCManagerName?.trim() || user.name;
   const allowed = new Map(
-    ordersRequiringPayment(ordersForManager(source.rows, managerName)).map((order) => [
+    ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [
       order.ref,
       order,
     ]),
@@ -87,7 +87,8 @@ export async function PATCH(
   const partners = new Set(
     checked.data.orderRefs.map((ref) => allowed.get(ref)?.supplierPartner),
   );
-  const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount }]);
+  checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.get(ref)!.number);
+  const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); });
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
   if (partners.size !== 1 || !partners.has(checked.data.supplierPartner))
     return Response.json(

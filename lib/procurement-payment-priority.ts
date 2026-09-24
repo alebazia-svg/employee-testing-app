@@ -21,18 +21,23 @@ export function sortByUnplannedAmount<T extends { unplannedAmount: number }>(ord
   return [...orders].sort((a, b) => b.unplannedAmount - a.unplannedAmount);
 }
 
-export function sortPaymentPickerOrders<T extends { supplierPartner: string; orderPaymentGap: number; unplannedAmount: number; ref: string }>(orders: T[]): T[] {
+export function sortPaymentPickerOrders<T extends { supplierPartner: string; orderPaymentGap: number; unplannedAmount: number; ref: string; planningState?: string }>(orders: T[]): T[] {
   const amount = (order: T) => order.ref.startsWith('debt:') ? order.unplannedAmount : order.orderPaymentGap;
-  const groups = new Map<string, T[]>();
-  for (const order of orders) {
-    const group = groups.get(order.supplierPartner) || [];
-    group.push(order);
-    groups.set(order.supplierPartner, group);
+  const unknown = (order: T) => order.planningState === 'needs_review' || !Number.isFinite(amount(order));
+  return [...orders].sort((a, b) => {
+    if (unknown(a) !== unknown(b)) return unknown(a) ? 1 : -1;
+    return unknown(a) ? 0 : amount(b) - amount(a);
+  });
+}
+
+/** A short numeric query matches the order suffix, never a supplier's digits. */
+export function matchesPaymentOrderSearch(order: { number: string; supplierPartner: string }, query: string): boolean {
+  const needle = query.trim().toLocaleLowerCase('ru-RU');
+  if (!needle) return true;
+  if (/^\d{1,3}$/.test(needle) && order.number) {
+    return (order.number.match(/\d+$/)?.[0] || '').endsWith(needle);
   }
-  return [...groups.entries()]
-    .map(([supplier, rows]) => ({ supplier, rows, total: rows.reduce((sum, row) => sum + amount(row), 0) }))
-    .sort((a, b) => b.total - a.total || a.supplier.localeCompare(b.supplier, 'ru'))
-    .flatMap(group => [...group.rows].sort((a, b) => amount(b) - amount(a)));
+  return `${order.supplierPartner} ${order.number}`.toLocaleLowerCase('ru-RU').includes(needle);
 }
 
 export type ProcurementReviewOrder<T extends ReviewableOrder> = T & {

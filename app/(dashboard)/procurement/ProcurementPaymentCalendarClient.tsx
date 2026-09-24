@@ -22,6 +22,7 @@ import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
 import { buildProcurementReviewQueue, ordersForNewPayment, sortByUnplannedAmount } from "@/lib/procurement-payment-priority";
 import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
 import { procurementWorkingOrders } from "@/lib/procurement-working-orders";
+import { ordersForRequest } from '@/lib/procurement-order-selection';
 
 type Order = {
   planningState?: string;
@@ -251,7 +252,7 @@ export default function ProcurementPaymentCalendarClient({
     [initialOrders],
   );
   const supplierOrders = initialOrders.filter(
-    (order) => order.supplierPartner === draft.supplier && !['needs_review', 'settled', 'small_balance'].includes(order.planningState || ''),
+    (order) => order.supplierPartner === draft.supplier,
   );
   const activePlans = plans.filter((plan) => plan.status !== "CANCELLED");
   const isCurrencyPaid = (plan: Plan) => plan.evidence?.state === "PAID_BY_ONE_C";
@@ -269,7 +270,7 @@ export default function ProcurementPaymentCalendarClient({
   const missingOrders = ordersForNewPayment(planningOrders);
   const existingPlanForOrder = (order: Order) => workingPlans.find(plan =>
     plan.orderRefs.includes(order.ref) || (!plan.orderRefs.length && plan.supplierPartner === order.supplierPartner));
-  const newPaymentOrders = missingOrders.filter(order => !existingPlanForOrder(order));
+  const newPaymentOrders = ordersForRequest(planningOrders, todayKey).filter(order => !existingPlanForOrder(order));
   const newDebtBalances = Object.fromEntries(Object.entries(supplierBalances).filter(([supplier]) =>
     !workingPlans.some(plan => plan.supplierPartner === supplier)));
   const activeOrderRefs = workingPlans.flatMap(plan => plan.orderRefs);
@@ -278,8 +279,7 @@ export default function ProcurementPaymentCalendarClient({
   const visibleReviewOrders = showAllReviewOrders
     ? reviewOrders
     : reviewOrders.slice(0, 3);
-  const nonPayableOrders = initialOrders.filter(order => ['needs_review', 'settled', 'small_balance'].includes(order.planningState || ''));
-  const payableOrders = initialOrders.filter(order => !['needs_review', 'settled', 'small_balance'].includes(order.planningState || ''));
+  const payableOrders = initialOrders.filter(order => !['needs_review', 'settled', 'small_balance'].includes(order.planningState || '') && order.orderPaymentGap > 500);
   const verifiedCatalogue = initialOrders.some(order => Boolean(order.planningState));
   const orderPaymentGapTotal = payableOrders.reduce((sum, order) => sum + Number(order.orderPaymentGap || 0), 0);
   const supplierOrderGapTotals = payableOrders.reduce<Record<string, number>>((totals, order) => {
@@ -525,7 +525,7 @@ export default function ProcurementPaymentCalendarClient({
           </div>
           {!mappingBlocked && !sourceError ? (
             <p className="text-xs font-bold text-slate-500">
-              В работе: {orderCountLabel(workingCatalogue.working.length)}
+              Для новой заявки: {orderCountLabel(newPaymentOrders.length)}
             </p>
           ) : null}
         </div>
@@ -637,21 +637,13 @@ export default function ProcurementPaymentCalendarClient({
 
       <ProcurementPaymentHistory plans={paidPlans} hidden={formOpen} />
 
-      {!formOpen && nonPayableOrders.length ?
-        <details className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-          <summary className="cursor-pointer text-sm font-bold">Сверка и история заказов · {nonPayableOrders.length}</summary>
-          <p className="mt-2 text-xs text-slate-500">Эти заказы не предлагаются для повторной оплаты. Общий подтверждённый долг доступен в «В счёт долга поставщику».</p>
-          <div className="mt-3 max-h-80 overflow-auto divide-y divide-slate-100">{nonPayableOrders.map(order =>
-            <div key={order.ref} className="py-2 text-sm"><p className="font-semibold">{order.supplierPartner} · № {order.number}</p><p className="mt-1 text-xs text-slate-600">{order.planningReason}</p></div>)}</div>
-        </details> : null}
-
       {!mappingBlocked && !sourceError ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" inert={formOpen || undefined} aria-hidden={formOpen || undefined}>
           <div className="flex flex-col gap-1 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <div>
               <h2 className="text-lg font-black text-slate-900">Что стоит проверить</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Заказы за 90 дней и незавершённые оплаты. Старые заказы доступны в «Добавить оплату».
+                Здесь — рекомендации по подтверждённым остаткам. Все заказы за 90 дней доступны в «Добавить оплаты».
               </p>
             </div>
             {reviewOrders.length ? (

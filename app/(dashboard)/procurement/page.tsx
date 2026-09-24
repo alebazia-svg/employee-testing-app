@@ -2,10 +2,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { prisma } from "@/lib/prisma";
 import {
-  fetchSupplierOrderFinance,
   ordersForManager,
-  ordersRequiringPayment,
 } from "@/lib/procurement-payment-source";
+import { fetchRequestOrderCatalogue } from '@/lib/procurement-request-catalogue';
 import ProcurementPaymentCalendarClient from "./ProcurementPaymentCalendarClient";
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
@@ -35,7 +34,7 @@ export default async function ProcurementPage() {
   });
   const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult, currencyPaymentsResult] = await Promise.allSettled([
     plansQuery,
-    fetchSupplierOrderFinance(),
+    fetchRequestOrderCatalogue(),
     fetchSupplierSettlements(),
     getProcurementBalances(todayKey),
     getLatestProcurementUsdtRate(todayKey),
@@ -48,7 +47,7 @@ export default async function ProcurementPage() {
     ordersResult.status === "fulfilled" ? ordersResult.value : null;
   const managerName = user.oneCManagerName?.trim() || user.name;
   const managerOrders = source ? ordersForManager(source.rows, managerName) : [];
-  const orders = source?.planningVerified ? managerOrders : ordersRequiringPayment(managerOrders);
+  const orders = managerOrders;
   const supplierNames = managerOrders.map((order) => order.supplierPartner || order.supplierCounterparty).filter(Boolean);
   const settlementSummary = settlementsResult.status === "fulfilled"
     ? summarizeSupplierSettlements(settlementsResult.value.rows, supplierNames)
