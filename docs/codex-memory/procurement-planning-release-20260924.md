@@ -73,3 +73,68 @@ Clean release worktree:
 Original local worktree with preserved unrelated changes:
 `/Users/bela/Projects/offonika-procurement-ui-only-20260921`.
 Original feature commit there is `a1912d5`; the deployed cherry-pick is `e8414cc`.
+
+## Owner correction after production review (local, not yet deployed)
+
+Latest explicit owner decision supersedes earlier settled/small/review filters:
+all posted, nondeleted own orders in the last 90 Moscow calendar days are
+available for linking requests, regardless of status or balance. Refinement of
+unnecessary orders is deferred. Today plus 89 prior days, no future documents.
+Active-request duplicate and manager/supplier ownership protection remain.
+Amounts are entered by purchaser and are not required to match a disputed
+order remainder. Extra explanation is optional. ADMIN retains the warning for
+unverified debt; no payment approval or 1C financial write is automated.
+
+`fetchRequestOrderCatalogue` is isolated from the financial snapshot used by
+ADMIN forecasts. It requires the explicit complete `supplier-request-catalogue-v1`
+contract on existing `/supplier-order-finance-control?catalogue_days=90&limit=1000`;
+production 418 DOES NOT implement that mode. Do not deploy portal ahead of 1C.
+Old API responses fail explicitly rather than silently returning five orders.
+Identity is refreshed at submission without all-supplier reconciliation.
+
+One selector, no history/review tabs; descending individual confirmed remainder,
+unverified rows afterwards, search by 1–3 digit suffix or supplier/full number.
+Paid request history remains; useless settled-order history section removed.
+Supplier debt choices still require >500 RUB; that threshold does NOT filter
+orders. All-history background financial collection is unchanged.
+Production owner uses Edge at `https://team.mobo-opt.ru/procurement`; do not
+confuse it with the isolated local page or assume another host is identical.
+
+Local request/date/search tests and production build passed. No production
+requests were sent. Pending: install test candidate, run focused API smoke,
+publish/install numbered production package, then portal deployment and actual
+Astemir catalogue count. Candidate lives in ai-business-os:
+`.wip/supplier-request-catalogue/AIAgentAPI-test-supplier-request-catalogue-2026-09-24.zip`.
+Builder and focused checker: `tools/build_supplier_request_catalogue.py` and
+`tools/check_supplier_request_catalogue_live.py`. Candidate changes only existing
+finance GET handler; date constraint in query, closed orders retained, explicit
+completeness/count, no metadata/roles/new endpoints or document writes.
+Existing unrelated WIP was preserved.
+
+### Catalogue test installation verified
+
+Owner installed the test candidate. Focused live GET passed: window
+2026-06-27 through 2026-09-24, 83 total orders, 60 closed, 57 belonging to
+Astemir; all 23 recent legacy orders are present. These are TEST counts, not
+production counts. The checker now accepts the Russian document-date format
+returned by 1C. Production candidate package is
+`AIAgentAPI-v0.15.419-supplier-request-catalogue-2026-09-24.zip`; production 1C
+was still 418 before publication. Portal deployment must wait for confirmed
+production 419 installation and a fresh complete catalogue read.
+
+### Production catalogue deployment completed
+
+Production /version confirmed 419. Direct read parsed by the portal consumer:
+2026-06-27..2026-09-24, 127 total orders, 88 Astemir orders, 70 of those closed;
+complete=true. Active requests still prevent a duplicate new request, so the
+picker's available count can be lower than 88.
+
+Code commit `547e5573807fe0d147f8004ddcae8543838a3685` pushed and deployed.
+Visible-Terminal sudo workflow completed with exit 0. Before activation the
+new image successfully read the complete catalogue using its production env;
+health and existing sync timer were checked by the deploy script. No migrations,
+financial writes or production test requests. Rollback image:
+`offonika-portal-app:rollback-547e557`; override
+`/tmp/procurement-rollback-547e557.yml`. Previous code: e8414cc.
+Production Edge interaction timed out, so post-deploy visual confirmation is
+not claimed. Local actual component was exercised before deployment.
