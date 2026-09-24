@@ -1,7 +1,7 @@
 "use client";
 
-import React, { Fragment, useEffect, useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import React, { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
+import { ChevronDown, Search, X } from "lucide-react";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { buyerOrderPurpose, supplierPosition } from '@/lib/procurement-supplier-position';
 import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
@@ -9,7 +9,7 @@ import { summarizeDraftUsdt } from '@/lib/procurement-draft-summary';
 import { matchesPaymentOrderSearch, sortPaymentPickerOrders, isRecentPaymentOrder, isSmallPaymentSuggestion } from '@/lib/procurement-payment-priority';
 import { mixedPaymentBasisSuppliers, mixedPaymentBasisMessage } from '@/lib/procurement-payment-basis';
 import { hasRecordedPaidClosure, hasCurrentPaymentClosure as closureIsFresh, type OrderPaymentClosure } from '@/lib/procurement-order-payment-closure';
-import { ProcurementReceiptEvidence, ProcurementPaymentGuidance } from '@/components/ProcurementReceiptEvidence';
+import { ProcurementReceiptEvidence } from '@/components/ProcurementReceiptEvidence';
 
 type Order = {
   amount?: number;
@@ -111,7 +111,7 @@ export function ProcurementPaymentBatchForm({
   const selectable = (order: Order) => !activeOrderRefs.includes(order.ref) && ['order','prepayment'].includes(purpose(order));
   const supplierBalanceText = (supplier: string) => {
     const balance = supplierBalances[supplier];
-    if (supplierDebtError || supplierPosition(balance) === 'review') return "Долг поставщику: требуется сверка";
+    if (supplierDebtError || supplierPosition(balance) === 'review') return "Долг по 1С недоступен";
     if (balance.debt > 0.009) return `Долг поставщику по 1С: ${rub.format(balance.debt)}`;
     if (balance.advance > 0.009) return `Аванс поставщику: ${rub.format(balance.advance)}`;
     return "Задолженности перед поставщиком нет";
@@ -135,6 +135,18 @@ export function ProcurementPaymentBatchForm({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerInputRef = useRef<HTMLInputElement>(null);
+  const pickerResultsId = useId();
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !pickerRef.current?.contains(event.target)) setPickerOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [pickerOpen]);
   const archived = sourceOrders.filter(order=>!selectable(order));
   const matchingHistory = sortPaymentPickerOrders(archived.filter(order => matchesPaymentOrderSearch(order, query)));
   const historyVisible = Boolean(query.trim()) && matchingHistory.length > 0;
@@ -267,27 +279,48 @@ export function ProcurementPaymentBatchForm({
         </div>
         <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Что добавить"><button type="button" aria-pressed={pickerBasis === 'ORDER'} onClick={() => {setPickerBasis('ORDER'); setQuery('');}} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${pickerBasis === 'ORDER' ? 'border-slate-700 bg-slate-100' : 'border-slate-200'}`}>По заказу</button><button type="button" aria-pressed={pickerBasis === 'DEBT'} onClick={() => {setPickerBasis('DEBT'); setQuery('');}} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${pickerBasis === 'DEBT' ? 'border-slate-700 bg-slate-100' : 'border-slate-200'}`}>В счёт долга поставщику</button></div>
         {pickerBasis === 'DEBT' && supplierDebtError ? <p role="status" className="mt-2 text-sm text-amber-800">Долги из 1С пока недоступны. Выбор поставщика появится после обновления.</p> : null}
-        <div data-payment-picker className="relative mt-3">
+        <div ref={pickerRef} data-payment-picker className="relative mt-3"
+          onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setPickerOpen(false); }}
+          onKeyDown={event => {
+            if (event.key === 'Escape' && pickerOpen) {
+              event.preventDefault();
+              event.stopPropagation();
+              pickerInputRef.current?.focus();
+              setPickerOpen(false);
+            }
+          }}>
           <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
           <input
+            ref={pickerInputRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onFocus={() => setPickerOpen(true)}
+            onClick={() => setPickerOpen(true)}
+            onChange={(event) => {setQuery(event.target.value); setPickerOpen(true);}}
             placeholder={pickerBasis === 'DEBT' ? 'Название поставщика' : 'Поставщик или последние 3 цифры заказа'}
             aria-label="Поставщик или номер заказа"
-            className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-11 font-semibold"
+            aria-expanded={pickerOpen}
+            aria-controls={pickerOpen ? pickerResultsId : undefined}
+            className="w-full rounded-xl border border-slate-300 py-3 pl-10 pr-20 font-semibold"
           />
           {query ? (
             <button
               type="button"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => setQuery("")}
-              className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              onClick={() => {setQuery(""); setPickerOpen(true);}}
+              className="absolute right-10 top-2 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700"
               aria-label="Очистить поиск"
             >
               <X className="h-4 w-4" />
             </button>
           ) : null}
-          {(
+          <button type="button" aria-label={pickerOpen ? 'Свернуть список' : 'Показать список'}
+            aria-expanded={pickerOpen} aria-controls={pickerOpen ? pickerResultsId : undefined}
+            onMouseDown={event => event.preventDefault()}
+            onClick={() => setPickerOpen(value => !value)}
+            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100">
+            <ChevronDown className={`h-4 w-4 ${pickerOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {pickerOpen ? <div id={pickerResultsId}>
             <div className="mt-3 max-h-80 overflow-auto rounded-xl border border-slate-200 bg-white" aria-label={pickerBasis === 'DEBT' ? 'Поставщики с задолженностью' : 'Заказы для оплаты'}>
               {query.trim() && candidates.length > 1 ? (
                 <button
@@ -336,17 +369,17 @@ export function ProcurementPaymentBatchForm({
                 <p className="px-3 py-3 text-sm font-semibold text-slate-500">{pickerBasis === 'ORDER' && historyVisible ? 'Заказ не предлагается для новой оплаты. Подробнее — ниже.' : pickerBasis === 'ORDER' && query.trim() ? 'Заказ не найден. В поиске — новые заказы за 90 дней и старые с непогашенными приобретениями.' : 'Ничего не найдено'}</p>
               )}
             </div>
-          )}
-        </div>
         {pickerBasis === 'ORDER' && !query.trim() ? <button type="button" className="mt-2 text-sm font-semibold text-slate-600" onClick={()=>setShowEarlier(value=>!value)}>{showEarlier ? 'Только недавние заказы' : 'Показать более ранние'}</button> : null}
         {!query.trim() ? <p className="mt-2 text-xs text-slate-500">Остатки меньше 1 000 ₽ — через поиск.</p> : null}
         {pickerBasis === 'ORDER' && historyVisible ? <div className="mt-3 max-w-2xl divide-y divide-slate-100 rounded-xl border border-slate-200">
           {matchingHistory.map(order => <details key={order.ref} className="p-3">
-            <summary className="cursor-pointer text-sm font-semibold text-slate-700">{order.supplierPartner} · №{order.number} · {order.date?.slice(0,10)} — {activeOrderRefs.includes(order.ref) ? 'Заявка уже в календаре' : purpose(order)==='review' ? 'На сверке' : supplierPosition(supplierBalances[order.supplierPartner])==='no-debt' ? 'Долга поставщику нет' : hasRecordedPaidClosure(order) ? 'Оплачен' : 'По приобретениям долга нет'}</summary>
-            {order.paymentClosure && !closureIsFresh(order) ? <p className="mt-1 text-xs text-amber-800">По последней сверке от {new Date(order.paymentClosure.checkedAt).toLocaleString('ru-RU', {timeZone:'Europe/Moscow'})}. Ожидается обновление 1С.</p> : null}
-            {order.receiptSettlement ? <ProcurementReceiptEvidence evidence={order.receiptSettlement} paymentClosure={order.paymentClosure}/> : <div className="mt-2 space-y-2 text-xs text-slate-600">{order.paymentClosure?.receipts.map(receipt => <div key={receipt.ref || receipt.number}><p className="font-semibold">Приобретение №{receipt.number} · {rub.format(receipt.amountRub)}</p>{receipt.payments.map(payment => <p key={`${payment.ref || payment.number}:${payment.method}`}>РКО №{payment.number} · {payment.date.split(' ')[0]} · {payment.amount.toLocaleString('ru-RU')} {payment.currency} · {payment.method === 'advance' ? 'зачёт аванса' : 'оплата приобретения'} {rub.format(payment.appliedRub)}</p>)}</div>)}</div>}
+            <summary className="cursor-pointer text-sm font-semibold text-slate-700">{order.supplierPartner} · №{order.number} · {order.date?.slice(0,10)} — {activeOrderRefs.includes(order.ref) ? 'Заявка уже в календаре' : purpose(order)==='review' ? 'Новая оплата недоступна' : supplierPosition(supplierBalances[order.supplierPartner])==='no-debt' ? 'Долга поставщику нет' : hasRecordedPaidClosure(order) ? 'Оплачен' : 'По приобретениям долга нет'}</summary>
+            {order.paymentClosure && !closureIsFresh(order) ? <p className="mt-1 text-xs text-amber-800">Данные от {new Date(order.paymentClosure.checkedAt).toLocaleString('ru-RU', {timeZone:'Europe/Moscow'})}. Ожидается обновление 1С.</p> : null}
+            {order.receiptSettlement ? <ProcurementReceiptEvidence evidence={order.receiptSettlement} paymentClosure={order.paymentClosure} inline/> : <div className="mt-2 space-y-2 text-xs text-slate-600">{order.paymentClosure?.receipts.map(receipt => <div key={receipt.ref || receipt.number}><p className="font-semibold">Приобретение №{receipt.number} · {rub.format(receipt.amountRub)}</p>{receipt.payments.map(payment => <p key={`${payment.ref || payment.number}:${payment.method}`}>РКО №{payment.number} · {payment.date.split(' ')[0]} · {payment.amount.toLocaleString('ru-RU')} {payment.currency} · {payment.method === 'advance' ? 'зачёт аванса' : 'оплата приобретения'} {rub.format(payment.appliedRub)}</p>)}</div>)}</div>}
           </details>)}
         </div> : null}
+          </div> : null}
+        </div>
         <div className="mt-3">
           {selected.length ? selected.map((order, index) => {
             const row = rows[order.ref];
@@ -363,11 +396,11 @@ export function ProcurementPaymentBatchForm({
               >
                 <div className="min-w-0 sm:col-span-3">
                   <div className="flex flex-wrap items-center justify-between gap-2 pr-9">
-                  <div>{!debtBasis ? <><span className="block text-sm font-semibold text-slate-700">Заказ № {order.number || 'без номера'}{order.date ? ` · ${order.date.slice(0,10)}` : ''}</span>{order.noAcquisitions ? <span className="text-xs text-slate-500">Приобретений пока нет · предоплата по договорённости</span> : null}</> : <span className="text-sm font-semibold text-slate-700">В счёт долга поставщику</span>}</div>
+                  <div>{!debtBasis ? <span className="block text-sm font-semibold text-slate-700">Заказ № {order.number || 'без номера'}{order.date ? ` · ${order.date.slice(0,10)}` : ''}</span> : <span className="text-sm font-semibold text-slate-700">В счёт долга поставщику</span>}</div>
                   </div>
                   {!debtBasis && order.plannedActiveAmount > 0 ? <span className="block text-xs font-semibold text-amber-700">Уже в заявках: {rub.format(order.plannedActiveAmount)}</span> : null}
-                  {!debtBasis ? <p className="text-sm text-slate-700">Сумма заказа: {typeof order.amount === 'number' && Number.isFinite(order.amount) ? rub.format(order.amount) : '—'} · не сумма новой оплаты</p> : null}
-                  {!debtBasis ? <ProcurementReceiptEvidence evidence={order.receiptSettlement} paymentClosure={order.paymentClosure} /> : null}
+                  {!debtBasis ? <p className="text-sm text-slate-700">Сумма заказа: {typeof order.amount === 'number' && Number.isFinite(order.amount) ? rub.format(order.amount) : '—'}</p> : null}
+                  {!debtBasis ? <ProcurementReceiptEvidence evidence={order.receiptSettlement} paymentClosure={order.paymentClosure} noAcquisitions={order.noAcquisitions} /> : null}
                 </div>
                 <label className="block text-xs font-bold text-slate-600">
                       Способ оплаты
@@ -432,7 +465,6 @@ export function ProcurementPaymentBatchForm({
                   <summary className="flex cursor-pointer items-baseline gap-2"><span className="shrink-0 font-semibold">Комментарий 1С</span><span className="min-w-0 truncate group-open:hidden">{orderComment}</span><span className="shrink-0 underline group-open:hidden">Полностью</span><span className="hidden underline group-open:inline">Свернуть</span></summary>
                   <p className="mt-2 whitespace-pre-wrap break-words">{orderComment}</p>
                 </details> : <p className="break-words text-xs text-slate-600 sm:col-span-3"><span className="font-semibold">Комментарий 1С: </span>{orderComment}</p> : null}
-                {!debtBasis && (order.noAcquisitions || order.receiptSettlement?.requiresAdvanceReview || !['receipt_debt','small_balance'].includes(order.planningState || '')) ? <div className="sm:col-span-3"><ProcurementPaymentGuidance evidence={order.receiptSettlement} noAcquisitions={order.noAcquisitions} /></div> : null}
                 {commentFields[order.ref] || row.condition ? <label className="text-xs font-bold text-slate-600 sm:col-span-3">
                       Комментарий (необязательно)
                       <input

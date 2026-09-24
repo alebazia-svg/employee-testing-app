@@ -49,6 +49,16 @@ test('real calendar renders request stages, partial RUB remainder, paid history 
   assert.match(html,/НА СОГЛАСОВАНИИ/);assert.match(html,/НУЖНО ИСПРАВИТЬ/);assert.match(html,/Оплачено полностью/);
   assert.match(html,/Подготовить к обеду/);assert.doesNotMatch(html,/служебная проверка|Основание закупщика|Нужна сверка перед оплатой|Учебная отменённая заявка/);
 });
+test('manual payment stays in history without a permanent notification above the calendar',async()=>{
+  const props=buyerReviewScenario('lifecycle','2026-09-24')!;
+  const plans=props.initialPlans.map(plan=>plan.id==='demo-paid'
+    ? {...plan,evidence:{...plan.evidence!,manualPaymentCount:1}} : plan);
+  const html=await render({...props,initialPlans:plans,basisPreview:false});
+  assert.doesNotMatch(html,/Оплаты учтены в заявках:/);
+  assert.match(html,/Учебная оплаченная заявка/);
+  assert.match(html,/Оплата по договору учтена в этой заявке/);
+  assert.match(html,/Оплачено полностью/);
+});
 test('failed plan load never renders empty success, new actions or zero reserves',async()=>{
   const html=await render({...buyerReviewScenario('plans-unavailable','2026-09-24'),basisPreview:false});
   assert.match(html,/Не удалось загрузить заявки/);assert.doesNotMatch(html,/Заявок пока нет|Добавить оплаты|Запланировать оплату|На согласовании: 0/);
@@ -91,6 +101,22 @@ test('supplier position replaces acquisition totals and old no-debt orders are n
   assert.match(html,/Долг поставщикам по 1С/);
   assert.doesNotMatch(html,/Подтверждённая часть|900\s000/);
   const debtHtml=await render({...props,supplierDebtError:false,supplierBalances:{[base.supplierPartner]:{debt:1000,advance:0,closingBalance:-1000,reviewRequired:false}},initialOrders:[old]});
-  assert.match(debtHtml,/OLD-OPEN/);
+  assert.doesNotMatch(debtHtml,/OLD-OPEN/);
   assert.match(debtHtml,/1\s000,00/);
+});
+
+test('planning suggestions show supplier debt and action without order document disclosures',async()=>{
+  const props=buyerReviewScenario('order-evidence','2026-09-25')!;
+  const order=props.initialOrders[0];
+  const html=await render({...props,supplierDebtError:false,
+    supplierBalances:{[order.supplierPartner]:{debt:1000,advance:0,closingBalance:-1000,reviewRequired:false}},
+    initialOrders:[{...order,receiptSettlement:{checkedAt:props.checkedAt,debtRub:1000,requiresAdvanceReview:false,
+      receipts:[{ref:'receipt',number:'RECEIPT-001',amountRub:1000,remainingRub:1000}],
+      supplier:{ref:'supplier',grossDebtRub:1000,creditsRub:0,netOwedRub:1000}}}]});
+  assert.equal((html.match(/<details/g)||[]).length,0);
+  assert.doesNotMatch(html,/Документы|Приобретение №RECEIPT-001/);
+  assert.match(html,/Запланировать/);
+  assert.match(html,/Уже запланировано/);
+  assert.match(html,/1\s000,00/);
+  assert.doesNotMatch(html,/Заказы и приобретения|Приобретения и оплаты/);
 });

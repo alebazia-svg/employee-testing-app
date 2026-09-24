@@ -21,12 +21,11 @@ import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
 import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
-import { buildProcurementReviewQueue, ordersForNewPayment, sortPaymentPickerOrders, paymentActionPriority, MIN_SUGGESTED_PAYMENT_RUB } from "@/lib/procurement-payment-priority";
+import { buildProcurementReviewQueue, ordersForNewPayment, paymentActionPriority, MIN_SUGGESTED_PAYMENT_RUB } from "@/lib/procurement-payment-priority";
 import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
 import { procurementWorkingOrders } from "@/lib/procurement-working-orders";
 import { ordersForRequest } from '@/lib/procurement-order-selection';
 import { isBuyerPaymentHistory, orderMissingAmountLabel } from '@/lib/procurement-payment-priority';
-import { ProcurementReceiptEvidence } from '@/components/ProcurementReceiptEvidence';
 
 type Order = {
   receiptSettlement?: import('@/lib/procurement-planning-verification').OrderReceiptSettlement;
@@ -493,9 +492,6 @@ export default function ProcurementPaymentCalendarClient({
       {evidenceSourceError ? (
         <Notice title="Оплаты из 1С сейчас не проверены" text="Заявки доступны, но подтверждение фактической оплаты появится после восстановления связи." />
       ) : null}
-      {plans.some((plan) => Number(plan.evidence?.manualPaymentCount) > 0) ? (
-        <p className="text-sm text-slate-600">Оплаты учтены в заявках: {plans.filter((plan) => Number(plan.evidence?.manualPaymentCount) > 0).map((plan) => `${plan.supplierPartner} (${plan.orderNumbers.join(', ')})`).join('; ')}.</p>
-      ) : null}
       {mappingBlocked ? (
         <Notice
           critical
@@ -656,12 +652,8 @@ export default function ProcurementPaymentCalendarClient({
                   <div>
                     <p className="text-xs font-bold text-slate-500">Долг по 1С</p>
                     <p className="mt-0.5 text-base font-black text-slate-950">
-                      {supplierPosition(order.balance)==='review' ? 'На сверке' : rub.format(order.balance.debt)}
+                      {supplierPosition(order.balance)==='review' ? '—' : rub.format(order.balance.debt)}
                     </p>
-                    <details className="mt-1 text-xs text-slate-600"><summary className="cursor-pointer">Заказы и приобретения</summary>
-                      <p className="my-2">Остатки документов — справочно, не сумма новой оплаты.</p>
-                      {sortPaymentPickerOrders(planningOrders.filter(item=>item.supplierPartner===order.supplierPartner)).map(item=><div key={item.ref} className="my-2"><p>Заказ №{item.number} · {orderDateLabel(item.date)}</p><ProcurementReceiptEvidence evidence={item.receiptSettlement} paymentClosure={item.paymentClosure}/></div>)}
-                    </details>
                   </div>
                   <button
                     type="button"
@@ -670,7 +662,7 @@ export default function ProcurementPaymentCalendarClient({
                     className="procurement-secondary-action inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 transition"
                   >
                     <Plus className="h-4 w-4" />
-                    {supplierPosition(order.balance)==='review' ? 'На сверке' : workingPlans.some(plan=>plan.supplierPartner===order.supplierPartner) ? 'Открыть заявку' : 'Запланировать'}
+                    {supplierPosition(order.balance)==='review' ? 'Пока недоступно' : workingPlans.some(plan=>plan.supplierPartner===order.supplierPartner) ? 'Открыть заявку' : 'Запланировать'}
                   </button>
                 </article>
               ))}
@@ -974,10 +966,9 @@ export default function ProcurementPaymentCalendarClient({
               <SummaryMetric
                 label="Долг поставщикам по 1С"
                 value={mappingBlocked || supplierDebtError ? "—" : rub.format(positionSummary.debt)}
-                hint={positionSummary.reviewCount ? `Не включены: на сверке ${positionSummary.reviewCount}` : ''}
+                hint={positionSummary.reviewCount ? `Без ${positionSummary.reviewCount} поставщиков: долг не подтверждён` : ''}
               />
             </div>
-            <p className="mt-3 text-xs text-slate-500">Сумму новой оплаты выбираете вы.</p>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
               <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800 ring-1 ring-amber-200">
                 На согласовании: {basisPreview || plansSourceError ? '—' : plans.filter((plan) => plan.status === "SUBMITTED").length}
