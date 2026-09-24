@@ -1,5 +1,9 @@
 .git
 .next
+.next*
+.cache
+.wip
+.rollback
 node_modules
 uploads
 

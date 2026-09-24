@@ -3,6 +3,9 @@ import 'server-only';
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 
 export type SupplierOrderFinanceRow = {
+  planningState?: 'prepayment' | 'receipt_debt' | 'settled' | 'needs_review' | 'small_balance';
+  planningReason?: string;
+  verifiedAt?: string;
   ref: string;
   date: string;
   number: string;
@@ -21,6 +24,7 @@ export type SupplierOrderFinanceRow = {
 };
 
 export type SupplierOrderFinanceSnapshot = {
+  planningVerified?: boolean;
   rows: SupplierOrderFinanceRow[];
   checkedAt: string;
   complete: boolean;
@@ -65,7 +69,7 @@ export function ordersForManager(rows: SupplierOrderFinanceRow[], managerName: s
 }
 
 export function ordersRequiringPayment(rows: SupplierOrderFinanceRow[]) {
-  return rows.filter((row) => row.orderPaymentGap > 0.009);
+  return rows.filter((row) => !['settled', 'needs_review', 'small_balance'].includes(row.planningState || '') && row.orderPaymentGap > 0.009);
 }
 
 export function normalizeSupplierOrders(active: RawRow[], fulfilled: RawRow[]) {
@@ -79,6 +83,14 @@ export function normalizeSupplierOrders(active: RawRow[], fulfilled: RawRow[]) {
 }
 
 export async function fetchSupplierOrderFinance(): Promise<SupplierOrderFinanceSnapshot> {
+  if (process.env.PROCUREMENT_PLANNING_MODE === 'snapshot') {
+    const { readPlanningSnapshot } = await import('./procurement-planning-cache');
+    return readPlanningSnapshot();
+  }
+  return fetchRawSupplierOrderFinance();
+}
+
+export async function fetchRawSupplierOrderFinance(): Promise<SupplierOrderFinanceSnapshot> {
   const env = readOneCRuntimeEnv();
   if (!env.baseUrl || !env.user || !env.password) throw new Error('SUPPLIER_ORDER_SOURCE_UNCONFIGURED');
   const controller = new AbortController();
@@ -88,7 +100,8 @@ export async function fetchSupplierOrderFinance(): Promise<SupplierOrderFinanceS
       headers: { Accept: 'application/json', Authorization: `Basic ${Buffer.from(`${env.user}:${env.password}`, 'utf8').toString('base64')}` },
       cache: 'no-store', signal: controller.signal,
     });
-    const payload = await response.json() as { ok?: boolean; active_goods_orders?: RawRow[]; fulfilled_goods_orders?: RawRow[]; completeness?: { complete?: boolean } };
+    if (!response.ok) throw new Error(`SUPPLIER_ORDER_SOURCE_HTTP_${response.status}`);
+    const payload = await response.json().catch(() => { throw new Error('SUPPLIER_ORDER_SOURCE_INVALID_JSON'); }) as { ok?: boolean; active_goods_orders?: RawRow[]; fulfilled_goods_orders?: RawRow[]; completeness?: { complete?: boolean } };
     if (!response.ok || payload.ok === false) throw new Error(`SUPPLIER_ORDER_SOURCE_HTTP_${response.status}`);
     const normalized = normalizeSupplierOrders(
       Array.isArray(payload.active_goods_orders) ? payload.active_goods_orders : [],
@@ -96,6 +109,9 @@ export async function fetchSupplierOrderFinance(): Promise<SupplierOrderFinanceS
     );
     const rows = normalized.rows;
     const errors = normalized.invalidCount === 0 ? [] : ['ROW_REF_MISSING'];
+    if (!Array.isArray(payload.active_goods_orders) || !Array.isArray(payload.fulfilled_goods_orders)) errors.push('ORDER_ARRAY_MISSING');
+    // Opening a page or submitting a request must not trigger an all-history
+    // per-order reconciliation sweep. Keep prepayment candidates intact.
     return { rows, checkedAt: new Date().toISOString(), complete: payload.completeness?.complete !== false && errors.length === 0, errors };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw new Error('SUPPLIER_ORDER_SOURCE_TIMEOUT');

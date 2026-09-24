@@ -15,6 +15,7 @@ uploads/
 tmp-*
 .tmp-*
 .wip/
+.cache/procurement/
 tsconfig.tsbuildinfo
 tests/.generated/
 prisma/dev.db

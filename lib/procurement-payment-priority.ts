@@ -1,4 +1,5 @@
 type ReviewableOrder = {
+  planningState?: string;
   ref: string;
   date: string;
   receiptAmount: number;
@@ -12,8 +13,8 @@ type ReviewableOrder = {
 export const SMALL_ORDER_PAYMENT_BALANCE_RUB = 500;
 
 /** Hide small order balances only from new planning, never from accounting or existing plans. */
-export function ordersForNewPayment<T extends { orderPaymentGap: number; unplannedAmount: number }>(orders: T[]): T[] {
-  return orders.filter(order => order.orderPaymentGap > SMALL_ORDER_PAYMENT_BALANCE_RUB && order.unplannedAmount > 0.009);
+export function ordersForNewPayment<T extends { orderPaymentGap: number; unplannedAmount: number; planningState?: string }>(orders: T[]): T[] {
+  return orders.filter(order => order.planningState !== 'needs_review' && order.planningState !== 'settled' && order.orderPaymentGap > SMALL_ORDER_PAYMENT_BALANCE_RUB && order.unplannedAmount > 0.009);
 }
 
 export function sortByUnplannedAmount<T extends { unplannedAmount: number }>(orders: T[]): T[] {
@@ -68,9 +69,13 @@ export function buildProcurementReviewQueue<T extends ReviewableOrder>(
       const partiallyPaid = Number(order.paymentAmount || 0) > 0.009;
       const isOld = age != null && age >= 14;
 
-      if (!fulfilled && !needsPrepayment && !hasReceipt && !partiallyPaid && !isOld) return null;
+      if (!order.planningState && !fulfilled && !needsPrepayment && !hasReceipt && !partiallyPaid && !isOld) return null;
 
-      const reviewReason = fulfilled
+      const reviewReason = order.planningState === 'receipt_debt'
+        ? 'Долг по приобретению подтверждён'
+        : order.planningState === 'prepayment'
+          ? 'Предоплата — товар ещё не поступил'
+        : fulfilled
         ? "Товар поступил — оплата не закрыта"
         : needsPrepayment
           ? "Нужна предоплата — уточните дату"

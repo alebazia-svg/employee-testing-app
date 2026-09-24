@@ -6,6 +6,9 @@ import { notifyAdminsAboutProcurementPlans } from '@/lib/procurement-payment-not
 import { getLatestProcurementUsdtRate } from '@/lib/procurement-usdt-rate';
 import { expenseRequestMoscowCalendarDate } from '@/lib/expense-request-source';
 import { fetchSupplierOrderFinance, ordersForManager, ordersRequiringPayment } from '@/lib/procurement-payment-source';
+import { planningSubmissionError } from '@/lib/procurement-planning-submit';
+import { freshEvidence } from '@/lib/procurement-plan-revision-server';
+import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
 
 function jsonPlan(plan: unknown) { return JSON.parse(JSON.stringify(plan, (_, value) => typeof value === 'bigint' ? String(value) : value)); }
 
@@ -32,11 +35,19 @@ export async function POST(req: Request) {
   if (!plannedAmount) return Response.json({ error: 'Укажите сумму оплаты.' }, { status: 400 });
   const managerName = user.oneCManagerName?.trim() || user.name;
   const source = await fetchSupplierOrderFinance();
+  if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
   const allowed = new Map(ordersRequiringPayment(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]));
   if (!checked.data.orderRefs.every((ref) => allowed.has(ref))) return Response.json({ error: 'Один из заказов не относится к вашему менеджеру в 1С.' }, { status: 400 });
   const partners = new Set(checked.data.orderRefs.map((ref) => allowed.get(ref)?.supplierPartner));
   if (partners.size !== 1 || !partners.has(checked.data.supplierPartner)) return Response.json({ error: 'Заказы должны относиться к выбранному поставщику.' }, { status: 400 });
+  const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount }]);
+  if (planningError) return Response.json({ error: planningError }, { status: 409 });
+  const evidence = await freshEvidence().catch(() => null);
+  if (!evidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Заявка не отправлена; повторите позже.' }, { status: 503 });
   const plan = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
+    const existing = await tx.supplierPaymentPlan.findMany({ where: { status: { in: ['SUBMITTED', 'APPROVED', 'NEEDS_CHANGES'] } } });
+    if (planningRequestOverlap([checked.data], existing, evidence)) return null;
     const created = await tx.supplierPaymentPlan.create({ data: {
       planCode: buildPaymentPlanCode(), managerUserId: user.id, supplierPartner: checked.data.supplierPartner,
       supplierCounterparty: checked.data.supplierCounterparty, orderRefs: checked.data.orderRefs, orderNumbers: checked.data.orderNumbers,
@@ -57,5 +68,6 @@ export async function POST(req: Request) {
     });
     return created;
   });
+  if (!plan) return Response.json({ error: 'Эта оплата уже включена в незавершённую заявку. Измените её вместо повторной отправки.' }, { status: 409 });
   return Response.json(jsonPlan(plan), { status: 201 });
 }

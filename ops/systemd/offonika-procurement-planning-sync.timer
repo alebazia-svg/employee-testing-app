@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh procurement order settlement snapshot
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=3min
+AccuracySec=15s
+Unit=offonika-procurement-planning-sync.service
+
+[Install]
+WantedBy=timers.target

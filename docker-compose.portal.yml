@@ -44,11 +44,14 @@ services:
       # fall back to it in production reconciliation.
       TBANK_CABINET_SNAPSHOT_ENABLED: "false"
       TBANK_CABINET_SNAPSHOT_PATH: /app/runtime/tbank-cabinet/current.json
+      PROCUREMENT_PLANNING_CACHE_DIR: /app/runtime/procurement-planning
+      PROCUREMENT_PLANNING_MODE: snapshot
       AQSI_PORTAL_TERMINAL_KEY: "1010808747019437"
       AQSI_TERMINAL_ID: "10693079"
       AQSI_TERMINAL_MAPPINGS: "1010808747019437=10693079,2332022071=11085322"
     volumes:
       - portal-uploads:/app/uploads
+      - portal-planning-snapshots:/app/runtime/procurement-planning
       - /home/bela/offonika-tbank-cabinet:/app/runtime/tbank-cabinet:ro
     networks:
       - default
@@ -68,6 +71,7 @@ services:
 volumes:
   portal-postgres-data:
   portal-uploads:
+  portal-planning-snapshots:
 
 networks:
   agentapi-read:

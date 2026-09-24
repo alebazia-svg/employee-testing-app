@@ -21,8 +21,11 @@ import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
 import { buildProcurementReviewQueue, ordersForNewPayment, sortByUnplannedAmount } from "@/lib/procurement-payment-priority";
 import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
+import { procurementWorkingOrders } from "@/lib/procurement-working-orders";
 
 type Order = {
+  planningState?: string;
+  planningReason?: string;
   ref: string;
   number: string;
   date: string;
@@ -248,7 +251,7 @@ export default function ProcurementPaymentCalendarClient({
     [initialOrders],
   );
   const supplierOrders = initialOrders.filter(
-    (order) => order.supplierPartner === draft.supplier,
+    (order) => order.supplierPartner === draft.supplier && !['needs_review', 'settled', 'small_balance'].includes(order.planningState || ''),
   );
   const activePlans = plans.filter((plan) => plan.status !== "CANCELLED");
   const isCurrencyPaid = (plan: Plan) => plan.evidence?.state === "PAID_BY_ONE_C";
@@ -264,12 +267,22 @@ export default function ProcurementPaymentCalendarClient({
     })),
   );
   const missingOrders = ordersForNewPayment(planningOrders);
-  const reviewOrders = sortByUnplannedAmount(buildProcurementReviewQueue(missingOrders, todayKey));
+  const existingPlanForOrder = (order: Order) => workingPlans.find(plan =>
+    plan.orderRefs.includes(order.ref) || (!plan.orderRefs.length && plan.supplierPartner === order.supplierPartner));
+  const newPaymentOrders = missingOrders.filter(order => !existingPlanForOrder(order));
+  const newDebtBalances = Object.fromEntries(Object.entries(supplierBalances).filter(([supplier]) =>
+    !workingPlans.some(plan => plan.supplierPartner === supplier)));
+  const activeOrderRefs = workingPlans.flatMap(plan => plan.orderRefs);
+  const workingCatalogue = procurementWorkingOrders(missingOrders, todayKey, activeOrderRefs);
+  const reviewOrders = sortByUnplannedAmount(buildProcurementReviewQueue(workingCatalogue.working, todayKey));
   const visibleReviewOrders = showAllReviewOrders
     ? reviewOrders
     : reviewOrders.slice(0, 3);
-  const orderPaymentGapTotal = initialOrders.reduce((sum, order) => sum + Number(order.orderPaymentGap || 0), 0);
-  const supplierOrderGapTotals = initialOrders.reduce<Record<string, number>>((totals, order) => {
+  const nonPayableOrders = initialOrders.filter(order => ['needs_review', 'settled', 'small_balance'].includes(order.planningState || ''));
+  const payableOrders = initialOrders.filter(order => !['needs_review', 'settled', 'small_balance'].includes(order.planningState || ''));
+  const verifiedCatalogue = initialOrders.some(order => Boolean(order.planningState));
+  const orderPaymentGapTotal = payableOrders.reduce((sum, order) => sum + Number(order.orderPaymentGap || 0), 0);
+  const supplierOrderGapTotals = payableOrders.reduce<Record<string, number>>((totals, order) => {
     totals[order.supplierPartner] = Number(totals[order.supplierPartner] || 0) + Number(order.orderPaymentGap || 0);
     return totals;
   }, {});
@@ -318,7 +331,7 @@ export default function ProcurementPaymentCalendarClient({
       0,
     );
   function openNew(supplier = "", selectedRefs?: string[]) {
-    const refs = selectedRefs || missingOrders
+    const refs = selectedRefs || workingCatalogue.working.filter(order => !existingPlanForOrder(order))
       .filter((order) => order.supplierPartner === supplier)
       .map((order) => order.ref);
     setEditingId("");
@@ -512,7 +525,7 @@ export default function ProcurementPaymentCalendarClient({
           </div>
           {!mappingBlocked && !sourceError ? (
             <p className="text-xs font-bold text-slate-500">
-              Ещё не запланировано: {orderCountLabel(missingOrders.length)}
+              В работе: {orderCountLabel(workingCatalogue.working.length)}
             </p>
           ) : null}
         </div>
@@ -624,13 +637,21 @@ export default function ProcurementPaymentCalendarClient({
 
       <ProcurementPaymentHistory plans={paidPlans} hidden={formOpen} />
 
+      {!formOpen && nonPayableOrders.length ?
+        <details className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <summary className="cursor-pointer text-sm font-bold">Сверка и история заказов · {nonPayableOrders.length}</summary>
+          <p className="mt-2 text-xs text-slate-500">Эти заказы не предлагаются для повторной оплаты. Общий подтверждённый долг доступен в «В счёт долга поставщику».</p>
+          <div className="mt-3 max-h-80 overflow-auto divide-y divide-slate-100">{nonPayableOrders.map(order =>
+            <div key={order.ref} className="py-2 text-sm"><p className="font-semibold">{order.supplierPartner} · № {order.number}</p><p className="mt-1 text-xs text-slate-600">{order.planningReason}</p></div>)}</div>
+        </details> : null}
+
       {!mappingBlocked && !sourceError ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" inert={formOpen || undefined} aria-hidden={formOpen || undefined}>
           <div className="flex flex-col gap-1 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <div>
               <h2 className="text-lg font-black text-slate-900">Что стоит проверить</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Укажите дату оплаты и нажмите «Запланировать».
+                Заказы за 90 дней и незавершённые оплаты. Старые заказы доступны в «Добавить оплату».
               </p>
             </div>
             {reviewOrders.length ? (
@@ -665,11 +686,11 @@ export default function ProcurementPaymentCalendarClient({
                   </div>
                   <button
                     type="button"
-                    onClick={() => openNew(order.supplierPartner, [order.ref])}
+                    onClick={() => { const existing = existingPlanForOrder(order); if (existing) editPlan(existing); else openNew(order.supplierPartner, [order.ref]); }}
                     className="procurement-secondary-action inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 transition"
                   >
                     <Plus className="h-4 w-4" />
-                    Запланировать
+                    {existingPlanForOrder(order) ? 'Изменить заявку' : 'Запланировать'}
                   </button>
                 </article>
               ))}
@@ -933,8 +954,10 @@ export default function ProcurementPaymentCalendarClient({
             basisPreview={basisPreview}
             supplierDebtError={supplierDebtError}
             key={batchSeedRefs.join("|")}
-            orders={missingOrders}
-            supplierBalances={supplierBalances}
+            orders={newPaymentOrders}
+            todayKey={todayKey}
+            activeOrderRefs={activeOrderRefs}
+            supplierBalances={newDebtBalances}
             supplierOrderGapTotals={supplierOrderGapTotals}
             initialSelectedRefs={batchSeedRefs}
             usdtRateReference={usdtRateReference}
@@ -967,9 +990,9 @@ export default function ProcurementPaymentCalendarClient({
             <h2 className="text-lg font-black text-slate-900">Сводка</h2>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <SummaryMetric
-                label="Осталось оплатить по заказам"
+                label={verifiedCatalogue ? 'Можно планировать по заказам' : 'Осталось оплатить по заказам'}
                 value={mappingBlocked || sourceError ? "—" : rub.format(orderPaymentGapTotal)}
-                hint={mappingBlocked || sourceError ? undefined : `${orderCountLabel(initialOrders.length)} с остатком в 1С`}
+                hint={mappingBlocked || sourceError ? undefined : verifiedCatalogue ? `${orderCountLabel(payableOrders.length)} · спорные остатки исключены` : `${orderCountLabel(initialOrders.length)} в 1С, включая старые`}
               />
               <SummaryMetric
                 label="Долг поставщикам"

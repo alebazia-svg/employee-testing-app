@@ -48,7 +48,7 @@ export default async function ProcurementPage() {
     ordersResult.status === "fulfilled" ? ordersResult.value : null;
   const managerName = user.oneCManagerName?.trim() || user.name;
   const managerOrders = source ? ordersForManager(source.rows, managerName) : [];
-  const orders = ordersRequiringPayment(managerOrders);
+  const orders = source?.planningVerified ? managerOrders : ordersRequiringPayment(managerOrders);
   const supplierNames = managerOrders.map((order) => order.supplierPartner || order.supplierCounterparty).filter(Boolean);
   const settlementSummary = settlementsResult.status === "fulfilled"
     ? summarizeSupplierSettlements(settlementsResult.value.rows, supplierNames)
@@ -61,7 +61,7 @@ export default async function ProcurementPage() {
       ? ordersResult.reason instanceof Error
         ? ordersResult.reason.message
         : "SOURCE_FAILED"
-      : "";
+      : source?.complete === false ? "SOURCE_INCOMPLETE" : "";
   const usdtBalance =
     balancesResult.status === "fulfilled"
       ? balancesResult.value.usdt
@@ -119,6 +119,8 @@ export default async function ProcurementPage() {
     })), rateResult.status === 'fulfilled' ? rateResult.value.rate : null,
   );
   return (
+    <>
+    {process.env.NODE_ENV === 'development' && process.env.PROCUREMENT_DEBT_REVIEW === '1' ? <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">Локальная проверка — не рабочий портал.</p> : null}
     <ProcurementPaymentCalendarClient
       initialOrders={orders}
       initialPlans={serializedPlans}
@@ -135,5 +137,6 @@ export default async function ProcurementPage() {
       usdtRateReference={rateResult.status === "fulfilled" ? rateResult.value : undefined}
       todayKey={todayKey}
     />
+    </>
   );
 }

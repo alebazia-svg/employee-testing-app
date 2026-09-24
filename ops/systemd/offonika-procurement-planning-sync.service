@@ -1,0 +1,12 @@
+[Unit]
+Description=Read-only procurement order settlement snapshot
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec portal-app node --conditions=react-server --import tsx scripts/procurement-planning-sync.ts
+TimeoutStartSec=12min
+NoNewPrivileges=true
+PrivateTmp=true

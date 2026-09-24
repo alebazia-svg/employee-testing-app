@@ -16,6 +16,9 @@ import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from '@/lib/procurement-supplier-settlements';
 import { freshEvidence } from '@/lib/procurement-plan-revision-server';
 import { debtRequestConflict } from '@/lib/procurement-debt-request';
+import { mixedPaymentBasisSuppliers, mixedPaymentBasisMessage } from '@/lib/procurement-payment-basis';
+import { planningSubmissionError } from '@/lib/procurement-planning-submit';
+import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
 
 function jsonValue(value: unknown) {
   return JSON.parse(
@@ -79,15 +82,24 @@ export async function POST(req: Request) {
   });
   const error = checkedRows.find((row) => "error" in row);
   if (error && "error" in error) return Response.json({ error: error.error }, { status: 400 });
+  // Use supplier identity resolved from 1C above, not the submitted label.
+  const mixedSuppliers = mixedPaymentBasisSuppliers(checkedRows.flatMap(row =>
+    'data' in row && row.data ? [{ supplierPartner: row.data.supplierPartner,
+      basis: row.data.orderRefs.length ? 'ORDER' as const : 'DEBT' as const }] : []));
+  if (mixedSuppliers.length) return Response.json({ error: mixedPaymentBasisMessage(mixedSuppliers) }, { status: 409 });
   const needsUsdtRate = checkedRows.some((row) => "data" in row && row.data && !row.data.plannedAmount && row.data.paymentMethod === "USDT" && Boolean(row.data.foreignAmount));
   const rateReference = needsUsdtRate ? await getLatestProcurementUsdtRate(expenseRequestMoscowCalendarDate(new Date())) : null;
   if (needsUsdtRate && !rateReference?.rate) return Response.json({ error: "Курс пока недоступен. Укажите примерную сумму в рублях." }, { status: 400 });
+  const planningRows = checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length ? [row.order] : []);
+  const planningError = await planningSubmissionError(planningRows, checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length
+    ? [{ refs: row.data.orderRefs, amount: row.data.plannedAmount || Number(row.data.foreignAmount) * Number(rateReference?.rate) }] : []));
+  if (planningError) return Response.json({ error: planningError }, { status: 409 });
 
   // Verify all existing allocations before accepting another debt request.
-  const debtEvidence = hasDebt ? await freshEvidence() : new Map<string, { state: string }>();
+  const debtEvidence = await freshEvidence();
   const plans = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
-    if (hasDebt) {
+    {
       const existing = await tx.supplierPaymentPlan.findMany({ where: { status: { in: ['SUBMITTED', 'APPROVED', 'NEEDS_CHANGES'] } } });
       const currentEvidence = new Map(debtEvidence);
       if ('versions' in debtEvidence && debtEvidence.versions instanceof Map) {
@@ -100,6 +112,8 @@ export async function POST(req: Request) {
           throw new Error('DEBT_REQUEST_EXISTS');
         }
       }
+      const requests = checkedRows.flatMap(row => 'data' in row && row.data ? [{ supplierPartner: row.data.supplierPartner, orderRefs: row.data.orderRefs }] : []);
+      if (planningRequestOverlap(requests, existing, currentEvidence)) throw new Error('DEBT_REQUEST_EXISTS');
     }
     const created = [];
     let notificationKey = "";
@@ -151,7 +165,7 @@ export async function POST(req: Request) {
     if (error instanceof Error && error.message === 'DEBT_REQUEST_EXISTS') return null;
     throw error;
   });
-  if (!plans) return Response.json({ error: 'По этому поставщику уже есть незавершённая заявка в счёт долга. Измените её или дождитесь закрытия.' }, { status: 409 });
+  if (!plans) return Response.json({ error: 'Эта оплата уже включена в незавершённую заявку по заказу или долгу поставщика. Измените существующую заявку или дождитесь подтверждения оплаты.' }, { status: 409 });
   return Response.json({ plans: jsonValue(plans) }, { status: 201 });
   } catch {
     return Response.json({ error: 'Не удалось проверить данные 1С или подтвердить сохранение. Проверьте календарь перед повторной отправкой.' }, { status: 503 });
