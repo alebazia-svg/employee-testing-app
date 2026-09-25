@@ -1,6 +1,7 @@
 "use client";
-import { supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
+import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
+import { ProcurementDiscardDraftDialog } from '@/components/ProcurementDiscardDraftDialog';
 import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { ProcurementUsdtEstimate } from "@/components/ProcurementUsdtEstimate";
 import type { PaymentRevision } from "@/lib/procurement-plan-revision";
@@ -21,7 +22,7 @@ import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
 import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
-import { buildProcurementReviewQueue, ordersForNewPayment, paymentActionPriority, MIN_SUGGESTED_PAYMENT_RUB } from "@/lib/procurement-payment-priority";
+import { buildProcurementReviewQueue, ordersForNewPayment, paymentActionPriority, MIN_SUGGESTED_PAYMENT_RUB, matchesPaymentOrderSearch, sortPaymentPickerOrders } from "@/lib/procurement-payment-priority";
 import { procurementOrderCommentText } from "@/lib/procurement-order-comment";
 import { procurementWorkingOrders } from "@/lib/procurement-working-orders";
 import { ordersForRequest } from '@/lib/procurement-order-selection';
@@ -237,6 +238,16 @@ export default function ProcurementPaymentCalendarClient({
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [showAllReviewOrders, setShowAllReviewOrders] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [batchDraftState, setBatchDraftState] = useState({ hasDraft: false, saving: false });
+  const [originalEditDraft, setOriginalEditDraft] = useState<Draft | null>(null);
+  const [editBasis, setEditBasis] = useState<'ORDER' | 'DEBT'>('ORDER');
+  const [editOrderRefs, setEditOrderRefs] = useState<string[]>([]);
+  const [editOrderQuery, setEditOrderQuery] = useState('');
+  const editingPlan = plans.find(plan => plan.id === editingId);
+  const editHasPayment = Number(editingPlan?.evidence?.issuedAmount) > 0 || Number(editingPlan?.evidence?.paidAmount) > 0 || Number(editingPlan?.evidence?.paidForeignAmount) > 0;
+  const editBasisLocked = !editingPlan?.evidence || editingPlan.evidence.state !== 'NO_EVIDENCE'
+    || editHasPayment;
   useEffect(() => setPlans(initialPlans), [initialPlans]);
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const enteredRoubles = Number(draft.plannedAmount || 0);
@@ -279,6 +290,9 @@ export default function ProcurementPaymentCalendarClient({
     })),
   );
   const missingOrders = ordersForNewPayment(planningOrders);
+  const editableOrders = sortPaymentPickerOrders(planningOrders.filter(order => order.supplierPartner === draft.supplier &&
+    (draft.orderRefs.includes(order.ref) || ['order', 'prepayment'].includes(buyerOrderPurpose(order, supplierBalances[draft.supplier])))))
+    .filter(order => matchesPaymentOrderSearch(order, editOrderQuery));
   const existingPlanForOrder = (order: Order) => workingPlans.find(plan =>
     plan.orderRefs.includes(order.ref) || (!plan.orderRefs.length && plan.supplierPartner === order.supplierPartner));
   const newPaymentOrders = ordersForRequest(planningOrders, todayKey).filter(order => !existingPlanForOrder(order));
@@ -332,6 +346,7 @@ export default function ProcurementPaymentCalendarClient({
       .filter((order) => order.supplierPartner === supplier)
       .map((order) => order.ref);
     setEditingId("");
+    setBatchDraftState({ hasDraft: false, saving: false });
     setBatchSeedRefs(refs);
     setDraft({
       ...emptyDraft(),
@@ -347,7 +362,10 @@ export default function ProcurementPaymentCalendarClient({
     if (planningBlocked) return;
     setChangeReason("");
     setEditingId(plan.id);
-    setDraft({
+    setEditBasis(plan.orderRefs.length ? 'ORDER' : 'DEBT');
+    setEditOrderRefs(plan.orderRefs);
+    setEditOrderQuery('');
+    const nextDraft = {
       supplier: plan.supplierPartner,
       orderRefs: plan.orderRefs,
       plannedDate: dateKey(plan.plannedDate),
@@ -359,7 +377,9 @@ export default function ProcurementPaymentCalendarClient({
       commissionAmount: plan.commissionAmount || "",
       exchangerName: plan.exchangerName || "",
       supplierConfirmation: plan.supplierConfirmation || "",
-    });
+    };
+    setDraft(nextDraft);
+    setOriginalEditDraft(nextDraft);
     setMessage("");
     setFormOpen(true);
     openForm();
@@ -373,6 +393,33 @@ export default function ProcurementPaymentCalendarClient({
       foreignAmount: "",
     }));
     setMessage("");
+  }
+  function closePaymentForm() {
+    setDiscardOpen(false);
+    setFormOpen(false);
+    setEditingId("");
+    setBatchSeedRefs([]);
+    setDraft(emptyDraft());
+    setOriginalEditDraft(null);
+    setBatchDraftState({ hasDraft: false, saving: false });
+    setChangeReason("");
+  }
+  function requestClosePaymentForm() {
+    if (saving || batchDraftState.saving) return;
+    const hasChanges = editingId
+      ? JSON.stringify(draft) !== JSON.stringify(originalEditDraft) || Boolean(changeReason)
+        || editBasis !== (editingPlan?.orderRefs.length ? 'ORDER' : 'DEBT')
+      : batchDraftState.hasDraft;
+    if (hasChanges) setDiscardOpen(true);
+    else closePaymentForm();
+  }
+  function chooseEditBasis(basis: 'ORDER' | 'DEBT') {
+    if (editBasisLocked || basis === editBasis) return;
+    if (basis === 'DEBT') setEditOrderRefs(draft.orderRefs);
+    setDraft(current => ({...current, orderRefs: basis === 'DEBT' ? [] : editOrderRefs}));
+    setEditBasis(basis);
+    setEditOrderQuery('');
+    setMessage('');
   }
   function toggleOrder(ref: string, checked: boolean) {
     const refs = checked
@@ -395,6 +442,7 @@ export default function ProcurementPaymentCalendarClient({
       draft.orderRefs.includes(order.ref),
     );
     const body = {
+      basis: editBasis,
       changeReason,
       version: plans.find(plan => plan.id === editingId)?.updatedAt,
       supplierPartner: draft.supplier,
@@ -706,13 +754,8 @@ export default function ProcurementPaymentCalendarClient({
           <button
             type="button"
             aria-label="Закрыть форму"
-            onClick={() => {
-              if (!window.confirm('Закрыть форму? Несохранённые данные будут потеряны.')) return;
-              setFormOpen(false);
-              setEditingId("");
-              setBatchSeedRefs([]);
-              setDraft(emptyDraft());
-            }}
+            disabled={saving || batchDraftState.saving}
+            onClick={requestClosePaymentForm}
             className="admin-material-control flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600"
           >
             <X className="h-5 w-5" />
@@ -727,7 +770,7 @@ export default function ProcurementPaymentCalendarClient({
               Поставщик
               <select
                 value={draft.supplier}
-                disabled={Boolean(editingId && !plans.find(plan => plan.id === editingId)?.orderRefs.length)}
+                disabled={Boolean(editingId)}
                 onChange={(event) => chooseSupplier(event.target.value)}
                 className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold"
                 required
@@ -738,7 +781,16 @@ export default function ProcurementPaymentCalendarClient({
                 ))}
               </select>
             </label>
-            {editingId && !plans.find(plan => plan.id === editingId)?.orderRefs.length ? <p className="text-sm text-slate-600">В счёт долга поставщику · без заказа</p> : draft.supplier ? (
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Основание оплаты">
+              {(['ORDER', 'DEBT'] as const).map(basis => <button key={basis} type="button" aria-pressed={editBasis === basis}
+                disabled={editBasisLocked || (basis === 'DEBT' && Boolean(editingPlan?.orderRefs.length) && supplierPosition(supplierBalances[draft.supplier]) !== 'debt')}
+                onClick={() => chooseEditBasis(basis)}
+                className={`rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50 ${editBasis === basis ? 'border-slate-700 bg-slate-100' : 'border-slate-200'}`}>
+                {basis === 'ORDER' ? 'По заказу' : 'В счёт долга поставщику'}
+              </button>)}
+            </div>
+            {editBasisLocked ? <p className="text-xs text-slate-500">{editHasPayment ? 'По заявке уже есть оплата — основание не меняется.' : 'Смена основания временно недоступна.'}</p> : null}
+            {editBasis === 'DEBT' ? <p className="text-sm text-slate-600">Без привязки к заказу.</p> : draft.supplier ? (
               <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
                 <div className="flex items-center justify-between gap-3 text-sm font-bold">
                   <span>Заказы поставщика</span>
@@ -746,14 +798,17 @@ export default function ProcurementPaymentCalendarClient({
                     Выбрано: {draft.orderRefs.length}
                   </span>
                 </div>
+                <input aria-label="Найти заказ" value={editOrderQuery} onChange={event => setEditOrderQuery(event.target.value)}
+                  placeholder="Номер заказа или последние 3 цифры" className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
                 <div className="mt-3 max-h-52 space-y-2 overflow-y-auto">
-                  {supplierOrders.map((order) => (
+                  {editableOrders.map((order) => (
                     <label
                       key={order.ref}
                       className="flex cursor-pointer gap-3 rounded-lg bg-white p-3 ring-1 ring-slate-200"
                     >
                       <input
                         type="checkbox"
+                        disabled={editBasisLocked}
                         checked={draft.orderRefs.includes(order.ref)}
                         onChange={(event) =>
                           toggleOrder(order.ref, event.target.checked)
@@ -764,12 +819,15 @@ export default function ProcurementPaymentCalendarClient({
                           Заказ № {order.number || "без номера"}
                         </span>
                         <span className="block text-xs text-slate-500">
-                          {orderDateLabel(order.date)} · по данным 1С{" "}
-                          {rub.format(order.orderPaymentGap)}
+                          {orderDateLabel(order.date)} · сумма заказа {typeof order.amount === 'number' ? rub.format(order.amount) : '—'}
                         </span>
                       </span>
                     </label>
                   ))}
+                  {!editableOrders.length ? <p className="text-sm text-slate-500">Заказы не найдены.</p> : null}
+                  {draft.orderRefs.filter(ref => !supplierOrders.some(order => order.ref === ref)).map(ref => <p key={ref} className="text-sm text-slate-600">
+                    Заказ №{editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)] || '—'} · уже в заявке
+                  </p>)}
                 </div>
               </div>
             ) : null}
@@ -895,18 +953,15 @@ export default function ProcurementPaymentCalendarClient({
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={() => {
-                  setFormOpen(false);
-                  setEditingId("");
-                  setDraft(emptyDraft());
-                }}
+                disabled={saving}
+                onClick={requestClosePaymentForm}
                 className="rounded-xl bg-slate-100 px-5 py-3 font-black text-slate-700"
               >
                 Отмена
               </button>
               <button
                 disabled={
-                  saving || planningBlocked || (!draft.orderRefs.length && Boolean(plans.find(plan => plan.id === editingId)?.orderRefs.length)) || (
+                  saving || planningBlocked || (editBasis === 'ORDER' && !draft.orderRefs.length) || (
                     draft.paymentMethod === "USDT"
                       ? !draft.plannedAmount && !draft.foreignAmount
                       : !draft.plannedAmount
@@ -917,7 +972,7 @@ export default function ProcurementPaymentCalendarClient({
                 {saving
                   ? "Сохраняю…"
                   : editingId
-                    ? "Сохранить"
+                    ? editingPlan?.status === 'APPROVED' && editBasis !== (editingPlan.orderRefs.length ? 'ORDER' : 'DEBT') ? 'Передать изменения' : "Сохранить"
                     : "Передать на согласование"}
               </button>
             </div>
@@ -935,11 +990,8 @@ export default function ProcurementPaymentCalendarClient({
             supplierBalances={supplierBalances}
             initialSelectedRefs={batchSeedRefs}
             usdtRateReference={usdtRateReference}
-            onCancel={() => {
-              if (!window.confirm('Отменить заполнение? Несохранённые данные будут потеряны.')) return;
-              setFormOpen(false);
-              setBatchSeedRefs([]);
-            }}
+            onDraftStateChange={setBatchDraftState}
+            onCancel={requestClosePaymentForm}
             onCreated={(created) => {
               setPlans((current) =>
                 [...current, ...(created as unknown as Plan[])].sort((a, b) =>
@@ -955,6 +1007,8 @@ export default function ProcurementPaymentCalendarClient({
           />
         )}
       </section> : null}
+      <ProcurementDiscardDraftDialog open={discardOpen} editing={Boolean(editingId)}
+        onKeep={() => setDiscardOpen(false)} onDiscard={closePaymentForm} />
         </div>
 
         <aside

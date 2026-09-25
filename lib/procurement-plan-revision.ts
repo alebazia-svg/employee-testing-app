@@ -1,4 +1,6 @@
 import { validatePaymentPlan } from './procurement-payment-control';
+import { paymentBasisChanged } from './procurement-debt-request';
+import { manualPaymentLinks } from './procurement-manual-payment-links';
 
 export type RevisionData = ReturnType<typeof validatePaymentPlan>['data'];
 export type PaymentRevision = { id: string; reason: string; submittedAt: string; data: RevisionData; changes: { label: string; before: string; after: string }[] };
@@ -31,14 +33,22 @@ function display(key: string, value: unknown) {
   if(numeric.has(key))return value == null || value === '' ? '—' : Number(value).toLocaleString('ru-RU',{maximumFractionDigits:4});
   return normalized;
 }
+function orderDescription(value: {orderRefs?: unknown; orderNumbers?: unknown}) {
+  if (!Array.isArray(value.orderRefs) || !value.orderRefs.length) return 'В счёт долга поставщику';
+  return Array.isArray(value.orderNumbers) && value.orderNumbers.filter(Boolean).join(', ') || 'По заказу';
+}
 export function revisionChanges(before: Record<string, any>, after: RevisionData) {
   return fields.filter(([key]) => normal(key, before[key]) !== normal(key, after[key])).map(([key, label]) => ({
-    key, label,
-    before: key === 'orderRefs' ? (before.orderNumbers || []).join(', ') : key === 'paymentMethod' ? methods[before[key]] || String(before[key]) : display(key, before[key]),
-    after: key === 'orderRefs' ? after.orderNumbers.join(', ') : key === 'paymentMethod' ? methods[after[key]] || String(after[key]) : display(key, after[key]),
+    key, label: key === 'orderRefs' && paymentBasisChanged(before as {orderRefs: unknown}, after) ? 'Основание оплаты' : label,
+    before: key === 'orderRefs' ? orderDescription(before) : key === 'paymentMethod' ? methods[before[key]] || String(before[key]) : display(key, before[key]),
+    after: key === 'orderRefs' ? orderDescription(after) : key === 'paymentMethod' ? methods[after[key]] || String(after[key]) : display(key, after[key]),
   }));
 }
 export function assertRevisionPaymentSafety(before: Record<string, any>, data: RevisionData, evidence: {state: string; issuedAmount: number; paidAmount: number; paidForeignAmount: number}) {
+  if (paymentBasisChanged(before as {orderRefs: unknown}, data)) {
+    if (before.supplierPartner !== data.supplierPartner) throw new Error('При смене основания оставьте того же поставщика.');
+    if (manualPaymentLinks(before.oneCCashEvidence).length) throw new Error('У заявки есть связь с расходником. Основание менять нельзя.');
+  }
   if (['ISSUED_BY_ONE_C', 'PAID_BY_ONE_C'].includes(evidence.state)) throw new Error('Оплаченная заявка не редактируется.');
   if (['NEEDS_REVIEW', 'MISMATCH'].includes(evidence.state)) throw new Error('Сначала нужно проверить оплату этой заявки.');
   const paid = evidence.issuedAmount + evidence.paidAmount;

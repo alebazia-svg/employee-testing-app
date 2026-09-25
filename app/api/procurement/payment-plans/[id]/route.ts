@@ -11,7 +11,9 @@ import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-not
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { proposeApprovedRevision, freshEvidence } from "@/lib/procurement-plan-revision-server";
-import { isSupplierDebtPlan } from '@/lib/procurement-debt-request';
+import { isSupplierDebtPlan, paymentBasisChanged } from '@/lib/procurement-debt-request';
+import { validateBasisChangeTarget } from '@/lib/procurement-basis-change-server';
+import { assertRevisionPaymentSafety, revisionChanges } from '@/lib/procurement-plan-revision';
 import { planningSubmissionError } from '@/lib/procurement-planning-submit';
 import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
 import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
@@ -37,11 +39,18 @@ export async function PATCH(
       { error: "Эту заявку уже нельзя изменить." },
       { status: 409 },
     );
-  const payload = await req.json();
-  const debt = isSupplierDebtPlan(existing);
+  const payload = await req.json().catch(() => null);
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return Response.json({error:'Проверьте данные заявки.'}, {status:400});
+  if (payload.basis != null && !['ORDER', 'DEBT'].includes(payload.basis)) return Response.json({error:'Неизвестное основание оплаты.'}, {status:400});
+  const wasDebt = isSupplierDebtPlan(existing);
+  const debt = payload.basis === 'DEBT' || (payload.basis == null && wasDebt);
   const checked = validatePaymentPlan(payload, debt);
-  if (debt && (checked.data.orderRefs.length || checked.data.supplierPartner !== existing.supplierPartner))
-    return Response.json({ error: 'В этой заявке сохраняется оплата долга выбранному поставщику. Для другого основания создайте отдельную заявку.' }, { status: 400 });
+  if (debt && checked.data.orderRefs.length) return Response.json({error:'Для оплаты долга уберите выбранные заказы.'}, {status:400});
+  const basisChanged = paymentBasisChanged(existing, checked.data);
+  if ((wasDebt || basisChanged) && checked.data.supplierPartner !== existing.supplierPartner)
+    return Response.json({ error: 'При смене основания оставьте того же поставщика.' }, { status: 400 });
+  if (basisChanged && payload.basis == null) return Response.json({error:'Выберите основание оплаты.'}, {status:400});
+  if ((basisChanged || payload.version != null) && payload.version !== existing.updatedAt.toISOString()) return Response.json({error:'Заявка изменилась. Обновите страницу.'}, {status:409});
   if (debt) {
     checked.data.supplierCounterparty = existing.supplierCounterparty;
     checked.data.orderNumbers = [];
@@ -55,10 +64,17 @@ export async function PATCH(
     plannedAmount = checked.data.foreignAmount * rate.rate;
   }
   if (!plannedAmount) return Response.json({ error: "Укажите сумму оплаты." }, { status: 400 });
+  if (basisChanged) {
+    try {
+      checked.data = await validateBasisChangeTarget(existing, {...checked.data, plannedAmount}, user.oneCManagerName?.trim() || user.name);
+    } catch (error) {
+      return Response.json({error:error instanceof Error && /^[А-ЯЁ]/.test(error.message) ? error.message : 'Не удалось проверить новое основание оплаты. Повторите позже.'}, {status:409});
+    }
+  }
   if (existing.status === 'APPROVED') {
     try {
       const unchangedOrders = JSON.stringify([...checked.data.orderRefs].sort()) === JSON.stringify((Array.isArray(existing.orderRefs) ? existing.orderRefs.map(String) : []).sort()) && checked.data.supplierPartner === existing.supplierPartner;
-      if (!unchangedOrders) {
+      if (!unchangedOrders && !basisChanged) {
         const source = await fetchSupplierOrderFinance();
         if (!source.complete) throw new Error('Заказы 1С получены не полностью. Повторите изменение позже.');
         const allowed = ordersForManager(ordersForRequest(source.rows), user.oneCManagerName?.trim() || user.name);
@@ -66,11 +82,11 @@ export async function PATCH(
         checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.find(o => o.ref === ref)!.number);
         const planningError = await planningSubmissionError(allowed.filter(o => checked.data.orderRefs.includes(o.ref)), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); });
         if (planningError) throw new Error(planningError);
-      } else checked.data.orderNumbers = Array.isArray(existing.orderNumbers) ? existing.orderNumbers.map(String) : [];
+      } else if (!basisChanged) checked.data.orderNumbers = Array.isArray(existing.orderNumbers) ? existing.orderNumbers.map(String) : [];
       return Response.json(await proposeApprovedRevision(id, user, {...checked.data, plannedAmount}, String(payload.changeReason || ''), String(payload.version || '')));
     } catch (error) { return Response.json({ error: error instanceof Error && /^[А-ЯЁ]/.test(error.message) ? error.message : 'Не удалось проверить изменение. Повторите позже.' }, {status:409}); }
   }
-  if (!debt) {
+  if (!debt && !basisChanged) {
   const source = await fetchSupplierOrderFinance();
   if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
   const managerName = user.oneCManagerName?.trim() || user.name;
@@ -98,16 +114,25 @@ export async function PATCH(
     );
   }
   const overlapEvidence = await freshEvidence().catch(() => null);
-  checked.data.condition = preservePaymentReview(existing.condition, checked.data.condition);
+  if (!basisChanged) checked.data.condition = preservePaymentReview(existing.condition, checked.data.condition);
   if (!overlapEvidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Изменения не сохранены; повторите позже.' }, { status: 503 });
   let overlap = false;
+  let editError = '';
   const plan = await prisma
     .$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
+      if (basisChanged) {
+        const current = await tx.supplierPaymentPlan.findFirst({where:{id,managerUserId:user.id,status:{in:['SUBMITTED','NEEDS_CHANGES']}}});
+        if (!current || current.updatedAt.toISOString() !== existing.updatedAt.toISOString()
+          || overlapEvidence.versions.get(id) !== current.updatedAt.toISOString()) throw new Error('Заявка изменилась. Обновите страницу.');
+        const paid = overlapEvidence.get(id);
+        if (!paid) throw new Error('Не удалось проверить оплату заявки. Повторите позже.');
+        assertRevisionPaymentSafety(current, {...checked.data, plannedAmount}, paid);
+      }
       const otherPlans = await tx.supplierPaymentPlan.findMany({ where: { id: { not: id }, status: { in: ['SUBMITTED', 'APPROVED', 'NEEDS_CHANGES'] } } });
       if (planningRequestOverlap([checked.data], otherPlans, overlapEvidence)) throw new Error('PLAN_OVERLAP');
       const changed = await tx.supplierPaymentPlan.updateMany({
-        where: { id, managerUserId: user.id, status: { in: ["SUBMITTED", "NEEDS_CHANGES"] } },
+        where: { id, managerUserId: user.id, updatedAt: existing.updatedAt, status: { in: ["SUBMITTED", "NEEDS_CHANGES"] } },
         data: {
           supplierPartner: checked.data.supplierPartner,
           supplierCounterparty: checked.data.supplierCounterparty,
@@ -135,6 +160,10 @@ export async function PATCH(
           status: "SUBMITTED",
           approvedAt: null,
           approvedById: null,
+          ...(basisChanged ? {oneCCashEvidence:jsonPlan({
+            ...(existing.oneCCashEvidence && typeof existing.oneCCashEvidence === 'object' && !Array.isArray(existing.oneCCashEvidence) ? existing.oneCCashEvidence : {}),
+            paymentMatchFrom:new Date().toISOString(),
+          })} : {}),
         },
       });
       if (changed.count !== 1) throw new Error("PLAN_STATUS_CHANGED");
@@ -146,7 +175,7 @@ export async function PATCH(
           planId: id,
           actorUserId: user.id,
           action: "UPDATED",
-          snapshot: jsonPlan(updated),
+          snapshot: jsonPlan(basisChanged ? {before:existing,after:updated,revision:{reason:'Изменено основание оплаты',changes:revisionChanges(existing,{...checked.data,plannedAmount})}} : updated),
         },
       });
       await notifyAdminsAboutProcurementPlans({
@@ -159,6 +188,7 @@ export async function PATCH(
       return updated;
     })
     .catch((error) => {
+      if (error instanceof Error && /^[А-ЯЁ]/.test(error.message)) { editError = error.message; return null; }
       if (error instanceof Error && error.message === 'PLAN_OVERLAP') { overlap = true; return null; }
       if (error instanceof Error && error.message === "PLAN_STATUS_CHANGED")
         return null;
@@ -166,7 +196,7 @@ export async function PATCH(
     });
   if (!plan)
     return Response.json(
-      { error: overlap ? 'Эта оплата уже включена в другую незавершённую заявку.' : "План уже рассмотрен и больше не может быть изменён." },
+      { error: editError || (overlap ? 'Эта оплата уже включена в другую незавершённую заявку.' : "План уже рассмотрен и больше не может быть изменён.") },
       { status: 409 },
     );
   return Response.json({ ...jsonPlan(plan), correctionReason: "" });

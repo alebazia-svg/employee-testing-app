@@ -80,6 +80,7 @@ export function ProcurementPaymentBatchForm({
   initialSelectedRefs,
   onCreated,
   onCancel,
+  onDraftStateChange,
   usdtRateReference,
   basisPreview = false,
   submissionBlocked = false,
@@ -93,6 +94,7 @@ export function ProcurementPaymentBatchForm({
   initialSelectedRefs: string[];
   onCreated: (plans: CreatedPlan[]) => void;
   onCancel: () => void;
+  onDraftStateChange?: (state: { hasDraft: boolean; saving: boolean }) => void;
   usdtRateReference?: { rate: number | null; checkedAt: string; sourceLabel: string; conversionAt?: string };
   basisPreview?: boolean;
   submissionBlocked?: boolean;
@@ -153,6 +155,8 @@ export function ProcurementPaymentBatchForm({
   const selectedOrders = orders.filter((order) => rows[order.ref]?.selected && selectable(order));
   const selected = Array.from(new Set(selectedOrders.map(order => order.supplierPartner)))
     .flatMap(supplier => selectedOrders.filter(order => order.supplierPartner === supplier));
+  const hasDraft = selected.length > 0 || Boolean(plannedDate);
+  useEffect(() => { onDraftStateChange?.({ hasDraft, saving }); }, [hasDraft, saving, onDraftStateChange]);
   const mixedBasisSuppliers = mixedPaymentBasisSuppliers(selected.map(order => ({
     supplierPartner: order.supplierPartner, basis: order.ref.startsWith('debt:') ? 'DEBT' : 'ORDER',
   })));
@@ -513,7 +517,7 @@ export function ProcurementPaymentBatchForm({
       ) : null}
       {message ? <p className="text-sm font-bold text-red-600">{message}</p> : null}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button type="button" onClick={onCancel} className="rounded-xl bg-slate-100 px-5 py-3 font-black text-slate-700">Отмена</button>
+        <button type="button" disabled={saving} onClick={onCancel} className="rounded-xl bg-slate-100 px-5 py-3 font-black text-slate-700 disabled:opacity-40">Отмена</button>
         <button disabled={saving || submissionBlocked || !plannedDate || !selected.length || mixedBasisSuppliers.length > 0} className="admin-material-primary rounded-xl px-5 py-3 font-black text-white disabled:opacity-40">
           {saving ? "Сохраняю…" : `Передать на согласование · ${selected.length}`}
         </button>

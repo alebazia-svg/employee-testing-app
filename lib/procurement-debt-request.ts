@@ -3,6 +3,10 @@ export function isSupplierDebtPlan(plan: { orderRefs: unknown }) {
   return Array.isArray(plan.orderRefs) && plan.orderRefs.length === 0;
 }
 
+export function paymentBasisChanged(before: { orderRefs: unknown }, after: { orderRefs: unknown }) {
+  return isSupplierDebtPlan(before) !== isSupplierDebtPlan(after);
+}
+
 export function debtRequestConflict(
   plans: Array<{ id: string; supplierPartner: string; orderRefs: unknown; status: string }>,
   supplier: string,
