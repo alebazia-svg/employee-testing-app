@@ -121,14 +121,39 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
   // This supplements, rather than replaces, the original document fingerprint.
   if(input.plans?.length){
     const now=new Date(),from=input.from;
+    const day=(offset:number)=>expenseRequestMoscowCalendarDate(new Date(now.getTime()-offset*86400000));
     const normalize=(s:string)=>s.trim().toLocaleLowerCase('ru').replaceAll('ё','е').replace(/\s+/g,' ');
     const names=new Set(rubPayments.filter(p=>!p.baseDocumentRef && (parseOneCDateTime(p.date)?.getTime() || 0)>=from.getTime()).map(p=>normalize(p.supplier||'')));
     const refs=[...new Set(input.plans.filter(p=>names.has(normalize(p.supplierPartner))).flatMap(p=>Array.isArray(p.orderRefs)?p.orderRefs.filter((r):r is string=>typeof r==='string'&&/^[a-f0-9-]{36}$/i.test(r)):[]))];
     if(refs.length>100)throw Error('SETTLEMENT_LINK_SCOPE_LIMIT');
     const details:Record<string,any>[]=[];
-    for(let i=0;i<refs.length;i+=4){details.push(...await Promise.all(refs.slice(i,i+4).map(async order_ref=>{
-      const detail=await fetchOneCJson('supplier-settlements',new URLSearchParams({detail:'document-evidence',order_ref,date_from:expenseRequestMoscowCalendarDate(from),date_to:expenseRequestMoscowCalendarDate(now),limit:'1000'}),input.timeoutMs??15000);
+    let calls=0;
+    const detailWindow=async(order_ref:string,offset:number)=>{
+      if(++calls>100)throw Error('SETTLEMENT_LINK_SCOPE_LIMIT');
+      const detail=await fetchOneCJson('supplier-settlements',new URLSearchParams({detail:'document-evidence',order_ref,date_from:day(offset+30),date_to:day(offset),limit:'1000'}),input.timeoutMs??15000);
       if(!Array.isArray(detail.order)||detail.order.length!==1||detail.order[0]?.order_ref!==order_ref)throw Error('SETTLEMENT_LINK_ORDER_MISMATCH');
+      // Historical movement windows have a historical as_of. Validate them at
+      // that date; current posted RKO data remains the payment authority.
+      const asOf=parseOneCDateTime(detail.as_of);
+      if(!asOf||expenseRequestMoscowCalendarDate(asOf)!==day(offset))throw Error('SETTLEMENT_LINK_WINDOW_MISMATCH');
+      attachSettlementOrderLinks([], [detail], offset===0?now:asOf);
+      const first=Date.parse(day(offset+30)+'T00:00:00+03:00'),last=Date.parse(day(offset)+'T00:00:00+03:00')+86400000;
+      if((detail.due_date_movements as any[]).some(row=>{const at=parseOneCDateTime(row.movement_date)?.getTime();return at==null||at<first||at>=last;}))throw Error('SETTLEMENT_LINK_MOVEMENT_WINDOW_MISMATCH');
+      return detail;
+    };
+    for(let i=0;i<refs.length;i+=4){details.push(...await Promise.all(refs.slice(i,i+4).map(async order_ref=>{
+      const detail=await detailWindow(order_ref,0);
+      const supplier=normalize((detail.order as any[])[0].supplier_name||'');
+      const today=Date.parse(day(0)+'T00:00:00+03:00');
+      const offsets=new Set(rubPayments.filter(p=>!p.baseDocumentRef&&normalize(p.supplier||'')===supplier).map(p=>{
+        const at=parseOneCDateTime(p.date);
+        return at?Math.floor((today-Date.parse(expenseRequestMoscowCalendarDate(at)+'T00:00:00+03:00'))/(31*86400000))*31:0;
+      }).filter(offset=>offset>0));
+      for(const offset of offsets){
+        const history=await detailWindow(order_ref,offset);
+        if(normalize((history.order as any[])[0].supplier_name||'')!==supplier)throw Error('SETTLEMENT_LINK_SUPPLIER_MISMATCH');
+        (detail.due_date_movements as any[]).push(...history.due_date_movements as any[]);
+      }
       return detail;
     })));}
     combined=attachSettlementOrderLinks(combined,details,now);

@@ -45,8 +45,11 @@ test('settlement fallback validates requested order and keeps evidence older tha
     if(url.pathname.includes('supplier-currency'))return Response.json({ok:true,rows:[]});
     if(url.pathname.includes('currency-cash-costing-plan'))return Response.json({ok:true,events:[{event_type:'supplier_payment',ref:'rko',date:'01.01.2025 12:00:00',number:'1',currency_amount:100,base_document_ref:'',partner:'Supplier'}]});
     if(url.pathname.includes('supplier-settlements')){
-      assert.equal(url.searchParams.get('order_ref'),ref);assert.equal(url.searchParams.get('date_from'),'2025-01-01');
-      return Response.json({ok:true,complete:true,write_operations:false,contract_version:'supplier-document-evidence-v1',as_of:new Date().toISOString(),order:[{order_ref:wrong?'other':ref,supplier_name:'Supplier',posted:true,deleted:false}],due_date_movements:[{source_recorder_ref:'rko',settlement_object_ref:ref,settlement_document_ref:'rko',movement_date:'01.01.2025 12:00:00',movement_type:'Приход',raw_debt:0,raw_prepayment:100,currency_name:'руб'}]});
+      assert.equal(url.searchParams.get('order_ref'),ref);
+      const from=url.searchParams.get('date_from')!,to=url.searchParams.get('date_to')!;
+      assert.equal((Date.parse(to)-Date.parse(from))/86400000,30,'1C accepts at most 31 inclusive calendar days');
+      const historical=from<='2025-01-01'&&to>='2025-01-01';
+      return Response.json({ok:true,complete:true,write_operations:false,contract_version:'supplier-document-evidence-v1',as_of:historical?to+'T23:59:59+03:00':new Date().toISOString(),order:[{order_ref:wrong?'other':ref,supplier_name:'Supplier',posted:true,deleted:false}],due_date_movements:historical?[{source_recorder_ref:'rko',settlement_object_ref:ref,settlement_document_ref:'rko',movement_date:'01.01.2025 12:00:00',movement_type:'Приход',raw_debt:0,raw_prepayment:100,currency_name:'руб'}]:[]});
     }
     return Response.json({ok:true,cash_expense_orders:[]});
   });
