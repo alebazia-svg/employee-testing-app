@@ -432,3 +432,28 @@ reserved for fresh events that require timely attention.
 This policy was introduced after a 30-day production audit found that 221 of 249
 night web-push deliveries were technical and that recovery messages dominated
 the ADMIN unread backlog.
+
+## 2026-09-26 - Unread Badges Track Actionable State And ADMIN Push Has One Primary Origin
+
+The PWA application badge follows the current actionable unread count for
+ADMIN, PROCUREMENT and EMPLOYEE roles. The foreground UI and service-worker
+push payload use the same count and clear the badge when it reaches zero.
+
+For the ADMIN inbox, recovered dependency/infrastructure incidents resolve the
+earlier outage in the unread model, repeated older outage events do not remain
+unread, and `procurement.payment_updated` remains visible in history without
+raising the badge. A latest still-active outage and business events requiring
+an administrator action remain unread.
+
+`team.mobo-opt.ru` is the primary ADMIN push origin. Registering an ADMIN PWA
+subscription there disables the same administrator's other active push
+subscriptions, preventing one event from being delivered through both the new
+and legacy PWA origins. `portal.alebazia.xyz` remains an available fallback
+address for the portal, but it does not register a second ADMIN push endpoint.
+
+Commit `0668e733c4db6dd9f33d88faef3ce5f78b423163` was deployed without a database
+migration. Production verification confirmed both portal health endpoints,
+valid TLS on both origins, the updated service worker on both origins, an
+authenticated ADMIN session on `team.mobo-opt.ru`, and a reduction from 19
+stored unread receipts to 5 actionable unread items in the effective inbox
+view. No synthetic financial or business event was created for testing.
