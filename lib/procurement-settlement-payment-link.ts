@@ -8,7 +8,10 @@ export function attachSettlementOrderLinks(payments:SupplierCurrencyPaymentRow[]
   const normalize=(s:string)=>s.trim().toLocaleLowerCase('ru').replaceAll('ё','е').replace(/\s+/g,' ');
   for(const d of details){
     const at=parseOneCDateTime(d.as_of),o=d.order?.[0];
-    if(d.ok!==true||d.complete!==true||d.truncated===true||d.write_operations!==false||d.contract_version!=='supplier-document-evidence-v1'||!at||Math.abs(now.getTime()-at.getTime())>15*60000||d.order?.length!==1||o.posted!==true||o.deleted!==false||!Array.isArray(d.due_date_movements)||d.due_date_movements.length>=1000)throw Error('SETTLEMENT_LINK_SOURCE_INCOMPLETE');
+    if(d.ok!==true||d.complete!==true||d.truncated===true||d.write_operations!==false||d.contract_version!=='supplier-document-evidence-v1'||!at||Math.abs(now.getTime()-at.getTime())>15*60000||d.order?.length!==1||typeof o.posted!=='boolean'||typeof o.deleted!=='boolean'||!Array.isArray(d.due_date_movements)||d.due_date_movements.length>=1000)throw Error('SETTLEMENT_LINK_SOURCE_INCOMPLETE');
+    // An explicitly inactive order is valid source data, not a failed read.
+    // Leave it unlinked without preventing reconciliation of other requests.
+    if(!o.posted||o.deleted)continue;
     for(const p of payments){
       if(p.baseDocumentRef||!p.posted||p.deleted||!['РУБ','RUB'].includes(p.documentCurrency)||!p.supplier||normalize(p.supplier)!==normalize(o.supplier_name||''))continue;
       const paidAt=parseOneCDateTime(p.date);

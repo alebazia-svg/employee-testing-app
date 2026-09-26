@@ -26,6 +26,14 @@ test('no fuzzy links, partial allocations, repeated movements, conflicting order
   assert.equal(attachSettlementOrderLinks([payment],[detail,{...detail,order:[{...detail.order[0],order_ref:'other'}],due_date_movements:[{...movement,settlement_object_ref:'other'}]}],now)[0].settlementOrderRef,undefined);
   for(const changes of [{complete:false},{as_of:'25.09.2026 13:00:00'},{write_operations:true}])assert.throws(()=>attachSettlementOrderLinks([payment],[{...detail,...changes}],now));
 });
+test('inactive orders remain unlinked without blocking valid orders; missing flags still fail closed',()=>{
+  for(const flags of [{posted:false,deleted:false},{posted:true,deleted:true}]){
+    const inactive={...detail,order:[{...detail.order[0],...flags}]};
+    assert.equal(attachSettlementOrderLinks([payment],[inactive],now)[0].settlementOrderRef,undefined);
+    assert.equal(attachSettlementOrderLinks([payment],[inactive,detail],now)[0].settlementOrderRef,'order');
+  }
+  assert.throws(()=>attachSettlementOrderLinks([payment],[{...detail,order:[{...detail.order[0],posted:undefined}]}],now));
+});
 test('completed request keeps old payment; next payment goes only to the new request',()=>{
   const closed={...plan,status:COMPLETED_WITHOUT_TOPUP,completedPaymentRefs:['rko']};
   const linked={...payment,baseDocumentRef:'order'};
