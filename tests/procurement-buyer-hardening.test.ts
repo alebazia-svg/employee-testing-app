@@ -59,6 +59,13 @@ test('manual payment stays in history without a permanent notification above the
   assert.match(html,/Оплата по договору учтена в этой заявке/);
   assert.match(html,/Оплачено полностью/);
 });
+test('completed residual is absent from active buyer requests even while fresh evidence remains partial',async()=>{
+  const props=buyerReviewScenario('lifecycle','2026-09-26')!;
+  const plan={...props.initialPlans[0],status:'COMPLETED_WITHOUT_TOPUP',oneCCashEvidence:{completion:{at:'2026-09-26T09:00:00Z',actorId:1,reason:'Окончательная сумма',paidAmount:40000,paidForeignAmount:0,remainingAmount:60000,remainingForeignAmount:null,paymentRefs:['rko']}}};
+  const html=await render({...props,initialPlans:[plan],basisPreview:false});
+  assert.match(html,/Завершена без доплаты/);assert.doesNotMatch(html,/ЧАСТИЧНО ОПЛАЧЕНО|>Изменить<|Оплачено полностью/);
+  assert.match(html,/История оплат/);
+});
 test('failed plan load never renders empty success, new actions or zero reserves',async()=>{
   const html=await render({...buyerReviewScenario('plans-unavailable','2026-09-24'),basisPreview:false});
   assert.match(html,/Не удалось загрузить заявки/);assert.doesNotMatch(html,/Заявок пока нет|Добавить оплаты|Запланировать оплату|На согласовании: 0/);

@@ -2,6 +2,8 @@ import 'server-only';
 
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 import { expenseRequestMoscowCalendarDate } from '@/lib/expense-request-source';
+import {attachSettlementOrderLinks} from './procurement-settlement-payment-link';
+import { parseOneCDateTime } from './one-c-date';
 
 export type SupplierCurrencyPaymentRow = {
   ref: string;
@@ -12,6 +14,7 @@ export type SupplierCurrencyPaymentRow = {
   documentAmount: number;
   documentCurrency: string;
   baseDocumentRef: string;
+  settlementOrderRef?: string;
   cashbox?: string;
   supplier?: string;
   counterparty?: string;
@@ -57,7 +60,7 @@ async function fetchOneCJson(endpoint: string, query: URLSearchParams, timeoutMs
   }
 }
 
-export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; to: Date; timeoutMs?: number }) {
+export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; to: Date; timeoutMs?: number; plans?: {orderRefs:unknown;supplierPartner:string}[] }) {
   const common = {
     date_from: expenseRequestMoscowCalendarDate(input.from),
     date_to: expenseRequestMoscowCalendarDate(input.to),
@@ -113,13 +116,30 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
         baseDocumentRef: text(row.base_document_ref).toLowerCase(), cashbox: text(row.cashbox),
         supplier: text(row.partner), counterparty: text(row.counterparty), contract: text(row.contract) }]
       : []);
+  let combined=[...payments,...rubPayments];
+  // Fetch only order anchors of requests whose RUB RKO lacks a header basis.
+  // This supplements, rather than replaces, the original document fingerprint.
+  if(input.plans?.length){
+    const now=new Date(),from=input.from;
+    const normalize=(s:string)=>s.trim().toLocaleLowerCase('ru').replaceAll('ё','е').replace(/\s+/g,' ');
+    const names=new Set(rubPayments.filter(p=>!p.baseDocumentRef && (parseOneCDateTime(p.date)?.getTime() || 0)>=from.getTime()).map(p=>normalize(p.supplier||'')));
+    const refs=[...new Set(input.plans.filter(p=>names.has(normalize(p.supplierPartner))).flatMap(p=>Array.isArray(p.orderRefs)?p.orderRefs.filter((r):r is string=>typeof r==='string'&&/^[a-f0-9-]{36}$/i.test(r)):[]))];
+    if(refs.length>100)throw Error('SETTLEMENT_LINK_SCOPE_LIMIT');
+    const details:Record<string,any>[]=[];
+    for(let i=0;i<refs.length;i+=4){details.push(...await Promise.all(refs.slice(i,i+4).map(async order_ref=>{
+      const detail=await fetchOneCJson('supplier-settlements',new URLSearchParams({detail:'document-evidence',order_ref,date_from:expenseRequestMoscowCalendarDate(from),date_to:expenseRequestMoscowCalendarDate(now),limit:'1000'}),input.timeoutMs??15000);
+      if(!Array.isArray(detail.order)||detail.order.length!==1||detail.order[0]?.order_ref!==order_ref)throw Error('SETTLEMENT_LINK_ORDER_MISMATCH');
+      return detail;
+    })));}
+    combined=attachSettlementOrderLinks(combined,details,now);
+  }
   return {
-    payments: [...payments, ...rubPayments],
+    payments: combined,
     conversions,
     checkedAt: new Date().toISOString(),
     rubPaymentsSupported: true,
-    complete: paymentPayload.complete !== false && paymentPayload.truncated !== true &&
-      (!Array.isArray(paymentPayload.source_errors) || paymentPayload.source_errors.length === 0) &&
+    complete: [paymentPayload, conversionPayload, rubPayload].every(payload => payload.complete !== false && payload.truncated !== true &&
+      (!Array.isArray(payload.source_errors) || payload.source_errors.length === 0)) &&
       payments.length === rawPayments.length && rawPayments.length < 1000 && rawConversions.length < 1000 &&
       rubPayments.length === rawRub.length && rubPayload.events.length < 1000,
   };

@@ -25,3 +25,8 @@ test('empty history is absent; long history shows three newest initially', () =>
   assert.equal((html.match(/<article/g) || []).length, 3);
   assert.ok(html.includes('Показать все (4)'));
 });
+test('completed-without-topup history retains actual paid amount and never says fully paid',()=>{
+  const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans:[{...historyFixture[0],status:'COMPLETED_WITHOUT_TOPUP',oneCCashEvidence:{completion:{at:'2026-09-26T09:00:00Z',actorId:1,reason:'Окончательная сумма согласована',paidAmount:279999,paidForeignAmount:0,remainingAmount:1,remainingForeignAmount:null,paymentRefs:['rko']}}}]}));
+  assert.match(html,/Завершена без доплаты/);assert.match(html,/279 999/);assert.match(html,/Без доплаты: 1/);
+  assert.match(html,/Окончательная сумма согласована/);assert.doesNotMatch(html,/Оплачено полностью|Заявка оплачена полностью|Вернуть в активные/);
+});

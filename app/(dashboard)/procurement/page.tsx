@@ -15,6 +15,7 @@ import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
 import { paymentEvidenceFrom } from "@/lib/procurement-ruble-payment-evidence";
 import { manualPaymentLinks } from "@/lib/procurement-manual-payment-links";
+import { paymentCompletion } from '@/lib/procurement-payment-completion';
 import { readPaymentRevision, paymentMatchCreatedAt } from "@/lib/procurement-plan-revision";
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/procurement-supplier-settlements";
 
@@ -41,7 +42,7 @@ export default async function ProcurementPage() {
     getProcurementBalances(todayKey),
     getLatestProcurementUsdtRate(todayKey),
     fetchExpenseRequestSnapshot({ from: requestFrom, to: requestTo }),
-    plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, timeoutMs: 15_000 })),
+    plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, timeoutMs: 15_000, plans: rows })),
     fetchManagerSupplierNames(user.oneCManagerName?.trim() || user.name),
   ]);
   const { plansSourceError, evidenceSourceError } = procurementSourceHealth(plansResult, requestsResult, currencyPaymentsResult);
@@ -95,6 +96,7 @@ export default async function ProcurementPage() {
       createdAt: paymentMatchCreatedAt(plan),
       status: plan.status,
       manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
+      completedPaymentRefs: paymentCompletion(plan.oneCCashEvidence)?.paymentRefs,
     })),
     requests,
     currencySource?.complete ? currencySource.payments : [],

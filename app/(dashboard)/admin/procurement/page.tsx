@@ -8,6 +8,7 @@ import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
 import { paymentEvidenceFrom, paymentTimestamp, uniqueSupplierPayments } from "@/lib/procurement-ruble-payment-evidence";
 import { manualPaymentLinks, samePaymentSupplier } from "@/lib/procurement-manual-payment-links";
+import { paymentCompletion, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { ProcurementUnlinkedPayments } from "@/components/ProcurementUnlinkedPayments";
 import { readPaymentRevision, paymentMatchCreatedAt } from "@/lib/procurement-plan-revision";
 import { ProcurementRevisionReview } from "@/components/ProcurementRevisionReview";
@@ -75,7 +76,7 @@ export default async function AdminProcurementPage() {
       fetchExpenseRequestSnapshot({ from, to }),
       getProcurementBalances(todayKey),
       getLatestProcurementUsdtRate(todayKey),
-      plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, from), to, timeoutMs: 15_000 })),
+      plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, from), to, timeoutMs: 15_000, plans: rows })),
       loadProcurementForecastHistory(),
       loadOwnerCashForecastShadow(todayKey),
       fetchPayrollForecastEvidence(todayKey),
@@ -115,6 +116,7 @@ export default async function AdminProcurementPage() {
       createdAt: paymentMatchCreatedAt(plan),
       status: plan.status,
       manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
+      completedPaymentRefs: paymentCompletion(plan.oneCCashEvidence)?.paymentRefs,
     })),
     requests,
     currencySource?.complete ? currencySource.payments : [],
@@ -474,7 +476,7 @@ export default async function AdminProcurementPage() {
           plans={plans.map((plan) => ({ id: plan.id, supplierPartner: plan.supplierPartner,
             supplierCounterparty: plan.supplierCounterparty, orderNumbers: Array.isArray(plan.orderNumbers) ? plan.orderNumbers.map(String) : [],
             remaining: paymentEvidence.get(plan.id)?.remainingAmount || 0, remainingForeign: paymentEvidence.get(plan.id)?.remainingForeignAmount ?? null, status: plan.status, paymentMethod: plan.paymentMethod }))}
-          linked={plans.flatMap((plan) => manualPaymentLinks(plan.oneCCashEvidence).map((link) => ({
+          linked={plans.filter(plan => plan.status !== COMPLETED_WITHOUT_TOPUP).flatMap((plan) => manualPaymentLinks(plan.oneCCashEvidence).map((link) => ({
             planId: plan.id, ref: link.ref,
             label: `${plan.supplierPartner} · ${plan.planCode} · ${[...(paymentEvidence.get(plan.id)?.cashOrders || []), ...(paymentEvidence.get(plan.id)?.currencyPayments || [])].some((order) => order.ref === link.ref) ? 'зачёт подтверждён' : 'оплата изменилась или сейчас не подтверждена — проверьте'}`,
           })))}

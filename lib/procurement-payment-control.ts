@@ -1,4 +1,5 @@
 import type { ExpenseRequestSourceRow } from '@/lib/expense-request-source';
+import { isInactivePaymentPlan } from './procurement-payment-completion';
 
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'USDT', 'ACCOUNTABLE_QR'] as const;
 export type PaymentMethod = typeof PAYMENT_METHODS[number];
@@ -74,7 +75,7 @@ export function calculateOrderPlanning<T extends OrderPlanningOrder>(
   const reserved = new Map(orders.map((order) => [order.ref, 0]));
 
   plans
-    .filter((plan) => plan.status !== 'CANCELLED')
+    .filter((plan) => !isInactivePaymentPlan(plan.status))
     .forEach((plan) => {
       let remaining = Math.max(0, Number(plan.plannedAmount || 0) - Number(plan.issuedAmount || 0));
       plan.orderRefs.forEach((ref) => {

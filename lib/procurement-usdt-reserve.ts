@@ -1,3 +1,4 @@
+import { isInactivePaymentPlan } from './procurement-payment-completion';
 /** Read-only reservation in USDT. Ruble references are never proof of exchange. */
 export type UsdtReservePlan = {
   status: string; paymentMethod: string; plannedAmount: string | number;
@@ -12,7 +13,7 @@ const nonnegative = (value: unknown): number | null => {
 export function usdtReservedByPlans(plans: UsdtReservePlan[], rate: number | null): number | null {
   let total = 0;
   for (const plan of plans) {
-    if (plan.status === 'CANCELLED' || plan.paymentMethod !== 'USDT') continue;
+    if (isInactivePaymentPlan(plan.status) || plan.paymentMethod !== 'USDT') continue;
     if (plan.evidence?.state === 'PAID_BY_ONE_C') continue;
     if (['MISMATCH', 'NEEDS_REVIEW'].includes(plan.evidence?.state || '')) return null;
     const foreign = nonnegative(plan.foreignAmount);

@@ -2,6 +2,7 @@ import {
   buildProcurementCashForecast, type CashForecast, type ForecastEvent,
 } from './procurement-cash-forecast';
 import type { OwnerMoneySource } from './procurement-cash-forecast-source';
+import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from './procurement-payment-completion';
 
 export type ShadowSupplierPlan = {
   id: string;
@@ -27,10 +28,10 @@ export function buildOwnerCashForecastShadow(input: {
   money: OwnerMoneySource;
   plans: ShadowSupplierPlan[];
 }): { forecast: CashForecast; activePlanCount: number; sourceWarnings: string[]; money: OwnerMoneySource } {
-  if (input.plans.some((plan) => !['SUBMITTED', 'APPROVED', 'CANCELLED'].includes(plan.status))) {
+  if (input.plans.some((plan) => !['SUBMITTED', 'APPROVED', 'CANCELLED', COMPLETED_WITHOUT_TOPUP].includes(plan.status))) {
     throw new Error('FORECAST_UNKNOWN_PLAN_STATUS');
   }
-  const active = input.plans.filter((plan) => plan.status !== 'CANCELLED');
+  const active = input.plans.filter((plan) => !isInactivePaymentPlan(plan.status));
   const events: ForecastEvent[] = active.map((plan) => ({
     id: `supplier-plan:${plan.id}`,
     source: 'portal_supplier_plan_unreconciled',

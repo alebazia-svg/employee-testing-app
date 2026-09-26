@@ -1,4 +1,5 @@
 import { paymentMatchCreatedAt } from '@/lib/procurement-plan-revision';
+import { paymentCompletion, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
 import { fetchSupplierCurrencyPaymentSnapshot } from '@/lib/procurement-currency-payment-source';
@@ -20,7 +21,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     const to = new Date();
     const from = paymentEvidenceFrom(initial, new Date(to.getTime() - 30 * 86400_000));
     const [source, requests] = payload.action === 'LINK' ? await Promise.all([
-      fetchSupplierCurrencyPaymentSnapshot({ from, to }), fetchExpenseRequestSnapshot({ from, to }),
+      fetchSupplierCurrencyPaymentSnapshot({ from, to, plans: initial }), fetchExpenseRequestSnapshot({ from, to }),
     ]) : [null, null];
     if (payload.action === 'LINK' && (!source?.complete || !requests?.complete)) {
       return Response.json({ error: 'Не удалось полностью проверить оплаты в 1С. Зачёт не сохранён.' }, { status: 503 });
@@ -31,6 +32,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
       const rows = await tx.supplierPaymentPlan.findMany({ include: { manager: { select: { name: true, oneCManagerName: true } } } });
       const plan = rows.find((row) => row.id === id);
       if (!plan) throw new Error('Заявка не найдена.');
+      if (plan.status === COMPLETED_WITHOUT_TOPUP) throw new Error('Сначала верните заявку в активные.');
       const links = manualPaymentLinks(plan.oneCCashEvidence);
       let next = links.filter((link) => link.ref.toLowerCase() !== ref);
       if (payload.action === 'LINK') {
@@ -48,6 +50,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
           plannedAmount: Number(row.plannedAmount), foreignAmount: row.foreignAmount == null ? null : Number(row.foreignAmount),
           plannedDate: row.plannedDate.toISOString(), createdAt: paymentMatchCreatedAt(row),
           managerName: row.manager.oneCManagerName || row.manager.name, manualRubleLinks: manualPaymentLinks(row.oneCCashEvidence),
+          completedPaymentRefs: paymentCompletion(row.oneCCashEvidence)?.paymentRefs,
         }));
         const evidence = matchProcurementPaymentEvidence(evidencePlans, requests!.rows, source!.payments, source!.conversions);
         if ([...evidence.values()].some((row) => [...row.cashOrders, ...row.currencyPayments].some((order) => order.ref.toLowerCase() === ref))) {

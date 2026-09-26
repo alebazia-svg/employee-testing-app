@@ -1,6 +1,7 @@
 import type { EvidencePlan, ProcurementPaymentEvidence } from './procurement-currency-payment-evidence';
 import type { SupplierCurrencyPaymentRow } from './procurement-currency-payment-source';
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
+import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 
 const key = (value: string) => value.trim().toLowerCase();
 const minor = (value: number) => Math.round(value * 100);
@@ -31,7 +32,7 @@ export function uniqueSupplierPayments(rows: SupplierCurrencyPaymentRow[]) {
   return [...groups.values()].flatMap((copies) => {
     const signature = (row: SupplierCurrencyPaymentRow) => JSON.stringify([
       row.date, row.posted, row.deleted, row.documentAmount, row.documentCurrency,
-      key(row.baseDocumentRef), row.supplier, row.counterparty, row.contract,
+      key(row.baseDocumentRef), row.supplier, row.counterparty, row.contract,row.settlementOrderRef,
     ]);
     return copies.every((row) => signature(row) === signature(copies[0])) ? [copies[0]] : [];
   });
@@ -42,7 +43,7 @@ export function applyRublePaymentEvidence(
   plans: EvidencePlan[], payments: SupplierCurrencyPaymentRow[],
   evidence: Map<string, ProcurementPaymentEvidence>,
 ) {
-  const eligible = plans.filter((plan) => plan.status === 'APPROVED' &&
+  const eligible = plans.filter((plan) => ['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') &&
     ['CASH', 'ACCOUNTABLE_QR', 'BANK'].includes(plan.paymentMethod) && plan.plannedAmount > 0);
   const claims = new Map<string, Set<string>>();
   for (const plan of plans) {
@@ -57,12 +58,15 @@ export function applyRublePaymentEvidence(
     const at = paymentTimestamp(payment.date);
     if (!Number.isFinite(at)) continue;
     const manualOwners = plans.filter((plan) => plan.manualRubleLinks?.some((link) => key(link.ref) === key(payment.ref)));
+    const completedOwners = plans.filter(plan => plan.status === COMPLETED_WITHOUT_TOPUP && plan.completedPaymentRefs?.includes(payment.ref));
     const candidates = eligible.filter((plan) => {
+      if(completedOwners.length && (completedOwners.length !== 1 || completedOwners[0].id !== plan.id))return false;
+      if(plan.status===COMPLETED_WITHOUT_TOPUP&&!plan.completedPaymentRefs?.includes(payment.ref))return false;
       const created = Date.parse(plan.createdAt || '');
       const confirmed = manualOwners.length === 1 && manualOwners[0].id === plan.id &&
         plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) && samePaymentSupplier(plan, payment);
       return Number.isFinite(created) && created <= at &&
-        (manualOwners.length ? confirmed : Boolean(payment.baseDocumentRef) && plan.orderRefs.some((ref) => key(ref) === key(payment.baseDocumentRef)));
+        (manualOwners.length ? confirmed : Boolean(payment.baseDocumentRef||payment.settlementOrderRef) && plan.orderRefs.some((ref) => key(ref) === key(payment.baseDocumentRef||payment.settlementOrderRef||'')) && (!payment.settlementOrderRef||samePaymentSupplier(plan,payment)));
     });
     // Multiple requests for one order require an explicit link; do not guess by amount/date.
     const owners = claims.get(key(payment.ref));

@@ -1,6 +1,7 @@
 "use client";
 import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
+import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { ProcurementDiscardDraftDialog } from '@/components/ProcurementDiscardDraftDialog';
 import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { ProcurementUsdtEstimate } from "@/components/ProcurementUsdtEstimate";
@@ -51,6 +52,7 @@ type Order = {
   orderComment: string;
 };
 type Plan = {
+  oneCCashEvidence?: unknown;
   id: string;
   planCode: string;
   supplierPartner: string;
@@ -275,10 +277,10 @@ export default function ProcurementPaymentCalendarClient({
   const supplierOrders = initialOrders.filter(
     (order) => order.supplierPartner === draft.supplier,
   );
-  const activePlans = (plansSourceError ? [] : plans).filter((plan) => plan.status !== "CANCELLED")
+  const activePlans = (plansSourceError ? [] : plans).filter((plan) => !isInactivePaymentPlan(plan.status))
     .map(plan => evidenceSourceError ? { ...plan, evidence: undefined } : plan);
   const isCurrencyPaid = (plan: Plan) => plan.evidence?.state === "PAID_BY_ONE_C";
-  const paidPlans = activePlans.filter((plan) => plan.evidence?.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan));
+  const paidPlans = [...activePlans.filter((plan) => plan.evidence?.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan)), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
   const workingPlans = activePlans.filter((plan) => plan.evidence?.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan));
   const planningOrders = calculateOrderPlanning(
     initialOrders,

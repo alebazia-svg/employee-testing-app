@@ -3,6 +3,7 @@ import { matchCashEvidence } from '@/lib/procurement-payment-control';
 import type { CurrencyConversionRow, SupplierCurrencyPaymentRow } from '@/lib/procurement-currency-payment-source';
 import { applyRublePaymentEvidence, uniqueSupplierPayments } from './procurement-ruble-payment-evidence';
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
+import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 
 export type EvidencePlan = {
   id: string;
@@ -17,6 +18,7 @@ export type EvidencePlan = {
   plannedDate?: string;
   createdAt?: string;
   status?: string;
+  completedPaymentRefs?:string[];
   manualRubleLinks?: import('./procurement-manual-payment-links').ManualPaymentLink[];
 };
 
@@ -65,11 +67,20 @@ export function matchProcurementPaymentEvidence(
   const evidence = new Map<string, ProcurementPaymentEvidence>();
   const allocations = new Map<string, { rubles: number; foreign: number; referenceRubles: number; rateRubles: number; rateForeign: number; unknownEquivalent: boolean; payments: ProcurementPaymentEvidence['currencyPayments'] }>();
   for (const plan of plans) {
+    const cash = matchCashEvidence(plan, plan.orderRefs.length ? requests : requests.filter(request =>
+      `${request.comment || ''} ${request.payment_purpose || ''}`.toUpperCase().includes(plan.planCode.toUpperCase())));
+    const cashOrders = cash.cashOrders.filter(row => {
+      const owners = plans.filter(p => p.status === COMPLETED_WITHOUT_TOPUP && p.completedPaymentRefs?.includes(row.ref));
+      return (!owners.length || owners.length === 1 && owners[0].id === plan.id) &&
+        (plan.status !== COMPLETED_WITHOUT_TOPUP || plan.completedPaymentRefs?.includes(row.ref));
+    });
     evidence.set(plan.id, {
       // A supplier-only request has no unique order anchor. Never infer its
       // payment from supplier/date/amount; require the plan code or owner link.
-      ...matchCashEvidence(plan, plan.orderRefs.length ? requests : requests.filter(request =>
-        `${request.comment || ''} ${request.payment_purpose || ''}`.toUpperCase().includes(plan.planCode.toUpperCase()))),
+      ...cash,
+      state: cash.state === 'MISMATCH' || cashOrders.length === cash.cashOrders.length ? cash.state : cashOrders.length ? 'PARTIALLY_ISSUED' : 'NO_EVIDENCE',
+      cashOrders,
+      issuedAmount: cashOrders.reduce((sum,row)=>sum+row.amount,0),
       paidAmount: 0,
       paidForeignAmount: 0,
       remainingAmount: Math.max(0, plan.plannedAmount),
@@ -87,14 +98,17 @@ export function matchProcurementPaymentEvidence(
     .sort((a, b) => oneCDateTimestamp(a.date) - oneCDateTimestamp(b.date));
 
   for (const payment of payments) {
+    const completedOwners = plans.filter(p => p.status === COMPLETED_WITHOUT_TOPUP && p.completedPaymentRefs?.includes(payment.ref));
     const manualOwners = plans.filter((plan) => plan.manualRubleLinks?.some((link) => link.ref.toLowerCase() === payment.ref.toLowerCase()));
     const rate = conversionRateBefore(payment, conversions);
     let availableForeign = payment.documentAmount;
     const paymentAt = oneCDateTimestamp(payment.date);
     for (const plan of eligiblePlans) {
+      if(completedOwners.length && (completedOwners.length !== 1 || completedOwners[0].id !== plan.id))continue;
+      if(plan.status===COMPLETED_WITHOUT_TOPUP&&!plan.completedPaymentRefs?.includes(payment.ref))continue;
       if (availableForeign <= 0.0000001) break;
       if (manualOwners.length) {
-        if (manualOwners.length !== 1 || manualOwners[0].id !== plan.id || plan.status !== 'APPROVED' ||
+        if (manualOwners.length !== 1 || manualOwners[0].id !== plan.id || !['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') ||
             !plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) || !samePaymentSupplier(plan, payment)) continue;
       } else if (!payment.baseDocumentRef || !plan.orderRefs.some((ref) => ref.trim().toLowerCase() === payment.baseDocumentRef)) continue;
       const createdAt = plan.createdAt ? new Date(plan.createdAt).getTime() : Number.NaN;
@@ -107,7 +121,7 @@ export function matchProcurementPaymentEvidence(
         const uniqueOwner = manualOwners.length === 1 || eligiblePlans.filter(candidate =>
           candidate.orderRefs.some(ref => ref.trim().toLowerCase() === payment.baseDocumentRef.toLowerCase()),
         ).length === 1;
-        if (plan.status !== 'APPROVED' || !uniqueOwner) continue;
+        if (!['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') || !uniqueOwner) continue;
         allocation.foreign += availableForeign;
         // The owner plans a RUB budget, not an exact exchange transaction.
         // A historical reference can prove coverage of that budget, but must

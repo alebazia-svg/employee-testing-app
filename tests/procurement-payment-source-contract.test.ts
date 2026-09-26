@@ -36,3 +36,21 @@ test('payment source uses existing posted-RKO endpoint for RUB without new API f
   payload.rows = [{ ref: 'rko', posted: true, document_amount: 280000, document_currency: 'РУБ', date: '16.09.2026 18:00:00' }];
   assert.equal((await read()).complete, false, 'missing deletion status is not proof of a live document');
 });
+test('settlement fallback validates requested order and keeps evidence older than 30 days',async(t)=>{
+  const oldEnv={...process.env};t.after(()=>{process.env=oldEnv;});
+  process.env['1C_BASE_URL']='https://one-c.invalid';process.env['1C_API_USER']='test';process.env['1C_API_PASSWORD']='test';
+  const ref='11111111-1111-1111-1111-111111111111';let wrong=false;
+  t.mock.method(globalThis,'fetch',async(input:string)=>{
+    const url=new URL(input);
+    if(url.pathname.includes('supplier-currency'))return Response.json({ok:true,rows:[]});
+    if(url.pathname.includes('currency-cash-costing-plan'))return Response.json({ok:true,events:[{event_type:'supplier_payment',ref:'rko',date:'01.01.2025 12:00:00',number:'1',currency_amount:100,base_document_ref:'',partner:'Supplier'}]});
+    if(url.pathname.includes('supplier-settlements')){
+      assert.equal(url.searchParams.get('order_ref'),ref);assert.equal(url.searchParams.get('date_from'),'2025-01-01');
+      return Response.json({ok:true,complete:true,write_operations:false,contract_version:'supplier-document-evidence-v1',as_of:new Date().toISOString(),order:[{order_ref:wrong?'other':ref,supplier_name:'Supplier',posted:true,deleted:false}],due_date_movements:[{source_recorder_ref:'rko',settlement_object_ref:ref,settlement_document_ref:'rko',movement_date:'01.01.2025 12:00:00',movement_type:'Приход',raw_debt:0,raw_prepayment:100,currency_name:'руб'}]});
+    }
+    return Response.json({ok:true,cash_expense_orders:[]});
+  });
+  const read=()=>fetchSupplierCurrencyPaymentSnapshot({from:new Date('2025-01-01T00:00:00Z'),to:new Date(),plans:[{supplierPartner:'Supplier',orderRefs:[ref]}]});
+  assert.equal((await read()).payments[0].settlementOrderRef,ref);
+  wrong=true;await assert.rejects(read,/ORDER_MISMATCH/);
+});

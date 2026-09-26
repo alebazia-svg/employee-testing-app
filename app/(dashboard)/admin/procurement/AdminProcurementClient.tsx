@@ -1,5 +1,7 @@
 "use client";
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
+import { ProcurementCompletionAction } from '@/components/ProcurementCompletionAction';
+import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { ProcurementUsdtEstimate } from "@/components/ProcurementUsdtEstimate";
 import { ProcurementChangeHistory, type PlanChangeEvent } from "@/components/ProcurementChangeHistory";
 
@@ -30,6 +32,7 @@ import type { RequestFundingAssessment } from "@/lib/procurement-request-funding
 import { forecastCoverageLabel } from "@/lib/procurement-forecast-coverage";
 
 type Plan = {
+  oneCCashEvidence?: unknown;
   events?: PlanChangeEvent[];
   id: string;
   planCode: string;
@@ -215,10 +218,10 @@ export default function AdminProcurementClient({
       window.removeEventListener("online", refresh);
     };
   }, [router]);
-  const active = plans.filter((plan) => plan.status !== "CANCELLED");
+  const active = plans.filter((plan) => !isInactivePaymentPlan(plan.status));
   const isCurrencyPaid = (plan: Plan) => plan.evidence.state === "PAID_BY_ONE_C";
   const submitted = active.filter((plan) => plan.status === "SUBMITTED" && !isCurrencyPaid(plan));
-  const completedPlans = active.filter((plan) => plan.status === "APPROVED" && (plan.evidence.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan)));
+  const completedPlans = [...active.filter((plan) => plan.status === "APPROVED" && (plan.evidence.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan))), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
   const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && plan.evidence.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan));
   const urgentSubmitted = submitted.filter((plan) => ["SAME_DAY", "LATE"].includes(paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state));
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
@@ -1036,7 +1039,7 @@ export default function AdminProcurementClient({
                     <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}{planComment(plan) ? <p className="mt-1 text-xs font-medium text-slate-600">{planComment(plan)}</p> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                     <div className="text-left sm:text-right"><p className="text-xs font-bold text-slate-400">Ответственный</p><p className="mt-0.5 text-sm font-extrabold text-slate-700">{plan.manager.name}</p></div>
-                    <div className="sm:col-span-4"><ProcurementChangeHistory events={plan.events} /></div>
+                    <div className="sm:col-span-4"><ProcurementChangeHistory events={plan.events} />{['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)&&!plan.evidence.paymentAmountNeedsConfirmation?<ProcurementCompletionAction id={plan.id} supplier={plan.supplierPartner}/>:null}</div>
                   </article>
                 ))}
               </div>
