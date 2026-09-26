@@ -41,8 +41,15 @@ self.addEventListener('push', (event) => {
     data = {};
   }
   const actions = [];
-  if ('setAppBadge' in self.navigator && Number.isFinite(Number(data.badgeCount))) {
-    actions.push(self.navigator.setAppBadge(Math.max(0, Number(data.badgeCount))));
+  if (Number.isFinite(Number(data.badgeCount))) {
+    const badgeCount = Math.max(0, Math.floor(Number(data.badgeCount)));
+    if (badgeCount > 0 && 'setAppBadge' in self.navigator) {
+      actions.push(self.navigator.setAppBadge(badgeCount));
+    } else if (badgeCount === 0 && 'clearAppBadge' in self.navigator) {
+      actions.push(self.navigator.clearAppBadge());
+    } else if (badgeCount === 0 && 'setAppBadge' in self.navigator) {
+      actions.push(self.navigator.setAppBadge(0));
+    }
   }
   actions.push(self.registration.showNotification(data.title || 'MOBO', {
     body: data.body || 'Откройте портал, чтобы продолжить рабочий день.',

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck, ChevronRight } from 'lucide-react';
+import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
 
 type InboxItem = {
   id: string;
@@ -26,6 +27,7 @@ export function AdminInboxBell() {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [pushConnected, setPushConnected] = useState(false);
+  const [pushRegistrationAllowed, setPushRegistrationAllowed] = useState(true);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState('');
 
@@ -33,12 +35,18 @@ export function AdminInboxBell() {
     setPushBusy(true);
     setPushError('');
     try {
+      const configResponse = await fetch('/api/admin/push-subscription', { cache: 'no-store' });
+      const config = await configResponse.json();
+      if (!configResponse.ok) throw new Error('Push-уведомления ещё не настроены.');
+      if (config.registrationAllowed === false) {
+        setPushRegistrationAllowed(false);
+        return;
+      }
+      setPushRegistrationAllowed(true);
+      if (!config.publicKey) throw new Error('Push-уведомления ещё не настроены.');
       if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Уведомления не поддерживаются на этом устройстве.');
       const permission = requestPermission ? await Notification.requestPermission() : Notification.permission;
       if (permission !== 'granted') throw new Error('Разрешите уведомления в настройках устройства.');
-      const configResponse = await fetch('/api/admin/push-subscription', { cache: 'no-store' });
-      const config = await configResponse.json();
-      if (!configResponse.ok || !config.publicKey) throw new Error('Push-уведомления ещё не настроены.');
       const registration = await navigator.serviceWorker.register('/workday-sw.js', { scope: '/' });
       const existing = await registration.pushManager.getSubscription();
       const subscription = existing ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(config.publicKey) });
@@ -58,13 +66,15 @@ export function AdminInboxBell() {
     const payload = response?.ok ? await response.json().catch(() => null) : null;
     if (payload) {
       setItems(Array.isArray(payload.items) ? payload.items : []);
-      setUnreadCount(Number(payload.unreadCount) || 0);
+      const nextUnreadCount = Number(payload.unreadCount) || 0;
+      setUnreadCount(nextUnreadCount);
+      void syncPwaAppBadge(nextUnreadCount);
     }
   }
 
   useEffect(() => {
     void load();
-    if ('Notification' in window && Notification.permission === 'granted') void connectPush(false);
+    void connectPush(false);
     const timer = window.setInterval(() => void load(), 60_000);
     function close(event: MouseEvent) {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
@@ -75,8 +85,11 @@ export function AdminInboxBell() {
 
   async function markRead(id: string) {
     await fetch(`/api/admin/inbox/${encodeURIComponent(id)}/read`, { method: 'POST' });
+    const wasUnread = !items.find((item) => item.id === id)?.readAt;
     setItems((current) => current.map((item) => item.id === id ? { ...item, readAt: new Date().toISOString() } : item));
-    setUnreadCount((current) => Math.max(0, current - (items.find((item) => item.id === id)?.readAt ? 0 : 1)));
+    const nextUnreadCount = Math.max(0, unreadCount - (wasUnread ? 1 : 0));
+    setUnreadCount(nextUnreadCount);
+    void syncPwaAppBadge(nextUnreadCount);
   }
 
   async function openItem(item: InboxItem) {
@@ -89,6 +102,7 @@ export function AdminInboxBell() {
     await fetch('/api/admin/inbox/read-all', { method: 'POST' });
     setItems((current) => current.map((item) => ({ ...item, readAt: item.readAt ?? new Date().toISOString() })));
     setUnreadCount(0);
+    void syncPwaAppBadge(0);
   }
 
   return (
@@ -103,7 +117,7 @@ export function AdminInboxBell() {
             <div><p className='font-extrabold text-slate-950'>Уведомления</p><p className='text-xs font-medium text-slate-500'>{unreadCount ? `Непрочитанных: ${unreadCount}` : 'Новых нет'}</p></div>
             {unreadCount > 0 && <button type='button' onClick={() => void markAll()} className='admin-material-control inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-[#263b5c]'><CheckCheck className='h-4 w-4' />Прочитать все</button>}
           </div>
-          {!pushConnected && (
+          {pushRegistrationAllowed && !pushConnected && (
             <div className='border-b border-[#d8dfe8] bg-[#f2f5f9] px-4 py-3'>
               <p className='text-xs font-bold leading-relaxed text-[#263b5c]'>Получайте новые заявки и запросы сотрудников, даже когда портал закрыт.</p>
               <button type='button' disabled={pushBusy} onClick={() => void connectPush(true)} className='admin-material-primary mt-2 rounded-lg px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50'>{pushBusy ? 'Подключаем…' : 'Включить уведомления'}</button>

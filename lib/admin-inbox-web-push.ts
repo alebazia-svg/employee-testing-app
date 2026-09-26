@@ -2,8 +2,10 @@ import 'server-only';
 
 import webpush from 'web-push';
 import { prisma } from '@/lib/prisma';
+import { loadAdminInbox } from '@/lib/admin-inbox-data';
 import {
   ADMIN_INBOX_TECHNICAL_DEDUPE_MS,
+  adminInboxWebPushPayload,
   eligibleAdminInboxWebPushTypes,
   getAdminInboxPushEventCutoff,
   isAdminInboxWebPushEligible,
@@ -92,6 +94,7 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
   });
   let sent = 0;
   let failed = 0;
+  const unreadCountByUser = new Map<number, number>();
   for (const receipt of receipts) {
     if (!isAdminInboxWebPushEligible({
       type: receipt.event.type,
@@ -99,6 +102,11 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
       now,
     })) continue;
     if (!await isCurrentTechnicalIncident(receipt.event, now)) continue;
+    let badgeCount = unreadCountByUser.get(receipt.userId);
+    if (badgeCount === undefined) {
+      badgeCount = (await loadAdminInbox({ userId: receipt.userId, limit: 1 })).unreadCount;
+      unreadCountByUser.set(receipt.userId, badgeCount);
+    }
     for (const subscription of receipt.user.pushSubscriptions) {
       if (!subscriptionExistedWhenAdminInboxEventWasCreated({
         subscriptionCreatedAt: subscription.createdAt,
@@ -117,12 +125,12 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
       });
       if (claimed.count !== 1) continue;
       try {
-        await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, JSON.stringify({
+        await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, adminInboxWebPushPayload({
           title: receipt.event.title,
           body: receipt.event.body,
           url: receipt.event.href,
           notificationId: receipt.event.id,
-          tagPrefix: 'admin',
+          badgeCount,
         }));
         await prisma.adminInboxDelivery.update({ where: { id: delivery.id }, data: { status: 'sent', sentAt: now, externalMessageId: subscription.id.toString(), leaseToken: null, leaseUntil: null } });
         sent += 1;

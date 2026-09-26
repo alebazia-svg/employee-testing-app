@@ -1,6 +1,12 @@
 import 'server-only';
 
 import { adminInboxActionLabel, adminInboxEventMeta, adminInboxSourceState } from '@/lib/admin-operations-view';
+import {
+  ADMIN_INBOX_TECHNICAL_EVENT_TYPES,
+  adminInboxTechnicalSourceKey,
+  effectiveAdminInboxReadAt,
+  isAdminInboxTechnicalEvent,
+} from '@/lib/admin-inbox-read-policy';
 import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycle';
 import { prisma } from '@/lib/prisma';
 
@@ -42,8 +48,14 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const reviewIds = rows.filter((row) => row.event.sourceType === 'terminal_fiscal_review').map((row) => row.event.sourceId);
   const exceptionIds = rows.filter((row) => row.event.sourceType === 'workday_close_exception').map((row) => row.event.sourceId);
   const cashOperationIds = rows.filter((row) => row.event.sourceType === 'cash_operation').map((row) => Number(row.event.sourceId)).filter(Number.isInteger);
+  const technicalSources = [...new Map(rows
+    .filter((row) => isAdminInboxTechnicalEvent(row.event.type))
+    .map((row) => [adminInboxTechnicalSourceKey(row.event), {
+      sourceType: row.event.sourceType,
+      sourceId: row.event.sourceId,
+    }])).values()];
 
-  const [currentExpenses, issues, reviews, exceptions, cashOperations] = await Promise.all([
+  const [currentExpenses, issues, reviews, exceptions, cashOperations, technicalEvents] = await Promise.all([
     expenseRefs.length ? prisma.expenseRequestAdminCase.findMany({
       where: { ...expenseRequestCurrentWhere, oneCRequestRef: { in: expenseRefs } },
       select: { oneCRequestRef: true },
@@ -64,6 +76,14 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       where: { id: { in: cashOperationIds } },
       select: { id: true, status: true },
     }) : [],
+    technicalSources.length ? prisma.adminInboxEvent.findMany({
+      where: {
+        type: { in: [...ADMIN_INBOX_TECHNICAL_EVENT_TYPES] },
+        OR: technicalSources,
+      },
+      orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true, sourceType: true, sourceId: true },
+    }) : [],
   ]);
 
   const currentExpenseRefs = new Set(currentExpenses.map((item) => item.oneCRequestRef));
@@ -71,6 +91,11 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const reviewsById = new Map(reviews.map((item) => [item.id, item]));
   const exceptionsById = new Map(exceptions.map((item) => [item.id, item]));
   const cashOperationsById = new Map(cashOperations.map((item) => [String(item.id), item]));
+  const latestTechnicalEventBySource = new Map<string, string>();
+  for (const event of technicalEvents) {
+    const key = adminInboxTechnicalSourceKey(event);
+    if (!latestTechnicalEventBySource.has(key)) latestTechnicalEventBySource.set(key, event.id);
+  }
 
   const itemsById = new Map(rows.map((row) => {
     const sourceType = row.event.sourceType;
@@ -92,7 +117,15 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     });
     const item: AdminInboxViewItem = {
       id: row.id,
-      readAt: row.readAt?.toISOString() ?? (lifecycleManaged && !sourceState.active ? row.event.occurredAt.toISOString() : null),
+      readAt: effectiveAdminInboxReadAt({
+        storedReadAt: row.readAt,
+        occurredAt: row.event.occurredAt,
+        eventId: row.event.id,
+        eventType: row.event.type,
+        lifecycleManaged,
+        sourceActive: sourceState.active,
+        latestTechnicalEventId: latestTechnicalEventBySource.get(adminInboxTechnicalSourceKey(row.event)),
+      })?.toISOString() ?? null,
       event: {
         type: row.event.type,
         title: row.event.title,

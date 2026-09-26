@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCircle2, ChevronRight, XCircle } from 'lucide-react';
+import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
 
 type ProcurementNotification = {
   id: number;
@@ -31,7 +32,9 @@ export function ProcurementNotificationsButton() {
     const response = await fetch('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
     if (!response?.ok) return;
     const payload = await response.json().catch(() => null);
-    setItems(Array.isArray(payload?.notifications) ? payload.notifications : []);
+    const nextItems = Array.isArray(payload?.notifications) ? payload.notifications : [];
+    setItems(nextItems);
+    void syncPwaAppBadge(nextItems.length);
   }, []);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
@@ -83,7 +86,11 @@ export function ProcurementNotificationsButton() {
   }, [connectPush, refresh]);
 
   async function openItem(item: ProcurementNotification) {
-    setItems((current) => current.filter((notification) => notification.id !== item.id));
+    setItems((current) => {
+      const next = current.filter((notification) => notification.id !== item.id);
+      void syncPwaAppBadge(next.length);
+      return next;
+    });
     await fetch('/api/employee/workday-notifications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

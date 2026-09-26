@@ -1,14 +1,19 @@
 import { getCurrentAdmin } from '@/lib/auth';
+import { adminPushRegistrationModeForRequest } from '@/lib/admin-push-subscription-policy';
 import { prisma } from '@/lib/prisma';
 
 function readString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const admin = await getCurrentAdmin();
   if (!admin) return Response.json({ error: 'Forbidden' }, { status: 403 });
-  return Response.json({ publicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim() ?? '' });
+  const registrationMode = adminPushRegistrationModeForRequest(req);
+  return Response.json({
+    publicKey: process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim() ?? '',
+    registrationAllowed: registrationMode !== 'legacy-disabled',
+  });
 }
 
 export async function POST(req: Request) {
@@ -19,12 +24,37 @@ export async function POST(req: Request) {
   const p256dh = readString(payload?.keys?.p256dh);
   const auth = readString(payload?.keys?.auth);
   if (!endpoint || !p256dh || !auth) return Response.json({ error: 'Некорректная push-подписка' }, { status: 400 });
-  const subscription = await prisma.workdayPushSubscription.upsert({
-    where: { endpoint },
-    create: { userId: admin.id, endpoint, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '' },
-    update: { userId: admin.id, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '', disabledAt: null },
+  const registrationMode = adminPushRegistrationModeForRequest(req);
+  const now = new Date();
+  const userAgent = req.headers.get('user-agent') ?? '';
+  const subscription = await prisma.$transaction(async (tx) => {
+    const saved = await tx.workdayPushSubscription.upsert({
+      where: { endpoint },
+      create: {
+        userId: admin.id,
+        endpoint,
+        p256dh,
+        auth,
+        userAgent,
+        disabledAt: registrationMode === 'legacy-disabled' ? now : null,
+      },
+      update: {
+        userId: admin.id,
+        p256dh,
+        auth,
+        userAgent,
+        disabledAt: registrationMode === 'legacy-disabled' ? now : null,
+      },
+    });
+    if (registrationMode === 'primary-single') {
+      await tx.workdayPushSubscription.updateMany({
+        where: { userId: admin.id, id: { not: saved.id }, disabledAt: null },
+        data: { disabledAt: now },
+      });
+    }
+    return saved;
   });
-  return Response.json({ ok: true, id: subscription.id });
+  return Response.json({ ok: true, id: subscription.id, active: registrationMode !== 'legacy-disabled' });
 }
 
 export async function DELETE(req: Request) {

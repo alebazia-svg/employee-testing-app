@@ -94,6 +94,13 @@ export function adminInboxSourceState(input: {
         ? { active: false, label: 'Работа восстановлена', tone: 'resolved' }
         : { active: false, label: 'Системное событие', tone: 'neutral' };
   }
+  if (input.sourceType === 'infrastructure') {
+    return input.eventType === 'infrastructure.down'
+      ? { active: true, label: 'Сервис недоступен', tone: 'attention' }
+      : input.eventType === 'infrastructure.recovered'
+        ? { active: false, label: 'Работа восстановлена', tone: 'resolved' }
+        : { active: false, label: 'Системное событие', tone: 'neutral' };
+  }
   if (input.sourceType === 'expense_request') {
     return input.current
       ? { active: true, label: 'Текущая заявка', tone: 'active' }

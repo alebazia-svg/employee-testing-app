@@ -2,12 +2,30 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   ADMIN_INBOX_PUSH_MAX_EVENT_AGE_MS,
+  adminInboxWebPushPayload,
   eligibleAdminInboxWebPushTypes,
   getAdminInboxPushEventCutoff,
   isAdminInboxWebPushEligible,
   isTechnicalAdminInboxDownEvent,
   subscriptionExistedWhenAdminInboxEventWasCreated,
 } from '../lib/admin-inbox-web-push-policy';
+
+test('admin push payload carries the current unread badge count', () => {
+  assert.deepEqual(JSON.parse(adminInboxWebPushPayload({
+    title: 'Новая заявка',
+    body: 'Требуется решение',
+    url: '/admin/inbox',
+    notificationId: 'event-1',
+    badgeCount: 4.9,
+  })), {
+    title: 'Новая заявка',
+    body: 'Требуется решение',
+    url: '/admin/inbox',
+    notificationId: 'event-1',
+    tagPrefix: 'admin',
+    badgeCount: 4,
+  });
+});
 
 test('admin web push only considers events created during the last thirty minutes', () => {
   const now = new Date('2026-08-29T18:40:00.000Z');

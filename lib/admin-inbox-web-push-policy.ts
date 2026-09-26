@@ -86,3 +86,20 @@ export function subscriptionExistedWhenAdminInboxEventWasCreated(input: {
 }) {
   return input.subscriptionCreatedAt <= input.eventCreatedAt;
 }
+
+export function adminInboxWebPushPayload(input: {
+  title: string;
+  body: string;
+  url: string;
+  notificationId: string;
+  badgeCount: number;
+}) {
+  return JSON.stringify({
+    title: input.title,
+    body: input.body,
+    url: input.url,
+    notificationId: input.notificationId,
+    tagPrefix: 'admin',
+    badgeCount: Math.max(0, Math.floor(input.badgeCount)),
+  });
+}

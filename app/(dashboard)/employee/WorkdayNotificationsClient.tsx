@@ -12,6 +12,7 @@ import {
 } from '@solar-icons/react/bold-duotone';
 import { Bell, ChevronRight, X } from 'lucide-react';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
+import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
 import { cn } from '@/lib/utils';
 
 type WorkdayNotification = {
@@ -56,17 +57,6 @@ function urlBase64ToUint8Array(value: string) {
   return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
 }
 
-type BadgeNavigator = Navigator & {
-  setAppBadge?: (count?: number) => Promise<void>;
-  clearAppBadge?: () => Promise<void>;
-};
-
-function syncAppBadge(count: number) {
-  const badgeNavigator = navigator as BadgeNavigator;
-  if (count > 0) void badgeNavigator.setAppBadge?.(count).catch(() => undefined);
-  else void badgeNavigator.clearAppBadge?.().catch(() => undefined);
-}
-
 export function WorkdayNotificationsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -87,7 +77,7 @@ export function WorkdayNotificationsClient() {
       ? payload.notifications.filter((item: WorkdayNotification) => !item.readAt)
       : [];
     setNotifications(nextNotifications);
-    syncAppBadge(nextNotifications.length);
+    void syncPwaAppBadge(nextNotifications.length);
   }, []);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
@@ -145,7 +135,7 @@ export function WorkdayNotificationsClient() {
     const threadKey = workdayNotificationThreadKey(notification);
     setNotifications((current) => {
       const next = current.filter((item) => workdayNotificationThreadKey(item) !== threadKey);
-      syncAppBadge(next.length);
+      void syncPwaAppBadge(next.length);
       return next;
     });
     await fetch('/api/employee/workday-notifications', {

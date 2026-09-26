@@ -30,6 +30,12 @@ test('lost dependency and recovery have clear portal states', () => {
   assert.deepEqual(adminInboxSourceState({ sourceType: 'dependency', eventType: 'dependency.recovered' }), {
     active: false, label: 'Работа восстановлена', tone: 'resolved',
   });
+  assert.deepEqual(adminInboxSourceState({ sourceType: 'infrastructure', eventType: 'infrastructure.down' }), {
+    active: true, label: 'Сервис недоступен', tone: 'attention',
+  });
+  assert.deepEqual(adminInboxSourceState({ sourceType: 'infrastructure', eventType: 'infrastructure.recovered' }), {
+    active: false, label: 'Работа восстановлена', tone: 'resolved',
+  });
 });
 
 test('resolved decisions no longer invite admin to decide again', () => {
