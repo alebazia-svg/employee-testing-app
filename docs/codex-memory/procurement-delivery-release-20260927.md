@@ -2,7 +2,74 @@
 
 ## Current state
 
-Owner explicitly approved stage1 and continued its correction rollout. Current production code commit:
+### Amount-entry follow-up — deployed 27 September
+
+Owner explicitly approved deployment. Current production code:
+`92ec045281e9a74b13fb9236026b61ae5391b4e3`, pushed to
+`origin/design-local-updates`. Only the eight scoped code/test files below were
+committed. Exact committed source built successfully on VPS; visible Terminal
+workflow completed with `DEPLOY_EXIT=0`. No migrations or unrelated WIP included.
+Rollback image: `offonika-portal-rollback:before-delivery-amount-92ec045`;
+previous production code `c470756ee9506f1fcd5ac78086b42bcc2592e912`.
+Deploy log: `/tmp/delivery-amount-deploy-20260927.Yfin4s/deploy.log`.
+
+Post-deploy read-only source smoke passed; independent SSH confirmed the code
+commit and active delivery timer. Readback: balance2259, reminderActive=true,
+requestedByBuyer=false, requestDetails=null, requestStateAvailable=true.
+The new amount-form text is present in the deployed client bundle. Health endpoint
+ok, login200, unauthenticated deliveryAPI401. Authenticated production ADMIN page
+rendered successfully and confirmed the test request remains reset. No new real
+request was submitted for testing. Buyer modal/POST tested locally; production
+buyer-login verification remains outstanding (browser is signed in as ADMIN).
+
+Owner approved a prefilled editable top-up amount and optional comment. Implemented
+in the existing buyer dialog and ADMIN card, without 1C writes or approval. The
+suggestion is target minus the displayed balance; it is not a mandated payout.
+POST validates a positive amount with kopecks and a <=500-character comment;
+identity, current balance and timestamps come from the server. Cancel sends nothing.
+The first amount/comment submission is immutable within the reserve cycle; retries
+return its original values. Old text-only requests can add an amount once.
+
+Versioned details are stored in a separate private audit event with unique key
+`delivery:manual:<reminderId>:details`; no schema migration, duplicate inbox receipt
+or extra notification. ADMIN separates requested amount / balance at submission
+from fresh balance / current reserve gap. No cashier-selection or cashier-push
+workflow is implemented: the owner's new idea is explicitly deferred.
+
+Changed files for this follow-up:
+- `app/api/procurement/delivery/route.ts`
+- `components/ProcurementDeliveryPanel.tsx`
+- `components/ProcurementDeliveryRequestDialog.tsx`
+- `components/ProcurementDeliveryAdmin.tsx`
+- `lib/procurement-delivery-reminders.ts`
+- `lib/procurement-delivery-request.ts`
+- `tests/procurement-delivery.integration.test.ts`
+- `tests/procurement-delivery-request.test.ts`
+- this handoff.
+
+Owner also explicitly requested resetting her production test submission and
+authorized the visible Terminal sudo workflow. One exact text-only manual marker
+was removed after guarded preview and backup; its full original data is retained
+in a private reset audit event. The automatic reminder and its receipt are intact.
+Independent readback: requestedByBuyer=false, reminderActive=true, balance2259.
+No 1C document or balance changed. Restore source on VPS (0600):
+`/tmp/delivery-owner-test-request-backup-20260927.json`.
+Local operation log: `/tmp/delivery-request-amount-20260927.9Eea9s/reset.log`, exit0.
+This reset was performed before the separately approved amount-entry deployment.
+
+Verification: 24 focused tests passed (including isolated PostgreSQL authorization,
+concurrent POSTs, input validation, immutable retry, legacy request enrichment and
+new-cycle isolation); TypeScript, production build and diff check passed. Browser
+checked cancel/reopen, invalid zero, editable amount with comma/kopecks, optional
+comment, real local POST, reload persistence, and the actual ADMIN display.
+Local browser used fresh read-only 1C balance, isolated request persistence and
+demo users. Production verification is documented above.
+Unrelated WIP preserved. Procurement progress54.8→54.8; no item/stage changes;
+autonomous orders, contact, schedules, spending and1C writes remain disabled.
+
+### Earlier deployed baseline (superseded by92ec045 above)
+
+Owner explicitly approved stage1 and continued its correction rollout. Previous production code commit:
 `c470756ee9506f1fcd5ac78086b42bcc2592e912`, pushed to
 `origin/design-local-updates` and deployed to `/docker/employee-testing-app`.
 The visible Terminal sudo workflow completed with `DEPLOY_EXIT=0`.
