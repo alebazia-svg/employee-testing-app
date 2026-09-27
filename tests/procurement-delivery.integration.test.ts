@@ -28,21 +28,27 @@ test('real PostgreSQL: authorization, concurrency, one reminder, partial top-up,
     } }] });
     const module = { exports: {} as any }; new Function('require', 'module', 'exports', output.outputFiles[0].text)(createRequire(import.meta.url), module, module.exports);
     const route = module.exports;
-    const post = (origin = 'http://localhost') => route.POST(new Request('http://localhost/api/procurement/delivery', { method: 'POST', headers: { origin } }));
+    const input = { amount: 40000, comment: 'Завтра две доставки' };
+    const post = (origin = 'http://localhost', payload: unknown = input) => route.POST(new Request('http://localhost/api/procurement/delivery', { method: 'POST', headers: { origin }, body: JSON.stringify(payload) }));
     assert.equal((await route.GET()).status, 401); assert.equal((await post()).status, 401); state.user = owner; assert.equal((await post()).status, 403);
     state.user = buyer; assert.equal((await post('http://other')).status, 403);
+    for (const payload of [{}, { amount: -1 }, { amount: 1.001 }, { amount: 100, balance: 0 }, { amount: 100, comment: 'x'.repeat(501) }]) assert.equal((await post('http://localhost', payload)).status, 400);
+    assert.equal(await db.adminInboxEvent.count({ where: { sourceType: DELIVERY_SOURCE } }), 0);
     const automatic = await route.syncDeliveryReminder(false);
     assert.equal(automatic.requested, true, 'background check works without buyer click');
     assert.equal(automatic.requestedByBuyer, false, 'automatic reminder is not a buyer request');
     assert.equal((await (await route.GET()).json()).requestedByBuyer, false);
     // Reverse-proxy request.url can be internal; validate the actual Host instead.
-    const proxyPost = () => route.POST(new Request('http://internal:3000/api/procurement/delivery', { method: 'POST', headers: { origin: 'https://portal.example', host: 'portal.example' } }));
+    const proxyPost = () => route.POST(new Request('http://internal:3000/api/procurement/delivery', { method: 'POST', headers: { origin: 'https://portal.example', host: 'portal.example' }, body: JSON.stringify(input) }));
     const responses = await Promise.all([post(), post(), proxyPost()]); assert.ok(responses.every(r => r.status === 200));
     for (const response of responses) assert.equal((await response.json()).requestedByBuyer, true);
     const markers = await db.adminInboxEvent.findMany({ where: { sourceType: DELIVERY_REQUEST_SOURCE }, include: { _count: { select: { receipts: true, deliveries: true } } } });
-    assert.equal(markers.length, 1);
-    assert.equal(markers[0]._count.receipts, 0);
-    assert.equal(markers[0]._count.deliveries, 0);
+    assert.equal(markers.length, 2);
+    for (const marker of markers) { assert.equal(marker._count.receipts, 0); assert.equal(marker._count.deliveries, 0); }
+    const stored = (await (await route.GET()).json()).requestDetails;
+    assert.equal(stored.amount, 40000); assert.equal(stored.comment, input.comment); assert.equal(stored.balance, 2259);
+    await post('http://localhost', { amount: 100, comment: 'Повторный запрос' });
+    assert.deepEqual((await (await route.GET()).json()).requestDetails, stored, 'retry must not silently replace the original request');
     let events = await db.adminInboxEvent.findMany({ where: { sourceType: DELIVERY_SOURCE } }); assert.equal(events.length, 1);
     const first = events[0]; assert.equal(await db.adminInboxReceipt.count({ where: { eventId: first.id, userId: owner.id } }), 1);
     assert.match(first.body, /Низкий остаток/); assert.doesNotMatch(first.body, /Астемир запросил/);
@@ -53,10 +59,15 @@ test('real PostgreSQL: authorization, concurrency, one reminder, partial top-up,
     state.failed = true; assert.equal((await post()).status, 503); assert.equal((await (await route.GET()).json()).snapshot.balance, null); state.failed = false;
     state.balance = 35000; assert.equal((await (await post()).json()).requested, false);
     assert.equal((await (await route.GET()).json()).requestedByBuyer, false);
+    assert.equal((await (await route.GET()).json()).requestDetails, null);
     assert.ok((await db.adminInboxReceipt.findFirstOrThrow({ where: { eventId: first.id, userId: owner.id } })).readAt);
     state.balance = 1000; assert.equal((await route.syncDeliveryReminder(false)).requestedByBuyer, false, 'old manual action never leaks into a new cycle');
     assert.equal((await (await route.GET()).json()).requestedByBuyer, false);
+    assert.equal((await (await route.GET()).json()).requestDetails, null);
+    const legacy = await route.syncDeliveryReminder(true);
+    assert.equal(legacy.requestedByBuyer, true); assert.equal(legacy.requestDetails, null);
     await post(); events = await db.adminInboxEvent.findMany({ where: { sourceType: DELIVERY_SOURCE } }); assert.equal(events.length, 3);
+    assert.equal((await (await route.GET()).json()).requestDetails.amount, input.amount, 'a legacy request can receive details without another reserve reminder');
     assert.equal(events.filter(e => e.type === 'procurement.delivery_requested').length, 2);
   } finally {
     await db.adminInboxEvent.deleteMany({ where: { sourceType: { in: [DELIVERY_SOURCE, DELIVERY_REQUEST_SOURCE] } } });

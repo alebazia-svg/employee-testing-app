@@ -1,6 +1,7 @@
 import { getCurrentUser } from '@/lib/auth';
 import { deliveryUserAllowed } from '@/lib/procurement-delivery-policy';
 import { deliveryMappedUser, loadDeliveryView, syncDeliveryReminder } from '@/lib/procurement-delivery-reminders';
+import { parseDeliveryRequest } from '@/lib/procurement-delivery-request';
 
 async function allowed() {
   const user = await getCurrentUser();
@@ -17,7 +18,7 @@ export async function GET() {
   } catch { return Response.json({ error: 'Не удалось обновить подотчёт. Повторите позже.' }, { status: 503 }); }
 }
 export async function POST(request: Request) {
-  // Reject cross-origin browser submissions; no IDs/amounts/cashboxes accepted from the client.
+  // Reject cross-origin submissions; the identity and balance remain server-owned.
   const origin = request.headers.get('origin');
   let sameOrigin = false;
   try {
@@ -30,6 +31,14 @@ export async function POST(request: Request) {
   try {
     const denied = await allowed();
     if (denied) return Response.json({ error: denied.error }, { status: denied.status });
-    return Response.json(await syncDeliveryReminder(true), { headers: { 'Cache-Control': 'no-store' } });
+    let payload: unknown;
+    try {
+      const body = await request.text();
+      if (body.length > 4096) return Response.json({ error: 'Слишком длинный запрос.' }, { status: 400 });
+      payload = JSON.parse(body);
+    } catch { return Response.json({ error: 'Укажите сумму пополнения.' }, { status: 400 }); }
+    const input = parseDeliveryRequest(payload);
+    if (!input) return Response.json({ error: 'Укажите положительную сумму с точностью до копеек и комментарий до 500 символов.' }, { status: 400 });
+    return Response.json(await syncDeliveryReminder(true, input), { headers: { 'Cache-Control': 'no-store' } });
   } catch { return Response.json({ error: 'Не удалось подтвердить отправку. Обновите блок: повторный запрос не создаст дубль.' }, { status: 503 }); }
 }

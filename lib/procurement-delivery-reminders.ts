@@ -4,10 +4,11 @@ import { queueAdminInboxTelegramDelivery } from './admin-inbox';
 import { fetchDeliveryCash, unavailableDeliveryCash } from './procurement-delivery-source';
 import { DELIVERY_PERSON, DELIVERY_SOURCE, DELIVERY_OPEN, DELIVERY_COVERED, DELIVERY_RESERVE, DELIVERY_REQUEST_SOURCE, DELIVERY_MANUAL_REQUEST, deliveryManualRequestKey, legacyDeliveryBuyerRequest, deliveryAction, deliveryFresh } from './procurement-delivery-policy';
 import type { DeliveryCashSnapshot } from '../components/ProcurementDeliveryCash';
+import { deliveryDetailsKey, parseDeliveryRequest, readDeliveryDetails, type DeliveryRequestDetails, type DeliveryRequestInput } from './procurement-delivery-request';
 
 const sourceWhere = { sourceType: DELIVERY_SOURCE, sourceId: DELIVERY_PERSON.ref };
 const orderBy = [{ createdAt: 'desc' as const }, { id: 'desc' as const }];
-export type DeliveryView = { snapshot: DeliveryCashSnapshot; requested: boolean; requestedByBuyer?: boolean; requestStateAvailable: boolean };
+export type DeliveryView = { snapshot: DeliveryCashSnapshot; requested: boolean; requestedByBuyer?: boolean; requestDetails?: DeliveryRequestDetails | null; requestStateAvailable: boolean };
 
 export async function deliveryMappedUser() {
   const users = await prisma.user.findMany({
@@ -25,22 +26,30 @@ export async function loadDeliveryView(): Promise<DeliveryView> {
   ]);
   const active = event.status === 'fulfilled' && event.value?.type === DELIVERY_OPEN ? event.value : null;
   let requestedByBuyer = false;
+  let requestDetails: DeliveryRequestDetails | null = null;
   let requestStateAvailable = event.status === 'fulfilled';
   if (active) {
     try {
       requestedByBuyer = legacyDeliveryBuyerRequest(active) || Boolean(await prisma.adminInboxEvent.findUnique({
         where: { eventKey: deliveryManualRequestKey(active.id) }, select: { id: true },
       }));
+      const details = await prisma.adminInboxEvent.findUnique({ where: { eventKey: deliveryDetailsKey(active.id) } });
+      if (details) {
+        requestDetails = readDeliveryDetails(details.body);
+        if (!requestDetails) throw Error('DELIVERY_REQUEST_CORRUPT');
+        requestedByBuyer = true;
+      }
     } catch { requestStateAvailable = false; }
   }
   return {
     snapshot: cash.status === 'fulfilled' ? cash.value : unavailableDeliveryCash(),
-    requested: Boolean(active), requestedByBuyer, requestStateAvailable,
+    requested: Boolean(active), requestedByBuyer, requestDetails, requestStateAvailable,
   };
 }
 
 /** Only a portal reminder. This never creates, approves, or pays a 1C document. */
-export async function syncDeliveryReminder(manual = false): Promise<DeliveryView> {
+export async function syncDeliveryReminder(manual = false, input?: DeliveryRequestInput): Promise<DeliveryView> {
+  if (input !== undefined && (!manual || !parseDeliveryRequest(input))) throw Error('DELIVERY_REQUEST_INVALID');
   await deliveryMappedUser();
   const snapshot = await fetchDeliveryCash();
   if (!deliveryFresh(snapshot)) throw Error('DELIVERY_SOURCE_STALE');
@@ -87,10 +96,23 @@ export async function syncDeliveryReminder(manual = false): Promise<DeliveryView
           href: '/admin/expense-requests#delivery', occurredAt: now,
         },
       });
+      if (input) await tx.adminInboxEvent.upsert({
+        where: { eventKey: deliveryDetailsKey(activeReminder.id) }, update: {},
+        create: {
+          eventKey: deliveryDetailsKey(activeReminder.id), sourceType: DELIVERY_REQUEST_SOURCE,
+          sourceId: DELIVERY_PERSON.ref, type: 'procurement.delivery_request_details',
+          title: 'Сумма запроса пополнения',
+          body: JSON.stringify({ version: 1, ...parseDeliveryRequest(input), balance: snapshot.balance, checkedAt: snapshot.checkedAt, requestedAt: now.toISOString() }),
+          href: '/admin/expense-requests#delivery', occurredAt: now,
+        },
+      });
     }
     const requestedByBuyer = activeReminder ? legacyDeliveryBuyerRequest(activeReminder) || Boolean(await tx.adminInboxEvent.findUnique({
       where: { eventKey: deliveryManualRequestKey(activeReminder.id) }, select: { id: true },
     })) : false;
-    return { snapshot, requested: Boolean(activeReminder), requestedByBuyer, requestStateAvailable: true };
+    const details = activeReminder ? await tx.adminInboxEvent.findUnique({ where: { eventKey: deliveryDetailsKey(activeReminder.id) } }) : null;
+    const requestDetails = details ? readDeliveryDetails(details.body) : null;
+    if (details && !requestDetails) throw Error('DELIVERY_REQUEST_CORRUPT');
+    return { snapshot, requested: Boolean(activeReminder), requestedByBuyer, requestDetails, requestStateAvailable: true };
   });
 }
