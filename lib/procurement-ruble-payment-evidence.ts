@@ -52,7 +52,26 @@ export function applyRublePaymentEvidence(
       if (ref) claims.set(ref, new Set([...(claims.get(ref) || []), plan.id]));
     }
   }
-  for (const payment of uniqueSupplierPayments(payments)) {
+  // Rebuild coverage from this read, oldest first. A persisted "paid" flag
+  // cannot release another request after an earlier RKO is unposted/removed.
+  const coveredBefore = (plan: EvidencePlan, at: number) => {
+    const current = evidence.get(plan.id)!;
+    if (current.state === 'MISMATCH') return false;
+    const orders = [...new Map(current.cashOrders.map(row => [key(row.ref), row])).values()];
+    const covered = orders.reduce((sum, row) => {
+      const owners = claims.get(key(row.ref));
+      const paidAt = paymentTimestamp(row.date);
+      // Do not infer an ordering for documents in the same second, or use
+      // a later explicit payment to resolve an earlier ambiguous one.
+      return owners?.size === 1 && owners.has(plan.id) && Number.isFinite(paidAt) && paidAt < at &&
+        Number.isFinite(row.amount) && row.amount > 0 ? sum + minor(row.amount) : sum;
+    }, 0);
+    return covered >= minor(plan.plannedAmount);
+  };
+  const orderedPayments = uniqueSupplierPayments(payments)
+    .filter(payment => Number.isFinite(paymentTimestamp(payment.date)))
+    .sort((a, b) => paymentTimestamp(a.date) - paymentTimestamp(b.date) || key(a.ref).localeCompare(key(b.ref)));
+  for (const payment of orderedPayments) {
     if (!payment.posted || payment.deleted || !['РУБ', 'RUB'].includes(payment.documentCurrency) ||
         !Number.isFinite(payment.documentAmount) || payment.documentAmount <= 0) continue;
     const at = paymentTimestamp(payment.date);
@@ -65,6 +84,9 @@ export function applyRublePaymentEvidence(
       const created = Date.parse(plan.createdAt || '');
       const confirmed = manualOwners.length === 1 && manualOwners[0].id === plan.id &&
         plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) && samePaymentSupplier(plan, payment);
+      // Explicit ownership remains authoritative. Only automatic order-based
+      // matching stops when earlier uniquely owned receipts cover the request.
+      if (!manualOwners.length && plan.status !== COMPLETED_WITHOUT_TOPUP && coveredBefore(plan, at)) return false;
       return Number.isFinite(created) && created <= at &&
         (manualOwners.length ? confirmed : Boolean(payment.baseDocumentRef||payment.settlementOrderRef) && plan.orderRefs.some((ref) => key(ref) === key(payment.baseDocumentRef||payment.settlementOrderRef||'')) && (!payment.settlementOrderRef||samePaymentSupplier(plan,payment)));
     });

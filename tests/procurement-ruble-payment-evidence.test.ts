@@ -49,6 +49,67 @@ test('two requests for the same order require review, including across managers'
     assert.equal(row.paidAmount, 0);
   }
 });
+
+const firstStage = { ...plan, id: 'deposit', planCode: 'PAY-DEPOSIT', plannedAmount: 67500 };
+const secondStage = { ...plan, id: 'balance', planCode: 'PAY-BALANCE', plannedAmount: 516800,
+  createdAt: '2026-09-27T09:00:00Z' };
+const deposit = { ...payment, ref: 'deposit-rko', documentAmount: 67500, date: '26.09.2026 12:27:12' };
+const balance = { ...payment, ref: 'balance-rko', documentAmount: 516800, date: '27.09.2026 13:38:28' };
+
+test('paid deposit no longer competes with a later request for the same order, regardless of input order', () => {
+  for (const plans of [[firstStage, secondStage], [secondStage, firstStage]]) {
+    for (const payments of [[deposit, balance], [balance, deposit], [balance, deposit, deposit]]) {
+      const result = match(payments, plans);
+      assert.equal(result.get(firstStage.id)!.issuedAmount, 67500);
+      assert.equal(result.get(secondStage.id)!.issuedAmount, 516800);
+      for (const row of result.values()) {
+        assert.equal(row.state, 'ISSUED_BY_ONE_C');
+        assert.equal(row.remainingAmount, 0);
+        assert.equal(row.cashOrders.length, 1);
+      }
+    }
+  }
+});
+test('settlement-linked and explicitly confirmed deposits also release the next request', () => {
+  const linkedDeposit = { ...deposit, baseDocumentRef: '', settlementOrderRef: 'order-mems', supplier: 'MEMS' };
+  assert.equal(match([balance, linkedDeposit], [firstStage, secondStage]).get(secondStage.id)!.issuedAmount, 516800);
+  const contractDeposit = { ...deposit, baseDocumentRef: '', supplier: 'MEMS' };
+  const confirmed = { ...firstStage, manualRubleLinks: [{ ref: deposit.ref, fingerprint: paymentFingerprint(contractDeposit) }] };
+  assert.equal(match([balance, contractDeposit], [confirmed, secondStage]).get(secondStage.id)!.issuedAmount, 516800);
+});
+test('removed, unposted, deleted, partial or conflicting deposits cannot silently release a second request', () => {
+  for (const prior of [[], [{ ...deposit, posted: false }], [{ ...deposit, deleted: true }],
+    [{ ...deposit, documentAmount: 67499.99 }], [deposit, { ...deposit, documentAmount: 67000 }]]) {
+    const result = match([...prior, balance], [firstStage, secondStage]);
+    assert.equal(result.get(secondStage.id)!.state, 'NEEDS_REVIEW');
+    assert.equal(result.get(secondStage.id)!.issuedAmount, 0);
+    assert.ok(result.get(firstStage.id)!.issuedAmount < 67500);
+  }
+});
+test('a future or undated request-linked receipt cannot resolve an earlier ambiguous payment', () => {
+  for (const date of ['28.09.2026 12:00:00', '', balance.date]) {
+    const requests = [{ comment: firstStage.planCode, counterparty: { name: 'MEMS' },
+      linked_cash_expense_orders: { rows: [{ ref: 'explicit', posted: true, amount: 67500, date }] },
+    }] as ExpenseRequestSourceRow[];
+    assert.equal(match([balance], [firstStage, secondStage], requests).get(secondStage.id)!.issuedAmount, 0);
+  }
+  const requests = [{ comment: firstStage.planCode, counterparty: { name: 'MEMS' },
+    linked_cash_expense_orders: { rows: [{ ref: deposit.ref, posted: true, amount: 67500, date: deposit.date }] },
+  }] as ExpenseRequestSourceRow[];
+  assert.equal(match([balance, deposit], [firstStage, secondStage], requests).get(secondStage.id)!.issuedAmount, 516800);
+});
+test('ambiguous shared claims cannot prove that the old request is already covered', () => {
+  const third = { ...firstStage, id: 'third', planCode: 'PAY-THIRD', orderRefs: ['different-order'] };
+  const requests = [{ comment: `${firstStage.planCode} ${third.planCode}`, counterparty: { name: 'MEMS' },
+    linked_cash_expense_orders: { rows: [{ ref: deposit.ref, posted: true, amount: 67500, date: deposit.date }] },
+  }] as ExpenseRequestSourceRow[];
+  assert.equal(match([balance], [firstStage, secondStage, third], requests).get(secondStage.id)!.issuedAmount, 0);
+});
+test('later unassigned payments are not swallowed by an already paid request', () => {
+  const result = match([balance, deposit], [firstStage]).get(firstStage.id)!;
+  assert.equal(result.issuedAmount, 67500);
+  assert.deepEqual(result.cashOrders.map(row => row.ref), [deposit.ref]);
+});
 test('cancelled and unapproved requests are not automatically fulfilled', () => {
   for (const status of ['CANCELLED', 'SUBMITTED', 'DRAFT']) {
     assert.equal(match([payment], [{ ...plan, status }]).get(plan.id)!.state, 'NO_EVIDENCE');
