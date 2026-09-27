@@ -1,6 +1,7 @@
 "use client";
 import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
+import { ProcurementDeliveryCash, type DeliveryCashSnapshot } from '@/components/ProcurementDeliveryCash';
 import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { ProcurementDiscardDraftDialog } from '@/components/ProcurementDiscardDraftDialog';
 import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
@@ -208,6 +209,8 @@ export default function ProcurementPaymentCalendarClient({
   supplierDebtError,
   usdtBalance,
   accountableBalance,
+  deliveryCash,
+  deliveryCashPanel,
   usdtRateReference,
   todayKey,
   basisPreview = false,
@@ -225,6 +228,8 @@ export default function ProcurementPaymentCalendarClient({
   supplierDebtError: boolean;
   usdtBalance: UsdtBalance;
   accountableBalance: UsdtBalance;
+  deliveryCash?: DeliveryCashSnapshot;
+  deliveryCashPanel?: React.ReactNode;
   usdtRateReference?: UsdtRateReference;
   todayKey: string;
   basisPreview?: boolean;
@@ -1060,6 +1065,7 @@ export default function ProcurementPaymentCalendarClient({
             </div>
 
           </section>
+          {deliveryCashPanel ?? (deliveryCash ? <ProcurementDeliveryCash snapshot={deliveryCash} /> : null)}
         </aside>
       </div>
     </div>

@@ -1,4 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
+import { ProcurementDeliveryPanel } from '@/components/ProcurementDeliveryPanel';
+import { deliveryMappedUser, loadDeliveryView } from '@/lib/procurement-delivery-reminders';
+import { deliveryUserAllowed } from '@/lib/procurement-delivery-policy';
 import { procurementSourceHealth } from '@/lib/procurement-source-health';
 import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +27,9 @@ export const dynamic = "force-dynamic";
 export default async function ProcurementPage() {
   const user = await getCurrentUser();
   if (!user) return null;
+  const deliveryPromise = deliveryUserAllowed(user)
+    ? deliveryMappedUser().then(mapped => mapped.id === user.id ? loadDeliveryView() : null).catch(() => null)
+    : Promise.resolve(null);
   const todayKey = expenseRequestMoscowCalendarDate(new Date());
   const requestTo = new Date();
   requestTo.setDate(requestTo.getDate() + 1);
@@ -123,6 +129,7 @@ export default async function ProcurementPage() {
       evidence: paymentEvidence.get(plan.id),
     })), rateResult.status === 'fulfilled' ? rateResult.value.rate : null,
   );
+  const delivery = await deliveryPromise;
   return (
     <>
     {process.env.NODE_ENV === 'development' && process.env.PROCUREMENT_DEBT_REVIEW === '1' ? <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">Локальная проверка — не рабочий портал.</p> : null}
@@ -142,6 +149,7 @@ export default async function ProcurementPage() {
       accountableBalance={accountableBalance}
       usdtRateReference={rateResult.status === "fulfilled" ? rateResult.value : undefined}
       todayKey={todayKey}
+      deliveryCashPanel={delivery ? <ProcurementDeliveryPanel key="delivery" initial={delivery} /> : null}
     />
     </>
   );

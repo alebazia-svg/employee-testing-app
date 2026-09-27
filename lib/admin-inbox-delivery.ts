@@ -8,6 +8,7 @@ const TELEGRAM_CHANNEL = 'telegram';
 const OWNER_RECIPIENT = 'offonika_control_owner';
 const LEASE_MS = 5 * 60 * 1000;
 const TELEGRAM_EVENT_TYPES = [
+  'procurement.delivery_requested',
   'expense_request.created',
   'workday.close_exception_requested',
   'workday.cash_encashment_exception_requested',
@@ -51,6 +52,7 @@ function messageForEvent(input: {
   body: string;
   expense?: { requestedByName: string | null; amount: unknown; businessOperationName: string | null; latestCategory: string | null; normalizedSource: unknown } | null;
 }) {
+  if (input.type === 'procurement.delivery_requested') return { text: `${input.title}\n${input.body}`, buttonLabel: 'Открыть контроль' as const };
   if (input.type === 'expense_request.created') {
     const comment = sourceComment(input.expense?.normalizedSource);
     return {

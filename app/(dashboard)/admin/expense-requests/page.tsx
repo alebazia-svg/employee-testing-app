@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
+import { ProcurementDeliveryAdminSection } from '@/components/ProcurementDeliveryAdminSection';
 import { redirect } from 'next/navigation';
 import { AlertCircle, CheckCircle2, ChevronRight, Clock3, Inbox, Search } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
@@ -90,6 +92,7 @@ export default async function ExpenseRequestsAdminPage(props: { searchParams?: P
         <div className='self-start rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200 sm:self-auto'>Обновление каждые 3 минуты</div>
       </div>
 
+      <Suspense fallback={<p className="mt-5 text-sm text-slate-500">Обновляем подотчёт…</p>}><ProcurementDeliveryAdminSection /></Suspense>
       <section className='mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3'>
         {[
           { label: 'Новые', value: unreadCount, hint: 'ещё не открыты', icon: Inbox, tone: 'text-amber-700 bg-amber-50' },

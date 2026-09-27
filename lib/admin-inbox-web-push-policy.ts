@@ -2,6 +2,7 @@ export const ADMIN_INBOX_PUSH_MAX_EVENT_AGE_MS = 30 * 60 * 1000;
 export const ADMIN_INBOX_TECHNICAL_DEDUPE_MS = 2 * 60 * 60 * 1000;
 
 const STANDARD_HOURS_EVENT_TYPES = [
+  'procurement.delivery_requested',
   'expense_request.created',
   'procurement.payment_submitted',
   'workday_issue.employee_action',

@@ -13,6 +13,12 @@ export type AdminInboxSourceState = {
 };
 
 const eventMeta: Record<string, AdminInboxEventMeta> = {
+  'procurement.delivery_requested': {
+    category: 'requests', typeLabel: 'Пополнение подотчёта', actionLabel: 'Открыть подотчёт',
+  },
+  'procurement.delivery_covered': {
+    category: 'system', typeLabel: 'Подотчёт', actionLabel: 'Открыть подотчёт',
+  },
   'procurement.payment_submitted': {
     category: 'requests',
     typeLabel: 'Оплата поставщику',
@@ -87,6 +93,11 @@ export function adminInboxSourceState(input: {
   employeeActionRequired?: boolean;
   sourceCompleted?: boolean;
 }): AdminInboxSourceState {
+  if (input.sourceType === 'procurement_delivery') {
+    return input.current
+      ? { active: true, label: 'Пополнение на контроле', tone: 'attention' }
+      : { active: false, label: 'В истории', tone: 'history' };
+  }
   if (input.sourceType === 'dependency') {
     return input.eventType === 'dependency.down'
       ? { active: true, label: 'Связь потеряна', tone: 'attention' }

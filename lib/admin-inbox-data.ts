@@ -87,6 +87,14 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   ]);
 
   const currentExpenseRefs = new Set(currentExpenses.map((item) => item.oneCRequestRef));
+  const deliveryEvents = rows.some(row => row.event.sourceType === 'procurement_delivery')
+    ? await prisma.adminInboxEvent.findMany({ where: { sourceType: 'procurement_delivery' }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, sourceId: true, type: true } }) : [];
+  const activeDeliveryIds = new Set<string>();
+  const deliverySources = new Set<string>();
+  for (const event of deliveryEvents) {
+    if (!deliverySources.has(event.sourceId) && event.type === 'procurement.delivery_requested') activeDeliveryIds.add(event.id);
+    deliverySources.add(event.sourceId);
+  }
   const issuesById = new Map(issues.map((item) => [String(item.id), item]));
   const reviewsById = new Map(reviews.map((item) => [item.id, item]));
   const exceptionsById = new Map(exceptions.map((item) => [item.id, item]));
@@ -105,11 +113,11 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const exception = exceptionsById.get(sourceId);
     const cashOperation = cashOperationsById.get(sourceId);
     const meta = adminInboxEventMeta(row.event.type);
-    const lifecycleManaged = ['expense_request', 'workday_control_issue', 'terminal_fiscal_review', 'workday_close_exception', 'cash_operation'].includes(sourceType);
+    const lifecycleManaged = ['expense_request', 'procurement_delivery', 'workday_control_issue', 'terminal_fiscal_review', 'workday_close_exception', 'cash_operation'].includes(sourceType);
     const sourceState = adminInboxSourceState({
       sourceType,
       eventType: row.event.type,
-      current: currentExpenseRefs.has(sourceId),
+      current: sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id) : currentExpenseRefs.has(sourceId),
       businessStatus: issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
       reasonCode: exception?.reasonCode,
       employeeActionRequired: issue?.employeeActionRequired,

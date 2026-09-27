@@ -53,7 +53,7 @@ test('real calendar renders request stages, partial RUB remainder, paid history 
 test('successive payments on one order leave both buyer requests in paid history',async()=>{
   const props=buyerReviewScenario('lifecycle','2026-09-27')!;
   const first={...props.initialPlans[0],id:'deposit',planCode:'PAY-DEPOSIT',supplierPartner:'Учебный поставщик двух оплат',supplierCounterparty:'',
-    orderRefs:['order-two-payments'],orderNumbers:['407'],plannedAmount:67500,paymentMethod:'CASH',status:'APPROVED',createdAt:'2026-09-25T09:00:00Z'};
+    orderRefs:['order-two-payments'],orderNumbers:['407'],plannedAmount:67500,foreignAmount:null,paymentMethod:'CASH',status:'APPROVED',createdAt:'2026-09-25T09:00:00Z'};
   const second={...first,id:'balance',planCode:'PAY-BALANCE',plannedAmount:516800,createdAt:'2026-09-27T09:00:00Z'};
   const payment={ref:'deposit-rko',number:'1758',date:'26.09.2026 12:27:12',posted:true,deleted:false,documentCurrency:'РУБ',documentAmount:67500,baseDocumentRef:'order-two-payments'};
   const evidence=matchProcurementPaymentEvidence([first,second],[],[{...payment,ref:'balance-rko',number:'1761',documentAmount:516800,date:'27.09.2026 13:38:28'},payment],[]);
@@ -61,6 +61,16 @@ test('successive payments on one order leave both buyer requests in paid history
   assert.equal((html.match(/Оплачено полностью/g)||[]).length,2);
   assert.match(html,/Расходник №1758/);assert.match(html,/Расходник №1761/);
   assert.doesNotMatch(html,/СОГЛАСОВАНО|ЧАСТИЧНО ОПЛАЧЕНО|>Изменить</);
+});
+test('delivery balance is a separate optional card and does not change payment calculations',async()=>{
+  const props=buyerReviewScenario('lifecycle','2026-09-27')!;
+  const baseline=await render(props);
+  const withDelivery=await render({...props,deliveryCash:{balance:2259,checkedAt:'2026-09-27T11:09:11Z',lastIssue:null}});
+  assert.doesNotMatch(baseline,/aria-label="Подотчёт на доставку"/);
+  assert.match(withDelivery,/aria-label="Подотчёт на доставку"/);
+  assert.ok(withDelivery.indexOf('Сводка') < withDelivery.indexOf('aria-label="Подотчёт на доставку"'));
+  assert.ok(withDelivery.indexOf('Остатки касс') < withDelivery.indexOf('aria-label="Подотчёт на доставку"'));
+  assert.equal(withDelivery.replace(/<section aria-label="Подотчёт на доставку"[\s\S]*?<\/section>/,''),baseline);
 });
 test('manual payment stays in history without a permanent notification above the calendar',async()=>{
   const props=buyerReviewScenario('lifecycle','2026-09-24')!;
