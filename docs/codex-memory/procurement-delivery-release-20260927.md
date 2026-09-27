@@ -2,14 +2,16 @@
 
 ## Current state
 
-Owner explicitly approved commit/deploy of stage 1. Production code commit:
-`7877d2e4a4e1267675b4eb3b09d8390234d7c1a6`, pushed to
+Owner explicitly approved stage1 and continued its correction rollout. Current production code commit:
+`c470756ee9506f1fcd5ac78086b42bcc2592e912`, pushed to
 `origin/design-local-updates` and deployed to `/docker/employee-testing-app`.
 The visible Terminal sudo workflow completed with `DEPLOY_EXIT=0`.
+Initial stage1 release was `7877d2e4a4e1267675b4eb3b09d8390234d7c1a6`.
 
 - Real read-only accountable balance, exact Astemir / OFFONIKA / RUB identity.
 - Buyer card remains below the complete summary / QR / USDT block.
-- No owner's name or manual refresh button. Buyer text: `Запрос на пополнение отправлен`.
+- No owner's name or manual refresh button. Automatic reminder: `Требуется пополнение`.
+  `Запрос на пополнение отправлен` appears only for a persisted buyer action.
 - Buyer data refreshes every minute while visible and on resume/network recovery.
   Overlapping reads are blocked, requests throttled, unmounted requests aborted.
   A failed read is not shown as zero and never confirms successful submission.
@@ -24,6 +26,34 @@ cashbox selection, spending authorization, migration, environment edit or upload
 change was made. Reminder persistence in the portal was part of this approved rollout.
 
 ## Verification
+
+Correction c470756:92 focused tests (64 source/inbox +27 buyer/card/sync +1 real
+PostgreSQL scenario), TypeScript and production build passed. Local browser checked
+automatic → button → persisted manual state → reopening; new reserve cycles do
+not inherit the old manual state. Production readback after restart:
+`reminderActive:true,requestedByBuyer:false,requestStateAvailable:true`, balance2,259,
+one reminder and one receipt. Existing source smoke passed read-only, timer active.
+Deploy log: `/tmp/procurement-delivery-status-deploy-20260927.ZpNq6G/deploy.log`.
+
+The buyer click is a cycle-scoped append-only audit marker in the existing event
+table (`procurement_delivery_request`, unique `delivery:manual:<reminderId>`),
+without another receipt/push. It does not change the original automatic reminder
+or its history. Exact fixed legacy manual wording remains recognized; unknown or
+unavailable state never claims a buyer submission. No schema migration required.
+
+Exact correction files:
+- `components/ProcurementDeliveryPanel.tsx`
+- `lib/procurement-delivery-policy.ts`
+- `lib/procurement-delivery-reminders.ts`
+- `tests/procurement-delivery-panel.test.ts`
+- `tests/procurement-delivery-source.test.ts`
+- `tests/procurement-delivery.integration.test.ts`
+
+Correction rollback image: `offonika-portal-rollback:before-delivery-status-c470756`;
+previous code7877d2e. Preserve all audit markers. The production buyer-login and
+device push-delivery verification limits below still apply.
+
+Initial release verification:
 
 - Local:63 source/inbox/expense tests +27 buyer/card/preview/visible-sync tests
   +1 real isolated-PostgreSQL integration scenario passed; the additional3
