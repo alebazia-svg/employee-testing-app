@@ -31,7 +31,7 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
       if (activeRequest.current !== controller) return;
       setView(data); setNow(Date.now());
       setRefreshFailed(false);
-      if (data.requestStateAvailable && data.requested) setError('');
+      if (data.requestStateAvailable && data.requestedByBuyer) setError('');
     } catch {
       if (activeRequest.current !== controller) return;
       if (method === 'GET') setRefreshFailed(true);
@@ -57,9 +57,12 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
       lastRead.current = 0;
     };
   }, [act]);
-  const snapshot = fresh ? view.snapshot : { ...view.snapshot, reserveAdvice: undefined };
+  const buyerRequested = view.requested && view.requestStateAvailable && view.requestedByBuyer === true;
+  const automaticReminder = view.requested && view.requestStateAvailable && !buyerRequested;
+  const snapshot = fresh && !automaticReminder ? view.snapshot : { ...view.snapshot, reserveAdvice: undefined };
   return <ProcurementDeliveryCash snapshot={snapshot} reserveDetails={false}>
-    {view.requested ? <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-700" role="status">Запрос на пополнение отправлен</p>
+    {automaticReminder ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950" role="status">Требуется пополнение</p> : null}
+    {buyerRequested ? <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-700" role="status">Запрос на пополнение отправлен</p>
       : <button type="button" disabled={pending !== null || refreshFailed || !fresh || !view.requestStateAvailable || view.snapshot.balance! >= DELIVERY_RESERVE.target}
         onClick={() => act('POST')} className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{pending === 'POST' ? 'Подождите…' : 'Запросить пополнение'}</button>}
     {refreshFailed || !fresh || !view.requestStateAvailable ? <p role="status" className="mt-2 text-xs text-amber-800">{pending === 'GET' ? 'Обновляем данные…' : 'Данные временно недоступны. Обновим автоматически.'}</p> : null}

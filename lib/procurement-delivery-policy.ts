@@ -9,6 +9,14 @@ export const DELIVERY_RESERVE = { target: 35_000, warnAt: 20_000 } as const;
 export const DELIVERY_SOURCE = 'procurement_delivery';
 export const DELIVERY_OPEN = 'procurement.delivery_requested';
 export const DELIVERY_COVERED = 'procurement.delivery_covered';
+// Separate audit marker: no second inbox receipt or notification for the same reserve cycle.
+export const DELIVERY_REQUEST_SOURCE = 'procurement_delivery_request';
+export const DELIVERY_MANUAL_REQUEST = 'procurement.delivery_manual_requested';
+export const deliveryManualRequestKey = (reminderId: string) => `delivery:manual:${reminderId}`;
+export function legacyDeliveryBuyerRequest(event: { type: string; body: string }) {
+  // Compatibility with the first release's fixed, server-generated message.
+  return event.type === DELIVERY_OPEN && event.body.includes('Астемир запросил пополнение.');
+}
 export const DELIVERY_MAX_AGE_MS = 5 * 60_000;
 
 export function deliveryUserAllowed(user: { role: string; portalArea: string; oneCManagerName: string | null; isActive: boolean }) {

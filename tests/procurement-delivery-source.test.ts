@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deliveryCashFromStatement } from '../lib/procurement-delivery-evidence';
-import { DELIVERY_PERSON, deliveryAction, deliveryUserAllowed } from '../lib/procurement-delivery-policy';
+import { DELIVERY_PERSON, DELIVERY_OPEN, DELIVERY_COVERED, legacyDeliveryBuyerRequest, deliveryAction, deliveryUserAllowed } from '../lib/procurement-delivery-policy';
+
+test('legacy reminders distinguish actual buyer requests from automatic warnings', () => {
+  assert.equal(legacyDeliveryBuyerRequest({ type: DELIVERY_OPEN, body: 'Низкий остаток. Заявку оформите в 1С.' }), false);
+  assert.equal(legacyDeliveryBuyerRequest({ type: DELIVERY_OPEN, body: 'Астемир запросил пополнение. Заявку оформите в 1С.' }), true);
+  assert.equal(legacyDeliveryBuyerRequest({ type: DELIVERY_COVERED, body: 'Астемир запросил пополнение.' }), false);
+});
 
 const now = Date.parse('2026-09-27T12:00:00Z');
 const window = { from: '2026-09-27', to: '2026-09-27' };

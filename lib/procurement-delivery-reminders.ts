@@ -2,12 +2,12 @@ import 'server-only';
 import { prisma } from './prisma';
 import { queueAdminInboxTelegramDelivery } from './admin-inbox';
 import { fetchDeliveryCash, unavailableDeliveryCash } from './procurement-delivery-source';
-import { DELIVERY_PERSON, DELIVERY_SOURCE, DELIVERY_OPEN, DELIVERY_COVERED, DELIVERY_RESERVE, deliveryAction, deliveryFresh } from './procurement-delivery-policy';
+import { DELIVERY_PERSON, DELIVERY_SOURCE, DELIVERY_OPEN, DELIVERY_COVERED, DELIVERY_RESERVE, DELIVERY_REQUEST_SOURCE, DELIVERY_MANUAL_REQUEST, deliveryManualRequestKey, legacyDeliveryBuyerRequest, deliveryAction, deliveryFresh } from './procurement-delivery-policy';
 import type { DeliveryCashSnapshot } from '../components/ProcurementDeliveryCash';
 
 const sourceWhere = { sourceType: DELIVERY_SOURCE, sourceId: DELIVERY_PERSON.ref };
 const orderBy = [{ createdAt: 'desc' as const }, { id: 'desc' as const }];
-export type DeliveryView = { snapshot: DeliveryCashSnapshot; requested: boolean; requestStateAvailable: boolean };
+export type DeliveryView = { snapshot: DeliveryCashSnapshot; requested: boolean; requestedByBuyer?: boolean; requestStateAvailable: boolean };
 
 export async function deliveryMappedUser() {
   const users = await prisma.user.findMany({
@@ -23,10 +23,19 @@ export async function loadDeliveryView(): Promise<DeliveryView> {
     fetchDeliveryCash(),
     prisma.adminInboxEvent.findFirst({ where: sourceWhere, orderBy }),
   ]);
+  const active = event.status === 'fulfilled' && event.value?.type === DELIVERY_OPEN ? event.value : null;
+  let requestedByBuyer = false;
+  let requestStateAvailable = event.status === 'fulfilled';
+  if (active) {
+    try {
+      requestedByBuyer = legacyDeliveryBuyerRequest(active) || Boolean(await prisma.adminInboxEvent.findUnique({
+        where: { eventKey: deliveryManualRequestKey(active.id) }, select: { id: true },
+      }));
+    } catch { requestStateAvailable = false; }
+  }
   return {
     snapshot: cash.status === 'fulfilled' ? cash.value : unavailableDeliveryCash(),
-    requested: event.status === 'fulfilled' && event.value?.type === DELIVERY_OPEN,
-    requestStateAvailable: event.status === 'fulfilled',
+    requested: Boolean(active), requestedByBuyer, requestStateAvailable,
   };
 }
 
@@ -39,6 +48,7 @@ export async function syncDeliveryReminder(manual = false): Promise<DeliveryView
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106248)`;
     const latest = await tx.adminInboxEvent.findFirst({ where: sourceWhere, orderBy });
     const active = latest?.type === DELIVERY_OPEN;
+    let activeReminder = active ? latest : null;
     // A slower source read cannot undo a newer request/recovery transaction.
     const superseded = latest && latest.createdAt.getTime() > Date.parse(snapshot.checkedAt) + 1000;
     const action = superseded ? 'keep' : deliveryAction({ snapshot, active, manual });
@@ -51,12 +61,14 @@ export async function syncDeliveryReminder(manual = false): Promise<DeliveryView
         body: `Остаток по 1С: ${snapshot.balance!.toLocaleString('ru-RU')} ₽. До запаса ${DELIVERY_RESERVE.target.toLocaleString('ru-RU')} ₽: ${amount.toLocaleString('ru-RU')} ₽. ${manual ? 'Астемир запросил пополнение.' : 'Низкий остаток.'} Заявку оформите в 1С.`,
         href: '/admin/expense-requests#delivery', occurredAt: now,
       } });
+      activeReminder = event;
       const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
       if (!admins.length) throw Error('DELIVERY_RECIPIENT_UNAVAILABLE');
       await tx.adminInboxReceipt.createMany({ data: admins.map(user => ({ eventId: event.id, userId: user.id })), skipDuplicates: true });
       await queueAdminInboxTelegramDelivery({ db: tx, eventId: event.id });
     }
     if (action === 'cover' && latest) {
+      activeReminder = null;
       await tx.adminInboxEvent.create({ data: {
         ...sourceWhere, eventKey: `delivery:covered:${latest.id}`, type: DELIVERY_COVERED,
         title: 'Запас подотчёта восстановлен', body: 'Остаток по 1С достиг рекомендуемого запаса. Это не подтверждение исполнения конкретной заявки.',
@@ -65,6 +77,20 @@ export async function syncDeliveryReminder(manual = false): Promise<DeliveryView
       await tx.adminInboxReceipt.updateMany({ where: { eventId: latest.id, readAt: null }, data: { readAt: now } });
       await tx.adminInboxDelivery.updateMany({ where: { eventId: latest.id, status: 'pending' }, data: { status: 'cancelled', lastErrorCode: 'DELIVERY_RESERVE_RESTORED' } });
     }
-    return { snapshot, requested: action === 'open' || (active && action !== 'cover'), requestStateAvailable: true };
+    if (manual && activeReminder && !superseded) {
+      await tx.adminInboxEvent.upsert({
+        where: { eventKey: deliveryManualRequestKey(activeReminder.id) }, update: {},
+        create: {
+          eventKey: deliveryManualRequestKey(activeReminder.id), sourceType: DELIVERY_REQUEST_SOURCE,
+          sourceId: DELIVERY_PERSON.ref, type: DELIVERY_MANUAL_REQUEST,
+          title: 'Запрос пополнения подотчёта', body: 'Астемир запросил пополнение.',
+          href: '/admin/expense-requests#delivery', occurredAt: now,
+        },
+      });
+    }
+    const requestedByBuyer = activeReminder ? legacyDeliveryBuyerRequest(activeReminder) || Boolean(await tx.adminInboxEvent.findUnique({
+      where: { eventKey: deliveryManualRequestKey(activeReminder.id) }, select: { id: true },
+    })) : false;
+    return { snapshot, requested: Boolean(activeReminder), requestedByBuyer, requestStateAvailable: true };
   });
 }
