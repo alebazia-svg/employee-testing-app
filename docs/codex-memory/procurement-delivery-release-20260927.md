@@ -148,6 +148,13 @@ Local deploy log/screenshot directory (not committed):
 
 ## Next stage and safety
 
+Update29Sep: read-only extension424 is installed. ADMIN cash/request integration
+and native request feedback are deployed in portal commit `a2a6f0b`; see
+`procurement-delivery-native-status-20260929.md` for current verification,
+rollback and the remaining owner link confirmation. The27Sep funding work is
+described in `procurement-delivery-funding-ui-20260927.md`.
+The missing-reader statements below describe the original release baseline.
+
 Installed `/expense-requests` exposes the initiator, not a reliable distinct
 accountable recipient. Before automatic top-up draft/cashbox recommendation or
 native1C approval, establish exact recipient/org/currency and stable request
