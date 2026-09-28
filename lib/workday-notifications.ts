@@ -5,6 +5,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { planWorkdayPushDelivery, suppressUnreadWorkdayPush } from '@/lib/workday-push-delivery';
 import { TERMINAL_FISCAL_ADMIN_FIRST, fiscalApprovalKey } from '@/lib/terminal-fiscal-admin-gate';
+import { inactiveProcurementNotifications } from '@/lib/procurement-notification-lifecycle';
+import { DELIVERY_READY_KIND, deliveryPushDecision, queueDeliveryReadyPush } from '@/lib/procurement-delivery-notifications';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -33,6 +35,7 @@ export function closeExceptionNotificationRef(notification: Pick<NotificationLif
 }
 
 export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
+  const inactiveProcurement = await inactiveProcurementNotifications(db, rows);
   const refs = rows.map(closeExceptionNotificationRef).filter((item): item is NonNullable<typeof item> => Boolean(item));
   const requestIds = [...new Set(refs.map((item) => item.requestId))];
   const referencedRequests = requestIds.length ? await db.workdayCloseExceptionRequest.findMany({
@@ -60,6 +63,7 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
   const requestsById = new Map(referencedRequests.map((request) => [request.id, request]));
 
   return rows.filter((notification) => {
+    if (inactiveProcurement.has(notification.id)) return false;
     if (notification.kind === 'cash_operation_created') return false;
     if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
     if (notification.issue) return notification.issue.status === 'open' && notification.issue.employeeActionRequired;
@@ -84,7 +88,7 @@ export async function reconcileActiveWorkdayNotifications<T extends Notification
   if (inactiveIds.length) {
     await db.workdayNotification.updateMany({
       where: { id: { in: inactiveIds }, status: 'sent', readAt: null },
-      data: { status: 'cancelled' },
+      data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
     });
   }
 
@@ -264,6 +268,7 @@ function notificationTargetKey(notification: { id: number; taskId: number | null
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  if (notification.kind === DELIVERY_READY_KIND) return '/procurement#delivery';
   if (notification.kind?.startsWith('procurement_payment_')) return '/procurement';
   if (notification.reviewId) return `/employee/payment-checks/${notification.reviewId}`;
   if (notification.issueId) return `/employee/issues/${notification.issueId}`;
@@ -316,11 +321,19 @@ async function activeUnreadNotificationTargets(userId: number, excludeNotificati
 }
 
 export async function dispatchDueWorkdayNotifications(now = new Date()) {
+  // A crashed sender may already have delivered its push. Keep its inbox item, but
+  // never automatically replay an uncertain delivery and wake the employee twice.
+  await prisma.workdayNotification.updateMany({ where: {
+    kind: DELIVERY_READY_KIND, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
+    status: { in: ['pending', 'sent'] },
+  }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
+  // The delivery producer is idempotent; a source outage must not block other domains.
+  await queueDeliveryReadyPush(now).catch(() => undefined);
   await reconcileStoredUnreadWorkdayNotifications();
   const due = await prisma.workdayNotification.findMany({
     where: {
       OR: [
-        { status: 'pending', scheduledAt: { lte: now } },
+        { status: 'pending', pushStatus: { not: 'delivery_sending' }, scheduledAt: { lte: now } },
         {
           status: 'sent',
           readAt: null,
@@ -344,6 +357,15 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
+    const delivery = notification.kind === DELIVERY_READY_KIND ? await deliveryPushDecision(notification, now) : null;
+    if (delivery?.state === 'defer') {
+      await prisma.workdayNotification.update({ where: { id: notification.id }, data: { scheduledAt: delivery.until, nextPushAttemptAt: delivery.until } });
+      continue;
+    }
+    if (delivery?.state === 'cancel') {
+      await prisma.workdayNotification.update({ where: { id: notification.id }, data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null } });
+      continue;
+    }
     if (TERMINAL_FISCAL_ADMIN_FIRST) {
       const unapprovedReview = notification.reviewId && !await prisma.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(notification.reviewId) }, select: { id: true } });
       if (unapprovedReview || notification.issue?.ruleKey === 'terminal_fiscal_mismatch') {
@@ -370,6 +392,14 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     });
     unreadTargets.add(targetKey);
     const badgeCount = unreadTargets.size;
+    if (delivery?.state === 'send') {
+      // CAS guards both the timer and an overlapping internal dispatcher request.
+      const claimed = await prisma.workdayNotification.updateMany({ where: {
+        id: notification.id, updatedAt: notification.updatedAt, status: notification.status,
+        pushStatus: notification.pushStatus, readAt: null,
+      }, data: { pushStatus: 'delivery_sending', nextPushAttemptAt: new Date(now.getTime() + 600000) } });
+      if (!claimed.count) continue;
+    }
     const attemptNumber = notification.attemptCount + 1;
     let deliveredCount = 0;
     let transientFailureCount = 0;
@@ -380,7 +410,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
-          : { title: notification.title, body: notification.body }),
+          : delivery?.state === 'send' ? { title: delivery.title, body: delivery.body } : { title: notification.title, body: notification.body }),
         url: workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,
@@ -390,7 +420,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
           await webpush.sendNotification({
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-          }, payload);
+          }, payload, notification.kind === DELIVERY_READY_KIND ? { TTL: 300, timeout: 10000 } : undefined);
           deliveredCount += 1;
         } catch (error) {
           const statusCode = typeof error === 'object' && error && 'statusCode' in error ? Number(error.statusCode) : 0;
@@ -416,8 +446,8 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       permanentFailureCount,
       lastErrorCode,
     });
-    await prisma.workdayNotification.update({
-      where: { id: notification.id },
+    await prisma.workdayNotification.updateMany({
+      where: { id: notification.id, ...(delivery?.state === 'send' ? { pushStatus: 'delivery_sending', status: { in: ['pending', 'sent'] } } : {}) },
       data: {
         status: 'sent',
         sentAt: notification.sentAt ?? now,

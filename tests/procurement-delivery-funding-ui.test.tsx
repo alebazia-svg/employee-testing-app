@@ -37,6 +37,21 @@ test('admin recommendation is distinct from manual request and has one snapshot 
 test('loading does not present zero money', () => {
   const html = renderToStaticMarkup(<ProcurementDeliveryFunding />); assert.match(html, /Проверяем кассы/); assert.doesNotMatch(html, /0 ₽/);
 });
+test('compact admin puts request and balance together, with historical details collapsed', () => {
+  const html = renderToStaticMarkup(<ProcurementDeliveryAdmin compactSummary view={{
+    snapshot: { balance: 2259, checkedAt: new Date().toISOString(), lastIssue: null },
+    requested: true, requestedByBuyer: true, requestStateAvailable: true,
+    requestDetails: { amount: 15000, comment: 'Пять поставок', balance: 2000, checkedAt: new Date().toISOString(), requestedAt: new Date().toISOString() },
+  }}><div>Действие по заявке</div></ProcurementDeliveryAdmin>);
+  assert.match(html, /Запросил/); assert.match(html, /15\s000/); assert.match(html, /Остаток/);
+  assert.match(html, /Пять поставок/); assert.match(html, /Детали запроса/);
+  assert.match(html, /<details/); assert.doesNotMatch(html, /<details open/);
+  assert.doesNotMatch(html, /bg-slate-50 p-4|До запаса/);
+  assert.match(html, /md:grid-cols-2/); assert.match(html, /md:border-l md:border-t-0/);
+  const link = readFileSync('components/ProcurementDeliveryLink.tsx', 'utf8');
+  assert.match(link, /mt-3 w-fit shrink-0 rounded-lg/);
+  assert.doesNotMatch(link, /w-full|justify-between|Выберите заявку по этому запросу/);
+});
 test('visible auto-refresh is deduplicated, aborted and hides failed/stale values', () => {
   const code = readFileSync('components/ProcurementDeliveryFunding.tsx', 'utf8');
   for (const pattern of [/startVisibleSync\(refresh, 60_000\)/, /active.current \|\|/, /setData\(null\)/, /DELIVERY_MAX_AGE_MS/, /c\?\.abort\(\)/, /removeEventListener/]) assert.match(code, pattern);

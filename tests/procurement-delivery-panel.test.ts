@@ -4,6 +4,22 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFile } from 'node:fs/promises';
 import { ProcurementDeliveryPanel } from '../components/ProcurementDeliveryPanel';
+import type { DeliveryView } from '../lib/procurement-delivery-reminders';
+
+test('after issue only updated accountable balance remains, not issued/request-sent banners', () => {
+  const now = new Date().toISOString();
+  const initial: DeliveryView = {
+    snapshot: { balance: 17259, checkedAt: now, lastIssue: { amount: 15000, date: now } },
+    requested: true, requestedByBuyer: true, requestStateAvailable: true,
+    requestDetails: { amount: 15000, balance: 2259, comment: '', requestedAt: now, checkedAt: now },
+    nativeRequest: { state: 'linked', automatic: true, status: { ref: 'test', number: 'test', date: now, amount: 15000, state: 'issued', issued: 15000, remaining: 0, cashbox: 'Касса тест', desiredDate: null, checkedAt: now } },
+  };
+  for (const balance of [17259, 13699]) {
+    const html = renderToStaticMarkup(React.createElement(ProcurementDeliveryPanel, { initial: { ...initial, snapshot: { ...initial.snapshot, balance } } }));
+    assert.match(html, /Остаток подотчёта/); assert.match(html, /Запросить пополнение/);
+    assert.doesNotMatch(html, /Выдано|выдано|Можно получить|Запрос на пополнение отправлен|Касса тест/);
+  }
+});
 
 test('persisted request is neutral, not an approval, and needs no manual refresh', () => {
   const html = renderToStaticMarkup(React.createElement(ProcurementDeliveryPanel, { initial: {

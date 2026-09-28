@@ -8,7 +8,7 @@ const example: DeliveryCashSnapshot = {balance:2259,checkedAt:'2026-09-27T11:09:
 const render = (snapshot:DeliveryCashSnapshot) => renderToStaticMarkup(React.createElement(ProcurementDeliveryCash,{snapshot}));
 test('delivery cash is compact, dated, explicitly accounting-only, with no refill task',()=>{
   const html=render(example);
-  assert.match(html,/Остаток по 1С/); assert.match(html,/Выдано 26 сентября/); assert.match(html,/2\s259/); assert.match(html,/5\s000/);
+  assert.match(html,/Остаток подотчёта/); assert.match(html,/Выдано 26 сентября/); assert.match(html,/2\s259/); assert.match(html,/5\s000/);
   assert.match(html,/26 сентября/); assert.match(html,/27 сентября.*14:09/);
   assert.doesNotMatch(html,/Доступно|Свободно|Сверьте|Пополнить|Запросить|<button|<input|Средн|Месяц/);
 });

@@ -2,7 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
+import { row } from './procurement-delivery-native.test';
 const require = createRequire(import.meta.url);
+
+async function automatic(rows: any[], options: { complete?: boolean; used?: boolean; unlinked?: boolean } = {}) {
+  const output = await build({ entryPoints: ['lib/procurement-delivery-native-source.ts'], bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', plugins: [{ name: 'auto-source', setup(b) {
+    b.onResolve({ filter: /^\.\/(prisma|expense-request-source)$/ }, a => ({ path: a.path, external: true }));
+  } }] });
+  const mod = { exports: {} as any };
+  const mocks: Record<string, any> = {
+    './prisma': { prisma: { adminInboxEvent: {
+      findUnique: async () => options.unlinked ? { type: 'procurement.delivery_native_unlinked' } : null,
+      findMany: async () => options.used ? [{ eventKey: 'delivery:native:another-cycle' }] : [],
+    } } },
+    './expense-request-source': { fetchExpenseRequestSnapshot: async () => ({ rows, complete: options.complete !== false, checkedAt: new Date().toISOString() }) },
+  };
+  new Function('require', 'module', 'exports', output.outputFiles[0].text)((name: string) => mocks[name] ?? require(name), mod, mod.exports);
+  return mod.exports.loadDeliveryNative('current', { amount: 15000, requestedAt: new Date(Date.now() - 1200000).toISOString() });
+}
+const currentRow = (issued = 0) => ({ ...row(issued), date: new Date(Date.now() - 600000).toISOString() });
+test('unique new personal native request appears automatically, without a portal write', async () => {
+  for (const [issued, state] of [[0, 'payable'], [5000, 'partial'], [15000, 'issued']] as const) {
+    const view = await automatic([currentRow(issued)]);
+    assert.equal(view.state, 'linked'); assert.equal(view.automatic, true); assert.equal(view.status.state, state);
+  }
+});
+test('multiple, invalid, historical, reused, manually unlinked or incomplete candidates never auto-select', async () => {
+  const r = currentRow();
+  const second = { ...r, ref: '11111111-2222-3333-4444-777777777777' };
+  assert.equal((await automatic([r, second])).reviewReason, 'ambiguous');
+  assert.equal((await automatic([r, { ...second, deletion_mark: true }])).reviewReason, 'ambiguous');
+  for (const patch of [{ posted: false }, { deletion_mark: true }, { status: { key: 'rejected' } }, { amount: 14000 }, { date: new Date(Date.now() - 3600000).toISOString() }]) {
+    assert.equal((await automatic([{ ...r, ...patch }])).state, 'unlinked');
+  }
+  assert.equal((await automatic([r], { used: true })).state, 'unlinked');
+  assert.equal((await automatic([r], { unlinked: true })).reviewReason, 'manual');
+  assert.equal((await automatic([r], { complete: false })).state, 'unavailable');
+  assert.equal((await automatic([r, { ...second, accountable_identity_contract: undefined }])).state, 'unavailable');
+  assert.equal((await automatic([r, { ...second, date: 'invalid' }])).state, 'unavailable');
+  assert.equal((await automatic([{ ...r, date: new Date(Date.now() + 3600000).toISOString() }])).state, 'unlinked');
+  assert.equal((await automatic([{ ...r, accountable_person: { ref: 'someone-else' } }])).state, 'unlinked');
+});
 
 async function reader(payload: unknown) {
   const result = await build({ entryPoints: ['lib/expense-request-source.ts'], bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', plugins: [{ name: 'source-env', setup(b) {

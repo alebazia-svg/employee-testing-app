@@ -45,21 +45,20 @@ export function ProcurementDeliveryLink({ onView }: { onView: (v: DeliveryView) 
     finally { clearTimeout(timer); writing.current = false; setPending(false); await refresh(); }
   };
   const linked = data?.view.nativeRequest && data.view.nativeRequest.state !== 'unlinked';
-  return <div className="mt-4 border-t border-slate-200 pt-4">
+  return <div>
     {failed ? <p role="status" className="text-sm text-amber-800">Статус пополнения недоступен. Обновим автоматически.</p> : !data ? <p className="text-sm text-slate-500">Проверяем заявку в 1С…</p> : data.reminderId ? <>
       {linked ? <><ProcurementDeliveryNativeStatus view={data.view.nativeRequest} now={now} />
         {data.linkedRef ? <button type="button" disabled={pending} onClick={() => { setChoice('unlink'); setError(''); }} className="mt-2 text-xs font-semibold text-slate-500 underline">Изменить связь</button> : null}</> : <>
-        <h3 className="text-sm font-bold">Заявка в 1С</h3>
-        <p className="mt-1 text-xs text-slate-600">Выберите заявку по этому запросу. Астемир увидит её статус и кассу.</p>
-        {data.candidates.map(c => <div key={c.status.ref} className="mt-3 rounded-xl border border-slate-200 p-3">
+        {data.view.nativeRequest?.reviewReason ? <p className="mb-2 text-sm text-amber-800">{data.view.nativeRequest.reviewReason === 'ambiguous' ? 'Найдено несколько заявок. Выберите нужную.' : 'Проверьте, какая заявка относится к запросу.'}</p> : null}
+        {data.candidates.map(c => <div key={c.status.ref} className="rounded-xl bg-slate-50 p-3 [&+div]:mt-2">
           <ProcurementDeliveryNativeStatus view={{ state: 'linked', status: c.status }} now={now} />
-          <button type="button" disabled={pending} onClick={() => { setChoice(c); setError(''); }} className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">Показать Астемиру</button>
+          <button type="button" disabled={pending} onClick={() => { setChoice(c); setError(''); }} className="mt-3 w-fit shrink-0 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">Выбрать заявку</button>
         </div>)}
         {!data.candidates.length ? <p className="mt-2 text-sm text-slate-600">{data.candidatesAvailable ? 'Заявка на эту сумму не найдена. Если она уже создана, укажите её дату.' : 'Не удалось проверить заявки. Укажите дату документа или дождитесь обновления.'}</p> : null}
-        <details className="mt-3 text-xs text-slate-500"><summary className="cursor-pointer">Другая дата заявки</summary><label className="mt-2 block">Дата документа<input aria-label="Дата документа" type="date" value={date} onChange={e => { setChoice(null); setDate(e.target.value); }} className="ml-2 rounded-lg border p-2 text-sm" /></label></details>
+        <details className="mt-2 text-xs text-slate-500"><summary className="w-fit cursor-pointer py-1">Другая дата заявки</summary><label className="mt-2 block">Дата документа<input aria-label="Дата документа" type="date" value={date} onChange={e => { setChoice(null); setDate(e.target.value); }} className="ml-2 rounded-lg border p-2 text-sm" /></label></details>
       </>}
       {choice ? <div className="mt-3 rounded-xl border border-slate-300 bg-white p-3" role="group" aria-label="Подтверждение связи">
-        <p className="text-sm font-semibold">{choice === 'unlink' ? 'Убрать связь с этой заявкой?' : `Показать Астемиру заявку № ${choice.status.number}?`}</p>
+        <p className="text-sm font-semibold">{choice === 'unlink' ? 'Убрать связь с этой заявкой?' : `Связать запрос с заявкой № ${choice.status.number}?`}</p>
         <p className="mt-1 text-xs text-slate-500">Документы в 1С не изменятся.</p>
         <div className="mt-3 flex gap-2"><button type="button" disabled={pending} onClick={save} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{pending ? 'Сохраняем…' : 'Подтвердить'}</button><button type="button" disabled={pending} onClick={() => setChoice(null)} className="rounded-lg border px-4 py-2 text-sm">Отмена</button></div>
       </div> : null}

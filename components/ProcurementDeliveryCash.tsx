@@ -24,14 +24,14 @@ export function deliveryReserveWarning(snapshot: DeliveryCashSnapshot, now = Dat
   return snapshot.balance <= advice.warnAt;
 }
 
-export function ProcurementDeliveryCash({ snapshot, children, reserveDetails = true }: { snapshot: DeliveryCashSnapshot; children?: React.ReactNode; reserveDetails?: boolean }) {
+export function ProcurementDeliveryCash({ snapshot, children, reserveDetails = true, showLastIssue = true }: { snapshot: DeliveryCashSnapshot; children?: React.ReactNode; reserveDetails?: boolean; showLastIssue?: boolean }) {
   const available = snapshot.balance !== null && Number.isFinite(snapshot.balance) && validDate(snapshot.checkedAt);
   const overrun = available && snapshot.balance! < 0;
   const issue = snapshot.lastIssue;
   const needsRefill = deliveryReserveWarning(snapshot);
-  return <section aria-label="Подотчёт на доставку" className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+  return <section id="delivery" aria-label="Подотчёт на доставку" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
     <h2 className="text-lg font-black text-slate-900">Подотчёт на доставку</h2>
-    <p className="mt-3 text-xs font-semibold text-slate-500">{overrun ? 'Перерасход по 1С' : 'Остаток по 1С'}</p>
+    <p className="mt-3 text-xs font-semibold text-slate-500">{overrun ? 'Перерасход по 1С' : 'Остаток подотчёта'}</p>
     <p className={`mt-1 text-2xl font-black tabular-nums ${overrun ? 'text-amber-800' : 'text-slate-950'}`}>
       {available ? money.format(Math.abs(snapshot.balance!)) : '—'}
     </p>
@@ -41,7 +41,7 @@ export function ProcurementDeliveryCash({ snapshot, children, reserveDetails = t
       <p className="mt-1 text-xs leading-5">Выдача из кассы — только по согласованной заявке.</p></> : null}
     </div> : null}
     {children}
-    {available && issue && Number.isFinite(issue.amount) && issue.amount > 0 && validDate(issue.date) ?
+    {showLastIssue && available && issue && Number.isFinite(issue.amount) && issue.amount > 0 && validDate(issue.date) ?
       <p className="mt-3 text-sm text-slate-600">Выдано {date.format(new Date(issue.date))}: <span className="font-bold text-slate-800">{money.format(issue.amount)}</span></p> : null}
     <p className="mt-3 text-xs text-slate-500">{available ? `Данные на ${updated.format(new Date(snapshot.checkedAt))}` : 'Остаток из 1С недоступен'}</p>
   </section>;

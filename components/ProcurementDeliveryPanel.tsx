@@ -7,7 +7,7 @@ import { startVisibleSync } from '@/lib/visible-sync';
 import { ProcurementDeliveryRequestDialog } from './ProcurementDeliveryRequestDialog';
 import type { DeliveryRequestInput } from '@/lib/procurement-delivery-request';
 import { ProcurementDeliveryNativeStatus } from './ProcurementDeliveryNativeStatus';
-import { deliveryNativeFresh } from '@/lib/procurement-delivery-native';
+import { deliveryCollectionAmount, deliveryNativeFresh } from '@/lib/procurement-delivery-native';
 
 export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView }) {
   const [view, setView] = useState(initial);
@@ -68,12 +68,13 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
   const automaticReminder = view.requested && view.requestStateAvailable && !buyerRequested;
   const snapshot = fresh && !automaticReminder ? view.snapshot : { ...view.snapshot, reserveAdvice: undefined };
   const canRequest = pending === null && !refreshFailed && fresh && view.requestStateAvailable && view.snapshot.balance! < DELIVERY_RESERVE.target;
-  const nativeLinked = view.nativeRequest && view.nativeRequest.state !== 'unlinked';
+  const collectible = view.nativeRequest?.state === 'linked' && view.nativeRequest.status && deliveryNativeFresh(view.nativeRequest.status, now)
+    && deliveryCollectionAmount(view.nativeRequest.status) !== null && !refreshFailed;
   const issued = view.nativeRequest?.state === 'linked' && view.nativeRequest.status?.state === 'issued'
     && deliveryNativeFresh(view.nativeRequest.status, now) && !refreshFailed;
-  return <ProcurementDeliveryCash snapshot={snapshot} reserveDetails={false}>
+  return <ProcurementDeliveryCash snapshot={snapshot} reserveDetails={false} showLastIssue={false}>
     {automaticReminder ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950" role="status">Требуется пополнение</p> : null}
-    {buyerRequested && !nativeLinked ? <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-700" role="status">
+    {buyerRequested && !collectible && !issued ? <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-700" role="status">
       <p>Запрос на пополнение отправлен</p>
       {view.requestDetails ? <p className="mt-1">{view.requestDetails.amount.toLocaleString('ru-RU', { minimumFractionDigits: Number.isInteger(view.requestDetails.amount) ? 0 : 2, maximumFractionDigits: 2 })} ₽</p> : null}
     </div> : null}

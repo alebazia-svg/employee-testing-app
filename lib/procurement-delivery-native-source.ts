@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { prisma } from './prisma';
 import { fetchExpenseRequestSnapshot } from './expense-request-source';
 import { moscowDateKey, parseOneCDateTime } from './one-c-date';
-import { deliveryLinkKey, deliveryNativeIdentity, deliveryNativeStatus, readDeliveryLink, type DeliveryNativeCandidate, type DeliveryNativeView } from './procurement-delivery-native';
+import { DELIVERY_LINK_SOURCE, deliveryLinkKey, deliveryNativeIdentity, deliveryNativeStatus, readDeliveryLink, type DeliveryNativeCandidate, type DeliveryNativeView } from './procurement-delivery-native';
 import type { DeliveryRequestDetails } from './procurement-delivery-request';
 
 const DAY = 86_400_000;
@@ -31,13 +31,38 @@ function day(value: string) {
 export async function loadDeliveryNative(reminderId: string, details: DeliveryRequestDetails): Promise<DeliveryNativeView> {
   try {
     const stored = await prisma.adminInboxEvent.findUnique({ where: { eventKey: deliveryLinkKey(reminderId) } });
-    if (!stored || stored.type === 'procurement.delivery_native_unlinked') return { state: 'unlinked' };
+    // Explicit operator unlink suppresses automatic selection for this cycle.
+    if (stored?.type === 'procurement.delivery_native_unlinked') return { state: 'unlinked', reviewReason: 'manual' };
+    if (!stored) return await automaticDeliveryNative(reminderId, details);
     const link = readDeliveryLink(stored.body);
     const from = day(link.date), data = await readPeriod(from, new Date(from.getTime() + DAY));
     const row = data.rows.find(r => r.ref === link.ref);
     if (!row || link.amount !== details.amount) return { state: 'unavailable' };
     return { state: 'linked', status: deliveryNativeStatus(row, data.checkedAt, link.amount) };
   } catch { return { state: 'unavailable' }; }
+}
+/** Read-only resolution, recomputed from complete evidence; GET never writes a link.
+ * A later competing document hides the instruction instead of silently picking one.
+ * New portal cycles exclude earlier native documents by the exact request timestamp.
+ */
+export async function automaticDeliveryNative(reminderId: string, details: DeliveryRequestDetails): Promise<DeliveryNativeView> {
+  const from = day(details.requestedAt), to = new Date(day(new Date().toISOString()).getTime() + DAY);
+  if (to <= from || to.getTime() - from.getTime() > 31 * DAY) return { state: 'unlinked', reviewReason: 'manual' };
+  const data = await readPeriod(from, to);
+  if (data.rows.some(r => !('accountable_identity_contract' in r) || r.accountable_identity_contract !== 'expense-request-accountable-v1')) return { state: 'unavailable' };
+  // Do not filter out rejected/review/paid rows before uniqueness: they can be
+  // a competing request. Never interpret absence caused by bad data as uniqueness.
+  const matching = data.rows.filter(r => deliveryNativeIdentity(r) && r.amount === details.amount);
+  if (matching.some(r => !parseOneCDateTime(r.date))) return { state: 'unavailable' };
+  const rows = matching.filter(r => parseOneCDateTime(r.date)!.getTime() >= Date.parse(details.requestedAt)
+    && parseOneCDateTime(r.date)!.getTime() <= Date.parse(data.checkedAt));
+  if (!rows.length) return { state: 'unlinked' };
+  if (rows.length !== 1) return { state: 'unlinked', reviewReason: 'ambiguous' };
+  const status = deliveryNativeStatus(rows[0], data.checkedAt, details.amount);
+  if (['review', 'rejected'].includes(status.state)) return { state: 'unlinked', reviewReason: 'manual' };
+  const used = await prisma.adminInboxEvent.findMany({ where: { sourceType: DELIVERY_LINK_SOURCE, sourceId: status.ref, type: 'procurement.delivery_native_linked' }, select: { eventKey: true } });
+  if (used.some(e => e.eventKey.startsWith('delivery:native:') && e.eventKey !== deliveryLinkKey(reminderId))) return { state: 'unlinked', reviewReason: 'manual' };
+  return { state: 'linked', status, automatic: true };
 }
 export async function deliveryNativeCandidates(details: DeliveryRequestDetails, selectedDay?: string, fresh = false): Promise<DeliveryNativeCandidate[]> {
   if (selectedDay && !/^\d{4}-\d{2}-\d{2}$/.test(selectedDay)) throw Error('DELIVERY_NATIVE_DATE');

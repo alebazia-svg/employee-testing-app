@@ -18,17 +18,19 @@ test('buyer sees explicit collection permission, amount and cashbox only for pay
   for (const state of ['waiting', 'approved', 'review', 'rejected', 'issued', 'partial'] as const) assert.doesNotMatch(buyer({ ...base, state }), /Можно получить/);
 });
 test('missing cashbox, stale or failed status never invites collection', () => {
-  assert.match(buyer({ ...base, cashbox: null }), /Касса уточняется/);
+  assert.equal(buyer({ ...base, cashbox: null }), '');
   assert.doesNotMatch(buyer({ ...base, cashbox: null }), /Можно получить/);
   for (const html of [buyer({ ...base, checkedAt: '2020-01-01' }), buyer(base, true)]) {
     assert.doesNotMatch(html, /Можно получить|Касса тест/); assert.match(html, /временно недоступен/);
   }
 });
-test('buyer confirmed/partial issue stays separate from permission to collect', () => {
+test('buyer sees only remaining collectible money; completed issue disappears', () => {
   const issued = buyer({ ...base, state: 'issued', issued: 15000, remaining: 0 });
-  assert.match(issued, /Выдано/); assert.doesNotMatch(issued, /Касса тест|Можно получить|Заявка/);
-  const partial = buyer({ ...base, state: 'partial', issued: 5000, remaining: 10000 });
-  assert.match(partial, /Осталось выдать/); assert.doesNotMatch(partial, /Можно получить/);
+  assert.equal(issued, '');
+  const partial = buyer({ ...base, state: 'partial', issued: 5000, remaining: 10000, canCollect: true });
+  assert.match(partial, /Можно получить/); assert.match(partial, /10\s000/);
+  assert.doesNotMatch(partial, /Выдано|Осталось выдать|15\s000|5\s000/);
+  assert.equal(buyer({ ...base, state: 'partial', issued: 5000, remaining: 10000, canCollect: false }), '');
 });
 test('partial and confirmed issue are distinct; stale approval hidden', () => {
   assert.match(render({ ...base, state: 'partial', issued: 5000, remaining: 10000 }), /Осталось выдать/);

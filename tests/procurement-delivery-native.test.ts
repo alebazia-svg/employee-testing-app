@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deliveryNativeIdentity, deliveryNativeStatus, readDeliveryLink } from '../lib/procurement-delivery-native';
+import { deliveryCollectionAmount, deliveryNativeIdentity, deliveryNativeStatus, readDeliveryLink } from '../lib/procurement-delivery-native';
 import { DELIVERY_PERSON } from '../lib/procurement-delivery-policy';
 const ref = '11111111-2222-3333-4444-555555555555';
 const rko = '11111111-2222-3333-4444-666666666666';
@@ -32,6 +32,12 @@ test('approval is distinct from issue; desired date and requested cashbox surviv
 test('partial/full require direct posted RKO and reconciled native register', () => {
   assert.equal(status(row(5000)).state, 'partial'); assert.equal(status(row(5000)).remaining, 10000);
   assert.equal(status(row(15000)).state, 'issued'); assert.equal(status(row(15000)).remaining, 0);
+});
+test('only payable native status authorizes collecting the remaining amount', () => {
+  assert.equal(deliveryCollectionAmount(status(row(5000))), 10000);
+  const r = row(5000); r.status.key = 'approved';
+  assert.equal(deliveryCollectionAmount(status(r)), null);
+  assert.equal(deliveryCollectionAmount(status(row(15000))), null);
 });
 test('wrong recipient/org/currency/operation never leaks a status', () => {
   for (const field of ['accountable_person', 'organization', 'currency']) {

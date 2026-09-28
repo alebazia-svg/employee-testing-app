@@ -6,12 +6,20 @@ export type DeliveryNativeStatus = {
   state: 'waiting' | 'approved' | 'payable' | 'partial' | 'issued' | 'rejected' | 'review';
   issued: number | null; remaining: number | null;
   cashbox: string | null; desiredDate: string | null; checkedAt: string;
+  canCollect?: boolean;
 };
-export type DeliveryNativeView = { state: 'unlinked' | 'linked' | 'unavailable'; status?: DeliveryNativeStatus };
+export type DeliveryNativeView = { state: 'unlinked' | 'linked' | 'unavailable'; status?: DeliveryNativeStatus; automatic?: boolean; reviewReason?: 'ambiguous' | 'manual' };
 export type DeliveryNativeCandidate = { status: DeliveryNativeStatus; quote: string };
 export type DeliveryNativeLink = { version: 1; ref: string; date: string; amount: number; userId: number; linkedAt: string };
 export const DELIVERY_LINK_SOURCE = 'procurement_delivery_link';
 export const deliveryLinkKey = (reminderId: string) => `delivery:native:${reminderId}`;
+/** Personal collection instruction, not an inferred cash balance. */
+export function deliveryCollectionAmount(s?: DeliveryNativeStatus): number | null {
+  if (!s?.cashbox || !['payable', 'partial'].includes(s.state)
+    || (s.state === 'partial' && s.canCollect !== true)
+    || s.remaining === null || !Number.isFinite(s.remaining) || s.remaining <= 0) return null;
+  return s.remaining;
+}
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export function deliveryNativeFresh(status: DeliveryNativeStatus, now = Date.now()) {
   const age = now - Date.parse(status.checkedAt);
@@ -93,6 +101,7 @@ export function deliveryNativeStatus(value: unknown, checkedAt: string, expected
     result.issued = issued / 100; result.remaining = remaining / 100;
     // This is the requested cashbox, never a claim of reservation or actual RKO source.
     if (typeof r.cashbox?.name === 'string' && uuid.test(r.cashbox?.ref ?? '')) result.cashbox = r.cashbox.name;
+    result.canCollect = key === 'payable' && remaining > 0 && Boolean(result.cashbox);
     const desired = parseOneCDateTime(r.desired_payment_date);
     result.desiredDate = desired && desired.getUTCFullYear() >= 2000 ? desired.toISOString() : null;
     return result;

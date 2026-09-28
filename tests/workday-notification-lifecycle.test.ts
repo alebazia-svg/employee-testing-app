@@ -140,7 +140,7 @@ test('inactive sent notifications are cancelled without marking them as read', a
   assert.deepEqual((await reconcileActiveWorkdayNotifications(db as never, rows)).map((row) => row.id), [4]);
   assert.deepEqual(updates, [{
     where: { id: { in: [5] }, status: 'sent', readAt: null },
-    data: { status: 'cancelled' },
+    data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
   }]);
 });
 
