@@ -1,6 +1,5 @@
 import { AdminShell } from "@/components/AdminShell";
 import { AdminBreadcrumbs } from "@/components/AdminBreadcrumbs";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { prisma } from "@/lib/prisma";
 import { fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { calculateOrderPlanning } from "@/lib/procurement-payment-control";
@@ -458,12 +457,7 @@ export default async function AdminProcurementPage() {
   return (
     <AdminShell>
       <AdminBreadcrumbs current="Закупки" />
-      <AdminPageHeader
-        eyebrow="Закупки"
-        title="Платёжный календарь"
-        description="Оплаты поставщикам."
-      />
-      <div className="mt-5 space-y-4">
+      <div className="space-y-3">
         <AdminProcurementClient
           revisionCount={plans.filter(plan=>readPaymentRevision(plan.oneCCashEvidence)).length}
           revisionReview={<ProcurementRevisionReview items={plans.flatMap(plan => {const revision=readPaymentRevision(plan.oneCCashEvidence);return revision ? [{id:plan.id,supplierPartner:plan.supplierPartner,revision}] : [];})} />}

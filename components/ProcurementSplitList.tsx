@@ -9,7 +9,7 @@ export function ProcurementSplitList({ items, renderDetail, empty = "Запис�
   const filtered = items.filter(item => (item.name + " " + (item.search || "")).toLocaleLowerCase("ru").includes(query.trim().toLocaleLowerCase("ru")));
   const active = filtered.find(item => item.id === selected) || filtered[0];
   if (!items.length) return <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">{empty}</p>;
-  return <div className="grid items-start gap-4 lg:grid-cols-[minmax(270px,.8fr)_minmax(0,1.2fr)]">
+  return <div className="grid items-start gap-4 lg:grid-cols-[minmax(270px,.9fr)_minmax(0,1.1fr)]">
     <section className={`overflow-hidden rounded-2xl border border-slate-200 bg-white ${mobileDetail && active ? "hidden lg:block" : ""}`} aria-label="Список оплат">
       <label className="block border-b border-slate-200 p-3 text-xs font-semibold text-slate-500">Найти поставщика или заказ
         <input type="search" value={query} onChange={event => setQuery(event.target.value)} className="mt-2 min-h-10 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900" />
@@ -23,7 +23,7 @@ export function ProcurementSplitList({ items, renderDetail, empty = "Запис�
         {!filtered.length ? <p className="p-4 text-sm text-slate-500">Ничего не найдено. Измените поиск.</p> : null}
       </div>
     </section>
-    {active ? <section aria-label="Подробности оплаты" className={`min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 ${mobileDetail ? "" : "hidden lg:block"}`}>
+    {active ? <section aria-label="Подробности оплаты" className={`min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 ${mobileDetail ? "" : "hidden lg:block"}`}>
       <button type="button" onClick={() => setMobileDetail(false)} className="mb-3 min-h-10 text-sm font-bold text-[#263b5c] lg:hidden">← К списку оплат</button>
       {renderDetail(active.id)}
     </section> : null}

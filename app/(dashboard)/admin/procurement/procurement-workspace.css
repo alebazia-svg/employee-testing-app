@@ -8,4 +8,15 @@
 .procurement-plan>section>div>div:nth-child(2)>div{grid-template-columns:95px minmax(0,1fr)}
 .procurement-plan>section>div>div:nth-child(2)>div>div:nth-child(3),.procurement-plan>section>div>div:nth-child(2)>div>div:nth-child(4){grid-column:2;text-align:left}
 .procurement-workspace [hidden]{display:none!important}
+.admin-workspace:has(.procurement-workspace) [aria-label="Хлебные крошки"]{margin-bottom:8px}
+@media(min-width:768px){
+  .admin-workspace:has(.procurement-workspace){padding-top:16px}
+  .admin-workspace:has(.procurement-workspace)>div>div:first-child{margin-bottom:4px}
+}
+@media(min-width:1024px){
+  .admin-workspace:has(.procurement-workspace){position:relative}
+  .admin-workspace:has(.procurement-workspace)>div>div:first-child{position:absolute;right:32px;top:16px;margin-bottom:0}
+  .admin-workspace:has(.procurement-workspace) [aria-label="Хлебные крошки"]{min-height:56px;padding-right:330px;margin-bottom:4px}
+}
+.procurement-workspace [aria-label="Список оплат"] button,.procurement-workspace [aria-label="Подробности оплаты"]{overflow-wrap:anywhere}
 .procurement-workspace .procurement-plan aside>aside>div>div:first-child,.procurement-workspace .procurement-plan aside>aside>div>div:nth-child(2){align-items:center}
