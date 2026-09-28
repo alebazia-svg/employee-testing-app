@@ -2,6 +2,21 @@ import 'server-only';
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 import { normalizeOneCDateTime as normalizeOneCDateTimeValue } from '@/lib/one-c-date';
 
+/** Read-only funding evidence; callers must validate the versioned business contract. */
+export async function getCashFundingContext(organizationRef: string): Promise<unknown> {
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(organizationRef)) throw Error('FUNDING_INVALID_SCOPE');
+  const env = readOneCRuntimeEnv();
+  if (!env.baseUrl || !env.user || !env.password) throw Error('FUNDING_UNAVAILABLE');
+  try {
+    const response = await fetch(`${env.baseUrl}/cash-funding-context?${new URLSearchParams({ organization_ref: organizationRef })}`, {
+      method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(15_000),
+      headers: { Accept: 'application/json', Authorization: `Basic ${Buffer.from(`${env.user}:${env.password}`).toString('base64')}` },
+    });
+    if (!response.ok) throw Error('FUNDING_UNAVAILABLE');
+    return await response.json();
+  } catch { throw Error('FUNDING_UNAVAILABLE'); }
+}
+
 type OneCConfig = {
   baseUrl: string;
   user: string;

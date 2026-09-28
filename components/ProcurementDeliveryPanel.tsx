@@ -6,6 +6,8 @@ import { DELIVERY_RESERVE, deliveryFresh } from '@/lib/procurement-delivery-poli
 import { startVisibleSync } from '@/lib/visible-sync';
 import { ProcurementDeliveryRequestDialog } from './ProcurementDeliveryRequestDialog';
 import type { DeliveryRequestInput } from '@/lib/procurement-delivery-request';
+import { ProcurementDeliveryNativeStatus } from './ProcurementDeliveryNativeStatus';
+import { deliveryNativeFresh } from '@/lib/procurement-delivery-native';
 
 export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView }) {
   const [view, setView] = useState(initial);
@@ -66,14 +68,18 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
   const automaticReminder = view.requested && view.requestStateAvailable && !buyerRequested;
   const snapshot = fresh && !automaticReminder ? view.snapshot : { ...view.snapshot, reserveAdvice: undefined };
   const canRequest = pending === null && !refreshFailed && fresh && view.requestStateAvailable && view.snapshot.balance! < DELIVERY_RESERVE.target;
+  const nativeLinked = view.nativeRequest && view.nativeRequest.state !== 'unlinked';
+  const issued = view.nativeRequest?.state === 'linked' && view.nativeRequest.status?.state === 'issued'
+    && deliveryNativeFresh(view.nativeRequest.status, now) && !refreshFailed;
   return <ProcurementDeliveryCash snapshot={snapshot} reserveDetails={false}>
     {automaticReminder ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950" role="status">Требуется пополнение</p> : null}
-    {buyerRequested ? <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-700" role="status">
+    {buyerRequested && !nativeLinked ? <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-700" role="status">
       <p>Запрос на пополнение отправлен</p>
       {view.requestDetails ? <p className="mt-1">{view.requestDetails.amount.toLocaleString('ru-RU', { minimumFractionDigits: Number.isInteger(view.requestDetails.amount) ? 0 : 2, maximumFractionDigits: 2 })} ₽</p> : null}
     </div> : null}
-    {!buyerRequested || !view.requestDetails ? <button type="button" disabled={!canRequest}
-      onClick={() => { setError(''); setFormOpen(true); }} className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{buyerRequested ? 'Указать сумму' : 'Запросить пополнение'}</button> : null}
+    <ProcurementDeliveryNativeStatus view={view.nativeRequest} now={now} failed={refreshFailed} audience="buyer" />
+    {!buyerRequested || !view.requestDetails || issued ? <button type="button" disabled={!canRequest}
+      onClick={() => { setError(''); setFormOpen(true); }} className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{buyerRequested && !issued ? 'Указать сумму' : 'Запросить пополнение'}</button> : null}
     {formOpen ? <ProcurementDeliveryRequestDialog balance={view.snapshot.balance ?? 0} pending={pending === 'POST'} available={canRequest}
       error={error} onCancel={() => { setFormOpen(false); setError(''); }} onSubmit={input => act('POST', input)} /> : null}
     {refreshFailed || !fresh || !view.requestStateAvailable ? <p role="status" className="mt-2 text-xs text-amber-800">{pending === 'GET' ? 'Обновляем данные…' : 'Данные временно недоступны. Обновим автоматически.'}</p> : null}

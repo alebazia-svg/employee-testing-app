@@ -14,12 +14,13 @@ test('real PostgreSQL: authorization, concurrency, one reminder, partial top-up,
   assert.equal(await db.adminInboxEvent.count({ where: { sourceType: DELIVERY_SOURCE } }), 0);
   const buyer = await db.user.create({ data: { name: marker, login: marker, passwordHash: 'not-login', role: 'EMPLOYEE', portalArea: 'PROCUREMENT', oneCManagerName: DELIVERY_PERSON.name } });
   const owner = await db.user.create({ data: { name: marker, login: `${marker}-admin`, passwordHash: 'not-login', role: 'ADMIN' } });
-  const state: any = { db, user: null, balance: 2259, failed: false };
+  const state: any = { db, user: null, balance: 2259, failed: false, issued: false };
   (globalThis as any).deliveryTest = state;
   const mocks: Record<string, string> = {
     auth: 'export const getCurrentUser=async()=>globalThis.deliveryTest.user;',
     prisma: 'export const prisma=globalThis.deliveryTest.db;',
     'procurement-delivery-source': `export async function fetchDeliveryCash(){const s=globalThis.deliveryTest;if(s.failed)throw Error('DELIVERY_SOURCE_UNAVAILABLE');return {balance:s.balance,checkedAt:new Date().toISOString(),lastIssue:null};} export const unavailableDeliveryCash=()=>({balance:null,checkedAt:'',lastIssue:null});`,
+    'procurement-delivery-native-source': `export async function loadDeliveryNative(){return globalThis.deliveryTest.issued ? {state:'linked',status:{state:'issued'}} : {state:'unlinked'};}`,
   };
   try {
     const output = await build({ stdin: { contents: "export * from './app/api/procurement/delivery/route'; export {syncDeliveryReminder} from './lib/procurement-delivery-reminders';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', plugins: [{ name: 'isolated', setup(b) {
@@ -57,17 +58,17 @@ test('real PostgreSQL: authorization, concurrency, one reminder, partial top-up,
     assert.equal((await route.syncDeliveryReminder(false)).requestedByBuyer, true, 'background sync preserves manual action');
     state.balance = 25000; await post(); assert.equal(await db.adminInboxEvent.count({ where: { sourceType: DELIVERY_SOURCE } }), 1);
     state.failed = true; assert.equal((await post()).status, 503); assert.equal((await (await route.GET()).json()).snapshot.balance, null); state.failed = false;
-    state.balance = 35000; assert.equal((await (await post()).json()).requested, false);
-    assert.equal((await (await route.GET()).json()).requestedByBuyer, false);
-    assert.equal((await (await route.GET()).json()).requestDetails, null);
+    state.balance = 35000; assert.equal((await (await post()).json()).requested, true);
+    assert.equal((await (await route.GET()).json()).requestedByBuyer, true, 'reserve does not close a specific request');
+    assert.deepEqual((await (await route.GET()).json()).requestDetails, stored);
+    state.issued = true; state.balance = 1000;
+    await post('http://localhost', { amount: 5000, comment: 'Следующее пополнение' });
+    state.issued = false;
     assert.ok((await db.adminInboxReceipt.findFirstOrThrow({ where: { eventId: first.id, userId: owner.id } })).readAt);
-    state.balance = 1000; assert.equal((await route.syncDeliveryReminder(false)).requestedByBuyer, false, 'old manual action never leaks into a new cycle');
-    assert.equal((await (await route.GET()).json()).requestedByBuyer, false);
-    assert.equal((await (await route.GET()).json()).requestDetails, null);
-    const legacy = await route.syncDeliveryReminder(true);
-    assert.equal(legacy.requestedByBuyer, true); assert.equal(legacy.requestDetails, null);
-    await post(); events = await db.adminInboxEvent.findMany({ where: { sourceType: DELIVERY_SOURCE } }); assert.equal(events.length, 3);
-    assert.equal((await (await route.GET()).json()).requestDetails.amount, input.amount, 'a legacy request can receive details without another reserve reminder');
+    assert.equal((await (await route.GET()).json()).requestDetails.amount, 5000, 'new cycle keeps its own amount');
+    await route.syncDeliveryReminder(false); await post();
+    events = await db.adminInboxEvent.findMany({ where: { sourceType: DELIVERY_SOURCE } }); assert.equal(events.length, 2);
+    assert.equal((await (await route.GET()).json()).requestDetails.amount, 5000, 'repeat cannot overwrite new request');
     assert.equal(events.filter(e => e.type === 'procurement.delivery_requested').length, 2);
   } finally {
     await db.adminInboxEvent.deleteMany({ where: { sourceType: { in: [DELIVERY_SOURCE, DELIVERY_REQUEST_SOURCE] } } });

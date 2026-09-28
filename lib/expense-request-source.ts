@@ -73,7 +73,7 @@ function readPositiveInteger(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date }): Promise<ExpenseRequestSnapshot> {
+export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date; strictRequests?: boolean }): Promise<ExpenseRequestSnapshot> {
   if (!(input.from instanceof Date) || Number.isNaN(input.from.getTime()) || !(input.to instanceof Date) || Number.isNaN(input.to.getTime())) {
     throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
   }
@@ -115,10 +115,16 @@ export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date 
       clearTimeout(timeout);
     }
     if (!response.ok || payload.ok === false) throw new Error(`EXPENSE_REQUEST_SOURCE_HTTP_${response.status}`);
+    if (input.strictRequests && (payload.ok !== true || payload.completeness?.requests !== true || !Array.isArray(payload.rows))) {
+      throw new Error('EXPENSE_REQUEST_SOURCE_INCOMPLETE');
+    }
+    if (input.strictRequests && (payload.pagination?.offset !== offset || payload.pagination?.limit !== PAGE_LIMIT
+      || typeof payload.pagination?.has_more !== 'boolean'
+      || (payload.rows!.length < PAGE_LIMIT && payload.pagination.has_more))) throw new Error('EXPENSE_REQUEST_PAGINATION_INVALID');
     const pageRows = Array.isArray(payload.rows) ? payload.rows : [];
     rows.push(...pageRows);
     pageCount += 1;
-    if (payload.completeness?.complete === false) complete = false;
+    if (!input.strictRequests && payload.completeness?.complete === false) complete = false;
     if (pageRows.length < PAGE_LIMIT) break;
     if (rows.length >= MAX_ROWS) {
       complete = false;
