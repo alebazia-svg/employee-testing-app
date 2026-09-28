@@ -457,3 +457,30 @@ valid TLS on both origins, the updated service worker on both origins, an
 authenticated ADMIN session on `team.mobo-opt.ru`, and a reduction from 19
 stored unread receipts to 5 actionable unread items in the effective inbox
 view. No synthetic financial or business event was created for testing.
+
+## 2026-09-29 - ADMIN Procurement Uses Four Visible Work Tabs
+
+The owner-approved supplier-payment workspace has four permanent tabs:
+На согласование, Ждут оплаты, План и прогноз, История оплат.
+On desktop, payment queues and history use a compact selectable list with
+adjacent detail; on mobile, the detail has an explicit return to the list.
+Approving a new request remains one click. After the last new request is
+approved, the UI switches to awaiting payment unless revisions still await review.
+
+Supplier comments and payment details are preserved verbatim. Only exact
+generated review-envelope phrases are shortened, with historical wording for
+completed payments. Unknown reasons, discrepancies, completion-without-topup,
+revision decisions and manual-payment reconciliation remain available.
+History and forecast must not become collapsed secondary content.
+
+This is a presentation change, not a payment-policy or 1C integration change.
+The separate Заявки area and delivery/accountable-cash linkage are excluded.
+Shared history defaults retain the buyer's existing presentation.
+
+Verification for code commit a4a1e68: typecheck and production build passed;
+248 client/pure tests and 48 server-conditioned tests passed, two tests skipped.
+Six hard-coded disposable-database integration suites were not run against
+another chat's database. An isolated procurement_ui_20260929 database was used
+for real-app browser checks: sequential single-click approval, last-item
+transition, return-form cancellation, search, history discrepancies, missing
+source data and mobile list/detail navigation. No live payments were changed.
