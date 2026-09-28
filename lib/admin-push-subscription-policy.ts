@@ -2,6 +2,7 @@ export const DEFAULT_ADMIN_PUSH_PRIMARY_HOST = 'team.mobo-opt.ru';
 export const DEFAULT_ADMIN_PUSH_LEGACY_HOST = 'portal.alebazia.xyz';
 
 export type AdminPushRegistrationMode = 'primary-single' | 'legacy-disabled' | 'standard';
+export type AdminPushClientMode = 'standalone' | 'browser';
 
 function normalizeHost(value: string | null | undefined) {
   const first = value?.split(',')[0]?.trim().toLowerCase() ?? '';
@@ -33,4 +34,15 @@ export function adminPushRegistrationModeForRequest(request: Request) {
     primaryHost: process.env.ADMIN_PUSH_PRIMARY_HOST,
     legacyHost: process.env.PORTAL_DOMAIN,
   });
+}
+
+export function adminPushClientMode(value: unknown): AdminPushClientMode {
+  return value === 'standalone' ? 'standalone' : 'browser';
+}
+
+export function shouldDisableOtherAdminPushSubscriptions(
+  registrationMode: AdminPushRegistrationMode,
+  clientMode: AdminPushClientMode,
+) {
+  return registrationMode === 'primary-single' && clientMode === 'standalone';
 }

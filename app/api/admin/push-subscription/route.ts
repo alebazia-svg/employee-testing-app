@@ -1,5 +1,9 @@
 import { getCurrentAdmin } from '@/lib/auth';
-import { adminPushRegistrationModeForRequest } from '@/lib/admin-push-subscription-policy';
+import {
+  adminPushClientMode,
+  adminPushRegistrationModeForRequest,
+  shouldDisableOtherAdminPushSubscriptions,
+} from '@/lib/admin-push-subscription-policy';
 import { prisma } from '@/lib/prisma';
 
 function readString(value: unknown) {
@@ -25,6 +29,7 @@ export async function POST(req: Request) {
   const auth = readString(payload?.keys?.auth);
   if (!endpoint || !p256dh || !auth) return Response.json({ error: 'Некорректная push-подписка' }, { status: 400 });
   const registrationMode = adminPushRegistrationModeForRequest(req);
+  const clientMode = adminPushClientMode(payload?.clientMode);
   const now = new Date();
   const userAgent = req.headers.get('user-agent') ?? '';
   const subscription = await prisma.$transaction(async (tx) => {
@@ -46,7 +51,7 @@ export async function POST(req: Request) {
         disabledAt: registrationMode === 'legacy-disabled' ? now : null,
       },
     });
-    if (registrationMode === 'primary-single') {
+    if (shouldDisableOtherAdminPushSubscriptions(registrationMode, clientMode)) {
       await tx.workdayPushSubscription.updateMany({
         where: { userId: admin.id, id: { not: saved.id }, disabledAt: null },
         data: { disabledAt: now },
@@ -54,7 +59,12 @@ export async function POST(req: Request) {
     }
     return saved;
   });
-  return Response.json({ ok: true, id: subscription.id, active: registrationMode !== 'legacy-disabled' });
+  return Response.json({
+    ok: true,
+    id: subscription.id,
+    active: registrationMode !== 'legacy-disabled',
+    primary: shouldDisableOtherAdminPushSubscriptions(registrationMode, clientMode),
+  });
 }
 
 export async function DELETE(req: Request) {

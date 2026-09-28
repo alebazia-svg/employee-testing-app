@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck, ChevronRight } from 'lucide-react';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
+import { currentPwaClientMode } from '@/lib/pwa-client-mode';
+import { startVisibleSync } from '@/lib/visible-sync';
 
 type InboxItem = {
   id: string;
@@ -50,9 +52,14 @@ export function AdminInboxBell() {
       const registration = await navigator.serviceWorker.register('/workday-sw.js', { scope: '/' });
       const existing = await registration.pushManager.getSubscription();
       const subscription = existing ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(config.publicKey) });
-      const response = await fetch('/api/admin/push-subscription', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(subscription) });
+      const response = await fetch('/api/admin/push-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...subscription.toJSON(), clientMode: currentPwaClientMode() }),
+      });
       if (!response.ok) throw new Error('Не удалось сохранить разрешение на уведомления.');
       setPushConnected(true);
+      void load();
     } catch (error) {
       setPushConnected(false);
       if (requestPermission) setPushError(error instanceof Error ? error.message : 'Не удалось включить уведомления.');
@@ -73,14 +80,13 @@ export function AdminInboxBell() {
   }
 
   useEffect(() => {
-    void load();
-    void connectPush(false);
-    const timer = window.setInterval(() => void load(), 60_000);
+    const stopVisibleSync = startVisibleSync(load, 60_000);
+    if (currentPwaClientMode() === 'standalone') void connectPush(false);
     function close(event: MouseEvent) {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
     }
     document.addEventListener('mousedown', close);
-    return () => { window.clearInterval(timer); document.removeEventListener('mousedown', close); };
+    return () => { stopVisibleSync(); document.removeEventListener('mousedown', close); };
   }, []);
 
   async function markRead(id: string) {
