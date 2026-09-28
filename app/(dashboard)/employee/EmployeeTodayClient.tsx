@@ -4516,7 +4516,7 @@ export function EmployeeTodayClient({
                     disabled={isSaving || Boolean(unfinished)}
                   >
                     <ScanQrCode className='employee-material-brand-action-icon mr-2 h-7 w-7' strokeWidth={2.35} aria-hidden='true' />
-                    Начать рабочий день
+                    Сканировать QR
                   </Button>
                   {unfinished && (
                     <p className='text-xs font-bold text-amber-700'>Сначала закройте предыдущий рабочий день.</p>
