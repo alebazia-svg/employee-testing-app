@@ -461,11 +461,13 @@ export default async function AdminProcurementPage() {
       <AdminPageHeader
         eyebrow="Закупки"
         title="Платёжный календарь"
-        description="Когда подготовить деньги, какие оплаты согласовать и что уже подтверждено в 1С."
+        description="Оплаты поставщикам."
       />
       <div className="mt-5 space-y-4">
-        <ProcurementRevisionReview items={plans.flatMap(plan => {const revision=readPaymentRevision(plan.oneCCashEvidence);return revision ? [{id:plan.id,supplierPartner:plan.supplierPartner,revision}] : [];})} />
-        <ProcurementUnlinkedPayments
+        <AdminProcurementClient
+          revisionCount={plans.filter(plan=>readPaymentRevision(plan.oneCCashEvidence)).length}
+          revisionReview={<ProcurementRevisionReview items={plans.flatMap(plan => {const revision=readPaymentRevision(plan.oneCCashEvidence);return revision ? [{id:plan.id,supplierPartner:plan.supplierPartner,revision}] : [];})} />}
+          paymentLinks={<ProcurementUnlinkedPayments
           payments={uniqueSupplierPayments(currencySource?.complete ? currencySource.payments : [])
             .filter((payment) => ['РУБ', 'USDT'].includes(payment.documentCurrency) && payment.posted && !payment.deleted && payment.documentAmount > 0 &&
               plans.some((plan) => plan.status === 'APPROVED' && samePaymentSupplier(plan, payment) && plan.createdAt.getTime() <= paymentTimestamp(payment.date) &&
@@ -480,8 +482,7 @@ export default async function AdminProcurementPage() {
             planId: plan.id, ref: link.ref,
             label: `${plan.supplierPartner} · ${plan.planCode} · ${[...(paymentEvidence.get(plan.id)?.cashOrders || []), ...(paymentEvidence.get(plan.id)?.currencyPayments || [])].some((order) => order.ref === link.ref) ? 'зачёт подтверждён' : 'оплата изменилась или сейчас не подтверждена — проверьте'}`,
           })))}
-        />
-        <AdminProcurementClient
+        />}
           initialPlans={plansWithOrderContext}
           sourceCheckedAt={ordersSource?.checkedAt || ""}
           sourceWarnings={warnings}

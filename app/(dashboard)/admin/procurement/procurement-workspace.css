@@ -1,0 +1,11 @@
+.procurement-detail>div:first-child{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px}
+.procurement-detail>div:first-child>div:first-child,.procurement-detail>div:first-child>div:nth-child(4),.procurement-detail>div:first-child>div:last-child{grid-column:1/-1}
+.procurement-detail>div:first-child>div:last-child{justify-content:flex-start}
+.procurement-detail p{overflow-wrap:anywhere}
+.procurement-approved-detail{display:flex;flex-direction:column;gap:14px}
+.procurement-approved-detail>div{grid-column:auto;text-align:left}
+.procurement-approved-detail>div:nth-child(2)>p:nth-child(2){font-size:24px;line-height:1.3}
+.procurement-plan>section>div>div:nth-child(2)>div{grid-template-columns:95px minmax(0,1fr)}
+.procurement-plan>section>div>div:nth-child(2)>div>div:nth-child(3),.procurement-plan>section>div>div:nth-child(2)>div>div:nth-child(4){grid-column:2;text-align:left}
+.procurement-workspace [hidden]{display:none!important}
+.procurement-workspace .procurement-plan aside>aside>div>div:first-child,.procurement-workspace .procurement-plan aside>aside>div>div:nth-child(2){align-items:center}

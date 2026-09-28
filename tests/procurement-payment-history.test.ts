@@ -25,6 +25,16 @@ test('empty history is absent; long history shows three newest initially', () =>
   assert.equal((html.match(/<article/g) || []).length, 3);
   assert.ok(html.includes('Показать все (4)'));
 });
+test('admin split history exposes the whole ordered list and complete selected comment',()=>{
+ const plans=Array.from({length:5},(_,i)=>({...historyFixture[0],id:String(i),supplierPartner:'Supplier '+i,condition:'Полный комментарий\nРеквизиты без сокращений',evidence:{...historyFixture[0].evidence,cashOrders:[{number:String(i),date:(20+i)+'.09.2026 12:00:00'}]}}));
+ const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans,splitView:true}));
+ assert.ok(html.indexOf('Supplier 4')<html.indexOf('Supplier 0'));
+ for(let i=0;i<5;i++) assert.ok(html.includes('Supplier '+i));
+ assert.match(html,/Комментарий закупщика/);
+ assert.match(html,/Реквизиты без сокращений/);
+ assert.doesNotMatch(html,/Показать все|Копировать/);
+ assert.doesNotMatch(html,/Запрошено:/);
+});
 test('completed-without-topup history retains actual paid amount and never says fully paid',()=>{
   const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans:[{...historyFixture[0],status:'COMPLETED_WITHOUT_TOPUP',oneCCashEvidence:{completion:{at:'2026-09-26T09:00:00Z',actorId:1,reason:'Окончательная сумма согласована',paidAmount:279999,paidForeignAmount:0,remainingAmount:1,remainingForeignAmount:null,paymentRefs:['rko']}}}]}));
   assert.match(html,/Завершена без доплаты/);assert.match(html,/279 999/);assert.match(html,/Без доплаты: 1/);
