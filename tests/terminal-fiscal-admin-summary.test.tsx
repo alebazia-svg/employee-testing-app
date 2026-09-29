@@ -17,7 +17,7 @@ test('ADMIN Workday terminal summary shows only the aggregate confirmed result',
   const result = presentTerminalFiscalWorkdaySummary(base);
   assert.equal(result.status, 'confirmed');
   assert.equal(result.label, 'Всё подтверждено');
-  assert.match(result.detail, /точно сопоставлено 4 из 4/);
+  assert.match(result.detail, /по сумме подтверждено 4 из 4/);
   assert.doesNotMatch(result.detail, /matchingId|fiscalDrive|terminalKey|номер карты/i);
 });
 
@@ -58,8 +58,8 @@ test('ADMIN keeps item presentation differences informational when the financial
   });
   assert.equal(result.status, 'confirmed');
   assert.equal(result.label, 'Всё подтверждено');
-  assert.match(result.detail, /точно сопоставлено 4 из 4/);
-  assert.match(result.detail, /строки представлены иначе 1/);
+  assert.match(result.detail, /по сумме подтверждено 4 из 4/);
+  assert.match(result.detail, /строки товаров проверить 1/);
   assert.doesNotMatch(result.detail, /оплат без чека/);
 });
 
@@ -98,7 +98,7 @@ test('ADMIN separates period-covered operations from genuinely uncovered payment
   });
   assert.equal(result.status, 'confirmed');
   assert.equal(result.label, 'Всё подтверждено');
-  assert.match(result.detail, /точно сопоставлено 5 из 10/);
+  assert.match(result.detail, /по сумме подтверждено 5 из 10/);
   assert.match(result.detail, /покрыто общей сверкой 5/);
   assert.doesNotMatch(result.detail, /без покрытия/);
   assert.doesNotMatch(result.detail, /проверить 5/);
@@ -124,8 +124,49 @@ test('today production shape shows coverage and content review without a missing
   });
   assert.equal(result.status, 'confirmed');
   assert.equal(result.label, 'Всё подтверждено');
-  assert.match(result.detail, /точно сопоставлено 5 из 10/);
+  assert.match(result.detail, /по сумме подтверждено 5 из 10/);
   assert.match(result.detail, /покрыто общей сверкой 5/);
-  assert.match(result.detail, /строки представлены иначе 1/);
+  assert.match(result.detail, /строки товаров проверить 1/);
   assert.doesNotMatch(result.detail, /без покрытия/);
+});
+
+test('ADMIN does not hide reused-check reviews behind a confirmed item difference', () => {
+  const result = presentTerminalFiscalWorkdaySummary({
+    ...base,
+    runs: 2,
+    total: 11,
+    statuses: { confirmed: 9, pending: 0, mismatch: 0, unavailable: 0, needs_review: 2 },
+    reasonCodes: {
+      MATCH_CONFIRMED: 8,
+      OFD_ITEM_VALUES_MISMATCH: 1,
+      ONE_C_CHECK_REUSED: 2,
+    },
+    attributionRecords: [
+      ...Array.from({ length: 8 }, () => ({
+        status: 'confirmed' as const,
+        reasonCode: 'MATCH_CONFIRMED' as const,
+        candidateCount: 1,
+        bankOperationAt: new Date('2026-09-28T10:00:00.000Z'),
+        oneCCashierRef: 'cashier',
+      })),
+      {
+        status: 'confirmed' as const,
+        reasonCode: 'OFD_ITEM_VALUES_MISMATCH' as const,
+        candidateCount: 1,
+        bankOperationAt: new Date('2026-09-28T10:01:00.000Z'),
+        oneCCashierRef: 'cashier',
+      },
+      ...Array.from({ length: 2 }, () => ({
+        status: 'needs_review' as const,
+        reasonCode: 'ONE_C_CHECK_REUSED' as const,
+        candidateCount: 1,
+        bankOperationAt: new Date('2026-09-28T10:02:00.000Z'),
+        oneCCashierRef: 'cashier',
+      })),
+    ],
+  });
+  assert.equal(result.status, 'needs_review');
+  assert.match(result.detail, /по сумме подтверждено 9 из 11/);
+  assert.match(result.detail, /проверить 2/);
+  assert.match(result.detail, /строки товаров проверить 1/);
 });

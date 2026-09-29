@@ -112,7 +112,26 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
   const itemReviews = legacyItemReviews
     + (summary.reasonCodes.OFD_ITEM_PRESENTATION_DIFFERENCE ?? 0)
     + (summary.reasonCodes.OFD_ITEM_VALUES_MISMATCH ?? 0);
-  const otherNeedsReview = Math.max(0, summary.statuses.needs_review - itemReviews - missingOneCChecks);
+  const itemReasonCodes = new Set([
+    'OFD_ITEMS_MISMATCH',
+    'OFD_ITEM_PRESENTATION_DIFFERENCE',
+    'OFD_ITEM_VALUES_MISMATCH',
+  ]);
+  const itemNeedsReview = summary.attributionRecords
+    ? summary.attributionRecords.filter((record) => (
+        record.status === 'needs_review' && itemReasonCodes.has(record.reasonCode)
+      )).length
+    : Math.min(summary.statuses.needs_review, itemReviews);
+  const missingNeedsReview = summary.attributionRecords
+    ? summary.attributionRecords.filter((record) => (
+        record.status === 'needs_review'
+        && record.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND'
+      )).length
+    : Math.min(summary.statuses.needs_review - itemNeedsReview, missingOneCChecks);
+  const otherNeedsReview = Math.max(
+    0,
+    summary.statuses.needs_review - itemNeedsReview - missingNeedsReview,
+  );
   const status = summary.statuses.mismatch > 0 || uncoveredOneCChecks > 0
     ? 'mismatch'
     : otherNeedsReview > 0
@@ -137,11 +156,11 @@ export function presentTerminalFiscalWorkdaySummary(summary: TerminalFiscalWorkd
     needs_review: 'Требует проверки',
   } as const;
   const parts = [
-    `точно сопоставлено ${summary.statuses.confirmed} из ${summary.total}`,
+    `по сумме подтверждено ${summary.statuses.confirmed} из ${summary.total}`,
     periodCoveredChecks > 0 ? `покрыто общей сверкой ${periodCoveredChecks}` : '',
     summary.statuses.pending > 0 ? `ожидают ${summary.statuses.pending}` : '',
     otherNeedsReview > 0 ? `проверить ${otherNeedsReview}` : '',
-    itemReviews > 0 ? `строки представлены иначе ${itemReviews}` : '',
+    itemReviews > 0 ? `строки товаров проверить ${itemReviews}` : '',
     summary.statuses.mismatch > 0 ? `расхождений ${summary.statuses.mismatch}` : '',
     summary.statuses.unavailable > 0 ? `ещё нельзя проверить ${summary.statuses.unavailable}` : '',
   ].filter(Boolean);
