@@ -33,21 +33,29 @@ test('legacy review envelope is retained for ADMIN but hidden from the buyer, in
   assert.equal(buyerPaymentComment('Нужна сверка перед оплатой. Личная заметка'),'Нужна сверка перед оплатой. Личная заметка');
 });
 
-let renderer:Promise<(props:unknown)=>string>;
-function render(props:unknown) {
-  renderer ??= (async()=>{
-    const output=await build({stdin:{contents:`import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import Calendar from './app/(dashboard)/procurement/ProcurementPaymentCalendarClient'; export const render=p=>renderToStaticMarkup(<Calendar {...p}/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',plugins:[{name:'router',setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const useRouter=()=>({refresh(){}});'}));}}]});
+const renderers:Partial<Record<'current'|'history',Promise<(props:unknown)=>string>>>={};
+function render(props:unknown, view:'current'|'history'='current') {
+  renderers[view] ??= (async()=>{
+    const output=await build({stdin:{contents:`import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import Calendar from './app/(dashboard)/procurement/ProcurementPaymentCalendarClient'; export const render=p=>renderToStaticMarkup(<Calendar {...p}/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',plugins:[{name:'router',setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const useRouter=()=>({refresh(){}});'}));
+      b.onLoad({filter:/ProcurementPaymentCalendarClient\.tsx$/},async args=>{
+        const source=await readFile(args.path,'utf8');
+        const initial="useState<'current' | 'history'>('current')";
+        assert.ok(source.includes(initial));
+        return {contents:source.replace(initial,`useState<'current' | 'history'>('${view}')`),loader:'tsx'};
+      });
+    }}]});
     const module={exports:{} as {render:(p:unknown)=>string}};
     new Function('require','module','exports',output.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
     return module.exports.render;
   })();
-  return renderer.then(fn=>fn(props));
+  return renderers[view]!.then(fn=>fn(props));
 }
 test('real calendar renders request stages, partial RUB remainder, paid history and buyer comment',async()=>{
   const props=buyerReviewScenario('lifecycle','2026-09-24')!;
   const html=await render({...props,basisPreview:false});
   assert.match(html,/ЧАСТИЧНО ОПЛАЧЕНО/);assert.match(html,/Оплачено 40\s000,00.*осталось по заявке 60\s000,00/);
-  assert.match(html,/НА СОГЛАСОВАНИИ/);assert.match(html,/НУЖНО ИСПРАВИТЬ/);assert.match(html,/Оплачено полностью/);
+  assert.match(html,/НА СОГЛАСОВАНИИ/);assert.match(html,/НУЖНО ИСПРАВИТЬ/);assert.doesNotMatch(html,/Оплачено полностью/);
+  assert.match(await render({...props,basisPreview:false},'history'),/Оплачено полностью/);
   assert.match(html,/Подготовить к обеду/);assert.doesNotMatch(html,/служебная проверка|Основание закупщика|Нужна сверка перед оплатой|Учебная отменённая заявка/);
 });
 test('successive payments on one order leave both buyer requests in paid history',async()=>{
@@ -57,7 +65,7 @@ test('successive payments on one order leave both buyer requests in paid history
   const second={...first,id:'balance',planCode:'PAY-BALANCE',plannedAmount:516800,createdAt:'2026-09-27T09:00:00Z'};
   const payment={ref:'deposit-rko',number:'1758',date:'26.09.2026 12:27:12',posted:true,deleted:false,documentCurrency:'РУБ',documentAmount:67500,baseDocumentRef:'order-two-payments'};
   const evidence=matchProcurementPaymentEvidence([first,second],[],[{...payment,ref:'balance-rko',number:'1761',documentAmount:516800,date:'27.09.2026 13:38:28'},payment],[]);
-  const html=await render({...props,initialPlans:[first,second].map(plan=>({...plan,evidence:evidence.get(plan.id)})),basisPreview:false});
+  const html=await render({...props,initialPlans:[first,second].map(plan=>({...plan,evidence:evidence.get(plan.id)})),basisPreview:false},'history');
   assert.equal((html.match(/Оплачено полностью/g)||[]).length,2);
   assert.match(html,/Расходник №1758/);assert.match(html,/Расходник №1761/);
   assert.doesNotMatch(html,/СОГЛАСОВАНО|ЧАСТИЧНО ОПЛАЧЕНО|>Изменить</);
@@ -70,13 +78,13 @@ test('delivery balance is a separate optional card and does not change payment c
   assert.match(withDelivery,/aria-label="Подотчёт на доставку"/);
   assert.ok(withDelivery.indexOf('Сводка') < withDelivery.indexOf('aria-label="Подотчёт на доставку"'));
   assert.ok(withDelivery.indexOf('Остатки касс') < withDelivery.indexOf('aria-label="Подотчёт на доставку"'));
-  assert.equal(withDelivery.replace(/<section aria-label="Подотчёт на доставку"[\s\S]*?<\/section>/,''),baseline);
+  assert.equal(withDelivery.replace(/<section[^>]*aria-label="Подотчёт на доставку"[\s\S]*?<\/section>/,''),baseline);
 });
 test('manual payment stays in history without a permanent notification above the calendar',async()=>{
   const props=buyerReviewScenario('lifecycle','2026-09-24')!;
   const plans=props.initialPlans.map(plan=>plan.id==='demo-paid'
     ? {...plan,evidence:{...plan.evidence!,manualPaymentCount:1}} : plan);
-  const html=await render({...props,initialPlans:plans,basisPreview:false});
+  const html=await render({...props,initialPlans:plans,basisPreview:false},'history');
   assert.doesNotMatch(html,/Оплаты учтены в заявках:/);
   assert.match(html,/Учебная оплаченная заявка/);
   assert.match(html,/Оплата по договору учтена в этой заявке/);
@@ -86,8 +94,20 @@ test('completed residual is absent from active buyer requests even while fresh e
   const props=buyerReviewScenario('lifecycle','2026-09-26')!;
   const plan={...props.initialPlans[0],status:'COMPLETED_WITHOUT_TOPUP',oneCCashEvidence:{completion:{at:'2026-09-26T09:00:00Z',actorId:1,reason:'Окончательная сумма',paidAmount:40000,paidForeignAmount:0,remainingAmount:60000,remainingForeignAmount:null,paymentRefs:['rko']}}};
   const html=await render({...props,initialPlans:[plan],basisPreview:false});
-  assert.match(html,/Завершена без доплаты/);assert.doesNotMatch(html,/ЧАСТИЧНО ОПЛАЧЕНО|>Изменить<|Оплачено полностью/);
+  assert.doesNotMatch(html,/Завершена без доплаты|ЧАСТИЧНО ОПЛАЧЕНО|>Изменить<|Оплачено полностью/);
+  assert.match(await render({...props,initialPlans:[plan],basisPreview:false},'history'),/Завершена без доплаты/);
   assert.match(html,/История оплат/);
+});
+
+test('history tab retains the same summary and hides planning actions; current is the default',async()=>{
+  const props={...buyerReviewScenario('lifecycle','2026-09-29')!,basisPreview:false};
+  const current=await render(props);
+  const history=await render(props,'history');
+  assert.match(current,/aria-pressed="true"[^>]*>Текущие оплаты/);
+  assert.match(current,/Мои заявки|Добавить оплаты/);
+  assert.match(history,/aria-pressed="true"[^>]*>История оплат/);
+  assert.doesNotMatch(history,/Добавить оплаты|Запланируйте известные оплаты|Запланировать оплату|>Изменить</);
+  assert.equal(history.match(/<aside[\s\S]*?<\/aside>/)?.[0],current.match(/<aside[\s\S]*?<\/aside>/)?.[0]);
 });
 test('failed plan load never renders empty success, new actions or zero reserves',async()=>{
   const html=await render({...buyerReviewScenario('plans-unavailable','2026-09-24'),basisPreview:false});

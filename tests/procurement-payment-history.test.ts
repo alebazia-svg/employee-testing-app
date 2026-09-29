@@ -51,3 +51,30 @@ test('USDT history preserves the full RKO and unallocated difference in buyer an
     assert.doesNotMatch(html,/Курс:|Рублёвый эквивалент:/);
   }
 });
+
+test('compact buyer history keeps discrepancy inside collapsed details without changing admin view',()=>{
+  const plans=[{...historyFixture[1],evidence:{...historyFixture[1].evidence,paidForeignAmount:2720.5,
+    currencyPayments:[{ref:'rko',number:'TEST-1781',date:'29.09.2026 13:50:57',foreignAmount:2720.5,documentForeignAmount:2725.45,unallocatedForeignAmount:4.95}]}}];
+  const buyer=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans,splitView:true,compactBuyer:true}));
+  assert.doesNotMatch(buyer,/<details open|Вне заявок:|Ещё 4,95/);
+  assert.match(buyer,/<details[^>]*>[\s\S]*Сумма расходника: 2 725,45 USDT[\s\S]*Переплата по заявке: 4,95 USDT[\s\S]*<\/details>/);
+  const admin=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans,splitView:true,compactBuyer:true,showManager:true}));
+  assert.match(admin,/<details open/);
+  assert.match(admin,/Вне заявок: 4,95 USDT/);
+});
+
+test('compact history initially shows ten payments, with access to the entire list',()=>{
+  const plans=Array.from({length:15},(_,i)=>({...historyFixture[0],id:`paid-${i}`,supplierPartner:`Supplier ${i}`}));
+  const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans,compactBuyer:true}));
+  assert.equal((html.match(/<article/g)||[]).length,10);
+  assert.match(html,/Показать все \(15\)/);
+});
+
+test('compact single-list history has one supplier card, search and explicit empty state',()=>{
+  const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans:[historyFixture[0]],compactBuyer:true}));
+  assert.equal((html.match(/MEMS Technology/g)||[]).length,1);
+  assert.match(html,/Найти поставщика или заказ/);
+  assert.doesNotMatch(html,/<details open|aria-label="Список оплат"/);
+  const empty=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans:[],compactBuyer:true}));
+  assert.match(empty,/Подтверждённых оплат пока нет/);
+});

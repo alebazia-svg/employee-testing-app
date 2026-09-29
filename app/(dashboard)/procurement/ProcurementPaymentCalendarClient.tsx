@@ -235,6 +235,7 @@ export default function ProcurementPaymentCalendarClient({
   basisPreview?: boolean;
   otherUsdtReserve?: number | null;
 }) {
+  const [paymentView, setPaymentView] = useState<'current' | 'history'>('current');
   const [plans, setPlans] = useState(initialPlans);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [formOpen, setFormOpen] = useState(false);
@@ -519,14 +520,14 @@ export default function ProcurementPaymentCalendarClient({
           <h1 className="text-2xl font-black sm:text-3xl">
             Платёжный календарь
           </h1>
-          <p className="mt-1 text-sm font-medium text-slate-600">
+          {paymentView === 'current' ? <p className="mt-1 text-sm font-medium text-slate-600">
             Запланируйте известные оплаты, чтобы деньги подготовили вовремя.
-          </p>
+          </p> : null}
         </div>
         <div className="flex flex-col gap-2 sm:items-end">
-          {!planningBlocked ? (
+          {!planningBlocked && paymentView === 'current' ? (
             <button
-              onClick={() => formOpen ? openForm() : openNew()}
+              onClick={() => { setPaymentView('current'); formOpen ? openForm() : openNew(); }}
               className="admin-material-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-black text-white"
             >
               <Plus className="h-5 w-5" />
@@ -536,6 +537,14 @@ export default function ProcurementPaymentCalendarClient({
           <ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" />
         </div>
       </header>
+      <nav aria-label="Разделы календаря" className="flex gap-6 border-b border-[var(--portal-border)]">
+        <button type="button" aria-pressed={paymentView==='current'} disabled={formOpen}
+          onClick={()=>setPaymentView('current')}
+          className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-3 text-sm font-bold disabled:opacity-50 ${paymentView==='current'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}>Текущие оплаты</button>
+        <button type="button" aria-pressed={paymentView==='history'} disabled={formOpen}
+          onClick={()=>setPaymentView('history')}
+          className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-3 text-sm font-bold disabled:opacity-50 ${paymentView==='history'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}>История оплат</button>
+      </nav>
       {sourceError ? (
         <Notice
           title="Заказы 1С сейчас недоступны"
@@ -556,6 +565,7 @@ export default function ProcurementPaymentCalendarClient({
       ) : null}
 
       <div className="grid gap-5 min-[1180px]:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.72fr)] min-[1180px]:items-start">
+        {paymentView==='history' ? <ProcurementPaymentHistory plans={paidPlans} compactBuyer /> :
         <div className="flex min-w-0 flex-col gap-5">
           {message && !formOpen ? (
             <p className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-800">
@@ -570,7 +580,7 @@ export default function ProcurementPaymentCalendarClient({
       >
         <div className="flex flex-col gap-2 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-lg font-black">Календарь оплат</h2>
+            <h2 className="text-lg font-black">Мои заявки</h2>
             <p className="mt-1 text-sm text-slate-500">
               Согласовано — деньги одобрены, но оплата ещё не подтверждена.
             </p>
@@ -671,14 +681,12 @@ export default function ProcurementPaymentCalendarClient({
               <CalendarDays className="mx-auto h-6 w-6 text-slate-400" />
               <p className="mt-2 font-black text-slate-700">{plansSourceError ? 'Не удалось загрузить заявки' : basisPreview ? 'Заявки не загружены в просмотр' : paidPlans.length ? "Текущих оплат нет" : "Заявок пока нет"}</p>
               <p className="mt-1 text-sm text-slate-500">
-                {planningBlocked ? 'Обновите данные, чтобы продолжить.' : paidPlans.length ? "Оплаченные заявки — в истории ниже." : "Нажмите «Добавить оплаты», чтобы создать заявку."}
+                {planningBlocked ? 'Обновите данные, чтобы продолжить.' : paidPlans.length ? 'Оплаченные заявки — во вкладке «История оплат».' : "Нажмите «Добавить оплаты», чтобы создать заявку."}
               </p>
             </div>
           )}
         </div>
       </section>
-
-      <ProcurementPaymentHistory plans={paidPlans} hidden={formOpen} />
 
       {!planningBlocked && reviewOrders.length > 0 ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" inert={formOpen || undefined} aria-hidden={formOpen || undefined}>
@@ -1016,7 +1024,7 @@ export default function ProcurementPaymentCalendarClient({
       </section> : null}
       <ProcurementDiscardDraftDialog open={discardOpen} editing={Boolean(editingId)}
         onKeep={() => setDiscardOpen(false)} onDiscard={closePaymentForm} />
-        </div>
+        </div>}
 
         <aside
           className="space-y-5 min-[1180px]:sticky min-[1180px]:top-6"
