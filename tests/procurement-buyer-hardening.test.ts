@@ -100,13 +100,16 @@ test('completed residual is absent from active buyer requests even while fresh e
 });
 
 test('history tab retains the same summary and hides planning actions; current is the default',async()=>{
-  const props={...buyerReviewScenario('lifecycle','2026-09-29')!,basisPreview:false};
+  const props={...buyerReviewScenario('lifecycle','2026-09-29')!,basisPreview:false,supplierDebtError:false};
   const current=await render(props);
   const history=await render(props,'history');
   assert.match(current,/aria-pressed="true"[^>]*>Текущие оплаты/);
   assert.match(current,/Мои заявки|Добавить оплаты/);
   assert.match(history,/aria-pressed="true"[^>]*>История оплат/);
-  assert.doesNotMatch(history,/Добавить оплаты|Запланируйте известные оплаты|Запланировать оплату|>Изменить</);
+  assert.doesNotMatch(history,/Запланировать оплату|>Изменить</);
+  assert.match(history,/<p aria-hidden="true" class="[^"]*invisible">Запланируйте известные оплаты/);
+  assert.match(history,/<button aria-hidden="true" disabled="" tabindex="-1" class="[^"]*invisible"[^>]*>[\s\S]*?Добавить оплаты<\/button>/);
+  assert.equal(history.match(/<header/g)?.length,current.match(/<header/g)?.length);
   assert.equal(history.match(/<aside[\s\S]*?<\/aside>/)?.[0],current.match(/<aside[\s\S]*?<\/aside>/)?.[0]);
 });
 test('failed plan load never renders empty success, new actions or zero reserves',async()=>{

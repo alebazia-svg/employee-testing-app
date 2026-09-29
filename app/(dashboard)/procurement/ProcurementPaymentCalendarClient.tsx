@@ -520,15 +520,19 @@ export default function ProcurementPaymentCalendarClient({
           <h1 className="text-2xl font-black sm:text-3xl">
             Платёжный календарь
           </h1>
-          {paymentView === 'current' ? <p className="mt-1 text-sm font-medium text-slate-600">
+          <p aria-hidden={paymentView === 'history' || undefined}
+            className={`mt-1 text-sm font-medium text-slate-600 ${paymentView === 'history' ? 'invisible' : ''}`}>
             Запланируйте известные оплаты, чтобы деньги подготовили вовремя.
-          </p> : null}
+          </p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end">
-          {!planningBlocked && paymentView === 'current' ? (
+          {!planningBlocked ? (
             <button
+              aria-hidden={paymentView === 'history' || undefined}
+              disabled={paymentView === 'history'}
+              tabIndex={paymentView === 'history' ? -1 : undefined}
               onClick={() => { setPaymentView('current'); formOpen ? openForm() : openNew(); }}
-              className="admin-material-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-black text-white"
+              className={`admin-material-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-black text-white ${paymentView === 'history' ? 'invisible' : ''}`}
             >
               <Plus className="h-5 w-5" />
               Добавить оплаты
