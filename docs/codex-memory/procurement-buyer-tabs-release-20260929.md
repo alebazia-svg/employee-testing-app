@@ -39,3 +39,24 @@ Private deployment diagnostics: `/tmp/procurement-tabs-release.ekGxOg/` on Mac.
 
 The owner's reminder about Employees → Devices and logins remains a separate
 follow-up; this release did not implement or change that section.
+
+## Stable header follow-up — deployed 2026-09-29
+
+- Owner separately approved release of the missing stable-height correction
+  and Terminal sudo. Production commit: `701751de49471394e6257593db492b212164e568`.
+- Caption and add-payment control retain their layout space on History using
+  CSS visibility. Both are hidden from assistive technology; the hidden button
+  is disabled and removed from tab order. No other layout/business changes.
+- Browser measurements were identical before/after switching: at 1280px,
+  header 90px and navigation top 288px; at 390px, header 175.90625px and
+  navigation top 389.90625px. These coordinates include the local review note.
+- 34 focused tests, TypeScript and local/server builds passed. Deploy exited
+  zero, container healthy, both public health endpoints returned 200, and the
+  built bundle contains the hidden-but-space-preserving add-payment control.
+- Rollback image: `offonika-portal-rollback:before-header-701751d`.
+  Previous production commit: `ac2bfc1571ca81be02dc4c5501eee6f1b140f509`.
+  Private diagnostics: `/tmp/procurement-header-release.zdDAJw/`.
+- Owner also requested a layout assessment, not a redesign. Desktop column
+  balance and alignment were satisfactory. Mobile header density, tightly
+  positioned logout control and emphasis on service captions were identified
+  as follow-up recommendations only; no authority to implement them inferred.
