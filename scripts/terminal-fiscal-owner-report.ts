@@ -94,7 +94,12 @@ async function main() {
       && terminals.length === activeMappings.length && terminals.every((terminal) => terminal.complete),
     terminals,
   };
-  process.stdout.write(`${JSON.stringify({ ok: true, input, text: terminalFiscalOwnerMessage(input) })}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    input,
+    text: terminalFiscalOwnerMessage(input),
+  })}\n`);
 }
 
 main().catch(() => { process.stderr.write('TERMINAL_FISCAL_OWNER_REPORT_FAILED\n'); process.exitCode = 1; }).finally(() => prisma.$disconnect());
