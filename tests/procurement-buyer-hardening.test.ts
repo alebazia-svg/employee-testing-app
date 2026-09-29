@@ -132,7 +132,29 @@ test('missing settlements block new actions without showing a false zero supplie
 });
 test('preparation date is not represented as supplier overdue debt',async()=>{
   const html=await render({...buyerReviewScenario('lifecycle','2026-09-23'),todayKey:'2026-09-24'});
-  assert.match(html,/Дата подготовки прошла/);assert.doesNotMatch(html,/Просрочено|Дата оплаты уже прошла/);
+  assert.match(html,/Плановая дата прошла/);assert.doesNotMatch(html,/Просрочено|Дата оплаты уже прошла/);
+});
+test('buyer calendar groups by date before status and shows an explicit date for today and tomorrow',async()=>{
+  const props=buyerReviewScenario('basis-edit-approved','2026-09-29')!;
+  const base=props.initialPlans[0];
+  const plan=(id:string,date:string,status:string)=>({...base,id,supplierPartner:id,plannedDate:`${date}T00:00:00Z`,status});
+  const html=await render({...props,initialPlans:[
+    plan('future-correction','2026-09-30','NEEDS_CHANGES'),
+    plan('today-approved','2026-09-29','APPROVED'),
+    plan('past-approved','2026-09-28','APPROVED'),
+    plan('today-pending','2026-09-29','SUBMITTED'),
+    plan('prior-year','2025-09-29','APPROVED'),
+  ]});
+  const headings=[...html.matchAll(/<time dateTime="([^"]+)">([^<]+)<\/time>/g)];
+  assert.deepEqual(headings.map(row=>row[1]),['2025-09-29','2026-09-28','2026-09-29','2026-09-30']);
+  assert.match(headings[0][2],/2025/);
+  assert.equal(headings[2][2],'Сегодня · 29 сентября');
+  assert.equal(headings[3][2],'Завтра · 30 сентября');
+  assert.match(html,/aria-label="Заявок: 2"/);
+  assert.ok(html.indexOf('past-approved')<html.indexOf('today-pending'));
+  assert.ok(html.indexOf('today-pending')<html.indexOf('today-approved'));
+  assert.ok(html.indexOf('today-approved')<html.indexOf('future-correction'));
+  assert.match(html,/НА СОГЛАСОВАНИИ/);assert.match(html,/СОГЛАСОВАНО/);assert.match(html,/НУЖНО ИСПРАВИТЬ/);
 });
 test('edit never replaces amount with order nominal value; save remains disabled in preview and incomplete data',async()=>{
   const source=await readFile('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx','utf8');

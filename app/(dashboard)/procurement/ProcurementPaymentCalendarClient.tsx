@@ -331,12 +331,12 @@ export default function ProcurementPaymentCalendarClient({
   const groupedPlans = useMemo(() => {
     const groups = new Map<string, Plan[]>();
     [...workingPlans]
-      .sort((a, b) => paymentActionPriority(a) - paymentActionPriority(b) || a.plannedDate.localeCompare(b.plannedDate))
+      .sort((a, b) => dateKey(a.plannedDate).localeCompare(dateKey(b.plannedDate)) || paymentActionPriority(a) - paymentActionPriority(b))
       .forEach((plan) => {
-        const key = `${paymentActionPriority(plan)}|${dateKey(plan.plannedDate)}`;
+        const key = dateKey(plan.plannedDate);
         groups.set(key, [...(groups.get(key) || []), plan]);
       });
-    return [...groups.entries()].map(([id, rows]) => [id.split('|')[1], rows, id, ['Нужно исправить', 'На согласовании', 'Согласовано'][Number(id[0])]] as const);
+    return [...groups.entries()];
   }, [plans, plansSourceError, evidenceSourceError]);
   const mappingBlocked = managerMappingError && !sourceError;
   const planningBlocked = mappingBlocked || Boolean(sourceError) || plansSourceError || evidenceSourceError || supplierDebtError;
@@ -504,14 +504,13 @@ export default function ProcurementPaymentCalendarClient({
     } catch { setMessage("Нет связи с порталом. Изменения не подтверждены — проверьте заявку перед повторной отправкой."); }
     finally { setSaving(false); }
   }
-  const groupTitle = (key: string) =>
-    key < todayKey
-      ? `Дата подготовки прошла · ${dateLabel(key)}`
-      : key === todayKey
-        ? "Сегодня"
-        : key === nextDayKey(todayKey)
-          ? "Завтра"
-          : dateLabel(key);
+  const groupTitle = (key: string) => {
+    const date = new Intl.DateTimeFormat('ru-RU', {
+      day: 'numeric', month: 'long', timeZone: 'UTC',
+      ...(key.slice(0, 4) !== todayKey.slice(0, 4) ? { year: 'numeric' as const } : {}),
+    }).format(new Date(`${key}T12:00:00Z`));
+    return key === todayKey ? `Сегодня · ${date}` : key === nextDayKey(todayKey) ? `Завтра · ${date}` : date;
+  };
 
   return (
     <div className="procurement-calendar space-y-4">
@@ -597,18 +596,19 @@ export default function ProcurementPaymentCalendarClient({
         </div>
         <div className="mt-5 space-y-6">
           {groupedPlans.length ? (
-            groupedPlans.map(([key, datePlans, groupId, statusLabel]) => (
-              <div key={groupId}>
-                <div className="mb-2 flex items-center gap-2">
+            groupedPlans.map(([key, datePlans]) => (
+              <div key={key}>
+                <div className={`mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-3 py-3 ${key < todayKey ? 'bg-red-50 text-red-800' : 'bg-slate-50 text-slate-900'}`}>
                   <CalendarDays
-                    className={`h-4 w-4 ${key < todayKey ? "text-red-600" : "procurement-calendar-icon"}`}
+                    className={`h-5 w-5 shrink-0 ${key < todayKey ? "text-red-600" : "procurement-calendar-icon"}`}
                   />
                   <h3
-                    className={`text-sm font-black uppercase tracking-wide ${key < todayKey ? "text-red-700" : "text-slate-700"}`}
+                    className="text-base font-bold sm:text-lg"
                   >
-                    {statusLabel} · {groupTitle(key)}
+                    <time dateTime={key}>{groupTitle(key)}</time>
                   </h3>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-500">
+                  {key < todayKey ? <span className="text-xs font-semibold">Плановая дата прошла</span> : null}
+                  <span aria-label={`Заявок: ${datePlans.length}`} className="ml-auto rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">
                     {datePlans.length}
                   </span>
                 </div>
