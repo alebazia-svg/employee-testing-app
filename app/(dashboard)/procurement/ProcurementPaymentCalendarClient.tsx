@@ -514,7 +514,7 @@ export default function ProcurementPaymentCalendarClient({
           : dateLabel(key);
 
   return (
-    <div className="procurement-calendar space-y-5">
+    <div className="procurement-calendar space-y-4">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-black sm:text-3xl">
@@ -525,7 +525,7 @@ export default function ProcurementPaymentCalendarClient({
             Запланируйте известные оплаты, чтобы деньги подготовили вовремя.
           </p>
         </div>
-        <div className="flex flex-col gap-2 sm:items-end">
+        <div className="flex flex-col gap-2 sm:items-end xl:flex-row-reverse xl:items-center xl:gap-3">
           {!planningBlocked ? (
             <button
               aria-hidden={paymentView === 'history' || undefined}
@@ -627,7 +627,7 @@ export default function ProcurementPaymentCalendarClient({
                           {plan.orderNumbers.filter(Boolean).join(", ") ||
                             "без номера"}</>}
                         </p>
-                        <p className={`mt-1 text-xs font-bold ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "ADVANCE" ? "text-green-700" : "text-amber-700"}`}>
+                        <p className="mt-1 text-xs font-medium text-slate-500">
                           {leadTimeLabel(plan)}
                         </p>
                       </div>
@@ -1087,7 +1087,7 @@ export default function ProcurementPaymentCalendarClient({
 function SummaryMetric({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
     <div className="min-w-0 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
-      <p className="min-h-8 text-xs font-bold leading-4 text-slate-500">{label}</p>
+      <p className="text-xs font-semibold leading-4 text-slate-500">{label}</p>
       <p className="mt-1.5 text-lg font-black text-slate-950">{value}</p>
       {hint ? <p className="mt-1 text-xs font-semibold text-slate-500">{hint}</p> : null}
     </div>

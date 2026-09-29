@@ -2502,6 +2502,26 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
   box-shadow: 0 14px 34px rgba(23, 28, 36, 0.18), inset 0 1px rgba(255, 255, 255, 0.05);
 }
 
+/* Buyer calendar: headings orient, amounts stand out, service copy stays quiet.
+   Scope excludes the admin calendar and its shared history components. */
+.portal-neutral-design.procurement-shell .procurement-calendar h1 {
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.portal-neutral-design.procurement-shell .procurement-calendar :is(h2, h3, h4) {
+  font-weight: 700;
+}
+
+.portal-neutral-design.procurement-shell .procurement-calendar h3.uppercase {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.portal-neutral-design.procurement-shell .procurement-calendar :is(p, button).font-black {
+  font-weight: 700;
+}
+
 .portal-neutral-design.procurement-shell .procurement-shell-header .portal-identity-label {
   color: #fff;
 }
