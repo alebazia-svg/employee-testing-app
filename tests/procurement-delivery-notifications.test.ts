@@ -29,11 +29,11 @@ async function producer(data: any) {
   });
   return { api, records, writes: () => writes };
 }
-test('one-time Moscow 08:30 gate only defers the approved current document', async () => {
+test('daily Moscow 08:30 gate defers every delivery document, not only the original one', async () => {
   const { api } = await producer(view(morning));
   const night = new Date('2026-09-28T22:00:00Z');
   assert.equal(api.deliveryPushNotBefore(ref, night).toISOString(), morning.toISOString());
-  assert.equal(api.deliveryPushNotBefore('other-document', night), night);
+  assert.equal(api.deliveryPushNotBefore('other-document', night).toISOString(), morning.toISOString());
   assert.equal(api.deliveryPushNotBefore(ref, morning), morning);
   const later = new Date('2026-09-29T06:00:00Z');
   assert.equal(api.deliveryPushNotBefore(ref, later), later);
@@ -141,13 +141,76 @@ test('overlapping dispatchers send one push; deferred or cancelled permission ne
       await Promise.all([api.dispatchDueWorkdayNotifications(morning), api.dispatchDueWorkdayNotifications(morning)]);
       assert.equal(sent.length, decision === 'send' ? 1 : 0);
       if (decision === 'send') {
-        assert.equal(sent[0].title, 'Можно получить 15 000 ₽'); assert.equal(sent[0].body, 'Касса Чеченова');
-        assert.equal(sent[0].url, '/procurement#delivery'); assert.equal(sent[0].options.TTL, 300);
+        assert.equal(sent[0].title, 'Пополнение подотчёта'); assert.match(sent[0].body, /Проверьте сумму и кассу/);
+        assert.doesNotMatch(sent[0].body, /15 000|Чеченова/);
+        assert.equal(sent[0].url, '/procurement#delivery'); assert.ok(sent[0].options.TTL >= 48590 && sent[0].options.TTL <= 48600);
         assert.equal(updates.filter(a => a.data.pushStatus === 'delivered').length, 1);
       }
     }
   } finally {
     if (previous.public === undefined) delete process.env.WEB_PUSH_VAPID_PUBLIC_KEY; else process.env.WEB_PUSH_VAPID_PUBLIC_KEY = previous.public;
     if (previous.private === undefined) delete process.env.WEB_PUSH_VAPID_PRIVATE_KEY; else process.env.WEB_PUSH_VAPID_PRIVATE_KEY = previous.private;
+  }
+});
+
+test('all employee domains wait overnight without consuming attempts; morning sends only still-active messages', async () => {
+  const savedPublic = process.env.WEB_PUSH_VAPID_PUBLIC_KEY, savedPrivate = process.env.WEB_PUSH_VAPID_PRIVATE_KEY;
+  process.env.WEB_PUSH_VAPID_PUBLIC_KEY = 'mock-public'; process.env.WEB_PUSH_VAPID_PRIVATE_KEY = 'mock-private';
+  try {
+    for (const kind of ['procurement_delivery_ready', 'schedule_replacement_request', 'planned']) {
+      let active = true; const sent: any[] = [], updates: any[] = [];
+      const row = { id: 1, userId: 42, kind, fingerprint: 'current', title: 'Example', body: 'Open portal',
+        taskId: null, issueId: null, reviewId: null, task: null, issue: null, review: null,
+        updatedAt: morning, status: 'pending', pushStatus: 'pending', attemptCount: 0, sentAt: null,
+        user: { pushSubscriptions: [{ id: 1, endpoint: 'https://push.invalid', p256dh: 'test', auth: 'test' }] } };
+      const api = await moduleWithMocks('lib/workday-notifications.ts', {
+        '@/lib/prisma': { prisma: { workdayNotification: {
+          findMany: async (args: any) => args.include ? [row] : [],
+          update: async (args: any) => { updates.push(args); },
+          updateMany: async (args: any) => { updates.push(args); return { count: 1 }; },
+        } } },
+        '@/lib/terminal-fiscal-admin-gate': { TERMINAL_FISCAL_ADMIN_FIRST: false },
+        '@/lib/procurement-notification-lifecycle': { inactiveProcurementNotifications: async () => new Set(active ? [] : [1]) },
+        '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', queueDeliveryReadyPush: async () => {},
+          deliveryPushDecision: async () => ({ state: active ? 'send' : 'cancel', title: 'Можно получить 15 000 ₽', body: 'Касса' }) },
+        'web-push': { setVapidDetails: () => {}, sendNotification: async (_s: any, payload: string) => { sent.push(JSON.parse(payload)); } },
+      });
+      await api.dispatchDueWorkdayNotifications(new Date('2026-09-28T19:00:00Z'));
+      assert.equal(sent.length, 0);
+      assert.ok(updates.some(u => u.data.nextPushAttemptAt?.toISOString() === morning.toISOString()));
+      assert.ok(!updates.some(u => u.data.attemptCount || u.data.pushStatus === 'delivery_sending'));
+      await api.dispatchDueWorkdayNotifications(morning);
+      assert.equal(sent.length, 1);
+      active = false;
+      await api.dispatchDueWorkdayNotifications(new Date('2026-09-30T05:30:00Z'));
+      assert.equal(sent.length, 1);
+      assert.ok(updates.some(u => u.data.status === 'cancelled'));
+    }
+  } finally {
+    if (savedPublic === undefined) delete process.env.WEB_PUSH_VAPID_PUBLIC_KEY; else process.env.WEB_PUSH_VAPID_PUBLIC_KEY = savedPublic;
+    if (savedPrivate === undefined) delete process.env.WEB_PUSH_VAPID_PRIVATE_KEY; else process.env.WEB_PUSH_VAPID_PRIVATE_KEY = savedPrivate;
+  }
+});
+
+test('employee bell uses fresh collection sum, keeps a neutral outage fallback and authorizes before querying', async () => {
+  for (const state of ['ready', 'unknown', 'anonymous']) {
+    let reads = 0;
+    const api = await moduleWithMocks('app/api/employee/workday-notifications/route.ts', {
+      '@/lib/auth': { getCurrentUser: async () => state === 'anonymous' ? null : { id: 42, role: 'EMPLOYEE' } },
+      '@/lib/prisma': { prisma: { workdayNotification: { findMany: async (args: any) => {
+        reads++; assert.equal(args.where.userId, 42);
+        return [{ id: 720, kind: 'procurement_delivery_ready', fingerprint: 'current', title: 'Можно получить 15 000 ₽',
+          body: 'Старая касса', task: null, issue: null, review: null }];
+      } } } },
+      '@/lib/workday-control-issue-view': {},
+      '@/lib/workday-notifications': { reconcileActiveWorkdayNotifications: async (_db: any, rows: any) => rows, workdayNotificationHref: () => '/procurement#delivery' },
+      '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', currentDeliveryPush: async () => ({ state, userId: 42, fingerprint: 'current', title: 'Можно получить 10 000 ₽', body: 'Касса Чеченова' }) },
+    });
+    const response = await api.GET();
+    if (state === 'anonymous') { assert.equal(response.status, 401); assert.equal(reads, 0); continue; }
+    const body = await response.json();
+    assert.equal(body.notifications[0].title, state === 'ready' ? 'Можно получить 10 000 ₽' : 'Пополнение подотчёта');
+    assert.equal(body.notifications[0].href, '/procurement#delivery');
+    if (state === 'unknown') assert.match(body.notifications[0].body, /Проверьте сумму/);
   }
 });

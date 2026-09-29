@@ -2,13 +2,14 @@ import 'server-only';
 import { prisma } from './prisma';
 import { deliveryMappedUser, loadDeliveryView } from './procurement-delivery-reminders';
 import { deliveryCollectionAmount, deliveryNativeFresh } from './procurement-delivery-native';
+import { employeePushNotBefore } from './employee-push-policy';
 
 export const DELIVERY_READY_KIND = 'procurement_delivery_ready';
-// Owner-approved one-time deferral, not a recurring quiet-hours rule.
+// Kept for the existing document's stable identity; timing now follows daily policy.
 export const DELIVERY_MORNING_REF = 'ed241171-bb79-11f1-8f11-002590803daf';
 export const DELIVERY_MORNING_AT = new Date('2026-09-29T08:30:00+03:00');
-export function deliveryPushNotBefore(ref: string, now: Date) {
-  return ref === DELIVERY_MORNING_REF && now < DELIVERY_MORNING_AT ? DELIVERY_MORNING_AT : now;
+export function deliveryPushNotBefore(_ref: string, now: Date) {
+  return employeePushNotBefore(now);
 }
 export const deliveryPushKey = (ref: string, userId: number) => `procurement-delivery-ready:${ref}:${userId}`;
 let cached: { until: number; value: Promise<{ userId: number; view: Awaited<ReturnType<typeof loadDeliveryView>> } | null> } | null = null;

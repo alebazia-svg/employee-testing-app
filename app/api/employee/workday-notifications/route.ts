@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { reconcileActiveWorkdayNotifications, workdayNotificationHref, workdayTaskNotificationCopy } from '@/lib/workday-notifications';
 import { workdayNotificationThreadWhere } from '@/lib/workday-notification-thread';
+import { currentDeliveryPush, DELIVERY_READY_KIND } from '@/lib/procurement-delivery-notifications';
+import { DELIVERY_PUSH_COPY } from '@/lib/employee-push-policy';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -28,6 +30,7 @@ export async function GET() {
   });
   const seenTargets = new Set<string>();
   const activeRows = await reconcileActiveWorkdayNotifications(prisma, rows);
+  const delivery = activeRows.some(row => row.kind === DELIVERY_READY_KIND) ? await currentDeliveryPush() : null;
   const notifications = activeRows
     .filter((notification) => {
       const reply = notification.kind.endsWith('_reply');
@@ -39,10 +42,13 @@ export async function GET() {
     .map(({ task, issue, review: _review, ...notification }) => {
       const issueView = issue && !notification.kind.endsWith('_reply') ? workdayIssueView(issue) : null;
       const taskCopy = task ? workdayTaskNotificationCopy(task, notification.kind) : null;
+      const deliveryCopy = notification.kind === DELIVERY_READY_KIND && delivery?.state === 'ready'
+        && delivery.fingerprint === notification.fingerprint && delivery.userId === user.id ? delivery : null;
+      const copy = notification.kind === DELIVERY_READY_KIND ? deliveryCopy ?? DELIVERY_PUSH_COPY : null;
       return {
         ...notification,
-        title: issueView?.summaryTitle || taskCopy?.title || notification.title,
-        body: issueView?.notificationBody || taskCopy?.body || notification.body,
+        title: copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title,
+        body: copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body,
         href: workdayNotificationHref(notification),
       };
     })

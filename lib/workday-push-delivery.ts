@@ -1,3 +1,5 @@
+import { employeePushNotBefore } from './employee-push-policy';
+
 export const MAX_WORKDAY_PUSH_ATTEMPTS = 5;
 
 const RETRY_MINUTES = [1, 5, 15, 30, 60] as const;
@@ -27,7 +29,7 @@ export type WorkdayPushStatus =
 
 export function workdayPushRetryAt(now: Date, attemptNumber: number) {
   const retryIndex = Math.max(0, Math.min(RETRY_MINUTES.length - 1, attemptNumber - 1));
-  return new Date(now.getTime() + RETRY_MINUTES[retryIndex] * 60_000);
+  return employeePushNotBefore(new Date(now.getTime() + RETRY_MINUTES[retryIndex] * 60_000));
 }
 
 export function planWorkdayPushDelivery(input: {
@@ -47,14 +49,14 @@ export function planWorkdayPushDelivery(input: {
   if (!input.configured) {
     return {
       status: 'not_configured',
-      nextAttemptAt: new Date(input.now.getTime() + 15 * 60_000),
+      nextAttemptAt: employeePushNotBefore(new Date(input.now.getTime() + 15 * 60_000)),
       lastErrorCode: 'WEB_PUSH_NOT_CONFIGURED',
     };
   }
   if (input.subscriptionCount === 0) {
     return {
       status: 'no_subscription',
-      nextAttemptAt: new Date(input.now.getTime() + 30 * 60_000),
+      nextAttemptAt: employeePushNotBefore(new Date(input.now.getTime() + 30 * 60_000)),
       lastErrorCode: 'WEB_PUSH_NO_SUBSCRIPTION',
     };
   }
@@ -75,7 +77,7 @@ export function planWorkdayPushDelivery(input: {
   if (input.permanentFailureCount === input.subscriptionCount) {
     return {
       status: 'no_subscription',
-      nextAttemptAt: new Date(input.now.getTime() + 30 * 60_000),
+      nextAttemptAt: employeePushNotBefore(new Date(input.now.getTime() + 30 * 60_000)),
       lastErrorCode: input.lastErrorCode || 'WEB_PUSH_SUBSCRIPTION_EXPIRED',
     };
   }
