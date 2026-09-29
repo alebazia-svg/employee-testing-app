@@ -29,7 +29,7 @@ export type ProcurementPaymentEvidence = Omit<ReturnType<typeof matchCashEvidenc
   remainingAmount: number;
   remainingForeignAmount: number | null;
   actualExchangeRate: number | null;
-  currencyPayments: { ref: string; number: string; date: string; foreignAmount: number }[];
+  currencyPayments: { ref: string; number: string; date: string; foreignAmount: number; documentForeignAmount?: number; unallocatedForeignAmount?: number }[];
   manualPaymentCount?: number;
   paymentAmountNeedsConfirmation?: boolean;
   completionByRubleEstimate?: boolean;
@@ -103,6 +103,25 @@ export function matchProcurementPaymentEvidence(
     const rate = conversionRateBefore(payment, conversions);
     let availableForeign = payment.documentAmount;
     const paymentAt = oneCDateTimestamp(payment.date);
+    const orderRef=(payment.baseDocumentRef||payment.settlementOrderRef||'').trim().toLowerCase();
+    // A register proves the order, not which of several open requests to pay.
+    // Unlike the old header-based allocator, this fallback must not guess FIFO.
+    const settlementOwners=payment.baseDocumentRef?[]:eligiblePlans.filter(candidate=>{
+      const created=Date.parse(candidate.createdAt||'');
+      const prior=allocations.get(candidate.id)!;
+      const covered=(Number(candidate.foreignAmount)>0
+        ? prior.foreign>=Number(candidate.foreignAmount)
+        : prior.rubles>=candidate.plannedAmount) && prior.payments.every(row=>oneCDateTimestamp(row.date)<paymentAt);
+      return ['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(candidate.status||'') &&
+        (candidate.status!==COMPLETED_WITHOUT_TOPUP||candidate.completedPaymentRefs?.includes(payment.ref)) &&
+        (!completedOwners.length||completedOwners.length===1&&completedOwners[0].id===candidate.id) &&
+        Number.isFinite(created)&&created<=paymentAt&&!covered&&samePaymentSupplier(candidate,payment)&&
+        candidate.orderRefs.some(ref=>ref.trim().toLowerCase()===orderRef);
+    });
+    if(!manualOwners.length && !payment.baseDocumentRef && settlementOwners.length>1){
+      for(const owner of settlementOwners){const current=evidence.get(owner.id)!;evidence.set(owner.id,{...current,state:'NEEDS_REVIEW'});}
+    }
+    let lastAllocation: ProcurementPaymentEvidence['currencyPayments'][number] | undefined;
     for (const plan of eligiblePlans) {
       if(completedOwners.length && (completedOwners.length !== 1 || completedOwners[0].id !== plan.id))continue;
       if(plan.status===COMPLETED_WITHOUT_TOPUP&&!plan.completedPaymentRefs?.includes(payment.ref))continue;
@@ -110,7 +129,8 @@ export function matchProcurementPaymentEvidence(
       if (manualOwners.length) {
         if (manualOwners.length !== 1 || manualOwners[0].id !== plan.id || !['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') ||
             !plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) || !samePaymentSupplier(plan, payment)) continue;
-      } else if (!payment.baseDocumentRef || !plan.orderRefs.some((ref) => ref.trim().toLowerCase() === payment.baseDocumentRef)) continue;
+      } else if (!orderRef || !plan.orderRefs.some((ref) => ref.trim().toLowerCase() === orderRef) ||
+        (!payment.baseDocumentRef && (settlementOwners.length!==1||settlementOwners[0].id!==plan.id))) continue;
       const createdAt = plan.createdAt ? new Date(plan.createdAt).getTime() : Number.NaN;
       if (Number.isFinite(createdAt) && Number.isFinite(paymentAt) && createdAt > paymentAt) continue;
       const allocation = allocations.get(plan.id)!;
@@ -118,9 +138,9 @@ export function matchProcurementPaymentEvidence(
       // A posted payment is evidence even without a recent exchange. Do not
       // invent a ruble equivalent or assign one payment to ambiguous requests.
       if (!targetForeign && !rate) {
-        const uniqueOwner = manualOwners.length === 1 || eligiblePlans.filter(candidate =>
-          candidate.orderRefs.some(ref => ref.trim().toLowerCase() === payment.baseDocumentRef.toLowerCase()),
-        ).length === 1;
+        const uniqueOwner = manualOwners.length === 1 || (!payment.baseDocumentRef ? settlementOwners.length===1 : eligiblePlans.filter(candidate =>
+          candidate.orderRefs.some(ref => ref.trim().toLowerCase() === orderRef),
+        ).length === 1);
         if (!['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') || !uniqueOwner) continue;
         allocation.foreign += availableForeign;
         // The owner plans a RUB budget, not an exact exchange transaction.
@@ -145,9 +165,13 @@ export function matchProcurementPaymentEvidence(
         allocation.rateRubles += takeRubles;
         allocation.rateForeign += takeForeign;
       }
-      allocation.payments.push({ ref: payment.ref, number: payment.number, date: payment.date, foreignAmount: takeForeign });
+      lastAllocation={ ref: payment.ref, number: payment.number, date: payment.date, foreignAmount: takeForeign, documentForeignAmount: payment.documentAmount };
+      allocation.payments.push(lastAllocation);
       availableForeign -= takeForeign;
     }
+    // Preserve the remainder exactly once, outside request coverage/totals.
+    // It is not automatically supplier overpayment or a new payment request.
+    if(lastAllocation && availableForeign>0.0000001)lastAllocation.unallocatedForeignAmount=Math.round(availableForeign*1e8)/1e8;
   }
 
   for (const plan of plans) {

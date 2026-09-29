@@ -57,3 +57,26 @@ test('settlement fallback validates requested order and keeps evidence older tha
   assert.equal((await read()).payments[0].settlementOrderRef,ref);
   wrong=true;await assert.rejects(read,/ORDER_MISMATCH/);
 });
+
+test('USDT source retains settlement units and fetches the missing order link even with no RUB payments',async(t)=>{
+  const oldEnv={...process.env};t.after(()=>{process.env=oldEnv;});
+  process.env['1C_BASE_URL']='https://one-c.invalid';process.env['1C_API_USER']='test';process.env['1C_API_PASSWORD']='test';
+  const ref='11111111-1111-1111-1111-111111111111';
+  const now=new Date();const date=new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric'}).format(now)+' 00:00:00';
+  let calls=0;
+  t.mock.method(globalThis,'fetch',async(input:string)=>{
+    const url=new URL(input);
+    if(url.pathname.includes('supplier-currency'))return Response.json({ok:true,rows:[{ref:'rko',date,number:'test',posted:true,deleted:false,document_amount:2725.45,document_currency:'USDT',supplier_partner:'Supplier',base_document_ref:'',settlement_amount:212585.1,settlement_currency:'руб',settlement_movements_count:1}]});
+    if(url.pathname.includes('currency-cash-costing-plan'))return Response.json({ok:true,events:[]});
+    if(url.pathname.includes('supplier-settlements')){
+      calls++;assert.equal(url.searchParams.get('order_ref'),ref);
+      return Response.json({ok:true,complete:true,write_operations:false,contract_version:'supplier-document-evidence-v1',as_of:new Date().toISOString(),order:[{order_ref:ref,supplier_name:'Supplier',posted:true,deleted:false}],due_date_movements:[{source_recorder_ref:'rko',settlement_object_ref:ref,settlement_document_ref:'rko',movement_date:date,movement_type:'Приход',raw_debt:0,raw_prepayment:212585.1,currency_name:'руб'}]});
+    }
+    return Response.json({ok:true,cash_expense_orders:[]});
+  });
+  const snapshot=await fetchSupplierCurrencyPaymentSnapshot({from:new Date(now.getTime()-86400000),to:now,plans:[{supplierPartner:'Supplier',orderRefs:[ref]}]});
+  assert.equal(snapshot.complete,true);assert.equal(calls,1);
+  assert.equal(snapshot.payments[0].settlementOrderRef,ref);
+  assert.equal(snapshot.payments[0].documentAmount,2725.45);
+  assert.equal(snapshot.payments[0].settlementAmount,212585.1);
+});

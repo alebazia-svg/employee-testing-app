@@ -15,6 +15,9 @@ export type SupplierCurrencyPaymentRow = {
   documentCurrency: string;
   baseDocumentRef: string;
   settlementOrderRef?: string;
+  settlementAmount?: number;
+  settlementCurrency?: string;
+  settlementMovementsCount?: number;
   cashbox?: string;
   supplier?: string;
   counterparty?: string;
@@ -91,6 +94,9 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       documentAmount: amount(row.document_amount),
       documentCurrency: text(row.document_currency).toUpperCase(),
       baseDocumentRef: text(row.base_document_ref).toLowerCase(),
+      settlementAmount: typeof row.settlement_amount === 'number' ? row.settlement_amount : undefined,
+      settlementCurrency: text(row.settlement_currency),
+      settlementMovementsCount: typeof row.settlement_movements_count === 'number' ? row.settlement_movements_count : undefined,
       cashbox: text(row.cashbox),
       supplier: text(row.supplier_partner),
       counterparty: text(row.supplier_counterparty),
@@ -117,13 +123,14 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
         supplier: text(row.partner), counterparty: text(row.counterparty), contract: text(row.contract) }]
       : []);
   let combined=[...payments,...rubPayments];
-  // Fetch only order anchors of requests whose RUB RKO lacks a header basis.
+  // Fetch only order anchors of requests whose RUB/USDT RKO lacks a header basis.
   // This supplements, rather than replaces, the original document fingerprint.
   if(input.plans?.length){
     const now=new Date(),from=input.from;
     const day=(offset:number)=>expenseRequestMoscowCalendarDate(new Date(now.getTime()-offset*86400000));
     const normalize=(s:string)=>s.trim().toLocaleLowerCase('ru').replaceAll('ё','е').replace(/\s+/g,' ');
-    const names=new Set(rubPayments.filter(p=>!p.baseDocumentRef && (parseOneCDateTime(p.date)?.getTime() || 0)>=from.getTime()).map(p=>normalize(p.supplier||'')));
+    const withoutBasis=combined.filter(p=>!p.baseDocumentRef && p.posted && !p.deleted && ['РУБ','RUB','USDT'].includes(p.documentCurrency) && (parseOneCDateTime(p.date)?.getTime() || 0)>=from.getTime());
+    const names=new Set(withoutBasis.map(p=>normalize(p.supplier||'')));
     const refs=[...new Set(input.plans.filter(p=>names.has(normalize(p.supplierPartner))).flatMap(p=>Array.isArray(p.orderRefs)?p.orderRefs.filter((r):r is string=>typeof r==='string'&&/^[a-f0-9-]{36}$/i.test(r)):[]))];
     if(refs.length>100)throw Error('SETTLEMENT_LINK_SCOPE_LIMIT');
     const details:Record<string,any>[]=[];
@@ -145,7 +152,7 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       const detail=await detailWindow(order_ref,0);
       const supplier=normalize((detail.order as any[])[0].supplier_name||'');
       const today=Date.parse(day(0)+'T00:00:00+03:00');
-      const offsets=new Set(rubPayments.filter(p=>!p.baseDocumentRef&&normalize(p.supplier||'')===supplier).map(p=>{
+      const offsets=new Set(withoutBasis.filter(p=>normalize(p.supplier||'')===supplier).map(p=>{
         const at=parseOneCDateTime(p.date);
         return at?Math.floor((today-Date.parse(expenseRequestMoscowCalendarDate(at)+'T00:00:00+03:00'))/(31*86400000))*31:0;
       }).filter(offset=>offset>0));

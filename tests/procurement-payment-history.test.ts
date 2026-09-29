@@ -40,3 +40,14 @@ test('completed-without-topup history retains actual paid amount and never says 
   assert.match(html,/Завершена без доплаты/);assert.match(html,/279 999/);assert.match(html,/Без доплаты: 1/);
   assert.match(html,/Окончательная сумма согласована/);assert.doesNotMatch(html,/Оплачено полностью|Заявка оплачена полностью|Вернуть в активные/);
 });
+
+test('USDT history preserves the full RKO and unallocated difference in buyer and admin views',()=>{
+  const plans=[{...historyFixture[1],evidence:{...historyFixture[1].evidence,paidAmount:0,actualExchangeRate:null,paidForeignAmount:2720.5,
+    currencyPayments:[{ref:'rko',number:'TEST-1781',date:'29.09.2026 13:50:57',foreignAmount:2720.5,documentForeignAmount:2725.45,unallocatedForeignAmount:4.95}]}}];
+  for(const splitView of [false,true]){
+    const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans,splitView}));
+    assert.match(html,/Оплачено полностью/);assert.match(html,/В заявку зачтено 2 720,5 USDT/);
+    assert.match(html,/Ещё 4,95 USDT не распределено по заявкам/);assert.match(html,/Сумма расходника: 2 725,45 USDT/);
+    assert.doesNotMatch(html,/Курс:|Рублёвый эквивалент:/);
+  }
+});

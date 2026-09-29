@@ -33,6 +33,7 @@ export function uniqueSupplierPayments(rows: SupplierCurrencyPaymentRow[]) {
     const signature = (row: SupplierCurrencyPaymentRow) => JSON.stringify([
       row.date, row.posted, row.deleted, row.documentAmount, row.documentCurrency,
       key(row.baseDocumentRef), row.supplier, row.counterparty, row.contract,row.settlementOrderRef,
+      row.settlementAmount, row.settlementCurrency, row.settlementMovementsCount,
     ]);
     return copies.every((row) => signature(row) === signature(copies[0])) ? [copies[0]] : [];
   });

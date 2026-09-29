@@ -40,7 +40,7 @@ export function ProcurementUnlinkedPayments({ payments, plans, linked }: {
       return <div key={payment.ref} className="grid gap-2 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,1fr)_auto] lg:items-center">
         <div><p className="font-semibold">{payment.supplier || payment.counterparty} · {foreign ? `${payment.documentAmount.toLocaleString('ru-RU')} USDT` : money(payment.documentAmount)}</p>
           <p className="text-xs text-slate-500">РКО {payment.number} · {payment.date} · {payment.contract || 'Договор не указан'}</p>
-          <p className="text-xs text-slate-500">{payment.baseDocumentRef ? 'Есть документ-основание; заявка не определена' : 'Без привязки к заказу'}</p></div>
+          <p className="text-xs text-slate-500">{payment.baseDocumentRef || payment.settlementOrderRef ? 'Есть связь в 1С; заявка не определена' : 'Связь с заказом пока не подтверждена'}</p></div>
         {options.length ? <><select aria-label={`Заявка для РКО ${payment.number}`} className="min-w-0 rounded-lg border border-slate-200 p-2 text-sm"
           value={choices[payment.ref] || ''} onChange={(event) => setChoices({ ...choices, [payment.ref]: event.target.value })}>
           <option value="">Выберите заявку</option>{options.map((plan) => <option key={plan.id} value={plan.id}>{plan.orderNumbers.length ? `Заказ ${plan.orderNumbers.join(', ')}` : 'В счёт долга поставщику'} · остаток {foreign && plan.remainingForeign != null ? `${plan.remainingForeign} USDT` : money(plan.remaining)}</option>)}</select>
