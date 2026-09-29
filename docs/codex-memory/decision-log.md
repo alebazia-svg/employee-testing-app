@@ -492,3 +492,22 @@ another chat's database. An isolated procurement_ui_20260929 database was used
 for real-app browser checks: sequential single-click approval, last-item
 transition, return-form cancellation, search, history discrepancies, missing
 source data and mobile list/detail navigation. No live payments were changed.
+
+## 2026-09-29 - Employee Quiet Hours And ADMIN Access Journal
+
+The owner approved daily employee push quiet hours from 22:00 through 08:29:59
+Europe/Moscow. Deferred delivery notices recheck current 1C collection permission;
+provider acceptance is not evidence of display. ADMIN push policy is unchanged.
+Code commit: `7a3e8c4`. See `employee-push-quiet-hours-20260929.md`.
+
+The owner also approved ADMIN → Сотрудники → Устройства и входы, initially for
+local development and then explicitly for production deployment with its separate
+additive table. Each row describes an account session and reported browser/device,
+not a proven physical person. No IP/geolocation, historical-login reconstruction,
+subscription changes or session revocation are included. Existing Mac subscriptions
+used by the owner to observe Astemir's notifications remain available.
+Code commit: `9d2f0f6`. See `portal-access-journal-20260929.md`.
+
+The owner confirmed two sequential releases: notification correction first,
+then the access journal with a database backup and its single approved migration.
+Unrelated procurement WIP is excluded from both commits.
