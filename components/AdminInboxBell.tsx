@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCheck, ChevronRight } from 'lucide-react';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
-import { currentPwaClientMode } from '@/lib/pwa-client-mode';
 import { startVisibleSync } from '@/lib/visible-sync';
 
 type InboxItem = {
@@ -55,7 +54,7 @@ export function AdminInboxBell() {
       const response = await fetch('/api/admin/push-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...subscription.toJSON(), clientMode: currentPwaClientMode() }),
+        body: JSON.stringify(subscription),
       });
       if (!response.ok) throw new Error('Не удалось сохранить разрешение на уведомления.');
       setPushConnected(true);
@@ -81,7 +80,7 @@ export function AdminInboxBell() {
 
   useEffect(() => {
     const stopVisibleSync = startVisibleSync(load, 60_000);
-    if (currentPwaClientMode() === 'standalone') void connectPush(false);
+    void connectPush(false);
     function close(event: MouseEvent) {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
     }

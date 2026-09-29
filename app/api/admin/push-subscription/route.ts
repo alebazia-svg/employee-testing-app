@@ -1,9 +1,5 @@
 import { getCurrentAdmin } from '@/lib/auth';
-import {
-  adminPushClientMode,
-  adminPushRegistrationModeForRequest,
-  shouldDisableOtherAdminPushSubscriptions,
-} from '@/lib/admin-push-subscription-policy';
+import { adminPushRegistrationModeForRequest } from '@/lib/admin-push-subscription-policy';
 import { prisma } from '@/lib/prisma';
 
 function readString(value: unknown) {
@@ -29,41 +25,30 @@ export async function POST(req: Request) {
   const auth = readString(payload?.keys?.auth);
   if (!endpoint || !p256dh || !auth) return Response.json({ error: 'Некорректная push-подписка' }, { status: 400 });
   const registrationMode = adminPushRegistrationModeForRequest(req);
-  const clientMode = adminPushClientMode(payload?.clientMode);
   const now = new Date();
   const userAgent = req.headers.get('user-agent') ?? '';
-  const subscription = await prisma.$transaction(async (tx) => {
-    const saved = await tx.workdayPushSubscription.upsert({
-      where: { endpoint },
-      create: {
-        userId: admin.id,
-        endpoint,
-        p256dh,
-        auth,
-        userAgent,
-        disabledAt: registrationMode === 'legacy-disabled' ? now : null,
-      },
-      update: {
-        userId: admin.id,
-        p256dh,
-        auth,
-        userAgent,
-        disabledAt: registrationMode === 'legacy-disabled' ? now : null,
-      },
-    });
-    if (shouldDisableOtherAdminPushSubscriptions(registrationMode, clientMode)) {
-      await tx.workdayPushSubscription.updateMany({
-        where: { userId: admin.id, id: { not: saved.id }, disabledAt: null },
-        data: { disabledAt: now },
-      });
-    }
-    return saved;
+  const subscription = await prisma.workdayPushSubscription.upsert({
+    where: { endpoint },
+    create: {
+      userId: admin.id,
+      endpoint,
+      p256dh,
+      auth,
+      userAgent,
+      disabledAt: registrationMode === 'legacy-disabled' ? now : null,
+    },
+    update: {
+      userId: admin.id,
+      p256dh,
+      auth,
+      userAgent,
+      disabledAt: registrationMode === 'legacy-disabled' ? now : null,
+    },
   });
   return Response.json({
     ok: true,
     id: subscription.id,
     active: registrationMode !== 'legacy-disabled',
-    primary: shouldDisableOtherAdminPushSubscriptions(registrationMode, clientMode),
   });
 }
 
