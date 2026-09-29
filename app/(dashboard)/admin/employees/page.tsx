@@ -5,6 +5,7 @@ import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
 import EmployeesClient from './EmployeesClient';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ export default async function EmployeesPage() {
   return (
     <AdminShell>
       <AdminBreadcrumbs current='Сотрудники' />
-      <AdminPageHeader eyebrow='Команда' title='Сотрудники' description='Справочник сотрудников, доступы в портал и данные для расчёта зарплаты.' />
+      <AdminPageHeader eyebrow='Команда' title='Сотрудники' description='Справочник сотрудников, доступы в портал и данные для расчёта зарплаты.' actions={<Link href='/admin/employees/access' className='inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700'>Устройства и входы</Link>} />
       <div className='mt-5'><EmployeesClient initialUsers={users} /></div>
     </AdminShell>
   );

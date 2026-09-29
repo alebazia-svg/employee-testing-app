@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { createSessionToken, sessionCookieName, sessionMaxAgeSeconds } from '@/lib/session';
 import { clearLoginFailures, loginAllowed, recordLoginFailure } from '@/lib/login-rate-limit';
+import { recordPortalAccess } from '@/lib/portal-access-journal';
 
 export async function POST(req: Request) {
   const { login, password } = await req.json();
@@ -24,7 +25,10 @@ export async function POST(req: Request) {
   clearLoginFailures(req, login);
 
   const cookieStore = await cookies();
-  cookieStore.set(sessionCookieName, createSessionToken(user.id), {
+  const token = createSessionToken(user.id);
+  try { await recordPortalAccess({ userId: user.id, token, userAgent: req.headers.get('user-agent') ?? '', login: true }); }
+  catch { console.warn('PORTAL_ACCESS_JOURNAL_UNAVAILABLE'); }
+  cookieStore.set(sessionCookieName, token, {
     path: '/',
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

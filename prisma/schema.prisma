@@ -40,6 +40,7 @@ model User {
   cashOperations                   CashOperation[]
   oneCCashboxMapping               UserOneCCashboxMapping?
   pushSubscriptions                WorkdayPushSubscription[]
+  accessSessions                   PortalAccessSession[]
   workdayNotifications             WorkdayNotification[]
   workdayControlIssues             WorkdayControlIssue[]
   kkmAssignments                   WorkdayKkmAssignment[]            @relation("WorkdayKkmAssignmentEmployee")
@@ -922,8 +923,31 @@ model WorkdayPushSubscription {
   updatedAt  DateTime  @updatedAt
   disabledAt DateTime?
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessSessions PortalAccessSession[]
 
   @@index([userId, disabledAt])
+}
+
+// Journal only: never used to grant/revoke access. Raw auth cookies and IPs are not stored.
+model PortalAccessSession {
+  id                 String   @id @default(cuid())
+  userId             Int
+  sessionHash        String   @unique
+  device             String
+  browser            String
+  firstSeenAt        DateTime @default(now())
+  loginAt            DateTime?
+  lastSeenAt         DateTime @default(now())
+  expiresAt          DateTime
+  loggedOutAt        DateTime?
+  pushState          String   @default("unknown")
+  pushCheckedAt      DateTime?
+  pushSubscriptionId Int?
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pushSubscription   WorkdayPushSubscription? @relation(fields: [pushSubscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([firstSeenAt, id])
+  @@index([userId, firstSeenAt])
 }
 
 model WorkdayControlIssue {

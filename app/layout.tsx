@@ -1,6 +1,7 @@
 import './globals.css';
 import './mobo-brand.css';
 import type { Metadata, Viewport } from 'next';
+import { PortalAccessTracker } from '@/components/PortalAccessTracker';
 
 export const metadata: Metadata = {
   title: 'MOBO · Портал компании',
@@ -29,5 +30,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return <html lang='ru'><body>{children}</body></html>;
+  return <html lang='ru'><body>{children}<PortalAccessTracker /></body></html>;
 }
