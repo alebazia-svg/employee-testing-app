@@ -13,7 +13,7 @@ import { findApprovedCloseException, findOpenRequiredWorkdayIssues } from '@/lib
 import { cashEncashmentExceptionPrefix } from '@/lib/workday-cash-encashment-exception';
 import { resolveCarriedCashEncashmentExceptions } from '@/lib/workday-cash-encashment-resolution';
 import { resolveCloseExceptionNotifications, resolveTaskNotifications } from '@/lib/workday-notifications';
-import { readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
+import { kkmShiftCloseRequiresEmployeeAction, readKkmShiftCloseSimulation, syncKkmShiftCloseIssue, verifyEmployeeKkmShiftClose } from '@/lib/kkm-shift-close-control';
 import { requestBodyTooLarge, validateEmployeeImage } from '@/lib/image-upload';
 import {
   appendCashRecountInputHistory,
@@ -519,7 +519,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           } as Prisma.InputJsonValue,
         },
       });
-      if (evidence.status === 'confirmed') {
+      if (evidence.status === 'confirmed' || !kkmShiftCloseRequiresEmployeeAction(evidence)) {
         await syncKkmShiftCloseIssue(prisma, { userId: user.id, taskId: task.id, workDayEntryId: task.run.workDayEntryId, date: task.run.date, evidence, now });
       } else if (now.getTime() - startedAt.getTime() < 90_000) {
         return Response.json({
