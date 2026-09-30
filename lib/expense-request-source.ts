@@ -70,6 +70,12 @@ export function expenseRequestMoscowCalendarDate(value: Date) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+/** Exclusive upper bound for reads that must include today's 1C documents. */
+export function expenseRequestMoscowDayEnd(now = new Date()) {
+  const start = new Date(`${expenseRequestMoscowCalendarDate(now)}T00:00:00+03:00`);
+  return new Date(start.getTime() + 86400000);
+}
+
 function readPositiveInteger(value: string | undefined, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;

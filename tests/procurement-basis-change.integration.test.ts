@@ -27,7 +27,7 @@ test('basis changes keep one plan, preserve terms, reapprove and reject paid/sta
     'procurement-supplier-settlements':'export const fetchSupplierSettlements=async()=>({complete:globalThis.basisChangeTest.complete,rows:[]});export const summarizeSupplierSettlements=()=>({bySupplier:{[globalThis.basisChangeTest.supplier]:{debt:globalThis.basisChangeTest.debt,advance:0,closingBalance:-globalThis.basisChangeTest.debt,reviewRequired:false}},unsupportedCurrencyRows:0});',
     'procurement-planning-sync':'export const verifySelectedPlanningOrders=async rows=>rows;',
     'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:globalThis.basisChangeTest.complete,payments:[],conversions:[]});',
-    'expense-request-source':'export const fetchExpenseRequestSnapshot=async()=>({complete:globalThis.basisChangeTest.complete,rows:[]});export const expenseRequestMoscowCalendarDate=()=>"2026-09-25";',
+    'expense-request-source':'export const expenseRequestMoscowDayEnd=()=>new Date("2026-09-26T00:00:00+03:00");export const fetchExpenseRequestSnapshot=async()=>({complete:globalThis.basisChangeTest.complete,rows:[]});export const expenseRequestMoscowCalendarDate=()=>"2026-09-25";',
     'procurement-currency-payment-evidence':'export const matchProcurementPaymentEvidence=plans=>new Map(plans.map(p=>[p.id,globalThis.basisChangeTest.paid]));',
     'procurement-usdt-rate':'export const getLatestProcurementUsdtRate=async()=>({rate:90});',
     'procurement-payment-notifications':'export const notifyAdminsAboutProcurementPlans=async()=>{};export const notifyProcurementManagerAboutDecision=async()=>{};',

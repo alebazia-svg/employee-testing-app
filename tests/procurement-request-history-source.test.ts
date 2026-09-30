@@ -1,6 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchExpenseRequestSnapshot } from '../lib/expense-request-source';
+import { expenseRequestMoscowCalendarDate, expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from '../lib/expense-request-source';
+
+test('today-inclusive bound follows Moscow midnight, including month/year/leap boundaries', () => {
+  for (const [now, tomorrow] of [
+    ['2026-09-30T16:00:00Z', '2026-10-01'], ['2026-09-30T20:59:59Z', '2026-10-01'],
+    ['2026-09-30T21:00:00Z', '2026-10-02'], ['2026-12-31T20:59:59Z', '2027-01-01'],
+    ['2028-02-28T21:00:00Z', '2028-03-01'],
+  ]) {
+    const end = expenseRequestMoscowDayEnd(new Date(now));
+    assert.equal(expenseRequestMoscowCalendarDate(end), tomorrow);
+    assert.equal(end.toISOString(), new Date(`${tomorrow}T00:00:00+03:00`).toISOString());
+    assert.ok(end > new Date(now));
+  }
+});
 
 test('procurement request history uses contiguous exclusive-end Moscow windows and retains old requests', async t => {
   const old = { ...process.env }; t.after(() => { process.env = old; });

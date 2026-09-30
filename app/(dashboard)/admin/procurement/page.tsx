@@ -1,7 +1,7 @@
 import { AdminShell } from "@/components/AdminShell";
 import { AdminBreadcrumbs } from "@/components/AdminBreadcrumbs";
 import { prisma } from "@/lib/prisma";
-import { fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
+import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { calculateOrderPlanning } from "@/lib/procurement-payment-control";
 import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
@@ -55,8 +55,7 @@ function ownerBalance(source: Awaited<ReturnType<typeof loadOwnerCashForecastSha
 
 export default async function AdminProcurementPage() {
   const todayKey = expenseRequestMoscowCalendarDate(new Date());
-  const to = new Date();
-  to.setDate(to.getDate() + 1);
+  const to = expenseRequestMoscowDayEnd();
   const from = new Date(to);
   from.setDate(from.getDate() - 31);
   const plansQuery = prisma.supplierPaymentPlan.findMany({

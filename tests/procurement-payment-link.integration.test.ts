@@ -21,7 +21,7 @@ test('manual payment route: real PostgreSQL persistence, concurrency, auth, revo
       '@/lib/admin-api-auth': 'export const requireAdminApi = async () => globalThis.paymentTestAuth;',
       '@/lib/prisma': 'export const prisma = globalThis.paymentTestDb;',
       '@/lib/procurement-currency-payment-source': 'export const fetchSupplierCurrencyPaymentSnapshot = async () => globalThis.paymentTestSource;',
-      '@/lib/expense-request-source': 'export const fetchExpenseRequestSnapshot = async () => globalThis.paymentTestRequests;',
+      '@/lib/expense-request-source': 'export const expenseRequestMoscowDayEnd=()=>new Date("2026-10-01T00:00:00+03:00"); export const fetchExpenseRequestSnapshot = async () => globalThis.paymentTestRequests;',
     };
     const bundle = await build({ entryPoints: ['app/api/admin/procurement/payment-plans/[id]/payment-link/route.ts'], bundle: true, write: false, platform: 'node', format: 'esm', plugins: [{ name: 'test-boundaries', setup(b) { b.onResolve({ filter: /^@\/lib\// }, args => mocks[args.path] ? { path: args.path, namespace: 'test-boundaries' } : null); b.onLoad({ filter: /.*/, namespace: 'test-boundaries' }, args => ({ contents: mocks[args.path], loader: 'js' })); } }] });
     const { POST } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);

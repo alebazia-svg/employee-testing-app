@@ -18,7 +18,7 @@ test('isolated revision lifecycle preserves review evidence, requires approval f
   const mocks:Record<string,string>={
     prisma:`const s=globalThis.buyerRevisionTest;const update=({data})=>{s.plan={...s.plan,...data,updatedAt:new Date(s.plan.updatedAt.getTime()+1000)};return s.plan};const tx={$executeRaw:async()=>{},supplierPaymentPlan:{findMany:async()=>[s.plan],findFirst:async()=>s.plan,findUniqueOrThrow:async()=>s.plan,updateMany:async arg=>{update(arg);return {count:1}},update:async arg=>update(arg)},supplierPaymentPlanEvent:{create:async({data})=>{s.events.push(data);return {id:String(s.events.length)}}}};export const prisma={...tx,$transaction:async fn=>fn(tx)};`,
     'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,payments:[],conversions:[]});',
-    'expense-request-source':'export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});',
+    'expense-request-source':'export const expenseRequestMoscowDayEnd=()=>new Date("2026-10-01T00:00:00+03:00");export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});',
     'procurement-ruble-payment-evidence':'export const paymentEvidenceFrom=(_p,d)=>d;',
     'procurement-currency-payment-evidence':'export const matchProcurementPaymentEvidence=()=>new Map([["demo",globalThis.buyerRevisionTest.paid]]);',
     'procurement-payment-notifications':'export const notifyAdminsAboutProcurementPlans=async()=>{};export const notifyProcurementManagerAboutDecision=async()=>{};',

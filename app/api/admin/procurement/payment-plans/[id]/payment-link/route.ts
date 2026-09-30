@@ -3,7 +3,7 @@ import { paymentCompletion, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-pa
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
 import { fetchSupplierCurrencyPaymentSnapshot } from '@/lib/procurement-currency-payment-source';
-import { fetchExpenseRequestSnapshot } from '@/lib/expense-request-source';
+import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from '@/lib/expense-request-source';
 import { matchProcurementPaymentEvidence } from '@/lib/procurement-currency-payment-evidence';
 import { paymentEvidenceFrom, paymentTimestamp, uniqueSupplierPayments } from '@/lib/procurement-ruble-payment-evidence';
 import { manualPaymentLinks, paymentFingerprint, samePaymentSupplier } from '@/lib/procurement-manual-payment-links';
@@ -18,7 +18,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
   const ref = payload.ref.toLowerCase();
   try {
     const initial = await prisma.supplierPaymentPlan.findMany();
-    const to = new Date();
+    const to = expenseRequestMoscowDayEnd();
     const from = paymentEvidenceFrom(initial, new Date(to.getTime() - 30 * 86400_000));
     const [source, requests] = payload.action === 'LINK' ? await Promise.all([
       fetchSupplierCurrencyPaymentSnapshot({ from, to, plans: initial }), fetchExpenseRequestSnapshot({ from, to, includeHistory: true }),

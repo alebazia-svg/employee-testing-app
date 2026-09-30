@@ -12,7 +12,7 @@ import { fetchRequestOrderCatalogue } from '@/lib/procurement-request-catalogue'
 import { fetchManagerSupplierNames } from '@/lib/procurement-supplier-roster';
 import ProcurementPaymentCalendarClient from "./ProcurementPaymentCalendarClient";
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
-import { expenseRequestMoscowCalendarDate, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
+import { expenseRequestMoscowCalendarDate, expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
@@ -31,8 +31,7 @@ export default async function ProcurementPage() {
     ? deliveryMappedUser().then(mapped => mapped.id === user.id ? loadDeliveryView() : null).catch(() => null)
     : Promise.resolve(null);
   const todayKey = expenseRequestMoscowCalendarDate(new Date());
-  const requestTo = new Date();
-  requestTo.setDate(requestTo.getDate() + 1);
+  const requestTo = expenseRequestMoscowDayEnd();
   const requestFrom = new Date(requestTo);
   requestFrom.setDate(requestFrom.getDate() - 31);
   // Match globally so an RKO cannot independently close requests in two cabinets.

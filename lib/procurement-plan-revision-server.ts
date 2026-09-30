@@ -3,7 +3,7 @@ import { paymentCompletion } from './procurement-payment-completion';
 import { preservePaymentReview } from './procurement-buyer-comment';
 import { prisma } from './prisma';
 import { fetchSupplierCurrencyPaymentSnapshot } from './procurement-currency-payment-source';
-import { fetchExpenseRequestSnapshot } from './expense-request-source';
+import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from './expense-request-source';
 import { paymentEvidenceFrom } from './procurement-ruble-payment-evidence';
 import { matchProcurementPaymentEvidence } from './procurement-currency-payment-evidence';
 import { manualPaymentLinks } from './procurement-manual-payment-links';
@@ -15,7 +15,7 @@ import { validateBasisChangeTarget } from './procurement-basis-change-server';
 
 export async function freshEvidence() {
   const plans = await prisma.supplierPaymentPlan.findMany({ include: { manager: true } });
-  const to = new Date(); const from = paymentEvidenceFrom(plans, new Date(to.getTime() - 31 * 86400000));
+  const to = expenseRequestMoscowDayEnd(); const from = paymentEvidenceFrom(plans, new Date(to.getTime() - 31 * 86400000));
   const [source, requests] = await Promise.all([fetchSupplierCurrencyPaymentSnapshot({ from, to, plans }), fetchExpenseRequestSnapshot({ from, to, includeHistory: true })]);
   if (!source.complete || !requests.complete) throw new Error('Не удалось проверить оплаты в 1С. Повторите изменение после восстановления связи.');
   const result = matchProcurementPaymentEvidence(plans.map(p => ({ ...p, completedPaymentRefs: paymentCompletion(p.oneCCashEvidence)?.paymentRefs, orderRefs: Array.isArray(p.orderRefs) ? p.orderRefs.map(String) : [], plannedAmount: Number(p.plannedAmount), foreignAmount: p.foreignAmount == null ? null : Number(p.foreignAmount), plannedDate: p.plannedDate.toISOString(), createdAt: paymentMatchCreatedAt(p), managerName: p.manager.oneCManagerName || p.manager.name, manualRubleLinks: manualPaymentLinks(p.oneCCashEvidence) })), requests.rows, source.payments, source.conversions);
