@@ -12,6 +12,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
 import { PayrollBonusesEditor } from './PayrollBonusesEditor';
 import { PayrollFinboxImport } from './PayrollFinboxImport';
+import { applyPayrollOneCAdvances, type PayrollAdvanceRead, type PayrollAdvanceDocument } from '@/lib/payroll-one-c-advances';
 import { PayrollDailyOneCControl, type DailyControlResponse } from './PayrollDailyOneCControl';
 import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
 import {
@@ -419,6 +420,7 @@ type PayrollWorkbookMainRow = {
 };
 
 type PayrollWorkbookModel = {
+  oneCAdvanceEmployees?: string[];
   periodLabel: string;
   versionLabel: string;
   generatedAt: string;
@@ -690,7 +692,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
         '',
         displayedComponent,
         calculation,
-        getAccrualSource(component),
+        component === 'Аванс' && model.oneCAdvanceEmployees?.includes(employee) ? 'Расходники 1С' : getAccrualSource(component),
         component === 'Разовая премия'
           ? formatPayrollWorkbookBonusReason(employee, String(row[7] ?? ''))
           : row[7] ?? '',
@@ -826,6 +828,7 @@ function getSavedRetailAccessoryTier(sourceSummary: unknown) {
 }
 
 type FullPayrollRow = BonusManagerSummary & {
+  advanceDocuments?: PayrollAdvanceDocument[];
   belaBase?: number;
   belaPercentAmount?: number;
   minimumGuaranteeAdjustment?: number;
@@ -3991,6 +3994,9 @@ export default function AdminPayrollPage() {
   const [oneCDetailError, setOneCDetailError] = useState('');
   const oneCDetailRequestVersion = useRef(0);
   const [oneCShadowBaseline, setOneCShadowBaseline] = useState<SavedPayrollRunDetail | null>(null);
+  const [oneCAdvances, setOneCAdvances] = useState<PayrollAdvanceRead | null>(null);
+  const [oneCAdvancesError, setOneCAdvancesError] = useState('');
+  const [isAutomaticExporting, setIsAutomaticExporting] = useState(false);
   const [oneCShadowBaselineError, setOneCShadowBaselineError] = useState('');
   const [isOneCShadowBaselineLoading, setIsOneCShadowBaselineLoading] = useState(false);
   const [classificationRules, setClassificationRules] = useState<PayrollClassificationRule[]>([]);
@@ -4014,6 +4020,30 @@ export default function AdminPayrollPage() {
   const payrollPurchaseStorageKey = `payroll-purchase-${year}-${month}`;
   const selectedPayrollPeriodKey = `${year}-${formatPayrollMonthKey(Number(month))}`;
   const isSelectedPayrollPeriodCurrent = selectedPayrollPeriodKey === getCurrentMoscowPayrollPeriodKey();
+  useEffect(() => {
+    if (!isSelectedPayrollPeriodCurrent) return;
+    let cancelled = false;
+    let loading = false;
+    const controller = new AbortController();
+    setOneCAdvances(null);
+    setOneCAdvancesError('');
+    const refresh = async () => {
+      if (loading || cancelled) return;
+      loading = true;
+      try {
+        const response = await fetch(`/api/admin/payroll/advances?period=${selectedPayrollPeriodKey}`, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('Авансы из 1С не проверены. Остаток к выплате пока не подтверждён.');
+        const data = await response.json() as PayrollAdvanceRead;
+        if (data.version !== 1 || data.periodKey !== selectedPayrollPeriodKey || !Array.isArray(data.documents) || !Array.isArray(data.issues)) throw new Error('Некорректный ответ по авансам.');
+        if (!cancelled) { setOneCAdvances(data); setOneCAdvancesError(''); }
+      } catch (error) {
+        if (!cancelled) { setOneCAdvancesError(error instanceof Error ? error.message : 'Не удалось проверить авансы.'); }
+      } finally { loading = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, 5 * 60 * 1000);
+    return () => { cancelled = true; controller.abort(); window.clearInterval(timer); };
+  }, [isSelectedPayrollPeriodCurrent, selectedPayrollPeriodKey]);
   const bonusesReady = bonusState.periodKey === selectedPayrollPeriodKey;
   const bonusDrafts = bonusesReady ? bonusState.drafts : [];
   const handleOneCShadowDataChange = useCallback((data: DailyControlResponse | null, state: { isStale: boolean }) => {
@@ -4582,7 +4612,15 @@ export default function AdminPayrollPage() {
           })),
       )
       : bonusValidation.bonuses;
-    const shadowRows = applyPayrollBonuses(shadowRegularRows, savedBonuses);
+    const rawShadowRows = applyPayrollBonuses(shadowRegularRows, savedBonuses);
+    const advanceRead = oneCAdvances?.periodKey === selectedPayrollPeriodKey ? oneCAdvances : null;
+    const advanceResult = isPreliminary && advanceRead
+      ? applyPayrollOneCAdvances(rawShadowRows, advanceRead)
+      : { rows: rawShadowRows, issues: [] as string[] };
+    const advanceIssues = isPreliminary
+      ? [...advanceResult.issues, ...(oneCAdvancesError ? [oneCAdvancesError] : !advanceRead ? ['Авансы из 1С ещё проверяются.'] : [])]
+      : [];
+    const shadowRows: FullPayrollRow[] = advanceResult.rows;
     const baselineByEmployee = new Map((oneCShadowBaseline?.employeeResults ?? []).map((row) => [row.employeeName, row]));
     const shadowByEmployee = new Map(shadowRows.map((row) => [row.manager, row]));
     const employeeNames = Array.from(new Set([...baselineByEmployee.keys(), ...shadowByEmployee.keys()]));
@@ -4631,6 +4669,7 @@ export default function AdminPayrollPage() {
         grossDelta,
         baselineNetPay: baseline?.netPay ?? 0,
         shadowNetPay: shadow?.netPay ?? 0,
+        advance: shadow?.advance ?? 0,
         netDelta,
         revenueDelta: payrollMoney((shadow?.revenue ?? 0) - (baseline?.revenue ?? 0)),
         grossProfitDelta: payrollMoney((shadow?.grossProfit ?? 0) - (baseline?.grossProfit ?? 0)),
@@ -4685,6 +4724,7 @@ export default function AdminPayrollPage() {
       else reviewEmployees.push({ employeeName: agentCreditCommissionEmployee, reasons: ['Агентские Finbox пока не внесены'] });
     }
     const blockingIssues = [
+      ...advanceIssues,
       ...oneCShadowSource.blockingIssues,
       costPendingRows ? `Себестоимость не завершена в ${costPendingRows} строках, влияющих на зарплату.` : '',
       unresolvedRows ? `Не классифицировано однозначно: ${unresolvedRows} строк.` : '',
@@ -4694,6 +4734,8 @@ export default function AdminPayrollPage() {
 
     return {
       mode: isPreliminary ? 'preliminary' as const : 'comparison' as const,
+      advanceIssues,
+      advancesCheckedAt: isPreliminary ? advanceRead?.checkedAt ?? null : null,
       baselineRunNumber: oneCShadowBaseline?.runNumber ?? null,
       comparisons,
       comparisonGroups,
@@ -4715,7 +4757,7 @@ export default function AdminPayrollPage() {
       managerSummaries: shadowManagerSummaries,
       bonuses: savedBonuses,
     };
-  }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodCurrent, manualPayroll, month, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey, year]);
+  }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodCurrent, manualPayroll, month, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey, year, oneCAdvances, oneCAdvancesError]);
   const selectedManagerPayroll = useMemo(
     () => (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows : fullPayrollRows)?.find((summary) => summary.manager === selectedManager) ?? null,
     [fullPayrollRows, oneCShadowCalculation, selectedManager, selectedManagerSource],
@@ -5896,8 +5938,8 @@ export default function AdminPayrollPage() {
     return Math.round(value * 100) / 100;
   }
 
-  function getManagerComponentBases(manager: string) {
-    const managerRows = classification.rows.filter((row) => row.manager === manager);
+  function getManagerComponentBases(manager: string, source = classification) {
+    const managerRows = source.rows.filter((row) => row.manager === manager);
     return {
       credit: getCreditTechCalculationRows(managerRows).reduce((sum, row) => sum + getCreditTechCalculationBase(row), 0),
       film: managerRows.filter((row) => row.calculationType === 'RETAIL_FILM_50').reduce((sum, row) => sum + row.base, 0),
@@ -5907,14 +5949,17 @@ export default function AdminPayrollPage() {
     };
   }
 
-  function buildAccrualExportRows() {
-    return fullPayrollRows.flatMap((row) => {
+  function buildAccrualExportRows(payrollRows = fullPayrollRows, source = classification, bonuses = bonusValidation.bonuses) {
+    return payrollRows.flatMap((row) => {
       const baseColumns = [row.manager, getPayrollExportCategory(row), getPayrollExportShortType(row)] as const;
       const rowsForEmployee: Array<Array<string | number | null>> = [];
       const push = (component: string, base: string | number | null, formula: string, amount: number, comment = '') => {
-        rowsForEmployee.push([...baseColumns, component, typeof base === 'number' ? toExportMoney(base) : base, formula, toExportMoney(amount), comment]);
+        const note = component === 'Аванс' && row.advanceDocuments?.length
+          ? row.advanceDocuments.map((doc) => `Расходник №${doc.documentNumber} от ${doc.documentDate}: ${formatMoney(doc.amount)}`).join('; ')
+          : comment;
+        rowsForEmployee.push([...baseColumns, component, typeof base === 'number' ? toExportMoney(base) : base, formula, toExportMoney(amount), note]);
       };
-      const pushBonuses = () => bonusValidation.bonuses.filter((bonus) => bonus.employeeName === row.manager).forEach((bonus) => push('Разовая премия', null, '', bonus.amount, bonus.reason));
+      const pushBonuses = () => bonuses.filter((bonus) => bonus.employeeName === row.manager).forEach((bonus) => push('Разовая премия', null, '', bonus.amount, bonus.reason));
 
       if (row.salaryType === 'fixed_salary') {
         push('Фиксированный оклад', row.fixedSalary, 'оклад', row.fixedSalary);
@@ -5945,9 +5990,9 @@ export default function AdminPayrollPage() {
         push('Начисление 12%', row.belaBase ?? 0, '12% от обычных начислений выбранных сотрудников, без разовых премий', row.belaPercentAmount ?? 0);
         if (getBelaMinimum(selectedPayrollPeriodKey)) push('Доплата до минимальной зарплаты', getBelaMinimum(selectedPayrollPeriodKey), 'не менее 100 000 ₽ за месяц', row.minimumGuaranteeAdjustment ?? 0);
       } else if (row.salaryType === 'wholesale_percent') {
-        push('Бонус опта 1,75%', classification.wholesale.base, 'общая база опта × 1,75%', row.wholesaleBonus);
+        push('Бонус опта 1,75%', source.wholesale.base, 'общая база опта × 1,75%', row.wholesaleBonus);
       } else {
-        const bases = getManagerComponentBases(row.manager);
+        const bases = getManagerComponentBases(row.manager, source);
         if (row.filmBonus) push(`Услуги оказываемые ${getPayrollServicePercent(row.manager)}%`, bases.film, `выручка × ${getPayrollServicePercent(row.manager)}%`, row.filmBonus);
         if (row.plotterBonus) push('Плоттерные материалы 50% от с/с', bases.plotter, 'с/с × 50%', row.plotterBonus);
         if (row.techBonus) push('Техника 10% от ВП', bases.tech, 'ВП × 10%', row.techBonus);
@@ -6568,11 +6613,34 @@ export default function AdminPayrollPage() {
     }
   }
 
-  async function exportCurrentPayrollWorkbook() {
+  async function exportCurrentPayrollWorkbook(sourceKind: 'manual' | 'oneC' = 'manual') {
+    const automatic = sourceKind === 'oneC';
+    if (automatic && (!oneCShadowCalculation || oneCShadowCalculation.mode !== 'preliminary' || oneCShadowCalculation.advanceIssues.length)) {
+      setSaveError('Сначала дождитесь проверки авансов и устраните неоднозначные выплаты.'); return;
+    }
     if (isPayrollDirectoryLoading) { setSaveError('Правила сотрудников ещё загружаются. Подождите несколько секунд.'); return; }
     if (payrollDirectoryError) { setSaveError(`${payrollDirectoryError} Ведомость не сформирована, чтобы не пропустить нового сотрудника.`); return; }
     if (bonusValidation.error) { setSaveError(bonusValidation.error); return; }
-    const sortedRows = sortPayrollWorkbookEmployees(fullPayrollRows.map((row) => ({ ...row, employeeName: row.manager })));
+    const exportRows = automatic ? oneCShadowCalculation!.shadowRows : fullPayrollRows;
+    let exportClassification = classification;
+    if (automatic) {
+      try {
+        const response = await fetch(`/api/admin/payroll/daily-control?year=${year}&month=${month}&view=full`, { cache: 'no-store' });
+        const body = await response.json() as DailyControlResponse;
+        if (!response.ok || !body.ok || body.period.periodKey !== selectedPayrollPeriodKey || !Array.isArray(body.sales.rows)) throw new Error('Подробные данные 1С недоступны.');
+        const rows: SalesRow[] = body.sales.rows.map((row) => ({ ...row, registrar: '', registrars: [], profitability: row.revenue ? row.grossProfit / row.revenue * 100 : 0 }));
+        exportClassification = classifySalesRows(mapLegacyRetailTraineeRowsForPeriod(rows, month, year), classificationRules);
+        const summaries = oneCShadowCalculation!.classification.managerSummaries;
+        if (summaries.length !== exportClassification.managerSummaries.length || summaries.some((summary) => {
+          const detail = exportClassification.managerSummaries.find((item) => item.manager === summary.manager);
+          return !detail || (['revenue', 'grossProfit', 'filmBonus', 'plotterBonus', 'techBonus', 'accessoryBonus', 'creditBonus'] as const)
+            .some((key) => Math.abs(summary[key] - detail[key]) > 0.005);
+        }) || Math.abs(exportClassification.wholesale.base - oneCShadowCalculation!.classification.wholesale.base) > 0.005) {
+          throw new Error('Данные 1С обновились. Обновите расчёт перед скачиванием ведомости.');
+        }
+      } catch (error) { setSaveError(error instanceof Error ? error.message : 'Не удалось подготовить ведомость.'); return; }
+    }
+    const sortedRows = sortPayrollWorkbookEmployees(exportRows.map((row) => ({ ...row, employeeName: row.manager })));
     const employeeRows = sortedRows.map((row) => {
       const performancePay = row.salaryType === 'purchase_manager'
         ? row.purchasePercentAmount
@@ -6598,16 +6666,16 @@ export default function AdminPayrollPage() {
         advance: toExportMoney(row.advance),
         deduction: toExportMoney(row.fixedDeduction),
         netPay: toExportMoney(row.netPay),
-        status: getPayrollWorkbookStatusLabel(getPayrollRowStatus(row)),
-        comment: getPayrollRowExportComment(row),
+        status: getPayrollWorkbookStatusLabel(automatic ? row.payrollStatus : getPayrollRowStatus(row)),
+        comment: automatic ? buildPayrollWorkbookEmployeeComment({ employeeName: row.manager, lateCount: row.lateCount, deduction: row.fixedDeduction, manualComment: row.comment, reviewReasons: row.payrollReasons, bonuses: oneCShadowCalculation!.bonuses.filter((bonus) => bonus.employeeName === row.manager) }) : getPayrollRowExportComment(row),
       };
     });
-    const accrualRows = buildAccrualExportRows()
+    const accrualRows = buildAccrualExportRows(exportRows, exportClassification, automatic ? oneCShadowCalculation!.bonuses : bonusValidation.bonuses)
       .sort((left, right) => {
         const order = new Map(sortedRows.map((row, index) => [row.manager, index]));
         return (order.get(String(left[0])) ?? 999) - (order.get(String(right[0])) ?? 999);
       })
-      .map((row) => row.map((value, index) => index === 1 ? getPayrollWorkbookGroup(fullPayrollRows.find((employee) => employee.manager === row[0])?.salaryType ?? '') : index === 3 ? getPayrollWorkbookComponentLabel(String(value ?? '')) : value));
+      .map((row) => row.map((value, index) => index === 1 ? getPayrollWorkbookGroup(exportRows.find((employee) => employee.manager === row[0])?.salaryType ?? '') : index === 3 ? getPayrollWorkbookComponentLabel(String(value ?? '')) : value));
     const sourceRows: Array<Array<string | number | null>> = [
       ['Период', `${months[Number(month)]} ${year}`, 'Выбранный месяц и год'],
       ['Источник продаж', workbook?.fileName ?? 'не загружен', 'Резервный отчёт 1С, загруженный вручную'],
@@ -6627,14 +6695,26 @@ export default function AdminPayrollPage() {
       ['Операционное управление', '12% от обычных начислений выбранных сотрудников', 'Разовые премии в базу не входят; с августа 2026 действует минимум 100 000 ₽'],
     ];
 
+    const automaticSources: Array<Array<string | number | null>> = automatic ? [
+      ['Период', selectedPayrollPeriodKey, 'Предварительный расчёт'],
+      ['Продажи и закупки', 'Автоматические данные 1С', `Начисления по ${oneCShadowSource?.period.verifiedThrough ?? ''}`],
+      ['Авансы', 'Проведённые расходники 1С с указанием месяца', `Проверены ${oneCAdvances?.checkedAt ?? ''}; документы ${oneCAdvances?.dateFrom ?? ''} — ${oneCAdvances?.dateTo ?? ''}`],
+      ['Источник дней', 'Google Sheets / ручные корректировки', 'Текущий источник посещаемости'],
+      ['Ставка аксессуаров', '5%', 'Фиксированная ставка'],
+      ...exportRows.flatMap((row) => (row.advanceDocuments ?? []).map((doc) => [row.manager, doc.amount, `Аванс за ${doc.periodKey}; расходник №${doc.documentNumber} от ${doc.documentDate}`])),
+    ] : [];
     await downloadPayrollWorkbook({
       periodLabel: `${months[Number(month)]} ${year}`,
-      versionLabel: 'Текущий расчёт из загруженных данных',
+      versionLabel: automatic ? 'Предварительный расчёт по данным 1С' : 'Текущий расчёт из загруженных данных',
+      oneCAdvanceEmployees: automatic ? exportRows.filter((row) => row.advanceDocuments?.length).map((row) => row.manager) : [],
       generatedAt: new Date().toLocaleString('ru-RU'),
       employeeRows,
       accrualRows,
-      checkRows: buildPayrollCheckRows(),
-      sourceRows,
+      checkRows: automatic ? [
+        ...oneCShadowCalculation!.reviewEmployees.flatMap((employee) => employee.reasons.map((reason) => [employee.employeeName, reason, 1, 'Проверить', reason, '', '', '', '', '', ''])),
+        ...oneCShadowCalculation!.blockingIssues.map((reason) => ['Расчёт в целом', reason, 1, 'Проверить', reason, '', '', '', '', '', '']),
+      ] : buildPayrollCheckRows(),
+      sourceRows: automatic ? automaticSources : sourceRows,
       fileName: `Зарплата_${months[Number(month)]}_${year}.xlsx`,
     });
   }
@@ -6780,6 +6860,13 @@ export default function AdminPayrollPage() {
                   <div className='border-b border-slate-100 bg-slate-50 px-4 py-3'>
                     <p className='font-bold text-slate-900'>{oneCShadowCalculation.mode === 'preliminary' ? 'Предварительно начислено сотрудникам' : 'Начислено сотрудникам'}</p>
                     <p className='text-sm text-slate-500'>Сумма до вычета авансов и удержаний. Месячные гарантии показаны полностью. Нажмите на сотрудника, чтобы открыть расчёт.</p>
+                    {oneCShadowCalculation.mode === 'preliminary' && <p className='mt-1 text-sm text-slate-600'>{oneCShadowCalculation.advanceIssues.length ? 'Остатки к выплате не подтверждены: проверьте авансы.' : `Авансы проверены в 1С: ${new Date(oneCShadowCalculation.advancesCheckedAt!).toLocaleString('ru-RU')}.`}</p>}
+                    {oneCShadowCalculation.mode === 'preliminary' && <button type='button' disabled={isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
+                      onClick={() => { setSaveError(''); setIsAutomaticExporting(true); void exportCurrentPayrollWorkbook('oneC').catch(() => setSaveError('Не удалось сформировать Excel.')).finally(() => setIsAutomaticExporting(false)); }}
+                      className='mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50'>
+                      {isAutomaticExporting ? 'Подготовка ведомости…' : 'Скачать предварительную ведомость'}
+                    </button>}
+                    {saveError && <p role='alert' className='mt-2 text-sm text-amber-800'>{saveError}</p>}
                   </div>
                   <div className='grid gap-3 p-3 lg:grid-cols-2 xl:grid-cols-3'>
                     {oneCShadowCalculation.comparisonColumns.map((column, columnIndex) => (
@@ -6805,6 +6892,9 @@ export default function AdminPayrollPage() {
                                       <p className='whitespace-nowrap text-sm font-bold text-slate-950'>{formatMoney(row.shadowGrossPay)}</p>
                                       {needsAttention && <span className='rounded-full bg-amber-100 px-2 py-1 text-xs font-bold text-amber-900'>{oneCShadowCalculation.mode === 'preliminary' ? 'Проверить' : Math.abs(row.grossDelta) >= 0.005 ? formatPayrollDelta(row.grossDelta) : `${row.detailDifferences.length} отлич.`}</span>}
                                     </div>
+                                    {oneCShadowCalculation.mode === 'preliminary' && row.advance > 0 && (
+                                      <p className='col-span-2 text-xs text-slate-600'>Аванс выдан: {formatMoney(row.advance)} · Осталось: {oneCShadowCalculation.advanceIssues.length ? 'нужна проверка' : formatMoney(row.shadowNetPay)}</p>
+                                    )}
                                   </button>
                                 );
                               })}
@@ -7102,7 +7192,7 @@ export default function AdminPayrollPage() {
                         <button type='button' onClick={savePayrollSnapshot} disabled={isSavingPayroll || fullPayrollRows.length === 0 || isCurrentPeriodClosed || Boolean(bonusValidation.error) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError)} className='w-fit rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:bg-slate-300'>
                           {isSavingPayroll ? 'Сохраняю...' : 'Сохранить расчёт'}
                         </button>
-                        <button type='button' onClick={exportCurrentPayrollWorkbook} disabled={Boolean(bonusValidation.error) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError)} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50'>
+                        <button type='button' onClick={() => void exportCurrentPayrollWorkbook()} disabled={Boolean(bonusValidation.error) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError)} className='w-fit rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-50'>
                           Скачать ведомость Excel
                         </button>
                         <button type='button' onClick={() => setActivePayrollTab('Дни, авансы и премии')} className='w-fit rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-primary/40 hover:text-slate-900'>
@@ -8047,12 +8137,20 @@ export default function AdminPayrollPage() {
                       </div>
                       <div className='rounded-xl border border-blue-200 bg-blue-50 px-4 py-3'>
                         <p className='text-xs font-bold uppercase tracking-wide text-blue-700'>Осталось выплатить</p>
-                        <p className='mt-1 text-xl font-extrabold text-blue-950'>{formatMoney(selectedManagerPayroll.netPay)}</p>
+                        <p className='mt-1 text-xl font-extrabold text-blue-950'>{selectedManagerSource === 'oneC' && oneCShadowCalculation?.advanceIssues.length ? 'Нужна проверка авансов' : formatMoney(selectedManagerPayroll.netPay)}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className='grid gap-5'>
+                    {selectedManagerSource === 'oneC' && Boolean(selectedManagerPayroll.advanceDocuments?.length) && (
+                      <Card>
+                        <h3 className='font-bold text-slate-900'>Авансы из 1С</h3>
+                        <p className='mt-1 text-sm text-slate-500'>Выдано в счёт зарплаты за выбранный месяц. Начисления не уменьшаются.</p>
+                        {selectedManagerPayroll.advanceDocuments?.map((doc) => <p key={doc.key} className='mt-2 text-sm text-slate-700'>№ {doc.documentNumber} · {doc.documentDate} · <strong>{formatMoney(doc.amount)}</strong></p>)}
+                        {oneCShadowCalculation?.advanceIssues.map((issue) => <p key={issue} className='mt-2 text-sm text-amber-800'>{issue}</p>)}
+                      </Card>
+                    )}
                     <Card>
                       <h3 className='mb-3 text-base font-bold text-slate-900'>Начисления</h3>
                       <div className='grid gap-3 sm:grid-cols-3'>

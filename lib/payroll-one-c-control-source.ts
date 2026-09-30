@@ -2,6 +2,13 @@ import 'server-only';
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 import { ASTEMIR_ONE_C_IDENTITY } from '@/lib/payroll-purchase-suppliers';
 import type { PayrollSupplierSettlement } from '@/lib/payroll-purchase-suppliers';
+import { parsePayrollAdvanceResponse } from '@/lib/payroll-one-c-advances';
+
+export async function getPayrollOneCAdvances(periodKey: string, dateFrom: string, dateTo: string) {
+  const result = await requestOneC('/payroll-cash-payments', new URLSearchParams({ date_from: dateFrom, date_to: dateTo, limit: '5000' }));
+  if (!result.ok) throw new Error(result.error || 'Не удалось проверить авансы в 1С.');
+  return parsePayrollAdvanceResponse(result.data, { periodKey, dateFrom, dateTo, checkedAt: result.checkedAt });
+}
 
 type OneCReadResult<T> = {
   ok: boolean;
