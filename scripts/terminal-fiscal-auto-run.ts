@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
+import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods, terminalFiscalPeriodTracksSourceHealth, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
 import { runTerminalFiscalHistoricalDryRun } from '../lib/terminal-fiscal-runner';
 import { syncTerminalFiscalEmployeeReviews } from '../lib/terminal-fiscal-employee-review';
 
@@ -33,6 +33,9 @@ async function main() {
       const result = await runTerminalFiscalHistoricalDryRun({
         mappingId: mapping.id, periodFrom: period.periodFrom, periodTo: period.periodTo,
         persist: options.persist,
+        syncSourceHealth: options.persist
+          && options.mode === 'current'
+          && terminalFiscalPeriodTracksSourceHealth(period, now),
         syncWorkdayControl: options.persist && process.env.TERMINAL_FISCAL_WORKDAY_CONTROL_ENABLED === 'true',
         deferEmployeeReviewSync: options.persist && process.env.TERMINAL_FISCAL_WORKDAY_CONTROL_ENABLED === 'true',
       });

@@ -109,6 +109,10 @@ export function kkmShiftCloseFingerprint(workDayEntryId: number) {
   return `kkm-shift-close:${workDayEntryId}`;
 }
 
+export function kkmShiftCloseRequiresEmployeeAction(evidence: KkmShiftCloseEvidence) {
+  return evidence.status === 'one_c_open' || evidence.status === 'ofd_missing';
+}
+
 export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; taskId: number; workDayEntryId: number; date: string; evidence: KkmShiftCloseEvidence; now: Date }) {
   const fingerprint = kkmShiftCloseFingerprint(input.workDayEntryId);
   const existing = await db.workdayControlIssue.findUnique({ where: { fingerprint } });
@@ -119,17 +123,25 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
     }
     return null;
   }
+  const employeeActionRequired = kkmShiftCloseRequiresEmployeeAction(input.evidence);
+  const severity = employeeActionRequired ? 'error' : 'warning';
   const title = input.evidence.status === 'one_c_open' ? 'Касса не закрыта' : input.evidence.status === 'ofd_missing' ? 'Закрытие кассы не подтверждено' : 'Не удалось проверить кассу';
   const detail = input.evidence.status === 'one_c_open'
     ? 'Закройте кассовую смену и нажмите «Проверить снова».'
     : input.evidence.status === 'ofd_missing'
       ? 'Если чек закрытия распечатался — приложите фото. Если нет — сообщите администратору.'
-      : 'Портал временно не может подтвердить закрытие кассы. Попробуйте снова; если не получается — сообщите администратору.';
+      : 'Автопроверке не хватило данных. Сотруднику ничего исправлять не нужно; портал продолжит проверку, а предупреждение останется у администратора.';
   const issue = await db.workdayControlIssue.upsert({
     where: { fingerprint },
-    create: { userId: input.userId, taskId: input.taskId, fingerprint, ruleKey: 'kkm_shift_not_closed', severity: 'error', status: 'open', title, detail, sourceData: input.evidence as unknown as Prisma.InputJsonValue, employeeActionRequired: true, originDate: input.date, detectedAt: input.now, lastDetectedAt: input.now },
-    update: { userId: input.userId, taskId: input.taskId, severity: 'error', status: 'open', title, detail, sourceData: input.evidence as unknown as Prisma.InputJsonValue, employeeActionRequired: true, originDate: input.date, resolvedAt: null, lastDetectedAt: input.now },
+    create: { userId: input.userId, taskId: input.taskId, fingerprint, ruleKey: 'kkm_shift_not_closed', severity, status: 'open', title, detail, sourceData: input.evidence as unknown as Prisma.InputJsonValue, employeeActionRequired, originDate: input.date, detectedAt: input.now, lastDetectedAt: input.now },
+    update: { userId: input.userId, taskId: input.taskId, severity, status: 'open', title, detail, sourceData: input.evidence as unknown as Prisma.InputJsonValue, employeeActionRequired, originDate: input.date, resolvedAt: null, lastDetectedAt: input.now },
   });
+  if (!employeeActionRequired) {
+    await db.workdayNotification.updateMany({
+      where: { issueId: issue.id, status: 'pending' },
+      data: { status: 'cancelled' },
+    });
+  }
   const [employee, admins] = await Promise.all([
     db.user.findUnique({ where: { id: input.userId }, select: { name: true } }),
     db.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } }),
@@ -146,7 +158,11 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
       sourceId: String(issue.id),
       occurredAt: input.now,
     },
-    update: { title, body: `${employee?.name || 'Сотрудник'} · ${input.evidence.cashRegisterName || 'ККТ не определена'} · ${input.evidence.sourceError}`, occurredAt: input.now },
+    update: {
+      title,
+      body: `${employee?.name || 'Сотрудник'} · ${input.evidence.cashRegisterName || 'ККТ не определена'} · ${input.evidence.sourceError}`,
+      occurredAt: existing?.detectedAt ?? input.now,
+    },
   });
   if (admins.length) await db.adminInboxReceipt.createMany({ data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })), skipDuplicates: true });
   return issue;
