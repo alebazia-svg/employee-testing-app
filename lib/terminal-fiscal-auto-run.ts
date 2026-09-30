@@ -47,6 +47,16 @@ export function terminalFiscalAutomaticPeriods(mode: TerminalFiscalAutoRunMode, 
   ];
 }
 
+export function terminalFiscalPeriodTracksSourceHealth(
+  period: { periodFrom: Date; periodTo: Date },
+  now = new Date(),
+) {
+  const current = terminalFiscalAutomaticPeriod('current', now);
+  return Boolean(current
+    && current.periodFrom.getTime() === period.periodFrom.getTime()
+    && current.periodTo.getTime() === period.periodTo.getTime());
+}
+
 export function terminalFiscalUnresolvedPeriods(operationDates: Date[], now = new Date()) {
   const todayFrom = moscowMidnightUtc(now);
   const yesterdayFrom = new Date(todayFrom.getTime() - 24 * 60 * 60 * 1000);

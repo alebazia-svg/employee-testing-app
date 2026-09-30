@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod, terminalFiscalAutomaticPeriods, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
+import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod, terminalFiscalAutomaticPeriods, terminalFiscalPeriodTracksSourceHealth, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
 
 test('automatic current period uses Moscow midnight and a completed five-minute bucket after source delay', () => {
   const period = terminalFiscalAutomaticPeriod('current', new Date('2026-08-13T09:28:00.000Z'));
@@ -39,10 +39,14 @@ test('production current-day audit runs every five minutes', () => {
 });
 
 test('current automation also revisits the previous day for late checks', () => {
-  assert.deepEqual(terminalFiscalAutomaticPeriods('current', new Date('2026-08-13T09:28:00.000Z')), [
+  const now = new Date('2026-08-13T09:28:00.000Z');
+  const periods = terminalFiscalAutomaticPeriods('current', now);
+  assert.deepEqual(periods, [
     { periodFrom: new Date('2026-08-11T21:00:00.000Z'), periodTo: new Date('2026-08-12T21:00:00.000Z') },
     { periodFrom: new Date('2026-08-12T21:00:00.000Z'), periodTo: new Date('2026-08-13T09:15:00.000Z') },
   ]);
+  assert.equal(terminalFiscalPeriodTracksSourceHealth(periods[0], now), false);
+  assert.equal(terminalFiscalPeriodTracksSourceHealth(periods[1], now), true);
 });
 
 test('unresolved reviews add unique completed days from the rolling seven-day window', () => {

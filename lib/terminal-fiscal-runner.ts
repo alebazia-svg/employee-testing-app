@@ -42,6 +42,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   periodTo: Date;
   persist?: boolean;
   syncWorkdayControl?: boolean;
+  syncSourceHealth?: boolean;
   deferEmployeeReviewSync?: boolean;
 }, dependencies: {
   loadTbank?: typeof loadCompleteTBankOperations;
@@ -127,16 +128,19 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
         sourceCheckedAt: { tbank: tbank.checkedAt, oneC: oneC.checkedAt, ofd: ofd.checkedAt },
         sourceCompleteness: { tbank: tbank.complete, oneC: oneC.complete, ofd: ofd.complete },
       });
-      await syncTerminalFiscalSourceHealth(prisma, {
-        mappingId: mapping.id,
-        mappingLabel: mappingRow.label,
-        checkedAt: new Date(now),
-        sources: {
-          aqsi: { complete: tbank.complete, errorCode: tbank.errorCode },
-          oneC: { complete: oneC.complete, errorCode: oneC.errorCode },
-          ofd: { complete: ofd.complete, errorCode: ofd.errorCode },
-        },
-      });
+      if (input.syncSourceHealth === true) {
+        await syncTerminalFiscalSourceHealth(prisma, {
+          mappingId: mapping.id,
+          mappingLabel: mappingRow.label,
+          periodFrom: input.periodFrom,
+          checkedAt: new Date(now),
+          sources: {
+            aqsi: { complete: tbank.complete, errorCode: tbank.errorCode },
+            oneC: { complete: oneC.complete, errorCode: oneC.errorCode },
+            ofd: { complete: ofd.complete, errorCode: ofd.errorCode },
+          },
+        });
+      }
       if (input.syncWorkdayControl === true) {
         await syncTerminalFiscalWorkdayControl(prisma, output);
         const employeeReviewMode = process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED === 'true'
