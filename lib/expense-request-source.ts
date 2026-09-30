@@ -20,6 +20,7 @@ export type ExpenseRequestSourceRow = ExpenseRequestInput & {
   cashbox?: OneCNamedRef | null;
   payment_form?: { value?: string | null; cash?: boolean; cashless?: boolean; card?: boolean } | null;
   department?: OneCNamedRef | null;
+  currency?: OneCNamedRef | null;
   author?: OneCNamedRef | null;
   decided_by?: OneCNamedRef | null;
   desired_payment_date?: string | null;
@@ -32,6 +33,7 @@ export type ExpenseRequestSourceRow = ExpenseRequestInput & {
     deletion_mark?: boolean | null;
     amount?: number | null;
     request_amount?: number | null;
+    request_amount_conflict?: boolean;
     executed_amount?: number | null;
     cashbox?: OneCNamedRef | null;
     source_paths?: string[];
@@ -73,13 +75,39 @@ function readPositiveInteger(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date; strictRequests?: boolean }): Promise<ExpenseRequestSnapshot> {
+export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date; strictRequests?: boolean; includeHistory?: boolean }): Promise<ExpenseRequestSnapshot> {
   if (!(input.from instanceof Date) || Number.isNaN(input.from.getTime()) || !(input.to instanceof Date) || Number.isNaN(input.to.getTime())) {
     throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
   }
-  if (input.to <= input.from || input.to.getTime() - input.from.getTime() > MAX_PERIOD_MS) {
+  if (input.to <= input.from) {
     throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
   }
+  // Procurement evidence must not disappear when a linked request ages past
+  // the current month. Native API uses [from, to) Moscow dates, at most 31 days.
+  if (input.includeHistory) {
+    const dayMs = 86400000;
+    const first = Date.parse(expenseRequestMoscowCalendarDate(input.from) + 'T00:00:00+03:00');
+    const last = Date.parse(expenseRequestMoscowCalendarDate(input.to) + 'T00:00:00+03:00');
+    if (last <= first) throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
+    if (last - first > 3660 * dayMs) throw new Error('EXPENSE_REQUEST_HISTORY_SCOPE_LIMIT');
+    const all: ExpenseRequestSourceRow[] = [], errors: string[] = [];
+    let complete = true, pageCount = 0;
+    for (let start = first; start < last; start += 31 * dayMs) {
+      const end = Math.min(last, start + 31 * dayMs);
+      const part = await fetchExpenseRequestSnapshot({ from: new Date(start), to: new Date(end), strictRequests: input.strictRequests });
+      all.push(...part.rows); errors.push(...part.errors); pageCount += part.pageCount;
+      if (!part.complete) complete = false;
+      if (all.length >= MAX_ROWS && end < last) { complete = false; errors.push('SOURCE_ROW_LIMIT_REACHED'); break; }
+    }
+    const unique = new Map<string, ExpenseRequestSourceRow>();
+    for (const row of all) {
+      const ref = String(row.ref ?? '').trim().toLowerCase();
+      if (unique.has(ref)) { complete = false; errors.push('ROW_REF_DUPLICATED'); }
+      else unique.set(ref, row);
+    }
+    return { rows: [...unique.values()], complete, checkedAt: new Date().toISOString(), pageCount, errors: [...new Set(errors)] };
+  }
+  if (input.to.getTime() - input.from.getTime() > MAX_PERIOD_MS) throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
   const env = readOneCRuntimeEnv();
   if (!env.baseUrl || !env.user || !env.password) throw new Error('EXPENSE_REQUEST_SOURCE_UNCONFIGURED');
   const timeoutMs = readPositiveInteger(env.requestTimeoutMs, 15_000);

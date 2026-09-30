@@ -72,7 +72,7 @@ export default async function AdminProcurementPage() {
       }),
       fetchSupplierOrderFinance(),
       fetchSupplierSettlements(),
-      fetchExpenseRequestSnapshot({ from, to }),
+      plansQuery.then(rows => fetchExpenseRequestSnapshot({ from: paymentEvidenceFrom(rows, from), to, includeHistory: true })),
       getProcurementBalances(todayKey),
       getLatestProcurementUsdtRate(todayKey),
       plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, from), to, timeoutMs: 15_000, plans: rows })),

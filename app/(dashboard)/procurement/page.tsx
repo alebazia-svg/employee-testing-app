@@ -47,7 +47,7 @@ export default async function ProcurementPage() {
     fetchSupplierSettlements(),
     getProcurementBalances(todayKey),
     getLatestProcurementUsdtRate(todayKey),
-    fetchExpenseRequestSnapshot({ from: requestFrom, to: requestTo }),
+    plansQuery.then(rows => fetchExpenseRequestSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, includeHistory: true })),
     plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, timeoutMs: 15_000, plans: rows })),
     fetchManagerSupplierNames(user.oneCManagerName?.trim() || user.name),
   ]);

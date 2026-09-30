@@ -21,7 +21,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
     const to = new Date();
     const from = paymentEvidenceFrom(initial, new Date(to.getTime() - 30 * 86400_000));
     const [source, requests] = payload.action === 'LINK' ? await Promise.all([
-      fetchSupplierCurrencyPaymentSnapshot({ from, to, plans: initial }), fetchExpenseRequestSnapshot({ from, to }),
+      fetchSupplierCurrencyPaymentSnapshot({ from, to, plans: initial }), fetchExpenseRequestSnapshot({ from, to, includeHistory: true }),
     ]) : [null, null];
     if (payload.action === 'LINK' && (!source?.complete || !requests?.complete)) {
       return Response.json({ error: 'Не удалось полностью проверить оплаты в 1С. Зачёт не сохранён.' }, { status: 503 });

@@ -15,6 +15,7 @@ export type SupplierCurrencyPaymentRow = {
   documentCurrency: string;
   baseDocumentRef: string;
   settlementOrderRef?: string;
+  requestOrderRef?: string;
   settlementAmount?: number;
   settlementCurrency?: string;
   settlementMovementsCount?: number;

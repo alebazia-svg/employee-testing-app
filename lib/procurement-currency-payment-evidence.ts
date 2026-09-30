@@ -4,6 +4,7 @@ import type { CurrencyConversionRow, SupplierCurrencyPaymentRow } from '@/lib/pr
 import { applyRublePaymentEvidence, uniqueSupplierPayments } from './procurement-ruble-payment-evidence';
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
+import { attachRequestOrderLinks } from './procurement-request-payment-link';
 
 export type EvidencePlan = {
   id: string;
@@ -197,6 +198,6 @@ export function matchProcurementPaymentEvidence(
       manualPaymentCount: allocation.payments.filter((row) => plan.manualRubleLinks?.some((link) => link.ref === row.ref)).length,
     });
   }
-  applyRublePaymentEvidence(plans, currencyPayments, evidence);
+  applyRublePaymentEvidence(plans, attachRequestOrderLinks(currencyPayments, requests), evidence);
   return evidence;
 }

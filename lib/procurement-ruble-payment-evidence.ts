@@ -33,7 +33,7 @@ export function uniqueSupplierPayments(rows: SupplierCurrencyPaymentRow[]) {
     const signature = (row: SupplierCurrencyPaymentRow) => JSON.stringify([
       row.date, row.posted, row.deleted, row.documentAmount, row.documentCurrency,
       key(row.baseDocumentRef), row.supplier, row.counterparty, row.contract,row.settlementOrderRef,
-      row.settlementAmount, row.settlementCurrency, row.settlementMovementsCount,
+      row.settlementAmount, row.settlementCurrency, row.settlementMovementsCount, row.requestOrderRef,
     ]);
     return copies.every((row) => signature(row) === signature(copies[0])) ? [copies[0]] : [];
   });
@@ -77,6 +77,7 @@ export function applyRublePaymentEvidence(
         !Number.isFinite(payment.documentAmount) || payment.documentAmount <= 0) continue;
     const at = paymentTimestamp(payment.date);
     if (!Number.isFinite(at)) continue;
+    const orderRef = payment.requestOrderRef || payment.baseDocumentRef || payment.settlementOrderRef || '';
     const manualOwners = plans.filter((plan) => plan.manualRubleLinks?.some((link) => key(link.ref) === key(payment.ref)));
     const completedOwners = plans.filter(plan => plan.status === COMPLETED_WITHOUT_TOPUP && plan.completedPaymentRefs?.includes(payment.ref));
     const candidates = eligible.filter((plan) => {
@@ -89,7 +90,7 @@ export function applyRublePaymentEvidence(
       // matching stops when earlier uniquely owned receipts cover the request.
       if (!manualOwners.length && plan.status !== COMPLETED_WITHOUT_TOPUP && coveredBefore(plan, at)) return false;
       return Number.isFinite(created) && created <= at &&
-        (manualOwners.length ? confirmed : Boolean(payment.baseDocumentRef||payment.settlementOrderRef) && plan.orderRefs.some((ref) => key(ref) === key(payment.baseDocumentRef||payment.settlementOrderRef||'')) && (!payment.settlementOrderRef||samePaymentSupplier(plan,payment)));
+        (manualOwners.length ? confirmed : Boolean(orderRef) && plan.orderRefs.some((ref) => key(ref) === key(orderRef)) && (!(payment.settlementOrderRef || payment.requestOrderRef) || samePaymentSupplier(plan,payment)));
     });
     // Multiple requests for one order require an explicit link; do not guess by amount/date.
     const owners = claims.get(key(payment.ref));

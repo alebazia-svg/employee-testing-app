@@ -16,7 +16,7 @@ import { validateBasisChangeTarget } from './procurement-basis-change-server';
 export async function freshEvidence() {
   const plans = await prisma.supplierPaymentPlan.findMany({ include: { manager: true } });
   const to = new Date(); const from = paymentEvidenceFrom(plans, new Date(to.getTime() - 31 * 86400000));
-  const [source, requests] = await Promise.all([fetchSupplierCurrencyPaymentSnapshot({ from, to, plans }), fetchExpenseRequestSnapshot({ from, to })]);
+  const [source, requests] = await Promise.all([fetchSupplierCurrencyPaymentSnapshot({ from, to, plans }), fetchExpenseRequestSnapshot({ from, to, includeHistory: true })]);
   if (!source.complete || !requests.complete) throw new Error('Не удалось проверить оплаты в 1С. Повторите изменение после восстановления связи.');
   const result = matchProcurementPaymentEvidence(plans.map(p => ({ ...p, completedPaymentRefs: paymentCompletion(p.oneCCashEvidence)?.paymentRefs, orderRefs: Array.isArray(p.orderRefs) ? p.orderRefs.map(String) : [], plannedAmount: Number(p.plannedAmount), foreignAmount: p.foreignAmount == null ? null : Number(p.foreignAmount), plannedDate: p.plannedDate.toISOString(), createdAt: paymentMatchCreatedAt(p), managerName: p.manager.oneCManagerName || p.manager.name, manualRubleLinks: manualPaymentLinks(p.oneCCashEvidence) })), requests.rows, source.payments, source.conversions);
   return Object.assign(result, {versions:new Map(plans.map(p=>[p.id,p.updatedAt.toISOString()]))});
