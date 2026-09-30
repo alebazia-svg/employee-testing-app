@@ -284,9 +284,13 @@ Current limitations must stay visible:
   checks. Never create a permanent employee-to-KKT assignment: employees and
   workplaces can change;
 - normal closure is fully automatic and does not require a paper report photo.
-  After a 90-second propagation grace, a missing confirmation becomes a required
-  control issue. A printed closing receipt photo is accepted only as reserve
-  evidence for an administrator exception;
+  After a 90-second propagation grace, only a proven open 1C shift or a closed
+  1C shift without its matching OFD Z-report becomes a required employee
+  control issue. An incomplete source response, missing cashier mapping or a
+  day without a cashier check remains an ADMIN-only technical warning, does not
+  block the employee from finishing the workday and is rechecked automatically.
+  A printed closing receipt photo is accepted only as reserve evidence for an
+  administrator exception;
 - an approved exception may allow the portal workday to finish, but does not
   resolve the underlying KKT issue. The minute runner rechecks open issues and
   resolves them only after the matching OFD Z-report appears;
@@ -570,7 +574,9 @@ stale day can be closed without forcing impossible handover steps later.
   issue is not deleted or moved to another date.
 - An open issue keeps its original `originDate`, remains visible on the current
   employee screen and creates an idempotent ADMIN inbox event with its exact
-  age. The old issue does not take over the current day's KKM handover UI.
+  age. Rechecks update `lastDetectedAt` but never move the event's original
+  `occurredAt`, so an old issue cannot repeatedly return to the top as a new
+  alert. The old issue does not take over the current day's KKM handover UI.
 - Normal same-day closure still requires open mandatory issues to be resolved
   or covered by an approved technical exception.
 - Cached clients using the previous reason labels remain accepted during the

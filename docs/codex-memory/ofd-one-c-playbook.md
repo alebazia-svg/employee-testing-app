@@ -131,6 +131,11 @@ production without employee UI, notifications or incidents.
 - `offonika-terminal-fiscal-current.timer` runs every 5 minutes using a
   completed bucket with a 10-minute source delay. The practical first complete
   check therefore happens about 10-15 minutes after a bank operation.
+- Source-health notifications use only the current Moscow-day run, never the
+  previous-day or unresolved-history sweeps. One incomplete poll is retained in
+  audit but does not notify; an ADMIN outage incident opens only after three
+  consecutive incomplete current-period cycles for the same mapping and source,
+  and the next complete cycle records recovery.
 - The aQsi chain (`portal terminal key 1010808747019437`, aQsi terminal
   `10693079`) reads successful card and SBP slips directly from the read-only
   aQsi V4 API. It falls back to the T-Business cabinet snapshot only when the
