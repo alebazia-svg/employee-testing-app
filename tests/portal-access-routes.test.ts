@@ -56,12 +56,20 @@ test('ADMIN page authorizes before journal reads and never selects auth hashes o
     '@/lib/prisma': { prisma: { portalAccessSession: { findMany: async (q: any) => { queries.push(q); return []; } } } },
     '@/components/AdminShell': { AdminShell: () => null },
     '@/components/admin/AdminPageHeader': { AdminPageHeader: () => null },
-    '@/components/PortalAccessJournal': { PortalAccessJournal: () => null },
+    '@/components/PortalAccessDevices': { PortalAccessDevices: () => null },
   });
   const page = () => route.default({ searchParams: Promise.resolve({ q: 'Астемир', page: '1' }) });
   await assert.rejects(page(), /redirect:\/login/); user = { id: 42, role: 'EMPLOYEE' };
   await assert.rejects(page(), /redirect:\/employee/); assert.equal(queries.length, 0);
   user.role = 'ADMIN'; await page(); assert.equal(queries.length, 1);
   assert.doesNotMatch(JSON.stringify(queries[0].select), /sessionHash|endpoint|p256dh|password|auth/);
-  assert.equal(queries[0].take, 51);
+  assert.equal(queries[0].take, undefined);
+  assert.equal(queries[0].where.loggedOutAt, null);
+  assert.equal(queries[0].where.user.isActive, true);
+  assert.ok(queries[0].where.expiresAt.gt instanceof Date);
+  await route.default({ searchParams: Promise.resolve({ q: 'Safari', page: '2', view: 'history' }) });
+  assert.equal(queries[1].take, 51);
+  assert.equal(queries[1].skip, 50);
+  assert.equal(queries[1].where.OR[3].browser.contains, 'Safari');
+  assert.equal(queries[1].where.loggedOutAt, undefined);
 });
