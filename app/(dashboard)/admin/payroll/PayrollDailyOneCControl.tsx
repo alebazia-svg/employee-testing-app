@@ -182,11 +182,13 @@ export function PayrollDailyOneCControl({
   year,
   compactWhenUnavailable = false,
   onDataChange,
+  replacement,
 }: {
   month: string;
   year: string;
   compactWhenUnavailable?: boolean;
   onDataChange?: (data: DailyControlResponse | null, state: { isStale: boolean }) => void;
+  replacement?: DailyControlResponse | null;
 }) {
   const periodKey = `${year}-${String(Number(month) + 1).padStart(2, '0')}`;
   const initialMemoryResponse = readFullResponseFromMemory(periodKey);
@@ -196,6 +198,13 @@ export function PayrollDailyOneCControl({
   const [isLoading, setIsLoading] = useState(true);
   const [actionSupplier, setActionSupplier] = useState('');
   const requestVersion = useRef(0);
+  useEffect(() => {
+    if (!replacement || replacement.period.periodKey !== periodKey) return;
+    requestVersion.current += 1;
+    rememberFullResponse(periodKey, replacement);
+    setData(replacement);
+    setIsLoading(false);
+  }, [replacement, periodKey]);
   const belongsToSelectedPeriod = useCallback(
     (response: DailyControlResponse | null | undefined) => Boolean(response?.period.verifiedThrough.startsWith(`${periodKey}-`)),
     [periodKey],
@@ -392,7 +401,7 @@ export function PayrollDailyOneCControl({
               </div>
             )}
 
-            <details className='rounded-lg border border-slate-200 bg-white' open={data.purchases.newSupplierCount > 0}>
+            <details id='payroll-suppliers-panel' className='rounded-lg border border-slate-200 bg-white' open={data.purchases.newSupplierCount > 0}>
               <summary className='cursor-pointer list-none px-3 py-2.5'>
                 <div className='flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between'>
                   <div className='min-w-0'>

@@ -506,6 +506,86 @@ the pay result harder to understand.
 - This stage has no schema migration and is not yet released. Production remains
   on the earlier payroll runtime until a separate visual and deploy approval.
 
+### Past working periods — production fix, 2026-10-01
+
+- Owner approved isolated commit/deploy `f1ee421` for month-rollover visibility.
+  Past months do not require a final payroll run to display the working result.
+  The source GET prefers FINAL data and falls back to stored DAILY data only
+  when FINAL is absent; actual coverage and non-final status are preserved.
+- Historical attendance uses its stored period snapshot. Final payroll runs,
+  formulas and 1C documents are unchanged; no migrations were deployed.
+- Production deploy exited 0 and health returned `ok: true`. Browser verification
+  showed September as `Не утверждён`, with source through September 30 and
+  advances visible. August still matched all 13 employees, gross 940,129.55 RUB,
+  with final run 6 payout 915,129.55 RUB. Existing September source warnings
+  remain unresolved; this release does not certify its calculation as final.
+- Verification: 94 payroll/source tests, TypeScript, local and server builds.
+  The unfinished review-preview UI and unrelated dirty work were excluded.
+
+### Compact overview and actionable product review — released, 2026-10-01
+
+- Owner approved and production deployed `8d4d23b`, preserving the newer
+  procurement release. The real automatic payroll overview shows compact team
+  groups, gross amounts, nonzero advances/deductions and employee details, with
+  one page scrollbar. Source settings, saved runs and actionable review remain
+  available without displaying all technical information on entry.
+- Product review loads stored full rows on demand, groups identical products
+  by category and sale context, supports filtered bulk selection and confirms
+  component changes before using the existing classification-rule API. Rules
+  apply across working periods; saved runs are not rewritten. Conflicting exact
+  rules stop writes; partial failures report confirmed progress and require a
+  refreshed review. No production classification writes were made during QA.
+- No formula change, migration, fixture deployment or 1C write. Local isolated
+  demo rules were not copied. Dismissed-employee lifecycle remains a separate
+  unfinished task; this release does not silently hide zero-pay employees.
+- Final production checkout is `99eeba9`: a post-deploy narrow-panel check
+  revealed summary amount overlap. The summary now uses three columns only
+  from 1100px viewport width; narrow panels stack amounts. The corrective
+  build/deploy exited 0, health passed and the actual narrow production screen
+  was visually rechecked with no overlapping amounts.
+- Verification: 73 payroll tests plus six review tests, TypeScript and local /
+  server production builds passed. Deploy exit 0, health OK, uploads volume
+  retained, expected bundle present. Authenticated production September shows
+  14 employees, advances 17,000 RUB and 54 unresolved rows grouped into 22
+  product/context entries; Diana's missing inputs remain visible.
+- Overview totals sum displayed rounded employee amounts: September gross
+  885,528.06 RUB, net 868,528.06 RUB. This can differ by one kopek from the old
+  aggregate-before-rounding total. August overview likewise shows 940,129.56 /
+  915,129.56; saved final run 6 remains unchanged at 915,129.55 RUB. Do not
+  interpret this display-rounding difference as a changed saved payroll run.
+
+### Server-backed Finbox input — released, 2026-10-01
+
+- Owner approved persistent Finbox entry in Diana's automatic payroll card and
+  the required schema change. The default period is the visible payroll month;
+  month/year can be selected explicitly. Do not infer it from the latest final
+  run. Existing Finbox paste validation rejects dates from another month.
+- `PayrollFinboxRevision` stores append-only cents, period, revision, actor and
+  timestamp. ADMIN-only GET/PUT uses expected-revision checks and period locks.
+  No raw Finbox report or 1C write is stored/performed. Existing final/closed
+  periods cannot be rewritten through this input; GET shows saved final input
+  when available. Historical corrections use the existing replacement workflow.
+- Automatic preliminary payroll consumes the saved server value, not the
+  browser-only Finbox draft. Missing source reads remain visible and block its
+  export. The old manually uploaded workbook editor remains unchanged in this
+  scoped stage; its drafts are not automatically migrated to the new table.
+- Additive migration `20261001160000_add_payroll_finbox_revisions` was rehearsed
+  in local `payroll_auto_preview_20260915` using its exact SQL. Local QA saved
+  100 RUB, verified exact
+  employee/total increase and reload persistence, then saved 0 RUB; a stale
+  second browser was refused. These local test revisions must never be copied
+  to production. August final input remained protected; unauthenticated GET
+  returned 401.
+- Owner approved commit and deployment. Production is on `a1fdd97`; the above
+  migration applied successfully, portal-app rebuilt/restarted and health passed.
+  The production revision table was verified empty after release: no local test
+  values were copied. Authenticated read-only browser QA confirmed September's
+  editable empty input and August's saved final 85,373 RUB input, locked against
+  replacement through this form. No production Finbox amounts were written.
+- Verification: 73 payroll tests plus 12 Finbox/review tests, TypeScript, Prisma
+  schema validation and local/server builds passed. Upload mounts were retained.
+  Local preview configuration and unrelated dirty work were excluded.
+
 ## Before Changing Payroll
 
 Ask:
