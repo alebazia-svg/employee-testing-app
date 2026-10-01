@@ -522,6 +522,33 @@ the pay result harder to understand.
 - Verification: 94 payroll/source tests, TypeScript, local and server builds.
   The unfinished review-preview UI and unrelated dirty work were excluded.
 
+### Compact overview and actionable product review — released, 2026-10-01
+
+- Owner approved and production deployed `8d4d23b`, preserving the newer
+  procurement release. The real automatic payroll overview shows compact team
+  groups, gross amounts, nonzero advances/deductions and employee details, with
+  one page scrollbar. Source settings, saved runs and actionable review remain
+  available without displaying all technical information on entry.
+- Product review loads stored full rows on demand, groups identical products
+  by category and sale context, supports filtered bulk selection and confirms
+  component changes before using the existing classification-rule API. Rules
+  apply across working periods; saved runs are not rewritten. Conflicting exact
+  rules stop writes; partial failures report confirmed progress and require a
+  refreshed review. No production classification writes were made during QA.
+- No formula change, migration, fixture deployment or 1C write. Local isolated
+  demo rules were not copied. Dismissed-employee lifecycle remains a separate
+  unfinished task; this release does not silently hide zero-pay employees.
+- Verification: 73 payroll tests plus six review tests, TypeScript and local /
+  server production builds passed. Deploy exit 0, health OK, uploads volume
+  retained, expected bundle present. Authenticated production September shows
+  14 employees, advances 17,000 RUB and 54 unresolved rows grouped into 22
+  product/context entries; Diana's missing inputs remain visible.
+- Overview totals sum displayed rounded employee amounts: September gross
+  885,528.06 RUB, net 868,528.06 RUB. This can differ by one kopek from the old
+  aggregate-before-rounding total. August overview likewise shows 940,129.56 /
+  915,129.56; saved final run 6 remains unchanged at 915,129.55 RUB. Do not
+  interpret this display-rounding difference as a changed saved payroll run.
+
 ## Before Changing Payroll
 
 Ask:
