@@ -7,6 +7,8 @@ import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from '@/lib/e
 import { matchProcurementPaymentEvidence } from '@/lib/procurement-currency-payment-evidence';
 import { paymentEvidenceFrom, paymentTimestamp, uniqueSupplierPayments } from '@/lib/procurement-ruble-payment-evidence';
 import { manualPaymentLinks, paymentFingerprint, samePaymentSupplier } from '@/lib/procurement-manual-payment-links';
+import {hasConfirmedPaymentBasis} from '@/lib/procurement-payment-basis';
+import {attachRequestOrderLinks} from '@/lib/procurement-request-payment-link';
 
 export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
   const access = await requireAdminApi();
@@ -40,6 +42,10 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
         const payment = uniqueSupplierPayments(source!.payments).find((row) => row.ref.toLowerCase() === ref && row.documentCurrency === (plan.paymentMethod === 'USDT' ? 'USDT' : 'РУБ'));
         if (!payment?.posted || payment.deleted || !samePaymentSupplier(plan, payment) ||
             !(paymentTimestamp(payment.date) >= plan.createdAt.getTime())) throw new Error('Расходник не соответствует поставщику или дате заявки.');
+        const withBasis = attachRequestOrderLinks([payment], requests!.rows)[0];
+        if (!hasConfirmedPaymentBasis(withBasis, rows.flatMap(row => Array.isArray(row.orderRefs) ? row.orderRefs.map(String) : []))) {
+          throw new Error('Основание оплаты не подтверждено. Проверьте договор или заказ в 1С.');
+        }
         const fingerprint = paymentFingerprint(payment);
         if (links.some((link) => link.ref.toLowerCase() === ref && link.fingerprint === fingerprint)) return;
         if (rows.some((row) => manualPaymentLinks(row.oneCCashEvidence).some((link) => link.ref.toLowerCase() === ref))) {

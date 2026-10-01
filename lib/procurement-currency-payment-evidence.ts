@@ -5,6 +5,7 @@ import { applyRublePaymentEvidence, uniqueSupplierPayments } from './procurement
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 import { attachRequestOrderLinks } from './procurement-request-payment-link';
+import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
 
 export type EvidencePlan = {
   id: string;
@@ -65,19 +66,27 @@ export function matchProcurementPaymentEvidence(
   currencyPayments: SupplierCurrencyPaymentRow[],
   conversions: CurrencyConversionRow[],
 ) {
+  const linkedPayments = attachRequestOrderLinks(currencyPayments, requests);
+  const uniquePayments = uniqueSupplierPayments(linkedPayments);
+  const knownOrders = plans.flatMap(plan => plan.orderRefs);
   const evidence = new Map<string, ProcurementPaymentEvidence>();
   const allocations = new Map<string, { rubles: number; foreign: number; referenceRubles: number; rateRubles: number; rateForeign: number; unknownEquivalent: boolean; payments: ProcurementPaymentEvidence['currencyPayments'] }>();
   for (const plan of plans) {
     const cash = matchCashEvidence(plan, plan.orderRefs.length ? requests : requests.filter(request =>
       `${request.comment || ''} ${request.payment_purpose || ''}`.toUpperCase().includes(plan.planCode.toUpperCase())));
     const cashOrders = cash.cashOrders.filter(row => {
+      // A portal plan code identifies the request, but cannot manufacture a
+      // missing native contract/order basis for a supplier-debt payment.
+      if (plan.paymentMethod !== 'USDT' && !plan.orderRefs.length && !uniquePayments.some(payment => payment.ref.toLowerCase() === row.ref.toLowerCase() &&
+        payment.posted && !payment.deleted && hasConfirmedPaymentBasis(payment, knownOrders))) return false;
       const owners = plans.filter(p => p.status === COMPLETED_WITHOUT_TOPUP && p.completedPaymentRefs?.includes(row.ref));
       return (!owners.length || owners.length === 1 && owners[0].id === plan.id) &&
         (plan.status !== COMPLETED_WITHOUT_TOPUP || plan.completedPaymentRefs?.includes(row.ref));
     });
     evidence.set(plan.id, {
-      // A supplier-only request has no unique order anchor. Never infer its
-      // payment from supplier/date/amount; require the plan code or owner link.
+      // Native requests require an explicit plan code for supplier-only plans.
+      // Unclaimed RUB payments are reconciled separately, across ALL plans,
+      // by applyRublePaymentEvidence's unique supplier-debt rule.
       ...cash,
       state: cash.state === 'MISMATCH' || cashOrders.length === cash.cashOrders.length ? cash.state : cashOrders.length ? 'PARTIALLY_ISSUED' : 'NO_EVIDENCE',
       cashOrders,
@@ -198,6 +207,6 @@ export function matchProcurementPaymentEvidence(
       manualPaymentCount: allocation.payments.filter((row) => plan.manualRubleLinks?.some((link) => link.ref === row.ref)).length,
     });
   }
-  applyRublePaymentEvidence(plans, attachRequestOrderLinks(currencyPayments, requests), evidence);
+  applyRublePaymentEvidence(plans, linkedPayments, evidence);
   return evidence;
 }

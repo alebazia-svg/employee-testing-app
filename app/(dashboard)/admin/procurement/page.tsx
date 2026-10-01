@@ -9,6 +9,7 @@ import { paymentEvidenceFrom, paymentTimestamp, uniqueSupplierPayments } from "@
 import { manualPaymentLinks, samePaymentSupplier } from "@/lib/procurement-manual-payment-links";
 import { paymentCompletion, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { ProcurementUnlinkedPayments } from "@/components/ProcurementUnlinkedPayments";
+import {attachRequestOrderLinks} from '@/lib/procurement-request-payment-link';
 import { readPaymentRevision, paymentMatchCreatedAt } from "@/lib/procurement-plan-revision";
 import { ProcurementRevisionReview } from "@/components/ProcurementRevisionReview";
 import {
@@ -461,7 +462,7 @@ export default async function AdminProcurementPage() {
           revisionCount={plans.filter(plan=>readPaymentRevision(plan.oneCCashEvidence)).length}
           revisionReview={<ProcurementRevisionReview items={plans.flatMap(plan => {const revision=readPaymentRevision(plan.oneCCashEvidence);return revision ? [{id:plan.id,supplierPartner:plan.supplierPartner,revision}] : [];})} />}
           paymentLinks={<ProcurementUnlinkedPayments
-          payments={uniqueSupplierPayments(currencySource?.complete ? currencySource.payments : [])
+          payments={uniqueSupplierPayments(attachRequestOrderLinks(currencySource?.complete ? currencySource.payments : [], requestsResult.status === 'fulfilled' ? requestsResult.value.rows : []))
             .filter((payment) => ['РУБ', 'USDT'].includes(payment.documentCurrency) && payment.posted && !payment.deleted && payment.documentAmount > 0 &&
               plans.some((plan) => plan.status === 'APPROVED' && samePaymentSupplier(plan, payment) && plan.createdAt.getTime() <= paymentTimestamp(payment.date) &&
                 !['ISSUED_BY_ONE_C', 'PAID_BY_ONE_C'].includes(paymentEvidence.get(plan.id)?.state || '')) &&
@@ -469,7 +470,7 @@ export default async function AdminProcurementPage() {
               !plans.some((plan) => manualPaymentLinks(plan.oneCCashEvidence).some((link) => link.ref === payment.ref)))
             .slice().reverse()}
           plans={plans.map((plan) => ({ id: plan.id, supplierPartner: plan.supplierPartner,
-            supplierCounterparty: plan.supplierCounterparty, orderNumbers: Array.isArray(plan.orderNumbers) ? plan.orderNumbers.map(String) : [],
+            supplierCounterparty: plan.supplierCounterparty, orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [], orderNumbers: Array.isArray(plan.orderNumbers) ? plan.orderNumbers.map(String) : [],
             remaining: paymentEvidence.get(plan.id)?.remainingAmount || 0, remainingForeign: paymentEvidence.get(plan.id)?.remainingForeignAmount ?? null, status: plan.status, paymentMethod: plan.paymentMethod }))}
           linked={plans.filter(plan => plan.status !== COMPLETED_WITHOUT_TOPUP).flatMap((plan) => manualPaymentLinks(plan.oneCCashEvidence).map((link) => ({
             planId: plan.id, ref: link.ref,

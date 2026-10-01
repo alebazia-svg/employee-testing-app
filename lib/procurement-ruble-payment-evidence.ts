@@ -2,6 +2,7 @@ import type { EvidencePlan, ProcurementPaymentEvidence } from './procurement-cur
 import type { SupplierCurrencyPaymentRow } from './procurement-currency-payment-source';
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
+import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
 
 const key = (value: string) => value.trim().toLowerCase();
 const minor = (value: number) => Math.round(value * 100);
@@ -33,7 +34,7 @@ export function uniqueSupplierPayments(rows: SupplierCurrencyPaymentRow[]) {
     const signature = (row: SupplierCurrencyPaymentRow) => JSON.stringify([
       row.date, row.posted, row.deleted, row.documentAmount, row.documentCurrency,
       key(row.baseDocumentRef), row.supplier, row.counterparty, row.contract,row.settlementOrderRef,
-      row.settlementAmount, row.settlementCurrency, row.settlementMovementsCount, row.requestOrderRef,
+      row.settlementAmount, row.settlementCurrency, row.settlementMovementsCount, row.requestOrderRef, row.settlementOrderRefs, row.verifiedHeaderOrderRef,
     ]);
     return copies.every((row) => signature(row) === signature(copies[0])) ? [copies[0]] : [];
   });
@@ -78,24 +79,47 @@ export function applyRublePaymentEvidence(
     const at = paymentTimestamp(payment.date);
     if (!Number.isFinite(at)) continue;
     const orderRef = payment.requestOrderRef || payment.baseDocumentRef || payment.settlementOrderRef || '';
+    const allocatedOrders = payment.settlementOrderRefs?.map(key) ?? [];
     const manualOwners = plans.filter((plan) => plan.manualRubleLinks?.some((link) => key(link.ref) === key(payment.ref)));
     const completedOwners = plans.filter(plan => plan.status === COMPLETED_WITHOUT_TOPUP && plan.completedPaymentRefs?.includes(payment.ref));
-    const candidates = eligible.filter((plan) => {
+    const availablePlans = eligible.filter((plan) => {
       if(completedOwners.length && (completedOwners.length !== 1 || completedOwners[0].id !== plan.id))return false;
       if(plan.status===COMPLETED_WITHOUT_TOPUP&&!plan.completedPaymentRefs?.includes(payment.ref))return false;
       const created = Date.parse(plan.createdAt || '');
       const confirmed = manualOwners.length === 1 && manualOwners[0].id === plan.id &&
         plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) && samePaymentSupplier(plan, payment);
-      // Explicit ownership remains authoritative. Only automatic order-based
+      // Explicit ownership remains authoritative. Only automatic
       // matching stops when earlier uniquely owned receipts cover the request.
       if (!manualOwners.length && plan.status !== COMPLETED_WITHOUT_TOPUP && coveredBefore(plan, at)) return false;
-      return Number.isFinite(created) && created <= at &&
-        (manualOwners.length ? confirmed : Boolean(orderRef) && plan.orderRefs.some((ref) => key(ref) === key(orderRef)) && (!(payment.settlementOrderRef || payment.requestOrderRef) || samePaymentSupplier(plan,payment)));
+      return Number.isFinite(created) && created <= at && (!manualOwners.length || confirmed);
     });
+    let candidates = availablePlans.filter(plan => manualOwners.length || (allocatedOrders.length
+          ? allocatedOrders.some(ref=>plan.orderRefs.some(p=>key(p)===ref)) && samePaymentSupplier(plan,payment)
+          : Boolean(orderRef) && plan.orderRefs.some((ref) => key(ref) === key(orderRef)) && (!(payment.settlementOrderRef || payment.requestOrderRef) || samePaymentSupplier(plan,payment))));
+    // Owner-approved supplier-debt workflow: the planning basis need not be
+    // the RKO settlement basis. Explicit order/code/manual ownership wins.
+    // Otherwise only a sole outstanding RUB request to this supplier may
+    // consume the payment. Do not choose between requests by matching amounts.
+    let supplierDebtFallback = false;
+    if (!manualOwners.length && !completedOwners.length && !candidates.length) {
+      const supplierPlans = availablePlans.filter(plan => samePaymentSupplier(plan, payment));
+      if (supplierPlans.some(plan => !plan.orderRefs.length)) {
+        candidates = supplierPlans;
+        supplierDebtFallback = true;
+      }
+    }
     // Multiple requests for one order require an explicit link; do not guess by amount/date.
     const owners = claims.get(key(payment.ref));
     if (owners?.size) continue; // Already accounted through the expense request, never twice.
-    if (candidates.length !== 1) {
+    const debtPlan = supplierDebtFallback && candidates.length === 1 ? candidates[0] : undefined;
+    const alreadyIssued = debtPlan ? evidence.get(debtPlan.id)!.cashOrders.reduce((sum, row) => sum + minor(row.amount), 0) : 0;
+    // A shared trading name must not override conflicting legal counterparties.
+    const counterpartyConflict = debtPlan?.supplierCounterparty.trim() && payment.counterparty?.trim() &&
+      !samePaymentSupplier({ supplierPartner: '', supplierCounterparty: debtPlan.supplierCounterparty },
+        { ...payment, supplier: '' });
+    if (candidates.length !== 1 || (supplierDebtFallback
+      ? !debtPlan || debtPlan.orderRefs.length > 0 || !hasConfirmedPaymentBasis(payment, plans.flatMap(plan => plan.orderRefs)) || counterpartyConflict || minor(payment.documentAmount) > minor(debtPlan.plannedAmount) - alreadyIssued
+      : !manualOwners.length && allocatedOrders.some(ref=>!candidates[0]?.orderRefs.some(p=>key(p)===ref)))) {
       for (const plan of candidates) {
         const current = evidence.get(plan.id)!;
         if (current.state !== 'ISSUED_BY_ONE_C') evidence.set(plan.id, { ...current, state: 'NEEDS_REVIEW' });
