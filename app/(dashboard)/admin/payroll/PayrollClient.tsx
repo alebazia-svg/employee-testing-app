@@ -4,6 +4,8 @@ import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useS
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Database, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { isPayrollPeriodAvailable } from '@/lib/payroll-period-availability';
+import PayrollOverviewPreview from './PayrollOverviewPreview';
+import { savePayrollReviewDecisions } from '@/lib/payroll-review-save';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
 import { Badge } from '@/components/ui/badge';
@@ -3934,7 +3936,7 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
   return { status: 'OK', reason: 'замечаний нет' };
 }
 
-export default function AdminPayrollPage() {
+export default function AdminPayrollPage({ visualPreview = true }: { visualPreview?: boolean }) {
   const defaultPayrollPeriod = getDefaultPayrollPeriod();
   const [month, setMonth] = useState(defaultPayrollPeriod.month);
   const [year, setYear] = useState(defaultPayrollPeriod.year);
@@ -4001,6 +4003,7 @@ export default function AdminPayrollPage() {
   const [oneCShadowBaselineError, setOneCShadowBaselineError] = useState('');
   const [isOneCShadowBaselineLoading, setIsOneCShadowBaselineLoading] = useState(false);
   const [classificationRules, setClassificationRules] = useState<PayrollClassificationRule[]>([]);
+  const [reviewSourceReplacement, setReviewSourceReplacement] = useState<DailyControlResponse | null>(null);
   const [isClassificationRulesLoading, setIsClassificationRulesLoading] = useState(false);
   const [classificationRuleActionId, setClassificationRuleActionId] = useState<string | null>(null);
   const [classificationRuleMessage, setClassificationRuleMessage] = useState('');
@@ -6733,7 +6736,7 @@ export default function AdminPayrollPage() {
         <div>
           <AdminBreadcrumbs current='Зарплата' />
           <h1 className='text-[26px] font-extrabold tracking-normal text-slate-950 md:text-[28px]'>Зарплата</h1>
-          <p className='mt-1 max-w-3xl text-base font-medium text-slate-500'>Начисления, проверка и история выплат</p>
+          <p className='mt-1 max-w-3xl text-sm font-medium text-slate-500'>Начисления за выбранный месяц</p>
         </div>
         <div className='flex flex-wrap items-end gap-2'>
           <label className='grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500'>
@@ -6752,6 +6755,53 @@ export default function AdminPayrollPage() {
       </div>
 
       <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4'>
+        {visualPreview && oneCShadowCalculation && <PayrollOverviewPreview
+          key={selectedPayrollPeriodKey}
+          period={`${months[Number(month)]} ${year}`}
+          date={oneCShadowSource ? formatPayrollControlDate(oneCShadowSource.period.verifiedThrough) : '—'}
+          preliminary={oneCShadowCalculation.mode === 'preliminary'}
+          stale={oneCShadowSourceIsStale}
+          columns={oneCShadowCalculation.comparisonColumns}
+          issues={oneCShadowCalculation.blockingIssues}
+          employeeIssues={oneCShadowCalculation.reviewEmployees}
+          advancesValid={!oneCShadowCalculation.advanceIssues.length}
+          exportDisabled={oneCShadowCalculation.mode !== 'preliminary' || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
+          onEmployee={name => { void openOneCManagerDetails(name); }}
+          onSaveProducts={async decisions => {
+            let partialError: unknown = null;
+            try { await savePayrollReviewDecisions(decisions); } catch (error) { partialError = error; }
+            const rulesResponse = await fetch('/api/admin/payroll/classification-rules', { cache: 'no-store' });
+            if (!rulesResponse.ok) throw new Error('Правила сохранены, но обновление не завершено. Перезагрузите расчёт.');
+            const updatedRules = await rulesResponse.json() as PayrollClassificationRule[];
+            setClassificationRules(updatedRules);
+            setOneCDetailClassification(null);
+            const response = await fetch(`/api/admin/payroll/daily-control?year=${year}&month=${month}&view=full`, { cache: 'no-store' });
+            const body = await response.json() as DailyControlResponse;
+            if (!response.ok || !body.ok || body.period.periodKey !== selectedPayrollPeriodKey || !Array.isArray(body.sales.rows)) throw new Error('Правила сохранены. Не удалось обновить расчёт: перезагрузите страницу перед утверждением.');
+            handleOneCShadowDataChange(body, { isStale: oneCShadowSourceIsStale });
+            setReviewSourceReplacement(body);
+            const sourceRows: SalesRow[] = body.sales.rows.map(row => ({ ...row, registrar: '', registrars: [], profitability: row.revenue ? row.grossProfit / row.revenue * 100 : 0 }));
+            if (partialError) throw partialError;
+            return classifySalesRows(mapLegacyRetailTraineeRowsForPeriod(sourceRows, month, year), updatedRules).rows.filter(isUnresolvedReviewRow);
+          }}
+          onProducts={async () => {
+            const response = await fetch(`/api/admin/payroll/daily-control?year=${year}&month=${month}&view=full`, { cache: 'no-store' });
+            const body = await response.json() as DailyControlResponse;
+            if (!response.ok || !body.ok || body.period.periodKey !== selectedPayrollPeriodKey || !Array.isArray(body.sales.rows)) throw new Error('Подробные данные недоступны');
+            const sourceRows: SalesRow[] = body.sales.rows.map(row => ({ ...row, registrar: '', registrars: [], profitability: row.revenue ? row.grossProfit / row.revenue * 100 : 0 }));
+            return classifySalesRows(mapLegacyRetailTraineeRowsForPeriod(sourceRows, month, year), classificationRules).rows.filter(isUnresolvedReviewRow);
+          }}
+          onExport={() => { setSaveError(''); setIsAutomaticExporting(true); void exportCurrentPayrollWorkbook('oneC').catch(() => setSaveError('Не удалось сформировать Excel.')).finally(() => setIsAutomaticExporting(false)); }}
+          onSource={(target) => {
+            const source = document.getElementById('payroll-source-panel');
+            if (source instanceof HTMLDetailsElement) source.open = true;
+            const panel = target === 'suppliers' ? document.getElementById('payroll-suppliers-panel') : source;
+            if (panel instanceof HTMLDetailsElement) panel.open = true;
+            (panel ?? source)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}
+        />}
+        {visualPreview && saveError && <p role='alert' className='text-sm text-amber-800'>{saveError}</p>}
+        {(!visualPreview || !oneCShadowCalculation) && (
         <Card className='min-w-0 w-full max-w-full overflow-hidden border border-slate-200 bg-white p-0'>
           <div className='flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-start sm:justify-between'>
             <div className='flex min-w-0 items-start gap-3'>
@@ -6915,7 +6965,8 @@ export default function AdminPayrollPage() {
           </div>
         </Card>
 
-        <details className='group rounded-xl border border-slate-200 bg-white shadow-sm'>
+        )}
+        <details id='payroll-source-panel' className='group rounded-xl border border-slate-200 bg-white shadow-sm'>
           <summary className='cursor-pointer list-none p-4'>
             <div className='flex items-center justify-between gap-3'>
               <div className='flex min-w-0 items-center gap-3'>
@@ -6923,8 +6974,8 @@ export default function AdminPayrollPage() {
                   <Database className='h-5 w-5' />
                 </span>
                 <div className='min-w-0'>
-                  <h2 className='font-bold text-slate-900'>Данные 1С и проверки</h2>
-                  <p className='truncate text-sm text-slate-500'>Себестоимость, закупки, поставщики и технические сведения</p>
+                  <h2 className='font-bold text-slate-900'>{visualPreview ? 'Источники и настройки' : 'Данные 1С и проверки'}</h2>
+                  {!visualPreview && <p className='truncate text-sm text-slate-500'>Себестоимость, закупки, поставщики и технические сведения</p>}
                 </div>
               </div>
               <AdminDisclosureAction closedLabel={oneCShadowSource
@@ -6933,7 +6984,13 @@ export default function AdminPayrollPage() {
             </div>
           </summary>
           <div className='border-t border-slate-100 p-3'>
+            {visualPreview && <button type='button' className='mb-3 min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold' onClick={() => {
+              const source = document.getElementById('payroll-source-panel');
+              if (source instanceof HTMLDetailsElement) source.open = false;
+              document.getElementById('payroll-overview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}>← Вернуться к расчёту</button>}
             <PayrollDailyOneCControl
+              replacement={reviewSourceReplacement}
               month={month}
               year={year}
               compactWhenUnavailable={Boolean(workbook)}
@@ -8812,6 +8869,8 @@ export default function AdminPayrollPage() {
         )}
         {!workbook && (
           <>
+            <details open={visualPreview ? undefined : true} className='rounded-xl border border-slate-200 bg-white'>
+              {visualPreview && <summary className='cursor-pointer p-4 font-semibold text-slate-800'>Сохранённые ведомости</summary>}
             <Card>
               <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
                 <div>
@@ -8880,6 +8939,7 @@ export default function AdminPayrollPage() {
                 </div>
               )}
             </Card>
+            </details>
 
             {selectedSavedRun && (
               <Card>

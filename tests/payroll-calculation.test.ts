@@ -135,7 +135,7 @@ async function loadPayrollModule(): Promise<PayrollModule> {
   // Exercise the real calculation functions without importing the dashboard UI
   // (its browser-only icon exports cannot be resolved by the Node test runner).
   const start = source.indexOf('type CellValue =');
-  const end = source.indexOf('export default function AdminPayrollPage()');
+  const end = source.indexOf('export default function AdminPayrollPage(');
   assert.ok(start > 0 && end > start, 'Payroll calculation boundaries must exist');
   const calculationSource = `import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD, isFilmTrainee, getPayrollServicePercent } from '../../lib/payroll-trainee';\nimport { getPayrollSalesManagerNameForPeriod } from '../../lib/payroll-sales-classification';\n` + source.slice(start, end);
 
