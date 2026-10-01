@@ -538,6 +538,11 @@ the pay result harder to understand.
 - No formula change, migration, fixture deployment or 1C write. Local isolated
   demo rules were not copied. Dismissed-employee lifecycle remains a separate
   unfinished task; this release does not silently hide zero-pay employees.
+- Final production checkout is `99eeba9`: a post-deploy narrow-panel check
+  revealed summary amount overlap. The summary now uses three columns only
+  from 1100px viewport width; narrow panels stack amounts. The corrective
+  build/deploy exited 0, health passed and the actual narrow production screen
+  was visually rechecked with no overlapping amounts.
 - Verification: 73 payroll tests plus six review tests, TypeScript and local /
   server production builds passed. Deploy exit 0, health OK, uploads volume
   retained, expected bundle present. Authenticated production September shows
