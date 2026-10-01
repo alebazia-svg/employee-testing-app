@@ -54,7 +54,7 @@ export default function PayrollOverviewPreview(p: Props) {
       <div className="flex flex-wrap items-center gap-3"><h2 className="text-lg font-bold text-slate-950">{p.period}</h2><span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{p.preliminary ? 'Рабочий расчёт' : 'Сверка с финальным'}</span></div>
       <p className={'text-sm '+(p.stale?'text-amber-800':'text-slate-500')}>{p.stale?'Последние сохранённые данные':'Данные'} по {p.date}</p>
     </div>
-    <div className="grid gap-4 px-5 py-5 sm:grid-cols-3">
+    <div className="grid gap-4 px-5 py-5 min-[1100px]:grid-cols-3">
       {[['Начислено', money(total('shadowGrossPay'))], ['Выдано авансами', p.advancesValid ? money(total('advance')) : 'Нужно проверить'], ['После авансов', p.advancesValid ? money(total('shadowNetPay')) : 'Не подтверждено']].map(([label,value],i)=><div key={label}><p className="text-sm text-slate-500">{label}</p><p className={'mt-1 tabular-nums font-bold tracking-tight '+(i===0?'text-3xl text-slate-950':'text-2xl text-slate-800')}>{value}</p></div>)}
     </div>
     <div className="mx-5 mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
