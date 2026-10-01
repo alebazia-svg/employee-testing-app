@@ -8,6 +8,7 @@ export type PayrollSalesSourceRow = {
   registrar: string;
   registrars: string[];
   revenue: number;
+  quantity?: number;
   cost: number;
   grossProfit: number;
   profitability: number;
