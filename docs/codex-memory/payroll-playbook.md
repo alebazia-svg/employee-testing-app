@@ -506,6 +506,22 @@ the pay result harder to understand.
 - This stage has no schema migration and is not yet released. Production remains
   on the earlier payroll runtime until a separate visual and deploy approval.
 
+### Past working periods — production fix, 2026-10-01
+
+- Owner approved isolated commit/deploy `f1ee421` for month-rollover visibility.
+  Past months do not require a final payroll run to display the working result.
+  The source GET prefers FINAL data and falls back to stored DAILY data only
+  when FINAL is absent; actual coverage and non-final status are preserved.
+- Historical attendance uses its stored period snapshot. Final payroll runs,
+  formulas and 1C documents are unchanged; no migrations were deployed.
+- Production deploy exited 0 and health returned `ok: true`. Browser verification
+  showed September as `Не утверждён`, with source through September 30 and
+  advances visible. August still matched all 13 employees, gross 940,129.55 RUB,
+  with final run 6 payout 915,129.55 RUB. Existing September source warnings
+  remain unresolved; this release does not certify its calculation as final.
+- Verification: 94 payroll/source tests, TypeScript, local and server builds.
+  The unfinished review-preview UI and unrelated dirty work were excluded.
+
 ## Before Changing Payroll
 
 Ask:
