@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { DELIVERY_READY_KIND, currentDeliveryPush } from './procurement-delivery-notifications';
 import { procurementNotificationEvidence as evidence } from './procurement-notification-evidence';
 import { COLLECTION_READY_KIND, currentCollectionPushes } from './procurement-collection-notifications';
+import { cashNoticeBase } from './procurement-morning-policy';
 
 export function procurementNotificationPlan(fingerprint: string, kind: string) {
   if (!kind.startsWith('procurement_payment_')) return null;
@@ -36,13 +37,13 @@ export async function inactiveProcurementNotifications(db: Db, rows: Row[]) {
   if (rows.some(r => r.kind === DELIVERY_READY_KIND)) {
     const current = await currentDeliveryPush();
     if (current.state !== 'unknown') for (const r of rows) {
-      if (r.kind === DELIVERY_READY_KIND && (current.state !== 'ready' || r.fingerprint !== current.fingerprint)) inactive.add(r.id);
+      if (r.kind === DELIVERY_READY_KIND && (current.state !== 'ready' || (cashNoticeBase(r) ?? r.fingerprint) !== current.fingerprint)) inactive.add(r.id);
     }
   }
   if (rows.some(r => r.kind === COLLECTION_READY_KIND)) {
     const current = await currentCollectionPushes();
     if (current.state === 'ready') for (const r of rows) {
-      if (r.kind === COLLECTION_READY_KIND && !current.notices.some(n => n.fingerprint === r.fingerprint)) inactive.add(r.id);
+      if (r.kind === COLLECTION_READY_KIND && !current.notices.some(n => n.fingerprint === (cashNoticeBase(r) ?? r.fingerprint))) inactive.add(r.id);
     }
   }
   return inactive;

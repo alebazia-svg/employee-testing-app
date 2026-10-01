@@ -9,6 +9,9 @@ import { inactiveProcurementNotifications } from '@/lib/procurement-notification
 import { DELIVERY_READY_KIND, deliveryPushDecision, queueDeliveryReadyPush } from '@/lib/procurement-delivery-notifications';
 import { COLLECTION_READY_KIND, COLLECTION_PUSH_COPY, collectionPushDecision, queueCollectionReadyPush } from '@/lib/procurement-collection-notifications';
 import { employeePushNotBefore, employeePushTtl, DELIVERY_PUSH_COPY } from '@/lib/employee-push-policy';
+import { queueCashMorningPushes } from '@/lib/procurement-morning-notifications';
+import { isCashMorning, cashMorningNotBefore } from '@/lib/procurement-morning-policy';
+import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -262,11 +265,11 @@ function configureWebPush() {
   return true;
 }
 
-function notificationTargetKey(notification: { id: number; taskId: number | null; issueId: number | null; reviewId: string | null }) {
+function notificationTargetKey(notification: { id: number; taskId: number | null; issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
   if (notification.taskId) return `task:${notification.taskId}`;
   if (notification.issueId) return `issue:${notification.issueId}`;
   if (notification.reviewId) return `review:${notification.reviewId}`;
-  return `notification:${notification.id}`;
+  return workdayNotificationThreadKey(notification);
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
@@ -336,6 +339,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   // The delivery producer is idempotent; a source outage must not block other domains.
   await queueDeliveryReadyPush(now).catch(() => undefined);
   await queueCollectionReadyPush(now).catch(() => undefined);
+  await queueCashMorningPushes(now).catch(() => undefined);
   await reconcileStoredUnreadWorkdayNotifications();
   const due = await prisma.workdayNotification.findMany({
     where: {
@@ -403,7 +407,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     const unreadTargets = await activeUnreadNotificationTargets(notification.userId, notification.id);
     const targetKey = notificationTargetKey(notification);
     const targetAlreadyUnread = suppressUnreadWorkdayPush({
-      targetAlreadyUnread: unreadTargets.has(targetKey),
+      targetAlreadyUnread: unreadTargets.has(targetKey) && !isCashMorning(notification),
       kind: notification.kind,
       task: notification.task,
     });
@@ -435,7 +439,8 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       });
       for (const subscription of notification.user.pushSubscriptions) {
         const attemptTime = dispatchTime();
-        if (employeePushNotBefore(attemptTime) > attemptTime || employeePushTtl(attemptTime) === 0) {
+        if (employeePushNotBefore(attemptTime) > attemptTime || employeePushTtl(attemptTime) === 0
+          || isCashMorning(notification) && cashMorningNotBefore(attemptTime) > attemptTime) {
           transientFailureCount += 1;
           lastErrorCode = 'WEB_PUSH_QUIET_HOURS';
           continue;
@@ -461,7 +466,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     }
 
     if (!providerAttemptCount && lastErrorCode === 'WEB_PUSH_QUIET_HOURS') {
-      const until = employeePushNotBefore(dispatchTime());
+      const until = isCashMorning(notification) ? cashMorningNotBefore(dispatchTime()) : employeePushNotBefore(dispatchTime());
       await prisma.workdayNotification.updateMany({ where: {
         id: notification.id, ...(delivery?.state === 'send' ? { pushStatus: 'delivery_sending' } : {}),
       }, data: { pushStatus: 'retry_pending', scheduledAt: until, nextPushAttemptAt: until } });

@@ -4,6 +4,7 @@ import { procurementNotificationEvidence } from './procurement-notification-evid
 import { procurementCollectionCopy } from './procurement-collection';
 import { moscowDateKey } from './one-c-date';
 import { employeePushNotBefore } from './employee-push-policy';
+import { cashNoticeBase, isCashMorning, cashMorningNotBefore } from './procurement-morning-policy';
 
 export const COLLECTION_READY_KIND = 'procurement_collection_ready';
 export const COLLECTION_PUSH_COPY = { title: 'Деньги для оплаты', body: 'Проверьте сумму, дату и кассу в платёжном календаре.' };
@@ -40,8 +41,11 @@ export async function queueCollectionReadyPush(now = new Date()) {
 export async function collectionPushDecision(notification: { fingerprint: string; userId: number }, now = new Date()) {
   const current = await currentCollectionPushes(now);
   if (current.state === 'unknown') return { state: 'defer' as const, until: new Date(now.getTime() + 60000) };
-  const notice = current.notices.find(n => n.fingerprint === notification.fingerprint && n.userId === notification.userId);
+  const identity = { ...notification, kind: COLLECTION_READY_KIND };
+  const notice = current.notices.find(n => n.fingerprint === (cashNoticeBase(identity) ?? notification.fingerprint) && n.userId === notification.userId);
   if (!notice) return { state: 'cancel' as const };
+  const morning = isCashMorning(identity) ? cashMorningNotBefore(now) : now;
+  if (morning > now) return { state: 'defer' as const, until: morning };
   if (notice.scheduledAt > now) return { state: 'defer' as const, until: notice.scheduledAt };
   return { state: 'send' as const, title: notice.title, body: notice.body };
 }

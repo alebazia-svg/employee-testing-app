@@ -3,6 +3,7 @@ import { prisma } from './prisma';
 import { deliveryMappedUser, loadDeliveryView } from './procurement-delivery-reminders';
 import { deliveryCollectionAmount, deliveryNativeFresh } from './procurement-delivery-native';
 import { employeePushNotBefore } from './employee-push-policy';
+import { cashNoticeBase, isCashMorning, cashMorningNotBefore } from './procurement-morning-policy';
 
 export const DELIVERY_READY_KIND = 'procurement_delivery_ready';
 // Kept for the existing document's stable identity; timing now follows daily policy.
@@ -47,7 +48,9 @@ export async function queueDeliveryReadyPush(now = new Date()) {
 export async function deliveryPushDecision(notification: { kind: string; fingerprint: string; userId: number }, now = new Date()) {
   const current = await currentDeliveryPush(now);
   if (current.state === 'unknown') return { state: 'defer' as const, until: new Date(now.getTime() + 60000) };
-  if (current.state !== 'ready' || current.fingerprint !== notification.fingerprint || current.userId !== notification.userId) return { state: 'cancel' as const };
+  if (current.state !== 'ready' || current.fingerprint !== (cashNoticeBase(notification) ?? notification.fingerprint) || current.userId !== notification.userId) return { state: 'cancel' as const };
+  const morning = isCashMorning(notification) ? cashMorningNotBefore(now) : now;
+  if (morning > now) return { state: 'defer' as const, until: morning };
   if (now < current.scheduledAt) return { state: 'defer' as const, until: current.scheduledAt };
   return { state: 'send' as const, title: current.title, body: current.body };
 }
