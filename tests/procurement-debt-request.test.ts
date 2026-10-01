@@ -19,7 +19,11 @@ const plan: EvidencePlan = { id: 'debt', planCode: 'PAY-DEBT', supplierPartner: 
 const payment = { ref: 'rko', number: 'TEST', date: '21.09.2026 10:00:00', posted: true, deleted: false, documentAmount: 100000, documentCurrency: 'РУБ', baseDocumentRef: '', supplier: 'Курбан' };
 test('same supplier alone never closes debt; confirmed RKO closes it and revocation reopens it', () => {
   const match = (p: EvidencePlan, rows = [payment]) => matchProcurementPaymentEvidence([p], [], rows, []).get(p.id)!;
-  assert.equal(match(plan).state, 'NO_EVIDENCE');
+  // An existing RKO without a native order/contract is visible for review,
+  // not absent evidence and not an automatic payment (supplier-debt rule).
+  assert.equal(match(plan).state, 'NEEDS_REVIEW');
+  assert.equal(match(plan).issuedAmount, 0);
+  assert.equal(match(plan).remainingAmount, 100000);
   const confirmed = { ...plan, manualRubleLinks: [{ ref: payment.ref, fingerprint: paymentFingerprint(payment) }] };
   assert.equal(match(confirmed).state, 'ISSUED_BY_ONE_C');
   assert.equal(match(confirmed).remainingAmount, 0);

@@ -1,4 +1,5 @@
 "use client";
+import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionNotice';
 import { ProcurementSplitList } from "@/components/ProcurementSplitList";
 import { ProcurementAdminComment } from "@/components/ProcurementAdminComment";
 import type { ReactNode } from "react";
@@ -63,6 +64,7 @@ type Plan = {
   }[];
   manager: { name: string };
   evidence: {
+    collection?: import('@/lib/procurement-collection').ProcurementCollection;
     state: string;
     issuedAmount: number;
     actualSupplier?: string;
@@ -983,13 +985,14 @@ export default function AdminProcurementClient({
           const needsCheck = plan.evidence.paymentAmountNeedsConfirmation || plan.evidence.state === "MISMATCH" || ["PARTIALLY_ISSUED", "PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state);
           return (<><div className="procurement-payment-deadline" data-priority={priority}>
             <div className="flex items-center gap-2">{priority === "overdue" ? <AlertTriangle className="h-5 w-5 shrink-0"/> : <CalendarDays className="h-5 w-5 shrink-0"/>}<strong>{priority === "overdue" ? "Срок оплаты прошёл" : priority === "today" ? "Оплата сегодня" : priority === "tomorrow" ? "Оплата завтра" : "Предстоящая оплата"}</strong></div>
-            <p>{date(plan.plannedDate)} · {needsCheck ? "Сначала проверьте найденную оплату и остаток" : priority === "overdue" ? "Проверьте оплату — срок уже прошёл" : priority === "today" ? "Подготовьте деньги к оплате сегодня" : priority === "tomorrow" ? "Подготовьте деньги заранее" : "Подготовьте деньги к указанной дате"}</p>
+            <p>{date(plan.plannedDate)} · {plan.evidence.collection ? "Выдача из кассы назначена" : needsCheck ? "Сначала проверьте найденную оплату и остаток" : priority === "overdue" ? "Проверьте оплату — срок уже прошёл" : priority === "today" ? "Подготовьте деньги к оплате сегодня" : priority === "tomorrow" ? "Подготовьте деньги заранее" : "Подготовьте деньги к указанной дате"}</p>
           </div><article key={plan.id} data-confirmed-only={!needsCheck} className="procurement-detail procurement-approved-detail">
                     {plan.evidence.paymentAmountNeedsConfirmation ? <p className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900 sm:col-span-4">Оплата найдена: {plan.evidence.paidForeignAmount.toLocaleString('ru-RU')} USDT. Рублёвый эквивалент не подтверждён — проверьте выполнение заявки перед повторной оплатой.</p> : null}
                     <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-950">{plan.supplierPartner}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${plan.evidence.state === "MISMATCH" ? "bg-red-100 text-red-800" : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? "bg-blue-100 text-blue-800" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "bg-blue-100 text-blue-800" : plan.evidence.state === "PARTIALLY_ISSUED" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>{plan.evidence.state === "MISMATCH" ? "НЕ СОВПАДАЕТ С 1С" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "ОПЛАЧЕНО ПО 1С" : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : plan.evidence.state === "PARTIALLY_ISSUED" ? "ЧАСТИЧНО ПО 1С" : "СОГЛАСОВАНО"}</span></div><p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">{orderLabel(plan)}</p>{plan.evidence.state === "MISMATCH" ? <p className="mt-1 text-xs font-black text-red-700">В заявке: {plan.supplierPartner} · в 1С: {plan.evidence.actualSupplier || "другой поставщик"}</p> : plan.evidence.state === "PARTIALLY_ISSUED" ? <p className="mt-1 text-xs font-bold text-amber-800">По 1С оплачено {rub.format(plan.evidence.issuedAmount)} из {rub.format(Number(plan.plannedAmount))}</p> : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="mt-1 text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}</div>
                     <div><p className="text-xs font-bold text-slate-500">Сумма заявки</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                     <div className="text-left sm:text-right"><p className="text-xs font-bold text-slate-400">Ответственный</p><p className="mt-0.5 text-sm font-extrabold text-slate-700">{plan.manager.name}</p></div>
+                    <ProcurementCollectionNotice collection={plan.evidence.collection} today={todayKey} />
                     <div className="procurement-comment-section"><ProcurementAdminComment value={planComment(plan)} /></div>
                     <div className="sm:col-span-4"><ProcurementChangeHistory events={plan.events} />{['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)&&!plan.evidence.paymentAmountNeedsConfirmation?<ProcurementCompletionAction id={plan.id} supplier={plan.supplierPartner}/>:null}</div>
                   </article></>);

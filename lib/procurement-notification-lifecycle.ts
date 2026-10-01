@@ -1,7 +1,8 @@
 import 'server-only';
 import type { Prisma } from '@prisma/client';
 import { DELIVERY_READY_KIND, currentDeliveryPush } from './procurement-delivery-notifications';
-import { freshEvidence } from './procurement-plan-revision-server';
+import { procurementNotificationEvidence as evidence } from './procurement-notification-evidence';
+import { COLLECTION_READY_KIND, currentCollectionPushes } from './procurement-collection-notifications';
 
 export function procurementNotificationPlan(fingerprint: string, kind: string) {
   if (!kind.startsWith('procurement_payment_')) return null;
@@ -9,18 +10,6 @@ export function procurementNotificationPlan(fingerprint: string, kind: string) {
 }
 type Row = { id: number; kind: string; fingerprint: string };
 type Db = Pick<Prisma.TransactionClient, 'supplierPaymentPlan'>;
-// Reuse the calendar's reconciliation. A failed source never closes an alert.
-let evidenceCache: { until: number; value: Promise<Awaited<ReturnType<typeof freshEvidence>> | null> } | null = null;
-async function evidence() {
-  if (evidenceCache && evidenceCache.until > Date.now()) return evidenceCache.value;
-  // Keep one in-flight reconciliation even when a slow 1C read exceeds the TTL.
-  // Start the TTL on completion, not before the network request.
-  const value = freshEvidence().catch(() => null).finally(() => {
-    if (evidenceCache?.value === value) evidenceCache.until = Date.now() + 60000;
-  });
-  evidenceCache = { until: Infinity, value };
-  return value;
-}
 export async function inactiveProcurementNotifications(db: Db, rows: Row[]) {
   const inactive = new Set<number>();
   const ids = [...new Set(rows.map(r => procurementNotificationPlan(r.fingerprint, r.kind)).filter((id): id is string => Boolean(id)))];
@@ -48,6 +37,12 @@ export async function inactiveProcurementNotifications(db: Db, rows: Row[]) {
     const current = await currentDeliveryPush();
     if (current.state !== 'unknown') for (const r of rows) {
       if (r.kind === DELIVERY_READY_KIND && (current.state !== 'ready' || r.fingerprint !== current.fingerprint)) inactive.add(r.id);
+    }
+  }
+  if (rows.some(r => r.kind === COLLECTION_READY_KIND)) {
+    const current = await currentCollectionPushes();
+    if (current.state === 'ready') for (const r of rows) {
+      if (r.kind === COLLECTION_READY_KIND && !current.notices.some(n => n.fingerprint === r.fingerprint)) inactive.add(r.id);
     }
   }
   return inactive;

@@ -122,7 +122,7 @@ export function applyRublePaymentEvidence(
       : !manualOwners.length && allocatedOrders.some(ref=>!candidates[0]?.orderRefs.some(p=>key(p)===ref)))) {
       for (const plan of candidates) {
         const current = evidence.get(plan.id)!;
-        if (current.state !== 'ISSUED_BY_ONE_C') evidence.set(plan.id, { ...current, state: 'NEEDS_REVIEW' });
+        if (current.state !== 'ISSUED_BY_ONE_C') evidence.set(plan.id, { ...current, state: 'NEEDS_REVIEW', rubleAllocationNeedsReview: true });
       }
       continue;
     }
@@ -147,6 +147,7 @@ export function applyRublePaymentEvidence(
     const issuedAmount = totalMinor / 100;
     evidence.set(plan.id, {
       ...current, cashOrders: orders, issuedAmount,
+      rubleAllocationNeedsReview: current.rubleAllocationNeedsReview || conflicting,
       // Consumers sum issuedAmount (RUB RKO) + paidAmount (USDT equivalent).
       paidAmount: 0,
       remainingAmount: Math.max(0, minor(plan.plannedAmount) - totalMinor) / 100,

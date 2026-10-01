@@ -125,6 +125,9 @@ export default async function AdminProcurementPage() {
     ...JSON.parse(JSON.stringify(plan)),
     evidence: paymentEvidence.get(plan.id)!,
   }));
+  if (!requestSource?.complete || !currencySource?.complete || currencySource.rubPaymentsSupported !== true) {
+    for (const row of paymentEvidence.values()) delete row.collection;
+  }
   const matchedRefs = new Set(
     serialized
       .flatMap((plan) =>

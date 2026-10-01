@@ -7,6 +7,7 @@ import { planWorkdayPushDelivery, suppressUnreadWorkdayPush } from '@/lib/workda
 import { TERMINAL_FISCAL_ADMIN_FIRST, fiscalApprovalKey } from '@/lib/terminal-fiscal-admin-gate';
 import { inactiveProcurementNotifications } from '@/lib/procurement-notification-lifecycle';
 import { DELIVERY_READY_KIND, deliveryPushDecision, queueDeliveryReadyPush } from '@/lib/procurement-delivery-notifications';
+import { COLLECTION_READY_KIND, COLLECTION_PUSH_COPY, collectionPushDecision, queueCollectionReadyPush } from '@/lib/procurement-collection-notifications';
 import { employeePushNotBefore, employeePushTtl, DELIVERY_PUSH_COPY } from '@/lib/employee-push-policy';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
@@ -270,6 +271,7 @@ function notificationTargetKey(notification: { id: number; taskId: number | null
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
   if (notification.kind === DELIVERY_READY_KIND) return '/procurement#delivery';
+  if (notification.kind === COLLECTION_READY_KIND) return '/procurement';
   if (notification.kind?.startsWith('procurement_payment_')) return '/procurement';
   if (notification.reviewId) return `/employee/payment-checks/${notification.reviewId}`;
   if (notification.issueId) return `/employee/issues/${notification.issueId}`;
@@ -328,11 +330,12 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   // A crashed sender may already have delivered its push. Keep its inbox item, but
   // never automatically replay an uncertain delivery and wake the employee twice.
   await prisma.workdayNotification.updateMany({ where: {
-    kind: DELIVERY_READY_KIND, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
+    kind: { in: [DELIVERY_READY_KIND, COLLECTION_READY_KIND] }, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
     status: { in: ['pending', 'sent'] },
   }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
   // The delivery producer is idempotent; a source outage must not block other domains.
   await queueDeliveryReadyPush(now).catch(() => undefined);
+  await queueCollectionReadyPush(now).catch(() => undefined);
   await reconcileStoredUnreadWorkdayNotifications();
   const due = await prisma.workdayNotification.findMany({
     where: {
@@ -361,7 +364,8 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
-    const delivery = notification.kind === DELIVERY_READY_KIND ? await deliveryPushDecision(notification, dispatchTime()) : null;
+    const delivery = notification.kind === DELIVERY_READY_KIND ? await deliveryPushDecision(notification, dispatchTime())
+      : notification.kind === COLLECTION_READY_KIND ? await collectionPushDecision(notification, dispatchTime()) : null;
     if (delivery?.state === 'defer') {
       await prisma.workdayNotification.update({ where: { id: notification.id }, data: { scheduledAt: delivery.until, nextPushAttemptAt: delivery.until } });
       continue;
@@ -424,7 +428,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
-          : delivery?.state === 'send' ? DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
+          : delivery?.state === 'send' ? notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
         url: workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,

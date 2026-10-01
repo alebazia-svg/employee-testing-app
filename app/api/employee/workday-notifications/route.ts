@@ -5,6 +5,7 @@ import { reconcileActiveWorkdayNotifications, workdayNotificationHref, workdayTa
 import { workdayNotificationThreadWhere } from '@/lib/workday-notification-thread';
 import { currentDeliveryPush, DELIVERY_READY_KIND } from '@/lib/procurement-delivery-notifications';
 import { DELIVERY_PUSH_COPY } from '@/lib/employee-push-policy';
+import { COLLECTION_READY_KIND, COLLECTION_PUSH_COPY, currentCollectionPushes } from '@/lib/procurement-collection-notifications';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -31,6 +32,7 @@ export async function GET() {
   const seenTargets = new Set<string>();
   const activeRows = await reconcileActiveWorkdayNotifications(prisma, rows);
   const delivery = activeRows.some(row => row.kind === DELIVERY_READY_KIND) ? await currentDeliveryPush() : null;
+  const collections = activeRows.some(row => row.kind === COLLECTION_READY_KIND) ? await currentCollectionPushes() : null;
   const notifications = activeRows
     .filter((notification) => {
       const reply = notification.kind.endsWith('_reply');
@@ -44,7 +46,9 @@ export async function GET() {
       const taskCopy = task ? workdayTaskNotificationCopy(task, notification.kind) : null;
       const deliveryCopy = notification.kind === DELIVERY_READY_KIND && delivery?.state === 'ready'
         && delivery.fingerprint === notification.fingerprint && delivery.userId === user.id ? delivery : null;
-      const copy = notification.kind === DELIVERY_READY_KIND ? deliveryCopy ?? DELIVERY_PUSH_COPY : null;
+      const collectionCopy = collections?.state === 'ready' ? collections.notices.find(n => n.userId === user.id && n.fingerprint === notification.fingerprint) : null;
+      const copy = notification.kind === DELIVERY_READY_KIND ? deliveryCopy ?? DELIVERY_PUSH_COPY
+        : notification.kind === COLLECTION_READY_KIND ? collectionCopy ?? COLLECTION_PUSH_COPY : null;
       return {
         ...notification,
         title: copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title,

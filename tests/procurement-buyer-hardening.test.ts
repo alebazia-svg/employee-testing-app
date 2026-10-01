@@ -34,6 +34,14 @@ test('legacy review envelope is retained for ADMIN but hidden from the buyer, in
 });
 
 const renderers:Partial<Record<'current'|'history',Promise<(props:unknown)=>string>>>={};
+test('collection appears inside its request, with date and cashbox, but does not turn into paid history', async () => {
+  const props = buyerReviewScenario('basis-edit-approved', '2026-10-01')!;
+  props.initialPlans[0].evidence!.collection = { requestRef: 'native', amount: 68000, cashbox: 'Касса менеджера', cashboxRef: 'box', date: '2026-10-02' };
+  const html = await render(props);
+  assert.match(html, /Получить 2 октября/); assert.match(html, /Касса менеджера/);
+  assert.doesNotMatch(html, /Можно получить|Оплачено полностью/);
+  assert.doesNotMatch(await render(props, 'history'), /Получить 2 октября|Касса менеджера/);
+});
 function render(props:unknown, view:'current'|'history'='current') {
   renderers[view] ??= (async()=>{
     const output=await build({stdin:{contents:`import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import Calendar from './app/(dashboard)/procurement/ProcurementPaymentCalendarClient'; export const render=p=>renderToStaticMarkup(<Calendar {...p}/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',plugins:[{name:'router',setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const useRouter=()=>({refresh(){}});'}));

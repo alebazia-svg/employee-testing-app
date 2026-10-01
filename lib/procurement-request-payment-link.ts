@@ -2,12 +2,13 @@ import type { ExpenseRequestSourceRow } from './expense-request-source';
 import type { SupplierCurrencyPaymentRow } from './procurement-currency-payment-source';
 import { samePaymentSupplier } from './procurement-manual-payment-links';
 import { parseOneCDateTime } from './one-c-date';
+import { requestSettlementOrderRef } from './procurement-request-order';
 
 const key = (value: string | null | undefined) => (value ?? '').trim().toLowerCase();
 const ruble = (value: string | null | undefined) => ['rub', 'руб', '₽'].includes(key(value));
 const equalAmount = (a: unknown, b: number) => typeof a === 'number' && Number.isFinite(a) && a > 0 && Math.round(a * 100) === Math.round(b * 100);
 
-/** A posted request's exact source order + whole-RKO link, never a money/date guess.
+/** A posted request's exact source/settlement order + whole-RKO link, never a money/date guess.
  * Keep the original basis/fingerprint intact. Recompute derived links every read.
  * Multi-request/split RKOs need an allocation contract and remain unassigned here. */
 export function attachRequestOrderLinks(payments: SupplierCurrencyPaymentRow[], requests: ExpenseRequestSourceRow[]) {
@@ -17,7 +18,7 @@ export function attachRequestOrderLinks(payments: SupplierCurrencyPaymentRow[], 
     const owners = requests.filter(request => request.linked_cash_expense_orders?.rows?.some(row => key(row.ref) === key(payment.ref)));
     if (owners.length !== 1) return clean;
     const request = owners[0], branch = request.linked_cash_expense_orders!;
-    const source = key(request.source_document?.ref), header = key(payment.baseDocumentRef);
+    const source = requestSettlementOrderRef(request), header = key(payment.baseDocumentRef);
     const requestAt = parseOneCDateTime(request.date ?? ''), paidAt = parseOneCDateTime(payment.date);
     if (!source || !request.ref || request.posted !== true || request.deletion_mark !== false ||
         request.completeness?.request !== true || request.completeness?.linked_cash_expense_orders !== true ||

@@ -6,6 +6,7 @@ import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-pa
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 import { attachRequestOrderLinks } from './procurement-request-payment-link';
 import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
+import { procurementCollections, type ProcurementCollection } from './procurement-collection';
 
 export type EvidencePlan = {
   id: string;
@@ -35,6 +36,8 @@ export type ProcurementPaymentEvidence = Omit<ReturnType<typeof matchCashEvidenc
   manualPaymentCount?: number;
   paymentAmountNeedsConfirmation?: boolean;
   completionByRubleEstimate?: boolean;
+  collection?: ProcurementCollection;
+  rubleAllocationNeedsReview?: boolean;
 };
 
 function oneCDateTimestamp(value: string) {
@@ -208,5 +211,6 @@ export function matchProcurementPaymentEvidence(
     });
   }
   applyRublePaymentEvidence(plans, linkedPayments, evidence);
+  for (const [id, collection] of procurementCollections(plans, requests, evidence)) evidence.get(id)!.collection = collection;
   return evidence;
 }

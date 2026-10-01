@@ -1,4 +1,5 @@
 "use client";
+import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionNotice';
 import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 import { ProcurementDeliveryCash, type DeliveryCashSnapshot } from '@/components/ProcurementDeliveryCash';
@@ -77,6 +78,7 @@ type Plan = {
   revision?: PaymentRevision | null;
   events?: PlanChangeEvent[];
   evidence?: {
+    collection?: import('@/lib/procurement-collection').ProcurementCollection;
     state: string;
     issuedAmount: number;
     actualSupplier?: string;
@@ -675,6 +677,7 @@ export default function ProcurementPaymentCalendarClient({
                       ) : (
                         <span />
                       )}
+                      <ProcurementCollectionNotice collection={plan.evidence?.collection} today={todayKey} />
                     </article>
                   ))}
                 </div>

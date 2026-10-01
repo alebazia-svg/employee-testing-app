@@ -25,6 +25,16 @@ export type ExpenseRequestSourceRow = ExpenseRequestInput & {
   decided_by?: OneCNamedRef | null;
   desired_payment_date?: string | null;
   payment_date?: string | null;
+  payment_breakdown?: ExpenseRequestSourceBranch<{
+    line_number?: number;
+    fields?: Record<string, {
+      type?: string;
+      filled?: boolean;
+      value?: unknown;
+      name?: string;
+      ref?: string;
+    }>;
+  }> & { contract?: string };
   linked_cash_expense_orders?: ExpenseRequestSourceBranch<{
     ref?: string | null;
     number?: string | null;
