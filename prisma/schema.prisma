@@ -1370,6 +1370,17 @@ model SalesAnalyticsRow {
   @@index([isNegative])
 }
 
+model PayrollFinboxRevision {
+  id              Int      @id @default(autoincrement())
+  periodKey       String
+  revision        Int
+  amountCents     Int
+  createdByUserId Int
+  createdAt       DateTime @default(now())
+
+  @@unique([periodKey, revision])
+}
+
 model PayrollManualInput {
   id                    Int        @id @default(autoincrement())
   runId                 Int

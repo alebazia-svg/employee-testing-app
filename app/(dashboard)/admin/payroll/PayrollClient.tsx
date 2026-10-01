@@ -15,6 +15,7 @@ import { Tabs } from '@/components/ui/tabs';
 import { Table } from '@/components/ui/table';
 import { PayrollBonusesEditor } from './PayrollBonusesEditor';
 import { PayrollFinboxImport } from './PayrollFinboxImport';
+import { PayrollFinboxEditor, useFinboxPeriod } from './PayrollFinboxEditor';
 import { applyPayrollOneCAdvances, type PayrollAdvanceRead, type PayrollAdvanceDocument } from '@/lib/payroll-one-c-advances';
 import { PayrollDailyOneCControl, type DailyControlResponse } from './PayrollDailyOneCControl';
 import { PAYROLL_COMPENSATION_VERSION, getBelaMinimum, getInitialPayrollBonuses, getPayrollBonusTotal, getRetailAccessoryTier, isBelaBaseEmployee, payrollMoney, readPayrollBonusDrafts, validatePayrollBonuses, type PayrollBonus, type PayrollBonusDraft } from '@/lib/payroll-compensation';
@@ -4023,6 +4024,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   const payrollFixedStorageKey = `payroll-fixed-${year}-${month}`;
   const payrollPurchaseStorageKey = `payroll-purchase-${year}-${month}`;
   const selectedPayrollPeriodKey = `${year}-${formatPayrollMonthKey(Number(month))}`;
+  const [finboxRefresh, setFinboxRefresh] = useState(0);
+  const finboxRead = useFinboxPeriod(selectedPayrollPeriodKey, finboxRefresh);
   const isSelectedPayrollPeriodCurrent = selectedPayrollPeriodKey === getCurrentMoscowPayrollPeriodKey();
   const isSelectedPayrollPeriodAvailable = isPayrollPeriodAvailable(selectedPayrollPeriodKey, getCurrentMoscowPayrollPeriodKey());
   useEffect(() => {
@@ -4564,6 +4567,12 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         attendancePreview,
         selectedPayrollPeriodKey,
       );
+    if (!oneCShadowBaseline) {
+      shadowManualPayroll[agentCreditCommissionEmployee] = {
+        ...(shadowManualPayroll[agentCreditCommissionEmployee] ?? { workedDays: '', lateCount: '', advance: '', comment: '' }),
+        agentCreditCommission: finboxRead.data?.amount ?? '',
+      };
+    }
     const shadowFixedPayroll = oneCShadowBaseline
       ? oneCShadowBaseline.manualInputs
         .filter((input) => input.inputType === 'fixed')
@@ -4734,6 +4743,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       else reviewEmployees.push({ employeeName: agentCreditCommissionEmployee, reasons: ['Агентские Finbox пока не внесены'] });
     }
     const blockingIssues = [
+      isPreliminary && !finboxRead.data ? (finboxRead.error ? `Finbox не прочитан: ${finboxRead.error}` : 'Finbox: загрузка сохранённых агентских.') : '',
       ...advanceIssues,
       ...oneCShadowSource.blockingIssues,
       costPendingRows ? `Себестоимость не завершена в ${costPendingRows} строках, влияющих на зарплату.` : '',
@@ -4767,7 +4777,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       managerSummaries: shadowManagerSummaries,
       bonuses: savedBonuses,
     };
-  }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodAvailable, currentFinalRun, isOneCShadowBaselineLoading, oneCShadowBaselineError, manualPayroll, month, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey, year, oneCAdvances, oneCAdvancesError]);
+  }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodAvailable, currentFinalRun, isOneCShadowBaselineLoading, oneCShadowBaselineError, manualPayroll, month, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey, year, oneCAdvances, oneCAdvancesError, finboxRead.data, finboxRead.error]);
   const selectedManagerPayroll = useMemo(
     () => (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows : fullPayrollRows)?.find((summary) => summary.manager === selectedManager) ?? null,
     [fullPayrollRows, oneCShadowCalculation, selectedManager, selectedManagerSource],
@@ -6765,7 +6775,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           issues={oneCShadowCalculation.blockingIssues}
           employeeIssues={oneCShadowCalculation.reviewEmployees}
           advancesValid={!oneCShadowCalculation.advanceIssues.length}
-          exportDisabled={oneCShadowCalculation.mode !== 'preliminary' || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
+          exportDisabled={oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
           onEmployee={name => { void openOneCManagerDetails(name); }}
           onSaveProducts={async decisions => {
             let partialError: unknown = null;
@@ -8205,6 +8215,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                   </div>
 
                   <div className='grid gap-5'>
+                    {selectedManagerSource === 'oneC' && selectedManagerPayroll.manager === agentCreditCommissionEmployee && <PayrollFinboxEditor key={selectedPayrollPeriodKey} periodKey={selectedPayrollPeriodKey} onSaved={period=>{if(period===selectedPayrollPeriodKey)setFinboxRefresh(v=>v+1);}}/>}
                     {selectedManagerSource === 'oneC' && Boolean(selectedManagerPayroll.advanceDocuments?.length) && (
                       <Card>
                         <h3 className='font-bold text-slate-900'>Авансы из 1С</h3>
