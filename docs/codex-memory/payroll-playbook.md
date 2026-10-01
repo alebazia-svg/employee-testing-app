@@ -554,6 +554,38 @@ the pay result harder to understand.
   915,129.56; saved final run 6 remains unchanged at 915,129.55 RUB. Do not
   interpret this display-rounding difference as a changed saved payroll run.
 
+### Server-backed Finbox input — released, 2026-10-01
+
+- Owner approved persistent Finbox entry in Diana's automatic payroll card and
+  the required schema change. The default period is the visible payroll month;
+  month/year can be selected explicitly. Do not infer it from the latest final
+  run. Existing Finbox paste validation rejects dates from another month.
+- `PayrollFinboxRevision` stores append-only cents, period, revision, actor and
+  timestamp. ADMIN-only GET/PUT uses expected-revision checks and period locks.
+  No raw Finbox report or 1C write is stored/performed. Existing final/closed
+  periods cannot be rewritten through this input; GET shows saved final input
+  when available. Historical corrections use the existing replacement workflow.
+- Automatic preliminary payroll consumes the saved server value, not the
+  browser-only Finbox draft. Missing source reads remain visible and block its
+  export. The old manually uploaded workbook editor remains unchanged in this
+  scoped stage; its drafts are not automatically migrated to the new table.
+- Additive migration `20261001160000_add_payroll_finbox_revisions` was rehearsed
+  in local `payroll_auto_preview_20260915` using its exact SQL. Local QA saved
+  100 RUB, verified exact
+  employee/total increase and reload persistence, then saved 0 RUB; a stale
+  second browser was refused. These local test revisions must never be copied
+  to production. August final input remained protected; unauthenticated GET
+  returned 401.
+- Owner approved commit and deployment. Production is on `a1fdd97`; the above
+  migration applied successfully, portal-app rebuilt/restarted and health passed.
+  The production revision table was verified empty after release: no local test
+  values were copied. Authenticated read-only browser QA confirmed September's
+  editable empty input and August's saved final 85,373 RUB input, locked against
+  replacement through this form. No production Finbox amounts were written.
+- Verification: 73 payroll tests plus 12 Finbox/review tests, TypeScript, Prisma
+  schema validation and local/server builds passed. Upload mounts were retained.
+  Local preview configuration and unrelated dirty work were excluded.
+
 ## Before Changing Payroll
 
 Ask:
