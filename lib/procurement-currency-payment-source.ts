@@ -15,7 +15,9 @@ export type SupplierCurrencyPaymentRow = {
   documentCurrency: string;
   baseDocumentRef: string;
   settlementOrderRef?: string;
+  settlementOrderRefs?: string[];
   requestOrderRef?: string;
+  verifiedHeaderOrderRef?: string;
   settlementAmount?: number;
   settlementCurrency?: string;
   settlementMovementsCount?: number;
@@ -130,9 +132,24 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     const now=new Date(),from=input.from;
     const day=(offset:number)=>expenseRequestMoscowCalendarDate(new Date(now.getTime()-offset*86400000));
     const normalize=(s:string)=>s.trim().toLocaleLowerCase('ru').replaceAll('ё','е').replace(/\s+/g,' ');
-    const withoutBasis=combined.filter(p=>!p.baseDocumentRef && p.posted && !p.deleted && ['РУБ','RUB','USDT'].includes(p.documentCurrency) && (parseOneCDateTime(p.date)?.getTime() || 0)>=from.getTime());
+    const debtNames=new Set(input.plans.filter(p=>Array.isArray(p.orderRefs)&&!p.orderRefs.length).map(p=>normalize(p.supplierPartner)));
+    const withoutBasis=combined.filter(p=>(!p.baseDocumentRef || debtNames.has(normalize(p.supplier||''))) && p.posted && !p.deleted && ['РУБ','RUB','USDT'].includes(p.documentCurrency) && (parseOneCDateTime(p.date)?.getTime() || 0)>=from.getTime());
     const names=new Set(withoutBasis.map(p=>normalize(p.supplier||'')));
     const refs=[...new Set(input.plans.filter(p=>names.has(normalize(p.supplierPartner))).flatMap(p=>Array.isArray(p.orderRefs)?p.orderRefs.filter((r):r is string=>typeof r==='string'&&/^[a-f0-9-]{36}$/i.test(r)):[]))];
+    // Orderless debt requests still need a native basis. Discover recent order
+    // anchors for their supplier, then verify the whole RKO via register rows.
+    // The catalogue is only a search aid: absence never proves no relationship.
+    const debtSuppliers=new Set(input.plans.filter(p=>Array.isArray(p.orderRefs)&&!p.orderRefs.length&&
+      withoutBasis.some(row=>!row.contract?.trim()&&normalize(row.supplier||'')===normalize(p.supplierPartner)))
+      .map(p=>normalize(p.supplierPartner)));
+    if(debtSuppliers.size){
+      const catalogue=await fetchOneCJson('supplier-order-finance-control',new URLSearchParams({limit:'1000',catalogue_days:'90'}),input.timeoutMs??15000);
+      if(!Array.isArray(catalogue.request_orders))throw Error('SETTLEMENT_LINK_CATALOGUE_SHAPE');
+      for(const order of catalogue.request_orders as RawRow[]){
+        const ref=text(order.ref);
+        if(debtSuppliers.has(normalize(text(order.supplier_partner)))&&/^[a-f0-9-]{36}$/i.test(ref)&&!refs.includes(ref))refs.push(ref);
+      }
+    }
     if(refs.length>100)throw Error('SETTLEMENT_LINK_SCOPE_LIMIT');
     const details:Record<string,any>[]=[];
     let calls=0;
@@ -165,6 +182,11 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       return detail;
     })));}
     combined=attachSettlementOrderLinks(combined,details,now);
+    combined=combined.map(payment=>({...payment,verifiedHeaderOrderRef:details.some(d=>{
+      const order=(d.order as any[])[0];
+      return order.posted===true&&order.deleted===false&&order.order_ref===payment.baseDocumentRef&&
+        normalize(order.supplier_name||'')===normalize(payment.supplier||'');
+    })?payment.baseDocumentRef:undefined}));
   }
   return {
     payments: combined,

@@ -29,6 +29,10 @@ test('manual payment route: real PostgreSQL persistence, concurrency, auth, revo
     g.paymentTestAuth = { ok: false, response: Response.json({}, { status: 403 }) };
     assert.equal((await send(plans[0].id)).status, 403);
     g.paymentTestAuth = { ok: true, user };
+    g.paymentTestSource.payments[0].contract = '';
+    assert.equal((await send(plans[0].id)).status, 409, 'no new manual assignment without a native basis');
+    assert.equal(await db.supplierPaymentPlanEvent.count({ where: { planId: plans[0].id } }), 0);
+    g.paymentTestSource.payments[0].contract = 'test contract';
     const results = await Promise.all(plans.map(p => send(p.id)));
     assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
     const winner = plans[results.findIndex(r => r.status === 200)];

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fetchSupplierCurrencyPaymentSnapshot } from '../lib/procurement-currency-payment-source';
+import {hasConfirmedPaymentBasis} from '../lib/procurement-payment-basis';
 
 test('payment source uses existing posted-RKO endpoint for RUB without new API flags', async (t) => {
   const oldEnv = { ...process.env };
@@ -79,4 +80,32 @@ test('USDT source retains settlement units and fetches the missing order link ev
   assert.equal(snapshot.payments[0].settlementOrderRef,ref);
   assert.equal(snapshot.payments[0].documentAmount,2725.45);
   assert.equal(snapshot.payments[0].settlementAmount,212585.1);
+});
+
+test('orderless debt request discovers and verifies acquisition or header order basis, never catalogue amounts',async(t)=>{
+  const oldEnv={...process.env};t.after(()=>{process.env=oldEnv;});
+  process.env['1C_BASE_URL']='https://one-c.invalid';process.env['1C_API_USER']='test';process.env['1C_API_PASSWORD']='test';
+  const refs=['11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222'];
+  const date=new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date())+' 00:00:00';
+  let base='',omit=false,reads=0;
+  t.mock.method(globalThis,'fetch',async(input:string)=>{
+    const url=new URL(input);
+    if(url.pathname.includes('supplier-currency'))return Response.json({ok:true,rows:[]});
+    if(url.pathname.includes('currency-cash-costing-plan'))return Response.json({ok:true,events:[{event_type:'supplier_payment',ref:'rko',number:'test',date,currency_amount:100,base_document_ref:base,partner:'Supplier'}]});
+    if(url.pathname.includes('supplier-order-finance-control')){
+      reads++;return Response.json({ok:true,catalogue_complete:false,request_orders:(omit?refs.slice(0,1):refs).map(ref=>({ref,supplier_partner:'Supplier',amount:999999}))});
+    }
+    if(url.pathname.includes('supplier-settlements')){
+      const ref=url.searchParams.get('order_ref');
+      return Response.json({ok:true,complete:true,write_operations:false,contract_version:'supplier-document-evidence-v1',as_of:new Date().toISOString(),
+        order:[{order_ref:ref,supplier_name:'Supplier',posted:true,deleted:false}],receipts:[{receipt_ref:'receipt-'+ref,posted:true}],
+        due_date_movements:[{recorder_ref:'register-'+ref,line_number:1,source_recorder_ref:'rko',settlement_object_ref:ref,settlement_document_ref:'receipt-'+ref,movement_date:date,movement_type:'Расход',raw_debt:50,raw_prepayment:0,currency_name:'руб'}]});
+    }
+    return Response.json({ok:true,cash_expense_orders:[]});
+  });
+  const read=()=>fetchSupplierCurrencyPaymentSnapshot({from:new Date(Date.now()-86400000),to:new Date(),plans:[{supplierPartner:'Supplier',orderRefs:[]}]});
+  const p=(await read()).payments[0];assert.deepEqual(p.settlementOrderRefs,refs);assert.equal(hasConfirmedPaymentBasis(p),true);assert.equal(reads,1);
+  omit=true;assert.equal(hasConfirmedPaymentBasis((await read()).payments[0]),false,'partial discovery is not proof of a whole RKO');
+  base=refs[0];assert.equal((await read()).payments[0].verifiedHeaderOrderRef,refs[0]);
+  base='unknown-document';assert.equal(hasConfirmedPaymentBasis((await read()).payments[0]),false);
 });

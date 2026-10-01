@@ -1,3 +1,5 @@
+import type {SupplierCurrencyPaymentRow} from './procurement-currency-payment-source';
+
 /** Conservative duplicate-planning guard, not financial matching authority. */
 export function mixedPaymentBasisSuppliers(rows: Array<{ supplierPartner: string; basis: 'ORDER' | 'DEBT' }>) {
   const suppliers = new Map<string, { name: string; bases: Set<string> }>();
@@ -14,4 +16,13 @@ export function mixedPaymentBasisSuppliers(rows: Array<{ supplierPartner: string
 
 export function mixedPaymentBasisMessage(suppliers: string[]) {
   return `${suppliers.join(', ')}: выберите оплату по заказам или в счёт общего долга. Вместе их отправить нельзя — суммы могут пересекаться.`;
+}
+
+/** Derived order refs come only from verified native request/register chains.
+ * An arbitrary header UUID can be an acquisition or expense request, not an order. */
+export function hasConfirmedPaymentBasis(payment: SupplierCurrencyPaymentRow, knownOrders: string[] = []) {
+  const key = (s: string) => s.trim().toLowerCase();
+  return Boolean(payment.contract?.trim() || payment.requestOrderRef?.trim() || payment.verifiedHeaderOrderRef?.trim() ||
+    payment.settlementOrderRef?.trim() || payment.settlementOrderRefs?.some(ref => ref.trim()) ||
+    (payment.baseDocumentRef.trim() && knownOrders.some(ref => key(ref) === key(payment.baseDocumentRef))));
 }

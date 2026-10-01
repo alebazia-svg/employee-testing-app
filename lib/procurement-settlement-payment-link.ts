@@ -1,8 +1,8 @@
 import type {SupplierCurrencyPaymentRow} from './procurement-currency-payment-source';
 import {parseOneCDateTime} from './one-c-date';
 
-/** Conservative fallback: one whole RUB/USDT RKO, one order, exact original movement.
- * Split/mixed/repeated allocations remain unlinked; never infer by similar money/date. */
+/** Whole RKO evidence: one advance order, or an exact RUB acquisition allocation.
+ * The matcher requires a unique plan covering every allocated order. */
 export function attachSettlementOrderLinks(payments:SupplierCurrencyPaymentRow[],details:Record<string,any>[],now=new Date()) {
   const candidates=new Map<string,Set<string>>();
   const normalize=(s:string)=>s.trim().toLocaleLowerCase('ru').replaceAll('ё','е').replace(/\s+/g,' ');
@@ -30,5 +30,30 @@ export function attachSettlementOrderLinks(payments:SupplierCurrencyPaymentRow[]
       candidates.set(p.ref,new Set([...(candidates.get(p.ref)||[]),o.order_ref]));
     }
   }
-  return payments.map(p=>{const refs=candidates.get(p.ref);return {...p,settlementOrderRef:refs?.size===1?[...refs][0]:undefined};});
+  return payments.map(p=>{
+    const refs=candidates.get(p.ref);
+    const linked={...p,settlementOrderRef:refs?.size===1?[...refs][0]:undefined,settlementOrderRefs:undefined as string[]|undefined};
+    // Payment of acquisitions is a debt reduction, not an advance movement.
+    // Preserve one whole RKO: only a complete RUB allocation may prove its orders.
+    if(p.baseDocumentRef||!p.posted||p.deleted||!['РУБ','RUB'].includes(p.documentCurrency)||!Number.isFinite(p.documentAmount)||p.documentAmount<=0||!p.supplier)return linked;
+    const paidAt=parseOneCDateTime(p.date);
+    if(!paidAt||paidAt>now)return linked;
+    const seen=new Set<string>(),orderRefs=new Set<string>();let total=0,invalid=false;
+    for(const d of details){
+      const o=d.order[0];
+      const rows=d.due_date_movements.filter((r:any)=>r.source_recorder_ref===p.ref);
+      for(const r of rows){
+        const identity=JSON.stringify([r.recorder_ref,r.line_number]);
+        if(!o.posted||o.deleted||normalize(p.supplier)!==normalize(o.supplier_name||'')||
+          !r.recorder_ref||!Number.isInteger(r.line_number)||r.line_number<=0||seen.has(identity)||
+          r.settlement_object_ref!==o.order_ref||r.movement_type!=='Расход'||r.raw_prepayment!==0||
+          typeof r.raw_debt!=='number'||!Number.isFinite(r.raw_debt)||r.raw_debt<=0||currency(r.currency_name||'')!=='rub'||
+          parseOneCDateTime(r.movement_date)?.getTime()!==paidAt.getTime()||
+          !Array.isArray(d.receipts)||d.receipts.filter((receipt:any)=>receipt.receipt_ref===r.settlement_document_ref&&receipt.posted===true).length!==1){invalid=true;continue;}
+        seen.add(identity);orderRefs.add(o.order_ref);total+=Math.round(r.raw_debt*100);
+      }
+    }
+    if(!invalid&&orderRefs.size&&total===Math.round(p.documentAmount*100))linked.settlementOrderRefs=[...orderRefs].sort();
+    return linked;
+  });
 }
