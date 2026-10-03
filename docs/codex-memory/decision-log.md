@@ -1,5 +1,29 @@
 ﻿# Portal Decision Log
 
+## 2026-10-03 - Small RUB payment-request remainders
+
+Owner-approved implementation, not yet released: automatically finish an
+APPROVED RUB request after confirmed payment only when the positive residual
+is BOTH at most 500 RUB AND at most 1% of the original request. Use integer
+kopecks without rounding the percentage. No automatic currency write-off.
+
+This is derived operational state `SMALL_REMAINDER_COMPLETED`, not a persisted
+payment or a debt write-off. Enable it only with complete fresh request/payment
+sources and RUB evidence support. Pending revisions, disputed ownership and
+unconfirmed amounts prevent closure. Removing/unposting a payment or losing
+complete evidence restores the active request rather than retaining a stale
+completion. Exact payment ownership must survive subsequent requests.
+
+Buyer and ADMIN history retain actual paid amount and residual, labelled
+«Завершена без доплаты», never «Оплачено полностью». Exclude the completed
+request from active planning/reserves and obsolete approval/collection notices.
+Supplier debt, acquisitions and 1C documents remain unchanged. Larger residuals
+keep the existing ADMIN-only, audited, reversible completion action, now near
+the amounts in the detail card. No schema migration or new 1C endpoint.
+
+This supersedes the earlier absence of an automatic small-residual policy;
+it does not change the separate 1,000-RUB supplier-picker display filter.
+
 ## 2026-09-15 - MOBO Master Identity
 
 The owner approved the new MOBO master identity for the portal. The four-part
