@@ -33,7 +33,7 @@ test('legacy review envelope is retained for ADMIN but hidden from the buyer, in
   assert.equal(buyerPaymentComment('Нужна сверка перед оплатой. Личная заметка'),'Нужна сверка перед оплатой. Личная заметка');
 });
 
-const renderers:Partial<Record<'current'|'history',Promise<(props:unknown)=>string>>>={};
+const renderers:Record<string,Promise<(props:unknown)=>string>>={};
 test('collection appears inside its request, with date and cashbox, but does not turn into paid history', async () => {
   const props = buyerReviewScenario('basis-edit-approved', '2026-10-01')!;
   props.initialPlans[0].evidence!.collection = { requestRef: 'native', amount: 68000, cashbox: 'Касса менеджера', cashboxRef: 'box', date: '2026-10-02' };
@@ -42,21 +42,22 @@ test('collection appears inside its request, with date and cashbox, but does not
   assert.doesNotMatch(html, /Можно получить|Оплачено полностью/);
   assert.doesNotMatch(await render(props, 'history'), /Получить 2 октября|Касса менеджера/);
 });
-function render(props:unknown, view:'current'|'history'='current') {
-  renderers[view] ??= (async()=>{
+function render(props:unknown, view:'current'|'history'='current', expanded:string|null=null) {
+  const key = `${view}:${expanded}`;
+  renderers[key] ??= (async()=>{
     const output=await build({stdin:{contents:`import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import Calendar from './app/(dashboard)/procurement/ProcurementPaymentCalendarClient'; export const render=p=>renderToStaticMarkup(<Calendar {...p}/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',plugins:[{name:'router',setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const useRouter=()=>({refresh(){}});'}));
       b.onLoad({filter:/ProcurementPaymentCalendarClient\.tsx$/},async args=>{
         const source=await readFile(args.path,'utf8');
         const initial="useState<'current' | 'history'>('current')";
         assert.ok(source.includes(initial));
-        return {contents:source.replace(initial,`useState<'current' | 'history'>('${view}')`),loader:'tsx'};
+        return {contents:source.replace(initial,`useState<'current' | 'history'>('${view}')`).replace('const [expandedPlan, setExpandedPlan] = useState<string | null>(null);', `const [expandedPlan, setExpandedPlan] = useState<string | null>(${JSON.stringify(expanded)});`),loader:'tsx'};
       });
     }}]});
     const module={exports:{} as {render:(p:unknown)=>string}};
     new Function('require','module','exports',output.outputFiles[0].text)(createRequire(import.meta.url),module,module.exports);
     return module.exports.render;
   })();
-  return renderers[view]!.then(fn=>fn(props));
+  return renderers[key].then(fn=>fn(props));
 }
 test('real calendar renders request stages, partial RUB remainder, paid history and buyer comment',async()=>{
   const props=buyerReviewScenario('lifecycle','2026-09-24')!;
@@ -64,7 +65,27 @@ test('real calendar renders request stages, partial RUB remainder, paid history 
   assert.match(html,/ЧАСТИЧНО ОПЛАЧЕНО/);assert.match(html,/Оплачено 40\s000,00.*осталось по заявке 60\s000,00/);
   assert.match(html,/НА СОГЛАСОВАНИИ/);assert.match(html,/НУЖНО ИСПРАВИТЬ/);assert.doesNotMatch(html,/Оплачено полностью/);
   assert.match(await render({...props,basisPreview:false},'history'),/Оплачено полностью/);
-  assert.match(html,/Подготовить к обеду/);assert.doesNotMatch(html,/служебная проверка|Основание закупщика|Нужна сверка перед оплатой|Учебная отменённая заявка/);
+  assert.doesNotMatch(html,/Подготовить к обеду/);
+  const commented = props.initialPlans.find(plan => buyerPaymentComment(plan.condition).includes('Подготовить к обеду'))!;
+  assert.match(await render({...props,basisPreview:false}, 'current', commented.id), /Подготовить к обеду/);
+  assert.doesNotMatch(html,/служебная проверка|Основание закупщика|Нужна сверка перед оплатой|Учебная отменённая заявка/);
+});
+
+test('compact requests expose edit without expanding, preserving revision and source-error guards',async()=>{
+  const props=buyerReviewScenario('basis-edit-approved','2026-10-03')!;
+  const ready={...props,basisPreview:false,supplierDebtError:false,evidenceSourceError:false,plansSourceError:false,managerMappingError:false};
+  const plan=ready.initialPlans[0];
+  const html=await render(ready);
+  assert.match(html,/compact-payment-calendar/);
+  assert.match(html,/aria-label="Изменить оплату /);
+  assert.match(html,/aria-expanded="false"/);
+  assert.doesNotMatch(html,/id="plan-details-/);
+  const expanded=await render(ready,'current',plan.id);
+  assert.match(expanded,/aria-expanded="true"/);
+  assert.equal((expanded.match(/aria-label="Изменить оплату /g)||[]).length,(html.match(/aria-label="Изменить оплату /g)||[]).length);
+  assert.doesNotMatch(await render({...ready,evidenceSourceError:true}),/aria-label="Изменить оплату /);
+  assert.doesNotMatch(await render({...ready,initialPlans:[{...plan,revision:{}}]}),/aria-label="Изменить оплату /);
+  assert.doesNotMatch(await render(ready,'history'),/aria-label="Изменить оплату /);
 });
 test('successive payments on one order leave both buyer requests in paid history',async()=>{
   const props=buyerReviewScenario('lifecycle','2026-09-27')!;

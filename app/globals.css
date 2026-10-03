@@ -2963,3 +2963,41 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
     max-height: calc(100dvh - 3rem);
   }
 }
+
+/* Calendar density follows the list width, including beside the summary. */
+.compact-payment-list {
+  container-type: inline-size;
+}
+.compact-payment-calendar .compact-payment-row {
+  grid-template-columns: minmax(0, 1fr) 136px 140px 112px;
+}
+.compact-payment-calendar .compact-payment-row > [role="note"] {
+  grid-column: 1 / -1;
+}
+@container (max-width: 680px) {
+  .compact-payment-calendar .compact-payment-row {
+    grid-template-columns: minmax(0, 1fr) 128px 112px;
+  }
+  .compact-payment-calendar .compact-payment-status {
+    grid-column: 1 / 3;
+    grid-row: 2;
+  }
+  .compact-payment-calendar .compact-payment-actions {
+    grid-column: 3;
+    grid-row: 1 / 3;
+  }
+}
+@container (max-width: 460px) {
+  .compact-payment-calendar .compact-payment-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 8px;
+  }
+  .compact-payment-calendar .compact-payment-status {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .compact-payment-calendar .compact-payment-actions {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
