@@ -588,6 +588,28 @@ the pay result harder to understand.
 
 ## Before Changing Payroll
 
+### Automatic run save/approval — release prepared, 2026-10-03
+
+- Owner approved saving the automatic 1C result through existing versioned runs
+  and then explicitly approving a final version. Code commit `1872c08` is based
+  on `a592db7`, preserving the intervening procurement release. No migration,
+  formula change, 1C write or production payroll save is part of this release.
+- New `automatic-1c-v1` snapshots preserve full detail, employee inputs, Finbox
+  revision and applied advances. Incomplete month coverage, source warnings and
+  employee review items block FINAL. Legacy runs keep their existing workflow.
+  New automatic header totals sum displayed employee cents; underlying raw
+  component validation and historical saved sums are unchanged.
+- Local verification: 73 payroll regressions, six approval/rounding tests,
+  TypeScript and clean release build passed. Actual browser save/read captured
+  14 employees and 66 detail rows; cancel/re-entry and reload did not duplicate
+  advances. UI final approval passed only on synthetic QA period 2091-09.
+  Incomplete local September was correctly refused. Atomic replacement has
+  isolated API coverage. Local data/account/fixture configuration are excluded.
+- Commit was pushed to `origin/design-local-updates`. Production publication
+  was started through `/tmp/deploy-payroll-1872c08.command`, but is still waiting
+  for interactive sudo. Do not claim the production container is updated until
+  deploy exit, running service, upload mount and route checks are confirmed.
+
 Ask:
 
 - Is this formula logic, identity/name matching, source parsing, UI/audit, or
