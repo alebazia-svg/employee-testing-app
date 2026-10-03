@@ -1,3 +1,4 @@
+import { isFinishedPaymentState } from './procurement-small-remainder';
 /** Empty orderRefs persist the supplier-debt basis; no synthetic order goes to 1C. */
 export function isSupplierDebtPlan(plan: { orderRefs: unknown }) {
   return Array.isArray(plan.orderRefs) && plan.orderRefs.length === 0;
@@ -14,5 +15,5 @@ export function debtRequestConflict(
 ) {
   return plans.some(plan => plan.supplierPartner === supplier && isSupplierDebtPlan(plan) &&
     ['SUBMITTED', 'APPROVED', 'NEEDS_CHANGES'].includes(plan.status) &&
-    !['ISSUED_BY_ONE_C', 'PAID_BY_ONE_C'].includes(evidence.get(plan.id)?.state || ''));
+    !isFinishedPaymentState(evidence.get(plan.id)?.state));
 }

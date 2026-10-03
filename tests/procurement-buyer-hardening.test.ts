@@ -34,6 +34,20 @@ test('legacy review envelope is retained for ADMIN but hidden from the buyer, in
 });
 
 const renderers:Record<string,Promise<(props:unknown)=>string>>={};
+test('small residual moves to history without disguising the actual amount or keeping an edit action', async()=>{
+  const props=buyerReviewScenario('basis-edit-approved','2026-10-03')!;
+  const plan={...props.initialPlans[0], supplierPartner:'Остаток 25 рублей', plannedAmount:30025,
+    evidence:{...props.initialPlans[0].evidence!,state:'SMALL_REMAINDER_COMPLETED',issuedAmount:30000,paidAmount:0,remainingAmount:25}};
+  const current=await render({...props,initialPlans:[plan],basisPreview:false});
+  assert.doesNotMatch(current,/Остаток 25 рублей|aria-label="Изменить оплату/);
+  const history=await render({...props,initialPlans:[plan],basisPreview:false},'history');
+  assert.match(history,/Остаток 25 рублей/);
+  assert.match(history,/Завершена без доплаты/);
+  assert.match(history,/Недоплата.*25/);
+  assert.doesNotMatch(history,/Оплачено полностью/);
+  const reopened=await render({...props,initialPlans:[{...plan,evidence:{...plan.evidence,state:'PARTIALLY_ISSUED'}}],basisPreview:false});
+  assert.match(reopened,/Остаток 25 рублей/);
+});
 test('collection appears inside its request, with date and cashbox, but does not turn into paid history', async () => {
   const props = buyerReviewScenario('basis-edit-approved', '2026-10-01')!;
   props.initialPlans[0].evidence!.collection = { requestRef: 'native', amount: 68000, cashbox: 'Касса менеджера', cashboxRef: 'box', date: '2026-10-02' };

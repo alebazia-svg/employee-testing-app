@@ -1,6 +1,7 @@
 import { validatePaymentPlan } from './procurement-payment-control';
 import { paymentBasisChanged } from './procurement-debt-request';
 import { manualPaymentLinks } from './procurement-manual-payment-links';
+import { isFinishedPaymentState } from './procurement-small-remainder';
 
 export type RevisionData = ReturnType<typeof validatePaymentPlan>['data'];
 export type PaymentRevision = { id: string; reason: string; submittedAt: string; data: RevisionData; changes: { label: string; before: string; after: string }[] };
@@ -49,7 +50,7 @@ export function assertRevisionPaymentSafety(before: Record<string, any>, data: R
     if (before.supplierPartner !== data.supplierPartner) throw new Error('При смене основания оставьте того же поставщика.');
     if (manualPaymentLinks(before.oneCCashEvidence).length) throw new Error('У заявки есть связь с расходником. Основание менять нельзя.');
   }
-  if (['ISSUED_BY_ONE_C', 'PAID_BY_ONE_C'].includes(evidence.state)) throw new Error('Оплаченная заявка не редактируется.');
+  if (isFinishedPaymentState(evidence.state)) throw new Error('Завершённая заявка не редактируется.');
   if (['NEEDS_REVIEW', 'MISMATCH'].includes(evidence.state)) throw new Error('Сначала нужно проверить оплату этой заявки.');
   const paid = evidence.issuedAmount + evidence.paidAmount;
   if (paid <= 0 && evidence.paidForeignAmount <= 0) return;

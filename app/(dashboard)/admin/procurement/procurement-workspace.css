@@ -6,6 +6,8 @@
 .procurement-approved-detail>div:first-of-type,.procurement-approved-detail>p,.procurement-approved-detail>.procurement-comment-section,.procurement-approved-detail>div:last-child{grid-column:1/-1}
 .procurement-approved-detail>.procurement-comment-section{border-top:1px solid #e2e8f0;padding-top:12px}
 .procurement-approved-detail>div{grid-column:auto;text-align:left}
+.procurement-approved-detail>.procurement-completion-section{grid-column:1/-1}
+.procurement-completion-section>button{margin-top:0}
 .procurement-approved-detail>div:nth-child(2)>p:nth-child(2){font-size:24px;line-height:1.3}
 .procurement-plan>section>div>div:nth-child(2)>div{grid-template-columns:95px minmax(0,1fr)}
 .procurement-plan>section>div>div:nth-child(2)>div>div:nth-child(3),.procurement-plan>section>div>div:nth-child(2)>div>div:nth-child(4){grid-column:2;text-align:left}

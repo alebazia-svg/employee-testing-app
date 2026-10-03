@@ -3,6 +3,7 @@ import type { SupplierCurrencyPaymentRow } from './procurement-currency-payment-
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
+import { smallRubleRemainder } from './procurement-small-remainder';
 
 const key = (value: string) => value.trim().toLowerCase();
 const minor = (value: number) => Math.round(value * 100);
@@ -40,14 +41,28 @@ export function uniqueSupplierPayments(rows: SupplierCurrencyPaymentRow[]) {
   });
 }
 
+/** The native request and the independent payment read must agree before forgiving a residual in the portal. */
+export function confirmedRubleRemainderPayments(
+  plan: EvidencePlan, orders: ProcurementPaymentEvidence['cashOrders'], payments: SupplierCurrencyPaymentRow[],
+) {
+  return orders.length > 0 && orders.every(row => payments.some(payment =>
+    key(payment.ref) === key(row.ref) && payment.posted && !payment.deleted &&
+    ['РУБ', 'RUB'].includes(payment.documentCurrency) && samePaymentSupplier(plan, payment) &&
+    hasConfirmedPaymentBasis(payment, plan.orderRefs) && payment.date === row.date &&
+    Number.isFinite(payment.documentAmount) && payment.documentAmount > 0 &&
+    Math.abs(payment.documentAmount - row.amount) < 0.001));
+}
+
 /** Call with ALL plans, then expose only the current user's result to the client. */
 export function applyRublePaymentEvidence(
   plans: EvidencePlan[], payments: SupplierCurrencyPaymentRow[],
   evidence: Map<string, ProcurementPaymentEvidence>,
+  allowSmallRemainder = false,
 ) {
   const eligible = plans.filter((plan) => ['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') &&
     ['CASH', 'ACCOUNTABLE_QR', 'BANK'].includes(plan.paymentMethod) && plan.plannedAmount > 0);
   const claims = new Map<string, Set<string>>();
+  const uniquePayments = uniqueSupplierPayments(payments);
   for (const plan of plans) {
     for (const order of evidence.get(plan.id)?.cashOrders || []) {
       const ref = key(order.ref);
@@ -56,7 +71,7 @@ export function applyRublePaymentEvidence(
   }
   // Rebuild coverage from this read, oldest first. A persisted "paid" flag
   // cannot release another request after an earlier RKO is unposted/removed.
-  const coveredBefore = (plan: EvidencePlan, at: number) => {
+  const coveredBefore = (plan: EvidencePlan, at: number, includeSmall = true) => {
     const current = evidence.get(plan.id)!;
     if (current.state === 'MISMATCH') return false;
     const orders = [...new Map(current.cashOrders.map(row => [key(row.ref), row])).values()];
@@ -68,9 +83,12 @@ export function applyRublePaymentEvidence(
       return owners?.size === 1 && owners.has(plan.id) && Number.isFinite(paidAt) && paidAt < at &&
         Number.isFinite(row.amount) && row.amount > 0 ? sum + minor(row.amount) : sum;
     }, 0);
-    return covered >= minor(plan.plannedAmount);
+    return covered >= minor(plan.plannedAmount) || (includeSmall && allowSmallRemainder &&
+      !current.rubleAllocationNeedsReview && current.state !== 'NEEDS_REVIEW' &&
+      smallRubleRemainder(plan, covered / 100) !== null &&
+      confirmedRubleRemainderPayments(plan, orders.filter(row => paymentTimestamp(row.date) < at), uniquePayments));
   };
-  const orderedPayments = uniqueSupplierPayments(payments)
+  const orderedPayments = uniquePayments
     .filter(payment => Number.isFinite(paymentTimestamp(payment.date)))
     .sort((a, b) => paymentTimestamp(a.date) - paymentTimestamp(b.date) || key(a.ref).localeCompare(key(b.ref)));
   for (const payment of orderedPayments) {
@@ -90,7 +108,7 @@ export function applyRublePaymentEvidence(
         plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) && samePaymentSupplier(plan, payment);
       // Explicit ownership remains authoritative. Only automatic
       // matching stops when earlier uniquely owned receipts cover the request.
-      if (!manualOwners.length && plan.status !== COMPLETED_WITHOUT_TOPUP && coveredBefore(plan, at)) return false;
+      if (!manualOwners.length && plan.status !== COMPLETED_WITHOUT_TOPUP && coveredBefore(plan, at, false)) return false;
       return Number.isFinite(created) && created <= at && (!manualOwners.length || confirmed);
     });
     let candidates = availablePlans.filter(plan => manualOwners.length || (allocatedOrders.length
@@ -101,12 +119,20 @@ export function applyRublePaymentEvidence(
     // Otherwise only a sole outstanding RUB request to this supplier may
     // consume the payment. Do not choose between requests by matching amounts.
     let supplierDebtFallback = false;
+    const openSupplierDebt = availablePlans.some(plan => !plan.orderRefs.length && samePaymentSupplier(plan,payment) && !coveredBefore(plan,at));
+    if (!manualOwners.length && !completedOwners.length && candidates.length && openSupplierDebt && candidates.every(plan => coveredBefore(plan,at))) candidates=[];
     if (!manualOwners.length && !completedOwners.length && !candidates.length) {
       const supplierPlans = availablePlans.filter(plan => samePaymentSupplier(plan, payment));
       if (supplierPlans.some(plan => !plan.orderRefs.length)) {
         candidates = supplierPlans;
         supplierDebtFallback = true;
       }
+    }
+    // Operational completion releases a later request, but must not discard a
+    // real top-up when the original request is still the sole exact owner.
+    if (!manualOwners.length && !completedOwners.length && candidates.length > 1) {
+      const outstanding = candidates.filter(plan => !coveredBefore(plan, at));
+      if (outstanding.length) candidates = outstanding;
     }
     // Multiple requests for one order require an explicit link; do not guess by amount/date.
     const owners = claims.get(key(payment.ref));

@@ -8,6 +8,15 @@ export const historyFixture = [
   { id: 'mems', supplierPartner: 'MEMS Technology', orderNumbers: ['00OF-000393'], plannedAmount: '280000', evidence: { issuedAmount: 280000, paidAmount: 0, paidForeignAmount: 0, actualExchangeRate: null, cashOrders: [{ ref: 'rko', number: '00OF-001692', date: '16.09.2026 18:47:57' }] } },
   { id: 'tural', supplierPartner: 'Tural', orderNumbers: ['00OF-000334'], plannedAmount: '700000', evidence: { issuedAmount: 0, paidAmount: 699997, paidForeignAmount: 7865.17, actualExchangeRate: 89, currencyPayments: [{ ref: 'usdt-rko', number: 'USDT', date: '' }] } },
 ];
+test('small-remainder completion shows the actual payment and discrepancy in both histories',()=>{
+  const plans=[{...historyFixture[0],plannedAmount:30025,evidence:{...historyFixture[0].evidence,state:'SMALL_REMAINDER_COMPLETED',issuedAmount:30000,remainingAmount:25}}];
+  for(const options of [{compactBuyer:true},{showManager:true,splitView:true}]){
+    const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans,...options}));
+    assert.match(html,/Завершена без доплаты/);assert.match(html,/Недоплата: 25/);assert.match(html,/30 000/);
+    assert.match(html,/не больше 500 ₽ и 1%/);assert.match(html,/Долг в 1С не изменён/);
+    assert.doesNotMatch(html,/Оплачено полностью|Заявка оплачена полностью/);
+  }
+});
 test('RUB and USDT history use the same visible cards; details do not hide either supplier', () => {
   const html = renderToStaticMarkup(React.createElement(ProcurementPaymentHistory, { plans: historyFixture }));
   assert.equal((html.match(/<article/g) || []).length, 2);

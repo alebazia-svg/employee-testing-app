@@ -100,12 +100,15 @@ export default async function ProcurementPage() {
       plannedDate: plan.plannedDate.toISOString(),
       createdAt: paymentMatchCreatedAt(plan),
       status: plan.status,
+      currency: plan.currency,
+      hasPendingRevision: Boolean(readPaymentRevision(plan.oneCCashEvidence)),
       manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
       completedPaymentRefs: paymentCompletion(plan.oneCCashEvidence)?.paymentRefs,
     })),
     requests,
     currencySource?.complete ? currencySource.payments : [],
     currencySource?.conversions || [],
+    { allowSmallRemainder: !evidenceSourceError && !plansSourceError },
   );
   const serializedPlans = plans.map((plan) => {
     const latestSnapshot = plan.events[0]?.snapshot;

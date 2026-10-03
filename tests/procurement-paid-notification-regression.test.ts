@@ -8,12 +8,12 @@ test('today’s request-based payment retires its notification through the real 
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-30T16:00:00Z') });
   const env = { ...process.env }; t.after(() => { process.env = env; });
   process.env['1C_BASE_URL'] = 'https://one-c.invalid'; process.env['1C_API_USER'] = 'test'; process.env['1C_API_PASSWORD'] = 'test';
-  for (const scenario of ['paid', 'partial', 'unposted', 'incomplete', 'offline', 'edited', 'debt-paid', 'debt-partial', 'debt-unposted', 'debt-no-basis']) {
+  for (const scenario of ['paid', 'partial', 'unposted', 'incomplete', 'offline', 'edited', 'debt-paid', 'debt-partial', 'debt-unposted', 'debt-no-basis', 'small', 'small-incomplete', 'small-unsupported', 'debt-small']) {
     const supplierDebt = scenario.startsWith('debt-');
-    const fullyPaid = scenario === 'paid' || scenario === 'debt-paid';
+    const fullyPaid = ['paid','debt-paid','small','debt-small'].includes(scenario);
     const updatedAt = new Date('2026-09-29T10:00:00Z');
     const plan = { id: 'plan', planCode: 'PAY-TEST', status: 'APPROVED', supplierPartner: 'Supplier', supplierCounterparty: '',
-      orderRefs: supplierDebt ? [] : ['order'], plannedAmount: scenario.includes('partial') ? 50000 : 47600, foreignAmount: null, paymentMethod: 'CASH',
+      orderRefs: supplierDebt ? [] : ['order'], plannedAmount: scenario.includes('small') ? 47800 : scenario.includes('partial') ? 50000 : 47600, foreignAmount: null, paymentMethod: 'CASH',
       plannedDate: new Date('2026-09-30T00:00:00Z'), createdAt: updatedAt, updatedAt, oneCCashEvidence: null,
       manager: { name: 'Buyer', oneCManagerName: '' } };
     const payment = { ref: 'rko', number: 'TEST-RKO', date: '30.09.2026 15:27:43', posted: !scenario.includes('unposted'), deleted: false,
@@ -32,14 +32,14 @@ test('today’s request-based payment retires its notification through the real 
       const query = new URL(input).searchParams, from = query.get('from')!, to = query.get('to')!;
       periods.push([from, to]);
       return Response.json({ ok: true, rows: !supplierDebt && from <= '2026-09-30' && to > '2026-09-30' ? [request] : [],
-        completeness: { complete: scenario !== 'incomplete' } });
+        completeness: { complete: !scenario.includes('incomplete') } });
     });
     const db = { supplierPaymentPlan: { findMany: async (args: any) => [scenario === 'edited' && args.select
       ? { ...plan, updatedAt: new Date('2026-09-30T15:59:00Z') } : plan] },
       workdayNotification: { updateMany: async (args: any) => { writes.push(args); return { count: 1 }; } } };
     const mocks: Record<string, any> = {
       './prisma': { prisma: db }, '@/lib/prisma': { prisma: db },
-      './procurement-currency-payment-source': { fetchSupplierCurrencyPaymentSnapshot: async () => ({ complete: true, payments: [payment], conversions: [] }) },
+      './procurement-currency-payment-source': { fetchSupplierCurrencyPaymentSnapshot: async () => ({ complete: true, rubPaymentsSupported: !scenario.includes('unsupported'), payments: [payment], conversions: [] }) },
       './procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', currentDeliveryPush: async () => ({ state: 'inactive' }) },
     };
     const bundle = await build({ entryPoints: ['lib/workday-notifications.ts'], bundle: true, write: false,

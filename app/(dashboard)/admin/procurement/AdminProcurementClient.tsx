@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import "./procurement-workspace.css";
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 import { ProcurementCompletionAction } from '@/components/ProcurementCompletionAction';
+import { isFinishedPaymentState } from '@/lib/procurement-small-remainder';
 import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { ProcurementUsdtEstimate } from "@/components/ProcurementUsdtEstimate";
 import { ProcurementChangeHistory, type PlanChangeEvent } from "@/components/ProcurementChangeHistory";
@@ -229,9 +230,10 @@ export default function AdminProcurementClient({
   }, [router]);
   const active = plans.filter((plan) => !isInactivePaymentPlan(plan.status));
   const isCurrencyPaid = (plan: Plan) => plan.evidence.state === "PAID_BY_ONE_C";
+  const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence.state);
   const submitted = active.filter((plan) => plan.status === "SUBMITTED" && !isCurrencyPaid(plan));
-  const completedPlans = [...active.filter((plan) => plan.status === "APPROVED" && (plan.evidence.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan))), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
-  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && plan.evidence.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan));
+  const completedPlans = [...active.filter((plan) => plan.status === "APPROVED" && isPaymentFinished(plan)), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
+  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan));
   const urgentSubmitted = submitted.filter((plan) => ["SAME_DAY", "LATE"].includes(paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state));
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const estimatedUsdtPlanIds = new Set(
@@ -266,7 +268,7 @@ export default function AdminProcurementClient({
   const preparation = calculateCashPreparation(
     active.map((plan) => {
       const plannedRub = Number(plan.plannedAmount);
-      const remainingRub = isCurrencyPaid(plan) ? 0 : Math.max(0, plannedRub - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0) + Number(plan.evidence.paidAmount || 0)));
+      const remainingRub = isPaymentFinished(plan) ? 0 : Math.max(0, plannedRub - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0) + Number(plan.evidence.paidAmount || 0)));
       const remainingRatio = plannedRub > 0 ? Math.min(1, remainingRub / plannedRub) : 0;
       const fullForeignAmount = plan.evidence.remainingForeignAmount != null && plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C"
         ? plan.evidence.remainingForeignAmount
@@ -281,7 +283,7 @@ export default function AdminProcurementClient({
           : fullForeignAmount * remainingRatio,
         exchangeRate: Number(plan.exchangeRate || 0) || (referenceRatePlanIds.has(plan.id) ? referenceUsdtRate : 0),
         commissionAmount: Number(plan.commissionAmount || 0),
-        issued: plan.evidence.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan),
+        issued: isPaymentFinished(plan),
       };
     }),
     usdtBalance.balance,
@@ -302,7 +304,7 @@ export default function AdminProcurementClient({
       ? null
       : Math.max(0, usdtBalance.balance - plannedUsdt);
   const plannedQr = active
-    .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR" && dateKey(plan.plannedDate) >= todayKey && plan.evidence.state !== "ISSUED_BY_ONE_C")
+    .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR" && dateKey(plan.plannedDate) >= todayKey && !isPaymentFinished(plan))
     .reduce((sum, plan) => sum + Math.max(0, Number(plan.plannedAmount || 0) - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0))), 0);
   const qrShortfall = accountableBalance.balance == null ? null : Math.max(0, plannedQr - accountableBalance.balance);
   const groupTitle = (key: string) =>
@@ -992,9 +994,13 @@ export default function AdminProcurementClient({
                     <div><p className="text-xs font-bold text-slate-500">Сумма заявки</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                     <div className="text-left sm:text-right"><p className="text-xs font-bold text-slate-400">Ответственный</p><p className="mt-0.5 text-sm font-extrabold text-slate-700">{plan.manager.name}</p></div>
+                    {['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)&&!plan.evidence.paymentAmountNeedsConfirmation?<div className="procurement-completion-section flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-3 py-2">
+                      <div><p className="text-sm font-bold text-slate-800">Осталось по заявке: {plan.paymentMethod === 'USDT' && plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT` : rub.format(plan.evidence.remainingAmount)}</p><p className="mt-1 text-xs text-slate-500">Если доплачивать не нужно, завершите заявку.</p></div>
+                      <ProcurementCompletionAction id={plan.id} supplier={plan.supplierPartner}/>
+                    </div>:null}
                     <ProcurementCollectionNotice collection={plan.evidence.collection} today={todayKey} />
                     <div className="procurement-comment-section"><ProcurementAdminComment value={planComment(plan)} /></div>
-                    <div className="sm:col-span-4"><ProcurementChangeHistory events={plan.events} />{['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)&&!plan.evidence.paymentAmountNeedsConfirmation?<ProcurementCompletionAction id={plan.id} supplier={plan.supplierPartner}/>:null}</div>
+                    <div className="sm:col-span-4"><ProcurementChangeHistory events={plan.events} /></div>
                   </article></>);
         }}/>
         {paymentLinks}

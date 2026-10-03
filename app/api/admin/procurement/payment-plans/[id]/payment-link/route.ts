@@ -1,4 +1,4 @@
-import { paymentMatchCreatedAt } from '@/lib/procurement-plan-revision';
+import { paymentMatchCreatedAt, readPaymentRevision } from '@/lib/procurement-plan-revision';
 import { paymentCompletion, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
@@ -57,12 +57,13 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
           plannedDate: row.plannedDate.toISOString(), createdAt: paymentMatchCreatedAt(row),
           managerName: row.manager.oneCManagerName || row.manager.name, manualRubleLinks: manualPaymentLinks(row.oneCCashEvidence),
           completedPaymentRefs: paymentCompletion(row.oneCCashEvidence)?.paymentRefs,
+          hasPendingRevision: Boolean(readPaymentRevision(row.oneCCashEvidence)),
         }));
-        const evidence = matchProcurementPaymentEvidence(evidencePlans, requests!.rows, source!.payments, source!.conversions);
+        const evidence = matchProcurementPaymentEvidence(evidencePlans, requests!.rows, source!.payments, source!.conversions, {allowSmallRemainder:source!.rubPaymentsSupported === true});
         if ([...evidence.values()].some((row) => [...row.cashOrders, ...row.currencyPayments].some((order) => order.ref.toLowerCase() === ref))) {
           throw new Error('Расходник уже связан с заявкой по данным 1С.');
         }
-        const proposed = matchProcurementPaymentEvidence(evidencePlans.map((row) => row.id === id ? { ...row, manualRubleLinks: [...next, { ref, fingerprint }] } : row), requests!.rows, source!.payments, source!.conversions).get(id)!;
+        const proposed = matchProcurementPaymentEvidence(evidencePlans.map((row) => row.id === id ? { ...row, manualRubleLinks: [...next, { ref, fingerprint }] } : row), requests!.rows, source!.payments, source!.conversions, {allowSmallRemainder:source!.rubPaymentsSupported === true}).get(id)!;
         const remaining = evidence.get(id)?.remainingAmount || 0;
         const assignedForeign = proposed.currencyPayments.find((row) => row.ref.toLowerCase() === ref)?.foreignAmount || 0;
         if (payment.documentAmount <= 0 || (payment.documentCurrency === 'USDT'

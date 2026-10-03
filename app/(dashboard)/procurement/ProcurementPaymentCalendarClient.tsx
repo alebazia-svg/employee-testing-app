@@ -1,4 +1,5 @@
 "use client";
+import { isFinishedPaymentState } from '@/lib/procurement-small-remainder';
 import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionNotice';
 import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
@@ -294,11 +295,12 @@ export default function ProcurementPaymentCalendarClient({
   const activePlans = (plansSourceError ? [] : plans).filter((plan) => !isInactivePaymentPlan(plan.status))
     .map(plan => evidenceSourceError ? { ...plan, evidence: undefined } : plan);
   const isCurrencyPaid = (plan: Plan) => plan.evidence?.state === "PAID_BY_ONE_C";
-  const paidPlans = [...activePlans.filter((plan) => plan.evidence?.state === "ISSUED_BY_ONE_C" || isCurrencyPaid(plan)), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
-  const workingPlans = activePlans.filter((plan) => plan.evidence?.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan));
+  const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence?.state);
+  const paidPlans = [...activePlans.filter(isPaymentFinished), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
+  const workingPlans = activePlans.filter(plan => !isPaymentFinished(plan));
   const planningOrders = calculateOrderPlanning(
     initialOrders,
-    activePlans.map((plan) => ({
+    workingPlans.map((plan) => ({
       orderRefs: plan.orderRefs,
       plannedAmount: Number(plan.plannedAmount),
       status: plan.status,
@@ -322,7 +324,7 @@ export default function ProcurementPaymentCalendarClient({
     ? reviewOrders
     : reviewOrders.slice(0, 3);
   const positionSummary = supplierPositionSummary(supplierBalances);
-  const unpaidActivePlans = activePlans.map((plan) => ({
+  const unpaidActivePlans = workingPlans.map((plan) => ({
     ...plan,
     remainingRub: isCurrencyPaid(plan) ? 0 : Math.max(0, Number(plan.plannedAmount) - (plan.evidence?.state === "MISMATCH" ? 0 : Number(plan.evidence?.issuedAmount || 0) + Number(plan.evidence?.paidAmount || 0))),
   })).filter((plan) => plan.remainingRub > 0.009);
@@ -1069,7 +1071,7 @@ export default function ProcurementPaymentCalendarClient({
                 На согласовании: {basisPreview || plansSourceError ? '—' : plans.filter((plan) => plan.status === "SUBMITTED").length}
               </span>
               <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
-                Согласовано: {reservesUnavailable ? '—' : plans.filter((plan) => plan.status === "APPROVED" && plan.evidence?.state !== "ISSUED_BY_ONE_C" && !isCurrencyPaid(plan)).length}
+                Согласовано: {reservesUnavailable ? '—' : plans.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan)).length}
               </span>
               {plans.some(plan => plan.revision) ? <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">Изменения на согласовании: {plans.filter(plan => plan.revision).length}</span> : null}
             </div>

@@ -43,5 +43,5 @@ test('isolated revision lifecycle preserves review evidence, requires approval f
   await module.exports.decideApprovedRevision('demo',2,reject.revision.id,false,'Оставить прежнюю сумму');
   assert.equal(state.plan.plannedAmount,120000);assert.equal(state.events.at(-1).action,'REVISION_REJECTED');
   state.paid={...state.paid,state:'ISSUED_BY_ONE_C',issuedAmount:120000};
-  await assert.rejects(()=>module.exports.proposeApprovedRevision('demo',{id:1,name:'Закупщик'},input(150000,'Новый комментарий'),'Изменить оплату',state.plan.updatedAt.toISOString()),/Оплаченная заявка не редактируется/);
+  await assert.rejects(()=>module.exports.proposeApprovedRevision('demo',{id:1,name:'Закупщик'},input(150000,'Новый комментарий'),'Изменить оплату',state.plan.updatedAt.toISOString()),/Завершённая заявка не редактируется/);
 });

@@ -4,6 +4,7 @@ import { DELIVERY_READY_KIND, currentDeliveryPush } from './procurement-delivery
 import { procurementNotificationEvidence as evidence } from './procurement-notification-evidence';
 import { COLLECTION_READY_KIND, currentCollectionPushes } from './procurement-collection-notifications';
 import { cashNoticeBase } from './procurement-morning-policy';
+import { isFinishedPaymentState } from './procurement-small-remainder';
 
 export function procurementNotificationPlan(fingerprint: string, kind: string) {
   if (!kind.startsWith('procurement_payment_')) return null;
@@ -26,7 +27,7 @@ export async function inactiveProcurementNotifications(db: Db, rows: Row[]) {
       if (!id) continue;
       const p = byId.get(id);
       const closed = !p || ['CANCELLED', 'COMPLETED_WITHOUT_TOPUP'].includes(p.status);
-      const fullyPaid = p && paid?.versions.get(id) === p.updatedAt.toISOString() && ['PAID_BY_ONE_C', 'ISSUED_BY_ONE_C'].includes(paid.get(id)?.state ?? '');
+      const fullyPaid = p && paid?.versions.get(id) === p.updatedAt.toISOString() && isFinishedPaymentState(paid.get(id)?.state);
       const oldDecision = p && (r.kind === 'procurement_payment_approved' && p.status !== 'APPROVED'
         || r.kind === 'procurement_payment_needs_changes' && p.status === 'SUBMITTED');
       // A rejected revision can leave the original plan APPROVED: that notice remains

@@ -11,6 +11,7 @@ import { paymentCompletion, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-pa
 import { ProcurementUnlinkedPayments } from "@/components/ProcurementUnlinkedPayments";
 import {attachRequestOrderLinks} from '@/lib/procurement-request-payment-link';
 import { readPaymentRevision, paymentMatchCreatedAt } from "@/lib/procurement-plan-revision";
+import { isFinishedPaymentState } from '@/lib/procurement-small-remainder';
 import { ProcurementRevisionReview } from "@/components/ProcurementRevisionReview";
 import {
   fetchSupplierOrderFinance,
@@ -114,12 +115,15 @@ export default async function AdminProcurementPage() {
       plannedDate: plan.plannedDate.toISOString(),
       createdAt: paymentMatchCreatedAt(plan),
       status: plan.status,
+      currency: plan.currency,
+      hasPendingRevision: Boolean(readPaymentRevision(plan.oneCCashEvidence)),
       manualRubleLinks: manualPaymentLinks(plan.oneCCashEvidence),
       completedPaymentRefs: paymentCompletion(plan.oneCCashEvidence)?.paymentRefs,
     })),
     requests,
     currencySource?.complete ? currencySource.payments : [],
     currencySource?.conversions || [],
+    { allowSmallRemainder: plansResult.status === 'fulfilled' && requestSource?.complete === true && currencySource?.complete === true && currencySource.rubPaymentsSupported === true },
   );
   const serialized = plans.map((plan) => ({
     ...JSON.parse(JSON.stringify(plan)),
@@ -232,7 +236,7 @@ export default async function AdminProcurementPage() {
   const horizonEnd = plusDays(todayKey, 30);
   const forecastPlans = plansWithOrderContext
     .filter((plan) => plan.status === "SUBMITTED" || plan.status === "APPROVED")
-    .filter((plan) => plan.evidence.state !== "PAID_BY_ONE_C" && plan.evidence.state !== "ISSUED_BY_ONE_C")
+    .filter((plan) => !isFinishedPaymentState(plan.evidence.state))
     .map((plan) => {
       const reflected = plan.evidence.state === "MISMATCH"
         ? 0
@@ -332,7 +336,7 @@ export default async function AdminProcurementPage() {
   });
   const fundingPlans = plansWithOrderContext
     .filter((plan) => plan.status === "SUBMITTED" || plan.status === "APPROVED")
-    .filter((plan) => plan.evidence.state !== "PAID_BY_ONE_C" && plan.evidence.state !== "ISSUED_BY_ONE_C")
+    .filter((plan) => !isFinishedPaymentState(plan.evidence.state))
     .map((plan) => {
       const plannedMinor = Math.round(Number(plan.plannedAmount || 0) * 100);
       const reflectedMinor = plan.evidence.state === "MISMATCH" ? 0 : Math.round((Number(plan.evidence.issuedAmount || 0) + Number(plan.evidence.paidAmount || 0)) * 100);
@@ -468,7 +472,7 @@ export default async function AdminProcurementPage() {
           payments={uniqueSupplierPayments(attachRequestOrderLinks(currencySource?.complete ? currencySource.payments : [], requestsResult.status === 'fulfilled' ? requestsResult.value.rows : []))
             .filter((payment) => ['РУБ', 'USDT'].includes(payment.documentCurrency) && payment.posted && !payment.deleted && payment.documentAmount > 0 &&
               plans.some((plan) => plan.status === 'APPROVED' && samePaymentSupplier(plan, payment) && plan.createdAt.getTime() <= paymentTimestamp(payment.date) &&
-                !['ISSUED_BY_ONE_C', 'PAID_BY_ONE_C'].includes(paymentEvidence.get(plan.id)?.state || '')) &&
+                !isFinishedPaymentState(paymentEvidence.get(plan.id)?.state)) &&
               ![...paymentEvidence.values()].some((item) => [...item.cashOrders, ...item.currencyPayments].some((order) => order.ref === payment.ref)) &&
               !plans.some((plan) => manualPaymentLinks(plan.oneCCashEvidence).some((link) => link.ref === payment.ref)))
             .slice().reverse()}

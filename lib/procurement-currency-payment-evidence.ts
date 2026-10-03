@@ -1,12 +1,13 @@
 import type { ExpenseRequestSourceRow } from '@/lib/expense-request-source';
 import { matchCashEvidence } from '@/lib/procurement-payment-control';
 import type { CurrencyConversionRow, SupplierCurrencyPaymentRow } from '@/lib/procurement-currency-payment-source';
-import { applyRublePaymentEvidence, uniqueSupplierPayments } from './procurement-ruble-payment-evidence';
+import { applyRublePaymentEvidence, uniqueSupplierPayments, confirmedRubleRemainderPayments } from './procurement-ruble-payment-evidence';
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 import { attachRequestOrderLinks } from './procurement-request-payment-link';
 import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
 import { procurementCollections, type ProcurementCollection } from './procurement-collection';
+import { SMALL_REMAINDER_COMPLETED, smallRubleRemainder } from './procurement-small-remainder';
 
 export type EvidencePlan = {
   id: string;
@@ -21,12 +22,14 @@ export type EvidencePlan = {
   plannedDate?: string;
   createdAt?: string;
   status?: string;
+  currency?: string;
+  hasPendingRevision?: boolean;
   completedPaymentRefs?:string[];
   manualRubleLinks?: import('./procurement-manual-payment-links').ManualPaymentLink[];
 };
 
 export type ProcurementPaymentEvidence = Omit<ReturnType<typeof matchCashEvidence>, 'state'> & {
-  state: ReturnType<typeof matchCashEvidence>['state'] | 'PAID_BY_ONE_C' | 'PARTIALLY_PAID_BY_ONE_C';
+  state: ReturnType<typeof matchCashEvidence>['state'] | 'PAID_BY_ONE_C' | 'PARTIALLY_PAID_BY_ONE_C' | typeof SMALL_REMAINDER_COMPLETED;
   paidAmount: number;
   paidForeignAmount: number;
   remainingAmount: number;
@@ -68,6 +71,7 @@ export function matchProcurementPaymentEvidence(
   requests: ExpenseRequestSourceRow[],
   currencyPayments: SupplierCurrencyPaymentRow[],
   conversions: CurrencyConversionRow[],
+  options: { allowSmallRemainder?: boolean } = {},
 ) {
   const linkedPayments = attachRequestOrderLinks(currencyPayments, requests);
   const uniquePayments = uniqueSupplierPayments(linkedPayments);
@@ -210,7 +214,16 @@ export function matchProcurementPaymentEvidence(
       manualPaymentCount: allocation.payments.filter((row) => plan.manualRubleLinks?.some((link) => link.ref === row.ref)).length,
     });
   }
-  applyRublePaymentEvidence(plans, linkedPayments, evidence);
+  applyRublePaymentEvidence(plans, linkedPayments, evidence, options.allowSmallRemainder === true);
+  // Derived only from a complete fresh read. Keep all actual amounts and RKO
+  // ownership; a removed/unposted payment makes the request active again.
+  if (options.allowSmallRemainder === true) for (const plan of plans) {
+    const row = evidence.get(plan.id)!;
+    if (row.state === 'PARTIALLY_ISSUED' && !row.rubleAllocationNeedsReview && !row.paymentAmountNeedsConfirmation &&
+      row.cashOrders.length > 0 && row.cashOrders.every(p => p.ref && Number.isFinite(p.amount) && p.amount > 0) &&
+      confirmedRubleRemainderPayments(plan, row.cashOrders, uniquePayments) &&
+      smallRubleRemainder(plan, row.issuedAmount) !== null) row.state = SMALL_REMAINDER_COMPLETED;
+  }
   for (const [id, collection] of procurementCollections(plans, requests, evidence)) evidence.get(id)!.collection = collection;
   return evidence;
 }
