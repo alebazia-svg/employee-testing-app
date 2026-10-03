@@ -2,7 +2,7 @@
 
 ## 2026-10-03 - Small RUB payment-request remainders
 
-Owner-approved implementation, not yet released: automatically finish an
+Owner-approved implementation, released as `561225e` on 2026-10-04: automatically finish an
 APPROVED RUB request after confirmed payment only when the positive residual
 is BOTH at most 500 RUB AND at most 1% of the original request. Use integer
 kopecks without rounding the percentage. No automatic currency write-off.
