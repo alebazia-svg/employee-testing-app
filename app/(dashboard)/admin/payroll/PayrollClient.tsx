@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Database, Eye, Fi
 import { AdminShell } from '@/components/AdminShell';
 import { isPayrollPeriodAvailable } from '@/lib/payroll-period-availability';
 import PayrollOverviewPreview from './PayrollOverviewPreview';
+import { automaticPayrollApprovalIssues, automaticPayrollDisplayedTotal } from '@/lib/payroll-automatic-approval';
 import { savePayrollReviewDecisions } from '@/lib/payroll-review-save';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
@@ -3984,8 +3985,17 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   const [saveError, setSaveError] = useState('');
   const [isSavingPayroll, setIsSavingPayroll] = useState(false);
   const [lastSavedRunId, setLastSavedRunId] = useState<number | null>(null);
+  const [automaticDraft, setAutomaticDraft] = useState<Awaited<ReturnType<typeof prepareAutomaticPayload>> | null>(null);
+  const automaticSaveLock = useRef(false);
+  useEffect(() => {
+    if (automaticDraft) document.getElementById('payroll-save-confirmation')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [automaticDraft]);
   const [payrollHistoryActionId, setPayrollHistoryActionId] = useState<string | null>(null);
   const [payrollFinalReplacement, setPayrollFinalReplacement] = useState<PayrollFinalReplacement | null>(null);
+  const [payrollFinalApproval, setPayrollFinalApproval] = useState<{ periodKey: string; run: SavedPayrollRunSummary } | null>(null);
+  useEffect(() => {
+    if (payrollFinalApproval) document.getElementById('payroll-final-confirmation')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [payrollFinalApproval]);
   const [selectedSavedRun, setSelectedSavedRun] = useState<SavedPayrollRunDetail | null>(null);
   const [isSavedRunLoading, setIsSavedRunLoading] = useState(false);
   const [isSavedRunExporting, setIsSavedRunExporting] = useState(false);
@@ -4776,6 +4786,11 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       classification: shadowClassification,
       managerSummaries: shadowManagerSummaries,
       bonuses: savedBonuses,
+      manualInputs: [
+        ...Object.entries(shadowManualPayroll).map(([employeeName, input]) => ({ ...input, employeeName, inputType: 'sales' })),
+        ...Object.entries(shadowFixedPayroll).map(([employeeName, input]) => ({ employeeName, inputType: 'fixed', advance: input.advance, fixedBonus: input.bonus, fixedDeduction: input.deduction, comment: input.comment })),
+        { employeeName: purchaseManagerName, inputType: 'purchase', purchaseAdvance: shadowPurchaseInput.advance, purchaseDeduction: shadowPurchaseInput.deduction, comment: shadowPurchaseInput.comment },
+      ],
     };
   }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodAvailable, currentFinalRun, isOneCShadowBaselineLoading, oneCShadowBaselineError, manualPayroll, month, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey, year, oneCAdvances, oneCAdvancesError, finboxRead.data, finboxRead.error]);
   const selectedManagerPayroll = useMemo(
@@ -6128,7 +6143,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       setPayrollFinalReplacement({ periodKey: period.periodKey, targetRun: run, existingFinal });
       return;
     }
-    void updatePayrollRunStatus(run.id, 'FINAL');
+    setSaveError('');
+    setPayrollFinalApproval({ periodKey: period.periodKey, run });
   }
 
   async function updatePayrollRunStatus(runId: number, status: 'CHECKED' | 'FINAL', replaceExistingFinal = false) {
@@ -6161,6 +6177,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           : 'Расчёт отмечен как финальный.'
         : 'Расчёт отмечен как проверенный.');
       setPayrollFinalReplacement(null);
+      setPayrollFinalApproval(null);
       await loadSavedPayrollPeriods();
     } catch (caughtError) {
       setSaveError(caughtError instanceof Error ? caughtError.message : 'Не удалось изменить статус расчёта.');
@@ -6372,8 +6389,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
     }
   }
 
-  function buildCalculationDetailsByEmployee() {
-    return buildAccrualExportRows().reduce<Record<string, Array<{ component: string; base: number | null; formula: string; amount: number; comment: string; order: number }>>>((acc, detailRow) => {
+  function buildCalculationDetailsByEmployee(rows = fullPayrollRows, source = classification, bonuses = bonusValidation.bonuses) {
+    return buildAccrualExportRows(rows, source, bonuses).reduce<Record<string, Array<{ component: string; base: number | null; formula: string; amount: number; comment: string; order: number }>>>((acc, detailRow) => {
       const employeeName = String(detailRow[0] ?? '');
       if (!employeeName) return acc;
       const currentRows = acc[employeeName] ?? [];
@@ -6390,17 +6407,17 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
     }, {});
   }
 
-  function buildPayrollAnalyticsRowsPayload(): PayrollAnalyticsRowSnapshot[] {
-    if (!salesSourceFile) return [];
+  function buildPayrollAnalyticsRowsPayload(source = classification, sourceName = salesSourceFile?.originalName): PayrollAnalyticsRowSnapshot[] {
+    if (!sourceName) return [];
 
-    return classification.rows.map((row) => {
+    return source.rows.map((row) => {
       const marginPercent = row.revenue !== 0 ? (row.grossProfit / row.revenue) * 100 : null;
       const markupPercent = row.cost !== 0 ? (row.grossProfit / row.cost) * 100 : null;
       const problemFlags = getAnalyticsProblemFlags(row);
 
       return {
         sourceFileType: 'sales',
-        sourceFileName: salesSourceFile.originalName,
+        sourceFileName: sourceName,
         employeeName: row.manager,
         employeeId: null,
         department: row.department,
@@ -6434,10 +6451,11 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
     });
   }
 
-  function buildPayrollSnapshotPayload() {
-    const detailsByEmployee = buildCalculationDetailsByEmployee();
-    const reviewCount = fullPayrollRows.filter((row) => getPayrollRowStatus(row) !== 'OK').length;
-    const deductions = fullPayrollRows.reduce((sum, row) => sum + row.fixedDeduction, 0);
+  function buildPayrollSnapshotPayload(snapshotRows = fullPayrollRows, snapshotClassification = classification, snapshotBonuses = bonusValidation.bonuses, automatic = false) {
+    const detailsByEmployee = buildCalculationDetailsByEmployee(snapshotRows, snapshotClassification, snapshotBonuses);
+    const reviewCount = snapshotRows.filter((row) => (automatic ? row.payrollStatus : getPayrollRowStatus(row)) !== 'OK').length;
+    const deductions = snapshotRows.reduce((sum, row) => sum + row.fixedDeduction, 0);
+    const sum = (field: 'grossPay' | 'netPay' | 'advance' | 'dayPay' | 'salesBonus' | 'disciplineBonus') => snapshotRows.reduce((total, row) => total + row[field], 0);
     const sourceFiles = [
       salesSourceFile
         ? {
@@ -6460,21 +6478,21 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
 
     return {
       compensationVersion: PAYROLL_COMPENSATION_VERSION,
-      bonuses: bonusDrafts,
+      bonuses: snapshotBonuses.map(bonus => ({ ...bonus, amount: String(bonus.amount) })),
       period: {
         year: Number(year),
         month: Number(month),
       },
       totals: {
-        employeeCount: fullPayrollRows.length,
+        employeeCount: snapshotRows.length,
         reviewCount,
-        grossPay: payrollTotals.grossPay,
-        netPay: payrollTotals.netPay,
-        advance: payrollTotals.advance,
+        grossPay: sum('grossPay'),
+        netPay: sum('netPay'),
+        advance: sum('advance'),
         deductions,
-        dayPay: payrollTotals.dayPay,
-        salesBonus: payrollTotals.salesBonus,
-        disciplineBonus: payrollTotals.disciplineBonus,
+        dayPay: sum('dayPay'),
+        salesBonus: sum('salesBonus'),
+        disciplineBonus: sum('disciplineBonus'),
       },
       sourceSummary: {
         status: reviewCount > 0 || registrarParseUnsafe || classificationErrorCount > 0 ? 'REVIEW' : 'DRAFT',
@@ -6545,7 +6563,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           comment: purchasePayroll.comment,
         },
       ],
-      employeeResults: fullPayrollRows.map((row, index) => ({
+      employeeResults: snapshotRows.map((row, index) => ({
         belaBase: row.belaBase,
         belaPercentAmount: row.belaPercentAmount,
         minimumGuaranteeAdjustment: row.minimumGuaranteeAdjustment ?? 0,
@@ -6585,13 +6603,90 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         advance: row.advance,
         grossPay: row.grossPay,
         netPay: row.netPay,
-        status: getPayrollRowStatus(row),
-        reasons: getPayrollRowReviewReasons(row),
+        status: automatic ? row.payrollStatus : getPayrollRowStatus(row),
+        reasons: automatic ? row.payrollReasons : getPayrollRowReviewReasons(row),
         comment: row.comment,
         order: index,
         calculationDetails: detailsByEmployee[row.manager] ?? [],
       })),
     };
+  }
+
+  async function prepareAutomaticPayload() {
+    const calculation = oneCShadowCalculation;
+    if (!calculation || calculation.mode !== 'preliminary' || !oneCShadowSource || !finboxRead.data) throw new Error('Дождитесь загрузки автоматического расчёта.');
+    if (isCurrentPeriodClosed || isPayrollDirectoryLoading || payrollDirectoryError || bonusValidation.error || calculation.advanceIssues.length) throw new Error('Сначала проверьте правила сотрудников, авансы и доступность месяца.');
+    const response = await fetch(`/api/admin/payroll/daily-control?year=${year}&month=${month}&view=full`, { cache: 'no-store' });
+    const body = await response.json() as DailyControlResponse;
+    if (!response.ok || !body.ok || body.period.periodKey !== selectedPayrollPeriodKey || !Array.isArray(body.sales.rows)) throw new Error('Не удалось загрузить расшифровку 1С. Ведомость не сохранена.');
+    const rows: SalesRow[] = body.sales.rows.map(row => ({ ...row, registrar: '', registrars: [], profitability: row.revenue ? row.grossProfit / row.revenue * 100 : 0 }));
+    const source = classifySalesRows(mapLegacyRetailTraineeRowsForPeriod(rows, month, year), classificationRules);
+    const summaries = calculation.classification.managerSummaries;
+    if (body.period.verifiedThrough !== oneCShadowSource.period.verifiedThrough || body.purchases.approvedBase !== oneCShadowSource.purchases.approvedBase
+      || summaries.length !== source.managerSummaries.length || summaries.some(summary => {
+        const detail = source.managerSummaries.find(item => item.manager === summary.manager);
+        return !detail || (['revenue', 'grossProfit', 'filmBonus', 'plotterBonus', 'techBonus', 'accessoryBonus', 'creditBonus'] as const).some(key => Math.abs(summary[key] - detail[key]) > 0.005);
+      }) || Math.abs(source.wholesale.base - calculation.classification.wholesale.base) > 0.005) throw new Error('Данные 1С изменились. Обновите расчёт перед сохранением.');
+    const payload = buildPayrollSnapshotPayload(calculation.shadowRows, source, calculation.bonuses, true);
+    const detailCostPending = source.rows.filter(row => ['CREDIT_GROSS_PROFIT', 'RETAIL_PLOTTER_MATERIAL_COST_50', 'RETAIL_GROSS_PROFIT_10'].includes(row.calculationType)).reduce((sum, row) => sum + (row.sourceCostCalculationPendingRows ?? 0), 0);
+    const detailUnresolved = source.rows.filter(isUnresolvedReviewRow).length;
+    const approvalIssues = [...new Set([...calculation.blockingIssues, ...body.blockingIssues,
+      ...(!body.close.ready ? ['Закрытие себестоимости ещё не подтверждено.'] : []),
+      ...(detailCostPending ? [`Себестоимость не завершена в ${detailCostPending} строках, влияющих на зарплату.`] : []),
+      ...(detailUnresolved ? [`Не классифицировано однозначно: ${detailUnresolved} строк.`] : []),
+      ...calculation.reviewEmployees.flatMap(employee => employee.reasons.map(reason => `${employee.employeeName}: ${reason}`))])];
+    const sourceSummary = {
+      kind: 'automatic-1c-v1', periodKey: selectedPayrollPeriodKey,
+      verifiedThrough: body.period.verifiedThrough,
+      approvalIssues,
+      finboxRevision: finboxRead.data.revision,
+      finboxAmount: finboxRead.data.amount,
+      advancesCheckedAt: calculation.advancesCheckedAt,
+      // Preserve source provenance without depending on a later live 1C read.
+      purchases: body.purchases,
+      payrollReviewCount: calculation.reviewEmployees.length,
+      reviewReasons: approvalIssues.map(reason => ({ reason, count: 1 })),
+    };
+    sourceSummary.approvalIssues = automaticPayrollApprovalIssues(sourceSummary, calculation.reviewEmployees.length);
+    return {
+      ...payload,
+      totals: { ...payload.totals, reviewCount: calculation.reviewEmployees.length },
+      sourceSummary,
+      sourceFiles: [{ type: 'sales', originalName: 'Автоматические данные 1С', extension: '', status: 'PARSED', parsedRowCount: rows.length, metadata: { periodKey: selectedPayrollPeriodKey, verifiedThrough: body.period.verifiedThrough } }],
+      analyticsRows: buildPayrollAnalyticsRowsPayload(source, 'Автоматические данные 1С'),
+      manualInputs: calculation.manualInputs.map(input => {
+        const row = calculation.shadowRows.find(employee => employee.manager === input.employeeName);
+        return row ? { ...input, ...(input.inputType === 'purchase' ? { purchaseAdvance: String(row.advance) } : { advance: String(row.advance) }) } : input;
+      }),
+    };
+  }
+
+  async function prepareAutomaticSave() {
+    if (automaticSaveLock.current) return;
+    automaticSaveLock.current = true;
+    setIsSavingPayroll(true); setSaveError(''); setSaveStatus('');
+    try { setAutomaticDraft(await prepareAutomaticPayload()); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Не удалось подготовить ведомость.'); }
+    finally { automaticSaveLock.current = false; setIsSavingPayroll(false); }
+  }
+
+  async function confirmAutomaticSave() {
+    if (!automaticDraft || automaticSaveLock.current) return;
+    if (automaticDraft.sourceSummary.periodKey !== selectedPayrollPeriodKey) { setAutomaticDraft(null); setSaveError('Выбран другой месяц. Подготовьте ведомость заново.'); return; }
+    automaticSaveLock.current = true;
+    setIsSavingPayroll(true); setSaveError('');
+    try {
+      // Recheck the inputs after confirmation: never silently save a changed amount.
+      const current = await prepareAutomaticPayload();
+      if (JSON.stringify(current) !== JSON.stringify(automaticDraft)) throw new Error('Расчёт изменился после открытия подтверждения. Закройте его и подготовьте ведомость заново.');
+      const response = await fetch('/api/admin/payroll/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(automaticDraft) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось сохранить ведомость.');
+      setAutomaticDraft(null); setLastSavedRunId(result.id);
+      setSaveStatus(`Ведомость №${result.runNumber} за ${automaticDraft.sourceSummary.periodKey} сохранена.${automaticDraft.sourceSummary.approvalIssues.length ? ' Это черновик: перед утверждением устраните указанные вопросы и сохраните новую версию.' : ' Откройте «Сохранённые ведомости», проверьте и нажмите «Сделать финальным». '}`);
+      await loadSavedPayrollPeriods();
+    } catch (error) { setSaveError(error instanceof Error ? error.message : 'Не удалось подтвердить сохранение. Проверьте историю перед повтором.'); }
+    finally { automaticSaveLock.current = false; setIsSavingPayroll(false); }
   }
 
   async function savePayrollSnapshot() {
@@ -6775,6 +6870,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           issues={oneCShadowCalculation.blockingIssues}
           employeeIssues={oneCShadowCalculation.reviewEmployees}
           advancesValid={!oneCShadowCalculation.advanceIssues.length}
+          saveDisabled={isSavingPayroll || isCurrentPeriodClosed || oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
+          onSave={() => void prepareAutomaticSave()}
           exportDisabled={oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
           onEmployee={name => { void openOneCManagerDetails(name); }}
           onSaveProducts={async decisions => {
@@ -6810,7 +6907,25 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
             (panel ?? source)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
         />}
-        {visualPreview && saveError && <p role='alert' className='text-sm text-amber-800'>{saveError}</p>}
+        {visualPreview && saveError && !payrollFinalApproval && <p role='alert' className='text-sm text-amber-800'>{saveError}</p>}
+        {visualPreview && saveStatus && <div role='status' className='rounded-lg bg-green-50 p-3 text-sm text-green-900'>{saveStatus}<button type='button' className='ml-3 min-h-11 font-semibold underline' onClick={() => { const history = document.getElementById('payroll-saved-history'); if (history instanceof HTMLDetailsElement) history.open = true; history?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>Открыть сохранённые ведомости</button></div>}
+        {payrollFinalApproval && <section id='payroll-final-confirmation' aria-label='Утверждение ведомости' className='scroll-mt-24 rounded-xl border border-slate-300 bg-white p-5'>
+          <h2 className='text-lg font-bold'>Утвердить расчёт №{payrollFinalApproval.run.runNumber} за {payrollFinalApproval.periodKey}?</h2>
+          <p className='mt-2'>К выплате по ведомости: {formatMoney(payrollFinalApproval.run.netPay)}.</p>
+          <p className='mt-2 text-sm text-slate-600'>Эта версия станет итоговой. Её суммы не будут меняться при обновлении данных 1С. Выплаты это действие не создаёт.</p>
+          {saveError && <p role='alert' className='mt-3 text-sm text-amber-800'>{saveError}</p>}
+          <div className='mt-4 flex flex-wrap gap-3'>
+            <button type='button' disabled={payrollHistoryActionId !== null} onClick={() => void updatePayrollRunStatus(payrollFinalApproval.run.id, 'FINAL')} className='min-h-11 rounded-lg bg-primary px-4 py-2 font-semibold text-white disabled:opacity-50'>{payrollHistoryActionId ? 'Сохраняю…' : 'Утвердить ведомость'}</button>
+            <button type='button' disabled={payrollHistoryActionId !== null} onClick={() => setPayrollFinalApproval(null)} className='min-h-11 rounded-lg border px-4 py-2'>Отмена</button>
+          </div>
+        </section>}
+        {automaticDraft && <section id='payroll-save-confirmation' aria-label='Подтверждение сохранения ведомости' className='scroll-mt-24 rounded-xl border border-slate-300 bg-white p-5'>
+          <h2 className='text-lg font-bold'>Сохранить ведомость за {automaticDraft.sourceSummary.periodKey}?</h2>
+          <p className='mt-2'>Сотрудников: {automaticDraft.totals.employeeCount} · Начислено: {formatMoney(automaticPayrollDisplayedTotal(automaticDraft.employeeResults, 'grossPay'))} · После авансов и удержаний: {formatMoney(automaticPayrollDisplayedTotal(automaticDraft.employeeResults, 'netPay'))}</p>
+          <p className='mt-2 text-sm text-slate-600'>Сохранится отдельная версия с расшифровкой. Это ещё не утверждение и не выплата зарплаты.</p>
+          {automaticDraft.sourceSummary.approvalIssues.length > 0 && <div className='mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-950'><strong>Можно сохранить только черновик. До утверждения:</strong><ul className='mt-2 list-disc pl-5'>{automaticDraft.sourceSummary.approvalIssues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}
+          <div className='mt-4 flex flex-wrap gap-3'><button type='button' disabled={isSavingPayroll || automaticDraft.sourceSummary.periodKey !== selectedPayrollPeriodKey} onClick={() => void confirmAutomaticSave()} className='min-h-11 rounded-lg bg-primary px-4 py-2 font-semibold text-white disabled:opacity-50'>{isSavingPayroll ? 'Сохраняю…' : 'Подтвердить сохранение'}</button><button type='button' disabled={isSavingPayroll} onClick={() => setAutomaticDraft(null)} className='min-h-11 rounded-lg border px-4 py-2'>Отмена</button></div>
+        </section>}
         {(!visualPreview || !oneCShadowCalculation) && (
         <Card className='min-w-0 w-full max-w-full overflow-hidden border border-slate-200 bg-white p-0'>
           <div className='flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-start sm:justify-between'>
@@ -8880,7 +8995,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         )}
         {!workbook && (
           <>
-            <details open={visualPreview ? undefined : true} className='rounded-xl border border-slate-200 bg-white'>
+            <details id='payroll-saved-history' open={visualPreview ? undefined : true} className='rounded-xl border border-slate-200 bg-white'>
               {visualPreview && <summary className='cursor-pointer p-4 font-semibold text-slate-800'>Сохранённые ведомости</summary>}
             <Card>
               <div className='mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>

@@ -6,6 +6,7 @@ import {
   isPayrollRunStatus,
 } from '@/lib/payroll-run-status';
 import { prisma } from '@/lib/prisma';
+import { automaticPayrollApprovalIssues } from '@/lib/payroll-automatic-approval';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,6 +51,9 @@ export async function PATCH(req: Request, props: RouteContext) {
       let replacedFinal: { id: number; runNumber: number; netPay: number; createdAt: Date } | null = null;
 
       if (nextStatus === 'FINAL') {
+        await tx.$queryRaw`SELECT id FROM "PayrollPeriod" WHERE id = ${run.periodId} FOR UPDATE`;
+        const issues = automaticPayrollApprovalIssues(run.sourceSummary, run.reviewCount);
+        if (issues.length) return { error: 'REVIEW_REQUIRED' as const, issues };
         const existingFinal = await tx.payrollRun.findFirst({
           where: {
             periodId: run.periodId,
@@ -96,6 +100,7 @@ export async function PATCH(req: Request, props: RouteContext) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     if ('error' in outcome) {
+      if (outcome.error === 'REVIEW_REQUIRED') return Response.json({ error: `Ведомость нельзя утвердить: ${outcome.issues.join(' ')} Исправьте рабочий расчёт и сохраните новую версию.` }, { status: 409 });
       if (outcome.error === 'NOT_FOUND') return Response.json({ error: 'Payroll run not found.' }, { status: 404 });
       if (outcome.error === 'PERIOD_CLOSED') return Response.json({ error: 'Период закрыт' }, { status: 409 });
       if (outcome.error === 'INVALID_TRANSITION') return Response.json({ error: 'Недопустимый переход статуса' }, { status: 409 });

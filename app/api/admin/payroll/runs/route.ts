@@ -1,6 +1,7 @@
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { prisma } from '@/lib/prisma';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { automaticPayrollApprovalIssues, automaticPayrollDisplayedTotal } from '@/lib/payroll-automatic-approval';
 import { PAYROLL_COMPENSATION_VERSION, validatePayrollBonuses, validatePayrollCompensationSnapshot, validatePayrollCompensationVersion, type PayrollBonus } from '@/lib/payroll-compensation';
 import { getPayrollWorkbookGroup } from '@/lib/payroll-workbook';
 
@@ -67,6 +68,9 @@ export async function POST(req: Request) {
 
   const employeeResults = payload.employeeResults;
   const periodKey = buildPeriodKey(year, month);
+  const sourceSummary = payload.sourceSummary && typeof payload.sourceSummary === 'object' ? payload.sourceSummary as Record<string, unknown> : null;
+  const automatic = sourceSummary?.kind === 'automatic-1c-v1';
+  if (automatic && (sourceSummary.periodKey !== periodKey || !Number.isInteger(sourceSummary.finboxRevision) || !Array.isArray(sourceSummary.approvalIssues))) return Response.json({ error: 'Некорректный источник автоматической ведомости.' }, { status: 400 });
   const totals = payload.totals ?? {};
   let bonuses: PayrollBonus[] = [];
   try {
@@ -95,6 +99,15 @@ export async function POST(req: Request) {
       throw new Error('PAYROLL_PERIOD_CLOSED');
     }
 
+    if (automatic) {
+      await tx.$queryRaw`SELECT id FROM "PayrollPeriod" WHERE id = ${period.id} FOR UPDATE`;
+      const finbox = await tx.payrollFinboxRevision.findFirst({ where: { periodKey }, orderBy: { revision: 'desc' } });
+      if ((finbox?.revision ?? 0) !== sourceSummary.finboxRevision || (finbox ? (finbox.amountCents / 100).toFixed(2) : null) !== sourceSummary.finboxAmount) throw new Error('PAYROLL_INPUT_CHANGED');
+      // Persist computed gates too: a client cannot approve a partial month by
+      // clearing the visible warning list alone.
+      sourceSummary.approvalIssues = automaticPayrollApprovalIssues(sourceSummary, asNumber(totals.reviewCount));
+    }
+
     const lastRun = await tx.payrollRun.findFirst({
       where: { periodId: period.id },
       orderBy: { runNumber: 'desc' },
@@ -109,9 +122,9 @@ export async function POST(req: Request) {
         rulesVersion: payload.compensationVersion ?? 'client-snapshot-v1',
         employeeCount: asNumber(totals.employeeCount),
         reviewCount: asNumber(totals.reviewCount),
-        grossPay: asNumber(totals.grossPay),
-        netPay: asNumber(totals.netPay),
-        advance: asNumber(totals.advance),
+        grossPay: automatic ? automaticPayrollDisplayedTotal(employeeResults, 'grossPay') : asNumber(totals.grossPay),
+        netPay: automatic ? automaticPayrollDisplayedTotal(employeeResults, 'netPay') : asNumber(totals.netPay),
+        advance: automatic ? automaticPayrollDisplayedTotal(employeeResults, 'advance') : asNumber(totals.advance),
         deductions: asNumber(totals.deductions),
         dayPay: asNumber(totals.dayPay),
         salesBonus: asNumber(totals.salesBonus),
@@ -275,10 +288,12 @@ export async function POST(req: Request) {
     }
 
     return createdRun;
-  });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
 
   return Response.json(createdRun, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'PAYROLL_INPUT_CHANGED') return Response.json({ error: 'Finbox изменён в другом окне. Обновите расчёт перед сохранением.' }, { status: 409 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2002' || error.code === 'P2034')) return Response.json({ error: 'Расчёт изменён в другом окне. Обновите историю перед повторным сохранением.' }, { status: 409 });
     if (error instanceof Error && error.message === 'PAYROLL_PERIOD_CLOSED') {
       return Response.json({ error: 'Период закрыт' }, { status: 409 });
     }

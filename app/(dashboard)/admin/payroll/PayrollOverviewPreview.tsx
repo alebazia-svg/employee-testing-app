@@ -11,6 +11,7 @@ type Props = {
   columns: { name: string; rows: Row[] }[][];
   issues: string[]; employeeIssues: { employeeName: string; reasons: string[] }[];
   advancesValid: boolean; exportDisabled: boolean;
+  saveDisabled?: boolean; onSave?: () => void;
   onEmployee: (name: string) => void; onExport: () => void; onSource: (target?: 'source' | 'suppliers') => void;
   onProducts: () => Promise<PayrollClassifiedSalesRow[]>;
   onSaveProducts: (decisions: PayrollReviewDecision[]) => Promise<PayrollClassifiedSalesRow[]>;
@@ -60,6 +61,7 @@ export default function PayrollOverviewPreview(p: Props) {
     <div className="mx-5 mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
       {count ? <><strong className="text-amber-900">До утверждения: </strong>{topics.join(' · ')}. <span className="text-slate-500">Вопросов: {count}.</span></> : <><strong>В доступных данных вопросов нет.</strong> Расчёт не утверждается автоматически.</>}
     </div>
+    {p.onSave && <div className="px-5 pb-3"><button type="button" className={button} disabled={p.saveDisabled} onClick={p.onSave}>Сохранить ведомость</button><p className="mt-1 text-xs text-slate-500">После сохранения — проверка и утверждение в истории ведомостей.</p></div>}
     <div className="flex flex-wrap items-center justify-between gap-3 border-y border-slate-100 px-5 py-3">
       <button type="button" onClick={()=>setReview(v=>!v)} aria-expanded={review} aria-controls="payroll-preview-checks" className={button+(count?' !border-amber-200 !bg-amber-50 !text-amber-950':'')}>{review?'Закрыть проверку':count?'Разобрать вопросы':'Посмотреть проверки'}</button>
       <div className="flex flex-wrap gap-2"><label className="sr-only" htmlFor="payroll-employee-search">Найти сотрудника</label><input id="payroll-employee-search" type="search" placeholder="Найти сотрудника" value={query} onChange={e=>setQuery(e.target.value)} className="min-h-11 w-48 rounded-lg border border-slate-300 bg-white px-3 text-sm"/><button className={button} type="button" disabled={p.exportDisabled} onClick={p.onExport}>Скачать Excel</button></div>
