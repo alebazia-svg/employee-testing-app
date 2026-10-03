@@ -588,7 +588,7 @@ the pay result harder to understand.
 
 ## Before Changing Payroll
 
-### Automatic run save/approval — release prepared, 2026-10-03
+### Automatic run save/approval — released, 2026-10-03
 
 - Owner approved saving the automatic 1C result through existing versioned runs
   and then explicitly approving a final version. Code commit `1872c08` is based
@@ -605,11 +605,15 @@ the pay result harder to understand.
   advances. UI final approval passed only on synthetic QA period 2091-09.
   Incomplete local September was correctly refused. Atomic replacement has
   isolated API coverage. Local data/account/fixture configuration are excluded.
-- Commit was pushed to `origin/design-local-updates`. Production publication
-  was started through `/tmp/deploy-payroll-1872c08.command`, then stopped after
-  prolonged waiting for interactive sudo with no password entered. The checkout
-  was not switched. Do not claim the production container is updated until
-  deploy exit, running service, upload mount and route checks are confirmed.
+- Owner returned and entered sudo in Terminal on the restarted deployment.
+  Production is now `1872c08`: DEPLOY_EXIT=0, portal-app started, upload and
+  planning mounts retained, health `ok: true`. Payroll/workday/employee route
+  probes returned 200; unauthenticated periods API returned 401.
+- Authenticated production UI preparation/cancel passed without saving or
+  approving a payroll run. September source covers 30.09.2026, 14 employees,
+  gross 1,032,621.91 RUB, advances 17,000 RUB and net 1,015,621.91 RUB. The same
+  amounts appeared in the confirmation. Diana's missing lateness remains an
+  explicit approval blocker; no value was invented or entered during QA.
 
 Ask:
 
