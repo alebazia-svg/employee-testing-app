@@ -606,8 +606,9 @@ the pay result harder to understand.
   Incomplete local September was correctly refused. Atomic replacement has
   isolated API coverage. Local data/account/fixture configuration are excluded.
 - Commit was pushed to `origin/design-local-updates`. Production publication
-  was started through `/tmp/deploy-payroll-1872c08.command`, but is still waiting
-  for interactive sudo. Do not claim the production container is updated until
+  was started through `/tmp/deploy-payroll-1872c08.command`, then stopped after
+  prolonged waiting for interactive sudo with no password entered. The checkout
+  was not switched. Do not claim the production container is updated until
   deploy exit, running service, upload mount and route checks are confirmed.
 
 Ask:
