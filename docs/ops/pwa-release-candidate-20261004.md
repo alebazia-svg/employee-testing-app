@@ -1,5 +1,30 @@
 # Кандидат нового интерфейса PWA — 2026-10-04
 
+## Production 1.1.5 — 5 октября, 02:36 МСК
+
+После визуального утверждения и отдельного разрешения выпущен медный акцент
+сегодняшней плановой даты в кабинете закупщика. Код
+`89e10f42e42b4299cd83001ecb8daee74d513b82`, предыдущий production `566887e`.
+Изменены ProcurementPaymentCalendarClient.tsx, desktop-copper.css,
+procurement-buyer-hardening.test.ts, package.json и package-lock.json.
+Статусы, порядок заявок, суммы и бизнес-правила не менялись.
+
+- Build, tsc, 39 профильных/release тестов и diff-check прошли.
+- Локальный preview и его отдельный кэш убраны из checkout в
+  `/tmp/mobo-today-preview-approved-20261005` и
+  `/tmp/mobo-today-preview-cache-20261005`; preview-конфигурация отменена.
+- Серверный HEAD независимо подтверждён, публичная версия 1.1.5,
+  builtAt `2026-10-04T23:33:24.876Z`, health healthy/ok.
+  revision=null/source=unknown в metadata остаются прежним ограничением.
+- В авторизованном production-кабинете визуально и по DOM проверены медный фон
+  «Сегодня · 5 октября», нейтральные будущие даты и видимая версия 1.1.5.
+- Образ `sha256:003f61d878a0b831e987fe58da9863458a57f933879b451e03b043acafc7bd30`.
+- Откат `/docker/employee-testing-app/.rollback/today-115-20261005/`, образ
+  `offonika-portal:before-today-115-20261005`; закрытый dump проверен.
+- DB container, uploads mount, server.env, test container не изменены.
+  Новых миграций нет. Посторонние правки не включены.
+- Лог `/tmp/mobo-115-release.log`, успешное завершение; документация отдельно.
+
 ## Production 1.1.4 — 5 октября, 02:19 МСК
 
 По отдельному разрешению владельца выпущен согласованный desktop copper UI,
