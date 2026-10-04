@@ -2969,7 +2969,7 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
   container-type: inline-size;
 }
 .compact-payment-calendar .compact-payment-row {
-  grid-template-columns: minmax(0, 1fr) 136px 140px 112px;
+  grid-template-columns: minmax(0, 1fr) 136px 160px 112px;
 }
 .compact-payment-calendar .compact-payment-row > [role="note"] {
   grid-column: 1 / -1;

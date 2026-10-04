@@ -594,9 +594,6 @@ export default function ProcurementPaymentCalendarClient({
         <div className={`flex flex-col gap-2 border-b border-slate-200 sm:flex-row sm:items-end sm:justify-between ${compact ? 'pb-3' : 'pb-4'}`}>
           <div>
             <h2 className="text-lg font-black">Мои заявки</h2>
-            {!compact && <p className="mt-1 text-sm text-slate-500">
-              Согласовано — деньги одобрены, но оплата ещё не подтверждена.
-            </p>}
           </div>
           {!planningBlocked ? (
             <p className="text-xs font-bold text-slate-500">
@@ -661,11 +658,11 @@ export default function ProcurementPaymentCalendarClient({
                       </div>
                       <div className="compact-payment-status space-y-1">
                         <span
-                          className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black ${plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
+                          className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-4 ${plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
                         >
                           {plan.status === "APPROVED"
-                            ? plan.evidence?.state === "MISMATCH" ? "ОПЛАТА НА ПРОВЕРКЕ" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "СОГЛАСОВАНО"
-                            : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "НА СОГЛАСОВАНИИ"}
+                            ? plan.evidence?.state === "MISMATCH" ? "ОПЛАТА НА ПРОВЕРКЕ" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "Деньги будут готовы"
+                            : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "Ждёт решения"}
                         </span>
                         {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
                         {plan.revision ? <p className="max-w-[240px] text-xs font-bold text-amber-800">Изменения на согласовании. Пока действуют прежние условия.</p> : null}
@@ -1068,10 +1065,10 @@ export default function ProcurementPaymentCalendarClient({
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
               <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800 ring-1 ring-amber-200">
-                На согласовании: {basisPreview || plansSourceError ? '—' : plans.filter((plan) => plan.status === "SUBMITTED").length}
+                Ждёт решения: {basisPreview || plansSourceError ? '—' : plans.filter((plan) => plan.status === "SUBMITTED").length}
               </span>
               <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
-                Согласовано: {reservesUnavailable ? '—' : plans.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan)).length}
+                Деньги будут готовы: {reservesUnavailable ? '—' : plans.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan)).length}
               </span>
               {plans.some(plan => plan.revision) ? <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">Изменения на согласовании: {plans.filter(plan => plan.revision).length}</span> : null}
             </div>
