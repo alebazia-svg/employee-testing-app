@@ -4,10 +4,16 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const read = path => fs.readFileSync(path, 'utf8');
-test('PWA uses the exact approved copper SVG without a white CSS replacement', () => {
+test('PWA compact mark preserves approved geometry and palette with an inner bevel', () => {
   const asset = fs.readFileSync('public/brand/mobo-master/mobo-symbol-copper-ui.svg');
   assert.equal(createHash('sha256').update(asset).digest('hex'), 'aebb312cbb4c759a712fa640a0025ccf0f3093509d4b66bbdfeffcc4f8dae929');
-  assert.match(read('app/(dashboard)/employee/EmployeePortalHeader.tsx'), /src='\/brand\/mobo-master\/mobo-symbol-copper-ui.svg'/);
+  const compact = read('public/brand/mobo-master/mobo-symbol-copper-compact.svg');
+  assert.deepEqual([...compact.matchAll(/ d="([^"]+)"/g)].map(m => m[1]), [...asset.toString().matchAll(/ d="([^"]+)"/g)].map(m => m[1]));
+  assert.deepEqual([...compact.matchAll(/stop-color="([^"]+)"/g)].map(m => m[1]), [...asset.toString().matchAll(/stop-color="([^"]+)"/g)].map(m => m[1]));
+  assert.doesNotMatch(compact, /feDropShadow|<image/);
+  assert.match(compact, /in="SourceAlpha" in2="down" operator="out"/);
+  assert.match(compact, /feMergeNode in="lit"/);
+  assert.match(read('app/(dashboard)/employee/EmployeePortalHeader.tsx'), /src='\/brand\/mobo-master\/mobo-symbol-copper-compact.svg'/);
   assert.doesNotMatch(read('public/pwa-copper.css'), /content:url\('\/brand\/mobo-master\/mobo-symbol-3d-light-ui.svg'\)/);
 });
 test('release contains no acceptance routes, seeds, design lab or test runner', () => {

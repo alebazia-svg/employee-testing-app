@@ -74,7 +74,7 @@ export function EmployeeAboutApp({ children }: { children: ReactNode }) {
         <div className='flex items-center justify-between gap-3'>
           <div>
             <h2 id={titleId} className='text-base font-bold'>О приложении</h2>
-            <p className='mt-1 text-xs text-[#c2c6cb]'>MOBO · {preview ? 'тестовая сборка' : 'приложение сотрудника'}</p>
+            <p className='mt-1 text-xs text-[#c2c6cb]'>MOBO · {preview ? 'тестовая сборка' : 'Портал компании'}</p>
           </div>
           <button ref={closeButton} type='button' aria-label='Закрыть' onClick={dismiss}
             className='-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#363b42] text-[#f1f2f3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#e4ad82]'>

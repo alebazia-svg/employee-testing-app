@@ -148,7 +148,7 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   /* Approved floating navigation and reference-style header composition. */
   .employee-material-shell { background:var(--pwa-canvas) !important; }
   .employee-material-header { padding:22px 18px 44px !important; border-radius:0 !important; background:linear-gradient(115deg,#292d32,#1d2024) !important; box-shadow:none !important; grid-template-columns:36px minmax(0,1fr) auto !important; }
-  .pwa-composition-brand { width:34px; height:34px; content:normal; filter:none; }
+  .pwa-composition-brand { width:40px; height:34px; content:normal; filter:none; }
   .employee-material-profile-copy > p:first-child { font-size:15px !important; }
   .employee-material-header { z-index:0 !important; }
   .employee-material-header + div { background:var(--pwa-canvas); border-radius:26px 26px 0 0; position:relative; margin-top:-26px; padding-top:18px !important; }
