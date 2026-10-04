@@ -34,6 +34,20 @@ test('legacy review envelope is retained for ADMIN but hidden from the buyer, in
 });
 
 const renderers:Record<string,Promise<(props:unknown)=>string>>={};
+test('today date accent follows todayKey and leaves past/future and payment states intact', async () => {
+  const props = buyerReviewScenario('basis-edit-approved', '2026-10-05')!;
+  const plans = ['2026-10-04', '2026-10-05', '2026-10-06'].map((date, index) => ({
+    ...props.initialPlans[0], id: `date-accent-${index}`, plannedDate: `${date}T09:00:00Z`,
+  }));
+  const html = await render({...props, initialPlans:plans});
+  assert.equal((html.match(/data-payment-day="today"/g) || []).length, 1);
+  assert.match(html, /data-payment-day="past"[^>]*bg-red-50 text-red-800/);
+  assert.match(html, /data-payment-day="future"[^>]*bg-slate-50 text-slate-900/);
+  assert.match(html, /<time dateTime="2026-10-05" aria-current="date">Сегодня/);
+  const tomorrow = await render({...props, initialPlans:plans, todayKey:'2026-10-06'});
+  assert.match(tomorrow, /<time dateTime="2026-10-06" aria-current="date">Сегодня/);
+  assert.doesNotMatch(tomorrow, /<time dateTime="2026-10-05" aria-current/);
+});
 test('small residual moves to history without disguising the actual amount or keeping an edit action', async()=>{
   const props=buyerReviewScenario('basis-edit-approved','2026-10-03')!;
   const plan={...props.initialPlans[0], supplierPartner:'Остаток 25 рублей', plannedAmount:30025,
@@ -206,7 +220,7 @@ test('buyer calendar groups by date before status and shows an explicit date for
     plan('today-pending','2026-09-29','SUBMITTED'),
     plan('prior-year','2025-09-29','APPROVED'),
   ]});
-  const headings=[...html.matchAll(/<time dateTime="([^"]+)">([^<]+)<\/time>/g)];
+  const headings=[...html.matchAll(/<time dateTime="([^"]+)"(?: aria-current="date")?>([^<]+)<\/time>/g)];
   assert.deepEqual(headings.map(row=>row[1]),['2025-09-29','2026-09-28','2026-09-29','2026-09-30']);
   assert.match(headings[0][2],/2025/);
   assert.equal(headings[2][2],'Сегодня · 29 сентября');

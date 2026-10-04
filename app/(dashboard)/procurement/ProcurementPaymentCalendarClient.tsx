@@ -605,14 +605,14 @@ export default function ProcurementPaymentCalendarClient({
           {groupedPlans.length ? (
             groupedPlans.map(([key, datePlans]) => (
               <div key={key}>
-                <div className={`${compact ? 'mb-1 rounded-lg px-2.5 py-1.5' : 'mb-3 rounded-xl px-3 py-3'} flex flex-wrap items-center gap-x-3 gap-y-1 ${key < todayKey ? 'bg-red-50 text-red-800' : 'bg-slate-50 text-slate-900'}`}>
+                <div data-payment-day={key === todayKey ? 'today' : key < todayKey ? 'past' : 'future'} className={`${compact ? 'mb-1 rounded-lg px-2.5 py-1.5' : 'mb-3 rounded-xl px-3 py-3'} flex flex-wrap items-center gap-x-3 gap-y-1 ${key < todayKey ? 'bg-red-50 text-red-800' : 'bg-slate-50 text-slate-900'}`}>
                   <CalendarDays
                     className={`${compact ? 'h-4 w-4' : 'h-5 w-5'} shrink-0 ${key < todayKey ? "text-red-600" : "procurement-calendar-icon"}`}
                   />
                   <h3
                     className={compact ? 'text-sm font-bold' : 'text-base font-bold sm:text-lg'}
                   >
-                    <time dateTime={key}>{groupTitle(key)}</time>
+                    <time dateTime={key} aria-current={key === todayKey ? 'date' : undefined}>{groupTitle(key)}</time>
                   </h3>
                   {key < todayKey ? <span className="text-xs font-semibold">Плановая дата прошла</span> : null}
                   <span aria-label={`Заявок: ${datePlans.length}`} className="ml-auto rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">

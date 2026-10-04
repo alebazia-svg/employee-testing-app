@@ -113,3 +113,19 @@
   box-shadow: 0 0 0 3px #b5784426;
 }
 .portal-login-copper label svg { color: #966139; }
+
+/* Today's planned date is an orientation cue, not a payment/review status. */
+.portal-neutral-design.procurement-shell .procurement-calendar [data-payment-day="today"] {
+  background: #f4e7d9;
+  color: #704321;
+  box-shadow: inset 3px 0 #b57844;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.portal-neutral-design.procurement-shell .procurement-calendar [data-payment-day="today"] > svg {
+  color: #a76432 !important;
+}
+.portal-neutral-design.procurement-shell .procurement-calendar [data-payment-day="today"] > span {
+  color: #704321;
+  background: #fffaf4;
+}
