@@ -4,16 +4,15 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 
 const read = path => fs.readFileSync(path, 'utf8');
-test('PWA compact mark preserves approved geometry and palette with an inner bevel', () => {
+test('PWA and icon share copper contours without lighting filters', () => {
   const asset = fs.readFileSync('public/brand/mobo-master/mobo-symbol-copper-ui.svg');
   assert.equal(createHash('sha256').update(asset).digest('hex'), 'aebb312cbb4c759a712fa640a0025ccf0f3093509d4b66bbdfeffcc4f8dae929');
   const compact = read('public/brand/mobo-master/mobo-symbol-copper-compact.svg');
-  assert.deepEqual([...compact.matchAll(/ d="([^"]+)"/g)].map(m => m[1]), [...asset.toString().matchAll(/ d="([^"]+)"/g)].map(m => m[1]));
-  assert.deepEqual([...compact.matchAll(/stop-color="([^"]+)"/g)].map(m => m[1]), [...asset.toString().matchAll(/stop-color="([^"]+)"/g)].map(m => m[1]));
-  assert.doesNotMatch(compact, /feDropShadow|<image/);
-  assert.match(compact, /in="SourceAlpha" in2="down" operator="out"/);
-  assert.match(compact, /feMergeNode in="lit"/);
-  assert.match(read('app/(dashboard)/employee/EmployeePortalHeader.tsx'), /src='\/brand\/mobo-master\/mobo-symbol-copper-compact.svg'/);
+  assert.equal([...compact.matchAll(/ d="([^"]+)"/g)].map(m => m[1]).join(' '), asset.toString().match(/ d="([^"]+)"/)[1]);
+  for (const color of ['#efbd93', '#cb8956', '#b96c36']) assert.ok(compact.includes(color));
+  assert.doesNotMatch(compact, /<filter|feGaussianBlur|feSpecularLighting|<image/);
+  assert.match(read('scripts/render-copper-app-icons.mjs'), /Buffer.from\(compactMark\)/);
+  assert.match(read('app/(dashboard)/employee/EmployeePortalHeader.tsx'), /src='\/brand\/mobo-master\/mobo-symbol-copper-compact.svg\?v=1\.1\.1'/);
   assert.doesNotMatch(read('public/pwa-copper.css'), /content:url\('\/brand\/mobo-master\/mobo-symbol-3d-light-ui.svg'\)/);
 });
 test('release contains no acceptance routes, seeds, design lab or test runner', () => {

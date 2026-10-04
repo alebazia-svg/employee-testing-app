@@ -5,27 +5,25 @@ import { createHash } from 'node:crypto';
 
 const mark = await fs.readFile(new URL('../public/brand/mobo-master/mobo-symbol-copper-ui.svg', import.meta.url), 'utf8');
 if (createHash('sha256').update(mark).digest('hex') !== 'aebb312cbb4c759a712fa640a0025ccf0f3093509d4b66bbdfeffcc4f8dae929') throw Error('Approved mark changed');
-const embedded = Buffer.from(mark).toString('base64');
-// Small UI mark: retain vector geometry and copper palette. An inner bevel
-// preserves the crisp silhouette; its highlights do not blur the outer edge.
-const compactSurface = `<filter id="surface" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
-  <feGaussianBlur in="SourceAlpha" stdDeviation="18" result="height"/>
-  <feSpecularLighting in="height" surfaceScale="16" specularConstant=".5" specularExponent="10" lighting-color="#f5d1b0" result="light"><feDistantLight azimuth="225" elevation="48"/></feSpecularLighting>
-  <feComposite in="light" in2="SourceAlpha" operator="in" result="cutlight"/>
-  <feBlend in="SourceGraphic" in2="cutlight" mode="screen" result="lit"/>
-  <feOffset in="SourceAlpha" dx="0" dy="5" result="down"/>
-  <feComposite in="SourceAlpha" in2="down" operator="out" result="topEdge"/>
-  <feFlood flood-color="#ffe0bf" flood-opacity=".65" result="rim"/>
-  <feComposite in="rim" in2="topEdge" operator="in" result="highlight"/>
-  <feOffset in="SourceAlpha" dx="0" dy="-6" result="up"/>
-  <feComposite in="SourceAlpha" in2="up" operator="out" result="bottomEdge"/>
-  <feFlood flood-color="#693b24" flood-opacity=".55" result="shade"/>
-  <feComposite in="shade" in2="bottomEdge" operator="in" result="shadowEdge"/>
-  <feMerge><feMergeNode in="lit"/><feMergeNode in="highlight"/><feMergeNode in="shadowEdge"/></feMerge>
-</filter>`;
-const compactMark = mark.replace(/<filter id="surface"[\s\S]*?<\/filter>/, compactSurface)
-  .replace(/<filter id="shadow"[\s\S]*?<\/filter>/, '').replace(' filter="url(#shadow)"', '');
+// One filter-free vector master for both header and home-screen icon.
+const contour = mark.match(/<path d="([^"]+)"/)[1];
+const parts = contour.split(/(?=M )/).filter(Boolean).map(x => x.trim());
+if (parts.length !== 4) throw Error('Expected four approved logo elements');
+const compactMark = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-22 -22 760 625">
+<defs>
+<linearGradient id="copperFace" x1="0" y1="0" x2=".8" y2="1">
+<stop stop-color="#efbd93"/><stop offset=".35" stop-color="#dca16e"/><stop offset=".75" stop-color="#cb8956"/><stop offset="1" stop-color="#b96c36"/>
+</linearGradient>
+<linearGradient id="copperRim" x1="0" y1="0" x2=".5" y2="1">
+<stop stop-color="#f5cca8"/><stop offset=".45" stop-color="#d79b68"/><stop offset="1" stop-color="#a05c30"/>
+</linearGradient>
+${parts.map((d,i)=>`<path id="part${i}" d="${d}"/>`).join('')}
+</defs>
+<g fill="#77462b" transform="translate(0 4)">${parts.map((_,i)=>`<use href="#part${i}"/>`).join('')}</g>
+<g fill="url(#copperFace)" stroke="url(#copperRim)" stroke-width="2" stroke-linejoin="round">${parts.map((_,i)=>`<use href="#part${i}"/>`).join('')}</g>
+</svg>`;
 await fs.writeFile(new URL('../public/brand/mobo-master/mobo-symbol-copper-compact.svg', import.meta.url), compactMark);
+const embedded = Buffer.from(compactMark).toString('base64');
 function artwork(maskable) {
   const width = 512 * (maskable ? .64 : .78);
   const height = width * 625 / 760;

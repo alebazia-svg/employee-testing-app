@@ -30,7 +30,7 @@ export function EmployeePortalHeader({
   return (
     <header className='employee-material-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]'>
       <EmployeeAboutApp>
-        <img className='pwa-composition-only pwa-composition-brand' style={{ display: 'none' }} src='/brand/mobo-master/mobo-symbol-copper-compact.svg' alt='MOBO' width={40} height={34} />
+        <img className='pwa-composition-only pwa-composition-brand' style={{ display: 'none' }} src='/brand/mobo-master/mobo-symbol-copper-compact.svg?v=1.1.1' alt='MOBO' width={40} height={34} />
       </EmployeeAboutApp>
       <div className='employee-material-header-profile grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2.5'>
         <div className='employee-material-profile-avatar employee-material-profile-initials flex h-11 w-11 items-center justify-center' aria-hidden='true'>
