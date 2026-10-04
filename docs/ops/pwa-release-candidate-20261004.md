@@ -1,5 +1,30 @@
 # Кандидат нового интерфейса PWA — 2026-10-04
 
+## Production 1.1.1 — 4 октября, 23:24 МСК
+
+После визуального утверждения чистого медного знака и отдельного «Выпускай»
+развёрнут `9cb720b2533a3cd40fd5a76efe0012008a3edd31`. Изменены только
+графика, её адреса для обновления кэша, генератор, тест и версия пакета.
+Шапка и иконки используют одинаковые исходные контуры без SVG lighting/blur.
+Предыдущий production 1.1.0: `252672664d6a33d5b42cd0079465fc6671d26c76`.
+
+- Версия 1.1.1, health healthy; публичный health ok.
+- Образ `sha256:1e2d40fab6d5c7fd2bbb172f2fe670374a8b63d790578f8d965a563d96022e98`.
+- Откат: `/docker/employee-testing-app/.rollback/pwa-copper-111-20261004/`
+  (предыдущий образ, commit, compose override, проверенный закрытый dump).
+- БД-контейнер, uploads mount, server.env и тестовая копия не изменены.
+- Локально: build, tsc, 9 профильных тестов, diff-check; форма SVG проверена
+  против неизменённого мастер-знака. Публичные SVG/PNG/manifest сверены по SHA256.
+- Физический iPhone после выпуска ещё не проверен; обновление уже установленной
+  home-screen иконки зависит от iOS, не обещать мгновенную замену.
+- Известное ограничение metadata: revision=null/source=unknown в Docker;
+  строка ADMIN «Исходный коммит не определён» этим графическим выпуском не исправлена.
+- Изменённые файлы: `package.json`, `package-lock.json`, `app/layout.tsx`,
+  `app/(dashboard)/employee/EmployeePortalHeader.tsx`, `public/manifest.webmanifest`,
+  `public/brand/mobo-master/mobo-symbol-copper-compact.svg`, четыре
+  `public/portal-app-copper-*.png`, `scripts/render-copper-app-icons.mjs`,
+  `tests/pwa-release-boundary.test.mjs`. Бизнес-правила не менялись.
+
 ## Выпущено в production — 4 октября, 22:36 МСК
 
 После отдельного разрешения владельца коммиты опубликованы в
