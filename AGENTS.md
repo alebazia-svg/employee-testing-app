@@ -218,6 +218,16 @@ Before final response:
 
 ## Deployment Rules
 
+- Versioning is mandatory for every new production code/UI/text/asset release.
+  Re-read the version gate in `docs/ops/vps-deploy-runbook.md` before deploying,
+  including in resumed chats. Determine the next version from live metadata
+  and the latest deployment branch, not an old checkout or chat memory.
+  Increment the patch for small compatible fixes; keep package.json and both
+  lockfile version fields aligned. Never ship changed runtime content under an
+  already published version. Docs-only commits, exact-release retries and
+  explicit rollbacks are exceptions. Verify/report version, build date and
+  commit after deployment. A routine version bump is part of the approved
+  release and does not require another reminder from the owner.
 - VPS path: `/docker/employee-testing-app`.
 - Deploy branch/source: `origin/design-local-updates`.
 - Use `server.env` through compose, not local `.env`.

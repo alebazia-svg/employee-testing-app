@@ -14,6 +14,32 @@ Purpose: deploy one already-created commit to `portal.alebazia.xyz` without touc
 
 ## Safe deploy flow
 
+### Mandatory version gate (owner decision, 2026-10-05)
+
+Before every new release, including resumed work in an old chat:
+
+1. Read the live `/release-info.json` and fetch the latest
+   `origin/design-local-updates`; inspect its `package.json` version. Reconcile
+   concurrent releases before choosing a number; do not rely on chat memory.
+2. New production code, UI, text or assets require a new version. Small
+   compatible fixes increment PATCH (for example 1.1.2 -> 1.1.3). Do not reserve
+   numbers in advance; recheck immediately before pushing the release.
+3. Update `package.json`, `package-lock.json` and its `packages[""].version`
+   together. Keep the existing prebuild metadata generator and shared
+   `ReleaseLabel`; do not edit generated metadata or hardcode footer numbers.
+4. Run `node --test tests/release-info.test.mjs` and the relevant app checks.
+5. After deployment verify the exact server commit, public release version and
+   build date, then the displayed version where authenticated access permits.
+   Report the version and commit. Disclose any unverified UI surface.
+
+Documentation-only commits do not require an application version bump or
+rebuild. Retrying the exact same release keeps its number. An explicitly
+approved rollback restores the old artifact with its original version.
+Do not ship different runtime content under an already published number.
+The routine version bump is included in release approval; do not require the
+owner to remind you. This gate does not authorize an otherwise unapproved
+deploy and does not apply to 1C extension numbering.
+
 Run on VPS:
 
 ```bash
