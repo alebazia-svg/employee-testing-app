@@ -121,7 +121,7 @@ export default async function ExpenseRequestsAdminPage(props: { searchParams?: P
                 <button type='submit' className='rounded-xl bg-slate-900 px-3 py-2 text-sm font-bold text-white hover:bg-slate-800'>Найти</button>
               </form>
               <div className='flex flex-wrap gap-2'>
-                {tabs.map((filter) => <Link key={filter.key} href={filter.href} className={`rounded-full px-3 py-1.5 text-xs font-bold ${view === filter.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{filter.label}</Link>)}
+                {tabs.map((filter) => <Link key={filter.key} data-portal-selection={view === filter.key} href={filter.href} className={`rounded-full px-3 py-1.5 text-xs font-bold ${view === filter.key ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{filter.label}</Link>)}
               </div>
             </div>
           </div>

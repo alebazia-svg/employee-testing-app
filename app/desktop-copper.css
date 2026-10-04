@@ -1,0 +1,115 @@
+/* Desktop identity only: do not recolor operational success/warning/error states. */
+.portal-neutral-design:is(.admin-shell, .procurement-shell) {
+  --portal-action: #25282b;
+  --portal-action-hover: #17191b;
+  --portal-action-soft: #f5eee7;
+  --portal-brand-strong: #25282b;
+  --portal-brand-accent: #c28a57;
+  --portal-focus-ring: rgba(153, 97, 53, .22);
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .admin-workspace {
+  background: #f5f4f1;
+}
+.portal-neutral-design.admin-shell .admin-sidebar,
+.portal-neutral-design.procurement-shell .procurement-shell-header {
+  background: #202326;
+}
+.portal-neutral-design.admin-shell .admin-sidebar {
+  box-shadow: inset -1px 0 #ffffff14;
+}
+.portal-neutral-design.procurement-shell .procurement-shell-header {
+  box-shadow: 0 2px 5px #20232614, inset 0 1px #ffffff0d;
+}
+.portal-neutral-design.admin-shell.mobo-master-admin .admin-nav-item-active::before {
+  background: #d69a64 !important;
+}
+.portal-neutral-design.admin-shell.mobo-master-admin .admin-nav-item-active svg {
+  color: #d69a64 !important;
+}
+.portal-neutral-design.admin-shell.mobo-master-admin .admin-nav-item-active {
+  background: linear-gradient(145deg, #ffffff1c, #ffffff0d) !important;
+  border-color: #ffffff24 !important;
+}
+.portal-neutral-design.admin-shell.mobo-master-admin .admin-mobile-nav-item.is-active {
+  color: #754725 !important;
+  background: #fffaf4 !important;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) input:is([type="checkbox"], [type="radio"]) {
+  accent-color: #996135;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .procurement-calendar button.admin-material-primary,
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .admin-material-primary,
+.portal-neutral-design:is(.admin-shell, .procurement-shell) button.bg-primary,
+.portal-neutral-design:is(.admin-shell, .procurement-shell) dialog button.bg-slate-800,
+.portal-neutral-design:is(.admin-shell, .procurement-shell) dialog button.bg-slate-900 {
+  background: var(--portal-action) !important;
+  border-color: var(--portal-action) !important;
+  color: white !important;
+  box-shadow: 0 3px 8px #20232614 !important;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .procurement-calendar button.admin-material-primary:not(:disabled):hover,
+.portal-neutral-design:is(.admin-shell, .procurement-shell) button.bg-primary:not(:disabled):hover {
+  background: var(--portal-action-hover) !important;
+}
+/* Accent action glyphs, not status icons, destructive actions or progress spinners. */
+.portal-neutral-design:is(.admin-shell, .procurement-shell) :is(button.bg-primary, button.admin-material-primary) > svg:not(.animate-spin) {
+  color: #d69a64 !important;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) :is(button.bg-primary, button.admin-material-primary):is([data-portal-secondary="true"], [aria-pressed="true"]) > svg:not(.animate-spin) {
+  color: #996135 !important;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .admin-workspace button[data-portal-secondary="true"],
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .admin-workspace button[data-portal-secondary="true"]:not(:disabled):hover {
+  background: #fffdfa !important;
+  color: #754725 !important;
+  border: 1px solid #dfd5ca !important;
+  box-shadow: none !important;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .admin-workspace button[aria-pressed="true"]:not(:disabled):hover,
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .admin-workspace button[aria-pressed="true"],
+.portal-neutral-design:is(.admin-shell, .procurement-shell) .admin-workspace [data-portal-selection="true"],
+.portal-neutral-design:is(.admin-shell, .procurement-shell) button[aria-pressed="true"]:not(:disabled):hover,
+.portal-neutral-design:is(.admin-shell, .procurement-shell) button[aria-pressed="true"],
+.portal-neutral-design:is(.admin-shell, .procurement-shell) [data-portal-selection="true"] {
+  background: #fffaf4 !important;
+  color: #754725 !important;
+  border-color: #c39164 !important;
+  box-shadow: inset 0 -3px 0 #b57844 !important;
+  --tw-ring-color: #dbc3ab;
+}
+.portal-neutral-design.procurement-shell nav[aria-label="Разделы календаря"] button[aria-pressed="true"] {
+  background: transparent !important;
+  border-bottom-color: #b57844 !important;
+  box-shadow: none !important;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) :is(input, select, textarea):focus {
+  border-color: #996135 !important;
+  box-shadow: 0 0 0 3px #b5784426 !important;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) :is(button, a):focus-visible {
+  outline: 2px solid #996135;
+  outline-offset: 3px;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) dialog {
+  background: #fffdfa;
+  border-color: #ded8d0;
+}
+.portal-neutral-design:is(.admin-shell, .procurement-shell) dialog::backdrop {
+  background: #17191b66;
+}
+.portal-neutral-design.procurement-shell .procurement-secondary-action {
+  color: #82502d;
+  border-color: #dfd5ca;
+  background: #fffdfa;
+}
+.portal-login-copper { background: #f3f1ed !important; }
+.portal-login-copper button[type="submit"] {
+  background: linear-gradient(145deg, #303336, #202326) !important;
+  border-color: #303336;
+  box-shadow: 0 5px 12px #20232620;
+}
+.portal-login-copper label > span:focus-within {
+  border-color: #996135;
+  box-shadow: 0 0 0 3px #b5784426;
+}
+.portal-login-copper label svg { color: #966139; }

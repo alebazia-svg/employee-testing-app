@@ -132,6 +132,7 @@ export default function AttestationEditor({ attestation }: { attestation: Attest
             <button
               key={tab.id}
               type='button'
+              aria-pressed={activeTab === tab.id}
               className={cn(
                 'rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#d8dfe8]',
                 activeTab === tab.id ? 'bg-[#eef2f8] text-[#263b5c] ring-1 ring-[#d8dfe8]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900',

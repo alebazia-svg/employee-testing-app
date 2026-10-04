@@ -46,16 +46,16 @@ export default function Login() {
 
   return (
     <main
-      className='flex min-h-[100svh] items-center justify-center overflow-hidden p-3 text-[#1b1e22] sm:p-6'
+      className='portal-login-copper flex min-h-[100svh] items-center justify-center overflow-hidden p-3 text-[#1b1e22] sm:p-6'
       style={{ background: 'radial-gradient(circle at 50% 31%, #f7f4ee 0%, #ece8e1 50%, #ded8ce 100%)' }}
     >
       <div
-        className='grid w-full max-w-[520px] overflow-hidden rounded-[30px] border border-white/80 shadow-[0_32px_78px_rgba(38,34,28,0.16),0_5px_16px_rgba(38,34,28,0.07),inset_0_1px_0_rgba(255,255,255,0.92)] max-sm:rounded-3xl'
+        className='grid w-full max-w-[520px] overflow-hidden rounded-[30px] border border-white/80 shadow-[0_10px_28px_rgba(38,34,28,0.09),0_2px_6px_rgba(38,34,28,0.04),inset_0_1px_0_rgba(255,255,255,0.92)] max-sm:rounded-3xl'
         style={{
           background: 'radial-gradient(ellipse at 28% 4%, rgba(255,255,255,0.98) 0%, rgba(255,255,255,0.28) 38%, transparent 62%), linear-gradient(145deg, #fffefa 0%, #faf7f1 50%, #f1ebe2 100%)',
         }}
       >
-        <section className='relative flex min-h-[164px] items-center justify-center overflow-hidden p-5 sm:min-h-[176px] sm:p-8'>
+        <section className='relative flex min-h-[148px] items-center justify-center overflow-hidden px-5 pb-3 pt-5 sm:min-h-[152px] sm:px-8 sm:pb-4 sm:pt-6'>
           <div className='pointer-events-none absolute left-1/2 top-1/2 h-[150px] w-[390px] max-w-[88%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#d8d0c4]/20 blur-[42px]' aria-hidden='true' />
           <div className='relative grid w-[314px] max-w-full justify-items-center gap-[17px] min-[440px]:w-[350px] sm:w-[366px]' aria-label='MOBO · Портал компании'>
             <span className='flex w-full items-center gap-[12px] min-[440px]:gap-[14px]'>
@@ -64,7 +64,7 @@ export default function Login() {
               </span>
               <img src='/brand/mobo-master/mobo-wordmark.svg' alt='MOBO' className='h-auto w-0 min-w-0 flex-1 opacity-[0.97]' />
             </span>
-            <span className='whitespace-nowrap text-[13px] font-semibold leading-none tracking-[0.075em] text-[#565752] min-[440px]:text-[14px]'>Портал компании</span>
+            <span className='whitespace-nowrap text-[13px] font-semibold leading-none tracking-[0.075em] text-[#966139] min-[440px]:text-[14px]'>Портал компании</span>
           </div>
         </section>
 

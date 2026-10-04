@@ -134,9 +134,9 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
             ['employees', `Сотрудники · ${employeeCount}`],
             ['admins', `ADMIN · ${adminCount}`],
             ['inactive', `Отключены · ${users.filter((user) => !user.isActive).length}`],
-          ] as const).map(([key, label]) => <button key={key} type='button' onClick={() => setFilter(key)} className={`rounded-lg px-3 py-2 text-xs font-extrabold ring-1 transition ${filter === key ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>{label}</button>)}
+          ] as const).map(([key, label]) => <button key={key} type='button' aria-pressed={filter === key} onClick={() => setFilter(key)} className={`rounded-lg px-3 py-2 text-xs font-extrabold ring-1 transition ${filter === key ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>{label}</button>)}
         </div>
-        <Button className='gap-2' onClick={startCreate}>
+        <Button className='gap-2' data-portal-secondary={Boolean(editingId)} onClick={startCreate}>
           <UserPlus className='h-4 w-4' />
           Создать сотрудника
         </Button>

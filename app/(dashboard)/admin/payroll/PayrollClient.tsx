@@ -7237,6 +7237,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                   <button
                     key={tab.id}
                     type='button'
+                    aria-pressed={activePayrollTab === tab.id}
                     onClick={() => setActivePayrollTab(tab.id)}
                     className={`rounded-lg px-3.5 py-2 text-sm font-semibold transition ${activePayrollTab === tab.id ? 'bg-primary text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-900'}`}
                   >
@@ -8117,6 +8118,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                     <button
                       key={tab}
                       type='button'
+                      aria-pressed={activePayrollTab === tab}
                       onClick={() => setActivePayrollTab(tab)}
                       className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${activePayrollTab === tab ? 'bg-slate-900 text-white shadow-sm' : 'border border-border bg-white text-slate-600 hover:border-primary/40 hover:text-slate-900'}`}
                     >

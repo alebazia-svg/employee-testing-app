@@ -68,7 +68,7 @@ export function AdminInboxListClient({ initialItems }: { initialItems: AdminInbo
           </select>
         </label>
         <div className='mt-4 hidden gap-2 overflow-x-auto pb-1 sm:flex'>
-          {filters.map((item) => <button key={item.key} type='button' onClick={() => { setFilter(item.key); setShown(PAGE_SIZE); }} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold transition ${filter === item.key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{item.label}</button>)}
+          {filters.map((item) => <button key={item.key} type='button' aria-pressed={filter === item.key} onClick={() => { setFilter(item.key); setShown(PAGE_SIZE); }} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold transition ${filter === item.key ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{item.label}</button>)}
         </div>
       </div>
       {visible.length === 0 ? <div className='px-6 py-14 text-center'><Bell className='mx-auto h-10 w-10 text-slate-300' /><p className='mt-3 font-extrabold text-slate-950'>В этой категории событий нет</p></div> : (
