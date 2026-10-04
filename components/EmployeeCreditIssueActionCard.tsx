@@ -21,7 +21,7 @@ export function EmployeeCreditIssueActionCard(props: { issueId: number; title: s
     setState(action); setBusy(false);
   }
 
-  return <Card className='rounded-[24px] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(31,47,66,0.07)]'>
+  return <Card className='pwa-review-issue rounded-[24px] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(31,47,66,0.07)]'>
     <div className='flex gap-3'>
       <ReceiptText className='employee-material-alert-symbol mt-0.5 h-6 w-6 shrink-0 text-[#9a5a13]' strokeWidth={2} />
       <div className='min-w-0'><p className='text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#9a5a13]'>Нужно исправить</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>{props.title}</h1><p className='mt-3 text-sm font-bold leading-relaxed text-slate-700'>{props.instruction}</p></div>

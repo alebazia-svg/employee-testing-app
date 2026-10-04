@@ -1,3 +1,14 @@
+// Use the completed handover audit, not the transient active-request snapshot.
+export function completedWithoutEncashment(task: { status: string; handoverData?: unknown } | null | undefined) {
+  if (task?.status !== 'done') return false;
+  const data = task.handoverData;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const cash = (data as Record<string, unknown>).personalCash;
+  if (!cash || typeof cash !== 'object' || Array.isArray(cash)) return false;
+  const requestId = (cash as Record<string, unknown>).encashmentExceptionRequestId;
+  return typeof requestId === 'string' && requestId.trim().length > 0;
+}
+
 // Current and historical system audit markers. A cross-midnight timestamp alone
 // does not prove technical closure because a real shift may cross midnight.
 export function hasTechnicalWorkdayClose(

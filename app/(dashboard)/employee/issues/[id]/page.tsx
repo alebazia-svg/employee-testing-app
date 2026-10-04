@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ChatRoundDotsIcon as PremiumChatIcon, CheckCircleIcon as PremiumCheckCircleIcon, DangerTriangleIcon as PremiumDangerTriangleIcon } from '@solar-icons/react/bold-duotone';
+import { PremiumChatIcon, PremiumCheckCircleIcon, PremiumDangerTriangleIcon } from '@/components/PwaPreviewIcons';
 import { ArrowLeft } from 'lucide-react';
 import { EmployeeCreditIssueActionCard } from '@/components/EmployeeCreditIssueActionCard';
 import { TerminalFiscalReviewConversation } from '@/components/TerminalFiscalReviewConversation';

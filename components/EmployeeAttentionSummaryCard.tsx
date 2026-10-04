@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react';
-import { DangerTriangleIcon } from '@solar-icons/react/bold-duotone';
+import { PremiumDangerTriangleIcon as DangerTriangleIcon } from '@/components/PwaPreviewIcons';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 

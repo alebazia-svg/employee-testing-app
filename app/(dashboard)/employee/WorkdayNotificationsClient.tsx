@@ -4,12 +4,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  BillListIcon as PremiumBillListIcon,
-  ChatRoundDotsIcon as PremiumChatIcon,
-  CheckCircleIcon as PremiumCheckCircleIcon,
-  ClockCircleIcon as PremiumClockIcon,
-  DangerTriangleIcon as PremiumDangerTriangleIcon,
-} from '@solar-icons/react/bold-duotone';
+  PremiumBillListIcon,
+  PremiumChatIcon,
+  PremiumCheckCircleIcon,
+  PremiumClockIcon,
+  PremiumDangerTriangleIcon,
+} from '@/components/PwaPreviewIcons';
 import { Bell, ChevronRight, X } from 'lucide-react';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';

@@ -122,6 +122,8 @@ export type ShiftAutoCheck = {
   cashOperation?: {
     id: number;
     status: string;
+    photoPath?: string;
+    amount?: number;
   };
 };
 
@@ -636,6 +638,8 @@ function TaskDetailCard({
         <div className='mt-3 grid gap-2'>
           {item.autoChecks.map((check) => {
             const badge = autoCheckBadge(check.status);
+            const cashPhotoHref = photoHref({ storagePath: check.cashOperation?.photoPath });
+            const cashPhotoLabel = `Фото инкассации · ${formatMoney(check.cashOperation?.amount)}`;
             return (
               <div key={check.id} className='rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200'>
                 <div className='flex flex-wrap items-center gap-2'>
@@ -643,6 +647,12 @@ function TaskDetailCard({
                   <span className='text-xs font-extrabold text-slate-800'>{check.label}</span>
                 </div>
                 <p className='mt-1 text-xs font-semibold leading-relaxed text-slate-600'>{check.summary}</p>
+                {check.cashOperation && (cashPhotoHref ? (
+                  <button type='button' className='mt-2 flex min-h-16 items-center gap-3 rounded-lg text-left text-slate-700 outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-700' onClick={() => onPreview({ href: cashPhotoHref, label: cashPhotoLabel })} aria-label={`${cashPhotoLabel}: увеличить`}>
+                    <img src={cashPhotoHref} alt={cashPhotoLabel} className='h-16 w-16 shrink-0 rounded-lg object-cover ring-1 ring-slate-200' />
+                    <span><span className='block text-sm font-bold'>Фото инкассации</span><span className='mt-1 block text-xs font-semibold underline underline-offset-4'>Увеличить</span></span>
+                  </button>
+                ) : <p className='mt-2 text-xs text-slate-600'>Фото не приложено</p>)}
                 {check.evidence ? (
                   <details className='mt-1'>
                     <summary className='cursor-pointer text-[11px] font-bold text-slate-500'>Технические детали</summary>

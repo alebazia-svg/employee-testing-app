@@ -1,6 +1,6 @@
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open('portal-offline-v5').then((cache) => cache.addAll([
+    caches.open('portal-offline-v6').then((cache) => cache.addAll([
       '/offline.html',
       '/portal-app-icon-192.png',
     ])).then(() => self.skipWaiting()),
@@ -11,7 +11,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys
-        .filter((key) => (key.startsWith('offonika-offline-') || key.startsWith('portal-offline-')) && key !== 'portal-offline-v5')
+        .filter((key) => (key.startsWith('offonika-offline-') || key.startsWith('portal-offline-')) && key !== 'portal-offline-v6')
         .map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );

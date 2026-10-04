@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { CheckCircleIcon as PremiumCheckCircleIcon } from '@solar-icons/react/bold-duotone';
+import { PremiumCheckCircleIcon } from '@/components/PwaPreviewIcons';
 import { ArrowLeft } from 'lucide-react';
 import { EmployeePaymentCheckActionCard } from '@/components/EmployeePaymentCheckActionCard';
 import { Card } from '@/components/ui/card';

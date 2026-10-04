@@ -2,49 +2,43 @@
 <html lang="ru">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#171c24" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#191c20" />
     <title>MOBO · Нет связи</title>
     <style>
       :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       * { box-sizing: border-box; }
-      body { margin: 0; min-height: 100dvh; background: #f3f4f2; color: #202936; }
-      .shell {
-        position: relative; display: grid; min-height: 100dvh; overflow: hidden;
-        background: radial-gradient(circle at 7% 3%, rgba(255,255,255,.96), transparent 25%), linear-gradient(145deg, #f8f8f6 0%, #eff1ef 64%, #e8eceb 100%);
-      }
-      .shell::before {
-        content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .17;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E");
-      }
-      header { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; align-self: start; padding: calc(1rem + env(safe-area-inset-top)) 1rem 1rem; }
-      .brand-mark { width: 38px; height: 38px; border-radius: 12px; box-shadow: 0 8px 18px rgba(23,28,36,.16); }
-      .brand-copy strong { display: block; font-size: 17px; letter-spacing: -.025em; }
-      .brand-copy span { display: block; margin-top: 3px; color: #77808b; font-size: 10px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
-      main { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; padding: 1rem 1rem calc(2rem + env(safe-area-inset-bottom)); }
-      .card { width: min(100%, 470px); border: 1px solid rgba(218,222,224,.94); border-radius: 26px; padding: 1.5rem; text-align: center; background: rgba(255,255,255,.9); box-shadow: 0 22px 60px rgba(32,41,54,.11); backdrop-filter: blur(16px); }
-      .icon { display: grid; width: 64px; height: 64px; margin: 0 auto; place-items: center; border-radius: 20px; background: #f2f4f7; color: #263b5c; box-shadow: inset 0 0 0 1px #e2e6eb; }
-      .icon svg { width: 30px; height: 30px; }
-      h1 { margin: 1.2rem 0 0; font-size: clamp(1.5rem, 5vw, 2rem); line-height: 1.1; letter-spacing: -.035em; }
-      .lead { margin: .75rem auto 0; max-width: 350px; color: #667085; font-size: .96rem; font-weight: 600; line-height: 1.5; }
-      button { width: 100%; min-height: 52px; margin-top: 1.4rem; border: 0; border-radius: 15px; background: #263b5c; color: white; font: inherit; font-size: 1rem; font-weight: 800; box-shadow: 0 10px 22px rgba(38,59,92,.2); }
-      button:active { transform: translateY(1px); }
-      button:focus-visible { outline: 3px solid rgba(255,194,71,.72); outline-offset: 3px; }
-      button:disabled { cursor: wait; opacity: .68; }
-      .hint { margin: 1rem auto 0; max-width: 370px; color: #7b8490; font-size: .79rem; font-weight: 600; line-height: 1.5; }
-      .status { margin: .9rem 0 0; color: #8a650e; font-size: .78rem; font-weight: 800; }
+      body { margin: 0; min-height: 100dvh; background: #f7f6f2; color: #24282d; }
+      .shell { min-height: 100dvh; max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; }
+      header { display: flex; align-items: center; gap: 12px; padding: calc(22px + env(safe-area-inset-top)) 22px 48px; background: linear-gradient(120deg,#292d32,#191c20); }
+      .brand-mark { width: 38px; height: 38px; object-fit: contain; filter: brightness(0) invert(.94); }
+      .brand-copy strong { display: block; font-size: 20px; font-weight: 650; letter-spacing: -.025em; color: #f7f6f2; }
+      .brand-copy span { display: block; margin-top: 3px; color: #d0ccc5; font-size: 12px; }
+      main { flex: 1; position: relative; margin-top: -26px; border-radius: 26px 26px 0 0; background: #f7f6f2; padding: 40px 20px calc(28px + env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: center; }
+      .card { width: 100%; padding: 28px 22px; border: 1px solid #e5e2da; border-radius: 24px; background: #fff; text-align: center; box-shadow: 0 4px 18px #24282d08; }
+      .icon { display: grid; width: 60px; height: 60px; margin: 0 auto; place-items: center; border-radius: 18px; background: #f4e9dc; color: #9a5728; }
+      .icon svg { width: 28px; height: 28px; }
+      h1 { margin: 20px 0 0; font-size: clamp(22px, 6vw, 26px); line-height: 1.2; letter-spacing: -.035em; }
+      .lead { margin: 12px auto 0; max-width: 330px; color: #60636a; font-size: 15px; line-height: 1.5; }
+      button { width: 100%; min-height: 52px; margin-top: 24px; padding: 12px; border: 1px solid #191c20; border-radius: 15px; background: linear-gradient(135deg,#303337,#191c20); color: #fffdf6; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: inset 0 1px #ffffff18; }
+      button:active:not(:disabled) { transform: translateY(1px); }
+      button:focus-visible { outline: 3px solid #b96c36; outline-offset: 3px; }
+      button:disabled { cursor: wait; background: #e8e5e0; color: #60636a; border-color: #dedad4; box-shadow: none; }
+      .hint { margin: 18px auto 0; color: #60636a; font-size: 13px; line-height: 1.5; }
+      .status { margin: 18px 0 0; color: #80502f; font-size: 13px; font-weight: 600; }
+      @media (max-width: 350px) { main { padding-left: 14px; padding-right: 14px; } .card { padding: 24px 16px; } }
       @media (min-width: 760px) {
-        .shell { grid-template-rows: auto 1fr; }
-        header { padding: 28px 34px; }
-        main { padding: 2rem 2rem 7rem; }
-        .card { padding: 2.25rem; }
+        .shell { max-width: none; }
+        header { padding: 24px 40px 48px; }
+        main { padding: 48px 32px 64px; }
+        .card { max-width: 480px; padding: 36px 32px; }
       }
     </style>
   </head>
   <body>
     <div class="shell">
       <header>
-        <img class="brand-mark" src="/portal-app-icon-192.png" alt="" />
+        <img class="brand-mark" src="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%22-22%20-22%20760%20625%22%20role%3D%22img%22%20aria-label%3D%22MOBO%22%3E%0A%20%20%3Cdefs%3E%0A%20%20%20%20%3ClinearGradient%20id%3D%22ui-face%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220%22%20stop-color%3D%22%234a5159%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220.32%22%20stop-color%3D%22%2330363d%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%220.72%22%20stop-color%3D%22%231a1e23%22%2F%3E%0A%20%20%20%20%20%20%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23101318%22%2F%3E%0A%20%20%20%20%3C%2FlinearGradient%3E%0A%20%20%20%20%3Cfilter%20id%3D%22ui-shadow%22%20x%3D%22-12%25%22%20y%3D%22-12%25%22%20width%3D%22128%25%22%20height%3D%22132%25%22%20color-interpolation-filters%3D%22sRGB%22%3E%0A%20%20%20%20%20%20%3CfeDropShadow%20dx%3D%225%22%20dy%3D%226%22%20stdDeviation%3D%222.2%22%20flood-color%3D%22%23090c11%22%20flood-opacity%3D%220.38%22%2F%3E%0A%20%20%20%20%3C%2Ffilter%3E%0A%20%20%20%20%3Cpath%20id%3D%22ui-shape%22%20d%3D%22M%20508.500%202.122%20C%20477.993%203.600%2C%20462.896%207.016%2C%20443.208%2016.896%20C%20437.756%2019.631%2C%20429.705%2024.576%2C%20425.316%2027.883%20C%20415.444%2035.321%2C%20401.184%2050.141%2C%20394.368%2060.044%20C%20385.002%2073.653%2C%20376.308%2092.752%2C%20371.591%20110.082%20C%20364.373%20136.601%2C%20360.779%20185.056%2C%20364.468%20206.119%20C%20367.337%20222.505%2C%20373.640%20236.841%2C%20383.121%20248.545%20C%20395.912%20264.338%2C%20415.002%20274.490%2C%20436.546%20276.958%20C%20447.930%20278.262%2C%20598.023%20278.307%2C%20614.500%20277.011%20C%20629.662%20275.819%2C%20640.020%20273.183%2C%20651.774%20267.526%20C%20663.677%20261.798%2C%20668.798%20258.269%2C%20677.838%20249.565%20C%20691.130%20236.766%2C%20699.705%20222.951%2C%20704.390%20206.782%20C%20708.577%20192.334%2C%20709.249%20182.440%2C%20708.727%20142.907%20L%20708.247%20106.500%20706.104%2096.756%20C%20703.169%2083.408%2C%20699.698%2074.099%2C%20693.760%2063.646%20C%20676.027%2032.429%2C%20645.328%2010.456%2C%20611.166%204.529%20C%20592.403%201.273%2C%20547.665%200.224%2C%20508.500%202.122%20M%2062.410%205.419%20C%2044.397%209.531%2C%2026.875%2021.118%2C%2017.080%2035.395%20C%2012.308%2042.350%2C%206.960%2053.860%2C%204.781%2061.864%20L%202.703%2069.500%202.031%20119%20C%201.661%20146.225%2C%201.489%20178.463%2C%201.648%20190.639%20C%202.038%20220.545%2C%204.317%20231.364%2C%2013.128%20245.146%20C%2024.707%20263.255%2C%2042.168%20273.952%2C%2065.144%20277.009%20C%2071.354%20277.836%2C%20101.991%20278.039%2C%20174.141%20277.732%20L%20274.500%20277.305%20283.660%20275.203%20C%20300.871%20271.254%2C%20313.605%20264.288%2C%20324.661%20252.774%20C%20335.997%20240.969%2C%20342.971%20227.456%2C%20346.478%20210.500%20C%20347.388%20206.100%2C%20349.209%20188.697%2C%20350.523%20171.827%20C%20354.084%20126.138%2C%20355.875%20114.123%2C%20363.540%2084.500%20C%20367.603%2068.795%2C%20369.362%2056.423%2C%20368.504%2049.582%20C%20367.561%2042.067%2C%20365.129%2034.077%2C%20362.333%2029.306%20C%20358.359%2022.525%2C%20349.107%2014.665%2C%20341.352%2011.482%20L%20334.500%208.670%20324.811%208.221%20C%20318.015%207.906%2C%20312.907%208.265%2C%20307.709%209.421%20C%20299.714%2011.200%2C%20288.746%2016.051%2C%20281.207%2021.142%20C%20274.378%2025.753%2C%20255.811%2040.721%2C%20238%2055.974%20C%20227.828%2064.684%2C%20220.266%2070.321%2C%20216%2072.373%20L%20209.500%2075.500%20201%2075.453%20L%20192.500%2075.406%20186.832%2072.669%20C%20181.386%2070.040%2C%20171.387%2061.890%2C%20156.500%2047.948%20C%20142.511%2034.847%2C%20130.359%2024.330%2C%20123.911%2019.742%20C%20116.037%2014.140%2C%20104.747%208.666%2C%2096.500%206.453%20C%2088.174%204.218%2C%2070.074%203.669%2C%2062.410%205.419%20M%2056.669%20290.594%20C%2030.186%20295.380%2C%2010.172%20314.277%2C%203.982%20340.339%20L%201.942%20348.927%201.721%20423.713%20L%201.500%20498.500%203.274%20506.171%20C%205.295%20514.909%2C%209.545%20525.745%2C%2013.228%20531.548%20C%2022.066%20545.476%2C%2035.469%20555.917%2C%2050.949%20560.933%20C%2062.736%20564.752%2C%2076.152%20565.188%2C%20167.180%20564.711%20L%20253.500%20564.258%20261.532%20562.664%20C%20299.317%20555.165%2C%20329.590%20531.373%2C%20339.358%20501.500%20C%20344.843%20484.727%2C%20342.371%20464.842%2C%20332.779%20448.566%20C%20327.143%20439.004%2C%20314.963%20426.625%2C%20304.662%20419.989%20C%20299.974%20416.970%2C%20295.433%20413.306%2C%20294.570%20411.846%20C%20292.621%20408.550%2C%20292.555%20403.751%2C%20294.412%20400.200%20C%20295.188%20398.715%2C%20299.029%20394.841%2C%20302.947%20391.591%20C%20318.412%20378.761%2C%20328%20360.668%2C%20328%20344.316%20C%20328%20319.610%2C%20309.085%20299.295%2C%20280.216%20292.994%20C%20275.214%20291.902%2C%20264.906%20290.561%2C%20257.310%20290.013%20C%20249.530%20289.452%2C%20204.420%20289.053%2C%20154%20289.099%20L%2064.500%20289.179%2056.669%20290.594%20M%20467%20290.014%20C%20451.907%20290.923%2C%20444.598%20292.210%2C%20432.985%20296.005%20C%20422.102%20299.561%2C%20414.643%20303.306%2C%20405.278%20309.916%20C%20383.401%20325.356%2C%20365.636%20352.725%2C%20358.581%20381.861%20C%20354.530%20398.592%2C%20353.761%20409.188%2C%20354.239%20441.698%20L%20354.678%20471.500%20357.764%20483.227%20C%20362.994%20503.098%2C%20371.770%20519.198%2C%20385.188%20533.542%20C%20397.408%20546.605%2C%20415.184%20557.095%2C%20432.824%20561.653%20L%20442.500%20564.153%20461%20565.128%20C%20482.019%20566.236%2C%20580.258%20565.400%2C%20598.091%20563.961%20C%20619.451%20562.238%2C%20638.347%20555.607%2C%20656.701%20543.395%20C%20667.126%20536.458%2C%20681.246%20523.131%2C%20688.800%20513.099%20C%20691.947%20508.920%2C%20696.174%20502.125%2C%20698.193%20498%20C%20707.231%20479.539%2C%20708.986%20468.593%2C%20708.994%20430.628%20L%20709%20402.757%20707.437%20392.231%20C%20705.396%20378.488%2C%20702.069%20368.013%2C%20695.450%20354.500%20C%20685.926%20335.056%2C%20671.269%20318.294%2C%20653.382%20306.393%20C%20643.558%20299.856%2C%20632.994%20295.198%2C%20620.485%20291.886%20L%20611.500%20289.508%20545.500%20289.385%20C%20509.200%20289.317%2C%20473.875%20289.600%2C%20467%20290.014%22%20fill-rule%3D%22evenodd%22%2F%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Cuse%20href%3D%22%23ui-shape%22%20transform%3D%22translate(5%207)%22%20fill%3D%22%23080b10%22%20opacity%3D%220.52%22%20filter%3D%22url(%23ui-shadow)%22%2F%3E%0A%20%20%3Cuse%20href%3D%22%23ui-shape%22%20transform%3D%22translate(3%204)%22%20fill%3D%22%230b0e13%22%20opacity%3D%220.9%22%2F%3E%0A%20%20%3Cuse%20href%3D%22%23ui-shape%22%20fill%3D%22url(%23ui-face)%22%2F%3E%0A%20%20%3Cuse%20href%3D%22%23ui-shape%22%20fill%3D%22none%22%20stroke%3D%22%23aeb7c1%22%20stroke-width%3D%224%22%20stroke-linejoin%3D%22round%22%20opacity%3D%220.24%22%2F%3E%0A%3C%2Fsvg%3E%0A" alt="" />
         <div class="brand-copy"><strong>MOBO</strong><span>Портал компании</span></div>
       </header>
       <main>

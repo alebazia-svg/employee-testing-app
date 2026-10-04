@@ -1,23 +1,27 @@
 'use client';
+import { completedWithoutEncashment } from '@/lib/workday-close-view';
 
 import jsQR from 'jsqr';
+import { cashRecountInputError } from '@/lib/cash-recount-input';
+import { checklistScrollTarget } from '@/lib/checklist-viewport';
 import { parseWorkdayQrDepartment } from '@/lib/workday-qr';
 import {
-  CalendarMarkIcon as PremiumCalendarIcon,
-  CameraIcon as PremiumCameraIcon,
-  Card2Icon as PremiumCardIcon,
-  CheckCircleIcon as PremiumCheckCircleIcon,
-  ClockCircleIcon as PremiumClockIcon,
-  ClipboardCheckIcon as PremiumClipboardCheckIcon,
-  DangerTriangleIcon as PremiumDangerTriangleIcon,
-} from '@solar-icons/react/bold-duotone';
+  PremiumCalendarIcon,
+  PremiumCameraIcon,
+  PremiumCardIcon,
+  PremiumCheckCircleIcon,
+  PremiumClockIcon,
+  PremiumClipboardCheckIcon,
+  PremiumDangerTriangleIcon,
+} from '@/components/PwaPreviewIcons';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   BadgePercent,
   Banknote,
+  BriefcaseBusiness,
   CalendarDays,
   Camera,
   ChevronDown,
@@ -31,8 +35,11 @@ import {
   Pencil,
   ReceiptText,
   RefreshCw,
+  QrCode,
   ScanQrCode,
   TriangleAlert,
+  Users,
+  Vault,
   X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -604,17 +611,17 @@ function WorkdayQrScanner({
           <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
             <div className='employee-material-scan-frame h-56 w-56 rounded-3xl border-4 border-[#efbd37] shadow-[0_0_0_999px_rgba(2,6,23,0.42)]' />
           </div>
-          <div className='absolute inset-x-4 top-4 rounded-2xl bg-slate-950/70 px-4 py-3 text-center backdrop-blur'>
+          <div className='pwa-scan-instruction absolute inset-x-4 top-4 rounded-2xl bg-slate-950/70 px-4 py-3 text-center backdrop-blur'>
             <p className='text-sm font-extrabold'>Наведите камеру на QR-код на рабочем месте</p>
           </div>
           {state === 'starting' && (
-            <div className='absolute inset-x-4 bottom-4 rounded-2xl bg-slate-950/80 px-4 py-3 text-center text-sm font-extrabold backdrop-blur'>
+            <div className='pwa-scan-loading absolute inset-x-4 bottom-4 rounded-2xl bg-slate-950/80 px-4 py-3 text-center text-sm font-extrabold backdrop-blur'>
               <RefreshCw className='mx-auto mb-2 h-5 w-5 animate-spin text-[#efbd37]' />
               Открываю камеру
             </div>
           )}
           {state === 'found' && (
-            <div className='absolute inset-4 flex items-center justify-center rounded-3xl bg-green-500/90 text-center backdrop-blur'>
+            <div className='pwa-scan-success absolute inset-4 flex items-center justify-center rounded-3xl bg-green-500/90 text-center backdrop-blur'>
               <div>
                 <PremiumCheckCircleIcon color='#ffffff' secondaryColor='#b7e9ac' secondaryOpacity={0.72} className='mx-auto h-14 w-14' />
                 <p className='mt-3 text-2xl font-black'>QR принят</p>
@@ -1116,7 +1123,8 @@ function DetailItem({ label, value }: { label: string; value: React.ReactNode })
 function ColleaguesGlyph() {
   return (
     <span className='flex h-8 w-8 items-center justify-center' aria-hidden='true'>
-      <svg className='h-7 w-7' viewBox='0 0 28 28' fill='none' aria-hidden='true'>
+      <Users className='pwa-studio-only h-6 w-6' style={{ display: 'none' }} strokeWidth={1.8} />
+      <svg className='pwa-studio-hide h-7 w-7' viewBox='0 0 28 28' fill='none' aria-hidden='true'>
         <circle cx='11' cy='9' r='4' fill='var(--portal-brand-strong)' />
         <path d='M3.8 22.2c0-4.2 3.2-6.4 7.2-6.4s7.2 2.2 7.2 6.4v.6H3.8v-.6Z' fill='var(--portal-brand-strong)' />
         <circle cx='20.8' cy='11.2' r='3' fill='var(--portal-brand-colleague-blue)' />
@@ -1168,23 +1176,28 @@ function ColleagueGroup({
   const dotClass = tone === 'green' ? 'employee-material-status-dot-green' : tone === 'amber' ? 'employee-material-status-dot-amber' : 'employee-material-status-dot-slate';
 
   return (
-    <section className={cn('employee-material-subcard rounded-lg bg-white/90 p-2 ring-1 ring-slate-200/80', `employee-material-colleague-group-${tone}`)}>
+    <section data-colleague-group={title} className={cn('employee-material-subcard rounded-lg bg-white/90 p-2 ring-1 ring-slate-200/80', `employee-material-colleague-group-${tone}`)}>
       <div className={cn('flex items-center justify-between gap-3', people.length > 0 && 'mb-1.5')}>
         <div className='flex items-center gap-2'>
           <span className={cn('employee-material-status-dot', dotClass)} />
-          <h3 className='text-sm font-extrabold text-slate-950'>{title}</h3>
+          <h3 className='text-sm font-extrabold text-slate-950'><span className='pwa-studio-hide'>{title}</span><span className='pwa-studio-only' style={{ display: 'none' }}>{title === 'Ещё не начали смену' ? 'По графику сегодня' : title}</span></h3>
         </div>
-        <span className='text-xs font-extrabold text-slate-400'>{people.length > 0 ? people.length : emptyLabel}</span>
+        {people.length === 0 && <span className='pwa-colleague-count text-xs font-extrabold text-slate-400'><span className='pwa-copper-hide'>{emptyLabel}</span><span className='pwa-copper-only' style={{ display: 'none' }}>0</span></span>}
       </div>
+      {title === 'Ещё не начали смену' && <p className='pwa-studio-only pwa-group-context' style={{ display: 'none' }}>Запланированы на сегодня</p>}
       {people.length ? (
         <div className='grid gap-1.5'>
           {people.map((person) => {
             const personDetail = detail?.(person);
             return (
               <div key={person.id} className='employee-material-person flex min-h-10 items-center rounded-lg bg-slate-50 px-2.5 py-1.5'>
-                <span className='flex min-w-0 flex-1 flex-col'>
+                <span className='pwa-composition-only pwa-composition-person-avatar' style={{ display: 'none' }} aria-hidden='true'>{person.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join('')}</span>
+                <span className='pwa-colleague-row flex min-w-0 flex-1 flex-col'>
                   <span className='truncate text-sm font-extrabold text-slate-900'>{displayName(person)}</span>
-                  {personDetail && <span className='mt-0.5 truncate text-[11px] font-semibold text-slate-500'>{personDetail}</span>}
+                  {personDetail && <>
+                    <span className='pwa-studio-hide mt-0.5 truncate text-[11px] font-semibold text-slate-500'>{personDetail}</span>
+                    {personDetail !== 'По графику работает сегодня' && <span className='pwa-studio-only pwa-colleague-detail' style={{ display: 'none' }}>{personDetail.replace('Смена по плану: ', 'План: ').replace(/^Смена /, '')}</span>}
+                  </>}
                 </span>
               </div>
             );
@@ -1227,6 +1240,7 @@ export function EmployeeTodayClient({
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
   const [activeTab, setActiveTab] = useState<Tab>('day');
+  const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
   const [ownVacationsState, setOwnVacationsState] = useState(ownVacations);
@@ -1292,6 +1306,51 @@ export function EmployeeTodayClient({
   const [vacationTo, setVacationTo] = useState(today);
   const [replacementRequestDates, setReplacementRequestDates] = useState<Set<string>>(() => new Set());
   const [openShiftTaskId, setOpenShiftTaskId] = useState<number | null>(null);
+  const checklistSaveSucceededRef = useRef(false);
+  const checklistReturnFrameRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (openShiftTaskId === null) return;
+    if (checklistReturnFrameRef.current !== null) cancelAnimationFrame(checklistReturnFrameRef.current);
+    const body = document.body;
+    const root = document.documentElement;
+    const savedY = window.scrollY;
+    const savedX = window.scrollX;
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous = { position: body.style.position, top: body.style.top, left: body.style.left, width: body.style.width, anchor: root.style.overflowAnchor };
+    checklistSaveSucceededRef.current = false;
+    root.style.overflowAnchor = 'none';
+    body.style.position = 'fixed';
+    body.style.top = `-${savedY}px`;
+    body.style.left = `-${savedX}px`;
+    body.style.width = '100%';
+    return () => {
+      const saved = checklistSaveSucceededRef.current;
+      body.style.position = previous.position;
+      body.style.top = previous.top;
+      body.style.left = previous.left;
+      body.style.width = previous.width;
+      window.scrollTo({ left: savedX, top: savedY, behavior: 'instant' });
+      root.style.overflowAnchor = previous.anchor;
+      checklistReturnFrameRef.current = requestAnimationFrame(() => {
+        checklistReturnFrameRef.current = null;
+        if (!saved) {
+          if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+          return;
+        }
+        const checklist = document.getElementById('pwa-current-action');
+        if (!checklist) return;
+        checklist.focus({ preventScroll: true });
+        const rect = checklist.getBoundingClientRect();
+        const nav = document.querySelector('.employee-material-nav')?.getBoundingClientRect();
+        const visibleBottom = Math.min(window.innerHeight, nav?.top ?? window.innerHeight);
+        const target = checklistScrollTarget(window.scrollY, rect.top, rect.bottom, visibleBottom);
+        if (target !== null) window.scrollTo({ top: target, behavior: 'instant' });
+      });
+    };
+  }, [openShiftTaskId]);
+  useLayoutEffect(() => () => {
+    if (checklistReturnFrameRef.current !== null) cancelAnimationFrame(checklistReturnFrameRef.current);
+  }, []);
   const [editingShiftTaskId, setEditingShiftTaskId] = useState<number | null>(null);
   const [shiftTaskDrafts, setShiftTaskDrafts] = useState<Record<number, ShiftTaskDraft>>({});
   const [shiftTaskErrors, setShiftTaskErrors] = useState<Record<number, Record<string, string>>>({});
@@ -1663,6 +1722,7 @@ export function EmployeeTodayClient({
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
   const completedKkmCloseCheck = readRecord(handoverTask?.handoverData, 'kkmCloseCheck');
   const kkmClosureConfirmed = completedKkmCloseCheck?.status === 'confirmed';
+  const closedWithoutEncashment = completedWithoutEncashment(handoverTask);
   const kkmCloseIssue = requiredIssuesState.find((issue) => (
     issue.ruleKey === 'kkm_shift_not_closed' && issue.originDate === activeWorkDay?.date
   )) ?? null;
@@ -2790,9 +2850,8 @@ export function EmployeeTodayClient({
     } = { status: 'done' };
 
     if (task.category === 'cash') {
-      if (parseMoneyInput(draft.numericValue) === null) {
-        localErrors.numericValue = 'Введите фактически пересчитанную сумму наличных';
-      }
+      const amountError = cashRecountInputError(parseMoneyInput(draft.numericValue));
+      if (amountError) localErrors.numericValue = amountError;
       payload.numericValue = draft.numericValue;
       payload.comment = draft.comment;
     } else if (task.category === 'acquiring') {
@@ -2871,6 +2930,7 @@ export function EmployeeTodayClient({
 
       if (!result) return;
 
+      checklistSaveSucceededRef.current = true;
       setShiftControlState((current) => ({
         ...current,
         tasks: current.tasks.map((task) => (task.id === result.task.id ? result.task : task)),
@@ -3494,12 +3554,12 @@ export function EmployeeTodayClient({
   function renderPhotoInput(label: string, field: HandoverPhotoKey, task: ShiftControlTask, hint?: string, fieldError?: string, disabledReason?: string, showDisabledReason = true) {
     const file = handoverDraft[field];
     return (
-      <label className='grid gap-2 text-sm font-extrabold text-slate-800'>
+      <label className='employee-photo-field grid gap-2 text-sm font-extrabold text-slate-800'>
         {label}
         {hint && <span className='text-xs font-semibold leading-snug text-slate-500'>{hint}</span>}
         {!file && (
           <span className={cn(
-            'flex min-h-11 items-center justify-center rounded-lg px-3 text-sm font-extrabold shadow-sm',
+            'employee-photo-action flex min-h-11 items-center justify-center rounded-lg px-3 text-sm font-extrabold shadow-sm',
             disabledReason ? 'cursor-not-allowed bg-slate-200 text-slate-400' : 'cursor-pointer bg-[#111821] text-white',
           )}>
             {isSaving ? photoSavingLabel(uploadProgress) : 'Сделать фото'}
@@ -3517,7 +3577,7 @@ export function EmployeeTodayClient({
             handleHandoverPhotoSelected(task, field, file);
           }}
         />
-        {file && <span role='status' className={cn('rounded-lg px-2.5 py-2 text-xs font-bold ring-1', isHandoverFile(file) ? 'bg-slate-50 text-slate-700 ring-slate-200' : 'bg-green-50 text-green-700 ring-green-100')}>
+        {file && <span role='status' className={cn('employee-photo-status rounded-lg px-2.5 py-2 text-xs font-bold ring-1', isHandoverFile(file) ? 'bg-slate-50 text-slate-700 ring-slate-200' : 'bg-green-50 text-green-700 ring-green-100')}>
           {isHandoverFile(file) ? (isSaving ? photoSavingLabel(uploadProgress) : 'Фото выбрано. Не отправлено') : 'Фото сохранено'}
         </span>}
         {disabledReason && showDisabledReason && <span className='text-xs font-semibold text-amber-700'>{disabledReason}</span>}
@@ -3823,7 +3883,7 @@ export function EmployeeTodayClient({
         )}
 
         {isHandoverKkmCheckPending && (
-          <p role='status' className='mt-4 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200'>
+          <p role='status' className='pwa-cash-check-status mt-4 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200'>
             <RefreshCw className='h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none' aria-hidden='true' />
             Проверяем кассу…
           </p>
@@ -4004,7 +4064,7 @@ export function EmployeeTodayClient({
               <div className='flex items-start justify-between gap-3'>
                 <div>
                   <h2 id='handover-sheet-title' className='text-xl font-black leading-tight text-slate-950'>{handoverSteps[handoverStep] === 'encashment' ? cashEncashmentExceptionRequestState?.status === 'pending' && !encashmentResumePending ? 'Ждём решения' : showCashEncashmentExceptionForm ? 'Не могу выполнить' : 'Инкассация' : 'Сдача смены'}</h2>
-                  <p className='mt-1 text-sm font-semibold text-slate-500'>Сдача смены · шаг {handoverStep + 1} из {handoverSteps.length}</p>
+                  <p className='mt-1 text-sm font-semibold text-slate-500'>Шаг {handoverStep + 1} из {handoverSteps.length}</p>
                 </div>
                 <button type='button' onClick={closeHandoverSheet} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
               </div>
@@ -4198,27 +4258,36 @@ export function EmployeeTodayClient({
             ? 'pb-[calc(8.75rem+env(safe-area-inset-bottom))]'
             : 'pb-[calc(5.75rem+env(safe-area-inset-bottom))]',
         )}>
+          {activeTab === 'day' && activeWorkDay && <button
+            type='button'
+            className={cn('pwa-studio-only pwa-shift-dock', showCloseResolution && 'pwa-shift-dock-blocked')}
+            style={{ display: 'none' }}
+            onClick={() => document.getElementById('pwa-current-action')?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })}
+          >
+            <span><strong>{showCloseResolution ? 'Смена не закрыта' : 'Смена открыта'}</strong><small>{showCloseResolution ? currentCloseExceptionStatus === 'pending' ? 'Ждём решения администратора' : 'Нужно завершить сдачу' : workDay?.shiftLabel}</small></span>
+            <span className='pwa-dock-action'>{showCloseResolution ? 'Продолжить' : 'К чек-листу'} <ChevronRight className='h-4 w-4' aria-hidden='true' /></span>
+          </button>}
           {!isOnline || cashOutboxCount > 0 ? (
-            <div className={`mb-4 rounded-2xl px-4 py-3 ${isOnline ? 'employee-material-info-card text-slate-900' : 'employee-material-alert-card text-amber-950'}`}>
-              <div className='flex items-start gap-3'>
+            <div role='status' className={`pwa-connection-status mb-4 rounded-2xl px-4 py-3 ${isOnline ? 'employee-material-info-card text-slate-900' : 'employee-material-alert-card text-amber-950'}`}>
+              <div className='flex flex-wrap items-start gap-3'>
                 <span className={`employee-material-status-dot mt-1 ${isOnline ? 'employee-material-status-dot-slate' : 'employee-material-status-dot-amber'}`} />
                 <div className='min-w-0 flex-1'>
-                  <p className='text-sm font-extrabold'>{isOnline ? (cashOutboxSyncing ? 'Отправляем инкассацию' : 'Инкассация сохранена на телефоне') : 'Нет связи с порталом'}</p>
+                  <p className='text-sm font-extrabold'>{isOnline ? (cashOutboxSyncing ? 'Отправляем инкассацию' : cashOutboxError ? 'Не удалось отправить инкассацию' : 'Инкассация сохранена на телефоне') : 'Нет связи с порталом'}</p>
                   <p className='mt-0.5 text-xs font-semibold leading-relaxed opacity-80'>
                     {isOnline
                       ? cashOutboxSyncing
                         ? 'Сумма и фотография отправляются в портал.'
                         : cashOutboxError
-                          ? cashOutboxError
+                          ? `Сумма и фото сохранены на телефоне. ${cashOutboxError}`
                           : `Сумма и фото не потеряны. Ожидают отправки: ${cashOutboxCount}.`
                       : cashOutboxCount > 0
                         ? 'Инкассация сохранена на телефоне и отправится после восстановления связи.'
                         : 'Проверьте интернет или VPN. Данные обновятся после восстановления связи.'}
                   </p>
                 </div>
-                {(!isOnline || (cashOutboxCount > 0 && !cashOutboxSyncing)) ? (
-                  <button type='button' className='employee-material-secondary-action h-9 shrink-0 px-3 text-xs font-extrabold' onClick={() => void (isOnline ? flushCashOutbox() : syncCurrentWorkdayState(true))}>
-                    Повторить
+                {isOnline && cashOutboxCount > 0 && !cashOutboxSyncing && cashOutboxError ? (
+                  <button type='button' className='employee-material-secondary-action min-h-11 shrink-0 px-3 text-xs font-extrabold' onClick={() => void flushCashOutbox()}>
+                    Повторить отправку
                   </button>
                 ) : null}
               </div>
@@ -4492,31 +4561,43 @@ export function EmployeeTodayClient({
           )}
 
           {activeTab === 'day' && (
-            <div className='space-y-3'>
+            <div className={cn('pwa-review-day space-y-3', showCloseResolution && 'pwa-review-day-closing', !workDay && !unfinished && 'pwa-day-before-start')}>
+              {!workDay && !unfinished && <section className='pwa-composition-only pwa-composition-start' style={{ display: 'none' }} aria-labelledby='pwa-composition-start-title'>
+                <div className='pwa-composition-start-top'><span>Рабочий день</span><span className='pwa-composition-status'><span />Не начат</span></div>
+                <div className='pwa-composition-start-body'>
+                  <div><h2 id='pwa-composition-start-title'>Начните смену</h2><p>Отсканируйте QR-код в магазине.</p></div>
+                  <QrCode size={48} strokeWidth={1.3} aria-hidden='true' />
+                </div>
+                <button type='button' onClick={openQrStart} disabled={isSaving || Boolean(unfinished)} className='pwa-composition-start-button'>Начать рабочий день<ChevronRight size={20} strokeWidth={1.8} aria-hidden='true' /></button>
+              </section>}
               {!workDay && !unfinished && (
-                <Card className='space-y-3 p-4'>
+                <Card className='pwa-studio-start space-y-3 p-4'>
                   <p className='employee-material-greeting text-[17px] font-semibold leading-6 text-slate-800'>
                     {greetingForMoscowTime(displayNow)}, {schedulePersonName(user.name)}
                   </p>
-                  <div className='flex items-start gap-3'>
+                  <div className='pwa-studio-start-status flex items-start gap-3'>
                     <span className='employee-material-start-clock mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center text-[#263b5c]'>
                       <Clock3 className='h-7 w-7' strokeWidth={1.9} />
                     </span>
                     <div className='min-w-0'>
-                      <h2 className='text-xl font-black leading-tight text-slate-950'>Рабочий день не начат</h2>
-                      <p className='mt-1 text-sm font-semibold leading-snug text-slate-500'>
+                      <h2 className='pwa-studio-hide text-xl font-black leading-tight text-slate-950'>Рабочий день не начат</h2>
+                      <span role='heading' aria-level={2} className='pwa-studio-only pwa-studio-title' style={{ display: 'none' }}>Начните рабочий день</span>
+                      <span className='pwa-studio-only pwa-studio-start-badge' style={{ display: 'none' }}>QR-код находится в магазине.</span>
+                      <p className='pwa-studio-hide mt-1 text-sm font-semibold leading-snug text-slate-500'>
                         Отсканируйте QR-код в магазине.
                       </p>
                     </div>
                   </div>
                   <Button
                     type='button'
-                    className='employee-material-green-action h-14 w-full rounded-xl text-base font-black'
+                    className='pwa-studio-qr-action employee-material-green-action h-14 w-full rounded-xl text-base font-black'
                     onClick={openQrStart}
                     disabled={isSaving || Boolean(unfinished)}
                   >
                     <ScanQrCode className='employee-material-brand-action-icon mr-2 h-7 w-7' strokeWidth={2.35} aria-hidden='true' />
-                    Сканировать QR
+                    <span className='pwa-studio-hide'>Сканировать QR</span>
+                    <span className='pwa-studio-only pwa-studio-qr-copy' style={{ display: 'none' }}><strong>Сканировать QR-код</strong></span>
+                    <ChevronRight className='pwa-studio-only h-5 w-5' style={{ display: 'none' }} aria-hidden='true' />
                   </Button>
                   {unfinished && (
                     <p className='text-xs font-bold text-amber-700'>Сначала закройте предыдущий рабочий день.</p>
@@ -4525,13 +4606,31 @@ export function EmployeeTodayClient({
               )}
 
               {activeWorkDay && (
-                <div className='grid gap-1.5'>
-                  <div className='employee-material-status-strip flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold text-green-900'>
+                <div className='pwa-review-shift grid gap-1.5'>
+                  <div className='pwa-studio-hide employee-material-status-strip flex items-center gap-2 rounded-full px-3 py-2 text-sm font-extrabold text-green-900'>
                     <span className='employee-material-status-strip-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-green-700 ring-1 ring-green-100'>
                       <PremiumClockIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-5 w-5' />
                     </span>
-                    <span className='min-w-0 truncate'>Рабочий день · {workDay?.shiftLabel} · {activeElapsedLabel}</span>
+                    <span className='pwa-shift-heading min-w-0 truncate'><span className='pwa-review-shift-title'>Рабочий день</span><span className='pwa-review-shift-time'><span className='pwa-studio-hide'> · </span>{workDay?.shiftLabel}<span className='pwa-studio-hide'> · {activeElapsedLabel}</span></span></span>
                   </div>
+                  <div className='pwa-workday-summary-shell'>
+                    <div className='pwa-studio-only pwa-workday-summary' style={{ display: 'none' }}>
+                      <div className='pwa-workday-summary-top'>
+                        <strong><span className='pwa-on-shift-dot' aria-hidden='true' />На смене</strong>
+                        <span className='pwa-workday-summary-timer' aria-label={`В смене ${activeElapsedLabel}`}>{activeElapsedLabel}</span>
+                      </div>
+                      <div className='pwa-workday-summary-facts'>
+                        <span>Начало {formatTime(workDay!.startedAt)} · {shiftEnd !== null && shiftEnd !== undefined ? `до ${minutesToTime(shiftEnd)}` : workDay?.shiftLabel}</span>
+                      </div>
+                    </div>
+                    {activeWorkDay && shiftControlState.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) < shiftEnd && (
+                      <button type='button' className='pwa-early-finish employee-material-day-change-in-details ml-auto inline-flex min-h-11 items-center gap-1 text-xs font-semibold' onClick={openEarlyFinishSheet}>
+                        Завершить раньше
+                        <ChevronRight className='h-4 w-4' aria-hidden='true' />
+                      </button>
+                    )}
+                  </div>
+                  {Boolean(workDay?.lateMinutes) && <div className='pwa-studio-only' style={{ display: 'none' }}><strong className='pwa-late-status'><Clock3 size={14} aria-hidden='true' />Опоздание · {workDay!.lateMinutes} мин</strong></div>}
                   {needsLateArrivalReason && (
                     <button
                       type='button'
@@ -4564,7 +4663,7 @@ export function EmployeeTodayClient({
               )}
 
               {activeWorkDay && showCloseResolution && (
-                <Card className='space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
+                <Card id='pwa-current-action' className='space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
                   <h2 className='text-xl font-black text-slate-950'>Сдать смену</h2>
                   <div className='rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3' role='status'>
                     <p className='text-base font-black text-amber-950'>Смена не закрыта</p>
@@ -4584,7 +4683,7 @@ export function EmployeeTodayClient({
                   <Button type='button' className='employee-material-primary-action min-h-12 w-full text-sm font-extrabold' disabled={isSaving || currentCloseExceptionStatus === 'approved'} onClick={() => {
                     if (kkmCloseIssue) { setCloseResolutionPath(null); setCloseResolutionOpen(true); }
                     else setCloseBlockedSheetOpen(true);
-                  }}>{currentCloseExceptionStatus === 'pending' ? 'Посмотреть задачи' : 'Продолжить сдачу смены'}</Button>
+                  }}>{kkmCloseIssue ? 'Проверить закрытие кассы' : currentCloseExceptionStatus === 'pending' ? 'Посмотреть задачи' : 'Продолжить сдачу смены'}</Button>
                   {kkmCloseIssue && attentionCount > 0 && <Button type='button' className='employee-material-secondary-action min-h-12 w-full text-sm font-extrabold' onClick={() => setCloseBlockedSheetOpen(true)}>Другие задачи ({attentionCount})</Button>}
                 </Card>
               )}
@@ -4619,15 +4718,23 @@ export function EmployeeTodayClient({
                     <PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-7 w-7' />
                   </span>
                   <div className='min-w-0'>
-                    <p className='text-sm font-black text-slate-950'>Смена закрыта</p>
-                    {kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : null}
+                    <p className='text-sm font-black text-slate-950'>Смена завершена</p>
+                    {workDay?.endedAt && <p className='pwa-shift-summary mt-1 text-lg font-extrabold text-slate-950'>{formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)} <span className='text-xs font-medium text-slate-600'>· фактическое время</span></p>}
+                    {Boolean(workDay?.lateMinutes) && <p className='mt-1 text-xs font-semibold text-amber-700'>Опоздание · {workDay!.lateMinutes} мин</p>}
+                    {closedWithoutEncashment ? (
+                      <p className='mt-1 text-sm font-semibold text-slate-700'>Без инкассации · разрешено администратором</p>
+                    ) : kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : null}
                   </div>
                 </Card>
               )}
 
               {showShiftControl && !kkmCloseIssue && !showCloseResolution && (
-                <Card className='space-y-3 rounded-[24px] bg-white p-4'>
-                  <div>
+                <Card id='pwa-current-action' tabIndex={-1} className='pwa-review-task space-y-3 rounded-[24px] bg-white p-4'>
+                  {!activeHandoverTask && cashEncashmentExceptionRequestState?.status !== 'pending' && <div className='pwa-studio-only pwa-checklist-heading' style={{ display: 'none' }}>
+                    <div><h2>Чек-лист смены</h2><span>{visibleShiftControlTasks.length - remainingShiftControlCount}/{visibleShiftControlTasks.length}</span></div>
+                    <div className='pwa-checklist-track' aria-hidden='true'><span style={{ width: `${visibleShiftControlTasks.length ? (visibleShiftControlTasks.length - remainingShiftControlCount) / visibleShiftControlTasks.length * 100 : 0}%` }} /></div>
+                  </div>}
+                  <div className={!activeHandoverTask && cashEncashmentExceptionRequestState?.status !== 'pending' ? 'pwa-studio-hide' : undefined}>
                     <div>
                       <h2 className='text-xl font-black text-slate-950'>
                         {primaryShiftControlTask?.category === 'handover' || activeHandoverTask ? 'Сдать смену' : actionableShiftControlTask ? 'Сейчас нужно' : 'Следующая проверка'}
@@ -4682,7 +4789,7 @@ export function EmployeeTodayClient({
                   )}
 
                   {!activeHandoverTask && showFullShiftPlan && (
-                    <div className='grid gap-2' onPointerDownCapture={() => setShiftPlanInteraction((value) => value + 1)} onKeyDownCapture={() => setShiftPlanInteraction((value) => value + 1)}>
+                    <div className='pwa-review-plan grid gap-2' onPointerDownCapture={() => setShiftPlanInteraction((value) => value + 1)} onKeyDownCapture={() => setShiftPlanInteraction((value) => value + 1)}>
                       {visibleShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).map((task) => {
                       const uiStatus = shiftTaskStatus(task, displayNow);
                       const Icon = shiftTaskIcon(task);
@@ -4716,7 +4823,7 @@ export function EmployeeTodayClient({
               )}
 
               {canUseCashOperations && activeWorkDay && !activeHandoverTask && (
-                <Card className='space-y-2.5 bg-white/80 p-3.5'>
+                <Card className='pwa-review-cash space-y-2.5 bg-white/80 p-3.5'>
                   <div className='flex items-start justify-between gap-3'>
                     <div>
                       <h2 className='text-base font-extrabold text-slate-950'>Инкассация</h2>
@@ -4738,7 +4845,9 @@ export function EmployeeTodayClient({
                         onClick={() => openCashOperation('phone_reserve')}
                         disabled={!workDay || isSaving}
                       >
+                        <Banknote className='pwa-studio-only h-7 w-7' style={{ display: 'none' }} aria-hidden='true' />
                         Пополнить резерв
+                        <ChevronRight className='pwa-cash-action-arrow h-4 w-4 shrink-0' aria-hidden='true' />
                       </Button>
                     )}
                     <Button
@@ -4747,7 +4856,9 @@ export function EmployeeTodayClient({
                       onClick={() => openCashOperation('deposit_safe')}
                       disabled={!workDay || isSaving}
                     >
+                      <Vault className='pwa-studio-only h-7 w-7' style={{ display: 'none' }} aria-hidden='true' />
                       В депозитный сейф
+                      <ChevronRight className='pwa-cash-action-arrow h-4 w-4 shrink-0' aria-hidden='true' />
                     </Button>
                   </div>
 
@@ -4858,21 +4969,7 @@ export function EmployeeTodayClient({
                 </Card>
               )}
 
-              {workDay && <Card className='bg-slate-50 p-4'>
-                <div className='mb-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2'>
-                  <h2 className='text-base font-extrabold text-slate-950'>Детали смены</h2>
-                  <Badge className={cn('max-w-full shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', factTone(displayedWorkDayStatus))}>
-                    {factLabel(displayedWorkDayStatus)}
-                  </Badge>
-                </div>
-                <div className='grid grid-cols-3 gap-1.5'>
-                  <DetailItem label='Начало' value={workDay ? formatTime(workDay.startedAt) : minutesToTime(shiftStart)} />
-                  <DetailItem label='Окончание' value={workDay?.endedAt ? formatTime(workDay.endedAt) : '—'} />
-                  <DetailItem
-                    label='Опоздание'
-                    value={workDay?.lateMinutes ? <span className='text-amber-700'>{workDay.lateMinutes} мин</span> : 'Без опоздания'}
-                  />
-                </div>
+              {activeWorkDay && shiftCorrectionWindowOpen && <Card className='pwa-review-details bg-slate-50 p-4'>
                 {shiftCorrectionWindowOpen && (
                   <button
                     type='button'
@@ -4883,21 +4980,16 @@ export function EmployeeTodayClient({
                     Изменить смену
                   </button>
                 )}
-                {activeWorkDay && shiftControlState.run && !earlyFinishDeviation && shiftEnd !== null && shiftEnd !== undefined && getMoscowMinutes(displayNow) < shiftEnd && (
-                  <div className='mt-3 border-t border-slate-200 pt-1'>
-                    <button
-                      type='button'
-                      className='employee-material-day-change-in-details inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-[#455a78]'
-                      onClick={openEarlyFinishSheet}
-                    >
-                      Завершить раньше
-                      <ChevronRight className='h-4 w-4' aria-hidden='true' />
-                    </button>
-                  </div>
-                )}
               </Card>}
 
-              <Card className='space-y-2.5 p-4'>
+              {!workDay && !unfinished && (
+                <button type='button' className='pwa-studio-only pwa-prestart-team' style={{ display: 'none' }} aria-expanded={prestartColleaguesOpen} aria-controls='pwa-colleagues-today' onClick={() => setPrestartColleaguesOpen((open) => !open)}>
+                  <ColleaguesGlyph />
+                  <span className='pwa-prestart-team-copy'><strong>Коллеги сегодня</strong><small>Работают: {workingColleagues.length} · Ожидаются: {scheduledColleagues.length}</small></span>
+                  <ChevronRight className={cn('h-5 w-5', prestartColleaguesOpen && 'rotate-90')} aria-hidden='true' />
+                </button>
+              )}
+              <Card id='pwa-colleagues-today' className={cn('pwa-review-colleagues space-y-2.5 p-4', !prestartColleaguesOpen && 'pwa-prestart-team-collapsed')}>
                 <div className='flex items-center gap-2'>
                   <span className='employee-material-heading-icon employee-material-accent-icon employee-material-neutral-icon' aria-hidden='true'>
                     <ColleaguesGlyph />
@@ -4907,6 +4999,7 @@ export function EmployeeTodayClient({
                 <ColleagueGroup title='Сейчас работают' people={workingColleagues} tone='green' emptyLabel='Никто' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
                 {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {scheduledColleagues.length > 0 && <ColleagueGroup title='Ещё не начали смену' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
+                {scheduledColleagues.length === 0 && <div className='pwa-copper-only pwa-empty-scheduled' style={{ display: 'none' }}><ColleagueGroup title='Ещё не начали смену' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} /></div>}
                 {vacationColleagues.length > 0 && <ColleagueGroup title='В отпуске' people={vacationColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={(person) => {
                   const vacation = departmentVacationForDate(today, person.id);
                   return vacation ? `До ${formatDateLabel(vacation.dateTo)}` : null;
@@ -5165,7 +5258,7 @@ export function EmployeeTodayClient({
                     ) : (
                       <button
                         type='button'
-                        className='mx-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold text-slate-500 transition hover:text-green-700'
+                        className='pwa-vacation-action mx-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold text-slate-500 transition hover:text-green-700'
                         onClick={() => openVacationEditor(null)}
                       >
                         <CalendarDays className='h-4 w-4' aria-hidden='true' />
@@ -5220,6 +5313,7 @@ export function EmployeeTodayClient({
                 <button
                   key={item.id}
                   type='button'
+                  aria-current={active ? 'page' : undefined}
                   onClick={() => {
                     if (item.id === 'day' && activeTab === 'schedule' && bulkScheduleMode) {
                       const hasUnsavedSelection = bulkScheduleKind === 'edit'
@@ -5243,6 +5337,7 @@ export function EmployeeTodayClient({
                   )}
                 >
                   <span className={cn('relative flex h-6 w-6 items-center justify-center', `employee-material-nav-icon-${item.id}`)} aria-hidden='true'>
+                    {item.id === 'day' ? <Clock3 className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : <CalendarDays className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} />}
                     <Icon
                       className='h-6 w-6'
                       color={active ? 'var(--portal-brand-strong)' : '#687078'}

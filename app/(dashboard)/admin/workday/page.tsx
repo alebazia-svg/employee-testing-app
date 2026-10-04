@@ -536,6 +536,7 @@ function buildEmployeeAutoChecks({
     idempotencyKey: string;
     direction: string;
     amount: number;
+    photoPath: string;
     status: string;
     oneCError: string;
     oneCDocumentRef: string | null;
@@ -934,7 +935,7 @@ function buildEmployeeAutoChecks({
         status: 'unavailable',
         summary: `${formatMoney(operation.amount)}. Инкассация зафиксирована, но документы 1С не проведены. ${operationState}`,
         evidence: operation.oneCError || '1С не вернула подтверждение проведения связанной пары документов.',
-        cashOperation: { id: operation.id, status: operation.status },
+        cashOperation: { id: operation.id, status: operation.status, photoPath: operation.photoPath, amount: operation.amount },
       });
     }
     if (requiresEncashment === false) {
@@ -1014,7 +1015,7 @@ function buildEmployeeAutoChecks({
               ? `Найдены расход и приход на ${formatMoney(encashmentAmount)} рядом по времени, но связь пары документов 1С не подтверждена.`
               : `Парное движение касса → ${targetShortLabel} на ${formatMoney(encashmentAmount)} в 1С не найдено.`,
           evidence: 'Проверяется учётное движение; физическое помещение денег подтверждается сотрудником и фото.',
-          cashOperation: failedCashOperation ? { id: failedCashOperation.id, status: failedCashOperation.status } : undefined,
+          cashOperation: failedCashOperation ? { id: failedCashOperation.id, status: failedCashOperation.status, photoPath: failedCashOperation.photoPath, amount: failedCashOperation.amount } : undefined,
         });
       }
     }
@@ -1185,6 +1186,7 @@ export default async function AdminWorkdayPage(
         userId: true,
         direction: true,
         amount: true,
+        photoPath: true,
         status: true,
         oneCError: true,
         oneCDocumentRef: true,

@@ -4,7 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 
 function isShiftControlUploadPath(value: string) {
   const normalized = value.replace(/\\/g, '/');
-  return normalized.startsWith('uploads/shift-control/') && !normalized.includes('..');
+  return (normalized.startsWith('uploads/shift-control/') || normalized.startsWith('uploads/cash-operations/')) && !normalized.includes('..');
 }
 
 function contentType(filePath: string) {
@@ -27,8 +27,9 @@ export async function GET(req: Request) {
     return Response.json({ error: 'Invalid photo path' }, { status: 400 });
   }
 
-  const root = path.join(process.cwd(), 'uploads', 'shift-control');
-  const absolutePath = path.resolve(process.cwd(), storagePath);
+  const normalizedPath = storagePath.replace(/\\/g, '/');
+  const root = path.join(process.cwd(), 'uploads', normalizedPath.startsWith('uploads/cash-operations/') ? 'cash-operations' : 'shift-control') + path.sep;
+  const absolutePath = path.resolve(process.cwd(), normalizedPath);
   if (!absolutePath.startsWith(root)) {
     return Response.json({ error: 'Invalid photo path' }, { status: 400 });
   }

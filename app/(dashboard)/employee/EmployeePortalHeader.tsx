@@ -1,4 +1,5 @@
 import { LogoutButton } from '@/components/LogoutButton';
+import { EmployeeAboutApp } from '@/components/EmployeeAboutApp';
 import { WorkdayNotificationsClient } from './WorkdayNotificationsClient';
 
 export function employeeHeaderDateLabel(dateKey: string) {
@@ -28,11 +29,14 @@ export function EmployeePortalHeader({
 
   return (
     <header className='employee-material-header grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]'>
+      <EmployeeAboutApp>
+        <img className='pwa-composition-only pwa-composition-brand' style={{ display: 'none' }} src='/brand/mobo-master/mobo-symbol-copper-ui.svg' alt='MOBO' width={40} height={40} />
+      </EmployeeAboutApp>
       <div className='employee-material-header-profile grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)] items-center gap-2.5'>
         <div className='employee-material-profile-avatar employee-material-profile-initials flex h-11 w-11 items-center justify-center' aria-hidden='true'>
           {avatarInitials}
         </div>
-        <div className='employee-material-profile-copy min-w-0'>
+        <div className='employee-material-profile-copy flex min-h-11 min-w-0 flex-col justify-center'>
           <p className='truncate text-sm font-extrabold leading-tight text-[#273137]'>{name}</p>
           <p className='employee-material-profile-meta mt-1 flex min-w-0 items-center gap-2 text-[11px] font-bold leading-[1.2] text-[#758084]'>
             <span className='employee-material-profile-role shrink-0 rounded-full bg-[#e4e7e4]/90 px-1.5 py-0.5 text-[9px] font-extrabold uppercase leading-none tracking-[0.05em] text-[#59645f] ring-1 ring-white/80'>{metaLead}</span>

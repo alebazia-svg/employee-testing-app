@@ -1,0 +1,152 @@
+/* Isolated visual proposal, activated only by the localhost review marker. */
+body:has(#pwa-visual-proposal) .employee-material-ui {
+  --portal-brand-strong: #263b5c;
+  color: #182333 !important;
+}
+body:has(#pwa-visual-proposal) .employee-material-shell {
+  background: #f2f4f7 !important;
+}
+body:has(#pwa-visual-proposal) .employee-material-header {
+  background: #fff !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid #dce2e9 !important;
+  box-shadow: none !important;
+}
+body:has(#pwa-visual-proposal) .employee-material-ui div.backdrop-blur {
+  border: 1px solid #dce2e9 !important;
+  border-radius: 16px !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+body:has(#pwa-visual-proposal) .employee-material-ui :is(h1,h2,h3) {
+  color: #172235;
+  letter-spacing: -.02em;
+}
+body:has(#pwa-visual-proposal) .employee-material-ui .employee-material-primary-action,
+body:has(#pwa-visual-proposal) .employee-material-ui .employee-material-green-action {
+  background: #263b5c !important;
+  border: 1px solid #263b5c !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  color: white !important;
+  min-height: 48px;
+}
+body:has(#pwa-visual-proposal) .employee-material-ui .employee-material-secondary-action {
+  background: #f7f9fb !important;
+  border: 1px solid #d7dfe9 !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  color: #33445b !important;
+  min-height: 44px;
+}
+body:has(#pwa-visual-proposal) .employee-material-ui button:disabled {
+  box-shadow: none !important;
+  opacity: .55;
+}
+body:has(#pwa-visual-proposal) .employee-material-sheet {
+  background: #fff !important;
+  border-radius: 20px 20px 0 0 !important;
+  box-shadow: 0 -8px 30px #14253b1a !important;
+}
+body:has(#pwa-visual-proposal) .employee-material-form,
+body:has(#pwa-visual-proposal) .employee-material-task-form {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+body:has(#pwa-visual-proposal) .employee-material-ui :is(input,textarea,select) {
+  border-radius: 10px !important;
+  border: 1px solid #bcc8d6 !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  min-height: 48px;
+}
+body:has(#pwa-visual-proposal) .employee-material-calendar-day {
+  box-shadow: none !important;
+  border-radius: 7px !important;
+}
+body:has(#pwa-visual-proposal) .employee-material-ui nav {
+  background: #fff !important;
+  box-shadow: none !important;
+  border-top: 1px solid #dce2e9;
+}
+
+/* Composition study: real components and actions, localhost only. */
+body:has(#pwa-visual-proposal) .employee-material-shell { background: #fff !important; }
+body:has(#pwa-visual-proposal) .employee-material-header { padding-bottom: 10px !important; background: #f7f9fc !important; }
+body:has(#pwa-visual-proposal) .employee-material-profile-avatar { border-radius: 12px !important; background: #e5edf7 !important; box-shadow: none !important; }
+body:has(#pwa-visual-proposal) .employee-material-profile-role { background: transparent !important; padding-left: 0 !important; box-shadow: none !important; }
+body:has(#pwa-visual-proposal) .pwa-review-day { padding-top: 12px; }
+body:has(#pwa-visual-proposal) .employee-material-status-strip { background: transparent !important; border: 0 !important; border-radius: 0 !important; padding: 0 0 12px !important; box-shadow: none !important; }
+body:has(#pwa-visual-proposal) .employee-material-status-strip-icon { display: none !important; }
+body:has(#pwa-visual-proposal) .pwa-review-shift-title { display: block; font-size: 28px; line-height: 36px; font-weight: 800; letter-spacing: -.8px; color: #182538; }
+body:has(#pwa-visual-proposal) .pwa-review-shift-time { display: block; margin-top: 4px; color: #52637a; font-size: 13px; font-weight: 600; }
+body:has(#pwa-visual-proposal) .employee-material-ui .pwa-review-task { border: 0 !important; background: #edf3fa !important; border-radius: 16px !important; padding: 18px !important; }
+body:has(#pwa-visual-proposal) .pwa-review-task > div:first-child h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: #4d6480; }
+body:has(#pwa-visual-proposal) .employee-material-focus { background: transparent !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-task-glyph { background: transparent !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important; width: 28px !important; height: 32px !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui div.backdrop-blur:is(.pwa-review-cash,.pwa-review-details,.pwa-review-colleagues) { border: 0 !important; border-top: 1px solid #e1e7ef !important; background: transparent !important; border-radius: 0 !important; padding: 18px 0 6px !important; margin-top: 18px !important; }
+body:has(#pwa-visual-proposal) .pwa-review-cash .employee-material-heading-icon { display: none !important; }
+body:has(#pwa-visual-proposal) .pwa-review-cash h2 { font-size: 18px; }
+body:has(#pwa-visual-proposal) .pwa-review-colleagues > div:not(:first-child) { background: transparent !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important; padding: 8px 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui nav { padding-top: 8px !important; padding-bottom: max(8px,env(safe-area-inset-bottom)) !important; }
+body:has(#pwa-visual-proposal) .employee-material-tab { flex-direction: row !important; gap: 9px !important; border-radius: 12px !important; min-height: 48px !important; background: transparent !important; box-shadow: none !important; color: #66778c !important; }
+body:has(#pwa-visual-proposal) .employee-material-tab.is-active { background: #e7effa !important; color: #243e63 !important; }
+body:has(#pwa-visual-proposal) .employee-material-tab-label { font-size: 13px !important; }
+body:has(#pwa-visual-proposal) .employee-material-tab :is(span,svg) { box-shadow: none !important; filter: none !important; }
+body:has(#pwa-visual-proposal) .employee-material-tab::after { display: none !important; }
+body:has(#pwa-visual-proposal) .employee-material-schedule-switch-card { border: 0 !important; padding: 0 !important; margin-top: 12px !important; }
+body:has(#pwa-visual-proposal) .employee-material-segment { background: #edf2f8 !important; padding: 4px !important; border-radius: 12px !important; box-shadow: none !important; }
+body:has(#pwa-visual-proposal) .employee-material-segment-option { border: 0 !important; border-radius: 9px !important; background: transparent !important; box-shadow: none !important; }
+body:has(#pwa-visual-proposal) .employee-material-segment-option.is-active { background: #263b5c !important; color: #fff !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui div.employee-material-calendar-card { border: 0 !important; padding: 10px 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-calendar-nav { border: 0 !important; box-shadow: none !important; border-radius: 10px !important; background: #edf2f8 !important; }
+body:has(#pwa-visual-proposal) .employee-material-task-form { padding: 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-task-form > div { box-shadow: none !important; border-radius: 10px !important; }
+
+/* Third direction: shift workspace rather than a stack of cards. */
+body:has(#pwa-visual-proposal) .employee-material-shell { background: #f4f6f9 !important; }
+body:has(#pwa-visual-proposal) .employee-material-header {
+  background: #192c43 !important; border: 0 !important; padding: 16px !important;
+}
+body:has(#pwa-visual-proposal) .employee-material-header :is(p,button,.employee-material-profile-role) { color: #f5f8fc !important; }
+body:has(#pwa-visual-proposal) .employee-material-header .employee-material-profile-meta { color: #b9c9dc !important; }
+body:has(#pwa-visual-proposal) .employee-material-profile-avatar { background: #314961 !important; color: #fff !important; border-radius: 50% !important; border: 0 !important; }
+body:has(#pwa-visual-proposal) .pwa-review-day { padding-top: 0; }
+body:has(#pwa-visual-proposal) .pwa-review-shift { margin: -8px -16px 20px !important; padding: 10px 20px 22px; background: #192c43; }
+body:has(#pwa-visual-proposal) .pwa-review-shift-title { color: #fff; font-size: 27px; font-weight: 700; }
+body:has(#pwa-visual-proposal) .pwa-review-shift-time { color: #c3d2e4; font-size: 14px; }
+body:has(#pwa-visual-proposal) .employee-material-status-strip { padding: 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui .pwa-review-day > div.backdrop-blur:has(.employee-material-alert-symbol) { background: #fff8e9 !important; border: 0 !important; border-left: 3px solid #be7a15 !important; border-radius: 4px !important; padding: 8px 10px !important; }
+body:has(#pwa-visual-proposal) .pwa-review-day > div:has(.employee-material-alert-symbol) button { background: transparent !important; padding: 0 4px !important; color: #7c4c08 !important; }
+body:has(#pwa-visual-proposal) .pwa-review-day > div:has(.employee-material-alert-symbol) h2 { font-size: 14px !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui div.pwa-review-task.backdrop-blur { background: #fff !important; border: 0 !important; border-radius: 12px !important; padding: 18px !important; margin-top: 16px !important; }
+body:has(#pwa-visual-proposal) .pwa-review-task > div:first-child > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+body:has(#pwa-visual-proposal) .pwa-review-task > div:first-child h2 { color: #52667f; font-size: 11px; }
+body:has(#pwa-visual-proposal) .pwa-review-task > div:first-child p { font-size: 11px; margin: 0; }
+body:has(#pwa-visual-proposal) .pwa-review-task .employee-material-focus > div:first-child > p { font-size: 21px !important; line-height: 1.25 !important; font-weight: 700 !important; }
+body:has(#pwa-visual-proposal) .pwa-review-task > button.employee-material-secondary-action { background: transparent !important; border: 0 !important; border-top: 1px solid #e0e7ef !important; border-radius: 0 !important; justify-content: space-between; padding: 12px 0 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui div.backdrop-blur:is(.pwa-review-cash,.pwa-review-details,.pwa-review-colleagues) { background: #fff !important; padding: 16px !important; border: 0 !important; border-radius: 12px !important; margin-top: 12px !important; }
+body:has(#pwa-visual-proposal) .pwa-review-cash > div:first-child > div { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; width: 100%; }
+body:has(#pwa-visual-proposal) .pwa-review-cash > div:first-child p:first-of-type { grid-column: 1 / -1; grid-row: 2; font-size: 11px; }
+body:has(#pwa-visual-proposal) .pwa-review-cash > div:first-child p:last-child { font-size: 11px; }
+body:has(#pwa-visual-proposal) .pwa-review-cash h2 { font-size: 16px; }
+body:has(#pwa-visual-proposal) .employee-material-ui .employee-material-primary-action,
+body:has(#pwa-visual-proposal) .employee-material-ui .employee-material-green-action { background: #24558a !important; border-color: #24558a !important; border-radius: 8px !important; font-weight: 700 !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui .employee-material-secondary-action { border-radius: 8px !important; background: #fff !important; font-weight: 650 !important; }
+body:has(#pwa-visual-proposal) .employee-material-tab { flex-direction: column !important; gap: 3px !important; border-radius: 8px !important; }
+body:has(#pwa-visual-proposal) .employee-material-tab.is-active { background: #e5effb !important; }
+body:has(#pwa-visual-proposal) .employee-material-tab-label { font-size: 12px !important; font-weight: 700 !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui div.employee-material-calendar-card { background: #fff !important; border-radius: 12px !important; padding: 14px 8px !important; }
+body:has(#pwa-visual-proposal) .employee-material-calendar-day { border-radius: 4px !important; }
+body:has(#pwa-visual-proposal) .employee-material-segment { background: transparent !important; padding: 0 !important; gap: 0 !important; border-bottom: 1px solid #cbd5e1 !important; border-radius: 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-segment-option { border-radius: 6px 6px 0 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-segment-option.is-active { background: #192c43 !important; }
+body:has(#pwa-visual-proposal) .employee-material-sheet { border-radius: 16px 16px 0 0 !important; padding: 24px !important; }
+body:has(#pwa-visual-proposal) .employee-material-task-form label { font-size: 13px !important; color: #52667f !important; }
+body:has(#pwa-visual-proposal) .employee-material-task-form input { font-size: 24px !important; font-weight: 700 !important; height: 64px !important; background: #f5f8fc !important; }
+body:has(#pwa-visual-proposal) .employee-material-sheet input[type=number] { font-size: 24px !important; font-weight: 700 !important; height: 64px !important; background: #f5f8fc !important; }
+body:has(#pwa-visual-proposal) .pwa-review-plan { margin-top: 16px !important; }
+body:has(#pwa-visual-proposal) .pwa-review-plan > div { background: transparent !important; border: 0 !important; border-top: 1px solid #e0e7ef !important; border-radius: 0 !important; box-shadow: none !important; padding: 14px 0 0 !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui .pwa-review-plan button { background: #fff !important; color: #24558a !important; border: 1px solid #c4d4e6 !important; box-shadow: none !important; border-radius: 8px !important; }
+body:has(#pwa-visual-proposal) .employee-material-ui div.backdrop-blur:is(.pwa-review-cash,.pwa-review-details,.pwa-review-colleagues) { background: transparent !important; padding: 14px 0 !important; border-radius: 0 !important; border-bottom: 1px solid #dce4ed !important; margin-top: 0 !important; }

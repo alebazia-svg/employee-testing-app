@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
+import { EmployeeInterfaceStyle } from '@/components/EmployeeInterfaceStyle';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,5 +9,5 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
   if (!user) redirect('/login');
   if (user.role !== 'EMPLOYEE') redirect('/admin');
   if (user.portalArea === 'PROCUREMENT') redirect('/procurement');
-  return children;
+  return <><EmployeeInterfaceStyle copper />{children}</>;
 }

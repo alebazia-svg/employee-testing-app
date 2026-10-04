@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime, workdayTaskProgressLabel } from '../lib/workday-close-view';
+import { completedWithoutEncashment, belongsInOperationalTaskOverview, hasTechnicalWorkdayClose, technicalWorkdayCloseTime, workdayTaskProgressLabel } from '../lib/workday-close-view';
+
+test('completed non-encashment label uses persisted handover evidence, including after reload', () => {
+  const handoverData = { personalCash: { encashmentExceptionRequestId: 'approved-request' } };
+  assert.equal(completedWithoutEncashment({ status: 'done', handoverData }), true);
+  assert.equal(completedWithoutEncashment(JSON.parse(JSON.stringify({ status: 'done', handoverData }))), true);
+  assert.equal(completedWithoutEncashment({ status: 'pending', handoverData }), false);
+  for (const value of [null, {}, [], { personalCash: {} }, { personalCash: { encashmentExceptionRequestId: null } }, { personalCash: { encashmentExceptionRequestId: '' } }]) {
+    assert.equal(completedWithoutEncashment({ status: 'done', handoverData: value }), false);
+  }
+});
 
 test('technical workday close recognizes current and historical audit markers', () => {
   assert.equal(hasTechnicalWorkdayClose({ comment: 'Предыдущий рабочий день закрыт позже. Обязательные шаги пропущены.' }), true);

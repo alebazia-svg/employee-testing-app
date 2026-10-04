@@ -1,6 +1,6 @@
 export function EmployeeDetailLoading() {
   return (
-    <main className='employee-material-ui min-h-screen bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
+    <main className='employee-detail-loading employee-material-ui min-h-screen bg-[#151a1d] text-slate-950 md:px-6 md:py-6'>
       <div className='employee-material-shell relative mx-auto min-h-screen w-full max-w-[520px] shadow-2xl md:min-h-[calc(100vh-3rem)] md:overflow-hidden md:rounded-[28px]'>
         <div className='employee-material-header flex items-center justify-between px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]'>
           <div className='flex items-center gap-2.5'>

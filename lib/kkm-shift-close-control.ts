@@ -3,6 +3,7 @@ import 'server-only';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { getCashShifts } from '@/lib/one-c';
 import { loadOneCKkmChecks, loadPlatformaOfdZReports } from '@/lib/terminal-fiscal-sources';
+import { resolveObsoleteKkmRequests } from '@/lib/workday-kkm-exception-resolution';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -70,10 +71,6 @@ function normalized(value: string) {
 }
 
 export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string; simulation?: KkmShiftCloseSimulation | null }): Promise<KkmShiftCloseEvidence> {
-  if (input.simulation) {
-    const simulatedUser = await input.db.user.findUnique({ where: { id: input.userId }, select: { login: true } });
-    if (process.env.ENABLE_DEV_WORKDAY_TOOLS === 'true' || simulatedUser?.login === 'kkm_test') return simulateKkmShiftClose(input.simulation);
-  }
   const checkedAt = new Date().toISOString();
   const empty = { checkedAt, cashierRef: '', cashRegisterRef: '', cashRegisterName: '', kktRegistrationNumber: '', oneCShiftNumber: '', fiscalShiftNumber: '', oneCOpenedAt: '', oneCClosedAt: '', ofdOpenedAt: '', ofdClosedAt: '', ofdDocumentLink: '' };
   const identity = await input.db.userOneCCashboxMapping.findUnique({ where: { userId: input.userId } });
@@ -120,6 +117,9 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
     if (existing?.status === 'open') {
       await db.workdayControlIssue.update({ where: { id: existing.id }, data: { status: 'resolved', resolvedAt: input.now, lastDetectedAt: input.now, nextReminderAt: null } });
       await db.workdayNotification.updateMany({ where: { issueId: existing.id, status: 'pending' }, data: { status: 'cancelled' } });
+    }
+    if (existing && ['open', 'resolved'].includes(existing.status)) {
+      await resolveObsoleteKkmRequests(db, input.userId, existing.id);
     }
     return null;
   }

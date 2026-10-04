@@ -23,7 +23,7 @@ export function EmployeePaymentCheckActionCard(props: { reviewId: string; amount
   }
   useEffect(() => { void act('open'); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const amount = money(props.amountKopecks);
-  return <Card className='rounded-[24px] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(31,47,66,0.07)]'>
+  return <Card className='pwa-review-issue rounded-[24px] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(31,47,66,0.07)]'>
     <div className='flex gap-3'><ReceiptText className='employee-material-alert-symbol mt-0.5 h-6 w-6 shrink-0 text-[#9a5a13]' strokeWidth={2} /><div className='min-w-0'><p className='text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#9a5a13]'>Нужно проверить</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>Пробейте чек на {amount}</h1><p className='mt-3 text-sm font-bold leading-relaxed text-slate-700'>Терминал принял оплату в {time(props.bankOperationAt)}, но в 1С чека нет. Пробейте чек — сообщение исчезнет автоматически.</p></div></div>
     {handler ? <p className='mt-4 rounded-xl bg-white/80 px-3 py-2 text-sm font-bold text-slate-700'>Уже проверяет: {handler}</p> : null}
     {state === 'pending' && !handler ? <div className='mt-4 grid gap-2'><button type='button' disabled={busy} onClick={() => void act('help')} className='employee-material-secondary-action min-h-12 rounded-xl px-3 text-sm font-black disabled:opacity-50'>Не нахожу чек</button><button type='button' disabled={busy} onClick={() => void act('not_mine')} className='employee-material-secondary-action min-h-12 rounded-xl px-3 text-sm font-black disabled:opacity-50'>Не моя оплата</button></div> : null}

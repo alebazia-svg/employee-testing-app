@@ -24,14 +24,18 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
 
   const now = new Date();
   const request = await prisma.$transaction(async (tx) => {
+    const changed = await tx.workdayCloseExceptionRequest.updateMany({
+      where: { id: existing.id, status: 'pending' },
+      data: { status, decisionComment, decidedAt: now, decidedById: admin.id },
+    });
+    if (!changed.count) return null;
     await resolveCloseExceptionNotifications(tx, {
       workDayEntryId: existing.workDayEntryId,
       now,
       scope: cashEncashmentException ? 'cash_encashment' : 'required_issues',
     });
-    const updated = await tx.workdayCloseExceptionRequest.update({
+    const updated = await tx.workdayCloseExceptionRequest.findUniqueOrThrow({
       where: { id: existing.id },
-      data: { status, decisionComment, decidedAt: now, decidedById: admin.id },
     });
     await tx.workdayNotification.create({
       data: {
@@ -49,5 +53,6 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     });
     return updated;
   });
+  if (!request) return Response.json({ request: await prisma.workdayCloseExceptionRequest.findUnique({ where: { id: existing.id } }), changed: false });
   return Response.json({ request, changed: true });
 }

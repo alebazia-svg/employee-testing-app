@@ -1,4 +1,5 @@
 import { getCurrentUser } from '@/lib/auth';
+import { cashRecountInputError } from '@/lib/cash-recount-input';
 import { createCashOperationFailureAlert } from '@/lib/cash-operation-admin-alert';
 import { prisma } from '@/lib/prisma';
 import { mkdir, writeFile } from 'fs/promises';
@@ -920,8 +921,9 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
 
   if (task.category === 'cash') {
     const numericValue = readNumber(payload.numericValue);
-    if (numericValue === null) {
-      return Response.json({ error: 'Укажите сумму' }, { status: 400 });
+    const amountError = cashRecountInputError(numericValue);
+    if (numericValue === null || amountError) {
+      return Response.json({ error: amountError }, { status: 400 });
     }
     const existingData = isRecord(task.handoverData) ? task.handoverData : {};
     const existingStage = existingData.cashRecountStage === 'result_ready' || existingData.cashRecountStage === 'comment_required'
