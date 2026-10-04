@@ -3,6 +3,7 @@
 import { PortalIdentityBlock } from '@/components/PortalIdentityBlock';
 import { LogoutButton } from '@/components/LogoutButton';
 import { ProcurementNotificationsButton } from '@/components/ProcurementNotificationsButton';
+import { ReleaseLabel } from '@/components/ReleaseLabel';
 
 export function ProcurementShell({ userName, children }: { userName: string; children: React.ReactNode }) {
   const initials = userName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
@@ -30,6 +31,10 @@ export function ProcurementShell({ userName, children }: { userName: string; chi
           </div>
         </header>
         {children}
+        <footer className='mt-8 flex flex-col gap-2 border-t border-slate-200/80 pt-5 text-xs font-medium text-slate-500 sm:flex-row sm:items-center sm:justify-between'>
+          <span className='font-extrabold text-[#263b5c]'>MOBO · Портал компании</span>
+          <ReleaseLabel />
+        </footer>
       </div>
     </section>
   </main>;

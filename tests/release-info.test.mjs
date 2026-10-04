@@ -25,3 +25,25 @@ test('package and lock agree; footer no longer contains a hardcoded version', ()
   assert.doesNotMatch(read('../components/AdminShell.tsx'), /Версия 1\.0\.0/);
   assert.match(read('../components/AdminShell.tsx'), /<ReleaseLabel \/>/);
 });
+
+test('admin release label shows version and date without technical source details', () => {
+  const source = readFileSync(new URL('../components/ReleaseLabel.tsx', import.meta.url), 'utf8');
+  assert.match(source, /Версия \{version\}/);
+  assert.match(source, /Сборка \{date\} МСК/);
+  assert.match(source, /preview \? ' · тестовая'/);
+  assert.doesNotMatch(source, /revision|source,|Исходный коммит|локальными изменениями/);
+});
+
+test('buyer and admin use the same release label and responsive footer styling', () => {
+  const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+  const buyer = read('../components/ProcurementShell.tsx');
+  const admin = read('../components/AdminShell.tsx');
+  for (const shell of [buyer, admin]) {
+    assert.match(shell, /MOBO · Портал компании/);
+    assert.doesNotMatch(shell, /© 2026|Все права защищены/);
+  }
+  assert.match(buyer, /<ReleaseLabel \/>/);
+  assert.equal(buyer.match(/<footer className='([^']+)'/)[1], admin.match(/<footer className='([^']+)'/)[1]);
+  assert.ok(buyer.indexOf('<footer') > buyer.indexOf('{children}'));
+  assert.doesNotMatch(buyer, /fixed|sticky|Версия \d/);
+});

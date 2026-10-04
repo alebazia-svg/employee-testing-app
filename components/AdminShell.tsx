@@ -161,7 +161,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className='flex-1'>{children}</div>
           <footer className='mt-8 flex flex-col gap-2 border-t border-slate-200/80 pt-5 text-xs font-medium text-slate-500 sm:flex-row sm:items-center sm:justify-between'>
-            <span>© 2026 <span className='font-extrabold text-[#263b5c]'>MOBO · Портал компании</span>. Все права защищены.</span>
+            <span className='font-extrabold text-[#263b5c]'>MOBO · Портал компании</span>
             <ReleaseLabel />
           </footer>
         </div>
