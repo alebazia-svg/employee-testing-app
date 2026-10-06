@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { preservePaymentEvidenceViews } from '@/lib/procurement-evidence-continuity';
 import { ProcurementDeliveryPanel } from '@/components/ProcurementDeliveryPanel';
 import { deliveryMappedUser, loadDeliveryView } from '@/lib/procurement-delivery-reminders';
 import { deliveryUserAllowed } from '@/lib/procurement-delivery-policy';
@@ -25,6 +26,7 @@ import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/pr
 export const dynamic = "force-dynamic";
 
 export default async function ProcurementPage() {
+  const evidenceReadStartedAt = new Date();
   const user = await getCurrentUser();
   if (!user) return null;
   const deliveryPromise = deliveryUserAllowed(user)
@@ -110,6 +112,8 @@ export default async function ProcurementPage() {
     currencySource?.conversions || [],
     { allowSmallRemainder: !evidenceSourceError && !plansSourceError },
   );
+  const displayEvidence = await preservePaymentEvidenceViews(allPlans, paymentEvidence,
+    !evidenceSourceError && !plansSourceError, evidenceReadStartedAt, prisma.supplierPaymentPlan);
   const serializedPlans = plans.map((plan) => {
     const latestSnapshot = plan.events[0]?.snapshot;
     const snapshot = latestSnapshot && typeof latestSnapshot === "object" && !Array.isArray(latestSnapshot)
@@ -119,7 +123,7 @@ export default async function ProcurementPage() {
       ...JSON.parse(JSON.stringify(plan)),
       revision: readPaymentRevision(plan.oneCCashEvidence),
       correctionReason: typeof snapshot.correctionReason === "string" ? snapshot.correctionReason : "",
-      evidence: evidenceSourceError ? undefined : paymentEvidence.get(plan.id),
+      evidence: displayEvidence.get(plan.id),
     };
   });
   // Expose only the aggregate reserve of other managers, never their requests.

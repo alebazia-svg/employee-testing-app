@@ -1,4 +1,5 @@
 import { AdminShell } from "@/components/AdminShell";
+import { preservePaymentEvidenceViews } from '@/lib/procurement-evidence-continuity';
 import { AdminBreadcrumbs } from "@/components/AdminBreadcrumbs";
 import { prisma } from "@/lib/prisma";
 import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
@@ -56,6 +57,7 @@ function ownerBalance(source: Awaited<ReturnType<typeof loadOwnerCashForecastSha
 }
 
 export default async function AdminProcurementPage() {
+  const evidenceReadStartedAt = new Date();
   const todayKey = expenseRequestMoscowCalendarDate(new Date());
   const to = expenseRequestMoscowDayEnd();
   const from = new Date(to);
@@ -125,6 +127,10 @@ export default async function AdminProcurementPage() {
     currencySource?.conversions || [],
     { allowSmallRemainder: plansResult.status === 'fulfilled' && requestSource?.complete === true && currencySource?.complete === true && currencySource.rubPaymentsSupported === true },
   );
+  const evidenceComplete = plansResult.status === 'fulfilled' && requestSource?.complete === true &&
+    currencySource?.complete === true && currencySource.rubPaymentsSupported === true;
+  const displayEvidence = await preservePaymentEvidenceViews(plans, paymentEvidence, evidenceComplete,
+    evidenceReadStartedAt, prisma.supplierPaymentPlan);
   const serialized = plans.map((plan) => ({
     ...JSON.parse(JSON.stringify(plan)),
     evidence: paymentEvidence.get(plan.id)!,
@@ -468,7 +474,7 @@ export default async function AdminProcurementPage() {
         <AdminProcurementClient
           revisionCount={plans.filter(plan=>readPaymentRevision(plan.oneCCashEvidence)).length}
           revisionReview={<ProcurementRevisionReview items={plans.flatMap(plan => {const revision=readPaymentRevision(plan.oneCCashEvidence);return revision ? [{id:plan.id,supplierPartner:plan.supplierPartner,revision}] : [];})} />}
-          paymentLinks={<ProcurementUnlinkedPayments
+          paymentLinks={evidenceComplete ? <ProcurementUnlinkedPayments
           payments={uniqueSupplierPayments(attachRequestOrderLinks(currencySource?.complete ? currencySource.payments : [], requestsResult.status === 'fulfilled' ? requestsResult.value.rows : []))
             .filter((payment) => ['РУБ', 'USDT'].includes(payment.documentCurrency) && payment.posted && !payment.deleted && payment.documentAmount > 0 &&
               plans.some((plan) => plan.status === 'APPROVED' && samePaymentSupplier(plan, payment) && plan.createdAt.getTime() <= paymentTimestamp(payment.date) &&
@@ -483,8 +489,8 @@ export default async function AdminProcurementPage() {
             planId: plan.id, ref: link.ref,
             label: `${plan.supplierPartner} · ${plan.planCode} · ${[...(paymentEvidence.get(plan.id)?.cashOrders || []), ...(paymentEvidence.get(plan.id)?.currencyPayments || [])].some((order) => order.ref === link.ref) ? 'зачёт подтверждён' : 'оплата изменилась или сейчас не подтверждена — проверьте'}`,
           })))}
-        />}
-          initialPlans={plansWithOrderContext}
+        /> : null}
+          initialPlans={plansWithOrderContext.map(plan => ({ ...plan, evidence: displayEvidence.get(plan.id)! }))}
           sourceCheckedAt={ordersSource?.checkedAt || ""}
           sourceWarnings={warnings}
           unplannedOrderCount={unplannedOrderCount}

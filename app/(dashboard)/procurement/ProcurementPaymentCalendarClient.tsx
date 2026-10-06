@@ -80,6 +80,8 @@ type Plan = {
   revision?: PaymentRevision | null;
   events?: PlanChangeEvent[];
   evidence?: {
+    verification?: 'current' | 'last-confirmed' | 'unavailable';
+    verifiedAt?: string;
     collection?: import('@/lib/procurement-collection').ProcurementCollection;
     state: string;
     issuedAmount: number;
@@ -292,12 +294,13 @@ export default function ProcurementPaymentCalendarClient({
   const supplierOrders = initialOrders.filter(
     (order) => order.supplierPartner === draft.supplier,
   );
-  const activePlans = (plansSourceError ? [] : plans).filter((plan) => !isInactivePaymentPlan(plan.status))
-    .map(plan => evidenceSourceError ? { ...plan, evidence: undefined } : plan);
+  const activePlans = (plansSourceError ? [] : plans).filter((plan) => !isInactivePaymentPlan(plan.status));
+  const unverifiedPaymentView = activePlans.some(plan => plan.evidence?.verification === 'last-confirmed' || plan.evidence?.verification === 'unavailable');
   const isCurrencyPaid = (plan: Plan) => plan.evidence?.state === "PAID_BY_ONE_C";
   const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence?.state);
   const paidPlans = [...activePlans.filter(isPaymentFinished), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
-  const workingPlans = activePlans.filter(plan => !isPaymentFinished(plan));
+  const unknownPayments = activePlans.filter(plan => plan.status === 'APPROVED' && plan.evidence?.verification === 'unavailable');
+  const workingPlans = activePlans.filter(plan => !isPaymentFinished(plan) && (plan.status !== 'APPROVED' || plan.evidence?.verification !== 'unavailable'));
   const planningOrders = calculateOrderPlanning(
     initialOrders,
     workingPlans.map((plan) => ({
@@ -332,7 +335,7 @@ export default function ProcurementPaymentCalendarClient({
     .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR")
     .reduce((sum, plan) => sum + plan.remainingRub, 0);
   const ownUsdtReserve = usdtReservedByPlans(activePlans, referenceUsdtRate);
-  const reservesUnavailable = basisPreview || plansSourceError || evidenceSourceError;
+  const reservesUnavailable = basisPreview || plansSourceError || evidenceSourceError || unverifiedPaymentView;
   const plannedUsdt = reservesUnavailable || ownUsdtReserve == null || otherUsdtReserve == null
     ? null : ownUsdtReserve + otherUsdtReserve;
   const freeQr = reservesUnavailable || accountableBalance.error || accountableBalance.balance == null ? null : accountableBalance.balance - plannedQr;
@@ -349,7 +352,7 @@ export default function ProcurementPaymentCalendarClient({
     return [...groups.entries()];
   }, [plans, plansSourceError, evidenceSourceError]);
   const mappingBlocked = managerMappingError && !sourceError;
-  const planningBlocked = mappingBlocked || Boolean(sourceError) || plansSourceError || evidenceSourceError || supplierDebtError;
+  const planningBlocked = mappingBlocked || Boolean(sourceError) || plansSourceError || evidenceSourceError || unverifiedPaymentView || supplierDebtError;
   const openForm = () =>
     window.setTimeout(
       () =>
@@ -567,8 +570,9 @@ export default function ProcurementPaymentCalendarClient({
       {plansSourceError ? <Notice title="Заявки сейчас недоступны" text="Не удалось загрузить действующие заявки. Резервы неизвестны. Обновите страницу — создавать новые заявки пока нельзя." /> : null}
       {supplierDebtError ? <Notice title="Долги поставщикам сейчас не проверены" text="Сохранённые заявки видны. Обновите данные перед новой оплатой." /> : null}
       {evidenceSourceError ? (
-        <Notice title="Оплаты из 1С сейчас не проверены" text="Заявки доступны, но подтверждение фактической оплаты появится после восстановления связи." />
+        <Notice title="Оплаты обновляются" text="Статусы временно не обновляются. Сохранён результат последней проверки. Обновление повторится автоматически." />
       ) : null}
+      {unknownPayments.length ? <p role="status" className="text-sm text-amber-900">Статус оплаты уточняется: {unknownPayments.map(plan => plan.supplierPartner).join(', ')}.</p> : null}
       {mappingBlocked ? (
         <Notice
           critical
@@ -704,9 +708,9 @@ export default function ProcurementPaymentCalendarClient({
           ) : (
             <div className="rounded-2xl bg-slate-50 p-5 text-center">
               <CalendarDays className="mx-auto h-6 w-6 text-slate-400" />
-              <p className="mt-2 font-black text-slate-700">{plansSourceError ? 'Не удалось загрузить заявки' : basisPreview ? 'Заявки не загружены в просмотр' : paidPlans.length ? "Текущих оплат нет" : "Заявок пока нет"}</p>
+              <p className="mt-2 font-black text-slate-700">{plansSourceError ? 'Не удалось загрузить заявки' : unknownPayments.length ? 'Статус оплат уточняется' : basisPreview ? 'Заявки не загружены в просмотр' : paidPlans.length ? "Текущих оплат нет" : "Заявок пока нет"}</p>
               <p className="mt-1 text-sm text-slate-500">
-                {planningBlocked ? 'Обновите данные, чтобы продолжить.' : paidPlans.length ? 'Оплаченные заявки — во вкладке «История оплат».' : "Нажмите «Добавить оплаты», чтобы создать заявку."}
+                {evidenceSourceError ? 'Статусы обновятся автоматически после восстановления связи с 1С.' : planningBlocked ? 'Обновите данные, чтобы продолжить.' : paidPlans.length ? 'Оплаченные заявки — во вкладке «История оплат».' : "Нажмите «Добавить оплаты», чтобы создать заявку."}
               </p>
             </div>
           )}

@@ -8,6 +8,17 @@ export const historyFixture = [
   { id: 'mems', supplierPartner: 'MEMS Technology', orderNumbers: ['00OF-000393'], plannedAmount: '280000', evidence: { issuedAmount: 280000, paidAmount: 0, paidForeignAmount: 0, actualExchangeRate: null, cashOrders: [{ ref: 'rko', number: '00OF-001692', date: '16.09.2026 18:47:57' }] } },
   { id: 'tural', supplierPartner: 'Tural', orderNumbers: ['00OF-000334'], plannedAmount: '700000', evidence: { issuedAmount: 0, paidAmount: 699997, paidForeignAmount: 7865.17, actualExchangeRate: 89, currencyPayments: [{ ref: 'usdt-rko', number: 'USDT', date: '' }] } },
 ];
+test('cached history retains the payment and visibly identifies the last successful verification', () => {
+  const plans = [{ ...historyFixture[0], evidence: { ...historyFixture[0].evidence,
+    verification: 'last-confirmed' as const, verifiedAt: '2026-10-06T10:00:00Z' } }];
+  for (const compactBuyer of [false, true]) {
+    const html = renderToStaticMarkup(React.createElement(ProcurementPaymentHistory, { plans, compactBuyer }));
+    assert.match(html, /Последняя проверка:/);
+    assert.match(html, /связь с 1С восстанавливается/);
+    assert.match(html, /280 000/);
+    assert.doesNotMatch(html, /Ждут оплаты|Частично оплачено/);
+  }
+});
 test('small-remainder completion shows the actual payment and discrepancy in both histories',()=>{
   const plans=[{...historyFixture[0],plannedAmount:30025,evidence:{...historyFixture[0].evidence,state:'SMALL_REMAINDER_COMPLETED',issuedAmount:30000,remainingAmount:25}}];
   for(const options of [{compactBuyer:true},{showManager:true,splitView:true}]){

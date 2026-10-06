@@ -65,6 +65,8 @@ type Plan = {
   }[];
   manager: { name: string };
   evidence: {
+    verification?: 'current' | 'last-confirmed' | 'unavailable';
+    verifiedAt?: string;
     collection?: import('@/lib/procurement-collection').ProcurementCollection;
     state: string;
     issuedAmount: number;
@@ -233,7 +235,10 @@ export default function AdminProcurementClient({
   const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence.state);
   const submitted = active.filter((plan) => plan.status === "SUBMITTED" && !isCurrencyPaid(plan));
   const completedPlans = [...active.filter((plan) => plan.status === "APPROVED" && isPaymentFinished(plan)), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
-  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan));
+  const unknownPayments = active.filter(plan => plan.status === 'APPROVED' && plan.evidence.verification === 'unavailable');
+  const stalePayments = active.some(plan => plan.evidence.verification === 'last-confirmed');
+  const paymentTotalsUnavailable = active.some(plan => plan.evidence.verification === 'last-confirmed' || plan.evidence.verification === 'unavailable');
+  const calendarPlans = active.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan) && plan.evidence.verification !== 'unavailable');
   const urgentSubmitted = submitted.filter((plan) => ["SAME_DAY", "LATE"].includes(paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state));
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
   const estimatedUsdtPlanIds = new Set(
@@ -266,7 +271,7 @@ export default function AdminProcurementClient({
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [calendarPlans]);
   const preparation = calculateCashPreparation(
-    active.map((plan) => {
+    (paymentTotalsUnavailable ? [] : active).map((plan) => {
       const plannedRub = Number(plan.plannedAmount);
       const remainingRub = isPaymentFinished(plan) ? 0 : Math.max(0, plannedRub - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0) + Number(plan.evidence.paidAmount || 0)));
       const remainingRatio = plannedRub > 0 ? Math.min(1, remainingRub / plannedRub) : 0;
@@ -298,15 +303,17 @@ export default function AdminProcurementClient({
   const plannedUsdt = preparation.plannedUsdt;
   const unknownUsdtCount = preparation.unknownUsdtCount;
   const estimatedUsdtCount = estimatedUsdtPlanIds.size;
-  const usdtDeficit = preparation.usdtDeficit;
+  const usdtDeficit = paymentTotalsUnavailable ? null : preparation.usdtDeficit;
   const usdtRemainder =
-    usdtBalance.balance == null || unknownUsdtCount > 0
+    paymentTotalsUnavailable || usdtBalance.balance == null || unknownUsdtCount > 0
       ? null
       : Math.max(0, usdtBalance.balance - plannedUsdt);
-  const plannedQr = active
+  const plannedQr = (paymentTotalsUnavailable ? [] : active)
     .filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR" && dateKey(plan.plannedDate) >= todayKey && !isPaymentFinished(plan))
     .reduce((sum, plan) => sum + Math.max(0, Number(plan.plannedAmount || 0) - (plan.evidence.state === "MISMATCH" ? 0 : Number(plan.evidence.issuedAmount || 0))), 0);
-  const qrShortfall = accountableBalance.balance == null ? null : Math.max(0, plannedQr - accountableBalance.balance);
+  const qrShortfall = paymentTotalsUnavailable || accountableBalance.balance == null ? null : Math.max(0, plannedQr - accountableBalance.balance);
+  const plannedQrLabel = paymentTotalsUnavailable ? '—' : rub.format(plannedQr);
+  const plannedUsdtLabel = paymentTotalsUnavailable ? '—' : plannedUsdt > 0 ? `${estimatedUsdtCount > 0 ? '≈ ' : ''}${plannedUsdt.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} USDT` : unknownUsdtCount > 0 ? 'Уточняется' : '0 USDT';
   const groupTitle = (key: string) =>
     key < todayKey
       ? `Просрочено · ${date(key)}`
@@ -469,9 +476,12 @@ export default function AdminProcurementClient({
       {sourceWarnings.length ? (
         <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-bold"><span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 shrink-0" />Не получены данные из {sourceWarnings.length} {sourceWarnings.length === 1 ? "источника" : "источников"} 1С — рекомендации временно ограничены</span><ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" /></summary>
-          <p className="mt-2 border-t border-amber-200 pt-2 text-xs font-semibold leading-relaxed">Не получены: {sourceWarnings.join(", ")}. Портал не подставляет старые суммы вместо актуальных.</p>
+          <p className="mt-2 border-t border-amber-200 pt-2 text-xs font-semibold leading-relaxed">Не получены: {sourceWarnings.join(", ")}. Обновление повторится автоматически.</p>
         </details>
       ) : null}
+
+      {stalePayments ? <p role="status" className="text-sm text-slate-600">Статусы оплат временно не обновляются. Сохранён результат последней проверки.</p> : null}
+      {unknownPayments.length ? <p role="status" className="text-sm text-amber-900">Статус оплаты уточняется: {unknownPayments.map(plan => plan.supplierPartner).join(', ')}. Эти заявки не считаются неоплаченными.</p> : null}
 
       <div hidden={tab !== "plan"} className="space-y-4 procurement-plan">
       <section className="procurement-forecast-grid grid items-start gap-4">
@@ -518,8 +528,8 @@ export default function AdminProcurementClient({
           <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
             <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Специальные способы оплаты</p>
             <div className="mt-3 space-y-3">
-              <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black text-slate-950">QR · карта Астемира</p><p className="text-xs font-semibold text-slate-500">Запланировано {rub.format(plannedQr)}</p></div><p className="text-sm font-black text-slate-950">{accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)}</p></div>
-              <div className="border-t border-slate-200 pt-3"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black text-slate-950">Оплаты в USDT</p><p className="text-xs font-semibold text-slate-500">Запланировано {plannedUsdt > 0 ? `${plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT` : "0 USDT"}</p></div><p className="text-sm font-black text-slate-950">{usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}</p></div></div>
+              <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black text-slate-950">QR · карта Астемира</p><p className="text-xs font-semibold text-slate-500">Запланировано {plannedQrLabel}</p></div><p className="text-sm font-black text-slate-950">{accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)}</p></div>
+              <div className="border-t border-slate-200 pt-3"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black text-slate-950">Оплаты в USDT</p><p className="text-xs font-semibold text-slate-500">Запланировано {plannedUsdtLabel}</p></div><p className="text-sm font-black text-slate-950">{usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}</p></div></div>
             </div>
           </section>
         </aside>
@@ -590,7 +600,7 @@ export default function AdminProcurementClient({
             </span>
             <div className="min-w-0">
               <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ближайшая подготовка</p>
-              {nextDate ? (
+              {paymentTotalsUnavailable ? <p className="mt-1 text-sm font-semibold text-slate-600">Расчёт обновляется</p> : nextDate ? (
                 <>
                   <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <p className="text-2xl font-black text-slate-950">{nextAmountEstimated ? "≈ " : ""}{rub.format(nextAmount)}</p>
@@ -898,7 +908,7 @@ export default function AdminProcurementClient({
             </div>
             <div className="mt-3 grid grid-cols-3 gap-3">
               <div><p className="text-xs font-bold text-slate-500">Доступно</p><p className="mt-1 font-black text-slate-950">{accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)}</p></div>
-              <div><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-1 font-black text-slate-950">{rub.format(plannedQr)}</p></div>
+              <div><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-1 font-black text-slate-950">{plannedQrLabel}</p></div>
               <div><p className="text-xs font-bold text-slate-500">Нужно перевести</p><p className={`mt-1 font-black ${qrShortfall && qrShortfall > 0 ? "text-red-700" : "text-slate-950"}`}>{qrShortfall == null ? "—" : rub.format(qrShortfall)}</p></div>
             </div>
           </div>
@@ -909,7 +919,7 @@ export default function AdminProcurementClient({
             </div>
             <div className="mt-3 grid grid-cols-3 gap-3">
               <div><p className="text-xs font-bold text-slate-500">Доступно</p><p className="mt-1 font-black text-slate-950">{usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`}</p></div>
-              <div><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-1 font-black text-slate-950">{plannedUsdt > 0 ? `${estimatedUsdtCount > 0 ? "≈ " : ""}${plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT` : unknownUsdtCount > 0 ? "Уточняется" : "0 USDT"}</p>{unknownUsdtCount > 0 ? <p className="mt-0.5 text-xs font-semibold text-violet-700">Оплат без суммы: {unknownUsdtCount}</p> : estimatedUsdtCount > 0 ? <p className="mt-0.5 text-xs font-semibold text-violet-700">По последнему курсу из 1С</p> : null}</div>
+              <div><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-1 font-black text-slate-950">{plannedUsdtLabel}</p>{!paymentTotalsUnavailable && unknownUsdtCount > 0 ? <p className="mt-0.5 text-xs font-semibold text-violet-700">Оплат без суммы: {unknownUsdtCount}</p> : !paymentTotalsUnavailable && estimatedUsdtCount > 0 ? <p className="mt-0.5 text-xs font-semibold text-violet-700">По последнему курсу из 1С</p> : null}</div>
               <div><p className="text-xs font-bold text-slate-500">{unknownUsdtCount > 0 ? "Расчёт остатка" : usdtDeficit && usdtDeficit > 0 ? "Не хватает" : "Останется"}</p><p className={`mt-1 font-black ${usdtDeficit && usdtDeficit > 0 ? "text-red-700" : "text-slate-950"}`}>{usdtDeficit == null || usdtRemainder == null ? "—" : `${estimatedUsdtCount > 0 ? "≈ " : ""}${(usdtDeficit > 0 ? usdtDeficit : usdtRemainder).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}</p></div>
             </div>
           </div>
@@ -980,7 +990,7 @@ export default function AdminProcurementClient({
           <span data-priority="today">Сегодня: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)===todayKey).length}</strong></span>
           <span data-priority="tomorrow">Завтра: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)===nextDayKey(todayKey)).length}</strong></span>
         </div>
-        <ProcurementSplitList key="approved" items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate)+" · "+methodLabel(plan),search:plan.orderNumbers.join(" "),group:dateKey(plan.plannedDate)<todayKey?"Просрочено":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Далее",warning:plan.evidence.paymentAmountNeedsConfirmation?"Проверьте найденную оплату":plan.evidence.state==="MISMATCH"?"Расхождение с 1С":["PARTIALLY_ISSUED","PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state)?"Частично оплачено":undefined}))} empty="Оплат в ожидании нет." renderDetail={id=>{
+        <ProcurementSplitList key="approved" items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate)+" · "+methodLabel(plan),search:plan.orderNumbers.join(" "),group:dateKey(plan.plannedDate)<todayKey?"Просрочено":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Далее",warning:plan.evidence.paymentAmountNeedsConfirmation?"Проверьте найденную оплату":plan.evidence.state==="MISMATCH"?"Расхождение с 1С":["PARTIALLY_ISSUED","PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state)?"Частично оплачено":undefined}))} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
           const plan=calendarPlans.find(p=>p.id===id)!;
           const deadline = dateKey(plan.plannedDate);
           const priority = deadline < todayKey ? "overdue" : deadline === todayKey ? "today" : deadline === nextDayKey(todayKey) ? "tomorrow" : "later";
