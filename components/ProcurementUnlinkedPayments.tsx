@@ -6,9 +6,10 @@ import { samePaymentSupplier } from '@/lib/procurement-manual-payment-links';
 import {hasConfirmedPaymentBasis} from '@/lib/procurement-payment-basis';
 
 type Plan = { id: string; supplierPartner: string; supplierCounterparty: string; orderRefs?: string[]; orderNumbers: string[]; remaining: number; remainingForeign: number | null; status: string; paymentMethod: string };
-export function ProcurementUnlinkedPayments({ payments, plans, linked }: {
+export function ProcurementUnlinkedPayments({ payments, plans, linked, view = 'review' }: {
   payments: SupplierCurrencyPaymentRow[]; plans: Plan[];
-  linked: { planId: string; ref: string; label: string }[];
+  linked: { planId: string; ref: string; label: string; confirmed: boolean }[];
+  view?: 'review' | 'history';
 }) {
   const router = useRouter();
   const [choices, setChoices] = useState<Record<string, string>>({});
@@ -29,12 +30,15 @@ export function ProcurementUnlinkedPayments({ payments, plans, linked }: {
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Нет связи с порталом.'); }
     finally { setBusy(''); }
   }
-  if (!payments.length && !linked.length) return null;
+  const visiblePayments = view === 'review' ? payments : [];
+  const visibleLinks = linked.filter(link => view === 'history' ? link.confirmed : !link.confirmed);
+  const count = visiblePayments.length + visibleLinks.length;
+  if (!count) return null;
   return <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-    <h2 className="font-bold text-slate-900">Платежи для проверки {payments.length > 0 ? `· ${payments.length}` : ''}</h2>
-    <p className="mt-1 text-sm text-slate-500">Расходники, которые пока не зачтены в заявках. Документы 1С не изменяются.</p>
+    <h2 className="font-bold text-slate-900">{view === 'history' ? 'Зачтено вручную' : 'Платежи для проверки'} · {count}</h2>
+    {view === 'review' && <p className="mt-1 text-sm text-slate-500">Проверьте, к каким заявкам относятся эти оплаты.</p>}
     {message && <p role="status" className="mt-3 text-sm font-medium">{message}</p>}
-    <div className="divide-y divide-slate-100">{(expanded ? payments : payments.slice(0, 5)).map((payment) => {
+    <div className="divide-y divide-slate-100">{(expanded ? visiblePayments : visiblePayments.slice(0, 5)).map((payment) => {
       const foreign = payment.documentCurrency === 'USDT';
       const hasBasis = hasConfirmedPaymentBasis(payment, plans.flatMap(plan => plan.orderRefs || []));
       const contractLabel = payment.contract?.trim() || payment.registerContractBasis?.contracts.map(c => c.name).join(', ');
@@ -52,9 +56,11 @@ export function ProcurementUnlinkedPayments({ payments, plans, linked }: {
           <p className="text-sm text-slate-500">Нет подходящей согласованной заявки. Оплата остаётся видна здесь.</p>}
       </div>;
     })}</div>
-    {payments.length > 5 && <button onClick={() => setExpanded(!expanded)} className="text-sm font-semibold text-slate-600">{expanded ? 'Свернуть' : `Показать все ${payments.length}`}</button>}
-    {linked.length > 0 && <details className="mt-3 text-sm"><summary className="cursor-pointer">Зачтено вручную · {linked.length}</summary>
-      {linked.map((link) => <div className="flex items-center justify-between gap-3 py-2" key={link.ref}><span>{link.label}</span>
-        <button disabled={Boolean(busy)} className="underline" onClick={() => save(link.planId, link.ref, 'UNLINK')}>Отменить привязку</button></div>)}</details>}
+    {visiblePayments.length > 5 && <button onClick={() => setExpanded(!expanded)} className="text-sm font-semibold text-slate-600">{expanded ? 'Свернуть' : `Показать все ${visiblePayments.length}`}</button>}
+    <div className="divide-y divide-slate-100 text-sm">{visibleLinks.map((link) => <div className="flex flex-wrap items-center justify-between gap-3 py-3" key={`${link.planId}:${link.ref}`}>
+      <div className="min-w-0 break-words"><p className="font-semibold text-slate-900">{link.label}</p>
+        {!link.confirmed && <p className="mt-1 text-amber-800">Привязка требует проверки: оплата изменилась или не подтверждена.</p>}</div>
+      <button disabled={Boolean(busy)} className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-40" onClick={() => save(link.planId, link.ref, 'UNLINK')}>Отменить привязку</button>
+    </div>)}</div>
   </section>;
 }

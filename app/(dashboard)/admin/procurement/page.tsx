@@ -467,6 +467,16 @@ export default async function AdminProcurementPage() {
       ...(unallocatedPlanCount ? [`${unallocatedPlanCount} заявок без подтверждённого источника денег показаны по датам, но не уменьшают сейф или карты.`] : []),
     ],
   };
+  const manualLinksForDisplay = plans.filter(plan => plan.status !== COMPLETED_WITHOUT_TOPUP).flatMap((plan) =>
+    manualPaymentLinks(plan.oneCCashEvidence).map((link) => {
+      const payment = [...(paymentEvidence.get(plan.id)?.cashOrders || []), ...(paymentEvidence.get(plan.id)?.currencyPayments || [])]
+        .find(order => order.ref === link.ref);
+      return {
+        planId: plan.id, ref: link.ref,
+        label: `${plan.supplierPartner} · ${plan.planCode}${payment ? ` · РКО ${payment.number}` : ''}`,
+        confirmed: Boolean(payment),
+      };
+    }));
   return (
     <AdminShell>
       <AdminBreadcrumbs current="Закупки" />
@@ -485,11 +495,9 @@ export default async function AdminProcurementPage() {
           plans={plans.map((plan) => ({ id: plan.id, supplierPartner: plan.supplierPartner,
             supplierCounterparty: plan.supplierCounterparty, orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [], orderNumbers: Array.isArray(plan.orderNumbers) ? plan.orderNumbers.map(String) : [],
             remaining: paymentEvidence.get(plan.id)?.remainingAmount || 0, remainingForeign: paymentEvidence.get(plan.id)?.remainingForeignAmount ?? null, status: plan.status, paymentMethod: plan.paymentMethod }))}
-          linked={plans.filter(plan => plan.status !== COMPLETED_WITHOUT_TOPUP).flatMap((plan) => manualPaymentLinks(plan.oneCCashEvidence).map((link) => ({
-            planId: plan.id, ref: link.ref,
-            label: `${plan.supplierPartner} · ${plan.planCode} · ${[...(paymentEvidence.get(plan.id)?.cashOrders || []), ...(paymentEvidence.get(plan.id)?.currencyPayments || [])].some((order) => order.ref === link.ref) ? 'зачёт подтверждён' : 'оплата изменилась или сейчас не подтверждена — проверьте'}`,
-          })))}
+          linked={manualLinksForDisplay}
         /> : null}
+          paymentLinkHistory={evidenceComplete ? <ProcurementUnlinkedPayments view="history" payments={[]} plans={[]} linked={manualLinksForDisplay} /> : null}
           initialPlans={plansWithOrderContext.map(plan => ({ ...plan, evidence: displayEvidence.get(plan.id)! }))}
           sourceCheckedAt={ordersSource?.checkedAt || ""}
           sourceWarnings={warnings}

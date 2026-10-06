@@ -6,6 +6,28 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 const require=createRequire(import.meta.url);
 
+test('manual links leave the review queue only while confirmed; history retains the undo action',async()=>{
+  const bundle=await build({entryPoints:['components/ProcurementUnlinkedPayments.tsx'],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic'});
+  const mod={exports:{} as any};
+  new Function('require','module','exports',bundle.outputFiles[0].text)((name:string)=>name==='next/navigation'?{useRouter:()=>({refresh(){}})}:require(name),mod,mod.exports);
+  const confirmed={planId:'p1',ref:'r1',label:'Confirmed supplier · PAY-1 · РКО 101',confirmed:true};
+  const changed={planId:'p2',ref:'r2',label:'Changed supplier · PAY-2',confirmed:false};
+  const render=(linked:typeof confirmed[],view:'review'|'history'='review')=>renderToStaticMarkup(React.createElement(mod.exports.ProcurementUnlinkedPayments,{payments:[],plans:[],linked,view}));
+  assert.equal(render([]),'');
+  assert.equal(render([confirmed]),'','resolved-only queue must be absent');
+  const review=render([confirmed,changed]);
+  assert.match(review,/Платежи для проверки · 1/);
+  assert.match(review,/Changed supplier|Привязка требует проверки/);
+  assert.doesNotMatch(review,/Confirmed supplier|Зачтено вручную/);
+  const history=render([confirmed,changed],'history');
+  assert.match(history,/Зачтено вручную · 1/);
+  assert.match(history,/Confirmed supplier/);
+  assert.match(history,/Отменить привязку/);
+  assert.doesNotMatch(history,/Changed supplier|Платежи для проверки|Привязка требует проверки/);
+  assert.equal(render([changed],'history'),'');
+  assert.match(render([{...confirmed,confirmed:false}]),/Привязка требует проверки/,'a changed document returns to review');
+});
+
 test('ADMIN keeps an unbased RKO visible without a confirm action; verified chains remain assignable',async()=>{
   const bundle=await build({entryPoints:['components/ProcurementUnlinkedPayments.tsx'],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic'});
   const mod={exports:{} as any};

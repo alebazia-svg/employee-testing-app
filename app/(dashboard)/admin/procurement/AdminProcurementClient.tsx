@@ -158,7 +158,7 @@ const nextDayKey = (value: string) => {
 
 export default function AdminProcurementClient({
   initialPlans,
-  revisionReview, revisionCount = 0, paymentLinks,
+  revisionReview, revisionCount = 0, paymentLinks, paymentLinkHistory,
   sourceCheckedAt,
   sourceWarnings,
   unplannedOrderCount,
@@ -181,7 +181,7 @@ export default function AdminProcurementClient({
   requestFundingAssessments,
 }: {
   initialPlans: Plan[];
-  revisionReview?: ReactNode; revisionCount?: number; paymentLinks?: ReactNode;
+  revisionReview?: ReactNode; revisionCount?: number; paymentLinks?: ReactNode; paymentLinkHistory?: ReactNode;
   sourceCheckedAt: string;
   sourceWarnings: string[];
   unplannedOrderCount: number | null;
@@ -1015,8 +1015,9 @@ export default function AdminProcurementClient({
         }}/>
         {paymentLinks}
       </section>
-      <section hidden={tab !== "history"}>
+      <section hidden={tab !== "history"} className="space-y-4">
         <ProcurementPaymentHistory plans={completedPlans} showManager splitView />
+        {paymentLinkHistory}
       </section>
     </div>
   );
