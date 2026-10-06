@@ -1,5 +1,47 @@
 ﻿# Portal Decision Log
 
+## 2026-10-06 - Payment evidence display continuity (local, not released)
+
+Owner approved fixing paid requests reappearing during incomplete 1C reads.
+Both calendar pages retain the last complete evidence view in the existing
+`SupplierPaymentPlan.oneCCashEvidence.lastCompletePaymentView` JSON. It is
+presentation only, labelled with its verification time during an outage.
+No confirmed snapshot means unknown, not unpaid; review/relink controls require
+complete sources. Current financial totals do not consume cached evidence.
+
+Only complete reads replace the snapshot, including empty reads after an actual
+payment cancellation. Identity changes invalidate the view. JSON + updatedAt
+compare-and-swap protects concurrent updates; cache-only writes preserve
+business updatedAt so open revision/completion confirmations remain valid.
+Cached cash-collection instructions are never actionable. Matching, notifications,
+write validation and 1C documents continue to use fresh sources, not this cache.
+No schema changes, migrations or new 1C endpoint. Production verification and
+deployment remain pending; this note is not evidence of release.
+
+Local verification: 56 evidence/source/notification tests and 10 history SSR
+tests pass; TypeScript, production build and diff check pass. Actual ADMIN and
+buyer components were checked in the local continuity preview with simulated
+outage: both paid cases stay in history. The existing isolated PostgreSQL test
+database was restarted for verification: four continuity scenarios pass (SQL/JSON
+nulls, preserved business version, jsonb reload/throttle, concurrent writes/manual
+edits, cancellation and independent connection readback). Four existing integration
+suites for manual linking, completion, revision and basis changes also pass.
+The jsonb test caught redundant writes caused by JSON key ordering; comparison
+now uses structural equality. Do not claim a live fix before deployment/readback.
+Existing unrelated WIP is untouched.
+
+Changed files: `lib/procurement-evidence-continuity.ts`,
+`lib/procurement-currency-payment-evidence.ts`, both procurement `page.tsx`
+files, `AdminProcurementClient.tsx`, `ProcurementPaymentCalendarClient.tsx`,
+`components/ProcurementPaymentHistory.tsx`,
+`tests/procurement-evidence-continuity.test.ts` and
+`tests/procurement-evidence-continuity.integration.test.ts` and
+`tests/procurement-payment-history.test.ts`. Development-only reproduction:
+`app/procurement-payment-review/continuity/page.tsx` (not for release).
+
+This supersedes only the old display behaviour on unavailable evidence below,
+not the small-remainder rule or reopening after confirmed cancellation.
+
 ## 2026-10-03 - Small RUB payment-request remainders
 
 Owner-approved implementation, released as `561225e` on 2026-10-04: automatically finish an
@@ -10,9 +52,9 @@ kopecks without rounding the percentage. No automatic currency write-off.
 This is derived operational state `SMALL_REMAINDER_COMPLETED`, not a persisted
 payment or a debt write-off. Enable it only with complete fresh request/payment
 sources and RUB evidence support. Pending revisions, disputed ownership and
-unconfirmed amounts prevent closure. Removing/unposting a payment or losing
-complete evidence restores the active request rather than retaining a stale
-completion. Exact payment ownership must survive subsequent requests.
+unconfirmed amounts prevent closure. A complete read confirming removal or
+unposting restores the active request. Source outages now use the display-only
+continuity policy above. Exact payment ownership must survive subsequent requests.
 
 Buyer and ADMIN history retain actual paid amount and residual, labelled
 «Завершена без доплаты», never «Оплачено полностью». Exclude the completed
