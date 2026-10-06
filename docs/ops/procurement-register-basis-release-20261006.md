@@ -14,11 +14,18 @@ Released 2026-10-06 with owner approval. Runtime commit:
   Every movement has matching document dimensions and a contract; movement
   totals equal the full RKO amounts. No document or manual-link changes made.
 - Authenticated production UI verifies П17, П37, 3-11 Курбан in payment history,
-  each with «Оплачено полностью» and its exact RKO. Final counters: waiting 0,
-  history 22. Before release: waiting 3, history 19.
+  each with «Оплачено полностью» and its exact RKO. On a complete read counters
+  were waiting 0, history 22. Before release: waiting 3, history 19.
 - Initial page read had a transient missing expense-request source and reopened
   Baseus / A100; one explicit source refresh cleared the warning and restored
-  both to history, including A100's 25 RUB remainder. No matching rules bypassed.
+  both to history, including A100's 25 RUB remainder. The warning recurred on
+  subsequent auto-refresh (13:04 MSK), with waiting 2/history 20. The three target
+  payments remain correctly in history. No matching rules bypassed.
+  **Open follow-up:** incomplete expense-request reads currently look like
+  reopened Baseus/A100 payments. Root cause of the intermittent source rejection
+  is not established; do not report this broader behavior as resolved. A focused
+  GET expense-requests through VPS (100 rows, first page) returned HTTP 200,
+  complete=true in 2.42s; that does not validate every history page under load.
 - 57 focused tests, 5 release-info tests, TypeScript and Next build passed.
   Production compose rebuilt/restarted only portal-app; no migrations or
   manual database writes. Unrelated local WIP excluded from release.
