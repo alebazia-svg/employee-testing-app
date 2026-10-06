@@ -22,7 +22,7 @@ export function mixedPaymentBasisMessage(suppliers: string[]) {
  * An arbitrary header UUID can be an acquisition or expense request, not an order. */
 export function hasConfirmedPaymentBasis(payment: SupplierCurrencyPaymentRow, knownOrders: string[] = []) {
   const key = (s: string) => s.trim().toLowerCase();
-  return Boolean(payment.contract?.trim() || payment.requestOrderRef?.trim() || payment.verifiedHeaderOrderRef?.trim() ||
+  return Boolean(payment.contract?.trim() || payment.registerContractBasis?.contracts.length || payment.requestOrderRef?.trim() || payment.verifiedHeaderOrderRef?.trim() ||
     payment.settlementOrderRef?.trim() || payment.settlementOrderRefs?.some(ref => ref.trim()) ||
     (payment.baseDocumentRef.trim() && knownOrders.some(ref => key(ref) === key(payment.baseDocumentRef))));
 }

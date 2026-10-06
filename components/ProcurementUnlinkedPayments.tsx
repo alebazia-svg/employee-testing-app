@@ -37,13 +37,14 @@ export function ProcurementUnlinkedPayments({ payments, plans, linked }: {
     <div className="divide-y divide-slate-100">{(expanded ? payments : payments.slice(0, 5)).map((payment) => {
       const foreign = payment.documentCurrency === 'USDT';
       const hasBasis = hasConfirmedPaymentBasis(payment, plans.flatMap(plan => plan.orderRefs || []));
+      const contractLabel = payment.contract?.trim() || payment.registerContractBasis?.contracts.map(c => c.name).join(', ');
       const options = plans.filter((plan) => plan.status === 'APPROVED' && (plan.paymentMethod === 'USDT') === foreign &&
         (foreign ? plan.remainingForeign == null || plan.remainingForeign >= payment.documentAmount : plan.remaining >= payment.documentAmount) && samePaymentSupplier(plan, payment));
       return <div key={payment.ref} className="grid gap-2 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,1fr)_auto] lg:items-center">
         <div><p className="font-semibold">{payment.supplier || payment.counterparty} · {foreign ? `${payment.documentAmount.toLocaleString('ru-RU')} USDT` : money(payment.documentAmount)}</p>
-          <p className="text-xs text-slate-500">РКО {payment.number} · {payment.date} · {payment.contract || 'Договор не указан'}</p>
-          <p className={hasBasis ? 'text-xs text-slate-500' : 'text-sm font-medium text-amber-800'}>{hasBasis ? 'Основание в 1С подтверждено' : 'Основание оплаты не подтверждено'}</p></div>
-        {!hasBasis ? <p className="text-sm text-slate-600 lg:col-span-2">Проверьте договор или заказ в 1С. Автоматически заявка не закрыта.</p> : options.length ? <><select aria-label={`Заявка для РКО ${payment.number}`} className="min-w-0 rounded-lg border border-slate-200 p-2 text-sm"
+          <p className="text-xs text-slate-500">РКО {payment.number} · {payment.date}{contractLabel ? ` · ${contractLabel}` : ''}</p>
+          <p className={hasBasis ? 'text-xs text-slate-500' : 'text-sm font-medium text-amber-800'}>{hasBasis ? 'Основание в 1С подтверждено' : 'Не удалось проверить основание оплаты'}</p></div>
+        {!hasBasis ? <p className="text-sm text-slate-600 lg:col-span-2">Портал получил расходник, но не подтвердил его связь с договором или заказом. Заявка пока не закрыта.</p> : options.length ? <><select aria-label={`Заявка для РКО ${payment.number}`} className="min-w-0 rounded-lg border border-slate-200 p-2 text-sm"
           value={choices[payment.ref] || ''} onChange={(event) => setChoices({ ...choices, [payment.ref]: event.target.value })}>
           <option value="">Выберите заявку</option>{options.map((plan) => <option key={plan.id} value={plan.id}>{plan.orderNumbers.length ? `Заказ ${plan.orderNumbers.join(', ')}` : 'В счёт долга поставщику'} · остаток {foreign && plan.remainingForeign != null ? `${plan.remainingForeign} USDT` : money(plan.remaining)}</option>)}</select>
           <button disabled={Boolean(busy) || !choices[payment.ref]} onClick={() => save(choices[payment.ref], payment.ref, 'LINK')}

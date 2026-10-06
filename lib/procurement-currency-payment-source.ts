@@ -4,6 +4,8 @@ import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 import { expenseRequestMoscowCalendarDate } from '@/lib/expense-request-source';
 import {attachSettlementOrderLinks} from './procurement-settlement-payment-link';
 import { parseOneCDateTime } from './one-c-date';
+import { attachRegisterPaymentBasis } from './procurement-register-payment-basis';
+import { hasConfirmedPaymentBasis } from './procurement-payment-basis';
 
 export type SupplierCurrencyPaymentRow = {
   ref: string;
@@ -25,6 +27,7 @@ export type SupplierCurrencyPaymentRow = {
   supplier?: string;
   counterparty?: string;
   contract?: string;
+  registerContractBasis?: { versionToken: string; contracts: { ref: string; name: string }[] };
 };
 
 export type CurrencyConversionRow = {
@@ -187,6 +190,27 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       return order.posted===true&&order.deleted===false&&order.order_ref===payment.baseDocumentRef&&
         normalize(order.supplier_name||'')===normalize(payment.supplier||'');
     })?payment.baseDocumentRef:undefined}));
+    // An orderless debt plan may be paid against a contract in the register,
+    // although both header contract and header basis are empty. Read the exact
+    // RKO, not an order catalogue amount or a current advance balance.
+    const unresolved = combined.filter(p => p.posted && !p.deleted && ['РУБ', 'RUB'].includes(p.documentCurrency) &&
+      debtNames.has(normalize(p.supplier || '')) && !hasConfirmedPaymentBasis(p) &&
+      (parseOneCDateTime(p.date)?.getTime() || 0) >= from.getTime());
+    if (unresolved.length > 100) throw new Error('PAYMENT_BASIS_SCOPE_LIMIT');
+    const verified = new Map<SupplierCurrencyPaymentRow, SupplierCurrencyPaymentRow>();
+    for (let i = 0; i < unresolved.length; i += 4) {
+      await Promise.all(unresolved.slice(i, i + 4).map(async payment => {
+        const proof = await fetchOneCJson('supplier-settlements', new URLSearchParams({
+          detail: 'payment-basis', payment_ref: payment.ref,
+          // Bound the legacy report too, when an older 1C ignores detail.
+          supplier_search: payment.supplier || '', limit: '1000',
+          date_from: expenseRequestMoscowCalendarDate(parseOneCDateTime(payment.date)!),
+          date_to: expenseRequestMoscowCalendarDate(parseOneCDateTime(payment.date)!),
+        }), input.timeoutMs ?? 15000);
+        verified.set(payment, attachRegisterPaymentBasis(payment, proof, new Date()));
+      }));
+    }
+    combined = combined.map(p => verified.get(p) || p);
   }
   return {
     payments: combined,

@@ -36,6 +36,7 @@ export function uniqueSupplierPayments(rows: SupplierCurrencyPaymentRow[]) {
       row.date, row.posted, row.deleted, row.documentAmount, row.documentCurrency,
       key(row.baseDocumentRef), row.supplier, row.counterparty, row.contract,row.settlementOrderRef,
       row.settlementAmount, row.settlementCurrency, row.settlementMovementsCount, row.requestOrderRef, row.settlementOrderRefs, row.verifiedHeaderOrderRef,
+      row.registerContractBasis,
     ]);
     return copies.every((row) => signature(row) === signature(copies[0])) ? [copies[0]] : [];
   });

@@ -44,7 +44,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
             !(paymentTimestamp(payment.date) >= plan.createdAt.getTime())) throw new Error('Расходник не соответствует поставщику или дате заявки.');
         const withBasis = attachRequestOrderLinks([payment], requests!.rows)[0];
         if (!hasConfirmedPaymentBasis(withBasis, rows.flatMap(row => Array.isArray(row.orderRefs) ? row.orderRefs.map(String) : []))) {
-          throw new Error('Основание оплаты не подтверждено. Проверьте договор или заказ в 1С.');
+          throw new Error('Портал не смог подтвердить связь расходника с договором или заказом. Привязка не сохранена.');
         }
         const fingerprint = paymentFingerprint(payment);
         if (links.some((link) => link.ref.toLowerCase() === ref && link.fingerprint === fingerprint)) return;

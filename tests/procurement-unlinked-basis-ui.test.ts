@@ -14,8 +14,11 @@ test('ADMIN keeps an unbased RKO visible without a confirm action; verified chai
   const plans=[{id:'p',supplierPartner:'Supplier',supplierCounterparty:'',orderRefs:[],orderNumbers:[],remaining:100,remainingForeign:null,status:'APPROVED',paymentMethod:'CASH'}];
   const render=(p:typeof payment)=>renderToStaticMarkup(React.createElement(mod.exports.ProcurementUnlinkedPayments,{payments:[p],plans,linked:[]}));
   const unbased=render(payment);
-  assert.match(unbased,/РКО TEST/);assert.match(unbased,/Основание оплаты не подтверждено/);assert.doesNotMatch(unbased,/<select|>Подтвердить</);
+  assert.match(unbased,/РКО TEST/);assert.match(unbased,/Не удалось проверить основание оплаты/);assert.doesNotMatch(unbased,/<select|>Подтвердить</);
+  assert.doesNotMatch(unbased,/Договор не указан|Проверьте договор или заказ/);
+  assert.doesNotMatch(render({...payment,...{contract:'  '}}),/Договор не указан|<select/);
   for(const patch of [{contract:'Contract'},{requestOrderRef:'order'},{settlementOrderRefs:['o1','o2']}]){
     const based=render({...payment,...patch});assert.match(based,/<select/);assert.match(based,/Основание в 1С подтверждено/);
+    assert.doesNotMatch(based,/Договор не указан|Не удалось проверить/);
   }
 });

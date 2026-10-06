@@ -3,6 +3,37 @@ import test from 'node:test';
 import { fetchSupplierCurrencyPaymentSnapshot } from '../lib/procurement-currency-payment-source';
 import {hasConfirmedPaymentBasis} from '../lib/procurement-payment-basis';
 
+test('source reads exact register basis for an orderless payment without inventing an order', async t => {
+  const env = { ...process.env }; t.after(() => { process.env = env; });
+  process.env['1C_BASE_URL']='https://one-c.invalid';process.env['1C_API_USER']='test';process.env['1C_API_PASSWORD']='test';
+  const id = (n: number) => `11111111-1111-4111-8111-${String(n).padStart(12,'0')}`;
+  const now = new Date();
+  const date = new Intl.DateTimeFormat('ru-RU', {timeZone:'Europe/Moscow', day:'2-digit', month:'2-digit', year:'numeric'}).format(now)+' 00:00:00';
+  const dimensions = {supplier_ref:id(2),counterparty_ref:id(3),organization_ref:id(4),currency_ref:id(5)};
+  let basisReads=0, complete=true;
+  t.mock.method(globalThis,'fetch',async(input:string)=>{
+    const url=new URL(input);
+    if(url.pathname.includes('supplier-currency'))return Response.json({ok:true,rows:[]});
+    if(url.pathname.includes('currency-cash-costing-plan'))return Response.json({ok:true,events:[{
+      event_type:'supplier_payment',ref:id(1),number:'TEST',date,currency_amount:126000,partner:'Supplier',counterparty:'Company',contract:'',base_document_ref:'',
+    }]});
+    if(url.pathname.includes('supplier-order-finance-control'))return Response.json({ok:true,request_orders:[]});
+    if(url.pathname.includes('supplier-settlements')){
+      basisReads++;assert.equal(url.searchParams.get('detail'),'payment-basis');assert.equal(url.searchParams.get('payment_ref'),id(1));
+      assert.equal(url.searchParams.get('supplier_search'),'Supplier');
+      return Response.json({ok:true,complete,write_operations:false,contract_version:'supplier-payment-basis-v1',as_of:new Date().toISOString(),
+        payment:[{...dimensions,payment_ref:id(1),payment_number:'TEST',payment_date:date,amount:126000,supplier_name:'Supplier',counterparty_name:'Company',currency_name:'руб',posted:true,deleted:false,supplier_payment:true,version_token:'v1'}],
+        movements:[{...dimensions,payment_ref:id(1),movement_date:date,line_number:1,amount:126000,movement_type:'Приход',currency_name:'руб',contract_ref:id(6),contract_name:'Contract'}]});
+    }
+    return Response.json({ok:true,cash_expense_orders:[]});
+  });
+  const read=()=>fetchSupplierCurrencyPaymentSnapshot({from:new Date(now.getTime()-86400000),to:now,plans:[{supplierPartner:'Supplier',orderRefs:[]}]});
+  const result=await read();assert.equal(result.complete,true);assert.equal(basisReads,1);
+  assert.equal(hasConfirmedPaymentBasis(result.payments[0]),true);
+  assert.equal(result.payments[0].contract,'');assert.equal(result.payments[0].baseDocumentRef,'');
+  complete=false;await assert.rejects(read,/PAYMENT_BASIS_SOURCE_INCOMPLETE/);
+});
+
 test('payment source uses existing posted-RKO endpoint for RUB without new API flags', async (t) => {
   const oldEnv = { ...process.env };
   process.env['1C_BASE_URL'] = 'https://one-c.invalid';
