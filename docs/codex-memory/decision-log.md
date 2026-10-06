@@ -1,6 +1,12 @@
 ﻿# Portal Decision Log
 
-## 2026-10-06 - Payment evidence display continuity (local, not released)
+## 2026-10-06 - Payment evidence display continuity (released 1.1.8)
+
+Owner-approved release deployed as `3c0a675be6b641ecc0e9d6a7bc0aa698e0b5dc82`.
+Public metadata on both domains and the authenticated ADMIN footer report 1.1.8,
+build `2026-10-06T10:42:59.033Z`. Server commit independently verified; app healthy.
+See `docs/ops/procurement-evidence-continuity-release-20261006.md` for checks and
+remaining verification limits.
 
 Owner approved fixing paid requests reappearing during incomplete 1C reads.
 Both calendar pages retain the last complete evidence view in the existing
@@ -15,8 +21,7 @@ compare-and-swap protects concurrent updates; cache-only writes preserve
 business updatedAt so open revision/completion confirmations remain valid.
 Cached cash-collection instructions are never actionable. Matching, notifications,
 write validation and 1C documents continue to use fresh sources, not this cache.
-No schema changes, migrations or new 1C endpoint. Production verification and
-deployment remain pending; this note is not evidence of release.
+No schema changes, migrations or new 1C endpoint. Only portal-app was rebuilt.
 
 Local verification: 56 evidence/source/notification tests and 10 history SSR
 tests pass; TypeScript, production build and diff check pass. Actual ADMIN and
