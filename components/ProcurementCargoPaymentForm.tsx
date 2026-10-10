@@ -44,7 +44,7 @@ export function ProcurementCargoPaymentForm({preview=false,blocked=false,onCance
     <div className="grid gap-4 sm:grid-cols-2">
       <label className="text-sm font-bold">Подготовить к<input className={input} type="date" required value={date} onChange={e=>setDate(e.target.value)}/></label>
       <label className="text-sm font-bold">Способ оплаты<select className={input} value={method} onChange={e=>{setMethod(e.target.value);setAmount('');setUsdtRubles('');setCnyRubles('');setRate(String(e.target.value==='CNY'?cnyRateReference?.rate??'':e.target.value==='USDT'?usdtRateReference?.rate??'':''));previousCommentRate.current=null;}}>
-        <option value="CASH">Наличные</option><option value="BANK">Перевод в рублях</option><option value="ACCOUNTABLE_QR">Оплата по QR</option><option value="CNY">Перевод в юанях</option><option value="USDT">Перевод в USDT</option>
+        <option value="CASH">Наличные</option><option value="BANK">Перевод на карту</option><option value="ACCOUNTABLE_QR">Оплата по QR</option><option value="CNY">Перевод в юанях</option><option value="USDT">Перевод в USDT</option>
       </select></label>
     </div>
     {method==='CNY'?<ProcurementCnyFields amount={amount} rate={rate} reference={cnyRateReference} onChange={p=>{setAmount(p.foreignAmount);setRate(p.exchangeRate);setCnyRubles(p.plannedAmount)}}/>:method==='USDT'?<ProcurementUsdtFields amount={amount} rate={rate} source={fundingSource} available={availableUsdt} reference={usdtRateReference} onChange={p=>{setAmount(p.foreignAmount);setRate(p.exchangeRate);setUsdtRubles(p.plannedAmount);setFundingSource(p.fundingSource)}}/>:<>

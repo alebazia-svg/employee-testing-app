@@ -23,7 +23,7 @@ const fields: [keyof RevisionData, string][] = [
   ['commissionAmount', 'Комиссия'], ['exchangerName', 'Валютчик'], ['supplierConfirmation', 'Договорённость'], ['condition', 'Комментарий'],
 ];
 const numeric = new Set(['plannedAmount', 'foreignAmount', 'exchangeRate', 'commissionAmount']);
-const methods: Record<string, string> = { CASH: 'Наличные', BANK: 'Перевод поставщику', USDT: 'Оплата в USDT', ACCOUNTABLE_QR: 'Оплата по QR', CNY: 'Перевод в юанях' };
+const methods: Record<string, string> = { CASH: 'Наличные', BANK: 'Перевод на карту', USDT: 'Оплата в USDT', ACCOUNTABLE_QR: 'Оплата по QR', CNY: 'Перевод в юанях' };
 function normal(key: string, value: unknown): string {
   if (key==='paymentPurpose') return String(value||'GOODS');
   if (key === 'plannedDate') return value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);

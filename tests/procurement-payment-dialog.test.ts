@@ -4,6 +4,16 @@ import {readFileSync} from 'node:fs';
 
 const read=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
+test('card-transfer wording keeps the BANK method in create, edit, cargo, admin and notification views',()=>{
+  for(const file of ['app/(dashboard)/procurement/ProcurementPaymentForm.tsx','app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx','app/(dashboard)/procurement/ProcurementPaymentBatchForm.tsx','components/ProcurementCargoPaymentForm.tsx']){
+    assert.ok(read(file).includes('<option value="BANK">Перевод на карту</option>'),file);
+  }
+  for(const file of ['app/(dashboard)/admin/procurement/AdminProcurementClient.tsx','lib/procurement-plan-revision.ts','lib/procurement-payment-notifications.ts']){
+    assert.match(read(file),/перевод на карту/i);
+    assert.doesNotMatch(read(file),/перевод поставщику/i);
+  }
+});
+
 test('receipt modal centers despite parent space-y sibling margins and scrolls when tall',()=>{
   const css=read('components/procurement-receipts.css');
   const rule=css.match(/\.procurement-receipts-dialog\s*\{([^}]+)\}/)?.[1]||'';
@@ -16,6 +26,16 @@ test('buyer cash summary keeps the approved compact three-column layout and visi
   assert.doesNotMatch(summary,/truncate|space-y-1\.5/);
   assert.match(calendar,/freeLabel=\{freeUsdt[^\n]+"Не хватает" : "Свободно"/);
   assert.equal((calendar.match(/availableLabel="Остаток"/g)||[]).length,2);
+});
+test('desktop summary is wider without removing narrow-screen wrapping or accountable cash',()=>{
+  const calendar=read('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx');
+  assert.ok(calendar.includes('min-[1180px]:grid-cols-[minmax(0,1fr)_360px]'));
+  assert.ok(calendar.includes('min-[1280px]:grid-cols-[minmax(0,1fr)_380px]'));
+  const aside=calendar.slice(calendar.indexOf('<aside'),calendar.indexOf('</aside>'));
+  assert.match(aside,/flex flex-wrap gap-2 text-xs/);
+  assert.match(aside,/whitespace-nowrap rounded-full/);
+  assert.match(aside,/deliveryCashPanel \?\?/);
+  assert.ok(aside.indexOf('Сводка')<aside.indexOf('deliveryCashPanel'));
 });
 
 test('calendar routes both existing forms through one modal and preserves discard protection',()=>{

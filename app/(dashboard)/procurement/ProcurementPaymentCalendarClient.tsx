@@ -197,7 +197,7 @@ const methodLabel = (method: string) =>
       ? "Наличные"
       : method === "ACCOUNTABLE_QR"
         ? "Оплата поставщику по QR"
-        : "Перевод поставщику";
+        : "Перевод на карту";
 const commentHint = (method: string) =>
   method === "USDT"
     ? "Например: курс уточняется"
@@ -591,7 +591,7 @@ export default function ProcurementPaymentCalendarClient({
         />
       ) : null}
 
-      <div className={compact ? 'compact-payment-calendar grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_280px] min-[1280px]:grid-cols-[minmax(0,1fr)_320px] items-start' : 'grid gap-5 min-[1180px]:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.72fr)] min-[1180px]:items-start'}>
+      <div className={compact ? 'compact-payment-calendar grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_280px] min-[1180px]:grid-cols-[minmax(0,1fr)_360px] min-[1280px]:grid-cols-[minmax(0,1fr)_380px] items-start' : 'grid gap-5 min-[1180px]:grid-cols-[minmax(0,1.7fr)_minmax(360px,0.72fr)] min-[1180px]:items-start'}>
         {paymentView==='history' ? <ProcurementPaymentHistory plans={paidPlans} compactBuyer /> :
         <div className="flex min-w-0 flex-col gap-5">
           {message && !formOpen ? (
@@ -895,7 +895,7 @@ export default function ProcurementPaymentCalendarClient({
                   <option value="ACCOUNTABLE_QR">Оплата поставщику по QR</option>
                   <option value="USDT">Оплата в USDT</option>
                   <option value="CNY">Перевод в юанях</option>
-                  <option value="BANK">Перевод поставщику</option>
+                  <option value="BANK">Перевод на карту</option>
                 </select>
               </label>
             </div>
@@ -989,11 +989,11 @@ export default function ProcurementPaymentCalendarClient({
         </div>}
 
         <aside
-          className={compact ? 'space-y-4' : 'space-y-5 min-[1180px]:sticky min-[1180px]:top-6'}
+          className={compact ? 'space-y-3' : 'space-y-5 min-[1180px]:sticky min-[1180px]:top-6'}
         >
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <section className={`rounded-2xl border border-slate-200 bg-white p-4 ${compact ? '' : 'sm:p-5'}`}>
             <h2 className="text-lg font-black text-slate-900">Сводка</h2>
-            <div className="mt-4 grid gap-3">
+            <div className={`${compact ? 'mt-3' : 'mt-4'} grid gap-3`}>
               <SummaryMetric
                 label="Долг поставщикам по 1С"
                 value={mappingBlocked || supplierDebtError || readOnlyPreview?.debtTotal === null ? "—" : rub.format(readOnlyPreview?.debtTotal ?? positionSummary.debt)}
@@ -1001,18 +1001,18 @@ export default function ProcurementPaymentCalendarClient({
               />
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800 ring-1 ring-amber-200">
+              <span className="whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1.5 text-amber-800 ring-1 ring-amber-200">
                 Ждёт решения: {basisPreview || plansSourceError ? '—' : plans.filter((plan) => plan.status === "SUBMITTED").length}
               </span>
-              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
+              <span className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1.5 text-slate-700">
                 Деньги будут готовы: {reservesUnavailable ? '—' : plans.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan)).length}
               </span>
               {plans.some(plan => plan.revision) ? <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">Изменения на согласовании: {plans.filter(plan => plan.revision).length}</span> : null}
             </div>
 
-            <div className="mt-4 border-t border-slate-200 pt-4">
+            <div className={`${compact ? 'mt-3 pt-3' : 'mt-4 pt-4'} border-t border-slate-200`}>
               <h3 className="text-sm font-black text-slate-900">Остатки касс</h3>
-              <div className="mt-3 space-y-3">
+              <div className={compact ? 'mt-2 space-y-2' : 'mt-3 space-y-3'}>
                 <BalanceSummary
                   title="QR · рубли"
                   availableLabel="Остаток"

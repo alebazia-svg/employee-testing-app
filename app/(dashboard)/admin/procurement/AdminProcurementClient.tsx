@@ -336,7 +336,7 @@ export default function AdminProcurementClient({
         ? "Наличные"
         : plan.paymentMethod === "ACCOUNTABLE_QR"
           ? "Оплата по QR"
-          : "Перевод поставщику");
+          : "Перевод на карту");
   const amountLabel = (plan: Plan) =>
     ["USDT","CNY"].includes(plan.paymentMethod) && Number(plan.foreignAmount || 0) > 0
       ? `${Number(plan.foreignAmount).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} ${plan.paymentMethod}`

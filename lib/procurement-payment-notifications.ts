@@ -34,7 +34,7 @@ function methodLabel(method: string) {
   if (method === 'CNY') return 'наличные на перевод в юанях';
   if (method === 'USDT') return 'оплата в USDT';
   if (method === 'ACCOUNTABLE_QR') return 'оплата по QR';
-  if (method === 'BANK') return 'перевод поставщику';
+  if (method === 'BANK') return 'перевод на карту';
   return 'наличные';
 }
 
