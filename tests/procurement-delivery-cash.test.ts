@@ -45,3 +45,11 @@ test('warning is advice, not a cash withdrawal approval or a claimed notificatio
   assert.match(html,/только по согласованной заявке/);
   assert.doesNotMatch(html,/Уведомление отправлено|Ожидается пополнение|<button|<input|Осталось.*дн/);
 });
+test('compact warning stays beside the amount without a separate explanation block',()=>{
+  const snapshot={...example,checkedAt:new Date().toISOString(),reserveAdvice:{target:35000,warnAt:20000}};
+  const html=renderToStaticMarkup(React.createElement(ProcurementDeliveryCash,{snapshot,reserveDetails:false,showLastIssue:false}));
+  assert.match(html,/flex flex-wrap items-center gap-x-3/);
+  assert.match(html,/<\/p><span[^>]*rounded-full[^>]*>.*Низкий остаток<\/span><\/div>/);
+  assert.equal(html.split('Низкий остаток').length-1,1);
+  assert.doesNotMatch(html,/Рекомендуемый запас|Выдано|только по согласованной/);
+});

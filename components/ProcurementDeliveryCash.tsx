@@ -32,13 +32,17 @@ export function ProcurementDeliveryCash({ snapshot, children, reserveDetails = t
   return <section id="delivery" aria-label="Подотчёт на доставку" className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
     <h2 className="text-lg font-black text-slate-900">Подотчёт на доставку</h2>
     <p className="mt-3 text-xs font-semibold text-slate-500">{overrun ? 'Перерасход по 1С' : 'Остаток подотчёта'}</p>
-    <p className={`mt-1 text-2xl font-black tabular-nums ${overrun ? 'text-amber-800' : 'text-slate-950'}`}>
-      {available ? money.format(Math.abs(snapshot.balance!)) : '—'}
-    </p>
-    {needsRefill ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-amber-950 ring-1 ring-amber-200">
-      <p className="text-sm font-bold">Низкий остаток</p>
-      {reserveDetails ? <><p className="mt-1 text-xs leading-5">Рекомендуемый запас: {money.format(snapshot.reserveAdvice!.target)}.</p>
-      <p className="mt-1 text-xs leading-5">Выдача из кассы — только по согласованной заявке.</p></> : null}
+    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <p className={`text-2xl font-black tabular-nums ${overrun ? 'text-amber-800' : 'text-slate-950'}`}>
+        {available ? money.format(Math.abs(snapshot.balance!)) : '—'}
+      </p>
+      {needsRefill ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-inset ring-amber-200">
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-600" />Низкий остаток
+      </span> : null}
+    </div>
+    {needsRefill && reserveDetails ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-amber-950 ring-1 ring-amber-200">
+      <p className="text-xs leading-5">Рекомендуемый запас: {money.format(snapshot.reserveAdvice!.target)}.</p>
+      <p className="mt-1 text-xs leading-5">Выдача из кассы — только по согласованной заявке.</p>
     </div> : null}
     {children}
     {showLastIssue && available && issue && Number.isFinite(issue.amount) && issue.amount > 0 && validDate(issue.date) ?
