@@ -8,7 +8,7 @@ import type {freshEvidence} from '../lib/procurement-plan-revision-server';
 if(process.env.DATABASE_URL!=='postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test')throw Error('ISOLATED_RECEIPT_TEST_DATABASE_REQUIRED');
 test.after(()=>prisma.$disconnect());
 test('isolated PostgreSQL: delivery uses the common plan/audit, and retry cannot duplicate it',async()=>{
- const user=await prisma.user.create({data:{name:'Cargo isolated test',oneCManagerName:'Астемир Тохов',login:'cargo-test-'+randomUUID(),passwordHash:'NO_LOGIN',role:'EMPLOYEE',portalArea:'PROCUREMENT'}});
+ const user=await prisma.user.create({data:{name:'Астемир Тохов',oneCManagerName:'Тохов Астемир',login:'cargo-test-'+randomUUID(),passwordHash:'NO_LOGIN',role:'EMPLOYEE',portalArea:'PROCUREMENT'}});
  const payload={paymentPurpose:'DELIVERY',supplierPartner:PROCUREMENT_CARGO.supplierPartner,orderRefs:[],orderNumbers:[],plannedDate:'2026-10-12',plannedAmount:1,foreignAmount:1000,exchangeRate:13.6,paymentMethod:'CNY'};
  // Only the read-only evidence boundary is stubbed; no 1C call or push sender.
  const read:typeof freshEvidence=async()=>Object.assign(new Map(),{versions:new Map()});

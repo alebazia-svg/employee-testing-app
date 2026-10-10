@@ -1015,7 +1015,7 @@ export default function ProcurementPaymentCalendarClient({
               <div className="mt-3 space-y-3">
                 <BalanceSummary
                   title="QR · рубли"
-                  availableLabel="На карте"
+                  availableLabel="Остаток"
                   available={accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)}
                   planned={reservesUnavailable ? '—' : rub.format(plannedQr)}
                   freeLabel={freeQr != null && freeQr < 0 ? "Не хватает" : "Свободно"}
@@ -1027,7 +1027,7 @@ export default function ProcurementPaymentCalendarClient({
                   availableLabel="Остаток"
                   available={usdtBalance.balance == null ? "—" : usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
                   planned={plannedUsdt == null ? "—" : plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
-                  freeLabel={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Доступно"}
+                  freeLabel={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Свободно"}
                   free={freeUsdt == null ? "—" : Math.abs(freeUsdt).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
                   critical={freeUsdt != null && freeUsdt < 0}
                 />
@@ -1092,7 +1092,7 @@ function BalanceSummary({
 }) {
   return <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
     <p className="text-sm font-black text-slate-900">{title}</p>
-    <div className="mt-2 space-y-1.5">
+    <div className="mt-2 grid grid-cols-3 gap-2">
       <SmallBalanceValue label={availableLabel} value={available} />
       <SmallBalanceValue label="В заявках" value={planned} />
       <SmallBalanceValue label={freeLabel} value={free} critical={critical} />
@@ -1101,8 +1101,8 @@ function BalanceSummary({
 }
 
 function SmallBalanceValue({ label, value, critical = false }: { label: string; value: string; critical?: boolean }) {
-  return <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+  return <div className="min-w-0">
     <p className="text-[10px] font-bold text-slate-500">{label}</p>
-    <p className={`text-right text-xs font-bold tabular-nums ${critical ? "text-red-700" : "text-slate-950"}`}>{value}</p>
+    <p className={`mt-0.5 break-words text-xs font-black tabular-nums ${critical ? "text-red-700" : "text-slate-950"}`}>{value}</p>
   </div>;
 }

@@ -1,7 +1,8 @@
 .procurement-receipt-button {display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:9px 13px;border:1px solid #d9dce0;border-radius:8px;background:#fff;color:#41464d;font-size:13px;font-weight:600;box-shadow:none!important;background-image:none!important;}
 .procurement-receipt-button:disabled {opacity:.6;cursor:wait;}
 .procurement-receipt-button:focus-visible {outline:2px solid #9b6335;outline-offset:3px;}
-.procurement-receipts-dialog {width:min(680px,calc(100vw - 24px));max-height:90dvh;border:1px solid #dedbd6;border-radius:16px;padding:0;background:#fff;color:#25282b;}
+/* A top-layer dialog must not inherit the calendar's space-y sibling margins. */
+.procurement-receipts-dialog {position:fixed;inset:0;margin:auto!important;width:min(680px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow-y:auto;border:1px solid #dedbd6;border-radius:16px;padding:0;background:#fff;color:#25282b;}
 .procurement-receipts-dialog::backdrop {background:rgb(15 23 42 / .4);}
 .procurement-receipts-dialog header {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid #e5e4e0;}
 .procurement-receipts-dialog h2 {font-size:18px;font-weight:700;}

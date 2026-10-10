@@ -4,6 +4,20 @@ import {readFileSync} from 'node:fs';
 
 const read=(path:string)=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 
+test('receipt modal centers despite parent space-y sibling margins and scrolls when tall',()=>{
+  const css=read('components/procurement-receipts.css');
+  const rule=css.match(/\.procurement-receipts-dialog\s*\{([^}]+)\}/)?.[1]||'';
+  for(const declaration of ['position:fixed','inset:0','margin:auto!important','max-height:calc(100dvh - 24px)','overflow-y:auto'])assert.ok(rule.includes(declaration));
+});
+test('buyer cash summary keeps the approved compact three-column layout and visible values',()=>{
+  const calendar=read('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx');
+  const summary=calendar.slice(calendar.indexOf('function BalanceSummary('));
+  assert.match(summary,/grid grid-cols-3 gap-2/);
+  assert.doesNotMatch(summary,/truncate|space-y-1\.5/);
+  assert.match(calendar,/freeLabel=\{freeUsdt[^\n]+"Не хватает" : "Свободно"/);
+  assert.equal((calendar.match(/availableLabel="Остаток"/g)||[]).length,2);
+});
+
 test('calendar routes both existing forms through one modal and preserves discard protection',()=>{
   const calendar=read('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx');
   assert.match(calendar,/<ProcurementPaymentDialog[^>]+onClose=\{requestClosePaymentForm\}/);

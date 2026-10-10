@@ -1,3 +1,5 @@
+import {DELIVERY_PERSON} from './procurement-delivery-policy';
+
 /** Owner-approved carrier; identities verified read-only in 1C on 2026-10-10. */
 export const PROCUREMENT_CARGO = {
   supplierPartner: 'Карго Юра',
@@ -10,7 +12,9 @@ export const PROCUREMENT_CARGO = {
 
 export function isCargoPayment(plan:{paymentPurpose?:string}) { return plan.paymentPurpose==='DELIVERY'; }
 export function cargoManagerAllowed(manager:string) {
-  return manager.trim().toLocaleLowerCase('ru-RU').replace(/\s+/g,' ')==='астемир тохов';
+  const normalized=manager.trim().toLocaleLowerCase('ru-RU').replace(/\s+/g,' ');
+  // Use the existing 1C mapping, not only the portal display-name order.
+  return normalized===DELIVERY_PERSON.name.toLocaleLowerCase('ru-RU') || normalized==='астемир тохов';
 }
 
 /** No arbitrary supplier names or synthetic orders can be submitted as delivery. */

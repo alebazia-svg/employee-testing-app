@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PROCUREMENT_CARGO as cargo,cargoRequestError} from '../lib/procurement-cargo';
+import {PROCUREMENT_CARGO as cargo,cargoRequestError,cargoManagerAllowed} from '../lib/procurement-cargo';
+import {DELIVERY_PERSON} from '../lib/procurement-delivery-policy';
 import {matchProcurementPaymentEvidence,type EvidencePlan} from '../lib/procurement-currency-payment-evidence';
 import type {SupplierCurrencyPaymentRow} from '../lib/procurement-currency-payment-source';
 import {validatePaymentPlan} from '../lib/procurement-payment-control';
@@ -10,9 +11,14 @@ const match=(rows=[payment],plans=[plan])=>matchProcurementPaymentEvidence(plans
 test('only approved manager and carrier can create delivery without orders',()=>{
  const data={supplierPartner:cargo.supplierPartner,orderRefs:[],orderNumbers:[]};
  assert.equal(cargoRequestError(data,'Астемир Тохов'),null);
+ assert.equal(cargoRequestError(data,DELIVERY_PERSON.name),null);
  assert.ok(cargoRequestError(data,'Другой сотрудник'));
  assert.ok(cargoRequestError({...data,supplierPartner:'Любой поставщик'},'Астемир Тохов'));
  assert.ok(cargoRequestError({...data,orderRefs:['fake']},'Астемир Тохов'));
+});
+test('cargo accepts the live 1C manager mapping and display alias, not other employees',()=>{
+ for(const name of [DELIVERY_PERSON.name,'  ТОХОВ   АСТЕМИР  ','Астемир Тохов'])assert.equal(cargoManagerAllowed(name),true);
+ for(const name of ['', 'Тохов', 'Астемир', 'Тохов Астемир другой', 'Другой сотрудник'])assert.equal(cargoManagerAllowed(name),false);
 });
 test('delivery closes only with verified carrier contract, not amount/name alone',()=>{
  assert.equal(match().get('cargo')?.state,'ISSUED_BY_ONE_C');
