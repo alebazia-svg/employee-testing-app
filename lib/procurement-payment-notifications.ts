@@ -31,6 +31,7 @@ const shortDate = new Intl.DateTimeFormat('ru-RU', {
 });
 
 function methodLabel(method: string) {
+  if (method === 'CNY') return 'наличные на перевод в юанях';
   if (method === 'USDT') return 'оплата в USDT';
   if (method === 'ACCOUNTABLE_QR') return 'оплата по QR';
   if (method === 'BANK') return 'перевод поставщику';

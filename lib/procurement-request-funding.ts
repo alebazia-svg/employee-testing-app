@@ -14,7 +14,7 @@ const allApproved = (plans: FundingPlan[], candidate: FundingPlan) => plans.filt
 function rubleCapacity(input: MoneyInput, candidate: FundingPlan) {
   if (input.salary.amountMinor === null || input.safeMinor === null || input.cardsMinor === null || input.bankAccountsMinor === null) return null;
   const approved = allApproved(input.plans, candidate);
-  const directRublesMinor = sumMinor(approved.filter((plan) => plan.paymentMethod === "CASH" || plan.paymentMethod === "BANK"));
+  const directRublesMinor = sumMinor(approved.filter((plan) => ['CASH', 'BANK', 'CNY'].includes(plan.paymentMethod)));
   const qrTotalMinor = sumMinor(approved.filter((plan) => plan.paymentMethod === "ACCOUNTABLE_QR"));
   const qrTopUpMinor = input.accountableBalanceMinor === null ? null : Math.max(0, qrTotalMinor - input.accountableBalanceMinor);
   const approvedUsdt = approved.filter((plan) => plan.paymentMethod === "USDT").map((plan) => planUsdt(plan, input.usdtRate));
@@ -66,12 +66,12 @@ export function assessProcurementRequests(input: MoneyInput): RequestFundingAsse
       if (uncoveredMinor > 0) return { planId: candidate.id, state: "gap", title: `Не хватает ${(uncoveredMinor / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "После зарплаты, аренды и согласованных оплат денег для перевода Астемиру недостаточно.", amountMinor: uncoveredMinor, foreignAmount: null, steps: [] };
       return { planId: candidate.id, state: "prepare", title: `Перевести Астемиру ${(shortfall / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "С учётом уже согласованных QR-оплат текущего остатка на карте не хватит, но обязательный резерв сохранится.", amountMinor: shortfall, foreignAmount: null, steps: [] };
     }
-    if (candidate.paymentMethod === "CASH") {
+    if (candidate.paymentMethod === "CASH" || candidate.paymentMethod === "CNY") {
       const capacity = rubleCapacity(input, candidate);
       if (capacity === null) return { planId: candidate.id, state: "unavailable", title: "Наличие денег уточняется", detail: "Нужны сумма зарплаты и актуальные остатки сейфа, карт и счетов из 1С.", amountMinor: null, foreignAmount: null, steps: [] };
       const globalGapMinor = Math.max(0, -remainingAfter(capacity, candidate.remainingMinor));
       if (globalGapMinor > 0) return { planId: candidate.id, state: "gap", title: `Не хватает ${(globalGapMinor / 100).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} ₽`, detail: "После зарплаты, аренды и уже согласованных оплат денег на эту заявку недостаточно.", amountMinor: globalGapMinor, foreignAmount: null, steps: [] };
-      const approvedCash = sumMinor(approvedBefore(input.plans, candidate, "CASH"));
+      const approvedCash = sumMinor([...approvedBefore(input.plans, candidate, "CASH"), ...approvedBefore(input.plans, candidate, "CNY")]);
       const salaryMinor = beforeOrOn(input.salary.dueOn, dueOn) ? input.salary.amountMinor : 0;
       const requiredMinor = salaryMinor === null ? null : salaryMinor + approvedCash + candidate.remainingMinor;
       const route = buildProcurementCashPreparation({ asOf: input.asOf, dueOn, requiredMinor, safeMinor: input.safeMinor, vtbCardMinor: input.vtbCardMinor, vtbAccountMinor: input.vtbAccountMinor, tbankCardMinor: input.tbankCardMinor, tbankAccountMinor: input.tbankAccountMinor, tbankTransferStatus: input.tbankTransferStatus, tbankCurrentRateBps: input.tbankCurrentRateBps, tbankCurrentTierRemainingMinor: input.tbankCurrentTierRemainingMinor });

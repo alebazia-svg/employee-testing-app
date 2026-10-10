@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { build } from 'esbuild';
 
 test('revision routes enforce roles, ownership, reason and repeat approval with real persistence', async () => {
-  assert.equal(process.env.DATABASE_URL, 'postgresql://postgres:local-test-only@127.0.0.1:55437/payment_test');
+  assert.ok(['postgresql://postgres:local-test-only@127.0.0.1:55437/payment_test', 'postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test'].includes(process.env.DATABASE_URL || ''));
   const db = new PrismaClient();
   const g = globalThis as any;
   g.revisionRouteDb = db;
@@ -18,8 +18,8 @@ test('revision routes enforce roles, ownership, reason and repeat approval with 
       auth:'export const getCurrentUser=async()=>globalThis.revisionRouteUser;',
       prisma:'export const prisma=globalThis.revisionRouteDb;',
       'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,payments:[],conversions:[]});',
-      'expense-request-source':'export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});export const expenseRequestMoscowCalendarDate=()=>"2026-09-17";',
-      'procurement-payment-source':'export const fetchSupplierOrderFinance=async()=>({complete:true,rows:[]});export const ordersForManager=x=>x;export const ordersRequiringPayment=x=>x;',
+      'expense-request-source':'export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});export const expenseRequestMoscowCalendarDate=()=>"2026-09-17";export const expenseRequestMoscowDayEnd=()=>new Date("2026-10-12");',
+      'procurement-payment-source':'export const fetchSupplierOrderFinance=async()=>({complete:true,rows:[]});export const ordersForManager=x=>x;export const ordersRequiringPayment=x=>x;export const normalizeManagerName=x=>x.trim().toLowerCase();',
       'procurement-request-catalogue':'export const fetchRequestOrderCatalogue=async()=>({complete:true,rows:[]});',
       'procurement-planning-sync':'export const verifySelectedPlanningOrders=async x=>x;',
       'procurement-usdt-rate':'export const getLatestProcurementUsdtRate=async()=>({rate:89});',

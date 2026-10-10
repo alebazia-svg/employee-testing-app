@@ -1,4 +1,6 @@
 export const ADMIN_INBOX_PUSH_MAX_EVENT_AGE_MS = 30 * 60 * 1000;
+export const RECEIPT_PUSH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const RECEIPT_PUSH_TYPE = 'procurement.receipt_added';
 export const ADMIN_INBOX_TECHNICAL_DEDUPE_MS = 2 * 60 * 60 * 1000;
 
 const STANDARD_HOURS_EVENT_TYPES = [
@@ -50,13 +52,14 @@ export function getAdminInboxPushEventCutoff(now: Date) {
 
 export function eligibleAdminInboxWebPushTypes(now: Date): string[] {
   const minutes = moscowMinutesSinceMidnight(now);
+  const receipts=minutes>=8*60+30 && minutes<22*60?[RECEIPT_PUSH_TYPE]:[];
   if (minutes >= 9 * 60 && minutes < 22 * 60) {
-    return [...ADMIN_INBOX_WEB_PUSH_EVENT_TYPES];
+    return [...ADMIN_INBOX_WEB_PUSH_EVENT_TYPES,...receipts];
   }
   if (minutes >= 22 * 60 && minutes < 23 * 60) {
     return [...SHIFT_CLOSE_EVENT_TYPES];
   }
-  return [];
+  return receipts;
 }
 
 export function isTechnicalAdminInboxDownEvent(type: string) {
@@ -69,6 +72,8 @@ export function isAdminInboxWebPushEligible(input: {
   now: Date;
 }) {
   const minutes = moscowMinutesSinceMidnight(input.now);
+  if(input.type===RECEIPT_PUSH_TYPE) return minutes>=8*60+30 && minutes<22*60
+    && input.eventCreatedAt<=input.now && input.eventCreatedAt.getTime()>=input.now.getTime()-RECEIPT_PUSH_MAX_AGE_MS;
   const freshEnough = input.eventCreatedAt >= getAdminInboxPushEventCutoff(input.now)
     && input.eventCreatedAt <= input.now;
   if (!freshEnough) return false;

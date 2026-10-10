@@ -112,6 +112,7 @@ export default async function AdminProcurementPage() {
       orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [],
       plannedAmount: Number(plan.plannedAmount),
       paymentMethod: plan.paymentMethod,
+      paymentPurpose: plan.paymentPurpose,
       foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
       managerName: plan.manager.oneCManagerName || plan.manager.name,
       plannedDate: plan.plannedDate.toISOString(),
@@ -292,7 +293,7 @@ export default async function AdminProcurementPage() {
     const issuedMinor = Math.round(Number(plan.issuedRub ?? "0") * 100);
     const remainingMinor = Math.max(0, requestedMinor - issuedMinor);
     if (!remainingMinor) continue;
-    const bucket = plan.paymentMethod === "CASH" ? "safe" : undefined;
+    const bucket = ['CASH', 'CNY'].includes(plan.paymentMethod) ? "safe" : undefined;
     if (!bucket) unallocatedPlanCount += 1;
     addForecastItem(plan.plannedDate, {
       id: `plan:${plan.id}`,

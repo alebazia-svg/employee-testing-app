@@ -1,7 +1,8 @@
 import type { ExpenseRequestSourceRow } from '@/lib/expense-request-source';
 import { isInactivePaymentPlan } from './procurement-payment-completion';
+import { cnyRateFromComment, plannedFxRubles } from './procurement-planned-fx';
 
-export const PAYMENT_METHODS = ['CASH', 'BANK', 'USDT', 'ACCOUNTABLE_QR'] as const;
+export const PAYMENT_METHODS = ['CASH', 'BANK', 'USDT', 'ACCOUNTABLE_QR', 'CNY'] as const;
 export type PaymentMethod = typeof PAYMENT_METHODS[number];
 
 export type PaymentPlanInput = {
@@ -13,6 +14,8 @@ export type PaymentPlanInput = {
   plannedAmount?: unknown;
   condition?: unknown;
   paymentMethod?: unknown;
+  paymentPurpose?: unknown;
+  fundingSource?: unknown;
   currency?: unknown;
   foreignAmount?: unknown;
   exchangeRate?: unknown;
@@ -30,14 +33,36 @@ export function validatePaymentPlan(input: PaymentPlanInput, allowSupplierDebt =
   const numbers = Array.isArray(input.orderNumbers) ? input.orderNumbers.map(clean).filter(Boolean) : [];
   const date = clean(input.plannedDate);
   const data = {
+    paymentPurpose: clean(input.paymentPurpose) || 'GOODS',
+    fundingSource: method === 'USDT' ? clean(input.fundingSource) || null : null,
     supplierPartner: clean(input.supplierPartner), supplierCounterparty: clean(input.supplierCounterparty),
     orderRefs: refs, orderNumbers: numbers, plannedDate: date, plannedAmount: positive(input.plannedAmount),
-    condition: clean(input.condition) || (allowSupplierDebt && !refs.length ? 'В счёт долга поставщику' : 'Оплата по выбранным заказам'), paymentMethod: method, currency: clean(input.currency).toUpperCase() || (method === 'USDT' ? 'USDT' : 'RUB'),
+    condition: clean(input.condition) || (allowSupplierDebt && !refs.length ? 'В счёт долга поставщику' : 'Оплата по выбранным заказам'), paymentMethod: method, currency: method === 'CNY' ? 'CNY' : clean(input.currency).toUpperCase() || (method === 'USDT' ? 'USDT' : 'RUB'),
     foreignAmount: positive(input.foreignAmount), exchangeRate: positive(input.exchangeRate),
     commissionAmount: input.commissionAmount === '' || input.commissionAmount == null ? null : Number(input.commissionAmount),
     exchangerName: clean(input.exchangerName), supplierConfirmation: clean(input.supplierConfirmation),
   };
   const errors: string[] = [];
+  if (data.fundingSource && !['WALLET','CASH_EXCHANGE'].includes(data.fundingSource)) errors.push('Выберите источник оплаты USDT.');
+  if (data.fundingSource && (!data.foreignAmount || !data.exchangeRate)) errors.push('Укажите сумму USDT и курс.');
+  if (!['GOODS','DELIVERY'].includes(data.paymentPurpose)) errors.push('Выберите назначение оплаты.');
+  // These are planning values only. Never derive a paid amount or actual FX
+  // rate from them. CNY is settled by RUB RKO in the current 1C workflow.
+  if (method === 'CNY') {
+    if (!data.exchangeRate) data.exchangeRate = cnyRateFromComment(data.condition, true);
+    const foreignProvided=input.foreignAmount!=null&&String(input.foreignAmount).trim()!=='';
+    if (!data.foreignAmount && (foreignProvided||!data.plannedAmount)) errors.push('Укажите сумму в рублях или юанях.');
+    if (data.foreignAmount && !data.exchangeRate) errors.push('Укажите курс юаня в рублях.');
+    if (data.foreignAmount && data.exchangeRate) {
+      const estimate=plannedFxRubles(data.foreignAmount,data.exchangeRate);
+      if (estimate==null) errors.push('Проверьте сумму и курс.');
+      else data.plannedAmount = estimate;
+    }
+  }
+  if (method === 'USDT' && (!data.plannedAmount || data.fundingSource) && data.foreignAmount && data.exchangeRate) {
+    data.plannedAmount=plannedFxRubles(data.foreignAmount,data.exchangeRate);
+    if(data.plannedAmount==null) errors.push('Проверьте сумму и курс.');
+  }
   if (!data.supplierPartner) errors.push('Выберите поставщика из заказов 1С.');
   if (!data.orderRefs.length && !allowSupplierDebt) errors.push('Выберите хотя бы один заказ 1С.');
   if (!data.orderRefs.length && data.orderNumbers.length) errors.push('Для оплаты долга не указывайте номера заказов.');
@@ -53,7 +78,7 @@ export function buildPaymentPlanCode(now = new Date(), random = Math.random()) {
   return `PAY-${now.toISOString().slice(0, 10).replaceAll('-', '')}-${Math.floor(random * 1_000_000).toString().padStart(6, '0')}`;
 }
 
-export type CashPreparationPlan = { id: string; plannedDate: string; plannedAmount: number; paymentMethod: string; foreignAmount?: number | null; exchangeRate?: number | null; commissionAmount?: number | null; issued?: boolean };
+export type CashPreparationPlan = { id: string; plannedDate: string; plannedAmount: number; paymentMethod: string; fundingSource?: string|null; foreignAmount?: number | null; exchangeRate?: number | null; commissionAmount?: number | null; issued?: boolean };
 
 export type OrderPlanningOrder = {
   ref: string;
@@ -122,23 +147,23 @@ export function paymentPlanLeadTime(createdAt: string | Date, plannedDate: strin
 export function calculateCashPreparation(plans: CashPreparationPlan[], usdtBalance: number | null, todayKey: string) {
   let remainingUsdt = usdtBalance;
   const eligible = plans.filter((plan) => !plan.issued && plan.plannedDate.slice(0, 10) >= todayKey).sort((a, b) => a.plannedDate.localeCompare(b.plannedDate));
+  // Explicit wallet choices have priority over legacy, unspecified sources.
+  const walletReserve=plans.filter(p=>!p.issued&&p.paymentMethod==='USDT'&&p.fundingSource==='WALLET').reduce((sum,p)=>sum+Number(p.foreignAmount||0),0);
+  if(remainingUsdt!=null)remainingUsdt=Math.max(0,remainingUsdt-walletReserve);
   const rows = eligible.map((plan) => {
-    if (plan.paymentMethod === 'CASH') return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount };
+    if (plan.paymentMethod === 'CASH' || plan.paymentMethod === 'CNY') return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount };
     if (plan.paymentMethod !== 'USDT') return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: 0 };
+    if(plan.fundingSource==='WALLET')return {planId:plan.id,plannedDate:plan.plannedDate,cashRequired:0};
+    if(plan.fundingSource==='CASH_EXCHANGE')return {planId:plan.id,plannedDate:plan.plannedDate,cashRequired:plan.plannedAmount,estimated:true};
     if (!Number(plan.foreignAmount || 0)) return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount, estimated: true };
     if (remainingUsdt == null) return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount, estimated: true };
     const requiredUsdt = Number(plan.foreignAmount || 0);
-    const coveredUsdt = Math.min(remainingUsdt, requiredUsdt);
-    const deficitUsdt = Math.max(0, requiredUsdt - coveredUsdt);
-    remainingUsdt = Math.max(0, remainingUsdt - requiredUsdt);
-    if (deficitUsdt <= 0) return { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: 0 };
-    const rate = Number(plan.exchangeRate || 0);
-    return rate > 0
-      ? { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: deficitUsdt * rate + Number(plan.commissionAmount || 0) }
-      : { planId: plan.id, plannedDate: plan.plannedDate, cashRequired: plan.plannedAmount, estimated: true };
+    if(remainingUsdt>=requiredUsdt){remainingUsdt-=requiredUsdt;return {planId:plan.id,plannedDate:plan.plannedDate,cashRequired:0};}
+    // No partial wallet + exchange and no hidden commission.
+    return {planId:plan.id,plannedDate:plan.plannedDate,cashRequired:plan.plannedAmount,estimated:true};
   }).filter((row) => row.cashRequired > 0.009);
-  const plannedUsdt = eligible.filter((plan) => plan.paymentMethod === 'USDT').reduce((sum, plan) => sum + Number(plan.foreignAmount || 0), 0);
-  const unknownUsdtCount = eligible.filter((plan) => plan.paymentMethod === 'USDT' && !Number(plan.foreignAmount || 0)).length;
+  const plannedUsdt = plans.filter((plan) => !plan.issued && plan.paymentMethod === 'USDT' && plan.fundingSource!=='CASH_EXCHANGE').reduce((sum, plan) => sum + Number(plan.foreignAmount || 0), 0);
+  const unknownUsdtCount = plans.filter((plan) => !plan.issued && plan.paymentMethod === 'USDT' && plan.fundingSource!=='CASH_EXCHANGE' && !Number(plan.foreignAmount || 0)).length;
   return { rows, plannedUsdt, unknownUsdtCount, usdtDeficit: usdtBalance == null || unknownUsdtCount > 0 ? null : Math.max(0, plannedUsdt - usdtBalance) };
 }
 

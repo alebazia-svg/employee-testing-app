@@ -110,9 +110,9 @@ test('existing USDT balance postpones safe visit to the next cash payment', () =
   assert.equal(result.usdtDeficit, 0);
 });
 
-test('USDT deficit is converted to rubles with planned commission', () => {
+test('insufficient wallet requires whole planned exchange, without adding commission', () => {
   const result = calculateCashPreparation([{ id: 'usdt', plannedDate: '2026-09-10', plannedAmount: 400000, paymentMethod: 'USDT', foreignAmount: 4800, exchangeRate: 83, commissionAmount: 2500 }], 3000, '2026-09-09');
-  assert.equal(result.rows[0].cashRequired, 151900);
+  assert.equal(result.rows[0].cashRequired, 400000);
   assert.equal(result.usdtDeficit, 1800);
 });
 

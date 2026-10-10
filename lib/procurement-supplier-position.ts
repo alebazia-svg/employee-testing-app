@@ -14,6 +14,12 @@ export function buyerOrderPurpose(order: Parameters<typeof isBuyerPaymentHistory
   return position === 'review' ? 'review' : position === 'no-debt' ? 'history' : 'order';
 }
 
+/** A supplier credit does not mean that this acquisition has been settled. */
+export function buyerAdvanceOffsetPending(order: {receiptSettlement?: {debtRub: number}}, balance?: SupplierBalance) {
+  return supplierPosition(balance) === 'no-debt' && Number(balance?.advance) > 0.009
+    && Number(order.receiptSettlement?.debtRub) > 0.009;
+}
+
 export function supplierPositionSummary(balances: Record<string, SupplierBalance>) {
   const entries = Object.entries(balances);
   return {

@@ -4,7 +4,7 @@ import {PrismaClient} from '@prisma/client';
 import {build} from 'esbuild';
 import {validatePaymentPlan} from '../lib/procurement-payment-control';
 test('approved revisions preserve active terms until decision and recheck payments on approval',async()=>{
-  assert.equal(process.env.DATABASE_URL,'postgresql://postgres:local-test-only@127.0.0.1:55437/payment_test');
+  assert.ok(['postgresql://postgres:local-test-only@127.0.0.1:55437/payment_test','postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test'].includes(process.env.DATABASE_URL||''));
   const db=new PrismaClient(); const g=globalThis as any;g.revisionDb=db;
   g.revisionSource={complete:true,payments:[],conversions:[]};g.revisionRequests={complete:true,rows:[]};g.revisionNotifications=[];
   const marker=`revision-${Date.now()}`;
@@ -13,6 +13,7 @@ test('approved revisions preserve active terms until decision and recheck paymen
   const plan=await db.supplierPaymentPlan.create({data:{...data,plannedAmount:700000,plannedDate:new Date('2026-09-19'),planCode:marker,managerUserId:user.id,status:'APPROVED',createdAt:new Date('2026-09-15')}});
   try{
     const mocks:Record<string,string>={prisma:'export const prisma=globalThis.revisionDb;', 'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>globalThis.revisionSource;', 'expense-request-source':'export const expenseRequestMoscowDayEnd=()=>new Date("2026-10-01T00:00:00+03:00");export const fetchExpenseRequestSnapshot=async()=>globalThis.revisionRequests;', 'procurement-payment-notifications':'export const notifyAdminsAboutProcurementPlans=async(x)=>globalThis.revisionNotifications.push(x.action);export const notifyProcurementManagerAboutDecision=async(x)=>globalThis.revisionNotifications.push(x.decision);'};
+    mocks['expense-request-source']+='export const expenseRequestMoscowCalendarDate=()=>"2026-10-11";';
     const bundle=await build({entryPoints:['lib/procurement-plan-revision-server.ts'],bundle:true,write:false,format:'esm',platform:'node',conditions:['react-server'],plugins:[{name:'revision-test',setup(b){b.onResolve({filter:/^\.\//},a=>mocks[a.path.slice(2)]?{path:a.path.slice(2),namespace:'mock'}:null);b.onLoad({filter:/.*/,namespace:'mock'},a=>({contents:mocks[a.path],loader:'js'}));}}]});
     const api=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
     const current=()=>db.supplierPaymentPlan.findUniqueOrThrow({where:{id:plan.id}});

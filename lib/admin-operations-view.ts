@@ -13,6 +13,9 @@ export type AdminInboxSourceState = {
 };
 
 const eventMeta: Record<string, AdminInboxEventMeta> = {
+  'procurement.receipt_added': {
+    category: 'messages', typeLabel: 'Чек оплаты', actionLabel: 'Открыть чеки',
+  },
   'procurement.delivery_requested': {
     category: 'requests', typeLabel: 'Пополнение подотчёта', actionLabel: 'Открыть подотчёт',
   },

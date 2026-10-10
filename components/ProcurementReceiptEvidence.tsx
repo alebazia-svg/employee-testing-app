@@ -9,13 +9,15 @@ export function ProcurementReceiptEvidence({ evidence, paymentClosure, noAcquisi
   noAcquisitions?: { checkedAt: string };
   inline?: boolean;
 }) {
-  if (!evidence) return noAcquisitions ? <p className="mt-2 text-xs text-slate-500">Приобретений пока нет · предоплата</p> : null;
-  const documents = evidence ? <div className="mt-2 space-y-3">
-      {evidence.receipts.map(receipt => {
+  const receipts = evidence?.receipts.length ? evidence.receipts : paymentClosure?.receipts;
+  const checkedAt = evidence?.receipts.length ? evidence.checkedAt : paymentClosure?.checkedAt;
+  if (!receipts?.length) return noAcquisitions ? <p className="mt-2 text-xs text-slate-500">Приобретений пока нет · предоплата</p> : null;
+  const documents = <div className="mt-2 space-y-3">
+      {receipts.map(receipt => {
         // Never turn amount minus balance into an invented cash payment.
         // Show payment documents only when linked by the existing strict proof.
-        const proof = paymentClosure?.receipts.find(r => r.ref === receipt.ref);
-        return <div key={receipt.ref} className="border-l-2 border-slate-200 pl-3">
+        const proof = 'payments' in receipt ? receipt : receipt.ref ? paymentClosure?.receipts.find(r => r.ref === receipt.ref) : undefined;
+        return <div key={receipt.ref || receipt.number} className="border-l-2 border-slate-200 pl-3">
           <p className="font-semibold">Приобретение №{receipt.number} · {money(receipt.amountRub)}</p>
           <p>Остаток: {money(receipt.remainingRub)}</p>
           {proof?.payments.length ? <p className="mt-2 font-medium">Связанные РКО</p> : null}
@@ -25,8 +27,8 @@ export function ProcurementReceiptEvidence({ evidence, paymentClosure, noAcquisi
           </p>)}
         </div>;
       })}
-      <p>1С · {new Date(evidence.checkedAt).toLocaleString('ru-RU', {timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})}</p>
-    </div> : null;
+      {checkedAt?<p>1С · {new Date(checkedAt).toLocaleString('ru-RU', {timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})}{paymentClosure?.recheckPending?' · обновление ожидается':''}</p>:null}
+    </div>;
   return <div className="mt-2 text-xs font-normal text-slate-600">
     {documents ? inline ? documents : <details className="mt-1">
       <summary className="cursor-pointer underline">Приобретения по 1С</summary>

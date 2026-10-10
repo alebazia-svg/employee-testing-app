@@ -65,6 +65,7 @@ model User {
   procurementPaymentPlans          SupplierPaymentPlan[]             @relation("SupplierPaymentPlanManager")
   approvedProcurementPaymentPlans  SupplierPaymentPlan[]             @relation("SupplierPaymentPlanApprovedBy")
   procurementPaymentEvents         SupplierPaymentPlanEvent[]
+  procurementReceipts              SupplierPaymentReceipt[]
 }
 
 model SupplierPaymentPlan {
@@ -79,6 +80,8 @@ model SupplierPaymentPlan {
   plannedAmount            Decimal                    @db.Decimal(18, 2)
   condition                String
   paymentMethod            String
+  paymentPurpose           String                     @default("GOODS")
+  fundingSource            String?
   currency                 String                     @default("RUB")
   foreignAmount            Decimal?                   @db.Decimal(18, 4)
   exchangeRate             Decimal?                   @db.Decimal(18, 6)
@@ -97,6 +100,7 @@ model SupplierPaymentPlan {
   manager                  User                       @relation("SupplierPaymentPlanManager", fields: [managerUserId], references: [id], onDelete: Restrict)
   approvedBy               User?                      @relation("SupplierPaymentPlanApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   events                   SupplierPaymentPlanEvent[]
+  receipts                 SupplierPaymentReceipt[]
 
   @@index([managerUserId, plannedDate])
   @@index([status, plannedDate])
@@ -115,6 +119,23 @@ model SupplierPaymentPlanEvent {
 
   @@index([planId, createdAt])
   @@index([actorUserId, createdAt])
+}
+
+model SupplierPaymentReceipt {
+  id           String              @id @default(cuid())
+  planId       String
+  authorUserId Int
+  originalName String
+  storageKey   String              @unique
+  mimeType     String
+  size         Int
+  sha256       String
+  createdAt    DateTime            @default(now())
+  plan         SupplierPaymentPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  author       User                @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, sha256])
+  @@index([planId, createdAt])
 }
 
 model ExpenseRequestSyncRun {

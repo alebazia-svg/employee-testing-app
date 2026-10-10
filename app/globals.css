@@ -2919,6 +2919,46 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
 }
 
 /* Procurement actions follow the current flat portal style, not legacy material buttons. */
+.portal-neutral-design .procurement-single-payment section,
+.portal-neutral-design .procurement-single-payment .procurement-choice {
+  box-shadow: none !important;
+  background-image: none !important;
+}
+.portal-neutral-design .procurement-single-payment section[aria-label="Выбранная оплата"] {
+  background: #faf8f5 !important;
+  border: 1px solid var(--portal-border) !important;
+}
+.portal-neutral-design .procurement-single-payment .procurement-choice {
+  border-radius: 0 !important;
+  background: white !important;
+}
+.portal-neutral-design .procurement-single-payment .procurement-choice:hover {
+  background: #faf5ef !important;
+}
+.portal-neutral-design .procurement-payment-dialog button {
+  box-shadow: none !important;
+  background-image: none !important;
+  transform: none !important;
+}
+.portal-neutral-design .procurement-payment-dialog button.admin-material-primary {
+  background: var(--portal-text, #202626) !important;
+  border: 1px solid var(--portal-text, #202626);
+}
+.procurement-payment-dialog button:focus-visible {
+  outline: 2px solid var(--portal-brand-accent, #9a6d46);
+  outline-offset: 3px;
+}
+.portal-neutral-design .procurement-payment-dialog .procurement-form-tab {
+  background: transparent !important;
+  border-radius: 0 !important;
+  border-top: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+.portal-neutral-design .procurement-payment-dialog .procurement-form-tab[aria-pressed="true"] {
+  border-bottom: 2px solid #9a6d46 !important;
+  color: #785537 !important;
+}
 .portal-neutral-design:is(.procurement-shell, .admin-shell) .procurement-calendar button,
 .procurement-calendar button {
   box-shadow: none !important;

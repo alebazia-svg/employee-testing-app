@@ -5,6 +5,8 @@ import { ProcurementAdminComment } from "@/components/ProcurementAdminComment";
 import type { ReactNode } from "react";
 import "./procurement-workspace.css";
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
+import { ProcurementReceipts } from '@/components/ProcurementReceipts';
+import { useProcurementVisualPreview } from '@/components/ProcurementVisualPreview';
 import { ProcurementCompletionAction } from '@/components/ProcurementCompletionAction';
 import { isFinishedPaymentState } from '@/lib/procurement-small-remainder';
 import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
@@ -29,6 +31,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { calculateCashPreparation, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
+import {fundingSourceLabel} from '@/lib/procurement-usdt-funding';
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
 import type { ProcurementForecastHistoryView } from "@/lib/procurement-forecast-history";
 import type { ProcurementDebtAllocation } from "@/lib/procurement-debt-allocation";
@@ -46,12 +49,14 @@ type Plan = {
   supplierCounterparty: string;
   orderRefs: string[];
   orderNumbers: string[];
+  paymentPurpose?: string;
   plannedDate: string;
   plannedAmount: string;
   condition: string;
   paymentMethod: string;
   currency: string;
   foreignAmount: string | null;
+  fundingSource?: string|null;
   exchangeRate: string | null;
   commissionAmount: string | null;
   exchangerName: string;
@@ -208,6 +213,7 @@ export default function AdminProcurementClient({
   };
 }) {
   const router = useRouter();
+  const visualPreview = useProcurementVisualPreview();
   const fundingByPlanId = new Map(requestFundingAssessments.map((assessment) => [assessment.planId, assessment]));
   const [plans, setPlans] = useState(initialPlans);
   const [tab, setTab] = useState<"pending" | "approved" | "plan" | "history">(() => revisionCount || initialPlans.some(p => p.status === "SUBMITTED" && p.evidence.state !== "PAID_BY_ONE_C") ? "pending" : "approved");
@@ -283,6 +289,7 @@ export default function AdminProcurementClient({
         plannedDate: plan.plannedDate,
         plannedAmount: remainingRub,
         paymentMethod: plan.paymentMethod,
+        fundingSource: plan.fundingSource,
         foreignAmount: plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" && plan.evidence.remainingForeignAmount != null
           ? fullForeignAmount
           : fullForeignAmount * remainingRatio,
@@ -299,7 +306,7 @@ export default function AdminProcurementClient({
   const nextAmount = nextPlans.reduce((sum, row) => sum + row.cashRequired, 0);
   const nextAmountEstimated = nextPlans.some((row) => row.estimated || referenceRatePlanIds.has(row.planId));
   const nextPlanMethods = nextPlans.map((row) => active.find((plan) => plan.id === row.planId)?.paymentMethod).filter(Boolean);
-  const nextPreparationLabel = nextPlanMethods.every((method) => method === "CASH") ? "Наличные из сейфа" : nextPlanMethods.every((method) => method === "USDT") ? "Ориентир на пополнение USDT" : "Наличные и пополнение USDT";
+  const nextPreparationLabel = nextPlanMethods.every((method) => method === "CASH") ? "Наличные из сейфа" : nextPlanMethods.every((method) => method === "CNY") ? "Наличные на обмен в юани" : nextPlanMethods.every((method) => method === "USDT") ? "Ориентир на пополнение USDT" : "Подготовка наличных";
   const plannedUsdt = preparation.plannedUsdt;
   const unknownUsdtCount = preparation.unknownUsdtCount;
   const estimatedUsdtCount = estimatedUsdtPlanIds.size;
@@ -323,16 +330,16 @@ export default function AdminProcurementClient({
           ? "Завтра"
           : date(key);
   const methodLabel = (plan: Plan) =>
-    plan.paymentMethod === "USDT"
+    visualPreview?.methods?.[plan.id] ?? (plan.paymentMethod === "CNY" ? "Перевод в юанях" : plan.paymentMethod === "USDT"
       ? "Оплата в USDT"
       : plan.paymentMethod === "CASH"
         ? "Наличные"
         : plan.paymentMethod === "ACCOUNTABLE_QR"
           ? "Оплата по QR"
-          : "Перевод поставщику";
+          : "Перевод поставщику");
   const amountLabel = (plan: Plan) =>
-    plan.paymentMethod === "USDT" && Number(plan.foreignAmount || 0) > 0
-      ? `${Number(plan.foreignAmount).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`
+    ["USDT","CNY"].includes(plan.paymentMethod) && Number(plan.foreignAmount || 0) > 0
+      ? `${Number(plan.foreignAmount).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} ${plan.paymentMethod}`
       : rub.format(Number(plan.plannedAmount));
   const estimatedUsdtForPlan = (plan: Plan) =>
     estimatedUsdtPlanIds.has(plan.id) ? Number(plan.plannedAmount) / referenceUsdtRate : 0;
@@ -342,9 +349,9 @@ export default function AdminProcurementClient({
     return `Примерно ${amount.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT · последний курс ${referenceUsdtRate.toLocaleString("ru-RU")} ₽${rateDateLabel ? ` от ${rateDateLabel}` : ""} в 1С`;
   };
   const orderLabel = (plan: Plan) =>
-    plan.orderNumbers?.filter(Boolean).length
+    visualPreview?.labels?.[plan.id] ?? (plan.paymentPurpose==='DELIVERY'?'Доставка':plan.orderNumbers?.filter(Boolean).length
       ? `Заказы: ${plan.orderNumbers.filter(Boolean).join(", ")}`
-      : "В счёт долга поставщику";
+      : "В счёт долга поставщику");
   const planComment = (plan: Plan) =>
     plan.condition && plan.condition !== "Оплата по выбранным заказам"
       ? plan.condition
@@ -430,6 +437,12 @@ export default function AdminProcurementClient({
   }
 
   async function act(id: string, action: "APPROVE" | "RETURN" | "CANCEL") {
+    if (visualPreview) {
+      visualPreview.decide?.(id, action, returnReason);
+      setActionMessage('Учебный пример: рабочие заявки не изменяются.');
+      setReturningId('');
+      return;
+    }
     if (action === "CANCEL" && !window.confirm("Отменить эту оплату? Она исчезнет из рабочего календаря.")) return;
     if (action === "RETURN" && returnReason.trim().length < 3) {
       setActionMessage("Коротко укажите, что Астемиру нужно исправить.");
@@ -472,6 +485,8 @@ export default function AdminProcurementClient({
       <nav aria-label="Разделы закупок" className="procurement-section-nav">
         {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);setReturningId("");setReturnReason("");}} className={tab===item.id?"is-active":""}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
       </nav>
+      {visualPreview?.toolbar}
+      {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={completedPlans} allPlans={plans}/> : null}
       {actionMessage?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionMessage}</p>:null}
       {sourceWarnings.length ? (
         <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
@@ -939,7 +954,7 @@ export default function AdminProcurementClient({
                   <p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">{orderLabel(plan)}</p>
                 </div>
                 <div><p className="text-xs font-bold text-slate-400">Подготовить к</p><p className="mt-0.5 font-extrabold text-slate-800">{date(plan.plannedDate)}</p></div>
-                <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" ? <p className="text-xs font-semibold text-violet-700">{Number(plan.foreignAmount || 0) > 0 ? `Ориентир: ${rub.format(Number(plan.plannedAmount))}` : usdtEstimateNote(plan)}</p> : null}</div>
+                <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !visualPreview?.hideRubleEstimate ? <p className="text-xs font-semibold text-violet-700">{Number(plan.foreignAmount || 0) > 0 ? `Ориентир: ${rub.format(Number(plan.plannedAmount))}` : usdtEstimateNote(plan)}</p> : null}</div>
                 <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
               </div>
               <p className={`mt-2 text-xs font-black ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "ADVANCE" ? "text-green-700" : "text-red-700"}`}>
@@ -948,7 +963,9 @@ export default function AdminProcurementClient({
               {funding ? <div className={`mt-3 rounded-xl border px-3.5 py-3 ${funding.state === "covered" ? "border-green-200 bg-green-50/70" : funding.state === "gap" ? "border-red-200 bg-red-50/70" : funding.state === "prepare" ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50"}`}><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Если согласовать</p><p className={`mt-0.5 text-sm font-black ${funding.state === "covered" ? "text-green-900" : funding.state === "gap" ? "text-red-900" : funding.state === "prepare" ? "text-amber-950" : "text-slate-800"}`}>{funding.title}</p></div><p className="max-w-xl text-xs font-semibold leading-relaxed text-slate-600 sm:text-right">{funding.detail}</p></div>{funding.steps.length ? <div className="mt-2 flex flex-wrap gap-1.5 border-t border-black/5 pt-2">{funding.steps.map((step) => <span key={step.source} className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-black/5">{step.source === "vtb" ? "ВТБ" : step.source === "tbank_card" ? "Карта Т‑Банка" : step.source === "tbank_account" ? "Счёт → карта Т‑Банка" : "Сейф"}: {rub.format(step.amountMinor / 100)}</span>)}</div> : null}</div> : null}
               <ProcurementAdminComment value={planComment(plan)} />
               {plan.supplierConfirmation ? <p className="mt-2 whitespace-pre-wrap break-words text-sm">{plan.supplierConfirmation}</p> : null}
-              {plan.exchangeRate ? <p className="mt-2 text-xs text-slate-500">Курс: {plan.exchangeRate} ₽</p> : null}
+              {plan.paymentMethod==='USDT'&&plan.fundingSource?<p className="mt-2 text-sm font-semibold">{fundingSourceLabel(plan.fundingSource)}</p>:null}
+              {plan.exchangeRate ? <p className="mt-2 text-xs text-slate-500">Плановый курс: {Number(plan.exchangeRate).toLocaleString('ru-RU')} ₽ / {plan.paymentMethod==='CNY'?'CNY':'USDT'}</p> : null}
+              {plan.paymentMethod==='CNY'?<p className="mt-2 text-sm font-semibold text-[#785537]">Подготовить наличными: ≈ {rub.format(Number(plan.plannedAmount))}</p>:null}
               {plan.orderContext?.length ? (
                 <details className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
                   <summary className="cursor-pointer font-bold text-slate-600">
@@ -965,6 +982,8 @@ export default function AdminProcurementClient({
                 </details>
               ) : null}
               <div className="procurement-decision-actions mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+                {visualPreview?.detail ? <div className="w-full">{visualPreview.detail(plan.id)}</div> : null}
+                {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={[plan]} single/> : null}
                 <button disabled={!!busy} onClick={() => act(plan.id, "APPROVE")} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-[#1d304e] disabled:opacity-50"><Check className="h-4 w-4" />Согласовать</button>
                 <button disabled={!!busy} onClick={() => { setReturningId(plan.id); setReturnReason(""); setActionMessage(""); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-50 px-3 text-sm font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"><Undo2 className="h-4 w-4" />Исправить</button>
                 <button disabled={!!busy} onClick={() => act(plan.id, "CANCEL")} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50" aria-label={`Отменить оплату ${plan.supplierPartner}`}><X className="h-4 w-4" />Отменить</button>
@@ -1011,6 +1030,8 @@ export default function AdminProcurementClient({
                     <ProcurementCollectionNotice collection={plan.evidence.collection} today={todayKey} />
                     <div className="procurement-comment-section"><ProcurementAdminComment value={planComment(plan)} /></div>
                     <div className="sm:col-span-4"><ProcurementChangeHistory events={plan.events} /></div>
+                    {visualPreview?.detail ? <div className="sm:col-span-4">{visualPreview.detail(plan.id)}</div> : null}
+                    {!visualPreview || visualPreview.persistedReceipts ? <div className="sm:col-span-4"><ProcurementReceipts plans={[plan]} single/></div> : null}
                   </article></>);
         }}/>
         {paymentLinks}

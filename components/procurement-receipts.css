@@ -1,0 +1,20 @@
+.procurement-receipt-button {display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:40px;padding:9px 13px;border:1px solid #d9dce0;border-radius:8px;background:#fff;color:#41464d;font-size:13px;font-weight:600;box-shadow:none!important;background-image:none!important;}
+.procurement-receipt-button:disabled {opacity:.6;cursor:wait;}
+.procurement-receipt-button:focus-visible {outline:2px solid #9b6335;outline-offset:3px;}
+.procurement-receipts-dialog {width:min(680px,calc(100vw - 24px));max-height:90dvh;border:1px solid #dedbd6;border-radius:16px;padding:0;background:#fff;color:#25282b;}
+.procurement-receipts-dialog::backdrop {background:rgb(15 23 42 / .4);}
+.procurement-receipts-dialog header {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid #e5e4e0;}
+.procurement-receipts-dialog h2 {font-size:18px;font-weight:700;}
+.procurement-receipts-body {padding:20px;font-size:14px;}
+.procurement-receipts-list {list-style:none;padding:0;margin:0;}
+.procurement-receipts-list>li {display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:16px;padding:20px 0;border-bottom:1px solid #e5e4e0;}
+.procurement-receipts-list h3 {font-size:14px;font-weight:700;overflow-wrap:anywhere;}
+.procurement-receipts-list p {margin-top:5px;font-size:11px;color:#687079;}
+.procurement-receipts-list strong {white-space:nowrap;font-variant-numeric:tabular-nums;}
+.procurement-receipts-dialog .procurement-receipt-add {background:#faf1e7!important;border-color:#d8b99a!important;color:#754725!important;white-space:nowrap;}
+.procurement-receipts-dialog .procurement-receipt-add:hover {background:#f3e4d3!important;}
+.procurement-receipts-files {grid-column:1/-1;list-style:none;padding:0;font-size:12px;}
+.procurement-receipts-files li {margin-top:8px;overflow-wrap:anywhere;}
+.procurement-receipts-files a {color:#754725;text-decoration:underline;}
+.procurement-receipts-files span {display:block;color:#687079;margin-top:3px;}
+@media(max-width:560px){.procurement-receipts-list>li{grid-template-columns:minmax(0,1fr) auto;gap:12px;}.procurement-receipts-list>li>div:first-child{grid-column:1/-1;}}

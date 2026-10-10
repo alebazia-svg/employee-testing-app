@@ -10,6 +10,7 @@ import { procurementCollections, type ProcurementCollection } from './procuremen
 import { SMALL_REMAINDER_COMPLETED, smallRubleRemainder } from './procurement-small-remainder';
 
 export type EvidencePlan = {
+  paymentPurpose?: string;
   id: string;
   planCode: string;
   supplierPartner: string;
@@ -82,6 +83,7 @@ export function matchProcurementPaymentEvidence(
     const cash = matchCashEvidence(plan, plan.orderRefs.length ? requests : requests.filter(request =>
       `${request.comment || ''} ${request.payment_purpose || ''}`.toUpperCase().includes(plan.planCode.toUpperCase())));
     const cashOrders = cash.cashOrders.filter(row => {
+      if(plan.paymentPurpose==='DELIVERY'&&!uniquePayments.some(p=>p.ref.toLowerCase()===row.ref.toLowerCase()&&p.posted&&!p.deleted&&samePaymentSupplier(plan,p)))return false;
       // A portal plan code identifies the request, but cannot manufacture a
       // missing native contract/order basis for a supplier-debt payment.
       if (plan.paymentMethod !== 'USDT' && !plan.orderRefs.length && !uniquePayments.some(payment => payment.ref.toLowerCase() === row.ref.toLowerCase() &&
@@ -101,7 +103,7 @@ export function matchProcurementPaymentEvidence(
       paidAmount: 0,
       paidForeignAmount: 0,
       remainingAmount: Math.max(0, plan.plannedAmount),
-      remainingForeignAmount: plan.foreignAmount ? Math.max(0, plan.foreignAmount) : null,
+      remainingForeignAmount: plan.paymentMethod === 'USDT' && plan.foreignAmount ? Math.max(0, plan.foreignAmount) : null,
       actualExchangeRate: null,
       currencyPayments: [],
     });
@@ -139,6 +141,12 @@ export function matchProcurementPaymentEvidence(
       for(const owner of settlementOwners){const current=evidence.get(owner.id)!;evidence.set(owner.id,{...current,state:'NEEDS_REVIEW'});}
     }
     let lastAllocation: ProcurementPaymentEvidence['currencyPayments'][number] | undefined;
+    const cargoOwners=!orderRef&&!manualOwners.length?eligiblePlans.filter(candidate=>{
+      const prior=allocations.get(candidate.id)!;
+      return candidate.status==='APPROVED'&&Date.parse(candidate.createdAt||'')<=paymentAt&&samePaymentSupplier(candidate,payment)&&
+        (Number(candidate.foreignAmount)>0?prior.foreign<Number(candidate.foreignAmount):prior.rubles<candidate.plannedAmount);
+    }):[];
+    const cargoOwner=cargoOwners.length===1&&cargoOwners[0].paymentPurpose==='DELIVERY'?cargoOwners[0]:undefined;
     for (const plan of eligiblePlans) {
       if(completedOwners.length && (completedOwners.length !== 1 || completedOwners[0].id !== plan.id))continue;
       if(plan.status===COMPLETED_WITHOUT_TOPUP&&!plan.completedPaymentRefs?.includes(payment.ref))continue;
@@ -146,8 +154,8 @@ export function matchProcurementPaymentEvidence(
       if (manualOwners.length) {
         if (manualOwners.length !== 1 || manualOwners[0].id !== plan.id || !['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') ||
             !plan.manualRubleLinks?.some((link) => link.fingerprint === paymentFingerprint(payment)) || !samePaymentSupplier(plan, payment)) continue;
-      } else if (!orderRef || !plan.orderRefs.some((ref) => ref.trim().toLowerCase() === orderRef) ||
-        (!payment.baseDocumentRef && (settlementOwners.length!==1||settlementOwners[0].id!==plan.id))) continue;
+      } else if (cargoOwner?.id!==plan.id&&(!orderRef || !plan.orderRefs.some((ref) => ref.trim().toLowerCase() === orderRef) ||
+        (!payment.baseDocumentRef && (settlementOwners.length!==1||settlementOwners[0].id!==plan.id)))) continue;
       const createdAt = plan.createdAt ? new Date(plan.createdAt).getTime() : Number.NaN;
       if (Number.isFinite(createdAt) && Number.isFinite(paymentAt) && createdAt > paymentAt) continue;
       const allocation = allocations.get(plan.id)!;
@@ -208,7 +216,7 @@ export function matchProcurementPaymentEvidence(
       paidAmount: allocation.rubles,
       paidForeignAmount: allocation.foreign,
       remainingAmount: estimateCovered ? 0 : Math.max(0, plan.plannedAmount - allocation.rubles),
-      remainingForeignAmount: targetForeign > 0 ? Math.max(0, targetForeign - allocation.foreign) : null,
+      remainingForeignAmount: plan.paymentMethod === 'USDT' && targetForeign > 0 ? Math.max(0, targetForeign - allocation.foreign) : null,
       actualExchangeRate: allocation.rateForeign > 0 ? allocation.rateRubles / allocation.rateForeign : null,
       currencyPayments: allocation.payments,
       manualPaymentCount: allocation.payments.filter((row) => plan.manualRubleLinks?.some((link) => link.ref === row.ref)).length,

@@ -21,6 +21,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED: "1"
     container_name: portal-app
     restart: unless-stopped
     depends_on:

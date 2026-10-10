@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import {readFundingBalance,assertFundingBalance} from './procurement-usdt-funding-server';
 import { paymentCompletion } from './procurement-payment-completion';
 import { preservePaymentReview } from './procurement-buyer-comment';
 import { prisma } from './prisma';
@@ -29,8 +30,10 @@ export async function proposeApprovedRevision(id: string, user: {id: number; nam
   if (reason.trim().length < 3) throw new Error('Укажите причину изменения (не менее 3 символов).');
   if (!data.plannedAmount) throw new Error('Укажите общую сумму заявки в рублях.');
   const evidence = await freshEvidence();
+  const fundingBalance=await readFundingBalance([data]);
   return prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
+    await assertFundingBalance(tx,[data],fundingBalance,evidence,id);
     const before = await tx.supplierPaymentPlan.findFirst({ where: {id, managerUserId: user.id, status: 'APPROVED'} });
     if (!before || before.updatedAt.toISOString() !== version) throw new Error('Заявка изменилась. Обновите страницу и повторите.');
     if(evidence.versions.get(id)!==before.updatedAt.toISOString()) throw new Error('Данные оплаты изменились. Обновите страницу.');
@@ -70,6 +73,9 @@ export async function decideApprovedRevision(id: string, actorId: number, revisi
     }
   }
   const evidence = approve ? await freshEvidence() : null;
+  const candidate=approve?await prisma.supplierPaymentPlan.findUniqueOrThrow({where:{id}}):null;
+  const fundingRequest=candidate?readPaymentRevision(candidate.oneCCashEvidence)?.data:null;
+  const fundingBalance=fundingRequest?await readFundingBalance([fundingRequest]):null;
   return prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
     const before = await tx.supplierPaymentPlan.findUniqueOrThrow({where:{id}});
@@ -78,6 +84,7 @@ export async function decideApprovedRevision(id: string, actorId: number, revisi
     if (verifiedBasis && verifiedVersion !== before.updatedAt.toISOString()) throw new Error('Заявка изменилась. Обновите страницу.');
     if(approve && evidence?.versions.get(id)!==before.updatedAt.toISOString()) throw new Error('Данные оплаты изменились. Обновите страницу.');
     const change = verifiedBasis || revision.data;
+    if(approve&&evidence)await assertFundingBalance(tx,[change],fundingBalance,evidence,id);
     if (approve) {
       const paid = evidence?.get(id); if (!paid) throw new Error('Не удалось проверить оплату заявки.');
       assertRevisionPaymentSafety(before, change, paid);

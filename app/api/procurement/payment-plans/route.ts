@@ -1,9 +1,11 @@
 import { Prisma } from '@prisma/client';
+import {readFundingBalance,assertFundingBalance} from '@/lib/procurement-usdt-funding-server';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { buildPaymentPlanCode, validatePaymentPlan } from '@/lib/procurement-payment-control';
 import { notifyAdminsAboutProcurementPlans } from '@/lib/procurement-payment-notifications';
 import { getLatestProcurementUsdtRate } from '@/lib/procurement-usdt-rate';
+import { plannedFxRubles } from '@/lib/procurement-planned-fx';
 import { expenseRequestMoscowCalendarDate } from '@/lib/expense-request-source';
 import { ordersForManager } from '@/lib/procurement-payment-source';
 import { fetchRequestOrderCatalogue as fetchSupplierOrderFinance } from '@/lib/procurement-request-catalogue';
@@ -13,6 +15,7 @@ import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
 import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from '@/lib/procurement-supplier-settlements';
 import { buyerOrderPurpose } from '@/lib/procurement-supplier-position';
+import {createCargoPayment} from '@/lib/procurement-cargo-create';
 
 function jsonPlan(plan: unknown) { return JSON.parse(JSON.stringify(plan, (_, value) => typeof value === 'bigint' ? String(value) : value)); }
 
@@ -28,13 +31,17 @@ export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Необходим вход' }, { status: 401 });
   if (user.role !== 'EMPLOYEE' || user.portalArea !== 'PROCUREMENT') return Response.json({ error: 'Нет доступа' }, { status: 403 });
-  const checked = validatePaymentPlan(await req.json());
+  const payload=await req.json().catch(()=>null);
+  if(!payload||typeof payload!=='object'||Array.isArray(payload))return Response.json({error:'Проверьте данные заявки.'},{status:400});
+  if(payload.paymentPurpose==='DELIVERY')return createCargoPayment(payload,user);
+  const checked = validatePaymentPlan(payload);
   if (!checked.ok) return Response.json({ error: checked.errors.join(' ') }, { status: 400 });
   let plannedAmount = checked.data.plannedAmount;
   if (!plannedAmount && checked.data.paymentMethod === 'USDT' && checked.data.foreignAmount) {
     const rate = await getLatestProcurementUsdtRate(expenseRequestMoscowCalendarDate(new Date()));
     if (!rate.rate) return Response.json({ error: 'Курс пока недоступен. Укажите примерную сумму в рублях.' }, { status: 400 });
-    plannedAmount = checked.data.foreignAmount * rate.rate;
+    plannedAmount = plannedFxRubles(checked.data.foreignAmount, rate.rate);
+    checked.data.exchangeRate = rate.rate;
   }
   if (!plannedAmount) return Response.json({ error: 'Укажите сумму оплаты.' }, { status: 400 });
   const managerName = user.oneCManagerName?.trim() || user.name;
@@ -54,8 +61,12 @@ export async function POST(req: Request) {
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
   const evidence = await freshEvidence().catch(() => null);
   if (!evidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Заявка не отправлена; повторите позже.' }, { status: 503 });
+  let fundingBalance:number|null=null;
+  try{fundingBalance=await readFundingBalance([checked.data]);}catch{return Response.json({error:'Остаток кассы USDT пока не подтверждён. Выберите наличные для обмена или повторите позже.'},{status:409});}
+  let fundingError='';
   const plan = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
+    await assertFundingBalance(tx,[checked.data],fundingBalance,evidence);
     const existing = await tx.supplierPaymentPlan.findMany({ where: { status: { in: ['SUBMITTED', 'APPROVED', 'NEEDS_CHANGES'] } } });
     if (planningRequestOverlap([checked.data], existing, evidence)) return null;
     const created = await tx.supplierPaymentPlan.create({ data: {
@@ -63,6 +74,7 @@ export async function POST(req: Request) {
       supplierCounterparty: checked.data.supplierCounterparty, orderRefs: checked.data.orderRefs, orderNumbers: checked.data.orderNumbers,
       plannedDate: new Date(`${checked.data.plannedDate}T00:00:00.000Z`), plannedAmount: new Prisma.Decimal(plannedAmount),
       condition: checked.data.condition, paymentMethod: checked.data.paymentMethod, currency: checked.data.currency,
+      fundingSource: checked.data.fundingSource,
       foreignAmount: checked.data.foreignAmount == null ? null : new Prisma.Decimal(checked.data.foreignAmount),
       exchangeRate: checked.data.exchangeRate == null ? null : new Prisma.Decimal(checked.data.exchangeRate),
       commissionAmount: checked.data.commissionAmount == null ? null : new Prisma.Decimal(checked.data.commissionAmount),
@@ -77,7 +89,8 @@ export async function POST(req: Request) {
       plans: [created],
     });
     return created;
-  });
+  }).catch(error=>{if(error instanceof Error&&/^[А-ЯЁ]/.test(error.message)){fundingError=error.message;return null;}throw error;});
+  if(fundingError)return Response.json({error:fundingError},{status:409});
   if (!plan) return Response.json({ error: 'Эта оплата уже включена в незавершённую заявку. Измените её вместо повторной отправки.' }, { status: 409 });
   return Response.json(jsonPlan(plan), { status: 201 });
 }

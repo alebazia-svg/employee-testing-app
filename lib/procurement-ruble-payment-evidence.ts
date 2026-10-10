@@ -61,7 +61,7 @@ export function applyRublePaymentEvidence(
   allowSmallRemainder = false,
 ) {
   const eligible = plans.filter((plan) => ['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') &&
-    ['CASH', 'ACCOUNTABLE_QR', 'BANK'].includes(plan.paymentMethod) && plan.plannedAmount > 0);
+    ['CASH', 'ACCOUNTABLE_QR', 'BANK', 'CNY'].includes(plan.paymentMethod) && plan.plannedAmount > 0);
   const claims = new Map<string, Set<string>>();
   const uniquePayments = uniqueSupplierPayments(payments);
   for (const plan of plans) {

@@ -10,6 +10,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM base AS builder
+ARG NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED=0
+ENV NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED=$NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate

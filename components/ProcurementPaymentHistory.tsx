@@ -7,11 +7,16 @@ import { ProcurementChangeHistory, type PlanChangeEvent } from './ProcurementCha
 import { COMPLETED_WITHOUT_TOPUP, paymentCompletion } from '@/lib/procurement-payment-completion';
 import { ProcurementCompletionAction } from './ProcurementCompletionAction';
 import { SMALL_REMAINDER_COMPLETED } from '@/lib/procurement-small-remainder';
+import { useProcurementVisualPreview } from './ProcurementVisualPreview';
+import { ProcurementReceipts } from './ProcurementReceipts';
+import {fundingSourceLabel} from '@/lib/procurement-usdt-funding';
 
 type HistoryPlan = {
+  fundingSource?:string|null;
   condition?: string;
+  paymentMethod?:string;foreignAmount?:string|number|null;exchangeRate?:string|number|null;
   status?:string;oneCCashEvidence?:unknown;
-  id: string; supplierPartner: string; orderNumbers: string[]; plannedAmount: string | number;
+  id: string; supplierPartner: string; orderNumbers: string[]; plannedAmount: string | number; paymentPurpose?:string;
   manager?: { name: string };
   events?: PlanChangeEvent[];
   evidence?: {
@@ -32,6 +37,7 @@ function stamp(value?: string) {
 
 export function ProcurementPaymentHistory({ plans, hidden = false, showManager = false, splitView = false, compactBuyer = false }: { plans: HistoryPlan[]; hidden?: boolean; showManager?: boolean; splitView?: boolean; compactBuyer?: boolean }) {
   const compact = compactBuyer && !showManager;
+  const visualPreview = useProcurementVisualPreview();
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState('');
   const dated = plans.map(plan => ({ plan, date: (plan.status===COMPLETED_WITHOUT_TOPUP?paymentCompletion(plan.oneCCashEvidence)?.at.slice(0,10):null) || [...(plan.evidence?.cashOrders || []), ...(plan.evidence?.currencyPayments || [])].map(row => stamp(row.date)).sort().at(-1) || "" })).sort((a, b) => b.date.localeCompare(a.date));
@@ -46,12 +52,15 @@ export function ProcurementPaymentHistory({ plans, hidden = false, showManager =
       const documents = usdt ? evidence?.currencyPayments || [] : evidence?.cashOrders || [];
       const unallocated = (evidence?.currencyPayments || []).reduce((sum,row)=>sum+(row.unallocatedForeignAmount||0),0);
       return <article key={plan.id} className={splitView ? "grid grid-cols-[minmax(0,1fr)_auto] gap-3" : "grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-xl border border-slate-200 p-4"}>
-        <div className="min-w-0"><h3 className="font-black text-slate-950">{plan.supplierPartner}</h3><p className="mt-0.5 text-xs font-semibold text-slate-500">{plan.orderNumbers.length ? `Заказ: ${plan.orderNumbers.filter(Boolean).join(", ") || "без номера"}` : "В счёт долга поставщику"}</p>{!splitView || usdt || Math.abs(Number(plan.plannedAmount) - (completion?.paidAmount ?? Number(evidence?.issuedAmount || 0))) > 0.005 ? <p className="mt-2 text-xs text-slate-500">{usdt ? "Оплата в USDT" : `Запрошено: ${rub.format(Number(plan.plannedAmount))}`}</p> : null}{showManager && plan.manager ? <p className="mt-1 text-xs text-slate-500">{plan.manager.name}</p> : null}</div>
+        <div className="min-w-0"><h3 className="font-black text-slate-950">{plan.supplierPartner}</h3><p className="mt-0.5 text-xs font-semibold text-slate-500">{plan.paymentPurpose==='DELIVERY'?'Доставка':plan.orderNumbers.length ? `Заказ: ${plan.orderNumbers.filter(Boolean).join(", ") || "без номера"}` : "В счёт долга поставщику"}</p>{!splitView || usdt || Math.abs(Number(plan.plannedAmount) - (completion?.paidAmount ?? Number(evidence?.issuedAmount || 0))) > 0.005 ? <p className="mt-2 text-xs text-slate-500">{usdt ? "Оплата в USDT" : `Запрошено: ${rub.format(Number(plan.plannedAmount))}`}</p> : null}{showManager && plan.manager ? <p className="mt-1 text-xs text-slate-500">{plan.manager.name}</p> : null}</div>
         <div className="text-right"><p className="text-lg font-black tabular-nums text-slate-950 sm:text-xl">{usdt ? `${paidForeign.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(completion?.paidAmount??Number(evidence?.issuedAmount || 0))}</p><p className="mt-1 text-xs font-bold text-green-800">{completed||smallRemainder?'Завершена без доплаты':'Оплачено полностью'}</p>{smallRemainder ? <p className="mt-1 text-xs text-slate-600">Недоплата: {rub.format(evidence?.remainingAmount ?? 0)}</p> : null}<p className="mt-1 text-xs text-slate-500">{date ? new Date(`${date}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "long" }) : "Подтверждено в 1С"}</p></div>
         {evidence?.verification === 'last-confirmed' ? <p className="col-span-2 text-xs text-slate-500">Последняя проверка{evidence.verifiedAt ? `: ${new Date(evidence.verifiedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} МСК` : ''}. Сейчас связь с 1С восстанавливается.</p> : null}
         {Number(evidence?.manualPaymentCount) > 0 ? <p className="col-span-2 text-xs text-slate-600">Оплата по договору учтена в этой заявке.</p> : null}
         {unallocated>0 && !compact ? <p className="col-span-2 text-sm text-amber-800">В заявку зачтено {paidForeign.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT. Ещё {unallocated.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT не распределено по заявкам.</p> : null}
         <details open={(splitView && !compact) || undefined} className="col-span-2 text-xs text-slate-500"><summary className="cursor-pointer">Подробности оплаты</summary><div className="mt-2 space-y-1">
+          {plan.paymentMethod==='CNY'&&Number(plan.foreignAmount)>0?<p>По заявке: {Number(plan.foreignAmount).toLocaleString('ru-RU')} CNY{Number(plan.exchangeRate)>0?` · плановый курс ${Number(plan.exchangeRate).toLocaleString('ru-RU')} ₽ / CNY`:''}. Фактическая сумма — по рублёвому расходнику.</p>:null}
+          {plan.paymentMethod==='USDT'&&plan.fundingSource?<p>Источник по заявке: {fundingSourceLabel(plan.fundingSource)}.</p>:null}
+          {plan.paymentMethod==='USDT'&&Number(plan.exchangeRate)>0?<p>Плановый курс: {Number(plan.exchangeRate).toLocaleString('ru-RU')} ₽ / USDT.</p>:null}
           {documents.map((row, index) => <p key={row.ref || `${row.number}-${index}`}>Расходник №{row.number || "без номера"}{row.date ? ` · ${row.date}` : ""}</p>)}
           {(evidence?.currencyPayments||[]).filter(row=>(row.unallocatedForeignAmount||0)>0).map(row=><p key={`amount-${row.ref||row.number}`}>Сумма расходника: {row.documentForeignAmount?.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT.</p>)}
           {compact && unallocated>0 ? <p>Переплата по заявке: {unallocated.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT.</p> : null}
@@ -60,6 +69,8 @@ export function ProcurementPaymentHistory({ plans, hidden = false, showManager =
         </div></details>
         {splitView && plan.condition ? <div className="col-span-2"><ProcurementAdminComment value={plan.condition} historical /></div> : null}
         <div className="col-span-2"><ProcurementChangeHistory events={plan.events} buyerView={!showManager} conciseAdmin={splitView} /></div>
+        {visualPreview?.detail ? <div className="col-span-2">{visualPreview.detail(plan.id)}</div> : null}
+        {!visualPreview || visualPreview.persistedReceipts ? <div className="col-span-2"><ProcurementReceipts plans={[plan]} single/></div> : null}
         {completed&&showManager?<div className="col-span-2"><ProcurementCompletionAction id={plan.id} supplier={plan.supplierPartner} reopen/></div>:null}
       </article>;
 
@@ -70,7 +81,7 @@ export function ProcurementPaymentHistory({ plans, hidden = false, showManager =
     const paid=completion?.paidAmount??Number(plan.evidence?.issuedAmount||0);
     const difference=paid-Number(plan.plannedAmount);
     const unallocated=(plan.evidence?.currencyPayments||[]).reduce((sum,row)=>sum+(row.unallocatedForeignAmount||0),0);
-    return {id:plan.id,name:plan.supplierPartner,amount:foreign>0?foreign.toLocaleString("ru-RU",{maximumFractionDigits:4})+" USDT":rub.format(paid),meta:date?new Date(date+"T12:00:00Z").toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"}):"Дата не подтверждена",search:plan.orderNumbers.join(" "),warningTone:!compact&&completion&&unallocated<=0?"neutral" as const:undefined,warning:compact?undefined:unallocated>0?`Вне заявок: ${unallocated.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT`:completion?"Завершена без доплаты":!foreign&&Math.abs(difference)>0.005?`Оплата ${difference>0?"больше":"меньше"} заявки на ${rub.format(Math.abs(difference))}`:undefined};
+    return {id:plan.id,name:plan.supplierPartner,amount:foreign>0?foreign.toLocaleString("ru-RU",{maximumFractionDigits:4})+" USDT":rub.format(paid),meta:date?new Date(date+"T12:00:00Z").toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"}):"Дата не подтверждена",search:plan.orderNumbers.join(" "),warningTone:!compact&&completion&&unallocated<=0?"neutral" as const:undefined,warning:visualPreview?.historyWarnings?.[plan.id] ?? (compact?undefined:unallocated>0?`Вне заявок: ${unallocated.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT`:completion?"Завершена без доплаты":!foreign&&Math.abs(difference)>0.005?`Оплата ${difference>0?"больше":"меньше"} заявки на ${rub.format(Math.abs(difference))}`:undefined)};
   })} empty="Подтверждённых оплат пока нет." renderDetail={id=>renderPlan(dated.find(row=>row.plan.id===id)!)} />;
   if (!plans.length && !compact) return null;
   const matching = compact ? dated.filter(({plan}) => `${plan.supplierPartner} ${plan.orderNumbers.join(' ')}`.toLocaleLowerCase('ru-RU').includes(query.trim().toLocaleLowerCase('ru-RU'))) : dated;

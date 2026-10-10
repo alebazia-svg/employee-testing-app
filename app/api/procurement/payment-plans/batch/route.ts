@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import {readFundingBalance,assertFundingBalance} from '@/lib/procurement-usdt-funding-server';
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
@@ -12,6 +13,7 @@ import {
 import { fetchRequestOrderCatalogue as fetchSupplierOrderFinance } from '@/lib/procurement-request-catalogue';
 import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-notifications";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
+import { plannedFxRubles } from '@/lib/procurement-planned-fx';
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { fetchSupplierSettlements, summarizeSupplierSettlements } from '@/lib/procurement-supplier-settlements';
 import { freshEvidence } from '@/lib/procurement-plan-revision-server';
@@ -60,6 +62,7 @@ export async function POST(req: Request) {
   );
   const seen = new Set<string>();
   const checkedRows = payload.rows.map((row) => {
+    if(row.paymentPurpose!=null&&row.paymentPurpose!=='GOODS')return {error:'Добавьте доставку отдельной заявкой.'} as const;
     if (row.basis != null && row.basis !== 'ORDER' && row.basis !== 'DEBT') return { error: 'Неизвестное основание оплаты.' } as const;
     const ref = typeof row.orderRef === "string" ? row.orderRef.trim() : "";
     const debt = row.basis === 'DEBT';
@@ -83,6 +86,8 @@ export async function POST(req: Request) {
       paymentMethod: method,
       currency: method === "USDT" ? "USDT" : "RUB",
       foreignAmount: row.foreignAmount,
+      exchangeRate: row.exchangeRate,
+      fundingSource: row.fundingSource,
     }, debt);
     return checked.ok ? { order, data: checked.data } as const : { error: `${order.number || order.supplierPartner}: ${checked.errors.join(" ")}` } as const;
   });
@@ -96,6 +101,11 @@ export async function POST(req: Request) {
   const needsUsdtRate = checkedRows.some((row) => "data" in row && row.data && !row.data.plannedAmount && row.data.paymentMethod === "USDT" && Boolean(row.data.foreignAmount));
   const rateReference = needsUsdtRate ? await getLatestProcurementUsdtRate(expenseRequestMoscowCalendarDate(new Date())) : null;
   if (needsUsdtRate && !rateReference?.rate) return Response.json({ error: "Курс пока недоступен. Укажите примерную сумму в рублях." }, { status: 400 });
+  for (const row of checkedRows) if ('data' in row && row.data && !row.data.plannedAmount && row.data.paymentMethod === 'USDT') {
+    row.data.plannedAmount = plannedFxRubles(row.data.foreignAmount, rateReference?.rate);
+    row.data.exchangeRate = rateReference?.rate ?? null;
+    if (!row.data.plannedAmount) return Response.json({error:'Проверьте сумму и курс.'},{status:400});
+  }
   const planningRows = checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length ? [row.order] : []);
   const planningError = await planningSubmissionError(planningRows, checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length
     ? [{ refs: row.data.orderRefs, amount: row.data.plannedAmount || Number(row.data.foreignAmount) * Number(rateReference?.rate), condition: row.data.condition }] : []), verified => {
@@ -105,8 +115,11 @@ export async function POST(req: Request) {
 
   // Verify all existing allocations before accepting another debt request.
   const debtEvidence = await freshEvidence();
+  const fundingRequests=checkedRows.flatMap(row=>'data' in row&&row.data?[row.data]:[]);
+  const fundingBalance=await readFundingBalance(fundingRequests);
   const plans = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
+    await assertFundingBalance(tx,fundingRequests,fundingBalance,debtEvidence);
     {
       const existing = await tx.supplierPaymentPlan.findMany({ where: { status: { in: ['SUBMITTED', 'APPROVED', 'NEEDS_CHANGES'] } } });
       const currentEvidence = new Map(debtEvidence);
@@ -142,9 +155,12 @@ export async function POST(req: Request) {
           plannedAmount: new Prisma.Decimal(plannedAmount),
           condition: data.condition,
           paymentMethod: data.paymentMethod,
+          fundingSource: data.fundingSource,
           currency: data.currency,
           foreignAmount: data.foreignAmount == null ? null : new Prisma.Decimal(data.foreignAmount),
-          exchangeRate: null,
+          exchangeRate: data.exchangeRate == null && data.paymentMethod === 'USDT' && !data.plannedAmount
+            ? new Prisma.Decimal(rateReference!.rate!)
+            : data.exchangeRate == null ? null : new Prisma.Decimal(data.exchangeRate),
           commissionAmount: null,
           exchangerName: "",
           supplierConfirmation: "",
@@ -175,7 +191,8 @@ export async function POST(req: Request) {
   });
   if (!plans) return Response.json({ error: 'Эта оплата уже включена в незавершённую заявку по заказу или долгу поставщика. Измените существующую заявку или дождитесь подтверждения оплаты.' }, { status: 409 });
   return Response.json({ plans: jsonValue(plans) }, { status: 201 });
-  } catch {
+  } catch (error) {
+    if(error instanceof Error&&/^[А-ЯЁ]/.test(error.message))return Response.json({error:error.message},{status:409});
     return Response.json({ error: 'Не удалось проверить данные 1С или подтвердить сохранение. Проверьте календарь перед повторной отправкой.' }, { status: 503 });
   }
 }

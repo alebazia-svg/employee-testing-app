@@ -11,6 +11,8 @@ import {
   isAdminInboxWebPushEligible,
   isTechnicalAdminInboxDownEvent,
   subscriptionExistedWhenAdminInboxEventWasCreated,
+  RECEIPT_PUSH_TYPE,
+  RECEIPT_PUSH_MAX_AGE_MS,
 } from '@/lib/admin-inbox-web-push-policy';
 import { TBANK_NOTIFICATION_SOURCE, tbankPushEventId } from '@/lib/tbank-cabinet-notification-policy';
 
@@ -76,11 +78,22 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
     select: { id: true, type: true, occurredAt: true },
   });
   const allowedTbankId = tbankPushEventId(latestTbank, now);
+  let sent = 0;
+  let failed = 0;
+  let receiptCount = 0;
+  let cursor: string | undefined;
+  const unreadCountByUser = new Map<number, number>();
+  // Advance past already delivered/read entries: the first page must not
+  // permanently block new receipts. The fixed event cutoff bounds this scan.
+  for (;;) {
   const receipts = await prisma.adminInboxReceipt.findMany({
     where: {
       event: {
         type: { in: eligibleTypes },
-        createdAt: { gte: eventCutoff, lte: now },
+        AND: [{OR:[
+          {type:{not:RECEIPT_PUSH_TYPE},createdAt:{gte:eventCutoff,lte:now}},
+          {type:RECEIPT_PUSH_TYPE,createdAt:{gte:new Date(now.getTime()-RECEIPT_PUSH_MAX_AGE_MS),lte:now}},
+        ]}],
         OR: [
           { NOT: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE } },
           ...(allowedTbankId ? [{ id: allowedTbankId }] : []),
@@ -89,13 +102,13 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
       user: { role: 'ADMIN', isActive: true },
     },
     include: { event: true, user: { include: { pushSubscriptions: { where: { disabledAt: null } } } } },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     take: 100,
   });
-  let sent = 0;
-  let failed = 0;
-  const unreadCountByUser = new Map<number, number>();
+  receiptCount += receipts.length;
   for (const receipt of receipts) {
+    if(receipt.event.type===RECEIPT_PUSH_TYPE && receipt.readAt) continue;
     if (!isAdminInboxWebPushEligible({
       type: receipt.event.type,
       eventCreatedAt: receipt.event.createdAt,
@@ -142,5 +155,8 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
       }
     }
   }
-  return { receipts: receipts.length, sent, failed };
+  if (receipts.length < 100) break;
+  cursor = receipts[receipts.length - 1].id;
+  }
+  return { receipts: receiptCount, sent, failed };
 }

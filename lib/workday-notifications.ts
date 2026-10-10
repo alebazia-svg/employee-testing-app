@@ -1,4 +1,5 @@
 import 'server-only';
+import {RECEIPT_EMPLOYEE_KIND,receiptHref,receiptPlanFromFingerprint} from './procurement-receipt-policy';
 
 import webpush from 'web-push';
 import { Prisma } from '@prisma/client';
@@ -273,6 +274,10 @@ function notificationTargetKey(notification: { id: number; taskId: number | null
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  if(notification.kind===RECEIPT_EMPLOYEE_KIND) {
+    const plan=receiptPlanFromFingerprint(notification.fingerprint||'');
+    return plan?receiptHref(plan,false):'/procurement';
+  }
   if (notification.kind === DELIVERY_READY_KIND) return '/procurement#delivery';
   if (notification.kind === COLLECTION_READY_KIND) return '/procurement';
   if (notification.kind?.startsWith('procurement_payment_')) return '/procurement';

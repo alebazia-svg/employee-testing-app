@@ -69,7 +69,7 @@ async function fetchOneCJson(endpoint: string, query: URLSearchParams, timeoutMs
   }
 }
 
-export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; to: Date; timeoutMs?: number; plans?: {orderRefs:unknown;supplierPartner:string}[] }) {
+export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; to: Date; timeoutMs?: number; plans?: {orderRefs:unknown;supplierPartner:string;paymentPurpose?:string}[] }) {
   const common = {
     date_from: expenseRequestMoscowCalendarDate(input.from),
     date_to: expenseRequestMoscowCalendarDate(input.to),
@@ -194,7 +194,7 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     // although both header contract and header basis are empty. Read the exact
     // RKO, not an order catalogue amount or a current advance balance.
     const unresolved = combined.filter(p => p.posted && !p.deleted && ['РУБ', 'RUB'].includes(p.documentCurrency) &&
-      debtNames.has(normalize(p.supplier || '')) && !hasConfirmedPaymentBasis(p) &&
+      debtNames.has(normalize(p.supplier || '')) && (!hasConfirmedPaymentBasis(p)||input.plans?.some(plan=>plan.paymentPurpose==='DELIVERY'&&normalize(plan.supplierPartner)===normalize(p.supplier||''))) &&
       (parseOneCDateTime(p.date)?.getTime() || 0) >= from.getTime());
     if (unresolved.length > 100) throw new Error('PAYMENT_BASIS_SCOPE_LIMIT');
     const verified = new Map<SupplierCurrencyPaymentRow, SupplierCurrencyPaymentRow>();

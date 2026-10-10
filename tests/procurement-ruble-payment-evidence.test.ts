@@ -15,6 +15,17 @@ const payment: SupplierCurrencyPaymentRow = { ref: 'rko-mems', number: '00OF-001
 const match = (payments = [payment], plans = [plan], requests: ExpenseRequestSourceRow[] = []) =>
   matchProcurementPaymentEvidence(plans, requests, payments, []);
 
+test('CNY closes against linked RUB RKO without inventing foreign payment or actual exchange rate', () => {
+  const cny = {...plan,paymentMethod:'CNY',currency:'CNY',foreignAmount:20000};
+  const result = match([payment,payment],[cny]).get(plan.id)!;
+  assert.equal(result.state,'ISSUED_BY_ONE_C');
+  assert.equal(result.issuedAmount,280000);
+  assert.equal(result.paidForeignAmount,0);
+  assert.equal(result.remainingForeignAmount,null);
+  assert.equal(result.actualExchangeRate,null);
+  assert.equal(match([{...payment,documentCurrency:'USDT'}],[cny]).get(plan.id)!.issuedAmount,0);
+});
+
 test('direct RUB expense closes the request, independent of the remaining order debt', () => {
   const result = match().get(plan.id)!;
   assert.equal(result.state, 'ISSUED_BY_ONE_C');

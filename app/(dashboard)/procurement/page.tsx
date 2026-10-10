@@ -6,12 +6,14 @@ import { deliveryUserAllowed } from '@/lib/procurement-delivery-policy';
 import { procurementSourceHealth } from '@/lib/procurement-source-health';
 import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { prisma } from "@/lib/prisma";
+import { getProcurementCnyRate } from '@/lib/procurement-cny-rate';
 import {
   ordersForManager,
 } from "@/lib/procurement-payment-source";
 import { fetchRequestOrderCatalogue } from '@/lib/procurement-request-catalogue';
 import { fetchManagerSupplierNames } from '@/lib/procurement-supplier-roster';
 import ProcurementPaymentCalendarClient from "./ProcurementPaymentCalendarClient";
+import {cargoManagerAllowed} from '@/lib/procurement-cargo';
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate, expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
@@ -42,6 +44,9 @@ export default async function ProcurementPage() {
     include: { events: { orderBy: { createdAt: "desc" }, take: 20 }, manager: { select: { name: true, oneCManagerName: true } } },
     orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
   });
+  const cnyRatePromise = plansQuery.then(rows => getProcurementCnyRate(rows
+    .filter(plan => plan.managerUserId === user.id && plan.status !== 'CANCELLED' && plan.paymentMethod !== 'USDT')
+    .map(plan => ({comment:plan.condition, date:plan.createdAt, knownCny:plan.paymentMethod==='CNY', sourceLabel:'Комментарий заявки', documentNumber:plan.planCode})))).catch(() => undefined);
   const [plansResult, ordersResult, settlementsResult, balancesResult, rateResult, requestsResult, currencyPaymentsResult, rosterResult] = await Promise.allSettled([
     plansQuery,
     fetchRequestOrderCatalogue(),
@@ -97,6 +102,7 @@ export default async function ProcurementPage() {
       orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [],
       plannedAmount: Number(plan.plannedAmount),
       paymentMethod: plan.paymentMethod,
+      paymentPurpose: plan.paymentPurpose,
       foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
       managerName: plan.manager.oneCManagerName?.trim() || plan.manager.name,
       plannedDate: plan.plannedDate.toISOString(),
@@ -130,6 +136,7 @@ export default async function ProcurementPage() {
   const otherUsdtReserve = plansResult.status !== 'fulfilled' ? null : usdtReservedByPlans(
     allPlans.filter(plan => plan.managerUserId !== user.id).map(plan => ({
       status: plan.status, paymentMethod: plan.paymentMethod,
+      fundingSource: plan.fundingSource,
       plannedAmount: Number(plan.plannedAmount),
       foreignAmount: plan.foreignAmount == null ? null : Number(plan.foreignAmount),
       evidence: paymentEvidence.get(plan.id),
@@ -140,6 +147,7 @@ export default async function ProcurementPage() {
     <>
     {process.env.NODE_ENV === 'development' && process.env.PROCUREMENT_DEBT_REVIEW === '1' ? <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">Локальная проверка — не рабочий портал.</p> : null}
     <ProcurementPaymentCalendarClient
+      cargoAllowed={cargoManagerAllowed(user.oneCManagerName?.trim()||user.name)}
       initialOrders={orders}
       initialPlans={serializedPlans}
       otherUsdtReserve={otherUsdtReserve}
@@ -154,6 +162,7 @@ export default async function ProcurementPage() {
       usdtBalance={usdtBalance}
       accountableBalance={accountableBalance}
       usdtRateReference={rateResult.status === "fulfilled" ? rateResult.value : undefined}
+      cnyRateReference={await cnyRatePromise}
       todayKey={todayKey}
       deliveryCashPanel={delivery ? <ProcurementDeliveryPanel key="delivery" initial={delivery} /> : null}
     />

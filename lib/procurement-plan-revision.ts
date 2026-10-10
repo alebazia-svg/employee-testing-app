@@ -15,20 +15,24 @@ export function readPaymentRevision(value: unknown): PaymentRevision | null {
   return revision?.id && revision.data && Array.isArray(revision.changes) ? revision : null;
 }
 const fields: [keyof RevisionData, string][] = [
+  ['fundingSource', 'Источник USDT'],
+  ['paymentPurpose', 'Назначение оплаты'],
   ['supplierPartner', 'Поставщик'], ['supplierCounterparty', 'Контрагент'], ['orderRefs', 'Заказы'],
-  ['plannedDate', 'Дата оплаты'], ['plannedAmount', 'Сумма, ₽'], ['foreignAmount', 'Сумма, USDT'],
+  ['plannedDate', 'Дата оплаты'], ['plannedAmount', 'Сумма, ₽'], ['foreignAmount', 'Сумма в валюте'],
   ['paymentMethod', 'Способ оплаты'], ['currency', 'Валюта'], ['exchangeRate', 'Курс'],
   ['commissionAmount', 'Комиссия'], ['exchangerName', 'Валютчик'], ['supplierConfirmation', 'Договорённость'], ['condition', 'Комментарий'],
 ];
 const numeric = new Set(['plannedAmount', 'foreignAmount', 'exchangeRate', 'commissionAmount']);
-const methods: Record<string, string> = { CASH: 'Наличные', BANK: 'Перевод поставщику', USDT: 'Оплата в USDT', ACCOUNTABLE_QR: 'Оплата по QR' };
+const methods: Record<string, string> = { CASH: 'Наличные', BANK: 'Перевод поставщику', USDT: 'Оплата в USDT', ACCOUNTABLE_QR: 'Оплата по QR', CNY: 'Перевод в юанях' };
 function normal(key: string, value: unknown): string {
+  if (key==='paymentPurpose') return String(value||'GOODS');
   if (key === 'plannedDate') return value instanceof Date ? value.toISOString().slice(0, 10) : String(value || '').slice(0, 10);
   if (key === 'orderRefs') return JSON.stringify(Array.isArray(value) ? [...value].sort() : []);
   if (numeric.has(key)) return Number(value || 0).toString();
   return String(value || '').trim();
 }
 function display(key: string, value: unknown) {
+  if (key==='fundingSource') return value==='WALLET'?'Из кассы USDT':value==='CASH_EXCHANGE'?'Наличные для обмена':'Не выбран';
   const normalized=normal(key,value);
   if(key==='plannedDate' && /^\d{4}-\d{2}-\d{2}$/.test(normalized))return new Date(`${normalized}T12:00:00Z`).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
   if(numeric.has(key))return value == null || value === '' ? '—' : Number(value).toLocaleString('ru-RU',{maximumFractionDigits:4});

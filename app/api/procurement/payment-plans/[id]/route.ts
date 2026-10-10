@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import {readFundingBalance,assertFundingBalance} from '@/lib/procurement-usdt-funding-server';
 import { preservePaymentReview } from '@/lib/procurement-buyer-comment';
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -9,6 +10,7 @@ import {
 import { fetchRequestOrderCatalogue as fetchSupplierOrderFinance } from '@/lib/procurement-request-catalogue';
 import { notifyAdminsAboutProcurementPlans } from "@/lib/procurement-payment-notifications";
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
+import { plannedFxRubles } from '@/lib/procurement-planned-fx';
 import { expenseRequestMoscowCalendarDate } from "@/lib/expense-request-source";
 import { proposeApprovedRevision, freshEvidence } from "@/lib/procurement-plan-revision-server";
 import { isSupplierDebtPlan, paymentBasisChanged } from '@/lib/procurement-debt-request';
@@ -17,6 +19,7 @@ import { assertRevisionPaymentSafety, revisionChanges } from '@/lib/procurement-
 import { planningSubmissionError } from '@/lib/procurement-planning-submit';
 import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
 import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
+import {cargoRequestError} from '@/lib/procurement-cargo';
 
 const jsonPlan = (plan: unknown) => JSON.parse(JSON.stringify(plan));
 
@@ -41,10 +44,17 @@ export async function PATCH(
     );
   const payload = await req.json().catch(() => null);
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return Response.json({error:'Проверьте данные заявки.'}, {status:400});
+  if(payload.paymentPurpose!=null&&payload.paymentPurpose!==existing.paymentPurpose)return Response.json({error:'Назначение существующей заявки не меняется.'},{status:400});
+  payload.paymentPurpose=existing.paymentPurpose;
+  if(existing.paymentPurpose==='DELIVERY'){
+    const cargoError=cargoRequestError(payload,user.oneCManagerName?.trim()||user.name);
+    if(cargoError)return Response.json({error:cargoError},{status:400});
+    if(payload.basis!=null&&payload.basis!=='DEBT')return Response.json({error:'Доставка оформляется без заказа.'},{status:400});
+  }
   if (payload.basis != null && !['ORDER', 'DEBT'].includes(payload.basis)) return Response.json({error:'Неизвестное основание оплаты.'}, {status:400});
   const wasDebt = isSupplierDebtPlan(existing);
   const debt = payload.basis === 'DEBT' || (payload.basis == null && wasDebt);
-  const checked = validatePaymentPlan(payload, debt);
+  const checked = validatePaymentPlan({...payload,fundingSource:payload.fundingSource===undefined?existing.fundingSource:payload.fundingSource}, debt);
   if (debt && checked.data.orderRefs.length) return Response.json({error:'Для оплаты долга уберите выбранные заказы.'}, {status:400});
   const basisChanged = paymentBasisChanged(existing, checked.data);
   if ((wasDebt || basisChanged) && checked.data.supplierPartner !== existing.supplierPartner)
@@ -61,7 +71,8 @@ export async function PATCH(
   if (!plannedAmount && checked.data.paymentMethod === "USDT" && checked.data.foreignAmount) {
     const rate = await getLatestProcurementUsdtRate(expenseRequestMoscowCalendarDate(new Date()));
     if (!rate.rate) return Response.json({ error: "Курс пока недоступен. Укажите примерную сумму в рублях." }, { status: 400 });
-    plannedAmount = checked.data.foreignAmount * rate.rate;
+    plannedAmount = plannedFxRubles(checked.data.foreignAmount, rate.rate);
+    checked.data.exchangeRate = rate.rate;
   }
   if (!plannedAmount) return Response.json({ error: "Укажите сумму оплаты." }, { status: 400 });
   if (basisChanged) {
@@ -118,9 +129,12 @@ export async function PATCH(
   if (!overlapEvidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Изменения не сохранены; повторите позже.' }, { status: 503 });
   let overlap = false;
   let editError = '';
+  let fundingBalance:number|null=null;
+  try{fundingBalance=await readFundingBalance([checked.data]);}catch{return Response.json({error:'Остаток кассы USDT пока не подтверждён. Выберите наличные для обмена или повторите позже.'},{status:409});}
   const plan = await prisma
     .$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
+      await assertFundingBalance(tx,[checked.data],fundingBalance,overlapEvidence,id);
       if (basisChanged) {
         const current = await tx.supplierPaymentPlan.findFirst({where:{id,managerUserId:user.id,status:{in:['SUBMITTED','NEEDS_CHANGES']}}});
         if (!current || current.updatedAt.toISOString() !== existing.updatedAt.toISOString()
@@ -142,6 +156,7 @@ export async function PATCH(
           plannedAmount: new Prisma.Decimal(plannedAmount),
           condition: checked.data.condition,
           paymentMethod: checked.data.paymentMethod,
+          fundingSource: checked.data.fundingSource,
           currency: checked.data.currency,
           foreignAmount:
             checked.data.foreignAmount == null

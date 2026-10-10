@@ -1,18 +1,26 @@
 "use client";
+import { ProcurementPaymentDebtSummary } from '@/components/ProcurementPaymentDebtSummary';
+import { ProcurementCnyFields } from '@/components/ProcurementCnyFields';
+import { ProcurementUsdtFields } from '@/components/ProcurementUsdtFields';
+import {fundingSourceLabel} from '@/lib/procurement-usdt-funding';
+import { cnyCommentDraftPatch, cnyRateFromComment, plannedFxRubles,type PlannedRateReference } from '@/lib/procurement-planned-fx';
 import { isFinishedPaymentState } from '@/lib/procurement-small-remainder';
 import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionNotice';
 import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
+import { ProcurementReceipts } from '@/components/ProcurementReceipts';
+import { useProcurementVisualPreview } from '@/components/ProcurementVisualPreview';
 import { ProcurementDeliveryCash, type DeliveryCashSnapshot } from '@/components/ProcurementDeliveryCash';
 import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
 import { ProcurementDiscardDraftDialog } from '@/components/ProcurementDiscardDraftDialog';
+import { ProcurementPaymentDialog } from '@/components/ProcurementPaymentDialog';
 import { usdtReservedByPlans } from "@/lib/procurement-usdt-reserve";
 import { ProcurementUsdtEstimate } from "@/components/ProcurementUsdtEstimate";
 import type { PaymentRevision } from "@/lib/procurement-plan-revision";
 import { ProcurementChangeHistory, type PlanChangeEvent } from "@/components/ProcurementChangeHistory";
 import { useRouter } from "next/navigation";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { buyerPaymentComment } from '@/lib/procurement-buyer-comment';
 import {
   AlertTriangle,
@@ -23,7 +31,7 @@ import {
   Plus,
   X,
 } from "lucide-react";
-import { ProcurementPaymentBatchForm } from "./ProcurementPaymentBatchForm";
+import { ProcurementPaymentForm } from "./ProcurementPaymentForm";
 import { calculateOrderPlanning, paymentPlanLeadTime } from "@/lib/procurement-payment-control";
 import type { SupplierBalance } from "@/lib/procurement-supplier-settlements";
 import { ProcurementDataRefresh } from "@/components/ProcurementDataRefresh";
@@ -56,6 +64,8 @@ type Order = {
   orderComment: string;
 };
 type Plan = {
+  fundingSource?: string|null;
+  paymentPurpose?: string;
   oneCCashEvidence?: unknown;
   id: string;
   planCode: string;
@@ -110,6 +120,7 @@ type UsdtRateReference = {
   conversionAt?: string;
 };
 type Draft = {
+  fundingSource: string;
   supplier: string;
   orderRefs: string[];
   plannedDate: string;
@@ -166,6 +177,7 @@ const nextDayKey = (value: string) => {
   return result.toISOString().slice(0, 10);
 };
 const emptyDraft = (): Draft => ({
+  fundingSource: '',
   supplier: "",
   orderRefs: [],
   plannedDate: "",
@@ -179,7 +191,7 @@ const emptyDraft = (): Draft => ({
   supplierConfirmation: "",
 });
 const methodLabel = (method: string) =>
-  method === "USDT"
+  method === "CNY" ? "Перевод в юанях" : method === "USDT"
     ? "Оплата в USDT"
     : method === "CASH"
       ? "Наличные"
@@ -217,7 +229,9 @@ export default function ProcurementPaymentCalendarClient({
   accountableBalance,
   deliveryCash,
   deliveryCashPanel,
+  cargoAllowed = false,
   usdtRateReference,
+  cnyRateReference,
   todayKey,
   basisPreview = false,
   readOnlyPreview,
@@ -237,14 +251,17 @@ export default function ProcurementPaymentCalendarClient({
   accountableBalance: UsdtBalance;
   deliveryCash?: DeliveryCashSnapshot;
   deliveryCashPanel?: React.ReactNode;
+  cargoAllowed?: boolean;
   usdtRateReference?: UsdtRateReference;
+  cnyRateReference?: PlannedRateReference;
   todayKey: string;
   basisPreview?: boolean;
   /** Local screen snapshot only; never supplied by the production page. */
-  readOnlyPreview?: { compact: boolean; supplierCount: number; debtTotal: number };
+  readOnlyPreview?: { compact: boolean; supplierCount: number; debtTotal: number | null };
   otherUsdtReserve?: number | null;
 }) {
   const [paymentView, setPaymentView] = useState<'current' | 'history'>('current');
+  const visualPreview = useProcurementVisualPreview();
   const compact = readOnlyPreview?.compact ?? true;
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
   const [plans, setPlans] = useState(initialPlans);
@@ -255,6 +272,7 @@ export default function ProcurementPaymentCalendarClient({
   const [changeReason, setChangeReason] = useState("");
   const [batchSeedRefs, setBatchSeedRefs] = useState<string[]>([]);
   const [message, setMessage] = useState("");
+  const [paymentCreated, setPaymentCreated] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showAllReviewOrders, setShowAllReviewOrders] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
@@ -269,19 +287,9 @@ export default function ProcurementPaymentCalendarClient({
     || editHasPayment;
   useEffect(() => setPlans(initialPlans), [initialPlans]);
   const referenceUsdtRate = Number(usdtRateReference?.rate || 0);
-  const enteredRoubles = Number(draft.plannedAmount || 0);
-  const enteredUsdt = Number(draft.foreignAmount || 0);
-  const estimatedUsdt = referenceUsdtRate > 0 && enteredRoubles > 0
-    ? enteredRoubles / referenceUsdtRate
-    : 0;
-  const estimatedRoubles = referenceUsdtRate > 0 && enteredUsdt > 0
-    ? enteredUsdt * referenceUsdtRate
-    : 0;
-  const rateDate = usdtRateReference?.conversionAt || "";
-  const parsedRateDate = rateDate ? new Date(rateDate) : null;
-  const rateDateLabel = parsedRateDate && !Number.isNaN(parsedRateDate.getTime())
-    ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long", timeZone: "Europe/Moscow" }).format(parsedRateDate)
-    : "";
+  const previousCommentRate = useRef<number|null>(null);
+  const paymentFormOpener = useRef<HTMLElement|null>(null);
+
   const suppliers = useMemo(
     () =>
       [
@@ -341,6 +349,8 @@ export default function ProcurementPaymentCalendarClient({
   const freeQr = reservesUnavailable || accountableBalance.error || accountableBalance.balance == null ? null : accountableBalance.balance - plannedQr;
   const freeUsdt = usdtBalance.error || usdtBalance.balance == null || plannedUsdt == null
     ? null : usdtBalance.balance - plannedUsdt;
+  const otherEditReserve=usdtReservedByPlans(activePlans.filter(plan=>plan.id!==editingId),referenceUsdtRate);
+  const editAvailableUsdt=reservesUnavailable||usdtBalance.error||usdtBalance.balance==null||otherUsdtReserve==null||otherEditReserve==null?null:usdtBalance.balance-otherUsdtReserve-otherEditReserve;
   const groupedPlans = useMemo(() => {
     const groups = new Map<string, Plan[]>();
     [...workingPlans]
@@ -353,16 +363,10 @@ export default function ProcurementPaymentCalendarClient({
   }, [plans, plansSourceError, evidenceSourceError]);
   const mappingBlocked = managerMappingError && !sourceError;
   const planningBlocked = mappingBlocked || Boolean(sourceError) || plansSourceError || evidenceSourceError || unverifiedPaymentView || supplierDebtError;
-  const openForm = () =>
-    window.setTimeout(
-      () =>
-        document
-          .getElementById("payment-plan-form")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      0,
-    );
   function openNew(supplier = "", selectedRefs?: string[]) {
     if (planningBlocked) return;
+    setPaymentCreated(false);
+    paymentFormOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const refs = selectedRefs || workingCatalogue.working.filter(order => !existingPlanForOrder(order))
       .filter((order) => order.supplierPartner === supplier)
       .map((order) => order.ref);
@@ -377,16 +381,19 @@ export default function ProcurementPaymentCalendarClient({
     });
     setMessage("");
     setFormOpen(true);
-    openForm();
   }
   function editPlan(plan: Plan) {
+    setPaymentCreated(false);
+    if (visualPreview?.edit) { visualPreview.edit(plan.id); return; }
     if (planningBlocked) return;
+    paymentFormOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setChangeReason("");
     setEditingId(plan.id);
     setEditBasis(plan.orderRefs.length ? 'ORDER' : 'DEBT');
     setEditOrderRefs(plan.orderRefs);
     setEditOrderQuery('');
     const nextDraft = {
+      fundingSource: plan.fundingSource || '',
       supplier: plan.supplierPartner,
       orderRefs: plan.orderRefs,
       plannedDate: dateKey(plan.plannedDate),
@@ -403,7 +410,6 @@ export default function ProcurementPaymentCalendarClient({
     setOriginalEditDraft(nextDraft);
     setMessage("");
     setFormOpen(true);
-    openForm();
   }
   function chooseSupplier(supplier: string) {
     setDraft((current) => ({
@@ -463,6 +469,8 @@ export default function ProcurementPaymentCalendarClient({
       draft.orderRefs.includes(order.ref),
     );
     const body = {
+      fundingSource: null,
+      paymentPurpose: editingPlan?.paymentPurpose || 'GOODS',
       basis: editBasis,
       changeReason,
       version: plans.find(plan => plan.id === editingId)?.updatedAt,
@@ -474,7 +482,7 @@ export default function ProcurementPaymentCalendarClient({
       plannedAmount: draft.plannedAmount,
       condition: draft.condition,
       paymentMethod: draft.paymentMethod,
-      currency: draft.paymentMethod === "USDT" ? "USDT" : "RUB",
+      currency: ["USDT","CNY"].includes(draft.paymentMethod) ? draft.paymentMethod : "RUB",
       foreignAmount: draft.foreignAmount,
       exchangeRate: draft.exchangeRate,
       commissionAmount: draft.commissionAmount,
@@ -543,11 +551,11 @@ export default function ProcurementPaymentCalendarClient({
               aria-hidden={paymentView === 'history' || undefined}
               disabled={paymentView === 'history'}
               tabIndex={paymentView === 'history' ? -1 : undefined}
-              onClick={() => { setPaymentView('current'); formOpen ? openForm() : openNew(); }}
+              onClick={() => { if (visualPreview?.add) { visualPreview.add(); return; } setPaymentView('current'); if(!formOpen)openNew(); }}
               className={`admin-material-primary inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 py-2.5 font-black text-white ${paymentView === 'history' ? 'invisible' : ''}`}
             >
               <Plus className="h-5 w-5" />
-              Добавить оплаты
+              Добавить оплату
             </button>
           ) : null}
           <ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" />
@@ -561,6 +569,8 @@ export default function ProcurementPaymentCalendarClient({
           onClick={()=>setPaymentView('history')}
           className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-3 text-sm font-bold disabled:opacity-50 ${paymentView==='history'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}>История оплат</button>
       </nav>
+      {visualPreview?.toolbar}
+      {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={paidPlans} allPlans={plans}/> : null}
       {sourceError ? (
         <Notice
           title="Заказы 1С сейчас недоступны"
@@ -585,9 +595,10 @@ export default function ProcurementPaymentCalendarClient({
         {paymentView==='history' ? <ProcurementPaymentHistory plans={paidPlans} compactBuyer /> :
         <div className="flex min-w-0 flex-col gap-5">
           {message && !formOpen ? (
-            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm font-bold text-green-800">
-              {message}
-            </p>
+            <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--portal-border)] bg-white px-4 py-3 text-sm">
+              <span>{message}</span>
+              {paymentCreated ? <button type="button" onClick={() => openNew()} className="font-semibold text-[#785537] underline underline-offset-4">Добавить ещё оплату</button> : null}
+            </div>
           ) : null}
 
       <section
@@ -632,11 +643,11 @@ export default function ProcurementPaymentCalendarClient({
                       <div className="min-w-0">
                         <h4 className={compact ? 'text-sm font-bold leading-5' : 'font-black'}>{plan.supplierPartner}</h4>
                         <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                          {!plan.orderRefs.length ? 'В счёт долга поставщику' : <>{plan.orderNumbers.filter(Boolean).length > 1
+                          {visualPreview?.labels?.[plan.id] ?? (plan.paymentPurpose==='DELIVERY'?'Доставка':!plan.orderRefs.length ? 'В счёт долга поставщику' : <>{plan.orderNumbers.filter(Boolean).length > 1
                             ? "Заказы"
                             : "Заказ"}: {" "}
                           {plan.orderNumbers.filter(Boolean).join(", ") ||
-                            "без номера"}</>}
+                            "без номера"}</>)}
                         </p>
                         {!compact && <p className="mt-1 text-xs font-medium text-slate-500">
                           {leadTimeLabel(plan)}
@@ -644,14 +655,14 @@ export default function ProcurementPaymentCalendarClient({
                       </div>
                       <div>
                         <p className={compact ? 'whitespace-nowrap text-[15px] font-bold tabular-nums leading-5' : 'text-xl font-black'}>
-                          {plan.paymentMethod === "USDT"
+                          {["USDT","CNY"].includes(plan.paymentMethod)
                             ? Number(plan.foreignAmount || 0) > 0
-                              ? `${Number(plan.foreignAmount).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`
+                              ? `${Number(plan.foreignAmount).toLocaleString("ru-RU", { maximumFractionDigits: 4 })} ${plan.paymentMethod}`
                               : rub.format(Number(plan.plannedAmount))
                             : rub.format(Number(plan.plannedAmount))}
                         </p>
                         <p className={compact ? 'mt-0.5 text-xs text-slate-500' : 'mt-0.5 text-sm font-semibold text-slate-600'}>
-                          {methodLabel(plan.paymentMethod)}
+                          {visualPreview?.methods?.[plan.id] ?? methodLabel(plan.paymentMethod)}
                         </p>
                         {plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}
                         {!compact && buyerPaymentComment(plan.condition) ? (
@@ -661,6 +672,7 @@ export default function ProcurementPaymentCalendarClient({
                         ) : null}
                       </div>
                       <div className="compact-payment-status space-y-1">
+                        {visualPreview?.badge?.(plan.id)}
                         <span
                           className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-4 ${plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
                         >
@@ -671,6 +683,7 @@ export default function ProcurementPaymentCalendarClient({
                         {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
                         {plan.revision ? <p className="max-w-[240px] text-xs font-bold text-amber-800">Изменения на согласовании. Пока действуют прежние условия.</p> : null}
                         {!compact && <ProcurementChangeHistory events={plan.events} buyerView />}
+                        {plan.paymentMethod==='USDT'&&plan.fundingSource?<p className="text-xs text-slate-600">{fundingSourceLabel(plan.fundingSource)}</p>:null}
                         {plan.evidence?.state === 'PARTIALLY_ISSUED' ? <p className="text-xs font-bold text-blue-800">Оплачено {rub.format(plan.evidence.issuedAmount)} · осталось по заявке {rub.format(Math.max(0, Number(plan.plannedAmount) - plan.evidence.issuedAmount))}</p> : null}
                         {plan.evidence?.paymentAmountNeedsConfirmation ? <p className="text-xs font-bold text-amber-800">Оплата найдена: {plan.evidence.paidForeignAmount.toLocaleString('ru-RU')} USDT. Выполнение заявки ещё не подтверждено.</p> : null}
                         {plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}
@@ -698,6 +711,8 @@ export default function ProcurementPaymentCalendarClient({
                           {buyerPaymentComment(plan.condition) ? <p><span className="font-semibold">Комментарий: </span>{buyerPaymentComment(plan.condition)}</p> : <p>Комментарий не указан.</p>}
                           <p className="text-xs text-slate-500">{leadTimeLabel(plan)}</p>
                           <ProcurementChangeHistory events={plan.events} buyerView />
+                          {visualPreview?.detail?.(plan.id)}
+                          {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={[plan]} single/> : null}
                         </div>
                       </div> : null}
                     </article>
@@ -710,7 +725,7 @@ export default function ProcurementPaymentCalendarClient({
               <CalendarDays className="mx-auto h-6 w-6 text-slate-400" />
               <p className="mt-2 font-black text-slate-700">{plansSourceError ? 'Не удалось загрузить заявки' : unknownPayments.length ? 'Статус оплат уточняется' : basisPreview ? 'Заявки не загружены в просмотр' : paidPlans.length ? "Текущих оплат нет" : "Заявок пока нет"}</p>
               <p className="mt-1 text-sm text-slate-500">
-                {evidenceSourceError ? 'Статусы обновятся автоматически после восстановления связи с 1С.' : planningBlocked ? 'Обновите данные, чтобы продолжить.' : paidPlans.length ? 'Оплаченные заявки — во вкладке «История оплат».' : "Нажмите «Добавить оплаты», чтобы создать заявку."}
+                {evidenceSourceError ? 'Статусы обновятся автоматически после восстановления связи с 1С.' : planningBlocked ? 'Обновите данные, чтобы продолжить.' : paidPlans.length ? 'Оплаченные заявки — во вкладке «История оплат».' : "Нажмите «Добавить оплату», чтобы создать заявку."}
               </p>
             </div>
           )}
@@ -780,56 +795,18 @@ export default function ProcurementPaymentCalendarClient({
       ) : null}
 
 
-      {formOpen ? <section
-        id="payment-plan-form"
-        className="order-first w-full max-w-[1080px] self-center scroll-mt-4 rounded-2xl bg-white ring-1 ring-slate-200"
-      >
-        <div className="flex w-full items-center justify-between gap-4 p-4 sm:p-5">
-          <div>
-            <span>
-              <span className="block font-black">
-                {editingId ? "Изменить оплату" : "Новые оплаты"}
-              </span>
-              <span className="block text-sm font-medium text-slate-500">
-                {editingId ? 'Измените данные оплаты' : 'Выберите → заполните суммы → передайте на согласование.'}
-              </span>
-            </span>
-          </div>
-          <button
-            type="button"
-            aria-label="Закрыть форму"
-            disabled={saving || batchDraftState.saving}
-            onClick={requestClosePaymentForm}
-            className="admin-material-control flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+      {formOpen ? <ProcurementPaymentDialog editing={Boolean(editingId)} busy={saving || batchDraftState.saving} onClose={requestClosePaymentForm} returnFocus={paymentFormOpener.current}>
         {editingId ? (
           <form
-            className="space-y-4 border-t border-slate-100 p-4 sm:p-5"
+            className="space-y-3 p-4 sm:px-5"
             onSubmit={submit}
           >
-            <label className="block text-sm font-bold">
-              Поставщик
-              <select
-                value={draft.supplier}
-                disabled={Boolean(editingId)}
-                onChange={(event) => chooseSupplier(event.target.value)}
-                className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold"
-                required
-              >
-                <option value="">Выберите поставщика</option>
-                {Array.from(new Set([draft.supplier, ...suppliers])).filter(Boolean).map((name) => (
-                  <option key={name}>{name}</option>
-                ))}
-              </select>
-            </label>
-            <div className="flex flex-wrap gap-2" role="group" aria-label="Основание оплаты">
+            <div><p className="text-xs font-bold text-slate-500">{editingPlan?.paymentPurpose==='DELIVERY'?'Перевозчик':'Поставщик'}</p><p className="mt-1 font-semibold">{draft.supplier}</p></div>
+            {editingPlan?.paymentPurpose==='DELIVERY'?<p className="text-sm text-slate-600">Доставка</p>:<details className="rounded-xl border border-slate-200 px-3 py-2.5"><summary className="cursor-pointer text-sm font-semibold">{editBasis==='DEBT'?'В счёт долга поставщику':`Заказ № ${draft.orderRefs.map(ref=>supplierOrders.find(o=>o.ref===ref)?.number||editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)]||'—').join(', ')}`}<span className="ml-2 text-xs font-normal text-slate-500">{editBasisLocked?'Основание оплаты':'Изменить основание'}</span></summary><div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Основание оплаты">
               {(['ORDER', 'DEBT'] as const).map(basis => <button key={basis} type="button" aria-pressed={editBasis === basis}
                 disabled={editBasisLocked || (basis === 'DEBT' && Boolean(editingPlan?.orderRefs.length) && supplierPosition(supplierBalances[draft.supplier]) !== 'debt')}
                 onClick={() => chooseEditBasis(basis)}
-                className={`rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50 ${editBasis === basis ? 'border-slate-700 bg-slate-100' : 'border-slate-200'}`}>
+                className={`procurement-form-tab border-b-2 px-3 py-2.5 text-sm font-semibold disabled:opacity-50 ${editBasis === basis ? 'border-[#9a6d46] text-[#785537]' : 'border-transparent text-slate-500 hover:text-slate-900'}`}>
                 {basis === 'ORDER' ? 'По заказу' : 'В счёт долга поставщику'}
               </button>)}
             </div>
@@ -868,16 +845,23 @@ export default function ProcurementPaymentCalendarClient({
                       </span>
                     </label>
                   ))}
-                  {!editableOrders.length ? <p className="text-sm text-slate-500">Заказы не найдены.</p> : null}
+                  {!editableOrders.length&&!draft.orderRefs.length ? <p className="text-sm text-slate-500">Заказы не найдены.</p> : null}
                   {draft.orderRefs.filter(ref => !supplierOrders.some(order => order.ref === ref)).map(ref => <p key={ref} className="text-sm text-slate-600">
                     Заказ №{editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)] || '—'} · уже в заявке
                   </p>)}
                 </div>
               </div>
             ) : null}
+            </details>}
+            {editingPlan?.paymentPurpose!=='DELIVERY'?<ProcurementPaymentDebtSummary
+              balance={supplierBalances[draft.supplier]} unavailable={supplierDebtError}
+              orders={editBasis==='DEBT'?[]:draft.orderRefs.map(ref=>supplierOrders.find(order=>order.ref===ref)??{
+                ref,number:editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)]||'—',
+              })}
+            />:null}
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-sm font-bold">
-                Когда подготовить деньги
+                Подготовить к
                 <input
                   value={draft.plannedDate}
                   onChange={(event) =>
@@ -892,13 +876,17 @@ export default function ProcurementPaymentCalendarClient({
                 />
               </label>
               <label className="text-sm font-bold">
-                Как оплачиваем
+                Способ оплаты
                 <select
                   value={draft.paymentMethod}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
                       paymentMethod: event.target.value,
+                      fundingSource: '',
+                      foreignAmount: "",
+                      exchangeRate: String((event.target.value==="CNY"?(cnyRateFromComment(current.condition,true)??cnyRateReference?.rate):event.target.value==="USDT"?usdtRateReference?.rate:null)??""),
+                      ...(event.target.value==="CNY"?{plannedAmount:""}:{}),
                     }))
                   }
                   className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
@@ -906,76 +894,22 @@ export default function ProcurementPaymentCalendarClient({
                   <option value="CASH">Наличные</option>
                   <option value="ACCOUNTABLE_QR">Оплата поставщику по QR</option>
                   <option value="USDT">Оплата в USDT</option>
+                  <option value="CNY">Перевод в юанях</option>
                   <option value="BANK">Перевод поставщику</option>
                 </select>
               </label>
             </div>
-            {draft.paymentMethod === "USDT" ? (
-              <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-sm text-violet-950">
-                <p className="font-bold">Укажите известную сумму — в рублях или USDT.</p>
-              </div>
-            ) : null}
+            {draft.paymentMethod === 'CNY' ? <ProcurementCnyFields multipleOrders={editBasis==='ORDER'&&draft.orderRefs.length>1} amount={draft.foreignAmount} rate={draft.exchangeRate} legacyRubles={draft.plannedAmount} reference={cnyRateReference} onChange={patch=>setDraft(current=>({...current,...patch}))}/> : draft.paymentMethod === 'USDT' ? <ProcurementUsdtFields multipleOrders={editBasis==='ORDER'&&draft.orderRefs.length>1} amount={draft.foreignAmount} rate={draft.exchangeRate} source={draft.fundingSource} available={editAvailableUsdt} reference={usdtRateReference} legacyRubles={draft.plannedAmount} onChange={patch=>setDraft(current=>({...current,...patch}))}/> : <label className="block text-sm font-bold">{editBasis==='ORDER'&&draft.orderRefs.length>1?'Общая сумма оплаты, ₽':'Сумма, ₽'}<input value={draft.plannedAmount} onChange={event=>setDraft(current=>({...current,plannedAmount:event.target.value}))} type="number" min="0.01" step="0.01" required className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold"/></label>}
+            {editHasPayment?<p className="text-xs text-slate-500">Укажите общую сумму, включая уже оплаченную часть.</p>:null}
             <label className="block text-sm font-bold">
-                {draft.paymentMethod === "USDT" ? "Общая сумма заявки в рублях" : "Общая сумма заявки, ₽"}
-                {draft.paymentMethod === "USDT" ? <span className="font-medium text-slate-400"> (если известна)</span> : null}
-                <input
-                  value={draft.plannedAmount}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      plannedAmount: event.target.value,
-                    }))
-                  }
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  required={draft.paymentMethod !== "USDT"}
-                  placeholder={draft.paymentMethod === "USDT" ? "Можно оставить пустым" : undefined}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3"
-                />
-            </label>
-            <p className="text-xs text-slate-500">Укажите общую сумму заявки, согласованную с поставщиком, включая уже оплаченную часть. Выбор заказов не меняет её автоматически.</p>
-            {draft.paymentMethod === "USDT" ? (
-              <>
-                <label className="block text-sm font-bold text-violet-900">
-                  Сколько USDT отправить <span className="font-medium text-violet-500">(если известно)</span>
-                  <input
-                    value={draft.foreignAmount}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        foreignAmount: event.target.value,
-                      }))
-                    }
-                    type="number"
-                    min="0.0001"
-                    step="0.0001"
-                    placeholder="Можно оставить пустым"
-                    className="mt-1.5 w-full rounded-xl border border-violet-200 bg-violet-50 px-3 py-3"
-                  />
-                </label>
-                {referenceUsdtRate > 0 && (enteredRoubles > 0 || enteredUsdt > 0) ? (
-                  <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <p className="text-sm font-black text-slate-950">
-                      {enteredUsdt > 0 && enteredRoubles <= 0
-                        ? `Примерно: ${rub.format(estimatedRoubles)}`
-                        : `Примерно: ${estimatedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">
-                      По последнему курсу {referenceUsdtRate.toLocaleString("ru-RU")} ₽{rateDateLabel ? ` от ${rateDateLabel}` : ""} в 1С.
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">Фактическая сумма определится после обмена.</p>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-            <label className="block text-sm font-bold">
-              Комментарий — если есть важная деталь{" "}
+              Комментарий{" "}
               <span className="font-medium text-slate-400">
                 (необязательно)
               </span>
               <textarea
                 value={draft.condition}
+                onFocus={() => {previousCommentRate.current=cnyRateFromComment(draft.condition,true);}}
+                onBlur={() => { if(draft.paymentMethod==='CNY') setDraft(current=>({...current,...cnyCommentDraftPatch(current.condition,current.foreignAmount,current.exchangeRate,cnyRateReference?.rate,previousCommentRate.current)})); }}
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
@@ -986,20 +920,17 @@ export default function ProcurementPaymentCalendarClient({
                 placeholder={commentHint(draft.paymentMethod)}
                 className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3"
               />
-              <span className="mt-1.5 block text-xs font-medium text-slate-500">
-                Поставщика, заказ, дату и сумму повторять не нужно.
-              </span>
             </label>
             {plans.find(plan => plan.id === editingId)?.status === "APPROVED" ? <label className="block text-sm font-bold">Причина изменения *<textarea required minLength={3} maxLength={500} value={changeReason} onChange={event => setChangeReason(event.target.value)} rows={2} placeholder="Например: поставщик перенёс отгрузку" className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-3"/><span className="mt-1 block text-xs font-normal text-slate-500">Изменение условий требует повторного согласования. Комментарий сохраняется без него. При частичной оплате укажите новую общую сумму, включая уже оплаченную часть.</span></label> : null}
             {message ? (
               <p className="text-sm font-bold text-red-600">{message}</p>
             ) : null}
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <div className="sticky bottom-0 z-10 -mx-4 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:-mx-5 sm:flex-row sm:justify-end sm:px-5">
               <button
                 type="button"
                 disabled={saving}
                 onClick={requestClosePaymentForm}
-                className="rounded-xl bg-slate-100 px-5 py-3 font-black text-slate-700"
+                className="rounded-xl border px-4 py-2.5 text-sm font-semibold"
               >
                 Отмена
               </button>
@@ -1011,7 +942,7 @@ export default function ProcurementPaymentCalendarClient({
                       : !draft.plannedAmount
                   )
                 }
-                className="admin-material-primary rounded-xl px-5 py-3 font-black text-white disabled:opacity-40"
+                className="admin-material-primary rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
               >
                 {saving
                   ? "Сохраняю…"
@@ -1022,7 +953,9 @@ export default function ProcurementPaymentCalendarClient({
             </div>
           </form>
         ) : (
-          <ProcurementPaymentBatchForm
+          <ProcurementPaymentForm
+            availableUsdt={freeUsdt}
+            cargoAllowed={cargoAllowed}
             basisPreview={basisPreview || Boolean(readOnlyPreview)}
             submissionBlocked={planningBlocked}
             supplierDebtError={supplierDebtError}
@@ -1034,6 +967,7 @@ export default function ProcurementPaymentCalendarClient({
             supplierBalances={supplierBalances}
             initialSelectedRefs={batchSeedRefs}
             usdtRateReference={usdtRateReference}
+            cnyRateReference={cnyRateReference}
             onDraftStateChange={setBatchDraftState}
             onCancel={requestClosePaymentForm}
             onCreated={(created) => {
@@ -1044,13 +978,12 @@ export default function ProcurementPaymentCalendarClient({
               );
               setFormOpen(false);
               setBatchSeedRefs([]);
-              setMessage(
-                `${created.length} оплат передано на согласование.`,
-              );
+              setPaymentCreated(true);
+              setMessage('Заявка отправлена.');
             }}
           />
         )}
-      </section> : null}
+      </ProcurementPaymentDialog> : null}
       <ProcurementDiscardDraftDialog open={discardOpen} editing={Boolean(editingId)}
         onKeep={() => setDiscardOpen(false)} onDiscard={closePaymentForm} />
         </div>}
@@ -1063,7 +996,7 @@ export default function ProcurementPaymentCalendarClient({
             <div className="mt-4 grid gap-3">
               <SummaryMetric
                 label="Долг поставщикам по 1С"
-                value={mappingBlocked || supplierDebtError ? "—" : rub.format(readOnlyPreview?.debtTotal ?? positionSummary.debt)}
+                value={mappingBlocked || supplierDebtError || readOnlyPreview?.debtTotal === null ? "—" : rub.format(readOnlyPreview?.debtTotal ?? positionSummary.debt)}
                 hint={positionSummary.reviewCount ? `Без ${positionSummary.reviewCount} поставщиков: долг не подтверждён` : ''}
               />
             </div>
@@ -1090,11 +1023,11 @@ export default function ProcurementPaymentCalendarClient({
                   critical={freeQr != null && freeQr < 0}
                 />
                 <BalanceSummary
-                  title="USDT"
-                  availableLabel="Доступно"
+                  title="Касса USDT"
+                  availableLabel="Остаток"
                   available={usdtBalance.balance == null ? "—" : usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
                   planned={plannedUsdt == null ? "—" : plannedUsdt.toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
-                  freeLabel={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Свободно"}
+                  freeLabel={freeUsdt != null && freeUsdt < 0 ? "Не хватает" : "Доступно"}
                   free={freeUsdt == null ? "—" : Math.abs(freeUsdt).toLocaleString("ru-RU", { maximumFractionDigits: 2 })}
                   critical={freeUsdt != null && freeUsdt < 0}
                 />
@@ -1159,7 +1092,7 @@ function BalanceSummary({
 }) {
   return <div className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
     <p className="text-sm font-black text-slate-900">{title}</p>
-    <div className="mt-2 grid grid-cols-3 gap-2">
+    <div className="mt-2 space-y-1.5">
       <SmallBalanceValue label={availableLabel} value={available} />
       <SmallBalanceValue label="В заявках" value={planned} />
       <SmallBalanceValue label={freeLabel} value={free} critical={critical} />
@@ -1168,8 +1101,8 @@ function BalanceSummary({
 }
 
 function SmallBalanceValue({ label, value, critical = false }: { label: string; value: string; critical?: boolean }) {
-  return <div className="min-w-0">
+  return <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
     <p className="text-[10px] font-bold text-slate-500">{label}</p>
-    <p className={`mt-0.5 truncate text-xs font-black ${critical ? "text-red-700" : "text-slate-950"}`} title={value}>{value}</p>
+    <p className={`text-right text-xs font-bold tabular-nums ${critical ? "text-red-700" : "text-slate-950"}`}>{value}</p>
   </div>;
 }
