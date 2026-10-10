@@ -3,14 +3,23 @@ export const RECEIPT_ADMIN_EVENT = 'procurement.receipt_added';
 export const RECEIPT_EMPLOYEE_KIND = 'procurement_receipt_added';
 // Owner-approved rollout: no retroactive collection of old payment receipts.
 export const RECEIPT_TRACKING_FROM = '2026-10-10';
+// The owner explicitly requested receipts for these two rollout payments.
+// Their legacy plans are marked CASH although the supplier was paid by transfer.
+// Keep accounting fields unchanged; this exception affects only the receipt queue.
+const ROLLOUT_TRANSFER_CASH_ORDERS = new Set(['00OF-001871', '00OF-001872']);
 export function receiptPaymentDate(value:string) {
   const local=/^(\d{2})\.(\d{2})\.(\d{4})/.exec(value);
   if(local) return `${local[3]}-${local[2]}-${local[1]}`;
   if(value.includes('T') && Number.isFinite(Date.parse(value))) return new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
   return /^\d{4}-\d{2}-\d{2}/.test(value)?value.slice(0,10):'';
 }
-export function needsReceiptSinceRollout(plan:{paymentMethod?:string;createdAt?:string;evidence?:{cashOrders?:{date?:string}[];currencyPayments?:{date?:string}[]}},receiptCount:number) {
-  if(!requiresProcurementReceipt(plan.paymentMethod||'') || receiptCount>0) return false;
+export function needsReceiptSinceRollout(plan:{paymentMethod?:string;createdAt?:string;evidence?:{cashOrders?:{date?:string;number?:string}[];currencyPayments?:{date?:string}[]}},receiptCount:number) {
+  if(receiptCount>0)return false;
+  const rolloutTransfer=plan.evidence?.cashOrders?.some(row=>
+    receiptPaymentDate(row.date||'')===RECEIPT_TRACKING_FROM &&
+    ROLLOUT_TRANSFER_CASH_ORDERS.has(row.number||''));
+  if(rolloutTransfer)return true;
+  if(!requiresProcurementReceipt(plan.paymentMethod||'')) return false;
   const latest=[...(plan.evidence?.cashOrders||[]),...(plan.evidence?.currencyPayments||[])].map(row=>receiptPaymentDate(row.date||'')).sort().at(-1)||'';
   // No invented "received" flags for legacy history. Missing dates are not proof
   // of a new payment; new plans created since rollout remain in scope.

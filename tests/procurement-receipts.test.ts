@@ -40,3 +40,13 @@ test('night receipts remain eligible at 08:30 Moscow without changing other admi
   assert.equal(isAdminInboxWebPushEligible({type:'expense_request.created',eventCreatedAt:created,now:morning}),false);
   assert.equal(receiptPlanFromFingerprint('procurement-receipt:plan1:receipt1'),'plan1');
 });
+test('owner-confirmed rollout transfers require receipts without rewriting legacy CASH plans',()=>{
+  const original={paymentMethod:'CASH',createdAt:'2026-10-03',evidence:{cashOrders:[{number:'00OF-001871',date:'2026-10-10T12:23:10+03:00'}]}};
+  const before=JSON.stringify(original);
+  assert.equal(needsReceiptSinceRollout(original,0),true);
+  assert.equal(needsReceiptSinceRollout(original,1),false);
+  assert.equal(needsReceiptSinceRollout({...original,evidence:{cashOrders:[{number:'00OF-001872',date:'10.10.2026 12:24:48'}]}},0),true);
+  assert.equal(needsReceiptSinceRollout({...original,evidence:{cashOrders:[{number:'00OF-001873',date:'10.10.2026'}]}},0),false);
+  assert.equal(needsReceiptSinceRollout({...original,evidence:{cashOrders:[{number:'00OF-001871',date:'10.10.2025'}]}},0),false);
+  assert.equal(JSON.stringify(original),before);
+});
