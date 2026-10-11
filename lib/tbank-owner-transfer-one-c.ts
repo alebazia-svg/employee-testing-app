@@ -14,7 +14,10 @@ async function readStatement(asOf: string): Promise<unknown> {
     account: 'Т-Банк КБР', date_from: periodFrom, date_to: asOf, limit: '500',
   });
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number(env.requestTimeoutMs) || 15_000);
+  // This statement takes 12–14s on production. The short general 1C timeout
+  // loses both the dated evidence and its fallback. Two bounded reads still
+  // fit within the forecast client's 45s budget; other endpoints are unchanged.
+  const timeout = setTimeout(() => controller.abort(), 20_000);
   try {
     const authorization = `Basic ${Buffer.from(`${env.user}:${env.password}`, 'utf8').toString('base64')}`;
     const response = await fetch(`${env.baseUrl}/bank-exchange-statement-operations?${query}`, {

@@ -10,7 +10,10 @@ async function moduleWithMocks(file:string,mocks:Record<string,unknown>){
 }
 test('bank reads latest statement day separately; historical limit never becomes current',async()=>{
  const calls:string[]=[];
+ const deadlines:number[]=[];
  const original=globalThis.fetch;
+ const timer=globalThis.setTimeout;
+ globalThis.setTimeout=((handler:any,delay:any,...args:any[])=>{deadlines.push(delay);return timer(handler,delay,...args);}) as typeof setTimeout;
  globalThis.fetch=async url=>{
   const date=new URL(String(url)).searchParams.get('date_to')!;calls.push(date);
   return Response.json({forDate:date,statement_summaries:[{period_end:'10.10.2026 23:59:59'}]});
@@ -22,10 +25,11 @@ test('bank reads latest statement day separately; historical limit never becomes
   });
   const result=await mod.fetchDatedTBankControl('2026-10-11');
   assert.deepEqual(calls,['2026-10-11','2026-10-10']);assert.equal(result.current.status,'unavailable');
+  assert.deepEqual(deadlines,[20000,20000]);
   assert.equal(result.dated.current,false);assert.equal(result.dated.statementDate,'2026-10-10');assert.equal(result.dated.freeRemainingMinor,15000000);
   assert.equal(mod.latestStatementDay({statement_summaries:[{period_end:'2026-99-99'},{period_end:'2026-10-12'}]},'2026-10-11'),null);
   assert.equal(mod.latestStatementDay(null,'2026-10-11'),null);
- }finally{globalThis.fetch=original;}
+ }finally{globalThis.fetch=original;globalThis.setTimeout=timer;}
 });
 test('forecast manager source uses active employee mapping and applies exclusions only in forecast',async()=>{
  let where:any, approved:readonly string[]=[];
