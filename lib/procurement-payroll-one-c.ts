@@ -1,9 +1,9 @@
 import 'server-only';
 
 import { readOneCRuntimeEnv } from './one-c-env';
-import { parsePayrollForecastEvidence } from './procurement-payroll-forecast';
+import { parsePayrollForecastEvidence, type PayrollForecastOwnerPolicy } from './procurement-payroll-forecast';
 
-export async function fetchPayrollForecastEvidence(asOf: string) {
+export async function fetchPayrollForecastEvidence(asOf: string, policy?: PayrollForecastOwnerPolicy) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) throw new Error('FORECAST_INVALID_DATE');
   const env = readOneCRuntimeEnv();
   if (!env.baseUrl || !env.user || !env.password) throw new Error('FORECAST_ONE_C_UNCONFIGURED');
@@ -17,7 +17,7 @@ export async function fetchPayrollForecastEvidence(asOf: string) {
       cache: 'no-store', signal: controller.signal,
     });
     if (!response.ok) throw new Error(`FORECAST_PAYROLL_HTTP_${response.status}`);
-    return parsePayrollForecastEvidence(await response.json(), asOf);
+    return parsePayrollForecastEvidence(await response.json(), asOf, policy);
   } finally {
     clearTimeout(timeout);
   }

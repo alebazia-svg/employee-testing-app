@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parsePayrollForecastEvidence } from '../lib/procurement-payroll-forecast';
+import { FUNDING_PAYROLL_POLICY } from '../lib/procurement-funding-owner-policy';
 
 const asOf = '2026-09-12';
 const rows = [
@@ -57,4 +58,36 @@ test('a new employee balance is shown for review and never silently added to the
   assert.equal(result.payableMinor, null);
   assert.equal(result.unreviewedMinor, 500_000);
   assert.ok(result.warnings.includes('new_salary_person_needs_review'));
+});
+
+function currentPayload() {
+  const p=payload();p.as_of='2026-10-11';
+  p.rows[1].closing_balance_signed=-19600;
+  p.rows.push({employee_ref:FUNDING_PAYROLL_POLICY.includeRefs[0],closing_balance_signed:-10000});
+  p.totals={rows:p.rows.length,closing_balance_signed:p.rows.reduce((s,r)=>s+Number(r.closing_balance_signed),0)};
+  return p;
+}
+test('owner-approved current identities use actual balances and cancel only trainee exclusion',()=>{
+  const p=currentPayload(), before=structuredClone(p);
+  const r=parsePayrollForecastEvidence(p,p.as_of,FUNDING_PAYROLL_POLICY);
+  assert.equal(r.sourceComplete,true);assert.equal(r.knownOldMinor,1617000);
+  assert.equal(r.payableMinor,(448115+19600+10000)*100);assert.deepEqual(p,before);
+});
+test('reviewed salaries are dynamic, not frozen at the reviewed amounts',()=>{
+  const p=currentPayload();p.rows[1].closing_balance_signed=-25000;p.rows.at(-1)!.closing_balance_signed=-12000;
+  p.totals.closing_balance_signed=p.rows.reduce((s,r)=>s+Number(r.closing_balance_signed),0);
+  assert.equal(parsePayrollForecastEvidence(p,p.as_of,FUNDING_PAYROLL_POLICY).payableMinor,(448115+25000+12000)*100);
+});
+test('dated decision does not reinterpret history or change default production callers',()=>{
+  assert.deepEqual(parsePayrollForecastEvidence(payload(),asOf,FUNDING_PAYROLL_POLICY),parsePayrollForecastEvidence(payload(),asOf));
+  assert.equal(parsePayrollForecastEvidence(currentPayload(),'2026-10-11').sourceComplete,false);
+});
+test('other unknown identities, changed exclusions and totals still fail closed',()=>{
+  for(const kind of ['new','old','total']){
+    const p=currentPayload();
+    if(kind==='new'){p.rows.push({employee_ref:'other-person',closing_balance_signed:-100});p.totals.rows++;p.totals.closing_balance_signed-=100;}
+    if(kind==='old'){p.rows[2].closing_balance_signed=-21;p.totals.closing_balance_signed--;}
+    if(kind==='total')p.totals.closing_balance_signed++;
+    assert.equal(parsePayrollForecastEvidence(p,p.as_of,FUNDING_PAYROLL_POLICY).payableMinor,null);
+  }
 });

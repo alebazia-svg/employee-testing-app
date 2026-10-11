@@ -31,7 +31,8 @@ test('first page streams verification separately and never starts forecast-only 
   const client=readFileSync('app/(dashboard)/admin/procurement/AdminProcurementClient.tsx','utf8');
   assert.ok(client.includes("forecastRequested||tab==='plan'"));
   assert.ok(client.includes('onOpen={()=>setForecastRequested(true)}'));
-  assert.ok(client.includes('tab !== "plan" || !!forecastStatus'));
+  assert.ok(client.includes('ProcurementFundingPlan data={forecast.funding}'));
+  assert.ok(!client.includes('<ProcurementDailyPlan'));
   assert.ok(client.includes('!forecastStatus && funding'));
 });
 

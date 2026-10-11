@@ -36,12 +36,18 @@ export type PayrollForecastEvidence = {
   warnings: string[];
 };
 
-export function parsePayrollForecastEvidence(payload: unknown, asOf: string): PayrollForecastEvidence {
+export type PayrollForecastOwnerPolicy = { effectiveFrom: string; includeRefs: readonly string[] };
+
+export function parsePayrollForecastEvidence(payload: unknown, asOf: string, policy?: PayrollForecastOwnerPolicy): PayrollForecastEvidence {
+  // A dated, owner-reviewed identity rule; never freeze the employee's amount.
+  const include = new Set(policy && asOf >= policy.effectiveFrom ? policy.includeRefs : []);
+  const oldBalances = new Map([...KNOWN_OLD_BALANCES].filter(([ref]) => !include.has(ref)));
+  const expectedOldMinor = [...oldBalances.values()].reduce((sum,n) => sum + n * 100, 0);
   const root = record(payload);
   const warnings: string[] = [];
   let unreviewedMinor = 0;
   const fallback = (): PayrollForecastEvidence => ({
-    payableMinor: null, grossNegativeMinor: null, knownOldMinor: 1627000,
+    payableMinor: null, grossNegativeMinor: null, knownOldMinor: expectedOldMinor,
     unassignedPositiveMinor: 0, unreviewedMinor, sourceComplete: false, warnings,
   });
   if (!root || root.ok !== true || root.endpoint !== 'payroll-balance' ||
@@ -72,21 +78,21 @@ export function parsePayrollForecastEvidence(payload: unknown, asOf: string): Pa
     seen.add(ref);
     signedTotal += amount;
     if (amount < 0) grossNegativeMinor += -amount;
-    if (KNOWN_OLD_BALANCES.has(ref)) {
+    if (oldBalances.has(ref)) {
       excluded.add(ref);
-      const expected = KNOWN_OLD_BALANCES.get(ref)! * 100;
+      const expected = oldBalances.get(ref)! * 100;
       if (amount !== -expected) warnings.push('known_old_balance_changed');
       oldMinor += -amount;
     }
     if (ref === '00000000-0000-0000-0000-000000000000') {
       if (amount < 0) warnings.push('unassigned_salary_debt');
       else unassignedPositiveMinor += amount;
-    } else if (!KNOWN_OLD_BALANCES.has(ref) && !REVIEWED_CURRENT_REFS.has(ref) && amount !== 0) {
+    } else if (!oldBalances.has(ref) && !REVIEWED_CURRENT_REFS.has(ref) && !include.has(ref) && amount !== 0) {
       unreviewedMinor += Math.abs(amount);
       warnings.push('new_salary_person_needs_review');
     }
   }
-  if (excluded.size !== KNOWN_OLD_BALANCES.size) warnings.push('known_old_balance_missing');
+  if (excluded.size !== oldBalances.size) warnings.push('known_old_balance_missing');
   if (minor(totals.closing_balance_signed) !== signedTotal) warnings.push('payroll_total_mismatch');
   if (warnings.length) return fallback();
   return {

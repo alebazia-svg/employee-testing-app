@@ -1,12 +1,16 @@
 'use client';
 
 import { createContext, useContext, type ReactNode } from 'react';
+import type {AdminForecastSources} from '@/lib/procurement-admin-forecast';
 
 /** Development-only presentation slots. Production screens cannot enable them. */
 export const ProcurementVisualPreview = createContext<{
   /** Isolated authenticated DB review: use the real receipt UI and API. */
   persistedReceipts?: boolean;
   toolbar?: ReactNode;
+  fundingPlan?: ReactNode;
+  forecastReader?: () => Promise<AdminForecastSources>;
+  initialAdminTab?: 'plan';
   labels?: Record<string, string>;
   methods?: Record<string, string>;
   historyWarnings?: Record<string, string>;

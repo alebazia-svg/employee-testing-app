@@ -13,6 +13,9 @@ const normalizeManagerName = (value: string) => value.trim().toLocaleLowerCase('
 
 export type AdminForecastSources = {
   asOf: string;
+  checkedAt?: string;
+  manager?: Awaited<ReturnType<typeof import('./procurement-funding-source').loadForecastManagerCash>> | null;
+  datedTbank?: Awaited<ReturnType<typeof import('./tbank-owner-transfer-one-c').fetchDatedTBankControl>>['dated'] | null;
   history: Awaited<ReturnType<typeof loadProcurementForecastHistory>> | null;
   owner: Awaited<ReturnType<typeof loadOwnerCashForecastShadow>> | null;
   payroll: Awaited<ReturnType<typeof fetchPayrollForecastEvidence>> | null;
@@ -21,7 +24,7 @@ export type AdminForecastSources = {
 };
 export type AdminForecastInput = {
   todayKey: string; plansComplete: boolean; ordersComplete: boolean;
-  plansWithOrderContext: {id:string;status:string;supplierPartner:string;paymentMethod:string;plannedDate:string;plannedAmount:string;foreignAmount:string|null;evidence:{state:string;issuedAmount:number;paidAmount:number;remainingForeignAmount?:number|null}}[];
+  plansWithOrderContext: {id:string;status:string;supplierPartner:string;paymentMethod:string;plannedDate:string;plannedAmount:string;foreignAmount:string|null;evidence:{state:string;issuedAmount:number;paidAmount:number;remainingAmount?:number|null;remainingForeignAmount?:number|null;verification?:string;paymentAmountNeedsConfirmation?:boolean}}[];
   scopedOrders: {supplierPartner:string;supplierCounterparty:string;orderPaymentGap:number}[];
   managerOrders: {supplierPartner:string;supplierCounterparty:string}[];
   usdtBalance:{balance:number|null}; accountableBalance:{balance:number|null};

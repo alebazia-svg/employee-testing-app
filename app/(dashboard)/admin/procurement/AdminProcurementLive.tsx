@@ -194,7 +194,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
   if (!usdtRateReference?.rate) warnings.push("курс последней конвертации USDT");
   const forecastInput: AdminForecastInput = {
     todayKey, plansComplete: plansResult.status === 'fulfilled', ordersComplete: ordersSource?.complete === true,
-    plansWithOrderContext: plansWithOrderContext.map(({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,evidence}) => ({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,evidence:{state:evidence.state,issuedAmount:evidence.issuedAmount,paidAmount:evidence.paidAmount,remainingForeignAmount:evidence.remainingForeignAmount}})),
+    plansWithOrderContext: plansWithOrderContext.map(({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,evidence}) => ({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,evidence:{state:evidence.state,issuedAmount:evidence.issuedAmount,paidAmount:evidence.paidAmount,remainingAmount:evidence.remainingAmount,remainingForeignAmount:evidence.remainingForeignAmount,paymentAmountNeedsConfirmation:evidence.paymentAmountNeedsConfirmation}})),
     scopedOrders: scopedOrders.map(({supplierPartner,supplierCounterparty,orderPaymentGap})=>({supplierPartner,supplierCounterparty,orderPaymentGap})),
     managerOrders: managerOrders.map(({supplierPartner,supplierCounterparty})=>({supplierPartner,supplierCounterparty})),
     usdtBalance:{balance:usdtBalance.balance}, accountableBalance:{balance:accountableBalance.balance}, usdtRateReference,

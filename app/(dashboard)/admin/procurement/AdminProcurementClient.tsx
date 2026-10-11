@@ -3,6 +3,7 @@ import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionN
 import { useAdminProcurementForecast } from '@/components/useAdminProcurementForecast';
 import type { AdminForecastInput } from '@/lib/procurement-admin-forecast';
 import { ProcurementAdminList } from "@/components/ProcurementAdminList";
+import ProcurementFundingPlan from '@/components/ProcurementFundingPlan';
 import { ProcurementAdminComment } from "@/components/ProcurementAdminComment";
 import type { ReactNode } from "react";
 import "./procurement-workspace.css";
@@ -227,9 +228,9 @@ export default function AdminProcurementClient({
   const setPlans = (update:(current:Plan[])=>Plan[]) => setLocalPlans(previous=>({
     source:initialPlans,value:update(previous.source===initialPlans?previous.value:initialPlans),
   }));
-  const [tab, setTab] = useState<"pending" | "approved" | "plan" | "history">(() => revisionCount || initialPlans.some(p => p.status === "SUBMITTED" && p.evidence.state !== "PAID_BY_ONE_C") ? "pending" : "approved");
+  const [tab, setTab] = useState<"pending" | "approved" | "plan" | "history">(() => visualPreview?.initialAdminTab ?? (revisionCount || initialPlans.some(p => p.status === "SUBMITTED" && p.evidence.state !== "PAID_BY_ONE_C") ? "pending" : "approved"));
   const [forecastRequested,setForecastRequested]=useState(false);
-  const forecast=useAdminProcurementForecast(forecastInput,refreshState==='ready'&&(forecastRequested||tab==='plan'));
+  const forecast=useAdminProcurementForecast(forecastInput,refreshState==='ready'&&(forecastRequested||tab==='plan'),visualPreview?.forecastReader);
   const {forecastHistory,forecast30Days,supplierWarnings,supplierWarningsReady,debtAllocation,debtReserveBreakdown,cashPreparation,financialAssistant,requestFundingAssessments}=forecast.data??{forecastHistory: initial_forecastHistory,forecast30Days: initial_forecast30Days,supplierWarnings: initial_supplierWarnings,supplierWarningsReady: initial_supplierWarningsReady,debtAllocation: initial_debtAllocation,debtReserveBreakdown: initial_debtReserveBreakdown,cashPreparation: initial_cashPreparation,financialAssistant: initial_financialAssistant,requestFundingAssessments: initial_requestFundingAssessments};
   const fundingByPlanId = new Map(requestFundingAssessments.map((assessment) => [assessment.planId, assessment]));
   const forecastStatus=refreshState!=='ready'?<p role="status" className="text-sm text-slate-600">{refreshState==='loading'?'Проверяем оплаты и остатки в 1С…':'Свежие данные пока недоступны. Обновление повторится автоматически.'}</p>:forecastInput&&!forecast.data?<div role="status" className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">{forecast.error?<><p>Прогноз пока недоступен. Заявки и история оплат доступны.</p><button type="button" className="pam-button mt-3" onClick={forecast.retry}>Повторить загрузку</button></>:"Проверяем остатки и обязательные выплаты…"}</div>:null;
@@ -490,8 +491,8 @@ export default function AdminProcurementClient({
       <nav aria-label="Разделы закупок" className="procurement-section-nav">
         {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);if(item.id==="plan")setForecastRequested(true);setReturningId("");setReturnReason("");}} className={tab===item.id?"is-active":""}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
       </nav>
-      {visualPreview?.toolbar}
-      <div className="pam-toolbar">{tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'}/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={completedPlans} allPlans={plans}/> : null}</div>
+      {!visualPreview?.fundingPlan&&visualPreview?.toolbar}
+      <div className="pam-toolbar">{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'}/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={completedPlans} allPlans={plans}/> : null}</div>
       {actionMessage?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionMessage}</p>:null}
       {sourceWarnings.length ? (
         <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
@@ -500,459 +501,18 @@ export default function AdminProcurementClient({
         </details>
       ) : null}
 
-      {refreshState==='loading'?<p role="status" className="text-sm text-slate-600">{sourceCheckedAt?'Обновляем оплаты из 1С. Пока показан результат последней подтверждённой проверки.':'Проверяем оплаты в 1С. Заявки уже доступны для просмотра.'}</p>:refreshState==='error'||stalePayments?<p role="status" className="text-sm text-slate-600">{sourceCheckedAt?'Свежие данные пока недоступны. Показан результат последней успешной проверки.':'Свежие данные пока недоступны.'} Действия с оплатами будут доступны после сверки. Обновление повторится автоматически.</p>:null}
+      {!(tab==='plan'&&visualPreview?.fundingPlan)&&(refreshState==='loading'?<p role="status" className="text-sm text-slate-600">{sourceCheckedAt?'Обновляем оплаты из 1С. Пока показан результат последней подтверждённой проверки.':'Проверяем оплаты в 1С. Заявки уже доступны для просмотра.'}</p>:refreshState==='error'||stalePayments?<p role="status" className="text-sm text-slate-600">{sourceCheckedAt?'Свежие данные пока недоступны. Показан результат последней успешной проверки.':'Свежие данные пока недоступны.'} Действия с оплатами будут доступны после сверки. Обновление повторится автоматически.</p>:null)}
       {unknownPayments.length ? <p role="status" className="text-sm text-amber-900">Статус оплаты уточняется: {unknownPayments.map(plan => plan.supplierPartner).join(', ')}. Эти заявки не считаются неоплаченными.</p> : null}
 
-      {tab === "plan" && forecastStatus}
-      <div hidden={tab !== "plan" || !!forecastStatus} className="space-y-4 procurement-plan">
-      <section className="procurement-forecast-grid grid items-start gap-4">
-        <div className="procurement-forecast-calendar admin-material-card rounded-2xl bg-white p-4 sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ближайшие 30 дней</p><h2 className="mt-0.5 text-xl font-black text-slate-950">План платежей</h2><p className="mt-1 text-sm font-medium text-slate-500">В сумме учтены только известные выплаты.</p></div>
-            <div className="text-right"><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-0.5 text-xl font-black text-slate-950">{rub.format(forecast30Days.scheduledOutMinor / 100)}</p></div>
-          </div>
-          <div className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200 px-3">
-            {forecast30Days.rows.map((row) => (
-              <div key={row.date} data-deadline={row.date < todayKey ? "overdue" : row.date === todayKey ? "today" : row.date === nextDayKey(todayKey) ? "tomorrow" : "later"} className="procurement-forecast-date-row grid gap-2 py-3 sm:grid-cols-[105px_minmax(0,1fr)_150px_165px] sm:items-center">
-                <p className="text-sm font-black text-slate-950">{row.date <= nextDayKey(todayKey) ? <span className="mb-1 block">{row.date < todayKey ? "Срок прошёл" : row.date === todayKey ? "Сегодня" : "Завтра"}</span> : null}{shortDay(row.date)}</p>
-                <div className="space-y-1">{row.items.map((item) => <div key={item.id}><p className="text-sm font-extrabold text-slate-950">{item.title}</p><p className="text-[11px] font-semibold text-slate-500">{item.source}</p></div>)}</div>
-                <div className="sm:text-right"><p className="text-sm font-black text-slate-950">{row.items.every((item) => item.amountMinor == null) ? "Сумма уточняется" : rub.format(row.items.reduce((sum, item) => sum + (item.amountMinor ?? 0), 0) / 100)}</p></div>
-                <div className="sm:text-right">{row.gapMinor > 0 ? <><p className="text-sm font-black text-red-800">Не хватает {rub.format(row.gapMinor / 100)}</p><p className="text-[11px] font-semibold text-red-700">Найти деньги или перенести</p></> : ["Не получены остатки 1С", "Нужна сумма выплаты"].includes(forecastCoverageLabel(forecast30Days.rows, row.date)) ? null : <p className={`text-sm font-black ${forecastCoverageLabel(forecast30Days.rows, row.date) === "Деньги предусмотрены" ? "text-green-800" : "text-amber-800"}`}>{forecastCoverageLabel(forecast30Days.rows, row.date)}</p>}</div>
-              </div>
-            ))}
-          </div>
-          <div id="cash-route" className="scroll-mt-24 mt-3 rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-black text-slate-950">Как подготовить наличные к зарплате</p><p className="mt-0.5 text-xs font-semibold text-slate-500">Портал сначала использует сейф, затем учитывает ВТБ и лимиты Т‑Банка.</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black ${cashPreparation.state === "ready" ? (cashPreparation.unresolvedMinor ?? 0) > 0 ? "bg-red-100 text-red-800" : (cashPreparation.prepareMinor ?? 0) > 0 ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>{cashPreparation.state === "ready" ? (cashPreparation.unresolvedMinor ?? 0) > 0 ? `Не найдено ${rub.format((cashPreparation.unresolvedMinor ?? 0) / 100)}` : (cashPreparation.prepareMinor ?? 0) > 0 ? `Снять ${rub.format((cashPreparation.prepareMinor ?? 0) / 100)}` : "Наличных достаточно" : "Нужны данные 1С"}</span></div>
-            {cashPreparation.state === "ready" && cashPreparation.steps.length ? <div className="mt-2 flex flex-wrap gap-2">{cashPreparation.steps.map((step) => <span key={step.source} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200">{step.source === "safe" ? "Оставить в сейфе" : step.source === "vtb" ? "Снять через ВТБ" : step.source === "tbank_card" ? "Снять с карты Т‑Банка" : "Счёт → карта Т‑Банка"}: {rub.format(step.amountMinor / 100)}</span>)}</div> : null}
-          </div>
-        </div>
-
-        <aside className="procurement-forecast-side">        <aside className="procurement-financial-summary admin-material-card rounded-2xl bg-white p-4 sm:p-5">
-          <h2 className="text-xl font-black text-slate-950">Хватит ли денег</h2>
-          <div className="mt-4 space-y-3">
-            <div className="flex items-end justify-between gap-3 border-b border-slate-200 pb-3"><div><p className="text-xs font-bold text-slate-500">Доступно сейчас</p><p className="mt-1 text-xl font-black text-slate-950">{debtAllocation.resourcesMinor == null ? "—" : rub.format(debtAllocation.resourcesMinor / 100)}</p></div><p className="text-xs font-semibold text-slate-500">Сейф, карты и счета</p></div>
-            <div className="flex items-end justify-between gap-3 border-b border-slate-200 pb-3"><div><p className="text-xs font-bold text-slate-500">Зарезервировать</p><p className="mt-1 text-xl font-black text-slate-950">{debtAllocation.mandatoryReserveMinor == null ? "—" : rub.format(debtAllocation.mandatoryReserveMinor / 100)}</p></div><p className="max-w-[150px] text-right text-xs font-semibold text-slate-500">Зарплата, аренда и согласованные заявки</p></div>
-            <div className={`rounded-xl px-3.5 py-3 ${debtAllocation.state === "ready" && (debtAllocation.availableForDebtMinor ?? 0) > 0 ? "bg-green-50" : "bg-amber-50"}`}><p className="text-xs font-bold text-slate-500">Для оплат поставщикам</p><p className={`mt-1 text-2xl font-black ${debtAllocation.state === "ready" && (debtAllocation.availableForDebtMinor ?? 0) > 0 ? "text-green-800" : "text-amber-900"}`}>{debtAllocation.state === "ready" ? rub.format((debtAllocation.availableForDebtMinor ?? 0) / 100) : "Расчёт уточняется"}</p></div>
-            <div className={`rounded-xl px-3.5 py-3 ${(debtAllocation.uncoveredDebtMinor ?? 0) > 0 ? "bg-red-50" : "bg-slate-50"}`}>
-              <p className="text-xs font-bold text-slate-500">Если погасить все долги поставщикам</p>
-              <p className="mt-1 text-lg font-black text-slate-950">{debtAllocation.uncoveredDebtMinor == null ? "Не рассчитано" : debtAllocation.uncoveredDebtMinor > 0 ? `Не хватает ${rub.format(debtAllocation.uncoveredDebtMinor / 100)}` : "Денег хватает"}</p>
-              <p className="mt-1 text-xs font-semibold text-slate-600">После резерва. Переводы и комиссии — отдельно.</p>
-            </div>
-            <div className={`rounded-xl px-3.5 py-3 ${forecast30Days.firstGap ? "bg-red-50" : "bg-slate-50"}`}><p className="text-xs font-bold text-slate-500">Выплаты по датам · 30 дней</p><p className={`mt-1 text-lg font-black ${forecast30Days.firstGap ? "text-red-800" : "text-slate-950"}`}>{forecast30Days.firstGap ? `Не хватает ${rub.format(forecast30Days.firstGap.amountMinor / 100)} к ${shortDay(forecast30Days.firstGap.date)}` : forecast30Days.coverageReady ? "Известные выплаты обеспечены" : "Учтены только известные суммы"}</p><p className="mt-1 text-xs font-semibold text-slate-600">Долги без даты — в блоке «Кому платить дальше».</p></div>
-          </div>
-        </aside>
-          <section id="supplier-control" className="admin-material-card scroll-mt-24 rounded-2xl bg-white p-4 sm:p-5">
-            <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">После обязательных выплат</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Кому платить дальше</h2><p className="mt-1 text-xs font-semibold text-slate-500">Поставщики с долгом от 300 000 ₽</p></div><div className="text-right"><p className="text-xs font-bold text-slate-500">Долг всем поставщикам</p><p className="mt-0.5 text-sm font-black text-slate-950">{debtAllocation.totalDebtMinor == null ? "—" : rub.format(debtAllocation.totalDebtMinor / 100)}</p></div></div>
-            {controlledSupplierDebts.length ? <div className="mt-3 divide-y divide-slate-200">{controlledSupplierDebts.slice(0, 5).map((debt, index) => { const allocation = supplierAllocationByName.get(debt.supplier); return <div key={debt.supplier} className="py-3"><div className="flex items-center justify-between gap-3"><p className="min-w-0 truncate text-sm font-black text-slate-950">{index + 1}. {debt.supplier}</p><p className="shrink-0 text-sm font-black text-slate-950">{rub.format(debt.debtMinor / 100)}</p></div><p className={`mt-1 text-xs font-semibold ${allocation?.recommendedMinor ? "text-green-700" : "text-slate-500"}`}>{allocation?.recommendedMinor ? `${allocation.result === "full" ? "Закрыть полностью" : "Оплатить частично"}: ${rub.format(allocation.recommendedMinor / 100)}` : allocation?.result === "no_capacity" ? "После приоритетных оплат свободных денег не остаётся" : debt.priority <= 1 ? "Высокий приоритет · сумма оплаты рассчитывается" : debt.priority >= 4 ? "Крупный долг · подтвердить приоритет" : "Сумма оплаты рассчитывается"}</p></div>; })}</div> : <p className={`mt-3 rounded-xl px-3.5 py-3 text-sm font-semibold ${!supplierWarningsReady ? "bg-amber-50 text-amber-900" : "bg-green-50 text-green-900"}`}>{!supplierWarningsReady ? "Долги появятся после получения актуальных взаиморасчётов из 1С." : "Крупных долгов сейчас нет."}</p>}
-          </section>
-
-          <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
-            <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Специальные способы оплаты</p>
-            <div className="mt-3 space-y-3">
-              <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black text-slate-950">QR · карта Астемира</p><p className="text-xs font-semibold text-slate-500">Запланировано {plannedQrLabel}</p></div><p className="text-sm font-black text-slate-950">{accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)}</p></div>
-              <div className="border-t border-slate-200 pt-3"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-black text-slate-950">Оплаты в USDT</p><p className="text-xs font-semibold text-slate-500">Запланировано {plannedUsdtLabel}</p></div><p className="text-sm font-black text-slate-950">{usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}</p></div></div>
-            </div>
-          </section>
-        </aside>
-      </section>
-
-      <section className="hidden admin-material-card rounded-2xl bg-white p-4 sm:p-5">
-        <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Сегодня</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Требуется ваше решение</h2></div><span className={`rounded-full px-2.5 py-1 text-xs font-black ${immediateStateUnavailable || hasImmediateAction ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>{immediateStateUnavailable ? "—" : hasImmediateAction ? "Есть действия" : "Срочных действий нет"}</span></div>
-        <div className="mt-3 space-y-2.5">
-          {submitted.length ? <button type="button" onClick={() => document.getElementById(`payment-plan-${submitted[0]?.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })} className="flex w-full items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition hover:bg-amber-100"><span className="min-w-0"><span className="block text-base font-black text-amber-950">Проверить {submitted.length} {submitted.length === 1 ? "заявку" : "заявки"} Астемира</span><span className="mt-0.5 block truncate text-xs font-semibold text-amber-800">{formatMinor(submitted.reduce((sum, plan) => sum + Math.round(Number(plan.plannedAmount || 0) * 100), 0))}{urgentSubmitted.length ? ` · срочно сегодня: ${urgentSubmitted.length}` : " · ожидают вашего решения"}</span>{firstSubmittedFunding ? <span className="mt-1 block truncate text-xs font-black text-amber-950">Если согласовать: {firstSubmittedFunding.title.toLocaleLowerCase("ru-RU")}</span> : null}</span><span className="inline-flex shrink-0 items-center gap-1 text-sm font-black text-amber-900">Открыть <ArrowRight className="h-4 w-4" /></span></button> : null}
-          {cashPreparation.state === "ready" && ((cashPreparation.prepareMinor ?? 0) > 0 || (cashPreparation.unresolvedMinor ?? 0) > 0) ? <button type="button" onClick={() => openForecastDetail("cash-preparation")} className="flex w-full items-center justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left"><span><span className="block text-base font-black text-slate-950">{(cashPreparation.unresolvedMinor ?? 0) > 0 ? "Найти источник для обязательной выплаты" : "Подготовить наличные"}</span><span className="mt-0.5 block text-xs font-semibold text-slate-600">К {shortDay(cashPreparation.dueOn)} · {rub.format(((cashPreparation.unresolvedMinor ?? 0) > 0 ? cashPreparation.unresolvedMinor : cashPreparation.prepareMinor)! / 100)}</span></span><span className="inline-flex items-center gap-1 text-sm font-black">Расчёт <ArrowRight className="h-4 w-4" /></span></button> : null}
-          {firstSupplierControl ? <button type="button" onClick={() => openForecastDetail("supplier-attention")} className="flex w-full items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left"><span><span className="block text-base font-black text-slate-950">{firstSupplierRecommendation ? "Рассмотреть оплату" : "Держать на контроле долг"} {firstSupplierControl.supplier}</span><span className="mt-0.5 block text-xs font-semibold text-slate-600">{firstSupplierRecommendation ? `Рекомендуемая сумма · ${rub.format(firstSupplierRecommendation.recommendedMinor / 100)}` : `Долг по текущей выгрузке 1С · ${rub.format(firstSupplierControl.debtMinor / 100)} · сумма оплаты рассчитывается`}</span></span><span className="inline-flex shrink-0 items-center gap-1 text-sm font-black">Почему <ArrowRight className="h-4 w-4" /></span></button> : null}
-          {!hasImmediateAction && !immediateStateUnavailable ? <div className="rounded-xl border border-green-200 bg-green-50/60 px-4 py-3"><p className="font-black text-green-900">На сегодня обязательных действий нет</p><p className="mt-0.5 text-xs font-semibold text-green-800">Портал пересчитает очередь после новых заявок и обновления 1С.</p></div> : null}
-          {immediateStateUnavailable ? <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3"><p className="text-sm font-black text-amber-950">Для финансовой рекомендации нужны свежие данные 1С</p><p className="mt-0.5 text-xs font-semibold text-amber-800">Какие именно источники не получены, показано в предупреждении выше.</p></div> : null}
-        </div>
-      </section>
-
-      <section className={`hidden admin-material-card rounded-2xl border p-4 sm:p-5 ${financialAssistant.state === "unavailable" ? "border-amber-200 bg-amber-50/60" : financialAssistant.state === "review" ? "border-red-200 bg-red-50/40" : "border-slate-200 bg-white"}`}>
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(330px,.65fr)] xl:items-center">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-black text-slate-950">Умный финансовый помощник</h2>
-              <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${financialAssistant.state === "ready" ? "bg-green-100 text-green-800" : financialAssistant.state === "review" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}>
-                {financialAssistant.state === "ready" ? "Можно действовать" : financialAssistant.state === "review" ? "Требует решения" : "—"}
-              </span>
-            </div>
-            <p className="mt-2 text-xl font-black leading-snug text-slate-950">{financialAssistant.title}{financialAssistant.amountMinor !== null ? ` · ${rub.format(financialAssistant.amountMinor / 100)}` : ""}</p>
-            <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-600">{financialAssistant.explanation}</p>
-            {financialAssistant.findings.length ? <div className="mt-3 flex flex-wrap gap-2">{financialAssistant.findings.slice(0, 3).map((finding) => <span key={`${finding.kind}:${finding.text}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">{finding.text}</span>)}</div> : null}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-xl bg-white px-3.5 py-3 ring-1 ring-slate-200"><p className="text-[11px] font-bold text-slate-500">Расходы на 30 дней</p><p className="mt-1 text-base font-black text-slate-950">{rub.format(forecast30Days.scheduledOutMinor / 100)}</p></div>
-            <div className={`rounded-xl px-3.5 py-3 ring-1 ${forecast30Days.firstGap ? "bg-red-50 ring-red-200" : "bg-white ring-slate-200"}`}><p className="text-[11px] font-bold text-slate-500">Кассовый разрыв</p><p className={`mt-1 text-base font-black ${forecast30Days.firstGap ? "text-red-800" : "text-slate-950"}`}>{forecast30Days.firstGap ? rub.format(forecast30Days.firstGap.amountMinor / 100) : forecast30Days.coverageReady ? "Не обнаружен" : "Нужны данные"}</p></div>
-            <button type="button" onClick={() => openForecastDetail("forecast-30-title")} className="col-span-2 flex items-center justify-between rounded-xl bg-[#263b5c] px-4 py-3 text-left text-sm font-black text-white transition hover:bg-[#1f3150]"><span>Открыть прогноз по датам</span><ArrowRight className="h-4 w-4" /></button>
-          </div>
-        </div>
-      </section>
-
-      <section className="hidden items-start gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,.75fr)]">
-        <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5"><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ближайшие 7 дней</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Какие деньги понадобятся</h2></div><p className="text-xs font-semibold text-slate-500">С {shortDay(todayKey)} по {shortDay(sevenDaysEndKey)}</p></div>{upcomingSevenDays.length ? <div className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200 px-3">{upcomingSevenDays.map((row) => <div key={row.date} className="grid gap-2 py-3 sm:grid-cols-[105px_minmax(0,1fr)_minmax(150px,.65fr)] sm:items-center"><p className="text-sm font-black">{shortDay(row.date)}</p><div>{row.items.map((item) => <div key={item.id}><p className="text-sm font-extrabold">{item.title}</p><p className="text-sm font-black">{item.amountMinor == null ? "Сумма уточняется" : `${item.certainty === "estimate" ? "≈ " : ""}${rub.format(item.amountMinor / 100)}`}</p></div>)}</div><div className="sm:text-right">{row.gapMinor > 0 ? <><p className="text-sm font-black text-red-800">Не хватает {rub.format(row.gapMinor / 100)}</p><p className="text-xs font-semibold text-red-700">Найти источник или перенести оплату</p></> : <><p className="text-sm font-black text-amber-800">Источник уточняется</p><p className="text-xs font-semibold text-slate-500">Пока не подтверждён по данным 1С</p></>}</div></div>)}</div> : <p className="mt-3 rounded-xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">На ближайшие семь дней выплат с известной датой нет.</p>}</section>
-        <aside className="admin-material-card rounded-2xl bg-white p-4 sm:p-5"><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Сколько денег свободно</p><div className="mt-3 space-y-2.5"><div className="flex justify-between gap-3"><p className="text-sm font-bold text-slate-600">Доступно сейчас</p><p className="font-black">{debtAllocation.resourcesMinor == null ? "—" : rub.format(debtAllocation.resourcesMinor / 100)}</p></div><div className="rounded-xl bg-slate-50 px-3 py-2.5"><div className="flex justify-between gap-3"><p className="text-sm font-bold text-slate-600">Оставить на обязательные выплаты</p><p className="font-black">{debtAllocation.mandatoryReserveMinor == null ? "—" : `− ${rub.format(debtAllocation.mandatoryReserveMinor / 100)}`}</p></div><p className="mt-1 text-[11px] font-semibold text-slate-500">Зарплата {debtReserveBreakdown.salaryMinor == null ? "уточняется" : rub.format(debtReserveBreakdown.salaryMinor / 100)} · аренда {rub.format(debtReserveBreakdown.rentMinor / 100)} · заявки {rub.format(debtReserveBreakdown.approvedPlansMinor / 100)}</p></div><div className="border-t-2 border-slate-200 pt-3"><p className="text-xs font-bold text-slate-500">Можно направить поставщикам</p><p className="mt-1 text-2xl font-black">{debtAllocation.state === "ready" ? rub.format((debtAllocation.availableForDebtMinor ?? 0) / 100) : "Расчёт уточняется"}</p></div><div className="grid grid-cols-2 gap-3 border-t pt-3"><div><p className="text-[11px] font-bold text-slate-500">Долг по 1С</p><p className="text-sm font-black">{supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}</p></div><div><p className="text-[11px] font-bold text-slate-500">Остаток по заказам</p><p className="text-sm font-black">{orderPaymentGapTotal == null ? "—" : rub.format(orderPaymentGapTotal)}</p></div></div></div></aside>
-      </section>
-
-      <section id="supplier-attention" className="hidden admin-material-card scroll-mt-24 rounded-2xl bg-white p-4 sm:p-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Контроль долгов</p>
-            <h2 className="mt-0.5 text-lg font-black text-slate-950">Поставщики с долгом от 300 000 ₽</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">Показываются всегда. Если остатков недостаточно для точного расчёта, портал не скрывает долг — только помечает сумму оплаты как неподтверждённую.</p>
-          </div>
-          <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${controlledSupplierDebts.some((item) => !item.verified) ? "bg-amber-100 text-amber-900" : "bg-slate-100 text-slate-700"}`}>{controlledSupplierDebts.some((item) => !item.verified) ? "Предварительная выгрузка 1С" : `На контроле: ${controlledSupplierDebts.length}`}</span>
-        </div>
-        {controlledSupplierDebts.length ? <div className="mt-4 divide-y divide-slate-200 rounded-xl border border-slate-200 px-3">{controlledSupplierDebts.slice(0, 6).map((debt, index) => {
-          const allocation = supplierAllocationByName.get(debt.supplier);
-          return <div key={debt.supplier} className="grid gap-2 py-3 sm:grid-cols-[32px_minmax(0,1fr)_minmax(170px,.7fr)_minmax(210px,1fr)] sm:items-center">
-            <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black ${index === 0 ? "bg-red-100 text-red-800" : "bg-slate-100 text-slate-600"}`}>{index + 1}</span>
-            <div><p className="text-sm font-black text-slate-950">{debt.supplier}</p><p className="text-xs font-semibold text-slate-500">Долг по взаиморасчётам 1С</p></div>
-            <p className="text-sm font-black text-slate-950 sm:text-right">{rub.format(debt.debtMinor / 100)}</p>
-            <div className="sm:text-right">{allocation && allocation.recommendedMinor > 0 ? <><p className="text-sm font-black text-[#263b5c]">{allocation.result === "full" ? "Можно закрыть полностью" : `Рекомендуется частично · ${rub.format(allocation.recommendedMinor / 100)}`}</p><p className="text-xs font-semibold text-slate-500">После обязательного резерва</p></> : <><p className="text-sm font-black text-amber-800">Сумма оплаты рассчитывается</p><p className="text-xs font-semibold text-slate-500">Долг остаётся на контроле</p></>}</div>
-          </div>;
-        })}</div> : <p className="mt-3 rounded-xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-900">Крупных долгов выше установленного порога сейчас нет.</p>}
-      </section>
-
-      <section className="hidden">
-        <div className="admin-material-card rounded-2xl bg-white p-5">
-          <div className="flex items-start gap-4">
-            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${sourceWarnings.length ? "bg-amber-50 text-amber-700" : nextDate ? "bg-[#eef2f8] text-[#263b5c]" : "bg-green-50 text-green-700"}`}>
-              <Banknote className="h-5 w-5" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ближайшая подготовка</p>
-              {paymentTotalsUnavailable ? <p className="mt-1 text-sm font-semibold text-slate-600">Расчёт обновляется</p> : nextDate ? (
-                <>
-                  <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <p className="text-2xl font-black text-slate-950">{nextAmountEstimated ? "≈ " : ""}{rub.format(nextAmount)}</p>
-                    <p className="text-base font-extrabold text-slate-700">к {date(nextDate)}</p>
-                  </div>
-                  <p className="mt-1 text-sm font-medium text-slate-500">
-                    {nextPreparationLabel} · {nextPlans.length} {nextPlans.length === 1 ? "оплата" : "оплаты"}
-                    {nextAmountEstimated ? " · сумма ориентировочная" : ""}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="mt-1 text-2xl font-black text-slate-950">Пока ничего готовить не нужно</p>
-                  <p className="mt-1 text-sm font-medium text-slate-500">Нет будущих оплат, требующих наличных.</p>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className={`admin-material-card rounded-2xl bg-white p-5 ${submitted.length ? "ring-2 ring-amber-200" : ""}`}>
-          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Ждут решения</p>
-          <p className="mt-1 text-2xl font-black text-slate-950">{submitted.length}</p>
-          <p className="mt-1 text-sm font-medium text-slate-500">заявок Астемира</p>
-          {urgentSubmitted.length ? <p className="mt-1 text-xs font-black text-red-700">Из них срочно сегодня: {urgentSubmitted.length}</p> : null}
-        </div>
-        <div className="admin-material-card rounded-2xl bg-white p-5">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Осталось оплатить по заказам</p>
-          <p className="mt-1 text-xl font-black text-slate-950">{orderPaymentGapTotal == null ? "—" : rub.format(orderPaymentGapTotal)}</p>
-          <p className="mt-1 text-sm font-medium text-slate-500">{openOrderCount == null ? "Нет данных" : `${openOrderCount} заказов · не включено в календарь: ${unplannedOrderCount ?? "—"}`}</p>
-        </div>
-        <div className="admin-material-card rounded-2xl bg-white p-5">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Долг за полученный товар</p>
-          <p className="mt-1 text-xl font-black text-slate-950">{supplierDebtTotal == null ? "—" : rub.format(supplierDebtTotal)}</p>
-          <p className="mt-1 text-sm font-medium text-slate-500">По взаиморасчётам с поставщиками Астемира в 1С</p>
-        </div>
-      </section>
-
-      <section className="hidden">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="flex items-center gap-2">
-            <History className="h-4 w-4 text-slate-500" />
-            <h2 className="text-base font-black text-slate-950">Что изменилось</h2>
-          </div>
-          {forecastHistory.state === "ready" ? (
-            <p className="text-xs font-semibold text-slate-500">С предыдущего изменения · {historyTime(forecastHistory.previousChangedAt)}</p>
-          ) : null}
-        </div>
-        {forecastHistory.state === "ready" && historyChange ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
-              <p className="text-xs font-bold text-slate-500">Новые заявки</p>
-              <p className={`mt-1 text-lg font-black ${newPlanChanges.length ? "text-amber-800" : "text-slate-950"}`}>
-                {newPlanChanges.length ? `${newPlanChanges.length} · ${formatMinor(newPlanAmountMinor)}` : "Нет"}
-              </p>
-              <p className="mt-0.5 truncate text-xs font-semibold text-slate-500" title={newPlanChanges.map((item) => item.supplier).join(", ")}>
-                {newPlanChanges.length ? newPlanChanges.map((item) => item.supplier).slice(0, 2).join(", ") : "Новых заявок не появилось"}
-              </p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
-              <p className="text-xs font-bold text-slate-500">Деньги и лимиты</p>
-              {historyChange.liquidityDeltaMinor === null ? (
-                <><p className="mt-1 text-lg font-black text-slate-950">—</p><p className="mt-0.5 text-xs font-semibold text-slate-500">Сравнение недоступно</p></>
-              ) : (
-                <><p className={`mt-1 flex items-center gap-1 text-lg font-black ${historyChange.liquidityDeltaMinor < 0 ? "text-red-700" : historyChange.liquidityDeltaMinor > 0 ? "text-green-700" : "text-slate-950"}`}>
-                  {historyChange.liquidityDeltaMinor < 0 ? <ArrowDownRight className="h-4 w-4" /> : historyChange.liquidityDeltaMinor > 0 ? <ArrowUpRight className="h-4 w-4" /> : null}
-                  {signedMinor(historyChange.liquidityDeltaMinor)}
-                </p><p className="mt-0.5 text-xs font-semibold text-slate-500">
-                  По счетам и кассам
-                  {historyChange.tbankTransferCapacityDeltaMinor
-                    ? ` · лимит Т-Банка ${signedMinor(historyChange.tbankTransferCapacityDeltaMinor)}`
-                    : ""}
-                </p></>
-              )}
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
-              <p className="text-xs font-bold text-slate-500">Предстоящие расходы</p>
-              <p className={`mt-1 flex items-center gap-1 text-lg font-black ${commitmentDeltaMinor && commitmentDeltaMinor > 0 ? "text-red-700" : commitmentDeltaMinor && commitmentDeltaMinor < 0 ? "text-green-700" : "text-slate-950"}`}>
-                {commitmentDeltaMinor && commitmentDeltaMinor > 0 ? <ArrowUpRight className="h-4 w-4" /> : commitmentDeltaMinor && commitmentDeltaMinor < 0 ? <ArrowDownRight className="h-4 w-4" /> : null}
-                {commitmentDeltaMinor === null ? "—" : signedMinor(commitmentDeltaMinor)}
-              </p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">Заявки Астемира{historyChange.salaryDeltaMinor !== null ? " и остаток зарплаты" : ""}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
-              <p className="text-xs font-bold text-slate-500">Долг поставщику</p>
-              {mainSupplierChange ? (
-                <><p className={`mt-1 flex items-center gap-1 text-lg font-black ${(mainSupplierChange.debtDeltaMinor || 0) > 0 ? "text-red-700" : "text-green-700"}`}>
-                  {(mainSupplierChange.debtDeltaMinor || 0) > 0 ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
-                  {signedMinor(mainSupplierChange.debtDeltaMinor || 0)}
-                </p><p className="mt-0.5 truncate text-xs font-semibold text-slate-500" title={mainSupplierChange.name}>{mainSupplierChange.name} · крупнейшее изменение</p></>
-              ) : (
-                <><p className="mt-1 text-lg font-black text-slate-950">Без изменений</p><p className="mt-0.5 text-xs font-semibold text-slate-500">По данным взаиморасчётов 1С</p></>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="mt-2 text-sm font-medium text-slate-500">
-            {forecastHistory.state === "unavailable"
-              ? "История сейчас недоступна. Текущие данные ниже продолжают работать."
-              : `Первый снимок сохранён${forecastHistory.currentChangedAt ? ` ${historyTime(forecastHistory.currentChangedAt)}` : ""}. Сравнение появится после следующего изменения.`}
-          </p>
-        )}
-      </section>
-
-      <details className="hidden admin-material-card group rounded-2xl bg-white">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5"><div className="flex min-w-0 items-center gap-2"><CalendarDays className="h-5 w-5 shrink-0 text-[#263b5c]" /><div><h2 className="text-base font-black text-slate-950">Полный план на 30 дней</h2><p className="text-xs font-semibold text-slate-500">Известные выплаты: {rub.format(forecast30Days.scheduledOutMinor / 100)} · до {date(forecast30Days.horizonEnd)}</p></div></div><ChevronDown className="h-4 w-4 shrink-0 transition group-open:rotate-180" /></summary>
-      <section className="overflow-hidden border-t border-slate-200" aria-labelledby="forecast-30-title">
-        <div className="border-b border-slate-200 p-4 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <CalendarDays className="h-5 w-5 text-[#263b5c]" />
-                <h2 id="forecast-30-title" className="text-lg font-black text-slate-950">Прогноз на 30 дней</h2>
-              </div>
-              <p className="mt-1 text-sm font-medium text-slate-500">Известные выплаты и заявки до {date(forecast30Days.horizonEnd)}. Обновляется автоматически.</p>
-            </div>
-            <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-black ${forecast30Days.firstGap ? "bg-red-100 text-red-800" : forecast30Days.coverageReady ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-900"}`}>
-              {forecast30Days.firstGap
-                ? `Риск разрыва ${shortDay(forecast30Days.firstGap.date)}`
-                : forecast30Days.coverageReady
-                  ? "По известным расходам разрыва нет"
-                  : "Остатки нужно обновить"}
-            </span>
-          </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <div className={`rounded-xl border px-3.5 py-3 ${forecast30Days.firstGap ? "border-red-200 bg-red-50" : "border-slate-200 bg-slate-50/60"}`}>
-              <p className="text-xs font-bold text-slate-500">Ближайший риск</p>
-              <p className={`mt-1 text-lg font-black ${forecast30Days.firstGap ? "text-red-800" : "text-slate-950"}`}>
-                {forecast30Days.firstGap ? `Не хватает ${rub.format(forecast30Days.firstGap.amountMinor / 100)}` : forecast30Days.coverageReady ? "Не обнаружен" : "Нужны остатки 1С"}
-              </p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">{forecast30Days.firstGap ? `К ${shortDay(forecast30Days.firstGap.date)}` : "По расходам с известным источником"}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
-              <p className="text-xs font-bold text-slate-500">Запланировано</p>
-              <p className="mt-1 text-lg font-black text-slate-950">{rub.format(forecast30Days.scheduledOutMinor / 100)}</p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">С известной суммой на ближайшие 30 дней</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
-              <p className="text-xs font-bold text-slate-500">Деньги сейчас</p>
-              <p className="mt-1 text-lg font-black text-slate-950">{forecast30Days.coverageReady ? rub.format(((forecast30Days.safeMinor ?? 0) + (forecast30Days.cardsMinor ?? 0)) / 100) : "—"}</p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">Сейф и ваши карты — раздельный расчёт</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3">
-              <p className="text-xs font-bold text-slate-500">Лимиты вывода денег</p>
-              <p className={`mt-1 text-lg font-black ${forecast30Days.tbank?.status === "verified" ? "text-slate-950" : "text-amber-800"}`}>{currentTbankLabel}</p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">Т‑Банк{forecast30Days.tbank?.renewsOn ? ` · обновление ${shortDay(forecast30Days.tbank.renewsOn)}` : " · по выписке 1С"}</p>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">ВТБ · на карту до 350 000 ₽ в день</p>
-            </div>
-          </div>
-          <div id="cash-preparation" className={`scroll-mt-24 mt-4 rounded-xl border p-3.5 ${cashPreparation.state === "ready" && (cashPreparation.unresolvedMinor ?? 0) > 0 ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-950">Как подготовить ближайшую обязательную выплату</h3>
-                <p className="mt-0.5 text-xs font-semibold text-slate-500">Зарплата к {shortDay(cashPreparation.dueOn)} · деньги в сейфе проверяются отдельно от карт.</p>
-              </div>
-              {cashPreparation.state === "ready" ? (
-                <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${(cashPreparation.unresolvedMinor ?? 0) > 0 ? "bg-red-100 text-red-800" : (cashPreparation.prepareMinor ?? 0) > 0 ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>
-                  {(cashPreparation.unresolvedMinor ?? 0) > 0
-                    ? `Нужно решить, откуда взять ${rub.format((cashPreparation.unresolvedMinor ?? 0) / 100)}`
-                    : (cashPreparation.prepareMinor ?? 0) > 0
-                      ? `Нужно снять ${rub.format((cashPreparation.prepareMinor ?? 0) / 100)}`
-                      : "Наличных достаточно"}
-                </span>
-              ) : <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900">Нужны свежие остатки 1С</span>}
-            </div>
-            {cashPreparation.state === "ready" ? (
-              <>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <div className="rounded-lg bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-bold text-slate-500">На зарплату</p><p className="mt-0.5 text-base font-black text-slate-950">{rub.format((cashPreparation.requiredMinor ?? 0) / 100)}</p></div>
-                  <div className="rounded-lg bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-bold text-slate-500">Уже есть в сейфе</p><p className="mt-0.5 text-base font-black text-slate-950">{rub.format((cashPreparation.safeCoveredMinor ?? 0) / 100)}</p></div>
-                  <div className={`rounded-lg px-3 py-2.5 ${(cashPreparation.prepareMinor ?? 0) > 0 ? "bg-amber-50" : "bg-green-50"}`}><p className="text-[11px] font-bold text-slate-500">Нужно подготовить наличными</p><p className={`mt-0.5 text-base font-black ${(cashPreparation.prepareMinor ?? 0) > 0 ? "text-amber-900" : "text-green-800"}`}>{rub.format((cashPreparation.prepareMinor ?? 0) / 100)}</p></div>
-                </div>
-                {cashPreparation.steps.length ? (
-                  <div className="mt-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50/50 px-3">
-                    {cashPreparation.steps.map((step) => (
-                      <div key={step.source} className="grid gap-1 py-2.5 sm:grid-cols-[minmax(155px,.75fr)_minmax(135px,.55fr)_minmax(0,1.4fr)] sm:items-center sm:gap-3">
-                        <p className="text-sm font-black text-slate-950">{step.source === "safe" ? "Оставить в сейфе" : step.source === "vtb" ? "Снять через ВТБ" : step.source === "tbank_card" ? "Снять с карты Т‑Банка" : "Перевести и снять через Т‑Банк"}</p>
-                        <p className="text-sm font-black text-[#263b5c]">{rub.format(step.amountMinor / 100)}</p>
-                        <p className="text-xs font-semibold leading-relaxed text-slate-500">{step.transferFromAccountMinor > 0 ? `С расчётного счёта на карту ${rub.format(step.transferFromAccountMinor / 100)}. ` : ""}{step.note}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : <p className="mt-3 text-xs font-semibold text-green-800">В сейфе уже достаточно наличных — снимать деньги с карт не нужно.</p>}
-                {(cashPreparation.tbankEstimatedFeeMinor ?? 0) > 0 ? <p className="mt-2 text-[11px] font-semibold text-slate-500">Ориентировочная комиссия Т‑Банка по текущему подтверждённому уровню: {rub.format((cashPreparation.tbankEstimatedFeeMinor ?? 0) / 100)}.</p> : null}
-                {cashPreparation.diagnostics.includes("tbank_tariff_needs_review") ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Часть суммы есть на расчётном счёте Т‑Банка, но текущий тариф не подтверждён. Портал не предлагает перевод, пока лимит не будет сверён.</p> : null}
-                {cashPreparation.diagnostics.includes("tbank_next_tier_needs_review") ? <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Оставшаяся сумма переходит на следующий тарифный уровень Т‑Банка. Портал не занижает комиссию и оставляет эту часть на проверку.</p> : null}
-              </>
-            ) : <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Портал покажет точный маршрут после получения суммы зарплаты и сегодняшних остатков сейфа, карт и расчётных счетов из 1С.</p>}
-          </div>
-          <div className={`mt-4 rounded-xl border p-3.5 ${debtAllocation.state === "ready" && debtAllocation.availableForDebtMinor === 0 ? "border-red-200 bg-red-50/70" : "border-slate-200 bg-white"}`}>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-950">Сколько можно направить поставщикам</h3>
-                <p className="mt-0.5 text-xs font-semibold text-slate-500">После зарплаты, аренды и уже согласованных заявок Астемира.</p>
-              </div>
-              {debtAllocation.state === "ready" ? (
-                <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${debtAllocation.availableForDebtMinor === 0 ? "bg-red-100 text-red-800" : "bg-[#eef2f8] text-[#263b5c]"}`}>
-                  {debtAllocation.availableForDebtMinor === 0 ? "Для новых оплат денег не остаётся" : `Можно распределить до ${rub.format((debtAllocation.availableForDebtMinor ?? 0) / 100)}`}
-                </span>
-              ) : (
-                <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900">Расчёт пока недоступен</span>
-              )}
-            </div>
-            {debtAllocation.state === "ready" ? (
-              <>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-lg bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-bold text-slate-500">Деньги в сейфе, на картах и счетах</p><p className="mt-0.5 text-base font-black text-slate-950">{rub.format((debtAllocation.resourcesMinor ?? 0) / 100)}</p></div>
-                  <div className="rounded-lg bg-slate-50 px-3 py-2.5">
-                    <p className="text-[11px] font-bold text-slate-500">Сначала оставить на обязательные выплаты</p>
-                    <p className="mt-0.5 text-base font-black text-slate-950">− {rub.format((debtAllocation.mandatoryReserveMinor ?? 0) / 100)}</p>
-                    <p className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-500">
-                      Зарплата {debtReserveBreakdown.salaryMinor === null ? "не сверена" : rub.format(debtReserveBreakdown.salaryMinor / 100)} · аренда {rub.format(debtReserveBreakdown.rentMinor / 100)} · заявки {rub.format(debtReserveBreakdown.approvedPlansMinor / 100)}
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-bold text-slate-500">Долг поставщикам по 1С</p><p className="mt-0.5 text-base font-black text-slate-950">{rub.format((debtAllocation.totalDebtMinor ?? 0) / 100)}</p></div>
-                  <div className={`rounded-lg px-3 py-2.5 ${(debtAllocation.uncoveredDebtMinor ?? 0) > 0 ? "bg-amber-50" : "bg-green-50"}`}><p className="text-[11px] font-bold text-slate-500">Если закрывать все долги</p><p className={`mt-0.5 text-base font-black ${(debtAllocation.uncoveredDebtMinor ?? 0) > 0 ? "text-amber-900" : "text-green-800"}`}>{(debtAllocation.uncoveredDebtMinor ?? 0) > 0 ? `Не хватает ${rub.format((debtAllocation.uncoveredDebtMinor ?? 0) / 100)}` : "Денег достаточно"}</p></div>
-                </div>
-                {debtAllocation.recommendations.length ? (
-                  <div className="mt-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-slate-50/50 px-3">
-                    {debtAllocation.recommendations.slice(0, 4).map((item) => (
-                      <div key={item.supplier} className="grid gap-1 py-2.5 sm:grid-cols-[minmax(140px,.8fr)_minmax(150px,.7fr)_minmax(0,1fr)] sm:items-center sm:gap-3">
-                        <div className="min-w-0"><p className="truncate text-sm font-black text-slate-950" title={item.supplier}>{item.supplier}</p>{item.priority <= 1 ? <p className="text-[10px] font-bold text-slate-500">Телефонный поставщик · закрывать максимально быстро</p> : null}</div>
-                        <p className="text-xs font-semibold text-slate-500">Долг {rub.format(item.debtMinor / 100)}</p>
-                        <p className={`text-sm font-black sm:text-right ${item.result === "no_capacity" ? "text-red-700" : item.result === "partial" ? "text-amber-800" : "text-green-800"}`}>
-                          {item.result === "full" ? `Можно закрыть полностью · ${rub.format(item.recommendedMinor / 100)}` : item.result === "partial" ? `Частично · до ${rub.format(item.recommendedMinor / 100)}` : "После резервов денег не остаётся"}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : <p className="mt-3 text-xs font-semibold text-slate-500">Долгов поставщикам по подтверждённому срезу 1С нет.</p>}
-                <p className="mt-2 text-[11px] font-semibold leading-relaxed text-slate-500">Это верхняя граница по текущим остаткам, а не команда на оплату. Будущие поступления и ещё не заведённые расходы здесь не учтены.</p>
-              </>
-            ) : (
-              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Чтобы дать рекомендацию, портал должен одновременно получить свежие остатки денег, зарплату и полное сальдо поставщиков из 1С.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="p-4 sm:p-5">
-          <div className="hidden grid-cols-[110px_minmax(0,1fr)_190px] gap-4 border-b border-slate-200 px-3 pb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-400 lg:grid">
-            <span>Дата</span><span>Что предстоит</span><span>После оплаты</span>
-          </div>
-          <div className="divide-y divide-slate-200">
-            {forecast30Days.rows.map((row) => (
-              <div key={row.date} className="grid gap-2 px-1 py-3.5 lg:grid-cols-[110px_minmax(0,1fr)_190px] lg:gap-4 lg:px-3">
-                <div>
-                  <p className="text-sm font-black text-slate-900">{shortDay(row.date)}</p>
-                  {row.gapMinor > 0 ? <span className="mt-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-black text-red-800">НЕ ХВАТАЕТ</span> : null}
-                </div>
-                <div className="space-y-2">
-                  {row.items.map((item) => (
-                    <div key={item.id} className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
-                      <div className="min-w-0"><p className="text-sm font-extrabold text-slate-950">{item.title}</p><p className="text-xs font-semibold text-slate-500">{item.source}</p></div>
-                      <p className="shrink-0 text-sm font-black tabular-nums text-slate-900">{item.amountMinor === null ? "Сумма уточняется" : `${item.certainty === "estimate" ? "≈ " : ""}${rub.format(item.amountMinor / 100)}`}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="lg:text-right">
-                  {row.gapMinor > 0 ? (
-                    <><p className="text-sm font-black text-red-800">Не хватает {rub.format(row.gapMinor / 100)}</p><p className="text-xs font-semibold text-red-700">Перенести оплату или найти источник</p></>
-                  ) : row.safeOutMinor > 0 && row.safeAfterMinor !== null ? (
-                    <><p className="text-sm font-black text-slate-900">В сейфе {rub.format(row.safeAfterMinor / 100)}</p><p className="text-xs font-semibold text-slate-500">после наличных выплат</p></>
-                  ) : row.cardsOutMinor > 0 && row.cardsAfterMinor !== null ? (
-                    <><p className="text-sm font-black text-slate-900">На картах {rub.format(row.cardsAfterMinor / 100)}</p><p className="text-xs font-semibold text-slate-500">после переводов</p></>
-                  ) : (
-                    <><p className="text-sm font-black text-slate-700">Источник уточняется</p><p className="text-xs font-semibold text-slate-500">не уменьшает случайный счёт</p></>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          <details className="group mt-2 rounded-xl bg-slate-50 px-3.5 py-3 text-sm text-slate-600">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-bold text-slate-700">
-              <span>Как рассчитан прогноз</span><ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
-            </summary>
-            <ul className="mt-2 space-y-1.5 border-t border-slate-200 pt-2 text-xs font-medium leading-relaxed">
-              {forecast30Days.limitations.map((item) => <li key={item}>• {item}</li>)}
-            </ul>
-          </details>
-        </div>
-      </section>
-      </details>
-
-      {unplannedCashCount && unplannedCashCount > 0 ? (
-        <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-900">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          Найдено выдач вне календаря: {unplannedCashCount}. Проверьте проведённые РКО.
-        </div>
-      ) : null}
-
-      <details className="hidden admin-material-card group rounded-2xl bg-white">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4 sm:p-5"><div className="flex items-center gap-2"><WalletCards className="h-4 w-4 text-slate-500" /><div><h2 className="text-sm font-black text-slate-950">Остатки QR и USDT</h2><p className="text-xs font-semibold text-slate-500">Вспомогательные деньги для выбранных способов оплаты</p></div></div><ChevronDown className="h-4 w-4 transition group-open:rotate-180" /></summary>
-      <section className="border-t border-slate-200 p-4 sm:p-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-lg font-black text-slate-950">Остатки для оплат</h2>
-            <p className="text-sm font-medium text-slate-500">Фактические остатки и уже запланированные суммы.</p>
-          </div>
-          <span className="text-xs text-slate-500">Остатки обновляются вместе с календарём</span>
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <div className="flex items-center gap-2">
-              <WalletCards className="h-4 w-4 text-slate-500" />
-              <h3 className="font-extrabold text-slate-900">Деньги на карте Астемира для QR</h3>
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-3">
-              <div><p className="text-xs font-bold text-slate-500">Доступно</p><p className="mt-1 font-black text-slate-950">{accountableBalance.balance == null ? "—" : rub.format(accountableBalance.balance)}</p></div>
-              <div><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-1 font-black text-slate-950">{plannedQrLabel}</p></div>
-              <div><p className="text-xs font-bold text-slate-500">Нужно перевести</p><p className={`mt-1 font-black ${qrShortfall && qrShortfall > 0 ? "text-red-700" : "text-slate-950"}`}>{qrShortfall == null ? "—" : rub.format(qrShortfall)}</p></div>
-            </div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <div className="flex items-center gap-2">
-              <WalletCards className="h-4 w-4 text-slate-500" />
-              <h3 className="font-extrabold text-slate-900">Деньги для оплат в USDT</h3>
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-3">
-              <div><p className="text-xs font-bold text-slate-500">Доступно</p><p className="mt-1 font-black text-slate-950">{usdtBalance.balance == null ? "—" : `${usdtBalance.balance.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT`}</p></div>
-              <div><p className="text-xs font-bold text-slate-500">Запланировано</p><p className="mt-1 font-black text-slate-950">{plannedUsdtLabel}</p>{!paymentTotalsUnavailable && unknownUsdtCount > 0 ? <p className="mt-0.5 text-xs font-semibold text-violet-700">Оплат без суммы: {unknownUsdtCount}</p> : !paymentTotalsUnavailable && estimatedUsdtCount > 0 ? <p className="mt-0.5 text-xs font-semibold text-violet-700">По последнему курсу из 1С</p> : null}</div>
-              <div><p className="text-xs font-bold text-slate-500">{unknownUsdtCount > 0 ? "Расчёт остатка" : usdtDeficit && usdtDeficit > 0 ? "Не хватает" : "Останется"}</p><p className={`mt-1 font-black ${usdtDeficit && usdtDeficit > 0 ? "text-red-700" : "text-slate-950"}`}>{usdtDeficit == null || usdtRemainder == null ? "—" : `${estimatedUsdtCount > 0 ? "≈ " : ""}${(usdtDeficit > 0 ? usdtDeficit : usdtRemainder).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} USDT`}</p></div>
-            </div>
-          </div>
-        </div>
-      </section>
-      </details>
-
-
-      </div>
+      {tab === 'plan' && visualPreview?.fundingPlan}
+      {tab === 'plan' && !visualPreview?.fundingPlan && (forecast.funding
+        ? <ProcurementFundingPlan data={forecast.funding} stale={forecast.fundingStale || refreshState !== 'ready'}/>
+        : <div role="status" className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">
+            {forecast.error || refreshState==='error' ? 'Не удалось обновить расчёт. Повторим автоматически.' : 'Подбираем источники денег по остаткам и заявкам…'}
+          </div>)}
       <section hidden={tab !== "pending"} className="space-y-4">
         {refreshState==='ready'?revisionReview:null}
-        <ProcurementAdminList onOpen={()=>setForecastRequested(true)} key="pending" searchQuery={searchQuery} dirty={!!returnReason.trim()} busy={!!busy} onClose={closeDecision} error={actionMessage}
+        <ProcurementAdminList  onOpen={()=>setForecastRequested(true)} key="pending" searchQuery={searchQuery} dirty={!!returnReason.trim()} busy={!!busy} onClose={closeDecision} error={actionMessage}
           renderFooter={(id,close)=>returningId===id?<><button type="button" className="pam-button" disabled={!!busy||refreshState!=='ready'} onClick={close}>Отмена</button><button type="button" className="pam-button pam-primary" disabled={!!busy||refreshState!=='ready'||returnReason.trim().length<3} onClick={()=>act(id,"RETURN")}>{busy===id?"Сохраняем…":"Вернуть Астемиру"}</button></>:cancellingId===id?<><button type="button" className="pam-button" disabled={!!busy||refreshState!=='ready'} onClick={()=>setCancellingId("")}>Назад</button><button type="button" className="pam-button pam-primary" disabled={!!busy||refreshState!=='ready'} onClick={()=>act(id,"CANCEL")}>{busy===id?"Сохраняем…":"Отменить заявку"}</button></>:<><button type="button" className="pam-cancel" disabled={!!busy||refreshState!=='ready'} onClick={()=>{setCancellingId(id);setActionMessage("");}}>Отменить заявку</button><button type="button" className="pam-button" disabled={!!busy||refreshState!=='ready'} onClick={()=>{setReturningId(id);setReturnReason("");setActionMessage("");}}><Undo2 size={16}/>Вернуть на исправление</button><button type="button" className="pam-button pam-primary" disabled={!!busy||refreshState!=='ready'} onClick={()=>act(id,"APPROVE")}><Check size={18}/>{busy===id?"Сохраняем…":"Согласовать"}</button></>}
           items={[...submitted].sort((a,b)=>a.plannedDate.localeCompare(b.plannedDate)).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate),dateLabel:date(plan.plannedDate),basis:orderLabel(plan),method:methodLabel(plan),search:plan.orderNumbers.join(" "),priority:dateKey(plan.plannedDate)<todayKey?"overdue":dateKey(plan.plannedDate)===todayKey?"today":"later",group:dateKey(plan.plannedDate)<todayKey?"Срок прошёл":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Предстоящие"}))}
           empty="Новых заявок на согласование нет." renderDetail={id=>{
@@ -998,7 +558,7 @@ export default function AdminProcurementClient({
           <span data-priority="today">Сегодня: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)===todayKey).length}</strong></span>
           <span data-priority="tomorrow">Завтра: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)===nextDayKey(todayKey)).length}</strong></span>
         </div>
-        <ProcurementAdminList key="approved" searchQuery={searchQuery} items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate),dateLabel:date(plan.plannedDate),basis:orderLabel(plan),method:methodLabel(plan),priority:dateKey(plan.plannedDate)<todayKey?"overdue":dateKey(plan.plannedDate)===todayKey?"today":"later",search:plan.orderNumbers.join(" "),group:dateKey(plan.plannedDate)<todayKey?"Просрочено":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Далее",warning:plan.evidence.paymentAmountNeedsConfirmation?"Проверьте найденную оплату":plan.evidence.state==="MISMATCH"?"Расхождение с 1С":["PARTIALLY_ISSUED","PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state)?"Частично оплачено":undefined}))} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
+        <ProcurementAdminList  key="approved" searchQuery={searchQuery} items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate),dateLabel:date(plan.plannedDate),basis:orderLabel(plan),method:methodLabel(plan),priority:dateKey(plan.plannedDate)<todayKey?"overdue":dateKey(plan.plannedDate)===todayKey?"today":"later",search:plan.orderNumbers.join(" "),group:dateKey(plan.plannedDate)<todayKey?"Просрочено":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Далее",warning:plan.evidence.paymentAmountNeedsConfirmation?"Проверьте найденную оплату":plan.evidence.state==="MISMATCH"?"Расхождение с 1С":["PARTIALLY_ISSUED","PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state)?"Частично оплачено":undefined}))} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
           const plan=calendarPlans.find(p=>p.id===id)!;
           const deadline = dateKey(plan.plannedDate);
           const priority = deadline < todayKey ? "overdue" : deadline === todayKey ? "today" : deadline === nextDayKey(todayKey) ? "tomorrow" : "later";
