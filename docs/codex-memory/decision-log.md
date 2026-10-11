@@ -706,3 +706,180 @@ new renotify and ADMIN_ATTENTION_CLEARED logic. Production sender timer remains
 active; elapsed-time scheduling/retry/lifecycle behavior is covered by local
 integration tests. Test evidence: `/tmp/mobo-attention-device-test-130.log`;
 deploy evidence: `/tmp/mobo-attention-release-130.log`.
+
+
+## 2026-10-12 — Cashier issue task: local PWA candidate, not released
+
+Owner approved the next stage: notify the explicitly mapped cashier when the
+existing portal accountable top-up has a payable linked 1C request. This extends
+the current Astemir delivery/top-up flow only; it is not a generic importer of
+all accountable requests. No new financial writes, 1C publication, schema,
+production deployment or real employee test messages are authorized in this stage.
+
+Owner-approved mobile behavior: persistent compact task on Workday and one
+bottom sheet over the current screen, preserving workday context. No standalone
+detail page in normal use, no nested dialogs and no automatic interruptions.
+Copy: “Выдать Астемиру 5 000 ₽” / “Заявка готова · оформите расходник”. Do not use
+“подотчёт” in the cashier-facing instruction. Details explain that the cashier
+creates the RKO in 1C on this existing request after handing out the money.
+The notice has its own light background, copper border/left accent and arrow;
+the owner rejected plain text floating on the app background. Approx. 68 CSS px
+high at the verified 355 px mobile viewport; normal copy fits two lines.
+
+The server rechecks payable status, amount remaining, recipient, cashbox and a
+unique active WORKDAY employee mapping. Partial issue retains the same task;
+full confirmed RKO issue, cancellation or reassignment removes it from the old
+cashier. Reading or closing the sheet does not complete the task. Missing or
+ambiguous source data defers pushes and hides old amounts. Push copy is neutral
+because OS messages may arrive after reassignment; opening always rechecks.
+No independent “issued” confirmation button. Polling runs only while visible
+plus on resume; a timed-out request switches to an unavailable state.
+
+Verification: TypeScript and isolated production build pass. Regression suite:
+97 server tests and 17 UI tests pass (six opt-in tests skipped); seven focused
+cash-issue tests pass, including access isolation and copy. Separate isolated
+PostgreSQL integration test passes for duplicate/concurrent producer, read,
+partial, offline, reassignment, re-entry, completion and rejection. Actual local
+PWA checked: compact card, tap opens bottom sheet, close preserves main screen,
+partial shows 3000/2000 issued, offline hides amount, full issue removes task.
+The 1C source for this UI review is an isolated HTTP fixture, not production.
+Physical-device push for this new cashier kind and production mappings remain
+unverified; prior 1.3.0 ADMIN device tests do not prove this new route.
+
+Preview: http://cash-issue.localhost:3158/employee
+Demo database: cash_issue_demo_20261012, localhost port 55448, no push subscriptions.
+Screenshots: /Users/bela/.codex/visualizations/2026/10/12/cash-issue/notice-mobile.png
+and details-mobile.png. No production version allocated or release performed.
+
+Candidate files (relative to portal repository):
+- app/(dashboard)/employee/CashIssueClient.tsx
+- app/(dashboard)/employee/CashIssueClient.module.css
+- app/(dashboard)/employee/EmployeeTodayClient.tsx
+- app/(dashboard)/employee/WorkdayNotificationsClient.tsx
+- app/(dashboard)/employee/layout.tsx
+- app/(dashboard)/employee/cash-issue/page.tsx
+- app/api/employee/cash-issue/route.ts
+- app/api/employee/workday-notifications/route.ts
+- lib/procurement-cash-issue-policy.ts
+- lib/procurement-cash-issue-notifications.ts
+- lib/procurement-delivery-native-source.ts
+- lib/procurement-delivery-native.ts
+- lib/procurement-delivery-reminders.ts
+- lib/procurement-notification-lifecycle.ts
+- lib/workday-notifications.ts
+- tests/procurement-cash-issue.test.ts
+- tests/procurement-cash-issue.integration.test.ts
+- tests/procurement-collection-notifications.test.ts
+- tests/procurement-delivery-notifications.test.ts
+- tests/procurement-morning-notifications.test.ts
+
+Unrelated work in the primary checkout was not edited. Candidate implementation is committed locally as `55b5ba7`; documentation is
+committed separately. Production deployment still requires explicit approval.
+
+
+### Cashier active-shift gate — owner approved, local verification complete
+
+Owner approved adding the active-shift condition after reviewing the started-day
+PWA preview. Cash issue requires a WORKDAY cashier with an actual current Moscow
+calendar-day WorkDayEntry: status active, endedAt null, startedAt <= now. A planned
+schedule alone, a future start, a completed day or yesterday's unclosed day is
+insufficient. Planned shift-end time alone does not mark an otherwise active
+workday completed; existing workday rules are preserved.
+
+`waiting_shift` retains the financial request in 1C without exposing a cash-issue
+amount in PWA. The notification is withdrawn while off shift and the same
+fingerprint/row is revived when eligible again; no financial completion or extra
+notification row is created. A stale push opens a short “start current workday;
+request saved” hint. Workday UI hides the card immediately on a known completed
+shift and refreshes source eligibility when shift state changes. Sender rechecks
+eligibility before push. Other notification kinds and ADMIN queues are unchanged.
+
+Checks: 10 focused tests including isolated PostgreSQL integration, 45 notification
+regression tests, TypeScript, isolated production build and diff whitespace pass.
+Real local UI confirmed amount visible on active shift, hidden with the preserved
+request hint after closing the demo shift, and restored on reactivation. Active-day
+preview uses an isolated-only 14:10 display clock and seeded demo checklist; this
+clock override is outside the repository and not included in production build.
+No production deployment or real employee push performed. Same remaining limits:
+production cashbox mappings and physical-device delivery of this new kind need
+verification before calling the rollout complete.
+
+
+### ADMIN cashbox shift warning — approved and implemented locally
+
+Owner approved showing shift status before assigning the issue cashbox. Existing
+selector now shows On shift / Shift not started / Shift completed. Default
+recommendation chooses the largest balance among funded candidates whose active
+shift is freshly confirmed. Financial candidate checks and protected pending
+obligations remain unchanged. Off-shift cashboxes stay selectable manually, with
+an inline warning explaining that the employee task waits for a new active shift.
+No additional modal and no silent replacement of a manual selection.
+
+The same warning and employee status are shown in the existing confirmation
+step. Server stores the reviewed mapping/workday version outside the 1C command
+payload and rechecks before confirm. A changed employee, workday, shift state or
+Moscow day invalidates that preview and stops before native confirm. Conditional
+invalidation cannot overwrite another concurrent command state. A newly reviewed
+off-shift choice may be explicitly confirmed; unknown or ambiguous employee
+mapping requires correction. Existing committed-command recovery is preserved.
+
+Checks: 24 UI/policy tests, 18 funding/source/route tests, isolated PostgreSQL
+creation integration (preview → shift end → blocked confirm → explicit off-shift
+review → lost response/recovery) pass. TypeScript, production build and whitespace
+checked. Visual review uses real application AdminShell and the real selector in
+an isolated local-only /admin/expense-requests/shift-preview page. Cash balances
+are labelled demo values; statuses come from seeded demo workdays. Preview/confirm
+writes are disabled in that demo. Production and real 1C commands were not run.
+Preview: http://cashbox-admin.localhost:3158/admin/expense-requests/shift-preview
+Screenshot: /Users/bela/.codex/visualizations/2026/10/12/cash-issue/admin-shift-warning.png
+
+Additional candidate files:
+- lib/procurement-cashbox-shift-policy.ts
+- lib/procurement-cashbox-shifts.ts
+- lib/procurement-delivery-funding.ts
+- lib/procurement-delivery-cashbox-choice.ts
+- lib/procurement-delivery-create.ts
+- app/api/admin/procurement/delivery-funding/route.ts
+- app/api/admin/procurement/delivery-create/route.ts
+- components/ProcurementDeliveryCashboxChoice.tsx
+- components/ProcurementDeliveryCreate.tsx
+- tests/procurement-delivery-cashbox-choice.test.tsx
+- tests/procurement-delivery-funding-route.test.ts
+- tests/procurement-delivery-create.integration.test.ts
+
+No deployment, package version change, DB migration or 1C publication. Unrelated
+primary-checkout work remains untouched. Deployment and physical-device cashier
+push validation are still outstanding; do not describe the feature as live.
+
+
+### Cashier candidate readiness — 2026-10-12
+
+Implementation committed locally as `55b5ba7` on
+`codex/expense-requests-release`. No push, release/version allocation or deploy.
+Removed four obsolete “test 1C” labels from the actual create form: the form now
+says “1C” consistently with its existing test/production source selection.
+Creation still requires explicit “Создать заявку к оплате”; cashbox selection
+alone does not create a document. Independent readback requires payable status.
+Final TypeScript and isolated production build passed after the copy correction.
+The existing 43 cashbox/create tests and cashier/notification regressions are
+recorded above; no financial command or real employee push was sent.
+
+Read-only production readiness check via authenticated ADMIN
+`/admin/workday?technical=1`: five visible active manager cashbox mappings have
+five distinct 1C refs: Абшаева Зухра → Касса Абшаева, Костеренко Магомед → Касса
+Костеренко, Чеченова Милана → Касса Чеченова, Ахобекова Залина → Касса Ахобекова,
+Хурзокова Лиана → Касса Хурзокова. No mapping was edited. This replaces the earlier
+“production mappings unverified” limitation for these five UI-visible mappings;
+it does not prove physical-device subscriptions/delivery. SSH server HEAD remains
+`14f75171765d3285ff7b9b539f788f156296a574`; authenticated UI shows version 1.3.0,
+11.10.2026 23:10 MSK. Docker inspection requires interactive sudo; no permission
+change or elevated command was run. Used existing authenticated ADMIN instead.
+
+Remaining release gate: explicit approval for this cashier/shift-warning release,
+recheck live/deployment-branch version, allocate the new application version,
+reconcile deployment branch, preserve rollback image and deploy only portal-app.
+No migration or 1C publication is needed for this candidate. After release verify
+metadata/UI and arrange one explicitly authorized cashier-device notification
+check; the earlier ADMIN push check is not evidence for the new cashier flow.
+Primary checkout's unrelated changes were left untouched. Demo pages, database,
+clock override and fixture server are outside the commit.
