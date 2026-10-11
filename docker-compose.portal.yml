@@ -41,6 +41,12 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       PORT: "3000"
       CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED: "true"
+      # Owner-approved expense commands; each POST verifies the live 1C contract.
+      EXPENSE_REQUEST_NATIVE_ADMIN: ${EXPENSE_REQUEST_NATIVE_ADMIN:-1}
+      EXPENSE_REQUEST_NATIVE_WRITES: ${EXPENSE_REQUEST_NATIVE_WRITES:-1}
+      PORTAL_ACCOUNTABLE_CREATE: ${PORTAL_ACCOUNTABLE_CREATE:-1}
+      PORTAL_TEST_ACCOUNTABLE_CREATE: "0"
+      PORTAL_ISOLATED_DEMO: "0"
       # Both retail workplaces use the direct read-only aQsi API.  Keep the
       # historical cabinet mount only as an emergency artifact; never silently
       # fall back to it in production reconciliation.

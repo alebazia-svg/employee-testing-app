@@ -25,6 +25,12 @@ export function deliveryNativeFresh(status: DeliveryNativeStatus, now = Date.now
   const age = now - Date.parse(status.checkedAt);
   return Number.isFinite(age) && age >= -60_000 && age <= DELIVERY_MAX_AGE_MS;
 }
+/** Closing the portal request is derived from fresh native evidence, not a read/dismiss action. */
+export function deliveryRequestIsClosed(view: { requestStateAvailable: boolean; nativeRequest?: DeliveryNativeView }, now = Date.now()) {
+  const s = view.nativeRequest?.status;
+  return Boolean(view.requestStateAvailable && view.nativeRequest?.state === 'linked' && s && deliveryNativeFresh(s, now)
+    && (s.state === 'rejected' || (s.state === 'issued' && s.amount > 0 && s.issued === s.amount && s.remaining === 0)));
+}
 export function readDeliveryLink(body: string): DeliveryNativeLink {
   const d = JSON.parse(body);
   if (d.version !== 1 || typeof d.ref !== 'string' || !uuid.test(d.ref)

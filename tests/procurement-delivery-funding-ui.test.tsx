@@ -1,3 +1,4 @@
+import { DeliveryDialogActionContext, ProcurementDeliveryDialogActions } from '../components/ProcurementDeliveryDialogActions';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
@@ -32,28 +33,62 @@ test('admin recommendation is distinct from manual request and has one snapshot 
   const html = renderToStaticMarkup(<ProcurementDeliveryAdmin view={{ snapshot: { balance: 2259, checkedAt: new Date().toISOString(), lastIssue: null }, requested: true, requestedByBuyer: false, requestStateAvailable: true }} />);
   assert.match(html, /Рекомендуем пополнить/); assert.match(html, /До запаса/); assert.match(html, /Нужно пополнить/);
   assert.doesNotMatch(html, /Пополнение на контроле|Астемир запросил|Новую заявку оформляйте/);
-  assert.equal((html.match(/Подотчёт на/g) ?? []).length, 1);
+  assert.equal((html.match(/Остаток обновлён/g) ?? []).length, 1);
 });
 test('loading does not present zero money', () => {
   const html = renderToStaticMarkup(<ProcurementDeliveryFunding />); assert.match(html, /Проверяем кассы/); assert.doesNotMatch(html, /0 ₽/);
 });
-test('compact admin puts request and balance together, with historical details collapsed', () => {
+test('compact request opens one labelled dialog with its form mounted while closed', () => {
   const html = renderToStaticMarkup(<ProcurementDeliveryAdmin compactSummary view={{
     snapshot: { balance: 2259, checkedAt: new Date().toISOString(), lastIssue: null },
     requested: true, requestedByBuyer: true, requestStateAvailable: true,
     requestDetails: { amount: 15000, comment: 'Пять поставок', balance: 2000, checkedAt: new Date().toISOString(), requestedAt: new Date().toISOString() },
   }}><div>Действие по заявке</div></ProcurementDeliveryAdmin>);
-  assert.match(html, /Запросил/); assert.match(html, /15\s000/); assert.match(html, /Остаток/);
-  assert.match(html, /Пять поставок/); assert.match(html, /Детали запроса/);
-  assert.match(html, /<details/); assert.doesNotMatch(html, /<details open/);
+  assert.match(html, /Подотчёт/); assert.match(html, /15\s000/); assert.match(html, /Сейчас под отчётом/);
+  assert.match(html, /Пять поставок/); assert.doesNotMatch(html, /Остаток подотчёта и сведения о запросе/);
+  assert.equal((html.match(/<dialog /g) ?? []).length, 1); assert.match(html, /aria-haspopup="dialog"/); assert.match(html, /aria-labelledby=/); assert.doesNotMatch(html, /<dialog[^>]* open/); assert.match(html, /Дополнительные действия/);
   assert.doesNotMatch(html, /bg-slate-50 p-4|До запаса/);
-  assert.match(html, /md:grid-cols-2/); assert.match(html, /md:border-l md:border-t-0/);
+  assert.doesNotMatch(html, /md:grid-cols-2|md:border-l/); assert.match(html, /Нужно решение/); assert.match(html, /Действие по заявке/);
   const link = readFileSync('components/ProcurementDeliveryLink.tsx', 'utf8');
   assert.match(link, /mt-3 w-fit shrink-0 rounded-lg/);
-  assert.doesNotMatch(link, /w-full|justify-between|Выберите заявку по этому запросу/);
+  assert.doesNotMatch(link, /className="[^"]*w-full[^"]*">Выбрать заявку|Выберите заявку по этому запросу/);
 });
 test('visible auto-refresh is deduplicated, aborted and hides failed/stale values', () => {
   const code = readFileSync('components/ProcurementDeliveryFunding.tsx', 'utf8');
   for (const pattern of [/startVisibleSync\(refresh, 60_000\)/, /active.current \|\|/, /setData\(null\)/, /DELIVERY_MAX_AGE_MS/, /c\?\.abort\(\)/, /removeEventListener/]) assert.match(code, pattern);
   assert.doesNotMatch(code, /method: 'POST'|router.refresh|location.reload/);
+});
+
+
+test('issued request leaves current queue, preserves refresh child, and reversal reopens it', () => {
+  const now = Date.now(), at = new Date(now).toISOString();
+  const view: import('../lib/procurement-delivery-reminders').DeliveryView = {
+    snapshot: { balance: 9791, checkedAt: at, lastIssue: null }, requested: true, requestedByBuyer: true, requestStateAvailable: true,
+    requestDetails: { amount: 5000, comment: 'Старый запрос', balance: 4791, checkedAt: at, requestedAt: at },
+    nativeRequest: { state: 'linked', status: { ref: 'test', number: 'TEST', date: at, amount: 5000, state: 'issued', issued: 5000, remaining: 0, cashbox: 'Касса', desiredDate: null, checkedAt: at } },
+  };
+  const render = () => renderToStaticMarkup(<ProcurementDeliveryAdmin view={view} compactSummary now={now}><div>Документ TEST</div></ProcurementDeliveryAdmin>);
+  let html = render();
+  assert.match(html, /^<div hidden/); assert.match(html, /Документ TEST/);
+  assert.doesNotMatch(html, /Нужно пополнить|Запросил|Старый запрос|Рекомендуем пополнить|<details open/);
+  assert.doesNotMatch(html, /<section|<summary/);
+  view.nativeRequest!.status!.state = 'partial'; view.nativeRequest!.status!.remaining = 2000;
+  html = render(); assert.match(html, /Выдано частично/); assert.doesNotMatch(html, /запрос выполнен|Нужно пополнить/);
+  view.nativeRequest!.status!.state = 'payable';
+  html = render(); assert.match(html, /К оплате · ожидает выдачи/); assert.doesNotMatch(html, /Нужно пополнить|запрос выполнен/);
+  view.nativeRequest!.status!.state = 'issued'; view.nativeRequest!.status!.checkedAt = new Date(now - 3600000).toISOString();
+  html = render(); assert.doesNotMatch(html, /запрос выполнен/); assert.match(html, /Проверяем статус/);
+  view.nativeRequest = { state: 'unavailable' };
+  html = render(); assert.doesNotMatch(html, /запрос выполнен|Нужно пополнить/); assert.match(html, /Проверяем статус/);
+});
+
+
+test('dialog actions cannot remain available when the request data or session is unavailable', () => {
+  const html = renderToStaticMarkup(<DeliveryDialogActionContext.Provider value={{ target: null, enabled: false }}><ProcurementDeliveryDialogActions><button>Создать заявку к оплате</button></ProcurementDeliveryDialogActions></DeliveryDialogActionContext.Provider>);
+  assert.equal(html, '');
+});
+
+test('standalone form keeps its action without a dialog', () => {
+  const html = renderToStaticMarkup(<ProcurementDeliveryDialogActions><button>Проверить заявку</button></ProcurementDeliveryDialogActions>);
+  assert.match(html, /Проверить заявку/);
 });

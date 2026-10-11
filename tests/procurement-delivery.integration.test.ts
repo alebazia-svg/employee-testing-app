@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { DELIVERY_PERSON, DELIVERY_SOURCE, DELIVERY_REQUEST_SOURCE } from '../lib/procurement-delivery-policy';
 
 test('real PostgreSQL: authorization, concurrency, one reminder, partial top-up, recovery and next cycle', { skip: !process.env.PROCUREMENT_TEST_DATABASE_URL }, async () => {
-  assert.equal(process.env.PROCUREMENT_TEST_DATABASE_URL, 'postgresql://postgres:local-test-only@127.0.0.1:55437/delivery_integration_20260927');
+  assert.ok(['postgresql://postgres:local-test-only@127.0.0.1:55437/delivery_integration_20260927', 'postgresql://attention:local-attention-only@127.0.0.1:55448/attention_integration'].includes(process.env.PROCUREMENT_TEST_DATABASE_URL!));
   const db = new PrismaClient({ datasources: { db: { url: process.env.PROCUREMENT_TEST_DATABASE_URL } } });
   const marker = `delivery-test-${Date.now()}`;
   const existing = await db.user.count({ where: { oneCManagerName: DELIVERY_PERSON.name } });
@@ -45,7 +45,8 @@ test('real PostgreSQL: authorization, concurrency, one reminder, partial top-up,
     for (const response of responses) assert.equal((await response.json()).requestedByBuyer, true);
     const markers = await db.adminInboxEvent.findMany({ where: { sourceType: DELIVERY_REQUEST_SOURCE }, include: { _count: { select: { receipts: true, deliveries: true } } } });
     assert.equal(markers.length, 2);
-    for (const marker of markers) { assert.equal(marker._count.receipts, 0); assert.equal(marker._count.deliveries, 0); }
+    for (const marker of markers) { assert.equal(marker._count.receipts, marker.type === 'procurement.delivery_manual_requested' ? 1 : 0); assert.equal(marker._count.deliveries, 0); }
+    assert.match(markers.find(m => m.type === 'procurement.delivery_manual_requested')!.body, /40.?000/);
     const stored = (await (await route.GET()).json()).requestDetails;
     assert.equal(stored.amount, 40000); assert.equal(stored.comment, input.comment); assert.equal(stored.balance, 2259);
     await post('http://localhost', { amount: 100, comment: 'Повторный запрос' });

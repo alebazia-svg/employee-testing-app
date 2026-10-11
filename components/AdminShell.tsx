@@ -59,7 +59,13 @@ function NavigationLink({ item, pathname, sidebarCollapsed }: { item: Navigation
   );
 }
 
-export function AdminShell({ children }: { children: React.ReactNode }) {
+export function AdminShell({ children, pageTitle, pageDescription, headerWidthClass = 'max-w-none' }: {
+  children: React.ReactNode;
+  pageTitle?: string;
+  pageDescription?: React.ReactNode;
+  /** Match the existing page content width; do not constrain tables globally. */
+  headerWidthClass?: string;
+}) {
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -149,14 +155,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
       <section className={cn('admin-workspace min-w-0 px-3 pb-28 pt-4 transition-[margin] duration-200 sm:px-4 md:min-h-screen md:rounded-l-[24px] md:px-6 md:py-5 lg:px-8 lg:py-6', sidebarCollapsed ? 'md:ml-[76px]' : 'md:ml-[240px]')}>
         <div className='flex min-h-[calc(100vh-4rem)] w-full max-w-none flex-col'>
-          <div className='mb-3 hidden items-center justify-end gap-3 md:flex'>
-            <AdminInboxBell />
+          <div className={cn('admin-page-top', pageTitle ? 'mx-auto mb-5 flex w-full items-start justify-between gap-6 border-b border-slate-200/80 pb-4' : 'mb-3 hidden items-center justify-end gap-3 md:flex', pageTitle && headerWidthClass)}>
+            {pageTitle && <header className='min-w-0'><h1 className='text-2xl font-bold leading-tight tracking-tight text-slate-950 sm:text-[28px]'>{pageTitle}</h1>{pageDescription && <div className='mt-1 max-w-3xl text-sm leading-relaxed text-slate-500'>{pageDescription}</div>}</header>}
+            <div className='hidden shrink-0 items-center gap-3 md:flex'><AdminInboxBell />
             <div className='admin-account-chip hidden items-center gap-3 rounded-full px-4 py-2 sm:flex'>
               <div className='admin-account-avatar flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold'>АД</div>
               <div>
                 <p className='text-sm font-bold text-slate-950'>Администратор</p>
                 <p className='text-xs font-medium text-slate-500'>admin</p>
               </div>
+            </div>
             </div>
           </div>
           <div className='flex-1'>{children}</div>

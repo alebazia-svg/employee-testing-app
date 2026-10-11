@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { CheckCircle, ChevronRight, Clock, Star, XCircle } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { AdminShell } from '@/components/AdminShell';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
@@ -25,13 +24,8 @@ export default async function AdminResultsPage() {
   const averageScore = results.length ? Math.round(results.reduce((sum, result) => sum + result.percent, 0) / results.length) : 0;
 
   return (
-    <AdminShell>
-      <div className='mb-7 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-        <div>
-          <AdminBreadcrumbs current='Результаты' />
-          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Результаты</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Проверка и анализ результатов аттестаций</p>
-        </div>
+    <AdminShell pageTitle="Результаты" pageDescription="Проверка и анализ результатов аттестаций">
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
         <div className='flex gap-2'>
           <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20'>
             <option>Все аттестации</option>

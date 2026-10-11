@@ -20,10 +20,10 @@ export function ProcurementDeliveryNativeStatus({ view, now, failed = false, aud
       {s.state === 'partial' ? <p className="mt-1">Осталось выдать: {money(s.remaining!)}</p> : null}
       {['waiting', 'approved', 'payable', 'partial'].includes(s.state) && s.cashbox ? <p className="mt-1 break-words">По заявке: {s.cashbox}</p> : null}
     </> : <p className="mt-1 text-xs">Данные заявки изменились. Администратор проверит их.</p>}
-    <details className="mt-2 text-xs text-slate-500"><summary className="w-fit cursor-pointer py-1">Документы 1С</summary>
+    {['issued', 'rejected'].includes(s.state) ? <p className="mt-2 text-xs text-slate-500">Заявка № {s.number}</p> : <details className="mt-2 text-xs text-slate-500"><summary className="w-fit cursor-pointer py-1">Документы 1С</summary>
       <p className="mt-1">Заявка № {s.number}</p>
       {s.desiredDate ? <p className="mt-1">Желаемая дата: {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' }).format(new Date(s.desiredDate))}</p> : null}
       {['approved', 'payable'].includes(s.state) ? <p className="mt-1">Деньги ещё не выданы.</p> : null}
-    </details>
+    </details>}
   </div>;
 }

@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { AdminShell } from '@/components/AdminShell';
-import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
 import type { AccessJournalRow } from '@/components/PortalAccessJournal';
 import { PortalAccessDevices } from '@/components/PortalAccessDevices';
 import { accessPushLabel } from '@/lib/portal-access-device';
@@ -40,8 +39,8 @@ export default async function AccessPage({ searchParams }: { searchParams: Promi
       loggedOutAt: r.loggedOutAt?.toISOString() ?? null, expiresAt: r.expiresAt.toISOString(), pushCheckedAt: r.pushCheckedAt?.toISOString() ?? null,
       pushLabel: accessPushLabel(r.pushState, r.pushSubscription, r.userId) }));
   } catch { unavailable = true; }
-  return <AdminShell><div className='mb-4 text-sm'><Link href='/admin/employees' className='text-slate-600 hover:underline'>← Сотрудники</Link></div>
-    <AdminPageHeader title='Устройства и входы' description='Браузеры сотрудников, последние подключения и уведомления.' />
+  return <AdminShell pageTitle="Устройства и входы" pageDescription="Браузеры сотрудников, последние подключения и уведомления."><div className='mb-4 text-sm'><Link href='/admin/employees' className='text-slate-600 hover:underline'>← Сотрудники</Link></div>
+
     <PortalAccessDevices rows={rows} query={query} history={history} page={page} hasMore={hasMore} unavailable={unavailable} nowIso={now.toISOString()} />
   </AdminShell>;
 }

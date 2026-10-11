@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { AlertTriangle, ArrowRight, Bell, CalendarDays, CheckCircle2, Clock3, CreditCard, FileText, ShieldAlert, UserCheck } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { AdminMetricCard } from '@/components/admin/AdminMetricCard';
-import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
 import { Card } from '@/components/ui/card';
 import { summarizeAdminToday } from '@/lib/admin-operations-view';
 import { getCurrentUser } from '@/lib/auth';
@@ -101,8 +100,8 @@ export default async function AdminPage() {
     : 'Все запланированные сотрудники уже начали';
 
   return (
-    <AdminShell>
-      <AdminPageHeader eyebrow='Операционная сводка' title='Сегодня' description='Кто работает, что требует исправления и где необходимо именно ваше решение.' />
+    <AdminShell pageTitle="Сегодня" pageDescription="Кто работает, что требует исправления и где необходимо именно ваше решение.">
+
 
       <div className='mt-3 flex w-fit items-center gap-2 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 shadow-sm'>
         <CalendarDays className='h-4 w-4 text-[#263b5c]' />
