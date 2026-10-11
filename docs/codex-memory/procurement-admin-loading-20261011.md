@@ -82,3 +82,85 @@ Owner approved the loading correction and compact history dates after the
 Local-only, excluded from release: the existing untracked
 `app/procurement-payment-review/admin-integration/review.tsx` harness now supplies
 the deferred forecast input to the actual ADMIN component. Other WIP is intact.
+
+## Follow-up: confirmed first view, independent reconciliation (1.1.16)
+
+Owner approved implementation on 2026-10-11 after the live opening remained
+slow, then separately approved commit and deployment. Released as 1.1.16,
+runtime commit `ff8a0b12b25ad5d6a4e1811d066782f6a87f2c89`.
+
+- ADMIN authentication and the portal plan query precede the initial render.
+  The list uses the existing identity-validated `lastCompletePaymentView`,
+  marked as the last confirmed check. No valid snapshot means unknown, never
+  an invented unpaid state or a zero debt/balance.
+- `AdminProcurementLive` performs the SAME full current-source reconciliation
+  under Suspense. Closed plans remain in allocation. The read/match/calculation
+  body was compared with HEAD: unchanged, 9,226 characters in both versions.
+- A single `AdminProcurementClient` instance receives the result. No key/remount
+  on refresh: tab, search, selected request and entered explanation survive.
+  Generation IDs reject results from an older refresh; an additional ID/version
+  check rejects results if plans were added, deleted or edited during the read.
+- Cached data is presentation only, not input to funding, financial actions,
+  payment linking or notifications. Actions and forecast loads wait for a
+  complete current verification. Cached cash-collection permission is stripped.
+- Failure keeps the confirmed view, displays its age and blocks financial
+  actions. A 60-second client watchdog prevents an endless loading label.
+  Existing visible-page periodic refresh retries; no new worker or schedule.
+- No matching/source optimization, new endpoint, schema/migration, manual link
+  change, notification behavior change, 1C publication or document write.
+
+### Local verification
+
+- 87 targeted tests: initial-view/version guard, forecast auth, continuity,
+  RUB/USDT matching, small remainders, exact register basis, source contracts,
+  paid-notification regression, manual completion/revisions and history UI.
+- TypeScript and clean production build, excluding untracked review routes.
+- Actual compiled Next server, isolated demo DB, loopback-only mock 1C:
+  initial calendar HTML at 50 ms; first mock response at 5,049 ms; response
+  completed at 5,062 ms. All 8 mock source requests returned 503. Unauthorized
+  access redirected without reading sources or rendering financial rows.
+  This proves streaming, NOT production end-to-end timing or an SLA.
+- Authenticated local real ADMIN components: paid row stays in history during
+  delay/failure; approval disabled; recovery enables actions. Open return form
+  and its typed explanation survive refresh. Search/tabs remain interactive.
+  Checked narrow UI and 1440px desktop (scroll width equals viewport width).
+- Local-only test harness: `app/procurement-payment-review/admin-loading/`.
+  Uses demo requests and synthetic evidence with no production decisions;
+  exclude it from release. Runtime test: `/tmp/procurement-stream-runtime-check.cjs`.
+- Live metadata and deployment branch both reported 1.1.15 immediately before
+  choosing 1.1.16 and were rechecked before push. All three package version
+  fields agree; five release-info tests passed in addition to 87 focused tests.
+- Native macOS Terminal deploy finished with `DEPLOY_EXIT=0`; only portal-app
+  was built/recreated. Independent SSH readback confirms the exact runtime
+  commit above. Public `/api/health` returns `ok:true`; `/release-info.json`
+  and authenticated shared footer both show 1.1.16, built at
+  `2026-10-11T10:05:11.805Z` (13:05 Moscow). Public revision remains null because
+  the Docker build excludes Git; commit verification uses independent SSH.
+- First authenticated Edge navigation to the new calendar: visible list/search
+  after 2,081 ms, with the cached-view notice still visible. The later complete
+  reconciliation replaced that notice with current verification time. Both
+  states showed 4 pending / 0 awaiting / 26 history; no payment decisions made.
+  This demonstrates production proxy streaming, not a general latency SLA.
+- Live Luxo dialog opened normally; funding advice loaded separately; decision
+  buttons became available with verified current payment evidence. Screenshot:
+  `/Users/bela/.codex/visualizations/2026/09/24/01a0d49e-cb94-79c1-9222-778802de7f4f/admin-calendar-release-1.1.16.png`.
+- No migrations, manual database changes, receipt changes, 1C publication or
+  source/matcher/notification rule changes. Other local WIP and server `.rollback/`
+  were preserved. Deeper source-query optimization remains deferred.
+
+### Follow-up file scope
+
+- `app/(dashboard)/admin/procurement/page.tsx`
+- `app/(dashboard)/admin/procurement/AdminProcurementLive.tsx` (new)
+- `app/(dashboard)/admin/procurement/AdminProcurementStream.tsx` (new)
+- `app/(dashboard)/admin/procurement/AdminProcurementClient.tsx`
+- `lib/procurement-admin-plans.ts` (new)
+- `lib/procurement-admin-initial-view.ts` (new)
+- `components/ProcurementDataRefresh.tsx`
+- `components/ProcurementPaymentHistory.tsx` (neutral cached-view explanation)
+- `tests/procurement-admin-initial-view.test.ts` (new)
+- `tests/procurement-admin-loading.test.ts`
+- `tests/procurement-evidence-continuity.test.ts`
+- `tests/procurement-payment-history.test.ts`
+- `package.json` and `package-lock.json` (1.1.16)
+- This handoff; keep documentation commit separate from source if committing.
