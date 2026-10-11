@@ -13,13 +13,14 @@ function Steps({steps}: {steps: FundingStep[]}) {
     <strong>{s.kind === 'wallet' ? s.amount.toLocaleString('ru-RU') + '\u00a0USDT' : rub(s.amount)}</strong>
   </li>)}</ol>;
 }
-export default function Funding({data, stale=false}: {data: FundingEvidence; stale?:boolean}) {
+export default function Funding({data, stale=false, refreshing=false}: {data: FundingEvidence; stale?:boolean; refreshing?:boolean}) {
   const active = data.plans.filter(p => ['SUBMITTED', 'APPROVED'].includes(p.status)).sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.id.localeCompare(b.id));
   const [excluded, setExcluded] = useState<string[]>([]);
   const selected = active.filter(p=>!excluded.includes(p.id)).map(p=>p.id);
   const [expanded, setExpanded] = useState('');
+  const [includeManagerCash, setIncludeManagerCash] = useState(false);
   const conditions = useRef<HTMLElement>(null);
-  const plan = fundingScenario(data, selected), t = data.tbank;
+  const plan = fundingScenario(data, selected, {includeManagerCash}), t = data.tbank;
   const nearestDate = plan.rows[0]?.plannedDate;
   const nearest = plan.rows.filter(p => p.plannedDate === nearestDate);
   const nearestGap = nearest.reduce((sum, p) => sum + (p.gap ?? 0), 0);
@@ -28,29 +29,36 @@ export default function Funding({data, stale=false}: {data: FundingEvidence; sta
   const boxes = [...data.manager.cashboxes].sort((a, b) => b.balance - a.balance);
   const cashTotal = boxes.reduce((sum, c) => sum + c.balance, 0);
   const conditional = !plan.reservationsComplete || !plan.sourcesKnown;
+  const managerCapacity = plan.boxes.reduce((sum,b)=>sum+b.available,0)/100;
+  const tbankCandidate = knownLimit && t.freeRemainingMinor! > 0 && (ownerAmount(data,'Т-Банк КБР')??0)>0;
+  const cashFallbackRelevant = plan.rows.some(r=>['CASH','USDT','CNY'].includes(r.paymentMethod)&&!r.walletCovered&&!r.unknown&&(includeManagerCash||r.gap!>0));
   const toggle = (id: string, checked: boolean) => setExcluded(ids => checked ? ids.filter(i=>i!==id) : [...new Set([...ids,id])]);
   return <div className="funding-preview">
     {stale && <p role="status" className="fp-warning">Свежий расчёт пока недоступен. Показаны последние полученные сведения; не используйте их для выдачи без обновления. Обновление повторится автоматически.</p>}
-    <p className="fp-bank-note">Расчёт от {data.capturedAt ? new Date(data.capturedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}) : day(data.asOf)}</p>
+    <p className="fp-updated" role="status">{refreshing&&!stale ? 'Обновляем данные · пока показан предыдущий расчёт от ' : 'Расчёт от '}{data.capturedAt ? new Date(data.capturedAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}) : day(data.asOf)}</p>
     <div className="fp-intro"><h2>Подготовка денег</h2><span className="fp-total">{plan.totalComplete ? 'По выбранным заявкам' : 'Известная часть'} <b>{rub(plan.total)}</b></span></div>
-    <div className="fp-context"><span className="fp-badge">Расчёт по остаткам</span><span>{conditional ? 'Источники предварительные: не все обязательства учтены.' : 'Источники распределены в сценарии; выдачи не создаются.'}</span><button type="button" onClick={() => {conditions.current?.scrollIntoView({block:'start'}); conditions.current?.focus({preventScroll:true});}}>Что учтено</button></div>
+    <div className="fp-context"><span className="fp-badge">План подготовки</span><span>{conditional ? 'Предварительно: не все обязательства подтверждены.' : 'Сначала готовые деньги, затем банк. Кассы менеджеров — по вашему выбору.'}</span><button type="button" onClick={() => {conditions.current?.scrollIntoView({block:'start'}); conditions.current?.focus({preventScroll:true});}}>Что учтено</button></div>
     <div className="fp-main">
       <div className="fp-left">
         {nearest.length ? <section className="fp-card fp-priority">
-          <header><div className="fp-priority-date"><CalendarDays size={20}/><h3>{nearestDate!.slice(0, 10) < data.asOf ? 'Срок прошёл · ' : 'Ближайшая выплата · '}{day(nearestDate!)}</h3></div><span className="fp-badge fp-attention">{nearestUnknown ? 'Нужны данные' : nearestGap > 0 ? 'Нужен другой источник' : 'Вариант подготовки'}</span></header>
+          <header><div className="fp-priority-date"><CalendarDays size={20}/><h3>{nearestDate!.slice(0, 10) < data.asOf ? 'Срок прошёл · ' : 'Ближайшая выплата · '}{day(nearestDate!)}</h3></div><span className="fp-badge fp-attention">{nearestUnknown ? 'Нужны данные' : nearestGap > 0 ? 'Осталось подобрать источник' : 'Вариант подготовки'}</span></header>
           {nearest.map(r => <div className="fp-nearest" key={r.id}>
             <div className="fp-payment-head"><label><input type="checkbox" aria-label={'Включить ' + r.supplier} checked onChange={e => toggle(r.id, e.target.checked)}/><span><b>{r.supplier}</b><small>{method(r.paymentMethod)}{r.foreignAmount && r.paymentMethod === 'USDT' ? ' · ' + r.foreignAmount.toLocaleString('ru-RU') + ' USDT' : ''}</small></span></label>
               <div className="fp-payment-amount"><strong>{r.need === null ? 'Сумма не подтверждена' : r.walletCovered ? r.foreignAmount?.toLocaleString('ru-RU') + '\u00a0USDT' : rub(r.need)}</strong><small>{r.walletCovered ? 'Из кассы USDT' : ['USDT', 'CNY'].includes(r.paymentMethod) ? 'Рублёвый ориентир заявки' : 'Подготовить к оплате'}</small></div>
             </div>
             {r.unknown ? <p className="fp-warning">{r.blockedByEarlier ? 'Сначала нужен расчёт более ранней заявки: иначе одни деньги могут быть предложены дважды.' : 'Для этой заявки не подтверждены сумма или остаток нужной валюты. Распределение не выполнено.'}</p> : <>
-              <div className="fp-step-label">Вариант источников</div><Steps steps={r.steps}/>
-              {r.gap! > 0 && <div className="fp-shortfall"><span>Не покрыто этим вариантом</span><strong>{rub(r.gap!)}</strong></div>}
+              <div className="fp-step-label">{includeManagerCash ? 'Вариант с кассами менеджеров' : 'Основной вариант'}</div><Steps steps={r.steps}/>
+              {r.gap! > 0 && <div className="fp-shortfall"><span>Подобрать источник ещё на</span><strong>{rub(r.gap!)}</strong></div>}
             </>}
           </div>)}
-          <div className="fp-next-action"><AlertCircle size={19}/><div><b>{nearestUnknown ? 'Сначала — подтверждение исходных данных' : nearestGap > 0 ? 'До выдачи — выбрать дополнительный источник' : 'До выдачи — проверить свободные деньги'}</b>
-            <p>{nearestUnknown ? 'Сумма не заменена нулём. Остальные известные остатки доступны справа.' : nearestGap > 0 ? 'В расчёте ВТБ — не более 350 000 ₽ в день. Сегодняшнее снятие не включено: использованный лимит неизвестен. Проверьте возможность дополнительного снятия сегодня либо выберите другой источник или срок.' : 'Предложенный маршрут не учитывает неподтверждённые обязательства и комиссии. Согласование и выбор кассы остаются за вами.'}</p></div></div>
+          <div className="fp-next-action"><AlertCircle size={19}/><div><b>{nearestUnknown ? 'Сначала — подтверждение исходных данных' : nearestGap > 0 ? (tbankCandidate ? 'Проверить возможность снятия через Т-Банк' : 'Проверить дополнительное снятие или другой источник') : 'Перед выдачей — проверить доступность денег'}</b>
+            <p>{nearestUnknown ? 'Сумма не заменена нулём. Известные остатки показаны отдельно.' : nearestGap > 0 ? (tbankCandidate ? `По выписке на ${day(t.statementDate)} осталось ${rub(t.freeRemainingMinor!/100)} переводов без комиссии. Перед использованием проверьте актуальный лимит и условия снятия. Эта сумма пока не включена в план.` : 'Вариант не покрывает всю оплату — это не означает, что денег нет. Сегодняшний доступный лимит снятия не подтверждён и в расчёт не включён.') : 'Будущие снятия нужно успеть выполнить к оплате. Расчёт не создаёт выдачу и не учитывает комиссии.'}</p></div></div>
+          {cashFallbackRelevant && plan.managersAllowed && (managerCapacity>0||includeManagerCash) && <div className="fp-alternative">
+            <label><input type="checkbox" checked={includeManagerCash} onChange={e=>setIncludeManagerCash(e.target.checked)}/><span>Подключить кассы менеджеров</span></label>
+            <p>{includeManagerCash ? 'Для всех выбранных выплат, только если не хватает сейфа и банка. Перед выдачей оставьте необходимую наличность для работы магазина.' : `Для выбранных выплат доступно до ${rub(managerCapacity)} после учтённых обязательств. Основной вариант эти деньги не затрагивает.`}</p>
+          </div>}
         </section> : <section className="fp-card fp-empty"><h3>{active.length ? 'Нет выбранных выплат' : 'Нет заявок к оплате'}</h3>{active.length > 0 && <><p>Отметьте заявки ниже — источники и даты пересчитаются.</p><button onClick={() => setExcluded([])}>Вернуть все заявки</button></>}</section>}
-        <section className="fp-card fp-queue"><header><h3>Остальные выплаты</h3><button className="fp-reset" onClick={() => {setExcluded([]); setExpanded('');}}><RotateCcw size={13}/> Сбросить выбор</button></header>
+        <section className="fp-card fp-queue"><header><h3>Остальные выплаты</h3><button className="fp-reset" onClick={() => {setExcluded([]); setExpanded('');setIncludeManagerCash(false);}}><RotateCcw size={13}/> Сбросить выбор</button></header>
           {active.filter(p => !nearest.some(n => n.id === p.id)).map(p => {
             const r = plan.rows.find(row => row.id === p.id);
             return <article className={'fp-queue-row ' + (!r ? 'fp-excluded' : '')} key={p.id}>
@@ -78,7 +86,7 @@ export default function Funding({data, stale=false}: {data: FundingEvidence; sta
         </section>
         <section className="fp-card fp-cash"><header><h3><WalletCards size={18}/> Кассы менеджеров</h3><span className="fp-source-date">По 1С</span></header>
           <div className="fp-cash-total"><span>Учётный остаток</span><b>{data.managerAvailable===false?'Данные не получены':rub(cashTotal)}</b></div><dl>{boxes.map(b => <div key={b.ref}><dt>{b.name.replace('Касса ', '').trim()}</dt><dd>{rub(b.balance)}</dd></div>)}</dl>
-          <p className="fp-bank-note">{plan.managersAllowed ? 'В варианте сначала используется касса с наибольшим остатком после назначенных выплат.' : 'Не распределены в варианте: не все остатки и обязательства подтверждены. Это не означает, что кассы пусты.'}</p>
+          <p className="fp-bank-note">{plan.managersAllowed ? includeManagerCash ? 'Подключены к расчёту: сначала используется крупнейшая доступная касса, только если не хватает сейфа и банка.' : 'Не используются в основном варианте. Их можно подключить к расчёту отдельно.' : 'Не распределены в варианте: не все остатки и обязательства подтверждены. Это не означает, что кассы пусты.'}</p>
         </section>
         <section className="fp-card fp-accounts"><header><h3>Ваши счета и кассы</h3><span className="fp-source-date">По 1С</span></header><dl>{data.owner.accountNames.map(n => {const amount = ownerAmount(data, n); return <div key={n}><dt>{n}</dt><dd className={amount !== null && amount < 0 ? 'fp-negative' : ''}>{amount === null ? 'Не подтверждён' : rub(amount)}</dd></div>;})}{data.extraCash.map(c => <div key={c.name}><dt>{c.name}</dt><dd>{rub(c.balance)}</dd></div>)}</dl><p className="fp-account-note">Отрицательный остаток и расходный сейф не используются в варианте.</p></section>
       </aside>

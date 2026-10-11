@@ -62,10 +62,11 @@ test('historical T-Bank limit does not cover a funding gap',()=>{
 });
 test('manager cash requires assigned obligations and subtracts known pending',()=>{
   const d=fixture();d.manager.cashboxes=[{ref:'a',name:'A',balance:150000,pending:10000},{ref:'b',name:'B',balance:50000,pending:0}];
+  d.owner.positions[1].balanceMinor=RENT_RESERVE_MINOR;
   d.plans[0].requestedRub='280000';
-  const r=fundingScenario(d,['a']);assert.deepEqual(r.rows[0].steps.map(s=>s.amount),[100000,140000,40000]);
+  const r=fundingScenario(d,['a'],{includeManagerCash:true});assert.deepEqual(r.rows[0].steps.map(s=>s.amount),[100000,140000,40000]);
   d.manager.unassignedCount=1;d.manager.unassignedAmount=10000;
-  const blocked=fundingScenario(d,['a']);assert.equal(blocked.managersAllowed,false);
+  const blocked=fundingScenario(d,['a'],{includeManagerCash:true});assert.equal(blocked.managersAllowed,false);
   assert.equal(blocked.rows[0].steps.some(s=>s.source==='A'),false);
 });
 test('unknown payroll blocks reservation completeness without turning it into zero',()=>{
@@ -106,7 +107,30 @@ test('future cash is prepared near its deadline rather than frozen weeks early',
 test('known mandatory reserves take precedence over manager cash',()=>{
   const d=fixture();d.owner.positions.forEach(p=>p.balanceMinor=0);
   d.manager.cashboxes=[{ref:'m',name:'M',balance:250000,pending:0}];
-  const r=fundingScenario(d,['a']);assert.equal(r.rows[0].steps[0].amount,15000);
+  const r=fundingScenario(d,['a'],{includeManagerCash:true});assert.equal(r.rows[0].steps[0].amount,15000);
+});
+test('main route preserves manager cash; optional fallback takes only the uncovered remainder',()=>{
+  const d=fixture();d.plans[0].requestedRub='460000';
+  d.manager.cashboxes=[{ref:'small',name:'Small till',balance:5000,pending:0},{ref:'large',name:'Large till',balance:30000,pending:1000}];
+  const before=JSON.stringify(d),main=fundingScenario(d,['a']);
+  assert.equal(main.rows[0].gap,10000);assert.equal(main.rows[0].steps.length,2);
+  const alt=fundingScenario(d,['a'],{includeManagerCash:true});
+  assert.equal(alt.rows[0].gap,0);
+  assert.deepEqual(alt.rows[0].steps.map(s=>[s.source,s.amount]),[['Сейф Депозитный',100000],['Снять через ВТБ',350000],['Large till',10000]]);
+  assert.equal(alt.boxes.find(b=>b.ref==='large')!.available,1900000);
+  assert.equal(JSON.stringify(d),before);
+});
+test('manager fallback is not consumed when owner sources cover a payment',()=>{
+  const d=fixture();d.plans[0].requestedRub='400000';d.manager.cashboxes=[{ref:'m',name:'M',balance:10000,pending:0}];
+  const r=fundingScenario(d,['a'],{includeManagerCash:true});
+  assert.equal(r.rows[0].steps.some(s=>s.source==='M'),false);assert.equal(r.boxes[0].available,1000000);
+});
+test('optional manager fallback cannot be allocated twice across payments',()=>{
+  const d=fixture();d.plans[1].plannedDate='2026-10-12';d.manager.cashboxes=[{ref:'m',name:'M',balance:100000,pending:0}];
+  const r=fundingScenario(d,['a','b'],{includeManagerCash:true});
+  assert.equal(r.rows[0].steps.find(s=>s.source==='M')?.amount,50000);
+  assert.equal(r.rows[1].steps.find(s=>s.source==='M')?.amount,50000);
+  assert.equal(r.boxes[0].available,0);
 });
 test('unknown or negative manager pending amounts never inflate capacity',()=>{
   const d=fixture();d.manager.cashboxes=[{ref:'m',name:'M',balance:250000,pending:-1000}];
