@@ -659,3 +659,50 @@ No production push, deployment, version allocation, configuration change or
 migration was performed. Re-read live metadata and the deployment branch before
 choosing the release version. Production approval and device replacement/re-alert
 verification remain outstanding.
+
+### Production release and next requested stage
+
+Owner approved production publication ("разрешаю", typed in English keyboard
+layout). Version 1.3.0, runtime commit
+`14f75171765d3285ff7b9b539f788f156296a574`, was deployed successfully on 2026-10-11.
+Build: `2026-10-11T20:10:20.451Z` (23:10 MSK). Native Terminal deploy exit 0;
+portal-app healthy. Independent SSH HEAD, public metadata on both domains and
+the authenticated ADMIN footer confirm the release. Public revision is null in
+this Docker build; the commit was verified separately through SSH.
+Previous version 1.2.4 / `5cc1f1faaefa98c8c4820fdcf6543e0a5676d2d3`:
+`sha256:ee4e447d7c2548343902329c35143eefd1d1fb4e3298a33dfaf9cab1afb3d444`.
+Preserved rollback tag: `offonika-portal-attention-rollback:pre-1.3.0-20261011`.
+Replacement image:
+`sha256:7f871f92654d7a48187bf2c0e3fa91a80c60ce0f2e2cef385cf2cdf239b3c80a`.
+Schema/migrations/Compose/Dockerfile unchanged; uploads volume preserved. Five
+release metadata tests passed in addition to the candidate checks above.
+The actual bell shows six unresolved business objects and keeps five current
+technical incidents in System. Two old cash exceptions remain unresolved in
+source state; no automatic age-based closure or production data cleanup occurred.
+Screenshot: `/Users/bela/.codex/visualizations/2026/10/11/admin-attention/production-1.3.0.png`.
+
+Owner requested the next distinct stage: when a payable accountable request is
+assigned to a manager's cashbox, notify that manager in PWA who should receive
+the money and how much. Example: Chechenova's cashbox → Chechenova receives the
+issue task for the named accountable person. First inspect existing employee
+notification routing and explicit cashbox-to-user mappings; never infer the
+recipient by cashbox display name alone. The existing
+`procurement-delivery-notifications.ts` notifies the accountable recipient that
+money can be collected; this does not establish a cashier-side issue notice.
+Suggested lifecycle for the next stage: confirmed 1C payable document, source
+cashbox/amount/person validation, reassignment cancellation, one active task,
+closure on confirmed cash issue. Not implemented or included in 1.3.0.
+
+Post-release device verification: owner refreshed both devices and explicitly
+approved two labeled diagnostic pushes. Same test tag, renotify=true, 30-second
+interval; no business objects or inbox receipts created. Both steps received
+provider HTTP 201 for the owner's three existing subscriptions (desktop 1627,
+iPhone subscriptions 2126 and 1754) at 23:14:50 and 23:15:20–21 MSK. Test exit 0.
+Owner then confirmed: "Да, на обоих одна карточка" in response to the question
+covering re-alert and replacement on iPhone and computer. This validates the
+observed same-tag replacement on these devices, not guaranteed future OS display
+under every Focus/offline/device condition. The live service worker contains the
+new renotify and ADMIN_ATTENTION_CLEARED logic. Production sender timer remains
+active; elapsed-time scheduling/retry/lifecycle behavior is covered by local
+integration tests. Test evidence: `/tmp/mobo-attention-device-test-130.log`;
+deploy evidence: `/tmp/mobo-attention-release-130.log`.
