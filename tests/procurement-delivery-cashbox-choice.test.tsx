@@ -9,10 +9,11 @@ import { ProcurementDeliveryCashboxChoice } from '../components/ProcurementDeliv
 import { DeliveryFundingContent } from '../components/ProcurementDeliveryFunding';
 
 const now = Date.now();
+const shift = { state: 'active' as const, employee: 'Сотрудник', checkedAt: new Date(now).toISOString(), version: 'active' };
 const data = (): DeliveryFunding => ({ checkedAt: new Date(now).toISOString(), cashboxes: [
-  { ref: 'b', name: 'Касса Ахобекова', balance: 13535, pending: 0, count: 0 },
-  { ref: 'a', name: 'Касса Абшаева', balance: 20960, pending: 0, count: 0 },
-  { ref: 'c', name: 'Касса Костеренко', balance: 223, pending: 0, count: 0 },
+  { ref: 'b', name: 'Касса Ахобекова', balance: 13535, pending: 0, count: 0, shift },
+  { ref: 'a', name: 'Касса Абшаева', balance: 20960, pending: 0, count: 0, shift },
+  { ref: 'c', name: 'Касса Костеренко', balance: 223, pending: 0, count: 0, shift },
 ], topups: [], unassignedCount: 0, unassignedAmount: 0, reviewCount: 0 });
 const view = (): DeliveryView => ({ snapshot: { balance: 2259, checkedAt: new Date(now).toISOString(), lastIssue: null }, requested: true, requestedByBuyer: false, requestStateAvailable: true });
 
@@ -121,4 +122,20 @@ test('uncertain organization plans remain a visible caveat without attributing t
  assert.match(html, /свободный остаток пока не подтверждён/);
  assert.doesNotMatch(html, /1.?014.?200|Без кассы: 11|В организации без кассы/);
  assert.match(html, /После этой выдачи/);
+});
+
+test('recommend only an on-shift cashier, retain funded off-shift alternatives for manual choice', () => {
+ const source=data(); source.cashboxes[1].shift={...shift,state:'completed'};
+ assert.equal(chooseDeliveryCashbox(source,10000,now).selected?.ref,'b');
+ assert.deepEqual(chooseDeliveryCashbox(source,10000,now).candidates.map(b=>b.ref),['a','b']);
+ source.cashboxes[0].shift={...shift,state:'not_started'};
+ assert.equal(chooseDeliveryCashbox(source,10000,now).selected,null);
+ source.cashboxes[0].shift=undefined;
+ assert.equal(chooseDeliveryCashbox(source,10000,now).selected,null);
+ source.cashboxes[0].shift={...shift,checkedAt:new Date(now-300001).toISOString()};
+ assert.equal(chooseDeliveryCashbox(source,10000,now).selected,null);
+ const v=view();v.requestedByBuyer=true;v.requestDetails={amount:10000,comment:'',balance:0,checkedAt:source.checkedAt,requestedAt:source.checkedAt};
+ const html=renderToStaticMarkup(<ProcurementDeliveryCashboxChoice data={source} view={v} now={now}/>);
+ assert.match(html,/Смена завершена/); assert.match(html,/Выберите кассу/);
+ assert.doesNotMatch(html,/<option[^>]*value="a"[^>]*disabled/);
 });

@@ -1,3 +1,5 @@
+import { Suspense } from 'react';
+import { CashIssueProvider } from './CashIssueClient';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { EmployeeInterfaceStyle } from '@/components/EmployeeInterfaceStyle';
@@ -9,5 +11,5 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
   if (!user) redirect('/login');
   if (user.role !== 'EMPLOYEE') redirect('/admin');
   if (user.portalArea === 'PROCUREMENT') redirect('/procurement');
-  return <><EmployeeInterfaceStyle copper />{children}</>;
+  return <><EmployeeInterfaceStyle copper /><Suspense fallback={children}><CashIssueProvider>{children}</CashIssueProvider></Suspense></>;
 }

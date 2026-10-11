@@ -13,6 +13,8 @@ import { employeePushNotBefore, employeePushTtl, DELIVERY_PUSH_COPY } from '@/li
 import { queueCashMorningPushes } from '@/lib/procurement-morning-notifications';
 import { isCashMorning, cashMorningNotBefore } from '@/lib/procurement-morning-policy';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
+import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY, cashIssueHref } from '@/lib/procurement-cash-issue-policy';
+import { cashIssuePushDecision, queueCashIssuePush } from '@/lib/procurement-cash-issue-notifications';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -274,6 +276,7 @@ function notificationTargetKey(notification: { id: number; taskId: number | null
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  if (notification.kind === CASH_ISSUE_KIND) return cashIssueHref(notification.fingerprint);
   if(notification.kind===RECEIPT_EMPLOYEE_KIND) {
     const plan=receiptPlanFromFingerprint(notification.fingerprint||'');
     return plan?receiptHref(plan,false):'/procurement';
@@ -338,11 +341,12 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   // A crashed sender may already have delivered its push. Keep its inbox item, but
   // never automatically replay an uncertain delivery and wake the employee twice.
   await prisma.workdayNotification.updateMany({ where: {
-    kind: { in: [DELIVERY_READY_KIND, COLLECTION_READY_KIND] }, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
+    kind: { in: [DELIVERY_READY_KIND, COLLECTION_READY_KIND, CASH_ISSUE_KIND] }, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
     status: { in: ['pending', 'sent'] },
   }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
   // The delivery producer is idempotent; a source outage must not block other domains.
   await queueDeliveryReadyPush(now).catch(() => undefined);
+  await queueCashIssuePush(now).catch(() => undefined);
   await queueCollectionReadyPush(now).catch(() => undefined);
   await queueCashMorningPushes(now).catch(() => undefined);
   await reconcileStoredUnreadWorkdayNotifications();
@@ -373,7 +377,8 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
-    const delivery = notification.kind === DELIVERY_READY_KIND ? await deliveryPushDecision(notification, dispatchTime())
+    const delivery = notification.kind === CASH_ISSUE_KIND ? await cashIssuePushDecision(notification, dispatchTime())
+      : notification.kind === DELIVERY_READY_KIND ? await deliveryPushDecision(notification, dispatchTime())
       : notification.kind === COLLECTION_READY_KIND ? await collectionPushDecision(notification, dispatchTime()) : null;
     if (delivery?.state === 'defer') {
       await prisma.workdayNotification.update({ where: { id: notification.id }, data: { scheduledAt: delivery.until, nextPushAttemptAt: delivery.until } });
@@ -437,7 +442,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
-          : delivery?.state === 'send' ? notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
+          : delivery?.state === 'send' ? notification.kind === CASH_ISSUE_KIND ? CASH_ISSUE_PUSH_COPY : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
         url: workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,

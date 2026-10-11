@@ -81,6 +81,7 @@ test('real dispatcher claims one send, routes to calendar and never pushes a sta
       } } },
       '@/lib/terminal-fiscal-admin-gate': { TERMINAL_FISCAL_ADMIN_FIRST: false },
       '@/lib/procurement-notification-lifecycle': { inactiveProcurementNotifications: async () => new Set() },
+      '@/lib/procurement-cash-issue-notifications': { queueCashIssuePush: async () => {} },
       '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', queueDeliveryReadyPush: async () => {} },
       '@/lib/procurement-collection-notifications': { COLLECTION_READY_KIND: 'procurement_collection_ready',
         COLLECTION_PUSH_COPY: { title: 'Деньги для оплаты', body: 'Проверьте сумму, дату и кассу в платёжном календаре.' },

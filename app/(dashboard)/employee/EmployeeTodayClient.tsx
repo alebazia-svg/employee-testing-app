@@ -68,6 +68,7 @@ import {
   type EmployeeCashOutboxItem,
 } from '@/lib/employee-cash-outbox';
 import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalHeader';
+import { CashIssueSummary } from './CashIssueClient';
 import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
 import { earlyFinishReasons, lateArrivalReasons, lateArrivalThresholdMinutes, type WorkdayDeviationKind } from '@/lib/workday-deviation';
 
@@ -4645,6 +4646,8 @@ export function EmployeeTodayClient({
                   )}
                 </div>
               )}
+
+              <CashIssueSummary activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} />
 
               {attentionCount > 0 && !showCloseResolution && (
                 <EmployeeAttentionSummaryCard

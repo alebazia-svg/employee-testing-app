@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { ProcurementDeliveryFundingNotice } from './ProcurementDeliveryFundingNotice';
 import { ProcurementDeliveryCreate } from './ProcurementDeliveryCreate';
+import { cashboxShiftLabel, cashboxShiftWarning } from '@/lib/procurement-cashbox-shift-policy';
 import type { DeliveryFunding } from '@/lib/procurement-delivery-funding';
 import type { DeliveryView } from '@/lib/procurement-delivery-reminders';
 import { DELIVERY_RESERVE, deliveryFresh } from '@/lib/procurement-delivery-policy';
@@ -45,11 +46,12 @@ export function ProcurementDeliveryCashboxChoice({ data, view, now = Date.now() 
           {data.cashboxes.map(b => {
             const available = choice.candidates.some(candidate => candidate.ref === b.ref);
             const reason = choice.state === 'stale' ? 'обновляем данные' : b.pending === null || !Number.isFinite(b.balance) || !Number.isFinite(b.pending) ? 'остаток требует проверки' : 'недостаточно средств с учётом заявок';
-            return <option key={b.ref} value={b.ref} disabled={!available}>{cashName(b.name)} · {money(b.balance)}{available ? data.cashboxes.length > 1 && b.ref === choice.selected?.ref ? ' · рекомендуем' : '' : ` · ${reason}`}</option>;
+            return <option key={b.ref} value={b.ref} disabled={!available}>{cashName(b.name)} · {money(b.balance)} · {cashboxShiftLabel(b.shift)}{available ? data.cashboxes.length > 1 && b.ref === choice.selected?.ref ? ' · рекомендуем' : '' : ` · ${reason}`}</option>;
           })}
         </select>
-        <p hidden={data.cashboxes.length === 1} id="delivery-cashbox-hint" className="mt-1.5 text-xs text-slate-500">{data.cashboxes.length === 1 ? 'Подключена одна касса.' : manual ? 'Выбрана вами · остаток проверим перед созданием.' : 'Предложена касса с наибольшим остатком. Можно изменить.'}</p>
+        <p hidden={data.cashboxes.length === 1} id="delivery-cashbox-hint" className="mt-1.5 text-xs text-slate-500">{data.cashboxes.length === 1 ? 'Подключена одна касса.' : manual ? 'Выбрана вами · остаток проверим перед созданием.' : choice.selected ? 'Предложена касса сотрудника на смене с наибольшим остатком. Можно изменить.' : 'Для выдачи сейчас нет подходящей кассы сотрудника на смене. Выберите кассу вручную.'}</p>
       </div>
+      {box && cashboxShiftWarning(box.shift) ? <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{cashboxShiftWarning(box.shift)}</p> : null}
       {box && amount !== null && eligible ? <dl className="grid grid-cols-2 gap-3 text-xs">
         <div><dt className="text-slate-500">В кассе по 1С</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-slate-900">{money(box.balance)}</dd></div>
         <div><dt className="text-slate-500">После этой выдачи</dt><dd className="mt-1 text-sm font-semibold tabular-nums text-slate-900">{money(Math.round((box.balance - amount) * 100) / 100)}</dd></div>

@@ -134,7 +134,8 @@ test('overlapping dispatchers send one push; deferred or cancelled permission ne
         '@/lib/prisma': { prisma: db },
         '@/lib/terminal-fiscal-admin-gate': { TERMINAL_FISCAL_ADMIN_FIRST: false },
         '@/lib/procurement-notification-lifecycle': { inactiveProcurementNotifications: async () => new Set() },
-        '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', queueDeliveryReadyPush: async () => {},
+        '@/lib/procurement-cash-issue-notifications': { queueCashIssuePush: async () => {} },
+      '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', queueDeliveryReadyPush: async () => {},
           deliveryPushDecision: async () => ({ state: decision, title: 'Можно получить 15 000 ₽', body: 'Касса Чеченова', until: morning }) },
         'web-push': { setVapidDetails: () => {}, sendNotification: async (_subscription: any, payload: string, options: any) => { sent.push({ ...JSON.parse(payload), options }); } },
       });
@@ -171,7 +172,8 @@ test('all employee domains wait overnight without consuming attempts; morning se
         } } },
         '@/lib/terminal-fiscal-admin-gate': { TERMINAL_FISCAL_ADMIN_FIRST: false },
         '@/lib/procurement-notification-lifecycle': { inactiveProcurementNotifications: async () => new Set(active ? [] : [1]) },
-        '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', queueDeliveryReadyPush: async () => {},
+        '@/lib/procurement-cash-issue-notifications': { queueCashIssuePush: async () => {} },
+      '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', queueDeliveryReadyPush: async () => {},
           deliveryPushDecision: async () => ({ state: active ? 'send' : 'cancel', title: 'Можно получить 15 000 ₽', body: 'Касса' }) },
         'web-push': { setVapidDetails: () => {}, sendNotification: async (_s: any, payload: string) => { sent.push(JSON.parse(payload)); } },
       });
@@ -204,6 +206,7 @@ test('employee bell uses fresh collection sum, keeps a neutral outage fallback a
       } } } },
       '@/lib/workday-control-issue-view': {},
       '@/lib/workday-notifications': { reconcileActiveWorkdayNotifications: async (_db: any, rows: any) => rows, workdayNotificationHref: () => '/procurement#delivery' },
+      '@/lib/procurement-cash-issue-notifications': { queueCashIssuePush: async () => {} },
       '@/lib/procurement-delivery-notifications': { DELIVERY_READY_KIND: 'procurement_delivery_ready', currentDeliveryPush: async () => ({ state, userId: 42, fingerprint: 'current', title: 'Можно получить 10 000 ₽', body: 'Касса Чеченова' }) },
     });
     const response = await api.GET();

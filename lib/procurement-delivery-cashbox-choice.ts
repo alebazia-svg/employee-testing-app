@@ -34,6 +34,6 @@ export function chooseDeliveryCashbox(data: DeliveryFunding, amount: number | nu
   const candidates = known.filter(b => Math.round(b.balance * 100) - Math.round(b.pending! * 100) >= Math.round(amount * 100))
     .sort((a, b) => b.balance - a.balance || a.ref.localeCompare(b.ref));
   if (!candidates.length) return empty(known.length < data.cashboxes.length ? 'unknown' : 'insufficient');
-  return { state: 'ready', candidates, selected: candidates[0],
+  return { state: 'ready', candidates, selected: candidates.find(box => box.shift?.state === 'active' && now - Date.parse(box.shift.checkedAt) <= DELIVERY_MAX_AGE_MS && now >= Date.parse(box.shift.checkedAt) - 60_000) ?? null,
     preliminary: data.unassignedCount > 0 || data.reviewCount > 0 || known.length < data.cashboxes.length };
 }

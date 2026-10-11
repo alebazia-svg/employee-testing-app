@@ -5,6 +5,7 @@ import { DELIVERY_PERSON } from '../lib/procurement-delivery-policy';
 async function route(status = 200, fail = false, mappingFail = false) {
   const calls: string[] = [];
   const mocks: Record<string, unknown> = {
+    '@/lib/procurement-cashbox-shifts': { cashboxShifts: async () => new Map() },
     '@/lib/admin-api-auth': { requireAdminApi: async () => ({ ok: status === 200, response: new Response(null, { status }) }) },
     '@/lib/one-c': { getCashFundingContext: async (ref: string) => { calls.push(ref); if (fail) throw Error('private details'); return {}; } },
     '@/lib/procurement-delivery-policy': { DELIVERY_PERSON },

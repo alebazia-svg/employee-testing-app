@@ -1,10 +1,11 @@
+import type { CashboxShift } from './procurement-cashbox-shift-policy';
 import { parseOneCDateTime } from './one-c-date';
 import { DELIVERY_PERSON, DELIVERY_MAX_AGE_MS } from './procurement-delivery-policy';
 
 type Row = Record<string, unknown>;
 export type DeliveryFunding = {
   checkedAt: string;
-  cashboxes: { ref: string; name: string; balance: number; pending: number | null; count: number }[];
+  cashboxes: { ref: string; name: string; balance: number; pending: number | null; count: number; shift?: CashboxShift }[];
   topups: { ref: string; number: string; date: string; status: string; remaining: number | null }[];
   unassignedCount: number;
   unassignedAmount: number;

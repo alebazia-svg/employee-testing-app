@@ -14,6 +14,8 @@ import { Bell, ChevronRight, X } from 'lucide-react';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
 import { cn } from '@/lib/utils';
+import { useCashIssue } from './CashIssueClient';
+import { CASH_ISSUE_KIND } from '@/lib/procurement-cash-issue-policy';
 
 type WorkdayNotification = {
   id: number;
@@ -59,6 +61,7 @@ function urlBase64ToUint8Array(value: string) {
 
 export function WorkdayNotificationsClient() {
   const router = useRouter();
+  const cashIssue = useCashIssue();
   const searchParams = useSearchParams();
   const palette = searchParams.get('palette');
   const moboPreview = palette === null || palette.startsWith('mobo');
@@ -146,7 +149,11 @@ export function WorkdayNotificationsClient() {
   }
 
   async function openNotification(notification: WorkdayNotification) {
-    await dismiss(notification);
+    if (notification.kind === CASH_ISSUE_KIND && cashIssue) {
+      const ref = new URL(notification.href, window.location.origin).searchParams.get('request');
+      if (ref) { setOpen(false); cashIssue.open(ref); return; }
+    }
+    if (notification.kind !== CASH_ISSUE_KIND) await dismiss(notification);
     setOpen(false);
     router.push(notification.href || '/employee');
   }

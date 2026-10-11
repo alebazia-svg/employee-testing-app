@@ -7,6 +7,7 @@ export type DeliveryNativeStatus = {
   issued: number | null; remaining: number | null;
   cashbox: string | null; desiredDate: string | null; checkedAt: string;
   canCollect?: boolean;
+  cashboxRef?: string; recipientName?: string;
 };
 export type DeliveryNativeView = { state: 'unlinked' | 'linked' | 'unavailable'; status?: DeliveryNativeStatus; automatic?: boolean; reviewReason?: 'ambiguous' | 'manual' };
 export type DeliveryNativeCandidate = { status: DeliveryNativeStatus; quote: string };
@@ -106,7 +107,8 @@ export function deliveryNativeStatus(value: unknown, checkedAt: string, expected
       : key === 'not_approved' ? 'waiting' : key === 'rejected' ? 'rejected' : key;
     result.issued = issued / 100; result.remaining = remaining / 100;
     // This is the requested cashbox, never a claim of reservation or actual RKO source.
-    if (typeof r.cashbox?.name === 'string' && uuid.test(r.cashbox?.ref ?? '')) result.cashbox = r.cashbox.name;
+    if (typeof r.cashbox?.name === 'string' && uuid.test(r.cashbox?.ref ?? '')) { result.cashbox = r.cashbox.name; result.cashboxRef = r.cashbox.ref; }
+    if (typeof r.accountable_person?.name === 'string' && r.accountable_person.name.trim()) result.recipientName = r.accountable_person.name.trim();
     result.canCollect = key === 'payable' && remaining > 0 && Boolean(result.cashbox);
     const desired = parseOneCDateTime(r.desired_payment_date);
     result.desiredDate = desired && desired.getUTCFullYear() >= 2000 ? desired.toISOString() : null;

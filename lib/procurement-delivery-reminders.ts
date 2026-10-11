@@ -60,7 +60,7 @@ export async function deliveryMappedUser() {
   return users[0];
 }
 
-export async function loadDeliveryView(): Promise<DeliveryView> {
+export async function loadDeliveryView(options: { freshNative?: boolean } = {}): Promise<DeliveryView> {
   const [cash, event] = await Promise.allSettled([
     fetchDeliveryCash(),
     prisma.adminInboxEvent.findFirst({ where: sourceWhere, orderBy }),
@@ -88,7 +88,7 @@ export async function loadDeliveryView(): Promise<DeliveryView> {
   return {
     snapshot: cash.status === 'fulfilled' ? cash.value : unavailableDeliveryCash(),
     requested: Boolean(active), requestedByBuyer, requestDetails, requestStateAvailable, nativeRef,
-    ...(active && requestDetails ? { nativeRequest: await loadDeliveryNative(active.id, requestDetails) } : {}),
+    ...(active && requestDetails ? { nativeRequest: await loadDeliveryNative(active.id, requestDetails, undefined, options.freshNative) } : {}),
   };
 }
 

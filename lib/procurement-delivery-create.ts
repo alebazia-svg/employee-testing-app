@@ -1,3 +1,5 @@
+import { cashboxShifts } from './procurement-cashbox-shifts';
+import type { CashboxShift } from './procurement-cashbox-shift-policy';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { prisma } from './prisma';
@@ -13,7 +15,7 @@ const keyFor = (id: string) => `delivery:create:${creationMode() === 'production
 const creationEvent = () => creationMode() === 'production'
   ? { type: 'procurement.delivery_creation', sourceType: 'delivery_creation', title: 'Создание подотчётной заявки' }
   : { type: 'procurement.delivery_creation_test', sourceType: 'delivery_creation_test', title: 'Тест создания подотчётной заявки' };
-type Stored = { state: 'checking' | 'preview' | 'confirming' | 'review' | 'committed'; plan: DeliveryCreatePlan; requestedAt: string; previewId?: string; token?: string; summary?: DeliveryCreateSummary; expiresAt?: number };
+type Stored = { cashboxShift?: CashboxShift; state: 'checking' | 'preview' | 'confirming' | 'review' | 'committed'; plan: DeliveryCreatePlan; requestedAt: string; previewId?: string; token?: string; summary?: DeliveryCreateSummary; expiresAt?: number };
 async function stored(id: string): Promise<Stored | null> {
   const row = await prisma.adminInboxEvent.findUnique({ where: { eventKey: keyFor(id) } });
   return row ? JSON.parse(row.body) : null;
@@ -23,7 +25,7 @@ async function save(id: string, value: Stored) {
   await prisma.adminInboxEvent.upsert({ where: { eventKey: keyFor(id) }, create: { eventKey: keyFor(id), ...data }, update: data });
 }
 function publicState(value: Stored | null) {
-  return value ? { state: value.state, summary: value.summary, previewId: value.previewId, expiresAt: value.expiresAt } : { state: 'ready' as const };
+  return value ? { state: value.state, summary: value.summary, cashboxShift: value.cashboxShift, previewId: value.previewId, expiresAt: value.expiresAt } : { state: 'ready' as const };
 }
 export async function deliveryCreationState() {
   const active = await activeDeliveryRequest();
@@ -42,6 +44,9 @@ async function checkCashbox(ref: string, amount: number) {
   ]);
   const choice = chooseDeliveryCashbox(deliveryFundingForManagerCashboxes(deliveryFundingFromEvidence(raw), mappings.map(m => m.oneCCashboxRef)), amount);
   if (choice.state !== 'ready' || !choice.candidates.some(c => c.ref === ref)) throw Error('CASHBOX_REVIEW_REQUIRED');
+  const shift = (await cashboxShifts([ref])).get(ref);
+  if (!shift || shift.state === 'unknown') throw Error('CASHBOX_SHIFT_UNAVAILABLE');
+  return shift;
 }
 async function finish(id: string, command: Stored, native: any) {
   const summary = deliveryCreationSummary(native.state, command.plan);
@@ -81,10 +86,10 @@ export async function actDeliveryCreation(input: { action: string; reminderId: s
     if (linked || view.nativeRequest?.state !== 'unlinked' || view.nativeRequest.reviewReason) throw Error('EXISTING_OR_UNVERIFIED_REQUEST');
     if (!input.reportDate || !/^\d{4}-\d{2}-\d{2}$/.test(input.reportDate)) throw Error('REPORT_DATE_REQUIRED');
     if (!input.cashboxRef || !/^[0-9a-f-]{36}$/.test(input.cashboxRef)) throw Error('CASHBOX_REQUIRED');
-    await checkCashbox(input.cashboxRef, active.details.amount);
+    const cashboxShift = await checkCashbox(input.cashboxRef, active.details.amount);
     const expectedCommand = command ? JSON.stringify(command) : null;
     const ref = deliveryCreationRef(id, creationMode());
-    command = { state: 'checking', requestedAt: active.details.requestedAt, plan: { action: 'create_accountable', request_ref: ref, command_id: ref, cashbox_ref: input.cashboxRef, amount: active.details.amount, comment: active.details.comment, actor: `portal-admin:${userId}`, report_date: input.reportDate } };
+    command = { state: 'checking', cashboxShift, requestedAt: active.details.requestedAt, plan: { action: 'create_accountable', request_ref: ref, command_id: ref, cashbox_ref: input.cashboxRef, amount: active.details.amount, comment: active.details.comment, actor: `portal-admin:${userId}`, report_date: input.reportDate } };
     // A conditional write prevents two tabs replacing each other's preview.
     await prisma.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106250)`;
@@ -110,7 +115,15 @@ export async function actDeliveryCreation(input: { action: string; reminderId: s
   if (native.status === 'committed') return finish(id, command, native);
   await currentRequest(id, command);
   if (command.state !== 'preview' || !command.expiresAt || Date.now() > command.expiresAt) throw Error('RECOVERY_REQUIRED');
-  await checkCashbox(command.plan.cashbox_ref, command.plan.amount);
+  const currentShift = await checkCashbox(command.plan.cashbox_ref, command.plan.amount);
+  if (!command.cashboxShift || currentShift.version !== command.cashboxShift.version) {
+    // Preserve command identity, but require a new review of the changed cashier/shift.
+    await prisma.adminInboxEvent.updateMany({
+      where: { eventKey: keyFor(id), body: JSON.stringify(command) },
+      data: { body: JSON.stringify({ ...command, expiresAt: 0 }) },
+    });
+    throw Error('CASHBOX_SHIFT_CHANGED');
+  }
   await prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106250)`;
     const row = await tx.adminInboxEvent.findUniqueOrThrow({ where: { eventKey: keyFor(id) } });

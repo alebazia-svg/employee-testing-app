@@ -1,3 +1,4 @@
+import { cashboxShifts } from '@/lib/procurement-cashbox-shifts';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { getCashFundingContext } from '@/lib/one-c';
 import { DELIVERY_PERSON } from '@/lib/procurement-delivery-policy';
@@ -17,7 +18,9 @@ export async function GET() {
         select: { oneCCashboxRef: true },
       }),
     ]);
-    return Response.json(deliveryFundingForManagerCashboxes(deliveryFundingFromEvidence(raw), mappings.map(m => m.oneCCashboxRef)), { headers });
+    const data = deliveryFundingForManagerCashboxes(deliveryFundingFromEvidence(raw), mappings.map(m => m.oneCCashboxRef));
+    const shifts = await cashboxShifts(data.cashboxes.map(box => box.ref));
+    return Response.json({ ...data, cashboxes: data.cashboxes.map(box => ({ ...box, shift: shifts.get(box.ref) })) }, { headers });
   } catch {
     return Response.json({ error: 'Не удалось проверить кассы и заявки. Данные обновятся автоматически.' }, { status: 503, headers });
   }

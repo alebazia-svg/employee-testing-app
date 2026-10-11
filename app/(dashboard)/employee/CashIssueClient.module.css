@@ -1,0 +1,17 @@
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 68px;
+  padding: 12px 14px;
+  text-align: left;
+  background: #fffaf3;
+  border: 1px solid #d8bda1;
+  border-left: 3px solid #ad7549;
+  border-radius: 14px;
+  box-shadow: 0 2px 5px #5036210a;
+}
+
+.notice:active { background: #f5eadb; }
+.notice:focus-visible { outline: 2px solid #ad7549; outline-offset: 3px; }

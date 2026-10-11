@@ -28,15 +28,15 @@ function day(value: string) {
   if (!parsed) throw Error('DELIVERY_NATIVE_DATE');
   return new Date(`${moscowDateKey(parsed)}T00:00:00+03:00`);
 }
-export async function loadDeliveryNative(reminderId: string, details: DeliveryRequestDetails, beforeNextRequest?: string): Promise<DeliveryNativeView> {
+export async function loadDeliveryNative(reminderId: string, details: DeliveryRequestDetails, beforeNextRequest?: string, fresh = false): Promise<DeliveryNativeView> {
   try {
     const stored = await prisma.adminInboxEvent.findUnique({ where: { eventKey: deliveryLinkKey(reminderId) } });
     // Explicit operator unlink suppresses automatic selection for this cycle.
     if (stored?.type === 'procurement.delivery_native_unlinked') return { state: 'unlinked', reviewReason: 'manual' };
-    if (!stored) return await automaticDeliveryNative(reminderId, details, beforeNextRequest);
+    if (!stored) return await automaticDeliveryNative(reminderId, details, beforeNextRequest, fresh);
     const link = readDeliveryLink(stored.body);
     const from = day(link.date), to = new Date(from.getTime() + DAY);
-    let data = await readPeriod(from, to);
+    let data = await readPeriod(from, to, fresh);
     let row = data.rows.find(r => r.ref === link.ref);
     // A newly saved link can outlive a cached pre-creation snapshot. Read once
     // from 1C before reporting its exact document unavailable; never infer status.
@@ -52,10 +52,10 @@ export async function loadDeliveryNative(reminderId: string, details: DeliveryRe
  * A later competing document hides the instruction instead of silently picking one.
  * New portal cycles exclude earlier native documents by the exact request timestamp.
  */
-export async function automaticDeliveryNative(reminderId: string, details: DeliveryRequestDetails, beforeNextRequest?: string): Promise<DeliveryNativeView> {
+export async function automaticDeliveryNative(reminderId: string, details: DeliveryRequestDetails, beforeNextRequest?: string, fresh = false): Promise<DeliveryNativeView> {
   const from = day(details.requestedAt), to = new Date(day(beforeNextRequest ?? new Date().toISOString()).getTime() + DAY);
   if (to <= from || to.getTime() - from.getTime() > 31 * DAY) return { state: 'unlinked', reviewReason: 'manual' };
-  const data = await readPeriod(from, to);
+  const data = await readPeriod(from, to, fresh);
   if (data.rows.some(r => !('accountable_identity_contract' in r) || r.accountable_identity_contract !== 'expense-request-accountable-v1')) return { state: 'unavailable' };
   // Do not filter out rejected/review/paid rows before uniqueness: they can be
   // a competing request. Never interpret absence caused by bad data as uniqueness.

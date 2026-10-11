@@ -7,12 +7,14 @@ import { cashNoticeBase } from '@/lib/procurement-morning-policy';
 import { currentDeliveryPush, DELIVERY_READY_KIND } from '@/lib/procurement-delivery-notifications';
 import { DELIVERY_PUSH_COPY } from '@/lib/employee-push-policy';
 import { COLLECTION_READY_KIND, COLLECTION_PUSH_COPY, currentCollectionPushes } from '@/lib/procurement-collection-notifications';
+import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY } from '@/lib/procurement-cash-issue-policy';
+import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
 
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const rows = await prisma.workdayNotification.findMany({
-    where: { userId: user.id, status: 'sent', readAt: null },
+    where: { userId: user.id, status: 'sent', OR: [{ readAt: null }, { kind: CASH_ISSUE_KIND }] },
     orderBy: { sentAt: 'desc' },
     select: {
       id: true,
@@ -34,6 +36,7 @@ export async function GET() {
   const activeRows = await reconcileActiveWorkdayNotifications(prisma, rows);
   const delivery = activeRows.some(row => row.kind === DELIVERY_READY_KIND) ? await currentDeliveryPush() : null;
   const collections = activeRows.some(row => row.kind === COLLECTION_READY_KIND) ? await currentCollectionPushes() : null;
+  const cashIssue = activeRows.some(row => row.kind === CASH_ISSUE_KIND) ? await currentCashIssue() : null;
   const notifications = activeRows
     .filter((notification) => {
       const reply = notification.kind.endsWith('_reply');
@@ -48,15 +51,19 @@ export async function GET() {
       const deliveryCopy = notification.kind === DELIVERY_READY_KIND && delivery?.state === 'ready'
         && delivery.fingerprint === (cashNoticeBase(notification) ?? notification.fingerprint) && delivery.userId === user.id ? delivery : null;
       const collectionCopy = collections?.state === 'ready' ? collections.notices.find(n => n.userId === user.id && n.fingerprint === (cashNoticeBase(notification) ?? notification.fingerprint)) : null;
-      const copy = notification.kind === DELIVERY_READY_KIND ? deliveryCopy ?? DELIVERY_PUSH_COPY
+      const issueCopy = cashIssue?.state === 'ready' && cashIssue.userId === user.id && cashIssue.fingerprint === notification.fingerprint ? cashIssue : null;
+      const copy = notification.kind === CASH_ISSUE_KIND ? issueCopy ?? { ...CASH_ISSUE_PUSH_COPY, body: 'Статус выдачи уточняется. Откройте заявку перед выдачей денег.' }
+        : notification.kind === DELIVERY_READY_KIND ? deliveryCopy ?? DELIVERY_PUSH_COPY
         : notification.kind === COLLECTION_READY_KIND ? collectionCopy ?? COLLECTION_PUSH_COPY : null;
       return {
         ...notification,
+        ...(notification.kind === CASH_ISSUE_KIND ? { readAt: null } : {}),
         title: copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title,
         body: copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body,
         href: workdayNotificationHref(notification),
       };
     })
+    .sort((a, b) => Number(b.kind === CASH_ISSUE_KIND) - Number(a.kind === CASH_ISSUE_KIND))
     .slice(0, 30);
   return Response.json({ notifications });
 }
