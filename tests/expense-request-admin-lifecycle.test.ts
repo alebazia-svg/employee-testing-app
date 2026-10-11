@@ -117,6 +117,16 @@ test('1C date in DD.MM.YYYY format is interpreted as Moscow time', () => {
   assert.equal(expenseRequestDateOrNull('not-a-date'), null);
 });
 
+test('expense dates accept single-digit 1C hours without swapping day and month', () => {
+  assert.equal(expenseRequestDateOrNull('11.10.2026 9:25:11')?.toISOString(), '2026-10-11T06:25:11.000Z');
+  assert.equal(expenseRequestDateOrNull('13.10.2026 0:05:00')?.toISOString(), '2026-10-12T21:05:00.000Z');
+  assert.equal(expenseRequestDateOrNull('11.10.2026')?.toISOString(), '2026-10-10T21:00:00.000Z');
+  assert.equal(expenseRequestDateOrNull('2026-10-11T06:25:11.000Z')?.toISOString(), '2026-10-11T06:25:11.000Z');
+  assert.equal(expenseRequestDateOrNull('31.02.2026 9:25:11'), null);
+  assert.equal(expenseRequestDateOrNull('11.10.2026 24:25:11'), null);
+  assert.equal(expenseRequestDateOrNull(''), null);
+});
+
 test('expense request boundaries are sent as Moscow calendar dates without UTC day shift', () => {
   assert.equal(expenseRequestMoscowCalendarDate(new Date('2026-08-16T21:00:00.000Z')), '2026-08-17');
   assert.equal(expenseRequestMoscowCalendarDate(new Date('2026-08-17T21:00:00.000Z')), '2026-08-18');
