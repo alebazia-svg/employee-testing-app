@@ -44,7 +44,36 @@ reference information, not confirmed current spending capacity.
 - Production screenshot is a private local artifact named
   `funding-production-1.2.1.png`, not committed business data.
 
-## Separate production finding — unresolved
+## Separate production finding — resolved in 1.2.3
+
+Owner approved correction and release after the initial finding below.
+The exact native chain exists: source supplier order → native expense request →
+whole posted RKO. The request's settlement-object line contains a contract, not
+an order; the strict breakdown parser incorrectly discarded the explicit source
+order when it encountered that contract. This is distinct from a supplier/amount
+fallback and does not require 1C changes or manual linking.
+
+`4724f04` preserves a typed, nonempty source-order UUID only for complete,
+whole-request, single-contract allocations with confirmed matching partners.
+Mixed/partial/conflicting lines remain unlinked. Existing independent RKO checks
+still enforce posting, amount, supplier, exact request ownership and uniqueness.
+
+Released 1.2.3 / `8ea7c1d01b18e356f9452e3b389cc247db17e1bd`, based on the concurrent
+1.2.2 release without overwriting it. Build `2026-10-11T19:15:21.994Z`.
+Remote deploy exit 0; independent SSH, public release metadata and authenticated
+ADMIN footer verified. 85 focused tests, TypeScript, isolated production build,
+and five version tests passed. Live read-only reproduction confirmed paid amount
+and zero residual; the other Baseus request was unaffected.
+
+Production readback: first post-restart request source timed out and correctly
+retained the prior display. A subsequent complete read at 22:19:59 MSK showed
+waiting 0 / history 26, with the September 30 Baseus payment in history. The
+funding view no longer includes it; selected total decreased by exactly 47,600
+RUB (1,239,083 → 1,191,483). No financial records were manually modified.
+Buyer UI and actual push delivery were not inspected in production; shared
+matching and obsolete-notification retirement were covered by regression tests.
+
+### Initial finding (historical, before the correction)
 
 Production verification exposed old Baseus Jackson order 412 / RKO 001793 as
 awaiting payment again. The funding release does not modify payment matching or
