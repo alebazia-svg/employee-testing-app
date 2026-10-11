@@ -271,3 +271,21 @@ under the user's OneDrive Desktop folder.
 
 Production 1C release truth is in that repo's `AGENTS.md` plus Yandex Disk
 `/AgentAPI_Project` and live `/hs/agent/version`.
+
+## Shared ADMIN Heading And Tabs — Owner Decision 2026-10-11
+
+- Root ADMIN sections use the shared `AdminShell` pageTitle/pageDescription header:
+  one page title beside the account controls, with common typography and spacing.
+  Do not restore duplicate root-level “Главная / Раздел” breadcrumbs or a second
+  page title. Nested detail navigation may retain useful back links/breadcrumbs.
+- Preserve each section's existing content width, table columns and work layout
+  unless the owner separately approves changing them. Match headerWidthClass to
+  a section's existing content constraint; do not impose one global table width.
+- Procurement is the approved visual baseline for primary section tabs. Reuse
+  `admin-section-tabs` / `admin-section-tab` from desktop-copper.css, including
+  the copper active state, tab shape, spacing and count badge. Do not recreate
+  local pill or underline-only variants for equivalent section navigation.
+- Expense requests open in one focused modal over the list. The owner explicitly
+  rejected a persistent side-by-side list/detail panel and nested modal chains.
+- These are shared project decisions, not instructions the owner must repeat in
+  each module chat. See docs/codex-memory/expense-release-20261011.md for status.

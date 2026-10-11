@@ -105,3 +105,8 @@ project from scratch.
 
 Future sessions must run `git status --short` first. This repository often has
 old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
+
+## ADMIN UI Standard And Expense Release Preparation
+
+- Shared headers/tabs and the expense UI candidate: `expense-release-20261011.md`.
+- Root headers use AdminShell; primary tabs reuse the procurement style. Preserve module widths.
