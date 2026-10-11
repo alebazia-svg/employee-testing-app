@@ -110,3 +110,14 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 
 - Shared headers/tabs and the expense UI candidate: `expense-release-20261011.md`.
 - Root headers use AdminShell; primary tabs reuse the procurement style. Preserve module widths.
+
+
+## Cashier Issue Notifications — Production 1.4.0
+
+- Existing Astemir accountable top-up: assigned cashier receives a persistent
+  workday PWA notice during an actual active shift; details open in a bottom sheet.
+- ADMIN cashbox selector shows current shift and rechecks it before explicit
+  creation of the payable request. Do not auto-create on selection.
+- Source, lifecycle, release verification and rollback:
+  `cashier-notifications-release-20261012.md`.
+- Physical-device push verification for this new cashier kind remains pending.

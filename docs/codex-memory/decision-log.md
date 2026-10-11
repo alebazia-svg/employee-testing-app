@@ -883,3 +883,16 @@ metadata/UI and arrange one explicitly authorized cashier-device notification
 check; the earlier ADMIN push check is not evidence for the new cashier flow.
 Primary checkout's unrelated changes were left untouched. Demo pages, database,
 clock override and fixture server are outside the commit.
+
+
+### 2026-10-12 — Cashier notifications and shift warnings released as 1.4.0
+
+Owner explicitly approved production release. The previously local candidate is
+now live as runtime commit `68e374b1a6b47b8102867b4b1ed0fbc9bb846085`.
+Public metadata, SSH source identity, running module hashes, healthy container,
+authenticated ADMIN footer, five funding/shift mappings and a post-release
+minute sender run were verified. No migration, environment change, financial
+command, 1C publication or manual employee push. Previous 1.3.0 image preserved.
+Physical-device delivery of the new cashier kind remains unverified.
+Full release evidence, exact files and rollback identities:
+`cashier-notifications-release-20261012.md`.
