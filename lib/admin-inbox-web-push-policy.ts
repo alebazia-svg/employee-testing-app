@@ -99,6 +99,7 @@ export function adminInboxWebPushPayload(input: {
   url: string;
   notificationId: string;
   badgeCount: number;
+  renotify?: boolean;
 }) {
   return JSON.stringify({
     title: input.title,
@@ -106,6 +107,7 @@ export function adminInboxWebPushPayload(input: {
     url: input.url,
     notificationId: input.notificationId,
     tagPrefix: 'admin',
+    ...(input.renotify ? { renotify: true } : {}),
     badgeCount: Math.max(0, Math.floor(input.badgeCount)),
   });
 }

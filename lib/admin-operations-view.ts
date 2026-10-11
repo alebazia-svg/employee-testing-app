@@ -16,6 +16,11 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
   'procurement.receipt_added': {
     category: 'messages', typeLabel: 'Чек оплаты', actionLabel: 'Открыть чеки',
   },
+  'procurement.delivery_manual_requested': {
+    category: 'requests', typeLabel: 'Запрос подотчёта', actionLabel: 'Открыть подотчёт',
+  },
+  'workday_issue.employee_action': { category: 'messages', typeLabel: 'Ответ сотрудника', actionLabel: 'Открыть обсуждение' },
+  'terminal_fiscal_review.employee_action': { category: 'messages', typeLabel: 'Ответ по продаже', actionLabel: 'Открыть обсуждение' },
   'procurement.delivery_requested': {
     category: 'requests', typeLabel: 'Пополнение подотчёта', actionLabel: 'Открыть подотчёт',
   },
@@ -57,6 +62,7 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Чек пробит с задержкой',
     actionLabel: 'Открыть проверку',
   },
+  'workday.kkm_shift_close_attention': { category: 'decisions', typeLabel: 'Закрытие кассовой смены', actionLabel: 'Открыть контроль' },
   'workday.close_exception_requested': {
     category: 'decisions',
     typeLabel: 'Требуется решение администратора',
@@ -96,7 +102,12 @@ export function adminInboxSourceState(input: {
   employeeActionRequired?: boolean;
   sourceCompleted?: boolean;
 }): AdminInboxSourceState {
-  if (input.sourceType === 'procurement_delivery') {
+  if (input.sourceType === 'supplier_payment_plan') {
+    return input.businessStatus === 'SUBMITTED'
+      ? { active: true, label: 'Ожидает решения', tone: 'attention' }
+      : { active: false, label: 'Решение принято', tone: 'history' };
+  }
+  if (['procurement_delivery', 'procurement_delivery_request'].includes(input.sourceType)) {
     return input.current
       ? { active: true, label: 'Пополнение на контроле', tone: 'attention' }
       : { active: false, label: 'В истории', tone: 'history' };

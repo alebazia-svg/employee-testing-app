@@ -1,10 +1,11 @@
 import 'server-only';
 
 import webpush from 'web-push';
+import { dispatchAdminAttentionPush } from './admin-inbox-attention-push';
+import { ATTENTION_PUSH_TYPES } from './admin-inbox-attention-policy';
 import { prisma } from '@/lib/prisma';
 import { loadAdminInbox } from '@/lib/admin-inbox-data';
 import {
-  ADMIN_INBOX_TECHNICAL_DEDUPE_MS,
   adminInboxWebPushPayload,
   eligibleAdminInboxWebPushTypes,
   getAdminInboxPushEventCutoff,
@@ -14,7 +15,6 @@ import {
   RECEIPT_PUSH_TYPE,
   RECEIPT_PUSH_MAX_AGE_MS,
 } from '@/lib/admin-inbox-web-push-policy';
-import { TBANK_NOTIFICATION_SOURCE, tbankPushEventId } from '@/lib/tbank-cabinet-notification-policy';
 
 function configureWebPush() {
   const publicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim() ?? '';
@@ -25,62 +25,18 @@ function configureWebPush() {
   return true;
 }
 
-async function isCurrentTechnicalIncident(input: {
-  id: string;
-  type: string;
-  sourceType: string;
-  sourceId: string;
-  occurredAt: Date;
-}, now: Date) {
-  if (!isTechnicalAdminInboxDownEvent(input.type)) return true;
-  const recoveredType = input.type === 'dependency.down'
-    ? 'dependency.recovered'
-    : 'infrastructure.recovered';
-  const latestState = await prisma.adminInboxEvent.findFirst({
-    where: {
-      sourceType: input.sourceType,
-      sourceId: input.sourceId,
-      type: { in: [input.type, recoveredType] },
-      occurredAt: { lte: now },
-    },
-    orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
-    select: { id: true },
-  });
-  if (latestState?.id !== input.id) return false;
-
-  const duplicateCutoff = new Date(input.occurredAt.getTime() - ADMIN_INBOX_TECHNICAL_DEDUPE_MS);
-  const recentSentIncident = await prisma.adminInboxDelivery.findFirst({
-    where: {
-      channel: 'web_push',
-      status: 'sent',
-      event: {
-        id: { not: input.id },
-        type: input.type,
-        sourceType: input.sourceType,
-        sourceId: input.sourceId,
-        occurredAt: { gte: duplicateCutoff, lte: input.occurredAt },
-      },
-    },
-    select: { id: true },
-  });
-  return recentSentIncident === null;
-}
-
 export async function dispatchAdminInboxWebPush(now = new Date()) {
   if (!configureWebPush()) throw new Error('WEB_PUSH_NOT_CONFIGURED');
-  const eligibleTypes = eligibleAdminInboxWebPushTypes(now);
-  if (eligibleTypes.length === 0) return { receipts: 0, sent: 0, failed: 0 };
+  const digest = await dispatchAdminAttentionPush(now);
+  // Preserve the existing 22:00–23:00 closing-blocker channel. During the
+  // daytime those decisions are covered by the common digest instead.
+  const digestHours = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Moscow' }).format(now) !== '22';
+  const eligibleTypes = eligibleAdminInboxWebPushTypes(now).filter(type => (!digestHours || !(ATTENTION_PUSH_TYPES as readonly string[]).includes(type)) && !isTechnicalAdminInboxDownEvent(type));
+  if (eligibleTypes.length === 0) return digest;
   const eventCutoff = getAdminInboxPushEventCutoff(now);
-  const latestTbank = await prisma.adminInboxEvent.findFirst({
-    where: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE,
-      type: { in: ['dependency.down', 'dependency.recovered'] } },
-    orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
-    select: { id: true, type: true, occurredAt: true },
-  });
-  const allowedTbankId = tbankPushEventId(latestTbank, now);
-  let sent = 0;
-  let failed = 0;
-  let receiptCount = 0;
+  let sent = digest.sent;
+  let failed = digest.failed;
+  let receiptCount = digest.receipts;
   let cursor: string | undefined;
   const unreadCountByUser = new Map<number, number>();
   // Advance past already delivered/read entries: the first page must not
@@ -94,10 +50,7 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
           {type:{not:RECEIPT_PUSH_TYPE},createdAt:{gte:eventCutoff,lte:now}},
           {type:RECEIPT_PUSH_TYPE,createdAt:{gte:new Date(now.getTime()-RECEIPT_PUSH_MAX_AGE_MS),lte:now}},
         ]}],
-        OR: [
-          { NOT: { sourceType: 'dependency', sourceId: TBANK_NOTIFICATION_SOURCE } },
-          ...(allowedTbankId ? [{ id: allowedTbankId }] : []),
-        ],
+
       },
       user: { role: 'ADMIN', isActive: true },
     },
@@ -114,10 +67,9 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
       eventCreatedAt: receipt.event.createdAt,
       now,
     })) continue;
-    if (!await isCurrentTechnicalIncident(receipt.event, now)) continue;
     let badgeCount = unreadCountByUser.get(receipt.userId);
     if (badgeCount === undefined) {
-      badgeCount = (await loadAdminInbox({ userId: receipt.userId, limit: 1 })).unreadCount;
+      badgeCount = (await loadAdminInbox({ userId: receipt.userId, limit: 1 })).attentionCount;
       unreadCountByUser.set(receipt.userId, badgeCount);
     }
     for (const subscription of receipt.user.pushSubscriptions) {

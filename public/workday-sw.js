@@ -57,7 +57,7 @@ self.addEventListener('push', (event) => {
     badge: '/portal-app-icon-192.png',
     data: { url: data.url || '/employee', notificationId: data.notificationId || null },
     tag: data.notificationId ? `${data.tagPrefix || 'workday'}-${data.notificationId}` : (data.tagPrefix || 'workday'),
-    renotify: false,
+    renotify: data.tagPrefix === 'admin' && data.renotify === true,
   }));
   event.waitUntil(Promise.all(actions));
 });
@@ -73,5 +73,18 @@ self.addEventListener('notificationclick', (event) => {
       }
     }
     return clients.openWindow(targetUrl);
+  }));
+});
+
+// Clear the old summary after the authenticated ADMIN has no remaining tasks.
+// Employee notifications use another tag and are left intact.
+self.addEventListener('message', (event) => {
+  if (event.data?.type !== 'ADMIN_ATTENTION_CLEARED' || !event.source?.url) return;
+  const source = new URL(event.source.url);
+  if (source.origin !== self.location.origin || !source.pathname.startsWith('/admin')) return;
+  event.waitUntil(self.registration.getNotifications().then(notifications => {
+    for (const notification of notifications) {
+      if (notification.tag.startsWith('admin-attention-')) notification.close();
+    }
   }));
 });
