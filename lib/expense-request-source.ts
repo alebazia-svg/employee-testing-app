@@ -91,7 +91,7 @@ function readPositiveInteger(value: string | undefined, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
-export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date; strictRequests?: boolean; includeHistory?: boolean }): Promise<ExpenseRequestSnapshot> {
+export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date; strictRequests?: boolean; includeHistory?: boolean; historyConcurrency?: 1 | 2 }): Promise<ExpenseRequestSnapshot> {
   if (!(input.from instanceof Date) || Number.isNaN(input.from.getTime()) || !(input.to instanceof Date) || Number.isNaN(input.to.getTime())) {
     throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
   }
@@ -108,12 +108,21 @@ export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date;
     if (last - first > 3660 * dayMs) throw new Error('EXPENSE_REQUEST_HISTORY_SCOPE_LIMIT');
     const all: ExpenseRequestSourceRow[] = [], errors: string[] = [];
     let complete = true, pageCount = 0;
-    for (let start = first; start < last; start += 31 * dayMs) {
-      const end = Math.min(last, start + 31 * dayMs);
-      const part = await fetchExpenseRequestSnapshot({ from: new Date(start), to: new Date(end), strictRequests: input.strictRequests });
-      all.push(...part.rows); errors.push(...part.errors); pageCount += part.pageCount;
-      if (!part.complete) complete = false;
-      if (all.length >= MAX_ROWS && end < last) { complete = false; errors.push('SOURCE_ROW_LIMIT_REACHED'); break; }
+    const concurrency = input.historyConcurrency === 2 ? 2 : 1;
+    windows: for (let start = first; start < last; start += concurrency * 31 * dayMs) {
+      const windows = Array.from({length:concurrency},(_,index)=>start+index*31*dayMs)
+        .filter(from=>from<last).map(from=>({from,end:Math.min(last,from+31*dayMs)}));
+      // Independent monthly reads overlap; pages within each month stay sequential.
+      // Merge in chronological order with the original completeness/row-limit rules.
+      const parts = await Promise.all(windows.map(window=>fetchExpenseRequestSnapshot({
+        from:new Date(window.from),to:new Date(window.end),strictRequests:input.strictRequests,
+      })));
+      for (let index=0;index<parts.length;index++) {
+        const part=parts[index],end=windows[index].end;
+        all.push(...part.rows); errors.push(...part.errors); pageCount += part.pageCount;
+        if (!part.complete) complete = false;
+        if (all.length >= MAX_ROWS && end < last) { complete = false; errors.push('SOURCE_ROW_LIMIT_REACHED'); break windows; }
+      }
     }
     const unique = new Map<string, ExpenseRequestSourceRow>();
     for (const row of all) {

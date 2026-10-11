@@ -8,6 +8,12 @@ export const historyFixture = [
   { id: 'mems', supplierPartner: 'MEMS Technology', orderNumbers: ['00OF-000393'], plannedAmount: '280000', evidence: { issuedAmount: 280000, paidAmount: 0, paidForeignAmount: 0, actualExchangeRate: null, cashOrders: [{ ref: 'rko', number: '00OF-001692', date: '16.09.2026 18:47:57' }] } },
   { id: 'tural', supplierPartner: 'Tural', orderNumbers: ['00OF-000334'], plannedAmount: '700000', evidence: { issuedAmount: 0, paidAmount: 699997, paidForeignAmount: 7865.17, actualExchangeRate: 89, currencyPayments: [{ ref: 'usdt-rko', number: 'USDT', date: '' }] } },
 ];
+test('admin history keeps the year in a compact single-line date',()=>{
+  const html=renderToStaticMarkup(React.createElement(ProcurementPaymentHistory,{plans:[historyFixture[0]],splitView:true,adminDialogs:true}));
+  assert.match(html,/16 сент\. 2026/);
+  assert.doesNotMatch(html,/2026 г\./);
+  assert.match(html,/280 000/);
+});
 test('cached history retains the payment and visibly identifies the last successful verification', () => {
   const plans = [{ ...historyFixture[0], evidence: { ...historyFixture[0].evidence,
     verification: 'last-confirmed' as const, verifiedAt: '2026-10-06T10:00:00Z' } }];

@@ -6,9 +6,9 @@ import type {ProcurementListItem} from './ProcurementSplitList';
 import './procurement-admin-list.css';
 
 type Item=ProcurementListItem&{dateLabel?:string;basis?:string;method?:string;priority?:string};
-type Props={items:Item[];renderDetail:(id:string)=>ReactNode;renderFooter?:(id:string,close:()=>void)=>ReactNode;empty?:string;dirty?:boolean;busy?:boolean;onClose?:()=>void;error?:string;history?:boolean;searchQuery?:string};
+type Props={items:Item[];renderDetail:(id:string)=>ReactNode;renderFooter?:(id:string,close:()=>void)=>ReactNode;empty?:string;dirty?:boolean;busy?:boolean;onClose?:()=>void;onOpen?:(id:string)=>void;error?:string;history?:boolean;searchQuery?:string};
 
-export function ProcurementAdminList({items,renderDetail,renderFooter,empty='Записей нет.',dirty=false,busy=false,onClose,error,history=false,searchQuery}:Props){
+export function ProcurementAdminList({items,renderDetail,renderFooter,empty='Записей нет.',dirty=false,busy=false,onClose,onOpen,error,history=false,searchQuery}:Props){
   const [localQuery,setQuery]=useState('');
   const query=searchQuery??localQuery;
   const [selected,setSelected]=useState('');
@@ -23,7 +23,7 @@ export function ProcurementAdminList({items,renderDetail,renderFooter,empty='З�
       <div className="pam-columns"><span>{history?'Оплачено':'Подготовить к'}</span><span>Поставщик / основание</span><span className="pam-amount">Сумма</span><span>Способ оплаты</span><span/></div>
       {filtered.map((item,index)=><React.Fragment key={item.id}>
         {item.group&&item.group!==filtered[index-1]?.group?<h3 className="pam-group" data-priority={item.priority}>{item.group}<span>{filtered.filter(row=>row.group===item.group).length}</span></h3>:null}
-        <button type="button" className="pam-row" aria-label={`Подробности оплаты ${item.name}`} onClick={()=>setSelected(item.id)}>
+        <button type="button" className="pam-row" aria-label={`Подробности оплаты ${item.name}`} onClick={()=>{setSelected(item.id);onOpen?.(item.id);}}>
           <span className="pam-date" data-priority={item.priority}><CalendarDays size={16}/>{item.dateLabel||item.meta}</span>
           <span className="pam-supplier"><strong>{item.name}</strong><small>{item.basis||item.search}</small>{item.warning?<small className="pam-warning" data-neutral={item.warningTone==='neutral'}>{item.warning}</small>:null}</span>
           <strong className="pam-amount">{item.amount}</strong><span className="pam-method">{item.method||''}</span><ChevronRight className="pam-chevron" size={17}/>

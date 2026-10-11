@@ -1,5 +1,7 @@
 "use client";
 import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionNotice';
+import { useAdminProcurementForecast } from '@/components/useAdminProcurementForecast';
+import type { AdminForecastInput } from '@/lib/procurement-admin-forecast';
 import { ProcurementAdminList } from "@/components/ProcurementAdminList";
 import { ProcurementAdminComment } from "@/components/ProcurementAdminComment";
 import type { ReactNode } from "react";
@@ -163,7 +165,7 @@ const nextDayKey = (value: string) => {
 };
 
 export default function AdminProcurementClient({
-  initialPlans,
+  initialPlans, forecastInput,
   revisionReview, revisionCount = 0, paymentLinks, paymentLinkHistory,
   sourceCheckedAt,
   sourceWarnings,
@@ -176,17 +178,18 @@ export default function AdminProcurementClient({
   accountableBalance,
   usdtRateReference,
   todayKey,
-  forecastHistory,
-  forecast30Days,
-  supplierWarnings,
-  supplierWarningsReady,
-  debtAllocation,
-  debtReserveBreakdown,
-  cashPreparation,
-  financialAssistant,
-  requestFundingAssessments,
+  forecastHistory: initial_forecastHistory,
+  forecast30Days: initial_forecast30Days,
+  supplierWarnings: initial_supplierWarnings,
+  supplierWarningsReady: initial_supplierWarningsReady,
+  debtAllocation: initial_debtAllocation,
+  debtReserveBreakdown: initial_debtReserveBreakdown,
+  cashPreparation: initial_cashPreparation,
+  financialAssistant: initial_financialAssistant,
+  requestFundingAssessments: initial_requestFundingAssessments,
 }: {
   initialPlans: Plan[];
+  forecastInput?: AdminForecastInput;
   revisionReview?: ReactNode; revisionCount?: number; paymentLinks?: ReactNode; paymentLinkHistory?: ReactNode;
   sourceCheckedAt: string;
   sourceWarnings: string[];
@@ -215,9 +218,14 @@ export default function AdminProcurementClient({
 }) {
   const router = useRouter();
   const visualPreview = useProcurementVisualPreview();
-  const fundingByPlanId = new Map(requestFundingAssessments.map((assessment) => [assessment.planId, assessment]));
+
   const [plans, setPlans] = useState(initialPlans);
   const [tab, setTab] = useState<"pending" | "approved" | "plan" | "history">(() => revisionCount || initialPlans.some(p => p.status === "SUBMITTED" && p.evidence.state !== "PAID_BY_ONE_C") ? "pending" : "approved");
+  const [forecastRequested,setForecastRequested]=useState(false);
+  const forecast=useAdminProcurementForecast(forecastInput,forecastRequested||tab==='plan');
+  const {forecastHistory,forecast30Days,supplierWarnings,supplierWarningsReady,debtAllocation,debtReserveBreakdown,cashPreparation,financialAssistant,requestFundingAssessments}=forecast.data??{forecastHistory: initial_forecastHistory,forecast30Days: initial_forecast30Days,supplierWarnings: initial_supplierWarnings,supplierWarningsReady: initial_supplierWarningsReady,debtAllocation: initial_debtAllocation,debtReserveBreakdown: initial_debtReserveBreakdown,cashPreparation: initial_cashPreparation,financialAssistant: initial_financialAssistant,requestFundingAssessments: initial_requestFundingAssessments};
+  const fundingByPlanId = new Map(requestFundingAssessments.map((assessment) => [assessment.planId, assessment]));
+  const forecastStatus=forecastInput&&!forecast.data?<div role="status" className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">{forecast.error?<><p>Прогноз пока недоступен. Заявки и история оплат доступны.</p><button type="button" className="pam-button mt-3" onClick={forecast.retry}>Повторить загрузку</button></>:"Проверяем остатки и обязательные выплаты…"}</div>:null;
   const [busy, setBusy] = useState("");
   const [returningId, setReturningId] = useState("");
   const [returnReason, setReturnReason] = useState("");
@@ -473,7 +481,7 @@ export default function AdminProcurementClient({
         <h1 className="text-[28px] font-extrabold tracking-tight text-slate-950 md:text-[32px]">Платёжный календарь</h1>
       </header>
       <nav aria-label="Разделы закупок" className="procurement-section-nav">
-        {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);setReturningId("");setReturnReason("");}} className={tab===item.id?"is-active":""}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
+        {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);if(item.id==="plan")setForecastRequested(true);setReturningId("");setReturnReason("");}} className={tab===item.id?"is-active":""}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
       </nav>
       {visualPreview?.toolbar}
       <div className="pam-toolbar">{tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} intervalMs={60_000}/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={completedPlans} allPlans={plans}/> : null}</div>
@@ -488,7 +496,8 @@ export default function AdminProcurementClient({
       {stalePayments ? <p role="status" className="text-sm text-slate-600">Статусы оплат временно не обновляются. Сохранён результат последней проверки.</p> : null}
       {unknownPayments.length ? <p role="status" className="text-sm text-amber-900">Статус оплаты уточняется: {unknownPayments.map(plan => plan.supplierPartner).join(', ')}. Эти заявки не считаются неоплаченными.</p> : null}
 
-      <div hidden={tab !== "plan"} className="space-y-4 procurement-plan">
+      {tab === "plan" && forecastStatus}
+      <div hidden={tab !== "plan" || !!forecastStatus} className="space-y-4 procurement-plan">
       <section className="procurement-forecast-grid grid items-start gap-4">
         <div className="procurement-forecast-calendar admin-material-card rounded-2xl bg-white p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -527,7 +536,7 @@ export default function AdminProcurementClient({
         </aside>
           <section id="supplier-control" className="admin-material-card scroll-mt-24 rounded-2xl bg-white p-4 sm:p-5">
             <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-extrabold uppercase tracking-wide text-slate-500">После обязательных выплат</p><h2 className="mt-0.5 text-lg font-black text-slate-950">Кому платить дальше</h2><p className="mt-1 text-xs font-semibold text-slate-500">Поставщики с долгом от 300 000 ₽</p></div><div className="text-right"><p className="text-xs font-bold text-slate-500">Долг всем поставщикам</p><p className="mt-0.5 text-sm font-black text-slate-950">{debtAllocation.totalDebtMinor == null ? "—" : rub.format(debtAllocation.totalDebtMinor / 100)}</p></div></div>
-            {controlledSupplierDebts.length ? <div className="mt-3 divide-y divide-slate-200">{controlledSupplierDebts.slice(0, 5).map((debt, index) => { const allocation = supplierAllocationByName.get(debt.supplier); return <div key={debt.supplier} className="py-3"><div className="flex items-center justify-between gap-3"><p className="min-w-0 truncate text-sm font-black text-slate-950">{index + 1}. {debt.supplier}</p><p className="shrink-0 text-sm font-black text-slate-950">{rub.format(debt.debtMinor / 100)}</p></div><p className={`mt-1 text-xs font-semibold ${allocation?.recommendedMinor ? "text-green-700" : "text-slate-500"}`}>{allocation?.recommendedMinor ? `${allocation.result === "full" ? "Закрыть полностью" : "Оплатить частично"}: ${rub.format(allocation.recommendedMinor / 100)}` : allocation?.result === "no_capacity" ? "После приоритетных оплат свободных денег не остаётся" : debt.priority <= 1 ? "Высокий приоритет · сумма оплаты рассчитывается" : debt.priority >= 4 ? "Крупный долг · подтвердить приоритет" : "Сумма оплаты рассчитывается"}</p></div>; })}</div> : <p className={`mt-3 rounded-xl px-3.5 py-3 text-sm font-semibold ${sourceWarnings.length ? "bg-amber-50 text-amber-900" : "bg-green-50 text-green-900"}`}>{sourceWarnings.length ? "Долги появятся после получения актуальных взаиморасчётов из 1С." : "Крупных долгов сейчас нет."}</p>}
+            {controlledSupplierDebts.length ? <div className="mt-3 divide-y divide-slate-200">{controlledSupplierDebts.slice(0, 5).map((debt, index) => { const allocation = supplierAllocationByName.get(debt.supplier); return <div key={debt.supplier} className="py-3"><div className="flex items-center justify-between gap-3"><p className="min-w-0 truncate text-sm font-black text-slate-950">{index + 1}. {debt.supplier}</p><p className="shrink-0 text-sm font-black text-slate-950">{rub.format(debt.debtMinor / 100)}</p></div><p className={`mt-1 text-xs font-semibold ${allocation?.recommendedMinor ? "text-green-700" : "text-slate-500"}`}>{allocation?.recommendedMinor ? `${allocation.result === "full" ? "Закрыть полностью" : "Оплатить частично"}: ${rub.format(allocation.recommendedMinor / 100)}` : allocation?.result === "no_capacity" ? "После приоритетных оплат свободных денег не остаётся" : debt.priority <= 1 ? "Высокий приоритет · сумма оплаты рассчитывается" : debt.priority >= 4 ? "Крупный долг · подтвердить приоритет" : "Сумма оплаты рассчитывается"}</p></div>; })}</div> : <p className={`mt-3 rounded-xl px-3.5 py-3 text-sm font-semibold ${!supplierWarningsReady ? "bg-amber-50 text-amber-900" : "bg-green-50 text-green-900"}`}>{!supplierWarningsReady ? "Долги появятся после получения актуальных взаиморасчётов из 1С." : "Крупных долгов сейчас нет."}</p>}
           </section>
 
           <section className="admin-material-card rounded-2xl bg-white p-4 sm:p-5">
@@ -936,7 +945,7 @@ export default function AdminProcurementClient({
       </div>
       <section hidden={tab !== "pending"} className="space-y-4">
         {revisionReview}
-        <ProcurementAdminList key="pending" searchQuery={searchQuery} dirty={!!returnReason.trim()} busy={!!busy} onClose={closeDecision} error={actionMessage}
+        <ProcurementAdminList onOpen={()=>setForecastRequested(true)} key="pending" searchQuery={searchQuery} dirty={!!returnReason.trim()} busy={!!busy} onClose={closeDecision} error={actionMessage}
           renderFooter={(id,close)=>returningId===id?<><button type="button" className="pam-button" disabled={!!busy} onClick={close}>Отмена</button><button type="button" className="pam-button pam-primary" disabled={!!busy||returnReason.trim().length<3} onClick={()=>act(id,"RETURN")}>{busy===id?"Сохраняем…":"Вернуть Астемиру"}</button></>:cancellingId===id?<><button type="button" className="pam-button" disabled={!!busy} onClick={()=>setCancellingId("")}>Назад</button><button type="button" className="pam-button pam-primary" disabled={!!busy} onClick={()=>act(id,"CANCEL")}>{busy===id?"Сохраняем…":"Отменить заявку"}</button></>:<><button type="button" className="pam-cancel" disabled={!!busy} onClick={()=>{setCancellingId(id);setActionMessage("");}}>Отменить заявку</button><button type="button" className="pam-button" disabled={!!busy} onClick={()=>{setReturningId(id);setReturnReason("");setActionMessage("");}}><Undo2 size={16}/>Вернуть на исправление</button><button type="button" className="pam-button pam-primary" disabled={!!busy} onClick={()=>act(id,"APPROVE")}><Check size={18}/>{busy===id?"Сохраняем…":"Согласовать"}</button></>}
           items={[...submitted].sort((a,b)=>a.plannedDate.localeCompare(b.plannedDate)).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate),dateLabel:date(plan.plannedDate),basis:orderLabel(plan),method:methodLabel(plan),search:plan.orderNumbers.join(" "),priority:dateKey(plan.plannedDate)<todayKey?"overdue":dateKey(plan.plannedDate)===todayKey?"today":"later",group:dateKey(plan.plannedDate)<todayKey?"Срок прошёл":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Предстоящие"}))}
           empty="Новых заявок на согласование нет." renderDetail={id=>{
@@ -948,7 +957,8 @@ export default function AdminProcurementClient({
               <div className="pam-key-info"><div><span>Сумма заявки</span><strong>{amountLabel(plan)}</strong>{plan.paymentMethod==="USDT"&&!visualPreview?.hideRubleEstimate?<small>{Number(plan.foreignAmount||0)>0?`Ориентир: ${rub.format(Number(plan.plannedAmount))}`:usdtEstimateNote(plan)}</small>:null}</div><div><span>{dateKey(plan.plannedDate)<todayKey?"Срок прошёл":dateKey(plan.plannedDate)===todayKey?"Подготовить сегодня":"Подготовить к"}</span><strong>{date(plan.plannedDate)}</strong></div></div>
               <dl className="pam-payment-method"><dt>Способ оплаты</dt><dd>{methodLabel(plan)}</dd></dl>
               {["SAME_DAY","LATE"].includes(paymentPlanLeadTime(plan.createdAt,plan.plannedDate).state)?<p className="mb-3 text-sm font-semibold text-red-800">{paymentPlanLeadTime(plan.createdAt,plan.plannedDate).state==="SAME_DAY"?"Заявка внесена в день оплаты":"Дата оплаты уже прошла"}</p>:null}
-              {funding ? <div className={`mt-3 rounded-xl border px-3.5 py-3 ${funding.state === "covered" ? "border-green-200 bg-green-50/70" : funding.state === "gap" ? "border-red-200 bg-red-50/70" : funding.state === "prepare" ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50"}`}><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Если согласовать</p><p className={`mt-0.5 text-sm font-black ${funding.state === "covered" ? "text-green-900" : funding.state === "gap" ? "text-red-900" : funding.state === "prepare" ? "text-amber-950" : "text-slate-800"}`}>{funding.title}</p></div><p className="max-w-xl text-xs font-semibold leading-relaxed text-slate-600 sm:text-right">{funding.detail}</p></div>{funding.steps.length ? <div className="mt-2 flex flex-wrap gap-1.5 border-t border-black/5 pt-2">{funding.steps.map((step) => <span key={step.source} className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-black/5">{step.source === "vtb" ? "ВТБ" : step.source === "tbank_card" ? "Карта Т‑Банка" : step.source === "tbank_account" ? "Счёт → карта Т‑Банка" : "Сейф"}: {rub.format(step.amountMinor / 100)}</span>)}</div> : null}</div> : null}
+              {forecastStatus}
+              {!forecastStatus && funding ? <div className={`mt-3 rounded-xl border px-3.5 py-3 ${funding.state === "covered" ? "border-green-200 bg-green-50/70" : funding.state === "gap" ? "border-red-200 bg-red-50/70" : funding.state === "prepare" ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50"}`}><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Если согласовать</p><p className={`mt-0.5 text-sm font-black ${funding.state === "covered" ? "text-green-900" : funding.state === "gap" ? "text-red-900" : funding.state === "prepare" ? "text-amber-950" : "text-slate-800"}`}>{funding.title}</p></div><p className="max-w-xl text-xs font-semibold leading-relaxed text-slate-600 sm:text-right">{funding.detail}</p></div>{funding.steps.length ? <div className="mt-2 flex flex-wrap gap-1.5 border-t border-black/5 pt-2">{funding.steps.map((step) => <span key={step.source} className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-black/5">{step.source === "vtb" ? "ВТБ" : step.source === "tbank_card" ? "Карта Т‑Банка" : step.source === "tbank_account" ? "Счёт → карта Т‑Банка" : "Сейф"}: {rub.format(step.amountMinor / 100)}</span>)}</div> : null}</div> : null}
               <ProcurementAdminComment value={planComment(plan)} />
               {plan.supplierConfirmation ? <p className="mt-2 whitespace-pre-wrap break-words text-sm">{plan.supplierConfirmation}</p> : null}
               {plan.paymentMethod==='USDT'&&plan.fundingSource?<p className="mt-2 text-sm font-semibold">{fundingSourceLabel(plan.fundingSource)}</p>:null}

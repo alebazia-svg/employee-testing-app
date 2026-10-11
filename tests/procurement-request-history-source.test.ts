@@ -2,6 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { expenseRequestMoscowCalendarDate, expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from '../lib/expense-request-source';
 
+test('two monthly windows overlap, retain chronological output and propagate failures',async t=>{
+  const old={...process.env};t.after(()=>{process.env=old;});
+  process.env['1C_BASE_URL']='https://one-c.invalid';process.env['1C_API_USER']='test';process.env['1C_API_PASSWORD']='test';
+  let active=0,maximum=0,fail=false;
+  t.mock.method(globalThis,'fetch',async(input:string)=>{
+    const from=new URL(input).searchParams.get('from')!;
+    active++;maximum=Math.max(maximum,active);
+    await new Promise(resolve=>setTimeout(resolve,from==='2026-08-01'?20:5));
+    active--;
+    if(fail&&from==='2026-09-01')throw Error('offline');
+    return Response.json({ok:true,rows:[{ref:from}],completeness:{complete:true}});
+  });
+  const input={from:new Date('2026-08-01T00:00:00+03:00'),to:new Date('2026-10-02T00:00:00+03:00'),includeHistory:true,historyConcurrency:2 as const};
+  const result=await fetchExpenseRequestSnapshot(input);
+  assert.equal(maximum,2);assert.equal(result.complete,true);
+  assert.deepEqual(result.rows.map(row=>row.ref),['2026-08-01','2026-09-01']);
+  fail=true;await assert.rejects(fetchExpenseRequestSnapshot(input),/SOURCE_REQUEST_FAILED/);
+});
+
 test('today-inclusive bound follows Moscow midnight, including month/year/leap boundaries', () => {
   for (const [now, tomorrow] of [
     ['2026-09-30T16:00:00Z', '2026-10-01'], ['2026-09-30T20:59:59Z', '2026-10-01'],
