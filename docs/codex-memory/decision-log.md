@@ -582,3 +582,68 @@ Code commit: `9d2f0f6`. See `portal-access-journal-20260929.md`.
 The owner confirmed two sequential releases: notification correction first,
 then the access journal with a database backup and its single approved migration.
 Unrelated procurement WIP is excluded from both commits.
+
+## 2026-10-11 — ADMIN attention queue and quiet push digest (local candidate)
+
+Owner approved implementation after a production notification audit. The owner
+confirmed the N-1 diagnostic push appeared on both iPhone and computer. This
+proves the existing transport/device path, not the new reminder lifecycle.
+
+Implemented locally, not deployed:
+- The bell counts unresolved business objects, separately from read receipts.
+  Cash/expense decisions precede procurement, then other employee actions. One
+  current object/cycle has one row; closed objects leave attention automatically.
+- Procurement decisions come from every actual pending plan, including batch
+  members and proposed revisions, not just the first plan named by a notification.
+- Technical outages/recoveries and automatic fiscal checks have a separate System
+  view. It shows active outages first; the event journal is collapsed by default.
+  Ordinary infrastructure/dependency down events no longer generate ADMIN push.
+- Existing sender runs one summary per ADMIN/device for important active tasks
+  09:00–22:00 Moscow. A new batch is coalesced with a five-minute minimum interval;
+  first repeat is after 15 minutes, then at most hourly until resolution. Reading
+  is not resolution. Active tasks survive downtime and overnight; no 30-minute
+  creation cutoff applies to this summary.
+- A stable per-user notification tag replaces the previous summary and includes
+  every active category; no repeated inbox receipts are created. Per-device
+  durable delivery state uses AdminInboxDelivery/web_push, an internal digest
+  event without receipts, a recoverable lease and transient-failure backoff.
+  externalMessageId stores the successful digest's item IDs/repeat stage.
+- Existing procurement-receipt and employee notification paths remain separate;
+  the 22:00–23:00 closing-blocker channel is preserved. No employee sender, 1C
+  command, production configuration or database schema changes are included.
+
+Local verification: 57 pure/regression tests pass; the separate real-PostgreSQL
+integration test passes (noise, read/resolve/reopen, batch/revision/manual request,
+multidevice delivery, retries and interrupted/concurrent sender). TypeScript and
+production build pass (final source copy, isolated environment). UI
+verified on desktop and 390px viewport using a disposable demo database.
+Preview: http://[::1]:3157/admin/inbox?view=attention, clearly marked educational.
+
+Remaining release gates: owner review of exact UI, separately approved versioned
+release, then actual summary replacement/re-alert testing on the owner's devices.
+OS notification grouping, Focus modes and re-alert behavior cannot be guaranteed
+from provider acceptance or local tests. Current candidate does not add shift-end
+or checklist-time deadline escalation; it uses bounded elapsed-time reminders.
+
+Changed files for this local candidate:
+- `app/(dashboard)/admin/inbox/AdminInboxListClient.tsx`
+- `app/(dashboard)/admin/inbox/page.tsx`
+- `app/api/admin/inbox/route.ts`
+- `components/AdminInboxBell.tsx`
+- `lib/admin-inbox-attention-policy.ts`
+- `lib/admin-inbox-attention-push.ts`
+- `lib/admin-inbox-data.ts`
+- `lib/admin-inbox-web-push-policy.ts`
+- `lib/admin-inbox-web-push.ts`
+- `lib/admin-operations-view.ts`
+- `public/workday-sw.js`
+- `tests/admin-inbox-attention.integration.test.ts`
+- `tests/admin-inbox-attention.test.ts`
+- `tests/admin-inbox-service-worker.test.cjs`
+- this decision log.
+
+Screenshots: `/Users/bela/.codex/visualizations/2026/10/11/admin-attention/attention-desktop.png`
+and `bell-desktop.png` in that directory. Production/device grouping remains
+unverified for this candidate. The standard API semantics are described by
+[MDN showNotification](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification);
+actual device behavior must still be tested after an approved release.
