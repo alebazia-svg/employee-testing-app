@@ -647,3 +647,15 @@ and `bell-desktop.png` in that directory. Production/device grouping remains
 unverified for this candidate. The standard API semantics are described by
 [MDN showNotification](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerRegistration/showNotification);
 actual device behavior must still be tested after an approved release.
+
+Release preparation follow-up: implementation committed as `9fb6725`, initial
+evidence as `1b15e45`. The candidate was merged with deployment branch
+`dcf6c9c` (live version 1.2.4, built 2026-10-11T19:46:54.162Z) in `1f6b5ed`.
+No conflicts or unrelated local WIP were included. After this merge, TypeScript,
+82 regression tests, the separate PostgreSQL integration scenario and an isolated
+production build all passed. The ordinary regression run skips the integration
+test deliberately; it passed in its dedicated local test database.
+No production push, deployment, version allocation, configuration change or
+migration was performed. Re-read live metadata and the deployment branch before
+choosing the release version. Production approval and device replacement/re-alert
+verification remain outstanding.
