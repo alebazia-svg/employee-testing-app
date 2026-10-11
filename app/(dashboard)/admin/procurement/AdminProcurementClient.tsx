@@ -1,6 +1,6 @@
 "use client";
 import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionNotice';
-import { ProcurementSplitList } from "@/components/ProcurementSplitList";
+import { ProcurementAdminList } from "@/components/ProcurementAdminList";
 import { ProcurementAdminComment } from "@/components/ProcurementAdminComment";
 import type { ReactNode } from "react";
 import "./procurement-workspace.css";
@@ -21,6 +21,7 @@ import {
   Banknote,
   CalendarCheck,
   Check,
+  Search,
   Undo2,
   WalletCards,
   History,
@@ -220,22 +221,11 @@ export default function AdminProcurementClient({
   const [busy, setBusy] = useState("");
   const [returningId, setReturningId] = useState("");
   const [returnReason, setReturnReason] = useState("");
+  const [cancellingId,setCancellingId]=useState("");
+  const [searchQuery,setSearchQuery]=useState("");
+  const closeDecision=()=>{setReturningId("");setReturnReason("");setCancellingId("");setActionMessage("");};
   const [actionMessage, setActionMessage] = useState("");
   useEffect(() => setPlans(initialPlans), [initialPlans]);
-  useEffect(() => {
-    const refresh = () => router.refresh();
-    const interval = window.setInterval(refresh, 60_000);
-    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("focus", refresh);
-    window.addEventListener("online", refresh);
-    return () => {
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("online", refresh);
-    };
-  }, [router]);
   const active = plans.filter((plan) => !isInactivePaymentPlan(plan.status));
   const isCurrencyPaid = (plan: Plan) => plan.evidence.state === "PAID_BY_ONE_C";
   const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence.state);
@@ -443,7 +433,7 @@ export default function AdminProcurementClient({
       setReturningId('');
       return;
     }
-    if (action === "CANCEL" && !window.confirm("Отменить эту оплату? Она исчезнет из рабочего календаря.")) return;
+    // Cancellation is confirmed in the request dialog before invoking the existing endpoint.
     if (action === "RETURN" && returnReason.trim().length < 3) {
       setActionMessage("Коротко укажите, что Астемиру нужно исправить.");
       return;
@@ -466,6 +456,7 @@ export default function AdminProcurementClient({
       );
       setReturningId("");
       setReturnReason("");
+      setCancellingId("");
       if (action === "APPROVE" && submitted.length === 1 && revisionCount === 0) setTab("approved");
       router.refresh();
     } else {
@@ -480,13 +471,12 @@ export default function AdminProcurementClient({
     <div className="procurement-calendar procurement-workspace w-full min-w-0 space-y-3">
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <h1 className="text-[28px] font-extrabold tracking-tight text-slate-950 md:text-[32px]">Платёжный календарь</h1>
-        <ProcurementDataRefresh checkedAt={sourceCheckedAt} />
       </header>
       <nav aria-label="Разделы закупок" className="procurement-section-nav">
         {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);setReturningId("");setReturnReason("");}} className={tab===item.id?"is-active":""}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
       </nav>
       {visualPreview?.toolbar}
-      {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={completedPlans} allPlans={plans}/> : null}
+      <div className="pam-toolbar">{tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} intervalMs={60_000}/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={completedPlans} allPlans={plans}/> : null}</div>
       {actionMessage?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionMessage}</p>:null}
       {sourceWarnings.length ? (
         <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
@@ -913,7 +903,7 @@ export default function AdminProcurementClient({
             <h2 className="text-lg font-black text-slate-950">Остатки для оплат</h2>
             <p className="text-sm font-medium text-slate-500">Фактические остатки и уже запланированные суммы.</p>
           </div>
-          <ProcurementDataRefresh checkedAt={sourceCheckedAt} />
+          <span className="text-xs text-slate-500">Остатки обновляются вместе с календарём</span>
         </div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
@@ -946,20 +936,18 @@ export default function AdminProcurementClient({
       </div>
       <section hidden={tab !== "pending"} className="space-y-4">
         {revisionReview}
-        <ProcurementSplitList key="pending" items={submitted.map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate)+" · "+methodLabel(plan),search:plan.orderNumbers.join(" "),warning:dateKey(plan.plannedDate)<todayKey?"Просрочено":dateKey(plan.plannedDate)===todayKey?"Оплата сегодня":undefined}))} empty="Новых заявок на согласование нет." renderDetail={id=>{
-          const plan=submitted.find(p=>p.id===id)!;const funding=fundingByPlanId.get(plan.id);return (<article id={`payment-plan-${plan.id}`} key={plan.id} className="procurement-detail">
-              <div className="grid gap-3 lg:grid-cols-[minmax(190px,1.35fr)_minmax(130px,.8fr)_minmax(140px,.85fr)_minmax(150px,1fr)_auto] lg:items-center">
-                <div className="min-w-0">
-                  <p className="font-black text-slate-950">{plan.supplierPartner}</p>
-                  <p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">{orderLabel(plan)}</p>
-                </div>
-                <div><p className="text-xs font-bold text-slate-400">Подготовить к</p><p className="mt-0.5 font-extrabold text-slate-800">{date(plan.plannedDate)}</p></div>
-                <div><p className="text-xs font-bold text-slate-400">Сумма</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !visualPreview?.hideRubleEstimate ? <p className="text-xs font-semibold text-violet-700">{Number(plan.foreignAmount || 0) > 0 ? `Ориентир: ${rub.format(Number(plan.plannedAmount))}` : usdtEstimateNote(plan)}</p> : null}</div>
-                <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
-              </div>
-              <p className={`mt-2 text-xs font-black ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "ADVANCE" ? "text-green-700" : "text-red-700"}`}>
-                {paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "SAME_DAY" ? "Срочно: заявка внесена в день оплаты" : paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "NEXT_DAY" ? "Заявка внесена за один день" : paymentPlanLeadTime(plan.createdAt, plan.plannedDate).state === "LATE" ? "Дата оплаты уже прошла" : `Внесено заранее: за ${paymentPlanLeadTime(plan.createdAt, plan.plannedDate).days} дн.`}
-              </p>
+        <ProcurementAdminList key="pending" searchQuery={searchQuery} dirty={!!returnReason.trim()} busy={!!busy} onClose={closeDecision} error={actionMessage}
+          renderFooter={(id,close)=>returningId===id?<><button type="button" className="pam-button" disabled={!!busy} onClick={close}>Отмена</button><button type="button" className="pam-button pam-primary" disabled={!!busy||returnReason.trim().length<3} onClick={()=>act(id,"RETURN")}>{busy===id?"Сохраняем…":"Вернуть Астемиру"}</button></>:cancellingId===id?<><button type="button" className="pam-button" disabled={!!busy} onClick={()=>setCancellingId("")}>Назад</button><button type="button" className="pam-button pam-primary" disabled={!!busy} onClick={()=>act(id,"CANCEL")}>{busy===id?"Сохраняем…":"Отменить заявку"}</button></>:<><button type="button" className="pam-cancel" disabled={!!busy} onClick={()=>{setCancellingId(id);setActionMessage("");}}>Отменить заявку</button><button type="button" className="pam-button" disabled={!!busy} onClick={()=>{setReturningId(id);setReturnReason("");setActionMessage("");}}><Undo2 size={16}/>Вернуть на исправление</button><button type="button" className="pam-button pam-primary" disabled={!!busy} onClick={()=>act(id,"APPROVE")}><Check size={18}/>{busy===id?"Сохраняем…":"Согласовать"}</button></>}
+          items={[...submitted].sort((a,b)=>a.plannedDate.localeCompare(b.plannedDate)).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate),dateLabel:date(plan.plannedDate),basis:orderLabel(plan),method:methodLabel(plan),search:plan.orderNumbers.join(" "),priority:dateKey(plan.plannedDate)<todayKey?"overdue":dateKey(plan.plannedDate)===todayKey?"today":"later",group:dateKey(plan.plannedDate)<todayKey?"Срок прошёл":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Предстоящие"}))}
+          empty="Новых заявок на согласование нет." renderDetail={id=>{
+          const plan=submitted.find(p=>p.id===id)!;const funding=fundingByPlanId.get(plan.id);
+          if(returningId===id)return <div className="pam-return"><h3>{plan.supplierPartner}</h3><label>Что исправить<textarea autoFocus value={returnReason} onChange={e=>setReturnReason(e.target.value)} maxLength={300} rows={4} placeholder="Укажите, что нужно изменить в заявке"/></label><p>Астемир увидит пояснение и сможет изменить заявку.</p></div>;
+          if(cancellingId===id)return <div className="pam-return"><h3>Отменить заявку?</h3><p>{plan.supplierPartner} · {amountLabel(plan)}</p><p>Заявка исчезнет из рабочего календаря. Документы 1С не изменятся.</p></div>;
+          return (<article id={`payment-plan-${plan.id}`} key={plan.id} className="procurement-detail">
+              <div className="pam-identity"><div><h3>{plan.supplierPartner}</h3><p>{orderLabel(plan)}</p></div><span className="pam-state">Ждёт решения</span></div>
+              <div className="pam-key-info"><div><span>Сумма заявки</span><strong>{amountLabel(plan)}</strong>{plan.paymentMethod==="USDT"&&!visualPreview?.hideRubleEstimate?<small>{Number(plan.foreignAmount||0)>0?`Ориентир: ${rub.format(Number(plan.plannedAmount))}`:usdtEstimateNote(plan)}</small>:null}</div><div><span>{dateKey(plan.plannedDate)<todayKey?"Срок прошёл":dateKey(plan.plannedDate)===todayKey?"Подготовить сегодня":"Подготовить к"}</span><strong>{date(plan.plannedDate)}</strong></div></div>
+              <dl className="pam-payment-method"><dt>Способ оплаты</dt><dd>{methodLabel(plan)}</dd></dl>
+              {["SAME_DAY","LATE"].includes(paymentPlanLeadTime(plan.createdAt,plan.plannedDate).state)?<p className="mb-3 text-sm font-semibold text-red-800">{paymentPlanLeadTime(plan.createdAt,plan.plannedDate).state==="SAME_DAY"?"Заявка внесена в день оплаты":"Дата оплаты уже прошла"}</p>:null}
               {funding ? <div className={`mt-3 rounded-xl border px-3.5 py-3 ${funding.state === "covered" ? "border-green-200 bg-green-50/70" : funding.state === "gap" ? "border-red-200 bg-red-50/70" : funding.state === "prepare" ? "border-amber-200 bg-amber-50/70" : "border-slate-200 bg-slate-50"}`}><div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4"><div><p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Если согласовать</p><p className={`mt-0.5 text-sm font-black ${funding.state === "covered" ? "text-green-900" : funding.state === "gap" ? "text-red-900" : funding.state === "prepare" ? "text-amber-950" : "text-slate-800"}`}>{funding.title}</p></div><p className="max-w-xl text-xs font-semibold leading-relaxed text-slate-600 sm:text-right">{funding.detail}</p></div>{funding.steps.length ? <div className="mt-2 flex flex-wrap gap-1.5 border-t border-black/5 pt-2">{funding.steps.map((step) => <span key={step.source} className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-black/5">{step.source === "vtb" ? "ВТБ" : step.source === "tbank_card" ? "Карта Т‑Банка" : step.source === "tbank_account" ? "Счёт → карта Т‑Банка" : "Сейф"}: {rub.format(step.amountMinor / 100)}</span>)}</div> : null}</div> : null}
               <ProcurementAdminComment value={planComment(plan)} />
               {plan.supplierConfirmation ? <p className="mt-2 whitespace-pre-wrap break-words text-sm">{plan.supplierConfirmation}</p> : null}
@@ -981,24 +969,8 @@ export default function AdminProcurementClient({
                   </div>
                 </details>
               ) : null}
-              <div className="procurement-decision-actions mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
-                {visualPreview?.detail ? <div className="w-full">{visualPreview.detail(plan.id)}</div> : null}
-                {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={[plan]} single/> : null}
-                <button disabled={!!busy} onClick={() => act(plan.id, "APPROVE")} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-black text-white transition hover:bg-[#1d304e] disabled:opacity-50"><Check className="h-4 w-4" />Согласовать</button>
-                <button disabled={!!busy} onClick={() => { setReturningId(plan.id); setReturnReason(""); setActionMessage(""); }} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-50 px-3 text-sm font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"><Undo2 className="h-4 w-4" />Исправить</button>
-                <button disabled={!!busy} onClick={() => act(plan.id, "CANCEL")} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-100 px-3 text-sm font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-50" aria-label={`Отменить оплату ${plan.supplierPartner}`}><X className="h-4 w-4" />Отменить</button>
-              </div>
-              {returningId === plan.id ? (
-                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <label className="block text-sm font-bold text-amber-950">Что исправить
-                    <input autoFocus value={returnReason} onChange={(event) => setReturnReason(event.target.value)} placeholder="Например: выбери оплату в USDT" maxLength={300} className="mt-1.5 w-full rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-slate-950" />
-                  </label>
-                  <div className="mt-2 flex justify-end gap-2">
-                    <button type="button" onClick={() => { setReturningId(""); setReturnReason(""); }} className="rounded-lg px-3 py-2 text-sm font-bold text-slate-600">Отмена</button>
-                    <button type="button" disabled={!!busy || returnReason.trim().length < 3} onClick={() => act(plan.id, "RETURN")} className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-black text-white disabled:opacity-40">Вернуть Астемиру</button>
-                  </div>
-                </div>
-              ) : null}
+              {visualPreview?.detail?<div>{visualPreview.detail(plan.id)}</div>:null}
+              {!visualPreview||visualPreview.persistedReceipts?<ProcurementReceipts plans={[plan]} single hideEmptyBeforePayment/>:null}
             </article>);
         }}/>
       </section>
@@ -1009,7 +981,7 @@ export default function AdminProcurementClient({
           <span data-priority="today">Сегодня: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)===todayKey).length}</strong></span>
           <span data-priority="tomorrow">Завтра: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)===nextDayKey(todayKey)).length}</strong></span>
         </div>
-        <ProcurementSplitList key="approved" items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate)+" · "+methodLabel(plan),search:plan.orderNumbers.join(" "),group:dateKey(plan.plannedDate)<todayKey?"Просрочено":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Далее",warning:plan.evidence.paymentAmountNeedsConfirmation?"Проверьте найденную оплату":plan.evidence.state==="MISMATCH"?"Расхождение с 1С":["PARTIALLY_ISSUED","PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state)?"Частично оплачено":undefined}))} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
+        <ProcurementAdminList key="approved" searchQuery={searchQuery} items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate),dateLabel:date(plan.plannedDate),basis:orderLabel(plan),method:methodLabel(plan),priority:dateKey(plan.plannedDate)<todayKey?"overdue":dateKey(plan.plannedDate)===todayKey?"today":"later",search:plan.orderNumbers.join(" "),group:dateKey(plan.plannedDate)<todayKey?"Просрочено":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Далее",warning:plan.evidence.paymentAmountNeedsConfirmation?"Проверьте найденную оплату":plan.evidence.state==="MISMATCH"?"Расхождение с 1С":["PARTIALLY_ISSUED","PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state)?"Частично оплачено":undefined}))} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
           const plan=calendarPlans.find(p=>p.id===id)!;
           const deadline = dateKey(plan.plannedDate);
           const priority = deadline < todayKey ? "overdue" : deadline === todayKey ? "today" : deadline === nextDayKey(todayKey) ? "tomorrow" : "later";
@@ -1037,7 +1009,7 @@ export default function AdminProcurementClient({
         {paymentLinks}
       </section>
       <section hidden={tab !== "history"} className="space-y-4">
-        <ProcurementPaymentHistory plans={completedPlans} showManager splitView />
+        <ProcurementPaymentHistory plans={completedPlans} showManager splitView adminDialogs searchQuery={searchQuery}/>
         {paymentLinkHistory}
       </section>
     </div>

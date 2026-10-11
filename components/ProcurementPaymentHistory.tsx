@@ -1,6 +1,7 @@
 "use client";
 
 import { ProcurementSplitList } from "./ProcurementSplitList";
+import { ProcurementAdminList } from "./ProcurementAdminList";
 import { ProcurementAdminComment } from "./ProcurementAdminComment";
 import React, { useState } from "react";
 import { ProcurementChangeHistory, type PlanChangeEvent } from './ProcurementChangeHistory';
@@ -31,11 +32,13 @@ type HistoryPlan = {
 };
 const rub = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "RUB", minimumFractionDigits: 0, maximumFractionDigits: 2 });
 function stamp(value?: string) {
+  if(value&&/^\d{4}-\d{2}-\d{2}/.test(value))return value.slice(0,10);
   const m = value?.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
 
-export function ProcurementPaymentHistory({ plans, hidden = false, showManager = false, splitView = false, compactBuyer = false }: { plans: HistoryPlan[]; hidden?: boolean; showManager?: boolean; splitView?: boolean; compactBuyer?: boolean }) {
+export function ProcurementPaymentHistory({ plans, hidden = false, showManager = false, splitView = false, compactBuyer = false, adminDialogs = false, searchQuery }: { plans: HistoryPlan[]; hidden?: boolean; showManager?: boolean; splitView?: boolean; compactBuyer?: boolean;adminDialogs?:boolean;searchQuery?:string }) {
+  const List=adminDialogs?ProcurementAdminList:ProcurementSplitList;
   const compact = compactBuyer && !showManager;
   const visualPreview = useProcurementVisualPreview();
   const [expanded, setExpanded] = useState(false);
@@ -75,13 +78,13 @@ export function ProcurementPaymentHistory({ plans, hidden = false, showManager =
       </article>;
 
   };
-  if (splitView) return <ProcurementSplitList items={dated.map(({plan,date})=>{
+  if (splitView) return <List history={adminDialogs} searchQuery={searchQuery} items={dated.map(({plan,date})=>{
     const completion=plan.status===COMPLETED_WITHOUT_TOPUP?paymentCompletion(plan.oneCCashEvidence):null;
     const foreign=completion?.paidForeignAmount??plan.evidence?.paidForeignAmount??0;
     const paid=completion?.paidAmount??Number(plan.evidence?.issuedAmount||0);
     const difference=paid-Number(plan.plannedAmount);
     const unallocated=(plan.evidence?.currencyPayments||[]).reduce((sum,row)=>sum+(row.unallocatedForeignAmount||0),0);
-    return {id:plan.id,name:plan.supplierPartner,amount:foreign>0?foreign.toLocaleString("ru-RU",{maximumFractionDigits:4})+" USDT":rub.format(paid),meta:date?new Date(date+"T12:00:00Z").toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"}):"Дата не подтверждена",search:plan.orderNumbers.join(" "),warningTone:!compact&&completion&&unallocated<=0?"neutral" as const:undefined,warning:visualPreview?.historyWarnings?.[plan.id] ?? (compact?undefined:unallocated>0?`Вне заявок: ${unallocated.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT`:completion?"Завершена без доплаты":!foreign&&Math.abs(difference)>0.005?`Оплата ${difference>0?"больше":"меньше"} заявки на ${rub.format(Math.abs(difference))}`:undefined)};
+    return {id:plan.id,name:plan.supplierPartner,amount:foreign>0?foreign.toLocaleString("ru-RU",{maximumFractionDigits:4})+" USDT":rub.format(paid),basis:plan.paymentPurpose==='DELIVERY'?'Доставка':plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):'В счёт долга поставщику',method:plan.paymentMethod==='USDT'?'Перевод в USDT':plan.paymentMethod==='CNY'?'Перевод в юанях':plan.paymentMethod==='CASH'?'Наличные':plan.paymentMethod==='ACCOUNTABLE_QR'?'Оплата по QR':'Перевод на карту',meta:date?new Date(date+"T12:00:00Z").toLocaleDateString("ru-RU",{day:"numeric",month:"long",year:"numeric"}):"Дата не подтверждена",search:plan.orderNumbers.join(" "),warningTone:!compact&&completion&&unallocated<=0?"neutral" as const:undefined,warning:visualPreview?.historyWarnings?.[plan.id] ?? (compact?undefined:unallocated>0?`Вне заявок: ${unallocated.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT`:completion?"Завершена без доплаты":!foreign&&Math.abs(difference)>0.005?`Оплата ${difference>0?"больше":"меньше"} заявки на ${rub.format(Math.abs(difference))}`:undefined)};
   })} empty="Подтверждённых оплат пока нет." renderDetail={id=>renderPlan(dated.find(row=>row.plan.id===id)!)} />;
   if (!plans.length && !compact) return null;
   const matching = compact ? dated.filter(({plan}) => `${plan.supplierPartner} ${plan.orderNumbers.join(' ')}`.toLocaleLowerCase('ru-RU').includes(query.trim().toLocaleLowerCase('ru-RU'))) : dated;

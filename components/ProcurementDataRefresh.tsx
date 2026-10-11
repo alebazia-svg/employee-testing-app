@@ -10,9 +10,11 @@ const resumeRefreshThresholdMs = 30_000;
 export function ProcurementDataRefresh({
   checkedAt,
   label = 'Данные из 1С',
+  intervalMs = refreshIntervalMs,
 }: {
   checkedAt: string;
   label?: string;
+  intervalMs?: number;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -28,17 +30,19 @@ export function ProcurementDataRefresh({
 
   useEffect(() => {
     const refreshWhenVisible = () => refresh(false);
-    const timer = window.setInterval(refreshWhenVisible, refreshIntervalMs);
+    const timer = window.setInterval(refreshWhenVisible, intervalMs);
     window.addEventListener('focus', refreshWhenVisible);
     window.addEventListener('pageshow', refreshWhenVisible);
+    window.addEventListener('online', refreshWhenVisible);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       window.clearInterval(timer);
       window.removeEventListener('focus', refreshWhenVisible);
       window.removeEventListener('pageshow', refreshWhenVisible);
+      window.removeEventListener('online', refreshWhenVisible);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [refresh]);
+  }, [refresh, intervalMs]);
 
   return (
     <button

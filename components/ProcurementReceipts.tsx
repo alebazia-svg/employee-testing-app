@@ -13,11 +13,11 @@ function paymentAmount(plan:Plan){
   return `${Number(plan.evidence?.issuedAmount||plan.evidence?.paidAmount||plan.plannedAmount).toLocaleString('ru-RU')} ₽`;
 }
 
-export function ProcurementReceipts({plans,allPlans=plans,single=false}:{plans:Plan[];allPlans?:Plan[];single?:boolean}) {
+export function ProcurementReceipts({plans,allPlans=plans,single=false,hideEmptyBeforePayment=false}:{plans:Plan[];allPlans?:Plan[];single?:boolean;hideEmptyBeforePayment?:boolean}) {
   if(process.env.NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED!=='1')return null;
-  return <ReceiptWorkspace plans={plans} allPlans={allPlans} single={single}/>;
+  return <ReceiptWorkspace plans={plans} allPlans={allPlans} single={single} hideEmptyBeforePayment={hideEmptyBeforePayment}/>;
 }
-function ReceiptWorkspace({plans,allPlans,single}:{plans:Plan[];allPlans:Plan[];single:boolean}) {
+function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment}:{plans:Plan[];allPlans:Plan[];single:boolean;hideEmptyBeforePayment:boolean}) {
   const [receipts,setReceipts]=useState<Receipt[]>([]);
   const [ready,setReady]=useState(false);
   const [error,setError]=useState('');
@@ -47,7 +47,7 @@ function ReceiptWorkspace({plans,allPlans,single}:{plans:Plan[];allPlans:Plan[];
     }catch(error){if(version===requestVersion.current)throw error;}
   };
   useEffect(()=>{
-    if(single&&!open)return;
+    if(single&&!open&&!hideEmptyBeforePayment)return;
     const abort=new AbortController();setReady(false);
     load(abort.signal).catch(error=>{if(!abort.signal.aborted)setError(error.message);});
     const refresh=()=>{if(!document.hidden)load(abort.signal).catch(()=>{});};
@@ -55,7 +55,7 @@ function ReceiptWorkspace({plans,allPlans,single}:{plans:Plan[];allPlans:Plan[];
     return()=>{abort.abort();clearInterval(timer);window.removeEventListener('focus',refresh);window.removeEventListener('procurement-receipts-changed',refresh);};
   // Depend on identities, not the array rebuilt by the calendar on each render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[signature,single,open]);
+  },[signature,single,open,hideEmptyBeforePayment]);
   useEffect(()=>{
     if(single)return;
     const id=new URLSearchParams(window.location.search).get('receipts');
@@ -84,6 +84,8 @@ function ReceiptWorkspace({plans,allPlans,single}:{plans:Plan[];allPlans:Plan[];
     }catch(error){setTarget(plan.id);setError(error instanceof Error?error.message:'Чек не сохранён. Повторите попытку.');}
     finally{uploading.current=false;setBusy('');}
   };
+  const hasPayment=plans.some(plan=>Number(plan.evidence?.issuedAmount)>0||Number(plan.evidence?.paidAmount)>0||Number(plan.evidence?.paidForeignAmount)>0||Boolean(plan.evidence?.cashOrders?.length)||Boolean(plan.evidence?.currencyPayments?.length));
+  if(single&&hideEmptyBeforePayment&&!open&&!error&&ready&&!receipts.length&&!hasPayment)return null;
   return <>
     <button type="button" className={button} onClick={()=>{setNotice('');setTarget(single?plans[0]?.id||'':'');setOpen(true);}}><Paperclip size={15}/>{single?'Чеки оплаты':ready?`Нужны чеки · ${pending.length}`:error?'Чеки · не удалось загрузить':'Чеки · загрузка'}</button>
     <dialog ref={dialog} aria-labelledby={titleId} className="procurement-receipts-dialog" onCancel={event=>{event.preventDefault();if(!busy)setOpen(false);}}>

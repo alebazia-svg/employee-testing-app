@@ -12,6 +12,11 @@
 .procurement-plan>section>div>div:nth-child(2)>div{grid-template-columns:95px minmax(0,1fr)}
 .procurement-plan>section>div>div:nth-child(2)>div>div:nth-child(3),.procurement-plan>section>div>div:nth-child(2)>div>div:nth-child(4){grid-column:2;text-align:left}
 .procurement-workspace [hidden]{display:none!important}
+.procurement-workspace{max-width:1440px;margin-inline:auto}
+.procurement-workspace .procurement-section-nav{border-bottom:1px solid #d8d1c7}
+.procurement-workspace .procurement-section-nav button{color:#62666a}
+.procurement-workspace .procurement-section-nav button.is-active{background:#fff8ee;color:#754725;border-bottom-color:#ac7346}
+.procurement-workspace .procurement-section-nav button.is-active span{background:#ffdda0;color:#704817}
 .admin-workspace:has(.procurement-workspace) [aria-label="Хлебные крошки"]{margin-bottom:8px}
 @media(min-width:768px){
   .admin-workspace:has(.procurement-workspace){padding-top:16px}
