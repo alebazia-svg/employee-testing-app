@@ -1,4 +1,13 @@
-# Заявки и единый верх ADMIN — кандидат выпуска 11 октября 2026
+# Заявки и единый верх ADMIN — выпуск 1.2.0, 11 октября 2026
+
+## Текущее состояние
+
+**Выпущено в production:** портал 1.2.0, commit
+`bc9e20f278f1d4e00d326da69fb0d71905e93838`, сборка
+`2026-10-11T18:39:39.223Z` (21:39 МСК). 1С 0.15.429 установлена.
+Native ADMIN/WRITES и создание подотчёта включены. Проверка живого кабинета
+и завершённой карточки PASS; production-финансовые записи не выполнялись.
+Ниже сохранена история подготовки; актуальные результаты — в конце документа.
 
 ## Решение владельца и границы
 
@@ -348,3 +357,133 @@ UI-тесты: 56 PASS, синхронизация: 6 PASS с fake DB и фла�
 Перед рестартом требуется завершение параллельного выпуска 1.1.17, сохранение
 предыдущего Docker image, проверка Prisma status и точного server commit.
 Сами финансовые команды в production не тестировались записями.
+
+
+## Выпуск завершён и независимо проверен — 11.10.2026
+
+Владелец разрешил выпуск; VPS-script завершился с exit 0. Перед выпуском
+дождались завершения параллельного 1.1.17 и сохранили его изменения.
+
+- Код: `4facaea`; развёрнутый commit:
+  `bc9e20f278f1d4e00d326da69fb0d71905e93838`.
+- Предыдущий commit: `49382d1be253dadbdaa96a3a4f50ddd4061b28d8` (1.1.17).
+- Предыдущий image:
+  `sha256:9c8b0767ddd6f5b17fe56811fb821e11956034ec40355a0ce6291b81629210ad`.
+- Сохранённый rollback tag: `offonika-portal-expense-rollback:pre-1.2.0-20261011`.
+- Replacement image:
+  `sha256:db660fd42bb28a2862e9250ba7c0cf2b9dc6e61bf3791952b1eb366ef293b7bb`.
+- Target: `/docker/employee-testing-app`, только `portal-app`, без сборки
+  и перезапуска остальных сервисов. server.env и production DB вручную не менялись.
+- Prisma status перед рестартом: schema up to date, pending migrations нет.
+  Схема не менялась; предыдущий image совместим для отката портала.
+- Volumes uploads и procurement-planning, read-only bind tbank сохранены.
+- Runtime flags: EXPENSE_REQUEST_NATIVE_ADMIN=1,
+  EXPENSE_REQUEST_NATIVE_WRITES=1, PORTAL_ACCOUNTABLE_CREATE=1;
+  TEST/ISOLATED выключены.
+- GET-only проверка нового endpoint выполнена с фактическими учётными данными
+  портала с VPS, а не только с локальным интеграционным пользователем.
+- Независимый SSH подтвердил exact server commit и отсутствие tracked dirty files.
+  Существующий untracked `.rollback/` сохранён.
+- Оба публичных release-info.json (portal.alebazia.xyz, team.mobo-opt.ru)
+  подтвердили 1.2.0 / 2026-10-11T18:39:39.223Z. Health ok.
+  revision=null/source=unknown — существующая особенность Docker build без .git;
+  commit подтверждён отдельно на VPS, не из публичного metadata.
+- Авторизованный рабочий UI показал версию 1.2.0 / 21:39 МСК, новый header,
+  вкладки, поиск, модальную карточку. В «В работе» очередь пуста.
+  Подотчёт Астемира 00OF-001085 на 5000 отображается в Истории «Выдано · закрыта».
+  Карточка 00OF-001090 получила из 1С полное исполнение 500/0 и не даёт
+  повторно утверждать исполненный документ. Закрытие модального окна PASS.
+- Реальное сохранение/утверждение/создание production-документа не проверялось:
+  текущих ожидающих заявок не было; тестовые финансовые записи не создавались.
+  Проверки записи в TEST и fake production transport описаны выше.
+  Доставка push на iPhone в этот выпуск не входила и не подтверждалась.
+
+### Отдельная найденная старая ошибка: даты с однозначным часом
+
+GET /expense-requests за 09–12 октября возвращает для 00OF-001090
+`11.10.2026 9:25:11`; история портала показывает «10 нояб., 12:25».
+Причина: expenseRequestDateOrNull требует двузначный час, затем передаёт строку
+в общий new Date. Тот же код есть в предыдущем production commit 49382d1;
+это не изменение релиза 1.2.0. Нужны узкое исправление парсера, регрессионные
+проверки и штатная повторная синхронизация старых дат. Ручные изменения рабочей
+БД не выполнялись. Ошибка зафиксирована отдельно от согласованного выпуска;
+она не меняет сумму, финансовый документ или подтверждение исполнения в 1С.
+
+Логи: /tmp/mobo-expense-120-release.log; exitfile содержит 0.
+Скриншот рабочего кабинета:
+`/Users/bela/.codex/visualizations/2026/09/29/01a0ec9d-4343-73e1-9adf-3052cf5f2919/expense-production-1.2.0-20261011.png`.
+Посторонние dirty files основного проекта и ai-business-os не затронуты.
+
+### Точный состав runtime-коммита 4facaea
+
+- `app/(dashboard)/admin/1c/page.tsx`
+- `app/(dashboard)/admin/analytics/page.tsx`
+- `app/(dashboard)/admin/attendance/page.tsx`
+- `app/(dashboard)/admin/attestations/page.tsx`
+- `app/(dashboard)/admin/company-details/page.tsx`
+- `app/(dashboard)/admin/employees/access/page.tsx`
+- `app/(dashboard)/admin/employees/page.tsx`
+- `app/(dashboard)/admin/expense-requests/[id]/native/ExpenseNativeClient.tsx`
+- `app/(dashboard)/admin/expense-requests/[id]/page.tsx`
+- `app/(dashboard)/admin/expense-requests/page.tsx`
+- `app/(dashboard)/admin/inbox/page.tsx`
+- `app/(dashboard)/admin/ofd/page.tsx`
+- `app/(dashboard)/admin/page.tsx`
+- `app/(dashboard)/admin/payroll/PayrollClient.tsx`
+- `app/(dashboard)/admin/procurement/AdminProcurementClient.tsx`
+- `app/(dashboard)/admin/procurement/loading.tsx`
+- `app/(dashboard)/admin/procurement/page.tsx`
+- `app/(dashboard)/admin/procurement/procurement-workspace.css`
+- `app/(dashboard)/admin/results/page.tsx`
+- `app/(dashboard)/admin/workday/page.tsx`
+- `app/(dashboard)/admin/workday/tbank/page.tsx`
+- `app/api/admin/expense-requests/[id]/native/route.ts`
+- `app/api/admin/procurement/delivery-create/route.ts`
+- `app/desktop-copper.css`
+- `components/AdminShell.tsx`
+- `components/ExpenseRequestDialogRow.tsx`
+- `components/ExpenseRequestWaitingAge.tsx`
+- `components/ExpenseRequestsList.tsx`
+- `components/ProcurementDataRefresh.tsx`
+- `components/ProcurementDeliveryAdmin.tsx`
+- `components/ProcurementDeliveryAdminSection.tsx`
+- `components/ProcurementDeliveryCashboxChoice.tsx`
+- `components/ProcurementDeliveryCreate.tsx`
+- `components/ProcurementDeliveryDialogActions.tsx`
+- `components/ProcurementDeliveryFunding.tsx`
+- `components/ProcurementDeliveryFundingNotice.tsx`
+- `components/ProcurementDeliveryHistory.tsx`
+- `components/ProcurementDeliveryLink.tsx`
+- `components/ProcurementDeliveryNativeStatus.tsx`
+- `docker-compose.portal.yml`
+- `lib/expense-request-admin-client.ts`
+- `lib/expense-request-admin-lifecycle.ts`
+- `lib/expense-request-breakdown.ts`
+- `lib/expense-request-command.ts`
+- `lib/expense-request-list-view.ts`
+- `lib/expense-request-queue.ts`
+- `lib/expense-request-source.ts`
+- `lib/expense-request-unified-list.ts`
+- `lib/procurement-delivery-create-policy.ts`
+- `lib/procurement-delivery-create-source.ts`
+- `lib/procurement-delivery-create.ts`
+- `lib/procurement-delivery-native-source.ts`
+- `lib/procurement-delivery-native.ts`
+- `lib/procurement-delivery-reminders.ts`
+- `package-lock.json`
+- `package.json`
+- `tests/expense-request-breakdown.test.ts`
+- `tests/expense-request-command.test.ts`
+- `tests/expense-request-list-view.test.ts`
+- `tests/expense-request-native-transport.test.ts`
+- `tests/expense-request-unified-list.test.tsx`
+- `tests/procurement-delivery-cashbox-choice.test.tsx`
+- `tests/procurement-delivery-create-source.test.ts`
+- `tests/procurement-delivery-create.integration.test.ts`
+- `tests/procurement-delivery-create.test.ts`
+- `tests/procurement-delivery-funding-ui.test.tsx`
+- `tests/procurement-delivery-history.integration.test.ts`
+- `tests/procurement-delivery-native-route.integration.test.ts`
+- `tests/procurement-delivery-native-source.test.ts`
+- `tests/procurement-delivery-notifications.integration.test.ts`
+- `tests/procurement-delivery.integration.test.ts`
