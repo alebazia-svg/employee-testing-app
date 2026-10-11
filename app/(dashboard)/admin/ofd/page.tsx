@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { AlertTriangle, ArrowRight, FileSearch, ShieldAlert } from 'lucide-react';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -2529,14 +2528,9 @@ export default async function AdminOfdPage(
     realizationLinksResults.reduce((total, result) => total + countLinkWarnings(result), 0);
 
   return (
-    <AdminShell>
-      <AdminBreadcrumbs current='Проверка OFD и 1С' />
+    <AdminShell pageTitle="Проверка чеков SABY/OFD и реализаций 1С" pageDescription="Это только диагностика. Ошибки не закрываются автоматически, документы и база не меняются.">
 
-      <div className='mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
-        <div>
-          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Проверка чеков SABY/OFD и реализаций 1С</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Это только диагностика. Ошибки не закрываются автоматически, документы и база не меняются.</p>
-        </div>
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
         <Badge className={probe.ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}>
           {probe.ok ? 'Диагностика работает' : 'Нужна проверка'}
         </Badge>

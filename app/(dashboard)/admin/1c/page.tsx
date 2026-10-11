@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import { Activity, AlertTriangle, CheckCircle2, Clock, FileText, Server, ShoppingBag } from 'lucide-react';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -155,14 +154,9 @@ export default async function AdminOneCPage() {
   const version = renderValue(health.endpoints.version.data);
 
   return (
-    <AdminShell>
-      <AdminBreadcrumbs current='1C AIAgentAPI' />
+    <AdminShell pageTitle="1C AIAgentAPI" pageDescription="Read-only техническая проверка подключения к 1С API.">
 
-      <div className='mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
-        <div>
-          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>1C AIAgentAPI</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Read-only техническая проверка подключения к 1С API.</p>
-        </div>
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
         <Badge className={health.ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}>
           {health.ok ? 'Подключено' : 'Недоступно'}
         </Badge>

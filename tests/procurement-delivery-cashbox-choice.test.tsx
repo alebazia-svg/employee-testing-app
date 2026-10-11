@@ -74,9 +74,9 @@ test('buyer amount takes priority and cash recommendation does not issue or appr
   const v = view(); v.requestedByBuyer = true;
   v.requestDetails = { amount: 10000, comment: '', balance: 2259, checkedAt: new Date(now).toISOString(), requestedAt: new Date(now).toISOString() };
   const html = renderToStaticMarkup(<DeliveryFundingContent data={data()} view={v} now={now} />);
-  assert.match(html, /value="10000"/); assert.match(html, /По запросу Астемира/); assert.match(html, /Абшаева/);
-  assert.match(html, /10.?960/); assert.match(html, /Сменить/);
-  assert.doesNotMatch(html, /Остатки касс менеджеров|Костеренко|Согласовать|Выдать деньги/);
+  assert.doesNotMatch(html, /delivery-funding-amount|<input/); assert.match(html, /Абшаева/);
+  assert.match(html, /10.?960/); assert.match(html, /<select[^>]*id="delivery-cashbox"/);
+  assert.doesNotMatch(html, /Остатки касс менеджеров|Согласовать|Выдать деньги/);
 });
 
 test('default amount is recommendation, not buyer request; no cash split is invented', () => {
@@ -96,4 +96,29 @@ test('existing native request hides new amount input', () => {
   const html = renderToStaticMarkup(<DeliveryFundingContent data={source} view={view()} now={now} />);
   assert.match(html, /Заявка № 001/); assert.match(html, /уже есть в 1С/);
   assert.doesNotMatch(html, /<input|Предлагаем кассу/);
+});
+
+test('single mapped cashbox remains an explicit field with an explanation', () => {
+ const source = data(); source.cashboxes = [source.cashboxes[1]];
+ const v = view(); v.requestedByBuyer = true; v.requestDetails = { amount: 10000, comment: '', balance: 0, checkedAt: source.checkedAt, requestedAt: source.checkedAt };
+ const html = renderToStaticMarkup(<ProcurementDeliveryCashboxChoice data={source} view={v} now={now} />);
+ assert.match(html, /<select[^>]*id="delivery-cashbox"/); assert.match(html, /Подключена одна касса/);
+});
+test('unavailable alternatives remain visible with a reason and cannot be selected', () => {
+ const source = data(); source.cashboxes[0].pending = null;
+ const v = view(); v.requestedByBuyer = true; v.requestDetails = { amount: 10000, comment: '', balance: 0, checkedAt: source.checkedAt, requestedAt: source.checkedAt };
+ const html = renderToStaticMarkup(<ProcurementDeliveryCashboxChoice data={source} view={v} now={now} />);
+ assert.match(html, /<option[^>]*value="b"[^>]*disabled[^>]*>[^<]*остаток требует проверки/);
+ assert.match(html, /<option[^>]*value="c"[^>]*disabled[^>]*>[^<]*недостаточно средств/);
+ assert.match(html, /<option[^>]*value="a"[^>]*selected/);
+});
+
+
+test('uncertain organization plans remain a visible caveat without attributing their total to this request', () => {
+ const source = data(); source.unassignedCount = 11; source.unassignedAmount = 1014200;
+ const v = view(); v.requestedByBuyer = true; v.requestDetails = { amount: 10000, comment: '', balance: 0, checkedAt: source.checkedAt, requestedAt: source.checkedAt };
+ const html = renderToStaticMarkup(<ProcurementDeliveryCashboxChoice data={source} view={v} now={now} />);
+ assert.match(html, /свободный остаток пока не подтверждён/);
+ assert.doesNotMatch(html, /1.?014.?200|Без кассы: 11|В организации без кассы/);
+ assert.match(html, /После этой выдачи/);
 });

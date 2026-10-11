@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { AlertCircle, ClipboardList, Layers, Pencil, ShieldCheck, Target, Trash2, Users } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { AdminShell } from '@/components/AdminShell';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -28,13 +27,8 @@ export default async function AdminAttestationsPage() {
   const employeeCount = await prisma.user.count({ where: { role: 'EMPLOYEE' } });
 
   return (
-    <AdminShell>
-      <div className='mb-7 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-        <div>
-          <AdminBreadcrumbs current='Аттестации' />
-          <h1 className='text-3xl font-extrabold tracking-normal text-slate-950'>Аттестации</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Управление аттестациями и назначениями</p>
-        </div>
+    <AdminShell pageTitle="Аттестации" pageDescription="Управление аттестациями и назначениями">
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
         <div className='flex flex-wrap gap-2'>
           <Link href='/admin/results' className='inline-flex items-center rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'>Результаты</Link>
           <CreateAttestation />

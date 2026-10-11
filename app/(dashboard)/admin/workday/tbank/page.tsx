@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, CreditCard, RefreshCw } from 'lucide-react';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -76,14 +75,9 @@ export default async function AdminTBankAcquiringPage(
     : null;
 
   return (
-    <AdminShell>
-      <AdminBreadcrumbs current='Торговый эквайринг' />
+    <AdminShell pageTitle="Торговый эквайринг" pageDescription="Read-only диагностика операций терминалов T‑Bank.">
 
-      <div className='mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
-        <div>
-          <h1 className='text-3xl font-extrabold text-slate-950'>Торговый эквайринг</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Read-only диагностика операций терминалов T‑Bank.</p>
-        </div>
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
         <div className='flex flex-wrap gap-2'>
           <Badge className={terminalsResult.environment === 'sandbox' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-800'}>
             {terminalsResult.environment === 'sandbox' ? 'Sandbox' : 'Production'}

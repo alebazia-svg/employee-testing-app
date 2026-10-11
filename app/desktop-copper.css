@@ -129,3 +129,30 @@
   color: #704321;
   background: #fffaf4;
 }
+
+/* Shared ADMIN section navigation. Procurement is the owner-approved baseline. */
+.portal-neutral-design.admin-shell .admin-section-tabs {
+  display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #d8d1c7;
+}
+.portal-neutral-design.admin-shell .admin-section-tab {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 54px;
+  padding: 12px 18px; margin-bottom: -1px; border-radius: 10px 10px 0 0;
+  border-bottom: 3px solid transparent; color: #62666a; font-size: 14px; font-weight: 700;
+}
+.portal-neutral-design.admin-shell .admin-section-tab:hover { background: #eeeae4; }
+.portal-neutral-design.admin-shell .admin-workspace .admin-section-tabs .admin-section-tab:is(.is-active, [aria-selected="true"], [aria-current="page"]) {
+  background: #fffaf4 !important; color: #754725 !important;
+  border-bottom-color: #b57844 !important; box-shadow: none !important;
+}
+.portal-neutral-design.admin-shell .admin-section-tab > span {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 24px; padding: 0 6px; border-radius: 7px;
+  background: #e2e8f0; color: #334155; font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.portal-neutral-design.admin-shell .admin-workspace .admin-section-tabs .admin-section-tab:is(.is-active, [aria-selected="true"], [aria-current="page"]) > span,
+.portal-neutral-design.admin-shell .admin-section-tab > span.needs-decision { background: #ffdda0; color: #704817; }
+
+@media (max-width:600px) {
+  .portal-neutral-design.admin-shell .admin-section-tabs { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .portal-neutral-design.admin-shell .admin-section-tab { padding: 10px; font-size: 12px; justify-content: space-between; }
+}

@@ -28,15 +28,22 @@ function day(value: string) {
   if (!parsed) throw Error('DELIVERY_NATIVE_DATE');
   return new Date(`${moscowDateKey(parsed)}T00:00:00+03:00`);
 }
-export async function loadDeliveryNative(reminderId: string, details: DeliveryRequestDetails): Promise<DeliveryNativeView> {
+export async function loadDeliveryNative(reminderId: string, details: DeliveryRequestDetails, beforeNextRequest?: string): Promise<DeliveryNativeView> {
   try {
     const stored = await prisma.adminInboxEvent.findUnique({ where: { eventKey: deliveryLinkKey(reminderId) } });
     // Explicit operator unlink suppresses automatic selection for this cycle.
     if (stored?.type === 'procurement.delivery_native_unlinked') return { state: 'unlinked', reviewReason: 'manual' };
-    if (!stored) return await automaticDeliveryNative(reminderId, details);
+    if (!stored) return await automaticDeliveryNative(reminderId, details, beforeNextRequest);
     const link = readDeliveryLink(stored.body);
-    const from = day(link.date), data = await readPeriod(from, new Date(from.getTime() + DAY));
-    const row = data.rows.find(r => r.ref === link.ref);
+    const from = day(link.date), to = new Date(from.getTime() + DAY);
+    let data = await readPeriod(from, to);
+    let row = data.rows.find(r => r.ref === link.ref);
+    // A newly saved link can outlive a cached pre-creation snapshot. Read once
+    // from 1C before reporting its exact document unavailable; never infer status.
+    if (!row) {
+      data = await readPeriod(from, to, true);
+      row = data.rows.find(r => r.ref === link.ref);
+    }
     if (!row || link.amount !== details.amount) return { state: 'unavailable' };
     return { state: 'linked', status: deliveryNativeStatus(row, data.checkedAt, link.amount) };
   } catch { return { state: 'unavailable' }; }
@@ -45,8 +52,8 @@ export async function loadDeliveryNative(reminderId: string, details: DeliveryRe
  * A later competing document hides the instruction instead of silently picking one.
  * New portal cycles exclude earlier native documents by the exact request timestamp.
  */
-export async function automaticDeliveryNative(reminderId: string, details: DeliveryRequestDetails): Promise<DeliveryNativeView> {
-  const from = day(details.requestedAt), to = new Date(day(new Date().toISOString()).getTime() + DAY);
+export async function automaticDeliveryNative(reminderId: string, details: DeliveryRequestDetails, beforeNextRequest?: string): Promise<DeliveryNativeView> {
+  const from = day(details.requestedAt), to = new Date(day(beforeNextRequest ?? new Date().toISOString()).getTime() + DAY);
   if (to <= from || to.getTime() - from.getTime() > 31 * DAY) return { state: 'unlinked', reviewReason: 'manual' };
   const data = await readPeriod(from, to);
   if (data.rows.some(r => !('accountable_identity_contract' in r) || r.accountable_identity_contract !== 'expense-request-accountable-v1')) return { state: 'unavailable' };
@@ -55,6 +62,7 @@ export async function automaticDeliveryNative(reminderId: string, details: Deliv
   const matching = data.rows.filter(r => deliveryNativeIdentity(r) && r.amount === details.amount);
   if (matching.some(r => !parseOneCDateTime(r.date))) return { state: 'unavailable' };
   const rows = matching.filter(r => parseOneCDateTime(r.date)!.getTime() >= Date.parse(details.requestedAt)
+    && (!beforeNextRequest || parseOneCDateTime(r.date)!.getTime() < Date.parse(beforeNextRequest))
     && parseOneCDateTime(r.date)!.getTime() <= Date.parse(data.checkedAt));
   if (!rows.length) return { state: 'unlinked' };
   if (rows.length !== 1) return { state: 'unlinked', reviewReason: 'ambiguous' };

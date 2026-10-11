@@ -63,6 +63,14 @@ export function normalizeExpenseRequestForAudit(row: ExpenseRequestSourceRow) {
     attachedFiles: row.attached_files ?? null, linkedCashExpenseOrders: row.linked_cash_expense_orders ?? null,
     execution: row.execution ?? null, plannedDistribution: row.planned_distribution ?? null,
     completeness: row.completeness ?? null,
+    // Preserve absent branches for old snapshots instead of inventing source data.
+    paymentBreakdown: row.payment_breakdown,
+    versionToken: row.version_token,
+    organization: row.organization === undefined ? undefined : named(row.organization),
+    currency: row.currency === undefined ? undefined : named(row.currency),
+    accountablePerson: row.accountable_person === undefined ? undefined : named(row.accountable_person),
+    multipleRecipients: row.multiple_recipients,
+    isAccountableIssue: row.is_accountable_issue,
   });
 }
 

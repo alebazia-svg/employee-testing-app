@@ -6,11 +6,42 @@ import { DELIVERY_PERSON, DELIVERY_SOURCE, DELIVERY_OPEN, DELIVERY_COVERED, DELI
 import type { DeliveryCashSnapshot } from '../components/ProcurementDeliveryCash';
 import { deliveryDetailsKey, parseDeliveryRequest, readDeliveryDetails, type DeliveryRequestDetails, type DeliveryRequestInput } from './procurement-delivery-request';
 import { loadDeliveryNative } from './procurement-delivery-native-source';
-import type { DeliveryNativeView } from './procurement-delivery-native';
+import { deliveryLinkKey, readDeliveryLink, type DeliveryNativeView } from './procurement-delivery-native';
 
 const sourceWhere = { sourceType: DELIVERY_SOURCE, sourceId: DELIVERY_PERSON.ref };
 const orderBy = [{ createdAt: 'desc' as const }, { id: 'desc' as const }];
-export type DeliveryView = { snapshot: DeliveryCashSnapshot; requested: boolean; requestedByBuyer?: boolean; requestDetails?: DeliveryRequestDetails | null; requestStateAvailable: boolean; nativeRequest?: DeliveryNativeView };
+export type DeliveryView = { snapshot: DeliveryCashSnapshot; requested: boolean; requestedByBuyer?: boolean; requestDetails?: DeliveryRequestDetails | null; requestStateAvailable: boolean; nativeRequest?: DeliveryNativeView; nativeRef?: string };
+export type DeliveryHistoryRow = { id: string; requestedAt: string; details: DeliveryRequestDetails | null; native: DeliveryNativeView; nativeRef?: string };
+
+/** Read existing request cycles, without deleting reminders or caching a terminal state.
+ * Every linked document is rechecked so a reversed cash order is not reported as paid. */
+export async function loadDeliveryHistory(cursor?: string): Promise<{ rows: DeliveryHistoryRow[]; nextCursor: string | null }> {
+  const events = await prisma.adminInboxEvent.findMany({
+    where: { ...sourceWhere, type: DELIVERY_OPEN }, orderBy, take: 21,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    select: { id: true, occurredAt: true },
+  });
+  const page = events.slice(0, 20);
+  const records = await prisma.adminInboxEvent.findMany({ where: { eventKey: { in: [...page.flatMap(e => [deliveryDetailsKey(e.id), deliveryLinkKey(e.id)]), ...(cursor ? [deliveryDetailsKey(cursor)] : [])] } }, select: { eventKey: true, body: true } });
+  const details = new Map(records.filter(r => !r.eventKey.startsWith("delivery:native:")).map(r => [r.eventKey, readDeliveryDetails(r.body)]));
+  const links = new Map(records.filter(r => r.eventKey.startsWith("delivery:native:")).map(r => {
+    try { return [r.eventKey, readDeliveryLink(r.body).ref] as const; } catch { return [r.eventKey, undefined] as const; }
+  }));
+  const rows: DeliveryHistoryRow[] = [];
+  // Bound concurrency; the native reader shares same-day reads across requests.
+  for (let i = 0; i < page.length; i += 4) {
+    rows.push(...await Promise.all(page.slice(i, i + 4).map(async (event, offset) => {
+      const request = details.get(deliveryDetailsKey(event.id)) ?? null;
+      const previous = page[i + offset - 1];
+      const beforeNextRequest = previous ? (details.get(deliveryDetailsKey(previous.id))?.requestedAt ?? previous.occurredAt.toISOString())
+        : cursor ? details.get(deliveryDetailsKey(cursor))?.requestedAt : undefined;
+      return { id: event.id, nativeRef: links.get(deliveryLinkKey(event.id)), requestedAt: request?.requestedAt ?? event.occurredAt.toISOString(), details: request,
+        native: cursor && i + offset === 0 && !beforeNextRequest ? { state: 'unavailable' as const }
+          : request ? await loadDeliveryNative(event.id, request, beforeNextRequest) : { state: 'unlinked' as const } };
+    })));
+  }
+  return { rows, nextCursor: events.length > 20 ? page[page.length - 1].id : null };
+}
 
 export async function activeDeliveryRequest() {
   const event = await prisma.adminInboxEvent.findFirst({ where: sourceWhere, orderBy });
@@ -36,6 +67,7 @@ export async function loadDeliveryView(): Promise<DeliveryView> {
   ]);
   const active = event.status === 'fulfilled' && event.value?.type === DELIVERY_OPEN ? event.value : null;
   let requestedByBuyer = false;
+  let nativeRef: string | undefined;
   let requestDetails: DeliveryRequestDetails | null = null;
   let requestStateAvailable = event.status === 'fulfilled';
   if (active) {
@@ -43,6 +75,8 @@ export async function loadDeliveryView(): Promise<DeliveryView> {
       requestedByBuyer = legacyDeliveryBuyerRequest(active) || Boolean(await prisma.adminInboxEvent.findUnique({
         where: { eventKey: deliveryManualRequestKey(active.id) }, select: { id: true },
       }));
+      const link = await prisma.adminInboxEvent.findUnique({ where: { eventKey: deliveryLinkKey(active.id) } });
+      if (link) { try { nativeRef = readDeliveryLink(link.body).ref; } catch { /* Invalid identity cannot suppress another row. */ } }
       const details = await prisma.adminInboxEvent.findUnique({ where: { eventKey: deliveryDetailsKey(active.id) } });
       if (details) {
         requestDetails = readDeliveryDetails(details.body);
@@ -53,7 +87,7 @@ export async function loadDeliveryView(): Promise<DeliveryView> {
   }
   return {
     snapshot: cash.status === 'fulfilled' ? cash.value : unavailableDeliveryCash(),
-    requested: Boolean(active), requestedByBuyer, requestDetails, requestStateAvailable,
+    requested: Boolean(active), requestedByBuyer, requestDetails, requestStateAvailable, nativeRef,
     ...(active && requestDetails ? { nativeRequest: await loadDeliveryNative(active.id, requestDetails) } : {}),
   };
 }
@@ -82,12 +116,14 @@ export async function syncDeliveryReminder(manual = false, input?: DeliveryReque
     // the buyer's explicit next request starts a new cycle after confirmed issue.
     if (!superseded && manual && issued && before?.id === latest?.id && snapshot.balance! < DELIVERY_RESERVE.target) action = 'open';
     const now = new Date();
+    let openedNow = false;
     if (action === 'open') {
       const amount = Math.max(0, Math.round((DELIVERY_RESERVE.target - snapshot.balance!) * 100) / 100);
+      openedNow = true;
       const event = await tx.adminInboxEvent.create({ data: {
         eventKey: `delivery:${DELIVERY_PERSON.ref}:${latest?.id ?? 'initial'}`,
         ...sourceWhere, type: DELIVERY_OPEN, title: 'Пополнение подотчёта · Астемир',
-        body: `Остаток по 1С: ${snapshot.balance!.toLocaleString('ru-RU')} ₽. До запаса ${DELIVERY_RESERVE.target.toLocaleString('ru-RU')} ₽: ${amount.toLocaleString('ru-RU')} ₽. ${manual ? 'Астемир запросил пополнение.' : 'Низкий остаток.'} Заявку оформите в 1С.`,
+        body: manual && input ? `Астемир запросил ${input.amount.toLocaleString('ru-RU')} ₽.${input.comment ? ` ${input.comment}` : ''}` : `Остаток по 1С: ${snapshot.balance!.toLocaleString('ru-RU')} ₽. До запаса ${DELIVERY_RESERVE.target.toLocaleString('ru-RU')} ₽: ${amount.toLocaleString('ru-RU')} ₽. ${manual ? 'Астемир запросил пополнение.' : 'Низкий остаток.'} Заявку оформите в 1С.`,
         href: '/admin/expense-requests#delivery', occurredAt: now,
       } });
       activeReminder = event;
@@ -111,15 +147,21 @@ export async function syncDeliveryReminder(manual = false, input?: DeliveryReque
       await tx.adminInboxDelivery.updateMany({ where: { eventId: latest.id, status: 'pending' }, data: { status: 'cancelled', lastErrorCode: 'DELIVERY_RESERVE_RESTORED' } });
     }
     if (manual && activeReminder && !superseded) {
-      await tx.adminInboxEvent.upsert({
+      const existingManual = await tx.adminInboxEvent.findUnique({ where: { eventKey: deliveryManualRequestKey(activeReminder.id) } });
+      const manualEvent = await tx.adminInboxEvent.upsert({
         where: { eventKey: deliveryManualRequestKey(activeReminder.id) }, update: {},
         create: {
           eventKey: deliveryManualRequestKey(activeReminder.id), sourceType: DELIVERY_REQUEST_SOURCE,
           sourceId: DELIVERY_PERSON.ref, type: DELIVERY_MANUAL_REQUEST,
-          title: 'Запрос пополнения подотчёта', body: 'Астемир запросил пополнение.',
+          title: 'Запрос пополнения подотчёта', body: input ? `Астемир запросил ${input.amount.toLocaleString('ru-RU')} ₽.${input.comment ? ` ${input.comment}` : ''}` : 'Астемир запросил пополнение.',
           href: '/admin/expense-requests#delivery', occurredAt: now,
         },
       });
+      if (!existingManual && !openedNow) {
+        const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
+        await tx.adminInboxReceipt.createMany({ data: admins.map(user => ({ eventId: manualEvent.id, userId: user.id })), skipDuplicates: true });
+        await queueAdminInboxTelegramDelivery({ db: tx, eventId: manualEvent.id });
+      }
       if (input) await tx.adminInboxEvent.upsert({
         where: { eventKey: deliveryDetailsKey(activeReminder.id) }, update: {},
         create: {

@@ -1,6 +1,5 @@
 import { AlertCircle, CalendarCheck, CheckCircle2, Clock, Timer, Users } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Table } from '@/components/ui/table';
@@ -930,12 +929,9 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
   const isDemo = data.mode === 'demo';
 
   return (
-    <AdminShell>
-      <div className='mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+    <AdminShell pageTitle="Посещаемость" pageDescription="Временный отчёт по графику и отметкам из Google Sheets до перехода сотрудников на портал.">
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
         <div>
-          <AdminBreadcrumbs current='Посещаемость' />
-          <h1 className='text-[26px] font-extrabold tracking-normal text-slate-950 md:text-[28px]'>Посещаемость</h1>
-          <p className='mt-1 text-base font-medium text-slate-500'>Временный отчёт по графику и отметкам из Google Sheets до перехода сотрудников на портал.</p>
           <p className='mt-1 text-sm font-medium text-slate-500'>На текущем этапе явка считается подтверждённой по отметке начала рабочего дня. Отсутствие отметки ухода фиксируется отдельно и не обнуляет явку.</p>
         </div>
         <Badge className={isDemo ? 'bg-slate-100 text-slate-700' : 'bg-green-100 text-green-800'}>

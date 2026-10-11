@@ -485,11 +485,8 @@ export default function AdminProcurementClient({
 
   return (
     <div className="procurement-calendar procurement-workspace w-full min-w-0 space-y-3">
-      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h1 className="text-[28px] font-extrabold tracking-tight text-slate-950 md:text-[32px]">Платёжный календарь</h1>
-      </header>
-      <nav aria-label="Разделы закупок" className="procurement-section-nav">
-        {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);if(item.id==="plan")setForecastRequested(true);setReturningId("");setReturnReason("");}} className={tab===item.id?"is-active":""}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
+      <nav aria-label="Разделы закупок" className="admin-section-tabs">
+        {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);if(item.id==="plan")setForecastRequested(true);setReturningId("");setReturnReason("");}} className={tab===item.id?"admin-section-tab is-active":"admin-section-tab"}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
       </nav>
       {!visualPreview?.fundingPlan&&visualPreview?.toolbar}
       <div className="pam-toolbar">{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'}/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={completedPlans} allPlans={plans}/> : null}</div>

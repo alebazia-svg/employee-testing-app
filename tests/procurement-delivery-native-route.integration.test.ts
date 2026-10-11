@@ -7,7 +7,7 @@ import * as native from '../lib/procurement-delivery-native';
 import * as requestHelpers from '../lib/procurement-delivery-request';
 
 test('real DB: ADMIN-only link, fresh preview, concurrency, unique native document, unlink audit and rollback', { skip: !process.env.PROCUREMENT_TEST_DATABASE_URL }, async () => {
-  assert.equal(process.env.PROCUREMENT_TEST_DATABASE_URL, 'postgresql://postgres:local-test-only@127.0.0.1:55437/delivery_integration_20260927');
+  assert.ok(['postgresql://postgres:local-test-only@127.0.0.1:55437/delivery_integration_20260927', 'postgresql://attention:local-attention-only@127.0.0.1:55448/attention_integration'].includes(process.env.PROCUREMENT_TEST_DATABASE_URL!));
   const db = new PrismaClient({ datasources: { db: { url: process.env.PROCUREMENT_TEST_DATABASE_URL } } });
   const sourceTypes = [DELIVERY_SOURCE, DELIVERY_REQUEST_SOURCE, native.DELIVERY_LINK_SOURCE];
   assert.equal(await db.adminInboxEvent.count({ where: { sourceType: { in: sourceTypes } } }), 0);

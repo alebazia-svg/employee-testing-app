@@ -7,7 +7,6 @@ import { isPayrollPeriodAvailable } from '@/lib/payroll-period-availability';
 import PayrollOverviewPreview from './PayrollOverviewPreview';
 import { automaticPayrollApprovalIssues, automaticPayrollDisplayedTotal } from '@/lib/payroll-automatic-approval';
 import { savePayrollReviewDecisions } from '@/lib/payroll-review-save';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -6835,14 +6834,9 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   }
 
   return (
-    <AdminShell>
+    <AdminShell pageTitle="Зарплата" pageDescription="Начисления за выбранный месяц">
       <div className='max-w-full overflow-x-hidden'>
-      <div className='mb-5 flex min-w-0 flex-col gap-4 lg:flex-row lg:items-end lg:justify-between'>
-        <div>
-          <AdminBreadcrumbs current='Зарплата' />
-          <h1 className='text-[26px] font-extrabold tracking-normal text-slate-950 md:text-[28px]'>Зарплата</h1>
-          <p className='mt-1 max-w-3xl text-sm font-medium text-slate-500'>Начисления за выбранный месяц</p>
-        </div>
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
         <div className='flex flex-wrap items-end gap-2'>
           <label className='grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500'>
             Месяц

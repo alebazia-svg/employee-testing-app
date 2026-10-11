@@ -3,7 +3,6 @@ import { hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workda
 import { redirect } from 'next/navigation';
 import { AlertTriangle, Banknote, CreditCard } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
-import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
 import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -1583,14 +1582,10 @@ export default async function AdminWorkdayPage(
   const showTechnical = searchParams?.technical === '1';
 
   return (
-    <AdminShell>
+    <AdminShell pageTitle="Контроль дня" pageDescription="Состояние сотрудников и текущие отклонения. Ваши решения и новые обращения собраны на главной.">
       <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
       <div className='space-y-6'>
-        <AdminPageHeader
-          eyebrow='Операционная работа'
-          title='Контроль дня'
-          description='Состояние сотрудников и текущие отклонения. Ваши решения и новые обращения собраны на главной.'
-          actions={<>
+        <div className="mb-4 flex flex-wrap items-center gap-2">
             <Link
               href={`/admin/workday?date=${previousDate}`}
               aria-label='Предыдущий день'
@@ -1612,8 +1607,7 @@ export default async function AdminWorkdayPage(
               <span className='sm:hidden'>Сегодня</span><span className='hidden sm:inline'>Сегодня</span>
             </Link>
             <WorkdayQrCodes />
-          </>}
-        />
+          </div>
 
         {unfinishedWorkDays.length > 0 && (
           <Card className='border-amber-200 bg-amber-50'>

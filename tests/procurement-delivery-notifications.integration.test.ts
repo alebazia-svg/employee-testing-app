@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 
 test('isolated PostgreSQL: one deferred delivery row, atomic claim and cancellation preserve history', { skip: !process.env.PROCUREMENT_TEST_DATABASE_URL }, async () => {
-  assert.equal(process.env.PROCUREMENT_TEST_DATABASE_URL, 'postgresql://postgres:local-test-only@127.0.0.1:55437/delivery_integration_20260927');
+  assert.ok(['postgresql://postgres:local-test-only@127.0.0.1:55437/delivery_integration_20260927', 'postgresql://attention:local-attention-only@127.0.0.1:55448/attention_integration'].includes(process.env.PROCUREMENT_TEST_DATABASE_URL!));
   const db = new PrismaClient({ datasources: { db: { url: process.env.PROCUREMENT_TEST_DATABASE_URL } } });
   const marker = `delivery-push-${crypto.randomUUID()}`;
   const user = await db.user.create({ data: { name: marker, login: marker, passwordHash: 'not-login', role: 'EMPLOYEE', portalArea: 'PROCUREMENT' } });

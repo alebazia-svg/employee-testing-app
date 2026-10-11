@@ -1,4 +1,3 @@
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
 import { AdminShell } from '@/components/AdminShell';
 import { CompanyCardActions } from './CompanyCardActions';
 
@@ -32,13 +31,8 @@ function DetailsList({ rows }: { rows: ReadonlyArray<readonly [string, string]> 
 
 export default function CompanyDetailsPage() {
   return (
-    <AdminShell>
-      <AdminBreadcrumbs current='Реквизиты' />
+    <AdminShell pageTitle="Реквизиты компании" pageDescription="Актуальная карточка предприятия для договоров, счетов и отправки контрагентам.">
       <div className='mt-3 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between'>
-        <div>
-          <h1 className='text-[26px] font-extrabold tracking-normal text-slate-950 md:text-[28px]'>Реквизиты компании</h1>
-          <p className='mt-1 text-sm font-medium text-slate-500'>Актуальная карточка предприятия для договоров, счетов и отправки контрагентам.</p>
-        </div>
         <CompanyCardActions />
       </div>
 

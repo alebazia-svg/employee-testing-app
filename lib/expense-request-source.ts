@@ -13,6 +13,11 @@ export type ExpenseRequestSourceBranch<T = unknown> = {
 };
 
 export type ExpenseRequestSourceRow = ExpenseRequestInput & {
+  version_token?: string | null;
+  organization?: OneCNamedRef | null;
+  accountable_person?: OneCNamedRef | null;
+  multiple_recipients?: boolean | null;
+  is_accountable_issue?: boolean | null;
   number?: string | null;
   posted?: boolean | null;
   deletion_mark?: boolean | null;

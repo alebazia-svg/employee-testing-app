@@ -1,7 +1,5 @@
 import { prisma } from '@/lib/prisma';
 import { AdminShell } from '@/components/AdminShell';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
-import { AdminPageHeader } from '@/components/admin/AdminPageHeader';
 import EmployeesClient from './EmployeesClient';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
@@ -23,9 +21,8 @@ export default async function EmployeesPage() {
   });
 
   return (
-    <AdminShell>
-      <AdminBreadcrumbs current='Сотрудники' />
-      <AdminPageHeader eyebrow='Команда' title='Сотрудники' description='Справочник сотрудников, доступы в портал и данные для расчёта зарплаты.' actions={<Link href='/admin/employees/access' className='inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700'>Устройства и входы</Link>} />
+    <AdminShell pageTitle="Сотрудники" pageDescription="Справочник сотрудников, доступы в портал и данные для расчёта зарплаты.">
+      <div className="mb-4 flex flex-wrap items-center gap-2"><Link href='/admin/employees/access' className='inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700'>Устройства и входы</Link></div>
       <div className='mt-5'><EmployeesClient initialUsers={users} /></div>
     </AdminShell>
   );
