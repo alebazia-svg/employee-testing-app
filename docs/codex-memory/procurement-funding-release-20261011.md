@@ -44,7 +44,36 @@ reference information, not confirmed current spending capacity.
 - Production screenshot is a private local artifact named
   `funding-production-1.2.1.png`, not committed business data.
 
-## Separate production finding — unresolved
+## Separate production finding — resolved in 1.2.3
+
+Owner approved correction and release after the initial finding below.
+The exact native chain exists: source supplier order → native expense request →
+whole posted RKO. The request's settlement-object line contains a contract, not
+an order; the strict breakdown parser incorrectly discarded the explicit source
+order when it encountered that contract. This is distinct from a supplier/amount
+fallback and does not require 1C changes or manual linking.
+
+`4724f04` preserves a typed, nonempty source-order UUID only for complete,
+whole-request, single-contract allocations with confirmed matching partners.
+Mixed/partial/conflicting lines remain unlinked. Existing independent RKO checks
+still enforce posting, amount, supplier, exact request ownership and uniqueness.
+
+Released 1.2.3 / `8ea7c1d01b18e356f9452e3b389cc247db17e1bd`, based on the concurrent
+1.2.2 release without overwriting it. Build `2026-10-11T19:15:21.994Z`.
+Remote deploy exit 0; independent SSH, public release metadata and authenticated
+ADMIN footer verified. 85 focused tests, TypeScript, isolated production build,
+and five version tests passed. Live read-only reproduction confirmed paid amount
+and zero residual; the other Baseus request was unaffected.
+
+Production readback: first post-restart request source timed out and correctly
+retained the prior display. A subsequent complete read at 22:19:59 MSK showed
+waiting 0 / history 26, with the September 30 Baseus payment in history. The
+funding view no longer includes it; selected total decreased by exactly 47,600
+RUB (1,239,083 → 1,191,483). No financial records were manually modified.
+Buyer UI and actual push delivery were not inspected in production; shared
+matching and obsolete-notification retirement were covered by regression tests.
+
+### Initial finding (historical, before the correction)
 
 Production verification exposed old Baseus Jackson order 412 / RKO 001793 as
 awaiting payment again. The funding release does not modify payment matching or
@@ -52,6 +81,64 @@ continuity modules. The actual cause has NOT yet been established. Do not infer
 that this release caused it, or that it is fixed. No manual linking, closing,
 exclusion or 1C modification was performed. Until resolved, the forecast consumes
 that existing open state and can therefore include this disputed obligation.
+
+## Owner-approved usability follow-up — released as 1.2.4
+
+After a read-only Luxo audit, the owner approved improving the recommendation,
+not changing payment matching or 1C records. The main scenario now uses the
+deposit safe then dated VTB capacity; manager tills are an explicit optional
+fallback, largest available first, only for the uncovered remainder. Switching
+this option recalculates all selected requests together. Existing rent/payroll
+reserves, unknown-data guards and single-use source/day limits remain intact.
+No minimum cash float is invented: optional till use still requires the owner
+to leave the shop's operating cash. T-Bank dated evidence suggests a check but
+does not become confirmed spendable cash.
+
+Normal background refresh has a neutral updating state retaining the complete
+previous input/source pair. Failed/incomplete or previous-day snapshots retain
+the stale warning; payment write guards are unchanged. Local preview supports
+delayed refresh, failure and recovery. The owner approved release after viewing
+the local implementation; live and deployment-branch versions were rechecked.
+
+Changed files for this follow-up:
+- `lib/procurement-funding-scenario.ts`
+- `lib/procurement-funding-refresh.ts` (new)
+- `components/ProcurementFundingPlan.tsx`
+- `components/procurement-funding-plan.css`
+- `components/useAdminProcurementForecast.ts`
+- `app/(dashboard)/admin/procurement/AdminProcurementClient.tsx`
+- `tests/procurement-funding-scenario-preview.test.ts`
+- `tests/procurement-funding-refresh.test.ts` (new)
+- local-only `app/procurement-payment-review/daily-plan/review.tsx`
+- this handoff document.
+
+38 focused source/integration/scenario/refresh tests, TypeScript and final clean
+archive production build (`/tmp/mobo-funding-build.pkl7CF`) passed.
+Rendered local checks: primary/manager alternative/reset; delayed update without
+stale alarm, failure retaining warning, recovery; 1600px and 390px layouts.
+Evidence preview is the existing October 11 20:19 MSK snapshot, not a new live
+cash count. Production matching, approvals, notifications and writes are untouched.
+Unrelated dirty `ProcurementAdminList.tsx` and other previews remain untouched.
+
+Production release verified on 2026-10-11:
+- Version `1.2.4`, runtime commit `5cc1f1faaefa98c8c4820fdcf6543e0a5676d2d3`.
+- Build timestamp `2026-10-11T19:46:54.162Z` (22:46 MSK).
+- Native Mac Terminal deployment exited 0; only portal-app rebuilt/restarted.
+- Independent SSH HEAD, both public domains' release-info and authenticated
+  ADMIN version footer agree. Public metadata still has revision=null; exact
+  revision is independently established by server HEAD, not inferred from it.
+- 38 focused funding tests and 5 release tests passed; TypeScript and server
+  production build passed. No migration, env change or 1C write.
+- Live readback at 22:51:37 MSK: 4 active plans, total 1,191,483 RUB;
+  Luxo safe 344,000 + VTB 350,000, remainder 37,483. Optional manager tills
+  add 27,570.25, remainder 9,912.75. Reset returns the main two-source route.
+- Live refresh retained the previous complete calculation with neutral
+  updating text. Failure/recovery branches were tested locally, not induced
+  against production. Date-labeled T-Bank data remain through October 10.
+- This is a deterministic allocation of known balances, not a future-revenue
+  forecast or authorization. The 235,000 RUB rent reserve and 350,000 RUB/day
+  VTB cap are configured assumptions, not live contractual bank guarantees.
+  No automatic spending, contact, scheduling or purchasing authority is added.
 
 ## Governance
 

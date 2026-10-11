@@ -230,7 +230,7 @@ export default function AdminProcurementClient({
   }));
   const [tab, setTab] = useState<"pending" | "approved" | "plan" | "history">(() => visualPreview?.initialAdminTab ?? (revisionCount || initialPlans.some(p => p.status === "SUBMITTED" && p.evidence.state !== "PAID_BY_ONE_C") ? "pending" : "approved"));
   const [forecastRequested,setForecastRequested]=useState(false);
-  const forecast=useAdminProcurementForecast(forecastInput,refreshState==='ready'&&(forecastRequested||tab==='plan'),visualPreview?.forecastReader);
+  const forecast=useAdminProcurementForecast(forecastInput,refreshState==='ready'&&(forecastRequested||tab==='plan'),visualPreview?.forecastReader,refreshState);
   const {forecastHistory,forecast30Days,supplierWarnings,supplierWarningsReady,debtAllocation,debtReserveBreakdown,cashPreparation,financialAssistant,requestFundingAssessments}=forecast.data??{forecastHistory: initial_forecastHistory,forecast30Days: initial_forecast30Days,supplierWarnings: initial_supplierWarnings,supplierWarningsReady: initial_supplierWarningsReady,debtAllocation: initial_debtAllocation,debtReserveBreakdown: initial_debtReserveBreakdown,cashPreparation: initial_cashPreparation,financialAssistant: initial_financialAssistant,requestFundingAssessments: initial_requestFundingAssessments};
   const fundingByPlanId = new Map(requestFundingAssessments.map((assessment) => [assessment.planId, assessment]));
   const forecastStatus=refreshState!=='ready'?<p role="status" className="text-sm text-slate-600">{refreshState==='loading'?'Проверяем оплаты и остатки в 1С…':'Свежие данные пока недоступны. Обновление повторится автоматически.'}</p>:forecastInput&&!forecast.data?<div role="status" className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">{forecast.error?<><p>Прогноз пока недоступен. Заявки и история оплат доступны.</p><button type="button" className="pam-button mt-3" onClick={forecast.retry}>Повторить загрузку</button></>:"Проверяем остатки и обязательные выплаты…"}</div>:null;
@@ -503,7 +503,7 @@ export default function AdminProcurementClient({
 
       {tab === 'plan' && visualPreview?.fundingPlan}
       {tab === 'plan' && !visualPreview?.fundingPlan && (forecast.funding
-        ? <ProcurementFundingPlan data={forecast.funding} stale={forecast.fundingStale || refreshState !== 'ready'}/>
+        ? <ProcurementFundingPlan data={forecast.funding} stale={forecast.fundingStatus==='stale'} refreshing={forecast.fundingStatus==='refreshing'}/>
         : <div role="status" className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">
             {forecast.error || refreshState==='error' ? 'Не удалось обновить расчёт. Повторим автоматически.' : 'Подбираем источники денег по остаткам и заявкам…'}
           </div>)}

@@ -2,18 +2,21 @@
 import {useEffect,useMemo,useState,useRef} from 'react';
 import {buildAdminProcurementForecast,type AdminForecastInput,type AdminForecastSources} from '@/lib/procurement-admin-forecast';
 import {fundingEvidenceView,fundingSourcesComplete,retainDatedBankEvidence} from '@/lib/procurement-funding-view';
+import {fundingRefreshState} from '@/lib/procurement-funding-refresh';
 
-export function useAdminProcurementForecast(input:AdminForecastInput|undefined, enabled:boolean, previewReader?:()=>Promise<AdminForecastSources>) {
+export function useAdminProcurementForecast(input:AdminForecastInput|undefined, enabled:boolean, previewReader?:()=>Promise<AdminForecastSources>, upstream:'ready'|'loading'|'error'='ready') {
   const [result,setResult]=useState<{input:AdminForecastInput;source:AdminForecastSources}|null>(null);
   const [failed,setFailed]=useState<AdminForecastInput|null>(null);
   const [confirmed,setConfirmed]=useState<{input:AdminForecastInput;source:AdminForecastSources}|null>(null);
   const [attempt,setAttempt]=useState(0);
+  const [pending,setPending]=useState(false);
   const previousSource=useRef<AdminForecastSources>();
   useEffect(()=>{
     if(!input||!enabled)return;
     const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),45_000);
     let active=true;
+    setPending(true);
     setFailed(null);
     const read=process.env.NODE_ENV==='development'&&previewReader?previewReader():fetch('/api/admin/procurement/forecast',{cache:'no-store',signal:controller.signal}).then(async response=>{
       if(!response.ok)throw Error('FORECAST_UNAVAILABLE');return await response.json() as AdminForecastSources;
@@ -23,7 +26,7 @@ export function useAdminProcurementForecast(input:AdminForecastInput|undefined, 
         if(source.asOf!==input.todayKey)throw Error('FORECAST_DATE_CHANGED');
         if(active){previousSource.current=source;setResult({input,source});if(fundingSourcesComplete(input,source))setConfirmed({input,source});}
       }).catch(()=>{if(active)setFailed(input);})
-      .finally(()=>clearTimeout(timer));
+      .finally(()=>{clearTimeout(timer);if(active)setPending(false);});
     return()=>{active=false;clearTimeout(timer);controller.abort();};
   },[input,enabled,attempt,previewReader]);
   const data=useMemo(()=>input&&result?.input===input?buildAdminProcurementForecast(input,result.source):null,[input,result]);
@@ -31,5 +34,10 @@ export function useAdminProcurementForecast(input:AdminForecastInput|undefined, 
   const fundingSnapshot=confirmed??result;
   const funding=useMemo(()=>fundingSnapshot?fundingEvidenceView(fundingSnapshot.input,fundingSnapshot.source):null,[fundingSnapshot]);
   const fundingStale=!enabled||!input||fundingSnapshot?.input!==input||failed===input||!fundingSnapshot||!fundingSourcesComplete(fundingSnapshot.input,fundingSnapshot.source);
-  return {data,funding,fundingStale,loading:!!input&&!data&&failed!==input,error:!!input&&failed===input,retry:()=>setAttempt(value=>value+1)};
+  const fundingStatus=fundingRefreshState({hasSnapshot:!!fundingSnapshot,
+    sameDay:!!input&&fundingSnapshot?.source.asOf===input.todayKey,
+    complete:!!fundingSnapshot&&fundingSourcesComplete(fundingSnapshot.input,fundingSnapshot.source),
+    current:fundingSnapshot?.input===input,pending:pending||(enabled&&result?.input!==input&&failed!==input),
+    failed:!!input&&failed===input,upstream});
+  return {data,funding,fundingStale,fundingStatus,loading:!!input&&!data&&failed!==input,error:!!input&&failed===input,retry:()=>setAttempt(value=>value+1)};
 }

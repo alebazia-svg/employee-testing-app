@@ -33,7 +33,7 @@ export type FundingStep = {source: string; amount: number; date: string; kind: '
  * Today's unverified withdrawal allowance is excluded. Future dates are a scenario,
  * not evidence of ATM access. Historical T-Bank limits never become current cash.
  */
-export function fundingScenario(data: FundingEvidence, ids: readonly string[]) {
+export function fundingScenario(data: FundingEvidence, ids: readonly string[], options: {includeManagerCash?: boolean} = {}) {
   if (!validDay(data.asOf)) throw Error('FUNDING_INVALID_AS_OF');
   const seen = new Set<string>();
   const plans = data.plans.filter(p => {
@@ -91,10 +91,6 @@ export function fundingScenario(data: FundingEvidence, ids: readonly string[]) {
     if (cash) {
       const part = Math.min(safe, left); safe -= part; left -= part;
       if (part) steps.push({source: 'Сейф Депозитный', amount: part / 100, date: due, kind: 'cash'});
-      for (const box of [...boxes].sort((a, b) => b.available - a.available || a.ref.localeCompare(b.ref))) {
-        const take = Math.min(left, box.available); left -= take; box.available -= take;
-        if (take) steps.push({source: box.name, amount: take / 100, date: due, kind: 'cash'});
-      }
       // Prepare close to the due date, not weeks early. Prefer the preceding day;
       // same-day withdrawal is the last option, conditional on collection timing.
       const withdrawalDates: string[] = [];
@@ -109,6 +105,14 @@ export function fundingScenario(data: FundingEvidence, ids: readonly string[]) {
         if (take) withdrawals.push({source: 'Снять через ВТБ', amount: take / 100, date: day, kind: 'withdrawal'});
       }
       steps.push(...withdrawals.sort((a, b) => a.date.localeCompare(b.date)));
+      // Manager tills are an explicit fallback, not automatically emptied before
+      // a bank withdrawal. Largest available till first minimizes the till count.
+      if (options.includeManagerCash) {
+        for (const box of [...boxes].sort((a, b) => b.available - a.available || a.ref.localeCompare(b.ref))) {
+          const take = Math.min(left, box.available); left -= take; box.available -= take;
+          if (take) steps.push({source: box.name, amount: take / 100, date: due, kind: 'cash'});
+        }
+      }
     } else {
       const take = Math.min(left, bank); bank -= take; left -= take;
       if (take) steps.push({source: p.paymentMethod === 'ACCOUNTABLE_QR' ? 'ВТБ → карта для QR' : 'ВТБ → карта для перевода', amount: take / 100, date: due, kind: 'transfer'});
