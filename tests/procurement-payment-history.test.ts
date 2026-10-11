@@ -20,7 +20,7 @@ test('cached history retains the payment and visibly identifies the last success
   for (const compactBuyer of [false, true]) {
     const html = renderToStaticMarkup(React.createElement(ProcurementPaymentHistory, { plans, compactBuyer }));
     assert.match(html, /Последняя проверка:/);
-    assert.match(html, /связь с 1С восстанавливается/);
+    assert.match(html, /результат последней подтверждённой сверки/);
     assert.match(html, /280 000/);
     assert.doesNotMatch(html, /Ждут оплаты|Частично оплачено/);
   }

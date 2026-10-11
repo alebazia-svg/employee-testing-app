@@ -18,11 +18,16 @@ test('unknown forecast sources never imply zero debts, available money or covere
   assert.equal(result.forecast30Days.rows.find(row=>row.date==='2026-10-12')?.items[0].amountMinor,10_000_000);
 });
 
-test('first page retains live payment verification, but never starts forecast-only sources',()=>{
+test('first page streams verification separately and never starts forecast-only sources',()=>{
   const page=readFileSync('app/(dashboard)/admin/procurement/page.tsx','utf8');
+  const live=readFileSync('app/(dashboard)/admin/procurement/AdminProcurementLive.tsx','utf8');
   for(const name of ['loadOwnerCashForecastShadow','fetchPayrollForecastEvidence','fetchTBankOwnerTransferControl','loadProcurementForecastHistory','fetchProcurementPriorityDebts'])assert.ok(!page.includes(name),name);
-  for(const name of ['matchProcurementPaymentEvidence','preservePaymentEvidenceViews','fetchSupplierCurrencyPaymentSnapshot','historyConcurrency: 2'])assert.ok(page.includes(name),name);
-  assert.ok(page.includes('}).then(rows => rows)'),'reuse the executed Prisma promise');
+  for(const name of ['matchProcurementPaymentEvidence','preservePaymentEvidenceViews','fetchSupplierCurrencyPaymentSnapshot','historyConcurrency: 2'])assert.ok(live.includes(name),name);
+  assert.ok(live.includes('Promise.resolve(initialPlans)'));
+  assert.ok(page.includes('<Suspense fallback={null}>'));
+  assert.ok(page.includes('adminInitialView(plans,'));
+  assert.ok(!page.includes('await AdminProcurementLive'));
+  assert.ok(page.indexOf('getCurrentUser()')<page.indexOf('await readAdminPlans()'));
   const client=readFileSync('app/(dashboard)/admin/procurement/AdminProcurementClient.tsx','utf8');
   assert.ok(client.includes("forecastRequested||tab==='plan'"));
   assert.ok(client.includes('onOpen={()=>setForecastRequested(true)}'));

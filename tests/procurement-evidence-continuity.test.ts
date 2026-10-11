@@ -139,10 +139,10 @@ test('concurrent older snapshot cannot overwrite newer cache or a manual link ed
 });
 
 test('both screens consume persisted views; unknown is not awaiting; review actions require complete sources', () => {
-  const admin = readFileSync('app/(dashboard)/admin/procurement/page.tsx','utf8');
+  const admin = readFileSync('app/(dashboard)/admin/procurement/AdminProcurementLive.tsx','utf8');
   const buyer = readFileSync('app/(dashboard)/procurement/page.tsx','utf8');
   for(const page of [admin,buyer]) assert.match(page,/preservePaymentEvidenceViews/);
-  assert.match(admin,/paymentLinks=\{evidenceComplete \?/);
+  assert.match(admin,/paymentLinks=\{displayComplete \?/);
   assert.match(admin,/initialPlans=\{plansWithOrderContext\.map/);
   assert.match(admin,/evidence: paymentEvidence\.get\(plan.id\)!/, 'financial calculations keep fresh evidence');
   const buyerUI = readFileSync('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx','utf8');

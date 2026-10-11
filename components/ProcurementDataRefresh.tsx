@@ -11,10 +11,12 @@ export function ProcurementDataRefresh({
   checkedAt,
   label = 'Данные из 1С',
   intervalMs = refreshIntervalMs,
+  refreshing = false,
 }: {
   checkedAt: string;
   label?: string;
   intervalMs?: number;
+  refreshing?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -22,11 +24,12 @@ export function ProcurementDataRefresh({
 
   const refresh = useCallback((force = false) => {
     if (!force && document.visibilityState !== 'visible') return;
+    if (refreshing || isPending) return;
     const now = Date.now();
     if (!force && now - lastRefreshRequestRef.current < resumeRefreshThresholdMs) return;
     lastRefreshRequestRef.current = now;
     startTransition(() => router.refresh());
-  }, [router]);
+  }, [router, refreshing, isPending]);
 
   useEffect(() => {
     const refreshWhenVisible = () => refresh(false);
@@ -48,11 +51,11 @@ export function ProcurementDataRefresh({
     <button
       type='button'
       onClick={() => refresh(true)}
-      disabled={isPending}
+      disabled={isPending || refreshing}
       className='admin-material-control procurement-data-refresh inline-flex min-h-9 self-start items-center gap-2 rounded-xl bg-white px-3 py-2 text-left text-xs font-semibold text-slate-500 transition hover:text-slate-800 disabled:cursor-wait disabled:opacity-70 sm:self-auto'
       title='Обновить данные сейчас'
     >
-      <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${isPending ? 'animate-spin' : ''}`} />
+      <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${isPending || refreshing ? 'animate-spin' : ''}`} />
       <span>
         {label}: {checkedAt ? new Date(checkedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : 'данные недоступны'}
       </span>
