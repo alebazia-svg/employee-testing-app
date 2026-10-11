@@ -28,24 +28,36 @@ export function requestSettlementOrderRef(request: ExpenseRequestSourceRow): str
   if (total === undefined) return undefined;
   const seen = new Set<number>();
   const orders = new Set<string>();
+  const types = new Set<string>();
+  let allPartnersConfirmed = true;
   let allocated = 0;
   for (const row of branch.rows) {
     if (!row || !Number.isSafeInteger(row.line_number) || row.line_number! <= 0 || seen.has(row.line_number!)) return undefined;
     seen.add(row.line_number!);
     const order = row.fields?.Заказ, amount = row.fields?.Сумма;
     const ref = key(order?.ref);
-    if (order?.filled !== true || order.type !== 'Заказ поставщику' || !uuid.test(ref) || ref === empty ||
+    if (order?.filled !== true || !['Заказ поставщику', 'Договор с контрагентом'].includes(order.type ?? '') || !uuid.test(ref) || ref === empty ||
         amount?.type !== 'Число') return undefined;
     const sum = cents(amount.value);
     if (sum === undefined) return undefined;
     // A line belonging to a different partner cannot inherit the header supplier.
     const partner = row.fields?.Партнер;
     if (partner?.filled === true && (!key(request.partner?.ref) || key(partner.ref) !== key(request.partner?.ref))) return undefined;
+    if (partner?.filled !== true || !key(request.partner?.ref) || key(partner.ref) !== key(request.partner?.ref)) allPartnersConfirmed = false;
+    types.add(order.type!);
     orders.add(ref);
     allocated += sum;
     if (!Number.isSafeInteger(allocated)) return undefined;
   }
-  if (orders.size !== 1 || allocated !== total) return undefined;
+  if (orders.size !== 1 || types.size !== 1 || allocated !== total) return undefined;
   const ref = [...orders][0];
+  // A contract settlement is not a conflicting order. Preserve the explicit
+  // source order of a whole, validated request instead of interpreting the
+  // contract UUID as an order or guessing from supplier/amount. The payment
+  // matcher still independently requires the exact whole-RKO request link.
+  if (types.has('Договор с контрагентом')) {
+    return allPartnersConfirmed && uuid.test(header) && header !== empty && header !== ref &&
+      /^Заказ поставщику\s/i.test(request.source_document?.name?.trim() ?? '') ? header : undefined;
+  }
   return header && header !== empty && header !== ref ? undefined : ref;
 }

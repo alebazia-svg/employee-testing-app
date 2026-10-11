@@ -8,18 +8,24 @@ test('today’s request-based payment retires its notification through the real 
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-30T16:00:00Z') });
   const env = { ...process.env }; t.after(() => { process.env = env; });
   process.env['1C_BASE_URL'] = 'https://one-c.invalid'; process.env['1C_API_USER'] = 'test'; process.env['1C_API_PASSWORD'] = 'test';
-  for (const scenario of ['paid', 'partial', 'unposted', 'incomplete', 'offline', 'edited', 'debt-paid', 'debt-partial', 'debt-unposted', 'debt-no-basis', 'small', 'small-incomplete', 'small-unsupported', 'debt-small']) {
+  for (const scenario of ['paid', 'partial', 'unposted', 'incomplete', 'offline', 'edited', 'debt-paid', 'debt-partial', 'debt-unposted', 'debt-no-basis', 'small', 'small-incomplete', 'small-unsupported', 'debt-small', 'contract-paid', 'contract-unposted', 'contract-incomplete']) {
     const supplierDebt = scenario.startsWith('debt-');
-    const fullyPaid = ['paid','debt-paid','small','debt-small'].includes(scenario);
+    const contractSettlement = scenario.startsWith('contract-');
+    const orderRef = contractSettlement ? '11111111-1111-4111-8111-111111111111' : 'order';
+    const fullyPaid = ['paid','debt-paid','small','debt-small','contract-paid'].includes(scenario);
     const updatedAt = new Date('2026-09-29T10:00:00Z');
     const plan = { id: 'plan', planCode: 'PAY-TEST', status: 'APPROVED', supplierPartner: 'Supplier', supplierCounterparty: '',
-      orderRefs: supplierDebt ? [] : ['order'], plannedAmount: scenario.includes('small') ? 47800 : scenario.includes('partial') ? 50000 : 47600, foreignAmount: null, paymentMethod: 'CASH',
+      orderRefs: supplierDebt ? [] : [orderRef], plannedAmount: scenario.includes('small') ? 47800 : scenario.includes('partial') ? 50000 : 47600, foreignAmount: null, paymentMethod: 'CASH',
       plannedDate: new Date('2026-09-30T00:00:00Z'), createdAt: updatedAt, updatedAt, oneCCashEvidence: null,
       manager: { name: 'Buyer', oneCManagerName: '' } };
     const payment = { ref: 'rko', number: 'TEST-RKO', date: '30.09.2026 15:27:43', posted: !scenario.includes('unposted'), deleted: false,
       documentAmount: 47600, documentCurrency: 'РУБ', baseDocumentRef: '', supplier: 'Supplier', contract: supplierDebt && scenario !== 'debt-no-basis' ? 'Supplier contract' : '' };
     const request = { ref: 'request', date: '30.09.2026 15:27:00', posted: true, deletion_mark: false, amount: 47600,
-      partner: { name: 'Supplier' }, currency: { name: 'руб' }, source_document: { ref: 'order' },
+      partner: { ref: 'partner', name: 'Supplier' }, currency: { name: 'руб' }, source_document: { ref: orderRef, name: 'Заказ поставщику TEST' },
+      ...(contractSettlement ? { payment_breakdown: {contract:'expense-request-breakdown-v1',complete:true,truncated:false,errors:[],missing_fields:[],rows:[{line_number:1,fields:{
+        Заказ:{type:'Договор с контрагентом',filled:true,ref:'22222222-2222-4222-8222-222222222222'},
+        Сумма:{type:'Число',value:47600},Партнер:{filled:true,ref:'partner'},
+      }}]} } : {}),
       completeness: { request: true, linked_cash_expense_orders: true },
       linked_cash_expense_orders: { complete: true, truncated: false, errors: [], missing_fields: [], rows: [
         { ref: 'rko', date: payment.date, posted: payment.posted, deletion_mark: false, amount: 47600,

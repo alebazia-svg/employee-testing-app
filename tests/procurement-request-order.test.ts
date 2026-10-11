@@ -64,6 +64,45 @@ test('legacy server keeps old explicit header behavior, no fabricated link on em
   assert.equal(requestSettlementOrderRef({ ...request, payment_breakdown: undefined, source_document: { ref: order } }), order);
   assert.equal(requestSettlementOrderRef({ ...request, payment_breakdown: undefined }), undefined);
 });
+const contractRequest = (): ExpenseRequestSourceRow => ({ ...request,
+  source_document: { ref: order, name: 'Заказ поставщику 000412 от 26.09.2026' },
+  payment_breakdown: { ...request.payment_breakdown!, rows: [{ ...line(100, other, 'Договор с контрагентом'),
+    fields: { ...line(100, other, 'Договор с контрагентом').fields,
+      Партнер: { filled: true, ref: 'partner' } } }] },
+});
+test('contract settlement preserves a verified explicit source order, not the contract UUID', () => {
+  assert.equal(requestSettlementOrderRef(contractRequest()), order);
+  for (const source_document of [undefined, {ref:''}, {ref:order}, {ref:order,name:'Приобретение товаров и услуг 412'},
+    {ref:other,name:'Заказ поставщику 412'}, {ref:'00000000-0000-0000-0000-000000000000',name:'Заказ поставщику 412'}]) {
+    assert.equal(requestSettlementOrderRef({...contractRequest(),source_document}),undefined);
+  }
+});
+test('contract header fallback rejects incomplete, mixed, partial or conflicting lines', () => {
+  const r=contractRequest(), row=r.payment_breakdown!.rows![0];
+  for (const patch of [{complete:false},{truncated:true},{errors:['failed']},{missing_fields:['Сумма']}])
+    assert.equal(requestSettlementOrderRef({...r,payment_breakdown:{...r.payment_breakdown!,...patch}}),undefined);
+  for (const rows of [[{...row,fields:{...row.fields,Партнер:{filled:false}}}],
+    [{...row,fields:{...row.fields,Партнер:{filled:true,ref:'wrong'}}}],
+    [{...row,fields:{...row.fields,Сумма:{type:'Число',value:99}}}],
+    [row,row], [row,line(1,order,'Заказ поставщику',2)]])
+    assert.equal(requestSettlementOrderRef({...r,payment_breakdown:{...r.payment_breakdown!,rows}}),undefined);
+});
+test('source order → contract-settled request → posted RKO closes exactly once, cancellation reopens', () => {
+  const r=contractRequest();
+  const p: SupplierCurrencyPaymentRow={ref:'rko',number:'synthetic',date:'02.10.2026 10:00:00',posted:true,deleted:false,
+    documentAmount:100,documentCurrency:'РУБ',baseDocumentRef:'',supplier:'Supplier',contract:'Supplier contract'};
+  const plan: EvidencePlan={id:'plan',planCode:'PAY-TEST',supplierPartner:'Supplier',supplierCounterparty:'',orderRefs:[order],
+    plannedAmount:100,paymentMethod:'CASH',status:'APPROVED',createdAt:'2026-09-30T00:00:00Z'};
+  const match=(payments:SupplierCurrencyPaymentRow[], requests=[r], plans=[plan])=>matchProcurementPaymentEvidence(plans,requests,payments,[]).get(plan.id)!;
+  assert.equal(attachRequestOrderLinks([p],[r])[0].requestOrderRef,order);
+  assert.equal(match([p,p]).state,'ISSUED_BY_ONE_C');
+  assert.equal(match([p,p]).issuedAmount,100);
+  for(const rows of [[],[{...p,posted:false}],[{...p,deleted:true}],[{...p,documentAmount:99}],[{...p,supplier:'Other'}]])
+    assert.equal(match(rows).issuedAmount,0);
+  assert.equal(match([p],[{...r,posted:false}]).issuedAmount,0);
+  assert.equal(match([p],[r,{...r,ref:'second-request'}]).issuedAmount,0);
+  assert.equal(match([p],[r],[plan,{...plan,id:'second-plan'}]).issuedAmount,0);
+});
 test('object → request → RKO closes once; the request alone never counts as paid', () => {
   const payment: SupplierCurrencyPaymentRow = { ref: 'rko', number: 'synthetic', date: '02.10.2026 10:00:00',
     posted: true, deleted: false, documentAmount: 100, documentCurrency: 'РУБ', baseDocumentRef: 'request', supplier: 'Supplier' };
