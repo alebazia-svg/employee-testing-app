@@ -12,18 +12,13 @@ import {
 } from '@/lib/expense-request-admin-lifecycle';
 import type { ExpenseRequestSnapshot, ExpenseRequestSourceRow } from '@/lib/expense-request-source';
 import { createExpenseRequestAdminInboxEvent } from '@/lib/admin-inbox';
+import { parseOneCDateTime } from '@/lib/one-c-date';
 
 type SyncDb = PrismaClient;
 
 function text(value: unknown) { return String(value ?? '').trim(); }
 export function expenseRequestDateOrNull(value: unknown) {
-  const source = text(value);
-  const oneC = /^(\d{2})\.(\d{2})\.(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(source);
-  const normalized = oneC
-    ? `${oneC[3]}-${oneC[2]}-${oneC[1]}T${oneC[4] ?? '00'}:${oneC[5] ?? '00'}:${oneC[6] ?? '00'}+03:00`
-    : source;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseOneCDateTime(text(value));
 }
 function named(value: unknown) {
   const row = value && typeof value === 'object' ? value as Record<string, unknown> : {};

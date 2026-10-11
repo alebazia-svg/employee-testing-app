@@ -167,6 +167,30 @@ test('baseline creates cases and evaluations without inbox events', async () => 
   assert.equal(db.state.cases.get('request-1')?.currentCycleOrigin, 'baseline');
 });
 
+test('routine sync repairs a stored date without reopening or notifying an unchanged request', async () => {
+  const db = fakeDb();
+  const period = { from: new Date('2026-10-11T00:00:00+03:00'), to: new Date('2026-10-12T00:00:00+03:00') };
+  const row = { ...sourceRow('payable'), date: '11.10.2026 9:25:11' };
+  await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(row, '2026-10-11T07:00:00Z'), db: db.client });
+  const saved = db.state.cases.get('request-1')!;
+  saved.oneCDate = new Date('2026-11-10T09:25:11Z');
+  saved.seenAt = new Date('2026-10-11T07:01:00Z');
+  saved.reviewedAt = new Date('2026-10-11T07:02:00Z');
+  const before = { ...saved };
+
+  const result = await syncExpenseRequestAdminAudit({ ...period, snapshot: snapshot(row, '2026-10-11T07:03:00Z'), queueTelegramDelivery: true, db: db.client });
+  const updated = db.state.cases.get('request-1')!;
+  assert.equal(updated.oneCDate.toISOString(), '2026-10-11T06:25:11.000Z');
+  assert.equal(result.updatedCases, 1);
+  assert.equal(result.newNotApproved, 0);
+  assert.equal(result.evaluations, 0);
+  for (const key of ['id', 'amount', 'currentStatusKey', 'notApprovedCycle', 'currentCycleOrigin', 'seenAt', 'reviewedAt', 'latestSourceHash']) {
+    assert.deepEqual(updated[key], before[key], key);
+  }
+  assert.equal(db.state.inboxEvents.size, 0);
+  assert.equal(db.state.inboxDeliveries.size, 0);
+});
+
 test('baseline cycle stays historical until status leaves and returns during live sync', async () => {
   const db = fakeDb();
   const period = { from: new Date('2026-02-01T00:00:00Z'), to: new Date('2026-03-01T00:00:00Z') };
