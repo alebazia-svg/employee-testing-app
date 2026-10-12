@@ -939,3 +939,15 @@ last complete read was 13:54 MSK. This is an outstanding delivery dependency,
 not a successful end-to-end push check. Prioritize diagnosing source availability
 before further notification/UI enhancement. Exact evidence and rollback are in
 [admin-attention-deadlines-20261012.md](admin-attention-deadlines-20261012.md).
+
+
+## 2026-10-12 — Expense-source timeout follow-up released as 1.4.3
+
+Owner approved the prepared fix and release. The shared five-second timeout was
+too short for batch request pages; preserve a 15-second minimum for these reads
+without changing environment, source scope, timers, 1C or financial states.
+Runtime e250bb4 deployed and verified. Automatic reads completed at 14:30 and
+14:33 MSK; ADMIN freshness follows the completed runs. Source had also recovered
+once before deployment, so this is resilience to intermittent slowness, not a
+claim of repairing 1C or guaranteeing future availability. Release evidence and
+rollback: [admin-attention-deadlines-20261012.md](admin-attention-deadlines-20261012.md).

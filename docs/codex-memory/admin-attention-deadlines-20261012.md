@@ -7,8 +7,9 @@ Only portal-app was deployed; no 1C command/publication, migration, environment
 change or manual production-data change was performed.
 
 Release verification found an independent expense-source timeout starting before
-deployment. New 1C requests may be delayed; end-to-end source delivery is not
-confirmed healthy. See the production evidence below.
+deployment. Follow-up portal 1.4.3 adds batch-read timeout headroom; two automatic
+cycles and current ADMIN data were verified on 2026-10-12. See follow-up evidence
+below. Physical push display remains a separate unverified check.
 
 ## Rules
 
@@ -173,3 +174,44 @@ hanging reads still abort and longer configured timeouts are respected. Total
 build passed. Exact files: lib/expense-request-source.ts and
 tests/expense-request-source-timeout.test.ts. Production still 1.4.2; separate
 release approval requested. Do not claim the live incident resolved yet.
+
+
+## Follow-up production release 1.4.3 — batch-read timeout
+
+Owner accepted the precise release request with “Хорошо, дальше.” Live metadata
+and deployment branch both remained 1.4.2 immediately before the patch bump.
+Runtime commit: e250bb4d03aa57e4357fa9781ecbb99cf5ab3a46; fix: 3183aa3.
+
+- Deployed only portal-app. Healthy container, public health endpoint, independent
+  SSH commit check and matching expense-request-source.ts SHA256 verified.
+- Public metadata on both domains and authenticated ADMIN footer show 1.4.3,
+  builtAt 2026-10-12T11:25:58.297Z (14:25 MSK). Null revision/unknown build source
+  remains the existing Docker metadata limitation; server commit checked directly.
+- Five release-metadata tests passed in addition to 27 relevant tests, TypeScript,
+  isolated build and the production Docker build.
+- Automatic sync completed successfully at 14:30:19 MSK. Journal confirms
+  sourceComplete:true and 126 source rows updated; no newly entered approval
+  cycle in that run. The next scheduled sync completed at 14:33:13 MSK with
+  Result=success/ExecMainStatus=0. ADMIN data time advanced to 14:30, then 14:33.
+- ADMIN sender also completed successfully at 14:33:04; no manual test push or
+  fabricated request was created. Physical device display is still unverified.
+- The old version had one successful scheduled read at 14:21 before the fix:
+  the failure was intermittent. Do not claim the patch repaired 1C itself or
+  guarantees availability; it prevents the five-second shared cap from cutting
+  off valid slower request pages. Real longer outages still fail safely.
+- No env edits, schema changes, manual data writes or 1C changes. Timers retain
+  existing frequency and receipts/idempotency. Unrelated dirty files untouched.
+- Previous runtime: 574a75824e125e9942e32be2a025156ca87a2284 (1.4.2).
+- Previous image: sha256:cdd35285e35f497678bff0aaa4dd359c7a964b89c31b73c81318cb63c76d4040.
+- Rollback tag: offonika-portal-attention-rollback:pre-1.4.3-20261012.
+- Replacement image: sha256:446bc6de92baebc33f66702b5b65ebcf9a38c40875f1647f376c9990beea276c.
+- Schema, compose and Dockerfile unchanged; rollback needs no DB restore.
+- Exact release files: lib/expense-request-source.ts,
+  tests/expense-request-source-timeout.test.ts, package.json, package-lock.json.
+- Evidence: /tmp/mobo-attention-release-143.log and .exit (0), independent
+  systemctl status and authenticated UI inspection for the 14:33 cycle.
+  The temporary script incorrectly counted a blank exit timestamp during service
+  startup as a completed cycle, so its counter was not accepted as proof. The
+  second real cycle was waited for and verified separately; local helper fixed.
+  Its supplemental DB query sorted null completion timestamps first and returned
+  legacy unfinished runs; that output was not used as latest-success evidence.

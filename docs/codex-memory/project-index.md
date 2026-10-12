@@ -133,5 +133,5 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 - Scope, tests, production checks and rollback: `admin-attention-relevance-20261012.md`.
 
 - ADMIN production 1.4.2: [concrete push, shift deadlines and delayed cash issue](admin-attention-deadlines-20261012.md).
-  Release verified; expense-source timeout predating release remains under diagnosis.
-  New 1C request delivery is not confirmed healthy until complete sync resumes.
+  Follow-up 1.4.3 gives batch reads a 15-second minimum; automatic sync and ADMIN
+  freshness verified at 14:30 and 14:33 MSK after an intermittent source timeout.
