@@ -150,3 +150,11 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
   recovery, source-health noise policy, simplified native payment form and
   verification limits and rollback evidence. Released 2026-10-12 as 1.4.6,
   runtime commit `2db322a`, preserving the independently released 1.4.5 dialogs.
+
+## Technical Bell Separation — Production 1.4.8
+
+- `technical-bell-separation-20261012.md`: owner approved removing the prolonged
+  technical summary from attention/badge/push while retaining System diagnostics.
+  Released 2026-10-12 as 1.4.8, runtime `bbee494`. Real ADMIN badge verified
+  empty while System retains diagnostics. The 1.4.6 daily technical summary is
+  superseded; technical health is no longer an owner business task.
