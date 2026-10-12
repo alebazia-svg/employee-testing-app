@@ -150,3 +150,26 @@ and package-lock.json (all three version fields 1.4.2).
 - Local evidence: /tmp/mobo-attention-release-142.log and .exit;
   /tmp/mobo-attention-142-check.log and .exit; screenshot
   /Users/bela/.codex/visualizations/2026/10/12/cash-issue/production-attention-142.png.
+
+
+## Source-timeout diagnosis and prepared fix (not yet released)
+
+Owner resumed work on the incident after correcting a voice-transcription stop.
+A read-only probe at 14:14 MSK used the production container's existing 1C client
+credentials without exposing or changing them. Runtime timeout is 5000 ms.
+Version returned HTTP 200 in 369 ms; today's two requests in 373 ms; the monthly
+100-row page in 3915 ms and its 26-row remainder in 1049 ms. All expense response
+completeness flags were true. Scheduled reads still failed at 14:15. The source
+is reachable; the shared short timeout leaves insufficient headroom for batch
+reads during concurrent load. The probe itself used a 30-second ceiling and
+performed no writes or notification sends.
+
+Prepared code commit `3183aa3` gives expense snapshot pages a 15-second minimum
+while preserving explicitly longer settings. It keeps the full 31-day scope,
+pagination, completeness rules and abort behavior, with no retries or env edits.
+Regression reproduced failure at five seconds and passes for two valid slow pages;
+hanging reads still abort and longer configured timeouts are respected. Total
+27 source/sync/lifecycle/regression checks, TypeScript and isolated production
+build passed. Exact files: lib/expense-request-source.ts and
+tests/expense-request-source-timeout.test.ts. Production still 1.4.2; separate
+release approval requested. Do not claim the live incident resolved yet.
