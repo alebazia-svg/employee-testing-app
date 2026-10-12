@@ -80,13 +80,11 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
         <button type="submit" className="min-h-11 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700">Найти</button>
         {(query || filter!=='all') && <Link className="text-sm text-[#754725] underline" href={`/admin/expense-requests${history?'?view=history':''}`}>Сбросить</Link>}
       </form>
-      <p className="mb-2 text-xs leading-5 text-slate-600">{history?'Завершённые заявки и архив статусов 1С':'Сначала — решения, затем — выдача. В каждой группе более ранние выше.'}</p>
       <section aria-label="Заявки на расходы" className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <Suspense fallback={<><p role="status" className="px-5 py-3 text-sm text-slate-500">Обновляем подотчёт…</p>{rows.map(item=><ExpenseRequestDialogRow key={item.id} item={item}/>)}</>}>
           <ProcurementDeliveryAdminSection history={history} cursor={params?.deliveryCursor} query={query} stageFilter={filter} hasMoreNative={hasMore} empty={empty} rows={rows.map(item=>({id:item.id,nativeRef:item.nativeRef,date:item.date || item.checkedAt,queueSince:item.since,stage:item.stage === 'closed'?'check':item.stage,content:<ExpenseRequestDialogRow item={item}/>}))}/>
         </Suspense>
       </section>
-      <p className="mt-3 text-xs leading-5 text-slate-600">«К оплате» остаётся в работе до подтверждения расходника. Прочтение заявки не меняет её статус.</p>
     </div>
   </AdminShell>;
 }

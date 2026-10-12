@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { expenseRecipient, expenseVisibleLineFields, expenseReviewFields } from '../lib/expense-request-form-view';
+import type { NativeExpenseState, NativeExpenseValue } from '../lib/expense-request-command';
+const cell = (filled=false) => ({filled,type:'Строка',xml:filled?'value':'',value:'',ref:'',name:''}) as NativeExpenseValue;
+const state = (operation:string) => ({document:{business_operation:{name:operation},counterparty:{name:'Доставка'},partner:{name:'Не получатель'},accountable_person:{name:'Астемир'}}}) as unknown as NativeExpenseState;
+const fields = Object.fromEntries(['СтатьяДвиженияДенежныхСредств','СтатьяРасходов','Подразделение','Партнер','Заказ','ДоговорКредитаДепозита','АналитикаРасходов'].map(k=>[k,cell()]));
+test('other expenses expose missing articles and department without empty supplier/credit fields',()=>assert.deepEqual(expenseVisibleLineFields(state('Прочий расход ДС'),fields,Object.keys(fields)),['СтатьяДвиженияДенежныхСредств','СтатьяРасходов','Подразделение']));
+test('settlements retain partner and basis, not expense coding',()=>assert.deepEqual(expenseReviewFields(state('Оплата поставщику')),['СтатьяДвиженияДенежныхСредств','Партнер','Заказ']));
+test('accountable recipient never falls back to partner or counterparty',()=>{const s=state('Выдача ДС подотчетнику');assert.equal(expenseRecipient(s),'Астемир');s.document.accountable_person={name:''};assert.equal(expenseRecipient(s),'');assert.deepEqual(expenseReviewFields(s),['СтатьяДвиженияДенежныхСредств']);});
+test('legal recipient is shown separately from settlement partner',()=>assert.equal(expenseRecipient(state('Прочий расход ДС')),'Доставка'));
+test('populated analytics are never hidden, conditional fields can be exposed after native error',()=>{const s=state('Прочий расход ДС');assert.ok(expenseVisibleLineFields(s,{...fields,АналитикаРасходов:cell(true)},Object.keys(fields)).includes('АналитикаРасходов'));assert.ok(expenseVisibleLineFields(s,fields,Object.keys(fields),true).includes('АналитикаРасходов'));});
+test('unknown operation and multiple recipients do not silently collapse to known case',()=>{assert.equal(expenseVisibleLineFields(state('Другая операция'),fields,Object.keys(fields)).length,Object.keys(fields).length);const s=state('Выдача ДС подотчетнику');s.document.multiple_recipients=true;assert.match(expenseRecipient(s),/Несколько/);});

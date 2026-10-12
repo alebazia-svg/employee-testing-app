@@ -44,7 +44,7 @@ export function ExpenseRequestsList({ rows, delivery, history, query, empty, war
       {summaryEntries.some(row => row.stage === 'check') ? <span className="text-amber-800">Проверить статус: {summaryEntries.filter(row => row.stage === 'check').length}</span> : null}
       {older ? <span className="text-xs font-semibold text-amber-800">Ждут решения более суток: {older}</span> : null}
     </div> : null}
-<div className="hidden grid-cols-[220px_minmax(0,1fr)_176px_224px] min-[1600px]:grid-cols-[240px_minmax(0,1fr)_220px_240px] gap-5 border-b border-slate-100 bg-slate-50/60 px-5 py-3 text-xs font-semibold text-slate-600 xl:grid"><span>Сотрудник и сумма</span><span>Назначение</span><span>Касса выдачи</span><span>Решение и статус</span></div>
+<div className="hidden grid-cols-[260px_minmax(0,1fr)_176px_144px] gap-5 border-b border-slate-100 bg-slate-50/60 px-5 py-3 text-xs font-semibold text-slate-600 xl:grid"><span>Сотрудник и сумма</span><span>Назначение</span><span>Касса выдачи</span><span>Статус</span></div>
     <div className="divide-y divide-slate-100">{entries.map(row => <div key={row.key}>{row.content}</div>)}</div>
     {hasMoreNative ? <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">Найдено больше 200 заявок. Показаны первые 200 подходящих записей; уточните поиск. Полный список доступен в 1С.</p> : null}
     {!showCurrent && !combined.length && !warning ? empty : null}

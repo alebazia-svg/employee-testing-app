@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, RefreshCw, Pencil, Search, X } from 'lucide-react';
+import { expenseFormLabels, expenseRecipient, expenseReviewFields, expenseVisibleLineFields } from '@/lib/expense-request-form-view';
 import { expenseBreakdownDisplay } from '@/lib/expense-request-breakdown';
 import { isExpenseRef, parseExpenseCommand, readNativeExpenseCard, supportsExpenseAction, type ExpenseChange, type ExpenseCommand, type ExpenseField, type NativeExpenseCard, type NativeExpenseState, type NativeExpenseValue } from '@/lib/expense-request-command';
 
@@ -74,6 +75,7 @@ export function ExpenseNativeClient({ caseId, onDirtyChange, onBusyChange }: { c
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [showConditional, setShowConditional] = useState(false);
   const [activeField, setActiveField] = useState<string | null>(null);
   const draftNames = useRef<Record<string, string>>({});
   const [changes, setChanges] = useState<Record<string, ExpenseChange>>({});
@@ -149,63 +151,59 @@ export function ExpenseNativeClient({ caseId, onDirtyChange, onBusyChange }: { c
   const diff = preview ? differences(preview.before, preview.after) : [];
   const count = Object.keys(changes).length;
   const editable = canAct && !preview;
-  function fact(title: string, value: string, wide = false, fieldInfo?: {scope:'header' | 'line';line:number;key:string;cell:NativeExpenseValue}) {
+  function fact(title: string, value: string, wide = false, fieldInfo?: {scope:'header' | 'line';line:number;key:string;cell:NativeExpenseValue}, review = false) {
     const id = fieldInfo ? changeKey(fieldInfo.scope, fieldInfo.line, fieldInfo.key) : title;
     const schema = fieldInfo && card!.schema.find(item => item.scope === fieldInfo.scope && item.name === fieldInfo.key);
     const draft = changes[id];
     const display = draft ? draftNames.current[id] || (draft.type === 'Строка' ? draft.xml || '—' : 'Выбрано новое значение') : value;
+    const missing = pendingDecision && review && !(draft ? draft.xml.trim() && draft.xml !== '00000000-0000-0000-0000-000000000000' : value.trim());
     const canEdit = !!schema && !preview && enabled && pendingDecision && supportsPayable;
-    return <div key={id} className={`relative border-b border-slate-100 px-1 py-2 ${wide ? 'sm:col-span-2' : ''} ${draft ? 'ring-1 ring-blue-200' : ''} ${activeField === id ? 'z-20' : ''}`}>
-      <p className='text-xs font-medium text-slate-500'>{title}{draft && <span className='ml-2 normal-case tracking-normal text-blue-700'>изменено</span>}</p>
-      {activeField === id && schema && fieldInfo && !preview ? <FieldEditor field={schema} current={fieldInfo.cell} draft={draft} api={api} line={fieldInfo.line} disabled={!editable} onChange={change} onClose={() => setActiveField(null)} /> : canEdit ? <button type='button' aria-label={`Изменить: ${title}`} disabled={!editable} className='mt-1 flex min-h-6 w-full items-start justify-between gap-2 text-left text-sm font-semibold leading-relaxed text-slate-800 disabled:opacity-60' onClick={() => setActiveField(id)}><span className='whitespace-pre-wrap break-words'>{display || 'Не заполнено'}</span><Pencil className='mt-1 h-3.5 w-3.5 shrink-0 text-slate-400' /></button> : <div className='mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed text-slate-800'>{display || '—'}</div>}
+    return <div key={id} className={`relative border-b px-2 py-2 ${missing ? 'rounded-lg border-amber-200 bg-amber-50' : 'border-slate-100'} ${wide ? 'sm:col-span-2' : ''} ${draft ? 'ring-1 ring-blue-200' : ''} ${activeField === id ? 'z-20' : ''}`}>
+      <p className='text-xs font-medium text-slate-500'>{title}{missing && <span className='ml-2 font-semibold text-amber-800'>Нужно заполнить</span>}{draft && <span className='ml-2 normal-case tracking-normal text-blue-700'>изменено</span>}</p>
+      {activeField === id && schema && fieldInfo && !preview ? <FieldEditor field={schema} current={fieldInfo.cell} draft={draft} api={api} line={fieldInfo.line} disabled={!editable} onChange={change} onClose={() => setActiveField(null)} /> : canEdit ? <button type='button' aria-label={`Изменить: ${title}`} disabled={!editable} className='mt-1 flex min-h-6 w-full items-start justify-between gap-2 text-left text-sm font-semibold leading-relaxed text-slate-800 disabled:opacity-60' onClick={() => setActiveField(id)}><span className={`whitespace-pre-wrap break-words ${missing ? 'text-amber-900' : ''}`}>{display || 'Выбрать…'}</span><Pencil className='mt-1 h-3.5 w-3.5 shrink-0 text-slate-400' /></button> : <div className='mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-relaxed text-slate-800'>{display || 'Не указано в 1С'}</div>}
     </div>;
   }
-  function nativeFact(title: string, scope: 'header' | 'line', line: number, key: string, wide = false) {
+  function nativeFact(title: string, scope: 'header' | 'line', line: number, key: string, wide = false, review = false) {
     const cell = (scope === 'header' ? state.header : state.lines.find(row => row.line_number === line)?.fields)?.[key];
-    return fact(title, cell?.filled ? expenseBreakdownDisplay(cell) : '', wide, cell ? {scope,line,key,cell} : undefined);
+    return fact(title, cell?.filled ? expenseBreakdownDisplay(cell) : '', wide, cell ? {scope,line,key,cell} : undefined, review);
   }
   const executionLabels: Record<string,string> = {not_executed:'Не исполнена',partially_executed:'Частично исполнена',fully_executed:'Полностью исполнена',unavailable:'Данные недоступны',needs_review:'Нужен просмотр администратора'};
   return <section>
-    <h2 className='text-lg font-extrabold text-slate-950'>Что запрашивают</h2>
-    <p className='mt-1 text-xs font-medium text-slate-500'>Основные сведения заявки, полученные из 1С.{pendingDecision && enabled ? ' Нажмите на поле с карандашом, чтобы исправить.' : ''}</p>
+    <p className='text-xs font-medium text-slate-500'>Проверьте получателя, кассу и назначение расхода. Поля с карандашом можно исправить здесь.</p>
     {loading && <p role='status' className='mt-3 text-sm text-slate-500'>Обновляем из 1С…</p>}
-    {error && <p role='alert' className='mt-3 whitespace-pre-wrap rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950'>{error}</p>}
+    {error && <div role='alert' className='mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950'><p className='whitespace-pre-wrap'>{error}</p><button type='button' className='mt-2 underline underline-offset-2' onClick={() => setShowConditional(true)}>Показать уточнения для проверки в 1С</button></div>}
     {notice && <p role='status' className='mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900'>{notice}</p>}
-    <div className='mt-4 grid gap-3 sm:grid-cols-2'>
-      {fact('Заявитель',name(doc.requested_by))}
-      {fact('Сумма',money(doc.amount,doc.currency))}
+    <div className='mt-3 grid gap-x-4 gap-y-1 sm:grid-cols-2'>
+      {fact('Получатель',expenseRecipient(state),false,undefined,true)}
+      {fact('Касса',name(doc.cashbox),false,undefined,(doc.payment_form as {cash?:boolean})?.cash === true)}
+      {fact('Менеджер / заявитель',name(doc.requested_by),false,undefined,true)}
       {fact('Операция',name(doc.business_operation))}
-      {nativeFact('Статья ДДС','header',0,'СтатьяДвиженияДенежныхСредств')}
-      <div className='sm:col-span-2'>
-        <h3 className='text-sm font-bold text-slate-900'>Расшифровка платежа</h3>
-        {!state.lines.length && <p className='mt-2 text-sm text-amber-800'>В 1С нет строк расшифровки. Добавьте строку в 1С и обновите заявку.</p>}
-        {state.lines.map(line => {
-          const mainKeys = ['СтатьяДвиженияДенежныхСредств', 'СтатьяРасходов', 'Подразделение', 'Партнер', 'Заказ'];
-          const extraFields = card.schema.filter(field => field.scope === 'line' && !mainKeys.includes(field.name) && line.fields[field.name]);
-          const rowLabel = (title: string) => state.lines.length > 1 ? `${title} · строка ${line.line_number}` : title;
-          return <div key={line.line_number} className='mt-2 border-t border-slate-200 pt-1'>
-            {state.lines.length > 1 && <p className='mt-2 text-xs font-semibold text-slate-500'>Строка {line.line_number} · {line.fields.Сумма ? expenseBreakdownDisplay(line.fields.Сумма) : 'Сумма не передана'}</p>}
-            <div className='grid gap-x-4 sm:grid-cols-2'>
-              {line.fields.СтатьяДвиженияДенежныхСредств && nativeFact(rowLabel('Статья ДДС в расшифровке'),'line',line.line_number,'СтатьяДвиженияДенежныхСредств')}
-              {line.fields.СтатьяРасходов && nativeFact(rowLabel('Статья расходов/активов'),'line',line.line_number,'СтатьяРасходов')}
-              {line.fields.Подразделение && nativeFact(rowLabel('Подразделение расходов'),'line',line.line_number,'Подразделение')}
-              {line.fields.Партнер && nativeFact(rowLabel('Партнёр'),'line',line.line_number,'Партнер')}
-              {line.fields.Заказ && nativeFact(rowLabel('Основание'),'line',line.line_number,'Заказ')}
-            </div>
-            {!!extraFields.length && <details className='mt-2'>
-              <summary className='cursor-pointer py-2 text-xs font-semibold text-slate-600'>Аналитика и другие поля{extraFields.some(field => line.fields[field.name].filled) ? ' · есть заполненные' : ''}</summary>
-              <div className='grid gap-x-4 sm:grid-cols-2'>{extraFields.map(field => nativeFact(rowLabel(field.label),'line',line.line_number,field.name))}</div>
-            </details>}
-          </div>;
-        })}
-      </div>
-      {nativeFact('Назначение платежа','header',0,'НазначениеПлатежа',true)}
-      {nativeFact('Комментарий','header',0,'Комментарий',true)}
+      {nativeFact('За что расход','header',0,'Комментарий',true,!state.header.НазначениеПлатежа?.filled)}
+      {(state.header.НазначениеПлатежа?.filled || (doc.payment_form as {cashless?:boolean})?.cashless === true) && nativeFact('Назначение платежа','header',0,'НазначениеПлатежа',true)}
+    </div>
+    <div className='mt-4 border-t border-slate-200 pt-3'>
+      <h3 className='text-sm font-bold text-slate-900'>На что отнести расход</h3>
+      {pendingDecision && <p className='mt-1 text-xs text-slate-500'>Незаполненные основные поля выделены. Обязательность проверит 1С перед утверждением.</p>}
+      {!state.lines.length && <p className='mt-2 text-sm text-amber-800'>В 1С нет строк расшифровки. Проверьте состав заявки в 1С.</p>}
+      {state.lines.map(line => {
+        const fields = expenseVisibleLineFields(state,line.fields,card.schema.filter(field => field.scope === 'line').map(field => field.name),showConditional);
+        const reviewKeys = expenseReviewFields(state);
+        const rowLabel = (title: string) => state.lines.length > 1 ? `${title} · строка ${line.line_number}` : title;
+        return <div key={line.line_number} className='mt-2'>
+          {state.lines.length > 1 && <p className='mb-1 text-xs font-semibold text-slate-500'>Строка {line.line_number} · {line.fields.Сумма ? expenseBreakdownDisplay(line.fields.Сумма) : 'Сумма не передана'}</p>}
+          <div className='grid gap-x-4 gap-y-1 sm:grid-cols-2'>
+            {fields.map(key => nativeFact(rowLabel(expenseFormLabels[key] || card.schema.find(field => field.scope === 'line' && field.name === key)?.label || key),'line',line.line_number,key,false,reviewKeys.includes(key)))}
+          </div>
+        </div>;
+      })}
+      {(!state.lines.length || state.header.СтатьяДвиженияДенежныхСредств?.filled && !state.lines.every(line => line.fields.СтатьяДвиженияДенежныхСредств?.xml === state.header.СтатьяДвиженияДенежныхСредств.xml)) && nativeFact('Статья движения денег в шапке','header',0,'СтатьяДвиженияДенежныхСредств')}
+    </div>
+    {(payable || Number(state.execution.executed_amount) > 0 || state.execution.complete !== true) && <div className='mt-3 grid gap-x-4 sm:grid-cols-2'>
       {fact('Исполнение',executionLabels[String(state.execution.state)] || 'Нет данных')}
       {fact('Исполнено / осталось',state.execution.complete === true ? `${money(state.execution.executed_amount,doc.currency)} / ${money(state.execution.remaining_amount,doc.currency)}` : 'Нет данных')}
-    </div>
+    </div>}
     {preview ? <div className='mt-4 border-t border-slate-200 pt-3'><p className='text-sm font-semibold'>1С проверила изменения. Осталось подтвердить:</p><div className='my-2 space-y-1'>{diff.map((row,index) => <p key={index} className='break-words text-sm text-slate-600'>{row.label}: {row.before} → <strong className='text-slate-900'>{row.after}</strong></p>)}</div><div className='flex flex-wrap gap-2'><button className={primary} disabled={busy || uncertain} onClick={() => void send('confirm',preview.command.action)}>{preview.command.action === 'mark_payable' ? 'Утвердить к оплате' : 'Сохранить в 1С'}</button><button className={button} disabled={busy || uncertain} onClick={() => {setPreview(null);setActiveField(null);}}>Продолжить редактирование</button></div></div> : pendingDecision && enabled && supportsPayable ? <div className='mt-4 border-t border-slate-200 pt-3'>
-      <p className='mb-3 text-xs text-slate-600'>1С проверит обязательные поля перед утверждением. Изменения запишутся только после вашего подтверждения.</p>
+      <p className='mb-3 text-xs text-slate-600'>Получатель и касса изменяются в 1С. Исправления запишутся после проверки и вашего подтверждения.</p>
       {!!count && <p className='mb-2 text-xs text-slate-600'>Исправлено полей: {count}. Изменения ещё не сохранены.</p>}
       <div className='flex flex-wrap gap-2'><button className={primary} disabled={!canAct} onClick={() => void send('preview','mark_payable')}><Check className='h-4 w-4' />Проверить и утвердить к оплате</button>{!!count && <><button className={button} disabled={!canSave} onClick={() => void send('preview','save')}>Сохранить без утверждения</button><button className={button} disabled={busy || uncertain} onClick={() => {setChanges({});draftNames.current={};setActiveField(null);setError('');}}>Отменить изменения</button></>}</div>
     </div> : payable ? <p className='mt-3 text-sm text-slate-600'>Статус согласования в 1С: «К оплате». Исполнение показано выше.</p> : null}
