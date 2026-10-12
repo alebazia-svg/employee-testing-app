@@ -140,7 +140,9 @@ export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date;
   if (input.to.getTime() - input.from.getTime() > MAX_PERIOD_MS) throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
   const env = readOneCRuntimeEnv();
   if (!env.baseUrl || !env.user || !env.password) throw new Error('EXPENSE_REQUEST_SOURCE_UNCONFIGURED');
-  const timeoutMs = readPositiveInteger(env.requestTimeoutMs, 15_000);
+  // A page includes breakdowns and linked documents for up to 100 requests.
+  // The shared five-second 1C setting is too short for this batch read.
+  const timeoutMs = Math.max(readPositiveInteger(env.requestTimeoutMs, 15_000), 15_000);
   const auth = `Basic ${Buffer.from(`${env.user}:${env.password}`, 'utf8').toString('base64')}`;
   const rows: ExpenseRequestSourceRow[] = [];
   const errors: string[] = [];
