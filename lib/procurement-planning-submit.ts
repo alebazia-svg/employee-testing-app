@@ -1,13 +1,13 @@
 import 'server-only';
-import type { SupplierOrderFinanceRow } from './procurement-payment-source';
+import type { SupplierOrderFinanceRow, SupplierOrderFinanceSnapshot } from './procurement-payment-source';
 import { verifySelectedPlanningOrders } from './procurement-planning-sync';
 import { hasCurrentPaidClosure, hasRecordedPaidClosure } from './procurement-order-payment-closure';
 
-export async function planningSubmissionError(rows: SupplierOrderFinanceRow[], requested: { refs: string[]; amount: number; condition?: string }[], onVerified?: (rows: SupplierOrderFinanceRow[]) => void) {
+export async function planningSubmissionError(rows: SupplierOrderFinanceRow[], requested: { refs: string[]; amount: number; condition?: string }[], onVerified?: (rows: SupplierOrderFinanceRow[]) => void, commandCatalogue?: SupplierOrderFinanceSnapshot) {
   if (new Set(rows.map(row => row.ref)).size > 20) return 'За одну отправку можно проверить до 20 заказов. Разделите список оплат.';
   try {
     const unique = [...new Map(rows.map(row => [row.ref, row])).values()];
-    const checked = await verifySelectedPlanningOrders(unique);
+    const checked = await verifySelectedPlanningOrders(unique, commandCatalogue);
     if (checked.some(row => hasCurrentPaidClosure(row))) return 'Приобретения уже оплачены. Обновите список заказов.';
     if (checked.some(row => hasRecordedPaidClosure(row))) return 'Ранее полная оплата уже подтверждалась. Повторная заявка недоступна до обновления сверки с 1С.';
     const allowed = new Map(checked.map(row => [row.ref, row]));

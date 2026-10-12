@@ -34,7 +34,7 @@ export async function validateBasisChangeTarget(before: { supplierPartner: strin
   const error = await planningSubmissionError(orders, [{ refs: data.orderRefs, amount: data.plannedAmount!, condition: data.condition }], verified => {
     verifiedOrders = verified;
     data.condition = reviewRequestCondition(verified, data.condition);
-  });
+  }, source);
   if (error) throw new Error(error);
   if (verifiedOrders.some(order => !['order', 'prepayment'].includes(buyerOrderPurpose(order, balance)))) throw new Error('Заказ больше не предлагается для оплаты. Обновите список.');
   return { ...data, orderNumbers: orders.map(order => order.number), supplierCounterparty: orders[0]?.supplierCounterparty || '' };

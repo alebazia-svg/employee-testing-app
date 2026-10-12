@@ -130,12 +130,13 @@ export async function collectPlanningSnapshot(previous: SupplierOrderFinanceSnap
   return { rows: [...output.values()], outstandingOrderRefs: [...discovery.orders.keys()], checkedAt: now.toISOString(), complete: true, errors: [], planningVerified: true };
 }
 
-/** Recheck selection identity only. Reconciliation never blocks a request. */
-export async function verifySelectedPlanningOrders(rows: SupplierOrderFinanceRow[]) {
+/** Recheck selection identity only. The optional catalogue must be the fresh
+ * server read from this command, never a browser payload or a previous request. */
+export async function verifySelectedPlanningOrders(rows: SupplierOrderFinanceRow[], commandCatalogue?: SupplierOrderFinanceSnapshot) {
   if (!rows.length) return rows;
   if (rows.length > 20) throw Error('SELECTION_LIMIT');
   const { fetchRequestOrderCatalogue } = await import('./procurement-request-catalogue');
-  const catalogue = await fetchRequestOrderCatalogue();
+  const catalogue = commandCatalogue ?? await fetchRequestOrderCatalogue();
   if (!catalogue.complete) throw Error('INCOMPLETE_REQUEST_CATALOGUE');
   const live = new Map(catalogue.rows.map(row => [row.ref, row]));
   const normalize = (value: string) => value.trim().toLocaleLowerCase('ru').replaceAll('ё', 'е').replace(/\s+/g, ' ');

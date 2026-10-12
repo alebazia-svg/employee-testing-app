@@ -17,7 +17,7 @@ test('revision routes enforce roles, ownership, reason and repeat approval with 
     const mocks: Record<string,string> = {
       auth:'export const getCurrentUser=async()=>globalThis.revisionRouteUser;',
       prisma:'export const prisma=globalThis.revisionRouteDb;',
-      'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,payments:[],conversions:[]});',
+      'procurement-currency-payment-source':'export const fetchSupplierCurrencyPaymentSnapshot=async()=>({complete:true,rubPaymentsSupported:true,payments:[],conversions:[]});',
       'expense-request-source':'export const fetchExpenseRequestSnapshot=async()=>({complete:true,rows:[]});export const expenseRequestMoscowCalendarDate=()=>"2026-09-17";export const expenseRequestMoscowDayEnd=()=>new Date("2026-10-12");',
       'procurement-payment-source':'export const fetchSupplierOrderFinance=async()=>({complete:true,rows:[]});export const ordersForManager=x=>x;export const ordersRequiringPayment=x=>x;export const normalizeManagerName=x=>x.trim().toLowerCase();',
       'procurement-request-catalogue':'export const fetchRequestOrderCatalogue=async()=>({complete:true,rows:[]});',

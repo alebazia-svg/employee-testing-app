@@ -50,9 +50,10 @@ export async function POST(req: Request) {
   try {
   const managerName = user.oneCManagerName?.trim() || user.name;
   const hasDebt = payload.rows.some(row => row.basis === 'DEBT');
-  const [source, settlements, debtSupplierNames] = await Promise.all([
+  const [source, settlements, debtSupplierNames, debtEvidence] = await Promise.all([
     fetchSupplierOrderFinance(), fetchSupplierSettlements(),
     hasDebt ? fetchManagerSupplierNames(managerName) : Promise.resolve([]),
+    freshEvidence(),
   ]);
   if (!source.complete) return Response.json({ error: 'Данные 1С получены не полностью. Повторите отправку позже.' }, { status: 503 });
   const managerOrders = ordersForManager(source.rows, managerName);
@@ -110,11 +111,11 @@ export async function POST(req: Request) {
   }
   const planningRows = checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length ? [row.order] : []);
   const fundingRequests=checkedRows.flatMap(row=>'data' in row&&row.data?[row.data]:[]);
-  const [planningError, debtEvidence, fundingBalance] = await Promise.all([
+  const [planningError, fundingBalance] = await Promise.all([
     planningSubmissionError(planningRows, checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length
     ? [{ refs: row.data.orderRefs, amount: row.data.plannedAmount || Number(row.data.foreignAmount) * Number(rateReference?.rate), condition: row.data.condition }] : []), verified => {
       for (const row of checkedRows) if ('data' in row && row.data) row.data.condition = reviewRequestCondition(verified.filter(order => row.data!.orderRefs.includes(order.ref)), row.data.condition);
-    }), freshEvidence(), readFundingBalance(fundingRequests),
+    }, source), readFundingBalance(fundingRequests),
   ]);
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
 

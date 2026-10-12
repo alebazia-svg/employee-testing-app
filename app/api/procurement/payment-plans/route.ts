@@ -45,8 +45,9 @@ export async function POST(req: Request) {
   }
   if (!plannedAmount) return Response.json({ error: 'Укажите сумму оплаты.' }, { status: 400 });
   const managerName = user.oneCManagerName?.trim() || user.name;
-  const [source, settlements] = await Promise.all([
-    fetchSupplierOrderFinance(), fetchSupplierSettlements(),
+  const [source, settlements, evidence, funding] = await Promise.all([
+    fetchSupplierOrderFinance(), fetchSupplierSettlements(), freshEvidence().catch(() => null),
+    readFundingBalance([checked.data]).then(balance => ({ balance, failed: false })).catch(() => ({ balance: null, failed: true })),
   ]);
   if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
   const allowed = new Map(ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]));
@@ -58,16 +59,12 @@ export async function POST(req: Request) {
   if (balances.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503 });
   if (checked.data.orderRefs.some(ref => !['order', 'prepayment'].includes(buyerOrderPurpose(allowed.get(ref)!, balances.bySupplier[checked.data.supplierPartner])))) return Response.json({ error: 'Заказ не предлагается для новой оплаты: долга нет или расчёты на сверке. Обновите список.' }, { status: 400 });
   checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.get(ref)!.number);
-  // Ownership and eligibility have been checked above. These independent reads
-  // must both succeed before the unchanged transactional write/overlap guard.
-  const [planningError, evidence] = await Promise.all([
-    planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); }),
-    freshEvidence().catch(() => null),
-  ]);
+  // Reuse this command's fresh catalogue, retaining selection/closure guards.
+  const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); }, source);
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
   if (!evidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Заявка не отправлена; повторите позже.' }, { status: 503 });
-  let fundingBalance:number|null=null;
-  try{fundingBalance=await readFundingBalance([checked.data]);}catch{return Response.json({error:'Остаток кассы USDT пока не подтверждён. Выберите наличные для обмена или повторите позже.'},{status:409});}
+  if(funding.failed)return Response.json({error:'Остаток кассы USDT пока не подтверждён. Выберите наличные для обмена или повторите позже.'},{status:409});
+  const fundingBalance = funding.balance;
   let fundingError='';
   const plan = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;

@@ -91,46 +91,43 @@ export async function PATCH(
         const allowed = ordersForManager(ordersForRequest(source.rows), user.oneCManagerName?.trim() || user.name);
         if (!checked.data.orderRefs.every(ref => allowed.some(o => o.ref === ref && o.supplierPartner === checked.data.supplierPartner))) throw new Error('Выберите заказы вашего поставщика из 1С.');
         checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.find(o => o.ref === ref)!.number);
-        const planningError = await planningSubmissionError(allowed.filter(o => checked.data.orderRefs.includes(o.ref)), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); });
+        const planningError = await planningSubmissionError(allowed.filter(o => checked.data.orderRefs.includes(o.ref)), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); }, source);
         if (planningError) throw new Error(planningError);
       } else if (!basisChanged) checked.data.orderNumbers = Array.isArray(existing.orderNumbers) ? existing.orderNumbers.map(String) : [];
       return Response.json(await proposeApprovedRevision(id, user, {...checked.data, plannedAmount}, String(payload.changeReason || ''), String(payload.version || '')));
     } catch (error) { return Response.json({ error: error instanceof Error && /^[А-ЯЁ]/.test(error.message) ? error.message : 'Не удалось проверить изменение. Повторите позже.' }, {status:409}); }
   }
-  if (!debt && !basisChanged) {
-  const source = await fetchSupplierOrderFinance();
-  if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
-  const managerName = user.oneCManagerName?.trim() || user.name;
-  const allowed = new Map(
-    ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [
-      order.ref,
-      order,
-    ]),
-  );
-  if (!checked.data.orderRefs.every((ref) => allowed.has(ref)))
-    return Response.json(
-      { error: "Один из заказов не относится к вашему менеджеру в 1С." },
-      { status: 400 },
-    );
-  const partners = new Set(
-    checked.data.orderRefs.map((ref) => allowed.get(ref)?.supplierPartner),
-  );
-  checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.get(ref)!.number);
-  const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); });
-  if (planningError) return Response.json({ error: planningError }, { status: 409 });
-  if (partners.size !== 1 || !partners.has(checked.data.supplierPartner))
-    return Response.json(
-      { error: "Заказы должны относиться к выбранному поставщику." },
-      { status: 400 },
-    );
-  }
-  const overlapEvidence = await freshEvidence().catch(() => null);
+  // Independent reads start together, but no write can begin until all guards
+  // finish. The catalogue stays local to this command; nothing is cached across saves.
+  const [orderError, overlapEvidence, funding] = await Promise.all([
+    (async () => {
+      if (debt || basisChanged) return null;
+      const source = await fetchSupplierOrderFinance();
+      if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
+      const managerName = user.oneCManagerName?.trim() || user.name;
+      const allowed = new Map(
+        ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]),
+      );
+      if (!checked.data.orderRefs.every((ref) => allowed.has(ref)))
+        return Response.json({ error: "Один из заказов не относится к вашему менеджеру в 1С." }, { status: 400 });
+      const partners = new Set(checked.data.orderRefs.map((ref) => allowed.get(ref)?.supplierPartner));
+      checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.get(ref)!.number);
+      const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); }, source);
+      if (planningError) return Response.json({ error: planningError }, { status: 409 });
+      if (partners.size !== 1 || !partners.has(checked.data.supplierPartner))
+        return Response.json({ error: "Заказы должны относиться к выбранному поставщику." }, { status: 400 });
+      return null;
+    })(),
+    freshEvidence().catch(() => null),
+    readFundingBalance([checked.data]).then(balance => ({ balance, failed: false })).catch(() => ({ balance: null, failed: true })),
+  ]);
+  if (orderError) return orderError;
   if (!basisChanged) checked.data.condition = preservePaymentReview(existing.condition, checked.data.condition);
   if (!overlapEvidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Изменения не сохранены; повторите позже.' }, { status: 503 });
   let overlap = false;
   let editError = '';
-  let fundingBalance:number|null=null;
-  try{fundingBalance=await readFundingBalance([checked.data]);}catch{return Response.json({error:'Остаток кассы USDT пока не подтверждён. Выберите наличные для обмена или повторите позже.'},{status:409});}
+  if(funding.failed)return Response.json({error:'Остаток кассы USDT пока не подтверждён. Выберите наличные для обмена или повторите позже.'},{status:409});
+  const fundingBalance = funding.balance;
   const plan = await prisma
     .$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;

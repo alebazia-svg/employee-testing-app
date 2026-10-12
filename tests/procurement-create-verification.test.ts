@@ -4,7 +4,7 @@ import {PrismaClient} from '@prisma/client';
 import {build} from 'esbuild';
 import {createRequire} from 'node:module';
 
-test('real form batch path overlaps independent checks but writes only after both succeed',async()=>{
+test('real form batch path overlaps catalogue/evidence and writes only after all guards succeed',async()=>{
   assert.equal(process.env.DATABASE_URL,'postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test');
   const db=new PrismaClient(),g=globalThis as any,marker=`create-read-test-${Date.now()}`;
   const user=await db.user.create({data:{name:marker,login:marker,passwordHash:'not-login',role:'EMPLOYEE',portalArea:'PROCUREMENT'}});
@@ -14,13 +14,13 @@ test('real form batch path overlaps independent checks but writes only after bot
     const mocks:Record<string,string>={
       auth:'export const getCurrentUser=async()=>globalThis.createReadTest.user;',
       prisma:'export const prisma=globalThis.createReadTest.db;',
-      'procurement-request-catalogue':'export const fetchRequestOrderCatalogue=async()=>({complete:globalThis.createReadTest.complete,rows:globalThis.createReadTest.orders});',
+      'procurement-request-catalogue':`export async function fetchRequestOrderCatalogue(){const s=globalThis.createReadTest;s.started=true;await new Promise(resolve=>{s.release=resolve});return s.catalogue={complete:s.complete,rows:s.orders};}`,
       'procurement-supplier-roster':'export const fetchManagerSupplierNames=async()=>[];',
       'procurement-payment-source':'export const ordersForManager=(rows,name)=>rows.filter(r=>r.manager===name);export const normalizeSupplierOrder=x=>x;',
       'procurement-order-selection':'export const ordersForRequest=rows=>rows;export const reviewRequestCondition=(_rows,comment)=>comment;',
       'procurement-supplier-settlements':'export const fetchSupplierSettlements=async()=>({complete:true,rows:[]});export const summarizeSupplierSettlements=()=>({bySupplier:{},unsupportedCurrencyRows:0});',
       'procurement-supplier-position':'export const buyerOrderPurpose=()=>"order";export const supplierPosition=()=>"debt";',
-      'procurement-planning-submit':`export async function planningSubmissionError(){const s=globalThis.createReadTest;s.started=true;await new Promise(resolve=>{s.release=resolve});return s.planningError;}`,
+      'procurement-planning-submit':`export async function planningSubmissionError(_rows,_requests,_callback,catalogue){const s=globalThis.createReadTest;if(catalogue!==s.catalogue)throw Error('fresh catalogue not reused');return s.planningError;}`,
       'procurement-plan-revision-server':`export async function freshEvidence(){const s=globalThis.createReadTest;if(!s.started||!s.release)throw Error('checks not concurrent');s.release();if(s.fail)throw Error('SOURCE_TIMEOUT');const rows=await s.db.supplierPaymentPlan.findMany();return Object.assign(new Map(),{versions:new Map(rows.map(p=>[p.id,p.updatedAt.toISOString()]))});}`,
     };
     const out=await build({entryPoints:['app/api/procurement/payment-plans/batch/route.ts'],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'isolated',setup(b){b.onResolve({filter:/^(?:@\/lib\/|\.\/)/},a=>{const key=a.path.replace(/^@\/lib\/|^\.\//,'');return mocks[key]?{path:key,namespace:'mock'}:null;});b.onLoad({filter:/.*/,namespace:'mock'},a=>({contents:mocks[a.path],loader:'js'}));}}]});
