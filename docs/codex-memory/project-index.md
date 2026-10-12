@@ -143,3 +143,9 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
   article, department and additional editable analytics. Header and line scopes
   remain separate; no financial workflow or 1C module changed.
 - Release and verification: `expense-breakdown-release-20261012.md`.
+
+## Notifications and Expense Form — Local Correction Candidate
+
+- `notification-expense-correction-candidate-20261012.md`: old funding reminder
+  recovery, source-health noise policy, simplified native payment form and
+  verification limits. Local candidate after 1.4.4, **not released**.
