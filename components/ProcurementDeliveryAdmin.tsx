@@ -1,4 +1,5 @@
 'use client';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronRight } from 'lucide-react';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ExpenseRequestWaitingAge } from './ExpenseRequestWaitingAge';
@@ -9,6 +10,8 @@ import { deliveryNativeFresh, deliveryRequestIsClosed } from '@/lib/procurement-
 
 const money = (value: number) => `${value.toLocaleString('ru-RU', { minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 })} ₽`;
 export function ProcurementDeliveryAdmin({ view, children, compactSummary = false, actionsEnabled = true, now = Date.now() }: { view: DeliveryView; children?: React.ReactNode; compactSummary?: boolean; actionsEnabled?: boolean; now?: number }) {
+  const router = useRouter();
+  const targetRequest = useSearchParams().get('deliveryRequest');
   const [open, setOpen] = useState(false);
   const [actionsTarget, setActionsTarget] = useState<HTMLDivElement | null>(null);
   const [moreTarget, setMoreTarget] = useState<HTMLDivElement | null>(null);
@@ -17,6 +20,11 @@ export function ProcurementDeliveryAdmin({ view, children, compactSummary = fals
   const dialogId = useId(), titleId = useId();
   const closed = deliveryRequestIsClosed(view, now) || (view.requestStateAvailable && !view.requested);
   useEffect(() => { setOpen(false); }, [view.requestDetails?.requestedAt]);
+  useEffect(() => { if (targetRequest && targetRequest === view.requestId && !closed && view.requestStateAvailable) setOpen(true); }, [targetRequest, view.requestId, closed, view.requestStateAvailable]);
+  function closeDialog() {
+    setOpen(false);
+    if (targetRequest) { const url = new URL(window.location.href); url.searchParams.delete('deliveryRequest'); router.replace(url.pathname + url.search, { scroll: false }); }
+  }
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -48,7 +56,7 @@ export function ProcurementDeliveryAdmin({ view, children, compactSummary = fals
         <span className="flex items-center justify-between gap-3 border-t border-slate-100 pt-2 text-xs sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:border-0 sm:pt-0 xl:col-auto xl:row-auto"><span><span className="block font-semibold text-slate-800">{label}</span>{native?.state === 'partial' && <span className="mt-1 block text-slate-600">Осталось {money(native.remaining!)}</span>}{request && !native && !checking && <span className="mt-1 block"><ExpenseRequestWaitingAge since={request.requestedAt}/></span>}</span><ChevronRight aria-hidden="true" className="h-5 w-5 shrink-0 text-[#a66c43]"/><span className="sr-only">Открыть заявку</span></span>
       </button>
       <dialog ref={dialogRef} id={dialogId} aria-labelledby={titleId}
-        onCancel={event => { event.preventDefault(); setOpen(false); }} onClose={() => { setOpen(false); triggerRef.current?.focus(); }}
+        onCancel={event => { event.preventDefault(); closeDialog(); }} onClose={() => { setOpen(false); triggerRef.current?.focus(); }}
         style={{ height: 'fit-content' }} className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%_-_2rem)] max-w-[860px] overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 text-slate-950 shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-sm">
         <DeliveryDialogActionContext.Provider value={{ target: actionsTarget, moreTarget, enabled: actionsEnabled && open }}><div className="flex max-h-[calc(100dvh-2rem)] flex-col">
           <header className="shrink-0 border-b border-slate-200 px-5 pb-4 pt-5">
@@ -56,7 +64,7 @@ export function ProcurementDeliveryAdmin({ view, children, compactSummary = fals
               <div><h2 id={titleId} className="text-xl font-bold tracking-tight">Астемир</h2><p className="mt-1 text-xs text-slate-500">Выдача под отчёт{date ? ` · ${date}` : ''}</p></div>
               <div className="flex items-center gap-1">
                 <details onKeyDown={event => { if (event.key === 'Escape' && event.currentTarget.open) { event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }} onBlur={event => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false; }} className="relative hidden has-[button]:block"><summary aria-label="Дополнительные действия" className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-lg text-lg text-slate-500 hover:bg-slate-100 [&::-webkit-details-marker]:hidden">⋯</summary><div ref={setMoreTarget} className="absolute right-0 top-10 z-10 w-60 rounded-lg border border-slate-200 bg-white p-1 shadow-lg" /></details>
-                <button type="button" aria-label="Закрыть заявку" onClick={() => setOpen(false)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-xl text-slate-500 hover:bg-slate-100">×</button>
+                <button type="button" aria-label="Закрыть заявку" onClick={closeDialog} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-xl text-slate-500 hover:bg-slate-100">×</button>
               </div>
             </div>
             <dl className="mt-5 grid grid-cols-2 gap-4">
@@ -69,7 +77,7 @@ export function ProcurementDeliveryAdmin({ view, children, compactSummary = fals
             {children}
 
           </div>
-          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3"><button type="button" onClick={() => setOpen(false)} className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100">Закрыть</button><div ref={setActionsTarget} className="flex flex-wrap items-center justify-end gap-2" /></div>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3"><button type="button" onClick={closeDialog} className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100">Закрыть</button><div ref={setActionsTarget} className="flex flex-wrap items-center justify-end gap-2" /></div>
         </div></DeliveryDialogActionContext.Provider>
       </dialog>
     </section>;

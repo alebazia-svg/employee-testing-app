@@ -10,7 +10,7 @@ import { deliveryLinkKey, readDeliveryLink, type DeliveryNativeView } from './pr
 
 const sourceWhere = { sourceType: DELIVERY_SOURCE, sourceId: DELIVERY_PERSON.ref };
 const orderBy = [{ createdAt: 'desc' as const }, { id: 'desc' as const }];
-export type DeliveryView = { snapshot: DeliveryCashSnapshot; requested: boolean; requestedByBuyer?: boolean; requestDetails?: DeliveryRequestDetails | null; requestStateAvailable: boolean; nativeRequest?: DeliveryNativeView; nativeRef?: string };
+export type DeliveryView = { requestId?: string; snapshot: DeliveryCashSnapshot; requested: boolean; requestedByBuyer?: boolean; requestDetails?: DeliveryRequestDetails | null; requestStateAvailable: boolean; nativeRequest?: DeliveryNativeView; nativeRef?: string };
 export type DeliveryHistoryRow = { id: string; requestedAt: string; details: DeliveryRequestDetails | null; native: DeliveryNativeView; nativeRef?: string };
 
 /** Read existing request cycles, without deleting reminders or caching a terminal state.
@@ -87,7 +87,7 @@ export async function loadDeliveryView(options: { freshNative?: boolean } = {}):
   }
   return {
     snapshot: cash.status === 'fulfilled' ? cash.value : unavailableDeliveryCash(),
-    requested: Boolean(active), requestedByBuyer, requestDetails, requestStateAvailable, nativeRef,
+    requestId: active?.id, requested: Boolean(active), requestedByBuyer, requestDetails, requestStateAvailable, nativeRef,
     ...(active && requestDetails ? { nativeRequest: await loadDeliveryNative(active.id, requestDetails, undefined, options.freshNative) } : {}),
   };
 }
@@ -179,6 +179,6 @@ export async function syncDeliveryReminder(manual = false, input?: DeliveryReque
     const details = activeReminder ? await tx.adminInboxEvent.findUnique({ where: { eventKey: deliveryDetailsKey(activeReminder.id) } }) : null;
     const requestDetails = details ? readDeliveryDetails(details.body) : null;
     if (details && !requestDetails) throw Error('DELIVERY_REQUEST_CORRUPT');
-    return { snapshot, requested: Boolean(activeReminder), requestedByBuyer, requestDetails, requestStateAvailable: true };
+    return { requestId: activeReminder?.id, snapshot, requested: Boolean(activeReminder), requestedByBuyer, requestDetails, requestStateAvailable: true };
   });
 }

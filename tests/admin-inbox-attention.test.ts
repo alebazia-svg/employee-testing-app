@@ -37,10 +37,12 @@ test('bursts coalesce, first reminder at 15 minutes, then no more than hourly', 
   assert.deepEqual(digestDue({...state,items:[item('a'),item('b')],now:new Date(+now+5*60000)}),{ids:['a','b'],repeat:false});
   assert.equal(digestDue({...state,items:[],now:new Date(+now+120*60000)}),null);
 });
-test('replacement summary includes every category, not just the newest request', () => {
+test('replacement summary names two concrete tasks and counts the remainder', () => {
   const text = attentionDigestText([item('a'),item('b','procurement_delivery_request'),item('c','supplier_payment_plan'),item('d','workday_close_exception')]);
   assert.equal(text.title,'Требуют внимания: 4');
-  for(const word of ['Расходные заявки: 1','Подотчёт: 1','Закупки: 1','Другие дела: 1']) assert.ok(text.body.includes(word));
+  assert.equal(text.body.split('\n').length, 3);
+  assert.ok(text.body.includes('Ещё 2 требуют решения'));
+  assert.equal(text.url, '/admin/inbox?view=attention');
 });
 
 test('money decisions precede other tasks and future plans; newest first within priority', () => {

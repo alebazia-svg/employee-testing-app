@@ -38,8 +38,15 @@ test('isolated database: real expense/buyer producers, two push devices, complet
     await api.syncExpenseRequestAdminAudit({snapshot:{rows:[source],complete:true,checkedAt:now.toISOString(),pageCount:1,errors:[]},from:now,to:now,now,baseline:false,queueTelegramDelivery:false,db:prisma});
     assert.equal((await inbox()).attentionCount,1,'actual sync creates an owner task');
     assert.equal((await dispatch()).sent,2,'new 1C request reaches both devices');
+    assert.ok(sent[0].title.includes('Менеджер') && sent[0].title.includes('1 000 ₽'));
+    assert.ok(sent[0].body.includes('Тест'));
+    const expenseCase = await prisma.expenseRequestAdminCase.findUniqueOrThrow({where:{oneCRequestRef:ref}});
+    assert.equal(sent[0].url,`/admin/expense-requests/${expenseCase.id}`);
+    source.amount=1200; source.comment='Уточнённое назначение';
+    await api.syncExpenseRequestAdminAudit({snapshot:{rows:[source],complete:true,checkedAt:now.toISOString(),pageCount:1,errors:[]},from:now,to:now,now,queueTelegramDelivery:false,db:prisma});
     await prisma.adminInboxReceipt.updateMany({where:{userId:admin.id},data:{readAt:now}});
     now=new Date(+now+15*60000);assert.equal((await dispatch()).sent,2,'reading does not stop the reminder');
+    assert.ok(sent.at(-1).title.includes('1 200 ₽') && sent.at(-1).body.includes('Уточнённое назначение'),'repeat uses current data, not historical event body');
     source.status={key:'payable',name:'К оплате'};
     await api.syncExpenseRequestAdminAudit({snapshot:{rows:[source],complete:true,checkedAt:now.toISOString(),pageCount:1,errors:[]},from:now,to:now,now,queueTelegramDelivery:false,db:prisma});
     assert.equal((await inbox()).attentionCount,0,'payable source stops owner approval reminders');
@@ -48,6 +55,8 @@ test('isolated database: real expense/buyer producers, two push devices, complet
     await api.syncDeliveryReminder(true,{amount:5000,comment:'Две доставки'});
     assert.equal((await inbox()).attentionCount,1,'actual buyer request creates exactly one task');
     assert.equal((await dispatch()).sent,2,'buyer request reaches both devices');
+    assert.ok(sent.at(-1).title.includes('Астемир') && sent.at(-1).title.includes('5 000 ₽'));
+    assert.ok(sent.at(-1).url.startsWith('/admin/expense-requests?deliveryRequest='));
     now=new Date(+now+14*60000);assert.equal((await dispatch()).sent,0);
     now=new Date(+now+60000);assert.equal((await dispatch()).sent,2,'unresolved buyer request reminds after 15 minutes');
     native={state:'linked',status:{ref:'11111111-2222-3333-4444-555555555555',state:'payable',amount:5000,issued:0,remaining:5000,cashbox:'Учебная касса',canCollect:true}};

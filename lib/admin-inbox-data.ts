@@ -1,4 +1,10 @@
 import 'server-only';
+import { buyerDeadline, cashIssueDeadline, deadlineLabel, urgentDeadline } from './admin-inbox-deadlines';
+import { loadDecisionCashiers, expenseCashboxRef } from './admin-inbox-deadline-source';
+import { cashIssueKey, CASH_ISSUE_KIND } from './procurement-cash-issue-policy';
+import { DELIVERY_PERSON } from './procurement-delivery-policy';
+import { pushIdentity, pushText } from './admin-inbox-attention-policy';
+import type { AttentionPushDetail, AttentionUrgency } from './admin-inbox-attention-policy';
 import { readPaymentRevision } from './procurement-plan-revision';
 import { ATTENTION_LIFECYCLE_SOURCES, selectAdminAttention, attentionDay, paymentReminderTiming } from './admin-inbox-attention-policy';
 import { deliveryDetailsKey, readDeliveryDetails } from './procurement-delivery-request';
@@ -28,6 +34,8 @@ export type AdminInboxViewItem = {
     sourceId: string;
     occurredAt: string;
     deadline?: string;
+    urgency?: AttentionUrgency;
+    push?: AttentionPushDetail;
   };
   meta: ReturnType<typeof adminInboxEventMeta>;
   sourceState: ReturnType<typeof adminInboxSourceState>;
@@ -71,7 +79,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const [currentExpenses, issues, reviews, exceptions, cashOperations, technicalEvents] = await Promise.all([
     expenseRefs.length ? prisma.expenseRequestAdminCase.findMany({
       where: { ...expenseRequestCurrentWhere, oneCRequestRef: { in: expenseRefs } },
-      select: { oneCRequestRef: true, notApprovedCycle: true },
+      select: { id: true, oneCRequestRef: true, notApprovedCycle: true, latestSourceHash: true, enteredNotApprovedAt: true, requestedByName: true, amount: true, oneCNumber: true, businessOperationName: true },
     }) : [],
     issueIds.length ? prisma.workdayControlIssue.findMany({
       where: { id: { in: issueIds } },
@@ -104,7 +112,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const plans = await prisma.supplierPaymentPlan.findMany({ where: { OR: [{ id: { in: planIds } }, { status: { in: ['SUBMITTED', 'APPROVED'] } }] }, include: { manager: { select: { name: true } }, events: { where: { action: { in: ['SUBMITTED', 'UPDATED'] } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { id: true, createdAt: true } } } });
   const plansById = new Map(plans.map(p => [p.id, p]));
   const deliveryEvents = rows.some(row => ['procurement_delivery', 'procurement_delivery_request'].includes(row.event.sourceType))
-    ? await prisma.adminInboxEvent.findMany({ where: { sourceType: 'procurement_delivery' }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, sourceId: true, type: true } }) : [];
+    ? await prisma.adminInboxEvent.findMany({ where: { sourceType: 'procurement_delivery' }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, sourceId: true, type: true, occurredAt: true } }) : [];
   const activeDeliveryIds = new Set<string>();
   const deliverySources = new Set<string>();
   for (const event of deliveryEvents) {
@@ -113,17 +121,61 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   }
   const activeDeliverySourceIds = new Set<string>();
   const linkedDeliveryExpenseRefs = new Set<string>();
-  for (const event of deliveryEvents.filter(e => activeDeliveryIds.has(e.id))) {
+  const evaluations = currentExpenses.length ? await prisma.expenseRequestAdminEvaluation.findMany({
+    where: { OR: currentExpenses.map(c => ({ caseId: c.id, sourceHash: c.latestSourceHash })) },
+    select: { caseId: true, normalizedSource: true },
+  }) : [];
+  const expenseCashboxes = new Map(currentExpenses.map(c => [c.oneCRequestRef, expenseCashboxRef(evaluations.find(e => e.caseId === c.id)?.normalizedSource)]));
+  const nativeDeliveries = await Promise.all(deliveryEvents.filter(e => activeDeliveryIds.has(e.id)).map(async event => {
     const record = await prisma.adminInboxEvent.findUnique({ where: { eventKey: deliveryDetailsKey(event.id) }, select: { body: true } });
     const details = record ? readDeliveryDetails(record.body) : null;
-    const native = details ? await loadDeliveryNative(event.id, details) : undefined;
-    // The owner has completed the decision; actual issue stays open in the requests section.
-    const awaitingCashier = native?.state === 'linked' && native.status && deliveryNativeFresh(native.status, now.getTime()) && deliveryCollectionAmount(native.status) !== null;
-    if (deliveryRequestIsClosed({ requestStateAvailable: true, nativeRequest: native }, now.getTime()) || awaitingCashier) activeDeliveryIds.delete(event.id);
+    return { event, details, native: details ? await loadDeliveryNative(event.id, details) : undefined };
+  }));
+  const cashiers = await loadDecisionCashiers([...expenseCashboxes.values(), ...nativeDeliveries.map(d => d.native?.status?.cashboxRef)].filter((ref): ref is string => Boolean(ref)), now);
+  const urgencies = new Map<string, AttentionUrgency>();
+  const pushDetails = new Map<string, AttentionPushDetail>();
+  const deliveryHrefs = new Map<string, string>();
+  const delayedDeliverySources = new Map<string, string>();
+  for (const c of currentExpenses) {
+    const source = evaluations.find(e => e.caseId === c.id)?.normalizedSource;
+    const comment = source && typeof source === 'object' && !Array.isArray(source) && 'comment' in source ? source.comment : '';
+    pushDetails.set(`expense_request:${c.oneCRequestRef}`, { identity: pushIdentity(c.requestedByName, c.amount), action: 'Согласовать расход', reference: c.oneCNumber || undefined, detail: [c.oneCNumber ? `№ ${pushText(c.oneCNumber, 24)}.` : '', pushText(comment || c.businessOperationName, 75)].filter(Boolean).join(' ') });
+    const ref = expenseCashboxes.get(c.oneCRequestRef);
+    const urgency = urgentDeadline(ref ? cashiers.get(ref)?.deadlines(c.enteredNotApprovedAt ?? now) ?? [] : [], now);
+    if (urgency) urgencies.set(`expense_request:${c.oneCRequestRef}`, urgency);
+  }
+  for (const { event, details, native } of nativeDeliveries) {
+    const status = native?.status;
+    const awaitingCashier = native?.state === 'linked' && status && deliveryNativeFresh(status, now.getTime()) && deliveryCollectionAmount(status) !== null;
+    const cashier = status?.cashboxRef ? cashiers.get(status.cashboxRef) : undefined;
+    const deadlines = event.sourceId === DELIVERY_PERSON.ref ? [buyerDeadline(event.occurredAt)] : [];
+    deadlines.push(...cashier?.deadlines(event.occurredAt) ?? []);
+    if (awaitingCashier && cashier && status) {
+      const notice = await prisma.workdayNotification.findUnique({ where: { fingerprint: cashIssueKey(status, cashier.userId) }, select: { scheduledAt: true, status: true, kind: true } });
+      if (notice && notice.kind === CASH_ISSUE_KIND && notice.status !== 'cancelled') {
+        const deadline = cashIssueDeadline(notice.scheduledAt, cashier.shift?.startedAt);
+        if (Date.parse(deadline.at) <= +now) deadlines.push(deadline);
+      }
+    }
+    const urgency = urgentDeadline(deadlines, now);
+    const delayedIssue = awaitingCashier && Boolean(urgency);
+    if (event.sourceId === DELIVERY_PERSON.ref) {
+      const summary = { identity: pushIdentity('Астемир', delayedIssue ? status?.remaining : details?.amount), action: delayedIssue ? 'Проверить выдачу' : 'Решить по пополнению', detail: delayedIssue ? `${status?.cashbox ?? ''}. Полная выдача в 1С не подтверждена.` : pushText(details?.comment, 100) };
+      for (const source of ['procurement_delivery', 'procurement_delivery_request']) {
+        pushDetails.set(`${source}:${event.sourceId}`, summary);
+        deliveryHrefs.set(`${source}:${event.sourceId}`, `/admin/expense-requests?deliveryRequest=${encodeURIComponent(event.id)}`);
+      }
+    }
+    if (deliveryRequestIsClosed({ requestStateAvailable: true, nativeRequest: native }, now.getTime()) || awaitingCashier && !delayedIssue) activeDeliveryIds.delete(event.id);
     else {
       activeDeliverySourceIds.add(event.sourceId);
+      if (urgency) {
+        urgencies.set(`procurement_delivery:${event.sourceId}`, urgency);
+        urgencies.set(`procurement_delivery_request:${event.sourceId}`, urgency);
+      }
+      if (delayedIssue && status) delayedDeliverySources.set(event.sourceId, `${status.recipientName || (event.sourceId === DELIVERY_PERSON.ref ? 'Астемир' : 'Получатель')} · ${Number(status.remaining).toLocaleString('ru-RU')} ₽ · ${status.cashbox}. Полная выдача в 1С не подтверждена.`);
     }
-    if (native?.state === 'linked' && native.status) linkedDeliveryExpenseRefs.add(native.status.ref);
+    if (native?.state === 'linked' && status) linkedDeliveryExpenseRefs.add(status.ref);
   }
   const issuesById = new Map(issues.map((item) => [String(item.id), item]));
   const reviewsById = new Map(reviews.map((item) => [item.id, item]));
@@ -184,6 +236,18 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       meta: { ...meta, actionLabel: adminInboxActionLabel({ sourceType, defaultLabel: meta.actionLabel, sourceState }) },
       sourceState,
     };
+    if (sourceState.active) {
+      item.event.push = pushDetails.get(`${sourceType}:${sourceId}`);
+      item.event.href = deliveryHrefs.get(`${sourceType}:${sourceId}`) ?? item.event.href;
+    }
+    const urgency = sourceState.active ? urgencies.get(`${sourceType}:${sourceId}`) : undefined;
+    if (urgency) { item.event.urgency = urgency; item.event.deadline = deadlineLabel(urgency); }
+    if (sourceState.active && ['procurement_delivery', 'procurement_delivery_request'].includes(sourceType) && delayedDeliverySources.has(sourceId)) {
+      item.event.title = 'Проверьте выдачу денег';
+      item.event.body = delayedDeliverySources.get(sourceId)!;
+      item.sourceState.label = 'Проверьте расходник';
+      item.meta.actionLabel = 'Проверить выдачу';
+    }
     return [row.id, item] as const;
   }));
 
@@ -202,6 +266,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       event: { type: 'procurement.payment_submitted', sourceType: 'supplier_payment_plan', sourceId: plan.id,
         title: revision ? `${timing.label} · изменения на согласование` : `${timing.label} · ${plan.supplierPartner}`,
         deadline: timing.deadline,
+        push: { identity: pushIdentity(plan.supplierPartner, revision?.data.plannedAmount ?? plan.plannedAmount), action: 'Согласовать оплату', detail: `${plan.manager.name}. ${timing.label}.` },
         body: `${plan.manager.name} · ${plan.supplierPartner} · ${Number(revision?.data.plannedAmount ?? plan.plannedAmount).toLocaleString('ru-RU')} ₽`,
         href: '/admin/procurement', occurredAt: revision?.submittedAt ?? plan.events[0]?.createdAt.toISOString() ?? plan.createdAt.toISOString() },
       meta: adminInboxEventMeta('procurement.payment_submitted'), sourceState: { active: true, label: 'Нужно согласовать', tone: 'attention' as const } }];

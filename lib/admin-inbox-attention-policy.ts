@@ -1,9 +1,11 @@
+export type AttentionPushDetail = { identity: string; detail: string; action: string; reference?: string };
+export type AttentionUrgency = { key: string; at: string; label: string; phase: 'upcoming' | 'due'; signals?: string[] };
 /** Business attention is independent from notification read state. */
 export const ATTENTION_LIFECYCLE_SOURCES = ['expense_request', 'supplier_payment_plan', 'procurement_delivery', 'procurement_delivery_request', 'workday_close_exception', 'cash_operation', 'workday_control_issue', 'terminal_fiscal_review'] as const;
 export const ATTENTION_PUSH_TYPES = ['expense_request.created', 'procurement.delivery_requested', 'procurement.delivery_manual_requested', 'procurement.payment_submitted', 'workday.close_exception_requested', 'workday.cash_encashment_exception_requested', 'workday.cash_operation_failed', 'workday.kkm_shift_close_attention', 'workday_issue.employee_action', 'workday_issue.employee_message', 'terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'] as const;
 export type AttentionItem = {
   id: string; readAt: string | null;
-  event: { type: string; sourceType: string; sourceId: string; occurredAt: string };
+  event: { type: string; sourceType: string; sourceId: string; occurredAt: string; title?: string; body?: string; href?: string; deadline?: string; push?: AttentionPushDetail; urgency?: AttentionUrgency };
   meta: { category: string }; sourceState: { active: boolean };
 };
 export function attentionKey(item: AttentionItem) {
@@ -27,7 +29,7 @@ export function selectAdminAttention<T extends AttentionItem>(items: T[]): T[] {
   for (const item of [...items].sort((a, b) => b.event.occurredAt.localeCompare(a.event.occurredAt) || b.id.localeCompare(a.id))) {
     if (needsAdminAttention(item) && !bySource.has(attentionKey(item))) bySource.set(attentionKey(item), item);
   }
-  return [...bySource.values()].sort((a, b) => attentionPriority(a) - attentionPriority(b) || b.event.occurredAt.localeCompare(a.event.occurredAt) || b.id.localeCompare(a.id));
+  return [...bySource.values()].sort((a, b) => Number(Boolean(b.event.urgency)) - Number(Boolean(a.event.urgency)) || (a.event.urgency && b.event.urgency ? a.event.urgency.at.localeCompare(b.event.urgency.at) : 0) || attentionPriority(a) - attentionPriority(b) || b.event.occurredAt.localeCompare(a.event.occurredAt) || b.id.localeCompare(a.id));
 }
 /** Moscow calendar dates; plannedDate is a PostgreSQL date, not an instant. */
 export function attentionDay(now: Date) {
@@ -45,21 +47,23 @@ export function paymentReminderTiming(value: Date | string | undefined, now: Dat
     label: raw < today ? 'Срок оплаты прошёл' : raw === today ? 'Оплата сегодня' : raw === tomorrow ? 'Оплата завтра' : 'Плановая оплата',
     deadline: `Подготовить к ${raw.split('-').reverse().join('.')}` };
 }
-export type DigestState = { ids: string[]; repeat: boolean };
+export type DigestState = { ids: string[]; repeat: boolean; signals?: string[] };
 export function readDigestState(raw: string | null): DigestState {
-  try { const v = JSON.parse(raw ?? ''); return Array.isArray(v.ids) && v.ids.every((id: unknown) => typeof id === 'string') ? { ids: v.ids, repeat: v.repeat === true } : { ids: [], repeat: false }; } catch { return { ids: [], repeat: false }; }
+  try { const v = JSON.parse(raw ?? ''); return Array.isArray(v.ids) && v.ids.every((id: unknown) => typeof id === 'string') ? { ids: v.ids, repeat: v.repeat === true, ...(Array.isArray(v.signals) && v.signals.every((x: unknown) => typeof x === 'string') ? { signals: v.signals } : {}) } : { ids: [], repeat: false }; } catch { return { ids: [], repeat: false }; }
 }
 export function digestDue(input: { items: AttentionItem[]; previous: DigestState; sentAt: Date | null; now: Date }) {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Moscow' }).format(input.now));
   if (!input.items.length || hour < 9 || hour >= 22) return null;
   const ids = input.items.map(item => item.id).sort();
   const hasNew = ids.some(id => !input.previous.ids.includes(id));
+  const signals = input.items.flatMap(item => item.event.urgency ? (item.event.urgency.signals ?? [`${item.event.urgency.key}:${item.event.urgency.phase}`]).map(signal => `${attentionKey(item)}:${signal}`) : []).sort();
+  const hasSignal = signals.some(key => !input.previous.signals?.includes(key));
   const age = input.sentAt ? input.now.getTime() - input.sentAt.getTime() : Infinity;
   const onlyPlanned = input.items.every(item => item.event.sourceType === 'supplier_payment_plan');
   if (onlyPlanned && !hasNew && input.sentAt && attentionDay(input.sentAt) === attentionDay(input.now)) return null;
-  const wait = hasNew ? 5 * 60_000 : input.previous.repeat ? 60 * 60_000 : 15 * 60_000;
+  const wait = hasNew || hasSignal ? 5 * 60_000 : input.previous.repeat ? 60 * 60_000 : 15 * 60_000;
   if (age < wait) return null;
-  return { ids, repeat: !hasNew };
+  return { ids, repeat: hasSignal && !hasNew ? input.previous.repeat : !hasNew, ...(signals.length ? { signals } : {}) };
 }
 export function attentionCounts(items: AttentionItem[]) {
   let expenses = 0, accountable = 0, procurement = 0, other = 0;
@@ -71,7 +75,34 @@ export function attentionCounts(items: AttentionItem[]) {
   }
   return { expenses, accountable, procurement, other };
 }
-export function attentionDigestText(items: AttentionItem[]) {
-  const { expenses, accountable, procurement, other } = attentionCounts(items);
-  return { title: `Требуют внимания: ${items.length}`, body: [expenses && `Расходные заявки: ${expenses}`, accountable && `Подотчёт: ${accountable}`, procurement && `Закупки: ${procurement}`, other && `Другие дела: ${other}`].filter(Boolean).join(' · ') + '. Откройте список и примите решение.' };
+/** Compact concrete summary; every send still replaces the same OS card. */
+export function pushText(value: unknown, max: number) {
+  const text = String(value ?? '').replace(/[\s\u0000-\u001f]+/g, ' ').trim();
+  const chars = Array.from(text);
+  return chars.length <= max ? text : chars.slice(0, max - 1).join('').trimEnd() + '…';
+}
+export function pushIdentity(name: string | null | undefined, amount: unknown) {
+  const number = amount === null || amount === undefined || amount === '' ? NaN : Number(amount);
+  return `${pushText(name || 'Заявитель не указан', 38)} · ${Number.isFinite(number) ? number.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽' : 'сумма не указана'}`;
+}
+export function attentionDigestText(items: AttentionItem[], previous: DigestState = { ids: [], repeat: false }) {
+  const fallbackUrl = '/admin/inbox?view=attention';
+  if (!items.length) return { title: 'Нет нерешённых дел', body: '', url: fallbackUrl };
+  const details = (item: AttentionItem): AttentionPushDetail => item.event.push ?? { identity: item.event.title || 'Рабочая заявка', detail: item.event.body || '', action: 'Проверить' };
+  const isNew = (item: AttentionItem) => !previous.ids.includes(item.id);
+  if (items.length === 1) {
+    const item = items[0], data = details(item);
+    const title = item.event.urgency ? `Срочно: ${data.identity}` : isNew(item) ? `${data.identity} — ${data.action}` : `Напоминание: ${data.identity}`;
+    // Source links are local ADMIN destinations; never accept an external push target.
+    const href = item.event.href;
+    const url = href && !href.includes('..') && /^\/admin\/[a-zA-Z0-9/?#%&=._:-]+$/.test(href) ? href : fallbackUrl;
+    return { title: pushText(title, 110), body: [isNew(item) ? 'Новое.' : '', `${data.action}.`, pushText(data.detail, 100), pushText(item.event.deadline, 90)].filter(Boolean).join(' '), url };
+  }
+  // A new request must be identifiable even when older overdue work ranks first.
+  const newest = items.filter(isNew).sort((a,b) => b.event.occurredAt.localeCompare(a.event.occurredAt))[0];
+  const first = newest ?? items[0];
+  const second = items.find(item => item.id !== first.id)!;
+  const lines = [first, second].map(item => `${isNew(item) ? 'Новое · ' : item.event.urgency ? 'Срочно · ' : ''}${pushText(details(item).identity, 70)}${details(item).reference ? ' · № ' + pushText(details(item).reference, 16) : ''} — ${pushText(details(item).action, 30)}`);
+  if (items.length > 2) lines.push(`Ещё ${items.length - 2} требуют решения`);
+  return { title: `Требуют внимания: ${items.length}`, body: lines.join('\n'), url: fallbackUrl };
 }
