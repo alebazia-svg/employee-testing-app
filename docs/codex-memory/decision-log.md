@@ -907,5 +907,5 @@ requests leave attention without financial-state rewrites. Native payable
 accountable issue leaves owner approval reminders while remaining in requests
 for cashier execution. Preserve one replacing push summary and 15/60-minute
 urgent reminders; unchanged planned approvals alone repeat once per day.
-Candidate is local, not deployed. Evidence and exact scope:
+Released as portal 1.4.1 (a848a30) after the owner approved this exact release. Evidence and exact scope:
 [admin-attention-relevance-20261012.md](admin-attention-relevance-20261012.md).

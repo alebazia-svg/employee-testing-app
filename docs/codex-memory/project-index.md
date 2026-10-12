@@ -121,3 +121,13 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 - Source, lifecycle, release verification and rollback:
   `cashier-notifications-release-20261012.md`.
 - Physical-device push verification for this new cashier kind remains pending.
+
+
+## ADMIN Attention — Production 1.4.1
+
+- Owner money decisions first/newest first; future payment approvals enter the
+  bell one day before due date. Decided/past-shift encashment stays in history.
+- One replacing push summary: existing urgent 15/60-minute reminders; unchanged
+  planned approvals alone repeat daily. Native payable accountable requests wait
+  for cashier execution in the requests section, without owner approval repeats.
+- Scope, tests, production checks and rollback: `admin-attention-relevance-20261012.md`.

@@ -1,9 +1,9 @@
-# ADMIN attention relevance — candidate, 2026-10-12
+# ADMIN attention relevance — production 1.4.1, 2026-10-12
 
-Status: implemented and verified locally; code commit `983a188`; NOT released. Production remains 1.4.0
-(runtime 68e374b). No new release version allocated. Deployment requires owner
-approval and a fresh version/branch/live check. No schema, 1C, environment or
-production business-data changes.
+Status: released after the owner's “Продолжай” in direct response to the concrete
+release approval question. Feature commit `983a188`; runtime release commit
+`a848a30f79d1ce2987af4fedcc21ad79bd22d939`, application version **1.4.1**.
+No schema, 1C, environment or manual production business-data changes.
 
 ## Approved owner intent
 
@@ -75,3 +75,34 @@ Tests:
 - tests/admin-inbox-relevance.integration.test.ts
 
 No unrelated dirty files were changed. The primary project checkout is untouched.
+
+
+## Production release verification
+
+- Deployed only portal-app through server.env/compose. Deployment exit 0; healthy
+  container and public `/api/health` returned `{"ok":true}`.
+- Independently verified SSH server HEAD equals runtime commit a848a30; both
+  team.mobo-opt.ru and portal.alebazia.xyz publish version 1.4.1, builtAt
+  `2026-10-12T08:15:27.421Z` (12.10.2026 11:15 MSK). Authenticated ADMIN footer
+  shows the same version and build time. Docker metadata still reports null
+  revision/unknown source; exact commit was verified separately on the server.
+- Before/after live attention queue: five stale/future items -> zero urgent items.
+  Seven technical source indicators remain in System, outside the urgent count.
+- Procurement still shows all three pending future approvals: Usbmag 16 October,
+  Kuzoom Lucy 24 October, Glass 111 26 October. No plan was deleted or approved.
+- The 29 August encashment detail still exists with its original “Разрешено”
+  decision. No approval was invented for the pending past-shift request.
+- Container copies of attention policy, inbox loader and push sender match local
+  SHA256 checks. Upload volume offonika-portal_portal-uploads remains mounted.
+- After restart, ADMIN sender service completed successfully at 08:19:04 UTC;
+  expense sync at 08:18:10 UTC; both timers remain active. No additional real
+  test push was sent during deployment; prior physical-device confirmation and
+  current isolated integration evidence remain the delivery evidence.
+- Previous runtime commit: 68e374b1a6b47b8102867b4b1ed0fbc9bb846085 (1.4.0).
+- Previous image: sha256:f7347b9bd0b18ebaf1d7dfecdb14701ce13167bd0c9fbc256d1d8aa33b1af2d4.
+- Preserved rollback tag: offonika-portal-attention-rollback:pre-1.4.1-20261012.
+- Replacement image: sha256:907129d2fa6c0d306fe10a61e46ab71486082f7ef3a5f39ff0512cc7d5630d96.
+- Schema/compose/Dockerfile unchanged against previous release; rollback uses
+  the preserved image and original 1.4.0 metadata, with no DB restoration.
+- Release-only files: package.json and package-lock.json. Server's existing
+  untracked .rollback/ directory and primary-checkout WIP were left untouched.
