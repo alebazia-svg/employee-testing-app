@@ -129,3 +129,35 @@ Local preview fixtures and fake command routes stay in /tmp, never release them.
 
 - `package.json`
 - `package-lock.json`
+
+## Follow-up lifecycle and physical owner-push verification — 2026-10-12
+
+- Additional focused checks: 68 unit tests and five isolated PostgreSQL scenarios
+  passed, including real expense and buyer producers, two mocked push devices,
+  first/repeated reminders, read versus resolution, payable/full issue, outage,
+  cashier shift gating, partial issue and reassignment. The Telegram unit cases
+  require `ADMIN_INBOX_TELEGRAM_ENABLED=1`; the first run without that setting
+  failed two queue assertions, and the correctly configured run passed all 68.
+- At 19:04 MSK, systemd reported successful last runs for expense sync, ADMIN
+  sender and employee notification sender. Expense sync is scheduled every three
+  minutes; senders every minute. This is service execution evidence, not proof
+  of every historical device delivery. Full journal access was not available
+  without interactive sudo during this read-only inspection.
+- During device-test preparation the independent release 1.4.7 (`c56786c`) went
+  live. The version guard aborted before any push. Public metadata and server
+  commit were checked, and the owner/cashier push modules were unchanged versus
+  1.4.6. No rollback or additional application deployment was performed here.
+- At 19:17 MSK, one clearly labelled `MOBO · Проверка 1.4.7` notification was sent
+  using the deployed payload helper and existing VAPID configuration to the same
+  three previously verified active owner ADMIN subscriptions. Provider acceptance
+  was 201 for all three. No request/event/delivery database rows or financial
+  documents were created/changed by the test; the existing inbox was read only.
+- Owner explicitly confirmed: **both iPhone and computer displayed the push and
+  tapping each opened the intended Требуют внимания section**.
+- This confirms owner-device transport and opening on 1.4.7. It does not replace
+  the isolated business lifecycle tests with a real money transaction, and does
+  not establish physical cashier-PWA notification delivery. No employee was sent
+  a test message. Notification replacement was confirmed in an earlier owner
+  test, not re-exercised with two messages in this single-push check.
+- Temporary test receipt: `/tmp/mobo-push-device-146.log` (filename retained;
+  actual guarded version and visible title were 1.4.7), exit 0.
