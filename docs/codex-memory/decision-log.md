@@ -909,3 +909,21 @@ for cashier execution. Preserve one replacing push summary and 15/60-minute
 urgent reminders; unchanged planned approvals alone repeat once per day.
 Released as portal 1.4.1 (a848a30) after the owner approved this exact release. Evidence and exact scope:
 [admin-attention-relevance-20261012.md](admin-attention-relevance-20261012.md).
+
+## 2026-10-12 — Deadline escalation and accountable issue follow-through (local)
+
+Owner approved the next notification stage: actual shift/cash-count deadlines
+and delayed accountable issue control. Extend the existing shared attention
+queue/digest, with one 30-minute and one due-time escalation, five-minute minimum
+coalescing, no extra inbox rows. Native payable issue returns for owner follow-up
+after one hour of an existing cashier task or near known recipient/cashier deadlines;
+full native issue stops it. Exact cashbox ownership only; no guessed employee shift.
+Local verified candidate, not deployed. Rules, evidence, limits and exact files:
+[admin-attention-deadlines-20261012.md](admin-attention-deadlines-20261012.md).
+
+Owner then approved concrete push content and committing both improvements together.
+Single-task pushes identify person/supplier, amount and action and route directly
+to expense/accountable details; multi-task pushes name the new and priority tasks
+plus remaining count. One replacing OS summary is retained. Exact accountable
+event identity prevents an old push opening another request. Production unchanged.
+Code committed locally as `edd1ca3`; deployment is not approved by this commit request.
