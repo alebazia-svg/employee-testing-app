@@ -16,6 +16,7 @@ export function NotificationRecordDialog({item,onClose,onViewed}:{item:Notificat
   const [state,setState]=useState({dirty:false,busy:false}),[discard,setDiscard]=useState(false);
   const [decision,setDecision]=useState(''),[reason,setReason]=useState(''),[message,setMessage]=useState('');
   const [saving,setSaving]=useState(false);
+  const [receiptPreview,setReceiptPreview]=useState(false);
   const viewed=useRef(false),viewCallback=useRef(onViewed);viewCallback.current=onViewed;
   const busy=state.busy||saving;
   const close=()=>{if(busy)return;if(state.dirty||reason.trim())setDiscard(true);else onClose();};
@@ -46,20 +47,22 @@ export function NotificationRecordDialog({item,onClose,onViewed}:{item:Notificat
   }
   if(expense)return <ExpenseRequestDialogRow item={detail.item} initialOpen detailOnly onDismiss={onClose}/>;
   const plan=detail?.plan??null;
-  return <dialog ref={dialog} className="pam-dialog" aria-label={item.title} onCancel={e=>{e.preventDefault();close();}}>
+  return <dialog ref={dialog} className={`pam-dialog ${receiptPreview?'receipt-notification-preview':''}`} aria-label={item.title} onCancel={e=>{e.preventDefault();close();}}>
     <header className="pam-dialog-heading"><h2>{item.title}</h2><button aria-label="Закрыть уведомление" disabled={busy} onClick={close}><X size={20}/></button></header>
     <div className="pam-dialog-content space-y-4">
       {discard&&<><h3 className="font-bold">Закрыть без сохранения?</h3><p>Введённые изменения не сохранятся.</p></>}
       <div hidden={discard} className="space-y-4">
         {!detail?<><p className="whitespace-pre-wrap text-sm">{item.body}</p>{!error&&<p role="status" className="text-sm text-slate-500">Загружаем актуальные данные…</p>}</>:null}
         {plan&&<>
+          <div hidden={receiptPreview} className="space-y-4">
           <div><h3 className="text-xl font-bold">{plan.supplierPartner}</h3><p className="mt-1 text-sm text-slate-500">{plan.planCode} · {plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):plan.paymentPurpose==='DELIVERY'?'За доставку':'В счёт долга поставщику'}</p></div>
           <dl className="grid grid-cols-2 gap-4 rounded-xl border border-stone-200 bg-stone-50 p-4"><div><dt className="text-xs text-slate-500">Сумма заявки</dt><dd className="mt-1 text-xl font-bold">{Number(plan.foreignAmount||plan.plannedAmount).toLocaleString('ru-RU')} {plan.foreignAmount?plan.paymentMethod:'₽'}</dd></div><div><dt className="text-xs text-slate-500">Подготовить к</dt><dd className="mt-1 font-semibold">{new Date(plan.plannedDate).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'})}</dd></div></dl>
           <p className="text-sm">{({SUBMITTED:'Ждёт решения',APPROVED:'Заявка согласована',NEEDS_CHANGES:'Нужно исправить',CANCELLED:'Заявка отменена',COMPLETED_WITHOUT_TOPUP:'Завершена без доплаты'} as Record<string,string>)[plan.status]||plan.status}</p>
           <p className="text-sm text-slate-600">{({CASH:'Наличные',BANK:'Перевод на карту',ACCOUNTABLE_QR:'Оплата по QR',USDT:'Оплата в USDT',CNY:'Перевод в юанях'} as Record<string,string>)[plan.paymentMethod]||plan.paymentMethod}{plan.exchangeRate&&` · курс ${Number(plan.exchangeRate).toLocaleString('ru-RU')} ₽`}</p>
           {plan.condition&&<p className="whitespace-pre-wrap text-sm">{plan.condition}</p>}
           {plan.revision&&<><p className="text-sm font-semibold">Изменения на согласование</p><p className="text-xs text-slate-500">До согласования действуют прежние условия.</p><dl className="divide-y divide-stone-200">{plan.revision.changes.map(c=><div key={c.label} className="py-3"><dt className="mb-2 text-sm font-semibold">{c.label}</dt><dd className="grid grid-cols-2 gap-4 text-sm"><div><span className="block text-xs text-slate-500">Сейчас</span>{c.before||'—'}</div><div><span className="block text-xs text-[#785537]">Предлагается</span><strong>{c.after||'—'}</strong></div></dd></div>)}</dl><p className="text-sm"><strong>Причина: </strong>{plan.revision.reason}</p></>}
-          {detail?.kind==='receipts'?<ProcurementReceipts plans={[plan]} single inline onBusyChange={value=>setState(s=>({...s,busy:value}))}/>:detail?.kind==='payment'&&detail.admin&&plan.status==='APPROVED'&&!plan.revision?<ProcurementApprovedEdit plan={plan} today={new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Moscow'})} onStateChange={setState} onSaved={saved=>setDetail(current=>current&&current.kind!=='expense'?{...current,plan:{...current.plan,...saved}}:current)}/>:null}
+          </div>
+          {detail?.kind==='receipts'?<ProcurementReceipts plans={[plan]} single inline onPreviewChange={setReceiptPreview} onBusyChange={value=>setState(s=>({...s,busy:value}))}/>:detail?.kind==='payment'&&detail.admin&&plan.status==='APPROVED'&&!plan.revision?<ProcurementApprovedEdit plan={plan} today={new Date().toLocaleDateString('en-CA',{timeZone:'Europe/Moscow'})} onStateChange={setState} onSaved={saved=>setDetail(current=>current&&current.kind!=='expense'?{...current,plan:{...current.plan,...saved}}:current)}/>:null}
           {detail?.kind==='payment'&&detail.admin&&plan.status==='SUBMITTED'&&!plan.revision&&<p className="text-sm text-slate-600">Согласование — в платёжном календаре, после сверки оплат.</p>}
           {decision==='RETURN'&&<label className="block text-sm font-semibold">{plan.revision?'Причина отказа':'Что исправить'}<textarea autoFocus minLength={3} maxLength={300} value={reason} disabled={busy} onChange={e=>setReason(e.target.value)} className="mt-2 w-full rounded-lg border p-3"/></label>}
         </>}
