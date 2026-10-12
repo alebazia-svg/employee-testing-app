@@ -896,3 +896,16 @@ command, 1C publication or manual employee push. Previous 1.3.0 image preserved.
 Physical-device delivery of the new cashier kind remains unverified.
 Full release evidence, exact files and rollback identities:
 `cashier-notifications-release-20261012.md`.
+
+
+## 2026-10-12 — Owner attention: urgent decisions, due plans, shift-bound encashment
+
+Owner approved reducing notification noise and verifying manager/buyer push paths.
+Extend the shared attention queue: money decisions first/newest first; pending
+payment approvals appear one day before payment; approved or past-shift encashment
+requests leave attention without financial-state rewrites. Native payable
+accountable issue leaves owner approval reminders while remaining in requests
+for cashier execution. Preserve one replacing push summary and 15/60-minute
+urgent reminders; unchanged planned approvals alone repeat once per day.
+Candidate is local, not deployed. Evidence and exact scope:
+[admin-attention-relevance-20261012.md](admin-attention-relevance-20261012.md).
