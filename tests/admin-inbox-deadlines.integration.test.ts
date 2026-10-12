@@ -18,7 +18,7 @@ test('real DB: shift deadline mapping, pending cash tasks, delayed native issue 
   try {
     await prisma.userOneCCashboxMapping.create({data:{userId:cashier.id,oneCCashboxRef:cashboxRef,oneCCashboxName:'Учебная касса'}});
     const shift=await prisma.workDayEntry.create({data:{userId:cashier.id,date:'2026-10-12',department:'retail',shiftCode:'09_20',shiftLabel:'09–20',shiftEndMinutes:1200,startedAt:new Date('2026-10-12T06:00Z'),shiftControlRun:{create:{userId:cashier.id,department:'retail',date:'2026-10-12',tasks:{create:{title:'Пересчёт',category:'cash',sortOrder:1,plannedTimeMinutes:840}}}}},include:{shiftControlRun:{include:{tasks:true}}}});
-    const mocks:Record<string,any>={'./prisma':{prisma},'@/lib/prisma':{prisma},'./procurement-delivery-native-source':{loadDeliveryNative:async()=>native.state==='linked'?{...native,status:{...native.status,checkedAt:now.toISOString()}}:native}};
+    const mocks:Record<string,any>={'./admin-inbox-source-health':{expenseSyncLastSuccess:async()=>now,sourceCheckIsStale:(at:Date,clock:Date)=>+clock-+at>=60*60000},'./prisma':{prisma},'@/lib/prisma':{prisma},'./procurement-delivery-native-source':{loadDeliveryNative:async()=>native.state==='linked'?{...native,status:{...native.status,checkedAt:now.toISOString()}}:native}};
     const out=await build({stdin:{contents:"export {loadAdminInbox} from './lib/admin-inbox-data'; export {syncExpenseRequestAdminAudit} from './lib/expense-request-admin-sync';",resolveDir:process.cwd(),loader:'ts'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'isolated',setup(b){b.onResolve({filter:/.*/},a=>a.path in mocks?{path:a.path,external:true}:undefined);}}]});
     const mod={exports:{} as any}, require=createRequire(import.meta.url);
     new Function('require','module','exports',out.outputFiles[0].text)((n:string)=>mocks[n]??require(n),mod,mod.exports);
@@ -55,7 +55,8 @@ test('real DB: shift deadline mapping, pending cash tasks, delayed native issue 
     native.status.state='payable';native.status.issued=0;native.status.remaining=5000;
     assert.equal((await inbox()).attentionCount,1,'reversal restores control');
     native={state:'unavailable'};
-    assert.equal((await inbox()).attention[0].event.title,'Пополнение','unavailable source cannot claim delayed issue');
+    assert.equal((await inbox()).attentionCount,0,'unavailable source cannot claim new funding or delayed issue');
+    native={state:'unlinked'};
     now=new Date('2026-10-12T14:30Z');
     assert.equal((await inbox()).attention[0].event.urgency.label,'Астемир уходит в 18:00');
     now=new Date('2026-10-12T19:01Z');

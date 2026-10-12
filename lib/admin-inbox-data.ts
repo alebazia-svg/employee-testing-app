@@ -1,4 +1,5 @@
 import 'server-only';
+import { expenseSyncLastSuccess, sourceCheckIsStale } from './admin-inbox-source-health';
 import { buyerDeadline, cashIssueDeadline, deadlineLabel, urgentDeadline } from './admin-inbox-deadlines';
 import { loadDecisionCashiers, expenseCashboxRef } from './admin-inbox-deadline-source';
 import { cashIssueKey, CASH_ISSUE_KIND } from './procurement-cash-issue-policy';
@@ -6,7 +7,7 @@ import { DELIVERY_PERSON } from './procurement-delivery-policy';
 import { pushIdentity, pushText } from './admin-inbox-attention-policy';
 import type { AttentionPushDetail, AttentionUrgency } from './admin-inbox-attention-policy';
 import { readPaymentRevision } from './procurement-plan-revision';
-import { ATTENTION_LIFECYCLE_SOURCES, selectAdminAttention, attentionDay, paymentReminderTiming } from './admin-inbox-attention-policy';
+import { ATTENTION_LIFECYCLE_SOURCES, selectAdminAttention, attentionKey, attentionDay, paymentReminderTiming } from './admin-inbox-attention-policy';
 import { deliveryDetailsKey, readDeliveryDetails } from './procurement-delivery-request';
 import { loadDeliveryNative } from './procurement-delivery-native-source';
 import { deliveryRequestIsClosed, deliveryNativeFresh, deliveryCollectionAmount } from './procurement-delivery-native';
@@ -35,6 +36,7 @@ export type AdminInboxViewItem = {
     occurredAt: string;
     deadline?: string;
     urgency?: AttentionUrgency;
+    technicalAttention?: boolean;
     push?: AttentionPushDetail;
   };
   meta: ReturnType<typeof adminInboxEventMeta>;
@@ -136,6 +138,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const pushDetails = new Map<string, AttentionPushDetail>();
   const deliveryHrefs = new Map<string, string>();
   const delayedDeliverySources = new Map<string, string>();
+  const unavailableDeliverySources = new Set<string>();
   for (const c of currentExpenses) {
     const source = evaluations.find(e => e.caseId === c.id)?.normalizedSource;
     const comment = source && typeof source === 'object' && !Array.isArray(source) && 'comment' in source ? source.comment : '';
@@ -146,6 +149,9 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   }
   for (const { event, details, native } of nativeDeliveries) {
     const status = native?.status;
+    // Unknown evidence is a source problem, never a new instruction to fund an
+    // old request. Keep it inspectable under System without financial reminders.
+    if (!native || native.state === 'unavailable' || native.state === 'unlinked' && Boolean(native.reviewReason) || native.state === 'linked' && (!status || status.state === 'review' || !deliveryNativeFresh(status, now.getTime()))) unavailableDeliverySources.add(event.sourceId);
     const awaitingCashier = native?.state === 'linked' && status && deliveryNativeFresh(status, now.getTime()) && deliveryCollectionAmount(status) !== null;
     const cashier = status?.cashboxRef ? cashiers.get(status.cashboxRef) : undefined;
     const deadlines = event.sourceId === DELIVERY_PERSON.ref ? [buyerDeadline(event.occurredAt)] : [];
@@ -173,7 +179,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
         urgencies.set(`procurement_delivery:${event.sourceId}`, urgency);
         urgencies.set(`procurement_delivery_request:${event.sourceId}`, urgency);
       }
-      if (delayedIssue && status) delayedDeliverySources.set(event.sourceId, `${status.recipientName || (event.sourceId === DELIVERY_PERSON.ref ? 'Астемир' : 'Получатель')} · ${Number(status.remaining).toLocaleString('ru-RU')} ₽ · ${status.cashbox}. Полная выдача в 1С не подтверждена.`);
+      if (delayedIssue && status) delayedDeliverySources.set(event.sourceId, `${status.recipientName || (event.sourceId === DELIVERY_PERSON.ref ? 'Астемир' : 'Получатель')} · ${Number(status.remaining).toLocaleString('ru-RU')} ₽ · ${status.cashbox}`);
     }
     if (native?.state === 'linked' && status) linkedDeliveryExpenseRefs.add(status.ref);
   }
@@ -236,17 +242,33 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       meta: { ...meta, actionLabel: adminInboxActionLabel({ sourceType, defaultLabel: meta.actionLabel, sourceState }) },
       sourceState,
     };
-    if (sourceState.active) {
+    if (sourceState.active && ['procurement_delivery', 'procurement_delivery_request'].includes(sourceType) && unavailableDeliverySources.has(sourceId)) {
+      item.meta.category = 'system';
+      item.meta.actionLabel = 'Проверить статус';
+      item.sourceState.label = 'Статус не проверен';
+      item.event.title = 'Не удалось проверить выдачу денег';
+      item.event.body = 'Связь запроса с исполнением в 1С сейчас не подтверждена. Это не новый запрос денег. Проверьте связанную заявку и расходник в 1С, прежде чем оформлять повторную выдачу.';
+      item.event.href = deliveryHrefs.get(`${sourceType}:${sourceId}`) ?? item.event.href;
+    }
+    if (sourceState.active && item.meta.category !== 'system') {
       item.event.push = pushDetails.get(`${sourceType}:${sourceId}`);
       item.event.href = deliveryHrefs.get(`${sourceType}:${sourceId}`) ?? item.event.href;
     }
-    const urgency = sourceState.active ? urgencies.get(`${sourceType}:${sourceId}`) : undefined;
-    if (urgency) { item.event.urgency = urgency; item.event.deadline = deadlineLabel(urgency); }
+    const urgency = sourceState.active && item.meta.category !== 'system' ? urgencies.get(`${sourceType}:${sourceId}`) : undefined;
+    if (urgency) { item.event.urgency = urgency; item.event.deadline = deadlineLabel(urgency, now); }
     if (sourceState.active && ['procurement_delivery', 'procurement_delivery_request'].includes(sourceType) && delayedDeliverySources.has(sourceId)) {
       item.event.title = 'Проверьте выдачу денег';
       item.event.body = delayedDeliverySources.get(sourceId)!;
       item.sourceState.label = 'Проверьте расходник';
       item.meta.actionLabel = 'Проверить выдачу';
+    }
+    if (isAdminInboxTechnicalEvent(row.event.type) && sourceState.active && row.event.type.endsWith('.down') && sourceCheckIsStale(row.event.occurredAt, now)) {
+      item.event.technicalAttention = true;
+      item.event.title = `Данные долго не обновляются · ${row.event.title}`;
+      item.event.body = 'Восстановление не подтверждено больше часа. Автоматическая проверка этого раздела может быть неполной. Проверьте источник данных; если доступ не восстановится, передайте проблему ответственному за связь.';
+      item.event.push = { identity: 'Данные портала требуют проверки', action: 'Проверить связь', detail: 'Восстановление не подтверждено больше часа. Решения по деньгам сверяйте с 1С.' };
+      item.event.href = '/admin/inbox?view=system';
+      item.meta.actionLabel = 'Проверить связь';
     }
     return [row.id, item] as const;
   }));
@@ -271,8 +293,25 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
         href: '/admin/procurement', occurredAt: revision?.submittedAt ?? plan.events[0]?.createdAt.toISOString() ?? plan.createdAt.toISOString() },
       meta: adminInboxEventMeta('procurement.payment_submitted'), sourceState: { active: true, label: 'Нужно согласовать', tone: 'attention' as const } }];
   });
-  const attention = selectAdminAttention([...allItems.filter(i => i.event.sourceType !== 'supplier_payment_plan' && !(i.event.sourceType === 'expense_request' && linkedDeliveryExpenseRefs.has(i.event.sourceId))), ...pendingPlans]);
-  const technicalItems = allItems.filter(i => isAdminInboxTechnicalEvent(i.event.type) && latestTechnicalEventBySource.get(adminInboxTechnicalSourceKey(i.event)) === i.eventId && i.sourceState.active);
+  const technicalItems = [...new Map(allItems.filter(i => i.meta.category === 'system' && i.sourceState.active && (!isAdminInboxTechnicalEvent(i.event.type) || latestTechnicalEventBySource.get(adminInboxTechnicalSourceKey(i.event)) === i.eventId)).map(i => [attentionKey(i),i])).values()];
+  const latestExpenseSync = await expenseSyncLastSuccess();
+  if (latestExpenseSync && sourceCheckIsStale(latestExpenseSync, now)) {
+    technicalItems.unshift({id:'system:expense-sync',eventId:'',readAt:null,
+      event:{type:'dependency.expense_sync_stale',sourceType:'dependency',sourceId:'expense-sync',occurredAt:latestExpenseSync.toISOString(),
+        title:'Заявки из 1С давно не обновлялись',body:'Больше часа нет успешной синхронизации. Новые заявки менеджеров могут отсутствовать в портале. Проверьте заявки в 1С и передайте проблему ответственному за связь.',href:'/admin/expense-requests',technicalAttention:true},
+      meta:{...adminInboxEventMeta('dependency.down'),actionLabel:'Открыть заявки'},sourceState:{active:true,label:'Данные устарели',tone:'attention'}});
+  }
+  const prolonged = technicalItems.filter(i => i.event.technicalAttention);
+  // One owner-facing source-health summary, not one alert per integration/mapping.
+  const systemAttention: AdminInboxViewItem[] = prolonged.length ? [{
+    id: `system:prolonged:${today}`, eventId: '', readAt: null,
+    event: {type:'admin.system_attention',sourceType:'system_attention',sourceId:'prolonged',occurredAt:prolonged[0].event.occurredAt,
+      title:'Автоматические проверки неполные',body:`Длительных сбоев: ${prolonged.length}. Восстановление не подтверждено больше часа. Проверьте раздел «Система» и передайте проблему ответственному за связь.`,
+      href:'/admin/inbox?view=system',technicalAttention:true,
+      push:{identity:'Автоматические проверки неполные',action:'Проверить связь',detail:`Длительных сбоев: ${prolonged.length}. Откройте «Система»; важные решения сверяйте с источником.`}},
+    meta:{...prolonged[0].meta,actionLabel:'Проверить связь'},sourceState:{active:true,label:'Больше часа',tone:'attention'},
+  }] : [];
+  const attention = selectAdminAttention([...allItems.filter(i => !i.event.technicalAttention && i.event.sourceType !== 'supplier_payment_plan' && !(i.event.sourceType === 'expense_request' && linkedDeliveryExpenseRefs.has(i.event.sourceId))), ...pendingPlans, ...systemAttention]);
   const itemRows = input.unreadOnly ? unreadRows : displayRows;
   const items = itemRows
     .map((row) => itemsById.get(row.id))

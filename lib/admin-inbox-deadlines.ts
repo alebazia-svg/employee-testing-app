@@ -14,10 +14,16 @@ export function urgentDeadline(deadlines: DecisionDeadline[], now: Date): Attent
   const signals = deadlines.filter(d => Date.parse(d.at) - +now <= 30 * 60_000).map(d => `${d.key}:${phase(d.at)}`).sort();
   return { ...deadline, phase: phase(deadline.at), signals };
 }
-export function deadlineLabel(deadline: AttentionUrgency) {
+export function deadlineLabel(deadline: AttentionUrgency, now = new Date()) {
   const time = new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' }).format(new Date(deadline.at));
   const date = attentionDay(new Date(deadline.at)).split('-').reverse().slice(0,2).join('.');
-  return `${deadline.phase === 'due' ? 'Срок наступил в' : 'Решить до'} ${time} · ${date} · ${deadline.label}`;
+  const datedTime = `${time}${attentionDay(new Date(deadline.at)) === attentionDay(now) ? '' : ` · ${date}`}`;
+  // Explain the business reason; reminder thresholds are not payment deadlines.
+  if (deadline.key.startsWith('issue:')) return 'Выдача в 1С пока не подтверждена';
+  if (deadline.key.startsWith('cash:')) return `Пересчёт кассы — ${datedTime}`;
+  if (deadline.key.startsWith('shift:')) return `${deadline.phase === 'due' ? 'Смена завершилась' : 'До конца смены'} — ${datedTime}`;
+  if (deadline.key.startsWith('buyer:')) return `${deadline.phase === 'due' ? 'Рабочий день Астемира завершился' : 'Решить до ухода Астемира'} — ${datedTime}`;
+  return `${deadline.label} · ${datedTime}`;
 }
 export function buyerDeadline(requestedAt: Date): DecisionDeadline {
   // Owner-confirmed hours for the fixed accountable recipient, not a guessed manager shift.

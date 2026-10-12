@@ -20,7 +20,7 @@ test('isolated database: real expense/buyer producers, two push devices, complet
   webpush.sendNotification=async(sub,payload)=>{sent.push({endpoint:sub.endpoint,...JSON.parse(String(payload))});return {statusCode:201,body:'',headers:{}};};
   let now=new Date('2026-10-12T09:00:00Z');
   let native:any={state:'unlinked'};
-  const mocks:Record<string,any>={
+  const mocks:Record<string,any>={'./admin-inbox-source-health':{expenseSyncLastSuccess:async()=>now,sourceCheckIsStale:(at:Date,clock:Date)=>+clock-+at>=60*60000},
     './prisma':{prisma}, '@/lib/prisma':{prisma},
     './procurement-delivery-source':{fetchDeliveryCash:async()=>({balance:2000,checkedAt:new Date().toISOString(),lastIssue:null}),unavailableDeliveryCash:()=>({balance:null,checkedAt:'',lastIssue:null})},
     './procurement-delivery-native-source':{loadDeliveryNative:async()=>native.state==='linked'?{...native,status:{...native.status,checkedAt:now.toISOString()}}:native},
@@ -63,12 +63,18 @@ test('isolated database: real expense/buyer producers, two push devices, complet
     assert.equal((await inbox()).attentionCount,0,'owner decision is complete while cashier still owes issue');
     now=new Date(+now+60*60000);assert.equal((await dispatch()).sent,0);
     const payable=native; native={state:'unavailable'};
-    assert.equal((await inbox()).attentionCount,1,'unavailable evidence cannot silently hide an unresolved request');
+    assert.equal((await inbox()).attentionCount,0,'unavailable evidence must not invent a new funding decision');
+    assert.equal((await dispatch()).sent,0,'source outage cannot push a repeat funding request');
+    assert.ok((await api.loadAdminInbox({userId:admin.id,limit:100,view:'system',now})).items.some((i:any)=>i.event.title==='Не удалось проверить выдачу денег'));
     native=payable;
     native.status.state='waiting';native.status.canCollect=false;
     assert.equal((await inbox()).attentionCount,1,'revoked approval returns to owner attention');
     native.status.state='issued';native.status.issued=5000;native.status.remaining=0;
     assert.equal((await inbox()).attentionCount,0,'full native issue removes the task');
+    native={state:'unavailable'};
+    now=new Date(+now+60*60000);
+    assert.equal((await dispatch()).sent,0,'paid request cannot return during a later read failure');
+    native={...payable,status:{...payable.status,state:'issued',issued:5000,remaining:0}};
     assert.ok(sent.every(x=>x.notificationId===`attention-${admin.id}`),'all repeats replace the same card');
 
     const plan=await prisma.supplierPaymentPlan.create({data:{managerUserId:buyer.id,planCode:prefix,supplierPartner:'Плановая оплата',orderRefs:[],orderNumbers:[],plannedDate:new Date('2026-10-14'),plannedAmount:1000,condition:'',paymentMethod:'CASH'}});

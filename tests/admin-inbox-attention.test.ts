@@ -66,3 +66,28 @@ test('planned payments alone repeat next day, but new money requests still arriv
   assert.ok(digestDue({...base,now:new Date('2026-10-13T06:00:00Z')}));
   assert.ok(digestDue({...base,items:[...base.items,item('new')],now:new Date(+now+5*60000)}));
 });
+
+test('temporary disappearance never makes a previously delivered request new again',()=>{
+  const previous={ids:['a','b'],repeat:true};
+  const withoutA=digestDue({items:[item('b')],previous,sentAt:now,now:new Date(+now+60*60000)})!;
+  assert.deepEqual(withoutA.seen,['a','b']);
+  const restored=[item('a'),item('b')];
+  assert.equal(digestDue({items:restored,previous:withoutA,sentAt:new Date(+now+60*60000),now:new Date(+now+65*60000)}),null);
+  assert.ok(!attentionDigestText(restored,withoutA).body.includes('Новое'));
+  assert.ok(digestDue({items:[...restored,item('genuinely-new')],previous:withoutA,sentAt:new Date(+now+60*60000),now:new Date(+now+65*60000)}));
+});
+test('long system problem is lower priority and alone repeats only on another day',()=>{
+  const technical={...item('outage','dependency'),meta:{category:'system'},event:{...item('outage','dependency').event,technicalAttention:true}};
+  assert.deepEqual(selectAdminAttention([technical,item('cash')]).map(x=>x.id),['cash','outage']);
+  assert.equal(selectAdminAttention([{...technical,sourceState:{active:false}}]).length,0);
+  assert.equal(digestDue({items:[technical],previous:{ids:['outage'],repeat:false},sentAt:now,now:new Date(+now+60*60000)}),null);
+  assert.ok(digestDue({items:[technical],previous:{ids:['outage'],repeat:false},sentAt:now,now:new Date('2026-10-13T06:00Z')}));
+});
+
+test('deadline evidence disappearing temporarily cannot restart urgent reminders',()=>{
+ const urgent={...item('a'),event:{...item('a').event,urgency:{key:'closing',at:now.toISOString(),label:'Закрытие',phase:'due' as const}}};
+ const sent=digestDue({items:[urgent,item('b')],previous:{ids:[],repeat:false},sentAt:null,now})!;
+ const missing=digestDue({items:[item('b')],previous:sent,sentAt:now,now:new Date(+now+60*60000)})!;
+ assert.deepEqual(missing.signals,sent.signals);
+ assert.equal(digestDue({items:[urgent,item('b')],previous:missing,sentAt:new Date(+now+60*60000),now:new Date(+now+65*60000)}),null);
+});

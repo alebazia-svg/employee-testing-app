@@ -8,6 +8,7 @@ import { startVisibleSync } from '@/lib/visible-sync';
 
 type InboxItem = {
   id: string;
+  eventId: string;
   readAt: string | null;
   event: { type: string; title: string; body: string; href: string; occurredAt: string; deadline?: string; urgency?: { phase: string } };
   meta: { typeLabel: string; actionLabel: string; category: string };
@@ -96,7 +97,7 @@ export function AdminInboxBell() {
   }, []);
 
   async function openItem(item: InboxItem) {
-    if (!item.readAt) await fetch(`/api/admin/inbox/${encodeURIComponent(item.id)}/read`, { method: 'POST' });
+    if (item.eventId && !item.readAt) await fetch(`/api/admin/inbox/${encodeURIComponent(item.id)}/read`, { method: 'POST' }).catch(() => null);
     // Reading never resolves the underlying business task or clears its badge.
     setOpen(false);
     router.push(item.event.href);
@@ -126,7 +127,7 @@ export function AdminInboxBell() {
             <div className='min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5'>{items.map((item) => (
               <button key={item.id} type='button' onClick={() => void openItem(item)} className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition hover:-translate-y-0.5 ${item.readAt ? 'admin-material-control border-white/80 bg-white' : 'border-amber-200 bg-amber-50/80 shadow-[3px_4px_10px_rgba(120,92,28,0.12),inset_0_1px_rgba(255,255,255,0.7)]'}`}>
                 <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-amber-400'}`} />
-                <span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className='mt-0.5 line-clamp-2 text-xs font-medium leading-relaxed text-slate-600'>{item.event.body}</span><span className={`mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold ${item.event.urgency ? 'text-[#925b38]' : 'text-slate-400'}`}><span>{item.event.deadline ?? when(item.event.occurredAt)}</span><span>· {item.meta.typeLabel}</span></span></span>
+                <span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className='mt-0.5 line-clamp-2 text-xs font-medium leading-relaxed text-slate-600'>{item.event.body}</span><span className='mt-1 block text-[11px] text-slate-400'>{when(item.event.occurredAt)}</span></span>
                 <ChevronRight className='mt-1 h-4 w-4 shrink-0 text-[#a66d45]' />
               </button>
             ))}</div>
