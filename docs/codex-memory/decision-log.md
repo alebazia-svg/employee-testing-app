@@ -927,3 +927,15 @@ to expense/accountable details; multi-task pushes name the new and priority task
 plus remaining count. One replacing OS summary is retained. Exact accountable
 event identity prevents an old push opening another request. Production unchanged.
 Code committed locally as `edd1ca3`; deployment is not approved by this commit request.
+
+
+## 2026-10-12 — ADMIN push/deadline release 1.4.2
+
+Owner explicitly approved release after the commit-only stage. Deployed runtime
+574a758 with portal 1.4.2; public and authenticated versions, server commit,
+healthy container and matching source hashes verified. No schema or 1C changes.
+Post-release checks found expense-source SOURCE_TIMEOUT beginning before restart;
+last complete read was 13:54 MSK. This is an outstanding delivery dependency,
+not a successful end-to-end push check. Prioritize diagnosing source availability
+before further notification/UI enhancement. Exact evidence and rollback are in
+[admin-attention-deadlines-20261012.md](admin-attention-deadlines-20261012.md).

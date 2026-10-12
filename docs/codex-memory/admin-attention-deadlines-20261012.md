@@ -1,9 +1,14 @@
 # ADMIN attention: shift deadlines and delayed accountable issue
 
-Status: committed locally as `edd1ca3`, isolated verification complete; not released.
-Owner approved the next stage on 2026-10-12 after the notification-control review.
-Production remains 1.4.1. No deployment, 1C command, migration or production-data
-change was performed in this stage.
+Status: released as portal **1.4.2**, runtime commit
+`574a75824e125e9942e32be2a025156ca87a2284` (feature commit `edd1ca3`).
+Owner explicitly approved production deployment on 2026-10-12 after local checks.
+Only portal-app was deployed; no 1C command/publication, migration, environment
+change or manual production-data change was performed.
+
+Release verification found an independent expense-source timeout starting before
+deployment. New 1C requests may be delayed; end-to-end source delivery is not
+confirmed healthy. See the production evidence below.
 
 ## Rules
 
@@ -54,7 +59,7 @@ change was performed in this stage.
   the existing modal. An old link cannot open a different current request; closing
   removes the deep-link parameter. Multiple tasks open the shared attention list.
 - Existing stable notification ID, leases, retries, hours and coalescing unchanged.
-  Physical display of this new wording is not yet tested; no production push sent.
+  Physical display of this new wording is not yet tested; no manual test push sent.
 
 ## Verification
 
@@ -102,6 +107,46 @@ Memory:
 - docs/codex-memory/decision-log.md
 - docs/codex-memory/project-index.md
 
-Unrelated primary-checkout WIP was untouched. Before release, recheck the live
-version and deployment branch and allocate the appropriate new version; no
-future release number has been reserved here.
+Unrelated primary-checkout WIP was untouched. Release-only files: package.json
+and package-lock.json (all three version fields 1.4.2).
+
+
+## Production release evidence
+
+- Fresh remote deployment branch and both public metadata endpoints were 1.4.1
+  before release. No competing changes; fast-forward deployment branch.
+- Deployment exit 0. Server HEAD independently verified as
+  `574a75824e125e9942e32be2a025156ca87a2284`; container healthy; public
+  `/api/health` returned `{"ok":true}`. Only portal-app rebuilt/restarted.
+- Both team.mobo-opt.ru and portal.alebazia.xyz publish version 1.4.2, builtAt
+  `2026-10-12T10:57:00.190Z` (13:57 MSK). Authenticated ADMIN footer agrees.
+  Build metadata still has null revision/unknown source; SSH verifies commit.
+- Container SHA256 checks match local policy, loader, push sender and deadline
+  helper. Persistent uploads and planning mounts retained. Existing .rollback/
+  and primary-checkout WIP untouched.
+- Previous runtime commit: a848a30f79d1ce2987af4fedcc21ad79bd22d939 (1.4.1).
+- Previous image: sha256:907129d2fa6c0d306fe10a61e46ab71486082f7ef3a5f39ff0512cc7d5630d96.
+- Rollback tag: offonika-portal-attention-rollback:pre-1.4.2-20261012.
+- Replacement image: sha256:cdd35285e35f497678bff0aaa4dd359c7a964b89c31b73c81318cb63c76d4040.
+- Schema, migrations, Dockerfile and compose unchanged. Rollback can restore
+  the preserved 1.4.1 image without DB restoration.
+- Existing 60 focused tests, 3 PostgreSQL integrations, TypeScript and isolated
+  build passed; 5 release-metadata tests and production Docker build also passed.
+- Both timers active; ADMIN sender successful after restart (14:06 MSK), journal
+  reports `ok:true, receipts:0, sent:0, failed:0`. This proves a successful empty
+  dispatch, not physical delivery of a new push.
+- **Outstanding source incident:** expense sync last complete at 13:54 MSK,
+  126 rows; SOURCE_TIMEOUT at 13:57, 14:00 and 14:03, continuing failure at
+  14:06 MSK. The first failures predate the container switch. No sync code or
+  timeout setting changed in this release. Do not claim new-request delivery
+  healthy until a complete source read succeeds. Diagnostic journal read exit 0;
+  no manual sync, financial decision or source write triggered.
+- ADMIN attention currently zero; expense list shows one payable request waiting
+  for issue, based on the last complete snapshot. Zero attention does not prove
+  absence of newer 1C requests during the source incident.
+- Physical display of the new concrete ADMIN wording and the cashier-specific
+  notification remain unverified. Earlier two-device replacement confirmation
+  remains valid only for the previously tested flow.
+- Local evidence: /tmp/mobo-attention-release-142.log and .exit;
+  /tmp/mobo-attention-142-check.log and .exit; screenshot
+  /Users/bela/.codex/visualizations/2026/10/12/cash-issue/production-attention-142.png.

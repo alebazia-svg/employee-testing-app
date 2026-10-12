@@ -132,4 +132,6 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
   for cashier execution in the requests section, without owner approval repeats.
 - Scope, tests, production checks and rollback: `admin-attention-relevance-20261012.md`.
 
-- ADMIN next stage (local, not released): [shift deadlines and delayed cash issue](admin-attention-deadlines-20261012.md).
+- ADMIN production 1.4.2: [concrete push, shift deadlines and delayed cash issue](admin-attention-deadlines-20261012.md).
+  Release verified; expense-source timeout predating release remains under diagnosis.
+  New 1C request delivery is not confirmed healthy until complete sync resumes.
