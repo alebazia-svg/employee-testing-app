@@ -145,3 +145,35 @@ test('native field readback mismatch gives an actionable error without confirmin
     return true;
   });
 });
+
+
+test('payment breakdown edits preserve header versus line scope and native row numbers', async () => {
+  const c = card(); c.supported_actions = ['save', 'mark_payable'];
+  const empty = (type: string) => ({ type, filled: false, value: null, name: '', ref: '', xml: '' });
+  c.state.header.СтатьяДвиженияДенежныхСредств = empty('Статья движения денежных средств');
+  c.state.lines = [1, 3].map(line_number => ({ line_number, fields: {
+    СтатьяДвиженияДенежныхСредств: empty('Статья движения денежных средств'),
+    СтатьяРасходов: empty('Статья расходов'),
+    Подразделение: empty('Подразделение'),
+  } }));
+  c.schema = [
+    { scope: 'header', name: 'СтатьяДвиженияДенежныхСредств', label: 'Статья ДДС', types: [{ type: 'Статья движения денежных средств', kind: 'reference' }] },
+    ...Object.entries(c.state.lines[0].fields).map(([name, cell]) => ({ scope: 'line' as const, name, label: name, types: [{ type: cell.type, kind: 'reference' as const }] })),
+  ];
+  const edit: ExpenseCommand = { ...command(), action: 'mark_payable', changes: [
+    { scope: 'header', line_number: 0, field: 'СтатьяДвиженияДенежныхСредств', type: 'Статья движения денежных средств', xml: id },
+    { scope: 'line', line_number: 3, field: 'СтатьяДвиженияДенежныхСредств', type: 'Статья движения денежных средств', xml: token },
+    { scope: 'line', line_number: 3, field: 'СтатьяРасходов', type: 'Статья расходов', xml: ref },
+  ] };
+  validateExpenseCommandAgainstCard(parseExpenseCommand(edit), readNativeExpenseCard(c, ref));
+  const after = structuredClone(c.state); after.document.status.key = 'payable';
+  let sent: unknown;
+  const client = createExpenseAdminClient(async params => {
+    sent = params.body;
+    return { ok: true, contract: c.contract, committed: false, transaction_rolled_back: true, preview_token: token, before: c.state, proposed_after: after };
+  });
+  await client.preview(ref, edit, 'portal:1 Test');
+  assert.deepEqual(sent, { ...edit, request_ref: ref, actor: 'portal:1 Test', confirm: false });
+  assert.throws(() => validateExpenseCommandAgainstCard({ ...edit, changes: [{ ...edit.changes[2], line_number: 2 }] }, c), /Строка или поле/);
+  assert.throws(() => parseExpenseCommand({ ...edit, changes: [{ ...edit.changes[2], scope: 'header', line_number: 0 }] }));
+});

@@ -8,7 +8,7 @@ import { isExpenseRef, parseExpenseCommand, readNativeExpenseCard, supportsExpen
 const button = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 sm:min-h-9 sm:py-1.5 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50';
 const primary = `${button} border-transparent !bg-slate-900 !text-white`;
 const panel = 'rounded-xl border border-slate-200 bg-white p-4';
-const label = (key: string) => ({ Партнер: 'Партнёр', Заказ: 'Основание / заказ', СтатьяРасходов: 'Статья расходов', АналитикаРасходов: 'Аналитика расходов', СтатьяДвиженияДенежныхСредств: 'Статья ДДС', Подразделение: 'Подразделение', Комментарий: 'Комментарий', НазначениеПлатежа: 'Назначение платежа', Сумма: 'Сумма', НаправлениеДеятельности: 'Направление деятельности' } as Record<string, string>)[key] || key;
+const label = (key: string) => ({ Партнер: 'Партнёр', Заказ: 'Основание / заказ', СтатьяРасходов: 'Статья расходов/активов', АналитикаРасходов: 'Аналитика расходов', СтатьяДвиженияДенежныхСредств: 'Статья ДДС', Подразделение: 'Подразделение', Комментарий: 'Комментарий', НазначениеПлатежа: 'Назначение платежа', Сумма: 'Сумма', НаправлениеДеятельности: 'Направление деятельности' } as Record<string, string>)[key] || key;
 const changeKey = (scope: string, line: number, field: string) => `${scope}:${line}:${field}`;
 function name(value: unknown) { return value && typeof value === 'object' && 'name' in value ? String(value.name || '') : ''; }
 function money(value: unknown, currency: unknown) { return typeof value === 'number' && Number.isFinite(value) ? `${value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${name(currency)}`.trim() : 'Нет данных'; }
@@ -61,7 +61,7 @@ function FieldEditor({ field, current, draft, api, disabled, onChange, onClose, 
       <div className='absolute left-0 right-0 top-full z-30 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg' aria-label={`Варианты: ${field.label}`}>
         {searching ? <p role='status' className='p-3 text-sm text-slate-500'>Загружаем…</p> : error ? <p role='alert' className='p-3 text-sm text-amber-800'>{error}</p> : !choices.length ? <p className='p-3 text-sm text-slate-500'>Ничего не найдено</p> : choices.map(value => <button type='button' key={`${value.type}:${value.xml}`} disabled={disabled} className='block min-h-11 w-full border-b border-slate-100 px-3 py-2 text-left text-sm text-slate-800 hover:bg-slate-100 focus:bg-slate-100' onClick={() => { onChange({scope:field.scope,line_number:line,field:field.name,type:value.type,xml:value.xml},expenseBreakdownDisplay(value)); onClose(); }}>{expenseBreakdownDisplay(value)}</button>)}
         {truncated && <p className='px-3 py-2 text-xs text-slate-500'>Уточните название — показаны первые 50.</p>}
-        {field.types.length > 1 && <label className='block border-t border-slate-200 p-2 text-xs text-slate-500'>Тип основания<select aria-label='Тип основания' className='mt-1 w-full rounded border border-slate-200 bg-white p-2' value={type} disabled={disabled} onChange={event => {setType(event.target.value);setQuery('');}}>{field.types.map(t => <option key={t.type} value={t.type}>{t.type}</option>)}</select></label>}
+        {field.types.length > 1 && <label className='block border-t border-slate-200 p-2 text-xs text-slate-500'>Тип значения<select aria-label='Тип значения' className='mt-1 w-full rounded border border-slate-200 bg-white p-2' value={type} disabled={disabled} onChange={event => {setType(event.target.value);setQuery('');}}>{field.types.map(t => <option key={t.type} value={t.type}>{t.type}</option>)}</select></label>}
       </div>
     </div> : type === 'Строка' ? <textarea aria-label={field.label} autoFocus rows={2} className='mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white p-2 text-sm font-semibold outline-none focus:border-slate-500' disabled={disabled} maxLength={1000} value={draft?.xml ?? current.xml} onBlur={onClose} onChange={event => onChange({scope:field.scope,line_number:line,field:field.name,type,xml:event.target.value})} /> : <p className='text-sm text-slate-500'>Этот тип изменяется в 1С.</p>}
   </div>;
@@ -176,7 +176,29 @@ export function ExpenseNativeClient({ caseId, onDirtyChange, onBusyChange }: { c
       {fact('Сумма',money(doc.amount,doc.currency))}
       {fact('Операция',name(doc.business_operation))}
       {nativeFact('Статья ДДС','header',0,'СтатьяДвиженияДенежныхСредств')}
-      {state.lines.length <= 1 ? <>{nativeFact('Контрагент','line',state.lines[0]?.line_number || 1,'Партнер')}{nativeFact('Основание','line',state.lines[0]?.line_number || 1,'Заказ')}</> : state.lines.map(line => <div key={line.line_number} className='grid gap-3 sm:col-span-2 sm:grid-cols-2'><p className='text-xs font-semibold text-slate-500 sm:col-span-2'>Строка {line.line_number} · {line.fields.Сумма ? expenseBreakdownDisplay(line.fields.Сумма) : 'Сумма не передана'}</p>{nativeFact(`Контрагент · строка ${line.line_number}`,'line',line.line_number,'Партнер')}{nativeFact(`Основание · строка ${line.line_number}`,'line',line.line_number,'Заказ')}</div>)}
+      <div className='sm:col-span-2'>
+        <h3 className='text-sm font-bold text-slate-900'>Расшифровка платежа</h3>
+        {!state.lines.length && <p className='mt-2 text-sm text-amber-800'>В 1С нет строк расшифровки. Добавьте строку в 1С и обновите заявку.</p>}
+        {state.lines.map(line => {
+          const mainKeys = ['СтатьяДвиженияДенежныхСредств', 'СтатьяРасходов', 'Подразделение', 'Партнер', 'Заказ'];
+          const extraFields = card.schema.filter(field => field.scope === 'line' && !mainKeys.includes(field.name) && line.fields[field.name]);
+          const rowLabel = (title: string) => state.lines.length > 1 ? `${title} · строка ${line.line_number}` : title;
+          return <div key={line.line_number} className='mt-2 border-t border-slate-200 pt-1'>
+            {state.lines.length > 1 && <p className='mt-2 text-xs font-semibold text-slate-500'>Строка {line.line_number} · {line.fields.Сумма ? expenseBreakdownDisplay(line.fields.Сумма) : 'Сумма не передана'}</p>}
+            <div className='grid gap-x-4 sm:grid-cols-2'>
+              {line.fields.СтатьяДвиженияДенежныхСредств && nativeFact(rowLabel('Статья ДДС в расшифровке'),'line',line.line_number,'СтатьяДвиженияДенежныхСредств')}
+              {line.fields.СтатьяРасходов && nativeFact(rowLabel('Статья расходов/активов'),'line',line.line_number,'СтатьяРасходов')}
+              {line.fields.Подразделение && nativeFact(rowLabel('Подразделение расходов'),'line',line.line_number,'Подразделение')}
+              {line.fields.Партнер && nativeFact(rowLabel('Партнёр'),'line',line.line_number,'Партнер')}
+              {line.fields.Заказ && nativeFact(rowLabel('Основание'),'line',line.line_number,'Заказ')}
+            </div>
+            {!!extraFields.length && <details className='mt-2'>
+              <summary className='cursor-pointer py-2 text-xs font-semibold text-slate-600'>Аналитика и другие поля{extraFields.some(field => line.fields[field.name].filled) ? ' · есть заполненные' : ''}</summary>
+              <div className='grid gap-x-4 sm:grid-cols-2'>{extraFields.map(field => nativeFact(rowLabel(field.label),'line',line.line_number,field.name))}</div>
+            </details>}
+          </div>;
+        })}
+      </div>
       {nativeFact('Назначение платежа','header',0,'НазначениеПлатежа',true)}
       {nativeFact('Комментарий','header',0,'Комментарий',true)}
       {fact('Исполнение',executionLabels[String(state.execution.state)] || 'Нет данных')}
