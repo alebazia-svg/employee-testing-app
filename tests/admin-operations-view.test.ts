@@ -76,3 +76,11 @@ test('today summary uses workday state before schedule state', () => {
   });
   assert.deepEqual(summary, { working: 1, completed: 1, notStarted: 1, off: 1, unscheduled: 1 });
 });
+
+test('encashment permission is a decision for one shift, not a permanent owner alarm', () => {
+  const base={sourceType:'workday_close_exception',reasonCode:'cash_encashment_not_possible',sourceDate:'2026-10-11',today:'2026-10-12'};
+  assert.equal(adminInboxSourceState({...base,businessStatus:'approved'}).active,false);
+  assert.equal(adminInboxSourceState({...base,businessStatus:'pending'}).label,'Прошлая смена · без решения');
+  assert.equal(adminInboxSourceState({...base,businessStatus:'pending',sourceDate:'2026-10-12'}).active,true);
+  assert.equal(adminInboxSourceState({...base,businessStatus:'pending',reasonCode:'other'}).active,true);
+});

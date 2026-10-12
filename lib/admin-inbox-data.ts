@@ -1,9 +1,9 @@
 import 'server-only';
 import { readPaymentRevision } from './procurement-plan-revision';
-import { ATTENTION_LIFECYCLE_SOURCES, selectAdminAttention } from './admin-inbox-attention-policy';
+import { ATTENTION_LIFECYCLE_SOURCES, selectAdminAttention, attentionDay, paymentReminderTiming } from './admin-inbox-attention-policy';
 import { deliveryDetailsKey, readDeliveryDetails } from './procurement-delivery-request';
 import { loadDeliveryNative } from './procurement-delivery-native-source';
-import { deliveryRequestIsClosed } from './procurement-delivery-native';
+import { deliveryRequestIsClosed, deliveryNativeFresh, deliveryCollectionAmount } from './procurement-delivery-native';
 
 import { adminInboxActionLabel, adminInboxEventMeta, adminInboxSourceState } from '@/lib/admin-operations-view';
 import {
@@ -27,12 +27,15 @@ export type AdminInboxViewItem = {
     sourceType: string;
     sourceId: string;
     occurredAt: string;
+    deadline?: string;
   };
   meta: ReturnType<typeof adminInboxEventMeta>;
   sourceState: ReturnType<typeof adminInboxSourceState>;
 };
 
-export async function loadAdminInbox(input: { userId: number; limit: number; unreadOnly?: boolean; view?: 'attention' | 'history' | 'system' }) {
+export async function loadAdminInbox(input: { userId: number; limit: number; unreadOnly?: boolean; view?: 'attention' | 'history' | 'system'; now?: Date }) {
+  const now = input.now ?? new Date();
+  const today = attentionDay(now);
   const [displayRows, unreadRows, lifecycleRows] = await Promise.all([
     prisma.adminInboxReceipt.findMany({
       where: { userId: input.userId, ...(input.view === 'history' ? { event: { sourceType: { notIn: ['dependency', 'infrastructure'] }, type: { not: 'terminal_fiscal_review.created' } } } : input.view === 'system' ? { event: { OR: [{ sourceType: { in: ['dependency', 'infrastructure'] } }, { type: 'terminal_fiscal_review.created' }] } } : {}) },
@@ -80,7 +83,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     }) : [],
     exceptionIds.length ? prisma.workdayCloseExceptionRequest.findMany({
       where: { id: { in: exceptionIds } },
-      select: { id: true, status: true, reasonCode: true, consumedAt: true },
+      select: { id: true, status: true, reasonCode: true, consumedAt: true, workDayEntry: { select: { date: true } } },
     }) : [],
     cashOperationIds.length ? prisma.cashOperation.findMany({
       where: { id: { in: cashOperationIds } },
@@ -114,11 +117,13 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const record = await prisma.adminInboxEvent.findUnique({ where: { eventKey: deliveryDetailsKey(event.id) }, select: { body: true } });
     const details = record ? readDeliveryDetails(record.body) : null;
     const native = details ? await loadDeliveryNative(event.id, details) : undefined;
-    if (deliveryRequestIsClosed({ requestStateAvailable: true, nativeRequest: native })) activeDeliveryIds.delete(event.id);
+    // The owner has completed the decision; actual issue stays open in the requests section.
+    const awaitingCashier = native?.state === 'linked' && native.status && deliveryNativeFresh(native.status, now.getTime()) && deliveryCollectionAmount(native.status) !== null;
+    if (deliveryRequestIsClosed({ requestStateAvailable: true, nativeRequest: native }, now.getTime()) || awaitingCashier) activeDeliveryIds.delete(event.id);
     else {
       activeDeliverySourceIds.add(event.sourceId);
-      if (native?.state === 'linked' && native.status) linkedDeliveryExpenseRefs.add(native.status.ref);
     }
+    if (native?.state === 'linked' && native.status) linkedDeliveryExpenseRefs.add(native.status.ref);
   }
   const issuesById = new Map(issues.map((item) => [String(item.id), item]));
   const reviewsById = new Map(reviews.map((item) => [item.id, item]));
@@ -147,6 +152,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
         : currentExpenseKeys.has(row.event.eventKey),
       businessStatus: plansById.get(sourceId)?.status ?? issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
       reasonCode: exception?.reasonCode,
+      sourceDate: exception?.workDayEntry.date,
+      today,
       employeeActionRequired: issue?.employeeActionRequired,
       sourceCompleted: Boolean(exception?.consumedAt),
     });
@@ -186,12 +193,18 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const pendingPlans: AdminInboxViewItem[] = plans.flatMap(plan => {
     const revision = plan.status === 'APPROVED' ? readPaymentRevision(plan.oneCCashEvidence) : null;
     if (plan.status !== 'SUBMITTED' && !revision) return [];
-    return [{ id: `plan:${plan.id}:${revision?.id ?? plan.events[0]?.id ?? plan.createdAt.toISOString()}`, eventId: '', readAt: plan.createdAt.toISOString(),
+    // Include both the existing obligation and a proposed date change until reviewed.
+    const currentTiming = paymentReminderTiming(plan.plannedDate, now);
+    const proposedTiming = revision?.data.plannedDate ? paymentReminderTiming(revision.data.plannedDate, now) : currentTiming;
+    const timing = proposedTiming.day && currentTiming.day && proposedTiming.day < currentTiming.day ? proposedTiming : currentTiming;
+    if (!timing.active) return [];
+    return [{ id: `plan:${plan.id}:${revision?.id ?? plan.events[0]?.id ?? plan.createdAt.toISOString()}:${timing.day}`, eventId: '', readAt: plan.createdAt.toISOString(),
       event: { type: 'procurement.payment_submitted', sourceType: 'supplier_payment_plan', sourceId: plan.id,
-        title: revision ? 'Изменения оплаты на согласование' : `Оплата ${plan.planCode}`,
+        title: revision ? `${timing.label} · изменения на согласование` : `${timing.label} · ${plan.supplierPartner}`,
+        deadline: timing.deadline,
         body: `${plan.manager.name} · ${plan.supplierPartner} · ${Number(revision?.data.plannedAmount ?? plan.plannedAmount).toLocaleString('ru-RU')} ₽`,
         href: '/admin/procurement', occurredAt: revision?.submittedAt ?? plan.events[0]?.createdAt.toISOString() ?? plan.createdAt.toISOString() },
-      meta: adminInboxEventMeta('procurement.payment_submitted'), sourceState: { active: true, label: 'Ожидает решения', tone: 'attention' as const } }];
+      meta: adminInboxEventMeta('procurement.payment_submitted'), sourceState: { active: true, label: 'Нужно согласовать', tone: 'attention' as const } }];
   });
   const attention = selectAdminAttention([...allItems.filter(i => i.event.sourceType !== 'supplier_payment_plan' && !(i.event.sourceType === 'expense_request' && linkedDeliveryExpenseRefs.has(i.event.sourceId))), ...pendingPlans]);
   const technicalItems = allItems.filter(i => isAdminInboxTechnicalEvent(i.event.type) && latestTechnicalEventBySource.get(adminInboxTechnicalSourceKey(i.event)) === i.eventId && i.sourceState.active);

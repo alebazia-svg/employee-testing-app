@@ -101,6 +101,8 @@ export function adminInboxSourceState(input: {
   current?: boolean;
   employeeActionRequired?: boolean;
   sourceCompleted?: boolean;
+  sourceDate?: string;
+  today?: string;
 }): AdminInboxSourceState {
   if (input.sourceType === 'supplier_payment_plan') {
     return input.businessStatus === 'SUBMITTED'
@@ -144,8 +146,8 @@ export function adminInboxSourceState(input: {
   }
   if (input.sourceType === 'workday_close_exception') {
     if (input.sourceCompleted) return { active: false, label: 'Завершено', tone: 'resolved' };
+    if (input.businessStatus === 'pending' && input.reasonCode?.startsWith('cash_encashment_') && input.sourceDate && input.today && input.sourceDate < input.today) return { active: false, label: 'Прошлая смена · без решения', tone: 'history' };
     if (input.businessStatus === 'pending') return { active: true, label: 'Ожидает решения', tone: 'attention' };
-    if (input.businessStatus === 'approved' && input.reasonCode?.startsWith('cash_encashment_')) return { active: true, label: 'Инкассация на контроле', tone: 'attention' };
     if (input.businessStatus === 'approved') return { active: false, label: 'Разрешено администратором', tone: 'resolved' };
     if (input.businessStatus === 'rejected') return { active: false, label: 'Отклонено администратором', tone: 'history' };
   }

@@ -38,7 +38,7 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
   let failed = digest.failed;
   let receiptCount = digest.receipts;
   let cursor: string | undefined;
-  const unreadCountByUser = new Map<number, number>();
+  const inboxByUser = new Map<number, Awaited<ReturnType<typeof loadAdminInbox>>>();
   // Advance past already delivered/read entries: the first page must not
   // permanently block new receipts. The fixed event cutoff bounds this scan.
   for (;;) {
@@ -67,11 +67,15 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
       eventCreatedAt: receipt.event.createdAt,
       now,
     })) continue;
-    let badgeCount = unreadCountByUser.get(receipt.userId);
-    if (badgeCount === undefined) {
-      badgeCount = (await loadAdminInbox({ userId: receipt.userId, limit: 1 })).attentionCount;
-      unreadCountByUser.set(receipt.userId, badgeCount);
+    let inbox = inboxByUser.get(receipt.userId);
+    if (!inbox) {
+      inbox = await loadAdminInbox({ userId: receipt.userId, limit: 1, now });
+      inboxByUser.set(receipt.userId, inbox);
     }
+    // The late closing channel must not revive a decided or past-shift encashment.
+    if (receipt.event.type === 'workday.cash_encashment_exception_requested'
+      && !inbox.attention.some(item => item.event.sourceType === receipt.event.sourceType && item.event.sourceId === receipt.event.sourceId)) continue;
+    const badgeCount = inbox.attentionCount;
     for (const subscription of receipt.user.pushSubscriptions) {
       if (!subscriptionExistedWhenAdminInboxEventWasCreated({
         subscriptionCreatedAt: subscription.createdAt,

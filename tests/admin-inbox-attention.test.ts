@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectAdminAttention, digestDue, attentionDigestText, type AttentionItem } from '../lib/admin-inbox-attention-policy';
+import { selectAdminAttention, paymentReminderTiming, attentionDay, digestDue, attentionDigestText, type AttentionItem } from '../lib/admin-inbox-attention-policy';
 const now = new Date('2026-10-12T09:00:00Z');
 function item(id: string, sourceType = 'expense_request', active = true): AttentionItem {
   return { id, readAt: null, event: { type: sourceType === 'expense_request' ? 'expense_request.created' : sourceType, sourceType, sourceId: id, occurredAt: '2026-10-01T09:00:00Z' }, meta: { category: 'requests' }, sourceState: { active } };
@@ -41,4 +41,26 @@ test('replacement summary includes every category, not just the newest request',
   const text = attentionDigestText([item('a'),item('b','procurement_delivery_request'),item('c','supplier_payment_plan'),item('d','workday_close_exception')]);
   assert.equal(text.title,'Требуют внимания: 4');
   for(const word of ['Расходные заявки: 1','Подотчёт: 1','Закупки: 1','Другие дела: 1']) assert.ok(text.body.includes(word));
+});
+
+test('money decisions precede other tasks and future plans; newest first within priority', () => {
+  const old = item('old');
+  const newest = {...item('buyer','procurement_delivery_request'),event:{...item('buyer','procurement_delivery_request').event,occurredAt:now.toISOString()}};
+  assert.deepEqual(selectAdminAttention([item('plan','supplier_payment_plan'),old,item('close','workday_close_exception'),newest]).map(i=>i.id),['buyer','old','close','plan']);
+});
+test('payment window follows Moscow calendar, includes tomorrow/today/overdue, never hides invalid dates', () => {
+  assert.equal(attentionDay(new Date('2026-10-12T21:00:00Z')),'2026-10-13');
+  assert.equal(paymentReminderTiming('2026-10-14',now).active,false);
+  assert.equal(paymentReminderTiming('2026-10-13',now).label,'Оплата завтра');
+  assert.equal(paymentReminderTiming(new Date('2026-10-12T00:00:00Z'),now).label,'Оплата сегодня');
+  assert.equal(paymentReminderTiming('2026-10-11',now).label,'Срок оплаты прошёл');
+  assert.equal(paymentReminderTiming('2026-10-14',new Date('2026-10-12T21:00:00Z')).active,true);
+  for (const date of [undefined,'bad','2026-02-30',new Date('invalid')]) assert.equal(paymentReminderTiming(date,now).label,'Проверьте срок оплаты');
+});
+test('planned payments alone repeat next day, but new money requests still arrive promptly', () => {
+  const base={items:[item('plan','supplier_payment_plan')],previous:{ids:['plan'],repeat:false},sentAt:now};
+  assert.equal(digestDue({...base,now:new Date(+now+15*60000)}),null);
+  assert.equal(digestDue({...base,now:new Date(+now+4*3600000)}),null);
+  assert.ok(digestDue({...base,now:new Date('2026-10-13T06:00:00Z')}));
+  assert.ok(digestDue({...base,items:[...base.items,item('new')],now:new Date(+now+5*60000)}));
 });

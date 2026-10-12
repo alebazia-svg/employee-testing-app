@@ -17,7 +17,7 @@ export async function dispatchAdminAttentionPush(now = new Date()) {
   const admins = await prisma.user.findMany({ where: { role: 'ADMIN', isActive: true }, include: { pushSubscriptions: { where: { disabledAt: null } } } });
   for (const admin of admins) {
     if (!admin.pushSubscriptions.length) continue;
-    const inbox = await loadAdminInbox({ userId: admin.id, limit: 1, view: 'attention' });
+    const inbox = await loadAdminInbox({ userId: admin.id, limit: 1, view: 'attention', now });
     const items = inbox.attention.filter(i => (ATTENTION_PUSH_TYPES as readonly string[]).includes(i.event.type));
     result.receipts += items.length;
     if (!items.length) continue;

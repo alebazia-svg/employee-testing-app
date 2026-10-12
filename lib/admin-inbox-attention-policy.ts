@@ -18,15 +18,32 @@ export function needsAdminAttention(item: AttentionItem) {
   return item.readAt === null;
 }
 export function attentionPriority(item: AttentionItem) {
-  if (['expense_request', 'procurement_delivery', 'procurement_delivery_request', 'workday_close_exception', 'cash_operation'].includes(item.event.sourceType)) return 0;
-  return item.meta.category === 'requests' ? 1 : 2;
+  if (['expense_request', 'procurement_delivery', 'procurement_delivery_request', 'cash_operation'].includes(item.event.sourceType)) return 0;
+  if (item.event.sourceType === 'supplier_payment_plan') return 2;
+  return 1;
 }
 export function selectAdminAttention<T extends AttentionItem>(items: T[]): T[] {
   const bySource = new Map<string, T>();
   for (const item of [...items].sort((a, b) => b.event.occurredAt.localeCompare(a.event.occurredAt) || b.id.localeCompare(a.id))) {
     if (needsAdminAttention(item) && !bySource.has(attentionKey(item))) bySource.set(attentionKey(item), item);
   }
-  return [...bySource.values()].sort((a, b) => attentionPriority(a) - attentionPriority(b) || a.event.occurredAt.localeCompare(b.event.occurredAt) || a.id.localeCompare(b.id));
+  return [...bySource.values()].sort((a, b) => attentionPriority(a) - attentionPriority(b) || b.event.occurredAt.localeCompare(a.event.occurredAt) || b.id.localeCompare(a.id));
+}
+/** Moscow calendar dates; plannedDate is a PostgreSQL date, not an instant. */
+export function attentionDay(now: Date) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+}
+export function paymentReminderTiming(value: Date | string | undefined, now: Date) {
+  const raw = value instanceof Date ? (Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : '') : String(value ?? '').slice(0, 10);
+  const stamp = Date.parse(`${raw}T00:00:00Z`);
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(raw) && Number.isFinite(stamp) && new Date(stamp).toISOString().slice(0, 10) === raw;
+  // A missing date needs review instead of silently hiding a payment request.
+  if (!valid) return { active: true, day: '', label: 'Проверьте срок оплаты', deadline: 'Срок оплаты не указан' };
+  const today = attentionDay(now);
+  const tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  return { active: raw <= tomorrow, day: raw,
+    label: raw < today ? 'Срок оплаты прошёл' : raw === today ? 'Оплата сегодня' : raw === tomorrow ? 'Оплата завтра' : 'Плановая оплата',
+    deadline: `Подготовить к ${raw.split('-').reverse().join('.')}` };
 }
 export type DigestState = { ids: string[]; repeat: boolean };
 export function readDigestState(raw: string | null): DigestState {
@@ -38,6 +55,8 @@ export function digestDue(input: { items: AttentionItem[]; previous: DigestState
   const ids = input.items.map(item => item.id).sort();
   const hasNew = ids.some(id => !input.previous.ids.includes(id));
   const age = input.sentAt ? input.now.getTime() - input.sentAt.getTime() : Infinity;
+  const onlyPlanned = input.items.every(item => item.event.sourceType === 'supplier_payment_plan');
+  if (onlyPlanned && !hasNew && input.sentAt && attentionDay(input.sentAt) === attentionDay(input.now)) return null;
   const wait = hasNew ? 5 * 60_000 : input.previous.repeat ? 60 * 60_000 : 15 * 60_000;
   if (age < wait) return null;
   return { ids, repeat: !hasNew };

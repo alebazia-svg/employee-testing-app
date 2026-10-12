@@ -9,7 +9,7 @@ import { startVisibleSync } from '@/lib/visible-sync';
 type InboxItem = {
   id: string;
   readAt: string | null;
-  event: { type: string; title: string; body: string; href: string; occurredAt: string };
+  event: { type: string; title: string; body: string; href: string; occurredAt: string; deadline?: string };
   meta: { typeLabel: string; actionLabel: string; category: string };
   sourceState: { active: boolean; label: string; tone: string };
 };
@@ -111,7 +111,7 @@ export function AdminInboxBell() {
       {open && (
         <div className='admin-dialog-panel fixed flex flex-col inset-x-3 top-4 z-50 max-h-[calc(100vh-2rem)] w-auto overflow-hidden rounded-2xl bg-white text-left ring-1 ring-slate-200 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:max-h-[calc(100dvh-7rem)] sm:w-[min(92vw,400px)]'>
           <div className='flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3'>
-            <div><p className='font-extrabold text-slate-950'>Требуют внимания</p><p className='text-xs font-medium text-slate-500'>{unreadCount ? `Нерешённых дел: ${unreadCount}` : 'Всё обработано'}</p></div>
+            <div><p className='font-extrabold text-slate-950'>Требуют внимания</p><p className='text-xs font-medium text-slate-500'>{unreadCount ? `Нерешённых дел: ${unreadCount}` : 'Срочных дел нет'}</p></div>
             <button type='button' onClick={() => setOpen(false)} aria-label='Закрыть уведомления' className='rounded-lg p-2 text-slate-500 hover:bg-slate-100'><X className='h-4 w-4' /></button>
           </div>
           {unreadCount > 0 && <p className='border-b border-slate-100 px-4 py-2 text-xs leading-relaxed text-slate-600'>{[groups.expenses && `Расход: ${groups.expenses}`, groups.accountable && `Подотчёт: ${groups.accountable}`, groups.procurement && `Закупки: ${groups.procurement}`, groups.other && `Другие дела: ${groups.other}`].filter(Boolean).join(' · ')}</p>}
@@ -122,11 +122,11 @@ export function AdminInboxBell() {
               {pushError && <p className='mt-2 text-xs font-bold text-rose-700'>{pushError}</p>}
             </div>
           )}
-          {items.length === 0 ? <p className='px-5 py-10 text-center text-sm font-medium text-slate-500'>Нерешённых дел нет.</p> : (
+          {items.length === 0 ? <p className='px-5 py-10 text-center text-sm font-medium text-slate-500'>Сейчас нет дел, требующих решения. Плановые оплаты появятся за день до срока.</p> : (
             <div className='min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5'>{items.map((item) => (
               <button key={item.id} type='button' onClick={() => void openItem(item)} className={`flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition hover:-translate-y-0.5 ${item.readAt ? 'admin-material-control border-white/80 bg-white' : 'border-amber-200 bg-amber-50/80 shadow-[3px_4px_10px_rgba(120,92,28,0.12),inset_0_1px_rgba(255,255,255,0.7)]'}`}>
                 <span className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${item.readAt ? 'bg-slate-200' : 'bg-amber-400'}`} />
-                <span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className='mt-0.5 line-clamp-2 text-xs font-medium leading-relaxed text-slate-600'>{item.event.body}</span><span className='mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-400'><span>{when(item.event.occurredAt)}</span><span>· {item.meta.typeLabel}</span></span></span>
+                <span className='min-w-0 flex-1'><span className='block text-sm font-extrabold text-slate-950'>{item.event.title}</span><span className='mt-0.5 line-clamp-2 text-xs font-medium leading-relaxed text-slate-600'>{item.event.body}</span><span className='mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-400'><span>{item.event.deadline ?? when(item.event.occurredAt)}</span><span>· {item.meta.typeLabel}</span></span></span>
                 <ChevronRight className='mt-1 h-4 w-4 shrink-0 text-[#a66d45]' />
               </button>
             ))}</div>
