@@ -144,8 +144,9 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
   remain separate; no financial workflow or 1C module changed.
 - Release and verification: `expense-breakdown-release-20261012.md`.
 
-## Notifications and Expense Form — Local Correction Candidate
+## Notifications and Expense Form — Production 1.4.6
 
 - `notification-expense-correction-candidate-20261012.md`: old funding reminder
   recovery, source-health noise policy, simplified native payment form and
-  verification limits. Local candidate after 1.4.4, **not released**.
+  verification limits and rollback evidence. Released 2026-10-12 as 1.4.6,
+  runtime commit `2db322a`, preserving the independently released 1.4.5 dialogs.
