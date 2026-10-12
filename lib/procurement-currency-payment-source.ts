@@ -1,4 +1,6 @@
 import 'server-only';
+import { createHash } from 'node:crypto';
+import { createInFlightRead } from './procurement-inflight-read';
 
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 import { expenseRequestMoscowCalendarDate } from '@/lib/expense-request-source';
@@ -6,6 +8,7 @@ import {attachSettlementOrderLinks} from './procurement-settlement-payment-link'
 import { parseOneCDateTime } from './one-c-date';
 import { attachRegisterPaymentBasis } from './procurement-register-payment-basis';
 import { hasConfirmedPaymentBasis } from './procurement-payment-basis';
+import {manualPaymentLinks,samePaymentSupplier} from './procurement-manual-payment-links';
 
 export type SupplierCurrencyPaymentRow = {
   ref: string;
@@ -44,9 +47,12 @@ type RawRow = Record<string, unknown>;
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 const amount = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 
+const readInFlight = createInFlightRead<Record<string, unknown>>();
 async function fetchOneCJson(endpoint: string, query: URLSearchParams, timeoutMs: number) {
   const env = readOneCRuntimeEnv();
   if (!env.baseUrl || !env.user || !env.password) throw new Error('CURRENCY_PAYMENT_SOURCE_UNCONFIGURED');
+  const key = createHash('sha256').update(JSON.stringify([env.baseUrl, env.user, env.password, endpoint, query.toString(), timeoutMs])).digest('hex');
+  return readInFlight(key, async () => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -67,9 +73,10 @@ async function fetchOneCJson(endpoint: string, query: URLSearchParams, timeoutMs
   } finally {
     clearTimeout(timeout);
   }
+  });
 }
 
-export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; to: Date; timeoutMs?: number; plans?: {orderRefs:unknown;supplierPartner:string;paymentPurpose?:string}[] }) {
+export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; to: Date; timeoutMs?: number; plans?: {orderRefs:unknown;supplierPartner:string;supplierCounterparty?:string;paymentPurpose?:string;oneCCashEvidence?:unknown}[] }) {
   const common = {
     date_from: expenseRequestMoscowCalendarDate(input.from),
     date_to: expenseRequestMoscowCalendarDate(input.to),
@@ -136,6 +143,36 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     const day=(offset:number)=>expenseRequestMoscowCalendarDate(new Date(now.getTime()-offset*86400000));
     const normalize=(s:string)=>s.trim().toLocaleLowerCase('ru').replaceAll('ё','е').replace(/\s+/g,' ');
     const debtNames=new Set(input.plans.filter(p=>Array.isArray(p.orderRefs)&&!p.orderRefs.length).map(p=>normalize(p.supplierPartner)));
+    // Read the exact RKO register first. A verified contract can prove a debt
+    // payment without searching every historical order of that supplier. Explicit
+    // portal order anchors are still read below for global one-to-one allocation.
+    // This cache lasts for THIS read only; saving never uses an old snapshot.
+    const basisProofs=new Map<string,Record<string,unknown>>();
+    const readBasis=async(payment:SupplierCurrencyPaymentRow)=>{
+      let proof=basisProofs.get(payment.ref);
+      if(!proof){
+        proof=await fetchOneCJson('supplier-settlements',new URLSearchParams({
+          detail:'payment-basis',payment_ref:payment.ref,supplier_search:payment.supplier||'',limit:'1000',
+          date_from:expenseRequestMoscowCalendarDate(parseOneCDateTime(payment.date)!),
+          date_to:expenseRequestMoscowCalendarDate(parseOneCDateTime(payment.date)!),
+        }),input.timeoutMs??15000);
+        basisProofs.set(payment.ref,proof);
+      }
+      return attachRegisterPaymentBasis(payment,proof,new Date());
+    };
+    const manuallyLinkedPlans=input.plans.filter(p=>manualPaymentLinks(p.oneCCashEvidence).length);
+    const contractCandidates=combined.filter(p=>p.posted&&!p.deleted&&['РУБ','RUB'].includes(p.documentCurrency)&&
+      debtNames.has(normalize(p.supplier||''))&&!hasConfirmedPaymentBasis(p)&&
+      // Keep the old proof shape for manually bound suppliers: their immutable
+      // fingerprints must not change as a side effect of this read optimization.
+      !manuallyLinkedPlans.some(plan=>samePaymentSupplier({...plan,supplierCounterparty:plan.supplierCounterparty||''},p))&&
+      (parseOneCDateTime(p.date)?.getTime()||0)>=from.getTime());
+    if(contractCandidates.length>100)throw Error('PAYMENT_BASIS_SCOPE_LIMIT');
+    const checkedContracts=new Map<SupplierCurrencyPaymentRow,SupplierCurrencyPaymentRow>();
+    for(let i=0;i<contractCandidates.length;i+=4){
+      await Promise.all(contractCandidates.slice(i,i+4).map(async p=>checkedContracts.set(p,await readBasis(p))));
+    }
+    combined=combined.map(p=>checkedContracts.get(p)||p);
     const withoutBasis=combined.filter(p=>(!p.baseDocumentRef || debtNames.has(normalize(p.supplier||''))) && p.posted && !p.deleted && ['РУБ','RUB','USDT'].includes(p.documentCurrency) && (parseOneCDateTime(p.date)?.getTime() || 0)>=from.getTime());
     const names=new Set(withoutBasis.map(p=>normalize(p.supplier||'')));
     const refs=[...new Set(input.plans.filter(p=>names.has(normalize(p.supplierPartner))).flatMap(p=>Array.isArray(p.orderRefs)?p.orderRefs.filter((r):r is string=>typeof r==='string'&&/^[a-f0-9-]{36}$/i.test(r)):[]))];
@@ -143,7 +180,7 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     // anchors for their supplier, then verify the whole RKO via register rows.
     // The catalogue is only a search aid: absence never proves no relationship.
     const debtSuppliers=new Set(input.plans.filter(p=>Array.isArray(p.orderRefs)&&!p.orderRefs.length&&
-      withoutBasis.some(row=>!row.contract?.trim()&&normalize(row.supplier||'')===normalize(p.supplierPartner)))
+      withoutBasis.some(row=>!hasConfirmedPaymentBasis(row)&&normalize(row.supplier||'')===normalize(p.supplierPartner)))
       .map(p=>normalize(p.supplierPartner)));
     if(debtSuppliers.size){
       const catalogue=await fetchOneCJson('supplier-order-finance-control',new URLSearchParams({limit:'1000',catalogue_days:'90'}),input.timeoutMs??15000);
@@ -190,6 +227,11 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
       return order.posted===true&&order.deleted===false&&order.order_ref===payment.baseDocumentRef&&
         normalize(order.supplier_name||'')===normalize(payment.supplier||'');
     })?payment.baseDocumentRef:undefined}));
+    combined=combined.map(payment=>{
+      if(input.plans?.some(p=>p.paymentPurpose==='DELIVERY'&&normalize(p.supplierPartner)===normalize(payment.supplier||'')))return payment;
+      const originalProof={...payment,registerContractBasis:undefined};
+      return hasConfirmedPaymentBasis(originalProof)?originalProof:payment;
+    });
     // An orderless debt plan may be paid against a contract in the register,
     // although both header contract and header basis are empty. Read the exact
     // RKO, not an order catalogue amount or a current advance balance.
@@ -200,14 +242,7 @@ export async function fetchSupplierCurrencyPaymentSnapshot(input: { from: Date; 
     const verified = new Map<SupplierCurrencyPaymentRow, SupplierCurrencyPaymentRow>();
     for (let i = 0; i < unresolved.length; i += 4) {
       await Promise.all(unresolved.slice(i, i + 4).map(async payment => {
-        const proof = await fetchOneCJson('supplier-settlements', new URLSearchParams({
-          detail: 'payment-basis', payment_ref: payment.ref,
-          // Bound the legacy report too, when an older 1C ignores detail.
-          supplier_search: payment.supplier || '', limit: '1000',
-          date_from: expenseRequestMoscowCalendarDate(parseOneCDateTime(payment.date)!),
-          date_to: expenseRequestMoscowCalendarDate(parseOneCDateTime(payment.date)!),
-        }), input.timeoutMs ?? 15000);
-        verified.set(payment, attachRegisterPaymentBasis(payment, proof, new Date()));
+        verified.set(payment, await readBasis(payment));
       }));
     }
     combined = combined.map(p => verified.get(p) || p);

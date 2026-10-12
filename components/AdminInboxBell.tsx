@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { Bell, ChevronRight, X } from 'lucide-react';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
 import { startVisibleSync } from '@/lib/visible-sync';
+import {adminNotificationOpening,safeNotificationHref} from '@/lib/notification-opening';
+import {NotificationRecordDialog,type NotificationSelection} from './NotificationRecordDialog';
 
 type InboxItem = {
   id: string;
   readAt: string | null;
-  event: { type: string; title: string; body: string; href: string; occurredAt: string; deadline?: string; urgency?: { phase: string } };
+  event: { type: string; title: string; body: string; href: string; occurredAt: string; sourceType?:string; deadline?: string; urgency?: { phase: string } };
   meta: { typeLabel: string; actionLabel: string; category: string };
   sourceState: { active: boolean; label: string; tone: string };
 };
@@ -25,6 +27,7 @@ export function AdminInboxBell() {
   const router = useRouter();
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [selected,setSelected]=useState<NotificationSelection|null>(null);
   const [items, setItems] = useState<InboxItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [groups, setGroups] = useState({ expenses: 0, accountable: 0, procurement: 0, other: 0 });
@@ -95,15 +98,21 @@ export function AdminInboxBell() {
     return () => { document.removeEventListener('keydown', escape); stopVisibleSync(); document.removeEventListener('mousedown', close); };
   }, []);
 
-  async function openItem(item: InboxItem) {
-    if (!item.readAt) await fetch(`/api/admin/inbox/${encodeURIComponent(item.id)}/read`, { method: 'POST' });
+  async function markRead(id:string) {
+    if(id.startsWith('plan:'))return;
+    await fetch(`/api/admin/inbox/${encodeURIComponent(id)}/read`, {method:'POST'}).catch(()=>null);
     // Reading never resolves the underlying business task or clears its badge.
+    void load();
+  }
+  function openItem(item: InboxItem) {
     setOpen(false);
-    router.push(item.event.href);
+    if(adminNotificationOpening(item.event)!=='page')setSelected({id:item.id,audience:'admin',title:item.event.title,body:item.event.body,href:item.event.href});
+    else {router.push(safeNotificationHref(item.event.href,'/admin/inbox'));if(!item.readAt)void markRead(item.id);}
   }
 
   return (
     <div ref={root} className='relative'>
+      {selected&&<NotificationRecordDialog key={selected.id} item={selected} onViewed={()=>void markRead(String(selected.id))} onClose={()=>{setSelected(null);void load();}}/>}
       <button type='button' onClick={() => { setOpen((value) => !value); if (!open) void load(); }} aria-label='Уведомления администратора' className='admin-material-control relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 transition hover:-translate-y-0.5 hover:text-slate-950'>
         <Bell className='h-5 w-5' />
         {unreadCount > 0 && <span className='absolute -right-1 -top-1 min-w-5 rounded-full bg-amber-400 px-1.5 py-1 text-center text-[10px] font-extrabold leading-none text-slate-950 ring-2 ring-[#f7faf8]'>{unreadCount > 99 ? '99+' : unreadCount}</span>}

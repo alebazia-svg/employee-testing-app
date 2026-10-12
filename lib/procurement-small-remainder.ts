@@ -25,3 +25,10 @@ export function smallRubleRemainder(plan: Plan, paid: number): number | null {
     remainder * 100 <= target * SMALL_REMAINDER_MAX_PERCENT)) return null;
   return remainder / 100;
 }
+
+/** Owner-approved cash-to-exchanger flow. Only call after exact RUB RKO proof;
+ * this closes the RUB funding budget, never invents a USDT transfer amount. */
+export function smallUsdtRubleFundingRemainder(plan: Plan, paid: number): number | null {
+  if (plan.paymentMethod !== 'USDT' || (plan.currency && plan.currency !== 'USDT')) return null;
+  return smallRubleRemainder({...plan, paymentMethod:'CASH', currency:'RUB', foreignAmount:null}, paid);
+}

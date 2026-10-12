@@ -1,4 +1,11 @@
 import { getCurrentUser } from "@/lib/auth";
+import {Suspense} from 'react';
+import {randomUUID} from 'node:crypto';
+import {redirect} from 'next/navigation';
+import {portalHomePath} from '@/lib/auth';
+import {readAdminPlans,sameAdminPlanVersions,type AdminPlans} from '@/lib/procurement-admin-plans';
+import {buyerInitialView} from '@/lib/procurement-buyer-initial-view';
+import {ProcurementCalendarStream,ProcurementCalendarUpdate} from './ProcurementCalendarStream';
 import { preservePaymentEvidenceViews } from '@/lib/procurement-evidence-continuity';
 import { ProcurementDeliveryPanel } from '@/components/ProcurementDeliveryPanel';
 import { deliveryMappedUser, loadDeliveryView } from '@/lib/procurement-delivery-reminders';
@@ -12,7 +19,6 @@ import {
 } from "@/lib/procurement-payment-source";
 import { fetchRequestOrderCatalogue } from '@/lib/procurement-request-catalogue';
 import { fetchManagerSupplierNames } from '@/lib/procurement-supplier-roster';
-import ProcurementPaymentCalendarClient from "./ProcurementPaymentCalendarClient";
 import {cargoManagerAllowed} from '@/lib/procurement-cargo';
 import { getProcurementBalances } from "@/lib/procurement-currency-balance";
 import { expenseRequestMoscowCalendarDate, expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
@@ -28,9 +34,22 @@ import { fetchSupplierSettlements, summarizeSupplierSettlements } from "@/lib/pr
 export const dynamic = "force-dynamic";
 
 export default async function ProcurementPage() {
-  const evidenceReadStartedAt = new Date();
   const user = await getCurrentUser();
-  if (!user) return null;
+  if (!user) redirect('/login');
+  if(user.role!=='EMPLOYEE'||user.portalArea!=='PROCUREMENT')redirect(portalHomePath(user));
+  const plans=await readAdminPlans();
+  const generation=randomUUID();
+  const initial=buyerInitialView(plans,user.id,expenseRequestMoscowCalendarDate(new Date()),cargoManagerAllowed(user.oneCManagerName?.trim()||user.name));
+  return <ProcurementCalendarStream initial={initial} generation={generation}>
+    <Suspense fallback={null}><ProcurementLive user={user} initialPlans={plans} generation={generation}/></Suspense>
+  </ProcurementCalendarStream>;
+}
+
+async function ProcurementLive(props:{user:NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;initialPlans:AdminPlans;generation:string}) {
+  try{return await readLive(props);}catch{return <ProcurementCalendarUpdate generation={props.generation} data={null}/>;}
+}
+async function readLive({user,initialPlans,generation}:{user:NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;initialPlans:AdminPlans;generation:string}) {
+  const evidenceReadStartedAt = new Date();
   const deliveryPromise = deliveryUserAllowed(user)
     ? deliveryMappedUser().then(mapped => mapped.id === user.id ? loadDeliveryView() : null).catch(() => null)
     : Promise.resolve(null);
@@ -40,10 +59,7 @@ export default async function ProcurementPage() {
   requestFrom.setDate(requestFrom.getDate() - 31);
   // Match globally so an RKO cannot independently close requests in two cabinets.
   // Only the authenticated manager's plans are serialized below.
-  const plansQuery = prisma.supplierPaymentPlan.findMany({
-    include: { events: { orderBy: { createdAt: "desc" }, take: 20 }, manager: { select: { name: true, oneCManagerName: true } } },
-    orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }],
-  });
+  const plansQuery = Promise.resolve(initialPlans);
   const cnyRatePromise = plansQuery.then(rows => getProcurementCnyRate(rows
     .filter(plan => plan.managerUserId === user.id && plan.status !== 'CANCELLED' && plan.paymentMethod !== 'USDT')
     .map(plan => ({comment:plan.condition, date:plan.createdAt, knownCny:plan.paymentMethod==='CNY', sourceLabel:'Комментарий заявки', documentNumber:plan.planCode})))).catch(() => undefined);
@@ -53,7 +69,7 @@ export default async function ProcurementPage() {
     fetchSupplierSettlements(),
     getProcurementBalances(todayKey),
     getLatestProcurementUsdtRate(todayKey),
-    plansQuery.then(rows => fetchExpenseRequestSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, includeHistory: true })),
+    plansQuery.then(rows => fetchExpenseRequestSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, includeHistory: true, historyConcurrency: 2 })),
     plansQuery.then((rows) => fetchSupplierCurrencyPaymentSnapshot({ from: paymentEvidenceFrom(rows, requestFrom), to: requestTo, timeoutMs: 15_000, plans: rows })),
     fetchManagerSupplierNames(user.oneCManagerName?.trim() || user.name),
   ]);
@@ -143,29 +159,18 @@ export default async function ProcurementPage() {
     })), rateResult.status === 'fulfilled' ? rateResult.value.rate : null,
   );
   const delivery = await deliveryPromise;
+  const cnyRateReference=await cnyRatePromise;
+  const latest=await prisma.supplierPaymentPlan.findMany({select:{id:true,updatedAt:true}});
+  if(!sameAdminPlanVersions(initialPlans,latest))return <ProcurementCalendarUpdate generation={generation} data={null}/>;
   return (
-    <>
-    {process.env.NODE_ENV === 'development' && process.env.PROCUREMENT_DEBT_REVIEW === '1' ? <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">Локальная проверка — не рабочий портал.</p> : null}
-    <ProcurementPaymentCalendarClient
-      cargoAllowed={cargoManagerAllowed(user.oneCManagerName?.trim()||user.name)}
-      initialOrders={orders}
-      initialPlans={serializedPlans}
-      otherUsdtReserve={otherUsdtReserve}
-      checkedAt={source?.checkedAt || ""}
-      sourceError={sourceError}
-      plansSourceError={plansSourceError}
-      evidenceSourceError={evidenceSourceError}
-      managerMappingError={managerMappingError}
-      supplierBalances={settlementSummary?.bySupplier || {}}
-      supplierDebtTotal={settlementSummary?.debtTotal ?? null}
-      supplierDebtError={rosterResult.status === 'rejected' || settlementsResult.status === "rejected" || settlementsResult.value.complete === false || Boolean(settlementSummary?.unsupportedCurrencyRows)}
-      usdtBalance={usdtBalance}
-      accountableBalance={accountableBalance}
-      usdtRateReference={rateResult.status === "fulfilled" ? rateResult.value : undefined}
-      cnyRateReference={await cnyRatePromise}
-      todayKey={todayKey}
-      deliveryCashPanel={delivery ? <ProcurementDeliveryPanel key="delivery" initial={delivery} /> : null}
-    />
-    </>
+    <ProcurementCalendarUpdate generation={generation} data={{
+      cargoAllowed:cargoManagerAllowed(user.oneCManagerName?.trim()||user.name),
+      initialOrders:orders,initialPlans:serializedPlans,otherUsdtReserve,checkedAt:source?.checkedAt||'',
+      sourceError,plansSourceError,evidenceSourceError,managerMappingError,
+      supplierBalances:settlementSummary?.bySupplier||{},supplierDebtTotal:settlementSummary?.debtTotal??null,
+      supplierDebtError:rosterResult.status==='rejected'||settlementsResult.status==='rejected'||settlementsResult.value.complete===false||Boolean(settlementSummary?.unsupportedCurrencyRows),
+      usdtBalance,accountableBalance,usdtRateReference:rateResult.status==='fulfilled'?rateResult.value:undefined,
+      cnyRateReference,todayKey,deliveryCashPanel:delivery?<ProcurementDeliveryPanel key="delivery" initial={delivery}/>:null,
+    }}/>
   );
 }

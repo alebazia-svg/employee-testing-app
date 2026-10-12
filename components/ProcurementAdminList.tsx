@@ -6,12 +6,13 @@ import type {ProcurementListItem} from './ProcurementSplitList';
 import './procurement-admin-list.css';
 
 type Item=ProcurementListItem&{dateLabel?:string;basis?:string;method?:string;priority?:string};
-type Props={items:Item[];renderDetail:(id:string)=>ReactNode;renderFooter?:(id:string,close:()=>void)=>ReactNode;empty?:string;dirty?:boolean;busy?:boolean;onClose?:()=>void;onOpen?:(id:string)=>void;error?:string;history?:boolean;searchQuery?:string};
+type Props={items:Item[];renderDetail:(id:string)=>ReactNode;renderFooter?:(id:string,close:()=>void)=>ReactNode;empty?:string;dirty?:boolean;busy?:boolean;onClose?:()=>void;onOpen?:(id:string)=>void;error?:string;history?:boolean;searchQuery?:string;openItemId?:string};
 
-export function ProcurementAdminList({items,renderDetail,renderFooter,empty='Записей нет.',dirty=false,busy=false,onClose,onOpen,error,history=false,searchQuery}:Props){
+export function ProcurementAdminList({items,renderDetail,renderFooter,empty='Записей нет.',dirty=false,busy=false,onClose,onOpen,error,history=false,searchQuery,openItemId}:Props){
   const [localQuery,setQuery]=useState('');
   const query=searchQuery??localQuery;
   const [selected,setSelected]=useState('');
+  useEffect(()=>{if(openItemId)setSelected(openItemId);},[openItemId]);
   const selectedItem=items.find(item=>item.id===selected);
   const filtered=items.filter(item=>`${item.name} ${item.search||''} ${item.basis||''}`.toLocaleLowerCase('ru').includes(query.trim().toLocaleLowerCase('ru')));
   const close=()=>{setSelected('');onClose?.();};
@@ -52,7 +53,7 @@ function PaymentDialog({children,close,footer,dirty,busy}:{children:ReactNode;cl
     if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)requestClose();
   }}>
     <header className="pam-dialog-heading"><h2 id={title}>Заявка на оплату</h2><button type="button" disabled={busy} aria-label="Закрыть окно" onClick={requestClose}><X size={21}/></button></header>
-    <div className="pam-dialog-content">{discard?<><h3>Закрыть без сохранения?</h3><p>Введённое пояснение не сохранится.</p></>:children}</div>
+    <div className="pam-dialog-content">{discard?<><h3>Закрыть без сохранения?</h3><p>Введённые изменения не сохранятся.</p></>:null}<div hidden={discard}>{children}</div></div>
     <div className="pam-dialog-footer">{discard?<><button type="button" className="pam-button" onClick={()=>setDiscard(false)}>Продолжить редактирование</button><button type="button" className="pam-button pam-primary" onClick={close}>Не сохранять</button></>:footer(requestClose)}</div>
   </dialog>;
 }

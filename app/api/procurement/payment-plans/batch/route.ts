@@ -49,12 +49,14 @@ export async function POST(req: Request) {
 
   try {
   const managerName = user.oneCManagerName?.trim() || user.name;
-  const source = await fetchSupplierOrderFinance();
+  const hasDebt = payload.rows.some(row => row.basis === 'DEBT');
+  const [source, settlements, debtSupplierNames] = await Promise.all([
+    fetchSupplierOrderFinance(), fetchSupplierSettlements(),
+    hasDebt ? fetchManagerSupplierNames(managerName) : Promise.resolve([]),
+  ]);
   if (!source.complete) return Response.json({ error: 'Данные 1С получены не полностью. Повторите отправку позже.' }, { status: 503 });
   const managerOrders = ordersForManager(source.rows, managerName);
-  const hasDebt = payload.rows.some(row => row.basis === 'DEBT');
-  const settlements = await fetchSupplierSettlements();
-  const supplierNames = hasDebt ? await fetchManagerSupplierNames(managerName) : [...new Set(managerOrders.map(order=>order.supplierPartner))];
+  const supplierNames = hasDebt ? debtSupplierNames : [...new Set(managerOrders.map(order=>order.supplierPartner))];
   const supplierBalances = settlements ? summarizeSupplierSettlements(settlements.rows, supplierNames) : null;
   if (!settlements?.complete || supplierBalances?.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщикам. Повторите позже.' }, { status: 503 });
   const allowed = new Map(
@@ -107,16 +109,16 @@ export async function POST(req: Request) {
     if (!row.data.plannedAmount) return Response.json({error:'Проверьте сумму и курс.'},{status:400});
   }
   const planningRows = checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length ? [row.order] : []);
-  const planningError = await planningSubmissionError(planningRows, checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length
+  const fundingRequests=checkedRows.flatMap(row=>'data' in row&&row.data?[row.data]:[]);
+  const [planningError, debtEvidence, fundingBalance] = await Promise.all([
+    planningSubmissionError(planningRows, checkedRows.flatMap(row => 'data' in row && row.data?.orderRefs.length
     ? [{ refs: row.data.orderRefs, amount: row.data.plannedAmount || Number(row.data.foreignAmount) * Number(rateReference?.rate), condition: row.data.condition }] : []), verified => {
       for (const row of checkedRows) if ('data' in row && row.data) row.data.condition = reviewRequestCondition(verified.filter(order => row.data!.orderRefs.includes(order.ref)), row.data.condition);
-    });
+    }), freshEvidence(), readFundingBalance(fundingRequests),
+  ]);
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
 
-  // Verify all existing allocations before accepting another debt request.
-  const debtEvidence = await freshEvidence();
-  const fundingRequests=checkedRows.flatMap(row=>'data' in row&&row.data?[row.data]:[]);
-  const fundingBalance=await readFundingBalance(fundingRequests);
+  // All independent checks above have completed before entering the write lock.
   const plans = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
     await assertFundingBalance(tx,fundingRequests,fundingBalance,debtEvidence);

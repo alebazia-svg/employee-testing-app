@@ -100,6 +100,7 @@ export async function notifyProcurementManagerAboutDecision(input: {
   plan: PaymentPlanSummary;
   decision: 'APPROVED' | 'CANCELLED' | 'NEEDS_CHANGES';
   revisionDecision?: boolean;
+  rescheduled?: boolean;
   reason?: string;
   eventKey?: string;
   now?: Date;
@@ -107,13 +108,17 @@ export async function notifyProcurementManagerAboutDecision(input: {
   const now = input.now ?? new Date();
   const approved = input.decision === 'APPROVED';
   const needsChanges = input.decision === 'NEEDS_CHANGES';
+  if (input.rescheduled || input.revisionDecision && approved) {
+    // Do not leave the old approved date in the unread inbox or pending push queue.
+    await input.db.workdayNotification.updateMany({where:{userId:input.plan.managerUserId,kind:'procurement_payment_approved',fingerprint:{startsWith:`procurement-payment:${input.plan.id}:approved:`},status:{in:['pending','sent']}},data:{status:'cancelled',readAt:now,nextPushAttemptAt:null}});
+  }
   await input.db.workdayNotification.upsert({
     where: { fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}:${input.eventKey || 'decision'}` },
     create: {
       userId: input.plan.managerUserId,
       fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}:${input.eventKey || 'decision'}`,
       kind: approved ? 'procurement_payment_approved' : needsChanges ? 'procurement_payment_needs_changes' : 'procurement_payment_cancelled',
-      title: input.revisionDecision ? approved ? 'Изменения оплаты согласованы' : 'Сохраняются прежние условия оплаты' : approved ? 'Оплата согласована' : needsChanges ? 'Исправьте оплату' : 'Оплата отменена',
+      title: input.rescheduled ? 'Дата оплаты изменена' : input.revisionDecision ? approved ? 'Изменения оплаты согласованы' : 'Сохраняются прежние условия оплаты' : approved ? 'Оплата согласована' : needsChanges ? 'Исправьте оплату' : 'Оплата отменена',
       body: needsChanges
         ? `${input.plan.supplierPartner} · ${input.reason || 'уточните данные заявки'}`
         : `${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)}`,

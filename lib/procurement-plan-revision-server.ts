@@ -17,8 +17,8 @@ import { validateBasisChangeTarget } from './procurement-basis-change-server';
 export async function freshEvidence() {
   const plans = await prisma.supplierPaymentPlan.findMany({ include: { manager: true } });
   const to = expenseRequestMoscowDayEnd(); const from = paymentEvidenceFrom(plans, new Date(to.getTime() - 31 * 86400000));
-  const [source, requests] = await Promise.all([fetchSupplierCurrencyPaymentSnapshot({ from, to, plans }), fetchExpenseRequestSnapshot({ from, to, includeHistory: true })]);
-  if (!source.complete || !requests.complete) throw new Error('Не удалось проверить оплаты в 1С. Повторите изменение после восстановления связи.');
+  const [source, requests] = await Promise.all([fetchSupplierCurrencyPaymentSnapshot({ from, to, plans }), fetchExpenseRequestSnapshot({ from, to, includeHistory: true, historyConcurrency: 2 })]);
+  if (!source.complete || source.rubPaymentsSupported !== true || !requests.complete) throw new Error('Не удалось проверить оплаты в 1С. Повторите изменение после восстановления связи.');
   const result = matchProcurementPaymentEvidence(plans.map(p => ({ ...p, hasPendingRevision: Boolean(readPaymentRevision(p.oneCCashEvidence)), completedPaymentRefs: paymentCompletion(p.oneCCashEvidence)?.paymentRefs, orderRefs: Array.isArray(p.orderRefs) ? p.orderRefs.map(String) : [], plannedAmount: Number(p.plannedAmount), foreignAmount: p.foreignAmount == null ? null : Number(p.foreignAmount), plannedDate: p.plannedDate.toISOString(), createdAt: paymentMatchCreatedAt(p), managerName: p.manager.oneCManagerName || p.manager.name, manualRubleLinks: manualPaymentLinks(p.oneCCashEvidence) })), requests.rows, source.payments, source.conversions, { allowSmallRemainder: source.rubPaymentsSupported === true });
   if (source.rubPaymentsSupported !== true) for (const row of result.values()) delete row.collection;
   return Object.assign(result, {versions:new Map(plans.map(p=>[p.id,p.updatedAt.toISOString()]))});
@@ -29,8 +29,9 @@ const object = (value: unknown) => value && typeof value === 'object' && !Array.
 export async function proposeApprovedRevision(id: string, user: {id: number; name: string}, data: RevisionData, reason: string, version: string) {
   if (reason.trim().length < 3) throw new Error('Укажите причину изменения (не менее 3 символов).');
   if (!data.plannedAmount) throw new Error('Укажите общую сумму заявки в рублях.');
-  const evidence = await freshEvidence();
-  const fundingBalance=await readFundingBalance([data]);
+  const [evidence, fundingBalance] = await Promise.all([
+    freshEvidence(), readFundingBalance([data]),
+  ]);
   return prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
     await assertFundingBalance(tx,[data],fundingBalance,evidence,id);
@@ -42,6 +43,7 @@ export async function proposeApprovedRevision(id: string, user: {id: number; nam
     const basisChanged = paymentBasisChanged(before, data);
     if (!basisChanged) data = { ...data, condition: preservePaymentReview(before.condition, data.condition) };
     assertRevisionPaymentSafety(before, data, paid);
+    if (paid.collection && revisionChanges(before,data).some(c=>c.key==='plannedDate')) throw new Error('Выдача уже назначена в 1С. Сначала измените или отмените её там, чтобы даты не расходились.');
     if (basisChanged) {
       const others = await tx.supplierPaymentPlan.findMany({where:{id:{not:id},status:{in:['SUBMITTED','APPROVED','NEEDS_CHANGES']}}});
       if (planningRequestOverlap([data], others, evidence)) throw new Error('Эта оплата уже включена в другую незавершённую заявку.');
@@ -63,31 +65,36 @@ export async function decideApprovedRevision(id: string, actorId: number, revisi
   if (!approve && reason.trim().length < 3) throw new Error('Укажите причину отказа в изменении.');
   let verifiedBasis: RevisionData | null = null;
   let verifiedVersion = '';
+  let evidence: Awaited<ReturnType<typeof freshEvidence>> | null = null;
+  let fundingBalance: Awaited<ReturnType<typeof readFundingBalance>> = null;
   if (approve) {
     const candidate = await prisma.supplierPaymentPlan.findUniqueOrThrow({where:{id},include:{manager:true}});
     const revision = readPaymentRevision(candidate.oneCCashEvidence);
-    if (!revision || revision.id !== revisionId) throw new Error('Эти изменения уже рассмотрены. Обновите страницу.');
-    if (paymentBasisChanged(candidate, revision.data)) {
-      verifiedBasis = await validateBasisChangeTarget(candidate, revision.data, candidate.manager.oneCManagerName?.trim() || candidate.manager.name);
-      verifiedVersion = candidate.updatedAt.toISOString();
-    }
+    if (candidate.status !== 'APPROVED' || !revision || revision.id !== revisionId) throw new Error('Эти изменения уже рассмотрены. Обновите страницу.');
+    verifiedVersion = candidate.updatedAt.toISOString();
+    // Independent reads share one immutable revision. Every check must succeed
+    // before entering the transaction; its version is checked again under lock.
+    [verifiedBasis, evidence, fundingBalance] = await Promise.all([
+      paymentBasisChanged(candidate, revision.data)
+        ? validateBasisChangeTarget(candidate, revision.data, candidate.manager.oneCManagerName?.trim() || candidate.manager.name)
+        : Promise.resolve(null),
+      freshEvidence(),
+      readFundingBalance([revision.data]),
+    ]);
   }
-  const evidence = approve ? await freshEvidence() : null;
-  const candidate=approve?await prisma.supplierPaymentPlan.findUniqueOrThrow({where:{id}}):null;
-  const fundingRequest=candidate?readPaymentRevision(candidate.oneCCashEvidence)?.data:null;
-  const fundingBalance=fundingRequest?await readFundingBalance([fundingRequest]):null;
   return prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
     const before = await tx.supplierPaymentPlan.findUniqueOrThrow({where:{id}});
     const revision = readPaymentRevision(before.oneCCashEvidence);
     if (before.status !== 'APPROVED' || !revision || revision.id !== revisionId) throw new Error('Эти изменения уже рассмотрены. Обновите страницу.');
-    if (verifiedBasis && verifiedVersion !== before.updatedAt.toISOString()) throw new Error('Заявка изменилась. Обновите страницу.');
+    if (approve && verifiedVersion !== before.updatedAt.toISOString()) throw new Error('Заявка изменилась. Обновите страницу.');
     if(approve && evidence?.versions.get(id)!==before.updatedAt.toISOString()) throw new Error('Данные оплаты изменились. Обновите страницу.');
     const change = verifiedBasis || revision.data;
     if(approve&&evidence)await assertFundingBalance(tx,[change],fundingBalance,evidence,id);
     if (approve) {
       const paid = evidence?.get(id); if (!paid) throw new Error('Не удалось проверить оплату заявки.');
       assertRevisionPaymentSafety(before, change, paid);
+      if (paid.collection && revisionChanges(before,change).some(c=>c.key==='plannedDate')) throw new Error('Выдача уже назначена в 1С. Сначала измените или отмените её там, чтобы даты не расходились.');
       if (paymentBasisChanged(before, change)) {
         const others = await tx.supplierPaymentPlan.findMany({where:{id:{not:id},status:{in:['SUBMITTED','APPROVED','NEEDS_CHANGES']}}});
         if (planningRequestOverlap([change], others, evidence!)) throw new Error('Эта оплата уже включена в другую незавершённую заявку.');
@@ -99,7 +106,7 @@ export async function decideApprovedRevision(id: string, actorId: number, revisi
       oneCCashEvidence:json({...object(before.oneCCashEvidence),pendingRevision:null,...(approve && identityChanged ? {paymentMatchFrom:paymentBasisChanged(before,change) ? new Date().toISOString() : revision.submittedAt}: {})}),
     }});
     const event = await tx.supplierPaymentPlanEvent.create({data:{planId:id,actorUserId:actorId,action:approve?'REVISION_APPROVED':'REVISION_REJECTED',snapshot:json({before,revision,after:updated,reason})}});
-    await notifyProcurementManagerAboutDecision({db:tx,plan:updated,revisionDecision:true,decision:approve?'APPROVED':'NEEDS_CHANGES',reason:`Изменения не приняты: ${reason}. Действуют прежние условия.`,eventKey:event.id});
+    await notifyProcurementManagerAboutDecision({db:tx,plan:updated,revisionDecision:true,rescheduled:approve&&revisionChanges(before,change).some(c=>c.key==='plannedDate'),decision:approve?'APPROVED':'NEEDS_CHANGES',reason:`Изменения не приняты: ${reason}. Действуют прежние условия.`,eventKey:event.id});
     return {...json(updated),revision:null};
   });
 }

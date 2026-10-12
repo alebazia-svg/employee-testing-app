@@ -45,21 +45,26 @@ export async function POST(req: Request) {
   }
   if (!plannedAmount) return Response.json({ error: 'Укажите сумму оплаты.' }, { status: 400 });
   const managerName = user.oneCManagerName?.trim() || user.name;
-  const source = await fetchSupplierOrderFinance();
+  const [source, settlements] = await Promise.all([
+    fetchSupplierOrderFinance(), fetchSupplierSettlements(),
+  ]);
   if (!source.complete) return Response.json({ error: 'Проверка заказов не завершена. Повторите позже.' }, { status: 503 });
   const allowed = new Map(ordersForRequest(ordersForManager(source.rows, managerName)).map((order) => [order.ref, order]));
   if (!checked.data.orderRefs.every((ref) => allowed.has(ref))) return Response.json({ error: 'Один из заказов не относится к вашему менеджеру в 1С.' }, { status: 400 });
   const partners = new Set(checked.data.orderRefs.map((ref) => allowed.get(ref)?.supplierPartner));
   if (partners.size !== 1 || !partners.has(checked.data.supplierPartner)) return Response.json({ error: 'Заказы должны относиться к выбранному поставщику.' }, { status: 400 });
-  const settlements = await fetchSupplierSettlements();
   if (!settlements.complete) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503 });
   const balances = summarizeSupplierSettlements(settlements.rows, [checked.data.supplierPartner]);
   if (balances.unsupportedCurrencyRows) return Response.json({ error: 'Не удалось подтвердить долг поставщику. Повторите позже.' }, { status: 503 });
   if (checked.data.orderRefs.some(ref => !['order', 'prepayment'].includes(buyerOrderPurpose(allowed.get(ref)!, balances.bySupplier[checked.data.supplierPartner])))) return Response.json({ error: 'Заказ не предлагается для новой оплаты: долга нет или расчёты на сверке. Обновите список.' }, { status: 400 });
   checked.data.orderNumbers = checked.data.orderRefs.map(ref => allowed.get(ref)!.number);
-  const planningError = await planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); });
+  // Ownership and eligibility have been checked above. These independent reads
+  // must both succeed before the unchanged transactional write/overlap guard.
+  const [planningError, evidence] = await Promise.all([
+    planningSubmissionError(checked.data.orderRefs.map(ref => allowed.get(ref)!), [{ refs: checked.data.orderRefs, amount: plannedAmount, condition: checked.data.condition }], rows => { checked.data.condition = reviewRequestCondition(rows, checked.data.condition); }),
+    freshEvidence().catch(() => null),
+  ]);
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
-  const evidence = await freshEvidence().catch(() => null);
   if (!evidence) return Response.json({ error: 'Не удалось сверить уже созданные оплаты. Заявка не отправлена; повторите позже.' }, { status: 503 });
   let fundingBalance:number|null=null;
   try{fundingBalance=await readFundingBalance([checked.data]);}catch{return Response.json({error:'Остаток кассы USDT пока не подтверждён. Выберите наличные для обмена или повторите позже.'},{status:409});}

@@ -9,7 +9,7 @@ import { ExpenseRequestSeenClient } from '@/app/(dashboard)/admin/expense-reques
 
 const money = (n: number | null) => n === null ? 'Сумма не передана' : `${n.toLocaleString('ru-RU', {maximumFractionDigits: 2})} ₽`;
 const date = (s: string | null) => s ? new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(s)) : 'Дата не передана';
-export function ExpenseRequestDialogRow({ item, initialOpen = false, detailOnly = false }: { item: ExpenseListItem; initialOpen?: boolean; detailOnly?: boolean }) {
+export function ExpenseRequestDialogRow({ item, initialOpen = false, detailOnly = false, onDismiss }: { item: ExpenseListItem; initialOpen?: boolean; detailOnly?: boolean; onDismiss?:()=>void }) {
   const router = useRouter();
   const [open, setOpen] = useState(initialOpen), [dirty, setDirty] = useState(false), [discard, setDiscard] = useState(false), [busy, setBusy] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null);
@@ -18,7 +18,7 @@ export function ExpenseRequestDialogRow({ item, initialOpen = false, detailOnly 
     dialog.current?.showModal(); const overflow = document.body.style.overflow; document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = overflow; dialog.current?.close(); trigger.current?.focus(); };
   }, [open]);
-  function finishClose() { setOpen(false); if (detailOnly) { const url=new URL(window.location.href);url.searchParams.delete('request');router.replace(url.pathname+url.search,{scroll:false}); } }
+  function finishClose() { setOpen(false); if(onDismiss){onDismiss();return;} if (detailOnly) { const url=new URL(window.location.href);url.searchParams.delete('request');router.replace(url.pathname+url.search,{scroll:false}); } }
   function close() { if (busy) return; if (dirty) setDiscard(true); else finishClose(); }
   const label = item.archived && item.stage !== 'closed' ? 'Архив 1С' : item.stage === 'decision' ? item.missing.length ? 'Нужно заполнить' : 'Ждёт решения' : item.stage === 'issuance' ? 'К оплате · ждёт выдачи' : item.stage === 'closed' ? item.statusKey === 'rejected' ? 'Отклонена' : item.status === 'Удалена в 1С' ? item.status : 'Выдача подтверждена' : 'Проверить статус';
   const facts = [['Операция',item.operation],['Статья ДДС',item.article],['Касса',item.cashbox],['Подразделение',item.department],['Получатель / контрагент',item.recipient],['Основание',item.basis]];

@@ -16,6 +16,8 @@ import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
 import { cn } from '@/lib/utils';
 import { useCashIssue } from './CashIssueClient';
 import { CASH_ISSUE_KIND } from '@/lib/procurement-cash-issue-policy';
+import {employeeNotificationOpening,safeNotificationHref} from '@/lib/notification-opening';
+import {NotificationRecordDialog,type NotificationSelection} from '@/components/NotificationRecordDialog';
 
 type WorkdayNotification = {
   id: number;
@@ -69,6 +71,7 @@ export function WorkdayNotificationsClient() {
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const [pushConnected, setPushConnected] = useState(false);
   const [open, setOpen] = useState(false);
+  const [selected,setSelected]=useState<NotificationSelection|null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -153,13 +156,15 @@ export function WorkdayNotificationsClient() {
       const ref = new URL(notification.href, window.location.origin).searchParams.get('request');
       if (ref) { setOpen(false); cashIssue.open(ref); return; }
     }
-    if (notification.kind !== CASH_ISSUE_KIND) await dismiss(notification);
     setOpen(false);
-    router.push(notification.href || '/employee');
+    if(employeeNotificationOpening(notification)!=='page'){setSelected({...notification,audience:'employee'});return;}
+    router.push(safeNotificationHref(notification.href,'/employee'));
+    if (notification.kind !== CASH_ISSUE_KIND) void dismiss(notification);
   }
 
   return (
     <div className='relative'>
+      {selected&&<NotificationRecordDialog key={selected.id} item={selected} onViewed={()=>{const n=notifications.find(n=>n.id===selected.id);if(n)void dismiss(n);}} onClose={()=>setSelected(null)}/>}
       <button
         type='button'
         onClick={() => setOpen((current) => !current)}

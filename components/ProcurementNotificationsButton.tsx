@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, CheckCircle2, ChevronRight, XCircle } from 'lucide-react';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
+import {employeeNotificationOpening,safeNotificationHref} from '@/lib/notification-opening';
+import {NotificationRecordDialog,type NotificationSelection} from './NotificationRecordDialog';
 
 type ProcurementNotification = {
   id: number;
@@ -23,6 +25,7 @@ export function ProcurementNotificationsButton() {
   const router = useRouter();
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [selected,setSelected]=useState<NotificationSelection|null>(null);
   const [items, setItems] = useState<ProcurementNotification[]>([]);
   const [pushConnected, setPushConnected] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -86,6 +89,12 @@ export function ProcurementNotificationsButton() {
   }, [connectPush, refresh]);
 
   async function openItem(item: ProcurementNotification) {
+    setOpen(false);
+    if(employeeNotificationOpening(item)!=='page'){setSelected({...item,audience:'employee'});return;}
+    router.push(safeNotificationHref(item.href,'/procurement'));
+    await dismiss(item);
+  }
+  async function dismiss(item:{id:number}) {
     setItems((current) => {
       const next = current.filter((notification) => notification.id !== item.id);
       void syncPwaAppBadge(next.length);
@@ -96,12 +105,11 @@ export function ProcurementNotificationsButton() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: item.id }),
     }).catch(() => null);
-    setOpen(false);
-    router.push(item.href || '/procurement');
   }
 
   return (
     <div ref={root} className="relative">
+      {selected&&<NotificationRecordDialog key={selected.id} item={selected} onViewed={()=>void dismiss({id:Number(selected.id)})} onClose={()=>setSelected(null)}/>}
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
