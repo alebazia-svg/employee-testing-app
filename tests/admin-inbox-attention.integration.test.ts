@@ -55,8 +55,8 @@ test('real database: noise, read/resolve/reopen, batch plans, multiple devices, 
     assert.ok(inbox.attention.some(i=>i.event.sourceId===plan2.id));
     assert.equal((await loadAdminInbox({userId:admin.id,limit:8,view:'attention',now:new Date(+now+59*60000)})).attentionCount,3);
     const prolonged=await loadAdminInbox({userId:admin.id,limit:8,view:'attention',now:new Date(+now+60*60000)});
-    assert.equal(prolonged.attentionCount,4,'one prolonged incident becomes actionable');
-    assert.equal(prolonged.attention.at(-1)?.event.technicalAttention,true,'money stays ahead of technical incidents');
+    assert.equal(prolonged.attentionCount,3,'a prolonged incident never adds an owner task');
+    assert.ok(prolonged.attention.every(i=>!i.event.technicalAttention),'technical incidents remain outside business attention');
     await event(`${prefix}:recovery`,'infrastructure.recovered','infrastructure',`${prefix}-connection`,false,new Date(+now+60*60000));
     await prisma.supplierPaymentPlan.update({where:{id:plan1.id},data:{status:'APPROVED'}});
     await prisma.adminInboxReceipt.updateMany({where:{userId:admin.id},data:{readAt:now}});

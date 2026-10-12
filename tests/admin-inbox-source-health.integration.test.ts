@@ -6,7 +6,7 @@ import webpush from 'web-push';
 import { prisma } from '../lib/prisma';
 import { sourceCheckIsStale } from '../lib/admin-inbox-source-health';
 
-test('long outages coalesce; recovery and expense-sync freshness retire warnings without recovery pushes', {skip:process.env.ATTENTION_INTEGRATION!=='1'},async()=>{
+test('technical incidents remain in System before and after reading, with no owner badge or pushes', {skip:process.env.ATTENTION_INTEGRATION!=='1'},async()=>{
  assert.ok(process.env.DATABASE_URL?.endsWith('@127.0.0.1:55448/admin_attention_20261012_test'));
  const prefix=`health-${Date.now()}`, start=new Date('2026-10-12T09:00Z');
  let now=start, lastSync:Date|null=start;
@@ -22,13 +22,19 @@ test('long outages coalesce; recovery and expense-sync freshness retire warnings
   const event=(type:string,id:string)=>prisma.adminInboxEvent.create({data:{eventKey:`${prefix}:${id}:${type}`,sourceType:'dependency',sourceId:`${prefix}:${id}`,type,title:'Нет данных',body:'Источник',href:'/admin/inbox',occurredAt:now,receipts:{create:{userId:admin.id}}}});
   await event('dependency.down','one');await event('dependency.down','two');
   now=new Date(+start+59*60000);lastSync=now;assert.equal((await inbox()).attentionCount,0);assert.equal((await api.dispatchAdminAttentionPush(now)).sent,0);
-  now=new Date(+start+60*60000);lastSync=now;assert.equal((await inbox()).attentionCount,1,'two outages form one owner item');assert.equal((await api.dispatchAdminAttentionPush(now)).sent,1);
+  now=new Date(+start+60*60000);lastSync=now;assert.equal((await inbox()).attentionCount,0,'long outages create no owner task');assert.equal((await api.dispatchAdminAttentionPush(now)).sent,0);
+  let system=await api.loadAdminInbox({userId:admin.id,limit:100,view:'system',now});assert.equal(system.technicalCount,2);
+  await prisma.adminInboxReceipt.updateMany({where:{userId:admin.id},data:{readAt:now}});
+  system=await api.loadAdminInbox({userId:admin.id,limit:100,view:'system',now});assert.equal(system.technicalCount,2,'reading does not falsely resolve an outage');assert.equal((await inbox()).attentionCount,0);
   now=new Date(+start+120*60000);lastSync=now;assert.equal((await api.dispatchAdminAttentionPush(now)).sent,0,'no hourly technical nag');
   await event('dependency.recovered','one');await event('dependency.recovered','two');assert.equal((await inbox()).attentionCount,0);assert.equal((await api.dispatchAdminAttentionPush(now)).sent,0,'no recovery push');
-  lastSync=start;let value=await inbox();assert.equal(value.attentionCount,1,'stopped expense importer becomes visible');
-  const system=await api.loadAdminInbox({userId:admin.id,limit:100,view:'system',now});assert.ok(system.items.some((i:any)=>i.event.sourceId==='expense-sync'));
+  lastSync=start;let value=await inbox();assert.equal(value.attentionCount,0,'stopped importer is diagnostic, not an owner decision');
+  system=await api.loadAdminInbox({userId:admin.id,limit:100,view:'system',now});assert.ok(system.items.some((i:any)=>i.event.sourceId==='expense-sync'));
   lastSync=now;assert.equal((await inbox()).attentionCount,0,'successful sync removes stale warning');
-  assert.equal(sent.length,1);
+  now=new Date('2026-10-13T06:00Z');lastSync=start;
+  assert.equal((await api.dispatchAdminAttentionPush(now)).sent,0,'technical-only state never pushes even next day');
+  assert.equal(await prisma.adminInboxEvent.count({where:{eventKey:`admin:attention-digest:v1:${admin.id}`}}),0,'no hidden digest is queued for technical incidents');
+  assert.equal(sent.length,0);
  }finally{
   webpush.sendNotification=send;
   await prisma.adminInboxEvent.deleteMany({where:{OR:[{eventKey:{startsWith:prefix}},{eventKey:`admin:attention-digest:v1:${admin.id}`}]}});

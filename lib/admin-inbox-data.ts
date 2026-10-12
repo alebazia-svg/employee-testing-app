@@ -301,17 +301,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
         title:'Заявки из 1С давно не обновлялись',body:'Больше часа нет успешной синхронизации. Новые заявки менеджеров могут отсутствовать в портале. Проверьте заявки в 1С и передайте проблему ответственному за связь.',href:'/admin/expense-requests',technicalAttention:true},
       meta:{...adminInboxEventMeta('dependency.down'),actionLabel:'Открыть заявки'},sourceState:{active:true,label:'Данные устарели',tone:'attention'}});
   }
-  const prolonged = technicalItems.filter(i => i.event.technicalAttention);
-  // One owner-facing source-health summary, not one alert per integration/mapping.
-  const systemAttention: AdminInboxViewItem[] = prolonged.length ? [{
-    id: `system:prolonged:${today}`, eventId: '', readAt: null,
-    event: {type:'admin.system_attention',sourceType:'system_attention',sourceId:'prolonged',occurredAt:prolonged[0].event.occurredAt,
-      title:'Автоматические проверки неполные',body:`Длительных сбоев: ${prolonged.length}. Восстановление не подтверждено больше часа. Проверьте раздел «Система» и передайте проблему ответственному за связь.`,
-      href:'/admin/inbox?view=system',technicalAttention:true,
-      push:{identity:'Автоматические проверки неполные',action:'Проверить связь',detail:`Длительных сбоев: ${prolonged.length}. Откройте «Система»; важные решения сверяйте с источником.`}},
-    meta:{...prolonged[0].meta,actionLabel:'Проверить связь'},sourceState:{active:true,label:'Больше часа',tone:'attention'},
-  }] : [];
-  const attention = selectAdminAttention([...allItems.filter(i => !i.event.technicalAttention && i.event.sourceType !== 'supplier_payment_plan' && !(i.event.sourceType === 'expense_request' && linkedDeliveryExpenseRefs.has(i.event.sourceId))), ...pendingPlans, ...systemAttention]);
+  // Keep technical evidence in System without adding an owner task or bell badge.
+  const attention = selectAdminAttention([...allItems.filter(i => !i.event.technicalAttention && i.event.sourceType !== 'supplier_payment_plan' && !(i.event.sourceType === 'expense_request' && linkedDeliveryExpenseRefs.has(i.event.sourceId))), ...pendingPlans]);
   const itemRows = input.unreadOnly ? unreadRows : displayRows;
   const items = itemRows
     .map((row) => itemsById.get(row.id))

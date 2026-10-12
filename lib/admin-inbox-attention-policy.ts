@@ -13,7 +13,8 @@ export function attentionKey(item: AttentionItem) {
   return `${source}:${item.event.sourceId}`;
 }
 export function needsAdminAttention(item: AttentionItem) {
-  if (item.meta.category === 'system') return item.event.technicalAttention === true && item.sourceState.active;
+  // Technical health is visible in System, not an unresolved owner decision.
+  if (item.meta.category === 'system' || item.event.technicalAttention === true) return false;
   // A routine automatic fiscal check belongs in section control, not owner messages.
   if (item.event.type === 'terminal_fiscal_review.created') return false;
   if ((ATTENTION_LIFECYCLE_SOURCES as readonly string[]).includes(item.event.sourceType)) return item.sourceState.active;

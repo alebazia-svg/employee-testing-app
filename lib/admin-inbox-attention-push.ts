@@ -18,7 +18,7 @@ export async function dispatchAdminAttentionPush(now = new Date()) {
   for (const admin of admins) {
     if (!admin.pushSubscriptions.length) continue;
     const inbox = await loadAdminInbox({ userId: admin.id, limit: 1, view: 'attention', now });
-    const items = inbox.attention.filter(i => i.event.technicalAttention === true || (ATTENTION_PUSH_TYPES as readonly string[]).includes(i.event.type));
+    const items = inbox.attention.filter(i => i.meta.category !== 'system' && !i.event.technicalAttention && (ATTENTION_PUSH_TYPES as readonly string[]).includes(i.event.type));
     result.receipts += items.length;
     if (!items.length) continue;
     const event = await prisma.adminInboxEvent.upsert({ where: { eventKey: `admin:attention-digest:v1:${admin.id}` }, update: {}, create: {

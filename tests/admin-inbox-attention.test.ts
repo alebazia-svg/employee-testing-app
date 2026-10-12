@@ -76,12 +76,13 @@ test('temporary disappearance never makes a previously delivered request new aga
   assert.ok(!attentionDigestText(restored,withoutA).body.includes('Новое'));
   assert.ok(digestDue({items:[...restored,item('genuinely-new')],previous:withoutA,sentAt:new Date(+now+60*60000),now:new Date(+now+65*60000)}));
 });
-test('long system problem is lower priority and alone repeats only on another day',()=>{
+test('unresolved technical incidents and legacy aggregates never count as owner tasks',()=>{
   const technical={...item('outage','dependency'),meta:{category:'system'},event:{...item('outage','dependency').event,technicalAttention:true}};
-  assert.deepEqual(selectAdminAttention([technical,item('cash')]).map(x=>x.id),['cash','outage']);
-  assert.equal(selectAdminAttention([{...technical,sourceState:{active:false}}]).length,0);
-  assert.equal(digestDue({items:[technical],previous:{ids:['outage'],repeat:false},sentAt:now,now:new Date(+now+60*60000)}),null);
-  assert.ok(digestDue({items:[technical],previous:{ids:['outage'],repeat:false},sentAt:now,now:new Date('2026-10-13T06:00Z')}));
+  const legacy={...technical,id:'system:prolonged:2026-10-12',event:{...technical.event,type:'admin.system_attention',sourceType:'system_attention'}};
+  for (const readAt of [null,now.toISOString()]) {
+    assert.deepEqual(selectAdminAttention([{...technical,readAt},legacy,item('cash')]).map(x=>x.id),['cash']);
+    assert.equal(selectAdminAttention([{...technical,readAt},legacy]).length,0);
+  }
 });
 
 test('deadline evidence disappearing temporarily cannot restart urgent reminders',()=>{
