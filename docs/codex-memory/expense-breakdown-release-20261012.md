@@ -1,10 +1,10 @@
-# Expense payment breakdown — prepared portal 1.4.4
+# Expense payment breakdown — production portal 1.4.4
 
-Status: release candidate prepared locally, NOT deployed or pushed to the
-production deployment branch. Owner approved the field correction and accepted
-the demonstrated screen; exact production deployment confirmation is pending.
+Status: released to production on 2026-10-12 after the owner explicitly approved
+installation of 1.4.4. Native fields and dictionary lookup verified in the
+authenticated live ADMIN; no real financial decision submitted.
 
-Runtime candidate: `12563e830c4d7f79a5f68be7025182fda5feb2cb`.
+Production runtime commit: `12563e830c4d7f79a5f68be7025182fda5feb2cb`.
 Feature commit: `76c0b95`.
 
 ## Scope
@@ -53,3 +53,33 @@ remains separate and unverified; it is not changed by this release.
 Changed runtime/test files: ExpenseNativeClient.tsx, expense-request-command.test.ts.
 Release metadata files: package.json, package-lock.json. Primary-checkout unrelated
 WIP was untouched. This handoff records release readiness, not a roadmap change.
+
+
+## Completed release verification
+
+- Remote deployment branch fast-forwarded without competing changes. Production
+  runtime/server HEAD independently confirmed as 12563e830c4d7f79a5f68be7025182fda5feb2cb.
+- Previous 1.4.3 image independently re-read and preserved as
+  offonika-portal-attention-rollback:pre-1.4.4-20261012:
+  sha256:446bc6de92baebc33f66702b5b65ebcf9a38c40875f1647f376c9990beea276c.
+- Replacement running image:
+  sha256:1610f456c540bcc1a4daac2eeee58d4ac61789f4d3447dbea3623586f384a6c2.
+- Container healthy; both public domains return version 1.4.4 and builtAt
+  2026-10-12T13:47:55.960Z (16:47 MSK). Public /api/health returns ok:true.
+  Metadata revision/source remain null/unknown; SSH confirms exact commit.
+- Authenticated ADMIN footer shows 1.4.4 and 16:47 MSK. Real request 00OF-001095
+  displays editable line DDS, expense/assets article and expense department.
+  Search Доставка returns the live native dictionary option. No selection,
+  financial preview POST, save or approval was sent to production 1C.
+- Existing upload/planning mounts retained. Both inbox sender and expense-sync
+  timers active; live list data current at 16:51 MSK. No migration, settings
+  change, manual data modification or 1C publication.
+- Deploy command reached DEPLOY_COMPLETE and healthy. Wrapper final exit 1 came
+  from a subsequent optional source-file checksum probe: frontend TSX source is
+  not copied to the runtime image. Do not interpret it as a failed deployment
+  or claim checksum validation succeeded. Replaced with independent SSH commit,
+  public health/metadata and rendered authenticated production UI verification.
+- Local evidence /tmp/mobo-expense-release-144.log and .exit; screenshot
+  /Users/bela/.codex/visualizations/2026/10/12/cash-issue/production-expense-breakdown-144.png.
+- Previous readiness wording in the baseline section documents the pre-deploy
+  state; this completed verification supersedes its pending image/approval steps.

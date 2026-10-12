@@ -135,3 +135,11 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 - ADMIN production 1.4.2: [concrete push, shift deadlines and delayed cash issue](admin-attention-deadlines-20261012.md).
   Follow-up 1.4.3 gives batch reads a 15-second minimum; automatic sync and ADMIN
   freshness verified at 14:30 and 14:33 MSK after an intermittent source timeout.
+
+
+## Expense Payment Breakdown — Production 1.4.4
+
+- Existing ADMIN modal now exposes native payment-line DDS, expense/assets
+  article, department and additional editable analytics. Header and line scopes
+  remain separate; no financial workflow or 1C module changed.
+- Release and verification: `expense-breakdown-release-20261012.md`.
