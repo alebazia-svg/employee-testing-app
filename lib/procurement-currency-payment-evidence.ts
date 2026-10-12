@@ -7,7 +7,7 @@ import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 import { attachRequestOrderLinks } from './procurement-request-payment-link';
 import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
 import { procurementCollections, type ProcurementCollection } from './procurement-collection';
-import { SMALL_REMAINDER_COMPLETED, smallRubleRemainder } from './procurement-small-remainder';
+import { SMALL_REMAINDER_COMPLETED, smallRubleRemainder, smallUsdtRubleFundingRemainder } from './procurement-small-remainder';
 
 export type EvidencePlan = {
   paymentPurpose?: string;
@@ -230,7 +230,8 @@ export function matchProcurementPaymentEvidence(
     if (row.state === 'PARTIALLY_ISSUED' && !row.rubleAllocationNeedsReview && !row.paymentAmountNeedsConfirmation &&
       row.cashOrders.length > 0 && row.cashOrders.every(p => p.ref && Number.isFinite(p.amount) && p.amount > 0) &&
       confirmedRubleRemainderPayments(plan, row.cashOrders, uniquePayments) &&
-      smallRubleRemainder(plan, row.issuedAmount) !== null) row.state = SMALL_REMAINDER_COMPLETED;
+      (smallRubleRemainder(plan, row.issuedAmount) !== null ||
+        (!row.currencyPayments.length && row.paidForeignAmount === 0 && smallUsdtRubleFundingRemainder(plan, row.issuedAmount) !== null))) row.state = SMALL_REMAINDER_COMPLETED;
   }
   for (const [id, collection] of procurementCollections(plans, requests, evidence)) evidence.get(id)!.collection = collection;
   return evidence;

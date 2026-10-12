@@ -8,7 +8,8 @@ import { ProcurementDataRefresh } from '@/components/ProcurementDataRefresh';
 import { ExpenseRequestDialogRow } from '@/components/ExpenseRequestDialogRow';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { expenseListStage, expenseName, expenseRecord, expenseText, type ExpenseListItem } from '@/lib/expense-request-list-view';
+import { expenseText, type ExpenseListItem } from '@/lib/expense-request-list-view';
+import {expenseListItem} from '@/lib/expense-request-list-item';
 
 export const dynamic = 'force-dynamic';
 type SearchParams = { view?: string; q?: string; deliveryCursor?: string; stage?: string; request?: string };
@@ -27,23 +28,7 @@ export default async function ExpenseRequestsAdminPage({ searchParams }: { searc
     ...(cursor ? {cursor:{id:cursor},skip:1} : {}),
     include:{evaluations:{orderBy:{evaluatedAt:'desc'},take:1}},
   });
-  const toItem = (item: Awaited<ReturnType<typeof loadBatch>>[number]) => {
-    const evaluation = item.evaluations[0], source = expenseRecord(evaluation?.normalizedSource);
-    const statusKey = item.currentStatusKey || (item.isNotApproved ? 'not_approved' : 'unknown');
-    const amount = item.amount === null ? null : Number(item.amount);
-    const stage = expenseListStage(statusKey,amount,source,evaluation?.sourceComplete === true,item.deletionMark === true);
-    const missing = [!expenseName(source.cashFlowItem) && 'Статья ДДС',expenseRecord(source.paymentForm).cash === true && !expenseName(source.cashbox) && 'Касса'].filter(Boolean) as string[];
-    const data: ExpenseListItem = {
-      id:item.id,nativeRef:item.oneCRequestRef,number:item.oneCNumber || '',person:item.requestedByName || '',amount,
-      date:item.oneCDate?.toISOString() || null,since:item.enteredNotApprovedAt?.toISOString() || null,checkedAt:item.lastSeenAt.toISOString(),
-      operation:item.businessOperationName || '',purpose:expenseText(source.paymentPurpose),comment:expenseText(source.comment),
-      cashbox:expenseName(source.cashbox),department:expenseName(source.department),article:expenseName(source.cashFlowItem),
-      recipient:item.counterpartyName || expenseName(source.partner),basis:expenseName(source.sourceDocument),
-      stage,status:item.deletionMark ? 'Удалена в 1С' : item.currentStatusName || statusKey,statusKey,missing,archived:item.currentCycleOrigin !== 'live',
-      sourceComplete:evaluation?.sourceComplete === true,nativeEnabled:process.env.EXPENSE_REQUEST_NATIVE_ADMIN === '1',
-    };
-    return data;
-  };
+  const toItem = expenseListItem;
   const toRows = (cases: Awaited<ReturnType<typeof loadBatch>>) => cases.map(toItem).filter(item => history ? item.archived || item.stage === 'closed' || !['not_approved','approved','payable'].includes(item.statusKey) : item.stage !== 'closed')
     .filter(item => !search || [item.number,item.person,item.purpose,item.comment,item.article,item.operation,item.cashbox,String(item.amount)].some(s => s.toLocaleLowerCase('ru-RU').includes(search)))
     .filter(item => history || filter === 'all' || item.stage === filter);

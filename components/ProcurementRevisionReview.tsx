@@ -2,13 +2,42 @@
 import {useState} from 'react';
 import {useRouter} from 'next/navigation';
 import type {PaymentRevision} from '@/lib/procurement-plan-revision';
+import {ProcurementAdminList} from './ProcurementAdminList';
 export function ProcurementRevisionReview({items}: {items:{id:string;supplierPartner:string;revision:PaymentRevision}[]}) {
-  const router=useRouter(); const [busy,setBusy]=useState(''); const [error,setError]=useState(''); const [reasons,setReasons]=useState<Record<string,string>>({});
+  const router=useRouter();
+  const [busy,setBusy]=useState(''),[error,setError]=useState(''),[rejecting,setRejecting]=useState(''),[reason,setReason]=useState('');
+  const [decided,setDecided]=useState<string[]>([]),[message,setMessage]=useState('');
+  const visible=items.filter(item=>!decided.includes(item.revision.id));
   async function decide(item:typeof items[number],action:string) {
-    setBusy(item.id);setError('');
-    try {const r=await fetch(`/api/admin/procurement/payment-plans/${item.id}/revision`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,revisionId:item.revision.id,reason:reasons[item.id]||''})});const data=await r.json();if(!r.ok)throw new Error(data.error);router.refresh();}
-    catch(e){setError(e instanceof Error?e.message:'Не удалось сохранить.');}finally{setBusy('');}
+    if(busy)return;
+    setBusy(item.id);setError('');setMessage('');
+    try {
+      const r=await fetch(`/api/admin/procurement/payment-plans/${item.id}/revision`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,revisionId:item.revision.id,reason})});
+      const data=await r.json();if(!r.ok)throw new Error(data.error||'Не удалось сохранить решение.');
+      setDecided(previous=>[...previous,item.revision.id]);setReason('');setRejecting('');
+      setMessage(action==='APPROVE'?'Изменения согласованы.':'Сохранены прежние условия.');router.refresh();
+    }catch(e){setError(e instanceof Error?e.message:'Не удалось сохранить решение.');}finally{setBusy('');}
   }
-  if (!items.length)return null;
-  return <section className="rounded-2xl border border-amber-200 bg-white p-4 sm:p-5"><h2 className="text-lg font-black">Изменения на согласование · {items.length}</h2><p className="mt-1 text-sm text-slate-500">Пока действуют прежние условия. Предлагаемые суммы и даты ещё не включены в план платежей.</p>{error?<p role="alert" className="mt-2 text-sm text-red-700">{error}</p>:null}<div className="divide-y divide-slate-200">{items.map(item=><article key={item.id} className="py-4"><h3 className="font-bold">{item.supplierPartner}</h3><p className="mt-1 text-sm">Причина: {item.revision.reason}</p><div className="mt-3 space-y-2">{item.revision.changes.map(c=><div key={c.label} className="grid gap-1 text-sm sm:grid-cols-[150px_1fr_1fr]"><span className="text-slate-500">{c.label}</span><span>Было: {c.before||'—'}</span><strong>Стало: {c.after||'—'}</strong></div>)}</div><div className="mt-3 flex flex-wrap gap-2"><button disabled={!!busy} onClick={()=>decide(item,'APPROVE')} className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Согласовать изменения</button><input aria-label={`Причина отказа ${item.supplierPartner}`} placeholder="Причина отказа" value={reasons[item.id]||''} onChange={e=>setReasons({...reasons,[item.id]:e.target.value})} className="rounded-lg border border-slate-300 px-3 py-2 text-sm"/><button disabled={!!busy||(reasons[item.id]||'').trim().length<3} onClick={()=>decide(item,'REJECT')} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold disabled:opacity-50">Оставить прежние условия</button></div></article>)}</div></section>;
+  if(!visible.length)return message?<p role="status" className="text-sm text-green-800">{message}</p>:null;
+  return <section aria-label="Изменения на согласование" className="space-y-3">
+    <h2 className="text-base font-bold">Изменения на согласование · {visible.length}</h2>
+    <ProcurementAdminList searchQuery="" busy={!!busy} dirty={!!reason.trim()} error={error}
+      onOpen={()=>{setError('');setReason('');setRejecting('');}}
+      items={visible.map(item=>({id:item.id,name:item.supplierPartner,meta:'',
+        dateLabel:new Date(item.revision.data.plannedDate+'T12:00:00Z').toLocaleDateString('ru-RU',{day:'numeric',month:'long',timeZone:'Europe/Moscow'}),
+        amount:item.revision.data.foreignAmount?`${Number(item.revision.data.foreignAmount).toLocaleString('ru-RU')} ${item.revision.data.paymentMethod}`:`${Number(item.revision.data.plannedAmount).toLocaleString('ru-RU')} ₽`,
+        basis:item.revision.changes.map(c=>c.label).join(', '),method:'Изменение заявки'}))}
+      renderDetail={id=>{const item=visible.find(i=>i.id===id)!;return <div className="space-y-4">
+        <h3 className="text-xl font-bold">{item.supplierPartner}</h3>
+        <p className="text-sm text-slate-600">Астемир предлагает изменить заявку. До согласования действуют прежние условия.</p>
+        <dl className="divide-y divide-stone-200 rounded-xl border border-stone-200 px-4">
+          {item.revision.changes.map(c=><div key={c.label} className="py-3"><dt className="mb-2 text-sm font-semibold">{c.label}</dt><dd className="grid grid-cols-2 gap-4 text-sm"><div><span className="mb-1 block text-xs text-slate-500">Сейчас</span>{c.before||'—'}</div><div><span className="mb-1 block text-xs text-[#785537]">Предлагается</span><strong>{c.after||'—'}</strong></div></dd></div>)}
+        </dl>
+        <div className="text-sm"><p className="font-semibold">Причина изменения</p><p className="mt-1 whitespace-pre-wrap">{item.revision.reason}</p></div>
+        {rejecting===id?<label className="block text-sm font-semibold">Причина отказа<textarea autoFocus required minLength={3} maxLength={500} rows={2} value={reason} disabled={!!busy} onChange={e=>setReason(e.target.value)} className="mt-2 block w-full rounded-lg border border-stone-300 px-3 py-2 font-normal"/></label>:null}
+        {busy?<p role="status" className="text-sm text-slate-600">{rejecting===id?'Сохраняем решение…':'Проверяем оплату в 1С перед согласованием…'}</p>:null}
+      </div>;}}
+      renderFooter={(id,close)=>{const item=visible.find(i=>i.id===id)!;return rejecting===id?<><button className="pam-button" disabled={!!busy} onClick={()=>{setRejecting('');setReason('');}}>Назад</button><button className="pam-button pam-primary" disabled={!!busy||reason.trim().length<3} onClick={()=>decide(item,'REJECT')}>Оставить прежние условия</button></>:<><button className="pam-button" disabled={!!busy} onClick={close}>Закрыть</button><button className="pam-button" disabled={!!busy} onClick={()=>setRejecting(id)}>Отклонить</button><button className="pam-button pam-primary" disabled={!!busy} onClick={()=>decide(item,'APPROVE')}>{busy?'Проверяем оплату…':'Согласовать изменения'}</button></>;}}
+    />
+  </section>;
 }

@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Bell, ChevronRight, CheckCheck } from 'lucide-react';
 import type { AdminInboxViewItem } from '@/lib/admin-inbox-data';
 import { startVisibleSync } from '@/lib/visible-sync';
+import {adminNotificationOpening,safeNotificationHref} from '@/lib/notification-opening';
+import {NotificationRecordDialog,type NotificationSelection} from '@/components/NotificationRecordDialog';
 
 type View = 'attention' | 'history' | 'system';
 const PAGE_SIZE = 30;
@@ -14,6 +16,7 @@ export function AdminInboxListClient({ initialItems, initialAttention, initialVi
   initialItems: AdminInboxViewItem[]; initialAttention: AdminInboxViewItem[]; initialView: View; technicalCount: number;
 }) {
   const router = useRouter();
+  const [selected,setSelected]=useState<NotificationSelection|null>(null);
   const [shown, setShown] = useState(PAGE_SIZE);
   const [error, setError] = useState('');
   const [showSystemHistory, setShowSystemHistory] = useState(false);
@@ -21,9 +24,16 @@ export function AdminInboxListClient({ initialItems, initialAttention, initialVi
   const view = initialView;
   const items = view === 'attention' ? initialAttention : initialItems.filter(i => view === 'system' ? (showSystemHistory ? i.meta.category === 'system' || i.event.type === 'terminal_fiscal_review.created' : i.meta.category === 'system' && i.sourceState.active) : i.meta.category !== 'system' && i.event.type !== 'terminal_fiscal_review.created');
   const unread = initialItems.some(i => !i.readAt);
-  async function open(item: AdminInboxViewItem) {
-    if (item.eventId && !item.readAt) await fetch(`/api/admin/inbox/${encodeURIComponent(item.id)}/read`, { method: 'POST' }).catch(() => null);
-    router.push(item.event.href);
+  async function markRead(id:string) {
+    const item = [...initialItems, ...initialAttention].find(item => item.id === id);
+    if (!item?.eventId) return;
+    await fetch(`/api/admin/inbox/${encodeURIComponent(id)}/read`,{method:'POST'}).catch(()=>null);
+    router.refresh();
+  }
+  function open(item: AdminInboxViewItem) {
+    if(adminNotificationOpening(item.event)!=='page')setSelected({id:item.id,audience:'admin',...item.event});
+    else {router.push(safeNotificationHref(item.event.href,'/admin/inbox'));if(!item.readAt)void markRead(item.id);}
+
   }
   async function markAll() {
     setError('');
@@ -32,6 +42,7 @@ export function AdminInboxListClient({ initialItems, initialAttention, initialVi
     router.refresh();
   }
   return <section className='mx-auto w-full max-w-[1200px]'>
+    {selected&&<NotificationRecordDialog key={selected.id} item={selected} onViewed={()=>void markRead(String(selected.id))} onClose={()=>{setSelected(null);router.refresh();}}/>}
     <nav aria-label='Разделы уведомлений' className='admin-section-tabs mb-4'>
       {([{ key: 'attention', label: 'Требуют внимания', count: initialAttention.length }, { key: 'history', label: 'История' }, { key: 'system', label: 'Система', count: technicalCount }] as const).map(tab =>
         <button key={tab.key} type='button' aria-current={view === tab.key ? 'page' : undefined} className='admin-section-tab' onClick={() => { setShown(PAGE_SIZE); router.push(`/admin/inbox?view=${tab.key}`); }}>{tab.label}{'count' in tab && tab.count > 0 && <span className='admin-section-tab-count'>{tab.count}</span>}</button>)}

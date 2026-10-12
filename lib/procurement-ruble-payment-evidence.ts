@@ -3,7 +3,7 @@ import type { SupplierCurrencyPaymentRow } from './procurement-currency-payment-
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
-import { smallRubleRemainder } from './procurement-small-remainder';
+import { smallRubleRemainder, smallUsdtRubleFundingRemainder } from './procurement-small-remainder';
 
 const key = (value: string) => value.trim().toLowerCase();
 const minor = (value: number) => Math.round(value * 100);
@@ -61,7 +61,7 @@ export function applyRublePaymentEvidence(
   allowSmallRemainder = false,
 ) {
   const eligible = plans.filter((plan) => ['APPROVED',COMPLETED_WITHOUT_TOPUP].includes(plan.status||'') &&
-    ['CASH', 'ACCOUNTABLE_QR', 'BANK', 'CNY'].includes(plan.paymentMethod) && plan.plannedAmount > 0);
+    ['CASH', 'ACCOUNTABLE_QR', 'BANK', 'CNY', 'USDT'].includes(plan.paymentMethod) && plan.plannedAmount > 0);
   const claims = new Map<string, Set<string>>();
   const uniquePayments = uniqueSupplierPayments(payments);
   for (const plan of plans) {
@@ -75,6 +75,12 @@ export function applyRublePaymentEvidence(
   const coveredBefore = (plan: EvidencePlan, at: number, includeSmall = true) => {
     const current = evidence.get(plan.id)!;
     if (current.state === 'MISMATCH') return false;
+    // An older completed wallet payment must not compete with a later RUB-funded
+    // debt request. Never use a future/same-second transfer to release ownership.
+    if (plan.paymentMethod === 'USDT' && current.state === 'PAID_BY_ONE_C' &&
+      current.currencyPayments.length > 0 && current.currencyPayments.every(row => {
+        const paidAt = paymentTimestamp(row.date); return Number.isFinite(paidAt) && paidAt < at;
+      })) return true;
     const orders = [...new Map(current.cashOrders.map(row => [key(row.ref), row])).values()];
     const covered = orders.reduce((sum, row) => {
       const owners = claims.get(key(row.ref));
@@ -86,7 +92,8 @@ export function applyRublePaymentEvidence(
     }, 0);
     return covered >= minor(plan.plannedAmount) || (includeSmall && allowSmallRemainder &&
       !current.rubleAllocationNeedsReview && current.state !== 'NEEDS_REVIEW' &&
-      smallRubleRemainder(plan, covered / 100) !== null &&
+      (smallRubleRemainder(plan, covered / 100) !== null ||
+        (!current.currencyPayments.length && smallUsdtRubleFundingRemainder(plan, covered / 100) !== null)) &&
       confirmedRubleRemainderPayments(plan, orders.filter(row => paymentTimestamp(row.date) < at), uniquePayments));
   };
   const orderedPayments = uniquePayments
@@ -156,6 +163,12 @@ export function applyRublePaymentEvidence(
     const plan = candidates[0];
     const current = evidence.get(plan.id)!;
     if (current.state === 'MISMATCH') continue;
+    // RUB funding plus a separate USDT RKO could describe the same transfer.
+    // Do not sum them or automatically reuse either document for another plan.
+    if (plan.paymentMethod === 'USDT' && current.currencyPayments.length > 0) {
+      evidence.set(plan.id, {...current, state:'NEEDS_REVIEW', rubleAllocationNeedsReview:true});
+      continue;
+    }
     evidence.set(plan.id, {
       ...current,
       manualPaymentCount: (current.manualPaymentCount || 0) + (manualOwners.length === 1 ? 1 : 0),
@@ -169,6 +182,9 @@ export function applyRublePaymentEvidence(
   for (const plan of eligible) {
     const current = evidence.get(plan.id)!;
     const orders = [...new Map(current.cashOrders.map((row) => [key(row.ref), row])).values()];
+    // Preserve native USDT payment amounts/states. Only a purely RUB-funded
+    // request is reconciled below in rubles.
+    if (plan.paymentMethod === 'USDT' && (current.currencyPayments.length > 0 || !orders.length)) continue;
     const conflicting = orders.some((row) => !row.ref || (claims.get(key(row.ref))?.size || 0) > 1);
     const totalMinor = conflicting ? 0 : orders.reduce((sum, row) => sum + minor(row.amount), 0);
     const issuedAmount = totalMinor / 100;
