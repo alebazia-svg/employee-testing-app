@@ -17,6 +17,16 @@ const data = (): DeliveryFunding => ({ checkedAt: new Date(now).toISOString(), c
 ], topups: [], unassignedCount: 0, unassignedAmount: 0, reviewCount: 0 });
 const view = (): DeliveryView => ({ snapshot: { balance: 2259, checkedAt: new Date(now).toISOString(), lastIssue: null }, requested: true, requestedByBuyer: false, requestStateAvailable: true });
 
+test('shared reserve appears as an enabled manual option, without preselecting it',()=>{
+ const source=data();source.cashboxes=[{ref:'reserve',name:'Резерв Под Телефоны',balance:100000,pending:0,count:0,manualOnly:true,shift:{state:'shared',employee:'',checkedAt:new Date(now).toISOString(),version:'shared'}}];
+ const html=renderToStaticMarkup(<ProcurementDeliveryCashboxChoice data={source} view={view()} now={now}/>);
+ assert.match(html,/Резерв Под Телефоны/);
+ assert.match(html,/Общая касса · ручной выбор/);
+ assert.match(html,/<option value="" selected="">Выберите кассу<\/option>/);
+ assert.doesNotMatch(html,/<option[^>]*disabled[^>]*value="reserve"|<option[^>]*value="reserve"[^>]*disabled/);
+ assert.doesNotMatch(html,/Смена не подтверждена/);
+});
+
 test('largest book balance wins among boxes able to cover the whole amount', () => {
   const source = data(), result = chooseDeliveryCashbox(source, 10000, now);
   assert.equal(result.selected?.ref, 'a');

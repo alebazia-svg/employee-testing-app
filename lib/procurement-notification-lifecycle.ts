@@ -5,7 +5,7 @@ import { procurementNotificationEvidence as evidence } from './procurement-notif
 import { COLLECTION_READY_KIND, currentCollectionPushes } from './procurement-collection-notifications';
 import { cashNoticeBase } from './procurement-morning-policy';
 import { isFinishedPaymentState } from './procurement-small-remainder';
-import { CASH_ISSUE_KIND } from './procurement-cash-issue-policy';
+import { CASH_ISSUE_KIND, cashIssueNotices } from './procurement-cash-issue-policy';
 import { currentCashIssue } from './procurement-cash-issue-notifications';
 
 export function procurementNotificationPlan(fingerprint: string, kind: string) {
@@ -19,7 +19,7 @@ export async function inactiveProcurementNotifications(db: Db, rows: Row[]) {
   if (rows.some(r => r.kind === CASH_ISSUE_KIND)) {
     const current = await currentCashIssue();
     if (current.state !== 'unknown') for (const row of rows) {
-      if (row.kind === CASH_ISSUE_KIND && (current.state !== 'ready' || row.fingerprint !== current.fingerprint)) inactive.add(row.id);
+      if (row.kind === CASH_ISSUE_KIND && !cashIssueNotices(current).some(notice => row.fingerprint === notice.fingerprint)) inactive.add(row.id);
     }
   }
   const ids = [...new Set(rows.map(r => procurementNotificationPlan(r.fingerprint, r.kind)).filter((id): id is string => Boolean(id)))];

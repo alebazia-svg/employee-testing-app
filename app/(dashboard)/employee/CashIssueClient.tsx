@@ -8,6 +8,7 @@ import { ChevronRight, RefreshCw, X } from 'lucide-react';
 import { startVisibleSync } from '@/lib/visible-sync';
 import { DELIVERY_MAX_AGE_MS } from '@/lib/procurement-delivery-policy';
 import { cashIssueCompactCopy, type cashIssuePermission } from '@/lib/procurement-cash-issue-policy';
+import { DELIVERY_PHONE_RESERVE_REF } from '@/lib/procurement-delivery-reserve';
 
 type RequestData = NonNullable<ReturnType<typeof cashIssuePermission>>;
 type Snapshot = { request: RequestData | null; unavailable: boolean; waitingForShift?: boolean };
@@ -109,6 +110,7 @@ export function CashIssueProvider({ children }: { children: ReactNode }) {
               <p className='mt-2 text-base font-bold text-slate-950'>{request.recipient}</p>
               <p className='mt-1 text-sm text-slate-500'>{request.cashbox} · № {request.number}</p>
               {request.issued > 0 && <p className='mt-3 text-sm text-slate-600'>Уже выдано {money(request.issued)} из {money(request.total)}.</p>}
+              {request.cashboxRef === DELIVERY_PHONE_RESERVE_REF && <p className='mt-3 text-sm leading-5 text-slate-600'>Поручение общее для менеджеров розницы на смене. Выдачу выполняет один сотрудник: перед выдачей убедитесь, что коллега ещё не выдал деньги, и проверьте заявку в 1С.</p>}
               <p className='mt-4 border-t border-slate-200 pt-3 text-sm leading-5 text-slate-600'>После выдачи денег создайте расходник в 1С на основании этой заявки.</p>
             </> : <p className='py-4 text-sm leading-6 text-slate-600' role='status'>{busy ? 'Проверяем сумму и кассу…' : unknown ? 'Не удалось проверить данные. Перед выдачей обновите статус или проверьте заявку в 1С.' : snapshot.waitingForShift ? 'Для выдачи денег начните текущий рабочий день. Заявка сохранена.' : 'Выдача из вашей кассы больше не требуется.'}</p>}
             <button type='button' onClick={() => void refresh(true)} disabled={busy} className='mt-4 inline-flex min-h-11 items-center gap-2 text-sm font-bold text-[#94633e] disabled:opacity-50'><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />{busy ? 'Проверяем…' : 'Обновить статус'}</button>

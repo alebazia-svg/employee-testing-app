@@ -43,7 +43,7 @@ export function ProcurementDeliveryCreate({ cashboxRef, ready, onReviewChange }:
     </> : activeReview && summary ? <>
       <h3 className="text-sm font-semibold text-slate-950">Проверьте перед созданием</h3>
       <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm"><dt className="text-slate-500">Получатель</dt><dd className="text-right font-medium">{summary.recipient}</dd><dt className="text-slate-500">Сумма</dt><dd className="text-right font-medium">{summary.amount.toLocaleString('ru-RU')} ₽</dd><dt className="text-slate-500">Касса</dt><dd className="text-right font-medium">{summary.cashbox}</dd><dt className="text-slate-500">Отчитаться до</dt><dd className="text-right font-medium">{summary.reportDate.split('-').reverse().join('.')}</dd><dt className="text-slate-500">Статус в 1С</dt><dd className="text-right font-medium">К оплате</dd></dl>
-      <p className="mt-3 text-sm text-slate-600">{state.cashboxShift?.employee} · {cashboxShiftLabel(state.cashboxShift)}</p>
+      <p className="mt-3 text-sm text-slate-600">{state.cashboxShift?.employee ? `${state.cashboxShift.employee} · ` : ''}{cashboxShiftLabel(state.cashboxShift)}</p>
       {cashboxShiftWarning(state.cashboxShift) ? <p role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{cashboxShiftWarning(state.cashboxShift)}</p> : null}
       <p className="my-3 text-xs text-slate-500">{summary.organization} · проверено в 1С. Заявка ещё не создана.</p>
       {summary.funding.unallocated_count > 0 || summary.funding.other_review_count > 0 ? <ProcurementDeliveryFundingNotice beforeCreate /> : null}

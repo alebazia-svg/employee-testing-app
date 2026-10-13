@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
+import { cashIssueForUser } from '@/lib/procurement-cash-issue-policy';
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();
@@ -8,6 +9,6 @@ export async function GET(req: Request) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
   const current = await currentCashIssue(new Date(), new URL(req.url).searchParams.get('fresh') === '1');
-  const request = current.state === 'ready' && current.userId === user.id ? current.request : null;
+  const request = cashIssueForUser(current, user.id)?.request ?? null;
   return Response.json({ request, unavailable: current.state === 'unknown', waitingForShift: current.state === 'waiting_shift' && current.userId === user.id }, { headers: { 'Cache-Control': 'no-store' } });
 }

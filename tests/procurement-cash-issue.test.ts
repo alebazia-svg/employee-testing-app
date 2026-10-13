@@ -4,6 +4,7 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { cashIssueKey, cashIssuePermission, cashIssueHref, cashIssueCompactCopy, CASH_ISSUE_KIND } from '../lib/procurement-cash-issue-policy';
 import type { DeliveryNativeStatus } from '../lib/procurement-delivery-native';
+import { DELIVERY_PHONE_RESERVE_REF } from '../lib/procurement-delivery-reserve';
 const require = createRequire(import.meta.url);
 const ref = '11111111-2222-3333-4444-555555555555';
 const cashboxRef = '11111111-2222-3333-4444-666666666666';
@@ -118,4 +119,39 @@ test('details of an off-shift cashier show a start-workday hint and never an amo
  });
  const body=await (await api.GET(new Request('https://local.invalid/api/employee/cash-issue?fresh=1'))).json();
  assert.equal(body.request,null); assert.equal(body.waitingForShift,true); assert.equal(body.unavailable,false);
+});
+
+test('reserve recipients require actual current retail cash-manager shifts; all other tills stay personal', async () => {
+ const s=status({cashboxRef:DELIVERY_PHONE_RESERVE_REF,cashbox:'Резерв Под Телефоны'});
+ const api=await load('lib/procurement-cash-issue-notifications.ts',{
+  './prisma':{prisma:{workDayEntry:{findMany:async(args:any)=>{
+   assert.deepEqual(args.where,{date:'2026-10-12',department:'retail',status:'active',endedAt:null,startedAt:{lte:now},
+    user:{isActive:true,role:'EMPLOYEE',portalArea:'WORKDAY',department:'retail',oneCCashboxMapping:{is:{isActive:true,oneCCashboxRef:{not:''}}}}});
+   return [{userId:42},{userId:43},{userId:42}];
+  }}}},
+  './procurement-delivery-reminders':{loadDeliveryView:async()=>({requestStateAvailable:true,nativeRequest:{state:'linked',status:s}})},
+ });
+ const current=await api.currentCashIssue(now,true);
+ assert.equal(current.state,'shared');assert.deepEqual(current.notices.map((n:any)=>n.userId),[42,43]);
+ for(const userId of [42,43])assert.equal((await api.cashIssuePushDecision({userId,fingerprint:cashIssueKey(s,userId)},now)).state,'send');
+ assert.equal((await api.cashIssuePushDecision({userId:44,fingerprint:cashIssueKey(s,44)},now)).state,'cancel');
+ assert.match(cashIssueCompactCopy(current.notices[0].request).subtitle,/Резерв Под Телефоны/);
+});
+
+test('shared details are visible to each selected manager only and lifecycle closes every recipient together', async()=>{
+ const request=cashIssuePermission(status({cashboxRef:DELIVERY_PHONE_RESERVE_REF}),now)!;
+ const notices=[42,43].map(userId=>({userId,fingerprint:cashIssueKey(status({cashboxRef:DELIVERY_PHONE_RESERVE_REF}),userId),request}));
+ let current:any={state:'shared',notices};
+ for(const userId of [42,43,44]){
+  const api=await load('app/api/employee/cash-issue/route.ts',{
+   '@/lib/auth':{getCurrentUser:async()=>({id:userId,isActive:true,role:'EMPLOYEE',portalArea:'WORKDAY'})},
+   '@/lib/procurement-cash-issue-notifications':{currentCashIssue:async()=>current},
+  });
+  assert.equal(Boolean((await(await api.GET(new Request('https://local.invalid/api/employee/cash-issue'))).json()).request),userId!==44);
+ }
+ const lifecycle=await load('lib/procurement-notification-lifecycle.ts',{'./procurement-cash-issue-notifications':{currentCashIssue:async()=>current}});
+ const rows=notices.map((n,i)=>({id:i+1,kind:CASH_ISSUE_KIND,fingerprint:n.fingerprint}));
+ assert.equal((await lifecycle.inactiveProcurementNotifications({},rows)).size,0);
+ current={state:'unknown'};assert.equal((await lifecycle.inactiveProcurementNotifications({},rows)).size,0);
+ current={state:'inactive'};assert.deepEqual([...(await lifecycle.inactiveProcurementNotifications({},rows))],[1,2]);
 });

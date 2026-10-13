@@ -6,7 +6,8 @@ import { prisma } from './prisma';
 import { activeDeliveryRequest, deliveryMappedUser, loadDeliveryView } from './procurement-delivery-reminders';
 import { DELIVERY_PERSON } from './procurement-delivery-policy';
 import { chooseDeliveryCashbox } from './procurement-delivery-cashbox-choice';
-import { deliveryFundingFromEvidence, deliveryFundingForManagerCashboxes } from './procurement-delivery-funding';
+import { deliveryFundingFromEvidence } from './procurement-delivery-funding';
+import { deliveryFundingForTopup } from './procurement-delivery-reserve';
 import { deliveryLinkKey, DELIVERY_LINK_SOURCE } from './procurement-delivery-native';
 import { deliveryCreateMode, deliveryCreationRef, deliveryCreationSummary, type DeliveryCreatePlan, type DeliveryCreateSummary } from './procurement-delivery-create-policy';
 import { deliveryCreationApi, readDeliveryCreation, previewDeliveryCreation, confirmDeliveryCreation } from './procurement-delivery-create-source';
@@ -42,9 +43,10 @@ async function checkCashbox(ref: string, amount: number) {
     deliveryCreationApi(`cash-funding-context?organization_ref=${DELIVERY_PERSON.organizationRef}`),
     prisma.userOneCCashboxMapping.findMany({ where: { isActive: true, user: { isActive: true, role: 'EMPLOYEE', portalArea: 'WORKDAY', department: { in: ['retail', 'wholesale'] } } }, select: { oneCCashboxRef: true } }),
   ]);
-  const choice = chooseDeliveryCashbox(deliveryFundingForManagerCashboxes(deliveryFundingFromEvidence(raw), mappings.map(m => m.oneCCashboxRef)), amount);
-  if (choice.state !== 'ready' || !choice.candidates.some(c => c.ref === ref)) throw Error('CASHBOX_REVIEW_REQUIRED');
-  const shift = (await cashboxShifts([ref])).get(ref);
+  const choice = chooseDeliveryCashbox(deliveryFundingForTopup(deliveryFundingFromEvidence(raw), mappings.map(m => m.oneCCashboxRef)), amount);
+  const candidate = choice.candidates.find(c => c.ref === ref);
+  if (choice.state !== 'ready' || !candidate) throw Error('CASHBOX_REVIEW_REQUIRED');
+  const shift = candidate.manualOnly ? candidate.shift : (await cashboxShifts([ref])).get(ref);
   if (!shift || shift.state === 'unknown') throw Error('CASHBOX_SHIFT_UNAVAILABLE');
   return shift;
 }

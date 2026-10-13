@@ -5,7 +5,7 @@ import { DELIVERY_PERSON, DELIVERY_MAX_AGE_MS } from './procurement-delivery-pol
 type Row = Record<string, unknown>;
 export type DeliveryFunding = {
   checkedAt: string;
-  cashboxes: { ref: string; name: string; balance: number; pending: number | null; count: number; shift?: CashboxShift }[];
+  cashboxes: { ref: string; name: string; balance: number; pending: number | null; count: number; shift?: CashboxShift; manualOnly?: boolean }[];
   topups: { ref: string; number: string; date: string; status: string; remaining: number | null }[];
   unassignedCount: number;
   unassignedAmount: number;

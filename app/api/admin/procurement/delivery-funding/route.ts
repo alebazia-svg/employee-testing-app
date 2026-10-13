@@ -2,7 +2,8 @@ import { cashboxShifts } from '@/lib/procurement-cashbox-shifts';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { getCashFundingContext } from '@/lib/one-c';
 import { DELIVERY_PERSON } from '@/lib/procurement-delivery-policy';
-import { deliveryFundingFromEvidence, deliveryFundingForManagerCashboxes } from '@/lib/procurement-delivery-funding';
+import { deliveryFundingFromEvidence } from '@/lib/procurement-delivery-funding';
+import { deliveryFundingForTopup } from '@/lib/procurement-delivery-reserve';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -18,9 +19,9 @@ export async function GET() {
         select: { oneCCashboxRef: true },
       }),
     ]);
-    const data = deliveryFundingForManagerCashboxes(deliveryFundingFromEvidence(raw), mappings.map(m => m.oneCCashboxRef));
-    const shifts = await cashboxShifts(data.cashboxes.map(box => box.ref));
-    return Response.json({ ...data, cashboxes: data.cashboxes.map(box => ({ ...box, shift: shifts.get(box.ref) })) }, { headers });
+    const data = deliveryFundingForTopup(deliveryFundingFromEvidence(raw), mappings.map(m => m.oneCCashboxRef));
+    const shifts = await cashboxShifts(data.cashboxes.filter(box => !box.manualOnly).map(box => box.ref));
+    return Response.json({ ...data, cashboxes: data.cashboxes.map(box => ({ ...box, shift: box.manualOnly ? box.shift : shifts.get(box.ref) })) }, { headers });
   } catch {
     return Response.json({ error: 'Не удалось проверить кассы и заявки. Данные обновятся автоматически.' }, { status: 503, headers });
   }

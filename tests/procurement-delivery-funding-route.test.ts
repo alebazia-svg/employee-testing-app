@@ -11,7 +11,9 @@ async function route(status = 200, fail = false, mappingFail = false) {
     '@/lib/procurement-delivery-policy': { DELIVERY_PERSON },
     '@/lib/procurement-delivery-funding': {
       deliveryFundingFromEvidence: () => { calls.push('validate'); return { cashboxes: [] }; },
-      deliveryFundingForManagerCashboxes: (data: unknown, refs: string[]) => { calls.push('manager-scope'); assert.deepEqual(refs, ['manager-cashbox-ref']); return data; },
+    },
+    '@/lib/procurement-delivery-reserve': {
+      deliveryFundingForTopup: (data: unknown, refs: string[]) => { calls.push('manager-scope'); assert.deepEqual(refs, ['manager-cashbox-ref']); return data; },
     },
     '@/lib/prisma': { prisma: { userOneCCashboxMapping: { findMany: async (query: unknown) => {
       calls.push('mappings');

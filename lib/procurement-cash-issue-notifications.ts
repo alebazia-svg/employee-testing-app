@@ -4,12 +4,10 @@ import { loadDeliveryView } from './procurement-delivery-reminders';
 import { deliveryNativeFresh } from './procurement-delivery-native';
 import { getMoscowDateKey } from './workday';
 import { employeePushNotBefore } from './employee-push-policy';
-import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY, cashIssueKey, cashIssuePermission, cashIssueCompactCopy } from './procurement-cash-issue-policy';
+import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY, cashIssueKey, cashIssuePermission, cashIssueCompactCopy, cashIssueNotices, cashIssueForUser, type CashIssueState, type CashIssueNotice } from './procurement-cash-issue-policy';
+import { DELIVERY_PHONE_RESERVE_REF } from './procurement-delivery-reserve';
+export type { CashIssueState } from './procurement-cash-issue-policy';
 
-export type CashIssueState = { state: 'unknown' | 'inactive'; checkedAt: string }
-  | { state: 'waiting_shift'; userId: number; fingerprint: string; checkedAt: string }
-  | { state: 'ready'; userId: number; fingerprint: string; title: string; body: string;
-      request: NonNullable<ReturnType<typeof cashIssuePermission>>; checkedAt: string };
 let cached: { until: number; value: Promise<CashIssueState> } | null = null;
 export async function currentCashIssue(now = new Date(), fresh = false): Promise<CashIssueState> {
   if (!fresh && cached && cached.until > Date.now()) return cached.value;
@@ -26,7 +24,21 @@ async function readCashIssue(now: Date): Promise<CashIssueState> {
   if (native?.state !== 'linked' || !status) return { state: 'inactive', checkedAt };
   const request = cashIssuePermission(status, now);
   if (!request) return { state: status.canCollect === true ? 'unknown' : 'inactive', checkedAt };
-  // No surname guessing and no broadcasting to every employee with a shared till.
+  const notice = (userId: number): CashIssueNotice => ({ userId, fingerprint: cashIssueKey(status, userId), request, checkedAt,
+    title: cashIssueCompactCopy(request).title,
+    body: `${request.recipient} · ${request.cashbox} · Заявка № ${request.number}` });
+  // Owner-approved exception for this exact shared reserve only. Cashbox
+  // mappings identify cash managers, not every retail employee or trainee.
+  if (request.cashboxRef === DELIVERY_PHONE_RESERVE_REF) {
+    const shifts = await prisma.workDayEntry.findMany({
+      where: { date: getMoscowDateKey(now), department: 'retail', status: 'active', endedAt: null, startedAt: { lte: now },
+        user: { isActive: true, role: 'EMPLOYEE', portalArea: 'WORKDAY', department: 'retail',
+          oneCCashboxMapping: { is: { isActive: true, oneCCashboxRef: { not: '' } } } } },
+      select: { userId: true },
+    });
+    return { state: 'shared', checkedAt, notices: [...new Set(shifts.map(shift => shift.userId))].map(notice) };
+  }
+  // Personal tills still require one explicit owner; no surname guessing.
   const owners = await prisma.userOneCCashboxMapping.findMany({
     where: { oneCCashboxRef: request.cashboxRef, isActive: true, user: { isActive: true, role: 'EMPLOYEE', portalArea: 'WORKDAY', department: { in: ['retail', 'wholesale'] } } },
     select: { userId: true }, take: 2,
@@ -40,40 +52,41 @@ async function readCashIssue(now: Date): Promise<CashIssueState> {
     select: { id: true },
   });
   if (!shift) return { state: 'waiting_shift', userId, fingerprint: cashIssueKey(status, userId), checkedAt };
-  return { state: 'ready', userId, fingerprint: cashIssueKey(status, userId), request, checkedAt,
-    title: cashIssueCompactCopy(request).title,
-    body: `${request.recipient} · ${request.cashbox} · Заявка № ${request.number}` };
+  return { state: 'ready', ...notice(userId) };
 }
 
 /** Existing minute sender produces the task. GET never creates notifications. */
 export async function queueCashIssuePush(now = new Date()) {
   const current = await currentCashIssue(now, true);
   if (current.state === 'unknown') return;
+  const notices = cashIssueNotices(current);
   await prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106257)`;
     // A slow read must not undo a more recent assignment/dispatch.
     if (await tx.workdayNotification.findFirst({ where: { kind: CASH_ISSUE_KIND, updatedAt: { gt: new Date(current.checkedAt) } }, select: { id: true } })) return;
     await tx.workdayNotification.updateMany({ where: { kind: CASH_ISSUE_KIND, status: { not: 'cancelled' },
-      ...(current.state === 'ready' ? { fingerprint: { not: current.fingerprint } } : {}),
+      ...(notices.length ? { fingerprint: { notIn: notices.map(notice => notice.fingerprint) } } : {}),
     }, data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null } });
-    if (current.state !== 'ready') return;
     const scheduledAt = employeePushNotBefore(now);
-    const row = await tx.workdayNotification.upsert({ where: { fingerprint: current.fingerprint }, update: {}, create: {
-      userId: current.userId, kind: CASH_ISSUE_KIND, fingerprint: current.fingerprint, ...CASH_ISSUE_PUSH_COPY, scheduledAt, nextPushAttemptAt: scheduledAt,
-    } });
-    // Reassignment, a new active shift or a reversed RKO re-open the same notification.
-    // Cancelling a notification never closes the underlying financial request.
-    if (row.status === 'cancelled') await tx.workdayNotification.updateMany({ where: { id: row.id, status: 'cancelled' }, data: {
-      status: 'pending', pushStatus: 'pending', readAt: null, sentAt: null, pushDeliveredAt: null,
-      attemptCount: 0, lastError: '', scheduledAt, nextPushAttemptAt: scheduledAt,
-    } });
+    for (const notice of notices) {
+      const row = await tx.workdayNotification.upsert({ where: { fingerprint: notice.fingerprint }, update: {}, create: {
+        userId: notice.userId, kind: CASH_ISSUE_KIND, fingerprint: notice.fingerprint, ...CASH_ISSUE_PUSH_COPY, scheduledAt, nextPushAttemptAt: scheduledAt,
+      } });
+      // Reassignment, a new active shift or a reversed RKO re-open the same notification.
+      // Cancelling a notification never closes the underlying financial request.
+      if (row.status === 'cancelled') await tx.workdayNotification.updateMany({ where: { id: row.id, status: 'cancelled' }, data: {
+        status: 'pending', pushStatus: 'pending', readAt: null, sentAt: null, pushDeliveredAt: null,
+        attemptCount: 0, lastError: '', scheduledAt, nextPushAttemptAt: scheduledAt,
+      } });
+    }
   });
 }
 export async function cashIssuePushDecision(notification: { fingerprint: string; userId: number }, now = new Date()) {
   const current = await currentCashIssue(now, true);
   if (current.state === 'unknown') return { state: 'defer' as const, until: new Date(now.getTime() + 60_000) };
   if (current.state === 'waiting_shift' && current.userId === notification.userId && current.fingerprint === notification.fingerprint) return { state: 'defer' as const, until: new Date(now.getTime() + 60_000) };
-  if (current.state !== 'ready' || current.userId !== notification.userId || current.fingerprint !== notification.fingerprint) return { state: 'cancel' as const };
+  const notice = cashIssueForUser(current, notification.userId);
+  if (!notice || notice.fingerprint !== notification.fingerprint) return { state: 'cancel' as const };
   const until = employeePushNotBefore(now);
   return until > now ? { state: 'defer' as const, until } : { state: 'send' as const, ...CASH_ISSUE_PUSH_COPY };
 }

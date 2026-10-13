@@ -5,6 +5,7 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import { getMoscowDateKey } from '../lib/workday';
 import { CASH_ISSUE_KIND } from '../lib/procurement-cash-issue-policy';
+import { DELIVERY_PHONE_RESERVE_REF } from '../lib/procurement-delivery-reserve';
 
 test('isolated PostgreSQL: cashier assignment, partial issue, reassignment, re-entry and no duplicate tasks', { skip: process.env.CASH_ISSUE_INTEGRATION !== '1' }, async () => {
   assert.equal(process.env.DATABASE_URL, 'postgresql://attention:local-attention-only@127.0.0.1:55448/admin_attention_20261012_test');
@@ -65,6 +66,27 @@ test('isolated PostgreSQL: cashier assignment, partial issue, reassignment, re-e
     remaining=0;await queue();assert.ok((await rows()).every(r=>r.status==='cancelled'));
     remaining=3000;await queue();records=await rows();assert.equal(records.length,2);assert.equal(records[0].status,'pending');
     source='rejected';await queue();assert.ok((await rows()).every(r=>r.status==='cancelled'));
+    // Shared reserve fans out to actual retail cash managers, without duplicate
+    // tasks. Leaving the shift revokes access; full issue cancels for everyone.
+    source='ready'; cashboxRef=DELIVERY_PHONE_RESERVE_REF; remaining=5000;
+    await Promise.all([queue(),queue()]);
+    records=await rows();
+    const shared=records.filter(r=>r.status!=='cancelled');
+    assert.deepEqual(shared.map(r=>r.userId).sort(),[a.id,b.id].sort());
+    await queue();assert.equal((await rows()).length,records.length);
+    await db.user.update({where:{id:b.id},data:{department:'wholesale'}});
+    await queue(); assert.deepEqual((await rows()).filter(r=>r.status!=='cancelled').map(r=>r.userId),[a.id]);
+    await db.user.update({where:{id:b.id},data:{department:'retail'}});
+    await db.userOneCCashboxMapping.update({where:{userId:b.id},data:{isActive:false}});
+    await queue();assert.equal((await rows()).filter(r=>r.status!=='cancelled').length,1);
+    await db.userOneCCashboxMapping.update({where:{userId:b.id},data:{isActive:true}});
+    await db.workDayEntry.update({where:{id:shiftA.id},data:{status:'completed',endedAt:new Date()}});
+    await queue();assert.deepEqual((await rows()).filter(r=>r.status!=='cancelled').map(r=>r.userId),[b.id]);
+    assert.equal((await mod.exports.cashIssuePushDecision({userId:a.id,fingerprint:shared.find(r=>r.userId===a.id)!.fingerprint})).state,'cancel');
+    await db.workDayEntry.update({where:{id:shiftA.id},data:{status:'active',endedAt:null}});
+    await queue();remaining=3000;await queue();
+    assert.ok((await mod.exports.currentCashIssue(new Date(),true)).notices.every((n:any)=>n.request.amount===3000));
+    remaining=0;await queue();assert.ok((await rows()).every(r=>r.status==='cancelled'));
     assert.equal(await db.workdayNotification.count({where:{userId:{in:[a.id,b.id]},kind:{not:CASH_ISSUE_KIND}}}),0);
   } finally {
     await db.workdayNotification.deleteMany({where:{userId:{in:[a.id,b.id]}}});

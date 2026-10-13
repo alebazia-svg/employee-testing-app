@@ -1,6 +1,19 @@
 import { deliveryCollectionAmount, deliveryNativeFresh, type DeliveryNativeStatus } from './procurement-delivery-native';
+import { DELIVERY_PHONE_RESERVE_REF } from './procurement-delivery-reserve';
 
 export const CASH_ISSUE_KIND = 'procurement_cash_issue';
+export type CashIssueNotice = { userId: number; fingerprint: string; title: string; body: string;
+  request: NonNullable<ReturnType<typeof cashIssuePermission>>; checkedAt: string };
+export type CashIssueState = { state: 'unknown' | 'inactive'; checkedAt: string }
+  | { state: 'waiting_shift'; userId: number; fingerprint: string; checkedAt: string }
+  | ({ state: 'ready' } & CashIssueNotice)
+  | { state: 'shared'; notices: CashIssueNotice[]; checkedAt: string };
+export function cashIssueNotices(current: CashIssueState): CashIssueNotice[] {
+  return current.state === 'ready' ? [current] : current.state === 'shared' ? current.notices : [];
+}
+export function cashIssueForUser(current: CashIssueState, userId: number) {
+  return cashIssueNotices(current).find(notice => notice.userId === userId) ?? null;
+}
 // Push may arrive after an assignment changes. The authenticated screen always
 // rechecks who may issue money; the lock-screen message is deliberately neutral.
 export const CASH_ISSUE_PUSH_COPY = { title: 'Заявка на выдачу денег готова', body: 'Проверьте сумму и получателя. После выдачи оформите расходник в 1С.' };
@@ -31,6 +44,6 @@ export function cashIssueCompactCopy(request: NonNullable<ReturnType<typeof cash
   const amount = request.amount.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
   return {
     title: `Выдать ${recipient}${request.issued > 0 ? ' ещё' : ''} ${amount} ₽`,
-    subtitle: 'Заявка готова · оформите расходник',
+    subtitle: request.cashboxRef === DELIVERY_PHONE_RESERVE_REF ? `Из кассы «${request.cashbox}»` : 'Заявка готова · оформите расходник',
   };
 }

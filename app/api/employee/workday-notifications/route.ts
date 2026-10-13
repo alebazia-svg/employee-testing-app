@@ -7,7 +7,7 @@ import { cashNoticeBase } from '@/lib/procurement-morning-policy';
 import { currentDeliveryPush, DELIVERY_READY_KIND } from '@/lib/procurement-delivery-notifications';
 import { DELIVERY_PUSH_COPY } from '@/lib/employee-push-policy';
 import { COLLECTION_READY_KIND, COLLECTION_PUSH_COPY, currentCollectionPushes } from '@/lib/procurement-collection-notifications';
-import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY } from '@/lib/procurement-cash-issue-policy';
+import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY, cashIssueForUser } from '@/lib/procurement-cash-issue-policy';
 import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
 
 export async function GET() {
@@ -51,7 +51,8 @@ export async function GET() {
       const deliveryCopy = notification.kind === DELIVERY_READY_KIND && delivery?.state === 'ready'
         && delivery.fingerprint === (cashNoticeBase(notification) ?? notification.fingerprint) && delivery.userId === user.id ? delivery : null;
       const collectionCopy = collections?.state === 'ready' ? collections.notices.find(n => n.userId === user.id && n.fingerprint === (cashNoticeBase(notification) ?? notification.fingerprint)) : null;
-      const issueCopy = cashIssue?.state === 'ready' && cashIssue.userId === user.id && cashIssue.fingerprint === notification.fingerprint ? cashIssue : null;
+      const ownIssue = cashIssue ? cashIssueForUser(cashIssue, user.id) : null;
+      const issueCopy = ownIssue?.fingerprint === notification.fingerprint ? ownIssue : null;
       const copy = notification.kind === CASH_ISSUE_KIND ? issueCopy ?? { ...CASH_ISSUE_PUSH_COPY, body: 'Статус выдачи уточняется. Откройте заявку перед выдачей денег.' }
         : notification.kind === DELIVERY_READY_KIND ? deliveryCopy ?? DELIVERY_PUSH_COPY
         : notification.kind === COLLECTION_READY_KIND ? collectionCopy ?? COLLECTION_PUSH_COPY : null;
