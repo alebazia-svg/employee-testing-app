@@ -951,3 +951,30 @@ Runtime e250bb4 deployed and verified. Automatic reads completed at 14:30 and
 once before deployment, so this is resilience to intermittent slowness, not a
 claim of repairing 1C or guaranteeing future availability. Release evidence and
 rollback: [admin-attention-deadlines-20261012.md](admin-attention-deadlines-20261012.md).
+
+## 2026-10-13 — Shared phone reserve for manual accountable top-up
+
+Owner approved adding the manager-accessible `Резерв Под Телефоны` to the ADMIN
+cashbox selector for Astemir's delivery top-up, **manual choice only**. Its exact
+live 1C identity is `7e102389-3ccb-11ed-8f49-0025901e48ee`; a complete read-only
+cash-funding-context-v2 response confirmed it is live and RUB-denominated.
+
+- Automatic ranking still chooses only mapped manager cashboxes with active shifts.
+- No other safes or name-matched cashboxes are admitted. General forecast scope
+  is unchanged. Missing/deleted/wrong-currency reserve is not synthesized.
+- Reserve balance and assigned obligations are checked again before preview and
+  confirmation. Existing requests, stale data and insufficient cash still block.
+- Owner additionally approved notifying all on-shift retail cash managers for
+  this exact reserve. Reuse the existing cashier notification flow: active
+  EMPLOYEE/WORKDAY retail users with active cashbox mappings and actually
+  started, unended current-day retail shifts. Personal cashboxes still require
+  one uniquely mapped cashier. Selection alone sends nothing: only a linked,
+  freshly verified payable native request authorizes the notice.
+- Every recipient has a stable per-user fingerprint; polling does not duplicate
+  tasks. Shift end, reassignment and verified full issue retire the relevant
+  notices; unknown 1C state defers push rather than claiming completion. Night
+  restrictions and neutral lock-screen copy remain unchanged. The authenticated
+  notice shows the reserve, recipient and amount. Shared issuance is explicitly
+  one employee's action; employees must coordinate before physically issuing.
+- Release approved 2026-10-13. No native preview, request, RKO or production
+  database write was performed as a test. See reserve release note for checks.
