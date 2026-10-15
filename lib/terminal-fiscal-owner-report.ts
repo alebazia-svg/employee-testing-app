@@ -24,12 +24,47 @@ export type OwnerFiscalReportInput = {
   }>;
 };
 
+export type OwnerOneCEvidence = {
+  sourceType: string;
+  sourceRef: string;
+  dateTime: string;
+  cashRegisterRef: string;
+  operationType: string;
+  cardPayments: Array<{ amountKopecks: number; acquiringTerminalRef: string }>;
+};
+
+export function ownerOneCTerminalAmount(input: {
+  evidence: OwnerOneCEvidence[];
+  cashRegisterRef: string;
+  acquiringTerminalRef: string;
+  matchedAcquiringSourceRefs: ReadonlySet<string>;
+  periodFrom: Date;
+  periodTo: Date;
+}) {
+  return input.evidence.reduce((sum, evidence) => {
+    if (evidence.sourceType === 'acquiring_operation') {
+      // A single 1C acquiring terminal may serve several aQsi devices. Attribute
+      // an acquiring document only to the mapping whose latest audit matched it.
+      if (!input.matchedAcquiringSourceRefs.has(evidence.sourceRef)) return sum;
+    } else if (evidence.cashRegisterRef !== input.cashRegisterRef) {
+      return sum;
+    }
+    const at = new Date(evidence.dateTime);
+    if (!(at >= input.periodFrom && at < input.periodTo)) return sum;
+    const payments = evidence.cardPayments
+      .filter((payment) => payment.acquiringTerminalRef === input.acquiringTerminalRef)
+      .reduce((paymentSum, payment) => paymentSum + payment.amountKopecks, 0);
+    return sum + (evidence.operationType === 'refund' ? -payments : payments);
+  }, 0);
+}
+
 function rubles(kopecks: number) {
   return (kopecks / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
-  const financialProblems = input.openCount + input.mismatches;
+  const terminalDifferenceCount = input.terminals?.filter((terminal) => terminal.complete && terminal.differenceKopecks !== 0).length ?? 0;
+  const financialProblems = input.openCount + input.mismatches + terminalDifferenceCount;
   const ok = financialProblems === 0 && input.sourcesComplete;
   const lines = [
     `${ok ? '✅' : '⚠️'} Контроль оплат по терминалу за ${input.day}`,
@@ -45,6 +80,7 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
     input.pending > 0 ? `• ещё ожидают данные: ${input.pending}` : '',
     input.unavailable > 0 ? `• источник был недоступен: ${input.unavailable}` : '',
     input.mismatches > 0 ? `• подтверждённых денежных расхождений: ${input.mismatches}` : '',
+    terminalDifferenceCount > 0 ? `• расхождение сумм aQsi ↔ 1С: ${terminalDifferenceCount}` : '',
     input.linkedLateCount > 0 ? `Чеков, связанных с оплатой после задержки: ${input.linkedLateCount}` : 'Поздних чеков за день: нет',
     input.resolvedLateCount > 0 ? `Автоматически закрыто напоминаний: ${input.resolvedLateCount} на ${rubles(input.resolvedLateAmountKopecks)} ₽` : '',
     input.sourcesComplete
@@ -62,6 +98,8 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
   }
   lines.push(input.openCount > 0
     ? 'Что делать: проверить указанные оплаты в портале и документы 1С.'
+    : terminalDifferenceCount > 0
+      ? 'Что делать: проверить распределение подтверждающих документов 1С по аппаратам aQsi.'
     : !input.sourcesComplete
       ? 'Что делать: восстановить данные отсутствующего аппарата или источника и дождаться повторной сверки.'
       : 'Что делать: ничего, расхождений по чекам нет.');

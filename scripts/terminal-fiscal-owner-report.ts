@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { terminalFiscalOwnerMessage } from '../lib/terminal-fiscal-owner-report';
+import { ownerOneCTerminalAmount, terminalFiscalOwnerMessage } from '../lib/terminal-fiscal-owner-report';
 import { loadCompleteTBankOperations, loadOneCTerminalFiscalEvidence } from '../lib/terminal-fiscal-sources';
 
 function moscowDayBounds(now = new Date()) {
@@ -52,7 +52,7 @@ async function main() {
   }) : [];
   const matches = selected.length ? await prisma.terminalFiscalMatch.findMany({
     where: { runId: { in: selected.map((run) => run.id) } },
-    select: { status: true, reasonCode: true, oneCCashierRef: true, timeDifferenceSeconds: true },
+    select: { mappingId: true, status: true, reasonCode: true, oneCSourceRef: true, oneCCashierRef: true, timeDifferenceSeconds: true },
   }) : [];
   const itemReasons = new Set(['OFD_ITEMS_MISMATCH', 'OFD_ITEM_PRESENTATION_DIFFERENCE', 'OFD_ITEM_VALUES_MISMATCH']);
   const oneC = reportedMappings.length ? await loadOneCTerminalFiscalEvidence({
@@ -62,14 +62,17 @@ async function main() {
   const terminals = await Promise.all(reportedMappings.map(async (mapping) => {
     const aqsi = await loadCompleteTBankOperations({ terminalKey: mapping.terminalKey, from: from.toISOString(), to: to.toISOString() });
     const aqsiKopecks = aqsi.data.reduce((sum, operation) => sum + (operation.type === 'Debit' ? operation.amountKopecks : operation.type === 'Credit' ? -operation.amountKopecks : 0), 0);
-    const oneCKopecks = oneC.data.reduce((sum, check) => {
-      if (check.sourceType !== 'acquiring_operation' && check.cashRegisterRef !== mapping.oneCCashRegisterRef) return sum;
-      const at = new Date(check.dateTime);
-      if (!(at >= from && at < to)) return sum;
-      const payments = check.cardPayments.filter((payment) => payment.acquiringTerminalRef === mapping.oneCAcquiringTerminalRef)
-        .reduce((paymentSum, payment) => paymentSum + payment.amountKopecks, 0);
-      return sum + (check.operationType === 'refund' ? -payments : payments);
-    }, 0);
+    const matchedAcquiringSourceRefs = new Set(matches
+      .filter((match) => match.mappingId === mapping.id && match.oneCSourceRef?.startsWith('acquiring-operation:'))
+      .map((match) => match.oneCSourceRef as string));
+    const oneCKopecks = ownerOneCTerminalAmount({
+      evidence: oneC.data,
+      cashRegisterRef: mapping.oneCCashRegisterRef,
+      acquiringTerminalRef: mapping.oneCAcquiringTerminalRef,
+      matchedAcquiringSourceRefs,
+      periodFrom: from,
+      periodTo: to,
+    });
     return { label: mapping.label || mapping.terminalKey, aqsiKopecks, oneCKopecks,
       differenceKopecks: aqsiKopecks - oneCKopecks, complete: aqsi.complete && oneC.complete };
   }));
