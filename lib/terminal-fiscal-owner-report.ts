@@ -39,8 +39,8 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
     `• подтверждены отдельными чеками: ${input.confirmed}`,
     `• подтверждены общей суммой за день: ${input.coveredByDayTotal}`,
     input.openCount > 0
-      ? `• без подтверждённого чека 1С: ${input.openCount} на ${rubles(input.openAmountKopecks)} ₽`
-      : '• без подтверждённого чека 1С: 0',
+      ? `• без подтверждающего документа 1С: ${input.openCount} на ${rubles(input.openAmountKopecks)} ₽`
+      : '• без подтверждающего документа 1С: 0',
     input.itemReview > 0 ? `• проверить только состав товаров: ${input.itemReview} (на сумму не влияет)` : '',
     input.pending > 0 ? `• ещё ожидают данные: ${input.pending}` : '',
     input.unavailable > 0 ? `• источник был недоступен: ${input.unavailable}` : '',
@@ -61,7 +61,7 @@ export function terminalFiscalOwnerMessage(input: OwnerFiscalReportInput) {
     lines.push('Банковское возмещение проверяется отдельно после фактического зачисления: сроки и комиссия не относятся к контролю пробития чеков.');
   }
   lines.push(input.openCount > 0
-    ? 'Что делать: проверить указанные оплаты в портале и пробить отсутствующие чеки.'
+    ? 'Что делать: проверить указанные оплаты в портале и документы 1С.'
     : !input.sourcesComplete
       ? 'Что делать: восстановить данные отсутствующего аппарата или источника и дождаться повторной сверки.'
       : 'Что делать: ничего, расхождений по чекам нет.');

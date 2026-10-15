@@ -1,4 +1,4 @@
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.4';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.5';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
@@ -45,7 +45,7 @@ type MatchingReasonContract = {
 
 export const MATCHING_REASON_CODE_CONTRACT = {
   MATCH_CONFIRMED: { meaning: 'Три источника однозначно совпали', allowedStatuses: ['confirmed'], employeeVisible: false },
-  MATCH_CONFIRMED_LATE: { meaning: 'Три источника однозначно совпали, чек 1С пробит позднее оплаты', allowedStatuses: ['confirmed'], employeeVisible: false },
+  MATCH_CONFIRMED_LATE: { meaning: 'Три источника однозначно совпали, документ 1С создан позднее оплаты', allowedStatuses: ['confirmed'], employeeVisible: false },
   SOURCE_TBANK_INCOMPLETE: { meaning: 'Источник Т-Банка получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_ONE_C_INCOMPLETE: { meaning: 'Источник 1С получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_OFD_INCOMPLETE: { meaning: 'Источник OFD получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
@@ -54,10 +54,10 @@ export const MATCHING_REASON_CODE_CONTRACT = {
   BANK_OPERATION_DUPLICATE: { meaning: 'Банковская операция продублирована во входном снимке', allowedStatuses: ['needs_review'], employeeVisible: false },
   BANK_OPERATION_UNSUPPORTED: { meaning: 'Тип банковской операции не входит в MVP', allowedStatuses: ['needs_review'], employeeVisible: false },
   BANK_OPERATION_INVALID: { meaning: 'Банковская операция содержит невалидные обязательные поля', allowedStatuses: ['needs_review'], employeeVisible: false },
-  ONE_C_CANDIDATE_PENDING: { meaning: 'Чек 1С ещё может появиться в пределах grace period', allowedStatuses: ['pending'], employeeVisible: false },
-  ONE_C_CANDIDATE_NOT_FOUND: { meaning: 'После grace period не найден чек 1С по строгим критериям', allowedStatuses: ['needs_review'], employeeVisible: false },
-  ONE_C_MULTIPLE_CANDIDATES: { meaning: 'Найдено несколько равноправных чеков 1С', allowedStatuses: ['needs_review'], employeeVisible: false },
-  ONE_C_CHECK_REUSED: { meaning: 'Один чек 1С претендует на несколько банковских операций', allowedStatuses: ['needs_review'], employeeVisible: false },
+  ONE_C_CANDIDATE_PENDING: { meaning: 'Подтверждающий документ 1С ещё может появиться в пределах grace period', allowedStatuses: ['pending'], employeeVisible: false },
+  ONE_C_CANDIDATE_NOT_FOUND: { meaning: 'После grace period не найден чек ККМ или эквайринговая операция 1С по строгим критериям', allowedStatuses: ['needs_review'], employeeVisible: false },
+  ONE_C_MULTIPLE_CANDIDATES: { meaning: 'Найдено несколько равноправных документов 1С', allowedStatuses: ['needs_review'], employeeVisible: false },
+  ONE_C_CHECK_REUSED: { meaning: 'Один документ 1С претендует на несколько банковских операций', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_MULTIPLE_CARD_PAYMENTS: { meaning: 'В чеке несколько карточных строк; случай вне MVP', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_UNSUPPORTED_DOCUMENT: { meaning: 'Документ 1С является кредитом или коррекцией; случай вне MVP', allowedStatuses: ['needs_review'], employeeVisible: false },
   FISCAL_DATA_PENDING: { meaning: 'Полная фискальная тройка ещё может появиться в grace period', allowedStatuses: ['pending'], employeeVisible: false },
@@ -123,7 +123,7 @@ export type OneCCashier = {
 
 export type OneCCheck = {
   sourceRef: string;
-  sourceType: 'sale_check' | 'refund_check' | 'correction' | 'credit_realization';
+  sourceType: 'sale_check' | 'refund_check' | 'acquiring_operation' | 'correction' | 'credit_realization';
   operationType: 'sale' | 'refund' | 'correction';
   dateTime: string;
   cashRegisterRef: string;
@@ -284,7 +284,14 @@ function activeMappings(value: BankOperation, mappings: TerminalMapping[]) {
 function oneCOperationType(check: OneCCheck): MatchingOperationType | null {
   if (check.sourceType === 'sale_check' && check.operationType === 'sale') return 'sale';
   if (check.sourceType === 'refund_check' && check.operationType === 'refund') return 'refund';
+  if (check.sourceType === 'acquiring_operation' && (check.operationType === 'sale' || check.operationType === 'refund')) {
+    return check.operationType;
+  }
   return null;
+}
+
+function isAcquiringOperation(check: OneCCheck) {
+  return check.sourceType === 'acquiring_operation';
 }
 
 export function normalizeMatchingItemName(value: string) {
@@ -428,18 +435,23 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     const mapping = mappings.length === 1 ? mappings[0] : undefined;
     const bankAt = timestamp(operation.transactionDate);
     const type = operationType(operation.type);
-    const dayCandidates = !mapping || type === null || bankAt === null ? [] : input.oneCChecks.flatMap((check) => {
+    const allDayCandidates = !mapping || type === null || bankAt === null ? [] : input.oneCChecks.flatMap((check) => {
       if (oneCOperationType(check) !== type || check.cardPayments.length !== 1) return [];
       const payment = check.cardPayments[0];
       const checkAt = timestamp(check.dateTime);
       if (checkAt === null) return [];
-      if (check.cashRegisterRef !== mapping.oneCCashRegisterRef) return [];
+      if (!isAcquiringOperation(check) && check.cashRegisterRef !== mapping.oneCCashRegisterRef) return [];
       if (payment.acquiringTerminalRef !== mapping.oneCAcquiringTerminalRef) return [];
       if (payment.amountKopecks !== operation.amountKopecks) return [];
       if (checkAt < bankAt - TERMINAL_FISCAL_TIME_TOLERANCE_MS
         || checkAt - bankAt > TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS) return [];
       return [{ check, difference: Math.abs(checkAt - bankAt) }];
     });
+    // A native KKM check carries a stronger fiscal identity than the acquiring
+    // register document. Use the latter only as a fallback so the same sale is
+    // never reported as two equal 1C candidates.
+    const kkmCandidates = allDayCandidates.filter(({ check }) => !isAcquiringOperation(check));
+    const dayCandidates = kkmCandidates.length > 0 ? kkmCandidates : allDayCandidates;
     const candidates = dayCandidates.filter((candidate) => candidate.difference <= TERMINAL_FISCAL_TIME_TOLERANCE_MS);
     return { operation, operationType: type, mapping, mappingsCount: mappings.length,
       candidates, strictCandidateCount: candidates.length, dayCandidates };
@@ -530,7 +542,7 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     const bankAt = timestamp(context.operation.transactionDate);
     if (bankAt === null) return false;
     return input.oneCChecks.some((check) => {
-      if (check.sourceType === 'sale_check' || check.sourceType === 'refund_check') return false;
+      if (check.sourceType === 'sale_check' || check.sourceType === 'refund_check' || check.sourceType === 'acquiring_operation') return false;
       const checkAt = timestamp(check.dateTime);
       if (checkAt === null) return false;
       return check.cashRegisterRef === context.mapping?.oneCCashRegisterRef
@@ -614,6 +626,29 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       timeDifferenceSeconds = Math.round(context.candidates[0].difference / 1000);
       if ((checkCandidateUse.get(oneCCheck.sourceRef) ?? 0) > 1) {
         reasonCode = 'ONE_C_CHECK_REUSED';
+      } else if (isAcquiringOperation(oneCCheck)) {
+        const receipts = input.ofdReceipts.filter((receipt) => {
+          const receiptAt = timestamp(receipt.receiptAt);
+          return receiptAt !== null
+            && operationAt !== null
+            && Math.abs(receiptAt - operationAt) <= TERMINAL_FISCAL_TIME_TOLERANCE_MS
+            && receipt.operationType === expectedOfdOperationType(context.operationType!)
+            && receipt.kktRegistrationNumber === context.mapping?.kktRegistrationNumber
+            && receipt.totalKopecks === operation.amountKopecks
+            && receipt.electronicKopecks === operation.amountKopecks;
+        });
+        if (receipts.length === 0) {
+          status = isPending ? 'pending' : 'needs_review';
+          reasonCode = isPending ? 'OFD_RECEIPT_PENDING' : 'OFD_RECEIPT_NOT_FOUND';
+        } else if (receipts.length > 1) {
+          reasonCode = 'OFD_RECEIPT_DUPLICATE';
+        } else {
+          ofdReceipt = receipts[0];
+          status = 'confirmed';
+          reasonCode = (timeDifferenceSeconds ?? 0) > TERMINAL_FISCAL_TIME_TOLERANCE_MS / 1000
+            ? 'MATCH_CONFIRMED_LATE'
+            : 'MATCH_CONFIRMED';
+        }
       } else if (oneCCheck.fiscalConflict) {
         reasonCode = 'FISCAL_KEY_CONFLICT';
       } else if (oneCCheck.fiscalState !== 'confirmed' || !canonicalFiscalKey(oneCCheck)) {

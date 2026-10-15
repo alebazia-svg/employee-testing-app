@@ -249,6 +249,42 @@ export function normalizeOneCCheck(value: unknown, fiscalFacts: Map<string, Reco
   };
 }
 
+export function normalizeOneCAcquiringOperation(value: unknown): OneCCheck | null {
+  const source = record(value);
+  if (!source || text(source.registrar_type) !== 'Эквайринговая операция') return null;
+  const movementKind = text(source.movement_kind);
+  const moneyType = text(source.money_type).toLocaleLowerCase('ru-RU');
+  const operationType = movementKind === 'Приход' && moneyType.includes('поступление')
+    ? 'sale'
+    : movementKind === 'Расход' && moneyType.includes('списание')
+      ? 'refund'
+      : null;
+  const registrar = text(source.registrar);
+  const dateTime = normalizeOneCDateTime(source.period);
+  const terminalRef = metadataRef(source.terminal);
+  const amountKopecks = Math.round(decimal(source.amount) * 100);
+  if (!operationType || !registrar || !dateTime || !terminalRef || !Number.isSafeInteger(amountKopecks) || amountKopecks <= 0) return null;
+  const sourceRef = `acquiring-operation:${registrar}|${dateTime}|${terminalRef}|${amountKopecks}`;
+  return {
+    sourceRef,
+    sourceType: 'acquiring_operation',
+    operationType,
+    dateTime,
+    cashRegisterRef: '',
+    kktRegistrationNumber: '',
+    totalKopecks: amountKopecks,
+    electronicKopecks: amountKopecks,
+    cashier: { ref: '', name: '' },
+    cardPayments: [{
+      lineNumber: '1', amountKopecks, acquiringTerminalRef: terminalRef,
+      referenceNumber: '', authorizationCode: '', terminalReceiptNumber: '',
+    }],
+    items: [],
+    fiscalState: 'unconfirmed',
+    fiscalStateMeaning: 'data_state_only',
+  };
+}
+
 async function fetchJson(url: string, init?: RequestInit) {
   const response = await fetch(url, { ...init, method: 'GET', cache: 'no-store' });
   const body = await response.json().catch(() => null) as unknown;
@@ -280,6 +316,45 @@ export async function loadOneCKkmChecks(input: { fromDate: string; toDate: strin
     if (checks.length < ONE_C_PAGE_LIMIT) return { complete: false, checkedAt, data: output, errorCode: 'ONE_C_PAGINATION_CONTRADICTION' };
   }
   return { complete: false, checkedAt, data: output, errorCode: 'ONE_C_OFFSET_LIMIT' };
+}
+
+export async function loadOneCAcquiringOperations(input: { fromDate: string; toDate: string }): Promise<SourceSnapshot<OneCCheck>> {
+  const checkedAt = new Date().toISOString();
+  const config = readOneCRuntimeEnv();
+  if (!config.baseUrl || !config.user || !config.password) return { complete: false, checkedAt, data: [], errorCode: 'ONE_C_NOT_CONFIGURED' };
+  const query = new URLSearchParams({
+    date_from: input.fromDate,
+    date_to: input.toDate,
+    organization: 'ОФФОНИКА',
+    limit: '2000',
+  });
+  const auth = Buffer.from(`${config.user}:${config.password}`).toString('base64');
+  const { response, body } = await fetchJson(`${config.baseUrl}/acquiring-operation-control?${query}`, {
+    headers: { Authorization: `Basic ${auth}`, Accept: 'application/json' },
+  });
+  const root = record(body);
+  if (!response.ok || !root || root.ok !== true) return { complete: false, checkedAt, data: [], errorCode: 'ONE_C_ACQUIRING_REQUEST_FAILED' };
+  const movements = array(root.movements);
+  const acquiringMovements = movements.filter((entry) => text(record(entry)?.registrar_type) === 'Эквайринговая операция');
+  const normalized = acquiringMovements.map(normalizeOneCAcquiringOperation).filter(Boolean) as OneCCheck[];
+  if (normalized.length !== acquiringMovements.length) {
+    return { complete: false, checkedAt, data: normalized, errorCode: 'ONE_C_ACQUIRING_NORMALIZATION_FAILED' };
+  }
+  if (root.truncated === true) return { complete: false, checkedAt, data: normalized, errorCode: 'ONE_C_ACQUIRING_TRUNCATED' };
+  return { complete: true, checkedAt, data: normalized };
+}
+
+export async function loadOneCTerminalFiscalEvidence(input: { fromDate: string; toDate: string }): Promise<SourceSnapshot<OneCCheck>> {
+  const [checks, acquiring] = await Promise.all([
+    loadOneCKkmChecks(input),
+    loadOneCAcquiringOperations(input),
+  ]);
+  return {
+    complete: checks.complete && acquiring.complete,
+    checkedAt: checks.checkedAt > acquiring.checkedAt ? checks.checkedAt : acquiring.checkedAt,
+    data: [...checks.data, ...acquiring.data],
+    errorCode: checks.errorCode ?? acquiring.errorCode,
+  };
 }
 
 export async function loadPlatformaOfdReceipts(input: {

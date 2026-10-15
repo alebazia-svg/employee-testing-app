@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { terminalFiscalOwnerMessage } from '../lib/terminal-fiscal-owner-report';
-import { loadCompleteTBankOperations, loadOneCKkmChecks } from '../lib/terminal-fiscal-sources';
+import { loadCompleteTBankOperations, loadOneCTerminalFiscalEvidence } from '../lib/terminal-fiscal-sources';
 
 function moscowDayBounds(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -55,7 +55,7 @@ async function main() {
     select: { status: true, reasonCode: true, oneCCashierRef: true, timeDifferenceSeconds: true },
   }) : [];
   const itemReasons = new Set(['OFD_ITEMS_MISMATCH', 'OFD_ITEM_PRESENTATION_DIFFERENCE', 'OFD_ITEM_VALUES_MISMATCH']);
-  const oneC = reportedMappings.length ? await loadOneCKkmChecks({
+  const oneC = reportedMappings.length ? await loadOneCTerminalFiscalEvidence({
     fromDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(from),
     toDate: new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(to),
   }) : { complete: true, data: [] };
@@ -63,7 +63,7 @@ async function main() {
     const aqsi = await loadCompleteTBankOperations({ terminalKey: mapping.terminalKey, from: from.toISOString(), to: to.toISOString() });
     const aqsiKopecks = aqsi.data.reduce((sum, operation) => sum + (operation.type === 'Debit' ? operation.amountKopecks : operation.type === 'Credit' ? -operation.amountKopecks : 0), 0);
     const oneCKopecks = oneC.data.reduce((sum, check) => {
-      if (check.cashRegisterRef !== mapping.oneCCashRegisterRef) return sum;
+      if (check.sourceType !== 'acquiring_operation' && check.cashRegisterRef !== mapping.oneCCashRegisterRef) return sum;
       const at = new Date(check.dateTime);
       if (!(at >= from && at < to)) return sum;
       const payments = check.cardPayments.filter((payment) => payment.acquiringTerminalRef === mapping.oneCAcquiringTerminalRef)

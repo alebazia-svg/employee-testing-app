@@ -219,6 +219,70 @@ test('links a unique late same-day check but still rejects the wrong terminal', 
   assert.equal(only({ oneCChecks: [wrongTerminal] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
 });
 
+test('accepts a unique acquiring operation as 1C evidence when no KKM check exists', () => {
+  const acquiringDocument: OneCCheck = {
+    ...check,
+    sourceRef: 'acquiring-operation-81',
+    sourceType: 'acquiring_operation',
+    dateTime: '2026-08-10T09:17:00.000Z',
+    cashRegisterRef: '',
+    kktRegistrationNumber: '',
+    cashier: { ref: '', name: '' },
+    items: [],
+    fiscalState: 'unconfirmed',
+    fiscalDriveNumber: undefined,
+    fiscalDocumentNumber: undefined,
+    fiscalSign: undefined,
+  };
+  const result = only({ oneCChecks: [acquiringDocument] });
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.reasonCode, 'MATCH_CONFIRMED_LATE');
+  assert.equal(result.oneCCheckKey, 'acquiring-operation-81');
+  assert.equal(result.oneCCashierRef, undefined);
+  assert.equal(result.ofdReceiptKey, canonicalFiscalKey(receipt));
+});
+
+test('prefers a KKM check over a duplicate acquiring-register document', () => {
+  const acquiringDocument: OneCCheck = {
+    ...check,
+    sourceRef: 'acquiring-operation-duplicate',
+    sourceType: 'acquiring_operation',
+    cashRegisterRef: '',
+    kktRegistrationNumber: '',
+    cashier: { ref: '', name: '' },
+    items: [],
+    fiscalState: 'unconfirmed',
+    fiscalDriveNumber: undefined,
+    fiscalDocumentNumber: undefined,
+    fiscalSign: undefined,
+  };
+  const result = only({ oneCChecks: [check, acquiringDocument] });
+  assert.equal(result.status, 'confirmed');
+  assert.equal(result.oneCCheckKey, 'check-1');
+  assert.equal(result.candidateCount, 1);
+});
+
+test('does not accept an acquiring operation from another terminal or without unique OFD evidence', () => {
+  const acquiringDocument: OneCCheck = {
+    ...check,
+    sourceRef: 'acquiring-operation-81',
+    sourceType: 'acquiring_operation',
+    cashRegisterRef: '',
+    cashier: { ref: '', name: '' },
+    fiscalState: 'unconfirmed',
+    fiscalDriveNumber: undefined,
+    fiscalDocumentNumber: undefined,
+    fiscalSign: undefined,
+  };
+  const wrongTerminal = {
+    ...acquiringDocument,
+    cardPayments: [{ ...acquiringDocument.cardPayments[0], acquiringTerminalRef: 'other' }],
+  };
+  assert.equal(only({ oneCChecks: [wrongTerminal] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({ oneCChecks: [acquiringDocument], ofdReceipts: [] }).reasonCode, 'OFD_RECEIPT_NOT_FOUND');
+  assert.equal(only({ oneCChecks: [acquiringDocument], ofdReceipts: [receipt, { ...receipt }] }).reasonCode, 'OFD_RECEIPT_DUPLICATE');
+});
+
 test('links a unique forward late check even when an unrelated earlier check has the same amount', () => {
   const earlier = {
     ...check, sourceRef: 'earlier-unrelated', dateTime: '2026-08-10T06:30:00.000Z',

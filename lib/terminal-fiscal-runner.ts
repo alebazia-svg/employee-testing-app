@@ -15,7 +15,7 @@ import {
   persistTerminalFiscalCycle,
   terminalFiscalCycleKey,
 } from '@/lib/terminal-fiscal-persistence';
-import { loadCompleteTBankOperations, loadOneCKkmChecks, loadPlatformaOfdReceipts, technicalHash } from '@/lib/terminal-fiscal-sources';
+import { loadCompleteTBankOperations, loadOneCTerminalFiscalEvidence, loadPlatformaOfdReceipts, technicalHash } from '@/lib/terminal-fiscal-sources';
 import { getMoscowDateKey } from '@/lib/workday';
 import { summarizeTerminalFiscalOutput } from '@/lib/terminal-fiscal-summary';
 import { syncTerminalFiscalWorkdayControl } from '@/lib/terminal-fiscal-workday-control';
@@ -46,7 +46,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   deferEmployeeReviewSync?: boolean;
 }, dependencies: {
   loadTbank?: typeof loadCompleteTBankOperations;
-  loadOneC?: typeof loadOneCKkmChecks;
+  loadOneC?: typeof loadOneCTerminalFiscalEvidence;
   loadOfd?: typeof loadPlatformaOfdReceipts;
 } = {}) {
   const duration = input.periodTo.getTime() - input.periodFrom.getTime();
@@ -73,7 +73,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
     const lateMatchTo = new Date(Math.min(Date.now(), input.periodTo.getTime() + TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS));
     const [tbank, oneC, ofd] = await Promise.all([
       (dependencies.loadTbank ?? loadCompleteTBankOperations)({ terminalKey: mapping.terminalKey, from: input.periodFrom.toISOString(), to: input.periodTo.toISOString() }),
-      (dependencies.loadOneC ?? loadOneCKkmChecks)({ fromDate: dateOnly(input.periodFrom), toDate: nextDateKey(dateOnly(lateMatchTo)) }),
+      (dependencies.loadOneC ?? loadOneCTerminalFiscalEvidence)({ fromDate: dateOnly(input.periodFrom), toDate: nextDateKey(dateOnly(lateMatchTo)) }),
       (dependencies.loadOfd ?? loadPlatformaOfdReceipts)({ kktRegistrationNumber: mapping.kktRegistrationNumber, from: input.periodFrom.toISOString(), to: lateMatchTo.toISOString() }),
     ]);
     const now = new Date().toISOString();
@@ -81,8 +81,9 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       const at = new Date(check.dateTime).getTime();
       return Number.isFinite(at) && at >= input.periodFrom.getTime() && at < lateMatchTo.getTime();
     });
+    const kkmChecks = oneC.data.filter((check) => check.sourceType !== 'acquiring_operation');
     const employeeReviewOneCChecks = oneCChecksAvailableForEmployeeReview({
-      checks: oneC.data,
+      checks: kkmChecks,
       periodFrom: input.periodFrom,
       sourceCheckedAt: oneC.checkedAt,
     });
