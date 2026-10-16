@@ -545,10 +545,10 @@ Admin QR codes live in `/admin/workday`. The diagnostic camera/QR page is
 `/admin/dev/qr-test` and should stay a technical tool for checking iPhone/PWA
 camera behavior separately from Workday logic.
 
-## Automatic Employee App Updates — Local Candidate, 2026-10-16
+## Automatic Employee App Updates — Production 1.4.17, 2026-10-16
 
 Owner approved silent release checks to keep installed employee apps current.
-The local candidate uses the existing public release-info.json and shared
+The released implementation uses the existing public release-info.json and shared
 compiled version/build identity; no new endpoint or service worker cache is added.
 It checks on opening/return and every 60 seconds while visible. A pending update
 is rechecked before navigation and applied only on the main Workday tab after
@@ -562,7 +562,8 @@ reload. Detail routes and the Schedule tab do not opt into automatic navigation.
 No workday/accounting mutation is triggered by the updater. The existing
 network-first page loading and neutral offline fallback remain unchanged.
 
-This is not yet deployed. Version 1.4.16 does not contain this mechanism: an
+Released as 1.4.17, runtime `727cec5`; deployment evidence is in
+`employee-auto-update-release-20261016.md`. Version 1.4.16 does not contain this mechanism: an
 already open old client needs one normal full page load to acquire it. No server
 release can inject this first client hook into a page that has never reloaded.
 Verification: 11 updater/visibility tests, TypeScript and the final production
