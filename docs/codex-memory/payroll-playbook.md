@@ -588,6 +588,43 @@ the pay result harder to understand.
 
 ## Before Changing Payroll
 
+### Procurement trainee and final export — released 1.4.14, 2026-10-16
+
+- Owner approved adding Кумыков Мухаммед, procurement trainee starting
+  2026-10-12, at 1,500 RUB per actually worked day. Owner confirmed work through
+  October 16 (five days / 7,500 RUB); payment was planned, not confirmed paid.
+- Candidate introduces `purchase_daily`, grouped with procurement, with no
+  sales percentage, minimum guarantee or discipline bonus. It extends the
+  existing payroll directory and manual day inputs, without creating a portal
+  login or a 1C account. Day count is not hardcoded and future weekdays are not
+  automatically paid. Manual drafts remain browser-local until a payroll run
+  is saved through the existing workflow; this is NOT a server-persisted daily
+  attendance ledger. Do not imply otherwise to the owner.
+- No unverified `Стажёр закупки` 1C alias is configured. Future advance matching
+  requires the actual confirmed recipient; a planned payment is not an advance.
+- Asad's default rule ends with August 2026. Empty departed rows from saved
+  comparison baselines no longer resurrect him; non-zero historical amounts
+  remain visible. Saved/final payroll snapshots are not rewritten.
+- Main overview export uses the matching final snapshot when one exists,
+  independently of current-source warnings. Preliminary export retains its
+  prior validation. Local QA verified the final download, September exclusion
+  and October day-entry calculation. 75 payroll tests, TypeScript and build pass.
+- Owner approved release. Runtime commit
+  `632e5fcdf94e217be6587693ebb72c01297a9ee0` deployed with exit 0;
+  public metadata and authenticated UI show 1.4.14, built
+  `2026-10-16T09:57:28.582Z` (12:57 MSK). Server commit independently verified.
+  Five release metadata tests, 75 payroll tests, TypeScript and build passed.
+- Authenticated production QA: Muhammad appears in October with days awaiting
+  entry (local five-day draft was not copied); Asad absent from September main
+  overview; top final export returns successful download of saved run 1.
+  Download contents were not independently re-audited. Existing saved finals
+  retain their historical rows. Production employee/day/payment data unchanged.
+- Previous image `sha256:0facb076296e41a206e8fc0911ffdf1a0e6459f17f5cba5d999780b4a22a340d`
+  retained as `portal-app:rollback-before-1.4.14`; replacement
+  `sha256:36ce2370402c5dd544bb761afd1e3f5886325e078f0520f7a20e912b76e24fb6`.
+  No migrations or 1C writes; schema-compatible rollback. Upload, planning and
+  read-only bank-cabinet mounts retained. Public payroll route returns 200.
+
 ### Approval with accepted employee remarks — released, 2026-10-16
 
 - Owner approved an administrator decision for missing lateness: Diana's
