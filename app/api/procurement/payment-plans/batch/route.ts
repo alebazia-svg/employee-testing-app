@@ -48,6 +48,7 @@ export async function POST(req: Request) {
       payload.rows.some(row => !row || typeof row !== 'object' || Array.isArray(row)))
     return Response.json({ error: "Добавьте от 1 до 100 оплат." }, { status: 400 });
 
+  let phase: 'verify' | 'save' = 'verify';
   try {
   const managerName = user.oneCManagerName?.trim() || user.name;
   const hasDebt = payload.rows.some(row => row.basis === 'DEBT' || row.basis === 'ADVANCE');
@@ -124,6 +125,7 @@ export async function POST(req: Request) {
   if (planningError) return Response.json({ error: planningError }, { status: 409 });
 
   // All independent checks above have completed before entering the write lock.
+  phase = 'save';
   const plans = await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
     await assertFundingBalance(tx,fundingRequests,fundingBalance,debtEvidence);
@@ -201,6 +203,15 @@ export async function POST(req: Request) {
   return Response.json({ plans: jsonValue(plans) }, { status: 201 });
   } catch (error) {
     if(error instanceof Error&&/^[А-ЯЁ]/.test(error.message))return Response.json({error:error.message},{status:409});
+    // Do not expose Prisma messages: they can include submitted data and SQL.
+    const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : 'UNKNOWN';
+    console.error('procurement_batch_failed', {phase, code});
+    if (phase === 'save' && code === 'P2004') return Response.json({
+      error: 'Не удалось сохранить заявку: база не приняла данные. Заявка не создана. Обратитесь к администратору.',
+    }, {status: 503});
+    if (phase === 'save') return Response.json({
+      error: 'Не удалось подтвердить сохранение заявки. Проверьте календарь перед повторной отправкой. Если заявки нет, обратитесь к администратору.',
+    }, {status: 503});
     return Response.json({ error: 'Не удалось проверить данные 1С или подтвердить сохранение. Проверьте календарь перед повторной отправкой.' }, { status: 503 });
   }
 }
