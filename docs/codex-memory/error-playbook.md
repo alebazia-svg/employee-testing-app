@@ -116,6 +116,27 @@ sudo rmdir <exact-directory> 2>/dev/null || true
 git checkout <commit>
 ```
 
+## Prisma String Fields Can Have SQL Allow-Lists
+
+Supplier advances in 1.4.19 passed mocked route tests but production rejected
+`SUPPLIER_ADVANCE`: the Prisma `String` field still had a SQL CHECK permitting
+only `GOODS` and `DELIVERY` from an earlier migration.
+
+- Before extending stored values, inspect both schema.prisma and all relevant
+  migration SQL (CHECKs, enums, triggers); a String field is not proof that no
+  database change is required.
+- Test the real persistence transaction on disposable PostgreSQL with the old
+  constraint, the exact new migration, events/inbox, and duplicate prevention.
+  Mocked create calls and a UI-only production smoke do not cover this boundary.
+- Preview live constraints and pending migrations read-only before migration;
+  stop if any unrelated migration would apply. Read back the validated
+  constraint and migration record afterward.
+- Preserve existing rows and links. An additive allow-list can remain in place
+  during code rollback; do not tighten it after new-purpose rows exist or
+  relabel/delete those rows to force a rollback.
+- Never print raw Prisma errors or SQL payloads. Log only phase/code and do not
+  mislabel a database save failure as a 1C connectivity issue.
+
 ## Scoped Commits
 
 Before committing:

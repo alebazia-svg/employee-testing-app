@@ -50,3 +50,38 @@ test creates a production request, sends a push or changes 1C documents.
 - ADMIN runtime was not independently exercised after this deployment; scoped
   client changes were covered by tests/build. No production submit/write smoke
   was performed.
+
+## Follow-up: database persistence failure, 1.4.20
+
+Owner's first real CNY submission failed: the existing SQL paymentPurpose CHECK
+still allowed only GOODS/DELIVERY. The 1.4.19 assessment that no migration was
+needed was incorrect. Read-only production check found no saved Hoco request;
+all four source checks completed successfully. Owner explicitly approved the
+constraint expansion and a corrective release. No automatic resubmission is
+authorized.
+
+- Migration 20261016210000_procurement_supplier_advance_purpose expands only
+  the validated CHECK, in one transaction with bounded lock/statement timeouts.
+- Real local PostgreSQL regression reproduces refusal under the old CHECK,
+  applies the actual migration, then saves 4255 CNY at 13.6 (57868 RUB) with
+  request event and admin inbox/receipt. Duplicate retry is rejected; invalid
+  purpose remains rejected. GOODS/DELIVERY fixtures and manual links unchanged.
+- Full historical migration replay on empty local DB was blocked by an older
+  unrelated missing TerminalFiscalReviewParticipant relation. The focused
+  regression uses a fresh schema from db push plus the exact historical CHECK
+  and new migration. No production history was reset or marked applied.
+- TypeScript, 19 focused tests, 5 release metadata tests and isolated production
+  build passed. Runtime commit: 652fcc0.
+- Production read-only preflight confirmed the old GOODS/DELIVERY CHECK and
+  exactly one pending migration (the new advance expansion). Prisma applied it;
+  separate postflight read confirmed validated GOODS/DELIVERY/SUPPLIER_ADVANCE
+  and no pending migrations. Deployment exit 0; uploads mount preserved.
+- Independent SSH read: 652fcc0a9dfeb1ce89366b0ee1362b0a9df3e94e. Public version
+  1.4.20, builtAt 2026-10-16T20:27:52.667Z; /api/health returned ok:true.
+  Authenticated buyer footer confirms 1.4.20 / 23:27 MSK in a separate tab.
+- Owner's populated Hoco form was left untouched; no production submission was
+  performed. End-to-end submit/event/inbox verification was isolated-local only.
+- Prior runtime image retained as offonika-portal-advance-rollback:pre-1.4.20-20261016.
+  Reverting application code does not require tightening the compatible CHECK.
+  Never remove/relabel new advance rows to roll back. Disposable local test
+  PostgreSQL container was stopped and its ephemeral test data removed.
