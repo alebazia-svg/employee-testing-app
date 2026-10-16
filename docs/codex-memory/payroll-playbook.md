@@ -588,6 +588,26 @@ the pay result harder to understand.
 
 ## Before Changing Payroll
 
+### Approval with accepted employee remarks — approved release candidate, 2026-10-16
+
+- Owner approved an administrator decision for missing lateness: Diana's
+  September discipline bonus remains zero, without inventing a lateness count.
+- Local candidate permits explicitly selected missing-lateness remarks with a
+  required reason during first FINAL approval. It stores issue text, reason,
+  administrator ID and timestamp in sourceSummary.approvalAcceptance atomically
+  with the status change. It preserves original issues and all amounts.
+- This is an explicit allow-list, not a generic bypass. Unknown issues,
+  incomplete coverage and cost/source errors remain blocking. Replacement of
+  an existing final with accepted remarks is not enabled by this UI change.
+- Owner approved the shown interface and production release 1.4.13; deployment
+  verification is still required. Production September run 1 has
+  trainee advance 15,000 RUB; the current working calculation has 20,000 RUB.
+  Gross totals match. Do not silently finalize the older payout amount.
+- Verification: 73 payroll regressions and 8 approval tests passed; TypeScript
+  and build passed. Isolated localhost QA with synthetic period 2091-09 verified
+  server refusal without acceptance, required checkbox/comment, successful
+  FINAL and readback of the unchanged amount plus persisted decision audit.
+
 ### Automatic run save/approval — released, 2026-10-03
 
 - Owner approved saving the automatic 1C result through existing versioned runs
