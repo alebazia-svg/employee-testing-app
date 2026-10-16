@@ -38,6 +38,14 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .pwa-composition-start-body p { font-size:13px; line-height:1.45; margin-top:6px; color:var(--pwa-muted); }
   .pwa-composition-start-button,.employee-material-primary-action,.employee-material-green-action,.employee-photo-action { display:flex; align-items:center; justify-content:center; gap:8px; min-height:52px !important; background:linear-gradient(135deg,#303337,#191c20) !important; color:#fffdf6 !important; border:1px solid #191c20 !important; border-radius:15px !important; box-shadow:inset 0 1px #ffffff18,0 4px 10px #181b2010 !important; font-size:15px !important; font-weight:600 !important; }
   .pwa-composition-start-button { width:100%; padding:12px 16px; justify-content:space-between; }
+  /* Stretch the existing native button over the card without adding another action. */
+  .pwa-composition-start { position:relative; }
+  .pwa-composition-start-button { position:static; }
+  .pwa-composition-start-button::after { content:''; position:absolute; inset:0; border-radius:24px; cursor:pointer; }
+  .pwa-composition-start-button:disabled::after { cursor:default; }
+  .pwa-composition-start .pwa-composition-start-button:active:not(:disabled) { transform:none !important; }
+  .pwa-composition-start:has(.pwa-composition-start-button:focus-visible) { outline:2px solid var(--pwa-copper); outline-offset:3px; }
+
   .pwa-composition-start-button > svg { color:var(--pwa-copper); width:24px; height:24px; stroke-width:2.7; flex-shrink:0; }
   .employee-material-secondary-action,.employee-material-photo-action { background:#f4efe5 !important; border:1px solid #ddd4c5 !important; color:#414333 !important; box-shadow:none !important; border-radius:14px !important; min-height:48px; }
   .employee-material-ui div.backdrop-blur { background:var(--pwa-paper) !important; border:1px solid var(--pwa-line) !important; border-radius:22px !important; box-shadow:0 3px 14px #30271805 !important; }

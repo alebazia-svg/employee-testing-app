@@ -4985,31 +4985,30 @@ export function EmployeeTodayClient({
                 )}
               </Card>}
 
-              {!workDay && !unfinished && (
+              {colleagueUsers.length > 0 && !workDay && !unfinished && (
                 <button type='button' className='pwa-studio-only pwa-prestart-team' style={{ display: 'none' }} aria-expanded={prestartColleaguesOpen} aria-controls='pwa-colleagues-today' onClick={() => setPrestartColleaguesOpen((open) => !open)}>
                   <ColleaguesGlyph />
                   <span className='pwa-prestart-team-copy'><strong>Коллеги сегодня</strong><small>Работают: {workingColleagues.length} · Ожидаются: {scheduledColleagues.length}</small></span>
                   <ChevronRight className={cn('h-5 w-5', prestartColleaguesOpen && 'rotate-90')} aria-hidden='true' />
                 </button>
               )}
-              <Card id='pwa-colleagues-today' className={cn('pwa-review-colleagues space-y-2.5 p-4', !prestartColleaguesOpen && 'pwa-prestart-team-collapsed')}>
+              {colleagueUsers.length > 0 && <Card id='pwa-colleagues-today' className={cn('pwa-review-colleagues space-y-2.5 p-4', !prestartColleaguesOpen && 'pwa-prestart-team-collapsed')}>
                 <div className='flex items-center gap-2'>
                   <span className='employee-material-heading-icon employee-material-accent-icon employee-material-neutral-icon' aria-hidden='true'>
                     <ColleaguesGlyph />
                   </span>
                   <h2 className='text-base font-extrabold text-slate-950'>Коллеги сегодня</h2>
                 </div>
-                <ColleagueGroup title='Сейчас работают' people={workingColleagues} tone='green' emptyLabel='Никто' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />
+                {workingColleagues.length > 0 && <ColleagueGroup title='Сейчас работают' people={workingColleagues} tone='green' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {completedColleagues.length > 0 && <ColleagueGroup title='Завершили день' people={completedColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
                 {scheduledColleagues.length > 0 && <ColleagueGroup title='Ещё не начали смену' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} />}
-                {scheduledColleagues.length === 0 && <div className='pwa-copper-only pwa-empty-scheduled' style={{ display: 'none' }}><ColleagueGroup title='Ещё не начали смену' people={scheduledColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} detail={colleagueDetail} /></div>}
                 {vacationColleagues.length > 0 && <ColleagueGroup title='В отпуске' people={vacationColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} detail={(person) => {
                   const vacation = departmentVacationForDate(today, person.id);
                   return vacation ? `До ${formatDateLabel(vacation.dateTo)}` : null;
                 }} />}
                 {offColleagues.length > 0 && <ColleagueGroup title='Сегодня выходной' people={offColleagues} tone='slate' displayName={(person) => personDisplayName(person.name)} />}
                 {missingColleagues.length > 0 && <ColleagueGroup title='График не заполнен' people={missingColleagues} tone='amber' displayName={(person) => personDisplayName(person.name)} />}
-              </Card>
+              </Card>}
             </div>
           )}
 
