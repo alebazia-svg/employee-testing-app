@@ -588,7 +588,7 @@ the pay result harder to understand.
 
 ## Before Changing Payroll
 
-### Approval with accepted employee remarks — approved release candidate, 2026-10-16
+### Approval with accepted employee remarks — released, 2026-10-16
 
 - Owner approved an administrator decision for missing lateness: Diana's
   September discipline bonus remains zero, without inventing a lateness count.
@@ -599,14 +599,23 @@ the pay result harder to understand.
 - This is an explicit allow-list, not a generic bypass. Unknown issues,
   incomplete coverage and cost/source errors remain blocking. Replacement of
   an existing final with accepted remarks is not enabled by this UI change.
-- Owner approved the shown interface and production release 1.4.13; deployment
-  verification is still required. Production September run 1 has
+- Owner approved the shown interface and production release 1.4.13. Runtime
+  commit c3b09338eb0adfa01af402e52a95a5b352b11cd2 was deployed successfully;
+  server HEAD, public metadata (2026-10-16T08:15:47.755Z), authenticated footer
+  and the production confirmation dialog were verified. Dialog was cancelled;
+  no production payroll run was saved or finalized. Production September run 1 has
   trainee advance 15,000 RUB; the current working calculation has 20,000 RUB.
   Gross totals match. Do not silently finalize the older payout amount.
 - Verification: 73 payroll regressions and 8 approval tests passed; TypeScript
   and build passed. Isolated localhost QA with synthetic period 2091-09 verified
   server refusal without acceptance, required checkbox/comment, successful
   FINAL and readback of the unchanged amount plus persisted decision audit.
+- Previous image: sha256:8a3f025ef52c30d8b260fab09ad66978c0857790b13813b10df88ce7409c3406,
+  retained as portal-app:rollback-before-1.4.13. Replacement image:
+  sha256:0facb076296e41a206e8fc0911ffdf1a0e6459f17f5cba5d999780b4a22a340d.
+  Upload/runtime mounts preserved; no schema or migration change, so rollback
+  remains schema-compatible. Docker metadata omits revision (existing build
+  behavior); exact commit verified separately over SSH.
 
 ### Automatic run save/approval — released, 2026-10-03
 
