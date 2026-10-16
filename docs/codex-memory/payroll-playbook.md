@@ -24,6 +24,38 @@ npm run build
 
 ## Known Employee Rules
 
+Owner decision 2026-10-16: the film trainee's 70% service-only rule continues
+from September 2026 until the owner explicitly changes it, not September only.
+The continuation updates directory, sales mapping, advance matching
+and saved-detail validation together. The historical payroll identity with
+`(09.2026)` is retained for compatibility; June's Magomed assignment and saved
+final runs remain unchanged. Included in approved release 1.4.15 (`ce2d22d`);
+deployment verification is recorded below.
+
+### Compact payroll overview — release 1.4.15, 2026-10-16
+
+- Owner approved compact month/year, status and export/save actions in one
+  header; removed duplicate period title and employee search. Totals use smaller
+  typography. Employee groups precede the review button and expandable checks.
+  Review/open/back behavior remains available; approval restrictions unchanged.
+- Advances are still labeled advances, not all salary payments. Full 1C
+  settlement reconciliation and a date-based payout list remain analysis only.
+  No saved runs, production day inputs, 1C documents or database schema changed.
+- 75 payroll tests, five release metadata tests, TypeScript and production build
+  passed. Local browser verified the approved overview and review/back flow.
+  Isolated QA data were not included in the release.
+- Production deploy exited 0. Exact server commit
+  `ce2d22d76d8c5236ab113d6c7c1b521a639ea7d6`, both public domains and authenticated
+  ADMIN footer confirm 1.4.15, built `2026-10-16T10:51:53.223Z` (13:51 MSK).
+  Health returned ok. October overview and trainee card verified read-only:
+  service-only 70%, 3,640 RUB on source coverage through October 5, not October 16.
+  Muhammad still needs actual days entered in production; QA days not copied.
+- Previous image `sha256:36ce2370402c5dd544bb761afd1e3f5886325e078f0520f7a20e912b76e24fb6`
+  retained as `portal-app:rollback-before-1.4.15`; replacement
+  `sha256:73fbca54e8daa4adee071582d53bfb8cb35fb5110557d3ef6ee9cce880a13f58`.
+  Upload/planning/read-only bank mounts retained; no migration, schema-compatible
+  rollback. No payroll save/finalization or 1C write during verification.
+
 The following names should never be included in payroll calculations:
 
 - Keshtova Aslan / Keshtov Aslan variants
