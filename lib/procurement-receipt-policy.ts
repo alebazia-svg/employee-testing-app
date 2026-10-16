@@ -1,6 +1,37 @@
 export const RECEIPT_MAX_BYTES = 10 * 1024 * 1024;
 export const RECEIPT_ADMIN_EVENT = 'procurement.receipt_added';
 export const RECEIPT_EMPLOYEE_KIND = 'procurement_receipt_added';
+type ReceiptPaymentPlan = {
+  evidence?: {
+    state?: string;
+    verification?: string;
+    issuedAmount?: number;
+    paidAmount?: number;
+    paidForeignAmount?: number;
+  };
+};
+
+/** Receipt collection is independent of full payment/operational completion.
+ * Use already reconciled amounts, never unmatched RKO candidates or approval.
+ * Retain last-confirmed proof during a source outage, like the calendar does.
+ */
+export function hasConfirmedReceiptPayment(plan: ReceiptPaymentPlan) {
+  const evidence = plan.evidence;
+  if (!evidence || evidence.verification === 'unavailable' || ![
+    'PARTIALLY_ISSUED', 'PARTIALLY_PAID_BY_ONE_C',
+    'ISSUED_BY_ONE_C', 'PAID_BY_ONE_C', 'SMALL_REMAINDER_COMPLETED',
+  ].includes(evidence.state || '')) return false;
+  return [evidence.issuedAmount, evidence.paidAmount, evidence.paidForeignAmount]
+    .some(amount => typeof amount === 'number' && Number.isFinite(amount) && amount > 0);
+}
+
+export function receiptPaymentAmount(plan: ReceiptPaymentPlan & { plannedAmount: string | number }) {
+  const positive = (amount?: number) => typeof amount === 'number' && Number.isFinite(amount) && amount > 0 ? amount : 0;
+  const foreign = positive(plan.evidence?.paidForeignAmount);
+  if (foreign) return `${foreign.toLocaleString('ru-RU')} USDT`;
+  const rubles = positive(plan.evidence?.issuedAmount) + positive(plan.evidence?.paidAmount);
+  return `${Number(rubles || plan.plannedAmount).toLocaleString('ru-RU')} ₽`;
+}
 // Owner-approved rollout: no retroactive collection of old payment receipts.
 export const RECEIPT_TRACKING_FROM = '2026-10-10';
 // The owner explicitly requested receipts for these two rollout payments.

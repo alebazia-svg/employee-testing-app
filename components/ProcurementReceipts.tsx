@@ -1,7 +1,7 @@
 'use client';
 import React,{useEffect,useId,useRef,useState} from 'react';
 import {Paperclip,X} from 'lucide-react';
-import {needsReceiptSinceRollout,RECEIPT_MAX_BYTES} from '@/lib/procurement-receipt-policy';
+import {needsReceiptSinceRollout,receiptPaymentAmount,RECEIPT_MAX_BYTES} from '@/lib/procurement-receipt-policy';
 import './procurement-receipts.css';
 import {ProcurementReceiptViewer} from './ProcurementReceiptViewer';
 
@@ -9,10 +9,7 @@ type Receipt={id:string;planId:string;originalName:string;size:number;createdAt:
 type Plan={id:string;supplierPartner:string;plannedAmount:string|number;paymentMethod?:string;createdAt?:string;orderNumbers:string[];evidence?:{issuedAmount?:number;paidAmount?:number;paidForeignAmount?:number;cashOrders?:{date?:string}[];currencyPayments?:{date?:string}[]}};
 const root='/api/procurement/payment-plans/';
 const button='procurement-receipt-button';
-function paymentAmount(plan:Plan){
-  if((plan.evidence?.paidForeignAmount||0)>0)return `${plan.evidence!.paidForeignAmount!.toLocaleString('ru-RU')} USDT`;
-  return `${Number(plan.evidence?.issuedAmount||plan.evidence?.paidAmount||plan.plannedAmount).toLocaleString('ru-RU')} ₽`;
-}
+const paymentAmount=receiptPaymentAmount;
 
 export function ProcurementReceipts({plans,allPlans=plans,single=false,hideEmptyBeforePayment=false,inline=false,onBusyChange,onPreviewChange}:{plans:Plan[];allPlans?:Plan[];single?:boolean;hideEmptyBeforePayment?:boolean;inline?:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void}) {
   if(process.env.NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED!=='1')return null;

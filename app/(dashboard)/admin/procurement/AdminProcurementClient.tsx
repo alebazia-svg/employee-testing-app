@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import "./procurement-workspace.css";
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 import { ProcurementReceipts } from '@/components/ProcurementReceipts';
+import { hasConfirmedReceiptPayment } from '@/lib/procurement-receipt-policy';
 import { useProcurementVisualPreview } from '@/components/ProcurementVisualPreview';
 import { ProcurementCompletionAction } from '@/components/ProcurementCompletionAction';
 import { isFinishedPaymentState } from '@/lib/procurement-small-remainder';
@@ -251,6 +252,7 @@ export default function AdminProcurementClient({
   const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence.state);
   const submitted = active.filter((plan) => plan.status === "SUBMITTED" && !isCurrencyPaid(plan));
   const completedPlans = [...active.filter((plan) => plan.status === "APPROVED" && isPaymentFinished(plan)), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
+  const receiptPlans = plans.filter(hasConfirmedReceiptPayment);
   const unknownPayments = active.filter(plan => plan.status === 'APPROVED' && plan.evidence.verification === 'unavailable');
   const stalePayments = active.some(plan => plan.evidence.verification === 'last-confirmed');
   const paymentTotalsUnavailable = active.some(plan => plan.evidence.verification === 'last-confirmed' || plan.evidence.verification === 'unavailable');
@@ -493,7 +495,7 @@ export default function AdminProcurementClient({
         {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);if(item.id==="plan")setForecastRequested(true);setReturningId("");setReturnReason("");}} className={tab===item.id?"admin-section-tab is-active":"admin-section-tab"}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
       </nav>
       {!visualPreview?.fundingPlan&&visualPreview?.toolbar}
-      <div className="pam-toolbar">{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'} pauseWhileDialogOpen/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={completedPlans} allPlans={plans}/> : null}</div>
+      <div className="pam-toolbar">{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'} pauseWhileDialogOpen/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={receiptPlans} allPlans={plans}/> : null}</div>
       {actionMessage?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionMessage}</p>:null}
       {sourceWarnings.length ? (
         <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">

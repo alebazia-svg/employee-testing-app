@@ -9,6 +9,7 @@ import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionN
 import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 import { ProcurementReceipts } from '@/components/ProcurementReceipts';
+import { hasConfirmedReceiptPayment } from '@/lib/procurement-receipt-policy';
 import { useProcurementVisualPreview } from '@/components/ProcurementVisualPreview';
 import { ProcurementDeliveryCash, type DeliveryCashSnapshot } from '@/components/ProcurementDeliveryCash';
 import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
@@ -310,6 +311,7 @@ export default function ProcurementPaymentCalendarClient({
   const isCurrencyPaid = (plan: Plan) => plan.evidence?.state === "PAID_BY_ONE_C";
   const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence?.state);
   const paidPlans = [...activePlans.filter(isPaymentFinished), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
+  const receiptPlans = plans.filter(hasConfirmedReceiptPayment);
   const unknownPayments = activePlans.filter(plan => plan.status === 'APPROVED' && plan.evidence?.verification === 'unavailable');
   const workingPlans = activePlans.filter(plan => !isPaymentFinished(plan) && (plan.status !== 'APPROVED' || plan.evidence?.verification !== 'unavailable'));
   const planningOrders = calculateOrderPlanning(
@@ -577,7 +579,7 @@ export default function ProcurementPaymentCalendarClient({
           className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-3 text-sm font-bold disabled:opacity-50 ${paymentView==='history'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}>История оплат</button>
       </nav>
       {visualPreview?.toolbar}
-      {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={paidPlans} allPlans={plans}/> : null}
+      {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={receiptPlans} allPlans={plans}/> : null}
       {sourceRefreshing ? <p role="status" className="text-sm text-slate-600">Обновляем данные 1С. Сохранённые заявки доступны; изменения проверяются при сохранении.</p> : null}
       {!sourceRefreshing && sourceError ? (
         <Notice
