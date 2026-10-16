@@ -48,6 +48,7 @@ import { Card } from '@/components/ui/card';
 import { EmployeeAttentionSummaryCard } from '@/components/EmployeeAttentionSummaryCard';
 import { EmployeeCloseBlockedSheet, type EmployeeBlockingItem } from '@/components/EmployeeCloseBlockedSheet';
 import { startVisibleSync } from '@/lib/visible-sync';
+import { useEmployeeAppUpdate } from '@/lib/use-employee-app-update';
 import { createIdempotencyKey } from '@/lib/idempotency-key';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { terminalFiscalEmployeeReviewSummary } from '@/lib/terminal-fiscal-employee-review-view';
@@ -1384,6 +1385,27 @@ export function EmployeeTodayClient({
   const cashFormHiddenAtRef = useRef<number | null>(null);
   const cashPhotoPickerActiveRef = useRef(false);
   const cashPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  useEmployeeAppUpdate(() =>
+    activeTab === 'day' && isOnline && !isSaving && uploadProgress === null
+    && !cashOutboxSyncing && !cashOutboxSyncingRef.current && cashOutboxCount === 0
+    && !cashPhotoPickerActiveRef.current && !cashOperationDraft.direction && !cashFormFocused
+    && !qrScannerOpen && !shiftPickerOpen && !shiftCorrectionOpen
+    && !qrDepartmentConfirmed && !workdayStartIntentId
+    && !staleCloseOpen && !deviationSheetKind && !closeResolutionOpen && !closeBlockedSheetOpen
+    && !showCashEncashmentExceptionForm && !encashmentDetailsOpen && !encashmentResumePending
+    && openShiftTaskId === null && editingShiftTaskId === null && activeHandoverTaskId === null
+    && !handoverExitPromptOpen && !isHandoverKkmCheckPending
+    && !hasUnsavedHandoverChanges(handoverDraft, handoverSavedDraft)
+    && !Object.entries(shiftTaskDrafts).some(([id, draft]) => {
+      const saved = emptyShiftTaskDraft(shiftControlState.tasks.find(task => task.id === Number(id)));
+      return (Object.keys(saved) as (keyof ShiftTaskDraft)[]).some(key => draft[key] !== saved[key]);
+    })
+    && openingPhotoTaskId === null && !openingPhotoFile
+    && !bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen
+    && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen
+    && !comment.trim() && !message && !error,
+  );
+
   const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
   const displayNow = now ?? initialRenderNow;
 
