@@ -128,6 +128,8 @@ function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses
   if (row.salaryType === 'fixed_salary') {
     add('Фиксированный оклад', 'fixedSalary');
     add('Премия', 'fixedBonus', true);
+  } else if (row.salaryType === 'purchase_daily') {
+    add('Оплата по дням', 'dayPay');
   } else if (row.salaryType === 'purchase_manager') {
     add('Оплата по дням', 'dayPay');
     add('Закупки 1,75%', 'purchasePercentAmount');

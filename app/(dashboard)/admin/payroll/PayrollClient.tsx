@@ -195,7 +195,7 @@ type PayrollManualInput = {
 };
 
 type PayrollDaysSource = 'manual' | 'attendance' | 'schedule' | 'manualCorrection';
-type ConfiguredSalaryType = 'vl_percent' | 'wholesale_percent' | 'retail_sales_bonus' | 'fixed_salary' | 'purchase_manager';
+type ConfiguredSalaryType = 'vl_percent' | 'wholesale_percent' | 'retail_sales_bonus' | 'fixed_salary' | 'purchase_manager' | 'purchase_daily';
 type SalaryType = ConfiguredSalaryType | 'unconfigured';
 
 type PayrollEmployee = {
@@ -204,6 +204,8 @@ type PayrollEmployee = {
   position: string;
   salaryType: ConfiguredSalaryType;
   salary?: number;
+  dayRate?: number;
+  activeFromPeriod?: string;
   activeThroughPeriod?: string;
 };
 
@@ -548,7 +550,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
   setRowStyle(summarySheet, headerRow, 0, 9, headerStyle);
   tableRows.forEach((row, index) => {
     const rowNumber = headerRow + index + 1;
-    const groupFill = row.salaryType === 'purchase_manager' ? 'FAF3DD' : row.salaryType === 'wholesale_percent' ? 'EAF3FA' : row.salaryType === 'retail_sales_bonus' ? 'ECF7F0' : row.salaryType === 'vl_percent' ? 'F1ECF8' : 'F3F4F6';
+    const groupFill = (row.salaryType === 'purchase_manager' || row.salaryType === 'purchase_daily') ? 'FAF3DD' : row.salaryType === 'wholesale_percent' ? 'EAF3FA' : row.salaryType === 'retail_sales_bonus' ? 'ECF7F0' : row.salaryType === 'vl_percent' ? 'F1ECF8' : 'F3F4F6';
     if (row.kind === 'group') {
       setRowStyle(summarySheet, rowNumber, 0, 9, { fill: { fgColor: { rgb: groupFill } }, font: { bold: true, color: { rgb: '334155' } }, border: { top: { style: 'medium', color: { rgb: 'CBD5E1' } }, bottom: { style: 'thin', color: { rgb: 'CBD5E1' } } }, alignment: { vertical: 'center' } });
       return;
@@ -860,12 +862,13 @@ type FullPayrollRow = BonusManagerSummary & {
   disciplineBonus: number;
   grossPay: number;
   netPay: number;
-  salaryRule: 'standard' | 'noDayPay' | 'belaPercent' | 'fixedSalary' | 'purchaseManager' | 'unconfigured';
+  salaryRule: 'standard' | 'daily' | 'noDayPay' | 'belaPercent' | 'fixedSalary' | 'purchaseManager' | 'unconfigured';
   payrollStatus: 'OK' | 'Проверить';
   payrollReasons: string[];
 };
 
 const payrollPortalGroupTone: Record<string, string> = {
+  purchase_daily: 'border-amber-200 bg-amber-50 text-amber-950',
   purchase_manager: 'border-amber-200 bg-amber-50 text-amber-950',
   wholesale_percent: 'border-blue-200 bg-blue-50 text-blue-950',
   retail_sales_bonus: 'border-emerald-200 bg-emerald-50 text-emerald-950',
@@ -1033,6 +1036,7 @@ const payrollEmployees: Record<string, PayrollEmployee> = {
     department: 'Розничный отдел',
     position: 'Специалист по поклейке защитных плёнок',
     salaryType: 'retail_sales_bonus',
+    activeThroughPeriod: '2026-08',
   },
   'Кумахова Диана': {
     name: 'Кумахова Диана',
@@ -1082,6 +1086,14 @@ const payrollEmployees: Record<string, PayrollEmployee> = {
     position: 'Менеджер по закупкам',
     salaryType: 'purchase_manager',
   },
+  'Кумыков Мухаммед': {
+    name: 'Кумыков Мухаммед',
+    department: 'Закупки',
+    position: 'Стажёр закупок · с 12.10.2026',
+    salaryType: 'purchase_daily',
+    dayRate: 1500,
+    activeFromPeriod: '2026-10',
+  },
 };
 
 function isConfiguredSalaryType(value: string | null): value is ConfiguredSalaryType {
@@ -1113,10 +1125,12 @@ function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey:
       position: existing?.position || user.payrollReportGroup || getPayrollWorkbookGroup(salaryType),
       salaryType,
       salary: salaryType === 'fixed_salary' ? user.payrollFixedSalary ?? 0 : undefined,
+      dayRate: existing?.dayRate,
+      activeFromPeriod: user.payrollRuleFrom ?? existing?.activeFromPeriod,
       activeThroughPeriod: user.payrollRuleThrough ?? existing?.activeThroughPeriod,
     };
   }
-  return directory;
+  return Object.fromEntries(Object.entries(directory).filter(([, employee]) => isPayrollEmployeeActiveForPeriod(employee, periodKey)));
 }
 
 function buildUnconfiguredPayrollRows(users: PayrollDirectoryUser[], directory: Record<string, PayrollEmployee>, periodKey: string, accountedEmployeeNames: Set<string>): FullPayrollRow[] {
@@ -1144,6 +1158,11 @@ function buildUnconfiguredPayrollRows(users: PayrollDirectoryUser[], directory: 
 }
 
 const payrollAttendanceConfig: Record<string, PayrollAttendanceConfig> = {
+  'Кумыков Мухаммед': {
+    attendanceNames: [],
+    sourceType: 'manual_special',
+    comment: 'Отработанные дни подтверждает администратор. Начало работы: 12.10.2026; ставка 1 500 ₽ за день.',
+  },
   'Ахобекова Залина': {
     attendanceNames: ['Залина'],
     sourceType: 'form',
@@ -3398,7 +3417,8 @@ function getDefaultPayrollDepartment(employee: PayrollEmployee): Department {
 }
 
 function isPayrollEmployeeActiveForPeriod(employee: PayrollEmployee, periodKey: string) {
-  return !employee.activeThroughPeriod || periodKey <= employee.activeThroughPeriod;
+  return (!employee.activeFromPeriod || periodKey >= employee.activeFromPeriod)
+    && (!employee.activeThroughPeriod || periodKey <= employee.activeThroughPeriod);
 }
 
 function buildEmptyManagerSummary(employee: PayrollEmployee): BonusManagerSummary {
@@ -3446,7 +3466,7 @@ function buildSalesPayrollSummaries(managerSummaries: BonusManagerSummary[], emp
   const mergedManagerSummaries = mergeBonusManagerSummaries(managerSummaries);
   const summariesByManager = new Map(mergedManagerSummaries.map((summary) => [summary.manager, summary]));
   const payrollSalesSummaries = Object.values(employeeDirectory)
-    .filter((employee) => employee.salaryType === 'vl_percent' || employee.salaryType === 'wholesale_percent' || employee.salaryType === 'retail_sales_bonus')
+    .filter((employee) => employee.salaryType === 'vl_percent' || employee.salaryType === 'wholesale_percent' || employee.salaryType === 'retail_sales_bonus' || employee.salaryType === 'purchase_daily')
     .map((employee) => summariesByManager.get(employee.name) ?? buildEmptyManagerSummary(employee));
   const reportOnlySummaries = mergedManagerSummaries.filter((summary) => !employeeDirectory[summary.manager]);
 
@@ -3523,21 +3543,23 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
   const salaryType = employee.salaryType;
   const manualWorkedDays = parseManualNumber(manual?.workedDays ?? '');
   const manualLateCount = parseManualNumber(manual?.lateCount ?? '');
-  const salaryRule = isBelaManager(summary.manager) ? 'belaPercent' : isNoDayPayManager(summary.manager) ? 'noDayPay' : 'standard';
-  const dayPayNotRequired = salaryRule !== 'standard';
+  const salaryRule = salaryType === 'purchase_daily' ? 'daily' : isBelaManager(summary.manager) ? 'belaPercent' : isNoDayPayManager(summary.manager) ? 'noDayPay' : 'standard';
+  const dayPayNotRequired = salaryRule !== 'standard' && salaryRule !== 'daily';
   const workedDays = dayPayNotRequired ? null : manualWorkedDays;
-  const lateCount = dayPayNotRequired ? null : manualLateCount;
+  const lateCount = dayPayNotRequired || salaryRule === 'daily' ? null : manualLateCount;
   const advance = parseManualNumber(manual?.advance ?? '') ?? 0;
   const agentCreditCommission = summary.manager === agentCreditCommissionEmployee ? parseManualNumber(manual?.agentCreditCommission ?? '') ?? 0 : 0;
-  const dayRate = dayPayNotRequired ? 0 : getDayRate(summary.department);
+  const dayRate = dayPayNotRequired ? 0 : salaryRule === 'daily' ? employee.dayRate ?? 0 : getDayRate(summary.department);
   const dayPay = workedDays === null ? 0 : workedDays * dayRate;
-  const salesBonus = salaryRule === 'belaPercent' ? 0 : salaryType === 'wholesale_percent' ? summary.wholesaleBonus : summary.totalBonus;
+  const salesBonus = salaryRule === 'belaPercent' || salaryRule === 'daily' ? 0 : salaryType === 'wholesale_percent' ? summary.wholesaleBonus : summary.totalBonus;
   const disciplineBonus = salaryRule === 'standard' && lateCount !== null && lateCount <= 3 ? 3000 : 0;
   const grossPay = dayPay + salesBonus + disciplineBonus + agentCreditCommission;
   const netPay = grossPay - advance;
   const payrollReasons = [
     !dayPayNotRequired && workedDays === null ? 'Не заполнены отработанные дни' : '',
-    !dayPayNotRequired && lateCount === null ? 'Не указаны опоздания' : '',
+    salaryRule === 'standard' && lateCount === null ? 'Не указаны опоздания' : '',
+    salaryRule === 'daily' && dayRate <= 0 ? 'Не задана ставка за день' : '',
+    salaryRule === 'daily' && workedDays !== null && (workedDays < 0 || workedDays > 31) ? 'Укажите отработанные дни от 0 до 31' : '',
     advance > grossPay ? 'Аванс больше начислений' : '',
   ].filter(Boolean);
 
@@ -3769,6 +3791,7 @@ function getPayrollDaysSourceLabel(source: PayrollDaysSource) {
 }
 
 function getSalaryTypeLabel(salaryType: SalaryType) {
+  if (salaryType === 'purchase_daily') return 'Оплата за отработанные дни';
   if (salaryType === 'purchase_manager') return 'Закупщик';
   if (salaryType === 'fixed_salary') return 'Фиксированная зарплата';
   if (salaryType === 'vl_percent') return '12% от начислений сотрудников';
@@ -3777,6 +3800,7 @@ function getSalaryTypeLabel(salaryType: SalaryType) {
 }
 
 function getSalaryFormulaLabel(salaryType: SalaryType, periodKey = '', manager = '') {
+  if (salaryType === 'purchase_daily') return 'отработанные дни × ставка за день − выплаченный аванс';
   if (isFilmTrainee(manager)) return 'выручка всех услуг × 70% − выплаченный аванс; товары без начисления';
   if (salaryType === 'purchase_manager') return '20 × 600 + бонус с закупок 1,75% + доплата до минимальной зарплаты − аванс − удержание';
   if (salaryType === 'fixed_salary') return 'оклад + премия - аванс - удержание';
@@ -4573,7 +4597,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         }, {})
       : applyAutomaticAttendanceInputs(
         Object.values(shadowEmployeeDirectory)
-          .filter((employee) => employee.salaryType === 'wholesale_percent' || employee.salaryType === 'retail_sales_bonus' || employee.salaryType === 'vl_percent')
+          .filter((employee) => employee.salaryType === 'wholesale_percent' || employee.salaryType === 'retail_sales_bonus' || employee.salaryType === 'vl_percent' || employee.salaryType === 'purchase_daily')
           .map((employee) => employee.name),
         manualPayroll,
         attendancePreview,
@@ -4654,7 +4678,14 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
     const shadowRows: FullPayrollRow[] = advanceResult.rows;
     const baselineByEmployee = new Map((oneCShadowBaseline?.employeeResults ?? []).map((row) => [row.employeeName, row]));
     const shadowByEmployee = new Map(shadowRows.map((row) => [row.manager, row]));
-    const employeeNames = Array.from(new Set([...baselineByEmployee.keys(), ...shadowByEmployee.keys()]));
+    const employeeNames = Array.from(new Set([...baselineByEmployee.keys(), ...shadowByEmployee.keys()])).filter((name) => {
+      const employee = payrollEmployees[name];
+      const baseline = baselineByEmployee.get(name);
+      // Do not resurrect a departed employee from an empty historical row.
+      // Non-zero saved amounts remain visible for reconciliation.
+      return shadowByEmployee.has(name) || !employee || isPayrollEmployeeActiveForPeriod(employee, selectedPayrollPeriodKey)
+        || Boolean(baseline && (baseline.grossPay !== 0 || baseline.netPay !== 0 || baseline.advance !== 0));
+    });
     const comparisons = sortPayrollWorkbookEmployees(employeeNames.map((employeeName) => {
       const baseline = baselineByEmployee.get(employeeName);
       const shadow = shadowByEmployee.get(employeeName);
@@ -4867,7 +4898,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   const registrarParseUnsafe = parseResult.isRegistrarReport && (!parseResult.isSafeForPayrollCalculation || payrollReviewCount > 20);
   const selectedManagerSummary = useMemo(() => selectedManagerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [selectedManagerSummaries, selectedManager]);
   const selectedManagerRows = useMemo(() => selectedManagerClassification.rows.filter((row) => row.manager === selectedManager), [selectedManagerClassification.rows, selectedManager]);
-  const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager' || selectedManagerPayroll.salaryType === 'vl_percent')
+  const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager' || selectedManagerPayroll.salaryType === 'purchase_daily' || selectedManagerPayroll.salaryType === 'vl_percent')
     ? { status: selectedManagerPayroll.payrollStatus, reason: selectedManagerPayroll.payrollReasons.join(', ') || 'замечаний нет' }
     : selectedManagerSummary
       ? getManagerStatus(selectedManagerSummary, selectedManagerClassification.rows, selectedManagerClassification.accessoryExcludedRows)
@@ -5956,7 +5987,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
 }
 
   function getPayrollExportCategory(row: FullPayrollRow) {
-    if (row.salaryType === 'purchase_manager') return 'Закупки';
+    if (row.salaryType === 'purchase_manager' || row.salaryType === 'purchase_daily') return 'Закупки';
     if (row.salaryType === 'fixed_salary') return 'Фиксированная ЗП';
     if (row.salaryType === 'vl_percent') return 'Операционное управление';
     if (row.salaryType === 'wholesale_percent') return 'Опт';
@@ -5964,6 +5995,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   }
 
   function getPayrollExportShortType(row: FullPayrollRow) {
+    if (row.salaryType === 'purchase_daily') return 'Дневная ставка';
     if (row.salaryType === 'purchase_manager') return 'Закупщик';
     if (row.salaryType === 'fixed_salary') return 'Оклад';
     if (row.salaryType === 'vl_percent') return 'Начислено 12%';
@@ -5997,6 +6029,15 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         rowsForEmployee.push([...baseColumns, component, typeof base === 'number' ? toExportMoney(base) : base, formula, toExportMoney(amount), note]);
       };
       const pushBonuses = () => bonuses.filter((bonus) => bonus.employeeName === row.manager).forEach((bonus) => push('Разовая премия', null, '', bonus.amount, bonus.reason));
+
+      if (row.salaryType === 'purchase_daily') {
+        push('Оплата по дням', row.workedDays, `${row.workedDays ?? 0} × ${row.dayRate}`, row.dayPay);
+        pushBonuses();
+        push('Начислено за месяц', null, 'оплата за отработанные дни + разовые премии', row.grossPay);
+        if (row.advance) push('Аванс', row.advance, 'вычитается после начисления зарплаты', -row.advance);
+        push('К выплате', row.grossPay, getSalaryFormulaLabel(row.salaryType), row.netPay, row.comment);
+        return rowsForEmployee;
+      }
 
       if (row.salaryType === 'fixed_salary') {
         push('Фиксированный оклад', row.fixedSalary, 'оклад', row.fixedSalary);
@@ -6237,6 +6278,10 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   }
 
   async function exportSavedPayrollWorkbook() {
+    return exportSavedPayrollWorkbookData(selectedSavedRun);
+  }
+
+  async function exportSavedPayrollWorkbookData(selectedSavedRun: SavedPayrollRunDetail | null) {
     if (!selectedSavedRun) return;
     setIsSavedRunExporting(true);
     setSaveError('');
@@ -6876,7 +6921,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           advancesValid={!oneCShadowCalculation.advanceIssues.length}
           saveDisabled={isSavingPayroll || isCurrentPeriodClosed || oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
           onSave={() => void prepareAutomaticSave()}
-          exportDisabled={oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
+          exportLabel={currentFinalRun ? 'Скачать финальную ведомость' : 'Скачать Excel'}
+          exportDisabled={currentFinalRun ? isSavedRunExporting || !oneCShadowBaseline || oneCShadowBaseline.id !== currentFinalRun.id : oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
           onEmployee={name => { void openOneCManagerDetails(name); }}
           onSaveProducts={async decisions => {
             let partialError: unknown = null;
@@ -6902,7 +6948,13 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
             const sourceRows: SalesRow[] = body.sales.rows.map(row => ({ ...row, registrar: '', registrars: [], profitability: row.revenue ? row.grossProfit / row.revenue * 100 : 0 }));
             return classifySalesRows(mapLegacyRetailTraineeRowsForPeriod(sourceRows, month, year), classificationRules).rows.filter(isUnresolvedReviewRow);
           }}
-          onExport={() => { setSaveError(''); setIsAutomaticExporting(true); void exportCurrentPayrollWorkbook('oneC').catch(() => setSaveError('Не удалось сформировать Excel.')).finally(() => setIsAutomaticExporting(false)); }}
+          onExport={() => {
+            if (currentFinalRun) {
+              if (oneCShadowBaseline?.id === currentFinalRun.id) void exportSavedPayrollWorkbookData(oneCShadowBaseline);
+              return;
+            }
+            setSaveError(''); setIsAutomaticExporting(true); void exportCurrentPayrollWorkbook('oneC').catch(() => setSaveError('Не удалось сформировать Excel.')).finally(() => setIsAutomaticExporting(false));
+          }}
           onSource={(target) => {
             const source = document.getElementById('payroll-source-panel');
             if (source instanceof HTMLDetailsElement) source.open = true;
@@ -7774,16 +7826,16 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                               {fixed && <p>Оклад: <strong>{formatMoney(row.fixedSalary)}</strong></p>}
                               {purchase && <><p>Дни: {row.workedDays} × {formatMoney(row.dayRate)}</p><p>Закупки для расчёта: {row.purchaseBase === null ? 'нет отчёта' : formatMoney(row.purchaseBase)}</p><p>Бонус с закупок — 1,75%: {formatMoney(row.purchasePercentAmount)}</p><p>Доплата до минимума: {formatMoney(row.purchaseTargetAdjustment)}</p></>}
                               {row.salaryRule === 'belaPercent' && <><p>Начисления сотрудников для расчёта 12%: {formatMoney(row.belaBase ?? 0)}</p><p>Начислено 12%: {formatMoney(row.belaPercentAmount ?? 0)}</p>{getBelaMinimum(selectedPayrollPeriodKey) > 0 && <p>Доплата до минимальной зарплаты: <strong>{formatMoney(row.minimumGuaranteeAdjustment ?? 0)}</strong></p>}</>}
-                              {!fixed && !purchase && row.salaryRule === 'standard' && <><p>Оплата по дням: {formatMoney(row.dayPay)}</p><p>Дисциплина: {formatMoney(row.disciplineBonus)}</p><p>Источник дней: {getPayrollDaysSourceLabel(row.daysSource)}</p></>}
+                              {!fixed && !purchase && (row.salaryRule === 'standard' || row.salaryRule === 'daily') && <><p>Оплата по дням: {formatMoney(row.dayPay)}</p>{row.salaryRule !== 'daily' && <p>Дисциплина: {formatMoney(row.disciplineBonus)}</p>}<p>Источник дней: {getPayrollDaysSourceLabel(row.daysSource)}</p></>}
                             </div>
                             <fieldset disabled={isCurrentPeriodClosed || isSavingPayroll} className='grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
-                              {!fixed && !purchase && row.salaryRule === 'standard' && <>
+                              {!fixed && !purchase && (row.salaryRule === 'standard' || row.salaryRule === 'daily') && <>
                                 <label className='grid gap-1 text-sm font-semibold text-slate-700'>Отработано дней
                                   <Input aria-label={`Дни: ${row.manager}`} type='number' min='0' step='0.5' value={salesInput.workedDays || (row.workedDays === null ? '' : String(row.workedDays))} onChange={(event) => updateManualPayroll(row.manager, 'workedDays', event.target.value)} />
                                 </label>
-                                <label className='grid gap-1 text-sm font-semibold text-slate-700'>Опоздания
+                                {row.salaryRule !== 'daily' && <label className='grid gap-1 text-sm font-semibold text-slate-700'>Опоздания
                                   <Input aria-label={`Опоздания: ${row.manager}`} type='number' min='0' step='1' value={salesInput.lateCount || (row.lateCount === null ? '' : String(row.lateCount))} onChange={(event) => updateManualPayroll(row.manager, 'lateCount', event.target.value)} />
-                                </label>
+                                </label>}
                               </>}
                               {row.manager === agentCreditCommissionEmployee && <label className='grid gap-1 text-sm font-semibold text-slate-700'>Агентские, ₽
                                 <Input aria-label={`Агентские: ${row.manager}`} type='number' min='0' step='0.01' value={salesInput.agentCreditCommission ?? ''} onChange={(event) => updateManualPayroll(row.manager, 'agentCreditCommission', event.target.value)} />
@@ -8292,10 +8344,10 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                   <div className='mb-4 border-b border-border pb-4'>
                     <div className='flex items-start justify-between gap-4'>
                     <div className='min-w-0'>
-                      <h2 className='truncate text-[22px] font-bold text-slate-900'>{selectedManagerPayroll.manager}</h2>
+                      <h2 className='break-words text-[22px] font-bold leading-tight text-slate-900'>{selectedManagerPayroll.manager}</h2>
                       <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {getPayrollWorkbookGroup(selectedManagerPayroll.salaryType)} · {selectedManagerPayroll.position}</p>
                       {selectedManagerSource === 'oneC' && (
-                        <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>Автоматический расчёт по данным 1С</p>
+                        <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>{selectedManagerPayroll.salaryType === 'purchase_daily' ? 'Расчёт по подтверждённым дням' : 'Автоматический расчёт по данным 1С'}</p>
                       )}
                       {(selectedManagerStatus.status !== 'OK' || selectedManagerPayroll.payrollStatus !== 'OK' || selectedManagerPayroll.payrollReasons.length > 0) && (
                         <div className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>
@@ -8344,6 +8396,16 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
 
                   <div className='grid gap-5'>
                     {selectedManagerSource === 'oneC' && selectedManagerPayroll.manager === agentCreditCommissionEmployee && <PayrollFinboxEditor key={selectedPayrollPeriodKey} periodKey={selectedPayrollPeriodKey} onSaved={period=>{if(period===selectedPayrollPeriodKey)setFinboxRefresh(v=>v+1);}}/>}
+                    {selectedManagerPayroll.salaryType === 'purchase_daily' && (
+                      <section className='rounded-xl border border-slate-200 bg-white p-4'>
+                        <h3 className='font-bold text-slate-900'>Отработанные дни</h3>
+                        <p className='mt-1 text-sm text-slate-600'>Ставка {formatMoney(selectedManagerPayroll.dayRate)} за день. Без процента с закупок и бонуса за дисциплину.</p>
+                        <label className='mt-3 grid gap-1 text-sm font-semibold text-slate-700'>Подтверждённое количество дней
+                          <Input aria-label={`Дни: ${selectedManagerPayroll.manager}`} type='number' min='0' max='31' step='0.5' disabled={Boolean(currentFinalRun) || isCurrentPeriodClosed} value={getPayrollManualInput(selectedManagerPayroll.manager, manualPayroll)?.workedDays ?? selectedManagerPayroll.workedDays ?? ''} onChange={event=>updateManualPayroll(selectedManagerPayroll.manager, 'workedDays', event.target.value)} />
+                        </label>
+                        <p className='mt-2 text-xs text-slate-500'>{currentFinalRun ? 'Финальная ведомость не изменяется.' : 'Черновик хранится в этом браузере. Для фиксации в истории сохраните ведомость. Будущие дни автоматически не добавляются.'}</p>
+                      </section>
+                    )}
                     {selectedManagerSource === 'oneC' && Boolean(selectedManagerPayroll.advanceDocuments?.length) && (
                       <Card>
                         <h3 className='font-bold text-slate-900'>Авансы из 1С</h3>
@@ -8374,6 +8436,9 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                                 ['База для 12%', formatMoney(selectedManagerPayroll.belaBase ?? 0)],
                                 ['12% от начислений команды', formatMoney(selectedManagerPayroll.belaPercentAmount ?? 0)],
                                 ...(getBelaMinimum(selectedPayrollPeriodKey) ? [['Доплата до 100 000 ₽', formatMoney(selectedManagerPayroll.minimumGuaranteeAdjustment ?? 0)]] : []),
+                              ] : selectedManagerPayroll.salaryType === 'purchase_daily' ? [
+                                ['Дни × ставка', `${selectedManagerPayroll.workedDays ?? '—'} × ${formatMoney(selectedManagerPayroll.dayRate)}`],
+                                ['Оплата по дням', formatMoney(selectedManagerPayroll.dayPay)],
                               ] : isFilmTrainee(selectedManagerPayroll.manager) ? [
                                 ['Услуги · 70% выручки', formatMoney(selectedManagerPayroll.filmBonus)],
                                 ['Правило на период обучения', 'Все услуги; товары и материалы без начисления'],

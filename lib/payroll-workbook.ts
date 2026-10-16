@@ -10,6 +10,7 @@ export type PayrollWorkbookReviewEmployee = PayrollWorkbookEmployee & {
 
 const payrollGroupOrder: Record<string, number> = {
   purchase_manager: 0,
+  purchase_daily: 0,
   wholesale_percent: 1,
   retail_sales_bonus: 2,
   vl_percent: 3,
@@ -23,7 +24,7 @@ export function isPayrollWorkbookSalaryTypeConfigured(salaryType: string) {
 }
 
 export function getPayrollWorkbookGroup(salaryType: string) {
-  if (salaryType === 'purchase_manager') return 'Закупки';
+  if (salaryType === 'purchase_manager' || salaryType === 'purchase_daily') return 'Закупки';
   if (salaryType === 'wholesale_percent') return 'Оптовые продажи';
   if (salaryType === 'vl_percent') return 'Операционное управление';
   if (salaryType === 'retail_sales_bonus') return 'Розничные продажи';

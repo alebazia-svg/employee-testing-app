@@ -535,6 +535,41 @@ describe('retail accessory rate', () => {
     assert.equal(result.summaries.find((row) => row.manager === diana)!.accessoryRate, 0.05);
   });
 
+  it('keeps Asad in August history but excludes his default rule from September onward', () => {
+    assert.ok(buildPayrollEmployeeDirectory([], '2026-08')['Икаев Асад']);
+    assert.equal(buildPayrollEmployeeDirectory([], '2026-09')['Икаев Асад'], undefined);
+    assert.equal(buildPayrollEmployeeDirectory([], '2026-10')['Икаев Асад'], undefined);
+  });
+
+  it('pays the procurement trainee only for entered days from October, with no automatic sales or discipline bonus', () => {
+    const manager = 'Кумыков Мухаммед';
+    assert.equal(buildPayrollEmployeeDirectory([], '2026-09')[manager], undefined);
+    const directory = buildPayrollEmployeeDirectory([], '2026-10');
+    assert.equal(directory[manager].salaryType, 'purchase_daily');
+    const summary = { manager, department: 'Розница', revenue: 10000, grossProfit: 1000, creditBonus: 100, filmBonus: 100, plotterBonus: 100, techBonus: 100, accessoryBonus: 100, wholesaleBonus: 100, totalBonus: 600 };
+    const row = buildFullPayrollRow(summary, { workedDays: '5', lateCount: '0', advance: '', comment: '' }, directory);
+    assertMoney(row.dayPay, 7500);
+    assertMoney(row.grossPay, 7500);
+    assertMoney(row.netPay, 7500);
+    assertMoney(row.salesBonus, 0);
+    assert.equal(row.lateCount, null);
+    assert.deepEqual(row.payrollReasons, []);
+    const snapshot = { ...row, employeeName: manager, oneTimeBonus: 0, calculationDetails: [
+      { component: 'Оплата по дням', amount: 7500 },
+      { component: 'Начислено за месяц', amount: 7500 },
+      { component: 'К выплате', amount: 7500 },
+    ] };
+    assert.doesNotThrow(() => validatePayrollCompensationSnapshot([snapshot], [], '2026-10', { grossPay: 7500, netPay: 7500, advance: 0 }));
+    assert.throws(() => validatePayrollCompensationSnapshot([{ ...snapshot, calculationDetails: snapshot.calculationDetails.slice(1) }], [], '2026-10', { grossPay: 7500, netPay: 7500, advance: 0 }));
+    const paid = buildFullPayrollRow(summary, { workedDays: '5', lateCount: '', advance: '7500', comment: '' }, directory);
+    assertMoney(paid.grossPay, 7500);
+    assertMoney(paid.netPay, 0);
+    const missing = buildFullPayrollRow(summary, undefined, directory);
+    assertMoney(missing.grossPay, 0);
+    assert.ok(missing.payrollReasons.includes('Не заполнены отработанные дни'));
+    assert.ok(!missing.payrollReasons.includes('Не указаны опоздания'));
+  });
+
   it('keeps an inactive portal account in payroll only when a current explicit rule has actual report activity', () => {
     const diana = 'Кумахова Диана';
     const user = {
