@@ -545,6 +545,36 @@ Admin QR codes live in `/admin/workday`. The diagnostic camera/QR page is
 `/admin/dev/qr-test` and should stay a technical tool for checking iPhone/PWA
 camera behavior separately from Workday logic.
 
+## Automatic Employee App Updates — Local Candidate, 2026-10-16
+
+Owner approved silent release checks to keep installed employee apps current.
+The local candidate uses the existing public release-info.json and shared
+compiled version/build identity; no new endpoint or service worker cache is added.
+It checks on opening/return and every 60 seconds while visible. A pending update
+is rechecked before navigation and applied only on the main Workday tab after
+10 seconds without interaction. Network checks are coalesced/throttled and abort
+after eight seconds. A per-tab persisted attempt limits repeat reloads of the
+same target to one per five minutes; unavailable storage defers the reload.
+
+Open forms/dialogs, QR/shift selection, uploads/native photo selection, saves,
+unsaved checklist/handover drafts, schedule edits and the cash outbox defer the
+reload. Detail routes and the Schedule tab do not opt into automatic navigation.
+No workday/accounting mutation is triggered by the updater. The existing
+network-first page loading and neutral offline fallback remain unchanged.
+
+This is not yet deployed. Version 1.4.16 does not contain this mechanism: an
+already open old client needs one normal full page load to acquire it. No server
+release can inject this first client hook into a page that has never reloaded.
+Verification: 11 updater/visibility tests, TypeScript and the final production
+build passed. The real
+EmployeeTodayClient with isolated synthetic props retained both the open QR
+scanner and schedule editor across a simulated release change, then automatically
+reloaded after close/return to the main screen. The temporary fixture route was
+removed before the production build. Native file selection is blocked until its
+change/cancel event; if an older browser omits cancellation, updating is deferred
+rather than interrupting a possibly active camera. Physical iPhone/Android
+standalone resume and camera selection remain device pilot checks.
+
 ## Terminal Payment Shift Tasks
 
 - Reconcile globally across all known Retail cash registers and acquiring
