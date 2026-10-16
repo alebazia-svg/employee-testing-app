@@ -2,6 +2,7 @@ import { validatePaymentPlan } from './procurement-payment-control';
 import { paymentBasisChanged } from './procurement-debt-request';
 import { manualPaymentLinks } from './procurement-manual-payment-links';
 import { isFinishedPaymentState } from './procurement-small-remainder';
+import {supplierOnlyPaymentLabel} from './procurement-supplier-advance';
 
 export type RevisionData = ReturnType<typeof validatePaymentPlan>['data'];
 export type PaymentRevision = { id: string; reason: string; submittedAt: string; data: RevisionData; changes: { label: string; before: string; after: string }[] };
@@ -38,8 +39,8 @@ function display(key: string, value: unknown) {
   if(numeric.has(key))return value == null || value === '' ? '—' : Number(value).toLocaleString('ru-RU',{maximumFractionDigits:4});
   return normalized;
 }
-function orderDescription(value: {orderRefs?: unknown; orderNumbers?: unknown}) {
-  if (!Array.isArray(value.orderRefs) || !value.orderRefs.length) return 'В счёт долга поставщику';
+function orderDescription(value: {orderRefs?: unknown; orderNumbers?: unknown; paymentPurpose?: string}) {
+  if (!Array.isArray(value.orderRefs) || !value.orderRefs.length) return supplierOnlyPaymentLabel(value);
   return Array.isArray(value.orderNumbers) && value.orderNumbers.filter(Boolean).join(', ') || 'По заказу';
 }
 export function revisionChanges(before: Record<string, any>, after: RevisionData) {

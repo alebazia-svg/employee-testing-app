@@ -10,6 +10,7 @@ import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 import { ProcurementReceipts } from '@/components/ProcurementReceipts';
 import { hasConfirmedReceiptPayment } from '@/lib/procurement-receipt-policy';
+import {supplierOnlyPaymentLabel, SUPPLIER_ADVANCE} from '@/lib/procurement-supplier-advance';
 import { useProcurementVisualPreview } from '@/components/ProcurementVisualPreview';
 import { ProcurementDeliveryCash, type DeliveryCashSnapshot } from '@/components/ProcurementDeliveryCash';
 import { isInactivePaymentPlan, COMPLETED_WITHOUT_TOPUP } from '@/lib/procurement-payment-completion';
@@ -596,7 +597,7 @@ export default function ProcurementPaymentCalendarClient({
         <h2 className="text-sm font-semibold">Сохранённые заявки · статус оплаты уточняется</h2>
         <p className="mt-1 text-xs text-slate-600">Пока сверка не завершена, эти заявки не считаются неоплаченными.</p>
         <div className="mt-2 divide-y divide-stone-100">{unknownPayments.map(plan=><div key={plan.id} className="flex items-center justify-between gap-3 py-2">
-          <span className="text-sm font-semibold">{plan.supplierPartner}<span className="ml-2 text-xs font-normal text-slate-500">{plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):'В счёт долга поставщику'}</span></span>
+          <span className="text-sm font-semibold">{plan.supplierPartner}<span className="ml-2 text-xs font-normal text-slate-500">{plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):supplierOnlyPaymentLabel(plan)}</span></span>
           <button type="button" className="pam-button shrink-0" disabled={editingBlocked||!!plan.revision} onClick={()=>editPlan(plan)} aria-label={`Изменить оплату ${plan.supplierPartner}`}>Изменить</button>
         </div>)}</div>
       </section> : null}
@@ -660,7 +661,7 @@ export default function ProcurementPaymentCalendarClient({
                       <div className="min-w-0">
                         <h4 className={compact ? 'text-sm font-bold leading-5' : 'font-black'}>{plan.supplierPartner}</h4>
                         <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                          {visualPreview?.labels?.[plan.id] ?? (plan.paymentPurpose==='DELIVERY'?'Доставка':!plan.orderRefs.length ? 'В счёт долга поставщику' : <>{plan.orderNumbers.filter(Boolean).length > 1
+                          {visualPreview?.labels?.[plan.id] ?? (plan.paymentPurpose==='DELIVERY'?'Доставка':!plan.orderRefs.length ? supplierOnlyPaymentLabel(plan) : <>{plan.orderNumbers.filter(Boolean).length > 1
                             ? "Заказы"
                             : "Заказ"}: {" "}
                           {plan.orderNumbers.filter(Boolean).join(", ") ||
@@ -821,7 +822,7 @@ export default function ProcurementPaymentCalendarClient({
             onSubmit={submit}
           >
             <div><p className="text-xs font-bold text-slate-500">{editingPlan?.paymentPurpose==='DELIVERY'?'Перевозчик':'Поставщик'}</p><p className="mt-1 font-semibold">{draft.supplier}</p></div>
-            {editingPlan?.paymentPurpose==='DELIVERY'?<p className="text-sm text-slate-600">Доставка</p>:<details className="rounded-xl border border-slate-200 px-3 py-2.5"><summary className="cursor-pointer text-sm font-semibold">{editBasis==='DEBT'?'В счёт долга поставщику':`Заказ № ${draft.orderRefs.map(ref=>supplierOrders.find(o=>o.ref===ref)?.number||editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)]||'—').join(', ')}`}<span className="ml-2 text-xs font-normal text-slate-500">{editBasisLocked?'Основание оплаты':'Изменить основание'}</span></summary><div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Основание оплаты">
+            {editingPlan?.paymentPurpose===SUPPLIER_ADVANCE?<p className="text-sm text-slate-600">{supplierOnlyPaymentLabel(editingPlan)} · основание оплаты сохраняется</p>:editingPlan?.paymentPurpose==='DELIVERY'?<p className="text-sm text-slate-600">Доставка</p>:<details className="rounded-xl border border-slate-200 px-3 py-2.5"><summary className="cursor-pointer text-sm font-semibold">{editBasis==='DEBT'?'В счёт долга поставщику':`Заказ № ${draft.orderRefs.map(ref=>supplierOrders.find(o=>o.ref===ref)?.number||editingPlan?.orderNumbers[editingPlan.orderRefs.indexOf(ref)]||'—').join(', ')}`}<span className="ml-2 text-xs font-normal text-slate-500">{editBasisLocked?'Основание оплаты':'Изменить основание'}</span></summary><div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Основание оплаты">
               {(['ORDER', 'DEBT'] as const).map(basis => <button key={basis} type="button" aria-pressed={editBasis === basis}
                 disabled={editBasisLocked || (basis === 'DEBT' && Boolean(editingPlan?.orderRefs.length) && supplierPosition(supplierBalances[draft.supplier]) !== 'debt')}
                 onClick={() => chooseEditBasis(basis)}

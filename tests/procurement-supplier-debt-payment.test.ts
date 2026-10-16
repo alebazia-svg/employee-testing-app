@@ -88,9 +88,11 @@ test('old, missing-supplier, wrong-supplier, invalid or inactive documents do no
     {posted:false},{deleted:true},{documentCurrency:'USDT'},{documentAmount:NaN},{documentAmount:-1}]){
     assert.equal(match([{...payment,...patch}]).get(plan.id)!.issuedAmount,0);
   }
-  for(const patch of [{createdAt:undefined},{status:'SUBMITTED'},{status:'CANCELLED'},{paymentMethod:'USDT'}]){
+  for(const patch of [{createdAt:undefined},{status:'SUBMITTED'},{status:'CANCELLED'}]){
     assert.equal(match([payment],[{...plan,...patch}]).get(plan.id)!.issuedAmount,0);
   }
+  // Owner-approved cash-to-exchanger funding: a RUB RKO also funds a USDT request.
+  assert.equal(match([payment],[{...plan,paymentMethod:'USDT'}]).get(plan.id)!.issuedAmount,42500);
 });
 test('duplicates cannot multiply cash; conflicting copies and removal reopen derived closure',()=>{
   assert.equal(match([payment,payment]).get(plan.id)!.issuedAmount,42500);

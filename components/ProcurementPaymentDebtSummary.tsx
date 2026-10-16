@@ -2,6 +2,7 @@ import React from 'react';
 import type {SupplierBalance} from '@/lib/procurement-supplier-settlements';
 import type {OrderReceiptSettlement} from '@/lib/procurement-planning-verification';
 import {supplierPosition} from '@/lib/procurement-supplier-position';
+import {isSupplierChoice} from '@/lib/procurement-supplier-advance';
 
 type Order={ref:string;number:string;amount?:number;planningState?:string;receiptSettlement?:OrderReceiptSettlement;noAcquisitions?:{checkedAt:string}};
 const rub=(value:number)=>value.toLocaleString('ru-RU',{style:'currency',currency:'RUB'});
@@ -9,7 +10,7 @@ const hasConfirmedDebt=(order:Order)=>Boolean(order.receiptSettlement&&!order.re
 /** Supplier balance and order amounts have different scopes; never add them together. */
 export function ProcurementPaymentDebtSummary({balance,unavailable=false,orders,onRemoveOrder,disabled=false}:{balance?:SupplierBalance;unavailable?:boolean;orders:Order[];onRemoveOrder?:(ref:string)=>void;disabled?:boolean}){
   const verified=!unavailable&&supplierPosition(balance)!=='review';
-  const selected=orders.filter(o=>!o.ref.startsWith('debt:'));
+  const selected=orders.filter(o=>!isSupplierChoice(o.ref));
   return <div className="mt-3 border-t border-[var(--portal-border)] pt-3" aria-label="Долг и суммы по 1С">
     <dl className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
       <dt className="text-sm text-slate-600">Общий долг поставщику <span className="text-xs text-slate-500">· по 1С</span></dt>

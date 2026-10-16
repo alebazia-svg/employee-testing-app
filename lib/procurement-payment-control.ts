@@ -1,6 +1,7 @@
 import type { ExpenseRequestSourceRow } from '@/lib/expense-request-source';
 import { isInactivePaymentPlan } from './procurement-payment-completion';
 import { cnyRateFromComment, plannedFxRubles } from './procurement-planned-fx';
+import {SUPPLIER_ADVANCE, SUPPLIER_ADVANCE_LABEL} from './procurement-supplier-advance';
 
 export const PAYMENT_METHODS = ['CASH', 'BANK', 'USDT', 'ACCOUNTABLE_QR', 'CNY'] as const;
 export type PaymentMethod = typeof PAYMENT_METHODS[number];
@@ -37,7 +38,7 @@ export function validatePaymentPlan(input: PaymentPlanInput, allowSupplierDebt =
     fundingSource: method === 'USDT' ? clean(input.fundingSource) || null : null,
     supplierPartner: clean(input.supplierPartner), supplierCounterparty: clean(input.supplierCounterparty),
     orderRefs: refs, orderNumbers: numbers, plannedDate: date, plannedAmount: positive(input.plannedAmount),
-    condition: clean(input.condition) || (allowSupplierDebt && !refs.length ? 'В счёт долга поставщику' : 'Оплата по выбранным заказам'), paymentMethod: method, currency: method === 'CNY' ? 'CNY' : clean(input.currency).toUpperCase() || (method === 'USDT' ? 'USDT' : 'RUB'),
+    condition: clean(input.condition) || (input.paymentPurpose === SUPPLIER_ADVANCE ? SUPPLIER_ADVANCE_LABEL : allowSupplierDebt && !refs.length ? 'В счёт долга поставщику' : 'Оплата по выбранным заказам'), paymentMethod: method, currency: method === 'CNY' ? 'CNY' : clean(input.currency).toUpperCase() || (method === 'USDT' ? 'USDT' : 'RUB'),
     foreignAmount: positive(input.foreignAmount), exchangeRate: positive(input.exchangeRate),
     commissionAmount: input.commissionAmount === '' || input.commissionAmount == null ? null : Number(input.commissionAmount),
     exchangerName: clean(input.exchangerName), supplierConfirmation: clean(input.supplierConfirmation),
@@ -45,7 +46,8 @@ export function validatePaymentPlan(input: PaymentPlanInput, allowSupplierDebt =
   const errors: string[] = [];
   if (data.fundingSource && !['WALLET','CASH_EXCHANGE'].includes(data.fundingSource)) errors.push('Выберите источник оплаты USDT.');
   if (data.fundingSource && (!data.foreignAmount || !data.exchangeRate)) errors.push('Укажите сумму USDT и курс.');
-  if (!['GOODS','DELIVERY'].includes(data.paymentPurpose)) errors.push('Выберите назначение оплаты.');
+  if (!['GOODS','DELIVERY',SUPPLIER_ADVANCE].includes(data.paymentPurpose)) errors.push('Выберите назначение оплаты.');
+  if (data.paymentPurpose === SUPPLIER_ADVANCE && refs.length) errors.push('Аванс поставщику оформляется без привязки к старым заказам.');
   // These are planning values only. Never derive a paid amount or actual FX
   // rate from them. CNY is settled by RUB RKO in the current 1C workflow.
   if (method === 'CNY') {

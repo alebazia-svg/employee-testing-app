@@ -225,7 +225,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
               ![...paymentEvidence.values()].some((item) => [...item.cashOrders, ...item.currencyPayments].some((order) => order.ref === payment.ref)) &&
               !plans.some((plan) => manualPaymentLinks(plan.oneCCashEvidence).some((link) => link.ref === payment.ref)))
             .slice().reverse()}
-          plans={plans.map((plan) => ({ id: plan.id, supplierPartner: plan.supplierPartner,
+          plans={plans.map((plan) => ({ id: plan.id, supplierPartner: plan.supplierPartner, paymentPurpose: plan.paymentPurpose,
             supplierCounterparty: plan.supplierCounterparty, orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [], orderNumbers: Array.isArray(plan.orderNumbers) ? plan.orderNumbers.map(String) : [],
             remaining: paymentEvidence.get(plan.id)?.remainingAmount || 0, remainingForeign: paymentEvidence.get(plan.id)?.remainingForeignAmount ?? null, status: plan.status, paymentMethod: plan.paymentMethod }))}
           linked={manualLinksForDisplay}

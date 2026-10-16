@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type { Prisma } from '@prisma/client';
+import {SUPPLIER_ADVANCE, SUPPLIER_ADVANCE_LABEL} from './procurement-supplier-advance';
 
 type NotificationDb = Pick<
   Prisma.TransactionClient,
@@ -8,6 +9,7 @@ type NotificationDb = Pick<
 >;
 
 type PaymentPlanSummary = {
+  paymentPurpose?: string;
   id: string;
   planCode: string;
   supplierPartner: string;
@@ -58,11 +60,12 @@ export async function notifyAdminsAboutProcurementPlans(input: {
   const first = input.plans[0];
   const single = input.plans.length === 1;
   const comment = single ? meaningfulComment(first.condition) : '';
-  const title = input.revisionProposal ? 'Изменения оплаты на согласование' : input.action === 'UPDATED' ? 'Оплата поставщику изменена' : 'Новая оплата поставщику';
+  const title = input.revisionProposal ? 'Изменения оплаты на согласование' : input.action === 'UPDATED' ? 'Оплата поставщику изменена' : single && first.paymentPurpose === SUPPLIER_ADVANCE ? 'Новый аванс поставщику' : 'Новая оплата поставщику';
   const body = single
     ? [
         input.managerName,
         first.supplierPartner,
+        first.paymentPurpose === SUPPLIER_ADVANCE && comment !== SUPPLIER_ADVANCE_LABEL ? SUPPLIER_ADVANCE_LABEL : '',
         rub.format(Number(first.plannedAmount)),
         `к ${shortDate.format(first.plannedDate)}`,
         methodLabel(first.paymentMethod),

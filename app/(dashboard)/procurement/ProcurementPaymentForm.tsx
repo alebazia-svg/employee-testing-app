@@ -14,19 +14,22 @@ import {ProcurementCargoPaymentForm} from '@/components/ProcurementCargoPaymentF
 import {ProcurementDiscardDraftDialog} from '@/components/ProcurementDiscardDraftDialog';
 import {cnyCommentDraftPatch,cnyRateFromComment} from '@/lib/procurement-planned-fx';
 import {singlePaymentRequest,paymentOrderExcess} from '@/lib/procurement-single-payment';
+import {supplierAdvanceChoices,isAdvanceChoice,isSupplierChoice,SUPPLIER_ADVANCE_LABEL} from '@/lib/procurement-supplier-advance';
 
 type Props=ComponentProps<typeof ProcurementPaymentBatchForm>;
 type Order=Props['orders'][number];
+type Basis='ORDER'|'DEBT'|'ADVANCE';
+const choiceBasis=(ref?:string):Basis=>ref&&isAdvanceChoice(ref)?'ADVANCE':ref?.startsWith('debt:')?'DEBT':'ORDER';
 const rub=(value:number)=>value.toLocaleString('ru-RU',{style:'currency',currency:'RUB'});
 const orderDate=(value:string)=>/^\d{4}-\d{2}-\d{2}/.test(value)?value.slice(0,10).split('-').reverse().join('.'):value.slice(0,10);
 const empty=()=>({plannedAmount:'',paymentMethod:'CASH',foreignAmount:'',exchangeRate:'',fundingSource:'',condition:''});
 const input='mt-1.5 w-full rounded-xl border border-[var(--portal-border)] bg-white px-3 py-2.5 text-sm font-semibold';
 
 export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,initialSelectedRefs,onCreated,onCancel,onDraftStateChange,usdtRateReference,cnyRateReference,basisPreview=false,submissionBlocked=false,supplierDebtError=false,todayKey='',activeOrderRefs=[],activeSupplierNames=[],cargoAllowed=false,availableUsdt=null}:Props){
-  const orders:Order[]=[...sourceOrders,...Object.entries(supplierDebtError?{}:supplierBalances)
+  const orders:Order[]=[...sourceOrders,...supplierAdvanceChoices(supplierBalances,activeSupplierNames,supplierDebtError),...Object.entries(supplierDebtError?{}:supplierBalances)
     .filter(([name,b])=>supplierPosition(b)==='debt'&&!activeSupplierNames.includes(name))
     .map(([supplierPartner,b])=>({ref:'debt:'+supplierPartner,number:'',supplierPartner,supplierCounterparty:'',orderPaymentGap:0,supplierDebt:b.debt,plannedActiveAmount:0,unplannedAmount:b.debt,orderComment:''}))];
-  const purpose=(o:Order)=>o.ref.startsWith('debt:')?'order':buyerOrderPurpose(o,supplierDebtError?undefined:supplierBalances[o.supplierPartner]);
+  const purpose=(o:Order)=>isSupplierChoice(o.ref)?'order':buyerOrderPurpose(o,supplierDebtError?undefined:supplierBalances[o.supplierPartner]);
   const selectable=(o:Order)=>!activeOrderRefs.includes(o.ref)&&['order','prepayment'].includes(purpose(o));
   const [refs,setRefs]=useState(()=>{
     const candidates=orders.filter(o=>initialSelectedRefs.includes(o.ref)&&selectable(o));
@@ -34,9 +37,9 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
   });
   const selected=refs.flatMap(ref=>{const o=orders.find(o=>o.ref===ref);return o?[o]:[];});
   const first=selected[0];
-  const ordersWithDetails=selected.filter(o=>!o.ref.startsWith('debt:')&&(o.receiptSettlement?.receipts.length||o.paymentClosure?.receipts.length||procurementPaymentCommentText(o.orderComment)));
+  const ordersWithDetails=selected.filter(o=>!isSupplierChoice(o.ref)&&(o.receiptSettlement?.receipts.length||o.paymentClosure?.receipts.length||procurementPaymentCommentText(o.orderComment)));
   const [draft,setDraft]=useState(empty),[date,setDate]=useState('');
-  const [basis,setBasis]=useState<'ORDER'|'DEBT'>(first?.ref.startsWith('debt:')?'DEBT':'ORDER');
+  const [basis,setBasis]=useState<Basis>(choiceBasis(first?.ref));
   const [choosing,setChoosing]=useState(!first);
   const [query,setQuery]=useState(''),[open,setOpen]=useState(false),[earlier,setEarlier]=useState(false);
   const [category,setCategory]=useState<'GOODS'|'DELIVERY'>('GOODS');
@@ -59,9 +62,9 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
   },[open]);
   const today=todayKey||new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow'}).format(new Date());
   const candidates=sortPaymentPickerOrders(orders.filter(selectable)
-    .filter(o=>o.ref.startsWith('debt:')===(basis==='DEBT')))
-    .filter(o=>query.trim()||!isSmallPaymentSuggestion(o))
-    .filter(o=>basis==='DEBT'||query.trim()||earlier||isRecentPaymentOrder(o,today))
+    .filter(o=>choiceBasis(o.ref)===basis))
+    .filter(o=>basis==='ADVANCE'||query.trim()||!isSmallPaymentSuggestion(o))
+    .filter(o=>basis!=='ORDER'||query.trim()||earlier||isRecentPaymentOrder(o,today))
     .filter(o=>matchesPaymentOrderSearch(o,query));
   const history=query.trim()?sortPaymentPickerOrders(sourceOrders.filter(o=>!selectable(o)&&matchesPaymentOrderSearch(o,query))):[];
   function applyChoice(order:Order){
@@ -73,7 +76,7 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
     if(first&&first.ref!==order.ref&&(draft.plannedAmount||draft.foreignAmount||draft.condition))setPendingOrder(order);
     else applyChoice(order);
   }
-  function openPicker(){setChoosing(true);setBasis(first?.ref.startsWith('debt:')?'DEBT':'ORDER');setQuery('');setOpen(true);requestAnimationFrame(()=>search.current?.focus());}
+  function openPicker(){setChoosing(true);setBasis(choiceBasis(first?.ref));setQuery('');setOpen(true);requestAnimationFrame(()=>search.current?.focus());}
   const selectionInvalid=selected.length!==refs.length||selected.some(o=>!selectable(o));
   const positive=(value:string)=>Number.isFinite(Number(value))&&Number(value)>0;
   const validAmount=positive(draft.plannedAmount)&&(!['CNY','USDT'].includes(draft.paymentMethod)||!draft.foreignAmount||(positive(draft.foreignAmount)&&positive(draft.exchangeRate)));
@@ -99,7 +102,7 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
     <div hidden={category!=='GOODS'}><form className="space-y-3 p-4 sm:px-5" onSubmit={submit}>
       {choosing||!first?<section className="space-y-3" aria-label="Выбор оплаты">
         <div className="flex items-end justify-between gap-3">
-          <label className="block w-full text-sm font-bold">Основание оплаты<select className={input} value={basis} onChange={e=>{setBasis(e.target.value as 'ORDER'|'DEBT');setQuery('');setOpen(true)}}><option value="ORDER">По заказу</option><option value="DEBT">В счёт долга поставщику</option></select></label>
+          <label className="block w-full text-sm font-bold">Основание оплаты<select className={input} value={basis} onChange={e=>{setBasis(e.target.value as Basis);setQuery('');setOpen(true)}}><option value="ORDER">По заказу</option><option value="DEBT">В счёт долга поставщику</option><option value="ADVANCE">Аванс поставщику</option></select></label>
           {first?<button type="button" className="shrink-0 text-sm underline" onClick={()=>{setChoosing(false);setOpen(false)}}>Вернуться к оплате</button>:null}
         </div>
         <div ref={picker} onBlurCapture={e=>{if(e.relatedTarget&&!e.currentTarget.contains(e.relatedTarget))setOpen(false)}} onKeyDown={e=>{if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();search.current?.focus();setOpen(false);}}}>
@@ -107,12 +110,12 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
             <input ref={search} value={query} aria-label="Поставщик или номер заказа" aria-expanded={open} aria-controls={open?resultId:undefined} onFocus={()=>setOpen(true)} onClick={()=>setOpen(true)} onChange={e=>{setQuery(e.target.value);setOpen(true)}} placeholder={basis==='ORDER'?'Поставщик или номер заказа':'Название поставщика'} className="w-full rounded-xl border border-[var(--portal-border)] bg-white py-2.5 pl-10 pr-24 text-sm"/>
             <button type="button" className="absolute right-3 top-2.5 text-xs font-semibold text-[#785537]" onMouseDown={e=>e.preventDefault()} onClick={()=>setOpen(v=>!v)}>{open?'Свернуть':'Показать'}</button>
           </div>
-          {open?<div id={resultId} className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--portal-border)] bg-white" aria-label={basis==='ORDER'?'Заказы для оплаты':'Поставщики с задолженностью'}>
+          {open?<div id={resultId} className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--portal-border)] bg-white" aria-label={basis==='ORDER'?'Заказы для оплаты':basis==='ADVANCE'?'Поставщики для предоплаты':'Поставщики с задолженностью'}>
             {candidates.map(o=><button key={o.ref} type="button" onClick={()=>choose(o)} aria-label={`Выбрать ${o.supplierPartner}${o.number?' · заказ '+o.number:''}`} className="procurement-choice flex w-full items-start justify-between gap-4 border-b border-[var(--portal-border)] px-3 py-3 text-left last:border-b-0 hover:bg-[#faf5ef]">
-              <span className="min-w-0"><span className="block text-sm font-semibold">{o.supplierPartner}</span><span className="mt-1 block text-xs text-slate-500">{o.number?'Заказ № '+o.number+(o.date?' · '+o.date.slice(0,10):''):'В счёт долга поставщику'}</span></span>
-              <span className="shrink-0 text-right"><span className="block text-sm font-semibold">{basis==='DEBT'?rub(o.supplierDebt):o.amount!=null?rub(o.amount):'—'}</span><span className="mt-1 block text-xs text-slate-500">{basis==='DEBT'?'Долг по 1С':'Сумма заказа'}</span></span>
+              <span className="min-w-0"><span className="block text-sm font-semibold">{o.supplierPartner}</span><span className="mt-1 block text-xs text-slate-500">{isAdvanceChoice(o.ref)?SUPPLIER_ADVANCE_LABEL:o.number?'Заказ № '+o.number+(o.date?' · '+o.date.slice(0,10):''):'В счёт долга поставщику'}</span></span>
+              {basis==='ADVANCE'?<span className="shrink-0 text-right text-xs text-slate-600">{supplierPosition(supplierBalances[o.supplierPartner])==='review'?'Расчёты требуют проверки':supplierBalances[o.supplierPartner]?.advance>0?<>Аванс в 1С<br/><strong>{rub(supplierBalances[o.supplierPartner].advance)}</strong></>:o.supplierDebt>0?<>Долг в 1С<br/><strong>{rub(o.supplierDebt)}</strong></>:'Долга нет'}</span>:<span className="shrink-0 text-right"><span className="block text-sm font-semibold">{basis==='DEBT'?rub(o.supplierDebt):o.amount!=null?rub(o.amount):'—'}</span><span className="mt-1 block text-xs text-slate-500">{basis==='DEBT'?'Долг по 1С':'Сумма заказа'}</span></span>}
             </button>)}
-            {!candidates.length&&!history.length?<p className="p-3 text-sm text-slate-500">{supplierDebtError?'Данные поставщиков пока недоступны.':basis==='ORDER'&&query.trim()?'Заказ не найден. Попробуйте номер или название поставщика.':'Подходящих оплат не найдено.'}</p>:null}
+            {!candidates.length&&!(basis==='ORDER'&&history.length)?<p className="p-3 text-sm text-slate-500">{supplierDebtError?'Данные поставщиков пока недоступны.':basis==='ORDER'&&query.trim()?'Заказ не найден. Попробуйте номер или название поставщика.':'Подходящих оплат не найдено.'}</p>:null}
             {basis==='ORDER'&&!query.trim()?<button type="button" className="p-3 text-xs underline" onClick={()=>setEarlier(v=>!v)}>{earlier?'Только недавние заказы':'Показать более ранние'}</button>:null}
             {basis==='ORDER'?history.map(o=><details key={o.ref} className="border-t border-[var(--portal-border)] p-3 text-sm"><summary>{o.supplierPartner} · №{o.number} — {activeOrderRefs.includes(o.ref)?'Заявка уже в календаре':purpose(o)==='review'?'Новая оплата недоступна':buyerAdvanceOffsetPending(o,supplierBalances[o.supplierPartner])?'У поставщика есть аванс':'Не предлагается для оплаты'}</summary><ProcurementReceiptEvidence evidence={o.receiptSettlement} paymentClosure={o.paymentClosure} noAcquisitions={o.noAcquisitions}/></details>):null}
           </div>:null}
@@ -120,8 +123,9 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
       </section>:null}
       {first?<>
         <section className="rounded-xl border border-[var(--portal-border)] bg-white p-3" aria-label="Выбранная оплата">
-          <div className="flex items-start justify-between gap-4"><div><p className="text-base font-bold">{first.supplierPartner}</p><p className="mt-1 text-sm text-slate-600">{first.ref.startsWith('debt:')?'В счёт долга поставщику':'Заказ № '+first.number+(first.date?' · '+orderDate(first.date):'')}</p></div><button type="button" disabled={saving} onClick={()=>openPicker()} className="text-sm font-semibold text-[#785537] underline underline-offset-4">Изменить</button></div>
+          <div className="flex items-start justify-between gap-4"><div><p className="text-base font-bold">{first.supplierPartner}</p><p className="mt-1 text-sm text-slate-600">{isAdvanceChoice(first.ref)?SUPPLIER_ADVANCE_LABEL:first.ref.startsWith('debt:')?'В счёт долга поставщику':'Заказ № '+first.number+(first.date?' · '+orderDate(first.date):'')}</p></div><button type="button" disabled={saving} onClick={()=>openPicker()} className="text-sm font-semibold text-[#785537] underline underline-offset-4">Изменить</button></div>
           <ProcurementPaymentDebtSummary balance={supplierBalances[first.supplierPartner]} unavailable={supplierDebtError} orders={selected} disabled={saving} onRemoveOrder={ref=>setRefs(current=>current.filter(value=>value!==ref))}/>
+          {isAdvanceChoice(first.ref)&&supplierBalances[first.supplierPartner]?.advance>0?<p role="status" className="mt-2 text-sm text-amber-800">У поставщика уже есть аванс. Новая сумма добавится к запланированным выплатам и потребует согласования.</p>:null}
           {first.plannedActiveAmount>0?<p className="mt-2 text-xs font-semibold text-amber-800">Уже в заявках: {rub(first.plannedActiveAmount)}</p>:null}
           {ordersWithDetails.length?<details className="mt-3 text-xs text-slate-500"><summary className="cursor-pointer">Документы и комментарии</summary><div className="mt-2 space-y-3">
             {ordersWithDetails.map(o=><div key={o.ref}>

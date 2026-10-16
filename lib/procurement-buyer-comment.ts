@@ -16,7 +16,7 @@ export function buyerPaymentComment(value: string) {
     if (!parts.review) break;
     current = parts.comment;
   }
-  return ['Оплата по выбранным заказам', 'В счёт долга поставщику'].includes(current) ? '' : current;
+  return ['Оплата по выбранным заказам', 'В счёт долга поставщику', 'Аванс поставщику'].includes(current) ? '' : current;
 }
 export function preservePaymentReview(previous: string, incoming: string) {
   if (splitPaymentReview(incoming).review) return incoming;

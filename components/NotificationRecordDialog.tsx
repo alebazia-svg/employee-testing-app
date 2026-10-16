@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
+import {supplierOnlyPaymentLabel} from '@/lib/procurement-supplier-advance';
 import {useRouter} from 'next/navigation';
 import {X} from 'lucide-react';
 import type {NotificationDetail,NotificationPlan} from '@/lib/notification-detail';
@@ -55,7 +56,7 @@ export function NotificationRecordDialog({item,onClose,onViewed}:{item:Notificat
         {!detail?<><p className="whitespace-pre-wrap text-sm">{item.body}</p>{!error&&<p role="status" className="text-sm text-slate-500">Загружаем актуальные данные…</p>}</>:null}
         {plan&&<>
           <div hidden={receiptPreview} className="space-y-4">
-          <div><h3 className="text-xl font-bold">{plan.supplierPartner}</h3><p className="mt-1 text-sm text-slate-500">{plan.planCode} · {plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):plan.paymentPurpose==='DELIVERY'?'За доставку':'В счёт долга поставщику'}</p></div>
+          <div><h3 className="text-xl font-bold">{plan.supplierPartner}</h3><p className="mt-1 text-sm text-slate-500">{plan.planCode} · {plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):plan.paymentPurpose==='DELIVERY'?'За доставку':supplierOnlyPaymentLabel(plan)}</p></div>
           <dl className="grid grid-cols-2 gap-4 rounded-xl border border-stone-200 bg-stone-50 p-4"><div><dt className="text-xs text-slate-500">Сумма заявки</dt><dd className="mt-1 text-xl font-bold">{Number(plan.foreignAmount||plan.plannedAmount).toLocaleString('ru-RU')} {plan.foreignAmount?plan.paymentMethod:'₽'}</dd></div><div><dt className="text-xs text-slate-500">Подготовить к</dt><dd className="mt-1 font-semibold">{new Date(plan.plannedDate).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'})}</dd></div></dl>
           <p className="text-sm">{({SUBMITTED:'Ждёт решения',APPROVED:'Заявка согласована',NEEDS_CHANGES:'Нужно исправить',CANCELLED:'Заявка отменена',COMPLETED_WITHOUT_TOPUP:'Завершена без доплаты'} as Record<string,string>)[plan.status]||plan.status}</p>
           <p className="text-sm text-slate-600">{({CASH:'Наличные',BANK:'Перевод на карту',ACCOUNTABLE_QR:'Оплата по QR',USDT:'Оплата в USDT',CNY:'Перевод в юанях'} as Record<string,string>)[plan.paymentMethod]||plan.paymentMethod}{plan.exchangeRate&&` · курс ${Number(plan.exchangeRate).toLocaleString('ru-RU')} ₽`}</p>

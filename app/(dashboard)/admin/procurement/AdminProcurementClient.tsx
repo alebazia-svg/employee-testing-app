@@ -13,6 +13,7 @@ import "./procurement-workspace.css";
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 import { ProcurementReceipts } from '@/components/ProcurementReceipts';
 import { hasConfirmedReceiptPayment } from '@/lib/procurement-receipt-policy';
+import {supplierOnlyPaymentLabel} from '@/lib/procurement-supplier-advance';
 import { useProcurementVisualPreview } from '@/components/ProcurementVisualPreview';
 import { ProcurementCompletionAction } from '@/components/ProcurementCompletionAction';
 import { isFinishedPaymentState } from '@/lib/procurement-small-remainder';
@@ -363,7 +364,7 @@ export default function AdminProcurementClient({
   const orderLabel = (plan: Plan) =>
     visualPreview?.labels?.[plan.id] ?? (plan.paymentPurpose==='DELIVERY'?'Доставка':plan.orderNumbers?.filter(Boolean).length
       ? `Заказы: ${plan.orderNumbers.filter(Boolean).join(", ")}`
-      : "В счёт долга поставщику");
+      : supplierOnlyPaymentLabel(plan));
   const planComment = (plan: Plan) =>
     plan.condition && plan.condition !== "Оплата по выбранным заказам"
       ? plan.condition

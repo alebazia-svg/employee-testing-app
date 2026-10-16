@@ -24,6 +24,7 @@ import { planningSubmissionError } from '@/lib/procurement-planning-submit';
 import { planningRequestOverlap } from '@/lib/procurement-planning-overlap';
 import { ordersForRequest, reviewRequestCondition } from '@/lib/procurement-order-selection';
 import { fetchManagerSupplierNames } from '@/lib/procurement-supplier-roster';
+import {SUPPLIER_ADVANCE} from '@/lib/procurement-supplier-advance';
 
 function jsonValue(value: unknown) {
   return JSON.parse(
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
 
   try {
   const managerName = user.oneCManagerName?.trim() || user.name;
-  const hasDebt = payload.rows.some(row => row.basis === 'DEBT');
+  const hasDebt = payload.rows.some(row => row.basis === 'DEBT' || row.basis === 'ADVANCE');
   const [source, settlements, debtSupplierNames, debtEvidence] = await Promise.all([
     fetchSupplierOrderFinance(), fetchSupplierSettlements(),
     hasDebt ? fetchManagerSupplierNames(managerName) : Promise.resolve([]),
@@ -65,20 +66,23 @@ export async function POST(req: Request) {
   );
   const seen = new Set<string>();
   const checkedRows = payload.rows.map((row) => {
-    if(row.paymentPurpose!=null&&row.paymentPurpose!=='GOODS')return {error:'Добавьте доставку отдельной заявкой.'} as const;
-    if (row.basis != null && row.basis !== 'ORDER' && row.basis !== 'DEBT') return { error: 'Неизвестное основание оплаты.' } as const;
+    const advance = row.basis === 'ADVANCE';
+    if(row.paymentPurpose!=null&&row.paymentPurpose!==(advance?SUPPLIER_ADVANCE:'GOODS'))return {error:'Назначение не соответствует основанию оплаты.'} as const;
+    if (row.basis != null && !['ORDER','DEBT','ADVANCE'].includes(String(row.basis))) return { error: 'Неизвестное основание оплаты.' } as const;
     const ref = typeof row.orderRef === "string" ? row.orderRef.trim() : "";
-    const debt = row.basis === 'DEBT';
+    const debt = row.basis === 'DEBT' || advance;
     const supplier = typeof row.supplierPartner === 'string' ? row.supplierPartner.trim() : '';
     const order = debt ? (supplierNames.includes(supplier)
       ? normalizeSupplierOrder({ref: `debt:${supplier}`, supplier_partner: supplier, manager: managerName}) : undefined) : allowed.get(ref);
     const rowKey = debt ? `debt:${supplier}` : ref;
     if (!order || seen.has(rowKey)) return { error: "В списке есть недоступная или повторяющаяся оплата." } as const;
     if (!debt && !['order','prepayment'].includes(buyerOrderPurpose(order, supplierBalances?.bySupplier[order.supplierPartner]))) return {error:'Заказ не предлагается для новой оплаты: долга нет или расчёты на сверке. Обновите список.'} as const;
-    if (debt && (ref || supplierPosition(supplierBalances?.bySupplier[supplier]) !== 'debt')) return { error: 'Долг поставщику отсутствует или находится на сверке. Обновите данные.' } as const;
+    if (debt && ref) return {error:'Оплата поставщику без заказа не должна содержать ссылку на заказ.'} as const;
+    if (debt && !advance && supplierPosition(supplierBalances?.bySupplier[supplier]) !== 'debt') return { error: 'Долг поставщику отсутствует или находится на сверке. Обновите данные.' } as const;
     seen.add(rowKey);
     const method = typeof row.paymentMethod === "string" ? row.paymentMethod : "";
     const checked = validatePaymentPlan({
+      paymentPurpose: advance ? SUPPLIER_ADVANCE : 'GOODS',
       supplierPartner: order.supplierPartner,
       supplierCounterparty: debt ? '' : order.supplierCounterparty,
       orderRefs: debt ? [] : [order.ref],
@@ -150,6 +154,7 @@ export async function POST(req: Request) {
         data: {
           planCode: buildPaymentPlanCode(),
           managerUserId: user.id,
+          paymentPurpose: data.paymentPurpose,
           supplierPartner: data.supplierPartner,
           supplierCounterparty: data.supplierCounterparty,
           orderRefs: data.orderRefs,

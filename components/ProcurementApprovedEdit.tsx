@@ -4,6 +4,7 @@ import {useRouter} from 'next/navigation';
 import {ProcurementUsdtFields} from './ProcurementUsdtFields';
 import {ProcurementCnyFields} from './ProcurementCnyFields';
 import {buyerPaymentComment} from '@/lib/procurement-buyer-comment';
+import {supplierOnlyPaymentLabel} from '@/lib/procurement-supplier-advance';
 
 type Plan={id:string;supplierPartner:string;plannedDate:string;updatedAt?:string;plannedAmount:string;foreignAmount:string|null;exchangeRate:string|null;paymentMethod:string;condition:string;orderNumbers:string[];paymentPurpose?:string};
 const draftOf=(p:Plan)=>({plannedDate:p.plannedDate.slice(0,10),plannedAmount:p.plannedAmount,foreignAmount:p.foreignAmount||'',exchangeRate:p.exchangeRate||'',paymentMethod:p.paymentMethod,condition:buyerPaymentComment(p.condition)});
@@ -29,7 +30,7 @@ export function ProcurementApprovedEdit({plan,today,disabled=false,pending=false
   const input='mt-1 block min-h-11 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-normal';
   return <form aria-label="Изменить заявку" onSubmit={submit} style={{gridColumn:'1 / -1'}} className="space-y-3 rounded-xl border border-stone-200 p-4">
     <h3 className="font-bold">Изменить заявку</h3>
-    <p className="text-xs text-slate-600">{plan.paymentPurpose==='DELIVERY'?'Доставка':plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):'В счёт долга поставщику'} · основание оплаты сохраняется</p>
+    <p className="text-xs text-slate-600">{plan.paymentPurpose==='DELIVERY'?'Доставка':plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):supplierOnlyPaymentLabel(plan)} · основание оплаты сохраняется</p>
     <fieldset disabled={busy} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-semibold">Подготовить к<input type="date" required value={draft.plannedDate} min={draft.plannedDate===original.plannedDate?undefined:today} onChange={e=>setDraft({...draft,plannedDate:e.target.value})} className={input}/></label>
       <label className="text-sm font-semibold">Способ оплаты<select value={draft.paymentMethod} onChange={e=>setDraft({...draft,paymentMethod:e.target.value,foreignAmount:'',exchangeRate:''})} className={input}><option value="CASH">Наличные</option><option value="BANK">Перевод на карту</option><option value="ACCOUNTABLE_QR">Оплата по QR</option><option value="USDT">Оплата в USDT</option><option value="CNY">Перевод в юанях</option></select></label></div>
