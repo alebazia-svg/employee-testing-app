@@ -1102,10 +1102,10 @@ function isConfiguredSalaryType(value: string | null): value is ConfiguredSalary
 
 function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey: string, reportManagerNames: Set<string> = new Set()) {
   const directory: Record<string, PayrollEmployee> = { ...payrollEmployees };
-  if (periodKey === FILM_TRAINEE_PERIOD) directory[FILM_TRAINEE_NAME] = {
+  if (periodKey >= FILM_TRAINEE_PERIOD) directory[FILM_TRAINEE_NAME] = {
     name: FILM_TRAINEE_NAME, department: 'Розничные продажи',
     position: 'Стажёр по поклейке · услуги 70%', salaryType: 'retail_sales_bonus',
-    activeThroughPeriod: FILM_TRAINEE_PERIOD,
+    activeFromPeriod: FILM_TRAINEE_PERIOD,
   };
   for (const user of users) {
     const name = user.payrollName?.trim() || user.name.trim();
@@ -6888,11 +6888,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
     });
   }
 
-  return (
-    <AdminShell pageTitle="Зарплата" pageDescription="Начисления за выбранный месяц">
-      <div className='max-w-full overflow-x-hidden'>
-      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
-        <div className='flex flex-wrap items-end gap-2'>
+  const periodPicker = (
+    <div className='flex flex-wrap items-end gap-2'>
           <label className='grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500'>
             Месяц
             <select value={month} onChange={(event) => setMonth(event.target.value)} className='min-w-[150px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
@@ -6906,11 +6903,16 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
             </select>
           </label>
         </div>
-      </div>
+  );
+  return (
+    <AdminShell pageTitle="Зарплата" pageDescription="Начисления за выбранный месяц">
+      <div className='max-w-full overflow-x-hidden'>
+      {(!visualPreview || !oneCShadowCalculation) && <div className="mb-4">{periodPicker}</div>}
 
       <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4'>
         {visualPreview && oneCShadowCalculation && <PayrollOverviewPreview
           key={selectedPayrollPeriodKey}
+          periodPicker={periodPicker}
           period={`${months[Number(month)]} ${year}`}
           date={oneCShadowSource ? formatPayrollControlDate(oneCShadowSource.period.verifiedThrough) : '—'}
           preliminary={oneCShadowCalculation.mode === 'preliminary'}

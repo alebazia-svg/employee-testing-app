@@ -1,5 +1,6 @@
-// The shared 1C login is reusable. This assignment is intentionally bounded to
-// the owner's approved September trial, not a permanent employee-name alias.
+// Owner decision 2026-10-16: this assignment starts in September and continues
+// until explicitly changed. Preserve the historical payroll identity for saved
+// runs and advances; June's assignment to Magomed remains separate.
 export const FILM_TRAINEE_PERIOD = '2026-09';
 export const FILM_TRAINEE_NAME = 'СтажерРозница · поклейка (09.2026)';
 export function isFilmTrainee(manager: string) {

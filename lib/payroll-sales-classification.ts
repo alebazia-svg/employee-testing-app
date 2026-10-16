@@ -85,7 +85,7 @@ function getPayrollManagerName(manager: string) {
 }
 export function getPayrollSalesManagerNameForPeriod(manager: string, periodKey: string) {
   if (normalizeText(manager) === normalizeText(legacyRetailTraineeSourceName)) {
-    return periodKey === '2026-06' ? retailTraineePayrollName : periodKey === FILM_TRAINEE_PERIOD ? FILM_TRAINEE_NAME : null;
+    return periodKey === '2026-06' ? retailTraineePayrollName : periodKey >= FILM_TRAINEE_PERIOD ? FILM_TRAINEE_NAME : null;
   }
   return getPayrollManagerName(manager);
 }
@@ -894,7 +894,7 @@ export function classifyPayrollSalesRows(rows: SalesRow[], classificationRules: 
         base: service ? row.revenue : 0, percent: service ? 0.7 : 0,
         bonus: service ? row.revenue * 0.7 : 0,
         formula: service ? 'выручка услуг × 70%' : 'не начисляется',
-        classificationReason: service ? 'Все услуги стажёра: временное правило за сентябрь 2026' : 'Материалы и товары не входят в оплату услуг стажёра',
+        classificationReason: service ? 'Все услуги стажёра: 70% с сентября 2026 до изменения условий' : 'Материалы и товары не входят в оплату услуг стажёра',
         matchedRule: service ? 'film-trainee-september-service' : 'film-trainee-september-excluded',
         includedInWholesaleBase: null, creditIncludedInBonus: false, creditProductType: null,
       };

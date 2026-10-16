@@ -78,10 +78,10 @@ export function parsePayrollAdvanceResponse(value: unknown, expected: {
 }
 
 // Names are a conservative fallback until portal employee identities contain
-// 1C refs. No fuzzy spelling matching and no permanent alias for the trainee.
+// 1C refs. No fuzzy spelling matching; trainee assignment starts in September.
 export function matchPayrollAdvanceEmployee(document: PayrollAdvanceDocument, names: string[]) {
   const source = normalize(document.employeeName);
-  if (source === 'стажеррозница' && document.periodKey === FILM_TRAINEE_PERIOD) {
+  if (source === 'стажеррозница' && document.periodKey >= FILM_TRAINEE_PERIOD) {
     return names.includes(FILM_TRAINEE_NAME) ? FILM_TRAINEE_NAME : null;
   }
   const candidates = names.filter((name) => {

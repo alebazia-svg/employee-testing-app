@@ -184,11 +184,14 @@ describe('compact 1C payroll projection', () => {
     assert.equal('rows' in compact, false);
   });
 
-  it('keeps September trainee separate from June Magomed and other periods', () => {
+  it('continues the service trainee from September without changing the June identity', () => {
     const row: SalesRow = { manager: 'СтажерРозница', client: 'Розница', category: 'Кабели', item: 'Кабель', registrar: '', registrars: [], revenue: 1000, cost: 500, grossProfit: 500, profitability: 50 };
     assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-09').managerSummaries[0]?.manager, FILM_TRAINEE_NAME);
     assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-08').managerSummaries.length, 0);
-    assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-10').managerSummaries.length, 0);
+    assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-10').managerSummaries[0]?.manager, FILM_TRAINEE_NAME);
+    assert.ok(buildPayrollEmployeeDirectory([], '2026-10')[FILM_TRAINEE_NAME]);
+    assert.ok(buildPayrollEmployeeDirectory([], '2027-01')[FILM_TRAINEE_NAME]);
+    assert.equal(buildPayrollEmployeeDirectory([], '2026-08')[FILM_TRAINEE_NAME], undefined);
     assert.equal(buildPayrollSalesCompactSnapshot([row], [], '2026-06').managerSummaries[0]?.manager, 'Костеренко Магомед');
   });
 });
@@ -199,6 +202,8 @@ describe('September service-only trainee', () => {
       calculationDetails: [{ component: 'Услуги оказываемые 70%', base: 43200, amount: 30240 }, { component: 'Начислено за месяц', amount: 30240 }, { component: 'К выплате', amount: 30240 }] };
     const totals = { grossPay: 30240, netPay: 30240, advance: 0 };
     assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-09', totals));
+    assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2026-10', totals));
+    assert.doesNotThrow(() => validatePayrollCompensationSnapshot([row], [], '2027-01', totals));
     assert.throws(() => validatePayrollCompensationSnapshot([row], [], '2026-08', totals));
     assert.throws(() => validatePayrollCompensationSnapshot([{ ...row, dayPay: 600 }], [], '2026-09', totals));
     assert.throws(() => validatePayrollCompensationSnapshot([{ ...row, accessoryBonus: 50 }], [], '2026-09', totals));
@@ -218,7 +223,8 @@ describe('September service-only trainee', () => {
     assert.equal(full.rows.filter(row => row.calculationType === 'MANUAL_EXCLUDED').length, 3);
     const directory = buildPayrollEmployeeDirectory([], '2026-09');
     assert.equal(buildPayrollEmployeeDirectory([], '2026-08')[FILM_TRAINEE_NAME], undefined);
-    assert.equal(buildPayrollEmployeeDirectory([], '2026-10')[FILM_TRAINEE_NAME], undefined);
+    assert.ok(buildPayrollEmployeeDirectory([], '2026-10')[FILM_TRAINEE_NAME]);
+    assertMoney(buildPayrollSalesCompactSnapshot(source, [], '2026-10').managerSummaries[0].totalBonus, 910);
     const result = buildFullPayrollRow(summary, { workedDays: '20', lateCount: '0', advance: '0', comment: '' }, directory);
     assertMoney(result.grossPay, 910);
     assertMoney(result.netPay, 910);
@@ -762,7 +768,7 @@ describe('payroll calculation regression rules', () => {
     const traineeRow = salesRow({ manager: traineeManager, revenue: 1000, cost: 400, grossProfit: 600 });
 
     assert.equal(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '8', '2026')[0]?.manager, FILM_TRAINEE_NAME);
-    assert.deepEqual(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '9', '2026'), []);
+    assert.equal(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '9', '2026')[0]?.manager, FILM_TRAINEE_NAME);
     assert.equal(mapLegacyRetailTraineeRowsForPeriod([traineeRow], '5', '2026')[0]?.manager, 'Костеренко Магомед');
   });
 

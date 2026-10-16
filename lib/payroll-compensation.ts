@@ -116,7 +116,7 @@ function validatePayrollCalculationDetails(row: Record<string, unknown>, bonuses
   };
   const expected: Array<{ component: string; amount: number; comment?: string }> = [];
   if (isFilmTrainee(String(row.employeeName))) {
-    if (periodKey !== FILM_TRAINEE_PERIOD || row.salaryType !== 'retail_sales_bonus') fail();
+    if (periodKey < FILM_TRAINEE_PERIOD || row.salaryType !== 'retail_sales_bonus') fail();
     for (const field of ['dayPay', 'disciplineBonus', 'plotterBonus', 'techBonus', 'accessoryBonus', 'creditBonus', 'agentCreditCommission']) {
       if (amount(field) !== 0) fail();
     }

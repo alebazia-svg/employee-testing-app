@@ -57,10 +57,13 @@ test('manual advance is not added a second time even for equal amounts', () => {
   const result = applyPayrollOneCAdvances([{ ...payroll[0], advance: 15000, netPay: 20490 }], read);
   assert.equal(result.rows[0].netPay, 20490); assert.equal(result.issues.length, 1);
 });
-test('trainee identity is September only and unknown recipients are flagged', () => {
+test('trainee advances continue after September without matching Magomed', () => {
   const read = parsePayrollAdvanceResponse(payload(), expected);
   const result = applyPayrollOneCAdvances([{ ...payroll[0], manager: 'Костеренко Магомед' }], read);
   assert.equal(result.rows[0].advance, 0); assert.equal(result.issues.length, 1);
   const october = { ...read, documents: read.documents.map(d => ({ ...d, periodKey: '2026-10' })) };
-  assert.equal(applyPayrollOneCAdvances(payroll, october).issues.length, 1);
+  const applied = applyPayrollOneCAdvances(payroll, october);
+  assert.equal(applied.issues.length, 0);
+  assert.equal(applied.rows[0].advance, 15000);
+  assert.equal(applied.rows[0].netPay, 20490);
 });
