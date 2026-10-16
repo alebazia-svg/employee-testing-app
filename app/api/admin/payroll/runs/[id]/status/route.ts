@@ -6,7 +6,7 @@ import {
   isPayrollRunStatus,
 } from '@/lib/payroll-run-status';
 import { prisma } from '@/lib/prisma';
-import { automaticPayrollApprovalIssues } from '@/lib/payroll-automatic-approval';
+import { payrollApprovalReview } from '@/lib/payroll-automatic-approval';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,12 +48,17 @@ export async function PATCH(req: Request, props: RouteContext) {
       }
 
       const changedAt = new Date();
+      let acceptance: Prisma.InputJsonObject | undefined;
       let replacedFinal: { id: number; runNumber: number; netPay: number; createdAt: Date } | null = null;
 
       if (nextStatus === 'FINAL') {
         await tx.$queryRaw`SELECT id FROM "PayrollPeriod" WHERE id = ${run.periodId} FOR UPDATE`;
-        const issues = automaticPayrollApprovalIssues(run.sourceSummary, run.reviewCount);
-        if (issues.length) return { error: 'REVIEW_REQUIRED' as const, issues };
+        const review = payrollApprovalReview(run.sourceSummary, run.reviewCount, body.acceptedIssues, body.approvalComment);
+        if (review.pending.length) return { error: 'REVIEW_REQUIRED' as const, issues: review.pending, reviewableIssues: review.reviewable };
+        if (review.acceptedIssues.length) acceptance = {
+          ...(run.sourceSummary as Prisma.JsonObject),
+          approvalAcceptance: { issues: review.acceptedIssues, comment: review.comment, userId: access.user.id, at: changedAt.toISOString() },
+        };
         const existingFinal = await tx.payrollRun.findFirst({
           where: {
             periodId: run.periodId,
@@ -89,6 +94,7 @@ export async function PATCH(req: Request, props: RouteContext) {
         where: { id },
         data: {
           status: nextStatus,
+          ...(acceptance ? { sourceSummary: acceptance } : {}),
           checkedAt: nextStatus === 'CHECKED' || nextStatus === 'FINAL' ? changedAt : run.checkedAt,
           finalizedAt: nextStatus === 'FINAL' ? run.finalizedAt ?? changedAt : run.finalizedAt,
           finalizedByUserId: nextStatus === 'FINAL' ? run.finalizedByUserId ?? access.user.id : run.finalizedByUserId,
@@ -100,7 +106,7 @@ export async function PATCH(req: Request, props: RouteContext) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     if ('error' in outcome) {
-      if (outcome.error === 'REVIEW_REQUIRED') return Response.json({ error: `Ведомость нельзя утвердить: ${outcome.issues.join(' ')} Исправьте рабочий расчёт и сохраните новую версию.` }, { status: 409 });
+      if (outcome.error === 'REVIEW_REQUIRED') return Response.json({ error: `До утверждения: ${outcome.issues.join(' ')}`, reviewableIssues: outcome.reviewableIssues }, { status: 409 });
       if (outcome.error === 'NOT_FOUND') return Response.json({ error: 'Payroll run not found.' }, { status: 404 });
       if (outcome.error === 'PERIOD_CLOSED') return Response.json({ error: 'Период закрыт' }, { status: 409 });
       if (outcome.error === 'INVALID_TRANSITION') return Response.json({ error: 'Недопустимый переход статуса' }, { status: 409 });

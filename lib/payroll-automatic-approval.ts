@@ -17,3 +17,30 @@ export function automaticPayrollApprovalIssues(summary: unknown, reviewCount: nu
   if (String(data.verifiedThrough ?? '').slice(0, 10) !== expected) issues.push('Данные 1С ещё не охватывают весь месяц.');
   return [...new Set(issues)];
 }
+
+// Explicit allow-list: unknown issues, source completeness and calculation errors
+// remain blocking. Acceptance never changes attendance or payroll amounts.
+export function payrollApprovalReview(summary: unknown, reviewCount: number, accepted: unknown = [], comment: unknown = '') {
+  const issues = automaticPayrollApprovalIssues(summary, reviewCount);
+  const notice = 'В сохранённой ведомости остались вопросы по сотрудникам.';
+  const reviewable = issues.filter(issue => /^.+: (Не указаны опоздания|Посещаемость по форме не подтверждена)$/.test(issue));
+  const selected = Array.isArray(accepted) ? accepted.filter((item): item is string => typeof item === 'string') : [];
+  const note = typeof comment === 'string' ? comment.trim() : '';
+  const valid = note.length >= 5 && note.length <= 1000 && selected.length > 0
+    && selected.length === new Set(selected).size && selected.every(item => reviewable.includes(item));
+  const acceptedIssues = valid ? selected : [];
+  const pending = issues.filter(issue => !acceptedIssues.includes(issue)
+    && !(issue === notice && reviewable.length >= reviewCount && reviewable.length > 0 && reviewable.every(item => acceptedIssues.includes(item))));
+  return { pending, reviewable, acceptedIssues, comment: note };
+}
+
+export function payrollApprovalAcceptanceText(summary: unknown): string | null {
+  if (!summary || typeof summary !== 'object') return null;
+  const value = (summary as Record<string, unknown>).approvalAcceptance;
+  if (!value || typeof value !== 'object') return null;
+  const entry = value as Record<string, unknown>;
+  if (typeof entry.comment !== 'string' || !Array.isArray(entry.issues)) return null;
+  const date = typeof entry.at === 'string' ? new Date(entry.at) : null;
+  const when = date && Number.isFinite(date.getTime()) ? date.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' МСК' : '';
+  return `Утверждено с замечаниями: ${entry.issues.filter(item => typeof item === 'string').join('; ')}. Решение: ${entry.comment.replace(/[.\s]+$/, '')}. Администратор №${entry.userId}${when ? `, ${when}` : ''}`;
+}

@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Database, Eye, Fi
 import { AdminShell } from '@/components/AdminShell';
 import { isPayrollPeriodAvailable } from '@/lib/payroll-period-availability';
 import PayrollOverviewPreview from './PayrollOverviewPreview';
-import { automaticPayrollApprovalIssues, automaticPayrollDisplayedTotal } from '@/lib/payroll-automatic-approval';
+import { automaticPayrollApprovalIssues, automaticPayrollDisplayedTotal, payrollApprovalAcceptanceText, payrollApprovalReview } from '@/lib/payroll-automatic-approval';
 import { savePayrollReviewDecisions } from '@/lib/payroll-review-save';
 import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
 import { Badge } from '@/components/ui/badge';
@@ -3992,6 +3992,9 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   const [payrollHistoryActionId, setPayrollHistoryActionId] = useState<string | null>(null);
   const [payrollFinalReplacement, setPayrollFinalReplacement] = useState<PayrollFinalReplacement | null>(null);
   const [payrollFinalApproval, setPayrollFinalApproval] = useState<{ periodKey: string; run: SavedPayrollRunSummary } | null>(null);
+  const [approvalReviewable, setApprovalReviewable] = useState<string[]>([]);
+  const [approvalAccepted, setApprovalAccepted] = useState<string[]>([]);
+  const [approvalComment, setApprovalComment] = useState('');
   useEffect(() => {
     if (payrollFinalApproval) document.getElementById('payroll-final-confirmation')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [payrollFinalApproval]);
@@ -6137,6 +6140,9 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   }
 
   function requestPayrollRunFinal(period: SavedPayrollPeriod, run: SavedPayrollRunSummary) {
+    setApprovalReviewable(payrollApprovalReview(run.sourceSummary, run.reviewCount).reviewable);
+    setApprovalAccepted([]);
+    setApprovalComment('');
     const existingFinal = period.runs.find((candidate) => candidate.status === 'FINAL' && candidate.id !== run.id);
     if (existingFinal) {
       setPayrollFinalReplacement({ periodKey: period.periodKey, targetRun: run, existingFinal });
@@ -6155,16 +6161,20 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       const response = await fetch(`/api/admin/payroll/runs/${runId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, replaceExistingFinal }),
+        body: JSON.stringify({ status, replaceExistingFinal,
+          ...(status === 'FINAL' && payrollFinalApproval?.run.id === runId ? { acceptedIssues: approvalAccepted, approvalComment } : {}),
+        }),
       });
 
       const body = await response.json().catch(() => ({})) as {
         error?: unknown;
+        reviewableIssues?: unknown;
         runNumber?: unknown;
         replacedFinal?: { runNumber?: unknown } | null;
       };
 
       if (!response.ok) {
+        setApprovalReviewable(Array.isArray(body.reviewableIssues) ? body.reviewableIssues.filter((issue): issue is string => typeof issue === 'string') : []);
         throw new Error(typeof body.error === 'string' ? body.error : 'Не удалось изменить статус расчёта.');
       }
 
@@ -6908,8 +6918,14 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           <p className='mt-2'>К выплате по ведомости: {formatMoney(payrollFinalApproval.run.netPay)}.</p>
           <p className='mt-2 text-sm text-slate-600'>Эта версия станет итоговой. Её суммы не будут меняться при обновлении данных 1С. Выплаты это действие не создаёт.</p>
           {saveError && <p role='alert' className='mt-3 text-sm text-amber-800'>{saveError}</p>}
+          {approvalReviewable.length > 0 && <fieldset className='mt-3 rounded-lg border border-amber-200 p-3'>
+            <legend className='px-1 font-semibold'>Решение администратора</legend>
+            <p className='text-sm text-slate-600'>Примите конкретные замечания и объясните решение. Суммы не изменятся; решение сохранится в истории этой ведомости.</p>
+            {approvalReviewable.map(issue => <label key={issue} className='mt-3 flex items-start gap-2 text-sm'><input type='checkbox' className='mt-1' checked={approvalAccepted.includes(issue)} onChange={event => setApprovalAccepted(values => event.target.checked ? [...values, issue] : values.filter(value => value !== issue))} /><span>{issue}</span></label>)}
+            <label className='mt-3 block text-sm font-medium'>Обоснование решения<textarea maxLength={1000} value={approvalComment} onChange={event => setApprovalComment(event.target.value)} placeholder='Например: бонус за дисциплину за этот месяц — 0 ₽, подтверждаю.' className='mt-1 block min-h-20 w-full rounded-lg border p-2' /></label>
+          </fieldset>}
           <div className='mt-4 flex flex-wrap gap-3'>
-            <button type='button' disabled={payrollHistoryActionId !== null} onClick={() => void updatePayrollRunStatus(payrollFinalApproval.run.id, 'FINAL')} className='min-h-11 rounded-lg bg-primary px-4 py-2 font-semibold text-white disabled:opacity-50'>{payrollHistoryActionId ? 'Сохраняю…' : 'Утвердить ведомость'}</button>
+            <button type='button' disabled={payrollHistoryActionId !== null || (approvalReviewable.length > 0 && (approvalAccepted.length !== approvalReviewable.length || approvalComment.trim().length < 5))} onClick={() => void updatePayrollRunStatus(payrollFinalApproval.run.id, 'FINAL')} className='min-h-11 rounded-lg bg-primary px-4 py-2 font-semibold text-white disabled:opacity-50'>{payrollHistoryActionId ? 'Сохраняю…' : approvalReviewable.length ? 'Утвердить с замечаниями' : 'Утвердить ведомость'}</button>
             <button type='button' disabled={payrollHistoryActionId !== null} onClick={() => setPayrollFinalApproval(null)} className='min-h-11 rounded-lg border px-4 py-2'>Отмена</button>
           </div>
         </section>}
@@ -7556,6 +7572,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                       <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
                         <div>
                           <h2 className='text-lg font-bold text-slate-900'>Сохранённый расчёт №{selectedSavedRun.runNumber}</h2>
+                          {payrollApprovalAcceptanceText(selectedSavedRun.sourceSummary) && <p className='mt-2 text-sm text-amber-900'>{payrollApprovalAcceptanceText(selectedSavedRun.sourceSummary)}</p>}
                           <p className='mt-1 text-sm text-slate-500'>
                             {selectedSavedRun.period.periodKey} · {getPayrollRunStatusLabel(selectedSavedRun.status)} · {new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU')}
                           </p>
@@ -9068,6 +9085,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                 <div className='mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
                   <div>
                     <h2 className='text-lg font-bold text-slate-900'>Сохранённый расчёт №{selectedSavedRun.runNumber}</h2>
+                    {payrollApprovalAcceptanceText(selectedSavedRun.sourceSummary) && <p className='mt-2 text-sm text-amber-900'>{payrollApprovalAcceptanceText(selectedSavedRun.sourceSummary)}</p>}
                     <p className='mt-1 text-sm text-slate-500'>{selectedSavedRun.period.periodKey} · {getPayrollRunStatusLabel(selectedSavedRun.status)} · {new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU')}</p>
                   </div>
                   <div className='flex flex-wrap gap-2'>
