@@ -1558,6 +1558,11 @@ export function EmployeeTodayClient({
       const snapshot = readEmployeeWorkdaySnapshot(payload);
       if (!snapshot || controller.signal.aborted) return;
 
+      if (snapshot.workDay?.endedAt || snapshot.workDay?.status === 'completed') {
+        setActiveHandoverTaskId(null);
+        setCloseBlockedSheetOpen(false);
+        setHandoverSaveError('');
+      }
       setWorkDay(snapshot.workDay);
       setUnfinished(snapshot.unfinishedWorkDay);
       setDepartmentWorkdaysState(snapshot.departmentWorkdays);
@@ -3449,8 +3454,7 @@ export function EmployeeTodayClient({
       // A lost response does not mean the server failed to finish the shift.
       // Re-read its state before offering another submission.
       const snapshot = await syncCurrentWorkdayState(true);
-      if (snapshot?.shiftControl.tasks.some((item) => item.id === task.id && item.status === 'done')
-        && (snapshot.workDay?.status === 'completed' || snapshot.workDay?.endedAt)) {
+      if (snapshot?.workDay?.status === 'completed' || snapshot?.workDay?.endedAt) {
         setActiveHandoverTaskId(null);
         setHandoverSaveError('');
         setMessage('Рабочий день завершён');
@@ -3476,10 +3480,12 @@ export function EmployeeTodayClient({
     }
   }
 
+  // Compatibility for permissions issued before server-side closure was released.
+  // New approvals are consumed and close the workday in the admin transaction.
   useEffect(() => {
     const request = cashEncashmentExceptionRequestState;
     const task = activeHandoverTask;
-    const isApprovedEncashmentStep = request?.status === 'approved' && handoverSteps[handoverStep] === 'encashment';
+    const isApprovedEncashmentStep = request?.status === 'approved' && !request.consumedAt && handoverSteps[handoverStep] === 'encashment';
     if (!isApprovedEncashmentStep || !task || isCompleted || isSaving) {
       if (request?.status !== 'approved') approvedCashExceptionAutoFinishRef.current = null;
       return;
@@ -3495,7 +3501,7 @@ export function EmployeeTodayClient({
   useEffect(() => {
     const request = closeExceptionRequestState;
     const task = shiftControlTasks.find((item) => item.category === 'handover' && item.status !== 'done') ?? null;
-    if (request?.status !== 'approved' || !closeExceptionMatchesCurrentIssues || isCompleted || isSaving) {
+    if (request?.status !== 'approved' || request.consumedAt || !closeExceptionMatchesCurrentIssues || isCompleted || isSaving) {
       if (request?.status !== 'approved') approvedRequiredIssuesAutoFinishRef.current = null;
       return;
     }

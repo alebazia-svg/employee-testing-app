@@ -34,7 +34,7 @@ export default async function AdminCloseExceptionPage(props: { params: Promise<{
   if (admin.role !== 'ADMIN') redirect('/employee');
   const request = await prisma.workdayCloseExceptionRequest.findUnique({
     where: { id: params.id },
-    include: { employee: { select: { name: true } }, decidedBy: { select: { name: true } }, workDayEntry: { select: { date: true } } },
+    include: { employee: { select: { name: true } }, decidedBy: { select: { name: true } }, workDayEntry: { select: { date: true, endedAt: true } } },
   });
   if (!request) redirect('/admin/workday');
   const cashEncashmentException = isCashEncashmentException(request.reasonCode);
@@ -52,7 +52,7 @@ export default async function AdminCloseExceptionPage(props: { params: Promise<{
         <div className='flex items-start gap-3'>
           <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white ring-1 ${automaticallyResolved ? 'text-green-700 ring-green-200' : 'text-amber-700 ring-amber-200'}`}>{automaticallyResolved ? <CircleCheck className='h-5 w-5' /> : <ShieldAlert className='h-5 w-5' />}</div>
           <div className='min-w-0 flex-1'>
-            <p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>{automaticallyResolved ? 'Решение не требуется' : cashEncashmentException ? 'Инкассация не выполнена' : 'Требуется решение'}</p>
+            <p className='text-xs font-extrabold uppercase tracking-wide text-amber-700'>{automaticallyResolved ? 'Решение не требуется' : cashEncashmentException ? 'Инкассация не выполнена' : request.status === 'pending' ? 'Требуется решение' : 'Решение принято'}</p>
             <h1 className='mt-1 text-2xl font-black leading-tight text-slate-950'>{cashEncashmentException ? 'Разрешение без инкассации' : 'Разрешение завершить день'}</h1>
             <p className='mt-1 text-sm font-semibold text-slate-600'>{request.employee.name} · {requestDate}</p>
             <div className='mt-3'><Badge>{statusLabels[request.status] ?? request.status}</Badge></div>
@@ -74,7 +74,7 @@ export default async function AdminCloseExceptionPage(props: { params: Promise<{
             </section> : null}
           </div>
         )}
-        {request.status === 'pending' ? <CloseExceptionDecisionClient requestId={request.id} approveLabel={cashEncashmentException ? 'Разрешить без инкассации' : undefined} /> : <div className='mt-5 border-t border-amber-200 pt-4 text-sm font-semibold text-slate-700'><p>Состояние: {statusLabels[request.status] ?? request.status}</p>{request.decisionComment && <p className='mt-1'>Комментарий: {request.decisionComment}</p>}{request.decidedBy && <p className='mt-1'>Администратор: {request.decidedBy.name}</p>}<p className='mt-2'>{automaticallyResolved ? 'Проблема устранена — решение не требуется. Запрос сохранён в истории.' : cashEncashmentException ? request.status === 'resolved' ? 'Активного действия больше не требуется.' : 'Разрешение не создаёт кассовые документы и не подтверждает инкассацию.' : 'Разрешение не закрывает саму проблему и действует только для этого рабочего дня и этого набора ошибок.'}</p></div>}
+        {request.status === 'pending' ? <CloseExceptionDecisionClient requestId={request.id} approveLabel={cashEncashmentException ? 'Завершить без инкассации' : undefined} /> : <div className='mt-5 border-t border-amber-200 pt-4 text-sm font-semibold text-slate-700'><p>Состояние: {statusLabels[request.status] ?? request.status}</p>{request.workDayEntry.endedAt && <p className='mt-1'>Рабочий день завершён: {request.workDayEntry.endedAt.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}</p>}{request.decisionComment && <p className='mt-1'>Комментарий: {request.decisionComment}</p>}{request.decidedBy && <p className='mt-1'>Администратор: {request.decidedBy.name}</p>}<p className='mt-2'>{automaticallyResolved ? 'Проблема устранена — решение не требуется. Запрос сохранён в истории.' : cashEncashmentException ? request.status === 'resolved' ? 'Активного действия больше не требуется.' : 'Разрешение не создаёт кассовые документы и не подтверждает инкассацию.' : 'Решение относится только к этому рабочему дню. Неисправленные проблемы остаются открытыми.'}</p></div>}
       </Card>
     </AdminShell>
   );

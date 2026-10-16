@@ -1,7 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
-import { resolveCloseExceptionNotifications } from '@/lib/workday-notifications';
+import { decideWorkdayCloseException } from '@/lib/workday-close-decision';
 
 const decisions = new Set(['approved', 'rejected']);
 
@@ -17,42 +16,10 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
   if (status === 'rejected' && !decisionComment) return Response.json({ error: 'Коротко укажите причину отказа' }, { status: 400 });
   if (decisionComment.length > 1000) return Response.json({ error: 'Комментарий должен быть не длиннее 1000 символов' }, { status: 400 });
 
-  const existing = await prisma.workdayCloseExceptionRequest.findUnique({ where: { id: params.id } });
-  if (!existing) return Response.json({ error: 'Запрос не найден' }, { status: 404 });
-  if (existing.status !== 'pending') return Response.json({ request: existing, changed: false });
-  const cashEncashmentException = isCashEncashmentException(existing.reasonCode);
-
-  const now = new Date();
-  const request = await prisma.$transaction(async (tx) => {
-    const changed = await tx.workdayCloseExceptionRequest.updateMany({
-      where: { id: existing.id, status: 'pending' },
-      data: { status, decisionComment, decidedAt: now, decidedById: admin.id },
-    });
-    if (!changed.count) return null;
-    await resolveCloseExceptionNotifications(tx, {
-      workDayEntryId: existing.workDayEntryId,
-      now,
-      scope: cashEncashmentException ? 'cash_encashment' : 'required_issues',
-    });
-    const updated = await tx.workdayCloseExceptionRequest.findUniqueOrThrow({
-      where: { id: existing.id },
-    });
-    await tx.workdayNotification.create({
-      data: {
-        userId: existing.employeeId,
-        fingerprint: `workday-close-exception:${existing.id}:${status}`,
-        kind: 'workday_close_exception_decision',
-        title: status === 'approved' ? 'Можно завершить день' : 'Завершение не согласовано',
-        body: status === 'approved'
-          ? cashEncashmentException
-            ? 'Можно завершить день без инкассации. Ситуация остаётся у администратора на контроле.'
-            : 'Можно завершить день. Неисправленная проблема остаётся у администратора на контроле.'
-          : decisionComment,
-        scheduledAt: now,
-      },
-    });
-    return updated;
+  const result = await decideWorkdayCloseException(prisma, {
+    requestId: params.id, adminId: admin.id,
+    status: status as 'approved' | 'rejected', decisionComment,
   });
-  if (!request) return Response.json({ request: await prisma.workdayCloseExceptionRequest.findUnique({ where: { id: existing.id } }), changed: false });
-  return Response.json({ request, changed: true });
+  if (!result) return Response.json({ error: 'Запрос не найден' }, { status: 404 });
+  return Response.json(result);
 }

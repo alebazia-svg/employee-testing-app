@@ -14,7 +14,7 @@ test('failed handover keeps a compact persistent close-blocked state', () => {
   assert.match(todayClient, /Смена не закрыта/);
   assert.match(todayClient, /Продолжить сдачу смены/);
   assert.match(todayClient, /Ждём решения администратора\./);
-  assert.match(todayClient, /Смена закрыта/);
+  assert.match(todayClient, /Смена завершена/);
   assert.doesNotMatch(todayClient, /showAllRequiredIssues/);
 });
 

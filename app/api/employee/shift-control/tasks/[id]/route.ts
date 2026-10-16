@@ -1,3 +1,4 @@
+import { updateActiveHandoverTask } from '@/lib/workday-close-decision';
 import { getCurrentUser } from '@/lib/auth';
 import { cashRecountInputError } from '@/lib/cash-recount-input';
 import { createCashOperationFailureAlert } from '@/lib/cash-operation-admin-alert';
@@ -266,7 +267,7 @@ async function savePhoto(file: File, runId: number, taskId: number, key: string)
 
 async function saveHandoverDraft(
   formData: FormData,
-  task: { id: number; runId: number; handoverData: unknown; run: { date: string; workDayEntry: { shiftCode: string } } },
+  task: { id: number; runId: number; handoverData: unknown; run: { date: string; workDayEntryId: number; workDayEntry: { shiftCode: string } } },
   isRetail: boolean,
   includeReserve: boolean,
   userId: number,
@@ -369,11 +370,12 @@ async function saveHandoverDraft(
       : appendCashRecountInputHistory(existing.cashRecountInputHistory, personalCashBalance, new Date().toISOString()),
   };
 
-  const updatedTask = await prisma.shiftControlTask.update({
-    where: { id: task.id },
+  const updatedTask = await updateActiveHandoverTask(prisma, {
+    taskId: task.id, workDayEntryId: task.run.workDayEntryId,
     data: { handoverData: nextData as Prisma.InputJsonValue, comment },
   });
 
+  if (!updatedTask) return Response.json({ error: 'Рабочий день уже завершён', code: 'WORKDAY_ALREADY_CLOSED' }, { status: 409 });
   return Response.json({ task: taskForEmployee(updatedTask) });
 }
 
@@ -446,7 +448,8 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     const isRetail = user.department === 'retail';
     const isStoreClosingEmployee = isRetail && isStoreClosingShift(task.run.workDayEntry.shiftCode);
     const requiresKkmClose = isRetail;
-    await saveHandoverDraft(formData, task, isRetail, isStoreClosingEmployee, user.id, task.run.date);
+    const draftResponse = await saveHandoverDraft(formData, task, isRetail, isStoreClosingEmployee, user.id, task.run.date);
+    if (!draftResponse.ok) return draftResponse;
     const savedDraftTask = await prisma.shiftControlTask.findUnique({ where: { id: task.id }, select: { handoverData: true } });
     if (!savedDraftTask) return Response.json({ error: 'Задача сдачи смены не найдена' }, { status: 404 });
     const handoverData = savedDraftTask.handoverData;
@@ -511,8 +514,8 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         status: evidence.status,
         evidence,
       };
-      await prisma.shiftControlTask.update({
-        where: { id: task.id },
+      const savedCheck = await updateActiveHandoverTask(prisma, {
+        taskId: task.id, workDayEntryId: task.run.workDayEntryId,
         data: {
           handoverData: {
             ...handoverRecord,
@@ -520,6 +523,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           } as Prisma.InputJsonValue,
         },
       });
+      if (!savedCheck) return Response.json({ error: 'Рабочий день уже завершён', code: 'WORKDAY_ALREADY_CLOSED' }, { status: 409 });
       if (evidence.status === 'confirmed' || !kkmShiftCloseRequiresEmployeeAction(evidence)) {
         await syncKkmShiftCloseIssue(prisma, { userId: user.id, taskId: task.id, workDayEntryId: task.run.workDayEntryId, date: task.run.date, evidence, now });
       } else if (now.getTime() - startedAt.getTime() < 90_000) {
@@ -540,14 +544,15 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       ? await findApprovedCloseException(prisma, task.run.workDayEntryId, requiredIssueIds)
       : null;
     if (requiredIssueIds.length && !closeException) {
-      await prisma.shiftControlTask.update({
-        where: { id: task.id },
+      const savedBlocked = await updateActiveHandoverTask(prisma, {
+        taskId: task.id, workDayEntryId: task.run.workDayEntryId,
         data: { handoverData: {
           ...(isRecord(handoverData) ? handoverData : {}),
           ...(kkmCloseCheckAudit ? { kkmCloseCheck: kkmCloseCheckAudit } : {}),
           closeBlockedAt: new Date().toISOString(),
         } as Prisma.InputJsonValue },
       });
+      if (!savedBlocked) return Response.json({ error: 'Рабочий день уже завершён', code: 'WORKDAY_ALREADY_CLOSED' }, { status: 409 });
       return Response.json({
         error: 'Есть обязательная неисправленная ошибка. Исправьте её или запросите разрешение администратора при технической невозможности.',
         code: 'OPEN_REQUIRED_ISSUES',
@@ -712,6 +717,18 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       };
 
       const result = await prisma.$transaction(async (tx) => {
+        // An admin may have closed this workday while the phone was waiting
+        // for external checks. Lock/claim it before changing its task audit.
+        const claimed = await tx.workDayEntry.updateMany({
+          where: { id: task.run.workDayEntryId, endedAt: null, status: { in: ['active', 'missing_checkout'] } },
+          data: { endedAt: now, status: 'completed' },
+        });
+        const workDay = await tx.workDayEntry.findUniqueOrThrow({ where: { id: task.run.workDayEntryId } });
+        if (!claimed.count) {
+          const run = await tx.shiftControlRun.findUniqueOrThrow({ where: { id: task.runId } });
+          const tasks = await tx.shiftControlTask.findMany({ where: { runId: task.runId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+          return { task: tasks.find((item) => item.id === task.id)!, tasks, run, workDay };
+        }
         await tx.shiftControlTask.updateMany({
           where: {
             runId: task.runId,
@@ -750,10 +767,6 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         const updatedRun = await tx.shiftControlRun.update({
           where: { id: task.runId },
           data: { status: 'completed', submittedAt: now, completedAt: now },
-        });
-        const workDay = await tx.workDayEntry.update({
-          where: { id: task.run.workDayEntryId },
-          data: { endedAt: now, status: 'completed' },
         });
         if (closeException) {
           await tx.workdayCloseExceptionRequest.update({ where: { id: closeException.id }, data: { consumedAt: now } });

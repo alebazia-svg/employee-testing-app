@@ -70,8 +70,8 @@ export async function POST(req: Request) {
     ? staleWorkdayCloseAuditComment({ reasonLabel: staleCloseInput.reason.label, comment: staleCloseInput.comment })
     : '';
   const workDay = await prisma.$transaction(async (tx) => {
-    const updatedWorkDay = await tx.workDayEntry.update({
-      where: { id: activeWorkDay.id },
+    const changed = await tx.workDayEntry.updateMany({
+      where: { id: activeWorkDay.id, endedAt: null, status: { in: ['active', 'missing_checkout'] } },
       data: {
         endedAt: now,
         status: 'completed',
@@ -80,6 +80,8 @@ export async function POST(req: Request) {
           : activeWorkDay.comment,
       },
     });
+    const updatedWorkDay = await tx.workDayEntry.findUniqueOrThrow({ where: { id: activeWorkDay.id } });
+    if (!changed.count) return updatedWorkDay;
 
     if (closeStale && isStaleWorkDay) {
       await tx.shiftControlRun.updateMany({

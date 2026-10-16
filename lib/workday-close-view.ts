@@ -1,8 +1,9 @@
 // Use the completed handover audit, not the transient active-request snapshot.
 export function completedWithoutEncashment(task: { status: string; handoverData?: unknown } | null | undefined) {
-  if (task?.status !== 'done') return false;
+  if (!task || !['done', 'missed'].includes(task.status)) return false;
   const data = task.handoverData;
   if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  if (task.status === 'missed' && !(data as Record<string, unknown>).adminClosure) return false;
   const cash = (data as Record<string, unknown>).personalCash;
   if (!cash || typeof cash !== 'object' || Array.isArray(cash)) return false;
   const requestId = (cash as Record<string, unknown>).encashmentExceptionRequestId;

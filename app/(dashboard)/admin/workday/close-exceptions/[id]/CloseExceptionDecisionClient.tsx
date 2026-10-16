@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-export function CloseExceptionDecisionClient({ requestId, approveLabel = 'Разрешить завершить день' }: { requestId: string; approveLabel?: string }) {
+export function CloseExceptionDecisionClient({ requestId, approveLabel = 'Разрешить и завершить день' }: { requestId: string; approveLabel?: string }) {
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -29,6 +29,7 @@ export function CloseExceptionDecisionClient({ requestId, approveLabel = 'Раз
 
   return (
     <div className='mt-5 scroll-mb-28 space-y-3 border-t border-slate-200 pt-5'>
+      <p className='text-sm font-semibold text-slate-700'>При разрешении рабочий день завершится сразу, даже если приложение сотрудника закрыто. Неисправленные проблемы останутся на контроле.</p>
       <label className='block text-sm font-extrabold text-slate-800'>Комментарий к решению</label>
       <textarea value={comment} onChange={(event) => setComment(event.target.value)} maxLength={1000} rows={3} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-green-500' placeholder='Необязательно при разрешении' />
       {error && <p className='text-sm font-bold text-red-700'>{error}</p>}
