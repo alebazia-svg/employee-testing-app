@@ -205,3 +205,10 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 - ADMIN action queue and shift review; PWA current-action sheet, ordinary bell
   preserved, technical reasons simplified, approved encashment omission final.
 - No schema/1C writes. Cross-day cash discrepancy automation remains future work.
+
+## Workday daily control — production 1.8.1
+
+- Runtime `8e22e55`; verified release evidence: `workday-control-release-20261019.md`.
+- Plan gaps stay in Plan and never inflate operational attention. Preserve real
+  shift/receipt/cash questions and unresolved earlier-day owner requests.
+- Local Google scenario adapters remain outside the production release.

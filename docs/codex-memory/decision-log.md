@@ -978,3 +978,12 @@ cash-funding-context-v2 response confirmed it is live and RUB-denominated.
   one employee's action; employees must coordinate before physically issuing.
 - Release approved 2026-10-13. No native preview, request, RKO or production
   database write was performed as a test. See reserve release note for checks.
+
+## 2026-10-19 — Daily control separates planning from operational questions
+
+Owner explicitly rejected equating an unfilled schedule with a receipt error or
+closing permission. Show an unfilled plan in Plan only; do not create a control
+question, generic check button or owner counter for it. Missing marks against a
+known work plan remain operational. Remark actions must open the concrete shift
+remark, not a schedule clarification. Released as final 1.8.1 (`8e22e55`); see
+`workday-control-release-20261019.md` for verification and rollback evidence.

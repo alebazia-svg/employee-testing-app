@@ -48,7 +48,10 @@ metadata and UI, then run `sudo portal-storage-maintenance --register-verified`.
 This preserves the new current image and the two preceding verified images.
 Do not register an unverified build. If the running image is not registered,
 cleanup fails closed. Explicit rollback requires re-registering the verified
-restored image. Serialize builds/maintenance using
+restored image. Release the parent deployment flock before calling
+`portal-storage-maintenance --register-verified`: that command acquires the same
+lock itself; calling it while the parent holds the lock fails closed with
+`BlockingIOError`. Serialize builds/maintenance using
 `/run/lock/offonika-portal-storage.lock` (`flock`); do not race maintenance.
 
 Read `systemctl status offonika-portal-storage.service` and its journal before
