@@ -96,3 +96,44 @@ No production migration, import, environment edit or upload cleanup is included.
 - tests/team-control.test.ts
 - package.json
 - package-lock.json
+
+## Follow-up UI correction 1.5.1
+
+Owner approved release of the reviewed UI correction after noticing misaligned
+row actions and an almost full-screen employee dialog in 1.5.0. The correction
+keeps the same data sources and workflows:
+
+- Action controls have one fixed 128px column on desktop, with matching widths;
+  the detail trigger reads `Подробнее`. Mobile actions use two columns.
+- Employee detail is centered, max width 960px, with desktop viewport margins
+  and internal scrolling rather than forced 100dvh height. At 390px the panel
+  stays inside the viewport with 12px margins.
+- Medium-width rows retain plan/start labels. The detail header uses neutral
+  text, not the unrelated green brand class.
+- Keyboard focus enters and stays in the main dialog; Escape closes it and
+  restores the initiating button. Existing nested review/photo workflows remain.
+
+Only AdminShiftControlDetails.tsx, app/globals.css and the synchronized package
+versions change. No DB, Google, API, compensation, notification or template
+change. Local TypeScript and production build passed; browser checks verified
+identical action-column coordinates, 128px action widths, a 960x640 centered
+panel at 1280x720, a 366x820 panel at 390x844, no document overflow, Tab containment
+and Escape/focus return. No real employee action was submitted for testing.
+
+Code commit: ab1cecf4af6293366ba8a05f823686af540859bd.
+Production activated successfully: 1.5.1, builtAt 2026-10-18T11:32:08.274Z
+(14:32 MSK), health 200. Independent SSH confirms the exact code commit above;
+visible authenticated ADMIN footer also reports 1.5.1. Production browser
+readback confirms all action columns have width 128 and identical x=764 at a
+952px viewport, and the dialog is 888x641 at x=32/y=106.5 inside 952x854.
+Escape closed it and returned focus to `Подробнее`.
+
+Fresh verified backup: .rollback/team-control-1.5.1/database.dump, 21,652,817
+bytes. Previous image sha256:60e67205cee0132b8f3c141ee02912ba9c0913692c24acc0cf08380f3b72c659
+is retained as portal-app:rollback-before-1.5.1. Replacement image:
+sha256:cf2c76f9fd73df1e0071ac424916c3762f4f6e2a965438a0b98d82773a6f391e.
+Release postflight confirmed unchanged environment hash, mount set (including
+uploads), mapping/template fingerprints and nondecreasing business-record
+counts. No migration/import occurred. VPS tracked tree is clean; existing
+.rollback/ retained. Source metadata revision is still null under the existing
+Docker convention; server commit was independently verified.
