@@ -14,6 +14,49 @@ Purpose: deploy one already-created commit to `portal.alebazia.xyz` without touc
 
 ## Safe deploy flow
 
+### Disk-capacity gate (incident 2026-10-18)
+
+Before building, read `df -h /` and `sudo docker system df`. Inspect the current
+container image and preserve its rollback tag. Do not start a build with less
+than 15 GiB available on the filesystem holding Docker/containerd; this is an
+initial guardrail, not a guarantee that every future build will fit. Keep the
+current app running while preparing the replacement.
+
+The 1.6.1 attempt failed while extracting the image, before container restart.
+The 96 GiB filesystem had only 4.1 GiB free; build cache was 13.27 GB and images
+48.59 GB (shared layers mean these figures must not simply be added).
+Owner-approved `docker builder prune --all --force` removed only unused build
+cache and increased free space to approximately 16 GiB. Build cache is
+reconstructible; active containers, volumes, uploaded files and rollback images
+must not be pruned as part of this operation.
+
+If space is insufficient, stop and inspect. Cache cleanup requires applicable
+owner authorization; do not substitute `docker system prune`, image/volume
+pruning, or manual removal under `/var/lib/containerd`.
+
+Owner subsequently approved daily retention: current release plus two verified
+rollback images; unused build cache target 5 GB and free-space target 15 GB.
+Host implementation is versioned in `docs/ops/maintenance/`. It uses the
+`offonika-portal-storage.timer` systemd timer, not an application migration.
+Only exact known portal rollback tag patterns are eligible. All container-used
+images (including stopped containers), unknown tags/repositories, volumes and
+backups are excluded. The root-owned verified image registry is
+`/var/lib/offonika-maintenance/verified-images.json`.
+
+For every future release, independently verify the running image, public
+metadata and UI, then run `sudo portal-storage-maintenance --register-verified`.
+This preserves the new current image and the two preceding verified images.
+Do not register an unverified build. If the running image is not registered,
+cleanup fails closed. Explicit rollback requires re-registering the verified
+restored image. Serialize builds/maintenance using
+`/run/lock/offonika-portal-storage.lock` (`flock`); do not race maintenance.
+
+Read `systemctl status offonika-portal-storage.service` and its journal before
+releases. A failed low-space check is actionable, not permission for broader
+deletion. Retention targets are not hard quotas; new data, other applications or
+in-use cache can still fill the disk. No external alert delivery is configured.
+CLI semantics: https://docs.docker.com/reference/cli/docker/buildx/prune/.
+
 ### Mandatory version gate (owner decision, 2026-10-05)
 
 Before every new release, including resumed work in an old chat:
