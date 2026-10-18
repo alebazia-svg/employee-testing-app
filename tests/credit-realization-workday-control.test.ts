@@ -12,7 +12,7 @@ test('only a post-cutover proven mismatch opens employee control', () => {
   assert.equal(creditRealizationIssueAction(current, new Date('2026-08-18T08:14:59Z')), 'none');
   assert.equal(creditRealizationIssueAction(current, new Date('2026-08-18T08:15:00Z')), 'open');
   assert.equal(creditRealizationIssueAction({ ...current, completeMismatchReads: 1 }, new Date('2026-08-18T08:30:00Z')), 'none');
-  assert.equal(creditRealizationIssueAction({ ...current, status: 'needs_review', employeeActionCandidate: false }), 'resolve');
+  assert.equal(creditRealizationIssueAction({ ...current, status: 'needs_review', employeeActionCandidate: false }), 'review');
   assert.equal(creditRealizationIssueAction({ ...current, realizationAt: new Date('2026-08-17T08:00:00Z') }), 'none');
   assert.doesNotMatch(creditRealizationIssueFingerprint('private-realization-ref'), /private-realization-ref/);
 });
@@ -134,4 +134,17 @@ test('unmapped cases never create employee side effects', async () => {
     $transaction: async () => { throw new Error('must not write'); },
   };
   assert.deepEqual(await syncCreditRealizationWorkdayControl(db as PrismaClient, new Date('2026-08-18T10:30:00Z')), { reminded: 0, opened: 0, resolved: 0, unassigned: 0 });
+});
+
+test('uncertain recheck preserves an existing open issue and its original cause', async () => {
+ for (const status of ['needs_review','unavailable','pending']) {
+  assert.equal(creditRealizationIssueAction({status,employeeActionCandidate:false,realizationAt:new Date('2026-10-18T06:00:00Z'),completeMismatchReads:2}),'review');
+ }
+ const existing:any={id:8,status:'open',employeeActionRequired:true,sourceData:{reasonCode:'REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING',documentNumber:'R-8'}};
+ const db:any={creditRealizationControlCase:{findMany:async()=>[{realizationRef:'review-ref',status:'unavailable',reasonCode:'SOURCE_UNAVAILABLE',realizationAt:new Date('2026-10-18T06:00:00Z'),employeeActionCandidate:false,completeMismatchReads:2}]},workdayControlIssue:{findUnique:async()=>existing,update:async({data}:any)=>Object.assign(existing,data)},$transaction:async(cb:any)=>cb(db)};
+ await syncCreditRealizationWorkdayControl(db,new Date('2026-10-18T07:00:00Z'));
+ assert.equal(existing.status,'open');assert.equal(existing.employeeActionRequired,true);
+ assert.equal(existing.sourceData.reasonCode,'REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING');
+ assert.equal(existing.sourceData.verificationStatus,'unavailable');
+ assert.equal(existing.sourceData.verificationReasonCode,'SOURCE_UNAVAILABLE');
 });

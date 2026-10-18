@@ -16,6 +16,7 @@ export function workdayIssueView(value: { title: string; detail: string; sourceD
   const documentNumber = text(source.documentNumber);
   const amountKopecks = integer(source.amountKopecks);
   const reasonCode = text(source.reasonCode);
+  const verificationPending = ['needs_review', 'unavailable', 'pending'].includes(text(source.verificationStatus)) || text(source.verificationStatus)==='mismatch';
   const receiptDelayMinutes = integer(source.receiptDelayMinutes);
   const receiptCashierName = text(source.receiptCashierName);
   const paymentDocumentNumber = text(source.paymentDocumentNumber);
@@ -47,6 +48,7 @@ export function workdayIssueView(value: { title: string; detail: string; sourceD
       ? 'Не нахожу операцию'
       : 'Не нахожу реализацию';
   return {
+    verificationPending,
     documentNumber,
     amount,
     reasonCode,

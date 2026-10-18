@@ -86,7 +86,7 @@ test('retry reuses the original idempotency key and saves the complete pair', as
     },
     resolveCarried: async () => {
       resolved = true;
-      return { resolvedIds: [], requiredAmount: null, reason: 'no_candidates' as const };
+      return { resolvedIds: [], requiredAmount: null, reason: 'approval_is_final' as const };
     },
   });
   assert.equal(result.ok, true);

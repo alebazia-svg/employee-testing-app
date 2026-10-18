@@ -1,4 +1,6 @@
 'use client';
+import { closeReasonRequiresComment } from '@/lib/workday-close-request';
+import { EmployeeAttentionPanel } from '@/components/workday/EmployeeAttentionPanel';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 
 import jsQR from 'jsqr';
@@ -45,7 +47,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { EmployeeAttentionSummaryCard } from '@/components/EmployeeAttentionSummaryCard';
 import { EmployeeCloseBlockedSheet, type EmployeeBlockingItem } from '@/components/EmployeeCloseBlockedSheet';
 import { startVisibleSync } from '@/lib/visible-sync';
 import { useEmployeeAppUpdate } from '@/lib/use-employee-app-update';
@@ -69,7 +70,6 @@ import {
   type EmployeeCashOutboxItem,
 } from '@/lib/employee-cash-outbox';
 import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalHeader';
-import { CashIssueSummary } from './CashIssueClient';
 import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
 import { earlyFinishReasons, lateArrivalReasons, lateArrivalThresholdMinutes, type WorkdayDeviationKind } from '@/lib/workday-deviation';
 
@@ -415,7 +415,7 @@ type EmployeeWorkdaySnapshot = {
   shiftCorrection: ShiftCorrectionState;
 };
 
-type Tab = 'day' | 'schedule';
+type Tab = 'day' | 'schedule' | 'attention';
 type ScheduleMode = 'list' | 'month';
 type QrScannerState = 'idle' | 'starting' | 'scanning' | 'found' | 'error';
 type ShiftTaskDraft = {
@@ -1242,6 +1242,7 @@ export function EmployeeTodayClient({
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
   const [activeTab, setActiveTab] = useState<Tab>('day');
+  const visibleTabs = tabs;
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -2516,7 +2517,7 @@ export function EmployeeTodayClient({
       setError('Выберите техническую причину');
       return;
     }
-    if (!closeExceptionComment.trim()) {
+    if (closeReasonRequiresComment(closeExceptionReason) && !closeExceptionComment.trim()) {
       setError('Коротко опишите, почему исправить сейчас невозможно');
       return;
     }
@@ -2526,7 +2527,7 @@ export function EmployeeTodayClient({
       const response = await fetch('/api/employee/workday/close-exception', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reasonCode: closeExceptionReason, comment: closeExceptionComment }),
+        body: JSON.stringify({ reasonCode: closeExceptionReason, comment: closeReasonRequiresComment(closeExceptionReason) ? closeExceptionComment : '' }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось отправить запрос');
@@ -4041,8 +4042,8 @@ export function EmployeeTodayClient({
                     <div className='grid gap-3'>
                       <h3 className='text-base font-black text-slate-950'>Почему не распечатался чек?</h3>
                       <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
-                      <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />
-                      <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || !closeExceptionComment.trim()} onClick={requestCloseException}>Сообщить администратору</Button>
+                      {closeReasonRequiresComment(closeExceptionReason) && <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />}
+                      <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || (closeReasonRequiresComment(closeExceptionReason) && !closeExceptionComment.trim())} onClick={requestCloseException}>Сообщить администратору</Button>
                     </div>
                   )}
                   {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
@@ -4069,9 +4070,9 @@ export function EmployeeTodayClient({
               <div className='grid gap-3'>
                 {unfinished && <p className='text-sm font-semibold text-slate-600'>После разрешения администратора портал закроет предыдущий день.</p>}
                 <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold' aria-label='Техническая причина'><option value=''>Выберите причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
-                <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />
+                {closeReasonRequiresComment(closeExceptionReason) && <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />}
                 {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
-                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || !closeExceptionComment.trim()} onClick={requestCloseException}>Отправить администратору</Button>
+                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || (closeReasonRequiresComment(closeExceptionReason) && !closeExceptionComment.trim())} onClick={requestCloseException}>Отправить администратору</Button>
               </div>
             </div>
           </div>
@@ -4592,8 +4593,11 @@ export function EmployeeTodayClient({
             </div>
           )}
 
+          <EmployeeAttentionPanel activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} onClosing={scope => { if (scope === 'encashment' && handoverTask) startHandoverWizard(handoverTask); else if (kkmCloseIssue) { setCloseResolutionPath(null); setCloseResolutionOpen(true); } else setCloseBlockedSheetOpen(true); }} view={activeTab} onBack={() => setActiveTab('day')} paletteClass={paletteClass} renderHandle={onDismiss => <BottomSheetDragHandle onDismiss={onDismiss} />} />
+
           {activeTab === 'day' && (
             <div className={cn('pwa-review-day space-y-3', showCloseResolution && 'pwa-review-day-closing', !workDay && !unfinished && 'pwa-day-before-start')}>
+
               {!workDay && !unfinished && <section className='pwa-composition-only pwa-composition-start' style={{ display: 'none' }} aria-labelledby='pwa-composition-start-title'>
                 <div className='pwa-composition-start-top'><span>Рабочий день</span><span className='pwa-composition-status'><span />Не начат</span></div>
                 <div className='pwa-composition-start-body'>
@@ -4676,24 +4680,6 @@ export function EmployeeTodayClient({
                     <p className='rounded-xl bg-green-50 px-3 py-2 text-center text-xs font-extrabold text-green-800 ring-1 ring-green-100'>Завершение смены раньше времени{earlyFinishDeviation.requestedEndMinutes !== null ? ` · ${plannedTimeLabel(earlyFinishDeviation.requestedEndMinutes)}` : ''}</p>
                   )}
                 </div>
-              )}
-
-              <CashIssueSummary activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} />
-
-              {attentionCount > 0 && !showCloseResolution && (
-                <EmployeeAttentionSummaryCard
-                  title={attentionCount === 1 ? attentionItems[0].title : attentionIsReceiptsOnly ? `Проверьте ${attentionCount} ${countWord(attentionCount, 'чек', 'чека', 'чеков')}` : `Проверьте задачи: ${attentionCount}`}
-                  subtitle={attentionCount === 1 ? attentionItems[0].meta : attentionIsReceiptsOnly ? '' : requiredIssuesForBanner.length
-                      ? `${requiredIssuesForBanner.length} ${countWord(requiredIssuesForBanner.length, 'задача', 'задачи', 'задач')}${checksSuffix}.`
-                      : `${paymentChecksState.length} ${countWord(paymentChecksState.length, 'проверка', 'проверки', 'проверок')}.`}
-                  count={attentionCount}
-                  actionLabel={attentionCount === 1 ? 'Открыть' : attentionIsReceiptsOnly ? 'Проверить чеки' : 'Посмотреть задачи'}
-                  tone='attention'
-                  onAction={() => {
-                    if (attentionCount === 1) { router.push(attentionItems[0].href); return; }
-                    setCloseBlockedSheetOpen(true);
-                  }}
-                />
               )}
 
               {activeWorkDay && showCloseResolution && (
@@ -5339,16 +5325,16 @@ export function EmployeeTodayClient({
 
         {!bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
           <div className='grid grid-cols-2 gap-1'>
-            {tabs.map((item) => {
+            {visibleTabs.map((item) => {
               const Icon = item.icon;
-              const active = activeTab === item.id;
+              const active = activeTab === item.id || (item.id === 'day' && activeTab === 'attention');
               return (
                 <button
                   key={item.id}
                   type='button'
                   aria-current={active ? 'page' : undefined}
                   onClick={() => {
-                    if (item.id === 'day' && activeTab === 'schedule' && bulkScheduleMode) {
+                    if (item.id !== 'schedule' && activeTab === 'schedule' && bulkScheduleMode) {
                       const hasUnsavedSelection = bulkScheduleKind === 'edit'
                         ? bulkScheduleChanges.length > 0
                         : bulkWorkingDates.size > 0;
@@ -5370,7 +5356,7 @@ export function EmployeeTodayClient({
                   )}
                 >
                   <span className={cn('relative flex h-6 w-6 items-center justify-center', `employee-material-nav-icon-${item.id}`)} aria-hidden='true'>
-                    {item.id === 'day' ? <Clock3 className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : <CalendarDays className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} />}
+                    {item.id === 'day' ? <Clock3 className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : item.id === 'attention' ? <TriangleAlert className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : <CalendarDays className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} />}
                     <Icon
                       className='h-6 w-6'
                       color={active ? 'var(--portal-brand-strong)' : '#687078'}

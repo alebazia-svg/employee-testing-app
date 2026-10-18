@@ -24,7 +24,7 @@ test('credit issue summary is compact and identifies the realization on mobile',
 
 test('missing initial-payment receipt instructions name the exact source document', () => {
   const base = { ruleKey: 'credit_realization_mismatch', title: 'Чек по кредитной продаже', detail: '', sourceData: {} };
-  assert.match(workdayIssueView({ ...base, sourceData: { reasonCode: 'REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING' } }).instruction, /ПКО по этой реализации/);
+  assert.match(workdayIssueView({ ...base, sourceData: { reasonCode: 'REQUIRED_CASH_RECEIPT_FISCAL_RECEIPT_MISSING' } }).instruction, /приходник по этой реализации/);
   assert.match(workdayIssueView({ ...base, sourceData: { reasonCode: 'REQUIRED_ACQUIRING_FISCAL_RECEIPT_MISSING' } }).instruction, /эквайринговую операцию/);
 });
 
@@ -37,8 +37,14 @@ test('shows the exact linked payment document and credit split', () => {
       paymentDocumentNumber: 'PKO-1', paymentAmountKopecks: 1_000_000, expectedCreditKopecks: 13_200_600,
     },
   });
-  assert.equal(view.actionTitle, 'Пробейте чек из ПКО');
-  assert.match(view.instruction, /ПКО PKO-1/);
+  assert.equal(view.actionTitle, 'Пробейте чек из приходника');
+  assert.match(view.instruction, /приходник PKO-1/);
   assert.match(view.instruction, /10 000 ₽ первоначальный взнос/);
   assert.match(view.instruction, /132 006 ₽ в кредит/);
+});
+
+test('an incomplete recheck is shown separately from the saved original cause',()=>{
+ const view=workdayIssueView({title:'Чек',detail:'',ruleKey:'credit_realization_mismatch',sourceData:{verificationStatus:'unavailable',reasonCode:'REQUIRED_REALIZATION_FISCAL_RECEIPT_MISSING',documentNumber:'R-1',amountKopecks:12000000}});
+ assert.equal(view.verificationPending,true);assert.match(view.instruction,/R-1/);
+ assert.equal(workdayIssueView({title:'Чек',detail:'',sourceData:{}}).verificationPending,false);
 });

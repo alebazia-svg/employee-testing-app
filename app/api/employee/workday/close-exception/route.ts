@@ -1,14 +1,9 @@
+import { validateWorkdayCloseRequest } from '@/lib/workday-close-request';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { findOpenRequiredWorkdayIssues, readIssueIds, sameIssueIds } from '@/lib/workday-required-issues';
 import { queueAdminInboxTelegramDelivery } from '@/lib/admin-inbox';
 import { resolveCloseExceptionNotifications } from '@/lib/workday-notifications';
-
-const allowedReasons = new Set(['power', 'internet', 'one_c', 'kkm', 'other']);
-
-function normalizeComment(value: unknown) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
-}
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -16,11 +11,9 @@ export async function POST(req: Request) {
   if (user.role !== 'EMPLOYEE') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
   const payload = await req.json().catch(() => ({}));
-  const reasonCode = typeof payload.reasonCode === 'string' ? payload.reasonCode : '';
-  const comment = normalizeComment(payload.comment);
-  if (!allowedReasons.has(reasonCode)) return Response.json({ error: 'Выберите техническую причину' }, { status: 400 });
-  if (!comment) return Response.json({ error: 'Коротко опишите, почему исправить сейчас невозможно' }, { status: 400 });
-  if (comment.length > 1000) return Response.json({ error: 'Комментарий должен быть не длиннее 1000 символов' }, { status: 400 });
+  const validation = validateWorkdayCloseRequest(payload.reasonCode, payload.comment);
+  if (!validation.ok) return Response.json({ error: validation.error }, { status: 400 });
+  const { reasonCode, comment } = validation;
 
   const workDay = await prisma.workDayEntry.findFirst({
     where: { userId: user.id, status: { in: ['active', 'missing_checkout'] }, endedAt: null },

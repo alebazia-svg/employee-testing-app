@@ -42,3 +42,15 @@ export function taskTimingLabel(planned: number | null, completedAt: string | nu
   const late = days*1440+Number(v.hour)*60+Number(v.minute)-planned;
   return late > 0 ? {text:`Позже на ${late} мин`,tone:'amber'} : {text:'В срок',tone:'green'};
 }
+
+// A missing mark is an exception only after a known shift start (or a past day).
+export function teamStartControl(plan: string, hasStart: boolean, marksAvailable: boolean, date: string, today: string, now: number, plannedStart: number | null) {
+  const eligible = plan === 'working' && !hasStart && marksAvailable && date <= today;
+  return { missing: eligible && (date < today || plannedStart !== null && now > plannedStart), unknownTime: eligible && date === today && plannedStart === null };
+}
+export function teamOperationAlerts(requests: Array<{status:string}>, operations: Array<{status:string}>) {
+  const pending = requests.filter(r => r.status === 'pending').length;
+  const failed = operations.filter(o => ['one_c_error','manual_in_progress','retrying_1c'].includes(o.status)).length;
+  const waiting = operations.filter(o => o.status !== 'posted_1c_pair' && !['one_c_error','manual_in_progress','retrying_1c'].includes(o.status)).length;
+  return [pending ? `Запросов на завершение: ${pending}` : '', failed ? `Инкассаций без подтверждения 1С: ${failed}` : '', waiting ? `Инкассаций в обработке: ${waiting}` : ''].filter(Boolean);
+}

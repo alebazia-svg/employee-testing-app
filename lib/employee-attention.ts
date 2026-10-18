@@ -1,0 +1,18 @@
+/** Current work, independent of notification read/delivery state. */
+export type EmployeeAttentionItem = {
+  id: string; title: string; kind: 'receipt' | 'cash' | 'encashment' | 'closing' | 'cash_issue';
+  state: 'action' | 'waiting'; status: string; priority: number; date: string;
+  detail: string; closingScope?: 'encashment' | 'closing'; facts?: Array<[string, string]>; reply?: string; shared?: boolean;
+  endpoint?: string; actions?: Array<{ label: string; action: string }>;
+};
+export function orderEmployeeAttention(items: EmployeeAttentionItem[]) {
+  return [...new Map(items.map(item => [item.id, item])).values()].sort((a,b) =>
+    Number(a.state === 'waiting') - Number(b.state === 'waiting') || a.priority - b.priority || a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+}
+export function employeeReviewState(input: { response?: string; handler?: string; adminRepliedAfterResponse: boolean }) {
+  if (input.adminRepliedAfterResponse) return { state: 'action' as const, status: 'Есть ответ администратора' };
+  if (input.response === 'help') return { state: 'waiting' as const, status: 'Нужна помощь · у администратора' };
+  if (input.response === 'not_mine') return { state: 'waiting' as const, status: 'Ответственный уточняется' };
+  if (input.handler) return { state: 'waiting' as const, status: `Проверяет ${input.handler}` };
+  return { state: 'action' as const, status: 'Нужно проверить' };
+}

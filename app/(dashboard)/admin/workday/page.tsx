@@ -1,8 +1,10 @@
+import { WorkdayIssueDialog } from './WorkdayIssueDialog';
+import { cashEncashmentReasonLabel, isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
 import { TeamDailyControl, type TeamDayRow } from '@/components/admin/TeamDailyControl';
 import { getTeamGoogleSnapshot } from '@/lib/team-control-source';
-import { googleDay, usesAppSchedule, clockLabel, taskTimingLabel } from '@/lib/team-control';
+import { googleDay, usesAppSchedule, clockLabel, clockMinutes, teamStartControl, taskTimingLabel } from '@/lib/team-control';
 import Link from 'next/link';
-import { hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workday-close-view';
+import { completedWithoutEncashment, hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workday-close-view';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, Banknote, CreditCard } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
@@ -220,10 +222,10 @@ function moneyAutoCheck({
   evidence?: string;
 }): ShiftAutoCheck {
   if (actual === null) {
-    return { id, taskId, label, status: 'waiting', summary: 'Сотрудник ещё не указал фактическую сумму.', evidence };
+    return { id, taskId, label, actual, expected, status: 'waiting', summary: 'Сотрудник ещё не указал фактическую сумму.', evidence };
   }
   if (expected === null) {
-    return { id, taskId, label, status: 'unavailable', summary: 'Остаток 1С для этой проверки не получен.', evidence };
+    return { id, taskId, label, actual, expected, status: 'unavailable', summary: 'Остаток 1С для этой проверки не получен.', evidence };
   }
 
   const difference = actual - expected;
@@ -231,6 +233,7 @@ function moneyAutoCheck({
     id,
     taskId,
     label,
+    actual, expected, difference,
     status: Math.abs(difference) <= oneCMoneyTolerance ? 'matched' : 'mismatch',
     summary: `Факт ${formatMoney(actual)} · 1С ${formatMoney(expected)} · разница ${formatMoney(difference)}.`,
     evidence,
@@ -579,6 +582,7 @@ function buildEmployeeAutoChecks({
           id: `cash-${task.id}`,
           taskId: task.id,
           label: 'Наличные в кассе',
+          actual: task.numericValue, expected: null,
           status: 'unavailable',
           summary: snapshot?.error || 'Остаток 1С на момент проверки не был сохранён.',
           evidence: 'Исторический остаток не реконструируется по движениям задним числом.',
@@ -940,7 +944,12 @@ function buildEmployeeAutoChecks({
         cashOperation: { id: operation.id, status: operation.status, photoPath: operation.photoPath, amount: operation.amount },
       });
     }
-    if (requiresEncashment === false) {
+    if (completedWithoutEncashment(task)) {
+      checks.push({ id: `handover-encashment-${task.id}`, taskId: task.id,
+        label: encashmentLabel, status: 'matched',
+        summary: 'Без инкассации · разрешено. Решение относится только к этой смене.',
+      });
+    } else if (requiresEncashment === false) {
       if (!cashStatement?.ok || !targetStatement?.ok) {
         checks.push({
           id: `handover-encashment-${task.id}`,
@@ -1087,7 +1096,7 @@ function buildEmployeeAutoChecks({
 }
 
 export default async function AdminWorkdayPage(
-  props: { searchParams?: Promise<{ date?: string; cashboxMapping?: string; cashboxMappingError?: string; kkmAssignment?: string; kkmAssignmentError?: string; control?: string; employee?: string; technical?: string }> }
+  props: { searchParams?: Promise<{ date?: string; cashboxMapping?: string; cashboxMappingError?: string; kkmAssignment?: string; kkmAssignmentError?: string; control?: string; employee?: string; focus?: string; issue?: string; view?: string; technical?: string }> }
 ) {
   const searchParams = await props.searchParams;
   const currentUser = await getCurrentUser();
@@ -1529,9 +1538,10 @@ export default async function AdminWorkdayPage(
           return {
             id: issue.id,
             title: view.summaryTitle,
+            state: view.verificationPending ? 'Не удалось проверить' : 'Исправляет сотрудник',
             meta: view.summaryMeta,
             lifecycle,
-            href: `/admin/workday/issues/${issue.id}`,
+            href: `/admin/workday?date=${selectedDate}&control=all&view=attention&issue=${issue.id}#employees-control`,
           };
         }),
         timingViolations,
@@ -1539,6 +1549,9 @@ export default async function AdminWorkdayPage(
         activeWorkDay,
         category,
         reviewText,
+        cannotVerify,
+        incompleteCount,
+        incompleteChecks: unresolvedAutoChecks.filter(check => check.manualReview?.decision !== 'confirmed_issue' && (check.status === 'waiting' || check.status === 'unavailable') && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')),
         primaryIssueLifecycle,
         completedTaskCount,
         totalTaskCount,
@@ -1642,7 +1655,7 @@ export default async function AdminWorkdayPage(
           </Card>
         )}
 
-        <TeamDailyControl date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
+        <TeamDailyControl initialTab={searchParams?.view === 'attention' ? 'attention' : 'overview'} date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
           rows={employeeControlRows.map((row): TeamDayRow => {
             const app = usesAppSchedule(row.employee.name);
             const google = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
@@ -1650,18 +1663,46 @@ export default async function AdminWorkdayPage(
             const start = app ? row.workDay ? formatTime(row.workDay.startedAt) : '—' : clockLabel(google.arrival);
             const end = app ? row.workDay?.endedAt ? formatTime(row.workDay.endedAt) : '—' : clockLabel(google.departure);
             const shift = app ? row.workDay?.shiftLabel ?? '' : google.shift;
-            const lastStart = row.employee.department === 'retail' ? 660 : 600;
-            const missing = planState === 'working' && start === '—' && (app || googleSnapshot.marksAvailable) && (selectedDate < today || selectedDate === today && nowMinutes > lastStart);
+            const startControl = teamStartControl(planState, start !== '—', app || googleSnapshot.marksAvailable, selectedDate, today, nowMinutes, app ? clockMinutes(shift) : null);
+            const missing = startControl.missing;
+            const alertTargets: Record<string,string> = {};
+            const alerts = closeRequests.filter(r=>r.employeeId===row.employee.id && r.status==='pending').map(request => {
+              const reason = isCashEncashmentException(request.reasonCode) ? cashEncashmentReasonLabel(request.reasonCode) : request.reasonCode==='kkm' ? 'Закрытие кассы не подтверждено' : 'Обязательные проверки не завершены';
+              const text = `Завершить рабочий день${isCashEncashmentException(request.reasonCode)?' без инкассации':''} · ${formatTime(request.requestedAt)} · ${reason.replace('депозитному сейфу','сейфу')}`;
+              alertTargets[text] = `shift-request-${request.id}`;
+              return text;
+            });
+            for (const operation of cashOperations.filter(o=>o.userId===row.employee.id && o.status!=='posted_1c_pair')) {
+              const status = operation.status === 'pending_1c' || operation.status === 'retrying_1c' ? 'ожидается проведение в 1С' : 'документы 1С не проведены';
+              const text = `Инкассация ${formatMoney(operation.amount)} · внесена ${formatTime(operation.createdAt)} · ${status}`;
+              alerts.push(text);
+              alertTargets[text] = `shift-cash-${operation.id}`;
+            }
+            if (app && row.cannotVerify) {
+              for (const check of row.incompleteChecks.filter(check=>!check.id.startsWith('cash-operation-'))) {
+                const reason = check.summary.includes('Остаток 1С на момент проверки не был сохранён')
+                  ? 'нет сохранённой суммы 1С для сравнения'
+                  : check.status === 'waiting' ? 'результат сверки ещё не получен' : 'данные для сверки недоступны';
+                const task = row.run?.tasks.find(task=>task.id===check.taskId);
+                const text = `${check.label}${task?.plannedTimeMinutes!==null && task?.plannedTimeMinutes!==undefined ? ` · проверка ${clockLabel(task.plannedTimeMinutes)}` : ''} · ${reason}`;
+                alerts.push(text);
+                alertTargets[text] = `shift-task-${check.taskId}`;
+              }
+              if (!row.incompleteChecks.length) alerts.push('Автоматическая сверка отсутствует. Откройте проверки смены и уточните доступность исходных данных');
+            }
+            if (app && (row.category === 'error' || row.category === 'attention') && !row.reviewText.startsWith('Результат не подтверждён:')) alerts.push(row.reviewText);
+            if (startControl.unknownTime) alerts.push('Выход запланирован · уточните время начала смены');
             const nextTask = row.run?.tasks.filter(t=>t.status!=='done'&&t.status!=='missed'&&t.plannedTimeMinutes!==null).sort((a,b)=>a.plannedTimeMinutes!-b.plannedTimeMinutes!)[0];
             const completedTask = row.run?.tasks.filter(t=>t.status==='done'&&t.completedAt).sort((a,b)=>b.completedAt!.getTime()-a.completedAt!.getTime())[0];
             const timing = app ? row.timingViolations.map(v=>v.detail) : [];
+            for (const violation of row.timingViolations) alertTargets[violation.detail] = violation.taskId ? `shift-task-${violation.taskId}` : 'shift-start';
             const timely = completedTask ? taskTimingLabel(completedTask.plannedTimeMinutes, completedTask.completedAt?.toISOString() ?? null, selectedDate).text : '';
             return {id:row.employee.id,name:row.employee.name,department:row.employee.department,source:app?'Приложение · пилот':'Google',planState,
               plan:planState==='vacation'?'Отпуск':planState==='working'?'Рабочий день':planState==='off'?'Выходной':planState==='unavailable'?'Источник недоступен':'Нет записи графика',shift,start,end,
               state:app&&row.activeWorkDay?'Работает':end!=='—'?'Завершение отмечено':start!=='—'?'Начало отмечено':planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Нет начала по плану':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало',
               active:app&&row.activeWorkDay,late:app?row.workDay?.lateMinutes??0:google.lateMinutes,missing,
-              review:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention') ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
-              next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:app&&(row.category==='error'||row.category==='attention'),timing,issues:row.requiredIssues};
+              review:alerts.length?`${alerts[0]}${alerts.length>1?` · ещё ${alerts.length-1}`:''}`:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention' || row.cannotVerify) ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
+              next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:alerts.length>0||app&&(row.category==='error'||row.category==='attention'||row.cannotVerify),alertTargets,alerts,timing,issues:row.requiredIssues};
           })}
           controls={employeeControlRows.map(row => {
             const googleControl = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
@@ -1731,6 +1772,7 @@ export default async function AdminWorkdayPage(
                             bankOperationAt: record.bankOperationAt?.toISOString() ?? null,
                           }))}
                           requiredIssues={row.requiredIssues}
+                          initialReviewTarget={searchParams?.focus}
                           initialOpen={searchParams?.employee === String(row.employee.id)}
                           closeHref={employeeDetailCloseHref}
                           previousEmployee={previousEmployeeRow ? {
@@ -2237,6 +2279,7 @@ export default async function AdminWorkdayPage(
         </details> : <Link href={`/admin/workday?date=${selectedDate}&technical=1#kkm-assignments`} className='flex items-center justify-between gap-3 rounded-xl bg-white px-5 py-4 text-sm font-extrabold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-950'><span><span className='block text-slate-950'>Служебные настройки</span><span className='mt-0.5 block text-sm font-medium text-slate-600'>Привязки касс, наличные по 1С и технические таблицы</span></span><span className='admin-disclosure-action'>Открыть <span aria-hidden='true'>→</span></span></Link>}
 
       </div>
+      {searchParams?.issue && /^\d+$/.test(searchParams.issue) && <WorkdayIssueDialog key={searchParams.issue} id={Number(searchParams.issue)} date={selectedDate} currentUserId={currentUser.id}/>}
     </AdminShell>
   );
 }

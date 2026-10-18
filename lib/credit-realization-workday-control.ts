@@ -23,6 +23,7 @@ export function creditRealizationIssueAction(value: {
   employeeActionCandidate: boolean;
   realizationAt: Date;
   completeMismatchReads: number;
+  reasonCode?: string;
 }, now = new Date()) {
   if (value.realizationAt < CREDIT_REALIZATION_EMPLOYEE_CUTOVER) return 'none' as const;
   if (value.status === 'mismatch' && value.employeeActionCandidate) {
@@ -30,7 +31,8 @@ export function creditRealizationIssueAction(value: {
     if (ageMinutes < 15 || value.completeMismatchReads < 2) return 'none' as const;
     return 'open' as const;
   }
-  return 'resolve' as const;
+  if (value.status === 'confirmed' || value.status === 'mismatch' && !value.employeeActionCandidate && value.reasonCode === 'FISCAL_RECEIPT_AFTER_SALE_DAY') return 'resolve' as const;
+  return 'review' as const;
 }
 
 function moscowDate(value: Date) {
@@ -98,6 +100,18 @@ export async function syncCreditRealizationWorkdayControl(prisma: PrismaClient, 
     const reminderFingerprint = creditRealizationReminderFingerprint(controlCase.realizationRef);
     const action = creditRealizationIssueAction(controlCase, now);
     if (action === 'none') continue;
+    if (action === 'review') {
+      await prisma.$transaction(async tx => {
+        const existing = await tx.workdayControlIssue.findUnique({where:{fingerprint}});
+        if (!existing || existing.status !== 'open') return;
+        const source = existing.sourceData && typeof existing.sourceData === 'object' && !Array.isArray(existing.sourceData) ? existing.sourceData : {};
+        await tx.workdayControlIssue.update({where:{id:existing.id},data:{
+          lastDetectedAt:now,
+          sourceData:{...source,verificationStatus:controlCase.status,verificationReasonCode:controlCase.reasonCode},
+        }});
+      });
+      continue;
+    }
     if (action === 'resolve') {
       const count = await prisma.$transaction(async (tx) => {
         const result = await tx.workdayControlIssue.updateMany({
