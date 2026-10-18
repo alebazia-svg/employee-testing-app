@@ -49,6 +49,19 @@ by server commit, health, public build metadata and authenticated Edge footer.
 Exact live Codex code matching/assignment/readback remains pending. No promise
 of retroactive legacy ownership.
 
+## Owner-confirmed historical checks, 18 October 15:47 Moscow
+
+The owner confirmed old employee-account visits were her checks, then explicitly
+excluded Astemir's Windows/Chrome (16 October 16:44) and iPhone/Safari (16 October
+17:14): both are his working connections and must remain in Employees.
+Using the existing ADMIN service-classification dialog (not manual DB writes),
+old unidentifiable Astemir Mac/Edge, Zuhra iPhone/Safari and Magomed iPhone/Safari
+records were marked service. The refreshed Employees view retains Astemir's
+Windows and iPhone and Liana's current iPhone app. Astemir Mac/Chrome remains
+unassigned pending the separate identity check. Service view readback confirms
+the transferred history; subscriptions and access were not changed. No runtime
+code/version/deployment change was needed. Marks can be reversed in Details.
+
 Changed files:
 - `components/PortalAccessDevices.tsx`
 - `components/portal-access-devices.css`
