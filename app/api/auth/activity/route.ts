@@ -5,6 +5,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { sessionCookieName } from '@/lib/session';
 import { parsePushObservation, recordPortalAccess } from '@/lib/portal-access-journal';
 import { observeAppUpdate } from '@/lib/portal-app-update-server';
+import { accessClientIp } from '@/lib/portal-access-network';
 
 export async function POST(req: Request) {
   // Browser-only same-origin endpoint. No cross-origin tracking or public ingestion.
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
     const token = jar.get(sessionCookieName)?.value;
     const savedId = jar.get(accessBrowserCookie)?.value;
     const browserInstanceId = validAccessBrowserId(savedId) ? savedId : randomUUID();
-    await recordPortalAccess({ userId: user.id, token, browserInstanceId, userAgent: req.headers.get('user-agent') ?? '', push: observation });
+    await recordPortalAccess({ userId: user.id, token, browserInstanceId, clientIp: accessClientIp(req.headers), userAgent: req.headers.get('user-agent') ?? '', push: observation });
     if (browserInstanceId !== savedId) jar.set(accessBrowserCookie, browserInstanceId, { httpOnly: true, secure: new URL(req.url).protocol === 'https:', sameSite: 'lax', path: '/', maxAge: 31536000 });
     const updateCommand = observation.app ? await observeAppUpdate(user.id, token, observation.app) : null;
     return Response.json({ ok: true, ...(updateCommand ? { updateCommand } : {}) });

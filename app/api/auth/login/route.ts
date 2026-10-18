@@ -4,6 +4,9 @@ import { cookies } from 'next/headers';
 import { createSessionToken, sessionCookieName, sessionMaxAgeSeconds } from '@/lib/session';
 import { clearLoginFailures, loginAllowed, recordLoginFailure } from '@/lib/login-rate-limit';
 import { recordPortalAccess } from '@/lib/portal-access-journal';
+import { randomUUID } from 'node:crypto';
+import { accessBrowserCookie, validAccessBrowserId } from '@/lib/portal-access-identity';
+import { accessClientIp } from '@/lib/portal-access-network';
 
 export async function POST(req: Request) {
   const { login, password } = await req.json();
@@ -26,8 +29,11 @@ export async function POST(req: Request) {
 
   const cookieStore = await cookies();
   const token = createSessionToken(user.id);
-  try { await recordPortalAccess({ userId: user.id, token, userAgent: req.headers.get('user-agent') ?? '', login: true }); }
+  const previousBrowser = cookieStore.get(accessBrowserCookie)?.value;
+  const browserInstanceId = validAccessBrowserId(previousBrowser) ? previousBrowser : randomUUID();
+  try { await recordPortalAccess({ userId: user.id, token, browserInstanceId, clientIp: accessClientIp(req.headers), userAgent: req.headers.get('user-agent') ?? '', login: true }); }
   catch { console.warn('PORTAL_ACCESS_JOURNAL_UNAVAILABLE'); }
+  cookieStore.set(accessBrowserCookie, browserInstanceId, { path: '/', httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 31536000 });
   cookieStore.set(sessionCookieName, token, {
     path: '/',
     httpOnly: true,

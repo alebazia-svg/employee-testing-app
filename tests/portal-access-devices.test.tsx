@@ -4,11 +4,19 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PortalAccessDevicesView } from '../components/PortalAccessDevices';
 import type { AccessJournalRow } from '../components/PortalAccessJournal';
-import { accessPushView, accessWhen, filterAccessRows, groupAccessRows, accessAccountSummary, accessCurrentConnections, accessNotificationDetail, accessRecentPushFailure } from '../lib/portal-access-view';
+import { accessPushView, accessWhen, filterAccessRows, groupAccessRows, accessAccountSummary, accessCurrentConnections, accessNotificationDetail, accessRecentPushFailure, accessSystemLabel } from '../lib/portal-access-view';
 
 const now = new Date('2026-09-30T14:10:00Z');
 const row: AccessJournalRow = { id: 'one', name: 'Сотрудник', login: 'buyer', role: 'EMPLOYEE', device: 'Mac', browser: 'Edge', firstSeenAt: '2026-09-29T19:30:00Z', loginAt: '2026-09-29T19:30:00Z', lastSeenAt: '2026-09-30T14:09:00Z', expiresAt: '2026-10-29T00:00:00Z', loggedOutAt: null, pushLabel: 'Подключены', pushCheckedAt: '2026-09-30T14:09:00Z' };
 const render = (rows: AccessJournalRow[], history = false, unavailable = false) => renderToStaticMarkup(<PortalAccessDevicesView rows={rows} history={history} unavailable={unavailable} query='' page={1} hasMore={false} nowIso={now.toISOString()} />);
+
+test('observed snapshots preserve displayed connections without fabricating browser identity', () => {
+  const rows = [row, { ...row, id: 'second-observed-card' }];
+  const html = renderToStaticMarkup(<PortalAccessDevicesView rows={rows} presentation='observed-snapshot' history={false} unavailable={false} query='' page={1} hasMore={false} nowIso={now.toISOString()} />);
+  assert.equal((html.match(/<article /g) ?? []).length, 2);
+  assert.doesNotMatch(html, /Текущий браузер пока не сопоставлен|Старая запись · устройство не подтверждено|Этот браузер/);
+  assert.match(render(rows), /Старая запись · устройство не подтверждено/);
+});
 
 test('main list summarizes legacy types, retains accounts and does not expose login times', () => {
   const rows = [row, { ...row, id: 'two' }, { ...row, id: 'three', login: 'other' }];
@@ -56,10 +64,50 @@ test('history preserves known login and logout, never guesses missing events', (
   assert.match(render([{ ...row, expiresAt: '2026-09-29T00:00:00Z' }], true), /Срок входа истёк/);
 });
 test('ownership text fits both installed apps and browsers, and delivery is not implied', () => {
-  assert.match(render([{ ...row, ownerBrowser: true, canMarkOwner: true, displayMode: 'app' }]), /Ваше подключение/);
-  assert.match(render([{ ...row, ownerBrowser: true, canMarkOwner: false }]), /Подключение администратора/);
+  assert.match(render([{ ...row, ownerBrowser: true, connectionLabel: 'iPhone Беллы', canMarkOwner: true, displayMode: 'app' }]), /iPhone Беллы/);
+  assert.match(render([{ ...row, ownerBrowser: true, connectionLabel: 'Аслан · компьютер', canMarkOwner: false }]), /Аслан · компьютер/);
   assert.doesNotMatch(render([{ ...row, ownerBrowser: true, canMarkOwner: true }]), /Ваш браузер/);
   assert.match(accessNotificationDetail(row, now).explanation, /не подтверждает показ или звук/);
+});
+
+test('shared names stay absolute for either administrator; current marker is request-local only', () => {
+  const records = [
+    { ...row, id: 'bella', role: 'ADMIN', login: 'admin', browserInstanceId: 'bella', connectionLabel: 'Mac Беллы', canMarkOwner: true, isCurrentBrowser: true },
+    { ...row, id: 'aslan', role: 'ADMIN', login: 'admin', browserInstanceId: 'aslan', connectionLabel: 'Mac Аслана', canMarkOwner: true },
+  ];
+  const service = (rows: AccessJournalRow[]) => renderToStaticMarkup(<PortalAccessDevicesView rows={rows} history={false} service query='' page={1} hasMore={false} unavailable={false} nowIso={now.toISOString()} />);
+  const bella = service(records);
+  const aslan = service(records.map(r => ({ ...r, isCurrentBrowser: r.id === 'aslan' })));
+  for (const html of [bella, aslan]) {
+    assert.match(html, /Mac Беллы/); assert.match(html, /Mac Аслана/);
+    assert.doesNotMatch(html, /Мой Mac|Ваш Mac/);
+  }
+  assert.match(bella, /Этот браузер · Mac Беллы/);
+  assert.match(aslan, /Этот браузер · Mac Аслана/);
+  const unnamed = service([{ ...records[0], connectionLabel: null }]);
+  assert.match(unnamed, /Подробности подключения/);
+  assert.match(unnamed, /Владелец не подтверждён/);
+  const missing = service(records.map(r => ({ ...r, isCurrentBrowser: false })));
+  assert.match(missing, /Текущий браузер пока не сопоставлен/);
+  assert.doesNotMatch(missing, /Назвать это устройство/);
+});
+test('self naming is offered only for the exactly matched manageable ADMIN connection', () => {
+  const current = { ...row, role: 'ADMIN', device: 'iPhone', browser: 'Safari', browserInstanceId: 'phone', isCurrentBrowser: true, canMarkOwner: true };
+  const screen = (record: AccessJournalRow) => renderToStaticMarkup(<PortalAccessDevicesView rows={[record]} onSetOwner={async () => {}} history={false} query='' page={1} hasMore={false} unavailable={false} nowIso={now.toISOString()} />);
+  assert.match(screen(current), /Назвать это устройство/);
+  assert.match(screen({ ...current, connectionLabel: 'iPhone Бэлы' }), /Изменить название/);
+  for (const patch of [{ isCurrentBrowser: false }, { canMarkOwner: false }, { role: 'EMPLOYEE' }]) {
+    assert.doesNotMatch(screen({ ...current, ...patch }), /Назвать это устройство/);
+  }
+  assert.doesNotMatch(screen(current), /iPhone Бэлы/); // No inferred owner before confirmation.
+});
+test('system families do not infer versions, models or device owners', () => {
+  assert.equal(accessSystemLabel('Mac'), 'macOS');
+  assert.equal(accessSystemLabel('iPhone'), 'iOS');
+  assert.equal(accessSystemLabel('Mac / iPad'), 'macOS / iPadOS · не уточнено');
+  assert.equal(accessSystemLabel('Unknown'), null);
+  assert.match(render([row]), /Кабинет: Сотрудник/);
+  assert.match(render([row]), /macOS/);
 });
 test('push freshness, unknown, inactive and future observations never claim current connection', () => {
   assert.equal(accessPushView(row, now).tone, 'ok');
@@ -125,8 +173,20 @@ test('stable browser merges repeated logins but never accounts or different brow
 
 test('service view is separate, without operational warning filters', () => {
   const html = renderToStaticMarkup(<PortalAccessDevicesView rows={[{ ...row, isService: true, name: 'Проверка' }, { ...row, id: 'real', name: 'Рабочий' }]} history={false} service query='' page={1} hasMore={false} unavailable={false} nowIso={now.toISOString()} />);
-  assert.match(html, /Служебное · проверка портала/);
-  assert.doesNotMatch(html, /Рабочий|Проверить уведомления/);
+  assert.match(html, /Проверки кабинета · не рабочие устройства/);
+  assert.doesNotMatch(html, /<h2>Рабочий|Проверить уведомления/);
+});
+test('main excludes ADMIN and known admin-browser visits but keeps distinct employee Windows and iPhone', () => {
+  const rows = [{ ...row, id: 'admin', name: 'Администратор', role: 'ADMIN', login: 'admin' },
+    { ...row, id: 'inspection', adminObserved: true, browserInstanceId: 'admin-browser' },
+    { ...row, id: 'windows', device: 'Компьютер Windows', browserInstanceId: 'employee-windows' },
+    { ...row, id: 'phone', device: 'iPhone', browserInstanceId: 'employee-phone', displayMode: 'app' }];
+  const html = render(rows);
+  assert.doesNotMatch(html, /<h2>Администратор|<h3>Mac/);
+  assert.match(html, /<h3>Компьютер Windows/);
+  assert.match(html, /<h3>iPhone/);
+  assert.equal((html.match(/<article /g) ?? []).length, 2);
+  assert.equal((render(rows, true).match(/<article /g) ?? []).length, 4);
 });
 test('relative dates use Moscow date boundary rather than server timezone', () => {
   assert.equal(accessWhen('2026-09-30T21:01:00Z', new Date('2026-09-30T21:10:00Z')), 'Сегодня, 00:01');

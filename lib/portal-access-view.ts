@@ -1,7 +1,27 @@
 import type { AccessJournalRow } from '../components/PortalAccessJournal';
 
+/** Coarse OS family only. A saved device label cannot prove an OS version,
+ * hardware model, owner, or whether an ambiguous desktop Safari was an iPad. */
+export function accessSystemLabel(device: string): string | null {
+  if (device === 'Mac') return 'macOS';
+  if (device === 'Mac / iPad') return 'macOS / iPadOS · не уточнено';
+  if (device === 'iPhone') return 'iOS';
+  if (device === 'iPad') return 'iPadOS';
+  if (device === 'Компьютер Windows') return 'Windows';
+  if (device === 'Телефон Android' || device === 'Планшет Android') return 'Android';
+  if (device === 'Компьютер Linux') return 'Linux';
+  if (device === 'Chromebook') return 'ChromeOS';
+  return null;
+}
+
 export function accessOwnerView(ownerId: number | undefined, sessionUserId: number, viewerId: number) {
-  return { ownerInspection: ownerId !== undefined && ownerId !== sessionUserId, ownerBrowser: ownerId === sessionUserId, canMarkOwner: sessionUserId === viewerId };
+  return { ownerInspection: ownerId !== undefined && ownerId !== sessionUserId, ownerBrowser: ownerId === sessionUserId, canMarkOwner: ownerId === undefined || ownerId === viewerId };
+}
+
+/** Shared browser identity is evidence of cross-account use, not of a person.
+ * An explicit per-account working classification overrides that inference. */
+export function accessIsAdministrative(row: Pick<AccessJournalRow, 'role' | 'isService' | 'ownerInspection' | 'adminObserved' | 'serviceMarkedAt'>) {
+  return row.role === 'ADMIN' || Boolean(row.isService || row.ownerInspection || (row.adminObserved && !row.serviceMarkedAt));
 }
 
 
