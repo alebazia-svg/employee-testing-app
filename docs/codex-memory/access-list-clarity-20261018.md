@@ -28,14 +28,18 @@ iPhone Бэлы, including the latter's employee-account use and push subscripti
   employee, without copying authentication cookies or guessing from Mac/Chrome.
   It performs no naming, writes or permission changes. Existing explicit owner
   assignment must follow exact code verification after deployment.
-- Production Codex mapping is STILL NOT assigned. Do not present the synthetic
-  Codex card in the local future preview as proof of production classification.
-  User-confirmed real Mac Бэлы / iPhone Бэлы labels must remain untouched.
+- Production Codex mapping was confirmed at 16:03 Moscow after the owner signed
+  into ADMIN in the dedicated IAB. Exact `/connection` code matched ADMIN Details
+  and the current-browser marker. The existing naming UI saved «Служебный браузер
+  Codex»; independent Edge readback shows ADMIN and Astemir together under that
+  exact connection. Mac Бэлы / iPhone Бэлы labels and push subscriptions remained
+  untouched. Do not confuse this with the synthetic local preview card.
 - Live verification found that the dedicated IAB's current connection code and
   the existing Astemir Mac/Chrome session's code differ. Session identity remains
   bound to the original authenticated session; a changed browser cookie does not
-  overwrite it. A fresh normal login is needed before exact comparison and
-  owner/service assignment. Do not label Mac/Chrome based on OS, IP or timing.
+  overwrite it. The owner subsequently completed a fresh normal login; the
+  newly verified connection is now assigned. Other unmatched Mac/Chrome records
+  remain unassigned. Do not label them based on OS, IP or timing.
 - Local preview uses the real component; future records are explicitly examples,
   observed data remains the labelled 18 October 14:19 snapshot, not live data.
 
@@ -46,8 +50,8 @@ reset, Details open/close and responsive list checked. No production data,
 subscriptions, 1C, auth permissions or unrelated work changed. Runtime versions
 incremented using live metadata and the deployment branch. 1.5.3 was verified
 by server commit, health, public build metadata and authenticated Edge footer.
-Exact live Codex code matching/assignment/readback remains pending. No promise
-of retroactive legacy ownership.
+Exact live Codex code matching/assignment/readback completed at 16:03 Moscow.
+No promise of retroactive ownership for records with a different/absent ID.
 
 ## Owner-confirmed historical checks, 18 October 15:47 Moscow
 

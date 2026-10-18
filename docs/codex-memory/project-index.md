@@ -107,8 +107,9 @@ project from scratch.
   (1.5.4), following `cc650ea` (1.5.3). Compact employee rows, exact-browser
   grouping in service view, retained newer legacy visits and read-only
   `/connection` identification. Mac Бэлы / iPhone Бэлы labels verified live.
-  Dedicated Codex IAB assignment remains pending fresh-login identity verification;
-  never infer it from Mac/Chrome or silently merge historical unidentified visits.
+  Dedicated Codex IAB assigned «Служебный браузер Codex» after owner login and
+  exact-code verification at 16:03 Moscow; Edge readback confirms ADMIN/Astemir
+  grouping. Never infer other Mac/Chrome ownership or merge unidentified visits.
 
 - Released: `access-admin-separation-20261018.md`, runtime `2139810` (1.5.2).
   Employee-only main list, separate ADMIN/cross-account connections, confirmed
