@@ -209,3 +209,29 @@ listing validated. Previous image sha256:44147f04ed55cd1f82ededf6cc22a74509917f0
 replacement sha256:98c6dd6f0dba96d3c433143dd28ed2bc63798de8a566f6a3be11e7c7b4187eaf.
 Environment/settings fingerprints, uploads mount and record counts preserved;
 no migration/import. Original workspace dirty-file inventory unchanged.
+
+
+## Cash entry time clarification 1.5.7
+
+Owner explicitly approved release after the local preview. Each cash operation
+now reads “Внесено в HH:MM” beside its amount; the collapsed cash section shows
+the latest entry time (maximum createdAt, independent of query order). This is
+portal-record creation time, not independent proof of physical cash transfer.
+Only AdminShiftControlDetails.tsx and synchronized package versions changed.
+No schema, Google, payroll, cash-operation workflow or record writes.
+
+TypeScript, production build and 5 release-metadata tests passed. Production
+activated successfully: source4c038d0b33f1d7b7ab420e6436a5ccc2a51b69c7; public
+version1.5.7, builtAt2026-10-18T14:36:33.122Z (17:36MSK). Independent SSH
+confirmed source commit; public health200 and authenticated ADMIN footer checked.
+Real Liana card shows latest entry16:17 and entries133000RUB at13:17,
+72000RUB at16:17. Actual timestamps are Moscow time. No production decision
+submitted. Physical phone not retested for this text-only patch.
+
+Backup .rollback/team-control-1.5.7/database.dump validated (BACKUP_BYTES=22040781).
+Environment, mapping/template fingerprints and uploads mount preserved; record
+counts did not decrease. Previous image
+sha256:98c6dd6f0dba96d3c433143dd28ed2bc63798de8a566f6a3be11e7c7b4187eaf;
+replacement sha256:313725c43c54a6f42cae0828cfe1fdab328731849f33e3000c16abd1ba4628b5.
+Metadata revision remains null under existing Docker behavior; SSH source
+identity verified separately. Unrelated dirty workspace files untouched.
