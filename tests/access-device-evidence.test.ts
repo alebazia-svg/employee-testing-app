@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectDeviceObservation, parseDeviceObservation, deviceObservationFromUa, reportedSystem, connectionMismatch, portalObservationOrigin } from '../lib/portal-device-observation';
+import { collectDeviceObservation, parseDeviceObservation, deviceObservationFromUa, reportedSystem, connectionMismatch, portalObservationOrigin, portalRequestOrigin } from '../lib/portal-device-observation';
 import { groupServiceConnections } from '../lib/portal-access-view';
 import type { AccessJournalRow } from '../components/PortalAccessJournal';
 import { withMockDb } from './access-telemetry.test';
@@ -24,6 +24,14 @@ test('fallback never calls Windows NT 10 Windows 10 or guesses Mac hardware/vers
   assert.equal(reportedSystem({ source: 'client-hints', platform: 'Windows', platformVersion: '13.0.0' }), 'Windows 11 или новее');
   assert.equal(reportedSystem({ source: 'client-hints', platform: 'Windows', platformVersion: '10.0.0' }), 'Windows 10');
   assert.equal(reportedSystem({ source: 'client-hints', platform: 'Windows', platformVersion: '12.0.0' }), 'Windows');
+});
+
+test('public origin behind reverse proxy does not become the internal container address', () => {
+  const req = (headers: Record<string, string>) => new Request('https://localhost:3000/api/auth/activity', { headers });
+  assert.equal(portalRequestOrigin(req({ host: 'team.mobo-opt.ru', origin: 'https://team.mobo-opt.ru' })), 'https://team.mobo-opt.ru');
+  assert.equal(portalRequestOrigin(req({ host: 'team.mobo-opt.ru', origin: 'https://other.example' })), undefined);
+  assert.equal(portalRequestOrigin(req({ host: 'team.mobo-opt.ru', 'x-forwarded-host': 'other.example' })), undefined);
+  assert.equal(portalRequestOrigin(new Request('http://localhost:3154/api', { headers: { host: 'localhost:3154', origin: 'http://localhost:3154' } })), 'http://localhost:3154');
 });
 
 test('supported hints are collected once with a deadline, permission denial falls back', async () => {

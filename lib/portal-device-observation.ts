@@ -78,3 +78,21 @@ export function portalObservationOrigin(value?: string) {
     return ['https:', 'http:'].includes(url.protocol) && url.origin.length <= 200 ? url.origin : undefined;
   } catch { return undefined; }
 }
+
+/** Diagnostic only: Next.js can reconstruct req.url with the container host.
+ * Prefer the browser's Origin when it matches the HTTP Host. Never trust an
+ * arbitrary forwarded host or use this value for authentication/IP attribution. */
+export function portalRequestOrigin(req: Request) {
+  const host = req.headers.get('host')?.toLowerCase();
+  const origin = req.headers.get('origin');
+  if (host && origin) {
+    try {
+      const url = new URL(origin);
+      if (url.host.toLowerCase() === host && url.origin === origin) return portalObservationOrigin(origin);
+    } catch { /* Invalid browser origin is not recorded. */ }
+  }
+  try {
+    const url = new URL(req.url);
+    return !host || url.host.toLowerCase() === host ? portalObservationOrigin(req.url) : undefined;
+  } catch { return undefined; }
+}
