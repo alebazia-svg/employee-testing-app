@@ -3052,3 +3052,12 @@ body.portal-neutral-design .employee-material-ui button.bg-white {
 #team-schedule .team-filters button,#team-schedule .team-filters button[aria-pressed=true]{box-shadow:none!important;border-bottom:1px solid transparent!important;background-image:none!important}
 #team-schedule .team-filters button[aria-pressed=true]{background:#eeeae5!important;border:1px solid #d5ccc3!important;color:#40382f!important}
 @media(min-width:1201px){.team-employee,.team-column-head{grid-template-columns:minmax(140px,1.1fr) minmax(110px,1fr) 90px minmax(95px,.85fr) minmax(140px,1.2fr) 155px}}
+/* Focused employee dialog and aligned operational actions. */
+.team-shift-backdrop .team-shift-panel{width:min(960px,calc(100vw - 64px))!important;max-width:960px!important;height:auto!important;max-height:calc(100dvh - 80px)!important;min-height:0!important;border:1px solid #ddd3c9;border-radius:16px!important}
+.team-row-actions{width:128px;justify-self:end}
+.team-row-actions>div{display:grid!important;grid-template-columns:1fr!important;gap:6px!important;width:100%;align-items:stretch!important}
+#employees-control .team-row-actions>div>button{width:100%;min-height:34px;height:auto;justify-content:center;white-space:normal;padding:7px 9px}
+.team-row-actions>div>span{text-align:center;font-size:10px;line-height:1.4}
+@media(min-width:1201px){.team-employee,.team-column-head{grid-template-columns:minmax(140px,1.1fr) minmax(110px,1fr) 90px minmax(95px,.85fr) minmax(140px,1.2fr) 128px}}
+@media(max-width:1200px) and (min-width:701px){.team-employee{grid-template-columns:minmax(150px,1fr) minmax(110px,1fr) 90px minmax(100px,1fr)}.team-employee>div:nth-child(2):before{content:'План';display:block;font-size:10px;color:#857769;margin-bottom:4px}.team-employee>div:nth-child(3):before{content:'Начало';display:block;font-size:10px;color:#857769;margin-bottom:4px}.team-employee>div:nth-child(5){grid-column:1/4}.team-employee>div:nth-child(6){grid-column:4;grid-row:auto}}
+@media(max-width:700px){.team-row-actions{width:100%;justify-self:stretch}.team-row-actions>div{grid-template-columns:1fr 1fr!important}.team-row-actions>div>span{align-self:center}.team-shift-backdrop{padding:12px!important}.team-shift-backdrop .team-shift-panel{width:100%!important;max-height:calc(100dvh - 24px)!important;border-radius:14px!important}.team-shift-panel>header{gap:8px;padding:14px}.team-shift-panel>header h3{font-size:18px}}

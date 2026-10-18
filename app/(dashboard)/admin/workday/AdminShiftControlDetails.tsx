@@ -3,7 +3,7 @@ import { taskTimingLabel } from '@/lib/team-control';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -866,6 +866,7 @@ export function AdminShiftControlDetails({
 }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
   const [manualReviewTarget, setManualReviewTarget] = useState<ShiftAutoCheck | null>(null);
   const [manualReviewDecision, setManualReviewDecision] = useState<'confirmed_ok' | 'confirmed_issue'>('confirmed_ok');
@@ -953,6 +954,21 @@ export function AdminShiftControlDetails({
   useEffect(() => {
     if (initialOpen) setOpen(true);
   }, [initialOpen]);
+  useEffect(() => {
+    if (!open) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    panelRef.current?.focus();
+    const containFocus = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || document.querySelectorAll('[role="dialog"]').length > 1) return;
+      const nodes = Array.from(panelRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]),a[href],input:not([disabled]),textarea:not([disabled]),select:not([disabled]),summary,[tabindex="0"]') ?? []).filter(node => node.getClientRects().length > 0);
+      const first = nodes[0], last = nodes[nodes.length - 1];
+      if (!first) { event.preventDefault(); return; }
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panelRef.current)) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', containFocus);
+    return () => { document.removeEventListener('keydown', containFocus); previousFocus?.focus(); };
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
@@ -1108,16 +1124,18 @@ export function AdminShiftControlDetails({
           }`}
           onClick={() => setOpen(true)}
         >
-          Открыть
+          Подробнее
         </Button>
       ) : (
         <span className='text-xs font-semibold text-slate-400'>Нет данных</span>
       )}
 
       {open && hasDetails && typeof document !== 'undefined' ? createPortal(
-        <div className='fixed inset-0 z-[100] bg-slate-950/55 p-0 backdrop-blur-sm sm:p-3' onClick={closeDetails}>
+        <div className='team-shift-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm' onClick={closeDetails}>
           <div
-            className='admin-dialog-panel mx-auto flex h-[100dvh] w-full flex-col overflow-hidden bg-slate-50 shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:rounded-2xl'
+            ref={panelRef}
+            tabIndex={-1}
+            className='admin-dialog-panel team-shift-panel mx-auto flex w-full flex-col overflow-hidden rounded-2xl bg-slate-50 shadow-2xl'
             onClick={(event) => event.stopPropagation()}
             role='dialog'
             aria-modal='true'
@@ -1125,7 +1143,7 @@ export function AdminShiftControlDetails({
           >
             <header className='flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 sm:px-6'>
               <div className='min-w-0'>
-                <p className='text-sm font-semibold text-primary'>Контроль смены · {dateKey}</p>
+                <p className='text-sm font-semibold text-stone-600'>Контроль смены · {dateKey}</p>
                 <h3 className='mt-0.5 truncate text-xl font-extrabold text-slate-950 sm:text-2xl'>{employeeName}</h3>
                 <p className='mt-0.5 truncate text-xs font-semibold text-slate-500 sm:text-sm'>
                   {departmentName} · {workdayStateLabel} · {workDay?.shiftLabel ?? 'смена не задана'}
