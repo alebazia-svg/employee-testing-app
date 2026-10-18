@@ -103,6 +103,10 @@ project from scratch.
 
 ## Devices, notifications and app versions — production 1.4.22
 
+- New approved local candidate (not released): `access-admin-separation-20261018.md`.
+  Employee-only main list, separate ADMIN/cross-account connections, names,
+  bounded telemetry, optional trusted-proxy IP. Production ownership not guessed.
+
 - Released refinement: `access-last-visits-20261018.md`, runtime `9d83bec`.
   Retain last visits without a time cutoff; separate explicit service connections.
   Owner-browser cross-account classification and both additive migrations are
