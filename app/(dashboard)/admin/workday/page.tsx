@@ -1184,6 +1184,10 @@ export default async function AdminWorkdayPage(
       where: { date: selectedDate },
       select: {
         id: true,
+        createdAt: true,
+        comment: true,
+        oneCDocumentNumber: true,
+        oneCReceiptDocumentNumber: true,
         idempotencyKey: true,
         userId: true,
         direction: true,
@@ -1197,6 +1201,11 @@ export default async function AdminWorkdayPage(
     }),
   ]);
 
+  const closeRequests = await prisma.workdayCloseExceptionRequest.findMany({
+    where: { workDayEntry: { date: selectedDate } },
+    orderBy: { requestedAt: 'desc' },
+    include: { decidedBy: { select: { name: true } } },
+  });
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
   const vacationByUser = new Map(vacations.map((vacation) => [vacation.userId, vacation]));
   const workDayByUser = new Map(workDays.map((entry) => [entry.userId, entry]));
@@ -1477,7 +1486,7 @@ export default async function AdminWorkdayPage(
           ? `${businessAttentionReasons.slice(0, 2).join(' · ')}${businessAttentionReasons.length > 2 ? ` · ещё ${businessAttentionReasons.length - 2}` : ''}`
           : activeTimingViolations[0]?.label ?? 'Требуется действие'
         : cannotVerify
-          ? `Нужно проверить вручную: ${Math.max(incompleteCount, 1)}`
+          ? `Результат не подтверждён: ${Math.max(incompleteCount, 1)}`
         : isPending
             ? waitingForWorkdayStart
               ? 'Рабочий день ещё не начат'
@@ -1706,6 +1715,8 @@ export default async function AdminWorkdayPage(
                             })),
                           } : null}
                           dateKey={selectedDate}
+                          cashOperations={cashOperations.filter(operation => operation.userId === row.employee.id).map(operation => ({ ...operation, createdAt: operation.createdAt.toISOString() }))}
+                          closeRequests={closeRequests.filter(request => request.employeeId === row.employee.id).map(request => ({ id: request.id, status: request.status, reasonCode: request.reasonCode, comment: request.comment, requestedAt: request.requestedAt.toISOString(), decidedAt: request.decidedAt?.toISOString() ?? null, decisionComment: request.decisionComment, decidedBy: request.decidedBy?.name ?? null }))}
                           autoChecks={row.autoChecks}
                           timingViolations={usesAppSchedule(row.employee.name) ? row.timingViolations : row.timingViolations.filter(v=>v.taskId!==null)}
                           terminalFiscalControl={row.terminalFiscalControl ? {

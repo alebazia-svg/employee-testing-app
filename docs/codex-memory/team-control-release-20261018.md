@@ -137,3 +137,101 @@ uploads), mapping/template fingerprints and nondecreasing business-record
 counts. No migration/import occurred. VPS tracked tree is clean; existing
 .rollback/ retained. Source metadata revision is still null under the existing
 Docker convention; server commit was independently verified.
+
+## Compact single-card review 1.5.5
+
+Owner approved the final single-screen employee review and production release.
+Internal Day/Cash/Closing tabs were rejected: the first screen must expose all
+control outcomes, with inline disclosures for evidence and actions. Timeline
+repetition was also rejected. Preserve the compact task deadlines/completion
+view, with reconciliation result distinct from timeliness. Conditional closing
+requests appear at the top only when pending; existing decision behavior is
+unchanged. Cash operations show posted vs unconfirmed totals separately, document
+numbers and photo thumbnails with enlargement. Unknown reconciliation explains
+missing evidence rather than telling the administrator generically to check
+manually. Desktop action buttons share explicit styling through nested wrappers.
+
+Release candidate 1.5.5: 24c18c12bd25885f9e46fe961b9ab18755d7a2d6.
+Reconciled with deployed 1.5.4 (d07d923) and deployment branch 43d0e4f; existing
+access/device changes retained. No new migrations, source cutover, payroll or 1C
+writes. Isolated local PostgreSQL and explicitly marked demo cash/photo/request
+records were used only for preview, excluded from source and Docker context.
+
+Verification: TypeScript, production build, 5 release-metadata tests and 16
+focused workday/team tests passed. Final no-tab screen checked at 390px (document
+390px, panel366px; no horizontal overflow), inline request/cash disclosures,
+photo enlargement/Escape and specific check disclosure. Existing decision UI
+was exercised against the isolated DB: blank rejection failed with a clear
+message; commented rejection kept day active; approval completed day while
+handover remained missed, not falsely confirmed. Preview scenario restored.
+Physical phones not tested. No actual production employee decision submitted.
+
+1.5.5 activated successfully: public version1.5.5, builtAt
+2026-10-18T14:14:37.524Z; independent SSH confirms commit24c18c12bd25885f9e46fe961b9ab18755d7a2d6.
+Health200 and authenticated ADMIN footer checked. Settings, environment and
+upload mounts preserved; business-record counts did not decrease. Database
+backup .rollback/team-control-1.5.5/database.dump (21,683,688 bytes) validated.
+Previous image sha256:2dbdc3f72288544feb05e904fbd729968b728544bd08b5a66f969a4ecb04100b;
+replacement sha256:44147f04ed55cd1f82ededf6cc22a74509917f0370bddb3cb2346dd9bc76682d.
+Production readback showed real Liana values: cash11065/11065 at09:00,
+5915/5915 at14:01 (late1minute), two posted cash operations. All seven actual
+row buttons156x36. No local fixture uploaded. The final live check found two
+misleading labels (normal reconciliation summary vs minor lateness, future
+handover labelled not done); addressed immediately in patch1.5.6 under the
+same release approval, with another version increment as required.
+
+Patch1.5.6 source: d048e9cf451afc030b958cc54d23526caf58517e.
+Summary now says no unconfirmed results rather than no remarks; minor timing
+exceptions remain visible separately. Future handover reads expected by its
+deadline; missed/overdue remain distinct. TypeScript, production build and
+release metadata tests passed again. No business logic or schema change.
+
+Exact runtime files for this follow-up (relative to live1.5.4):
+- app/(dashboard)/admin/workday/AdminShiftControlDetails.tsx
+- app/(dashboard)/admin/workday/AdminWorkdayCorrectionButton.tsx
+- app/(dashboard)/admin/workday/close-exceptions/[id]/CloseExceptionDecisionClient.tsx
+- app/(dashboard)/admin/workday/page.tsx
+- app/globals.css
+- package.json, package-lock.json
+
+1.5.6 activated and independently verified: server commit
+ d048e9cf451afc030b958cc54d23526caf58517e, public version1.5.6,
+builtAt2026-10-18T14:22:37.220Z (17:22MSK), health200. Authenticated ADMIN
+footer and actual Liana card confirm the final labels, no internal tabs and
+inline cash operation/photo disclosures. Real operations133000 at13:17 and
+72000 at16:17 are posted; first operation document numbers00OF-В00807 /
+00OF-В00805 and its photo successfully loaded (natural width3024px).
+Production actions were not submitted. Source revision remains null in metadata
+under the existing Docker convention; SSH verified the commit independently.
+
+Backup .rollback/team-control-1.5.6/database.dump:22,037,562bytes, pg_restore
+listing validated. Previous image sha256:44147f04ed55cd1f82ededf6cc22a74509917f0370bddb3cb2346dd9bc76682d;
+replacement sha256:98c6dd6f0dba96d3c433143dd28ed2bc63798de8a566f6a3be11e7c7b4187eaf.
+Environment/settings fingerprints, uploads mount and record counts preserved;
+no migration/import. Original workspace dirty-file inventory unchanged.
+
+
+## Cash entry time clarification 1.5.7
+
+Owner explicitly approved release after the local preview. Each cash operation
+now reads “Внесено в HH:MM” beside its amount; the collapsed cash section shows
+the latest entry time (maximum createdAt, independent of query order). This is
+portal-record creation time, not independent proof of physical cash transfer.
+Only AdminShiftControlDetails.tsx and synchronized package versions changed.
+No schema, Google, payroll, cash-operation workflow or record writes.
+
+TypeScript, production build and 5 release-metadata tests passed. Production
+activated successfully: source4c038d0b33f1d7b7ab420e6436a5ccc2a51b69c7; public
+version1.5.7, builtAt2026-10-18T14:36:33.122Z (17:36MSK). Independent SSH
+confirmed source commit; public health200 and authenticated ADMIN footer checked.
+Real Liana card shows latest entry16:17 and entries133000RUB at13:17,
+72000RUB at16:17. Actual timestamps are Moscow time. No production decision
+submitted. Physical phone not retested for this text-only patch.
+
+Backup .rollback/team-control-1.5.7/database.dump validated (BACKUP_BYTES=22040781).
+Environment, mapping/template fingerprints and uploads mount preserved; record
+counts did not decrease. Previous image
+sha256:98c6dd6f0dba96d3c433143dd28ed2bc63798de8a566f6a3be11e7c7b4187eaf;
+replacement sha256:313725c43c54a6f42cae0828cfe1fdab328731849f33e3000c16abd1ba4628b5.
+Metadata revision remains null under existing Docker behavior; SSH source
+identity verified separately. Unrelated dirty workspace files untouched.

@@ -2,6 +2,8 @@
 import { taskTimingLabel } from '@/lib/team-control';
 
 import Link from 'next/link';
+import { CloseExceptionDecisionClient } from './close-exceptions/[id]/CloseExceptionDecisionClient';
+import { cashEncashmentReasonLabel, isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -73,7 +75,11 @@ type WorkDayInfo = {
   }>;
 } | null;
 
+type CashEntry = { id: number; direction: string; amount: number; status: string; photoPath: string; comment: string; createdAt: string; oneCDocumentNumber: string | null; oneCReceiptDocumentNumber: string | null };
+type CloseRequest = { id: string; status: string; reasonCode: string; comment: string; requestedAt: string; decidedAt: string | null; decisionComment: string; decidedBy: string | null };
 type Props = {
+  cashOperations?: CashEntry[];
+  closeRequests?: CloseRequest[];
   employeeName: string;
   department: string;
   departmentName: string;
@@ -213,7 +219,7 @@ function autoCheckBadge(status: ShiftAutoCheck['status']) {
   if (status === 'matched') return { label: '1С: совпало', className: 'bg-green-100 text-green-800' };
   if (status === 'mismatch') return { label: '1С: расхождение', className: 'bg-rose-100 text-rose-800' };
   if (status === 'waiting') return { label: '1С: ожидает', className: 'bg-slate-100 text-slate-700' };
-  return { label: 'Нельзя проверить автоматически', className: 'bg-blue-100 text-blue-800' };
+  return { label: 'Результат не подтверждён', className: 'bg-slate-100 text-slate-700' };
 }
 
 function autoCheckSummary(autoChecks: ShiftAutoCheck[]) {
@@ -704,7 +710,7 @@ function TaskDetailCard({
       ) : null}
       {tone === 'attention' ? (
         <p className='mt-2 text-xs font-extrabold text-amber-800'>
-          Что сделать: {hasMismatch ? 'сверить данные сотрудника с 1С и подтверждающими материалами.' : needsTimingReview ? 'проверить причину нарушения времени.' : 'проверить выполнение шага.'}
+          Что проверить: {hasMismatch ? 'сумму сотрудника, данные 1С и подтверждающие материалы.' : item.autoChecks.some(check => check.status === 'unavailable' && !manualReviewResolves(check)) ? 'причину отсутствия данных выше. Без них результат сверки не установлен; это не подтверждённая ошибка сотрудника.' : needsTimingReview ? 'причину задержки выполнения.' : 'ответ и подтверждения сотрудника.'}
         </p>
       ) : null}
     </div>
@@ -769,7 +775,12 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
   if (item.task.status !== 'done') return { tone: 'pending', label: 'Не выполнено', result: 'Срок ещё не наступил' };
 
   const unavailable = unresolvedChecks.find((check) => check.status === 'unavailable');
-  if (unavailable) return { tone: 'attention', label: 'Требует внимания', result: 'Нужно проверить вручную' };
+  if (unavailable) return {
+    tone: 'attention', label: 'Результат не подтверждён',
+    result: unavailable.summary.includes('Остаток 1С на момент проверки не был сохранён')
+      ? 'Нет сохранённой суммы 1С для сверки'
+      : `Не подтверждено: ${unavailable.label}`,
+  };
 
   if (item.task.category === 'acquiring') return { tone: 'normal', label: 'Всё нормально', result: acquiringResult(item.task).label };
   const matched = item.autoChecks.find((check) => check.status === 'matched');
@@ -818,14 +829,13 @@ function TaskOverviewRow({
       : 'normal';
 
   return (
-    <details className='group border-t border-slate-200 first:border-t-0'>
-      <summary className='grid cursor-pointer list-none gap-2 px-4 py-3 transition hover:bg-slate-50 md:grid-cols-[minmax(210px,1.3fr)_90px_150px_minmax(220px,1.5fr)_72px] md:items-center'>
-        <span className='font-extrabold text-slate-950'>{taskDisplayTitle(item.task)}</span>
-        <span className='text-xs text-slate-600'>Срок <b>{minutesToTime(item.task.plannedTimeMinutes)}</b><span className='block mt-1'>Выполнено <b>{formatTime(item.task.completedAt)}</b></span><span className={`team-timing-label ${timing.tone}`}>{item.task.status === 'missed' ? 'Пропущено' : item.task.status !== 'done' && state.tone === 'pending' ? 'Срок впереди' : timing.text}</span></span>
-        <Badge className={`w-fit ${statusClassName}`}>{state.label}</Badge>
-        <span className={`text-sm font-semibold ${state.tone === 'error' ? 'text-rose-800' : state.tone === 'attention' ? 'text-amber-800' : 'text-slate-600'}`}>{state.result}</span>
-        <span className='text-sm font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
-        <span className='hidden text-sm font-extrabold text-slate-500 group-open:inline'>Скрыть</span>
+    <details id={`shift-task-${item.task.id}`} className='group border-t border-slate-200 first:border-t-0'>
+      <summary className='team-task-summary grid cursor-pointer list-none gap-2 px-4 py-3 transition hover:bg-slate-50 md:grid-cols-[minmax(180px,1.6fr)_64px_76px_110px_22px] md:items-center'>
+        <span className='font-extrabold text-slate-950'>{taskDisplayTitle(item.task)}{state.tone !== 'pending' && <small className={`team-check-result result-${state.tone}`}>{state.result}</small>}</span>
+        <span className='text-sm text-stone-600'><span className='md:hidden'>Срок: </span>{minutesToTime(item.task.plannedTimeMinutes)}</span>
+        <span className='text-sm text-stone-600'><span className='md:hidden'>Выполнено: </span>{formatTime(item.task.completedAt)}</span>
+        <span className={`team-status ${timing.tone === 'green' ? 'green' : timing.tone === 'amber' ? 'amber' : ''}`}>{item.task.status === 'missed' ? 'Пропущено' : item.task.status !== 'done' && state.tone === 'pending' ? 'Срок впереди' : timing.text}</span>
+        <span aria-hidden='true' className='text-stone-500'>⌄</span>
       </summary>
       <div className='border-t border-slate-200 bg-slate-50 p-3'>
         <TaskDetailCard item={item} tone={detailTone} onPreview={onPreview} onManualReview={onManualReview} />
@@ -846,6 +856,8 @@ function TaskOverviewRow({
 }
 
 export function AdminShiftControlDetails({
+  cashOperations = [],
+  closeRequests = [],
   employeeName,
   department,
   departmentName,
@@ -864,8 +876,16 @@ export function AdminShiftControlDetails({
   previousEmployee,
   nextEmployee,
 }: Props) {
+  const latestCashEntryAt = cashOperations.reduce<string | null>((latest, operation) => !latest || operation.createdAt > latest ? operation.createdAt : latest, null);
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [cardView, setCardView] = useState<'day' | 'cash' | 'close'>('day');
+  const [focusedOperation, setFocusedOperation] = useState<number | null>(null);
+  const [focusedTask, setFocusedTask] = useState<number | null>(null);
+  const cardBodyRef = useRef<HTMLDivElement>(null);
+  function showCardView(view: 'day' | 'cash' | 'close', operationId: number | null = null) {
+    setCardView(view); setFocusedOperation(operationId); cardBodyRef.current?.scrollTo({ top: 0 });
+  }
   const panelRef = useRef<HTMLDivElement>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<PhotoPreview | null>(null);
   const [manualReviewTarget, setManualReviewTarget] = useState<ShiftAutoCheck | null>(null);
@@ -1113,19 +1133,7 @@ export function AdminShiftControlDetails({
   return (
     <div>
       {hasDetails ? (
-        <Button
-          type='button'
-          className={`h-8 px-3 text-xs font-extrabold shadow-none ${
-            hasError
-              ? 'bg-rose-100 text-rose-900 hover:bg-rose-200'
-              : keyProblemCount > 0
-                ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
-              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-          }`}
-          onClick={() => setOpen(true)}
-        >
-          Подробнее
-        </Button>
+        <button type="button" className="team-action-button" onClick={() => setOpen(true)}>Подробнее</button>
       ) : (
         <span className='text-xs font-semibold text-slate-400'>Нет данных</span>
       )}
@@ -1381,175 +1389,48 @@ export function AdminShiftControlDetails({
                 </div>
               </details>
             </div></>)}
-            <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
-              {attendanceNote && <p className='mb-4 rounded-lg bg-stone-50 p-3 text-sm text-stone-700'>{attendanceNote}</p>}
-              <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
-                <div>
-                  <p className='text-sm font-extrabold text-slate-950'>
-                    {technicalClose ? 'Предыдущая смена закрыта позже' : run ? `Проверки: ${summary.completed} из ${summary.total} выполнено` : 'Чек-лист не используется'}
-                  </p>
-                  <p className='mt-0.5 text-xs font-semibold text-slate-500'>
-                    {technicalClose
-                      ? `Пропущено шагов: ${technicalMissedTaskCount}`
-                      : run
-                        ? 'Откройте только ту проверку, по которой нужны подробности.'
-                        : 'Данных чек-листа за этот день нет.'}
-                  </p>
+            <div ref={cardBodyRef} className='team-shift-body min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
+              <div className='team-shift-facts'><div><small>План</small><b>{scheduleLabel === 'работаю' ? 'Рабочий день' : scheduleLabel}</b><span>{workDay?.shiftLabel ?? 'Время смены не задано'}</span></div><div><small>Начало</small><b>{formatTime(workDay?.startedAt ?? null)}</b><span>{workDay?.lateMinutes ? `Позже на ${workDay.lateMinutes} мин` : workDay ? 'Начало отмечено' : 'Нет отметки приложения'}</span></div><div><small>Состояние</small><span className={`team-status ${workDay && !workDay.endedAt ? 'green' : ''}`}>{workdayStateLabel === 'работает' ? 'Работает' : workdayStateLabel}</span></div></div>
+              {cardView === 'day' && <>
+                {attendanceNote && <p className='team-card-note'>{attendanceNote}</p>}
+                <section className='team-review-total'><b>{keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length > 0 ? 'Есть неподтверждённые пункты' : 'Неподтверждённых результатов не выявлено'}</b><span>Проверки: {summary.completed} из {summary.total} выполнено · инкассации: {cashOperations.filter(operation => operation.status === 'posted_1c_pair').length} из {cashOperations.length} проведено{closeRequests.some(request => request.status === 'pending') ? ' · требуется ваше решение' : ''}</span></section>
+                <div className='team-review-list'>
+                  {closeRequests.some(request => request.status === 'pending') && <details className='team-review-row needs-attention'><summary><b>Запрос завершения дня</b><span>Требуется ваше решение</span></summary><div>{closeRequests.filter(request => request.status === 'pending').map(request => <div key={request.id}><p>{formatTime(request.requestedAt)} · {isCashEncashmentException(request.reasonCode) ? cashEncashmentReasonLabel(request.reasonCode) : 'Не удалось завершить обязательные проверки'}</p><p>{request.comment}</p></div>)}{closeRequests.filter(request => request.status === 'pending').map(request => <div key={`decision-${request.id}`}><CloseExceptionDecisionClient embedded requestId={request.id} approveLabel={isCashEncashmentException(request.reasonCode) ? 'Завершить без инкассации' : undefined} /><small>Разрешение завершит день. Неподтверждённые операции останутся на контроле.</small></div>)}</div></details>}
+                  {requiredIssues.length > 0 && <details className='team-review-row needs-attention'><summary><b>Нерешённые замечания</b><span>{requiredIssues.length} · нужно исправить</span></summary><div>{requiredIssues.map(issue => <Link key={issue.id} href={issue.href}>{issue.title}{issue.meta ? ` · ${issue.meta}` : ''} →</Link>)}</div></details>}
+                  <details className={`team-review-row ${cashOperations.some(operation => operation.status !== 'posted_1c_pair') ? 'needs-attention' : ''}`}><summary><b>Инкассации</b><span>{cashOperations.length ? `${cashOperations.filter(operation => operation.status === 'posted_1c_pair').length} из ${cashOperations.length} проведено · последняя запись ${formatTime(latestCashEntryAt)}` : 'Операций за день нет'}</span></summary><div>
+                    {cashOperations.map(operation => <details key={operation.id} className='team-cash-entry'><summary><b>{formatMoney(operation.amount)}</b><span>Внесено в {formatTime(operation.createdAt)}</span><span>{operation.direction === 'deposit_safe' ? 'В депозитный сейф' : 'В резерв'}</span><span className={`team-status ${operation.status === 'posted_1c_pair' ? 'green' : 'amber'}`}>{operation.status === 'posted_1c_pair' ? 'Проведена' : 'Не подтверждена'}</span></summary><div className='team-cash-evidence'><p>Документ: {operation.oneCDocumentNumber ?? 'Нет номера'} · приход: {operation.oneCReceiptDocumentNumber ?? 'Нет номера'}</p>{operation.comment && <p>{operation.comment}</p>}<PhotoRow label='Документ инкассации' photo={{ storagePath: operation.photoPath }} onPreview={setSelectedPhoto} />{autoChecks.filter(check => check.cashOperation?.id === operation.id).map(check => <div key={check.id}><p>{check.summary}</p><button type='button' onClick={() => openManualReview(check)}>Проверить и зафиксировать решение →</button></div>)}</div></details>)}
+                    {cashOperations.length === 0 && <p>Сотрудник не вносил операций инкассации за этот день.</p>}
+                  </div></details>
+                  <div className='team-task-head px-4 py-2'><span>Проверки</span><span>Срок</span><span>Выполнено</span><span>По времени</span><span /></div>
+                  {overviewTasks.filter(item => item.task.category !== 'handover').sort((left, right) => Number(['error', 'attention'].includes(taskBusinessState(right).tone)) - Number(['error', 'attention'].includes(taskBusinessState(left).tone))).map(item => <TaskOverviewRow key={item.task.id} dateKey={dateKey} overdueMinutes={timingViolationByTaskId.get(item.task.id)?.minutesLate} item={item} department={department} run={run!} onPreview={setSelectedPhoto} onManualReview={openManualReview} />)}
+                  <details className={`team-review-row ${scheduleNeedsAttention || workDay?.lateMinutes || activeWorkdayProblems.length ? 'needs-attention' : ''}`}><summary><b>Начало смены и график</b><span>{!workDay ? 'Нет отметки приложения' : workDay.lateMinutes ? `Позже на ${workDay.lateMinutes} мин` : `Начало ${formatTime(workDay.startedAt)}`}</span></summary><div><p>План: {scheduleLabel} · {workDay?.shiftLabel ?? 'Время не задано'}</p>{scheduleNeedsAttention && <p>График не заполнен.</p>}{activeWorkdayProblems.map(violation => <p key={violation.id}>{violation.label}: {violation.detail}</p>)}{workDay?.deviations.map(deviation => <p key={deviation.reportedAt}>{deviationReasonLabel(deviation.kind === 'late_arrival' ? 'late_arrival' : 'early_finish', deviation.reasonCode)} · {deviation.comment}</p>)}</div></details>
+                  <details className='team-review-row'><summary><b>Сдача смены</b><span>{handoverTask?.status === 'done' ? 'Выполнена' : closeRequests.some(request => request.status === 'pending') ? 'Не завершена · есть запрос' : handoverTask ? handoverTask.status === 'missed' ? 'Пропущена' : timingViolationByTaskId.get(handoverTask.id)?.kind === 'task_overdue' ? 'Просрочена' : `Ожидается к ${minutesToTime(handoverTask.plannedTimeMinutes)}` : 'Нет данных сдачи'}</span></summary><div>{handoverTask && <HandoverDetails data={handoverTask.handoverData} department={department} onPreview={setSelectedPhoto} />}{handoverTask && !readRecord(handoverTask.handoverData, 'personalCash') && !readRecord(handoverTask.handoverData, 'reserveCash') && !readRecord(handoverTask.handoverData, 'storeClosing') && <p>Сотрудник ещё не заполнил сдачу смены.</p>}</div></details>
+                  {terminalFiscalControl && terminalFiscalControl.total > 0 && <details className={`team-review-row ${terminalFiscalHasError || terminalFiscalNeedsAttention || terminalFiscalUnavailable ? 'needs-attention' : ''}`}><summary><b>Сверка терминала</b><span>Подтверждено {terminalFiscalControl.statuses.confirmed} из {terminalFiscalControl.total}</span></summary><div>{terminalReasonEntries.map(([reason, count]) => <div key={reason}><p>{terminalFiscalReasonLabel(reason)} · {count}</p><p>{terminalFiscalReasonTimes(terminalFiscalRecords, reason).join(', ')}</p>{terminalFiscalSourceIncomplete(reason) && <p>{terminalFiscalSourceContext(reason)}</p>}</div>)}</div></details>}
                 </div>
-                <Badge className={hasError
-                  ? 'bg-rose-100 text-rose-800'
-                  : keyProblemCount > 0
-                    ? 'bg-amber-100 text-amber-800'
-                    : pendingOverviewCount > 0
-                      ? 'bg-slate-100 text-slate-700'
-                    : 'bg-green-100 text-green-800'}>
-                  {hasError
-                    ? 'Есть ошибка'
-                    : keyProblemCount > 0
-                      ? 'Требует внимания'
-                      : pendingOverviewCount > 0
-                        ? 'Не выполнено'
-                      : 'Всё нормально'}
-                </Badge>
-              </div>
-
-              {keyProblemCount > 0 ? (
-                <section className='mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3'>
-                  <h4 className='text-sm font-extrabold text-slate-950'>Ключевые проблемы</h4>
-                  <div className='mt-2 grid gap-1.5'>
-                    {requiredIssues.length > 0 ? (
-                      <div className='mb-1 overflow-hidden rounded-lg border border-rose-200 bg-white'>
-                        <div className='flex items-center justify-between gap-3 border-b border-rose-100 px-3 py-2'>
-                          <p className='text-xs font-extrabold uppercase tracking-wide text-rose-800'>Обязательные ошибки</p>
-                          <span className='rounded-full bg-rose-100 px-2 py-0.5 text-xs font-extrabold text-rose-800'>{requiredIssues.length}</span>
-                        </div>
-                        <div className='divide-y divide-slate-100'>
-                          {requiredIssues.map((issue) => (
-                            <Link key={issue.id} href={issue.href} className='flex items-center justify-between gap-3 px-3 py-2.5 transition hover:bg-rose-50'>
-                              <span className='min-w-0'>
-                                <span className='block text-sm font-extrabold text-slate-950'>{issue.title}</span>
-                                {issue.meta ? <span className='mt-0.5 block text-xs font-bold text-slate-500'>{issue.meta}</span> : null}
-                                {issue.lifecycle ? <span className='mt-1 block text-xs font-semibold text-slate-400'>{issue.lifecycle}</span> : null}
-                              </span>
-                              <span className='shrink-0 text-xs font-extrabold text-rose-800'>Открыть →</span>
-                            </Link>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                    {scheduleNeedsAttention ? (
-                      <p className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-800'><span className='font-extrabold'>График:</span> рабочий график сотрудника не заполнен</p>
-                    ) : null}
-                    {activeWorkdayProblems.map((violation) => (
-                      <p key={violation.id} className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-800'><span className='font-extrabold'>{violation.label}:</span> {violation.detail}</p>
-                    ))}
-                    {terminalFiscalHasError ? (
-                      <p className='rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm font-semibold text-rose-800'>
-                        <span className='font-extrabold'>Операции терминала:</span> автоматическая сверка обнаружила расхождений: {terminalFiscalControl!.statuses.mismatch}
-                      </p>
-                    ) : terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention ? (
-                      <p className='rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-800'>
-                        <span className='font-extrabold'>Операции терминала:</span> требуется действие администратора
-                      </p>
-                    ) : null}
-                    {keyProblems.slice(0, 3).map((item) => {
-                      const state = taskBusinessState(item);
-                      return <p key={item.task.id} className={`rounded-lg border px-3 py-2.5 text-sm font-semibold ${state.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}><span className='font-extrabold'>{taskDisplayTitle(item.task)}:</span> {state.result}</p>;
-                    })}
-                  </div>
-                </section>
-              ) : (
-                <section className='mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3'>
-                  <h4 className='text-sm font-extrabold text-green-950'>Действий не требуется</h4>
-                  <p className='mt-1 text-xs font-semibold text-green-800'>По текущим данным ошибок и незавершённых действий нет.</p>
-                </section>
-              )}
-
-              {terminalFiscalControl && terminalFiscalControl.total > 0 ? (
-                <section className={`mb-4 rounded-xl border px-4 py-3 ${
-                  terminalFiscalHasError
-                    ? 'border-rose-200 bg-rose-50'
-                    : terminalFiscalNeedsAttention || terminalFiscalConfigurationNeedsAttention
-                      ? 'border-amber-200 bg-amber-50'
-                      : terminalFiscalControl.statuses.pending > 0
-                        ? 'border-blue-200 bg-blue-50'
-                        : terminalFiscalUnavailable
-                          ? 'border-slate-200 bg-slate-50'
-                          : 'border-green-200 bg-green-50'
-                }`}>
-                  <div className='flex flex-wrap items-center justify-between gap-2'>
-                    <h4 className='text-sm font-extrabold text-slate-950'>Автоматическая сверка терминала</h4>
-                    <span className='text-xs font-extrabold text-slate-600'>Т-Банк → 1С → ОФД</span>
-                  </div>
-                  <p className='mt-1 text-sm font-semibold text-slate-700'>Подтверждено {terminalFiscalControl.statuses.confirmed} из {terminalFiscalControl.total} операций.</p>
-                  {terminalReasonEntries.length > 0 ? (
-                    <div className='mt-3 grid gap-2'>
-                      {terminalReasonEntries.map(([reasonCode, count]) => {
-                        const times = terminalFiscalReasonTimes(terminalFiscalRecords, reasonCode);
-                        const isTechnical = terminalFiscalSourceIncomplete(reasonCode);
-                        return (
-                          <div key={reasonCode} className={`rounded-lg border px-3 py-2 ${isTechnical ? 'border-slate-200 bg-white' : 'border-amber-200 bg-amber-50'}`}>
-                            <p className={`text-sm font-extrabold ${isTechnical ? 'text-slate-900' : 'text-amber-950'}`}>{terminalFiscalReasonLabel(reasonCode)}</p>
-                            <p className={`mt-0.5 text-xs font-semibold ${isTechnical ? 'text-slate-600' : 'text-amber-800'}`}>
-                              {times.length > 0 ? `${times.join(' и ')} · ` : ''}{count} {Number(count) === 1 ? 'операция' : 'операции'}.
-                            </p>
-                            {isTechnical ? <p className='mt-1 text-xs font-semibold text-slate-600'>{terminalFiscalSourceContext(reasonCode)}</p> : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                  {terminalHasSourceIncomplete ? (
-                    <p className='mt-3 text-xs font-semibold leading-relaxed text-slate-600'>
-                      Чек не признан отсутствующим. Это не ошибка сотрудника, действий по сотруднику нет. Система проверит операции повторно.
-                    </p>
-                  ) : (
-                    <p className='mt-2 text-xs font-semibold text-slate-500'>Ожидание технических данных не считается ошибкой сотрудника.</p>
-                  )}
-                </section>
-              ) : null}
-
-              {overviewTasks.length > 0 ? <section className='overflow-hidden rounded-xl bg-white ring-1 ring-slate-200'>
-                <div className='hidden grid-cols-[minmax(210px,1.3fr)_90px_150px_minmax(220px,1.5fr)_72px] gap-2 bg-slate-50 px-4 py-2 text-xs font-bold uppercase text-slate-400 md:grid'>
-                  <span>Проверка</span><span>Срок / факт</span><span>Статус</span><span>Результат</span><span></span>
-                </div>
-                {overviewTasks.map((item) => (
-                  <TaskOverviewRow key={item.task.id} dateKey={dateKey} overdueMinutes={timingViolationByTaskId.get(item.task.id)?.minutesLate} item={item} department={department} run={run!} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
-                ))}
-              </section> : null}
-
-              {(workdayTimingViolations.length > 0 || workDay) ? (
-                <details className='group mt-4 rounded-xl bg-white ring-1 ring-slate-200'>
-                  <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3'>
-                    <span className='text-sm font-extrabold text-slate-950'>Время работы и служебная информация</span>
-                    <span className='text-xs font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
-                    <span className='hidden text-xs font-extrabold text-slate-500 group-open:inline'>Свернуть</span>
-                  </summary>
-                  <div className='grid gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600'>
-                    {workDay ? technicalClose ? <>
-                      <p>Начало: {formatTime(workDay.startedAt)}. Время ухода не зафиксировано.</p>
-                      <p>Запись закрыта: {technicalWorkdayCloseTime(workDay.endedAt)}</p>
-                    </> : <p>Фактическое время: {formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)}</p> : null}
-                    {workDay?.deviations.map((deviation) => {
-                      const requestedTime = deviation.requestedEndMinutes === null
-                        ? ''
-                        : `${String(Math.floor(deviation.requestedEndMinutes / 60)).padStart(2, '0')}:${String(deviation.requestedEndMinutes % 60).padStart(2, '0')}`;
-                      return (
-                        <p key={`${deviation.kind}-${deviation.reportedAt}`}>
-                          <span className='font-extrabold text-slate-800'>{deviation.kind === 'late_arrival' ? 'Причина опоздания' : `Досрочное завершение${requestedTime ? ` в ${requestedTime}` : ''}`}:</span>{' '}
-                          {deviationReasonLabel(deviation.kind === 'late_arrival' ? 'late_arrival' : 'early_finish', deviation.reasonCode)}
-                          {deviation.comment ? ` · ${deviation.comment}` : ''}
-                          {' · '}{formatTime(deviation.reportedAt)}
-                        </p>
-                      );
-                    })}
-                    {workdayTimingViolations.map((violation) => (
-                      <p key={violation.id}><span className='font-extrabold text-slate-800'>{violation.label}:</span> {violation.detail}</p>
-                    ))}
-                    {taskTimingViolationCount > 0 ? <p>Шагов чек-листа выполнено не в срок: {taskTimingViolationCount}.</p> : null}
-                  </div>
-                </details>
-              ) : null}
+                {workDay && <details className='team-card-checks'><summary>История и комментарии</summary><div className='team-cash-evidence'>{workDay.comment && <p>{workDay.comment}</p>}{workDay.shiftChanges.map(change => <p key={change.changedAt}>{formatTime(change.changedAt)} · {change.fromShiftLabel} → {change.toShiftLabel}</p>)}{!workDay.comment && workDay.shiftChanges.length === 0 && <p>Дополнительных комментариев и изменений нет.</p>}</div></details>}
+              </>}
+              {cardView === 'cash' && <>
+                <h4 className='team-card-heading'>Инкассации за день</h4>
+                <p className='team-card-note'>Проведено в 1С: {formatMoney(cashOperations.filter(operation => operation.status === 'posted_1c_pair').reduce((sum, operation) => sum + operation.amount, 0))} · без подтверждения: {formatMoney(cashOperations.filter(operation => operation.status !== 'posted_1c_pair').reduce((sum, operation) => sum + operation.amount, 0))}</p>
+                {cashOperations.length === 0 && <p className='team-card-empty'>Операций инкассации за этот день нет.</p>}
+                {cashOperations.map(operation => <details key={`${operation.id}-${focusedOperation}`} className='team-cash-entry' open={focusedOperation === operation.id || undefined}><summary><b>{formatMoney(operation.amount)}</b><span>Внесено в {formatTime(operation.createdAt)}</span><span>{operation.direction === 'deposit_safe' ? 'В депозитный сейф' : 'В резерв'}</span><span className={`team-status ${operation.status === 'posted_1c_pair' ? 'green' : 'amber'}`}>{operation.status === 'posted_1c_pair' ? 'Проведена' : operation.status === 'one_c_error' ? 'Не проведена' : operation.status === 'manual_in_progress' ? 'Вручную' : 'Ожидает 1С'}</span></summary><div className='team-cash-evidence'>
+                  <p>Документ расхода: {operation.oneCDocumentNumber ?? 'Нет номера'} · приход: {operation.oneCReceiptDocumentNumber ?? 'Нет номера'}</p>
+                  {operation.comment && <p>Комментарий: {operation.comment}</p>}
+                  <PhotoRow label='Документ инкассации' photo={{ storagePath: operation.photoPath }} onPreview={setSelectedPhoto} />
+                  {autoChecks.filter(check => check.cashOperation?.id === operation.id).map(check => <div key={check.id}><p>{check.summary}</p><button type='button' className='team-inline-action' onClick={() => openManualReview(check)}>Проверить и зафиксировать решение →</button></div>)}
+                </div></details>)}
+                {handoverTask && <details className='team-card-checks'><summary>Инкассация и подтверждения при сдаче смены</summary><HandoverDetails data={handoverTask.handoverData} department={department} onPreview={setSelectedPhoto} /></details>}
+              </>}
+              {cardView === 'close' && <>
+                <h4 className='team-card-heading'>{workDay?.endedAt ? `День завершён · ${formatTime(workDay.endedAt)}` : 'Завершение дня · не завершён'}</h4>
+                {closeRequests.length === 0 && <p className='team-card-note'>Запросов решения администратора нет.</p>}
+                {closeRequests.map(request => <section key={request.id} className='team-card-attention'><b>{request.status === 'pending' ? 'Требуется ваше решение' : request.status === 'approved' ? 'Завершение разрешено' : request.status === 'rejected' ? 'Завершение не разрешено' : 'Запрос закрыт'}</b><p>{formatTime(request.requestedAt)} · {isCashEncashmentException(request.reasonCode) ? cashEncashmentReasonLabel(request.reasonCode) : request.reasonCode === 'kkm' ? 'Закрытие ККМ не подтверждено' : 'Не удалось завершить обязательные проверки'}</p><p>{request.comment}</p>
+                  {request.status === 'pending' ? <CloseExceptionDecisionClient embedded requestId={request.id} approveLabel={isCashEncashmentException(request.reasonCode) ? 'Завершить без инкассации' : undefined} /> : <p>{request.decidedBy ? `${request.decidedBy} · ` : ''}{formatTime(request.decidedAt)}{request.decisionComment ? ` · ${request.decisionComment}` : ''}</p>}
+                  {request.status === 'pending' && <small>Разрешение сразу завершит день. Неподтверждённые операции и замечания останутся на контроле.</small>}
+                </section>)}
+                {handoverTask ? <details className='team-card-checks'><summary>Подтверждения сдачи смены · {handoverTask.status === 'done' ? 'выполнена' : 'не завершена'}</summary><div className='team-cash-evidence'>{readRecord(handoverTask.handoverData, 'personalCash') || readRecord(handoverTask.handoverData, 'reserveCash') || readRecord(handoverTask.handoverData, 'storeClosing') ? <HandoverDetails data={handoverTask.handoverData} department={department} onPreview={setSelectedPhoto} /> : <p>Сотрудник ещё не заполнил сдачу смены.</p>}</div></details> : <p className='team-card-note'>Данных сдачи смены нет.</p>}
+                {requiredIssues.length > 0 && <section className='team-card-attention'><b>Нерешённые замечания · {requiredIssues.length}</b>{requiredIssues.map(issue => <Link key={issue.id} href={issue.href}>{issue.title} →</Link>)}</section>}
+              </>}
             </div>
           </div>
           {selectedPhoto && (
