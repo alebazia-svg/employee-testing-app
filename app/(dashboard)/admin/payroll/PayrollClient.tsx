@@ -1,10 +1,17 @@
 'use client';
 
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Database, Eye, FileSpreadsheet, Upload } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
+import PayrollSettlementPreview, { findSettlement, verifiedSettlementRemainder, SettlementCardPayments, EmployeeCardOverlay, type SettlementExample } from './PayrollSettlementPreview';
 import { isPayrollPeriodAvailable } from '@/lib/payroll-period-availability';
 import PayrollOverviewPreview from './PayrollOverviewPreview';
+import PayrollFinalOverview from './PayrollFinalOverview';
+import PayrollLivePayments from './PayrollLivePayments';
+import PayrollPaymentEvidence, { usePayrollPaymentEvidence, paymentCardSummary, type Evidence } from './PayrollPaymentEvidence';
+import { currentPayrollSettlement, completeSettlementTotal, type CurrentPayrollSettlement } from '@/lib/payroll-current-export';
+import { currentPayrollWorkspacePeriod, matchingFinalPayrollRun } from '@/lib/payroll-workspace';
 import { automaticPayrollApprovalIssues, automaticPayrollDisplayedTotal, payrollApprovalAcceptanceText, payrollApprovalReview } from '@/lib/payroll-automatic-approval';
 import { savePayrollReviewDecisions } from '@/lib/payroll-review-save';
 import { AdminDisclosureAction } from '@/components/admin/AdminDisclosureAction';
@@ -205,6 +212,7 @@ type PayrollEmployee = {
   salaryType: ConfiguredSalaryType;
   salary?: number;
   dayRate?: number;
+  agreedDays?: number;
   activeFromPeriod?: string;
   activeThroughPeriod?: string;
 };
@@ -426,6 +434,7 @@ type PayrollWorkbookMainRow = {
 };
 
 type PayrollWorkbookModel = {
+  currentSettlement?: { rows: CurrentPayrollSettlement[]; checkedAt: string };
   oneCAdvanceEmployees?: string[];
   periodLabel: string;
   versionLabel: string;
@@ -469,13 +478,24 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
   const totalNet = model.employeeRows.reduce((sum, row) => sum + row.netPay, 0);
   const unconfiguredRows = model.employeeRows.filter((row) => !isPayrollWorkbookSalaryTypeConfigured(row.salaryType));
   const reviewCount = getPayrollWorkbookReviewCount(model.employeeRows, model.checkRows);
+  const current = model.currentSettlement;
+  const settledByName = new Map(current?.rows.map(row => [row.employeeName, row]));
+  const available = (value: number | null | undefined) => value ?? 'Не сверено';
+  const exportAdvance = (name: string) => settledByName.get(name)?.advance;
+  const afterAdvance = (employee: typeof model.employeeRows[number]) => {
+    const advance = exportAdvance(employee.employeeName);
+    return advance == null ? 'Не сверено' : Math.round((employee.grossPay - advance - employee.deduction) * 100) / 100;
+  };
+  const paidTotal = current ? available(completeSettlementTotal(current.rows, 'paid')) : totalWithheld;
+  const remainingTotal = current ? available(completeSettlementTotal(current.rows, 'remaining')) : totalNet;
+  const paidLabel = current ? 'Выдано за месяц' : 'Выплачено / удержано';
   const summaryRows: Array<Array<string | number | null>> = [
     [`Зарплатная ведомость — ${model.periodLabel}`],
-    [`${model.versionLabel} · сформировано ${model.generatedAt} · «Начислено» — зарплата до вычета авансов и удержаний.`],
-    ['Сотрудников', '', 'Начислено за месяц', '', 'Выплачено / удержано', '', 'Осталось выплатить', '', 'Нужно проверить', ''],
-    [model.employeeRows.length, '', totalGross, '', totalWithheld, '', totalNet, '', reviewCount, ''],
+    [current ? `${model.versionLabel} · выплаты 1С обновлены ${current.checkedAt}. Авансы включены в выданное.` : `${model.versionLabel} · сформировано ${model.generatedAt} · «Начислено» — зарплата до вычета авансов и удержаний.`],
+    ['Сотрудников', '', 'Начислено за месяц', '', paidLabel, '', 'Осталось выплатить', '', 'Нужно проверить', ''],
+    [model.employeeRows.length, '', totalGross, '', paidTotal, '', remainingTotal, '', reviewCount, ''],
   ];
-  const tableHeader = ['Сотрудник', 'Начислено', 'Дни', 'Оплата / оклад / доплата', 'Процентная часть', 'Бонус за дисциплину', 'Премии и агентские', 'Выплачено / удержано', 'Осталось выплатить', 'Примечание'];
+  const tableHeader = ['Сотрудник', 'Начислено', 'Дни', 'Оплата / оклад / доплата', 'Процентная часть', 'Бонус за дисциплину', 'Премии и агентские', paidLabel, 'Осталось выплатить', 'Примечание'];
   const tableRows: Array<{ kind: 'group' | 'employee'; salaryType: string; values: Array<string | number | null> }> = [];
   let currentCategory = '';
   model.employeeRows.forEach((row) => {
@@ -494,9 +514,9 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
         row.performancePay || '',
         row.disciplinePay || '',
         row.additionalPay || '',
-        row.advance + row.deduction || '',
-        row.netPay,
-        formatPayrollWorkbookNote(row.status, row.comment),
+        current ? available(settledByName.get(row.employeeName)?.paid) : row.advance + row.deduction || '',
+        current ? available(settledByName.get(row.employeeName)?.remaining) : row.netPay,
+        [formatPayrollWorkbookNote(row.status, row.comment), current && settledByName.get(row.employeeName)?.advance ? `В том числе аванс: ${formatMoney(settledByName.get(row.employeeName)!.advance!)}` : '', current && settledByName.get(row.employeeName)?.remaining === null ? 'Остаток за месяц требует сверки; общий долг указан на листе «Общие остатки».' : ''].filter(Boolean).join('; '),
       ],
     });
   });
@@ -508,8 +528,8 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     model.employeeRows.reduce((sum, row) => sum + row.performancePay, 0),
     model.employeeRows.reduce((sum, row) => sum + row.disciplinePay, 0),
     model.employeeRows.reduce((sum, row) => sum + row.additionalPay, 0),
-    totalWithheld,
-    totalNet,
+    paidTotal,
+    remainingTotal,
     '',
   ];
   const headerRow = summaryRows.length + 1;
@@ -567,7 +587,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
   setColumnNumberFormat(summarySheet, headerRow + 1, totalRowNumber, [1, 3, 4, 5, 6, 7, 8], moneyFormat);
   setColumnNumberFormat(summarySheet, headerRow + 1, totalRowNumber, [2], integerFormat);
   setColumnNumberFormat(summarySheet, 4, 4, [2, 4, 6], moneyFormat);
-  XLSX.utils.book_append_sheet(workbookExport, summarySheet, 'Итоги');
+  if (!current) XLSX.utils.book_append_sheet(workbookExport, summarySheet, 'Итоги');
 
   const addTableSheet = (name: string, subtitle: string, header: string[], rows: Array<Array<string | number | null>>, widths: number[], moneyColumns: number[] = [], collapsedRows: Set<number> = new Set()) => {
     const safeRows = rows.length ? rows : [['—', 'Данных для отображения нет']];
@@ -633,6 +653,27 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     XLSX.utils.book_append_sheet(workbookExport, sheet, name);
   };
 
+  if (current) {
+    const rows: Array<Array<string | number | null>> = [];
+    let category = '';
+    for (const employee of model.employeeRows) {
+      if (category !== employee.category) { category = employee.category; rows.push([category.toLocaleUpperCase('ru-RU'),'','','']); }
+      rows.push([employee.employeeName, employee.grossPay, available(exportAdvance(employee.employeeName)), afterAdvance(employee)]);
+    }
+    const advanceTotal = model.employeeRows.every(e => exportAdvance(e.employeeName) != null) ? model.employeeRows.reduce((s,e) => s + Math.round(exportAdvance(e.employeeName)! * 100),0)/100 : null;
+    rows.push(['ИТОГО',totalGross,available(advanceTotal),advanceTotal == null ? 'Не сверено' : Math.round((totalGross-advanceTotal-model.employeeRows.reduce((s,e)=>s+e.deduction,0))*100)/100]);
+    addTableSheet('Итоги', `Ведомость расчёта. Обычные выплаты зарплаты не учитываются. Авансы проверены ${current.checkedAt}.${model.employeeRows.some(e=>e.deduction) ? ' После авансов также вычтены удержания из расшифровки.' : ''}`,
+      ['Сотрудник','Начислено','Авансы за месяц','После авансов'],rows,[42,21,21,21],[1,2,3]);
+    const sheet = workbookExport.Sheets['Итоги'];
+    setRowStyle(sheet,rows.length+4,0,3,totalStyle);
+    sheet['!rows']![1]={hpt:32};
+    for (let i=0;i<rows.length-1;i++) {
+      if (typeof rows[i][1] !== 'number') continue;
+      sheet['!rows']![i+4]={hpt:24};
+      setCellStyle(sheet,`D${i+5}`,{font:{bold:true,color:{rgb:'1E3A5F'}},fill:{fgColor:{rgb:'EFF6FF'}}});
+    }
+  }
+
   const getAccrualSource = (component: string) => {
     const normalized = component.toLocaleLowerCase('ru-RU');
     if (normalized.includes('начислено за месяц') || normalized.includes('к выплате') || normalized.includes('доплата до миним')) return 'Расчёт портала';
@@ -671,8 +712,8 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
         workbookAccrualRows.push([
           employee,
           employeeSummary.grossPay,
-          employeeSummary.advance + employeeSummary.deduction || '',
-          employeeSummary.netPay,
+          current ? available(exportAdvance(employee)) : employeeSummary.advance + employeeSummary.deduction || '',
+          current ? afterAdvance(employeeSummary) : employeeSummary.netPay,
           employeeSummary.status,
           '',
           '',
@@ -683,7 +724,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     }
     const base = typeof row[4] === 'number' ? row[4] : row[4] ?? null;
     const amount = Number(row[6] ?? 0);
-    if (component !== 'К выплате') {
+    if (component !== 'К выплате' && !(current && component === 'Аванс')) {
       const isGrossTotal = component === 'Начислено за месяц';
       const displayedComponent = isGrossTotal ? 'Итого начислено' : component;
       const calculation = isGrossTotal
@@ -707,7 +748,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     }
     currentAccrualEmployee = employee;
   });
-  addTableSheet('Расшифровка', 'По умолчанию видны итоги. Нажмите «+» слева от строк, чтобы раскрыть составляющие и числовые формулы.', ['Сотрудник', 'Начислено', 'Выплачено / удержано', 'Осталось выплатить', 'Статус', 'Составляющая', 'Числовой расчёт', 'Источник', 'Примечание'], workbookAccrualRows, [28, 18, 20, 20, 16, 38, 58, 28, 48], [1, 2, 3], collapsedAccrualRows);
+  addTableSheet('Расшифровка', 'По умолчанию видны итоги. Нажмите «+» слева от строк, чтобы раскрыть составляющие и числовые формулы.', ['Сотрудник', 'Начислено', current ? 'Авансы за месяц' : paidLabel, current ? 'После авансов' : 'Осталось выплатить', 'Статус', 'Составляющая', 'Числовой расчёт', 'Источник', 'Примечание'], workbookAccrualRows, [28, 18, 20, 20, 16, 38, 58, 28, 48], [1, 2, 3], collapsedAccrualRows);
   const workbookCheckRows = [
     ...unconfiguredRows.map((row) => [
       row.employeeName,
@@ -748,7 +789,7 @@ async function downloadPayrollWorkbook(model: PayrollWorkbookModel) {
     ['СВЕРКА ИТОГОВ', '', '', '', ''],
     ['Расчёт в целом', 'Сотрудники в ведомости', 'Готово', model.employeeRows.length, `Включено сотрудников: ${model.employeeRows.length}`],
     ['Расчёт в целом', 'Начислено: «Итоги» и «Расшифровка»', grossMismatchCount ? 'Ошибка' : 'Готово', grossMismatchCount, grossMismatchCount ? 'Есть расхождения по начисленной зарплате' : 'Начисления по каждому сотруднику совпадают'],
-    ['Расчёт в целом', 'Осталось выплатить: «Итоги» и «Расшифровка»', netMismatchCount ? 'Ошибка' : 'Готово', netMismatchCount, netMismatchCount ? 'Есть расхождения по остатку к выплате' : 'Остатки к выплате по каждому сотруднику совпадают'],
+    ['Расчёт в целом', current ? 'Сохранённый расчёт после авансов и удержаний' : 'Осталось выплатить: «Итоги» и «Расшифровка»', netMismatchCount ? 'Ошибка' : 'Готово', netMismatchCount, netMismatchCount ? 'Есть расхождения в сохранённом расчёте' : current ? 'Составляющие сохранённого расчёта совпадают; текущие выплаты показаны отдельно' : 'Остатки к выплате по каждому сотруднику совпадают'],
   );
   addTableSheet('Контроль расчёта', 'Замечания, которые требуют решения, и выполненные контрольные сверки.', ['Сотрудник', 'Что проверить', 'Статус', 'Количество', 'Что это означает'], workbookCheckRows, [28, 58, 18, 14, 74]);
   const workbookSourceRows = [
@@ -1089,7 +1130,7 @@ const payrollEmployees: Record<string, PayrollEmployee> = {
   'Кумыков Мухаммед': {
     name: 'Кумыков Мухаммед',
     department: 'Закупки',
-    position: 'Стажёр закупок · с 12.10.2026',
+    position: 'Помощник Астемира · с 12.10.2026',
     salaryType: 'purchase_daily',
     dayRate: 1500,
     activeFromPeriod: '2026-10',
@@ -1100,8 +1141,11 @@ function isConfiguredSalaryType(value: string | null): value is ConfiguredSalary
   return Boolean(value && isPayrollWorkbookSalaryTypeConfigured(value));
 }
 
-function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey: string, reportManagerNames: Set<string> = new Set()) {
+function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey: string, reportManagerNames: Set<string> = new Set(), useAgreedDays = true) {
   const directory: Record<string, PayrollEmployee> = { ...payrollEmployees };
+  if (useAgreedDays && periodKey >= '2026-10') directory['Кумыков Мухаммед'] = {
+    ...directory['Кумыков Мухаммед'], agreedDays: periodKey === '2026-10' ? 16 : 20,
+  };
   if (periodKey >= FILM_TRAINEE_PERIOD) directory[FILM_TRAINEE_NAME] = {
     name: FILM_TRAINEE_NAME, department: 'Розничные продажи',
     position: 'Стажёр по поклейке · услуги 70%', salaryType: 'retail_sales_bonus',
@@ -1126,6 +1170,7 @@ function buildPayrollEmployeeDirectory(users: PayrollDirectoryUser[], periodKey:
       salaryType,
       salary: salaryType === 'fixed_salary' ? user.payrollFixedSalary ?? 0 : undefined,
       dayRate: existing?.dayRate,
+      agreedDays: salaryType === 'purchase_daily' ? existing?.agreedDays : undefined,
       activeFromPeriod: user.payrollRuleFrom ?? existing?.activeFromPeriod,
       activeThroughPeriod: user.payrollRuleThrough ?? existing?.activeThroughPeriod,
     };
@@ -3545,7 +3590,7 @@ function buildFullPayrollRow(summary: BonusManagerSummary, manual: PayrollManual
   const manualLateCount = parseManualNumber(manual?.lateCount ?? '');
   const salaryRule = salaryType === 'purchase_daily' ? 'daily' : isBelaManager(summary.manager) ? 'belaPercent' : isNoDayPayManager(summary.manager) ? 'noDayPay' : 'standard';
   const dayPayNotRequired = salaryRule !== 'standard' && salaryRule !== 'daily';
-  const workedDays = dayPayNotRequired ? null : manualWorkedDays;
+  const workedDays = dayPayNotRequired ? null : employee.agreedDays ?? manualWorkedDays;
   const lateCount = dayPayNotRequired || salaryRule === 'daily' ? null : manualLateCount;
   const advance = parseManualNumber(manual?.advance ?? '') ?? 0;
   const agentCreditCommission = summary.manager === agentCreditCommissionEmployee ? parseManualNumber(manual?.agentCreditCommission ?? '') ?? 0 : 0;
@@ -3961,8 +4006,10 @@ function getManagerStatus(summary: BonusManagerSummary, rows: ClassifiedSalesRow
   return { status: 'OK', reason: 'замечаний нет' };
 }
 
-export default function AdminPayrollPage({ visualPreview = true }: { visualPreview?: boolean }) {
-  const defaultPayrollPeriod = getDefaultPayrollPeriod();
+export default function AdminPayrollPage({ visualPreview = true, liveWorkspace = false, testEnvironment = false, settlementRows, settlementEvidence }: { visualPreview?: boolean; liveWorkspace?: boolean; testEnvironment?: boolean; settlementRows?: SettlementExample[]; settlementEvidence?: { run: SavedPayrollRunDetail; source: DailyControlResponse; rules: PayrollClassificationRule[] } }) {
+  const defaultPayrollPeriod = liveWorkspace ? currentPayrollWorkspacePeriod() : getDefaultPayrollPeriod();
+  const modernManagerCard = liveWorkspace || Boolean(settlementRows);
+  const [showCurrentComparison, setShowCurrentComparison] = useState(false);
   const [month, setMonth] = useState(defaultPayrollPeriod.month);
   const [year, setYear] = useState(defaultPayrollPeriod.year);
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
@@ -3978,7 +4025,10 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   const [activePayrollTab, setActivePayrollTab] = useState('Итог ЗП');
   const [expandedManager, setExpandedManager] = useState<string | null>(null);
   const [selectedManager, setSelectedManager] = useState<string | null>(null);
-  const [selectedManagerSource, setSelectedManagerSource] = useState<'manual' | 'oneC'>('manual');
+  const [managerCardTab, setManagerCardTab] = useState<'calculation' | 'payments'>('calculation');
+  const requestedManagerCardTab = useRef<'calculation' | 'payments'>('calculation');
+  useEffect(() => { setManagerCardTab(requestedManagerCardTab.current); requestedManagerCardTab.current = 'calculation'; }, [selectedManager]);
+  const [selectedManagerSource, setSelectedManagerSource] = useState<'manual' | 'oneC' | 'saved'>('manual');
   const [manualPayroll, setManualPayroll] = useState<Record<string, PayrollManualInput>>({});
   const [fixedPayroll, setFixedPayroll] = useState<Record<string, FixedPayrollInput>>({});
   const [purchasePayroll, setPurchasePayroll] = useState<PurchasePayrollInput>({ advance: '', deduction: '', comment: '' });
@@ -4140,6 +4190,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
 
   useEffect(() => {
     oneCDetailRequestVersion.current += 1;
+    setSelectedManager(null);
+    setShowCurrentComparison(false);
     setOneCDetailClassification(null);
     setOneCDetailPeriodKey('');
     setOneCDetailEmployeeName('');
@@ -4580,6 +4632,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       payrollDirectoryUsers,
       selectedPayrollPeriodKey,
       new Set(compactSales ? compactSales.managerSummaries.map((row) => row.manager) : shadowClassification.rows.map((row) => row.manager)),
+      !oneCShadowBaseline,
     );
     const shadowManualPayroll = oneCShadowBaseline
       ? oneCShadowBaseline.manualInputs
@@ -4604,6 +4657,11 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         selectedPayrollPeriodKey,
       );
     if (!oneCShadowBaseline) {
+      const assistant = shadowEmployeeDirectory['Кумыков Мухаммед'];
+      if (assistant?.agreedDays !== undefined) shadowManualPayroll[assistant.name] = {
+        ...(shadowManualPayroll[assistant.name] ?? { workedDays: '', lateCount: '', advance: '', comment: '' }),
+        workedDays: String(assistant.agreedDays),
+      };
       shadowManualPayroll[agentCreditCommissionEmployee] = {
         ...(shadowManualPayroll[agentCreditCommissionEmployee] ?? { workedDays: '', lateCount: '', advance: '', comment: '' }),
         agentCreditCommission: finboxRead.data?.amount ?? '',
@@ -4826,11 +4884,35 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       ],
     };
   }, [attendancePreview, attendancePreviewError, bonusValidation.bonuses, classificationRules, fixedPayroll, isSelectedPayrollPeriodAvailable, currentFinalRun, isOneCShadowBaselineLoading, oneCShadowBaselineError, manualPayroll, month, oneCShadowBaseline, oneCShadowSource, oneCShadowSourceIsStale, payrollDirectoryUsers, purchasePayroll, selectedPayrollPeriodKey, year, oneCAdvances, oneCAdvancesError, finboxRead.data, finboxRead.error]);
+  const workspaceFinalRun = liveWorkspace ? matchingFinalPayrollRun(oneCShadowBaseline, selectedPayrollPeriodKey, currentFinalRun?.id) : null;
+  const workspaceEmployees = workspaceFinalRun?.employeeResults.filter(row => {
+    const employee = payrollEmployees[row.employeeName];
+    return !employee || isPayrollEmployeeActiveForPeriod(employee, selectedPayrollPeriodKey)
+      || row.grossPay !== 0 || row.netPay !== 0 || row.advance !== 0;
+  });
+  const savedCardRun = settlementEvidence?.run.period.periodKey === selectedPayrollPeriodKey ? settlementEvidence.run : selectedManagerSource === 'saved' ? workspaceFinalRun : null;
+  const savedCardEmployee = savedCardRun?.employeeResults.find(row => row.employeeName === selectedManager);
+  const paymentRead = usePayrollPaymentEvidence(liveWorkspace ? selectedPayrollPeriodKey : null);
+  const paymentNames = workspaceEmployees ? workspaceEmployees.map(row => row.employeeName) : savedCardRun ? savedCardRun.employeeResults.map(row => row.employeeName) : (oneCShadowCalculation?.shadowRows ?? fullPayrollRows).map(row => row.manager);
+  const livePaymentSummary = paymentCardSummary(paymentRead.data, selectedManager ?? '', paymentNames);
+  const savedCardClassification = useMemo(() => {
+    if (!settlementEvidence || settlementEvidence.source.period.periodKey !== selectedPayrollPeriodKey) return null;
+    const rows: SalesRow[] = (settlementEvidence.source.sales.rows ?? []).map(row => ({...row, registrar: '', registrars: [], profitability: row.revenue ? row.grossProfit / row.revenue * 100 : 0}));
+    return classifySalesRows(mapLegacyRetailTraineeRowsForPeriod(rows, month, year), settlementEvidence.rules);
+  }, [settlementEvidence, selectedPayrollPeriodKey, month, year]);
   const selectedManagerPayroll = useMemo(
-    () => (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows : fullPayrollRows)?.find((summary) => summary.manager === selectedManager) ?? null,
-    [fullPayrollRows, oneCShadowCalculation, selectedManager, selectedManagerSource],
+    () => savedCardEmployee ? {
+      ...savedCardEmployee, manager: savedCardEmployee.employeeName,
+      payrollStatus: savedCardEmployee.status === 'OK' ? 'OK' : 'Проверить',
+      payrollReasons: Array.isArray(savedCardEmployee.reasons) ? savedCardEmployee.reasons : [],
+      belaBase: savedCardEmployee.calculationDetails.find(d => d.component === 'Начисление 12%')?.base ?? 0,
+      belaPercentAmount: savedCardEmployee.calculationDetails.find(d => d.component === 'Начисление 12%')?.amount ?? 0,
+      minimumGuaranteeAdjustment: savedCardEmployee.calculationDetails.find(d => d.component === 'Доплата до минимальной зарплаты')?.amount ?? 0,
+      oneTimeBonus: (savedCardEmployee.adjustments ?? []).filter(a => a.type === 'ONE_TIME_BONUS').reduce((s,a) => s+a.amount,0),
+    } as FullPayrollRow : (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows : fullPayrollRows)?.find((summary) => summary.manager === selectedManager) ?? null,
+    [savedCardEmployee, fullPayrollRows, oneCShadowCalculation, selectedManager, selectedManagerSource],
   );
-  const selectedManagerClassification = selectedManagerSource === 'oneC' && oneCShadowCalculation
+  const selectedManagerClassification = savedCardEmployee && savedCardClassification ? savedCardClassification : selectedManagerSource === 'oneC' && oneCShadowCalculation
     ? oneCDetailPeriodKey === selectedPayrollPeriodKey && oneCDetailEmployeeName === selectedManager && oneCDetailClassification
       ? oneCDetailClassification
       : oneCShadowCalculation.classification
@@ -4896,13 +4978,16 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
   }, [payrollReviewItems]);
   const payrollHasCriticalCostIssue = payrollReviewReasonCounts.some(([reason]) => reason === 'Подозрительно нулевая / неполная себестоимость техники');
   const registrarParseUnsafe = parseResult.isRegistrarReport && (!parseResult.isSafeForPayrollCalculation || payrollReviewCount > 20);
-  const selectedManagerSummary = useMemo(() => selectedManagerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [selectedManagerSummaries, selectedManager]);
+  const selectedManagerSummary = useMemo(() => savedCardEmployee ? selectedManagerPayroll : selectedManagerSummaries.find((summary) => summary.manager === selectedManager) ?? null, [savedCardEmployee, selectedManagerPayroll, selectedManagerSummaries, selectedManager]);
+  const selectedSettlement = findSettlement(settlementRows, selectedManager, selectedPayrollPeriodKey);
+  const selectedSettlementPaid = selectedSettlement ? selectedSettlement.paid + (selectedSettlement.first || 0) + (selectedSettlement.advance || 0) + (selectedSettlement.other || 0) : null;
+  const selectedSettlementRemainder = selectedManagerPayroll ? verifiedSettlementRemainder(selectedSettlement, selectedManagerPayroll.grossPay, selectedManagerPayroll.fixedDeduction) : null;
   const selectedManagerRows = useMemo(() => selectedManagerClassification.rows.filter((row) => row.manager === selectedManager), [selectedManagerClassification.rows, selectedManager]);
   const selectedManagerStatus = selectedManagerPayroll && (selectedManagerPayroll.salaryType === 'fixed_salary' || selectedManagerPayroll.salaryType === 'purchase_manager' || selectedManagerPayroll.salaryType === 'purchase_daily' || selectedManagerPayroll.salaryType === 'vl_percent')
     ? { status: selectedManagerPayroll.payrollStatus, reason: selectedManagerPayroll.payrollReasons.join(', ') || 'замечаний нет' }
     : selectedManagerSummary
       ? getManagerStatus(selectedManagerSummary, selectedManagerClassification.rows, selectedManagerClassification.accessoryExcludedRows)
-      : null;
+      : selectedManagerPayroll ? { status: selectedManagerPayroll.payrollStatus, reason: selectedManagerPayroll.payrollReasons.join(', ') || 'Нет строк продаж за выбранный период' } : null;
   const selectedManagerCounts = useMemo(
     () => ({
       disputed: selectedManagerRows.filter((row) => row.calculationType === 'WHOLESALE_REVIEW_TECH' || row.calculationType === 'RETAIL_REVIEW_TECH' || row.calculationType === 'CREDIT_REVIEW_NO_BONUS' || row.matchedRule === 'new-expensive-review').length,
@@ -5816,10 +5901,10 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
             <p><span className='text-slate-500'>Формула:</span> <strong>{row.formula || '—'}</strong></p>
             <p className='sm:col-span-2'><span className='text-slate-500'>Применённое правило:</span> <strong>{hasManualRule ? 'ручное правило' : row.matchedRule || '—'}</strong></p>
           </div>
-          {needsReview && <div className='mt-2'>{renderAccessoryRuleButton(row, problemType)}</div>}
+          {needsReview && !savedCardEmployee && <div className='mt-2'>{renderAccessoryRuleButton(row, problemType)}</div>}
         </details>
 
-        {needsReview && (
+        {needsReview && !savedCardEmployee && (
           <button
             type='button'
             onClick={() => {
@@ -6288,7 +6373,25 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
     setSaveStatus('');
 
     try {
-      const sortedRows = sortPayrollWorkbookEmployees(selectedSavedRun.employeeResults);
+      const exportPeriod = selectedSavedRun.period.periodKey;
+      const sortedRows = sortPayrollWorkbookEmployees(selectedSavedRun.employeeResults.filter(row => {
+        if (!liveWorkspace) return true;
+        const employee = payrollEmployees[row.employeeName];
+        return !employee || isPayrollEmployeeActiveForPeriod(employee, exportPeriod)
+          || row.grossPay !== 0 || row.netPay !== 0 || row.advance !== 0;
+      }));
+      let currentSettlement: PayrollWorkbookModel['currentSettlement'];
+      if (liveWorkspace) {
+        const response = await fetch(`/api/admin/payroll/settlement?period=${encodeURIComponent(exportPeriod)}&refresh=1`, { cache: 'no-store' });
+        if (!response.ok) throw new Error('Не удалось обновить выплаты в 1С. Ведомость со старыми выплатами не скачана. Повторите попытку.');
+        const evidence = await response.json() as Evidence;
+        if (evidence.periodKey !== exportPeriod) throw new Error('Период выплат не совпадает с ведомостью. Повторите скачивание.');
+        const names = sortedRows.map(row => row.employeeName);
+        currentSettlement = {
+          checkedAt: new Date(evidence.balance.checkedAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }),
+          rows: names.map(name => currentPayrollSettlement(name, paymentCardSummary(evidence, name, names))),
+        };
+      }
       const savedAccessoryTier = getSavedRetailAccessoryTier(selectedSavedRun.sourceSummary);
       const employeeRows = sortedRows.map((row) => {
         const reviewReasons = getSavedEmployeeReasons(row);
@@ -6392,7 +6495,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         const reasons = getSavedEmployeeReasons(employee);
         return reasons.map((reason) => [employee.employeeName, reason, 1, 'Проверить', reason, '', '', '', '', '', '']);
       });
-      const employeeReasonSet = new Set(checkRows.map((row) => String(row[1] ?? '')));
+      const employeeReasonSet = new Set(checkRows.flatMap((row) => [String(row[1] ?? ''), `${row[0]}: ${row[1]}`]));
       const reviewRows = getSavedRunReviewReasons(selectedSavedRun)
         .filter((item) => !employeeReasonSet.has(item.reason))
         .map((item) => ['Расчёт в целом', item.reason, item.count, 'Проверить', item.reason, '', '', '', '', '', '']);
@@ -6403,7 +6506,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         ['Версия расчёта', `Расчёт №${selectedSavedRun.runNumber} · ${getPayrollRunStatusLabel(selectedSavedRun.status)}`, 'Экспортируется зафиксированная версия без повторного пересчёта'],
         ['Сохранён', new Date(selectedSavedRun.createdAt).toLocaleString('ru-RU'), 'Дата фиксации расчёта в портале'],
         ['Всего начислено', workbookGrossPay, 'Сумма округлённых начислений сотрудников в ведомости'],
-        ['К выплате', workbookNetPay, 'Сумма округлённых остатков сотрудников после авансов и удержаний'],
+        [currentSettlement ? 'После авансов на момент утверждения' : 'К выплате', workbookNetPay, currentSettlement ? 'Сумма сохранённого расчёта. На листе «Итоги» учтены актуальные авансы за выбранный месяц. Выданная зарплата и остатки — в разделе «Выплаты» портала.' : 'Сумма округлённых остатков сотрудников после авансов и удержаний'],
         ...(savedAccessoryTier ? [
           ['Уровень аксессуаров', `${formatMoney(savedAccessoryTier.teamBase)} / порог ${formatMoney(savedAccessoryTier.threshold)}`, savedAccessoryTier.thresholdExceeded ? 'Порог превышен' : 'Порог не превышен'],
           ['Ставка аксессуаров', `${Math.round(savedAccessoryTier.rate * 100)}%`, savedAccessoryTier.ruleEnabled ? 'Зафиксированная ставка сохранённого расчёта' : 'Фиксированная ставка независимо от общей базы'],
@@ -6413,7 +6516,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           file.originalName,
           `Лист: ${file.selectedSheet ?? 'не сохранён'}; строк: ${file.rowCount ?? 'не сохранено'}; распознано: ${file.parsedRowCount ?? 'не сохранено'}`,
         ]),
-        ...selectedSavedRun.manualInputs.map((input) => [
+        ...selectedSavedRun.manualInputs.filter(input => !liveWorkspace || sortedRows.some(row => row.employeeName === input.employeeName)).map((input) => [
           `Ручные данные: ${input.employeeName}`,
           getSavedInputTypeLabel(input.inputType),
           [`дни ${input.workedDays ?? '—'}`, `опоздания ${input.lateCount ?? '—'}`, `аванс ${input.advance ?? input.purchaseAdvance ?? '—'}`, `премия ${input.fixedBonus ?? '—'}`, `удержание ${input.fixedDeduction ?? input.purchaseDeduction ?? '—'}`, input.comment].filter(Boolean).join('; '),
@@ -6426,12 +6529,13 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       sourceRows.push(...savedRules);
 
       await downloadPayrollWorkbook({
+        currentSettlement,
         periodLabel: `${months[selectedSavedRun.period.month]} ${selectedSavedRun.period.year}`,
         versionLabel: `Сохранённый расчёт №${selectedSavedRun.runNumber} · ${getPayrollRunStatusLabel(selectedSavedRun.status)}`,
         generatedAt: new Date().toLocaleString('ru-RU'),
         employeeRows,
         accrualRows,
-        checkRows: [...reviewRows, ...checkRows],
+        checkRows: [...reviewRows, ...checkRows, ...(currentSettlement?.rows.filter(row => row.advance === null).map(row => [row.employeeName, 'Уточнить авансы за месяц', 1, 'Проверить', 'Авансы за выбранный месяц не подтверждены. Сумма после авансов не рассчитана; неизвестная сумма не заменена нулём.']) ?? [])],
         sourceRows,
         fileName: `Зарплата_${months[selectedSavedRun.period.month]}_${selectedSavedRun.period.year}_расчёт_${selectedSavedRun.runNumber}.xlsx`,
       });
@@ -6710,7 +6814,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
       analyticsRows: buildPayrollAnalyticsRowsPayload(source, 'Автоматические данные 1С'),
       manualInputs: calculation.manualInputs.map(input => {
         const row = calculation.shadowRows.find(employee => employee.manager === input.employeeName);
-        return row ? { ...input, ...(input.inputType === 'purchase' ? { purchaseAdvance: String(row.advance) } : { advance: String(row.advance) }) } : input;
+        return row ? { ...input, ...(row.salaryType === 'purchase_daily' ? { workedDays: String(row.workedDays ?? '') } : {}), ...(input.inputType === 'purchase' ? { purchaseAdvance: String(row.advance) } : { advance: String(row.advance) }) } : input;
       }),
     };
   }
@@ -6905,14 +7009,35 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
         </div>
   );
   return (
-    <AdminShell pageTitle="Зарплата" pageDescription="Начисления за выбранный месяц">
+    <AdminShell pageTitle="Зарплата" pageDescription={settlementRows ? 'Начисления и выплаты сотрудникам' : 'Начисления за выбранный месяц'}>
+      {testEnvironment && <p className='mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900'>Локальная проверка подключения · изолированная тестовая база. Эти суммы не предназначены для выдачи зарплаты.</p>}
+      <PayrollSettlementPreview rows={settlementRows} periodKey={selectedPayrollPeriodKey} periodPicker={periodPicker} onOpenEmployee={name => {
+        // The approval snapshot must not open a synthetic local calculation
+        // under a real saved September salary and real payment history.
+        if (settlementEvidence?.run.period.periodKey === selectedPayrollPeriodKey) {
+          const saved = settlementEvidence.run.employeeResults.find(row => findSettlement(settlementRows, row.employeeName, selectedPayrollPeriodKey)?.name === name);
+          if (saved) { setSelectedManagerSource('manual'); setSelectedManager(saved.employeeName); return true; }
+        }
+        if (findSettlement(settlementRows, name, selectedPayrollPeriodKey)?.calculation) return false;
+        const match = oneCShadowCalculation?.shadowRows.find(row => findSettlement(settlementRows, row.manager, selectedPayrollPeriodKey)?.name === name);
+        if (!match) return false;
+        void openOneCManagerDetails(match.manager);
+        return true;
+      }}>
+      {(openSettlementCard) => <PayrollLivePayments enabled={liveWorkspace} read={paymentRead} names={paymentNames} periodPicker={periodPicker} onEmployee={name=>{
+        requestedManagerCardTab.current = 'payments';
+        if(workspaceFinalRun){setSelectedManagerSource('saved');setSelectedManager(name);}else{void openOneCManagerDetails(name);}
+        setManagerCardTab('payments');
+      }}>
       <div className='max-w-full overflow-x-hidden'>
-      {(!visualPreview || !oneCShadowCalculation) && <div className="mb-4">{periodPicker}</div>}
+      {!settlementRows && !workspaceFinalRun && (!visualPreview || !oneCShadowCalculation) && <div className="mb-4">{periodPicker}</div>}
 
       <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4'>
-        {visualPreview && oneCShadowCalculation && <PayrollOverviewPreview
+        {workspaceFinalRun && <PayrollFinalOverview employees={workspaceEmployees!} periodPicker={periodPicker} runNumber={workspaceFinalRun.runNumber} onEmployee={name => { setSelectedManagerSource('saved'); setSelectedManager(name); }} onExport={() => void exportSavedPayrollWorkbookData(workspaceFinalRun)} exporting={isSavedRunExporting} comparing={showCurrentComparison} onCompare={() => setShowCurrentComparison(value => !value)} />}
+        {workspaceFinalRun && showCurrentComparison && !oneCShadowCalculation && <p role='status' className='rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600'>Текущие данные для сверки ещё недоступны. Утверждённые суммы выше сохранены и не изменяются. Состояние загрузки можно посмотреть в «Источниках и настройках».</p>}
+        {visualPreview && oneCShadowCalculation && (!workspaceFinalRun || showCurrentComparison) && <PayrollOverviewPreview
           key={selectedPayrollPeriodKey}
-          periodPicker={periodPicker}
+          periodPicker={settlementRows || workspaceFinalRun ? <></> : periodPicker}
           period={`${months[Number(month)]} ${year}`}
           date={oneCShadowSource ? formatPayrollControlDate(oneCShadowSource.period.verifiedThrough) : '—'}
           preliminary={oneCShadowCalculation.mode === 'preliminary'}
@@ -6990,7 +7115,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           {automaticDraft.sourceSummary.approvalIssues.length > 0 && <div className='mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-950'><strong>Можно сохранить только черновик. До утверждения:</strong><ul className='mt-2 list-disc pl-5'>{automaticDraft.sourceSummary.approvalIssues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}
           <div className='mt-4 flex flex-wrap gap-3'><button type='button' disabled={isSavingPayroll || automaticDraft.sourceSummary.periodKey !== selectedPayrollPeriodKey} onClick={() => void confirmAutomaticSave()} className='min-h-11 rounded-lg bg-primary px-4 py-2 font-semibold text-white disabled:opacity-50'>{isSavingPayroll ? 'Сохраняю…' : 'Подтвердить сохранение'}</button><button type='button' disabled={isSavingPayroll} onClick={() => setAutomaticDraft(null)} className='min-h-11 rounded-lg border px-4 py-2'>Отмена</button></div>
         </section>}
-        {(!visualPreview || !oneCShadowCalculation) && (
+        {(!visualPreview || !oneCShadowCalculation) && !workspaceFinalRun && (
         <Card className='min-w-0 w-full max-w-full overflow-hidden border border-slate-200 bg-white p-0'>
           <div className='flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-start sm:justify-between'>
             <div className='flex min-w-0 items-start gap-3'>
@@ -7833,7 +7958,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                             <fieldset disabled={isCurrentPeriodClosed || isSavingPayroll} className='grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3'>
                               {!fixed && !purchase && (row.salaryRule === 'standard' || row.salaryRule === 'daily') && <>
                                 <label className='grid gap-1 text-sm font-semibold text-slate-700'>Отработано дней
-                                  <Input aria-label={`Дни: ${row.manager}`} type='number' min='0' step='0.5' value={salesInput.workedDays || (row.workedDays === null ? '' : String(row.workedDays))} onChange={(event) => updateManualPayroll(row.manager, 'workedDays', event.target.value)} />
+                                  <Input aria-label={`Дни: ${row.manager}`} type='number' min='0' step='0.5' disabled={row.manager === 'Кумыков Мухаммед'} value={row.manager === 'Кумыков Мухаммед' ? row.workedDays ?? '' : salesInput.workedDays || (row.workedDays === null ? '' : String(row.workedDays))} onChange={(event) => updateManualPayroll(row.manager, 'workedDays', event.target.value)} />
+                                  {row.manager === 'Кумыков Мухаммед' && <span className='text-xs font-normal text-slate-500'>Согласовано за весь месяц: октябрь — 16 дней, с ноября — 20.</span>}
                                 </label>
                                 {row.salaryRule !== 'daily' && <label className='grid gap-1 text-sm font-semibold text-slate-700'>Опоздания
                                   <Input aria-label={`Опоздания: ${row.manager}`} type='number' min='0' step='1' value={salesInput.lateCount || (row.lateCount === null ? '' : String(row.lateCount))} onChange={(event) => updateManualPayroll(row.manager, 'lateCount', event.target.value)} />
@@ -8340,18 +8466,19 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           </>
         )}
 
-            {selectedManagerStatus && selectedManagerPayroll && (
-              <div className='fixed inset-0 z-50 flex justify-end bg-slate-950/45'>
-                <aside className='admin-dialog-panel h-full w-full overflow-y-auto bg-white p-4 shadow-2xl md:w-[62vw] xl:w-[58vw]'>
+            {selectedManagerStatus && selectedManagerPayroll && typeof document !== 'undefined' && createPortal(
+              <EmployeeCardOverlay modal={modernManagerCard} name={selectedManagerPayroll.manager} onClose={() => setSelectedManager(null)}>
+                <aside className={modernManagerCard ? 'admin-dialog-panel settlement-employee-card bg-white p-4 shadow-2xl' : 'admin-dialog-panel h-full w-full overflow-y-auto bg-white p-4 shadow-2xl md:w-[62vw] xl:w-[58vw]'}>
                   <div className='mb-4 border-b border-border pb-4'>
                     <div className='flex items-start justify-between gap-4'>
                     <div className='min-w-0'>
                       <h2 className='break-words text-[22px] font-bold leading-tight text-slate-900'>{selectedManagerPayroll.manager}</h2>
                       <p className='mt-1 text-sm text-slate-500'>{months[Number(month)]} {year} · {getPayrollWorkbookGroup(selectedManagerPayroll.salaryType)} · {selectedManagerPayroll.position}</p>
                       {selectedManagerSource === 'oneC' && (
-                        <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>{selectedManagerPayroll.salaryType === 'purchase_daily' ? 'Расчёт по подтверждённым дням' : 'Автоматический расчёт по данным 1С'}</p>
+                        <p className='mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-800'>{selectedManagerPayroll.salaryType === 'purchase_daily' ? 'Согласованное начисление за месяц' : 'Автоматический расчёт по данным 1С'}</p>
                       )}
-                      {(selectedManagerStatus.status !== 'OK' || selectedManagerPayroll.payrollStatus !== 'OK' || selectedManagerPayroll.payrollReasons.length > 0) && (
+                      {savedCardEmployee && <p className='mt-2 text-xs text-slate-500'>Утверждённая ведомость №{savedCardRun?.runNumber}</p>}
+                      {!savedCardEmployee && (selectedManagerStatus.status !== 'OK' || selectedManagerPayroll.payrollStatus !== 'OK' || selectedManagerPayroll.payrollReasons.length > 0) && (
                         <div className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950'>
                           <p className='font-bold'>Нужно проверить</p>
                           <ul className='mt-1 grid gap-1'>
@@ -8380,35 +8507,54 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                       </button>
                     </div>
                     </div>
-                    <div className='mt-4 grid gap-2 sm:grid-cols-3'>
+                    <div className='mt-4 grid gap-2 sm:grid-cols-2'>
+                      {testEnvironment && <p className='col-span-full text-xs text-amber-800'>Тестовый экран · не для выдачи зарплаты</p>}
                       <div className='rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3'>
-                        <p className='text-xs font-bold uppercase tracking-wide text-emerald-700'>Начислено</p>
+                        <p className='text-xs font-bold uppercase tracking-wide text-emerald-700'>{settlementRows ? 'Начислено за месяц' : 'Начислено'}</p>
                         <p className='mt-1 text-xl font-extrabold text-emerald-950'>{formatMoney(selectedManagerPayroll.grossPay)}</p>
                       </div>
                       <div className='rounded-xl border border-slate-200 bg-slate-50 px-4 py-3'>
-                        <p className='text-xs font-bold uppercase tracking-wide text-slate-500'>Выплачено / удержано</p>
-                        <p className='mt-1 text-xl font-extrabold text-slate-900'>{formatMoney(getPayrollPortalPaidAmount(selectedManagerPayroll))}</p>
+                        <p className='text-xs font-bold uppercase tracking-wide text-slate-500'>{liveWorkspace ? 'Авансы за месяц' : settlementRows ? 'Авансы' : 'Выдано авансами'}</p>
+                        <p className='mt-1 text-xl font-extrabold text-slate-900'>{liveWorkspace ? livePaymentSummary ? formatMoney(livePaymentSummary.advances) : paymentRead.error ? 'Нет данных' : paymentRead.data ? 'Не сопоставлено' : 'Проверяем…' : settlementRows ? !selectedSettlement ? 'Не сопоставлено' : formatMoney(selectedSettlement.accrual !== undefined ? selectedSettlementPaid ?? 0 : selectedSettlement.advance ?? 0) : formatMoney(selectedManagerPayroll.advance)}</p>
+                      </div>
+                      <div className='rounded-xl border border-slate-200 bg-slate-50 px-4 py-3'>
+                        <p className='text-xs font-bold uppercase tracking-wide text-slate-500'>{liveWorkspace ? 'Выплачено за месяц' : modernManagerCard ? 'Всего выплачено' : 'Удержано'}</p>
+                        <p className='mt-1 text-xl font-extrabold text-slate-900'>{liveWorkspace ? livePaymentSummary ? formatMoney(livePaymentSummary.periodPaid) : paymentRead.error ? 'Нет данных' : paymentRead.data ? 'Не сопоставлено' : 'Проверяем…' : modernManagerCard ? selectedSettlementPaid === null ? 'Не подключено' : formatMoney(selectedSettlementPaid) : formatMoney(Math.max(0, getPayrollPortalPaidAmount(selectedManagerPayroll) - selectedManagerPayroll.advance))}</p>
+                        {liveWorkspace && livePaymentSummary && <p className='text-xs text-slate-500'>Включая авансы{livePaymentSummary.unassigned > 0 ? ` · у ${livePaymentSummary.unassigned} выдач месяц не определён` : ''}</p>}
+                        {settlementRows && <p className='text-xs text-slate-500'>Включая авансы</p>}
                       </div>
                       <div className='rounded-xl border border-blue-200 bg-blue-50 px-4 py-3'>
-                        <p className='text-xs font-bold uppercase tracking-wide text-blue-700'>Осталось выплатить</p>
-                        <p className='mt-1 text-xl font-extrabold text-blue-950'>{selectedManagerSource === 'oneC' && oneCShadowCalculation?.advanceIssues.length ? 'Нужна проверка авансов' : formatMoney(selectedManagerPayroll.netPay)}</p>
+                        <p className='text-xs font-bold uppercase tracking-wide text-blue-700'>{liveWorkspace ? livePaymentSummary?.monthly ? 'Осталось за месяц' : 'Общий остаток по зарплате' : 'Осталось выплатить'}</p>
+                        <p className='mt-1 text-xl font-extrabold text-blue-950'>{liveWorkspace ? livePaymentSummary ? formatMoney(livePaymentSummary.monthly?.remaining ?? livePaymentSummary.balance.remainingMinor / 100) : paymentRead.error ? 'Нет данных' : paymentRead.data ? 'Не сопоставлено' : 'Проверяем…' : modernManagerCard ? !selectedSettlement ? 'Не подключено' : formatMoney(selectedSettlement.remaining) : selectedManagerSource === 'oneC' && oneCShadowCalculation?.advanceIssues.length ? 'Нужна проверка авансов' : formatMoney(selectedManagerPayroll.netPay)}</p>
+                        {liveWorkspace && livePaymentSummary && !livePaymentSummary.monthly && <p className='text-xs text-slate-600'>По 1С за все месяцы · на {livePaymentSummary.balance.asOf.split('-').reverse().join('.')}</p>}
+                        {settlementRows && selectedSettlement && <p className='text-xs text-slate-600'>{selectedSettlement.remaining === 0 ? 'По 1С всё выплачено' : 'По 1С, включая прошлые месяцы'}</p>}
+                        {settlementRows && selectedSettlement?.accrual !== undefined && <p className='mt-1 text-xs text-slate-600'>{selectedSettlementRemainder === null ? 'Начисление изменилось: требуется повторная сверка.' : 'За подтверждённые 12–16 октября. Месяц ещё не закрыт.'}</p>}
                       </div>
                     </div>
                   </div>
 
-                  <div className='grid gap-5'>
+                  {modernManagerCard && <div className='admin-section-tabs mb-3' role='tablist' aria-label='Разделы карточки сотрудника'>
+                    <button type='button' role='tab' aria-selected={managerCardTab === 'calculation'} className={`admin-section-tab ${managerCardTab === 'calculation' ? 'is-active' : ''}`} onClick={() => setManagerCardTab('calculation')}>Расчёт</button>
+                    <button type='button' role='tab' aria-selected={managerCardTab === 'payments'} className={`admin-section-tab ${managerCardTab === 'payments' ? 'is-active' : ''}`} onClick={() => setManagerCardTab('payments')}>Выплаты</button>
+                  </div>}
+                  <div className={modernManagerCard ? 'settlement-employee-body' : 'contents'} key={modernManagerCard ? managerCardTab : 'calculation'}>
+                  {settlementRows && managerCardTab === 'payments' && <SettlementCardPayments row={selectedSettlement} />}
+                  {liveWorkspace && managerCardTab === 'payments' && <PayrollPaymentEvidence
+                    periodKey={selectedPayrollPeriodKey} employee={selectedManagerPayroll.manager}
+                    read={paymentRead}
+                    names={savedCardRun ? savedCardRun.employeeResults.map(row => row.employeeName) : (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows ?? [] : fullPayrollRows).map(row => row.manager)}
+                  />}
+                  <div className={modernManagerCard && managerCardTab === 'payments' ? 'hidden' : 'grid gap-5'}>
                     {selectedManagerSource === 'oneC' && selectedManagerPayroll.manager === agentCreditCommissionEmployee && <PayrollFinboxEditor key={selectedPayrollPeriodKey} periodKey={selectedPayrollPeriodKey} onSaved={period=>{if(period===selectedPayrollPeriodKey)setFinboxRefresh(v=>v+1);}}/>}
                     {selectedManagerPayroll.salaryType === 'purchase_daily' && (
                       <section className='rounded-xl border border-slate-200 bg-white p-4'>
-                        <h3 className='font-bold text-slate-900'>Отработанные дни</h3>
+                        <h3 className='font-bold text-slate-900'>Расчёт за месяц</h3>
                         <p className='mt-1 text-sm text-slate-600'>Ставка {formatMoney(selectedManagerPayroll.dayRate)} за день. Без процента с закупок и бонуса за дисциплину.</p>
-                        <label className='mt-3 grid gap-1 text-sm font-semibold text-slate-700'>Подтверждённое количество дней
-                          <Input aria-label={`Дни: ${selectedManagerPayroll.manager}`} type='number' min='0' max='31' step='0.5' disabled={Boolean(currentFinalRun) || isCurrentPeriodClosed} value={getPayrollManualInput(selectedManagerPayroll.manager, manualPayroll)?.workedDays ?? selectedManagerPayroll.workedDays ?? ''} onChange={event=>updateManualPayroll(selectedManagerPayroll.manager, 'workedDays', event.target.value)} />
-                        </label>
-                        <p className='mt-2 text-xs text-slate-500'>{currentFinalRun ? 'Финальная ведомость не изменяется.' : 'Черновик хранится в этом браузере. Для фиксации в истории сохраните ведомость. Будущие дни автоматически не добавляются.'}</p>
+                        <p className='mt-3 text-sm font-semibold text-slate-900'>{selectedManagerPayroll.workedDays ?? '—'} дней × {formatMoney(selectedManagerPayroll.dayRate)} = {formatMoney(selectedManagerPayroll.dayPay)}</p>
+                        <p className='mt-2 text-xs text-slate-500'>{currentFinalRun ? 'Финальная ведомость не изменяется.' : 'Согласованная сумма за весь месяц, не заработок на сегодня. Октябрь — 16 дней; с ноября — 20 дней в месяц. Отметки посещаемости не требуются.'}</p>
                       </section>
                     )}
-                    {selectedManagerSource === 'oneC' && Boolean(selectedManagerPayroll.advanceDocuments?.length) && (
+                    {!modernManagerCard && selectedManagerSource === 'oneC' && Boolean(selectedManagerPayroll.advanceDocuments?.length) && (
                       <Card>
                         <h3 className='font-bold text-slate-900'>Авансы из 1С</h3>
                         <p className='mt-1 text-sm text-slate-500'>Выдано в счёт зарплаты за выбранный месяц. Начисления не уменьшаются.</p>
@@ -8459,10 +8605,11 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                           </div>
                         ))}
                       </div>
-                      {selectedManagerBonuses.filter((bonus) => bonus.employeeName === selectedManagerPayroll.manager).map((bonus) => <p key={bonus.id} className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'><span className='font-semibold'>Основание премии:</span> {bonus.reason}</p>)}
+                      {(savedCardEmployee ? (savedCardEmployee.adjustments ?? []).filter(bonus => bonus.type === 'ONE_TIME_BONUS') : selectedManagerBonuses.filter((bonus) => bonus.employeeName === selectedManagerPayroll.manager)).map((bonus) => <p key={bonus.id} className='mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700'><span className='font-semibold'>Основание премии:</span> {bonus.reason}</p>)}
                       {(selectedManagerPayroll.lateCount ?? 0) > 3 && <p className='mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800'>Бонус дисциплины снят: опозданий больше 3</p>}
                     </Card>
 
+                    {settlementRows && getPayrollPortalPaidAmount(selectedManagerPayroll) > selectedManagerPayroll.advance && <p className='text-sm text-slate-700'>Удержания: <strong>{formatMoney(getPayrollPortalPaidAmount(selectedManagerPayroll) - selectedManagerPayroll.advance)}</strong></p>}
                     {selectedManagerPayroll.comment && (
                       <div className='rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-950'>
                         <p className='text-xs font-bold uppercase tracking-wide text-blue-700'>Важное примечание</p>
@@ -8471,7 +8618,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                     )}
 
                     {(selectedManagerPayroll.salaryType === 'wholesale_percent' || selectedManagerPayroll.salaryType === 'retail_sales_bonus') && selectedManagerSummary && (
-                      <details className='group rounded-xl border border-slate-200 bg-slate-50/60 p-3'>
+                      <details open={savedCardEmployee || modernManagerCard ? true : undefined} className='group rounded-xl border border-slate-200 bg-slate-50/60 p-3'>
                         <summary className='cursor-pointer list-none font-bold text-slate-900'>
                           Подробный расчёт процентной части
                           <span className='ml-2 text-xs font-medium text-slate-500 group-open:hidden'>Показать</span>
@@ -8479,14 +8626,14 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                         </summary>
                         <div className='mt-4 grid gap-5'>
                     <Card>
-                      <h3 className='mb-2 text-base font-bold text-slate-900'>Как рассчитан процент с продаж</h3>
-                      <p className='mb-3 text-sm text-slate-600'>
+                      <h3 className={settlementRows ? 'sr-only' : 'mb-2 text-base font-bold text-slate-900'}>Как рассчитан процент с продаж</h3>
+                      <p className={settlementRows && selectedManagerSummary.department !== 'Опт' ? 'hidden' : 'mb-3 text-sm text-slate-600'}>
                         {selectedManagerSummary.department === 'Опт'
                           ? 'Показана база отдела, ставка и сумма, начисленная сотруднику. Оптовый бонус не делится между менеджерами.'
                           : 'Показаны только те виды продаж, которые вошли в начисление сотрудника.'}
                       </p>
                       <div className='grid gap-2 md:grid-cols-2'>
-                        {(selectedManagerSummary.department === 'Опт'
+                        {(savedCardEmployee ? savedCardEmployee.calculationDetails.filter(d => !['Начислено за месяц', 'К выплате', 'Аванс', 'Удержание', 'Оплата по дням', 'Дисциплина'].includes(d.component)).map(d => [d.component, d.base, d.formula, d.amount]) : selectedManagerSummary.department === 'Опт'
                           ? [['Опт 1,75%', selectedManagerClassification.wholesale.base, 'общая база опта × 1,75%, не делится пополам', selectedManagerSummary.wholesaleBonus]]
                           : [
                               selectedManagerCounts.filmBase || selectedManagerSummary.filmBonus ? [`Услуги: ${getPayrollServicePercent(selectedManagerSummary.manager)}% выручки`, selectedManagerCounts.filmBase, `выручка × ${getPayrollServicePercent(selectedManagerSummary.manager)}%`, selectedManagerSummary.filmBonus] : null,
@@ -8500,7 +8647,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                             <div className='flex items-start justify-between gap-3'>
                               <div className='min-w-0'>
                                 <p className='font-bold leading-snug text-slate-900'>{component}</p>
-                                <p className='mt-1 text-xs text-slate-500'>База: {formatMoney(Number(base))}</p>
+                                {base !== null && <p className='mt-1 text-xs text-slate-500'>База: {formatMoney(Number(base))}</p>}
                                 <p className='mt-1 text-xs text-slate-600'>{formula}</p>
                               </div>
                               <p className='shrink-0 text-base font-extrabold tabular-nums text-slate-950'>{formatMoney(Number(bonus))}</p>
@@ -8510,7 +8657,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                       </div>
                     </Card>
 
-                    <details className='rounded-xl border border-slate-200 bg-white p-3'>
+                    {(!savedCardEmployee || settlementEvidence) && <details className='rounded-xl border border-slate-200 bg-white p-3'>
                       <summary className='cursor-pointer list-none'>
                         <span className='font-bold text-slate-900'>Исходные строки из 1С</span>
                         <span className='ml-2 text-xs font-semibold text-slate-500'>
@@ -8518,7 +8665,7 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                         </span>
                       </summary>
                       <p className='mt-2 text-sm text-slate-500'>
-                        Сначала показаны только строки, которые могут повлиять на расчёт. Остальные доступны ниже для полной сверки.
+                        {savedCardEmployee ? 'Строки сентября из снимка 1С на 16 октября. Сохранённые формулы выше не пересчитываются по этим строкам.' : 'Сначала показаны только строки, которые могут повлиять на расчёт. Остальные доступны ниже для полной сверки.'}
                       </p>
 
                       {selectedManagerSource === 'oneC' && isOneCDetailLoading && (
@@ -8563,14 +8710,15 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
                           </details>
                         </div>
                       )}
-                    </details>
-
+                    </details>}
+                    {savedCardEmployee && !settlementEvidence && <p className='text-xs text-slate-500'>Показаны сохранённые базы и формулы. Текущие строки 1С доступны в сверке с текущими данными.</p>}
                         </div>
                       </details>
                     )}
                   </div>
+                  </div>
                 </aside>
-              </div>
+              </EmployeeCardOverlay>, document.body
             )}
 
         {workbook && (
@@ -9252,6 +9400,8 @@ export default function AdminPayrollPage({ visualPreview = true }: { visualPrevi
           </div>
         </div>
       )}
+      </PayrollLivePayments>}
+      </PayrollSettlementPreview>
     </AdminShell>
   );
 }

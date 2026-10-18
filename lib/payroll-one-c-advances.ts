@@ -1,4 +1,5 @@
 import { FILM_TRAINEE_NAME, FILM_TRAINEE_PERIOD } from './payroll-trainee';
+import { confirmedPayrollPaymentBreakdown, confirmedProcurementAdvance, PROCUREMENT_TRAINEE_REF } from './payroll-payment-breakdown';
 
 export type PayrollAdvanceDocument = {
   key: string; employeeRef: string; employeeName: string;
@@ -56,9 +57,35 @@ export function parsePayrollAdvanceResponse(value: unknown, expected: {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || iso < expected.dateFrom || iso > expected.dateTo
       || new Date(`${iso}T12:00:00Z`).toISOString().slice(0, 10) !== iso) throw new Error('Дата расходника вне проверяемого периода.');
     const comments = [string(row.document_comment), string(row.line_comment)].filter(Boolean);
+    const number = string(row.document_number);
+    const procurement = row.employee_analytics_conflict === false && !comments.length
+      && ['стажерзакупка', 'кумыков мухаммед'].includes(normalize(string(row.employee_name)))
+      ? confirmedProcurementAdvance({employeeRef: string(row.employee_ref), amount: amount / 100,
+        comment: '', documentDate: iso, documentNumber: number}) : null;
+    if (procurement) {
+      if (procurement.period === expected.periodKey) documents.push({key,
+        employeeRef: string(row.employee_ref), employeeName: string(row.employee_name),
+        documentNumber: number, documentDate: rawDate, amount: procurement.advance, periodKey: procurement.period});
+      continue;
+    }
+    // Reuse the reviewed mixed-payment split, never treat the full RKO as an advance.
+    // Other recipients, conflicting comments or changed source facts stay review-only.
+    const mixed = new Set(comments).size === 1
+      && row.employee_analytics_conflict === false
+      && string(row.employee_ref).toLowerCase() === '55161477-dada-11ea-971d-0025901e48ee'
+      && /^ахобекова залина(?:\s|$)/u.test(normalize(string(row.employee_name)))
+      ? confirmedPayrollPaymentBreakdown('Ахобекова Залина', {
+        amount: amount / 100, comment: comments[0], documentDate: iso,
+        documentNumber: number, advancePeriod: null,
+      }) : null;
+    if (mixed) {
+      if (mixed.period === expected.periodKey) documents.push({ key,
+        employeeRef: string(row.employee_ref), employeeName: string(row.employee_name),
+        documentNumber: number, documentDate: rawDate, amount: mixed.advance, periodKey: mixed.period });
+      continue;
+    }
     const markers = comments.map(parsePayrollAdvanceComment).filter((p): p is string => p !== null);
     const ambiguous = comments.some((c) => /аванс/iu.test(c) && !parsePayrollAdvanceComment(c));
-    const number = string(row.document_number);
     if (ambiguous || new Set(markers).size > 1) {
       issues.push(`Расходник ${number || rawDate}: уточните месяц аванса в комментарии.`);
       continue;
@@ -81,6 +108,10 @@ export function parsePayrollAdvanceResponse(value: unknown, expected: {
 // 1C refs. No fuzzy spelling matching; trainee assignment starts in September.
 export function matchPayrollAdvanceEmployee(document: PayrollAdvanceDocument, names: string[]) {
   const source = normalize(document.employeeName);
+  if (source === 'стажерзакупка' && document.periodKey >= '2026-10'
+    && document.employeeRef.toLowerCase() === PROCUREMENT_TRAINEE_REF) {
+    return names.includes('Кумыков Мухаммед') ? 'Кумыков Мухаммед' : null;
+  }
   if (source === 'стажеррозница' && document.periodKey >= FILM_TRAINEE_PERIOD) {
     return names.includes(FILM_TRAINEE_NAME) ? FILM_TRAINEE_NAME : null;
   }

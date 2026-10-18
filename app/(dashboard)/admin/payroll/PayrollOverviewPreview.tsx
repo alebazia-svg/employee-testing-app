@@ -1,5 +1,6 @@
 'use client';
 import { useState, type ReactNode } from 'react';
+import { payrollDepartmentTone } from './payroll-department-tone';
 import { payrollReviewPresentation } from '@/lib/payroll-review-presentation';
 import PayrollReviewPreview from './PayrollProductReview';
 import type { PayrollClassifiedSalesRow } from '@/lib/payroll-sales-classification';
@@ -48,7 +49,6 @@ export default function PayrollOverviewPreview(p: Props) {
   if (employeeIssues.length) topics.push('Данные сотрудников');
   if (differences.length) topics.push('Различия с финальным');
 
-  const tones = ['bg-amber-50/70', 'bg-blue-50/70', 'bg-emerald-50/60', 'bg-violet-50/60', 'bg-slate-100/70'];
   if (products) return <section className="rounded-xl border border-slate-200 bg-white p-5"><button className={button+' mb-4'} onClick={()=>setProducts(null)}>← Назад к зарплате</button><PayrollReviewPreview embedded rows={products} period={p.period+' · данные по '+p.date} onSave={async decisions=>{const updated=await p.onSaveProducts(decisions);setProducts(updated);}}/></section>;
   return <section id="payroll-overview" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" aria-label="Обзор зарплаты">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
@@ -58,21 +58,26 @@ export default function PayrollOverviewPreview(p: Props) {
     <div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
       {[['Начислено', money(total('shadowGrossPay'))], ['Выдано авансами', p.advancesValid ? money(total('advance')) : 'Нужно проверить'], ['После авансов', p.advancesValid ? money(total('shadowNetPay')) : 'Не подтверждено']].map(([label,value],i)=><div key={label}><p className="text-xs text-slate-500">{label}</p><p className={'mt-0.5 tabular-nums font-bold '+(i===0?'text-xl text-slate-950':'text-lg text-slate-800')}>{value}</p></div>)}
     </div>
+    {!p.advancesValid && <p className="mx-4 mb-1 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">Авансы пока не подтверждены. Причина указана в проверках ниже; это не означает ошибку у каждого сотрудника.</p>}
     <div className="flex flex-wrap justify-between gap-2 px-4 pt-2 text-xs text-slate-500"><p>Напротив имени — начислено. Нажмите на сотрудника для подробностей.</p><p className={p.stale?'text-amber-800':''}>{p.stale?'Сохранённые данные':'Данные'} по {p.date}</p></div>
     <div className="grid gap-3 p-4 lg:grid-cols-2 min-[1100px]:grid-cols-3" aria-label="Начислено сотрудникам">
       {displayColumns.map((column, columnIndex) => <div key={columnIndex} className="grid min-w-0 content-start gap-3">
         {column.map(g => {
           if (!g.rows.length) return null;
           return <section key={g.name} className="overflow-hidden rounded-lg border border-slate-200" aria-label={g.name}>
-            <h3 className={'px-3 py-2 text-xs font-bold text-slate-700 '+tones[groups.indexOf(g)%tones.length]}>{g.name}</h3>
+            <h3 className={'px-3 py-2 text-xs font-bold '+payrollDepartmentTone(g.name)}>{g.name}</h3>
             <div className="divide-y divide-slate-100">{g.rows.map(r => {
               const needsReview = p.preliminary ? r.requiresReview : r.detailDifferences.length > 0;
+              const reasons = employeeIssues.find(e => e.employeeName === r.employeeName)?.reasons ?? [];
+              const reviewLabel = reasons.some(reason => /отработанн.*дн|не заполнены.*дни/i.test(reason)) ? 'Не заполнены дни'
+                : reasons.some(reason => /опоздан/i.test(reason)) ? 'Не указаны опоздания'
+                : reasons.length ? 'Уточнить данные сотрудника' : p.preliminary ? 'Открыть вопрос по сотруднику' : 'Есть отличия от финального';
               const deduction = Math.round((r.shadowGrossPay-r.advance-r.shadowNetPay)*100)/100;
               return <button key={r.employeeName} type="button" onClick={()=>p.onEmployee(r.employeeName)} className="grid min-h-11 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-600">
                 <span className="min-w-0 break-words text-sm font-semibold text-slate-900">{r.employeeName}</span>
                 <span className="whitespace-nowrap text-sm font-bold tabular-nums text-slate-950">{money(r.shadowGrossPay)}</span>
-                {needsReview&&<span className="col-span-2 text-xs font-medium text-amber-800">Проверить расчёт</span>}
-                {!p.advancesValid ? <span className="col-span-2 text-xs text-amber-800">Авансы требуют проверки</span> : (r.advance!==0 || deduction!==0) && <span className="col-span-2 text-xs leading-relaxed text-slate-600">
+                {needsReview && reviewLabel && <span title={reasons.join('\n')} className="col-span-2 text-xs font-medium text-amber-800">{reviewLabel}</span>}
+                {p.advancesValid && (r.advance!==0 || deduction!==0) && <span className="col-span-2 text-xs leading-relaxed text-slate-600">
                   {r.advance!==0&&<>Аванс: {money(r.advance)} · </>}{deduction!==0&&<>Удержания: {money(deduction)} · </>}После авансов: {money(r.shadowNetPay)}
                 </span>}
               </button>;

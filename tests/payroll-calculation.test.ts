@@ -124,6 +124,7 @@ type PayrollModule = {
     }>,
     periodKey: string,
     reportManagerNames?: Set<string>,
+    useAgreedDays?: boolean,
   ) => Record<string, { name: string; salaryType: string }>;
   mapLegacyRetailTraineeRowsForPeriod: (rows: SalesRow[], month: string, year: string) => SalesRow[];
 };
@@ -550,7 +551,7 @@ describe('retail accessory rate', () => {
   it('pays the procurement trainee only for entered days from October, with no automatic sales or discipline bonus', () => {
     const manager = 'Кумыков Мухаммед';
     assert.equal(buildPayrollEmployeeDirectory([], '2026-09')[manager], undefined);
-    const directory = buildPayrollEmployeeDirectory([], '2026-10');
+    const directory = buildPayrollEmployeeDirectory([], '2026-10', new Set(), false);
     assert.equal(directory[manager].salaryType, 'purchase_daily');
     const summary = { manager, department: 'Розница', revenue: 10000, grossProfit: 1000, creditBonus: 100, filmBonus: 100, plotterBonus: 100, techBonus: 100, accessoryBonus: 100, wholesaleBonus: 100, totalBonus: 600 };
     const row = buildFullPayrollRow(summary, { workedDays: '5', lateCount: '0', advance: '', comment: '' }, directory);
@@ -574,6 +575,20 @@ describe('retail accessory rate', () => {
     assertMoney(missing.grossPay, 0);
     assert.ok(missing.payrollReasons.includes('Не заполнены отработанные дни'));
     assert.ok(!missing.payrollReasons.includes('Не указаны опоздания'));
+  });
+
+  it('uses agreed monthly days for Muhammad, ignoring stale browser days and subtracting advances once', () => {
+    const manager = 'Кумыков Мухаммед';
+    const summary = { manager, department: 'Розница', revenue: 0, grossProfit: 0, creditBonus: 0, filmBonus: 0, plotterBonus: 0, techBonus: 0, accessoryBonus: 0, wholesaleBonus: 0, totalBonus: 0 };
+    for (const [period, gross] of [['2026-10', 24000], ['2026-11', 30000], ['2027-01', 30000]] as const) {
+      const directory = buildPayrollEmployeeDirectory([], period);
+      for (const workedDays of ['', '5', '31']) {
+        const row = buildFullPayrollRow(summary, { workedDays, lateCount: '', advance: '7500', comment: '' }, directory);
+        assertMoney(row.grossPay, gross);
+        assertMoney(row.netPay, gross - 7500);
+        assert.deepEqual(row.payrollReasons, []);
+      }
+    }
   });
 
   it('keeps an inactive portal account in payroll only when a current explicit rule has actual report activity', () => {

@@ -1,8 +1,29 @@
 import 'server-only';
+import { parsePayrollLedgerResponse } from './payroll-one-c-ledger';
+import { parsePayrollCashResponse } from './payroll-one-c-payments';
+import { parsePayrollBalanceResponse } from './payroll-one-c-balances';
 import { readOneCRuntimeEnv } from '@/lib/one-c-env';
 import { ASTEMIR_ONE_C_IDENTITY } from '@/lib/payroll-purchase-suppliers';
 import type { PayrollSupplierSettlement } from '@/lib/payroll-purchase-suppliers';
 import { parsePayrollAdvanceResponse } from '@/lib/payroll-one-c-advances';
+
+export async function getPayrollOneCBalances(asOf: string) {
+  const result = await requestOneC('/payroll-balance', new URLSearchParams({ as_of: asOf, limit: '5000' }));
+  if (!result.ok) throw new Error(result.error || 'Не удалось прочитать остатки зарплаты из 1С.');
+  return parsePayrollBalanceResponse(result.data, asOf, result.checkedAt);
+}
+
+export async function getPayrollOneCLedger(dateFrom: string, dateTo: string) {
+  const result = await requestOneC('/payroll-balance', new URLSearchParams({ detail: 'ledger', date_from: dateFrom, date_to: dateTo }));
+  if (!result.ok) throw new Error('Не удалось сверить движения зарплаты в 1С.');
+  return parsePayrollLedgerResponse(result.data, dateFrom, dateTo, result.checkedAt);
+}
+
+export async function getPayrollOneCCashPayments(dateFrom: string, dateTo: string) {
+  const result = await requestOneC('/payroll-cash-payments', new URLSearchParams({ date_from: dateFrom, date_to: dateTo, limit: '5000' }));
+  if (!result.ok) throw new Error(result.error || 'Не удалось прочитать выплаты из 1С.');
+  return parsePayrollCashResponse(result.data, dateFrom, dateTo, result.checkedAt);
+}
 
 export async function getPayrollOneCAdvances(periodKey: string, dateFrom: string, dateTo: string) {
   const result = await requestOneC('/payroll-cash-payments', new URLSearchParams({ date_from: dateFrom, date_to: dateTo, limit: '5000' }));
