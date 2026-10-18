@@ -1,9 +1,31 @@
-# Employee connections and administrator inspections — local candidate
+# Employee connections and administrator inspections — released 1.5.2
 
-Phase: APPROVED CHANGE. Owner approved implementation, not this candidate's
-deployment or production classification writes. Candidate was based on 1.4.22;
-read-only UI on 18 October at 14:19 MSK now reports 1.5.0 from another release.
-Reconcile latest production/deployment source before any release of this candidate.
+## Release verification — 18 October 2026
+
+- Owner approved deployment. Release runtime commit:
+  `2139810ce15434260ca6411f87ac2c714e3bf5a8`; code commit `d6dc9c6`.
+- Rebased candidate onto deployment branch `282eedc` / live runtime `ab1cecf`
+  (1.5.1), preserving 1.5.0/1.5.1 Workday/Team/attendance changes byte-for-byte.
+- Public metadata: version 1.5.2, builtAt `2026-10-18T11:44:26.629Z` (14:44 MSK).
+  Docker metadata has no revision by existing design; independent SSH readback
+  confirmed the exact server commit. Authenticated Edge footer confirmed 1.5.2
+  / 18.10.2026 14:44; live current-browser match and naming modal verified.
+- Only pending migration was `20261018140000_access_network_labels`. Existing
+  migration checksums checked before deploy; applied migration and all three
+  nullable columns independently read back before app switch. No existing rows
+  renamed, removed or manually reclassified. IP collection remains disabled.
+- Container healthy, public `/api/health` returned ok. Release command exit 0.
+  Old runtime image retained as `mobo-access-rollback:1.5.1`; additive columns
+  can remain on rollback. VPS `.rollback/` and uploads/env unchanged.
+- Final verification: 39 server/real disposable-DB executions, 27 UI/identity/
+  preserved Team tests, 5 release metadata tests, TypeScript and clean tracked-
+  source production build passed. Dev preview routes not shipped.
+- Real iPhone/PWA owner confirmation and physical-device update remain untested.
+  No owner/Codex assignment, push send, subscription disable or remote update
+  command was performed. Owner should confirm each actual browser/app itself.
+
+The sections below retain implementation decisions and earlier local evidence;
+their local-only notes describe that earlier phase, superseded by this release.
 
 ## Current-connection naming — latest owner approval
 

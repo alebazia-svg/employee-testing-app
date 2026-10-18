@@ -101,11 +101,13 @@ project from scratch.
   cases close automatically, and the two scheduled manual credit tasks are no
   longer part of active retail templates.
 
-## Devices, notifications and app versions — production 1.4.22
+## Devices, notifications and app versions — production 1.5.2
 
-- New approved local candidate (not released): `access-admin-separation-20261018.md`.
-  Employee-only main list, separate ADMIN/cross-account connections, names,
-  bounded telemetry, optional trusted-proxy IP. Production ownership not guessed.
+- Released: `access-admin-separation-20261018.md`, runtime `2139810` (1.5.2).
+  Employee-only main list, separate ADMIN/cross-account connections, confirmed
+  browser/app names, exact current-connection naming, bounded telemetry.
+  Nullable label/IP migration applied; IP collection disabled. No real device
+  owners guessed or automatically named. Prior 1.5.1 workday changes preserved.
 
 - Released refinement: `access-last-visits-20261018.md`, runtime `9d83bec`.
   Retain last visits without a time cutoff; separate explicit service connections.
