@@ -103,6 +103,11 @@ project from scratch.
 
 ## Devices, notifications and app versions — production 1.5.4
 
+- Local candidate (not deployed): `access-device-evidence-20261018.md`.
+  Bounded reported device details, explicit multi-browser grouping, origin and
+  identity-binding timestamps, mismatch safeguards. Additive local-tested
+  migration; live IP collection and deployment still require operational gate.
+
 - Released list audit: `access-list-clarity-20261018.md`, runtime `d07d923`
   (1.5.4), following `cc650ea` (1.5.3). Compact employee rows, exact-browser
   grouping in service view, retained newer legacy visits and read-only
