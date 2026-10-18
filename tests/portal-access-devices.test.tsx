@@ -235,6 +235,13 @@ test('overview retains distinct subscriptions even when their browser identifier
   assert.equal(accessOverviewRows(records).length, 3);
 });
 
+test('an older identified subscription never hides a later unidentifiable visit', () => {
+  const old = { ...row, id: 'old-subscription', pushSubscriptionId: 9, lastSeenAt: '2026-09-01T00:00:00Z' };
+  const latest = { ...row, id: 'latest-visit', pushLabel: 'Не подключены' };
+  const groups = groupAccessRows(accessOverviewRows([old, latest]));
+  assert.deepEqual(groups[0].map(r => r.id), ['latest-visit', 'old-subscription']);
+});
+
 test('compact list keeps versions separate and suppresses repeated normal explanations', () => {
   const html = render([{ ...row, browserInstanceId: 'known', appUpdate: { version: '1.5.2', builtAt: now.toISOString(), checkedAt: now.toISOString(), state: 'current' } }]);
   assert.match(html, /access-version/);

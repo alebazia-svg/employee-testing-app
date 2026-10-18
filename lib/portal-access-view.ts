@@ -138,7 +138,9 @@ export function accessOverviewRows(rows: AccessJournalRow[]) {
     const retained = new Map<string, AccessJournalRow>();
     for (const row of legacy) {
       const key = JSON.stringify([row.device, row.browser]);
-      if (!retained.has(key) && !identified.some(r => r.device === row.device && r.browser === row.browser)) retained.set(key, row);
+      // A known subscription may be older than the latest unidentifiable visit.
+      // Never hide a more recent observation just because the older one has an ID.
+      if (!retained.has(key) && !identified.some(r => r.device === row.device && r.browser === row.browser && Date.parse(r.lastSeenAt) >= Date.parse(row.lastSeenAt))) retained.set(key, row);
     }
     return [...identified, ...retained.values()].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt) || a.id.localeCompare(b.id));
   });
