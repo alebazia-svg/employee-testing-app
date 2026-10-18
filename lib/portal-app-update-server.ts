@@ -5,15 +5,17 @@ import { prisma } from './prisma';
 import { accessSessionIdentity } from './portal-access-journal';
 import { parseAppObservation, parseUpdateCommand, commandActive, sameRelease, type AppObservation } from './portal-app-observation';
 import { readAppRelease } from './employee-app-update';
+import { connectionMismatch } from './portal-device-observation';
 
 export function serverAppRelease() {
   return readAppRelease({ version: process.env.NEXT_PUBLIC_APP_VERSION, builtAt: process.env.NEXT_PUBLIC_APP_BUILT_AT });
 }
-export async function observeAppUpdate(userId: number, token: string | undefined, app: AppObservation, now = new Date()) {
+export async function observeAppUpdate(userId: number, token: string | undefined, app: AppObservation, now = new Date(), browserInstanceId?: string) {
   const identity = accessSessionIdentity(token, userId, now);
   if (!identity) return null;
   const session = await prisma.portalAccessSession.findUnique({ where: { sessionHash: identity.sessionHash } });
   if (!session || session.userId !== userId || session.loggedOutAt || session.expiresAt <= now) return null;
+  if (connectionMismatch(session.browserInstanceId, session.observedBrowserId) || connectionMismatch(session.browserInstanceId, browserInstanceId)) return null;
   const command = parseUpdateCommand(session.appUpdateCommand);
   const addressed = command && command.clientId === app.clientId;
   // While a command is pending, another tab cannot replace the target's version
@@ -38,6 +40,7 @@ export async function requestAppUpdate(sessionId: string, adminId: number, now =
   if (!target) return { status: 503, error: 'Не удалось определить опубликованную сборку.' };
   const session = await prisma.portalAccessSession.findFirst({ where: { id: sessionId, loggedOutAt: null, expiresAt: { gt: now }, user: { isActive: true } } });
   if (!session) return { status: 404, error: 'Подключение уже завершено. Обновите список.' };
+  if (connectionMismatch(session.browserInstanceId, session.observedBrowserId)) return { status: 409, error: 'Код последнего подключения изменился. Сначала сверьте устройство.' };
   const app = parseAppObservation(session.appObservation);
   if (!app || !session.appCheckedAt || now.getTime() - session.appCheckedAt.getTime() > 86400000) return { status: 409, error: 'Нет свежих сведений о версии. Сотруднику нужно открыть портал.' };
   if (sameRelease(app, target)) return { status: 409, error: 'Это подключение уже сообщило актуальную версию.' };

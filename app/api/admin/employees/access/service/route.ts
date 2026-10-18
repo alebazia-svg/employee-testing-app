@@ -1,5 +1,6 @@
 import { getCurrentAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { connectionMismatch } from '@/lib/portal-device-observation';
 
 // Classification changes neither authorization nor notification subscriptions.
 export async function POST(req: Request) {
@@ -11,8 +12,9 @@ export async function POST(req: Request) {
   try { body = raw.length <= 256 ? JSON.parse(raw) : null; } catch { body = null; }
   if (!body || typeof body !== 'object' || Object.keys(body).sort().join(',') !== 'isService,sessionId' || typeof body.isService !== 'boolean' || typeof body.sessionId !== 'string' || !/^[a-zA-Z0-9_-]{1,100}$/.test(body.sessionId)) return Response.json({ error: 'Invalid input' }, { status: 400 });
   try {
-    const target = await prisma.portalAccessSession.findUnique({ where: { id: body.sessionId }, select: { id: true, userId: true, browserInstanceId: true } });
+    const target = await prisma.portalAccessSession.findUnique({ where: { id: body.sessionId }, select: { id: true, userId: true, browserInstanceId: true, observedBrowserId: true } });
     if (!target) return Response.json({ error: 'Подключение не найдено.' }, { status: 404 });
+    if (connectionMismatch(target.browserInstanceId, target.observedBrowserId)) return Response.json({ error: 'Сначала сверьте подключение: код последнего запроса отличается от кода сеанса.' }, { status: 409 });
     await prisma.portalAccessSession.updateMany({
       where: target.browserInstanceId ? { userId: target.userId, browserInstanceId: target.browserInstanceId } : { id: target.id, userId: target.userId },
       data: { isService: body.isService, serviceMarkedAt: new Date(), serviceMarkedBy: admin.id },

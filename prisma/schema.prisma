@@ -962,6 +962,7 @@ model PortalAccessBrowserOwner {
   markedAt DateTime @default(now())
   disabledAt DateTime?
   label String? @db.VarChar(80)
+  deviceGroupId String?
   owner User @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   @@index([ownerUserId])
 }
@@ -975,6 +976,12 @@ model PortalAccessSession {
   displayMode        String?
   contextCheckedAt   DateTime?
   browserInstanceId  String?
+  identityBoundAt    DateTime?
+  observedBrowserId  String?
+  observedOrigin    String? @db.VarChar(200)
+  deviceObservation Json?
+  deviceCheckedAt   DateTime?
+  lastInteractionAt DateTime?
   lastIp             String? @db.VarChar(45)
   ipCheckedAt        DateTime?
   isService          Boolean @default(false)

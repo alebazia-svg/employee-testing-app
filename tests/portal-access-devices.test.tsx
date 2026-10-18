@@ -10,6 +10,16 @@ const now = new Date('2026-09-30T14:10:00Z');
 const row: AccessJournalRow = { id: 'one', name: 'Сотрудник', login: 'buyer', role: 'EMPLOYEE', device: 'Mac', browser: 'Edge', firstSeenAt: '2026-09-29T19:30:00Z', loginAt: '2026-09-29T19:30:00Z', lastSeenAt: '2026-09-30T14:09:00Z', expiresAt: '2026-10-29T00:00:00Z', loggedOutAt: null, pushLabel: 'Подключены', pushCheckedAt: '2026-09-30T14:09:00Z' };
 const render = (rows: AccessJournalRow[], history = false, unavailable = false) => renderToStaticMarkup(<PortalAccessDevicesView rows={rows} history={history} unavailable={unavailable} query='' page={1} hasMore={false} nowIso={now.toISOString()} />);
 
+test('identity mismatch cannot show a green current version or a confirmed subscription', () => {
+  const release = { version: '1.5.4', builtAt: now.toISOString() };
+  const changed: AccessJournalRow = { ...row, browserInstanceId: 'old', observedBrowserId: 'new', appUpdate: { ...release, state: 'current', checkedAt: now.toISOString() } };
+  assert.equal(accessPushView(changed, now).tone, 'unknown');
+  assert.match(accessNotificationDetail(changed, now).explanation, /отличается/);
+  const html = renderToStaticMarkup(<PortalAccessDevicesView rows={[changed]} history={false} unavailable={false} query='' page={1} hasMore={false} nowIso={now.toISOString()} currentRelease={release} />);
+  assert.match(html, /Нужна сверка подключения/); assert.match(html, /Требует сверки/);
+  assert.doesNotMatch(html, /access-badge-ok|Актуальная версия|Сейчас онлайн/);
+});
+
 test('observed snapshots preserve displayed connections without fabricating browser identity', () => {
   const rows = [row, { ...row, id: 'second-observed-card' }];
   const html = renderToStaticMarkup(<PortalAccessDevicesView rows={rows} presentation='observed-snapshot' history={false} unavailable={false} query='' page={1} hasMore={false} nowIso={now.toISOString()} />);
@@ -174,7 +184,7 @@ test('stable browser merges repeated logins but never accounts or different brow
 
 test('service view is separate, without operational warning filters', () => {
   const html = renderToStaticMarkup(<PortalAccessDevicesView rows={[{ ...row, isService: true, name: 'Проверка' }, { ...row, id: 'real', name: 'Рабочий' }]} history={false} service query='' page={1} hasMore={false} unavailable={false} nowIso={now.toISOString()} />);
-  assert.match(html, /Каждое подключение — один блок/);
+  assert.match(html, /Подтверждённые устройства и отдельные подключения/);
   assert.doesNotMatch(html, /<h2>Рабочий|Проверить уведомления/);
 });
 test('main excludes ADMIN and known admin-browser visits but keeps distinct employee Windows and iPhone', () => {

@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { portalDisplayMode } from '../lib/portal-display-mode';
 import { appClientObservation, appStateEvent, acceptAppCommand } from '../lib/portal-app-client';
 import { observationWithin } from '../lib/portal-observation-deadline';
+import { collectDeviceObservation } from '../lib/portal-device-observation';
 
 /** Observes existing permission/subscription only; never prompts or subscribes. */
 export function PortalAccessTracker() {
@@ -11,6 +12,13 @@ export function PortalAccessTracker() {
   useEffect(() => {
     if (!/^\/(admin|employee|procurement)(\/|$)/.test(path)) return;
     let stopped = false, busy = false, lastAttempt = 0, dirty = true;
+    let interactionAt = 0;
+    // One bounded collection per mounted screen, never on every heartbeat.
+    const deviceObservation = collectDeviceObservation(navigator);
+    const interacted = (event: Event) => { if (event.isTrusted && document.visibilityState === 'visible') interactionAt = Date.now(); };
+    // Only the timestamp; no key, pointer position, field value or business content.
+    document.addEventListener('pointerdown', interacted, { passive: true });
+    document.addEventListener('keydown', interacted, { passive: true });
     const abort = new AbortController();
     async function report() {
       if (stopped || busy || document.visibilityState !== 'visible' || Date.now() - lastAttempt < (dirty ? 5000 : 60000)) return;
@@ -35,7 +43,8 @@ export function PortalAccessTracker() {
       const displayMode = portalDisplayMode(query => window.matchMedia(query).matches, (navigator as Navigator & { standalone?: boolean }).standalone);
       try { if (!stopped) {
         const app = appClientObservation();
-        const response = await fetch('/api/auth/activity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permission, displayMode, ...(endpoint ? { endpoint } : {}), ...(app ? { app } : {}) }), signal: request.signal });
+        const device = await deviceObservation;
+        const response = await fetch('/api/auth/activity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permission, displayMode, device, ...(interactionAt && Date.now() - interactionAt < 120000 ? { interactionAt } : {}), ...(endpoint ? { endpoint } : {}), ...(app ? { app } : {}) }), signal: request.signal });
         if (response.ok && !stopped) acceptAppCommand((await response.json()).updateCommand);
         else dirty = true;
       } }
@@ -47,7 +56,7 @@ export function PortalAccessTracker() {
     window.addEventListener(appStateEvent, changed);
     const timer = window.setInterval(report, 5000);
     window.addEventListener('focus', report); document.addEventListener('visibilitychange', report);
-    return () => { stopped = true; abort.abort(); window.clearInterval(timer); window.removeEventListener(appStateEvent, changed); window.removeEventListener('focus', report); document.removeEventListener('visibilitychange', report); };
+    return () => { stopped = true; abort.abort(); window.clearInterval(timer); window.removeEventListener(appStateEvent, changed); window.removeEventListener('focus', report); document.removeEventListener('visibilitychange', report); document.removeEventListener('pointerdown', interacted); document.removeEventListener('keydown', interacted); };
   }, [path]);
   return null;
 }

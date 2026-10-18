@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   const token = createSessionToken(user.id);
   const previousBrowser = cookieStore.get(accessBrowserCookie)?.value;
   const browserInstanceId = validAccessBrowserId(previousBrowser) ? previousBrowser : randomUUID();
-  try { await recordPortalAccess({ userId: user.id, token, browserInstanceId, clientIp: accessClientIp(req.headers), userAgent: req.headers.get('user-agent') ?? '', login: true }); }
+  try { await recordPortalAccess({ userId: user.id, token, browserInstanceId, origin: req.url, clientIp: accessClientIp(req.headers), userAgent: req.headers.get('user-agent') ?? '', login: true }); }
   catch { console.warn('PORTAL_ACCESS_JOURNAL_UNAVAILABLE'); }
   cookieStore.set(accessBrowserCookie, browserInstanceId, { path: '/', httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', maxAge: 31536000 });
   cookieStore.set(sessionCookieName, token, {

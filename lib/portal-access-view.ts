@@ -1,4 +1,5 @@
 import type { AccessJournalRow } from '../components/PortalAccessJournal';
+import { connectionMismatch } from './portal-device-observation';
 
 /** Coarse OS family only. A saved device label cannot prove an OS version,
  * hardware model, owner, or whether an ambiguous desktop Safari was an iPad. */
@@ -60,6 +61,7 @@ export function accessWhen(value: string, now: Date) {
   return new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date);
 }
 export function accessPushView(row: AccessJournalRow, now: Date) {
+  if (connectionMismatch(row.browserInstanceId, row.observedBrowserId)) return { label: 'Требует сверки', tone: 'unknown' as const };
   const checked = row.pushCheckedAt ? Date.parse(row.pushCheckedAt) : NaN;
   const fresh = Number.isFinite(checked) && checked <= now.getTime() + 300000 && now.getTime() - checked <= 86400000;
   if (!fresh || row.pushLabel === 'Не проверены') return { label: 'Нет свежей проверки', tone: 'unknown' as const };
@@ -83,6 +85,7 @@ export function groupAccessRows(rows: AccessJournalRow[]) {
 /** An old observation is not evidence of a broken subscription. */
 export function accessNotificationDetail(row: AccessJournalRow, now: Date) {
   const view = accessPushView(row, now);
+  if (connectionMismatch(row.browserInstanceId, row.observedBrowserId)) return { ...view, hint: 'Сначала сверьте подключение', explanation: 'Код последнего запроса отличается от кода этого сеанса. Уведомления другого подключения не приписываются этой записи; прежние сведения сохранены ниже.' };
   if (view.tone === 'unknown') return { ...view, label: 'Нет свежих данных', hint: 'Обновятся при открытии портала', explanation: 'Свежего подтверждения от этого подключения пока нет. Это не означает, что уведомления отключены. После открытия портала проверка обновится автоматически.' };
   if (row.pushLabel === 'Подключены') return { ...view, hint: 'Для этого кабинета', explanation: 'Уведомления подключены для этого кабинета на устройстве. Это не подтверждает показ или звук каждого уведомления. Результат последней отправки — ниже.' };
   if (row.pushLabel === 'Запрещены в браузере') return { ...view, label: 'Запрещены', hint: 'Проверить разрешение на устройстве', explanation: 'При последней проверке браузер сообщил запрет уведомлений. Разрешение нужно проверить на самом устройстве; администратор не может включить его удалённо.' };
@@ -146,12 +149,12 @@ export function accessOverviewRows(rows: AccessJournalRow[]) {
   });
 }
 
-/** Service view groups accounts only by an exact stable browser identifier.
- * Same labels, IPs, browser names or OS never join independent connections. */
+/** Explicit ADMIN device groups may contain several browser IDs. Otherwise use
+ * exact IDs only. Equal labels, IPs or OS never join independent connections. */
 export function groupServiceConnections(rows: AccessJournalRow[]) {
   const groups = new Map<string, AccessJournalRow[]>();
   for (const row of rows) {
-    const key = row.browserInstanceId ? `browser:${row.browserInstanceId}` : `legacy:${row.id}`;
+    const key = row.deviceGroupId ? `confirmed-device:${row.deviceGroupId}` : row.browserInstanceId ? `browser:${row.browserInstanceId}` : `legacy:${row.id}`;
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
   return [...groups.values()].map(group => [...group].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt) || a.id.localeCompare(b.id)))

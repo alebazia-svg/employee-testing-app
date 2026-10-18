@@ -90,6 +90,8 @@ test('isolated DB: browser identity survives new logins; classification preserve
     assert.equal(await db.portalAccessSession.count({ where: { userId: user.id, browserInstanceId } }), 2);
     const service = await mocked('app/api/admin/employees/access/service/route.ts', { '@/lib/auth': { getCurrentAdmin: async () => user }, '@/lib/prisma': { prisma: db } });
     const post = (value: boolean) => service.POST(new Request('https://portal.invalid/service', { method: 'POST', headers: { 'sec-fetch-site': 'same-origin' }, body: JSON.stringify({ sessionId: original.id, isService: value }) }));
+    assert.equal((await post(true)).status, 409); // Different observed browser must first be resolved.
+    await journal.recordPortalAccess({ ...input, browserInstanceId, now: new Date(now.getTime() + 62000) });
     assert.equal((await post(true)).status, 200);
     assert.equal(await db.portalAccessSession.count({ where: { userId: user.id, isService: true } }), 2);
     await journal.recordPortalAccess({ ...input, token: createSessionToken(user.id, now.getTime() + 3000), browserInstanceId, now: new Date(now.getTime() + 3000) });

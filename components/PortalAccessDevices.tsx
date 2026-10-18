@@ -9,8 +9,14 @@ import { startVisibleSync } from '../lib/visible-sync';
 import { appUpdateStatus } from '../lib/portal-app-update-view';
 import type { AppRelease } from '../lib/employee-app-update';
 import { accessConnectionCode } from '../lib/portal-access-identity';
+import { reportedSystem, connectionMismatch } from '../lib/portal-device-observation';
 
-export type AccessDevicesProps = { rows: AccessJournalRow[]; query: string; history: boolean; service?: boolean; page: number; hasMore: boolean; unavailable: boolean; nowIso: string; basePath?: string; currentRelease?: AppRelease | null; onRefresh?: () => void; refreshing?: boolean; onRequestUpdate?: (id: string) => Promise<void>; onSetService?: (id: string, value: boolean) => Promise<void>; onSetOwner?: (id: string, value: boolean, label?: string) => Promise<void>; renderDeviceExtra?: (row: AccessJournalRow) => React.ReactNode; renderDetailExtra?: (row: AccessJournalRow) => React.ReactNode; presentation?: 'observed-snapshot'; };
+function connectionAppStatus(row: AccessJournalRow, release: AppRelease | null | undefined, now: Date) {
+  if (connectionMismatch(row.browserInstanceId, row.observedBrowserId)) return { label: 'Требует сверки', reason: 'Показана прежняя версия сеанса. До сверки подключения нельзя подтвердить его текущую версию или отправить команду обновления.', tone: 'unknown', canRequest: false, needsUpdate: false };
+  return appUpdateStatus(row.appUpdate, release, now);
+}
+
+export type AccessDevicesProps = { rows: AccessJournalRow[]; query: string; history: boolean; service?: boolean; page: number; hasMore: boolean; unavailable: boolean; nowIso: string; basePath?: string; currentRelease?: AppRelease | null; onRefresh?: () => void; refreshing?: boolean; onRequestUpdate?: (id: string) => Promise<void>; onSetService?: (id: string, value: boolean) => Promise<void>; onSetOwner?: (id: string, value: boolean, label?: string, linkSessionId?: string) => Promise<void>; renderDeviceExtra?: (row: AccessJournalRow) => React.ReactNode; renderDetailExtra?: (row: AccessJournalRow) => React.ReactNode; presentation?: 'observed-snapshot'; };
 
 export function PortalAccessDevices(props: AccessDevicesProps) {
   const router = useRouter();
@@ -38,10 +44,10 @@ export function PortalAccessDevices(props: AccessDevicesProps) {
       router.refresh();
     } finally { window.clearTimeout(timer); }
   }
-  async function setOwner(id: string, owned: boolean, label?: string) {
+  async function setOwner(id: string, owned: boolean, label?: string, linkSessionId?: string) {
     const abort = new AbortController(); const timer = window.setTimeout(() => abort.abort(), 10000);
     try {
-      const response = await fetch('/api/admin/employees/access/owner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: id, owned, ...(label !== undefined ? { label } : {}) }), signal: abort.signal });
+      const response = await fetch('/api/admin/employees/access/owner', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: id, owned, ...(label !== undefined ? { label } : {}), ...(linkSessionId ? { linkSessionId } : {}) }), signal: abort.signal });
       const result = await response.json();
       if (!response.ok) throw Error(result.error || 'Не удалось сохранить отметку.');
       router.refresh();
@@ -54,12 +60,26 @@ function OwnerClassification({ row, onSave, onDone }: { row: AccessJournalRow; o
   const [confirm, setConfirm] = useState<'save' | 'remove' | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [label, setLabel] = useState(row.connectionLabel ?? '');
   return <section className='access-delivery-detail'><h3>Название подключения</h3>
+    {row.deviceGroupId ? <p className='access-note'>Подключение объединено с другими браузерами подтверждённого устройства. Чтобы отделить только этот браузер, сохраните ему отдельное название ниже. Остальные подключения останутся без изменений.</p> : null}
     <p>{row.isCurrentBrowser ? `Введите название с именем владельца, например «${row.device === 'iPhone' ? 'iPhone' : 'Mac'} Бэлы». Оно будет одинаковым во всех кабинетах.` : 'Укажите подтверждённое название, например «Mac Бэлы» или «Служебный браузер Codex». Все администраторы увидят одно и то же название.'}</p>
     <p className='access-note'>{row.isCurrentBrowser ? 'Вы подтверждаете только подключение, из которого открыт этот экран.' : 'Это другое подключение. Назначайте владельца только если он подтверждён: одинаковое название Mac или IP не доказывает принадлежность.'} Safari и приложение с домашнего экрана могут потребовать отдельного подтверждения. После очистки данных браузера отметку может понадобиться установить заново.</p>
     {!row.browserInstanceId ? <p>Для старой записи идентификатор не сохранён. При следующем открытии обновлённого портала в этом браузере под любым кабинетом появится подключение, которое можно назначить владельцу.</p> : <>
       <label className='access-name-field'>Название устройства или служебного браузера<input maxLength={80} value={label} onChange={e => setLabel(e.target.value)} placeholder={row.device === 'iPhone' ? 'Например, iPhone Бэлы' : 'Например, Mac Бэлы'} disabled={busy} /></label>
       {confirm ? <><p>{confirm === 'remove' ? 'Убрать название и назначение владельца? Если браузер использовался под администратором, он останется в проверках; общий рабочий компьютер можно вернуть сотруднику отдельно.' : `Подтвердить «${label.trim()}» как устройство администратора? Его входы под сотрудниками перейдут в «Администраторы и проверки». Доступ и подписки не изменятся.`}</p><div className='flex flex-wrap gap-2 mt-3'><button className='access-secondary' disabled={busy} onClick={async () => { setBusy(true); setError(''); try { await onSave(row.id, confirm !== 'remove', confirm === 'remove' ? '' : label.trim()); onDone(); } catch { setError('Сохранение не подтверждено. Обновите список перед повтором.'); } finally { setBusy(false); } }}>{busy ? 'Сохраняем…' : 'Подтвердить'}</button><button className='access-secondary' disabled={busy} onClick={() => setConfirm(null)}>Отмена</button></div></> : <div className='flex flex-wrap gap-2 mt-3'><button className='access-secondary' disabled={!label.trim()} onClick={() => setConfirm('save')}>Назвать и отделить проверки</button>{row.ownerBrowser || row.ownerInspection ? <button className='access-secondary' onClick={() => setConfirm('remove')}>Убрать отметку</button> : null}</div>}
     </>}
+    {error ? <p role='alert'>{error}</p> : null}
+  </section>;
+}
+
+function LinkKnownDevice({ row, rows, onSave, onDone }: { row: AccessJournalRow; rows: AccessJournalRow[]; onSave: NonNullable<AccessDevicesProps['onSetOwner']>; onDone: () => void }) {
+  const [selected, setSelected] = useState(''), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const candidates = Array.from(new Map(rows.filter(r => r.browserInstanceId && r.browserInstanceId !== row.browserInstanceId && r.connectionLabel && r.canMarkOwner && !connectionMismatch(r.browserInstanceId, r.observedBrowserId) && (!row.deviceGroupId || row.deviceGroupId !== r.deviceGroupId)).map(r => [r.deviceGroupId || r.browserInstanceId, r])).values());
+  const target = candidates.find(r => r.id === selected);
+  if (!row.browserInstanceId || !candidates.length) return null;
+  return <section className='access-delivery-detail'><h3>Это другое подключение знакомого устройства?</h3>
+    <p>Объедините только после сверки. Например, браузеры Edge и Chrome на одном Mac. Одинаковый IP или название системы не подтверждают совпадение.</p>
+    <label className='access-name-field'>Подтверждённое устройство<select value={selected} disabled={busy || confirm} onChange={e => setSelected(e.target.value)}><option value=''>Выберите устройство</option>{candidates.map(r => <option value={r.id} key={r.id}>{r.connectionLabel} · {r.browser}</option>)}</select></label>
+    {confirm && target ? <><p>Вы подтверждаете, что «{row.device} · {row.browser}» относится к устройству «{target.connectionLabel}». Его входы под сотрудниками будут отделены от рабочих. История и уведомления каждого браузера сохранятся отдельно.</p><div className='flex flex-wrap gap-2 mt-3'><button className='access-secondary' disabled={busy} onClick={async () => { setBusy(true); setError(''); try { await onSave(row.id, true, target.connectionLabel!, target.id); onDone(); } catch { setError('Объединение не подтверждено. Обновите список перед повтором.'); } finally { setBusy(false); } }}>{busy ? 'Сохраняем…' : 'Подтвердить объединение'}</button><button className='access-secondary' disabled={busy} onClick={() => setConfirm(false)}>Отмена</button></div></> : <button className='access-secondary mt-3' disabled={!target} onClick={() => setConfirm(true)}>Это то же устройство</button>}
     {error ? <p role='alert'>{error}</p> : null}
   </section>;
 }
@@ -94,7 +114,7 @@ function ServiceClassification({ row, onSave, onDone }: { row: AccessJournalRow;
 function AppUpdateDetails({ row, now, currentRelease, onRequest }: { row: AccessJournalRow; now: Date; currentRelease?: AppRelease | null; onRequest?: (id: string) => Promise<void> }) {
   const [busy, setBusy] = useState(false), [sent, setSent] = useState(false), [error, setError] = useState('');
   useEffect(() => { if (row.appUpdate?.command) setSent(false); }, [row.appUpdate?.command?.requestedAt]);
-  const status = appUpdateStatus(row.appUpdate, currentRelease, now);
+  const status = connectionAppStatus(row, currentRelease, now);
   async function request() {
     if (!onRequest || busy) return;
     setBusy(true); setError('');
@@ -132,6 +152,7 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
     <div className='access-dialog-content'>
       <header><div><h2 id='access-detail-title'>{row.connectionLabel || row.device} · {row.browser}</h2><p>Кабинет: {row.name} · {row.login}</p></div><button type='button' onClick={() => dialog.current?.close()} aria-label='Закрыть подробности'><X size={20} /></button></header>
       {row.isCurrentBrowser ? <p className='access-current-marker'>Этот браузер · из него открыт экран</p> : null}
+      {connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <section className='access-identity-warning' role='status'><strong>Подключение требует сверки</strong><p>Последний запрос пришёл с другим кодом браузера. Старую запись не переименовываем и не считаем доказательством устройства, с которого выполнен последний запрос. Для нового однозначного сеанса сохраните работу и войдите заново в проверяемом браузере.</p></section> : null}
       {row.unidentifiedCount ? <p className='access-note'>Показано последнее из {row.unidentifiedCount} похожих подключений. Старые записи не позволяют определить, одно это устройство или несколько. Все события сохранены в истории; служебная отметка относится только к показанному подключению.</p> : null}
       <PushBadge row={row} now={now} /><p className='access-help-main'>{status.explanation}</p>
       {row.connectionLabel ? <p className='access-note'>Название подтверждено администратором · {row.device}. Оно не определяет, кто именно пользовался устройством.</p> : row.role === 'ADMIN' || row.adminObserved ? <p className='access-note'>Владелец не подтверждён. Аккаунт администратора сам по себе не определяет человека.</p> : null}
@@ -139,9 +160,11 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
       {extra}
       <dl className='access-facts'>
         <div><dt>Устройство</dt><dd>{row.device}</dd></div>
-        <div><dt>Система</dt><dd>{accessSystemLabel(row.device) ?? 'Не определена'}</dd></div>
-        <div><dt>Браузер</dt><dd>{row.browser}</dd></div>
+        <div><dt>Система по данным браузера</dt><dd>{reportedSystem(row.deviceObservation) ?? accessSystemLabel(row.device) ?? 'Не определена'}</dd></div>
+        <div><dt>Браузер</dt><dd>{row.browser}{row.deviceObservation?.browserVersion ? ` ${row.deviceObservation.browserVersion}` : ''}</dd></div>
+        {row.deviceObservation?.model ? <div><dt>Модель по данным браузера</dt><dd>{row.deviceObservation.model}</dd></div> : null}
         <div><dt>Последнее обращение к порталу</dt><dd>{accessWhen(row.lastSeenAt, now)}</dd></div>
+        {row.lastInteractionAt ? <div><dt>Действие в окне портала</dt><dd>{accessWhen(row.lastInteractionAt, now)}<small className='block access-note'>По сообщению браузера · не определяет, кто пользовался устройством</small></dd></div> : null}
         {row.loginAt ? <div><dt>Последняя авторизация</dt><dd>{accessWhen(row.loginAt, now)}</dd></div> : null}
         <div><dt>Способ открытия</dt><dd>{accessModeLabel(row.displayMode)}</dd></div>
       </dl>
@@ -150,6 +173,10 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
         <div><dt>Проверка уведомлений</dt><dd>{row.pushCheckedAt ? accessWhen(row.pushCheckedAt, now) : 'Ещё не поступала'}</dd></div>
         {status.tone === 'unknown' ? <div><dt>Результат прежней проверки</dt><dd>{row.pushLabel}</dd></div> : null}
         {row.contextCheckedAt ? <div><dt>Способ открытия проверен</dt><dd>{accessWhen(row.contextCheckedAt, now)}</dd></div> : null}
+        {row.observedOrigin ? <div><dt>Адрес портала при последней связи</dt><dd className='break-all'>{row.observedOrigin}</dd></div> : null}
+        <div><dt>Идентификатор впервые закреплён</dt><dd>{row.identityBoundAt ? accessWhen(row.identityBoundAt, now) : 'Время не записано'}<small className='block access-note'>Не подтверждает устройство для более ранних входов</small></dd></div>
+        {row.deviceCheckedAt ? <div><dt>Характеристики получены</dt><dd>{accessWhen(row.deviceCheckedAt, now)} · {row.deviceObservation?.source === 'client-hints' ? 'Расширенные сведения браузера' : 'Описание браузера; версии могут быть ограничены'}</dd></div> : null}
+        {row.deviceObservation?.architecture ? <div><dt>Архитектура</dt><dd>{row.deviceObservation.architecture}</dd></div> : null}
         {!snapshot ? <div><dt>IP последнего подключения</dt><dd>{row.lastIp ?? 'Ещё не записан'}</dd></div> : null}
         {row.ipCheckedAt ? <div><dt>IP проверен</dt><dd>{accessWhen(row.ipCheckedAt, now)}</dd></div> : null}
         {!snapshot ? <div><dt>Различение подключений</dt><dd>{row.browserInstanceId ? 'Постоянный идентификатор браузера / приложения' : 'Старая запись без идентификатора'}</dd></div> : null}
@@ -160,6 +187,7 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
       </section>
       <p className='access-note'>IP обозначает сеть и может совпадать у разных людей. По нему устройства не объединяются. Точная модель телефона доступна не во всех браузерах.</p>
       {!snapshot && accessConnectionCode(row.browserInstanceId) ? <div className='access-delivery-detail'><h3>Код подключения</h3><code className='block break-all select-all'>{accessConnectionCode(row.browserInstanceId)}</code><p>Для точной сверки откройте /connection в проверяемом браузере. Совпадение кода не подтверждает владельца.</p></div> : null}
+      {connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <div className='access-delivery-detail'><h3>Код при последней связи</h3><code className='block break-all select-all'>{accessConnectionCode(row.observedBrowserId)}</code></div> : null}
       </details>
       {settings ? <details className='access-connection-settings' open={row.isCurrentBrowser && row.canMarkOwner && !row.connectionLabel || undefined}><summary>Название и назначение</summary>{settings}</details> : null}
       <footer><button type='button' onClick={() => dialog.current?.close()}>Понятно</button></footer>
@@ -187,8 +215,8 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
   const needle = search.trim().toLocaleLowerCase('ru-RU');
   const groups = (service ? groupServiceConnections(connections) : groupAccessRows(connections)).filter(group => group.some(row => `${row.name} ${row.login} ${row.device} ${accessSystemLabel(row.device) ?? ''} ${row.browser} ${row.connectionLabel ?? ''}`.toLocaleLowerCase('ru-RU').includes(needle)));
   const needsAttention = (row: AccessJournalRow) => accessPushView(row, now).tone === 'warning';
-  const needsUpdate = (row: AccessJournalRow) => appUpdateStatus(row.appUpdate, currentRelease, now).needsUpdate;
-  const needsData = (row: AccessJournalRow) => accessPushView(row, now).tone === 'unknown' || Boolean(currentRelease && (!row.appUpdate || (!needsUpdate(row) && appUpdateStatus(row.appUpdate, currentRelease, now).tone === 'unknown')));
+  const needsUpdate = (row: AccessJournalRow) => connectionAppStatus(row, currentRelease, now).needsUpdate;
+  const needsData = (row: AccessJournalRow) => accessPushView(row, now).tone === 'unknown' || Boolean(currentRelease && (!row.appUpdate || (!needsUpdate(row) && connectionAppStatus(row, currentRelease, now).tone === 'unknown')));
   const visible = groups.filter(group => filter === 'all' || group.some(row => filter === 'updates' ? needsUpdate(row) : filter === 'warning' ? needsAttention(row) : needsData(row)));
   const updates = groups.filter(group => group.some(needsUpdate)).length;
   const warning = groups.filter(group => group.some(needsAttention)).length;
@@ -204,7 +232,7 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
       {currentConnection ? <><div><strong>Этот браузер · {currentConnection.connectionLabel || `${currentConnection.device} · ${currentConnection.browser}`}</strong>{!currentConnection.connectionLabel ? <p>Назовите его, чтобы отделить свои проверки.</p> : null}</div><button className='access-secondary' type='button' onClick={() => onSetOwner ? setNamingCurrent(true) : setDetail(currentConnection)}>{onSetOwner ? currentConnection.connectionLabel ? 'Изменить название' : 'Назвать это устройство' : 'Подробности подключения'}</button></> : <div><strong>Текущий браузер пока не сопоставлен</strong></div>}
     </div> : null}
     {notice ? <div role='status' className='access-saved'><Check size={17} aria-hidden /><span>{notice}</span><button type='button' aria-label='Скрыть подтверждение' onClick={() => setNotice('')}><X size={17} /></button></div> : null}
-    {!history && service ? <p className='access-period'>Каждое подключение — один блок. Ниже видно, какие кабинеты из него открывали.</p> : null}
+    {!history && service ? <p className='access-period'>Подтверждённые устройства и отдельные подключения. Внутри — браузеры и кабинеты, которые из них открывали.</p> : null}
     <div className='access-toolbar'><form method='get' action={basePath} onSubmit={history ? undefined : e => e.preventDefault()}>
       {history ? <input type='hidden' name='view' value='history' /> : null}
       <label><Search size={17} aria-hidden /><span className='sr-only'>Поиск сотрудника или устройства</span><input name='q' value={search} maxLength={100} onChange={e => setSearch(e.target.value)} placeholder='Сотрудник, телефон или браузер' /></label>
@@ -226,7 +254,7 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
         </> : null}
         <div className='access-accounts'>{visible.map(group => {
           return <section className='access-account' key={service ? group[0].browserInstanceId || group[0].id : group[0].login} aria-label={service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}>
-            <header className='access-account-header'><h2>{service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}</h2><span>{service ? group[0].connectionLabel ? `${group[0].browser} · Администраторские проверки` : 'Владелец не подтверждён' : `Подключений: ${group.length}`}</span></header>
+            <header className='access-account-header'><h2>{service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}</h2><span>{service ? group[0].connectionLabel ? `${[...new Set(group.map(r => r.browser))].join(', ')} · Администраторские проверки` : 'Владелец не подтверждён' : `Подключений: ${group.length}`}</span></header>
             <div className='access-column-head' aria-hidden><span>{service ? 'Кабинет' : 'Устройство'}</span><span>Был в портале</span><span>Уведомления</span><span>Версия портала</span><span /></div>
             {group.map(row => {
               const Icon = /iPhone|iPad|Android|Телефон|Планшет/.test(row.device) ? Smartphone : Monitor;
@@ -234,10 +262,10 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
                 .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt) || a.id.localeCompare(b.id));
               const number = sameNames.findIndex(other => other.id === row.id) + 1;
               const push = accessNotificationDetail(row, now);
-              const version = appUpdateStatus(row.appUpdate, currentRelease, now);
+              const version = connectionAppStatus(row, currentRelease, now);
               return <article className='access-connection' key={row.id} aria-label={`${row.name} · ${row.device} · ${row.browser}${sameNames.length > 1 ? ` · подключение ${number}` : ''}`}>
-                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[accessSystemLabel(row.device), row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
-                <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Был в портале</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time></div>
+                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[reportedSystem(row.deviceObservation) ?? accessSystemLabel(row.device), service ? row.browser : null, row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
+                <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Был в портале</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time>{connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <span className='access-send-warning'>Нужна сверка подключения</span> : null}</div>
                 <div className='access-push'><PushBadge row={row} now={now} />{!service && (accessRecentPushFailure(row, now) || push.tone === 'warning') ? <p className='access-send-warning'>{accessRecentPushFailure(row, now) ? 'Последняя отправка не подтверждена' : push.hint}</p> : null}</div>
                 <div className='access-version'><span className='access-mobile-label'>Версия портала</span>{row.appUpdate ? <><strong>{row.appUpdate.version}</strong><span className={`access-version-state access-summary-${version.tone}`}>{version.label}</span></> : <span className='access-note'>Нет данных</span>}</div>
                 <button type='button' className='access-detail-button' onClick={() => setDetail(row)} aria-label={`Подробнее: ${row.name}, ${row.device}, ${row.browser}, подключение ${number}`}>Подробнее<ChevronRight size={14} aria-hidden /></button>
@@ -260,13 +288,14 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
     {namingCurrent && currentConnection && onSetOwner ? <CurrentConnectionNaming row={currentConnection} onSave={onSetOwner} onClose={() => setNamingCurrent(false)} onDone={() => saved('Название сохранено. Входы из этого подключения под сотрудниками отделены. Доступ и уведомления не изменены.')} /> : null}
     {detail ? <ConnectionHelp row={detail} now={now} snapshot={snapshot}
       extra={<>
-        {currentRelease || detail.appUpdate ? <AppUpdateDetails key={detail.id} row={detail} now={now} currentRelease={currentRelease} onRequest={history || detail.loggedOutAt || Date.parse(detail.expiresAt) <= now.getTime() ? undefined : onRequestUpdate} /> : null}
+        {currentRelease || detail.appUpdate ? <AppUpdateDetails key={detail.id} row={detail} now={now} currentRelease={currentRelease} onRequest={history || detail.loggedOutAt || connectionMismatch(detail.browserInstanceId, detail.observedBrowserId) || Date.parse(detail.expiresAt) <= now.getTime() ? undefined : onRequestUpdate} /> : null}
         {renderDetailExtra?.(detail)}
       </>}
       settings={detail.ownerInspection || (detail.canMarkOwner && onSetOwner) || (onSetService && !detail.ownerBrowser) ? <>
         {detail.ownerInspection && !detail.canMarkOwner ? <section className='access-delivery-detail'><h3>Проверка с администраторского подключения</h3><p>Назначение подтверждено другим администратором. Изменение доступно из его учётной записи.</p></section> : null}
         {detail.canMarkOwner && onSetOwner ? <OwnerClassification key={`owner-${detail.id}`} row={detail} onSave={onSetOwner} onDone={() => saved('Название и назначение сохранены. Список обновляется. Подписки не изменены.')} /> : null}
-        {onSetService && detail.role !== 'ADMIN' && !detail.ownerInspection && !detail.ownerBrowser ? <ServiceClassification key={`service-${detail.id}`} row={detail} onSave={onSetService} onDone={() => saved(accessIsAdministrative(detail) ? 'Подключение возвращено в рабочий список.' : 'Подключение перенесено в проверки. Подписки не изменены.')} /> : null}
+        {detail.canMarkOwner && onSetOwner && !connectionMismatch(detail.browserInstanceId, detail.observedBrowserId) ? <LinkKnownDevice key={`link-${detail.id}`} row={detail} rows={rows} onSave={onSetOwner} onDone={() => saved('Подключения объединены по вашему подтверждению. История и уведомления сохранены отдельно.')} /> : null}
+        {onSetService && detail.role !== 'ADMIN' && !detail.ownerInspection && !detail.ownerBrowser && !connectionMismatch(detail.browserInstanceId, detail.observedBrowserId) ? <ServiceClassification key={`service-${detail.id}`} row={detail} onSave={onSetService} onDone={() => saved(accessIsAdministrative(detail) ? 'Подключение возвращено в рабочий список.' : 'Подключение перенесено в проверки. Подписки не изменены.')} /> : null}
       </> : undefined}
       onClose={() => setDetail(null)} /> : null}
   </section>;

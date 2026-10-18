@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import React from 'react';
 import type { AppUpdateView } from '../lib/portal-app-update-view';
+import type { DeviceObservation } from '../lib/portal-device-observation';
 
 export type AccessJournalRow = {
   id: string; name: string; login: string; role: string; device: string; browser: string;
@@ -10,6 +11,12 @@ export type AccessJournalRow = {
   displayMode?: string | null;
   contextCheckedAt?: string | null;
   browserInstanceId?: string | null;
+  observedBrowserId?: string | null;
+  identityBoundAt?: string | null;
+  observedOrigin?: string | null;
+  deviceObservation?: DeviceObservation | null;
+  deviceCheckedAt?: string | null;
+  lastInteractionAt?: string | null;
   isService?: boolean;
   serviceMarkedAt?: string | null;
   unidentifiedCount?: number;
@@ -17,6 +24,7 @@ export type AccessJournalRow = {
   ownerBrowser?: boolean;
   canMarkOwner?: boolean;
   connectionLabel?: string | null;
+  deviceGroupId?: string | null;
   isCurrentBrowser?: boolean;
   adminObserved?: boolean;
   lastIp?: string | null;
