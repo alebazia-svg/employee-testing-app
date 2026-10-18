@@ -101,6 +101,15 @@ project from scratch.
   cases close automatically, and the two scheduled manual credit tasks are no
   longer part of active retail templates.
 
+## Devices, notifications and app versions — production 1.4.21
+
+- Access screen: recent seven-day connections, retained history, app/browser
+  context and latest push-provider outcome (not delivery/read/sound).
+- Reported app version and ADMIN safe-update requests extend the existing
+  Workday updater; other pages never forcibly reload unfinished work.
+- Release evidence, schema expansion and remaining device-test limits:
+  `access-release-20261018.md`.
+
 ## Known Dirty-Tree Context
 
 Future sessions must run `git status --short` first. This repository often has
