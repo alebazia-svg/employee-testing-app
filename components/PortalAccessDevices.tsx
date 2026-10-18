@@ -178,7 +178,7 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
         {row.deviceCheckedAt ? <div><dt>Характеристики получены</dt><dd>{accessWhen(row.deviceCheckedAt, now)} · {row.deviceObservation?.source === 'client-hints' ? 'Расширенные сведения браузера' : 'Описание браузера; версии могут быть ограничены'}</dd></div> : null}
         {row.deviceObservation?.architecture ? <div><dt>Архитектура</dt><dd>{row.deviceObservation.architecture}</dd></div> : null}
         {!snapshot ? <div><dt>IP последнего подключения</dt><dd>{row.lastIp ?? 'Ещё не записан'}</dd></div> : null}
-        {row.ipCheckedAt ? <div><dt>IP проверен</dt><dd>{accessWhen(row.ipCheckedAt, now)}</dd></div> : null}
+        {row.ipCheckedAt ? <div><dt>IP получен</dt><dd>{accessWhen(row.ipCheckedAt, now)}</dd></div> : null}
         {!snapshot ? <div><dt>Различение подключений</dt><dd>{row.browserInstanceId ? 'Постоянный идентификатор браузера / приложения' : 'Старая запись без идентификатора'}</dd></div> : null}
       </dl>
       <section className='access-delivery-detail' aria-label='Последняя отправка push'><h3>Последняя отправка на эту подписку</h3><strong>{lastPush.label}</strong>
@@ -261,12 +261,11 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
               const sameNames = group.filter(other => other.device === row.device && other.browser === row.browser)
                 .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt) || a.id.localeCompare(b.id));
               const number = sameNames.findIndex(other => other.id === row.id) + 1;
-              const push = accessNotificationDetail(row, now);
               const version = connectionAppStatus(row, currentRelease, now);
               return <article className='access-connection' key={row.id} aria-label={`${row.name} · ${row.device} · ${row.browser}${sameNames.length > 1 ? ` · подключение ${number}` : ''}`}>
                 <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[reportedSystem(row.deviceObservation) ?? accessSystemLabel(row.device), service ? row.browser : null, row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
                 <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Был в портале</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time>{connectionMismatch(row.browserInstanceId, row.observedBrowserId) ? <span className='access-send-warning'>Нужна сверка подключения</span> : null}</div>
-                <div className='access-push'><PushBadge row={row} now={now} />{!service && (accessRecentPushFailure(row, now) || push.tone === 'warning') ? <p className='access-send-warning'>{accessRecentPushFailure(row, now) ? 'Последняя отправка не подтверждена' : push.hint}</p> : null}</div>
+                <div className='access-push'><PushBadge row={row} now={now} />{!service && accessRecentPushFailure(row, now) ? <p className='access-send-warning'>Последняя отправка не подтверждена</p> : null}</div>
                 <div className='access-version'><span className='access-mobile-label'>Версия портала</span>{row.appUpdate ? <><strong>{row.appUpdate.version}</strong><span className={`access-version-state access-summary-${version.tone}`}>{version.label}</span></> : <span className='access-note'>Нет данных</span>}</div>
                 <button type='button' className='access-detail-button' onClick={() => setDetail(row)} aria-label={`Подробнее: ${row.name}, ${row.device}, ${row.browser}, подключение ${number}`}>Подробнее<ChevronRight size={14} aria-hidden /></button>
               </article>;

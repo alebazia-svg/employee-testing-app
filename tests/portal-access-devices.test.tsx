@@ -58,9 +58,11 @@ test('an account with one connected and one disconnected browser is not labelled
   assert.match(accessNotificationDetail(old, now).explanation, /не означает, что уведомления отключены/);
 });
 
-test('current screen offers actionable help without remote subscription controls or guessed PWA', () => {
+test('current screen keeps notification status concise and setup instructions in details', () => {
   const html = render([row, { ...row, id: 'phone', device: 'iPhone', browser: 'Safari', pushLabel: 'Не подключены' }]);
-  assert.match(html, /Подключить в этом кабинете/);
+  assert.match(html, /Не подключены/);
+  assert.doesNotMatch(html, /Подключить в этом кабинете/);
+  assert.match(accessNotificationDetail({ ...row, pushLabel: 'Не подключены' }, now).explanation, /Откройте нужный кабинет на устройстве/);
   assert.match(html, /в том числе автоматическое/);
   assert.match(html, /Это не означает, что сотрудник сейчас онлайн/);
   assert.match(html, /Подробнее/);

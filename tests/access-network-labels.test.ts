@@ -1,9 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { accessClientIp } from '../lib/portal-access-network';
 import { accessIsAdministrative, accessCurrentConnections } from '../lib/portal-access-view';
 import { observationWithin } from '../lib/portal-observation-deadline';
 import type { AccessJournalRow } from '../components/PortalAccessJournal';
+
+test('verified production compose enables IP diagnostics without publishing the app port', () => {
+  const compose = readFileSync(new URL('../docker-compose.portal.yml', import.meta.url), 'utf8');
+  const app = compose.split('  portal-app:')[1].split('\nvolumes:')[0];
+  assert.match(app, /PORTAL_ACCESS_TRUST_REAL_IP: "1"/);
+  assert.doesNotMatch(app, /^    ports:/m);
+});
 
 test('IP requires verified proxy opt-in, is validated, and never trusts arbitrary XFF', () => {
   const headers = new Headers({ 'x-real-ip': '203.0.113.24', 'x-forwarded-for': '198.51.100.99, 10.0.0.1' });

@@ -39,6 +39,10 @@ services:
     environment:
       NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
+      # Verified VPS ingress: Traefik overwrites client X-Real-IP; app has no
+      # published port. Re-audit before changing ingress or exposing app ports.
+      # Diagnostic only: never used for authentication or device ownership.
+      PORTAL_ACCESS_TRUST_REAL_IP: "1"
       PORT: "3000"
       CREDIT_REALIZATION_EMPLOYEE_CONTROL_ENABLED: "true"
       # Owner-approved expense commands; each POST verifies the live 1C contract.
