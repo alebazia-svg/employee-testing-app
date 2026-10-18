@@ -76,3 +76,41 @@ rollback is schema-compatible. VPS untracked .rollback/ was left untouched.
 Remaining limits: multi-day usability observation and physical-device PWA
 regression were not performed in this ADMIN-only release. Cash discrepancy
 inventory automation remains future work.
+
+## Corrective release 1.8.2
+
+Released 2026-10-19, runtime `ab1f659a20e53a8ff67d0f9c1421d7b06d5e3586`.
+Build `2026-10-18T22:24:27.283Z` (01:24 Moscow).
+
+Employee names always open the selected employee day, including no-app-data
+states. Existing mounted cards activate locally without a route fetch; next/
+previous and closing keep the URL consistent. Same-day operational targets focus
+the corresponding card section. Other dates still load their original day.
+Only an actual unclosed app workday can show an unfinished-shift warning; Google
+arrival without departure shows arrival recorded. Desktop table column gap is
+20 px, consistently in heading and employee rows.
+
+Changed files: app/(dashboard)/admin/workday/AdminShiftControlDetails.tsx,
+app/(dashboard)/admin/workday/page.tsx, app/globals.css,
+components/admin/TeamDailyControl.tsx, lib/team-control-summary.ts,
+lib/team-control.ts, lib/workday-card-navigation.ts, tests/team-control.test.ts,
+package.json, package-lock.json. No database/schema, fixtures, source overrides,
+PWA, Google configuration or 1C changes. Other worktree changes left untouched.
+
+TypeScript, production build and all 35 team/release tests passed. Local visual
+and interactive checks covered empty/filled days, next/previous, direct link,
+close/reopen and targeted issues. Authenticated production checks confirmed
+current-day Liana/Magomed cards, employee switching and closing without portal
+loading; Zukhra's remarks open expanded. On October 18, real Google arrivals
+show arrival recorded, Liana completed at 19:00, with 3/3 tasks, 2/2 cash
+operations and the existing 4,915 RUB handover comparison preserved. Visible
+version 1.8.2, public metadata, health and server commit independently verified;
+Workday/employee HTTP 200. Existing release metadata revision remains null;
+source commit verified through SSH Git. Physical-device PWA not tested in this
+ADMIN-only fix.
+
+Previous image: sha256:2a6e88b4f6bb6a7af7a97414c217c73d04fd9f62332a768d546f0e26f109134a
+Replacement: sha256:eb87eeb71acefc4acd073c2f5026eeb5f3220f446f9dacaf44b4c2f149ea3c93
+Rollback tag portal-app:rollback-before-1.8.2 retained; no schema change.
+Deployment exit 0, container healthy, uploads and existing runtime mounts
+preserved; verified-image registration succeeded. VPS .rollback/ preserved.
