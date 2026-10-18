@@ -20,6 +20,11 @@ test('status is based on device release and freshness, never a claimed current f
   const view = { ...app, state: 'current' as const, checkedAt: now.toISOString() };
   assert.equal(appUpdateStatus(view, current, now).label, 'Доступно обновление');
   assert.equal(appUpdateStatus({ ...view, ...current }, current, now).tone, 'ok');
+  for (const checkedAt of ['2026-10-19T07:00:00Z', 'invalid']) {
+    const status = appUpdateStatus({ ...view, ...current, checkedAt }, current, now);
+    assert.equal(status.tone, 'unknown');
+    assert.equal(status.canRequest, false);
+  }
   assert.equal(appUpdateStatus({ ...view, checkedAt: '2026-10-16T07:00:00Z' }, current, now).canRequest, false);
   assert.equal(appUpdateStatus(null, current, now).canRequest, false);
   assert.equal(appUpdateStatus(view, null, now).needsUpdate, false);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 
-async function mocked(entry: string, mocks: Record<string, unknown>) {
+export async function mocked(entry: string, mocks: Record<string, unknown>) {
   const result = await build({ entryPoints: [entry], bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', jsx: 'automatic', plugins: [{ name: 'mock', setup(b) {
     b.onResolve({ filter: /.*/ }, a => a.path in mocks ? { path: a.path, external: true } : undefined);
   } }] });
@@ -14,7 +14,7 @@ async function mocked(entry: string, mocks: Record<string, unknown>) {
 test('activity requires authenticated same-origin caller, bounded data and server-owned identity', async () => {
   const recorded: any[] = []; let user: any = null, failed = false;
   const route = await mocked('app/api/auth/activity/route.ts', {
-    'next/headers': { cookies: async () => ({ get: () => ({ value: 'server-cookie' }) }) },
+    'next/headers': { cookies: async () => ({ get: () => ({ value: 'server-cookie' }), set: () => {} }) },
     '@/lib/auth': { getCurrentUser: async () => user },
     '@/lib/portal-access-journal': { parsePushObservation: (p: any) => p.permission === 'unknown' && !p.userId ? p : null,
       recordPortalAccess: async (p: any) => { if (failed) throw Error('private'); recorded.push(p); } },
@@ -64,9 +64,10 @@ test('ADMIN page authorizes before journal reads and never selects auth hashes o
   user.role = 'ADMIN'; await page(); assert.equal(queries.length, 1);
   assert.doesNotMatch(JSON.stringify(queries[0].select), /sessionHash|endpoint|p256dh|password|auth/);
   assert.equal(queries[0].take, undefined);
-  assert.equal(queries[0].where.loggedOutAt, null);
+  assert.equal(queries[0].where.loggedOutAt, undefined);
   assert.equal(queries[0].where.user.isActive, true);
-  assert.ok(queries[0].where.expiresAt.gt instanceof Date);
+  assert.equal(queries[0].where.expiresAt, undefined);
+  assert.equal(queries[0].where.lastSeenAt, undefined);
   await route.default({ searchParams: Promise.resolve({ q: 'Safari', page: '2', view: 'history' }) });
   assert.equal(queries[1].take, 51);
   assert.equal(queries[1].skip, 50);

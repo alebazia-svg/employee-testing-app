@@ -2,7 +2,8 @@ import { appStateText, sameRelease, type AppState } from './portal-app-observati
 import type { AppRelease } from './employee-app-update';
 export type AppUpdateView = { version: string; builtAt: string; checkedAt: string; state: AppState; command?: { requestedAt: string; receivedAt?: string; completedAt?: string; target: AppRelease } | null };
 export function appUpdateStatus(app: AppUpdateView | null | undefined, target: AppRelease | null | undefined, now: Date) {
-  const fresh = app && now.getTime() - Date.parse(app.checkedAt) < 86400000;
+  const age = app ? now.getTime() - Date.parse(app.checkedAt) : NaN;
+  const fresh = Number.isFinite(age) && age >= -300000 && age < 86400000;
   if (!app) return { label: 'Версия ещё не сообщалась', reason: 'Устройство должно открыть обновлённый портал, чтобы сообщить свою сборку.', tone: 'unknown', canRequest: false, needsUpdate: false };
   if (!fresh) return { label: 'Нет свежих данных о версии', reason: 'Показана последняя известная версия. Для проверки сотруднику нужно открыть портал.', tone: 'unknown', canRequest: false, needsUpdate: false };
   if (!target) return { label: 'Не удалось сравнить версии', reason: 'Сведения устройства сохранены, но текущая опубликованная сборка не определена.', tone: 'unknown', canRequest: false, needsUpdate: false };

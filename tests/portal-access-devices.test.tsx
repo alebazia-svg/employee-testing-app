@@ -4,18 +4,18 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PortalAccessDevicesView } from '../components/PortalAccessDevices';
 import type { AccessJournalRow } from '../components/PortalAccessJournal';
-import { accessPushView, accessWhen, filterAccessRows, groupAccessRows, accessAccountSummary, accessCurrentConnections, accessRecentConnections, accessNotificationDetail, accessRecentPushFailure } from '../lib/portal-access-view';
+import { accessPushView, accessWhen, filterAccessRows, groupAccessRows, accessAccountSummary, accessCurrentConnections, accessNotificationDetail, accessRecentPushFailure } from '../lib/portal-access-view';
 
 const now = new Date('2026-09-30T14:10:00Z');
 const row: AccessJournalRow = { id: 'one', name: 'Сотрудник', login: 'buyer', role: 'EMPLOYEE', device: 'Mac', browser: 'Edge', firstSeenAt: '2026-09-29T19:30:00Z', loginAt: '2026-09-29T19:30:00Z', lastSeenAt: '2026-09-30T14:09:00Z', expiresAt: '2026-10-29T00:00:00Z', loggedOutAt: null, pushLabel: 'Подключены', pushCheckedAt: '2026-09-30T14:09:00Z' };
 const render = (rows: AccessJournalRow[], history = false, unavailable = false) => renderToStaticMarkup(<PortalAccessDevicesView rows={rows} history={history} unavailable={unavailable} query='' page={1} hasMore={false} nowIso={now.toISOString()} />);
 
-test('main list groups accounts without merging identically named sessions or exposing login times', () => {
+test('main list summarizes legacy types, retains accounts and does not expose login times', () => {
   const rows = [row, { ...row, id: 'two' }, { ...row, id: 'three', login: 'other' }];
   assert.equal(groupAccessRows(rows).length, 2);
   assert.equal(groupAccessRows(rows)[0].length, 2);
   const html = render(rows);
-  assert.equal((html.match(/<article /g) ?? []).length, 3);
+  assert.equal((html.match(/<article /g) ?? []).length, 2);
   assert.equal((html.match(/<h2[ >]/g) ?? []).length, 2);
   assert.match(html, /Сегодня, 17:09/);
   assert.doesNotMatch(html, /Вчера, 22:30|Вход:|Время входа не записано|Сейчас онлайн/);
@@ -36,14 +36,15 @@ test('an account with one connected and one disconnected browser is not labelled
   assert.deepEqual(accessAccountSummary([row, other], now), { connected: 1, warning: 1, unknown: 0, label: 'Уведомления подключены · 1 из 2', tone: 'ok' });
   const old = { ...other, pushCheckedAt: '2026-09-01T00:00:00Z' };
   assert.equal(accessAccountSummary([old], now).tone, 'unknown');
-  assert.equal(accessNotificationDetail(old, now).label, 'Нужна свежая проверка');
+  assert.equal(accessNotificationDetail(old, now).label, 'Нет свежих данных');
   assert.match(accessNotificationDetail(old, now).explanation, /не означает, что уведомления отключены/);
 });
 
 test('current screen offers actionable help without remote subscription controls or guessed PWA', () => {
   const html = render([row, { ...row, id: 'phone', device: 'iPhone', browser: 'Safari', pushLabel: 'Не подключены' }]);
   assert.match(html, /Подключить в этом кабинете/);
-  assert.match(html, /Последняя связь с порталом не означает/);
+  assert.match(html, /в том числе автоматическое/);
+  assert.match(html, /Это не означает, что сотрудник сейчас онлайн/);
   assert.match(html, /Подробнее/);
   assert.doesNotMatch(html, /Отключить подписку|Отправить тест|iPhone 1[4567]/);
 });
@@ -53,6 +54,12 @@ test('history preserves known login and logout, never guesses missing events', (
   assert.match(html, /Сегодня, 17:09/);
   assert.match(render([{ ...row, loginAt: null }], true), /Не зафиксирован/);
   assert.match(render([{ ...row, expiresAt: '2026-09-29T00:00:00Z' }], true), /Срок входа истёк/);
+});
+test('ownership text fits both installed apps and browsers, and delivery is not implied', () => {
+  assert.match(render([{ ...row, ownerBrowser: true, canMarkOwner: true, displayMode: 'app' }]), /Ваше подключение/);
+  assert.match(render([{ ...row, ownerBrowser: true, canMarkOwner: false }]), /Подключение администратора/);
+  assert.doesNotMatch(render([{ ...row, ownerBrowser: true, canMarkOwner: true }]), /Ваш браузер/);
+  assert.match(accessNotificationDetail(row, now).explanation, /не подтверждает показ или звук/);
 });
 test('push freshness, unknown, inactive and future observations never claim current connection', () => {
   assert.equal(accessPushView(row, now).tone, 'ok');
@@ -68,24 +75,58 @@ test('search covers names, login and browsers; attention retains all problematic
   assert.deepEqual(filterAccessRows(rows, '', true, now).map(r => r.id), ['phone']);
 });
 test('empty and failed reads have distinct messaging', () => {
-  assert.match(render([]), /Нет подключений за последние 7 дней/);
+  assert.match(render([]), /Посещений пока нет/);
   assert.match(render([], false, true), /временно недоступен/);
-  assert.doesNotMatch(render([], false, true), /Нет подключений за последние 7 дней|Требуют внимания<span[^>]*>0/);
+  assert.doesNotMatch(render([], false, true), /Посещений пока нет|Требуют внимания<span[^>]*>0/);
 });
-test('recent view uses last contact, includes the seven-day boundary and preserves history', () => {
+test('last visits remain visible across old dates, logout and expiry; history is retained', () => {
   const records = [
     { ...row, id: 'old-login', loginAt: '2026-09-01T00:00:00Z' },
-    { ...row, id: 'boundary', lastSeenAt: '2026-09-23T14:10:00Z' },
-    { ...row, id: 'old', device: 'OldPhone', lastSeenAt: '2026-09-23T14:09:59Z' },
+    { ...row, id: 'boundary', lastSeenAt: '2026-09-29T14:10:00Z' },
+    { ...row, id: 'old', device: 'OldPhone', lastSeenAt: '2026-09-29T14:09:59Z' },
     { ...row, id: 'logout', loggedOutAt: row.lastSeenAt },
     { ...row, id: 'expired', expiresAt: now.toISOString() },
   ];
-  assert.deepEqual(accessRecentConnections(records, now).map(r => r.id), ['old-login', 'boundary']);
-  assert.doesNotMatch(render(records), /OldPhone/);
+  assert.equal(accessCurrentConnections(records).length, 5);
+  assert.match(render(records), /OldPhone/);
   assert.match(render(records, true), /OldPhone/);
-  assert.match(render([records[2]]), /Открыть историю/);
+  assert.match(render([records[2]]), /Был в портале/);
   assert.equal(records.length, 5);
   assert.equal(records[2].pushLabel, 'Подключены');
+});
+test('employees and their devices are newest first, including recent devices without push', () => {
+  const records = [
+    { ...row, id: 'older', name: 'Яна', lastSeenAt: '2026-09-30T12:00:00Z' },
+    { ...row, id: 'alphabetical', login: 'other', name: 'Анна', lastSeenAt: '2026-09-30T13:00:00Z' },
+    { ...row, id: 'newest', name: 'Яна', lastSeenAt: now.toISOString(), pushLabel: 'Не подключены' },
+  ];
+  const before = JSON.stringify(records);
+  const groups = groupAccessRows(accessCurrentConnections(records));
+  assert.deepEqual(groups.map(g => g.map(r => r.id)), [['newest', 'older'], ['alphabetical']]);
+  assert.match(render(records), /Не подключены/);
+  assert.equal(JSON.stringify(records), before);
+  assert.deepEqual(groupAccessRows([...records].reverse()), groups);
+});
+
+test('stable browser merges repeated logins but never accounts or different browsers', () => {
+  const old = { ...row, browserInstanceId: 'browser-one', isService: true, serviceMarkedAt: row.lastSeenAt };
+  const newer = { ...row, id: 'new-login', browserInstanceId: 'browser-one', lastSeenAt: now.toISOString() };
+  const records = [old, newer, { ...newer, id: 'other-user', login: 'admin' }, { ...newer, id: 'other-browser', browserInstanceId: 'browser-two' }];
+  const result = accessCurrentConnections(records);
+  assert.equal(result.length, 3);
+  assert.equal(result.find(r => r.id === 'new-login')?.isService, true);
+  assert.equal(result.find(r => r.id === 'other-user')?.isService, undefined);
+  assert.doesNotMatch(render([old, newer]), /<article /);
+  assert.match(render([old, newer], true), /Служебное/);
+  const restored = accessCurrentConnections([old, { ...newer, isService: false, serviceMarkedAt: now.toISOString() }]);
+  assert.equal(restored[0].isService, false);
+  assert.equal(records.length, 4);
+});
+
+test('service view is separate, without operational warning filters', () => {
+  const html = renderToStaticMarkup(<PortalAccessDevicesView rows={[{ ...row, isService: true, name: 'Проверка' }, { ...row, id: 'real', name: 'Рабочий' }]} history={false} service query='' page={1} hasMore={false} unavailable={false} nowIso={now.toISOString()} />);
+  assert.match(html, /Служебное · проверка портала/);
+  assert.doesNotMatch(html, /Рабочий|Проверить уведомления/);
 });
 test('relative dates use Moscow date boundary rather than server timezone', () => {
   assert.equal(accessWhen('2026-09-30T21:01:00Z', new Date('2026-09-30T21:10:00Z')), 'Сегодня, 00:01');

@@ -9,6 +9,13 @@ export type AccessJournalRow = {
   pushSubscriptionId?: number | null;
   displayMode?: string | null;
   contextCheckedAt?: string | null;
+  browserInstanceId?: string | null;
+  isService?: boolean;
+  serviceMarkedAt?: string | null;
+  unidentifiedCount?: number;
+  ownerInspection?: boolean;
+  ownerBrowser?: boolean;
+  canMarkOwner?: boolean;
   appUpdate?: AppUpdateView | null;
   lastPush?: { attemptedAt: string; resultAt: string; outcome: string; errorCode: string | null } | null;
 };

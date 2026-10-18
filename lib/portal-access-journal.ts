@@ -22,7 +22,7 @@ export function parsePushObservation(value: unknown): PushObservation | null {
   if (p.endpoint !== undefined && (typeof p.endpoint !== 'string' || p.endpoint.length > 4096 || !p.endpoint.startsWith('https://'))) return null;
   return p as PushObservation;
 }
-export async function recordPortalAccess(input: { userId: number; token: string | undefined; userAgent: string; login?: boolean; push?: PushObservation; now?: Date }) {
+export async function recordPortalAccess(input: { userId: number; token: string | undefined; userAgent: string; browserInstanceId?: string; login?: boolean; push?: PushObservation; now?: Date }) {
   const now = input.now ?? new Date();
   const identity = accessSessionIdentity(input.token, input.userId, now);
   if (!identity) return;
@@ -30,7 +30,12 @@ export async function recordPortalAccess(input: { userId: number; token: string 
   const existing = await prisma.portalAccessSession.findUnique({ where: { sessionHash: identity.sessionHash } });
   if (existing && (existing.userId !== input.userId || existing.loggedOutAt)) return;
   // One write per minute, regardless of how many tabs are open. Login is always captured.
-  if (!input.login && existing && (!input.push || existing.pushCheckedAt) && now.getTime() - existing.lastSeenAt.getTime() < 60000) return;
+  if (!input.login && existing && (!input.browserInstanceId || existing.browserInstanceId) && (!input.push || existing.pushCheckedAt) && now.getTime() - existing.lastSeenAt.getTime() < 60000) return;
+  // Identity is not authentication. Bind once; later cookie changes never move an existing session.
+  const browserIdentity = !existing?.browserInstanceId && input.browserInstanceId ? { browserInstanceId: input.browserInstanceId } : {};
+  const priorClassification = browserIdentity.browserInstanceId && !existing?.serviceMarkedAt
+    ? await prisma.portalAccessSession.findFirst({ where: { userId: input.userId, browserInstanceId: browserIdentity.browserInstanceId, serviceMarkedAt: { not: null } }, orderBy: { serviceMarkedAt: 'desc' }, select: { isService: true, serviceMarkedAt: true, serviceMarkedBy: true } }) : null;
+  const classification = priorClassification ?? {};
   let pushState: AccessPushState = 'unknown';
   const context = input.push?.displayMode ? { displayMode: input.push.displayMode, contextCheckedAt: now } : {};
   // Keep the last known association for diagnostics if the browser no longer
@@ -47,11 +52,11 @@ export async function recordPortalAccess(input: { userId: number; token: string 
     }
   }
   if (!existing) await prisma.portalAccessSession.createMany({ skipDuplicates: true, data: [{ ...identity, ...accessDevice(input.userAgent), userId: input.userId,
-    firstSeenAt: now, lastSeenAt: now, loginAt: input.login ? now : null, ...context,
+    firstSeenAt: now, lastSeenAt: now, loginAt: input.login ? now : null, ...context, ...browserIdentity, ...classification,
     ...(input.push ? { pushState, pushSubscriptionId, pushCheckedAt: now } : {}),
   }] });
   if (existing) await prisma.portalAccessSession.updateMany({ where: { ...where, loggedOutAt: null, lastSeenAt: existing.lastSeenAt }, data: {
-    lastSeenAt: now, ...context, ...(input.login ? { loginAt: now } : {}),
+    lastSeenAt: now, ...context, ...browserIdentity, ...classification, ...(input.login ? { loginAt: now } : {}),
     ...(input.push ? { pushState, pushSubscriptionId, pushCheckedAt: now } : {}),
   } });
 }

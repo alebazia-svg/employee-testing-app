@@ -1,4 +1,6 @@
 import { cookies } from 'next/headers';
+import { randomUUID } from 'node:crypto';
+import { accessBrowserCookie, validAccessBrowserId } from '@/lib/portal-access-identity';
 import { getCurrentUser } from '@/lib/auth';
 import { sessionCookieName } from '@/lib/session';
 import { parsePushObservation, recordPortalAccess } from '@/lib/portal-access-journal';
@@ -14,8 +16,12 @@ export async function POST(req: Request) {
   let observation; try { observation = parsePushObservation(JSON.parse(raw)); } catch { observation = null; }
   if (!observation) return Response.json({ error: 'Invalid input' }, { status: 400 });
   try {
-    const token = (await cookies()).get(sessionCookieName)?.value;
-    await recordPortalAccess({ userId: user.id, token, userAgent: req.headers.get('user-agent') ?? '', push: observation });
+    const jar = await cookies();
+    const token = jar.get(sessionCookieName)?.value;
+    const savedId = jar.get(accessBrowserCookie)?.value;
+    const browserInstanceId = validAccessBrowserId(savedId) ? savedId : randomUUID();
+    await recordPortalAccess({ userId: user.id, token, browserInstanceId, userAgent: req.headers.get('user-agent') ?? '', push: observation });
+    if (browserInstanceId !== savedId) jar.set(accessBrowserCookie, browserInstanceId, { httpOnly: true, secure: new URL(req.url).protocol === 'https:', sameSite: 'lax', path: '/', maxAge: 31536000 });
     const updateCommand = observation.app ? await observeAppUpdate(user.id, token, observation.app) : null;
     return Response.json({ ok: true, ...(updateCommand ? { updateCommand } : {}) });
   } catch {

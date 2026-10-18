@@ -41,6 +41,7 @@ model User {
   oneCCashboxMapping               UserOneCCashboxMapping?
   pushSubscriptions                WorkdayPushSubscription[]
   accessSessions                   PortalAccessSession[]
+  ownedAccessBrowsers              PortalAccessBrowserOwner[]
   workdayNotifications             WorkdayNotification[]
   workdayControlIssues             WorkdayControlIssue[]
   kkmAssignments                   WorkdayKkmAssignment[]            @relation("WorkdayKkmAssignmentEmployee")
@@ -955,6 +956,15 @@ model WorkdayPushSubscription {
 }
 
 // Journal only: never used to grant/revoke access. Raw auth cookies and IPs are not stored.
+model PortalAccessBrowserOwner {
+  browserInstanceId String @id
+  ownerUserId Int
+  markedAt DateTime @default(now())
+  disabledAt DateTime?
+  owner User @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  @@index([ownerUserId])
+}
+
 model PortalAccessSession {
   id                 String   @id @default(cuid())
   userId             Int
@@ -963,6 +973,10 @@ model PortalAccessSession {
   browser            String
   displayMode        String?
   contextCheckedAt   DateTime?
+  browserInstanceId  String?
+  isService          Boolean @default(false)
+  serviceMarkedAt    DateTime?
+  serviceMarkedBy    Int?
   appObservation     Json?
   appCheckedAt       DateTime?
   appUpdateCommand   Json?
@@ -979,6 +993,7 @@ model PortalAccessSession {
 
   @@index([firstSeenAt, id])
   @@index([userId, firstSeenAt])
+  @@index([userId, browserInstanceId])
 }
 
 model WorkdayControlIssue {
