@@ -3167,3 +3167,225 @@ body:has(#pwa-copper-theme) .employee-material-nav .attention-preview-nav-label{
 .attention-preview-marker{display:flex;width:28px;height:28px;flex:0 0 28px;align-items:center;justify-content:center;border-radius:8px}.attention-preview-marker.needs-action{background:#fff1d8;color:#a85a08}.attention-preview-marker.is-waiting{background:#f0f1f0;color:#737b80}body:has(#pwa-copper-theme) .employee-material-ui .attention-preview-marker.needs-action .pwa-icon-outline,body:has(#pwa-copper-theme) .employee-material-ui .attention-preview-entry .pwa-icon-outline{color:#a85a08!important;stroke:#a85a08!important}body:has(#pwa-copper-theme) .employee-material-ui .attention-preview-marker.is-waiting .pwa-icon-outline{color:#737b80!important;stroke:#737b80!important}
 
 .attention-preview-entry strong{display:block;font-size:14px;font-weight:650}.attention-preview-entry small{display:block;margin-top:3px;font-size:11px;font-weight:400;color:#847a6e}.attention-preview-entry.is-waiting{background:#f7f7f5;border-color:#e3e3df}.attention-preview-entry .is-waiting .pwa-icon-outline{color:#737b80!important;stroke:#737b80!important}.attention-preview-list>button:focus-visible,.attention-preview-entry:focus-visible{outline:2px solid #a85a08;outline-offset:3px}.attention-preview-list>button:active{background:#faf7f2}
+
+/* Daily control: put people and actionable exceptions first. */
+.team-context-line{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:10px 0;color:#81746a;font-size:12px}
+.team-context-line>a{color:#805333;font-weight:600}
+.team-source-details{max-width:600px}.team-source-details summary{cursor:pointer;color:#925f13;font-weight:600}.team-source-details p{margin:8px 0;line-height:1.5;color:#746557}
+.team-control .team-panel-title-compact{padding:14px 20px;display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.team-presence-note{font-size:12px;color:#7c7066}
+.team-control .team-panel{margin-top:10px}
+.team-control .team-status.green{background:#d7eee0;color:#155d39;border:1px solid #a9d4ba}
+.team-control .team-status.teal{background:#eaf2f3;color:#37646b}
+.team-control .team-status.amber{background:#fff0cf;color:#80500d;border:1px solid #edcf8c}
+
+ .team-review-text{font-size:13px;line-height:1.5}.team-review-text.attention{color:#80531d;font-weight:600}
+#employees-control .team-row-actions>.team-employee-actions{display:flex!important;flex-direction:column-reverse;align-items:stretch!important;gap:5px!important}
+#employees-control .team-row-actions>.team-employee-actions>button.team-action-button{border-color:transparent!important;background:transparent!important;box-shadow:none!important;font-size:11px!important;height:28px!important;min-height:28px!important;padding:4px 6px!important;color:#796e64!important}
+.team-control .team-employee-actions>div>.team-action-button{width:100%}
+.workday-date-toolbar{margin-bottom:12px!important}.workday-date-toolbar>a[aria-label]{min-width:36px;text-align:center}
+.workday-date-toolbar>button{margin-left:auto}
+@media(max-width:700px){.team-control .team-panel-title-compact{padding:12px 16px}.team-context-line{align-items:flex-start}.team-source-details{max-width:100%}}
+
+/* One operational control status; detailed reasons stay in the anchored list. */
+.team-control-anchor{position:relative}.team-control-clear{color:#9b938c}
+#employees-control .team-control-indicator{display:inline-flex;align-items:center;gap:8px;border:1px solid transparent;border-radius:7px;min-height:32px;padding:5px 9px;background:#f1efec;color:#69615a;font-size:12px;font-weight:600;white-space:nowrap}
+#employees-control .team-control-indicator b{font-size:11px;border-radius:4px;min-width:20px;text-align:center;background:#ffffffaa;padding:1px 4px}
+#employees-control .team-control-indicator.decision{background:#fbe3df;color:#933b2c;border-color:#efbbae}
+#employees-control .team-control-indicator.check{background:#fff0d5;color:#805214;border-color:#e9d09e}
+#employees-control .team-control-indicator.employee{background:transparent;color:#625a52;border-color:transparent}
+#employees-control .team-control-indicator.timing{background:transparent;color:#786347}
+.team-control-chevron{font-size:14px;opacity:.65}
+.team-control .team-panel{overflow:visible}.team-control .team-panel-title{border-radius:14px 14px 0 0}
+.team-control-popover{position:absolute;z-index:40;top:calc(100% + 7px);right:0;width:360px;max-width:calc(100vw - 36px);max-height:380px;overflow:auto;border:1px solid #ded7cf;background:#fff;border-radius:12px;box-shadow:0 12px 35px #362b2024;padding:0;color:#40372f}
+.team-control-popover header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #eee7df;font-size:12px}
+.team-control-popover header button{width:28px;height:28px;font-size:20px;color:#827367}
+.team-control-popover>a,.team-control-popover details>a{display:block;padding:12px 14px;border-bottom:1px solid #eee7df;text-decoration:none!important;font-size:12px;line-height:1.5}
+.team-control-popover a:hover{background:#faf7f3}.team-control-popover a strong{display:block;font-weight:600}
+.team-control-item-kind{display:block;font-size:10px;margin-bottom:4px;color:#796f65}.team-control-item-kind.decision{color:#933b2c}.team-control-item-kind.check{color:#805214}.team-control-item-kind.employee{color:#3e6275}
+.team-control-item-open{display:block;font-size:11px;color:#805333;margin-top:5px}
+.team-control-popover details{padding:10px 14px;font-size:12px}.team-control-popover summary{cursor:pointer;color:#796347}.team-control .team-control-popover p{padding:12px 14px;margin:0;font-size:12px;line-height:1.5}
+@media(max-width:700px){.team-control-popover{left:0;right:auto}}
+
+/* Stable operational row: facts, one control indicator, secondary overflow menu. */
+.team-person-link{font-weight:600;text-decoration:none!important;color:#40372f}.team-person-link:hover{color:#805333}
+#employees-control .team-actions-anchor{width:32px;position:relative;align-self:center}
+.team-row-menu>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;font-size:22px;color:#847467}
+.team-row-menu>summary::-webkit-details-marker{display:none}.team-row-menu>summary:hover,.team-row-menu[open]>summary{background:#eee9e3;color:#40372f}
+.team-row-menu-content{position:absolute;z-index:45;right:0;top:36px;width:180px;background:#fff;border:1px solid #ded7cf;border-radius:9px;padding:6px;box-shadow:0 8px 24px #362b2020}
+#employees-control .team-row-menu-content>.team-employee-actions{display:flex!important;flex-direction:column;align-items:stretch;gap:3px!important;width:100%}
+#employees-control .team-row-menu-content .team-action-button{width:100%!important;border:0!important;background:transparent!important;justify-content:flex-start!important;text-align:left;font-size:12px!important;height:34px!important;min-height:34px!important;padding:6px 9px!important}
+#employees-control .team-row-menu-content .team-action-button:hover{background:#f5f1ec!important}
+@media(min-width:901px){#employees-control .team-employee,#employees-control .team-column-head{grid-template-columns:minmax(125px,1.2fr) minmax(82px,.85fr) 60px minmax(115px,.9fr) minmax(135px,1fr) 32px;gap:10px}#employees-control .team-column-head{display:grid}#employees-control .team-employee>div:nth-child(5),#employees-control .team-employee>div:nth-child(6){grid-column:auto;grid-row:auto}#employees-control .team-employee>div:nth-child(2):before,#employees-control .team-employee>div:nth-child(3):before{display:none}}
+@media(max-width:900px){#employees-control .team-column-head{display:none}#employees-control .team-employee{grid-template-columns:minmax(105px,1fr) minmax(75px,.7fr) minmax(105px,1fr) 32px;gap:12px}#employees-control .team-employee>div:nth-child(1){grid-column:1/3;grid-row:1}#employees-control .team-employee>div:nth-child(2){grid-column:1;grid-row:2}#employees-control .team-employee>div:nth-child(3){grid-column:2;grid-row:2}#employees-control .team-employee>div:nth-child(4){grid-column:3;grid-row:1}#employees-control .team-employee>div:nth-child(5){grid-column:3/5;grid-row:2}#employees-control .team-employee>div:nth-child(6){grid-column:4;grid-row:1}#employees-control .team-control-popover{left:auto;right:0}}
+
+@media(max-width:700px){#employees-control .team-employee{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 32px;gap:10px}#employees-control .team-employee>div:nth-child(1){grid-column:1/3;grid-row:1}#employees-control .team-employee>div:nth-child(2){grid-column:1;grid-row:3}#employees-control .team-employee>div:nth-child(3){grid-column:2;grid-row:3}#employees-control .team-employee>div:nth-child(4){grid-column:1;grid-row:2}#employees-control .team-employee>div:nth-child(5){grid-column:2/4;grid-row:2}#employees-control .team-employee>div:nth-child(6){grid-column:3;grid-row:1}}
+
+.team-person-link{display:inline-flex;align-items:baseline;gap:6px}.team-person-chevron{color:#9a7c61;font-size:18px;font-weight:400;line-height:1;flex-shrink:0}
+.team-control .team-filters-compact{gap:6px;padding:10px 0}
+.team-filters-compact select{margin-left:auto;max-width:220px;border:1px solid #e4ddd6;border-radius:6px;background:#fff;color:#74685d;padding:6px 26px 6px 9px;font-size:12px;min-height:32px}
+.team-filters-compact select:focus-visible{outline:3px solid #b38460;outline-offset:2px}
+@media(max-width:700px){.team-filters-compact select{max-width:175px}}
+
+#employees-control .team-control-indicator{max-width:100%;text-align:left;line-height:1.35}
+#employees-control .team-control-indicator>span:first-child{white-space:normal}
+#employees-control .team-control-indicator>b,#employees-control .team-control-indicator>.team-control-chevron{flex-shrink:0}
+
+/* Shared geometry for shift and control labels. */
+#employees-control .team-status,#employees-control .team-control-indicator{box-sizing:border-box;display:inline-flex;align-items:center;min-height:36px;height:36px;padding:5px 8px;border-radius:7px;border:1px solid transparent;font-size:12px;font-weight:600;line-height:1.2;vertical-align:middle}
+#employees-control .team-status{white-space:nowrap}
+#employees-control .team-control-indicator.check{border-color:#e9d09e}#employees-control .team-control-indicator.decision{border-color:#efbbae}#employees-control .team-control-indicator.employee{border-color:transparent}
+
+/* Direct navigation: one equally sized control action, no intermediate list/menu. */
+#employees-control a.team-control-indicator{width:180px;min-width:180px;max-width:180px;height:36px;min-height:36px;justify-content:space-between;gap:6px;text-decoration:none!important;white-space:nowrap;font-size:12px}
+#employees-control a.team-control-indicator>span:first-child{white-space:nowrap}
+#employees-control a.team-control-indicator>b{width:20px;min-width:20px;background:transparent;padding:0}
+#employees-control a.team-control-indicator:hover{filter:brightness(.97)}
+@media(min-width:901px){#employees-control .team-employee,#employees-control .team-column-head{grid-template-columns:minmax(115px,1.2fr) minmax(75px,.85fr) 60px minmax(115px,.9fr) 180px;gap:10px}}
+@media(max-width:900px) and (min-width:701px){#employees-control .team-employee{grid-template-columns:minmax(105px,1fr) 75px 180px}#employees-control .team-employee>div:nth-child(1){grid-column:1/3;grid-row:1}#employees-control .team-employee>div:nth-child(2){grid-column:1;grid-row:2}#employees-control .team-employee>div:nth-child(3){grid-column:2;grid-row:2}#employees-control .team-employee>div:nth-child(4){grid-column:3;grid-row:1}#employees-control .team-employee>div:nth-child(5){grid-column:3;grid-row:2}}
+@media(max-width:700px){#employees-control .team-employee{grid-template-columns:minmax(0,1fr) 180px}#employees-control .team-employee>div:nth-child(1){grid-column:1/-1;grid-row:1}#employees-control .team-employee>div:nth-child(2){grid-column:1;grid-row:3}#employees-control .team-employee>div:nth-child(3){grid-column:2;grid-row:3}#employees-control .team-employee>div:nth-child(4){grid-column:1;grid-row:2}#employees-control .team-employee>div:nth-child(5){grid-column:2;grid-row:2}}
+
+#employees-control .team-employee-plan-controls>.team-action-button{display:inline-flex!important;align-items:center;gap:5px;width:auto!important;height:26px!important;min-height:26px!important;margin-top:3px;padding:3px 0!important;border:0!important;background:transparent!important;box-shadow:none!important;color:#796e64!important;font-size:11px!important;font-weight:500!important;text-decoration:none!important}
+#employees-control .team-employee-plan-controls>.team-action-button:hover{color:#805333!important}
+
+/* Identity metadata stays together; a finished shift is a fact, not an action. */
+.team-person-meta{display:flex;align-items:center;flex-wrap:wrap;gap:2px 12px;margin-top:5px}
+#employees-control .team-person-meta>small{margin:0;font-size:11px;color:#8a7c70;line-height:1.5}
+#employees-control .team-person-meta .team-employee-plan-controls>.team-action-button{margin-top:0;height:24px!important;min-height:24px!important;padding:2px 0!important}
+.team-finished-fact{color:#6b625a;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* Unified operational composition: calm facts, action colour only in Control. */
+#employees-control .team-employee{min-height:82px;padding-top:16px;padding-bottom:16px;font-size:13px}
+#employees-control .team-time{font-size:13px;font-weight:600;line-height:1.5}
+#employees-control .team-employee small{font-size:11px;line-height:1.5;margin-top:4px}
+#employees-control .team-person-meta{margin-top:4px}
+#employees-control .team-person-meta>small{margin:0}
+.team-plan-cell{display:flex;align-items:center;justify-content:flex-start;gap:6px;min-width:0}.team-plan-cell>div:first-child{min-width:0}
+#employees-control .team-plan-cell .team-employee-plan-controls>.team-plan-edit-icon{width:28px!important;height:28px!important;min-height:28px!important;padding:6px!important;margin:0!important;justify-content:center!important;flex-shrink:0;border-radius:5px!important;color:#9b8c7f!important}
+#employees-control .team-plan-cell .team-employee-plan-controls>.team-plan-edit-icon:hover{background:#f1ece6!important;color:#805333!important}
+.team-state-text{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500;line-height:1.4;color:#6b625a;background:none;border:0;padding:0}
+.team-state-text>i{display:block;width:6px;height:6px;border-radius:50%;background:#b4aba2;flex:0 0 6px}
+.team-state-text.active{color:#206242}.team-state-text.active>i{background:#368660}
+.team-state-text.recorded>i{background:#70909b}.team-state-text.attention{color:#805214}.team-state-text.attention>i{background:#c28d37}
+#employees-control .team-column-head{font-size:10px;letter-spacing:.02em}
+@media(min-width:901px){#employees-control .team-employee,#employees-control .team-column-head{grid-template-columns:minmax(115px,1.15fr) minmax(100px,1fr) 60px minmax(115px,1fr) 180px;gap:10px}}
+
+/* Department-owned fiscal checks are not attributed to an employee before approval. */
+#employees-control .team-department-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;border-bottom:1px solid #eee8e2;font-size:12px;color:#766b61}
+#employees-control .team-department-actions>div{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+
+/* Keep routine control states in the portal's neutral material palette. */
+#employees-control .team-control-indicator.unavailable{background:transparent;color:#8b8178;border-color:transparent;font-weight:500}
+#employees-control .team-control-indicator.employee{position:relative}
+#employees-control .team-control-indicator.employee>span:first-child::before{content:"";display:inline-block;position:absolute;left:0;top:calc(50% - 2.5px);width:5px;height:5px;border-radius:50%;background:#75919c}
+#employees-control a.team-control-indicator.employee:hover,#employees-control a.team-control-indicator.unavailable:hover,#employees-control a.team-control-indicator.timing:hover{background:#f3efeb;filter:none}
+#employees-control a.team-control-indicator:focus-visible{outline:2px solid #a97146;outline-offset:3px}
+
+/* Cohesive workday review: department context, shared direct actions, concise queue. */
+#employees-control .team-department{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 20px;min-height:42px}
+.team-department-name{display:flex;align-items:center;gap:12px}
+#employees-control .team-department-actions{display:flex;align-items:center;gap:10px;padding:0;border:0;font-size:11px;color:#6f797d}
+#employees-control .team-department-actions>div{display:flex;gap:6px;flex-wrap:wrap}
+#employees-control a.team-control-indicator{position:relative;width:204px;min-width:204px;max-width:204px;padding-right:24px;gap:4px}
+#employees-control a.team-control-indicator::after{content:"›";position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:17px;font-weight:400;opacity:.65;line-height:1}
+#employees-control a.team-control-indicator>b{width:16px;min-width:16px}
+#employees-control .team-control-clear{font-size:12px;font-weight:400}
+#employees-control .team-queue-reason .team-queue-context{display:block;margin-top:3px;font-size:11px;color:#796e64;font-weight:400}
+#employees-control .team-queue-row{padding-top:12px;padding-bottom:12px}
+#employees-control .team-queue-group.decision{border-left-color:#c98e83}
+#employees-control .team-queue-group.decision>header{background:#fcf0ed}
+#employees-control .team-queue-group.watch{border-left-color:#d4cec7}
+#employees-control .team-queue-group h2 span{background:transparent;padding:0;color:#8b8178;font-size:11px;font-weight:400}
+#employees-control .team-queue-employee{grid-template-columns:200px minmax(0,1fr)}
+#employees-control .team-queue-detail{grid-template-columns:minmax(0,1fr) 118px;max-width:none}
+@media(min-width:1101px){#employees-control .team-employee,#employees-control .team-column-head{grid-template-columns:minmax(115px,1.15fr) minmax(100px,1fr) 90px minmax(115px,1fr) 204px;gap:10px}}
+@media(min-width:701px) and (max-width:1100px){#employees-control .team-column-head{display:none}#employees-control .team-employee{grid-template-columns:minmax(105px,1fr) 90px 204px;gap:8px 10px;padding-top:12px;padding-bottom:12px}#employees-control .team-employee>div:nth-child(1){grid-column:1/3;grid-row:1}#employees-control .team-employee>div:nth-child(2){grid-column:1;grid-row:2}#employees-control .team-employee>div:nth-child(3){grid-column:2;grid-row:2}#employees-control .team-employee>div:nth-child(4){grid-column:3;grid-row:1}#employees-control .team-employee>div:nth-child(5){grid-column:3;grid-row:2}#employees-control .team-queue-employee{grid-template-columns:155px minmax(0,1fr)}}
+@media(max-width:700px){#employees-control .team-employee{grid-template-columns:minmax(0,1fr) 204px}#employees-control .team-department-actions{width:100%;justify-content:space-between}#employees-control .team-queue-employee{display:block}}
+
+@media(min-width:1101px){#employees-control .team-employee{min-height:74px;padding-top:12px;padding-bottom:12px}}
+
+@media(max-width:1100px){#employees-control .team-plan-cell,#employees-control .team-start-cell{padding-top:0}#employees-control .team-plan-cell::before,#employees-control .team-start-cell::before{display:none}}
+
+/* Workday material finish: shared warm surfaces, graphite facts and restrained semantic accents. */
+#employees-control{--team-ink:#383b3d;--team-muted:#776f66;--team-line:#e7e1da;--team-surface:#f1ece6}
+#employees-control .team-panel,#employees-control .team-queue-group{border-color:#e1d9d0;box-shadow:0 1px 2px #25282b05}
+#employees-control .team-column-head{background:#faf8f5;color:#82786e;letter-spacing:.035em}
+#employees-control .team-department{background:var(--team-surface);border-top:1px solid #e4dbd1;border-bottom:1px solid #e1d7cb;color:#52483f}
+#employees-control .team-department-name>b{font-size:13px;font-weight:650;letter-spacing:.01em}
+#employees-control .team-department-name>span{color:#8a7b6e;font-size:11px}
+#employees-control .team-employee{color:var(--team-ink);border-bottom-color:var(--team-line)}
+#employees-control .team-person-link{display:inline-flex;align-items:center;gap:4px;color:var(--team-ink);font-size:14px;font-weight:600;line-height:1.5}
+#employees-control .team-person-chevron{width:13px;height:13px;stroke-width:1.6;color:#a29486;flex-shrink:0}
+#employees-control .team-person-link:hover{color:#805333}
+#employees-control .team-time{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:#383b3d}
+#employees-control .team-state-text{font-size:13px;line-height:1.45}
+#employees-control .team-person-meta>small{color:var(--team-muted)}
+#employees-control .team-control-indicator.decision{background:#fbf0ed;border-color:#e7cac2;color:#8a4033}
+#employees-control .team-control-indicator.check{background:#fbf5eb;border-color:#e6d5bb;color:#805b31}
+#employees-control .team-control-indicator.employee{background:#f4eee6;border-color:#d9cabb;color:#68523c}
+#employees-control a.team-control-indicator.employee:hover{background:#ede3d6;border-color:#c8b49e;filter:none}
+#employees-control a.team-control-indicator{border-radius:6px;transition:background-color .15s,border-color .15s}
+#employees-control a.team-control-indicator::after{content:none}
+#employees-control .team-control-chevron{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:13px;height:13px;stroke-width:1.6;opacity:.65}
+#employees-control .team-context-line>a{display:inline-flex;align-items:center;gap:5px;font-weight:500}
+#employees-control .team-context-line>a svg{width:13px;height:13px;stroke-width:1.6}
+#employees-control .team-source-details>summary{display:inline-flex;align-items:center;gap:5px;list-style:none;font-weight:500}
+#employees-control .team-source-details>summary::-webkit-details-marker{display:none}
+#employees-control .team-source-details>summary svg{width:12px;height:12px;stroke-width:1.6}
+#employees-control .team-source-details[open] .team-source-chevron{transform:rotate(180deg)}
+#employees-control .team-queue-group>header{background:#faf8f5;border-bottom-color:var(--team-line)}
+#employees-control .team-queue-group.decision>header{background:#fbf2ef}
+#employees-control .team-queue-group.decision{border-left-color:#c59a8b}
+#employees-control .team-queue-group.check{border-left-color:#c5a77c}
+#employees-control .team-queue-group.watch{border-left-color:#d1c8be}
+#employees-control .team-queue-employee>h3{font-size:14px;color:var(--team-ink);font-weight:600}
+#employees-control .team-queue-subject{font-size:13px;color:var(--team-ink);font-weight:500}
+#employees-control .team-queue-row,#employees-control .team-queue-employee+.team-queue-employee{border-color:var(--team-line)}
+#employees-control .team-queue-detail>.team-button{display:inline-flex;align-items:center;gap:6px;background:#fffdfa;border-color:#dfd5ca;color:#754725;border-radius:6px;box-shadow:none}
+#employees-control .team-queue-detail>.team-button svg{width:13px;height:13px;stroke-width:1.6}
+#employees-control .team-queue-detail>.team-button:hover{background:#f5eee7;border-color:#cdb8a3}
+
+#employees-control .team-queue-detail{grid-template-columns:minmax(0,1fr) 132px}
+#employees-control .team-queue-detail>.team-button svg{flex:0 0 13px}
+
+#employees-control .team-state-text.active{color:#17643e;font-weight:650}
+#employees-control .team-state-text.active>i{width:7px;height:7px;flex-basis:7px;background:#258652;box-shadow:0 0 0 3px #25865212}
+#employees-control .team-state-text.attention{color:#8a5b21;font-weight:600}
+
+/* One question summary per employee; quantities have explicit units. */
+#employees-control a.team-control-question{height:46px;min-height:46px}
+#employees-control .team-control-copy{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;line-height:1.2}
+#employees-control .team-control-copy>small{margin:0;font-size:11px;font-weight:400;color:inherit;opacity:.85;line-height:1.2}
+#employees-control .team-control-question.employee>span:first-child::before{top:13px}
+
+.workday-unfinished-summary{border-bottom:1px solid #e4d7c5;color:#805b31;font-size:12px}
+.workday-unfinished-summary>summary{display:flex;align-items:center;gap:8px;min-height:34px;cursor:pointer;list-style:none;padding:3px 0}
+.workday-unfinished-summary>summary::-webkit-details-marker{display:none}
+.workday-unfinished-summary>summary>svg{width:14px;height:14px;flex-shrink:0;stroke-width:1.7}
+.workday-unfinished-toggle{margin-left:auto;font-size:11px;color:#8d765c}
+.workday-unfinished-summary>div{padding:5px 0 10px}
+.workday-unfinished-summary>div>a{display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:6px;text-decoration:none;color:#574b40;font-size:12px}
+.workday-unfinished-summary>div>a:hover{background:#f4eee7}
+.workday-unfinished-summary>div>a>span:last-child{margin-left:auto}
+.workday-unfinished-summary>div>a>span{font-size:11px;color:#827568}
+
+.team-owner-cash-question{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:12px 14px;text-align:left;border:1px solid #e6d5bb;border-radius:8px;background:#fbf5eb;color:#805b31;font-size:12px}
+.team-owner-cash-question small{display:block;margin-top:3px;font-size:11px;font-weight:400}
+.team-owner-cash-question>span:last-child{flex-shrink:0;font-size:11px}
+.team-owner-cash-question:hover{background:#f7eedf}
+
+/* A dot means shift state only; control questions use wording and a quantity. */
+#employees-control .team-control-indicator.employee>span:first-child::before{content:none}
+
+#employees-control .team-state-text.neutral>i,#employees-control .team-state-text.finished>i{display:none}
+
+/* Secondary workday tools stay available without competing with the team. */
+.workday-secondary-disclosure:not([open]){background:transparent!important;box-shadow:none!important;border-radius:0!important;border-bottom:1px solid #e4ddd5}
+.workday-secondary-disclosure>summary{padding:10px 0!important}
+.workday-secondary-disclosure:not([open])>summary p:first-child{font-size:12px;font-weight:500;color:#756b61}
+.workday-secondary-disclosure:not([open])>summary p+p{display:none}
+.workday-secondary-disclosure>summary .admin-disclosure-action{background:transparent!important;box-shadow:none!important;border:0!important;padding:0!important;font-size:11px;color:#897564}
+.workday-settings-link{background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:10px 0!important;font-size:12px!important;font-weight:500!important;border-top:1px solid #e4ddd5}
+.workday-settings-link>span>span:first-child{color:#756b61!important}
+.workday-settings-link>span>span+span{display:none}
+.workday-settings-link .admin-disclosure-action{background:transparent!important;box-shadow:none!important;border:0!important;padding:0!important;font-size:11px;color:#897564}

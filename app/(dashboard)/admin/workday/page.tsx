@@ -1,8 +1,10 @@
+import { fiscalControlAction, pastOwnerActions, openCashControl } from '@/lib/team-control-summary';
+import { TERMINAL_FISCAL_ADMIN_FIRST, fiscalProposedRecipients } from '@/lib/terminal-fiscal-admin-gate';
 import { WorkdayIssueDialog } from './WorkdayIssueDialog';
 import { cashEncashmentReasonLabel, isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
 import { TeamDailyControl, type TeamDayRow } from '@/components/admin/TeamDailyControl';
 import { getTeamGoogleSnapshot } from '@/lib/team-control-source';
-import { googleDay, usesAppSchedule, clockLabel, clockMinutes, teamStartControl, taskTimingLabel } from '@/lib/team-control';
+import { googleDay, usesAppSchedule, clockLabel, clockMinutes, teamStartControl, taskTimingLabel, teamShiftState } from '@/lib/team-control';
 import Link from 'next/link';
 import { completedWithoutEncashment, hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workday-close-view';
 import { redirect } from 'next/navigation';
@@ -1215,6 +1217,43 @@ export default async function AdminWorkdayPage(
     orderBy: { requestedAt: 'desc' },
     include: { decidedBy: { select: { name: true } } },
   });
+  const [pastRequests, pastCash] = selectedDate === today ? await Promise.all([
+    prisma.workdayCloseExceptionRequest.findMany({
+      where: {status:'pending',workDayEntry:{date:{lt:today},endedAt:null,status:{in:['active','missing_checkout']}}},
+      include:{employee:{select:{name:true,department:true}},workDayEntry:{select:{date:true,status:true,endedAt:true}}},
+      orderBy:{requestedAt:'asc'},
+    }),
+    prisma.cashOperation.findMany({
+      where:{date:{lt:today},status:{notIn:['posted_1c_pair','resolved_manual','cancelled']}},
+      include:{user:{select:{name:true,department:true}}},orderBy:{createdAt:'asc'},
+    }),
+  ]) : [[],[]];
+  const ownerActions = pastOwnerActions(pastRequests,pastCash,selectedDate,today).map(action=>({...action,context:action.context.replace(action.originDate,formatDateLabel(action.originDate))}));
+  const fiscalReviews = await prisma.terminalFiscalEmployeeReview.findMany({
+    where: { status: { in: ['admin_review', 'open'] }, bankOperationAt: selectedDate === today
+      ? { lt: selectedDayRange.periodTo } : { gte: selectedDayRange.periodFrom, lt: selectedDayRange.periodTo } },
+    select: { id: true, status: true, matchingHash: true, amountKopecks: true, bankOperationAt: true, mappingId: true,
+      participants: { select: { response: true } } },
+    orderBy: { bankOperationAt: 'asc' },
+  });
+  const fiscalMatches = fiscalReviews.length ? await prisma.terminalFiscalMatch.findMany({
+    where: { matchingId: { in: fiscalReviews.map(review => review.matchingHash) } },
+    select: { matchingId: true, status: true, oneCSourceRef: true },
+  }) : [];
+  const fiscalMatchByHash = new Map(fiscalMatches.map(match => [match.matchingId, match]));
+  const fiscalRecipients = await Promise.all(fiscalReviews.map(review => review.status === 'admin_review' && TERMINAL_FISCAL_ADMIN_FIRST && !fiscalMatchByHash.get(review.matchingHash)?.oneCSourceRef
+    ? fiscalProposedRecipients(prisma, review.bankOperationAt, review.mappingId).then(proposed => proposed.users.length)
+    : Promise.resolve(undefined)));
+  const departmentActions = fiscalReviews.flatMap((review, index) => {
+    const action = fiscalControlAction(review, fiscalMatchByHash.get(review.matchingHash), TERMINAL_FISCAL_ADMIN_FIRST, fiscalRecipients[index]);
+    return action ? [{ ...action, context: `${formatDateLabel(getMoscowDateKey(review.bankOperationAt))} · ${formatTime(review.bankOperationAt)} · ${action.context}` }] : [];
+  });
+  const creditHelpEvents = requiredIssues.length ? await prisma.adminInboxEvent.findMany({
+    where: { type: 'workday_issue.employee_action', sourceType: 'workday_control_issue',
+      sourceId: { in: requiredIssues.filter(issue => issue.ruleKey === 'credit_realization_mismatch').map(issue => String(issue.id)) } },
+    select: { sourceId: true },
+  }) : [];
+  const creditHelpIssueIds = new Set(creditHelpEvents.map(event => event.sourceId));
   const scheduleByUser = new Map(schedules.map((entry) => [entry.userId, entry]));
   const vacationByUser = new Map(vacations.map((vacation) => [vacation.userId, vacation]));
   const workDayByUser = new Map(workDays.map((entry) => [entry.userId, entry]));
@@ -1537,9 +1576,10 @@ export default async function AdminWorkdayPage(
           const lifecycle = `${issue.originDate === today ? 'Возникла сегодня' : `Возникла ${formatDateLabel(issue.originDate)}`} · ${getMoscowDateKey(issue.lastDetectedAt) === today ? `автопроверка сегодня в ${formatTime(issue.lastDetectedAt)}` : `автопроверка ${formatDateLabel(getMoscowDateKey(issue.lastDetectedAt))} в ${formatTime(issue.lastDetectedAt)}`}`;
           return {
             id: issue.id,
+            originDate: issue.originDate,
             title: view.summaryTitle,
-            state: view.verificationPending ? 'Не удалось проверить' : 'Исправляет сотрудник',
-            meta: view.summaryMeta,
+            state: creditHelpIssueIds.has(String(issue.id)) ? 'Нужна помощь' : view.verificationPending ? 'Не удалось проверить' : 'Открыто',
+            meta: [view.summaryMeta,issue.originDate&&issue.originDate!==selectedDate?formatDateLabel(issue.originDate):''].filter(Boolean).join(' · '),
             lifecycle,
             href: `/admin/workday?date=${selectedDate}&control=all&view=attention&issue=${issue.id}#employees-control`,
           };
@@ -1613,49 +1653,34 @@ export default async function AdminWorkdayPage(
     <AdminShell pageTitle="Контроль дня" pageDescription="План, фактические отметки и проверки смен по отделам.">
       <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
       <div className='space-y-6'>
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="workday-date-toolbar mb-4 flex flex-wrap items-center gap-2">
             <Link
               href={`/admin/workday?date=${previousDate}`}
               aria-label='Предыдущий день'
               className='admin-material-control rounded-lg px-3 py-2 text-sm font-bold text-slate-700 transition'
             >
-              ← <span className='hidden sm:inline'>Предыдущий</span>
+              ←
             </Link>
             <Badge className='admin-material-control w-fit px-3 py-2 text-slate-700'>{formatDateLabel(selectedDate)}</Badge>
             <Link
               href={`/admin/workday?date=${nextDate}`}
+              aria-label="Следующий день"
               className='admin-material-control rounded-lg px-3 py-2 text-sm font-bold text-slate-700 transition'
             >
-              <span className='hidden sm:inline'>Следующий</span> →
+              →
             </Link>
-            <Link
+            {selectedDate !== today && <Link
               href='/admin/workday'
               className='admin-material-primary rounded-lg px-3 py-2 text-sm font-extrabold text-white transition'
             >
-              <span className='sm:hidden'>Сегодня</span><span className='hidden sm:inline'>Сегодня</span>
-            </Link>
+              Сегодня
+            </Link>}
             <WorkdayQrCodes />
           </div>
 
-        {unfinishedWorkDays.length > 0 && (
-          <Card className='border-amber-200 bg-amber-50'>
-            <div className='flex items-start gap-3'>
-              <AlertTriangle className='mt-0.5 h-5 w-5 shrink-0 text-amber-700' />
-              <div>
-                <p className='font-extrabold text-amber-950'>Остались незавершённые рабочие дни</p>
-                <div className='mt-2 flex flex-wrap gap-2 text-sm font-semibold text-amber-900'>
-                  {unfinishedWorkDays.map((entry) => (
-                    <span key={entry.id} className='rounded-full bg-white px-3 py-1 ring-1 ring-amber-200'>
-                      {entry.user.name} · {entry.date} · начал {formatTime(entry.startedAt)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Card>
-        )}
+        {unfinishedWorkDays.length > 0 && <details className="workday-unfinished-summary"><summary><AlertTriangle aria-hidden="true"/><span>Незавершённые смены: <b>{unfinishedWorkDays.length}</b></span><span className="workday-unfinished-toggle">Посмотреть</span></summary><div>{unfinishedWorkDays.map(entry=><a key={entry.id} href={`/admin/workday?date=${entry.date}&control=all&employee=${entry.userId}&focus=shift-start#employees-control`}><strong>{entry.user.name}</strong><span>{formatDateLabel(entry.date)} · начало {formatTime(entry.startedAt)}</span><span aria-hidden="true">›</span></a>)}</div></details>}
 
-        <TeamDailyControl initialTab={searchParams?.view === 'attention' ? 'attention' : 'overview'} date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
+        <TeamDailyControl ownerActions={ownerActions} departmentActions={departmentActions} initialTab={searchParams?.view === 'attention' ? 'attention' : 'overview'} date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
           rows={employeeControlRows.map((row): TeamDayRow => {
             const app = usesAppSchedule(row.employee.name);
             const google = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
@@ -1672,7 +1697,7 @@ export default async function AdminWorkdayPage(
               alertTargets[text] = `shift-request-${request.id}`;
               return text;
             });
-            for (const operation of cashOperations.filter(o=>o.userId===row.employee.id && o.status!=='posted_1c_pair')) {
+            for (const operation of cashOperations.filter(o=>o.userId===row.employee.id && openCashControl(o.status))) {
               const status = operation.status === 'pending_1c' || operation.status === 'retrying_1c' ? 'ожидается проведение в 1С' : 'документы 1С не проведены';
               const text = `Инкассация ${formatMoney(operation.amount)} · внесена ${formatTime(operation.createdAt)} · ${status}`;
               alerts.push(text);
@@ -1697,22 +1722,36 @@ export default async function AdminWorkdayPage(
             const timing = app ? row.timingViolations.map(v=>v.detail) : [];
             for (const violation of row.timingViolations) alertTargets[violation.detail] = violation.taskId ? `shift-task-${violation.taskId}` : 'shift-start';
             const timely = completedTask ? taskTimingLabel(completedTask.plannedTimeMinutes, completedTask.completedAt?.toISOString() ?? null, selectedDate).text : '';
-            return {id:row.employee.id,name:row.employee.name,department:row.employee.department,source:app?'Приложение · пилот':'Google',planState,
+            return {id:row.employee.id,sourceUnavailable:!app&&(!googleSnapshot.planAvailable||!googleSnapshot.marksAvailable),detailAvailable:Boolean(row.requiredIssues.length||row.run||row.workDay||row.timingViolations.length),name:row.employee.name,department:row.employee.department,source:app?'Приложение · пилот':'Google',planState,
               plan:planState==='vacation'?'Отпуск':planState==='working'?'Рабочий день':planState==='off'?'Выходной':planState==='unavailable'?'Источник недоступен':'Нет записи графика',shift,start,end,
-              state:app&&row.activeWorkDay?'Работает':end!=='—'?'Завершение отмечено':start!=='—'?'Начало отмечено':planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Нет начала по плану':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало',
+              state:teamShiftState(selectedDate,today,start!=='—',app&&row.activeWorkDay,end,planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Не отметился':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало'),
               active:app&&row.activeWorkDay,late:app?row.workDay?.lateMinutes??0:google.lateMinutes,missing,
               review:alerts.length?`${alerts[0]}${alerts.length>1?` · ещё ${alerts.length-1}`:''}`:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention' || row.cannotVerify) ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
               next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:alerts.length>0||app&&(row.category==='error'||row.category==='attention'||row.cannotVerify),alertTargets,alerts,timing,issues:row.requiredIssues};
           })}
+          planControls={employeeControlRows.map(row => (
+                      <AdminWorkdayCorrectionButton
+                        label='Изменить график'
+                        iconOnly
+                        employee={{ id: row.employee.id, name: row.employee.name, department: row.employee.department }}
+                        date={selectedDate}
+                        scheduleStatus={row.schedule?.status}
+                        workDay={row.workDay ? { shiftCode: row.workDay.shiftCode, status: row.workDay.status, endedAt: row.workDay.endedAt?.toISOString() ?? null } : null}
+                        vacation={row.vacation ? { id: row.vacation.id, dateFrom: row.vacation.dateFrom, dateTo: row.vacation.dateTo } : null}
+                      />
+          ))}
           controls={employeeControlRows.map(row => {
             const googleControl = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
+            const pendingRequest = closeRequests.find(request=>request.employeeId===row.employee.id&&request.status==='pending');
+            const pendingCash = cashOperations.find(operation=>operation.userId===row.employee.id&&operation.status!=='posted_1c_pair');
+            const defaultReviewTarget = pendingRequest ? `shift-request-${pendingRequest.id}` : pendingCash ? `shift-cash-${pendingCash.id}` : undefined;
             const reviewableIndex = reviewableEmployeeRows.findIndex(r=>r.employee.id===row.employee.id);
             const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex-1] : null;
             const nextEmployeeRow = reviewableIndex >= 0 ? reviewableEmployeeRows[reviewableIndex+1] : null;
             return (
-                    <div key={row.employee.id} className='flex flex-wrap items-center gap-2 lg:justify-end'>
+                    <div key={row.employee.id} className='team-employee-actions flex flex-wrap items-center gap-2 lg:justify-end'>
                       <AdminWorkdayCorrectionButton
-                        label={usesAppSchedule(row.employee.name) ? 'Изменить' : 'План приложения'}
+                        label='Изменить план'
                         employee={{ id: row.employee.id, name: row.employee.name, department: row.employee.department }}
                         date={selectedDate}
                         scheduleStatus={row.schedule?.status}
@@ -1772,7 +1811,7 @@ export default async function AdminWorkdayPage(
                             bankOperationAt: record.bankOperationAt?.toISOString() ?? null,
                           }))}
                           requiredIssues={row.requiredIssues}
-                          initialReviewTarget={searchParams?.focus}
+                          initialReviewTarget={searchParams?.employee === String(row.employee.id) && searchParams?.focus ? searchParams.focus : defaultReviewTarget}
                           initialOpen={searchParams?.employee === String(row.employee.id)}
                           closeHref={employeeDetailCloseHref}
                           previousEmployee={previousEmployeeRow ? {
@@ -1801,7 +1840,7 @@ export default async function AdminWorkdayPage(
           })}
         />
 
-        <details className='group admin-material-surface rounded-xl ring-1 ring-slate-200'>
+        <details className='group admin-material-surface workday-secondary-disclosure rounded-xl ring-1 ring-slate-200'>
           <summary className='cursor-pointer list-none px-5 py-4'>
             <div className='flex flex-wrap items-center justify-between gap-3'>
               <div>
@@ -2276,7 +2315,7 @@ export default async function AdminWorkdayPage(
         </Card>
 
           </div>
-        </details> : <Link href={`/admin/workday?date=${selectedDate}&technical=1#kkm-assignments`} className='flex items-center justify-between gap-3 rounded-xl bg-white px-5 py-4 text-sm font-extrabold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-950'><span><span className='block text-slate-950'>Служебные настройки</span><span className='mt-0.5 block text-sm font-medium text-slate-600'>Привязки касс, наличные по 1С и технические таблицы</span></span><span className='admin-disclosure-action'>Открыть <span aria-hidden='true'>→</span></span></Link>}
+        </details> : <Link href={`/admin/workday?date=${selectedDate}&technical=1#kkm-assignments`} className='workday-settings-link flex items-center justify-between gap-3 rounded-xl bg-white px-5 py-4 text-sm font-extrabold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-950'><span><span className='block text-slate-950'>Служебные настройки</span><span className='mt-0.5 block text-sm font-medium text-slate-600'>Привязки касс, наличные по 1С и технические таблицы</span></span><span className='admin-disclosure-action'>Открыть <span aria-hidden='true'>→</span></span></Link>}
 
       </div>
       {searchParams?.issue && /^\d+$/.test(searchParams.issue) && <WorkdayIssueDialog key={searchParams.issue} id={Number(searchParams.issue)} date={selectedDate} currentUserId={currentUser.id}/>}

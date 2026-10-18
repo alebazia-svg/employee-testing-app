@@ -54,3 +54,9 @@ export function teamOperationAlerts(requests: Array<{status:string}>, operations
   const waiting = operations.filter(o => o.status !== 'posted_1c_pair' && !['one_c_error','manual_in_progress','retrying_1c'].includes(o.status)).length;
   return [pending ? `Запросов на завершение: ${pending}` : '', failed ? `Инкассаций без подтверждения 1С: ${failed}` : '', waiting ? `Инкассаций в обработке: ${waiting}` : ''].filter(Boolean);
 }
+
+export function teamShiftState(date:string,today:string,hasStart:boolean,active:boolean,end:string,fallback:string){
+ if(end!=='—')return `Завершил · ${end}`;
+ if(active||hasStart)return date<today?'Не завершил смену':'Работает';
+ return fallback;
+}

@@ -8,6 +8,7 @@ import { getShiftOptionsForDepartment } from '@/lib/workday';
 
 type Props = {
   label?: string;
+  iconOnly?: boolean;
   employee: { id: number; name: string; department: string };
   date: string;
   scheduleStatus?: string;
@@ -15,7 +16,7 @@ type Props = {
   vacation?: { id: string; dateFrom: string; dateTo: string } | null;
 };
 
-export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, workDay, vacation, label = 'Изменить' }: Props) {
+export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, workDay, vacation, label = 'Изменить', iconOnly = false }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -47,8 +48,8 @@ export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, w
 
   return (
     <>
-      <button type='button' onClick={() => setOpen(true)} className='team-action-button'>
-        <Pencil className='h-3.5 w-3.5' /> {label}
+      <button type='button' onClick={() => setOpen(true)} className={`team-action-button ${iconOnly?'team-plan-edit-icon':''}`} title={iconOnly?`${label}: ${employee.name}`:undefined} aria-label={iconOnly?`${label}: ${employee.name}`:undefined}>
+        <Pencil className='h-3.5 w-3.5' /> {!iconOnly && label}
       </button>
       {open && (
         <div className='fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-5' role='dialog' aria-modal='true' aria-label={`Исправить данные ${employee.name}`} onClick={(event) => {
