@@ -47,7 +47,7 @@ export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, w
 
   return (
     <>
-      <button type='button' onClick={() => setOpen(true)} className='inline-flex h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-extrabold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'>
+      <button type='button' onClick={() => setOpen(true)} className='team-action-button'>
         <Pencil className='h-3.5 w-3.5' /> {label}
       </button>
       {open && (
