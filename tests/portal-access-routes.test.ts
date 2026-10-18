@@ -73,3 +73,19 @@ test('ADMIN page authorizes before journal reads and never selects auth hashes o
   assert.equal(queries[1].where.OR[3].browser.contains, 'Safari');
   assert.equal(queries[1].where.loggedOutAt, undefined);
 });
+
+test('remote update endpoint requires same-origin ADMIN and rejects caller targets', async () => {
+  let admin: any = null; const calls: any[] = [];
+  const route = await mocked('app/api/admin/employees/access/update/route.ts', {
+    '@/lib/auth': { getCurrentAdmin: async () => admin },
+    '@/lib/portal-app-update-server': { requestAppUpdate: async (...args: any[]) => { calls.push(args); return { status: 200, command: { id: 'private', clientId: 'private', requestedBy: 9, requestedAt: 'now' } }; } },
+  });
+  const post = (body: unknown = { sessionId: 'known-connection' }, site = 'same-origin') => route.POST(new Request('https://portal.invalid/api/admin/employees/access/update', { method: 'POST', headers: { 'sec-fetch-site': site }, body: JSON.stringify(body) }));
+  assert.equal((await post()).status, 403); admin = { id: 9 };
+  assert.equal((await post(undefined, 'cross-site')).status, 403);
+  assert.equal((await post({ sessionId: 'known', target: 'evil' })).status, 400);
+  assert.equal((await post({ sessionId: 'x'.repeat(500) })).status, 400);
+  assert.equal(calls.length, 0);
+  const result = await post(); assert.equal(result.status, 200); assert.deepEqual(calls, [['known-connection', 9]]);
+  assert.doesNotMatch(await result.text(), /private|clientId|requestedBy/);
+});

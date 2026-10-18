@@ -1,4 +1,5 @@
 import 'server-only';
+import { observePushAttempt } from './push-attempt-observation';
 import {RECEIPT_EMPLOYEE_KIND,receiptHref,receiptPlanFromFingerprint} from './procurement-receipt-policy';
 
 import webpush from 'web-push';
@@ -457,10 +458,10 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
         }
         try {
           providerAttemptCount += 1;
-          await webpush.sendNotification({
+          await observePushAttempt(subscription, () => webpush.sendNotification({
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-          }, payload, { TTL: employeePushTtl(attemptTime), timeout: 10000 });
+          }, payload, { TTL: employeePushTtl(attemptTime), timeout: 10000 }));
           deliveredCount += 1;
         } catch (error) {
           const statusCode = typeof error === 'object' && error && 'statusCode' in error ? Number(error.statusCode) : 0;

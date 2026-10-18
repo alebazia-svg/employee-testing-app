@@ -1,6 +1,7 @@
 import './globals.css';
 import './mobo-brand.css';
 import './desktop-copper.css';
+import '@/components/portal-access-devices.css';
 import type { Metadata, Viewport } from 'next';
 import { PortalAccessTracker } from '@/components/PortalAccessTracker';
 

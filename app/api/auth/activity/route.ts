@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import { getCurrentUser } from '@/lib/auth';
 import { sessionCookieName } from '@/lib/session';
 import { parsePushObservation, recordPortalAccess } from '@/lib/portal-access-journal';
+import { observeAppUpdate } from '@/lib/portal-app-update-server';
 
 export async function POST(req: Request) {
   // Browser-only same-origin endpoint. No cross-origin tracking or public ingestion.
@@ -15,7 +16,8 @@ export async function POST(req: Request) {
   try {
     const token = (await cookies()).get(sessionCookieName)?.value;
     await recordPortalAccess({ userId: user.id, token, userAgent: req.headers.get('user-agent') ?? '', push: observation });
-    return Response.json({ ok: true });
+    const updateCommand = observation.app ? await observeAppUpdate(user.id, token, observation.app) : null;
+    return Response.json({ ok: true, ...(updateCommand ? { updateCommand } : {}) });
   } catch {
     return Response.json({ error: 'Journal unavailable' }, { status: 503 });
   }

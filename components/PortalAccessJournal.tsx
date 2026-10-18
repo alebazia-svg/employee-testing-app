@@ -1,10 +1,16 @@
 import Link from 'next/link';
 import React from 'react';
+import type { AppUpdateView } from '../lib/portal-app-update-view';
 
 export type AccessJournalRow = {
   id: string; name: string; login: string; role: string; device: string; browser: string;
   firstSeenAt: string; loginAt: string | null; lastSeenAt: string; loggedOutAt: string | null; expiresAt: string;
   pushLabel: string; pushCheckedAt: string | null;
+  pushSubscriptionId?: number | null;
+  displayMode?: string | null;
+  contextCheckedAt?: string | null;
+  appUpdate?: AppUpdateView | null;
+  lastPush?: { attemptedAt: string; resultAt: string; outcome: string; errorCode: string | null } | null;
 };
 const when = (value: string) => new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 export function PortalAccessJournal({ rows, query, page, hasMore, unavailable, now = new Date() }: {

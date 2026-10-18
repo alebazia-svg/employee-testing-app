@@ -1386,6 +1386,9 @@ export function EmployeeTodayClient({
   const cashPhotoPickerActiveRef = useRef(false);
   const cashPhotoInputRef = useRef<HTMLInputElement | null>(null);
   useEmployeeAppUpdate(() =>
+    isSaving ? 'saving' : uploadProgress !== null || cashPhotoPickerActiveRef.current ? 'upload'
+    : cashOutboxSyncing || cashOutboxSyncingRef.current || cashOutboxCount > 0 ? 'unsent'
+    : activeTab !== 'day' ? 'safe_screen' :
     activeTab === 'day' && isOnline && !isSaving && uploadProgress === null
     && !cashOutboxSyncing && !cashOutboxSyncingRef.current && cashOutboxCount === 0
     && !cashPhotoPickerActiveRef.current && !cashOperationDraft.direction && !cashFormFocused

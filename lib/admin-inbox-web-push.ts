@@ -1,6 +1,7 @@
 import 'server-only';
 
 import webpush from 'web-push';
+import { observePushAttempt } from './push-attempt-observation';
 import { dispatchAdminAttentionPush } from './admin-inbox-attention-push';
 import { ATTENTION_PUSH_TYPES } from './admin-inbox-attention-policy';
 import { prisma } from '@/lib/prisma';
@@ -94,13 +95,13 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
       });
       if (claimed.count !== 1) continue;
       try {
-        await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, adminInboxWebPushPayload({
+        await observePushAttempt(subscription, () => webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, adminInboxWebPushPayload({
           title: receipt.event.title,
           body: receipt.event.body,
           url: receipt.event.href,
           notificationId: receipt.event.id,
           badgeCount,
-        }));
+        })));
         await prisma.adminInboxDelivery.update({ where: { id: delivery.id }, data: { status: 'sent', sentAt: now, externalMessageId: subscription.id.toString(), leaseToken: null, leaseUntil: null } });
         sent += 1;
       } catch (error) {

@@ -3,11 +3,13 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { createEmployeeAppUpdater, readAppRelease, type UpdateAttempt } from './employee-app-update';
 import { startVisibleSync } from './visible-sync';
+import { reportAppState, appCommandEvent, currentAppCommandId, appClientObservation } from './portal-app-client';
+import type { AppState } from './portal-app-observation';
 
 const attemptKey = 'employee-app-update-attempt';
 
 /** Only the main workday screen opts in; detail forms never reload underneath their owner. */
-export function useEmployeeAppUpdate(isSafe: () => boolean) {
+export function useEmployeeAppUpdate(isSafe: () => boolean | AppState) {
   const safeRef = useRef(isSafe);
   useLayoutEffect(() => { safeRef.current = isSafe; });
   useEffect(() => {
@@ -16,19 +18,26 @@ export function useEmployeeAppUpdate(isSafe: () => boolean) {
       builtAt: process.env.NEXT_PUBLIC_APP_BUILT_AT,
     });
     if (!current) return;
+    appClientObservation();
+    reportAppState('checking');
     let lastInteraction = Date.now();
     let filePickerOpen = false;
     const touched = () => { lastInteraction = Date.now(); };
+    const blockedReason = (): AppState | null => {
+      if (filePickerOpen) return 'upload';
+      const safe = safeRef.current();
+      if (safe !== true) return typeof safe === 'string' ? safe : 'operation';
+      if (document.activeElement?.matches('input:not([type="file"]),textarea,select,[contenteditable="true"]')) return 'form';
+      if (Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"],dialog[open]')).some(element => element.getClientRects().length > 0)) return 'form';
+      return Date.now() - lastInteraction < 10_000 ? 'idle_wait' : null;
+    };
     const updater = createEmployeeAppUpdater(current, {
       now: Date.now,
       visible: () => document.visibilityState === 'visible' && navigator.onLine,
-      safe: () => {
-        if (filePickerOpen || !safeRef.current() || Date.now() - lastInteraction < 10_000) return false;
-        if (document.activeElement?.matches('input:not([type="file"]),textarea,select,[contenteditable="true"]')) return false;
-        // Includes dialogs owned by notification/cash components outside EmployeeTodayClient.
-        return !Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"],dialog[open]'))
-          .some(element => element.getClientRects().length > 0);
-      },
+      safe: () => blockedReason() === null,
+      blockedReason: () => blockedReason() ?? 'operation',
+      observe: reportAppState,
+      commandId: currentAppCommandId,
       fetchRelease: async signal => {
         const response = await fetch('/release-info.json', { cache: 'no-store', signal });
         if (!response.ok) throw new Error('Release check unavailable');
@@ -68,10 +77,14 @@ export function useEmployeeAppUpdate(isSafe: () => boolean) {
     window.addEventListener('focus', touched);
     document.addEventListener('visibilitychange', touched);
     const stop = startVisibleSync(updater.check, 60_000);
+    const requested = () => { void updater.check(); };
+    window.addEventListener(appCommandEvent, requested);
     const retry = window.setInterval(() => { void updater.retry(); }, 2_000);
     return () => {
       stop();
       updater.dispose();
+      reportAppState('safe_screen');
+      window.removeEventListener(appCommandEvent, requested);
       document.removeEventListener('click', pickerOpened, true);
       document.removeEventListener('change', pickerClosed, true);
       document.removeEventListener('cancel', pickerClosed, true);

@@ -943,6 +943,11 @@ model WorkdayPushSubscription {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   disabledAt DateTime?
+  lastPushAttemptAt DateTime?
+  lastPushResultAt DateTime?
+  lastPushOutcome String?
+  lastPushErrorCode String?
+  lastPushUserId Int?
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accessSessions PortalAccessSession[]
 
@@ -956,6 +961,11 @@ model PortalAccessSession {
   sessionHash        String   @unique
   device             String
   browser            String
+  displayMode        String?
+  contextCheckedAt   DateTime?
+  appObservation     Json?
+  appCheckedAt       DateTime?
+  appUpdateCommand   Json?
   firstSeenAt        DateTime @default(now())
   loginAt            DateTime?
   lastSeenAt         DateTime @default(now())

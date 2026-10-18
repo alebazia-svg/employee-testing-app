@@ -1,3 +1,4 @@
+import type { AppState } from './portal-app-observation';
 /** A release check must never turn a network failure into a forced navigation. */
 export type AppRelease = { version: string; builtAt: string };
 export function readAppRelease(value: unknown): AppRelease | null {
@@ -8,7 +9,7 @@ export function readAppRelease(value: unknown): AppRelease | null {
   return { version, builtAt };
 }
 const identity = (release: AppRelease) => `${release.version}@${release.builtAt}`;
-export type UpdateAttempt = { target: string; at: number };
+export type UpdateAttempt = { target: string; at: number; count?: number; commandId?: string };
 export type AppUpdateEnvironment = {
   now: () => number;
   visible: () => boolean;
@@ -17,6 +18,9 @@ export type AppUpdateEnvironment = {
   readAttempt: () => UpdateAttempt | null;
   saveAttempt: (attempt: UpdateAttempt) => void;
   reload: () => void;
+  observe?: (state: AppState) => void;
+  blockedReason?: () => AppState;
+  commandId?: () => string | undefined;
 };
 
 export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvironment) {
@@ -36,15 +40,25 @@ export function createEmployeeAppUpdater(current: AppRelease, env: AppUpdateEnvi
       if (disposed || request.signal.aborted) return;
       pending = Boolean(remote && identity(remote) !== identity(current));
       // Read all safety state again AFTER the request: a form may have opened.
-      if (!remote || !pending || !env.visible() || !env.safe()) return;
+      if (!remote) { env.observe?.('check_failed'); return; }
+      if (!pending) { env.observe?.('current'); return; }
+      if (!env.visible()) return;
+      if (!env.safe()) { env.observe?.(env.blockedReason?.() ?? 'operation'); return; }
       const target = identity(remote);
-      const previous = env.readAttempt();
-      if (previous?.target === target && env.now() - previous.at < 300_000) return;
+      let previous: UpdateAttempt | null;
+      try { previous = env.readAttempt(); } catch { env.observe?.('storage_failed'); return; }
+      const commandId = env.commandId?.();
+      const matching = previous?.target === target && previous?.commandId === commandId;
+      if (matching && (previous!.count ?? 1) >= 2) { env.observe?.('reload_failed'); return; }
+      if (previous?.target === target && env.now() - previous.at < 300_000) { env.observe?.('retry_wait'); return; }
       // Persist before navigating. If storage fails, defer rather than risk a reload loop.
-      env.saveAttempt({ target, at: env.now() });
+      try { env.saveAttempt({ target, at: env.now(), count: matching ? (previous!.count ?? 1) + 1 : 1, ...(commandId ? { commandId } : {}) }); }
+      catch { env.observe?.('storage_failed'); return; }
       reloading = true;
+      env.observe?.('reloading');
       env.reload();
     } catch {
+      if (!disposed) env.observe?.('check_failed');
       // Offline, timeout, invalid JSON or storage unavailable: keep the working screen.
     } finally {
       clearTimeout(timeout);

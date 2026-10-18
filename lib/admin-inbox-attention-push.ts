@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import webpush from 'web-push';
+import { observePushAttempt } from './push-attempt-observation';
 import { prisma } from './prisma';
 import { loadAdminInbox } from './admin-inbox-data';
 import { ATTENTION_PUSH_TYPES, attentionDigestText, digestDue, readDigestState } from './admin-inbox-attention-policy';
@@ -35,9 +36,9 @@ export async function dispatchAdminAttentionPush(now = new Date()) {
       } });
       if (claimed.count !== 1) continue;
       try {
-        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, adminInboxWebPushPayload({
+        await observePushAttempt(sub, () => webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, adminInboxWebPushPayload({
           ...attentionDigestText(items, readDigestState(delivery.externalMessageId)), notificationId: `attention-${admin.id}`, badgeCount: inbox.attentionCount, renotify: true,
-        }), { TTL: 300, urgency: 'high', timeout: 15_000 });
+        }), { TTL: 300, urgency: 'high', timeout: 15_000 }));
         await prisma.adminInboxDelivery.updateMany({ where: { id: delivery.id, leaseToken: token }, data: { status: 'sent', sentAt: now, externalMessageId: JSON.stringify(next), attemptCount: 0, leaseToken: null, leaseUntil: null, lastErrorCode: null } });
         result.sent++;
       } catch (error) {
