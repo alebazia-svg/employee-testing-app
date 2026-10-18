@@ -1612,7 +1612,7 @@ export default async function AdminWorkdayPage(
       ? row.activeWorkDay || matchesAdminWorkdayControlFilter(row.category, 'active')
       : matchesAdminWorkdayControlFilter(row.category, selectedControlFilter)
   ));
-  const reviewableEmployeeRows = employeeControlRows.filter((row) => row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0);
+  const reviewableEmployeeRows = employeeControlRows;
   const controlFilterHref = (filter: AdminWorkdayControlFilter) => `/admin/workday?date=${selectedDate}&control=${filter}#employees-control`;
   const employeeDetailHref = (employeeId: number) => (
     `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}&employee=${employeeId}#employees-control`
@@ -1722,9 +1722,9 @@ export default async function AdminWorkdayPage(
             const timing = app ? row.timingViolations.map(v=>v.detail) : [];
             for (const violation of row.timingViolations) alertTargets[violation.detail] = violation.taskId ? `shift-task-${violation.taskId}` : 'shift-start';
             const timely = completedTask ? taskTimingLabel(completedTask.plannedTimeMinutes, completedTask.completedAt?.toISOString() ?? null, selectedDate).text : '';
-            return {id:row.employee.id,sourceUnavailable:!app&&(!googleSnapshot.planAvailable||!googleSnapshot.marksAvailable),detailAvailable:Boolean(row.requiredIssues.length||row.run||row.workDay||row.timingViolations.length),name:row.employee.name,department:row.employee.department,source:app?'Приложение · пилот':'Google',planState,
+            return {id:row.employee.id,sourceUnavailable:!app&&(!googleSnapshot.planAvailable||!googleSnapshot.marksAvailable),detailAvailable:true,name:row.employee.name,department:row.employee.department,source:app?'Приложение · пилот':'Google',planState,
               plan:planState==='vacation'?'Отпуск':planState==='working'?'Рабочий день':planState==='off'?'Выходной':planState==='unavailable'?'Источник недоступен':'Нет записи графика',shift,start,end,
-              state:teamShiftState(selectedDate,today,start!=='—',app&&row.activeWorkDay,end,planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Не отметился':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало'),
+              state:teamShiftState(selectedDate,today,start!=='—',Boolean(row.workDay&&!row.workDay.endedAt),end,planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Не отметился':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало'),
               active:app&&row.activeWorkDay,late:app?row.workDay?.lateMinutes??0:google.lateMinutes,missing,
               review:alerts.length?`${alerts[0]}${alerts.length>1?` · ещё ${alerts.length-1}`:''}`:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention' || row.cannotVerify) ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
               next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:alerts.length>0||app&&(row.category==='error'||row.category==='attention'||row.cannotVerify),alertTargets,alerts,timing,issues:row.requiredIssues};
@@ -1758,8 +1758,8 @@ export default async function AdminWorkdayPage(
                         workDay={row.workDay ? { shiftCode: row.workDay.shiftCode, status: row.workDay.status, endedAt: row.workDay.endedAt?.toISOString() ?? null } : null}
                         vacation={row.vacation ? { id: row.vacation.id, dateFrom: row.vacation.dateFrom, dateTo: row.vacation.dateTo } : null}
                       />
-                      {row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0 ? (
                         <AdminShiftControlDetails
+                          employeeId={row.employee.id}
                           employeeName={row.employee.name}
                           department={row.employee.department}
                           departmentName={departmentLabel(row.employee.department)}
@@ -1823,7 +1823,6 @@ export default async function AdminWorkdayPage(
                             href: employeeDetailHref(nextEmployeeRow.employee.id),
                           } : null}
                         />
-                      ) : <span className='text-xs font-semibold text-slate-400'>{usesAppSchedule(row.employee.name) ? 'Нет проверок' : 'Нет проверок приложения'}</span>}
                       {(devWorkdayToolsEnabled || row.employee.login === 'kkm_test') && <div className='flex flex-col gap-2'>
                         {!row.workDay && row.shiftControlRequired && <DevCreateTestShiftButtons userId={row.employee.id} userName={row.employee.name} department={row.employee.department} date={selectedDate} />}
                         {row.shiftControlRequired && row.run && <DevMakeShiftTasksAvailableButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />}

@@ -6,7 +6,7 @@ export type ControlSummaryRow = {
  timing:string[];
 };
 export function teamControlSummary(row:ControlSummaryRow,date:string,ownerActions:OwnerQueueAction[]=[]){
- const detail=(focus?:string)=>row.detailAvailable===false?`/admin/attendance?date=${date}`:`/admin/workday?date=${date}&control=all&employee=${row.id}${focus?`&focus=${encodeURIComponent(focus)}`:''}#employees-control`;
+ const detail=(focus?:string)=>`/admin/workday?date=${date}&control=all&employee=${row.id}${focus?`&focus=${encodeURIComponent(focus)}`:''}#employees-control`;
  const items:Array<{key:string;label:string;context?:string;originDate?:string;href:string;kind:'decision'|'check'|'employee'}>=[];
  for(const action of ownerActions.filter(action=>action.employeeId===row.id))items.push({key:action.key,label:action.label,context:action.context,originDate:action.originDate,href:action.href,kind:action.kind});
  const inheritedCount=items.length;

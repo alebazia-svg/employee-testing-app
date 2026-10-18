@@ -87,17 +87,17 @@ test('an unresolved credit request for help is an admin check with its original 
  assert.equal(result.kind,'check');assert.equal(result.items[0].href,'/issue/12');
 });
 
-test('Google-only problems without a shift card open their source instead of an absent modal',()=>{
+test('a missing start opens the employee day even without an app shift',()=>{
  const result=teamControlSummary({...summaryRow,detailAvailable:false,missing:true},'2026-10-17');
- assert.equal(result.items[0].href,'/admin/attendance?date=2026-10-17');
+ assert.equal(result.items[0].href,'/admin/workday?date=2026-10-17&control=all&employee=2&focus=shift-start#employees-control');
 });
 
 import { teamShiftState } from '../lib/team-control';
-test('shift wording is source-independent and past open days cannot appear as current work',()=>{
+test('only an actual app day can be reported as unfinished',()=>{
  assert.equal(teamShiftState('2026-10-19','2026-10-19',true,false,'—',''), 'Работает');
  assert.equal(teamShiftState('2026-10-19','2026-10-19',true,true,'—',''), 'Работает');
  assert.equal(teamShiftState('2026-10-18','2026-10-19',true,true,'—',''), 'Не завершил смену');
- assert.equal(teamShiftState('2026-10-18','2026-10-19',true,false,'—',''), 'Не завершил смену');
+ assert.equal(teamShiftState('2026-10-18','2026-10-19',true,false,'—',''), 'Приход отмечен');
  assert.equal(teamShiftState('2026-10-18','2026-10-19',true,false,'19:00',''), 'Завершил · 19:00');
  assert.equal(teamShiftState('2026-10-18','2026-10-19',false,false,'—','Выходной'), 'Выходной');
 });
@@ -161,3 +161,6 @@ test('planning gaps stay out of operational questions, while real shift issues r
  const realIssue=teamControlSummary({...summaryRow,planState:'unknown',issues:[{id:1,title:'Чек',state:'Нужна помощь',meta:'',href:'/issue/1'}]},'2026-10-19');assert.equal(realIssue.totalCount,1);assert.equal(realIssue.label,'Нужна проверка');
  const missingStart=teamControlSummary({...summaryRow,missing:true},'2026-10-19');assert.equal(missingStart.totalCount,1);assert.equal(missingStart.items[0].key,'missing');
 });
+
+import { workdayCardTarget } from '../lib/workday-card-navigation';
+test('same-day employee links activate an existing card; other days and issue routes retain navigation',()=>{assert.deepEqual(workdayCardTarget('/admin/workday?date=2026-10-19&employee=8&focus=shift-issues','2026-10-19'),{employeeId:8,focus:'shift-issues'});assert.equal(workdayCardTarget('/admin/attendance?date=2026-10-19','2026-10-19'),null);assert.equal(workdayCardTarget('/admin/workday?date=2026-10-18&employee=8','2026-10-19'),null);assert.equal(workdayCardTarget('/admin/workday?date=2026-10-19&issue=1','2026-10-19'),null);assert.equal(workdayCardTarget('/admin/workday?date=2026-10-19&employee=0','2026-10-19'),null)});

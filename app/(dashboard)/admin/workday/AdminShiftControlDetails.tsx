@@ -1,4 +1,5 @@
 'use client';
+import { WORKDAY_CARD_OPEN, openWorkdayCard, type WorkdayCardTarget } from '@/lib/workday-card-navigation';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 import { handoverCashResult, handoverEncashmentResult, missingHandoverPhotos } from '@/lib/workday-handover-view';
 import { taskTimingLabel } from '@/lib/team-control';
@@ -83,6 +84,7 @@ type CloseRequest = { id: string; status: string; reasonCode: string; comment: s
 type Props = {
   cashOperations?: CashEntry[];
   closeRequests?: CloseRequest[];
+  employeeId: number;
   employeeName: string;
   department: string;
   departmentName: string;
@@ -812,6 +814,7 @@ function TaskOverviewRow({
 export function AdminShiftControlDetails({
   cashOperations = [],
   closeRequests = [],
+  employeeId,
   employeeName,
   department,
   departmentName,
@@ -834,6 +837,7 @@ export function AdminShiftControlDetails({
   const latestCashEntryAt = cashOperations.reduce<string | null>((latest, operation) => !latest || operation.createdAt > latest ? operation.createdAt : latest, null);
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [focusTarget,setFocusTarget]=useState(initialReviewTarget);
   const [cardView, setCardView] = useState<'day' | 'cash' | 'close'>('day');
   const [focusedOperation, setFocusedOperation] = useState<number | null>(null);
   const [focusedTask, setFocusedTask] = useState<number | null>(null);
@@ -860,10 +864,10 @@ export function AdminShiftControlDetails({
     setSelectedPhoto(null);
     setManualReviewTarget(null);
     setOpen(false);
-    if (initialOpen && closeHref) {
-      router.replace(closeHref, { scroll: false });
+    if (closeHref && new URL(window.location.href).searchParams.has('employee')) {
+      window.history.replaceState(window.history.state,'',closeHref);
     }
-  }, [closeHref, initialOpen, router]);
+  }, [closeHref]);
   function openCashReview(id:number) {
     const target=document.getElementById(`shift-cash-${id}`);
     if(!target||!panelRef.current?.contains(target))return;
@@ -934,13 +938,25 @@ export function AdminShiftControlDetails({
       setCashControlSaving(false);
     }
   }
+  useEffect(()=>{
+    const activate=(event:Event)=>{
+      const target=(event as CustomEvent<WorkdayCardTarget>).detail;
+      if(!target)return;
+      if(target.employeeId!==employeeId){setOpen(false);return;}
+      setFocusTarget(target.focus??undefined);
+      setOpen(true);
+    };
+    window.addEventListener(WORKDAY_CARD_OPEN,activate);
+    return ()=>window.removeEventListener(WORKDAY_CARD_OPEN,activate);
+  },[employeeId]);
+  useEffect(()=>{setFocusTarget(initialReviewTarget)},[initialReviewTarget]);
   useEffect(() => {
     setOpen(initialOpen);
   }, [initialOpen]);
   useEffect(() => {
-    if (!open || !initialReviewTarget) return;
+    if (!open || !focusTarget) return;
     const frame = requestAnimationFrame(() => {
-      const target = document.getElementById(initialReviewTarget);
+      const target = document.getElementById(focusTarget);
       if (!target || !panelRef.current?.contains(target)) return;
       let ancestor: HTMLElement | null = target;
       while (ancestor && ancestor !== panelRef.current) {
@@ -952,7 +968,7 @@ export function AdminShiftControlDetails({
       summary?.focus({preventScroll:true});
     });
     return () => cancelAnimationFrame(frame);
-  }, [open, initialReviewTarget]);
+  }, [open, focusTarget]);
   useEffect(() => {
     if (!open) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -1092,7 +1108,7 @@ export function AdminShiftControlDetails({
   const terminalFiscalConfigurationNeedsAttention = Object.entries(terminalFiscalControl?.reasonCodes ?? {})
     .some(([reasonCode, count]) => Number(count) > 0 && terminalFiscalConfigurationProblem(reasonCode));
   const hasError = requiredIssues.length > 0 || keyProblems.some((item) => taskBusinessState(item).tone === 'error') || terminalFiscalHasError;
-  const scheduleNeedsAttention = scheduleLabel === 'не заполнено';
+  const scheduleNeedsAttention = false;
   const handoverTask = run?.tasks.find((task) => task.category === 'handover') ?? null;
   const missingProofs = handoverTask?.status === 'done' ? missingHandoverPhotos(handoverTask.handoverData) : [];
   const keyProblemCount = requiredIssues.length + keyProblems.length + activeWorkdayProblems.length + (scheduleNeedsAttention ? 1 : 0)
@@ -1103,23 +1119,18 @@ export function AdminShiftControlDetails({
     ? 'Завершил смену'
     : workDay
       ? dateKey < getMoscowDateKey() ? 'Не завершил смену' : 'Работает'
-      : scheduleLabel;
+      : 'Нет отметок приложения';
   const terminalReasonEntries = Object.entries(terminalFiscalControl?.reasonCodes ?? {})
     .filter(([reasonCode, count]) => Number(count) > 0 && !['MATCH_CONFIRMED', 'MATCH_CONFIRMED_LATE', 'OFD_ITEM_PRESENTATION_DIFFERENCE', 'OFD_ITEM_VALUES_MISMATCH'].includes(reasonCode));
   const terminalHasSourceIncomplete = terminalReasonEntries.some(([reasonCode]) => terminalFiscalSourceIncomplete(reasonCode));
 
   if (!canUseShiftControl) return <span className='text-sm font-semibold text-slate-400'>—</span>;
-  const hasDetails = Boolean(requiredIssues.length > 0 || run || workDay || timingViolations.length > 0);
 
   return (
     <div>
-      {hasDetails ? (
-        <button type="button" className="team-action-button" onClick={() => setOpen(true)}>Подробнее</button>
-      ) : (
-        <span className='text-xs font-semibold text-slate-400'>Нет данных</span>
-      )}
+      <button type="button" className="team-action-button" onClick={() => setOpen(true)}>Подробнее</button>
 
-      {open && hasDetails && typeof document !== 'undefined' ? createPortal(
+      {open && typeof document !== 'undefined' ? createPortal(
         <div className='team-shift-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm' onClick={closeDetails}>
           <div
             ref={panelRef}
@@ -1143,6 +1154,7 @@ export function AdminShiftControlDetails({
                   {previousEmployee ? (
                     <Link
                       href={previousEmployee.href}
+                      onClick={event=>openWorkdayCard(event,dateKey)}
                       className='inline-flex h-9 items-center gap-1 rounded-lg bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'
                       title={previousEmployee.name}
                     >
@@ -1158,6 +1170,7 @@ export function AdminShiftControlDetails({
                   {nextEmployee ? (
                     <Link
                       href={nextEmployee.href}
+                      onClick={event=>openWorkdayCard(event,dateKey)}
                       className='inline-flex h-9 items-center gap-1 rounded-lg bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'
                       title={nextEmployee.name}
                     >
@@ -1374,6 +1387,7 @@ export function AdminShiftControlDetails({
               <div className='team-shift-facts'><div><small>План</small><b>{scheduleLabel === 'работаю' ? 'Рабочий день' : scheduleLabel}</b><span>{workDay?.shiftLabel ?? 'Время смены не задано'}</span></div><div><small>Начало</small><b>{formatTime(workDay?.startedAt ?? null)}</b><span>{workDay?.lateMinutes ? `Позже на ${workDay.lateMinutes} мин` : workDay ? 'Начало отмечено' : 'Нет отметки приложения'}</span></div><div><small>Состояние</small><span className={`team-status ${workDay && !workDay.endedAt && dateKey < getMoscowDateKey() ? 'amber' : workDay ? 'green' : ''}`}>{workDay?.endedAt?'Рабочий день завершён':workdayStateLabel}</span>{workDay?.endedAt&&<span>В {formatTime(workDay.endedAt)}</span>}</div></div>
               {cardView === 'day' && <>
                 {attendanceNote && <p className='team-card-note'>{attendanceNote}</p>}
+                {!workDay&&!run&&!cashOperations.length&&!requiredIssues.length&&!closeRequests.length&&<p className='team-card-note'>Действий в приложении за этот день нет.</p>}
                 {(summary.total > 0 || cashOperations.length > 0 || closeRequests.length > 0) && <><section className={`team-review-total ${keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length === 0 ? 'is-verified' : ''}`}><b>{keyProblemCount + cashOperations.filter(operation => operation.status !== 'posted_1c_pair').length + closeRequests.filter(request => request.status === 'pending').length > 0 ? 'Есть неподтверждённые пункты' : 'Неподтверждённых результатов не выявлено'}</b><span>Проверки: {summary.completed} из {summary.total} выполнено · инкассации: {cashOperations.filter(operation => operation.status === 'posted_1c_pair').length} из {cashOperations.length} проведено{closeRequests.some(request => request.status === 'pending') ? ' · требуется ваше решение' : ''}</span></section></>}
                 <div className='team-review-list'>
                   {(closeRequests.some(request => request.status === 'pending') || cashOperations.some(operation => operation.status !== 'posted_1c_pair') || requiredIssues.some(issue => ['Не удалось проверить','Нужна помощь'].includes(issue.state??''))) && <h4 className='team-card-heading'>Ваши действия</h4>}

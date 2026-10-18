@@ -57,6 +57,7 @@ export function teamOperationAlerts(requests: Array<{status:string}>, operations
 
 export function teamShiftState(date:string,today:string,hasStart:boolean,active:boolean,end:string,fallback:string){
  if(end!=='—')return `Завершил · ${end}`;
- if(active||hasStart)return date<today?'Не завершил смену':'Работает';
+ if(active)return date<today?'Не завершил смену':'Работает';
+ if(hasStart)return date<today?'Приход отмечен':'Работает';
  return fallback;
 }

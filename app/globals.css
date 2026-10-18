@@ -3298,7 +3298,7 @@ body:has(#pwa-copper-theme) .employee-material-nav .attention-preview-nav-label{
 #employees-control .team-queue-group h2 span{background:transparent;padding:0;color:#8b8178;font-size:11px;font-weight:400}
 #employees-control .team-queue-employee{grid-template-columns:200px minmax(0,1fr)}
 #employees-control .team-queue-detail{grid-template-columns:minmax(0,1fr) 118px;max-width:none}
-@media(min-width:1101px){#employees-control .team-employee,#employees-control .team-column-head{grid-template-columns:minmax(115px,1.15fr) minmax(100px,1fr) 90px minmax(115px,1fr) 204px;gap:10px}}
+@media(min-width:1101px){#employees-control .team-employee,#employees-control .team-column-head{grid-template-columns:minmax(115px,1.15fr) minmax(100px,1fr) 104px minmax(115px,1fr) 204px;gap:20px}}
 @media(min-width:701px) and (max-width:1100px){#employees-control .team-column-head{display:none}#employees-control .team-employee{grid-template-columns:minmax(105px,1fr) 90px 204px;gap:8px 10px;padding-top:12px;padding-bottom:12px}#employees-control .team-employee>div:nth-child(1){grid-column:1/3;grid-row:1}#employees-control .team-employee>div:nth-child(2){grid-column:1;grid-row:2}#employees-control .team-employee>div:nth-child(3){grid-column:2;grid-row:2}#employees-control .team-employee>div:nth-child(4){grid-column:3;grid-row:1}#employees-control .team-employee>div:nth-child(5){grid-column:3;grid-row:2}#employees-control .team-queue-employee{grid-template-columns:155px minmax(0,1fr)}}
 @media(max-width:700px){#employees-control .team-employee{grid-template-columns:minmax(0,1fr) 204px}#employees-control .team-department-actions{width:100%;justify-content:space-between}#employees-control .team-queue-employee{display:block}}
 
