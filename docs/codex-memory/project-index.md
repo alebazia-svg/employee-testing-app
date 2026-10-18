@@ -101,9 +101,14 @@ project from scratch.
   cases close automatically, and the two scheduled manual credit tasks are no
   longer part of active retail templates.
 
-## Devices, notifications and app versions — production 1.4.21
+## Devices, notifications and app versions — production 1.4.22
 
-- Access screen: recent seven-day connections, retained history, app/browser
+- Released refinement: `access-last-visits-20261018.md`, runtime `9d83bec`.
+  Retain last visits without a time cutoff; separate explicit service connections.
+  Owner-browser cross-account classification and both additive migrations are
+  deployed. Real ownership/service marks have not been assigned automatically.
+
+- Access screen: latest connections without a time cutoff, retained history, app/browser
   context and latest push-provider outcome (not delivery/read/sound).
 - Reported app version and ADMIN safe-update requests extend the existing
   Workday updater; other pages never forcibly reload unfinished work.
