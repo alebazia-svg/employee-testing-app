@@ -8,3 +8,8 @@ export function validAccessBrowserId(value: unknown): value is string {
 export function isCurrentAccessBrowser(recordId: unknown, cookieId: unknown) {
   return validAccessBrowserId(recordId) && validAccessBrowserId(cookieId) && recordId === cookieId;
 }
+
+/** A comparison label, not an authentication secret or hardware fingerprint. */
+export function accessConnectionCode(value: unknown) {
+  return validAccessBrowserId(value) ? value : null;
+}

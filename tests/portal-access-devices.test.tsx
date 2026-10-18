@@ -4,7 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PortalAccessDevicesView } from '../components/PortalAccessDevices';
 import type { AccessJournalRow } from '../components/PortalAccessJournal';
-import { accessPushView, accessWhen, filterAccessRows, groupAccessRows, accessAccountSummary, accessCurrentConnections, accessNotificationDetail, accessRecentPushFailure, accessSystemLabel } from '../lib/portal-access-view';
+import { accessPushView, accessWhen, filterAccessRows, groupAccessRows, accessAccountSummary, accessCurrentConnections, accessNotificationDetail, accessRecentPushFailure, accessSystemLabel, accessOverviewRows, groupServiceConnections } from '../lib/portal-access-view';
 
 const now = new Date('2026-09-30T14:10:00Z');
 const row: AccessJournalRow = { id: 'one', name: 'Сотрудник', login: 'buyer', role: 'EMPLOYEE', device: 'Mac', browser: 'Edge', firstSeenAt: '2026-09-29T19:30:00Z', loginAt: '2026-09-29T19:30:00Z', lastSeenAt: '2026-09-30T14:09:00Z', expiresAt: '2026-10-29T00:00:00Z', loggedOutAt: null, pushLabel: 'Подключены', pushCheckedAt: '2026-09-30T14:09:00Z' };
@@ -15,7 +15,7 @@ test('observed snapshots preserve displayed connections without fabricating brow
   const html = renderToStaticMarkup(<PortalAccessDevicesView rows={rows} presentation='observed-snapshot' history={false} unavailable={false} query='' page={1} hasMore={false} nowIso={now.toISOString()} />);
   assert.equal((html.match(/<article /g) ?? []).length, 2);
   assert.doesNotMatch(html, /Текущий браузер пока не сопоставлен|Старая запись · устройство не подтверждено|Этот браузер/);
-  assert.match(render(rows), /Старая запись · устройство не подтверждено/);
+  assert.match(render(rows), /Последние известные сведения/);
 });
 
 test('main list summarizes legacy types, retains accounts and does not expose login times', () => {
@@ -106,7 +106,8 @@ test('system families do not infer versions, models or device owners', () => {
   assert.equal(accessSystemLabel('iPhone'), 'iOS');
   assert.equal(accessSystemLabel('Mac / iPad'), 'macOS / iPadOS · не уточнено');
   assert.equal(accessSystemLabel('Unknown'), null);
-  assert.match(render([row]), /Кабинет: Сотрудник/);
+  assert.match(render([row]), /<h2>Сотрудник/);
+  assert.doesNotMatch(render([row]), /Кабинет: Сотрудник/);
   assert.match(render([row]), /macOS/);
 });
 test('push freshness, unknown, inactive and future observations never claim current connection', () => {
@@ -173,7 +174,7 @@ test('stable browser merges repeated logins but never accounts or different brow
 
 test('service view is separate, without operational warning filters', () => {
   const html = renderToStaticMarkup(<PortalAccessDevicesView rows={[{ ...row, isService: true, name: 'Проверка' }, { ...row, id: 'real', name: 'Рабочий' }]} history={false} service query='' page={1} hasMore={false} unavailable={false} nowIso={now.toISOString()} />);
-  assert.match(html, /Проверки кабинета · не рабочие устройства/);
+  assert.match(html, /Каждое подключение — один блок/);
   assert.doesNotMatch(html, /<h2>Рабочий|Проверить уведомления/);
 });
 test('main excludes ADMIN and known admin-browser visits but keeps distinct employee Windows and iPhone', () => {
@@ -200,4 +201,43 @@ test('fresh send failure remains visible even when permission/subscription is co
   assert.equal(accessPushView(failed, now).tone, 'ok');
   assert.equal(accessRecentPushFailure({ ...failed, lastPush: { ...failed.lastPush, resultAt: '2026-09-01T00:00:00Z' } }, now), false);
   assert.equal(accessRecentPushFailure({ ...failed, lastPush: { ...failed.lastPush, outcome: 'accepted' } }, now), false);
+});
+
+test('overview removes old duplicates but retains latest known device types and every employee', () => {
+  const records = [
+    { ...row, id: 'modern', browserInstanceId: 'stable', lastSeenAt: now.toISOString() },
+    { ...row, id: 'old-same-type' },
+    { ...row, id: 'windows', device: 'Компьютер Windows' },
+    { ...row, id: 'older-windows', device: 'Компьютер Windows', lastSeenAt: '2026-09-01T00:00:00Z' },
+    { ...row, id: 'legacy-only', login: 'legacy-only' },
+  ];
+  const before = JSON.stringify(records);
+  assert.deepEqual(new Set(accessOverviewRows(records).map(r => r.id)), new Set(['modern', 'windows', 'legacy-only']));
+  assert.equal(JSON.stringify(records), before);
+  assert.equal((render(records, true).match(/<article /g) ?? []).length, 5);
+});
+
+test('service grouping requires exact identity, not equal labels or Mac Chrome', () => {
+  const admin = { ...row, role: 'ADMIN', login: 'admin', browserInstanceId: 'one', connectionLabel: 'Mac Бэлы' };
+  const buyer = { ...row, id: 'buyer', browserInstanceId: 'one', ownerInspection: true, connectionLabel: 'Mac Бэлы' };
+  const other = { ...admin, id: 'other', browserInstanceId: 'two' };
+  const legacy = { ...admin, id: 'legacy', browserInstanceId: null };
+  const groups = groupServiceConnections([admin, buyer, other, legacy]);
+  assert.equal(groups.length, 3);
+  assert.ok(groups.some(g => g.length === 2 && g.every(r => r.browserInstanceId === 'one')));
+  const html = renderToStaticMarkup(<PortalAccessDevicesView rows={[admin, buyer]} history={false} service query='' page={1} hasMore={false} unavailable={false} nowIso={now.toISOString()} />);
+  assert.equal((html.match(/class="access-account"/g) ?? []).length, 1);
+  assert.equal((html.match(/<article /g) ?? []).length, 2);
+});
+
+test('overview retains distinct subscriptions even when their browser identifiers are absent', () => {
+  const records = [{ ...row, id: 'browser', browserInstanceId: 'known' }, { ...row, id: 'subscription-one', pushSubscriptionId: 1 }, { ...row, id: 'subscription-two', pushSubscriptionId: 2 }];
+  assert.equal(accessOverviewRows(records).length, 3);
+});
+
+test('compact list keeps versions separate and suppresses repeated normal explanations', () => {
+  const html = render([{ ...row, browserInstanceId: 'known', appUpdate: { version: '1.5.2', builtAt: now.toISOString(), checkedAt: now.toISOString(), state: 'current' } }]);
+  assert.match(html, /access-version/);
+  assert.match(html, /1.5.2/);
+  assert.doesNotMatch(html, /Для этого кабинета|Проверено:|Кабинет: Сотрудник/);
 });

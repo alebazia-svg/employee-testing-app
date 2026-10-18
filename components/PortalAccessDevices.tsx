@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Monitor, Smartphone, Search, Check, BellOff, Clock3, X, ChevronRight } from 'lucide-react';
 import type { AccessJournalRow } from './PortalAccessJournal';
-import { accessPushView, accessWhen, groupAccessRows, accessLatestVisits, accessAccountSummary, accessNotificationDetail, accessModeLabel, accessLastPushView, accessRecentPushFailure, accessIsAdministrative, accessSystemLabel } from '../lib/portal-access-view';
+import { accessPushView, accessWhen, groupAccessRows, accessLatestVisits, accessOverviewRows, groupServiceConnections, accessNotificationDetail, accessModeLabel, accessLastPushView, accessRecentPushFailure, accessIsAdministrative, accessSystemLabel } from '../lib/portal-access-view';
 import { startVisibleSync } from '../lib/visible-sync';
 import { appUpdateStatus } from '../lib/portal-app-update-view';
 import type { AppRelease } from '../lib/employee-app-update';
+import { accessConnectionCode } from '../lib/portal-access-identity';
 
 export type AccessDevicesProps = { rows: AccessJournalRow[]; query: string; history: boolean; service?: boolean; page: number; hasMore: boolean; unavailable: boolean; nowIso: string; basePath?: string; currentRelease?: AppRelease | null; onRefresh?: () => void; refreshing?: boolean; onRequestUpdate?: (id: string) => Promise<void>; onSetService?: (id: string, value: boolean) => Promise<void>; onSetOwner?: (id: string, value: boolean, label?: string) => Promise<void>; renderDeviceExtra?: (row: AccessJournalRow) => React.ReactNode; renderDetailExtra?: (row: AccessJournalRow) => React.ReactNode; presentation?: 'observed-snapshot'; };
 
@@ -115,7 +116,7 @@ function AppUpdateDetails({ row, now, currentRelease, onRequest }: { row: Access
 function PushBadge({ row, now }: { row: AccessJournalRow; now: Date }) {
   const push = accessNotificationDetail(row, now);
   const Icon = push.tone === 'ok' ? Check : push.tone === 'warning' ? BellOff : Clock3;
-  return <span className={`access-badge access-badge-${row.isService ? 'unknown' : push.tone}`}><Icon size={14} aria-hidden />{push.label}</span>;
+  return <span className={`access-badge access-badge-${accessIsAdministrative(row) && push.tone !== 'ok' ? 'unknown' : push.tone}`}><Icon size={14} aria-hidden />{push.label}</span>;
 }
 
 function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row: AccessJournalRow; now: Date; onClose: () => void; extra?: React.ReactNode; settings?: React.ReactNode; snapshot?: boolean }) {
@@ -141,10 +142,13 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
         <div><dt>Система</dt><dd>{accessSystemLabel(row.device) ?? 'Не определена'}</dd></div>
         <div><dt>Браузер</dt><dd>{row.browser}</dd></div>
         <div><dt>Последнее обращение к порталу</dt><dd>{accessWhen(row.lastSeenAt, now)}</dd></div>
+        {row.loginAt ? <div><dt>Последняя авторизация</dt><dd>{accessWhen(row.loginAt, now)}</dd></div> : null}
+        <div><dt>Способ открытия</dt><dd>{accessModeLabel(row.displayMode)}</dd></div>
+      </dl>
+      <details className='access-connection-settings'><summary>Технические сведения и доставка уведомлений</summary>
+      <dl className='access-facts'>
         <div><dt>Проверка уведомлений</dt><dd>{row.pushCheckedAt ? accessWhen(row.pushCheckedAt, now) : 'Ещё не поступала'}</dd></div>
         {status.tone === 'unknown' ? <div><dt>Результат прежней проверки</dt><dd>{row.pushLabel}</dd></div> : null}
-        {row.loginAt ? <div><dt>Последний вход в этом подключении</dt><dd>{accessWhen(row.loginAt, now)}</dd></div> : null}
-        <div><dt>Последний способ открытия</dt><dd>{accessModeLabel(row.displayMode)}</dd></div>
         {row.contextCheckedAt ? <div><dt>Способ открытия проверен</dt><dd>{accessWhen(row.contextCheckedAt, now)}</dd></div> : null}
         {!snapshot ? <div><dt>IP последнего подключения</dt><dd>{row.lastIp ?? 'Ещё не записан'}</dd></div> : null}
         {row.ipCheckedAt ? <div><dt>IP проверен</dt><dd>{accessWhen(row.ipCheckedAt, now)}</dd></div> : null}
@@ -155,6 +159,8 @@ function ConnectionHelp({ row, now, onClose, extra, settings, snapshot }: { row:
         <p>{lastPush.explanation}</p>
       </section>
       <p className='access-note'>IP обозначает сеть и может совпадать у разных людей. По нему устройства не объединяются. Точная модель телефона доступна не во всех браузерах.</p>
+      {!snapshot && accessConnectionCode(row.browserInstanceId) ? <div className='access-delivery-detail'><h3>Код подключения</h3><code className='block break-all select-all'>{accessConnectionCode(row.browserInstanceId)}</code><p>Для точной сверки откройте /connection в проверяемом браузере. Совпадение кода не подтверждает владельца.</p></div> : null}
+      </details>
       {settings ? <details className='access-connection-settings' open={row.isCurrentBrowser && row.canMarkOwner && !row.connectionLabel || undefined}><summary>Название и назначение</summary>{settings}</details> : null}
       <footer><button type='button' onClick={() => dialog.current?.close()}>Понятно</button></footer>
     </div>
@@ -175,9 +181,11 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
   const currentConnection = accessLatestVisits(rows).find(row => row.isCurrentBrowser && row.role === 'ADMIN' && row.canMarkOwner);
   // A UI snapshot already contains grouped rows and deliberately omits private IDs.
   // Do not invent identifiers or regroup those displayed records by their names.
-  const connections = (snapshot ? rows : accessLatestVisits(rows)).filter(row => accessIsAdministrative(row) === service);
+  const candidates = (snapshot ? rows : accessLatestVisits(rows)).filter(row => accessIsAdministrative(row) === service);
+  const connections = snapshot ? candidates : accessOverviewRows(candidates);
+  const archivedCount = candidates.length - connections.length;
   const needle = search.trim().toLocaleLowerCase('ru-RU');
-  const groups = groupAccessRows(connections).filter(group => group.some(row => `${row.name} ${row.login} ${row.device} ${accessSystemLabel(row.device) ?? ''} ${row.browser} ${row.connectionLabel ?? ''}`.toLocaleLowerCase('ru-RU').includes(needle)));
+  const groups = (service ? groupServiceConnections(connections) : groupAccessRows(connections)).filter(group => group.some(row => `${row.name} ${row.login} ${row.device} ${accessSystemLabel(row.device) ?? ''} ${row.browser} ${row.connectionLabel ?? ''}`.toLocaleLowerCase('ru-RU').includes(needle)));
   const needsAttention = (row: AccessJournalRow) => accessPushView(row, now).tone === 'warning';
   const needsUpdate = (row: AccessJournalRow) => appUpdateStatus(row.appUpdate, currentRelease, now).needsUpdate;
   const needsData = (row: AccessJournalRow) => accessPushView(row, now).tone === 'unknown' || Boolean(currentRelease && (!row.appUpdate || (!needsUpdate(row) && appUpdateStatus(row.appUpdate, currentRelease, now).tone === 'unknown')));
@@ -193,16 +201,15 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
       <Link className={`admin-section-tab ${history ? 'is-active' : ''}`} aria-current={history ? 'page' : undefined} href={`${basePath}?view=history`}>История входов</Link>
     </nav>
     {!snapshot && !history && !unavailable ? <div className='access-current-connection'>
-      {currentConnection ? <><div><strong>Этот браузер · {currentConnection.connectionLabel || `${currentConnection.device} · ${currentConnection.browser}`}</strong><p>{currentConnection.connectionLabel ? `Название общее для всех администраторов · ${currentConnection.browser}` : 'Назовите это подключение, чтобы ваши входы в кабинеты сотрудников были отдельно.'}</p></div><button className='access-secondary' type='button' onClick={() => onSetOwner ? setNamingCurrent(true) : setDetail(currentConnection)}>{onSetOwner ? currentConnection.connectionLabel ? 'Изменить название' : 'Назвать это устройство' : 'Подробности подключения'}</button></> : <div><strong>Текущий браузер пока не сопоставлен</strong><p>Ожидаем сведения от этого подключения. Другие записи не будут назначены ему по названию или IP.</p></div>}
+      {currentConnection ? <><div><strong>Этот браузер · {currentConnection.connectionLabel || `${currentConnection.device} · ${currentConnection.browser}`}</strong>{!currentConnection.connectionLabel ? <p>Назовите его, чтобы отделить свои проверки.</p> : null}</div><button className='access-secondary' type='button' onClick={() => onSetOwner ? setNamingCurrent(true) : setDetail(currentConnection)}>{onSetOwner ? currentConnection.connectionLabel ? 'Изменить название' : 'Назвать это устройство' : 'Подробности подключения'}</button></> : <div><strong>Текущий браузер пока не сопоставлен</strong></div>}
     </div> : null}
     {notice ? <div role='status' className='access-saved'><Check size={17} aria-hidden /><span>{notice}</span><button type='button' aria-label='Скрыть подтверждение' onClick={() => setNotice('')}><X size={17} /></button></div> : null}
-    {!history && service ? <div className='access-period'><span>Кабинеты администраторов и входы с тех же браузеров под сотрудниками. Общий рабочий компьютер можно вернуть в список сотрудника.</span></div> : null}
-    {onRefresh ? <div className='access-refresh'><span>Сведения на {accessWhen(nowIso, now)} · обновляются автоматически</span><button className='access-secondary' disabled={refreshing} onClick={onRefresh}>{refreshing ? 'Обновляем…' : 'Обновить сведения'}</button></div> : null}
+    {!history && service ? <p className='access-period'>Каждое подключение — один блок. Ниже видно, какие кабинеты из него открывали.</p> : null}
     <div className='access-toolbar'><form method='get' action={basePath} onSubmit={history ? undefined : e => e.preventDefault()}>
       {history ? <input type='hidden' name='view' value='history' /> : null}
       <label><Search size={17} aria-hidden /><span className='sr-only'>Поиск сотрудника или устройства</span><input name='q' value={search} maxLength={100} onChange={e => setSearch(e.target.value)} placeholder='Сотрудник, телефон или браузер' /></label>
       {history ? <button type='submit' className='access-secondary'>Найти</button> : null}
-    </form>{!history && !unavailable ? <span className='access-note'>{service ? 'Кабинетов' : 'Сотрудников'}: {groups.length} · Подключений: {groups.reduce((n, g) => n + g.length, 0)}</span> : null}</div>
+    </form>{!history && !unavailable ? <span className='access-note'>{service ? 'Подключений' : 'Сотрудников'}: {groups.length}</span> : null}{onRefresh ? <button className='access-secondary' title={`Сведения: ${accessWhen(nowIso, now)}. Обновляются автоматически.`} disabled={refreshing} onClick={onRefresh}>{refreshing ? 'Обновляем…' : 'Обновить'}</button> : null}</div>
     {unavailable ? <p role='alert' className='access-unavailable'>Журнал временно недоступен. Это не означает, что сотрудники вышли из портала или отключили уведомления.</p> : <>
       {!history ? <>
         {!service ? <>
@@ -218,25 +225,27 @@ export function PortalAccessDevicesView({ rows, query, history, service = false,
         </div>
         </> : null}
         <div className='access-accounts'>{visible.map(group => {
-          const summary = accessAccountSummary(group, now);
-          return <section className='access-account' key={group[0].login} aria-label={group[0].name}>
-            <header className='access-account-header'><div><h2>Кабинет: {group[0].name}</h2><span>{group[0].login}{group[0].role === 'ADMIN' ? ' · Администратор' : ''}</span></div><p className={`access-account-summary access-summary-${service ? 'unknown' : summary.tone}`}>{service ? group[0].role === 'ADMIN' ? 'Администратор' : 'Проверки кабинета · не рабочие устройства' : summary.label}</p></header>
-            <div className='access-column-head' aria-hidden><span>Устройство и способ открытия</span><span>Был в портале</span><span>Уведомления</span><span /></div>
+          return <section className='access-account' key={service ? group[0].browserInstanceId || group[0].id : group[0].login} aria-label={service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}>
+            <header className='access-account-header'><h2>{service ? group[0].connectionLabel || `${group[0].device} · ${group[0].browser}` : group[0].name}</h2><span>{service ? group[0].connectionLabel ? `${group[0].browser} · Администраторские проверки` : 'Владелец не подтверждён' : `Подключений: ${group.length}`}</span></header>
+            <div className='access-column-head' aria-hidden><span>{service ? 'Кабинет' : 'Устройство'}</span><span>Был в портале</span><span>Уведомления</span><span>Версия портала</span><span /></div>
             {group.map(row => {
               const Icon = /iPhone|iPad|Android|Телефон|Планшет/.test(row.device) ? Smartphone : Monitor;
               const sameNames = group.filter(other => other.device === row.device && other.browser === row.browser)
                 .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt) || a.id.localeCompare(b.id));
               const number = sameNames.findIndex(other => other.id === row.id) + 1;
               const push = accessNotificationDetail(row, now);
+              const version = appUpdateStatus(row.appUpdate, currentRelease, now);
               return <article className='access-connection' key={row.id} aria-label={`${row.name} · ${row.device} · ${row.browser}${sameNames.length > 1 ? ` · подключение ${number}` : ''}`}>
-                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{row.connectionLabel || row.device}<span> · {row.browser}</span></h3>{accessSystemLabel(row.device) ? <p className='access-system'>{accessSystemLabel(row.device)}</p> : null}{row.displayMode && row.displayMode !== 'unknown' ? <p>{accessModeLabel(row.displayMode)}{sameNames.length > 1 ? ` · Подключение ${number}` : ''}</p> : <p>Способ открытия не определён{sameNames.length > 1 ? ` · Подключение ${number}` : ''}</p>}{!snapshot && !row.browserInstanceId ? <p>Старая запись · устройство не подтверждено{row.unidentifiedCount ? ` · ${row.unidentifiedCount} посещений` : ''}</p> : null}{currentRelease || row.appUpdate ? <div className='access-app-version'><p>{row.appUpdate ? `Версия ${row.appUpdate.version}` : 'Версия ещё не сообщалась'}</p>{row.appUpdate ? <><span className={`access-badge access-badge-${appUpdateStatus(row.appUpdate, currentRelease, now).tone}`}>{appUpdateStatus(row.appUpdate, currentRelease, now).label}</span><p>Проверено: {accessWhen(row.appUpdate.checkedAt, now)}</p></> : null}</div> : null}{renderDeviceExtra?.(row)}</div></div>
-                <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Был в портале</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time>{service && !row.connectionLabel ? <p className='access-note'>Владелец не подтверждён</p> : null}</div>
-                <div className='access-push'><PushBadge row={row} now={now} /><p className={!service && accessRecentPushFailure(row, now) ? 'access-send-warning' : undefined}>{row.ownerInspection ? 'Проверка с отмеченного устройства' : row.adminObserved && row.role !== 'ADMIN' && service ? 'Был вход под администратором' : row.isService ? 'Не входит в рабочие предупреждения' : accessRecentPushFailure(row, now) ? 'Последняя отправка не подтверждена' : push.hint}</p></div>
+                <div className='access-device'><span className='access-device-icon'><Icon size={20} aria-hidden /></span><div><h3>{service ? row.name : row.connectionLabel || row.device}{!service ? <span> · {row.browser}</span> : null}</h3><p>{[accessSystemLabel(row.device), row.displayMode && row.displayMode !== 'unknown' ? accessModeLabel(row.displayMode) : null, !service && sameNames.length > 1 ? `Подключение ${number}` : null].filter(Boolean).join(' · ')}</p>{!snapshot && !row.browserInstanceId ? <p>Последние известные сведения</p> : null}{renderDeviceExtra?.(row)}</div></div>
+                <div className='access-last-seen'>{row.isCurrentBrowser ? <span className='access-current-marker'>Этот браузер</span> : null}<span className='access-mobile-label'>Был в портале</span><time dateTime={row.lastSeenAt}>{accessWhen(row.lastSeenAt, now)}</time></div>
+                <div className='access-push'><PushBadge row={row} now={now} />{!service && (accessRecentPushFailure(row, now) || push.tone === 'warning') ? <p className='access-send-warning'>{accessRecentPushFailure(row, now) ? 'Последняя отправка не подтверждена' : push.hint}</p> : null}</div>
+                <div className='access-version'><span className='access-mobile-label'>Версия портала</span>{row.appUpdate ? <><strong>{row.appUpdate.version}</strong><span className={`access-version-state access-summary-${version.tone}`}>{version.label}</span></> : <span className='access-note'>Нет данных</span>}</div>
                 <button type='button' className='access-detail-button' onClick={() => setDetail(row)} aria-label={`Подробнее: ${row.name}, ${row.device}, ${row.browser}, подключение ${number}`}>Подробнее<ChevronRight size={14} aria-hidden /></button>
               </article>;
             })}
           </section>;
         })}{!visible.length ? <div className='access-empty'>{connections.length ? <><h2>Нет совпадений</h2><p>Измените поиск или выберите «Все сотрудники».</p><button type='button' className='access-secondary' onClick={() => { setFilter('all'); setSearch(''); }}>Сбросить фильтры</button></> : <><h2>{service ? 'Администраторских подключений пока нет' : 'Посещений пока нет'}</h2><p>{service ? 'Здесь появятся подключения администраторов и отмеченные проверки.' : 'Записи появятся после открытия портала сотрудниками.'}</p></>}</div> : null}</div>
+        {archivedCount > 0 ? <p className='access-note mt-3'>Предыдущие записи ({archivedCount}) сохранены в <Link className='underline' href={`${basePath}?view=history`}>истории входов</Link>.</p> : null}
       </> : <div className='access-history'>
         <div className='access-history-title'><h2>История входов и подключений</h2><p>Здесь остаются и старые подключения. Вход — авторизация; связь — последнее обращение портала. Записи не удаляются, подписки не отключаются.</p></div>
         <div className='access-history-head' aria-hidden><span>Сотрудник</span><span>Устройство</span><span>Вход</span><span>Выход</span></div>
