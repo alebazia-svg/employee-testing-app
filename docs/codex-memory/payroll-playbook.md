@@ -1,9 +1,203 @@
 # Payroll Playbook
 
+## Production release 1.6.0 — 2026-10-18
+
+- Owner explicitly approved commit and production deploy. Runtime commit
+  96e5211bf3d8ec3c23580e5c2a616299ccdfe6a2 published to design-local-updates.
+- Server commit independently read back; public metadata and authenticated ADMIN
+  footer show 1.6.0, build 2026-10-18T16:57:22.120Z (19:57 Moscow).
+  Deploy exited 0; portal-app running, uploads mount retained. No migrations,
+  1C writes, or final-run rewrites. Auth-free settlement request returns 401.
+- Previous image sha256:8dac64592d5ea3d10638523c84b73053c9444148320d80fd9b822c873c4f2e31
+  preserved as portal-app:rollback-before-1.6.0. Replacement image
+  sha256:6d87c39c6c24f916df32463091d5679a0c7028096ee983c84fcf261679b1c58c.
+  No schema delta, so image rollback remains schema-compatible.
+- Live October accrual shows Muhammad 24,000 and payments show his 7,500 advance.
+  Known remaining issue: accrual advance parser still warns on mixed RKO 1802,
+  while settlement allocation handles it. Do not claim all advance warnings fixed.
+  Diana October inputs remain missing. Both are distinct from deployment success.
+- Below local-only entries describe the historical preparation phase, superseded
+  by this deployment status; further corrections require a new release version.
+
+## Release audit — 2026-10-18, no commit/deployment
+
+- Local candidate remains on deployment base 4730e96; refreshed deployment branch
+  and public metadata both remain 1.5.10. No new release version allocated yet.
+- Payroll checks: 199 client-compatible tests and 48 server-condition tests,
+  TypeScript, production build and five release-info tests pass. Settlement GET
+  without authentication returns 401. No Prisma/schema/env changes in candidate.
+- September calculation XLSX reviewed: 13 employees, gross 1,032,621.91,
+  advances 35,000, after advances 997,621.91; no Asad or all-period debt.
+  Saved final's original 17,000 advances remain historical, not overwritten.
+  Mobile 390px overview/payment/modal review completed; October fixture accruals
+  are not a complete production reconciliation. November Muhammad rule is tested
+  in calculation tests, not future live 1C data.
+- Owner approved and production UI saved Hoco Китай in Astemir's supplier base
+  and six exact disputed phone/Dyson products as retail accessory / wholesale
+  included goods. Product review count became zero. No 1C documents or final
+  payroll runs were changed. Muhammad rule and settlement UI remain local only.
+- October Diana days/lateness/Finbox are unresolved source inputs, not silently
+  zeroed. September Diana lateness remark was already explicitly approved on
+  2026-10-16; do not present it as a new blocker.
+
+## Muhammad agreed monthly days — local change, 2026-10-18
+
+- Owner replaced attendance/manual-day entry for Muhammad Kumykov, Astemir's
+  assistant: October 2026 has 16 agreed days × 1,500 = 24,000 RUB for the whole
+  month; November onward has 20 × 1,500 = 30,000 until changed by the owner.
+- This is a monthly agreed amount, not earned-to-date attendance. Existing
+  advances remain separate (7,500 confirmed October advance); no duplicate
+  deduction or additional procurement/discipline percentage. Stale browser day
+  inputs do not override this rule. Historical saved runs retain their days.
+- Server draft-day persistence is no longer needed for this employee. No schema
+  migration, production data write or deployment is part of this local change.
+
+## Main-route integration — local only, 2026-10-18
+
+- Owner approved local integration, not commit/deployment. Worktree was fast-forwarded
+  to deployment branch `4730e96` (1.5.10), retaining payroll WIP and other modules.
+- `/admin/payroll` now enables the live workspace; settlement GET is admin-only
+  without the preview feature gate. Preview routes remain gated. Test environment
+  labels are separate from workspace enablement and retained in isolated QA.
+- Isolated `payroll_approval_qa_20261016` schema was synchronized without data-loss
+  acceptance to the current branch schema; production DB and 1C were untouched.
+- Browser verified ordinary-route September final/October working calculations
+  and October payment 7,500 for Muhammad. October accrual fixtures remain test data.
+- 246 payroll tests, TypeScript and build pass; unauthenticated settlement GET
+  returns 401. Browser download event timed out, but the page confirmed success
+  and the new September XLSX was found in Downloads; ZIP integrity passed.
+  Workbook contents, full production-data reconciliation and responsive review
+  on the updated application base remain release prerequisites.
+
+## Owner-approved Excel purpose — 2026-10-18, supersedes settlement export
+
+- Owner explicitly replaced the earlier requirement that Excel mirror live unpaid
+  balances. The workspace workbook is a calculation statement for the selected
+  earning month: employee, calculated gross, month-attributed advances, after
+  advances. Ordinary salary payouts and accumulated debt stay in the portal.
+- Preserve accrual components, days, rates, bonuses and deductions in the detail
+  sheet. If deductions exist, disclose that the after-advance amount also subtracts
+  them. Never call this amount the current remaining debt or a payout instruction.
+- Remove the all-period debt sheet from this workspace export. Keep department
+  colors and compact employee rows. Existing approved salary snapshots are not
+  rewritten. This change is local only; production release is not approved here.
+
+## Owner-approved oldest-debt allocation — 2026-10-18, local only
+
+- Owner also confirmed August premiums in 1C movement 00OF-000123 dated
+  2026-09-01: Astemir 42,500; Zalina 10,000; Liana 10,000 RUB. Local posted-accrual
+  parsing binds only exact document/line, employee, organization, date, amount and
+  unchanged comment. These premiums belong to August, never September. Changed
+  facts or other unnamed premiums remain unresolved. No 1C document is rewritten.
+
+- For Bela Keshtova only, cash issuances without a stated payroll month first
+  settle the oldest outstanding salary. An explicit advance month takes priority.
+- Preserve 1C documents and all-period balance. Opening debt is an unnamed older
+  bucket, not invented individual months. Accrual months require document comments;
+  unknown movements, missing cash evidence or balance mismatch fail closed.
+- Shared monthly result feeds the employee card, payments and current Excel export.
+  This local implementation is not a production release. September residual must
+  remain separate from the full accumulated salary debt.
+
 ## Current Principle
 
 Payroll formulas already exist and are covered by tests. Do not rewrite payroll
 logic casually. Keep fixes targeted and run payroll tests.
+
+## Owner requirement — payroll clarity and completeness (2026-10-18)
+
+- Treat payroll as an operational control screen for the owner and a manager
+  who visits only once a month. Both must understand who earned what, what was
+  paid, what remains payable, when money was issued and why amounts arise.
+- Never remove useful information to make a redesign look cleaner. Compare
+  the actual production screen with the candidate before approval: inventory
+  totals, employee-level advances/deductions, formulas, warnings, actions and
+  history; explicitly account for anything moved, hidden or removed.
+- Keep useful accrual and advance summaries visible in Accruals, with employee
+  department grouping and original detailed calculation cards. Payments must
+  clearly expose issued amounts, dates, advances and confirmed unpaid balances.
+  Overview plus drill-down is purposeful, not unnecessary duplication.
+- Show actual errors, missing data and unresolved allocations prominently,
+  with the affected employee/document and a clear action or 1C correction.
+  Do not hide them behind generic technical labels or convert unavailable
+  evidence into zero. Distinguish unresolved issues from accepted remarks.
+- Preserve month attribution and source meaning: issue date is not earning
+  month; advances count once; rounded 1C settlement is authoritative. Never
+  label an all-month debt as the selected-month balance or invent debt from
+  the difference between unrounded portal calculation and 1C settlement.
+- Keep details accessible without technical noise, tautologies or repeated
+  month labels. Employee month cards show that month's assigned payments,
+  including later issue dates, not unrelated months' document history.
+- Release gate: verify calculations, source reconciliation, error/recovery
+  states and UI information completeness against the previous real screen.
+  Aesthetic ratings are not evidence of correctness. Report remaining gaps;
+  do not claim an error-free or release-ready result while known gaps remain.
+
+
+### Acceptance checkpoint — 2026-10-18
+
+- Owner clarified that downloading the selected month's workbook must show
+  current settlements, not historical payments frozen with the final run.
+  The local workspace export now refreshes 1C before export, preserves approved
+  accrual formulas, excludes inactive zero-result employees using the overview's
+  period rule, and shows current paid/advances alongside zero only when 1C
+  confirms a settled balance (no debt and no credit). Positive all-month debt
+  remains separate; unknown monthly amounts are explicit, never inferred from
+  unrounded accrual minus cash. Failed refresh blocks stale export. Original
+  saved records are unchanged. This remains gated local functionality.
+
+- Local build/typecheck and payroll regression checks passed. Historical settlement
+  reads now extend through today, not merely the next month; attribution remains
+  conservative. Planned first/sixteenth columns match exact dates in the month
+  after the earning month, so late first-day payments use Other days.
+- Reproduced an expired local session, distinguished authorization failure from
+  unavailable 1C, and verified recovery after login. September Payments loaded
+  807,800 assigned issuances including 35,000 advances, with 208,300 all-period
+  balance shown separately. An unresolved Bela issuance is not silently assigned.
+- Candidate is still local, not released. October accrual fixtures are not live
+  salary; production branch reconciliation and a full workbook content audit
+  remain release checks. Do not describe this checkpoint as complete acceptance.
+
+### Local workspace integration — in progress, 2026-10-16
+
+- Owner approved connecting the reviewed settlement UI to existing payroll reads,
+  without releasing it yet. `workspace-preview` is ADMIN-only and gated by
+  `PAYROLL_SETTLEMENT_PREVIEW=1`. Unlike `settlement-preview`, it does not receive
+  the fixed September demonstration payment rows or local JSON evidence.
+- Current Moscow month is the initial selection in this candidate, including
+  days 1–7. Existing production default is unchanged until release approval.
+- Existing automatic calculation stays active for unapproved available periods.
+  An exact period/id/status-matched final run is displayed independently of 1C
+  refresh; comparison is separate and never replaces saved final values.
+- Full payment history and outstanding salary balance are NOT integrated yet.
+  A validated read adapter for the existing `/payroll-balance` endpoint is now
+  prepared locally (`payroll-one-c-balances.ts` and the control-source reader).
+  It checks complete/unfiltered scope, organization/person identity, duplicates,
+  kopecks and totals. Only a confirmed identity may resolve an absent row in the
+  complete balance register to zero; missing reads/identity remain unknown.
+  Tested against read-only live responses for August 31, September 30 and October
+  16. On October 17, added the gated ADMIN settlement read route and the employee
+  Payments-tab binding in `workspace-preview`: validated cash documents, unique
+  conservative identity matching, all-period balance with its date, and explicit
+  unallocated payroll month. Partial/mixed advance comments never allocate the
+  entire RKO. Five-minute in-process cache and in-flight deduplication avoid
+  per-card source reads. No schema, production data or 1C writes.
+  On October 18 the card header and payments tab share one read, with explicit
+  cash-date window and all-period 1C balance. Refresh occurs on opening, focus and
+  every five visible minutes. A local allowlist proxy permits GET only for the
+  two payroll endpoints; other integration reads and all writes are denied.
+  Live Milana card verified: October 1 payment 12,500 plus October 16 payment
+  76,500 = 89,000; balance as of October 18 is zero. Accruals remain isolated QA
+  values and are labeled as such. Employee rows show concrete missing-days or
+  lateness reasons, while advance source uncertainty remains a shared message.
+  Monthly payment attribution remains unfinished; this is not release-ready.
+  Production advances alone cannot establish total payments or salary debt.
+  Missing settlement values must remain unavailable, never zero. The owner's
+  rounded accruals and zero balance in 1C are authoritative for settlement;
+  differences from portal calculations must not generate a new debt or warning.
+- Central employee modal, unchanged formulas, separate payments tab and stable
+  dialog dimensions are approved visually. This candidate still needs live-data
+  integration verification and payment reconciliation before release.
 
 ## Important Files
 
@@ -619,6 +813,72 @@ the pay result harder to understand.
   Local preview configuration and unrelated dirty work were excluded.
 
 ## Before Changing Payroll
+
+### Settlement integration — local candidate, 2026-10-18 (not released)
+
+- Worktree: `payroll-approval-notes`. Dependencies are now an isolated local
+  installation, not the main checkout's node_modules symlink. Prisma client was
+  generated locally; no schema change or production migration occurred.
+- ADMIN preview reads live cash, current balances and the new complete ledger
+  through GET-only integration. It checks opening + movements = closing per
+  organization/employee and fails closed on incomplete/duplicate evidence.
+  Missing reads/identities must never become zero balances.
+- Workspace has actual connected Accruals/Payments tabs and the original
+  calculation modal. A copied September final is loaded only in the isolated
+  QA database; October accrual fixtures are still synthetic. Do not describe
+  the whole local screen as live production payroll. Saved amounts/formulas
+  are not recomputed by payment refresh; empty departed rows are hidden in the
+  overview, without rewriting saved history or the historical export.
+- Owner's existing 1st/16th calendar assigns those ordinary cash payments to
+  the previous month for established employees only. Explicit advance months
+  take precedence. Other dates and unclear comments remain unresolved.
+  Calendar assignment is a portal policy, NOT a native payroll-month field in
+  the 1C register. All-month balance remains independently sourced from 1C.
+- Confirmed historical split: Zalina, 00OF-001802, 2026-10-01, 23,000 RUB =
+  10,000 days + 13,000 advance, both September. One payment is counted once;
+  changed document facts require review. Muhammad's 7,500 RUB issuance on
+  2026-10-16, 00OF-001901 is an October advance, not September salary.
+- Confirmed directory labels `Татьяна` and `СтажерЗакупка` map conservatively to
+  Daudova Tatyana and Kumykov Muhammad (the latter from October), retaining
+  reference/ownership ambiguity checks. No general fuzzy name matching.
+- Expanded live July 1–Oct 18 reconciliation on Oct 18 verified 173 ledger
+  movements and all 88 cash rows, with opening/movement/closing equality and
+  no recipient conflicts. Owner agreed to continue after reviewing the result.
+  Three exact historical allocations are now local rules: Astemir Sep 3
+  30,000 and Zalina Sep 13 3,000 belong to August; Marat Oct 7 10,000 belongs
+  to September. Match exact source row/ref/recipient/date/amount and blank
+  comments; changed evidence returns to review, explicit month takes priority.
+  These are reviewed historical allocations, not native 1C month fields or a
+  new automatic date heuristic. Bela Sep 2 80,000 remains unallocated across
+  older debt. Her authoritative total debt is 208,300; do not force that whole
+  debt into September or call the 80,000 an advance for the current month.
+- Follow-up verification: 75 base + 36 settlement tests and build pass. Live
+  cash read leaves only Bela's old-debt issuance and Asad's historical fine
+  issuance unallocated in Sep–Oct. Rebuilt isolated UI verified Marat's
+  September card: paid 10,000, zero remaining, Oct 7 document assigned to
+  September with reconciliation explanation. Production remains unchanged.
+- Production portal has advanced beyond this checkout's 1.4.15 baseline.
+  Before release reconcile the latest deployment branch and version, preserve
+  other modules and perform the ordinary release gate. No portal deploy or
+  production data write was performed in this local integration stage.
+- Verification: 75 base payroll tests + 31 settlement/ledger regressions,
+  TypeScript, production build and diff whitespace checks passed. Local UI
+  verified September/October switching, original saved formulas, payment-tab
+  entry/re-entry, Zalina 13,000 advance / 129,000 monthly paid / zero 1C debt,
+  Muhammad 7,500 October advance, and 390px modal bounds (no page overflow).
+  September XLSX downloaded through the visible button and ZIP integrity
+  passed; workbook contents were not re-audited in this stage. Unauthorized
+  settlement API returned 401. A fresh interactive outage rehearsal now passed:
+  read-only 1C proxy returned 503, the UI showed unavailable payments rather
+  than zero balances, and refresh recovered after the proxy was restored.
+- Final local UX pass: all 13 September employees visible in compact department
+  columns; original formula card retained; selected-month payments first,
+  other-month documents collapsed; payment table becomes labeled cards at 390px.
+  75 base + 36 settlement tests, TypeScript, build and diff checks passed.
+  September export downloaded again and ZIP integrity passed (not a full
+  workbook re-audit). Preview warning remains because October accrual fixtures
+  are synthetic. Current deployment-branch reconciliation remains a release
+  prerequisite; this is not a production readiness or deployment claim.
 
 ### Procurement trainee and final export — released 1.4.14, 2026-10-16
 
