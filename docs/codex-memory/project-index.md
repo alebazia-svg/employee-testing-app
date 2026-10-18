@@ -19,7 +19,7 @@ project from scratch.
 | Module | Main Files | Memory |
 | --- | --- | --- |
 | Employee Workday | `app/(dashboard)/employee/`, `app/api/employee/workday/`, `app/api/employee/shift-control/`, `lib/workday.ts` | `workday-playbook.md` |
-| Admin Workday | `app/(dashboard)/admin/workday/`, `app/api/admin/workday/` | `workday-playbook.md`, `one-c-workday-audit.md` |
+| Admin Workday | `app/(dashboard)/admin/workday/`, `app/api/admin/workday/` | `workday-playbook.md`, `one-c-workday-audit.md`, `team-control-release-20261018.md` |
 | OFD / SABY / 1C matching | `app/(dashboard)/admin/ofd/`, `app/api/admin/ofd/probe/`, `lib/saby-ofd.ts`, `lib/one-c.ts` | `ofd-one-c-playbook.md` |
 | Payroll | `app/(dashboard)/admin/payroll/`, payroll helpers/tests | `payroll-playbook.md` |
 | Supplier payment calendar | `app/(dashboard)/procurement/`, `app/(dashboard)/admin/procurement/`, `lib/procurement-payment-*.ts` | `decision-log.md` (2026-09-09), `procurement-delivery-release-20260927.md` (deployed delivery reserve) |
