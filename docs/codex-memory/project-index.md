@@ -101,12 +101,13 @@ project from scratch.
   cases close automatically, and the two scheduled manual credit tasks are no
   longer part of active retail templates.
 
-## Devices, notifications and app versions — production 1.5.4
+## Devices, notifications and app versions — production 1.5.9
 
-- Local candidate (not deployed): `access-device-evidence-20261018.md`.
+- Released 1.5.9 (`7e8ad90`): `access-device-evidence-20261018.md`.
   Bounded reported device details, explicit multi-browser grouping, origin and
-  identity-binding timestamps, mismatch safeguards. Additive local-tested
-  migration; live IP collection and deployment still require operational gate.
+  identity-binding timestamps, mismatch safeguards. Additive migration applied
+  and verified; public origin corrected behind the reverse proxy. IP collection
+  remains disabled pending trusted-ingress verification.
 
 - Released list audit: `access-list-clarity-20261018.md`, runtime `d07d923`
   (1.5.4), following `cc650ea` (1.5.3). Compact employee rows, exact-browser

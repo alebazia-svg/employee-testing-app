@@ -1,8 +1,36 @@
-# Device evidence and confirmed grouping — local candidate, 18 October 2026
+# Device evidence and confirmed grouping — released, 18 October 2026
 
 Owner approved implementation after the broader device-identification review:
-«Ну хорошо, сделай всё возможное». This is APPROVED CHANGE, not a new deployment
-approval. Production remains 1.5.4 / d07d923. No future release number reserved.
+«Ну хорошо, сделай всё возможное». Owner subsequently approved release with
+journal schema expansion: «Выпускай». Production 1.5.9 / `7e8ad90`, following
+1.5.8 / `6f0300e`. Concurrent 1.5.5–1.5.7 workday releases preserved.
+
+## Release evidence
+
+- Exact server commit: `7e8ad902c424e5083b2eae9217c32e4bf03f36a9`.
+  Public release-info and authenticated footer: 1.5.9, built
+  `2026-10-18T15:33:00.285Z` (18:33 Moscow). Container healthy.
+  Metadata source remains `unknown` in the Docker build; revision independently
+  verified through the server Git checkout, not inferred from that metadata.
+- 1.5.8 preflight checked all recorded migration checksums and found only
+  `20261018180000_access_device_evidence` pending. Applied successfully;
+  independent schema query confirmed all seven nullable columns and the
+  completed migration record. No historical backfill, deletion or owner relabel.
+- Live smoke caught Next.js req.url exposing the container origin. Corrected
+  immediately in 1.5.9: browser Origin must match HTTP Host, otherwise use only
+  a matching request URL or omit. Forwarded host is not trusted. This field is
+  diagnostic only, never used for authentication or IP/owner proof.
+- Final checks: 70 server/integration tests passed (none skipped), 29 UI tests,
+  5 version tests, TypeScript and isolated production build. Both server builds
+  passed. Production owner labels and separate Codex connection retained.
+- Authenticated live readback at 18:37 Moscow: Codex browser reports 1.5.9,
+  reported OS/browser details and `https://team.mobo-opt.ru`; explicit action,
+  automatic contact and login remain distinct. Mac Бэлы/iPhone Бэлы mappings
+  retained, no production grouping/renaming performed for smoke testing.
+  Public health endpoint 200. Screenshot `/tmp/mobo-access-release-1.5.9.png`.
+- Rollback images: `mobo-access-rollback:1.5.7` (before schema release),
+  `mobo-access-rollback:1.5.8` (before origin correction). Nullable additions can
+  remain during code rollback; do not drop history or diagnostic columns.
 
 ## Implemented scope
 
@@ -35,11 +63,12 @@ approval. Production remains 1.5.4 / d07d923. No future release number reserved.
   not hardware attestation. New browser profiles/storage resets are not silently
   added to an existing group.
 
-## Verification / preview
+## Initial local verification / preview
 
 - Additive migration `20261018180000_access_device_evidence` applied ONLY to
   isolated local PostgreSQL `access_telemetry_verified`, loopback port 55451.
-  No production schema/data/settings changed.
+  At that preparation stage no production schema/data/settings changed;
+  subsequent approved production migration is documented above.
 - Focused server, authorization, parser, timeout and DB integration checks;
   UI render checks; TypeScript; production build in isolated temporary source
   copy, not in the active review server's .next directory.
@@ -58,10 +87,8 @@ approval. Production remains 1.5.4 / d07d923. No future release number reserved.
 
 ## Remaining operational gates and limits
 
-- Release requires owner approval including the additive migration. Recheck
-  live release-info and deployment branch, reconcile concurrent work, choose a
-  fresh patch version, run release metadata checks, migrate before app restart.
-  Runtime rollback can leave nullable columns in place; never delete history.
+- Future releases must recheck live release-info and deployment branch, choose
+  a fresh version and preserve nullable fields/history during rollback.
 - IP support already exists but production collection stays OFF. Before enabling
   `PORTAL_ACCESS_TRUST_REAL_IP=1`, verify actual ingress overwrites X-Real-IP and
   direct access to app is blocked. Do not accept arbitrary forwarded headers.
