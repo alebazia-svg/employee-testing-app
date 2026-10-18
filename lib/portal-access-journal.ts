@@ -22,7 +22,7 @@ export function parsePushObservation(value: unknown): PushObservation | null {
   if (p.endpoint !== undefined && (typeof p.endpoint !== 'string' || p.endpoint.length > 4096 || !p.endpoint.startsWith('https://'))) return null;
   return p as PushObservation;
 }
-export async function recordPortalAccess(input: { userId: number; token: string | undefined; userAgent: string; browserInstanceId?: string; login?: boolean; push?: PushObservation; now?: Date }) {
+export async function recordPortalAccess(input: { userId: number; token: string | undefined; userAgent: string; browserInstanceId?: string; clientIp?: string; login?: boolean; push?: PushObservation; now?: Date }) {
   const now = input.now ?? new Date();
   const identity = accessSessionIdentity(input.token, input.userId, now);
   if (!identity) return;
@@ -36,6 +36,7 @@ export async function recordPortalAccess(input: { userId: number; token: string 
   const priorClassification = browserIdentity.browserInstanceId && !existing?.serviceMarkedAt
     ? await prisma.portalAccessSession.findFirst({ where: { userId: input.userId, browserInstanceId: browserIdentity.browserInstanceId, serviceMarkedAt: { not: null } }, orderBy: { serviceMarkedAt: 'desc' }, select: { isService: true, serviceMarkedAt: true, serviceMarkedBy: true } }) : null;
   const classification = priorClassification ?? {};
+  const network = input.clientIp ? { lastIp: input.clientIp, ipCheckedAt: now } : {};
   let pushState: AccessPushState = 'unknown';
   const context = input.push?.displayMode ? { displayMode: input.push.displayMode, contextCheckedAt: now } : {};
   // Keep the last known association for diagnostics if the browser no longer
@@ -52,11 +53,11 @@ export async function recordPortalAccess(input: { userId: number; token: string 
     }
   }
   if (!existing) await prisma.portalAccessSession.createMany({ skipDuplicates: true, data: [{ ...identity, ...accessDevice(input.userAgent), userId: input.userId,
-    firstSeenAt: now, lastSeenAt: now, loginAt: input.login ? now : null, ...context, ...browserIdentity, ...classification,
+    firstSeenAt: now, lastSeenAt: now, loginAt: input.login ? now : null, ...context, ...browserIdentity, ...classification, ...network,
     ...(input.push ? { pushState, pushSubscriptionId, pushCheckedAt: now } : {}),
   }] });
   if (existing) await prisma.portalAccessSession.updateMany({ where: { ...where, loggedOutAt: null, lastSeenAt: existing.lastSeenAt }, data: {
-    lastSeenAt: now, ...context, ...browserIdentity, ...classification, ...(input.login ? { loginAt: now } : {}),
+    lastSeenAt: now, ...context, ...browserIdentity, ...classification, ...network, ...(input.login ? { loginAt: now } : {}),
     ...(input.push ? { pushState, pushSubscriptionId, pushCheckedAt: now } : {}),
   } });
 }

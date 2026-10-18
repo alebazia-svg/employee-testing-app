@@ -1,7 +1,27 @@
 import type { AccessJournalRow } from '../components/PortalAccessJournal';
 
+/** Coarse OS family only. A saved device label cannot prove an OS version,
+ * hardware model, owner, or whether an ambiguous desktop Safari was an iPad. */
+export function accessSystemLabel(device: string): string | null {
+  if (device === 'Mac') return 'macOS';
+  if (device === 'Mac / iPad') return 'macOS / iPadOS · не уточнено';
+  if (device === 'iPhone') return 'iOS';
+  if (device === 'iPad') return 'iPadOS';
+  if (device === 'Компьютер Windows') return 'Windows';
+  if (device === 'Телефон Android' || device === 'Планшет Android') return 'Android';
+  if (device === 'Компьютер Linux') return 'Linux';
+  if (device === 'Chromebook') return 'ChromeOS';
+  return null;
+}
+
 export function accessOwnerView(ownerId: number | undefined, sessionUserId: number, viewerId: number) {
-  return { ownerInspection: ownerId !== undefined && ownerId !== sessionUserId, ownerBrowser: ownerId === sessionUserId, canMarkOwner: sessionUserId === viewerId };
+  return { ownerInspection: ownerId !== undefined && ownerId !== sessionUserId, ownerBrowser: ownerId === sessionUserId, canMarkOwner: ownerId === undefined || ownerId === viewerId };
+}
+
+/** Shared browser identity is evidence of cross-account use, not of a person.
+ * An explicit per-account working classification overrides that inference. */
+export function accessIsAdministrative(row: Pick<AccessJournalRow, 'role' | 'isService' | 'ownerInspection' | 'adminObserved' | 'serviceMarkedAt'>) {
+  return row.role === 'ADMIN' || Boolean(row.isService || row.ownerInspection || (row.adminObserved && !row.serviceMarkedAt));
 }
 
 
@@ -105,4 +125,35 @@ export function accessLatestVisits(rows: AccessJournalRow[]) {
     else summaries.set(key, { ...prior, unidentifiedCount: (prior.unidentifiedCount ?? 1) + (row.unidentifiedCount ?? 1) });
   }
   return [...summaries.values()];
+}
+
+/** Presentation only: retain identified connections and the latest unidentifiable
+ * visit for each device/browser type not yet replaced by an identified record.
+ * Never infer that two similar names are the same physical device. */
+export function accessOverviewRows(rows: AccessJournalRow[]) {
+  return groupAccessRows(rows).flatMap(group => {
+    const hasIdentity = (row: AccessJournalRow) => Boolean(row.browserInstanceId || (row.pushLabel === 'Подключены' && row.pushSubscriptionId));
+    const identified = group.filter(hasIdentity);
+    const legacy = group.filter(row => !hasIdentity(row));
+    const retained = new Map<string, AccessJournalRow>();
+    for (const row of legacy) {
+      const key = JSON.stringify([row.device, row.browser]);
+      // A known subscription may be older than the latest unidentifiable visit.
+      // Never hide a more recent observation just because the older one has an ID.
+      if (!retained.has(key) && !identified.some(r => r.device === row.device && r.browser === row.browser && Date.parse(r.lastSeenAt) >= Date.parse(row.lastSeenAt))) retained.set(key, row);
+    }
+    return [...identified, ...retained.values()].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt) || a.id.localeCompare(b.id));
+  });
+}
+
+/** Service view groups accounts only by an exact stable browser identifier.
+ * Same labels, IPs, browser names or OS never join independent connections. */
+export function groupServiceConnections(rows: AccessJournalRow[]) {
+  const groups = new Map<string, AccessJournalRow[]>();
+  for (const row of rows) {
+    const key = row.browserInstanceId ? `browser:${row.browserInstanceId}` : `legacy:${row.id}`;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  return [...groups.values()].map(group => [...group].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt) || a.id.localeCompare(b.id)))
+    .sort((a, b) => Date.parse(b[0].lastSeenAt) - Date.parse(a[0].lastSeenAt) || a[0].id.localeCompare(b[0].id));
 }

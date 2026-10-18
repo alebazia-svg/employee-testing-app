@@ -16,6 +16,11 @@ export type AccessJournalRow = {
   ownerInspection?: boolean;
   ownerBrowser?: boolean;
   canMarkOwner?: boolean;
+  connectionLabel?: string | null;
+  isCurrentBrowser?: boolean;
+  adminObserved?: boolean;
+  lastIp?: string | null;
+  ipCheckedAt?: string | null;
   appUpdate?: AppUpdateView | null;
   lastPush?: { attemptedAt: string; resultAt: string; outcome: string; errorCode: string | null } | null;
 };
@@ -58,7 +63,7 @@ export function PortalAccessJournal({ rows, query, page, hasMore, unavailable, n
       </nav> : null}
     </>}
     <details className='text-xs text-slate-500'><summary className='cursor-pointer py-2'>Как читать журнал</summary>
-      <p className='max-w-3xl leading-relaxed'>Каждая строка — отдельный браузерный сеанс учётной записи, а не доказательство, кто держал устройство. Новые подключения показаны первыми. Время — московское. Последнее обращение обновляется примерно раз в минуту, пока страница видна; это не время последнего действия человека. Названия устройств определяются по данным браузера: iPad иногда представляется как Mac. Уведомления проверяются для этого браузера и не подтверждают доставку каждого пуша. IP-адреса, геолокация и пароли в журнал не записываются.</p>
+      <p className='max-w-3xl leading-relaxed'>Каждая строка — отдельный браузерный сеанс учётной записи, а не доказательство, кто держал устройство. Новые подключения показаны первыми. Время — московское. Последнее обращение обновляется примерно раз в минуту, пока страница видна; это не время последнего действия человека. Названия устройств определяются по данным браузера: iPad иногда представляется как Mac. Уведомления проверяются для этого браузера и не подтверждают доставку каждого пуша. IP сохраняется только при настроенном доверенном прокси и не используется для определения владельца. Геолокация и пароли не записываются.</p>
     </details>
   </section>;
 }

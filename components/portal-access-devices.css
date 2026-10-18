@@ -45,7 +45,10 @@
 .access-summary-ok { color:#246747; }
 .access-summary-warning { color:#946014; }
 .access-summary-unknown { color:#62696f; }
-.access-column-head, .access-connection { display:grid; grid-template-columns:minmax(230px,1.2fr) minmax(160px,.72fr) minmax(260px,1.1fr) 112px; gap:16px; align-items:center; padding:12px 18px; }
+.access-column-head, .access-connection { display:grid; grid-template-columns:minmax(200px,1.3fr) minmax(135px,.85fr) minmax(160px,1fr) minmax(125px,.8fr) 108px; gap:14px; align-items:center; padding:14px 18px; }
+.access-version { display:flex; flex-direction:column; gap:4px; font-size:13px; }
+.access-version strong { font-weight:650; }
+.access-version-state { font-size:11px; line-height:1.4; }
 .access-column-head { color:#72777b; font-size:11px; padding-top:9px; padding-bottom:0; }
 .access-connection + .access-connection { border-top:1px solid #eeeae4; }
 .access-device { display:flex; gap:10px; align-items:center; min-width:0; }
@@ -107,11 +110,12 @@
 .access-dialog footer button { min-height:44px; padding:10px 22px; background:#292d31; color:white; border-radius:9px; font-weight:600; font-size:13px; }
 @media(max-width:1199px) {
   .access-column-head { display:none; }
-  .access-connection { grid-template-columns:minmax(200px,1fr) minmax(230px,1fr) 112px; gap:6px 16px; padding:16px 18px; }
+  .access-connection { grid-template-columns:minmax(0,1fr) minmax(150px,.8fr) 112px; gap:6px 16px; padding:16px 18px; }
   .access-device { grid-column:1; grid-row:1; }
   .access-last-seen { grid-column:1; grid-row:2; padding-left:44px; font-size:12px; }
   .access-last-seen .access-mobile-label { display:inline; color:#62696f; margin-right:6px; font-weight:400; }
-  .access-push { grid-column:2; grid-row:1/3; }
+  .access-push { grid-column:2; grid-row:1; }
+  .access-version { grid-column:2; grid-row:2; flex-direction:row; align-items:baseline; flex-wrap:wrap; gap:5px; }
   .access-detail-button { grid-column:3; grid-row:1/3; }
 }
 @media(max-width:899px) {
@@ -126,7 +130,8 @@
   .access-last-seen { grid-column:1/-1; grid-row:2; padding:0; display:flex; justify-content:space-between; gap:8px; }
   .access-mobile-label { display:block; color:#62696f; font-size:11px; font-weight:400; }
   .access-push { grid-column:1; grid-row:3; }
-  .access-detail-button { grid-column:2; grid-row:3; padding:8px 10px; }
+  .access-version { grid-column:1; grid-row:4; }
+  .access-detail-button { grid-column:2; grid-row:3/5; padding:8px 10px; }
   .access-push p { max-width:220px; }
   .access-history-head { display:none; }
   .access-history-row { grid-template-columns:1fr 1fr; }
@@ -134,7 +139,17 @@
   .access-dialog-content { padding:18px; }
 }
 @media(max-width:600px) {
+  .portal-neutral-design.admin-shell .admin-workspace .access-tabs { display:grid; grid-template-columns:minmax(0, .9fr) minmax(0, 1.5fr) minmax(0, .9fr); gap:2px; }
+  .portal-neutral-design.admin-shell .admin-workspace .access-tabs .admin-section-tab { flex:1; min-width:0; padding:10px 8px; font-size:12px; white-space:normal; }
   .access-filters { display:none; }
   .access-mobile-filter { display:block; margin:0 0 12px; }
   .access-mobile-filter select { width:100%; min-height:44px; border:1px solid #d8d1c8; border-radius:9px; background:white; padding:8px 12px; font-size:13px; color:#292d31; }
 }
+.access-refresh { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px 0; color:#667085; font-size:12px; flex-wrap:wrap; }
+.access-name-field { display:block; margin-top:12px; font-size:13px; font-weight:600; }
+.access-name-field input { display:block; width:100%; margin-top:6px; padding:10px 12px; border:1px solid #d8cfc6; border-radius:10px; background:#fff; color:#20262b; font-weight:400; }
+.access-current-connection { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 12px; margin: 12px 0; border: 1px solid #ded7cf; border-radius: 10px; background: #faf8f5; }
+.access-current-connection strong { font-size: 14px; color: #3b3029; }
+.access-current-connection p { font-size: 12px; color: #67625c; margin: 4px 0 0; }
+.access-current-marker { display: block; width: fit-content; font-size: 12px; font-weight: 600; color: #855129; margin: 0 0 6px; }
+@media (max-width: 600px) { .access-current-connection { align-items: stretch; flex-direction: column; gap: 10px; } }

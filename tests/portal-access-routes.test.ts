@@ -37,18 +37,21 @@ test('login still succeeds if journal is unavailable; it records no failed login
     const route = await mocked('app/api/auth/login/route.ts', {
       '@/lib/prisma': { prisma: { user: { findUnique: async () => ({ id: 42, role: 'EMPLOYEE', portalArea: 'PROCUREMENT', isActive: true, passwordHash: 'test-hash' }) } } },
       'bcryptjs': { compare: async () => passwordValid },
-      'next/headers': { cookies: async () => ({ set: (...args: any[]) => written.push(args), delete: () => {} }) },
+      'next/headers': { cookies: async () => ({ get: () => undefined, set: (...args: any[]) => written.push(args), delete: () => {} }) },
       '@/lib/portal-access-journal': { recordPortalAccess: async (p: any) => { recorded.push(p); throw Error('offline'); } },
     });
     const post = () => route.POST(new Request('https://portal.invalid/api/auth/login', { method: 'POST', body: JSON.stringify({ login: 'test', password: 'never-log-me' }) }));
     assert.equal((await post()).status, 401); assert.equal(recorded.length, 0);
-    passwordValid = true; assert.equal((await post()).status, 200); assert.equal(written.length, 1);
+    passwordValid = true; assert.equal((await post()).status, 200); assert.equal(written.length, 2);
+    assert.equal(written[0][0], 'mobo_access_browser');
+    assert.equal(recorded[0].browserInstanceId, written[0][1]);
     assert.equal(recorded[0].login, true); assert.doesNotMatch(JSON.stringify(recorded), /never-log-me|test-hash/);
   } finally { console.warn = warn; }
 });
 test('ADMIN page authorizes before journal reads and never selects auth hashes or push keys', async () => {
   let user: any = null; const queries: any[] = [];
   const route = await mocked('app/(dashboard)/admin/employees/access/page.tsx', {
+    'next/headers': { cookies: async () => ({ get: () => undefined }) },
     'next/link': () => null,
     'next/navigation': { redirect: (path: string) => { throw Error(`redirect:${path}`); } },
     'react/jsx-runtime': { jsx: (...args: any[]) => args, jsxs: (...args: any[]) => args },

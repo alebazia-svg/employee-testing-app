@@ -15,15 +15,19 @@ export function reportAppState(next: AppState) {
 export function appClientObservation(): AppObservation | undefined {
   const release = readAppRelease({ version: process.env.NEXT_PUBLIC_APP_VERSION, builtAt: process.env.NEXT_PUBLIC_APP_BUILT_AT });
   if (!release) return;
-  try {
-    if (!clientId) {
+  // Report the loaded build even if browser storage is blocked. Do not substitute
+  // the server's newest version: that would falsely claim the app was updated.
+  if (!clientId) {
+    // Unsupported crypto must not break the Workday updater effect either.
+    try { clientId = crypto.randomUUID(); } catch { return; }
+    try {
       const saved = sessionStorage.getItem('portal-app-client');
-      clientId = saved && /^[0-9a-f-]{36}$/i.test(saved) ? saved : crypto.randomUUID();
+      if (saved && /^[0-9a-f-]{36}$/i.test(saved)) clientId = saved;
       sessionStorage.setItem('portal-app-client', clientId);
       commandId = sessionStorage.getItem('portal-app-command') || undefined;
-    }
-    return { ...release, clientId, state, ...(commandId ? { commandId } : {}) };
-  } catch { return; }
+    } catch { state = 'storage_failed'; }
+  }
+  return { ...release, clientId, state, ...(commandId ? { commandId } : {}) };
 }
 export function acceptAppCommand(value: unknown) {
   if (!value || typeof value !== 'object') return;

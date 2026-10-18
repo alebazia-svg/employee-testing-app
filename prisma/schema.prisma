@@ -955,12 +955,13 @@ model WorkdayPushSubscription {
   @@index([userId, disabledAt])
 }
 
-// Journal only: never used to grant/revoke access. Raw auth cookies and IPs are not stored.
+// Journal only: never used to grant/revoke access. Raw auth cookies are not stored.
 model PortalAccessBrowserOwner {
   browserInstanceId String @id
   ownerUserId Int
   markedAt DateTime @default(now())
   disabledAt DateTime?
+  label String? @db.VarChar(80)
   owner User @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   @@index([ownerUserId])
 }
@@ -974,6 +975,8 @@ model PortalAccessSession {
   displayMode        String?
   contextCheckedAt   DateTime?
   browserInstanceId  String?
+  lastIp             String? @db.VarChar(45)
+  ipCheckedAt        DateTime?
   isService          Boolean @default(false)
   serviceMarkedAt    DateTime?
   serviceMarkedBy    Int?

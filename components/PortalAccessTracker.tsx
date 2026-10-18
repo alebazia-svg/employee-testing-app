@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { portalDisplayMode } from '../lib/portal-display-mode';
 import { appClientObservation, appStateEvent, acceptAppCommand } from '../lib/portal-app-client';
+import { observationWithin } from '../lib/portal-observation-deadline';
 
 /** Observes existing permission/subscription only; never prompts or subscribes. */
 export function PortalAccessTracker() {
@@ -22,8 +23,13 @@ export function PortalAccessTracker() {
         if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator)) permission = 'unsupported';
         else {
           permission = Notification.permission;
-          const registration = await navigator.serviceWorker.getRegistration();
-          endpoint = (await registration?.pushManager.getSubscription())?.endpoint;
+          const subscription = await observationWithin(async () => {
+            const registration = await navigator.serviceWorker.getRegistration();
+            return (await registration?.pushManager.getSubscription()) ?? null;
+          }, undefined);
+          // A timeout is unknown, not proof that the subscription is absent.
+          if (subscription === undefined) permission = 'unknown';
+          else endpoint = subscription?.endpoint;
         }
       } catch { permission = 'unknown'; }
       const displayMode = portalDisplayMode(query => window.matchMedia(query).matches, (navigator as Navigator & { standalone?: boolean }).standalone);
@@ -31,8 +37,9 @@ export function PortalAccessTracker() {
         const app = appClientObservation();
         const response = await fetch('/api/auth/activity', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permission, displayMode, ...(endpoint ? { endpoint } : {}), ...(app ? { app } : {}) }), signal: request.signal });
         if (response.ok && !stopped) acceptAppCommand((await response.json()).updateCommand);
+        else dirty = true;
       } }
-      catch { /* Optional journal cannot block the employee workflow. */ }
+      catch { dirty = true; /* Retry without blocking the employee workflow. */ }
       finally { busy = false; window.clearTimeout(timeout); abort.signal.removeEventListener('abort', cancel); }
     }
     void report();
