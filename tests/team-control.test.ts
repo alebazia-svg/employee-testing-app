@@ -155,6 +155,9 @@ test('one original day can open directly while several days keep explicit proven
 import { controlCompositionLabel } from '../lib/team-control-summary';
 test('mixed questions identify owner and employee responsibility without implying activity',()=>{assert.equal(controlCompositionLabel({decision:1,check:1,employee:1}),'Вам: 2 · сотруднику: 1');assert.equal(controlCompositionLabel({decision:0,check:2,employee:3}),'Вам: 2 · сотруднику: 3');assert.equal(controlCompositionLabel({decision:1,check:0,employee:0}),null);assert.equal(controlCompositionLabel({decision:1,check:1,employee:0}),'1 разрешение · 1 проверка');assert.equal(controlCompositionLabel({decision:11,check:21,employee:0}),'11 разрешений · 21 проверка')});
 
-test('missing app plan is one owner question even when also supplied as an alert',()=>{const summary=teamControlSummary({...summaryRow,planState:'unknown',alerts:['Нет записи графика приложения'],needsReview:true},'2026-10-19');assert.equal(summary.totalCount,1);assert.equal(summary.items[0].key,'schedule')});
-
-test('schedule clarification is not presented as a generic employee problem',()=>{assert.equal(teamControlSummary({...summaryRow,planState:'unknown'},'2026-10-19').label,'Уточнить график');assert.equal(teamControlSummary({...summaryRow,alerts:['Выход запланирован · уточните время начала смены']},'2026-10-19').label,'Уточнить график');assert.equal(teamControlSummary({...summaryRow,planState:'unknown',issues:[{id:1,title:'Чек',state:'Нужна помощь',meta:'',href:'/issue/1'}]},'2026-10-19').label,'Нужна проверка')});
+test('planning gaps stay out of operational questions, while real shift issues remain',()=>{
+ const missingPlan=teamControlSummary({...summaryRow,planState:'unknown',alerts:['Нет записи графика приложения'],needsReview:true},'2026-10-19');assert.equal(missingPlan.totalCount,0);assert.equal(missingPlan.kind,'normal');
+ const missingTime=teamControlSummary({...summaryRow,alerts:['Выход запланирован · уточните время начала смены'],review:'Выход запланирован · уточните время начала смены',needsReview:true},'2026-10-19');assert.equal(missingTime.totalCount,0);
+ const realIssue=teamControlSummary({...summaryRow,planState:'unknown',issues:[{id:1,title:'Чек',state:'Нужна помощь',meta:'',href:'/issue/1'}]},'2026-10-19');assert.equal(realIssue.totalCount,1);assert.equal(realIssue.label,'Нужна проверка');
+ const missingStart=teamControlSummary({...summaryRow,missing:true},'2026-10-19');assert.equal(missingStart.totalCount,1);assert.equal(missingStart.items[0].key,'missing');
+});
