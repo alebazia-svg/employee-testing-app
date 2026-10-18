@@ -12,6 +12,7 @@ export function teamControlSummary(row:ControlSummaryRow,date:string,ownerAction
  const inheritedCount=items.length;
  const seen=new Set<string>();
  for(const alert of row.alerts){
+  if(row.planState==='unknown'&&alert.startsWith('Нет записи графика'))continue;
   if(row.issues.some(issue=>alert===issue.title||alert.startsWith(`${issue.title} ·`)))continue;
   if(seen.has(alert))continue;seen.add(alert);
   items.push({key:`alert-${items.length}`,label:alert,href:detail(row.alertTargets[alert]),kind:alert.startsWith('Завершить рабочий день')?'decision':'check'});
@@ -25,7 +26,8 @@ export function teamControlSummary(row:ControlSummaryRow,date:string,ownerAction
  if(row.needsReview&&items.length===inheritedCount)items.push({key:'review',label:row.review,href:detail(),kind:'check'});
  const kind=items.some(item=>item.kind==='decision')?'decision':items.some(item=>item.kind==='check')?'check':items.length?'employee':(row.planState==='unavailable'||row.sourceUnavailable)?'unavailable':row.timing.length?'timing':'normal';
  const breakdown={decision:items.filter(item=>item.kind==='decision').length,check:items.filter(item=>item.kind==='check').length,employee:items.filter(item=>item.kind==='employee').length};
- const label={decision:'Ждёт разрешения',check:'Нужна проверка',employee:'Есть замечания',unavailable:'Нет данных',timing:'Сроки',normal:'—'}[kind];
+ const scheduleOnly=kind==='check'&&items.length>0&&items.every(item=>item.key==='schedule'||item.label.startsWith('Выход запланирован'));
+ const label=scheduleOnly?'Уточнить график':{decision:'Ждёт разрешения',check:'Нужна проверка',employee:'Есть замечания',unavailable:'Нет данных',timing:'Сроки',normal:'—'}[kind];
  const count=kind==='decision'||kind==='check'||kind==='employee'?breakdown[kind]:kind==='timing'?row.timing.length:0;
  const ordered=items.sort((a,b)=>['decision','check','employee'].indexOf(a.kind)-['decision','check','employee'].indexOf(b.kind));
  return {kind,label,breakdown,count,totalCount:items.length,originDates:[...new Set(items.map(item=>item.originDate??date))],items:ordered,timing:row.timing.map((text,index)=>({key:`timing-${index}`,label:text,href:detail(row.alertTargets[text])})),unavailable:row.planState==='unavailable'||Boolean(row.sourceUnavailable)};
