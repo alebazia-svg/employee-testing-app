@@ -101,13 +101,19 @@ project from scratch.
   cases close automatically, and the two scheduled manual credit tasks are no
   longer part of active retail templates.
 
-## Devices, notifications and app versions — production 1.5.9
+## Devices, notifications and app versions — production 1.5.10
+
+- Released 1.5.10 (`bf3250b`): `access-ip-diagnostics-20261018.md`.
+  Verified-proxy IP diagnostics enabled and checked live; latest observed IP
+  and time stay in details, not the main list or ownership rules. Removed the
+  redundant setup instruction below disconnected notification badges. No
+  migration or historical backfill.
 
 - Released 1.5.9 (`7e8ad90`): `access-device-evidence-20261018.md`.
   Bounded reported device details, explicit multi-browser grouping, origin and
   identity-binding timestamps, mismatch safeguards. Additive migration applied
   and verified; public origin corrected behind the reverse proxy. IP collection
-  remains disabled pending trusted-ingress verification.
+  was disabled in that release; enabled after ingress audit in 1.5.10 above.
 
 - Released list audit: `access-list-clarity-20261018.md`, runtime `d07d923`
   (1.5.4), following `cc650ea` (1.5.3). Compact employee rows, exact-browser
