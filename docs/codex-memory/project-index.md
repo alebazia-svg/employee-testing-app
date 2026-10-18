@@ -101,7 +101,14 @@ project from scratch.
   cases close automatically, and the two scheduled manual credit tasks are no
   longer part of active retail templates.
 
-## Devices, notifications and app versions — production 1.5.2
+## Devices, notifications and app versions — production 1.5.4
+
+- Released list audit: `access-list-clarity-20261018.md`, runtime `d07d923`
+  (1.5.4), following `cc650ea` (1.5.3). Compact employee rows, exact-browser
+  grouping in service view, retained newer legacy visits and read-only
+  `/connection` identification. Mac Бэлы / iPhone Бэлы labels verified live.
+  Dedicated Codex IAB assignment remains pending fresh-login identity verification;
+  never infer it from Mac/Chrome or silently merge historical unidentified visits.
 
 - Released: `access-admin-separation-20261018.md`, runtime `2139810` (1.5.2).
   Employee-only main list, separate ADMIN/cross-account connections, confirmed
