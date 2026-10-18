@@ -198,3 +198,10 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
   Released 2026-10-12 as 1.4.8, runtime `bbee494`. Real ADMIN badge verified
   empty while System retains diagnostics. The 1.4.6 daily technical summary is
   superseded; technical health is no longer an owner business task.
+
+## Workday and employee attention — production 1.7.0
+
+- Released runtime `949447d`: `workday-attention-release-20261018.md`.
+- ADMIN action queue and shift review; PWA current-action sheet, ordinary bell
+  preserved, technical reasons simplified, approved encashment omission final.
+- No schema/1C writes. Cross-day cash discrepancy automation remains future work.
