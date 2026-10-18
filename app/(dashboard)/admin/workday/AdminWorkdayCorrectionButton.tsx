@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { getShiftOptionsForDepartment } from '@/lib/workday';
 
 type Props = {
+  label?: string;
   employee: { id: number; name: string; department: string };
   date: string;
   scheduleStatus?: string;
@@ -14,7 +15,7 @@ type Props = {
   vacation?: { id: string; dateFrom: string; dateTo: string } | null;
 };
 
-export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, workDay, vacation }: Props) {
+export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, workDay, vacation, label = 'Изменить' }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -47,7 +48,7 @@ export function AdminWorkdayCorrectionButton({ employee, date, scheduleStatus, w
   return (
     <>
       <button type='button' onClick={() => setOpen(true)} className='inline-flex h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-xs font-extrabold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-50'>
-        <Pencil className='h-3.5 w-3.5' /> Изменить
+        <Pencil className='h-3.5 w-3.5' /> {label}
       </button>
       {open && (
         <div className='fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px] sm:items-center sm:p-5' role='dialog' aria-modal='true' aria-label={`Исправить данные ${employee.name}`} onClick={(event) => {

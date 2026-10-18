@@ -1,3 +1,4 @@
+import { TeamScheduleServer } from '@/components/admin/TeamScheduleServer';
 import { AlertCircle, CalendarCheck, CheckCircle2, Clock, Timer, Users } from 'lucide-react';
 import { AdminShell } from '@/components/AdminShell';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,8 @@ import { getMoscowDateKey } from '@/lib/workday';
 export const dynamic = 'force-dynamic';
 
 type SearchParams = {
+  date?: string;
+  view?: string;
   month?: string;
   employee?: string;
   status?: string;
@@ -480,7 +483,7 @@ function actionClass(action: string) {
   return 'bg-amber-100 text-amber-800';
 }
 
-function applyFilters(rows: ParsedMark[], summaries: DailySummary[], filters: Required<SearchParams>) {
+function applyFilters(rows: ParsedMark[], summaries: DailySummary[], filters: Required<Pick<SearchParams, 'month' | 'employee' | 'status'>>) {
   const filteredSummaries = summaries.filter((summary) => {
     if (filters.month !== ALL && summary.monthKey !== filters.month) return false;
     if (filters.employee !== ALL && summary.employee !== filters.employee) return false;
@@ -498,7 +501,7 @@ function applyFilters(rows: ParsedMark[], summaries: DailySummary[], filters: Re
   return { filteredRows, filteredSummaries };
 }
 
-function applyPlanFactFilters(rows: PlanFactRow[], filters: Required<SearchParams>) {
+function applyPlanFactFilters(rows: PlanFactRow[], filters: Required<Pick<SearchParams, 'month' | 'employee' | 'status'>>) {
   return rows.filter((row) => {
     if (filters.month !== ALL && row.monthKey !== filters.month) return false;
     if (!employeeMatchesFilter(row.employee, row.matchedEmployee, filters.employee)) return false;
@@ -563,7 +566,7 @@ function FilterBar({
   months: string[];
   employees: string[];
   statuses: string[];
-  filters: Required<SearchParams>;
+  filters: Required<Pick<SearchParams, 'month' | 'employee' | 'status'>>;
 }) {
   return (
     <form className='mb-5 grid gap-3 rounded-lg border border-border bg-white p-4 md:grid-cols-4'>
@@ -929,7 +932,9 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
   const isDemo = data.mode === 'demo';
 
   return (
-    <AdminShell pageTitle="Посещаемость" pageDescription="Временный отчёт по графику и отметкам из Google Sheets до перехода сотрудников на портал.">
+    <AdminShell pageTitle="График" pageDescription="План команды, источники учёта и сверка с фактическими отметками.">
+      <TeamScheduleServer date={/^\d{4}-\d{2}-\d{2}$/.test(searchParams.date ?? '') && !Number.isNaN(Date.parse(searchParams.date+'T00:00:00Z')) ? searchParams.date! : getMoscowDateKey()} view={searchParams.view} />
+      <details className="team-panel team-prose"><summary className="cursor-pointer font-semibold">Подробный отчёт Google · прежние фильтры и история</summary>
       <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
         <div>
           <p className='mt-1 text-sm font-medium text-slate-500'>На текущем этапе явка считается подтверждённой по отметке начала рабочего дня. Отсутствие отметки ухода фиксируется отдельно и не обнуляет явку.</p>
@@ -1027,6 +1032,7 @@ export default async function AdminAttendancePage(props: { searchParams: Promise
         </div>
         </summary>
         {filteredRows.length ? <RawTable rows={filteredRows} /> : <div className='p-6 text-sm text-slate-500'>Нет отметок по выбранным фильтрам.</div>}
+      </details>
       </details>
     </AdminShell>
   );

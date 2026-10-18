@@ -1,3 +1,6 @@
+import { TeamDailyControl, type TeamDayRow } from '@/components/admin/TeamDailyControl';
+import { getTeamGoogleSnapshot } from '@/lib/team-control-source';
+import { googleDay, usesAppSchedule, clockLabel, taskTimingLabel } from '@/lib/team-control';
 import Link from 'next/link';
 import { hasTechnicalWorkdayClose, workdayTaskProgressLabel } from '@/lib/workday-close-view';
 import { redirect } from 'next/navigation';
@@ -1373,7 +1376,9 @@ export default async function AdminWorkdayPage(
   const acquiringPendingCount = acquiringTaskRows.filter((row) => row.status.problem && row.task.integerValue !== 2).length;
   const acquiringDiscrepancyCount = acquiringTaskRows.filter((row) => row.task.integerValue === 2).length;
   const acquiringNoPaymentsCount = acquiringTaskRows.filter((row) => row.task.integerValue === 0).length;
+  const googleSnapshot = await getTeamGoogleSnapshot();
   const employeeControlRows = employees
+    .filter(employee => employee.department === 'retail' || employee.department === 'wholesale')
     .map((employee) => {
       const schedule = scheduleByUser.get(employee.id);
       const vacation = vacationByUser.get(employee.id) ?? null;
@@ -1414,10 +1419,11 @@ export default async function AdminWorkdayPage(
       const incompleteCount = unresolvedAutoChecks.filter((check) => (
         check.manualReview?.decision !== 'confirmed_issue'
         && (check.status === 'waiting' || check.status === 'unavailable')
+        && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')
       )).length;
       const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed').length;
       const businessAttentionReasons = [
-        !schedule && !vacation ? 'График не заполнен' : null,
+        usesAppSchedule(employee.name) && !schedule && !vacation ? 'Нет записи графика приложения' : null,
         hasStaleCloseViolation(workDay, run) ? 'Закрыто без сдачи смены' : null,
         missedTaskCount > 0 ? `Пропущено проверок: ${missedTaskCount}` : null,
         mismatchCount > 0
@@ -1544,7 +1550,7 @@ export default async function AdminWorkdayPage(
       ? row.activeWorkDay || matchesAdminWorkdayControlFilter(row.category, 'active')
       : matchesAdminWorkdayControlFilter(row.category, selectedControlFilter)
   ));
-  const reviewableEmployeeRows = filteredEmployeeControlRows.filter((row) => row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0);
+  const reviewableEmployeeRows = employeeControlRows.filter((row) => row.requiredIssues.length > 0 || row.run || row.workDay || row.timingViolations.length > 0);
   const controlFilterHref = (filter: AdminWorkdayControlFilter) => `/admin/workday?date=${selectedDate}&control=${filter}#employees-control`;
   const employeeDetailHref = (employeeId: number) => (
     `/admin/workday?date=${selectedDate}&control=${selectedControlFilter}&employee=${employeeId}#employees-control`
@@ -1582,7 +1588,7 @@ export default async function AdminWorkdayPage(
   const showTechnical = searchParams?.technical === '1';
 
   return (
-    <AdminShell pageTitle="Контроль дня" pageDescription="Состояние сотрудников и текущие отклонения. Ваши решения и новые обращения собраны на главной.">
+    <AdminShell pageTitle="Контроль дня" pageDescription="План, фактические отметки и проверки смен по отделам.">
       <AdminWorkdayAutoRefresh date={selectedDate} revision={liveRevision} />
       <div className='space-y-6'>
         <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -1627,77 +1633,36 @@ export default async function AdminWorkdayPage(
           </Card>
         )}
 
-        <Card className='admin-material-surface p-0' id='employees-control'>
-          <div className='flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-end lg:justify-between'>
-            <div>
-              <h2 className='text-lg font-extrabold text-slate-950'>Состояние сотрудников</h2>
-              <p className='mt-1 text-sm font-medium text-slate-500'>
-                Сначала показаны работающие сотрудники и те, у кого есть активная проблема или отклонение.
-              </p>
-            </div>
-            <div className='flex flex-wrap gap-2 text-xs font-extrabold'>
-              {([
-                ['active', `Главное сейчас · ${focusEmployeeCount}`],
-                ['pending', `Ожидаются · ${pendingEmployeeCount}`],
-                ['normal', `Без проблем · ${normalEmployeeCount}`],
-                ['all', `Все · ${employeeControlRows.length}`],
-              ] as Array<[AdminWorkdayControlFilter, string]>).map(([filter, label]) => (
-                <Link
-                  key={filter}
-                  href={controlFilterHref(filter)}
-                  className={`rounded-lg px-3 py-2 ring-1 transition ${
-                    selectedControlFilter === filter
-                      ? 'admin-material-filter-active text-white ring-slate-950'
-                      : 'admin-material-control text-slate-700 ring-slate-200'
-                  }`}
-                >
-                  {label}
-                </Link>
-              ))}
-            </div>
-          </div>
-          {filteredEmployeeControlRows.length === 0 ? (
-            <div className='flex items-center gap-3 px-5 py-5 text-sm font-semibold text-slate-600'><span className='flex h-8 w-8 items-center justify-center rounded-full bg-green-100 text-green-700'>✓</span>В этой категории сотрудников нет.</div>
-          ) : (
-            <div className='divide-y divide-slate-100'>
-              {filteredEmployeeControlRows.map((row) => {
-                const currentShiftState = shiftState(row.workDay, row.effectiveScheduleStatus, Boolean(row.vacation), row.run);
-                const technicalClose = hasTechnicalWorkdayClose(row.workDay, row.run);
-                const missedTaskCount = row.run?.tasks.filter((task) => task.status === 'missed').length ?? 0;
-                const reviewableIndex = reviewableEmployeeRows.findIndex((reviewableRow) => reviewableRow.employee.id === row.employee.id);
-                const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex - 1] : null;
-                const nextEmployeeRow = reviewableIndex >= 0 && reviewableIndex < reviewableEmployeeRows.length - 1
-                  ? reviewableEmployeeRows[reviewableIndex + 1]
-                  : null;
-                return (
-                  <div key={row.employee.id} className='admin-control-row grid gap-3 px-5 py-4 transition lg:grid-cols-[minmax(220px,0.9fr)_minmax(180px,0.75fr)_minmax(260px,1.25fr)_auto] lg:items-center'>
-                    <div className='min-w-0'>
-                      <p className='truncate font-extrabold text-slate-950'>{row.employee.name}</p>
-                      <p className='mt-0.5 text-xs font-semibold text-slate-400'>{departmentLabel(row.employee.department)}</p>
-                    </div>
-                    <div className='flex min-w-0 flex-wrap items-center gap-2'>
-                      <Badge className={currentShiftState.className}>{currentShiftState.label}</Badge>
-                      {row.workDay?.shiftLabel && <span className='text-xs font-bold text-slate-600'>{row.workDay.shiftLabel}</span>}
-                    </div>
-                    <div className='min-w-0'>
-                      <div className='flex flex-wrap items-center gap-2'>
-                        <Badge className={row.requiredIssues.length > 0 ? 'bg-amber-100 text-amber-800' : row.activeWorkDay && row.category === 'normal' ? 'bg-green-100 text-green-800' : row.businessStatus.className}>
-                          {row.requiredIssues.length > 0 ? 'Исправляет сотрудник' : row.activeWorkDay && row.category === 'normal' ? 'Идёт по плану' : row.businessStatus.label}
-                        </Badge>
-                        <span className='text-xs font-semibold text-slate-400'>{workdayTaskProgressLabel({
-                          completed: row.completedTaskCount,
-                          missed: missedTaskCount,
-                          total: row.totalTaskCount,
-                          technicalClose,
-                        })}</span>
-                      </div>
-                      <p className={`mt-1.5 text-sm font-semibold leading-relaxed ${
-                        row.category === 'error' ? 'text-rose-800' : row.category === 'attention' ? 'text-amber-800' : row.category === 'pending' ? 'text-slate-600' : 'text-green-700'
-                      }`}>{row.reviewText}</p>
-                      {row.primaryIssueLifecycle && <p className='mt-1 text-xs font-semibold text-slate-400'>{row.primaryIssueLifecycle}</p>}
-                    </div>
-                    <div className='flex items-center gap-2 lg:justify-end'>
+        <TeamDailyControl date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
+          rows={employeeControlRows.map((row): TeamDayRow => {
+            const app = usesAppSchedule(row.employee.name);
+            const google = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
+            const planState = row.vacation ? 'vacation' : app ? row.schedule?.status ?? 'unknown' : googleSnapshot.planAvailable ? google.plan ?? 'unknown' : 'unavailable';
+            const start = app ? row.workDay ? formatTime(row.workDay.startedAt) : '—' : clockLabel(google.arrival);
+            const end = app ? row.workDay?.endedAt ? formatTime(row.workDay.endedAt) : '—' : clockLabel(google.departure);
+            const shift = app ? row.workDay?.shiftLabel ?? '' : google.shift;
+            const lastStart = row.employee.department === 'retail' ? 660 : 600;
+            const missing = planState === 'working' && start === '—' && (app || googleSnapshot.marksAvailable) && (selectedDate < today || selectedDate === today && nowMinutes > lastStart);
+            const nextTask = row.run?.tasks.filter(t=>t.status!=='done'&&t.status!=='missed'&&t.plannedTimeMinutes!==null).sort((a,b)=>a.plannedTimeMinutes!-b.plannedTimeMinutes!)[0];
+            const completedTask = row.run?.tasks.filter(t=>t.status==='done'&&t.completedAt).sort((a,b)=>b.completedAt!.getTime()-a.completedAt!.getTime())[0];
+            const timing = app ? row.timingViolations.map(v=>v.detail) : [];
+            const timely = completedTask ? taskTimingLabel(completedTask.plannedTimeMinutes, completedTask.completedAt?.toISOString() ?? null, selectedDate).text : '';
+            return {id:row.employee.id,name:row.employee.name,department:row.employee.department,source:app?'Приложение · пилот':'Google',planState,
+              plan:planState==='vacation'?'Отпуск':planState==='working'?'Рабочий день':planState==='off'?'Выходной':planState==='unavailable'?'Источник недоступен':'Нет записи графика',shift,start,end,
+              state:app&&row.activeWorkDay?'Работает':end!=='—'?'Завершение отмечено':start!=='—'?'Начало отмечено':planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Нет начала по плану':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало',
+              active:app&&row.activeWorkDay,late:app?row.workDay?.lateMinutes??0:google.lateMinutes,missing,
+              review:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention') ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
+              next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:app&&(row.category==='error'||row.category==='attention'),timing,issues:row.requiredIssues};
+          })}
+          controls={employeeControlRows.map(row => {
+            const googleControl = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
+            const reviewableIndex = reviewableEmployeeRows.findIndex(r=>r.employee.id===row.employee.id);
+            const previousEmployeeRow = reviewableIndex > 0 ? reviewableEmployeeRows[reviewableIndex-1] : null;
+            const nextEmployeeRow = reviewableIndex >= 0 ? reviewableEmployeeRows[reviewableIndex+1] : null;
+            return (
+                    <div key={row.employee.id} className='flex flex-wrap items-center gap-2 lg:justify-end'>
                       <AdminWorkdayCorrectionButton
+                        label={usesAppSchedule(row.employee.name) ? 'Изменить' : 'План приложения'}
                         employee={{ id: row.employee.id, name: row.employee.name, department: row.employee.department }}
                         date={selectedDate}
                         scheduleStatus={row.schedule?.status}
@@ -1709,7 +1674,8 @@ export default async function AdminWorkdayPage(
                           employeeName={row.employee.name}
                           department={row.employee.department}
                           departmentName={departmentLabel(row.employee.department)}
-                          scheduleLabel={row.vacation ? `Отпуск · ${formatDateLabel(row.vacation.dateFrom)} — ${formatDateLabel(row.vacation.dateTo)}` : scheduleStatusLabel(row.effectiveScheduleStatus)}
+                          attendanceNote={!usesAppSchedule(row.employee.name) ? `Google: начало ${clockLabel(googleControl.arrival)}, завершение ${clockLabel(googleControl.departure)}. Отметки приложения показаны отдельно.` : undefined}
+                          scheduleLabel={!usesAppSchedule(row.employee.name) ? googleControl.plan === 'working' ? 'Рабочий день · Google' : googleControl.plan === 'off' ? 'Выходной · Google' : 'Нет записи графика Google' : row.vacation ? `Отпуск · ${formatDateLabel(row.vacation.dateFrom)} — ${formatDateLabel(row.vacation.dateTo)}` : scheduleStatusLabel(row.effectiveScheduleStatus)}
                           run={serializeShiftControlRun(row.run)}
                           workDay={row.workDay ? {
                             status: row.workDay.status,
@@ -1741,7 +1707,7 @@ export default async function AdminWorkdayPage(
                           } : null}
                           dateKey={selectedDate}
                           autoChecks={row.autoChecks}
-                          timingViolations={row.timingViolations}
+                          timingViolations={usesAppSchedule(row.employee.name) ? row.timingViolations : row.timingViolations.filter(v=>v.taskId!==null)}
                           terminalFiscalControl={row.terminalFiscalControl ? {
                             total: row.terminalFiscalControl.total,
                             statuses: row.terminalFiscalControl.statuses,
@@ -1765,7 +1731,7 @@ export default async function AdminWorkdayPage(
                             href: employeeDetailHref(nextEmployeeRow.employee.id),
                           } : null}
                         />
-                      ) : <span className='text-xs font-semibold text-slate-400'>Нет данных</span>}
+                      ) : <span className='text-xs font-semibold text-slate-400'>{usesAppSchedule(row.employee.name) ? 'Нет проверок' : 'Нет проверок приложения'}</span>}
                       {(devWorkdayToolsEnabled || row.employee.login === 'kkm_test') && <div className='flex flex-col gap-2'>
                         {!row.workDay && row.shiftControlRequired && <DevCreateTestShiftButtons userId={row.employee.id} userName={row.employee.name} department={row.employee.department} date={selectedDate} />}
                         {row.shiftControlRequired && row.run && <DevMakeShiftTasksAvailableButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />}
@@ -1778,12 +1744,9 @@ export default async function AdminWorkdayPage(
                         <DevResetTodayButton userId={row.employee.id} userName={row.employee.name} date={selectedDate} />
                       </div>}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
+            );
+          })}
+        />
 
         <details className='group admin-material-surface rounded-xl ring-1 ring-slate-200'>
           <summary className='cursor-pointer list-none px-5 py-4'>

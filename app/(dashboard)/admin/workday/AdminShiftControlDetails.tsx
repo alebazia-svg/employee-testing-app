@@ -1,4 +1,5 @@
 'use client';
+import { taskTimingLabel } from '@/lib/team-control';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -79,6 +80,7 @@ type Props = {
   scheduleLabel: string;
   run: ShiftRun | null;
   workDay: WorkDayInfo;
+  attendanceNote?: string;
   dateKey: string;
   autoChecks?: ShiftAutoCheck[];
   timingViolations?: WorkdayTimingViolation[];
@@ -786,18 +788,23 @@ function cashOperationDecisionSummary(summary: string) {
 
 function TaskOverviewRow({
   item,
+  dateKey,
+  overdueMinutes,
   department,
   run,
   onPreview,
   onManualReview,
 }: {
   item: ReviewedTask;
+  dateKey: string;
+  overdueMinutes?: number | null;
   department: string;
   run: ShiftRun;
   onPreview: (photo: PhotoPreview) => void;
   onManualReview: (check: ShiftAutoCheck) => void;
 }) {
   const state = taskBusinessState(item);
+  const timing = taskTimingLabel(item.task.plannedTimeMinutes, item.task.completedAt, dateKey, item.status === 'overdue' ? overdueMinutes : undefined);
   const statusClassName = {
     error: 'bg-rose-100 text-rose-800',
     attention: 'bg-amber-100 text-amber-800',
@@ -814,7 +821,7 @@ function TaskOverviewRow({
     <details className='group border-t border-slate-200 first:border-t-0'>
       <summary className='grid cursor-pointer list-none gap-2 px-4 py-3 transition hover:bg-slate-50 md:grid-cols-[minmax(210px,1.3fr)_90px_150px_minmax(220px,1.5fr)_72px] md:items-center'>
         <span className='font-extrabold text-slate-950'>{taskDisplayTitle(item.task)}</span>
-        <span className='text-sm font-semibold text-slate-600'>{minutesToTime(item.task.plannedTimeMinutes)}</span>
+        <span className='text-xs text-slate-600'>Срок <b>{minutesToTime(item.task.plannedTimeMinutes)}</b><span className='block mt-1'>Выполнено <b>{formatTime(item.task.completedAt)}</b></span><span className={`team-timing-label ${timing.tone}`}>{item.task.status === 'missed' ? 'Пропущено' : item.task.status !== 'done' && state.tone === 'pending' ? 'Срок впереди' : timing.text}</span></span>
         <Badge className={`w-fit ${statusClassName}`}>{state.label}</Badge>
         <span className={`text-sm font-semibold ${state.tone === 'error' ? 'text-rose-800' : state.tone === 'attention' ? 'text-amber-800' : 'text-slate-600'}`}>{state.result}</span>
         <span className='text-sm font-extrabold text-slate-500 group-open:hidden'>Открыть</span>
@@ -846,6 +853,7 @@ export function AdminShiftControlDetails({
   run,
   workDay,
   dateKey,
+  attendanceNote,
   autoChecks = [],
   timingViolations = [],
   terminalFiscalControl = null,
@@ -1055,7 +1063,7 @@ export function AdminShiftControlDetails({
     ));
   }, [autoChecksByTask, detailTasks, timingViolationByTaskId]);
   const keyProblems = overviewTasks.filter((item) => (
-    taskBusinessState(item).tone === 'error' || item.status === 'overdue'
+    taskBusinessState(item).tone === 'error' || taskBusinessState(item).tone === 'attention' || item.status === 'overdue'
   ));
   const autoSummary = autoCheckSummary(autoChecks);
   const workdayTimingViolations = timingViolations.filter((violation) => violation.taskId === null);
@@ -1356,6 +1364,7 @@ export function AdminShiftControlDetails({
               </details>
             </div></>)}
             <div className='min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
+              {attendanceNote && <p className='mb-4 rounded-lg bg-stone-50 p-3 text-sm text-stone-700'>{attendanceNote}</p>}
               <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
                 <div>
                   <p className='text-sm font-extrabold text-slate-950'>
@@ -1484,10 +1493,10 @@ export function AdminShiftControlDetails({
 
               {overviewTasks.length > 0 ? <section className='overflow-hidden rounded-xl bg-white ring-1 ring-slate-200'>
                 <div className='hidden grid-cols-[minmax(210px,1.3fr)_90px_150px_minmax(220px,1.5fr)_72px] gap-2 bg-slate-50 px-4 py-2 text-xs font-bold uppercase text-slate-400 md:grid'>
-                  <span>Проверка</span><span>Время</span><span>Статус</span><span>Результат</span><span></span>
+                  <span>Проверка</span><span>Срок / факт</span><span>Статус</span><span>Результат</span><span></span>
                 </div>
                 {overviewTasks.map((item) => (
-                  <TaskOverviewRow key={item.task.id} item={item} department={department} run={run!} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
+                  <TaskOverviewRow key={item.task.id} dateKey={dateKey} overdueMinutes={timingViolationByTaskId.get(item.task.id)?.minutesLate} item={item} department={department} run={run!} onPreview={setSelectedPhoto} onManualReview={openManualReview} />
                 ))}
               </section> : null}
 
