@@ -1,4 +1,4 @@
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.5';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.6';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
@@ -21,6 +21,7 @@ export type MatchingReasonCode =
   | 'ONE_C_CANDIDATE_NOT_FOUND'
   | 'ONE_C_MULTIPLE_CANDIDATES'
   | 'ONE_C_CHECK_REUSED'
+  | 'ONE_C_POSSIBLE_SPLIT_SALE'
   | 'ONE_C_MULTIPLE_CARD_PAYMENTS'
   | 'ONE_C_UNSUPPORTED_DOCUMENT'
   | 'FISCAL_DATA_PENDING'
@@ -58,6 +59,7 @@ export const MATCHING_REASON_CODE_CONTRACT = {
   ONE_C_CANDIDATE_NOT_FOUND: { meaning: 'После grace period не найден чек ККМ или эквайринговая операция 1С по строгим критериям', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_MULTIPLE_CANDIDATES: { meaning: 'Найдено несколько равноправных документов 1С', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_CHECK_REUSED: { meaning: 'Один документ 1С претендует на несколько банковских операций', allowedStatuses: ['needs_review'], employeeVisible: false },
+  ONE_C_POSSIBLE_SPLIT_SALE: { meaning: 'Части продажи в 1С по сумме и товарам согласуются с общим чеком ОФД, связь требует проверки', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_MULTIPLE_CARD_PAYMENTS: { meaning: 'В чеке несколько карточных строк; случай вне MVP', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_UNSUPPORTED_DOCUMENT: { meaning: 'Документ 1С является кредитом или коррекцией; случай вне MVP', allowedStatuses: ['needs_review'], employeeVisible: false },
   FISCAL_DATA_PENDING: { meaning: 'Полная фискальная тройка ещё может появиться в grace period', allowedStatuses: ['pending'], employeeVisible: false },
@@ -520,6 +522,46 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     context.candidates = [candidate];
   });
 
+  // Resolve only forced one-to-one assignments. Item/fiscal proof confirms
+  // that the candidate really is a receipt; it never invents a bank link.
+  // Equal two-by-two alternatives remain ambiguous instead of being guessed.
+  function hasReceiptProof(context: Context, check: OneCCheck) {
+    if (isAcquiringOperation(check) || check.fiscalConflict || check.fiscalState !== 'confirmed'
+      || !check.items.length || !canonicalFiscalKey(check)) return false;
+    const receipts = input.ofdReceipts.filter(receipt => canonicalFiscalKey(receipt) === canonicalFiscalKey(check));
+    if (receipts.length !== 1) return false;
+    const receipt = receipts[0];
+    return receipt.operationType === expectedOfdOperationType(context.operationType!)
+      && receipt.kktRegistrationNumber === context.mapping?.kktRegistrationNumber
+      && receipt.totalKopecks === check.totalKopecks
+      && receipt.electronicKopecks === check.electronicKopecks
+      && receipt.electronicKopecks === context.operation.amountKopecks
+      && sameItems(check.items, receipt.items);
+  }
+  if (!sourceFailure(input)) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const uses = new Map<string, number>();
+      for (const context of contexts) {
+        if (context.candidates.length !== 1) continue;
+        const ref = context.candidates[0].check.sourceRef;
+        uses.set(ref, (uses.get(ref) ?? 0) + 1);
+      }
+      const reserved = new Set(contexts.flatMap(context => context.candidates.length === 1
+        && uses.get(context.candidates[0].check.sourceRef) === 1
+        && hasReceiptProof(context, context.candidates[0].check)
+        ? [context.candidates[0].check.sourceRef] : []));
+      for (const context of contexts) {
+        if (context.candidates.length < 2) continue;
+        const remaining = context.candidates.filter(candidate => !reserved.has(candidate.check.sourceRef));
+        if (remaining.length !== 1 || !hasReceiptProof(context, remaining[0].check)) continue;
+        context.candidates = remaining;
+        changed = true;
+      }
+    }
+  }
+
   function hasExcludedMultipleCardCandidate(context: Context) {
     if (!context.mapping || !context.operationType) return false;
     const bankAt = timestamp(context.operation.transactionDate);
@@ -555,12 +597,47 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
   }
 
   const checkCandidateUse = new Map<string, number>();
+  const fiscalCandidateUse = new Map<string, number>();
   contexts.forEach((context) => {
     if (context.candidates.length === 1) {
       const ref = context.candidates[0].check.sourceRef;
       checkCandidateUse.set(ref, (checkCandidateUse.get(ref) ?? 0) + 1);
+      const key = canonicalFiscalKey(context.candidates[0].check);
+      if (key) fiscalCandidateUse.set(key, (fiscalCandidateUse.get(key) ?? 0) + 1);
     }
   });
+
+  function possibleSplitSale(context: Context) {
+    const bankAt = timestamp(context.operation.transactionDate);
+    if (!context.mapping || !context.operationType || bankAt === null) return false;
+    const parts = input.oneCChecks.filter(check => {
+      const at = timestamp(check.dateTime);
+      return !isAcquiringOperation(check) && !check.fiscalConflict && check.items.length > 0
+        && oneCOperationType(check) === context.operationType && check.cardPayments.length === 1
+        && check.cashRegisterRef === context.mapping!.oneCCashRegisterRef
+        && check.cardPayments[0].acquiringTerminalRef === context.mapping!.oneCAcquiringTerminalRef
+        && check.cardPayments[0].amountKopecks === check.electronicKopecks
+        && check.electronicKopecks > 0 && check.electronicKopecks < context.operation.amountKopecks
+        && !checkCandidateUse.has(check.sourceRef) && at !== null
+        && at >= bankAt - TERMINAL_FISCAL_TIME_TOLERANCE_MS
+        && at <= bankAt + TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS;
+    });
+    const byAmount = new Map<number, OneCCheck[]>();
+    for (const part of parts) byAmount.set(part.electronicKopecks, [...(byAmount.get(part.electronicKopecks) ?? []), part]);
+    for (const first of parts) {
+      for (const second of byAmount.get(context.operation.amountKopecks - first.electronicKopecks) ?? []) {
+        if (first.sourceRef === second.sourceRef
+          || Math.abs(Date.parse(first.dateTime) - Date.parse(second.dateTime)) > TERMINAL_FISCAL_TIME_TOLERANCE_MS) continue;
+        if (input.ofdReceipts.some(receipt => receipt.operationType === expectedOfdOperationType(context.operationType!)
+          && receipt.kktRegistrationNumber === context.mapping!.kktRegistrationNumber
+          && receipt.totalKopecks === first.totalKopecks + second.totalKopecks
+          && receipt.electronicKopecks === context.operation.amountKopecks
+          && Math.abs(Date.parse(receipt.receiptAt) - Date.parse(first.dateTime)) <= TERMINAL_FISCAL_TIME_TOLERANCE_MS
+          && sameItems([...first.items, ...second.items], receipt.items))) return true;
+      }
+    }
+    return false;
+  }
 
   const globalSourceFailure = sourceFailure(input);
   const records = contexts.map((context): MatchingAuditRecord => {
@@ -611,10 +688,13 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     } else if (context.candidates.length > 1) {
       reasonCode = 'ONE_C_MULTIPLE_CANDIDATES';
     } else if (context.candidates.length === 0) {
+      const splitSale = possibleSplitSale(context);
       const multipleCardPayments = hasExcludedMultipleCardCandidate(context);
       const unsupportedDocument = hasExcludedDocumentCandidate(context);
-      status = multipleCardPayments || unsupportedDocument ? 'needs_review' : isPending ? 'pending' : 'needs_review';
-      reasonCode = multipleCardPayments
+      status = splitSale || multipleCardPayments || unsupportedDocument ? 'needs_review' : isPending ? 'pending' : 'needs_review';
+      reasonCode = splitSale
+        ? 'ONE_C_POSSIBLE_SPLIT_SALE'
+        : multipleCardPayments
         ? 'ONE_C_MULTIPLE_CARD_PAYMENTS'
         : unsupportedDocument
           ? 'ONE_C_UNSUPPORTED_DOCUMENT'
@@ -624,7 +704,8 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     } else {
       oneCCheck = context.candidates[0].check;
       timeDifferenceSeconds = Math.round(context.candidates[0].difference / 1000);
-      if ((checkCandidateUse.get(oneCCheck.sourceRef) ?? 0) > 1) {
+      if ((checkCandidateUse.get(oneCCheck.sourceRef) ?? 0) > 1
+        || (fiscalCandidateUse.get(canonicalFiscalKey(oneCCheck) ?? '') ?? 0) > 1) {
         reasonCode = 'ONE_C_CHECK_REUSED';
       } else if (isAcquiringOperation(oneCCheck)) {
         const receipts = input.ofdReceipts.filter((receipt) => {

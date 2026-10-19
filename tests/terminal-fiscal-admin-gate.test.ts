@@ -129,3 +129,17 @@ test('manual KKM assignment wins and nonstandard staffing stays shared', async (
   assert.equal(result.confidence, 'uncertain');
   assert.equal(result.primary, null);
 });
+
+test('possible split withdraws an earlier missing-check request and stays ADMIN-only', async () => {
+  const f=fixture(); await stageFiscalAdminReview(f.db,f.record);
+  const id=f.reviews[0].id;
+  await approveFiscalReview(f.db,id,1,[4,5],()=> 'Проверьте чек');
+  assert.equal(f.reviews[0].status,'open');
+  await stageFiscalAdminReview(f.db,{...f.record,reasonCode:'ONE_C_POSSIBLE_SPLIT_SALE'});
+  assert.equal(f.reviews[0].status,'admin_review');
+  assert.ok(f.notifications.every(n=>n.status!=='pending'));
+  const event=f.events.find(e=>e.eventKey.endsWith(':admin-first'));
+  assert.equal(event.title,'Возможное разделение продажи');
+  assert.match(event.body,/товары/);
+  await assert.rejects(approveFiscalReview(f.db,id,1,[4,5],()=> 'Пробейте чек'),/REVIEW_NOT_AVAILABLE/);
+});

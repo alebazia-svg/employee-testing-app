@@ -292,6 +292,25 @@ async function fetchJson(url: string, init?: RequestInit) {
 }
 
 export async function loadOneCKkmChecks(input: { fromDate: string; toDate: string }): Promise<SourceSnapshot<OneCCheck>> {
+  // /kkm-checks accepts at most seven days, while late-receipt evidence
+  // includes the operation day plus the following seven days.
+  const from = Date.parse(`${input.fromDate}T00:00:00.000Z`);
+  const to = Date.parse(`${input.toDate}T00:00:00.000Z`);
+  const windowMs = 7 * 24 * 60 * 60 * 1000;
+  if (Number.isFinite(from) && Number.isFinite(to) && to - from > windowMs) {
+    const data: OneCCheck[] = [];
+    let checkedAt = new Date().toISOString();
+    for (let start = from; start < to; start += windowMs) {
+      const part = await loadOneCKkmChecks({
+        fromDate: new Date(start).toISOString().slice(0, 10),
+        toDate: new Date(Math.min(start + windowMs, to)).toISOString().slice(0, 10),
+      });
+      data.push(...part.data);
+      checkedAt = part.checkedAt;
+      if (!part.complete) return { complete: false, checkedAt, data, errorCode: part.errorCode };
+    }
+    return { complete: true, checkedAt, data };
+  }
   const checkedAt = new Date().toISOString();
   const config = readOneCRuntimeEnv();
   if (!config.baseUrl || !config.user || !config.password) return { complete: false, checkedAt, data: [], errorCode: 'ONE_C_NOT_CONFIGURED' };

@@ -62,14 +62,23 @@ export function terminalFiscalUnresolvedPeriods(operationDates: Date[], now = ne
   const yesterdayFrom = new Date(todayFrom.getTime() - 24 * 60 * 60 * 1000);
   const oldestFrom = new Date(todayFrom.getTime() - 6 * 24 * 60 * 60 * 1000);
   const days = new Map<number, { periodFrom: Date; periodTo: Date }>();
+  const olderDays = new Map<number, { periodFrom: Date; periodTo: Date }>();
   for (const operationAt of operationDates) {
     if (!Number.isFinite(operationAt.getTime())) continue;
     const periodFrom = moscowMidnightUtc(operationAt);
-    if (periodFrom < oldestFrom || periodFrom >= yesterdayFrom) continue;
-    days.set(periodFrom.getTime(), {
+    if (periodFrom >= yesterdayFrom) continue;
+    const target = periodFrom < oldestFrom ? olderDays : days;
+    target.set(periodFrom.getTime(), {
       periodFrom,
       periodTo: new Date(periodFrom.getTime() + 24 * 60 * 60 * 1000),
     });
+  }
+  // Revisit a single older unresolved day per hourly sweep. Keep the
+  // recent-day cadence without loading the entire historical backlog at once.
+  const older = [...olderDays.values()].sort((a, b) => a.periodFrom.getTime() - b.periodFrom.getTime());
+  if (older.length) {
+    const selected = older[Math.floor(now.getTime() / (60 * 60 * 1000)) % older.length];
+    days.set(selected.periodFrom.getTime(), selected);
   }
   return [...days.values()].sort((a, b) => a.periodFrom.getTime() - b.periodFrom.getTime());
 }

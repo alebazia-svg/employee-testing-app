@@ -216,3 +216,9 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 ## Employee password access — local candidate, not deployed
 
 - Owner approved permanent ADMIN-generated passwords, no 24-hour expiry and no forced first-login change. Local implementation, session revocation, tests and release/migration boundary: `password-access-20261019.md`. Real employee passwords remain unchanged. Owner-approved WORKDAY and PROCUREMENT inspection accompanies this candidate: actor-bound audited visits, real employee screens and editable local forms, with final persistence blocked and no employee login/password/session replacement. Production deployment and both additive migrations still await explicit authorization.
+
+## Terminal fiscal matching — correction release 1.9.3, 2026-10-19
+
+- Released and verified: `terminal-fiscal-matching-candidate-20261019.md`.
+- Seven-day 1C read limit, late-payment competition, forced assignments and
+  goods-backed possible split detection. Historical outcomes require scheduled rechecks.

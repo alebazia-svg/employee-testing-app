@@ -10,6 +10,7 @@ export const terminalFiscalReasonLabels: Record<string, string> = {
   ONE_C_CANDIDATE_NOT_FOUND: 'Для оплаты не найден подходящий документ 1С',
   ONE_C_MULTIPLE_CANDIDATES: 'В 1С найдено несколько подходящих документов',
   ONE_C_CHECK_REUSED: 'Один документ 1С связан с несколькими оплатами',
+  ONE_C_POSSIBLE_SPLIT_SALE: 'Возможное разделение продажи на несколько документов',
   ONE_C_MULTIPLE_CARD_PAYMENTS: 'В чеке 1С несколько карточных оплат',
   ONE_C_UNSUPPORTED_DOCUMENT: 'Документ 1С требует отдельной проверки',
   FISCAL_DATA_UNCONFIRMED: 'Фискальные данные 1С не подтверждены',

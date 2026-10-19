@@ -72,7 +72,9 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   try {
     const lateMatchTo = new Date(Math.min(Date.now(), input.periodTo.getTime() + TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS));
     const [tbank, oneC, ofd] = await Promise.all([
-      (dependencies.loadTbank ?? loadCompleteTBankOperations)({ terminalKey: mapping.terminalKey, from: input.periodFrom.toISOString(), to: input.periodTo.toISOString() }),
+      // Include competing later payments so a later day's own check cannot
+      // falsely close an older same-amount gap.
+      (dependencies.loadTbank ?? loadCompleteTBankOperations)({ terminalKey: mapping.terminalKey, from: input.periodFrom.toISOString(), to: lateMatchTo.toISOString() }),
       (dependencies.loadOneC ?? loadOneCTerminalFiscalEvidence)({ fromDate: dateOnly(input.periodFrom), toDate: nextDateKey(dateOnly(lateMatchTo)) }),
       (dependencies.loadOfd ?? loadPlatformaOfdReceipts)({ kktRegistrationNumber: mapping.kktRegistrationNumber, from: input.periodFrom.toISOString(), to: lateMatchTo.toISOString() }),
     ]);
@@ -85,7 +87,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
     const employeeReviewOneCChecks = oneCChecksAvailableForEmployeeReview({
       checks: kkmChecks,
       periodFrom: input.periodFrom,
-      sourceCheckedAt: oneC.checkedAt,
+      sourceCheckedAt: new Date(Math.min(Date.parse(oneC.checkedAt), input.periodTo.getTime() - 1)).toISOString(),
     });
     const strictOutput = reconcileTerminalFiscalMvp({
       now,
@@ -99,10 +101,14 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       oneCChecks: periodOneCChecks,
       ofdReceipts: ofd.data,
     });
+    const periodOutput = { ...strictOutput, records: strictOutput.records.filter(record => {
+      const at = Date.parse(record.evidence.bankTransactionDate);
+      return at >= input.periodFrom.getTime() && at < input.periodTo.getTime();
+    }) };
     const output = attributePeriodCoveredCashiers({
-      output: strictOutput,
+      output: periodOutput,
       mapping,
-      oneCChecks: periodOneCChecks,
+      oneCChecks: employeeReviewOneCChecks,
     });
     const sourceIdentityHashes = [
       ...tbank.data.map((value) => technicalHash(bankOperationKey(value))),
