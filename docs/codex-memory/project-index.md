@@ -212,3 +212,7 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 - Plan gaps stay in Plan and never inflate operational attention. Preserve real
   shift/receipt/cash questions and unresolved earlier-day owner requests.
 - Local Google scenario adapters remain outside the production release.
+
+## Employee password access — local candidate, not deployed
+
+- Owner approved permanent ADMIN-generated passwords, no 24-hour expiry and no forced first-login change. Local implementation, session revocation, tests and release/migration boundary: `password-access-20261019.md`. Real employee passwords remain unchanged. Owner-approved WORKDAY and PROCUREMENT inspection accompanies this candidate: actor-bound audited visits, real employee screens and editable local forms, with final persistence blocked and no employee login/password/session replacement. Production deployment and both additive migrations still await explicit authorization.
