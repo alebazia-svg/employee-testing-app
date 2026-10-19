@@ -13,6 +13,15 @@ export type PayrollAttendanceScheduleSummary = {
   scheduleDays: number;
 };
 
+export type PayrollAttendanceSourceSummary = {
+  employee: string;
+  userId: number;
+  fromDate: string;
+  appDates: string[];
+  googleFallbackDates: string[];
+  overlapDates: string[];
+};
+
 export type PayrollAttendanceSnapshotPayload = {
   version: typeof PAYROLL_ATTENDANCE_SNAPSHOT_VERSION;
   period: {
@@ -20,12 +29,13 @@ export type PayrollAttendanceSnapshotPayload = {
     year: number;
     periodKey: string;
   };
-  attendanceMode: 'demo' | 'google-sheets';
+  attendanceMode: 'demo' | 'google-sheets' | 'google-sheets+pwa';
   attendanceMessage: string;
   scheduleMode: 'not-configured' | 'google-sheets';
   scheduleMessage: string;
   formSummaries: PayrollAttendanceFormSummary[];
   scheduleSummaries: PayrollAttendanceScheduleSummary[];
+  attendanceSources?: PayrollAttendanceSourceSummary[];
 };
 
 export type PayrollAttendanceSnapshotResponse = Omit<PayrollAttendanceSnapshotPayload, 'version'> & {
@@ -57,6 +67,23 @@ function isScheduleSummary(value: unknown): value is PayrollAttendanceScheduleSu
   return typeof row.employee === 'string' && isFiniteNonNegativeNumber(row.scheduleDays);
 }
 
+function isSourceSummary(value: unknown, periodKey: string): value is PayrollAttendanceSourceSummary {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Partial<PayrollAttendanceSourceSummary>;
+  const validDate = (date: unknown): date is string => typeof date === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(date)
+    && Number.isFinite(Date.parse(`${date}T00:00:00Z`))
+    && new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
+  if (typeof row.employee !== 'string' || !Number.isInteger(row.userId) || Number(row.userId) <= 0
+    || !validDate(row.fromDate)) return false;
+  for (const dates of [row.appDates, row.googleFallbackDates, row.overlapDates]) {
+    if (!Array.isArray(dates) || new Set(dates).size !== dates.length
+      || !dates.every((date) => validDate(date) && date.startsWith(`${periodKey}-`) && date >= row.fromDate!)) return false;
+  }
+  return row.googleFallbackDates!.every((date) => !row.appDates!.includes(date))
+    && row.overlapDates!.every((date) => row.appDates!.includes(date));
+}
+
 export function createPayrollAttendanceSnapshotPayload(
   input: Omit<PayrollAttendanceSnapshotPayload, 'version'>,
 ): PayrollAttendanceSnapshotPayload {
@@ -72,14 +99,17 @@ export function readPayrollAttendanceSnapshotPayload(value: unknown, expectedPer
     || period.periodKey !== expectedPeriodKey
     || !Number.isInteger(period.monthIndex)
     || !Number.isInteger(period.year)
-    || (payload.attendanceMode !== 'demo' && payload.attendanceMode !== 'google-sheets')
+    || !['demo', 'google-sheets', 'google-sheets+pwa'].includes(payload.attendanceMode ?? '')
     || typeof payload.attendanceMessage !== 'string'
     || (payload.scheduleMode !== 'not-configured' && payload.scheduleMode !== 'google-sheets')
     || typeof payload.scheduleMessage !== 'string'
     || !Array.isArray(payload.formSummaries)
     || !payload.formSummaries.every(isFormSummary)
     || !Array.isArray(payload.scheduleSummaries)
-    || !payload.scheduleSummaries.every(isScheduleSummary)) return null;
+    || !payload.scheduleSummaries.every(isScheduleSummary)
+    || (payload.attendanceSources !== undefined && (!Array.isArray(payload.attendanceSources)
+      || !payload.attendanceSources.every((row) => isSourceSummary(row, expectedPeriodKey))))
+    || (payload.attendanceMode === 'google-sheets+pwa' && !payload.attendanceSources?.length)) return null;
   return payload as PayrollAttendanceSnapshotPayload;
 }
 
@@ -95,7 +125,7 @@ export function getPayrollAttendanceSnapshotReplacementError(
   next: PayrollAttendanceSnapshotPayload,
   previous: PayrollAttendanceSnapshotPayload | null,
 ) {
-  if (next.attendanceMode !== 'google-sheets' || next.scheduleMode !== 'google-sheets') {
+  if (!['google-sheets', 'google-sheets+pwa'].includes(next.attendanceMode) || next.scheduleMode !== 'google-sheets') {
     return 'Один из источников рабочих дней не подключён.';
   }
   if (previous?.formSummaries.length && !next.formSummaries.length) {

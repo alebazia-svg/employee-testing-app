@@ -14,7 +14,7 @@ import { employeePushNotBefore, employeePushTtl, DELIVERY_PUSH_COPY } from '@/li
 import { queueCashMorningPushes } from '@/lib/procurement-morning-notifications';
 import { isCashMorning, cashMorningNotBefore } from '@/lib/procurement-morning-policy';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
-import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY, cashIssueHref } from '@/lib/procurement-cash-issue-policy';
+import { CASH_ISSUE_KIND, cashIssueHref } from '@/lib/procurement-cash-issue-policy';
 import { cashIssuePushDecision, queueCashIssuePush } from '@/lib/procurement-cash-issue-notifications';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
@@ -443,7 +443,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
-          : delivery?.state === 'send' ? notification.kind === CASH_ISSUE_KIND ? CASH_ISSUE_PUSH_COPY : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
+          : delivery?.state === 'send' ? notification.kind === CASH_ISSUE_KIND ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
         url: workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,

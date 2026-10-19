@@ -1680,7 +1680,7 @@ export default async function AdminWorkdayPage(
 
         {unfinishedWorkDays.length > 0 && <details className="workday-unfinished-summary"><summary><AlertTriangle aria-hidden="true"/><span>Незавершённые смены: <b>{unfinishedWorkDays.length}</b></span><span className="workday-unfinished-toggle">Посмотреть</span></summary><div>{unfinishedWorkDays.map(entry=><a key={entry.id} href={`/admin/workday?date=${entry.date}&control=all&employee=${entry.userId}&focus=shift-start#employees-control`}><strong>{entry.user.name}</strong><span>{formatDateLabel(entry.date)} · начало {formatTime(entry.startedAt)}</span><span aria-hidden="true">›</span></a>)}</div></details>}
 
-        <TeamDailyControl ownerActions={ownerActions} departmentActions={departmentActions} initialTab={searchParams?.view === 'attention' ? 'attention' : 'overview'} date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
+        <TeamDailyControl ownerActions={ownerActions} departmentActions={departmentActions} initialTab={searchParams?.view === 'attention' ? 'attention' : searchParams?.view === 'audit' ? 'audit' : 'overview'} date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
           rows={employeeControlRows.map((row): TeamDayRow => {
             const app = usesAppSchedule(row.employee.name);
             const google = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
@@ -2317,7 +2317,7 @@ export default async function AdminWorkdayPage(
         </details> : <Link href={`/admin/workday?date=${selectedDate}&technical=1#kkm-assignments`} className='workday-settings-link flex items-center justify-between gap-3 rounded-xl bg-white px-5 py-4 text-sm font-extrabold text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50 hover:text-slate-950'><span><span className='block text-slate-950'>Служебные настройки</span><span className='mt-0.5 block text-sm font-medium text-slate-600'>Привязки касс, наличные по 1С и технические таблицы</span></span><span className='admin-disclosure-action'>Открыть <span aria-hidden='true'>→</span></span></Link>}
 
       </div>
-      {searchParams?.issue && /^\d+$/.test(searchParams.issue) && <WorkdayIssueDialog key={searchParams.issue} id={Number(searchParams.issue)} date={selectedDate} currentUserId={currentUser.id}/>}
+      <WorkdayIssueDialog key={selectedDate} id={searchParams?.issue && /^\d+$/.test(searchParams.issue) ? Number(searchParams.issue) : undefined} date={selectedDate} currentUserId={currentUser.id}/>
     </AdminShell>
   );
 }

@@ -75,6 +75,51 @@ flow. Arrange one explicitly authorized device check for the assigned cashier
 with an active shift and a valid payable request; do not create a real financial
 request solely as a notification test without explicit authorization.
 
+## Actionable push-copy follow-up — version 1.9.1
+
+On 19 October 2026 the owner approved replacing the generic cashier lock-screen
+message with an action-first message that names the currently verified
+recipient, remaining amount and source cashbox. For the live request reviewed
+that day the intended copy is “Выдать Астемиру 20 000 ₽” and “Из кассы «Касса
+Хурзокова». После выдачи оформите расходник в 1С.”
+
+The dispatcher derives this copy only after its existing live revalidation.
+Opening the notification still performs the authenticated recheck, and unknown,
+completed, rejected or reassigned state continues to defer or cancel delivery.
+The generic text remains only as an unavailable-state fallback. No 1C write,
+schema change, migration or cashier-routing change is part of this follow-up.
+
+### 1.9.1 production evidence — 19 October 2026
+
+- Released runtime commit `ab2282df5fe4478f208d7c0e5702ec945a2174a2` as
+  application version 1.9.1. Both `team.mobo-opt.ru` and the retained
+  `portal.alebazia.xyz` origin returned healthy responses and the same public
+  build timestamp, 19 October 2026 at 14:02 MSK. The authenticated ADMIN footer
+  independently displayed version 1.9.1 and that build time.
+- The deploy guard stopped after the container replacement because a raw Docker
+  mount JSON comparison changed. Before continuing, the running container was
+  inspected independently: the upload and procurement-planning volumes still
+  use `offonika-portal_portal-uploads` and
+  `offonika-portal_portal-planning-snapshots`, and the read-only T-Bank cabinet
+  bind still uses `/home/bela/offonika-tbank-cabinet`. All three destinations,
+  source paths, mount types and read/write modes match the production compose
+  contract. The main site was not changed.
+- The verified runtime image is
+  `sha256:4f843eabbdbbcdbbe72233344c2c98b2f7560ec9896de115cf1ba65d2a250b14`.
+  It was registered with the storage-maintenance registry. The preceding image
+  `sha256:66457f77455681fc12de3b01545addbfac7261bd9395fca138dbc4edd25fd20e`
+  remains tagged `portal-app:rollback-before-1.9.1`.
+- After revalidating the live payable request and its cashier assignment, the
+  existing unread notification 6490 was resent with the new copy. The push
+  provider accepted all six active subscriptions for portal user 8; zero stale
+  and zero failed endpoints were reported. The authenticated access journal
+  independently recorded “Принято сервисом доставки” at 14:14 MSK. Provider
+  acceptance does not prove physical display, sound or reading on every device.
+- No migration, schema change, 1C write, financial-state change or notification
+  routing change was performed. Focused cashier and release-info tests,
+  TypeScript and a production build passed before deployment. The unrelated
+  dirty primary checkout was not edited.
+
 ## Exact release files
 
 - `app/(dashboard)/employee/CashIssueClient.module.css`

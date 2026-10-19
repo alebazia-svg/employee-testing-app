@@ -1,5 +1,11 @@
 import type { MouseEvent } from 'react';
-export type WorkdayCardTarget = { employeeId:number; focus:string|null };
+export type WorkdayCardList = Array<{employeeId:number;name:string}>;
+export type WorkdayCardTarget = { employeeId:number; focus:string|null; navigation?:WorkdayCardList };
+export function workdayCardNeighbors(navigation:WorkdayCardList,employeeId:number,date:string) {
+ const index=navigation.findIndex(item=>item.employeeId===employeeId);
+ const link=(item:WorkdayCardList[number]|undefined)=>item?{name:item.name,href:`/admin/workday?date=${date}&control=all&employee=${item.employeeId}#employees-control`}:null;
+ return {previous:index>0?link(navigation[index-1]):null,next:index>=0?link(navigation[index+1]):null};
+}
 export const WORKDAY_CARD_OPEN = 'workday:open-employee';
 export function workdayCardTarget(href:string,date:string):WorkdayCardTarget|null {
  const url=new URL(href,'http://local');
@@ -7,11 +13,15 @@ export function workdayCardTarget(href:string,date:string):WorkdayCardTarget|nul
  if(url.pathname!=='/admin/workday'||url.searchParams.get('date')!==date||!id||!/^\d+$/.test(id)||Number(id)<1)return null;
  return {employeeId:Number(id),focus:url.searchParams.get('focus')};
 }
-export function openWorkdayCard(event:MouseEvent<HTMLAnchorElement>,date:string){
+export function openWorkdayCard(event:MouseEvent<HTMLAnchorElement>,date:string,navigation?:WorkdayCardList){
  if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
  const target=workdayCardTarget(event.currentTarget.href,date);
  if(!target)return;
  event.preventDefault();
- window.history.replaceState(window.history.state,'',event.currentTarget.href);
- window.dispatchEvent(new CustomEvent<WorkdayCardTarget>(WORKDAY_CARD_OPEN,{detail:target}));
+ const url=new URL(event.currentTarget.href),current=new URL(window.location.href);
+ // Opening a shift must not switch the overview/queue underneath it.
+ if(current.searchParams.has('view'))url.searchParams.set('view',current.searchParams.get('view')!);
+ else url.searchParams.delete('view');
+ window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
+ window.dispatchEvent(new CustomEvent<WorkdayCardTarget>(WORKDAY_CARD_OPEN,{detail:{...target,navigation}}));
 }

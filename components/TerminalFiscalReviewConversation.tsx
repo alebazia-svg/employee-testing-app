@@ -58,7 +58,7 @@ export function TerminalFiscalReviewConversation({
   }
 
   return (
-    <div className='employee-material-conversation'>
+    <div className='employee-material-conversation' aria-busy={busy}>
       <div className='space-y-2'>
         {messages.length === 0 ? (
           <p className='employee-material-subcard rounded-xl bg-slate-50 px-4 py-4 text-sm font-medium text-slate-500'>Переписки пока нет.</p>

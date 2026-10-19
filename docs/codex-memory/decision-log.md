@@ -735,6 +735,17 @@ because OS messages may arrive after reassignment; opening always rechecks.
 No independent “issued” confirmation button. Polling runs only while visible
 plus on resume; a timed-out request switches to an unavailable state.
 
+Owner superseded the neutral lock-screen copy on 2026-10-19 after production
+use showed that “Заявка на выдачу денег готова” did not tell the cashier the
+required action. Starting with application version 1.9.1, the sender rechecks
+the live payable request, cashier assignment, recipient, remaining amount and
+cashbox immediately before delivery, then names them in the push: “Выдать
+Астемиру 20 000 ₽” / “Из кассы «Касса Хурзокова». После выдачи оформите
+расходник в 1С.” The authenticated details screen still rechecks the request
+when opened; unavailable or changed source state never exposes a stale amount.
+This copy correction does not change financial writes, 1C data, cashier
+assignment, notification timing or the database schema.
+
 Verification: TypeScript and isolated production build pass. Regression suite:
 97 server tests and 17 UI tests pass (six opt-in tests skipped); seven focused
 cash-issue tests pass, including access isolation and copy. Separate isolated
@@ -987,3 +998,15 @@ question, generic check button or owner counter for it. Missing marks against a
 known work plan remain operational. Remark actions must open the concrete shift
 remark, not a schedule clarification. Released as final 1.8.1 (`8e22e55`); see
 `workday-control-release-20261019.md` for verification and rollback evidence.
+
+## 2026-10-19 — Liana payroll attendance with Google fallback
+
+Owner approved switching Хурзокова Лиана (portal user 8) to PWA attendance
+from 2026-10-18, then explicitly requested Google Sheets as a reserve when
+there is no app mark for a date. Count each employee/date once, prefer PWA
+on overlap, and retain Google before cutover. Old payroll runs are immutable;
+PWA timing does not acquire automatic payroll-penalty consequences. This is
+an explicit scoped exception to the pilot's Google-only payroll day source,
+not a cutover for every employee. Owner subsequently approved publication;
+released in 1.9.0 (`5c7492c`). See the payroll playbook and
+`payroll-pwa-attendance-release-20261019.md` for verification and boundaries.
