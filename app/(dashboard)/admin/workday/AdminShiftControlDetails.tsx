@@ -865,7 +865,8 @@ export function AdminShiftControlDetails({
     setManualReviewTarget(null);
     setOpen(false);
     if (closeHref && new URL(window.location.href).searchParams.has('employee')) {
-      window.history.replaceState(window.history.state,'',closeHref);
+      const url=new URL(window.location.href);url.searchParams.delete('employee');url.searchParams.delete('focus');
+      window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
     }
   }, [closeHref]);
   function openCashReview(id:number) {
@@ -982,7 +983,7 @@ export function AdminShiftControlDetails({
       else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panelRef.current)) { event.preventDefault(); first.focus(); }
     };
     document.addEventListener('keydown', containFocus);
-    return () => { document.removeEventListener('keydown', containFocus); previousFocus?.focus(); };
+    return () => { document.removeEventListener('keydown', containFocus); if(!document.querySelector('dialog[open]'))previousFocus?.focus({preventScroll:true}); };
   }, [open]);
   useEffect(() => {
     if (!open) return;

@@ -12,6 +12,10 @@ export function openWorkdayCard(event:MouseEvent<HTMLAnchorElement>,date:string)
  const target=workdayCardTarget(event.currentTarget.href,date);
  if(!target)return;
  event.preventDefault();
- window.history.replaceState(window.history.state,'',event.currentTarget.href);
+ const url=new URL(event.currentTarget.href),current=new URL(window.location.href);
+ // Opening a shift must not switch the overview/queue underneath it.
+ if(current.searchParams.has('view'))url.searchParams.set('view',current.searchParams.get('view')!);
+ else url.searchParams.delete('view');
+ window.history.replaceState(window.history.state,'',url.pathname+url.search+url.hash);
  window.dispatchEvent(new CustomEvent<WorkdayCardTarget>(WORKDAY_CARD_OPEN,{detail:target}));
 }
