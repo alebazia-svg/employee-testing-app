@@ -987,3 +987,15 @@ question, generic check button or owner counter for it. Missing marks against a
 known work plan remain operational. Remark actions must open the concrete shift
 remark, not a schedule clarification. Released as final 1.8.1 (`8e22e55`); see
 `workday-control-release-20261019.md` for verification and rollback evidence.
+
+## 2026-10-19 — Liana payroll attendance with Google fallback
+
+Owner approved switching Хурзокова Лиана (portal user 8) to PWA attendance
+from 2026-10-18, then explicitly requested Google Sheets as a reserve when
+there is no app mark for a date. Count each employee/date once, prefer PWA
+on overlap, and retain Google before cutover. Old payroll runs are immutable;
+PWA timing does not acquire automatic payroll-penalty consequences. This is
+an explicit scoped exception to the pilot's Google-only payroll day source,
+not a cutover for every employee. Owner subsequently approved publication;
+released in 1.9.0 (`5c7492c`). See the payroll playbook and
+`payroll-pwa-attendance-release-20261019.md` for verification and boundaries.

@@ -981,3 +981,49 @@ Ask:
 - Is the payroll period driving the attendance days, not today's calendar month?
 - Are excluded employees still excluded in all summary/audit views?
 - Do tests cover the behavior?
+
+## Liana attendance cutover — released 1.9.0, 2026-10-19
+
+- Owner approved payroll day sourcing for user 8, Хурзокова Лиана, from
+  2026-10-18. Earlier days stay on Google. Source inspection found October PWA
+  dates 16/18/19; October 16 starts at 16:39 in PWA but 08:51 in Google, so the
+  cutover deliberately does not use that mid-day PWA start. Older PWA entries
+  exist from July 8 and are not retroactively included.
+- Owner then explicitly retained Google as a per-day fallback: PWA wins when
+  both sources have the date; Google supplies days without a PWA entry. A later
+  PWA entry replaces that day's source without adding another paid day. Exact
+  employee identity and date are used; no fuzzy merge of other employees.
+- Existing arrival-based day semantics are preserved, including active shifts.
+  This approval concerns days only: PWA lateness remains outside automatic
+  salary penalties; the existing Google lateness rule is unchanged.
+- Extend the existing attendance snapshot refresh, with per-employee source
+  dates retained for display/audit. Source-read errors retain the last-good
+  snapshot, not partial/zero days. Other employees, formulas, manual corrections,
+  saved/final payroll runs and Google records are unchanged.
+- Owner explicitly approved commit/deploy after reviewing the local result.
+  Released as 1.9.0, runtime `5c7492c4ce5862d11d002f8e4f3fde46c7551d63`.
+  No schema, password rotation, 1C/OFD changes or manual production data edits.
+  Production attendance snapshots refresh through the existing UI flow.
+- Verification: 19 source/snapshot/API tests and 78 payroll regression tests
+  passed; TypeScript, production build and diff whitespace check passed. Replay
+  of the read-only 09:19 MSK evidence gives 14 unique October dates: 12 Google
+  dates before cutover and 18/19 October from PWA, one post-cutover overlap.
+- Authenticated local `/admin/payroll` on isolated database
+  `payroll_pwa_preview_20261019` shows 14 days in Liana's actual calculation card.
+  A simulated Google fallback for October 19 preserves 14 days and displays the
+  reserve date. Re-entry and 390px mobile layout passed. Local fixture restored
+  to the real attendance-source evidence afterwards. Other salary components
+  in that local QA database are fixtures, not verified October payouts.
+- Changed runtime files: `app/api/admin/payroll/attendance-preview/route.ts`,
+  `lib/payroll-attendance-source.ts`, `lib/payroll-attendance-summary.ts`
+  (existing aggregation extracted unchanged), `lib/payroll-attendance-snapshot.ts`,
+  `app/(dashboard)/admin/payroll/PayrollClient.tsx`, and
+  `app/(dashboard)/admin/payroll/PayrollAttendanceSourceNote.tsx`.
+- Changed tests: `tests/payroll-attendance-source.test.ts`,
+  `tests/payroll-attendance-route.test.ts`, `tests/payroll-attendance-snapshot.test.ts`.
+  Memory: this playbook and `docs/codex-memory/decision-log.md`.
+  Main checkout's unrelated dirty files were untouched. No production salary
+  save, production fallback simulation or employee-phone outage test was
+  performed. Production UI confirmed 14 days, two PWA dates and the single
+  October 18 overlap. Full release evidence and rollback identities:
+  `payroll-pwa-attendance-release-20261019.md`.
