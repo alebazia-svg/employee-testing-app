@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -20,11 +21,13 @@ export function LogoutButton({
   title?: string;
   confirmBeforeLogout?: boolean;
 }) {
+  const preview = useEmployeePreview();
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   async function logout() {
+    if (preview) { preview.blocked(); return; }
     setIsLoggingOut(true);
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -46,7 +49,8 @@ export function LogoutButton({
           }
           void logout();
         }}
-        title={title}
+        disabled={Boolean(preview)}
+        title={preview ? "Вы находитесь в режиме проверки" : title}
       >
         {iconStyle === 'duotone'
           ? <PremiumLogoutIcon color='#ffffff' secondaryColor='#b9c2bf' secondaryOpacity={0.9} className='h-[22px] w-[22px]' />

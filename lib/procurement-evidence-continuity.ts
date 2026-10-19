@@ -55,7 +55,7 @@ export function paymentEvidenceView(plan: EvidenceContinuityPlan, current: Procu
  * Incomplete reads NEVER persist or replace a confirmed snapshot. */
 export async function preservePaymentEvidenceViews(plans: EvidenceContinuityPlan[],
   evidence: Map<string, ProcurementPaymentEvidence>, complete: boolean, readStartedAt: Date,
-  store: { updateMany(args: any): Promise<unknown> }, now = new Date()) {
+  store: { updateMany(args: any): Promise<unknown> }, now = new Date(), options: { persist?: boolean } = {}) {
   const verifiedAt = now.toISOString();
   const views = new Map<string, PaymentEvidenceView>();
   for (const plan of plans) {
@@ -64,7 +64,7 @@ export async function preservePaymentEvidenceViews(plans: EvidenceContinuityPlan
     const saved = savedPaymentEvidence(plan);
     const superseded = !!saved && Date.parse(saved.readStartedAt) > readStartedAt.getTime();
     views.set(plan.id, paymentEvidenceView(plan, current, complete && !superseded, verifiedAt));
-    if (!complete || superseded) continue;
+    if (options.persist === false || !complete || superseded) continue;
     const { collection, ...withoutCollection } = current;
     const snapshot = JSON.parse(JSON.stringify(withoutCollection)) as ProcurementPaymentEvidence;
     // PostgreSQL jsonb normalizes object-key order; compare JSON values, not text.

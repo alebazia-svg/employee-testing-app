@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -24,6 +25,8 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   renderHandle: (onDismiss: () => void) => ReactNode;
   paletteClass: string;
 }) {
+  const preview = useEmployeePreview();
+  const requestRead = preview?.request ?? fetch;
   const cashIssue = useCashIssue();
   const [liveItems, setLiveItems] = useState<Item[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -35,7 +38,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const response = await fetch('/api/employee/workday-attention', { cache: 'no-store', signal: controller.signal });
+      const response = await requestRead('/api/employee/workday-attention', { cache: 'no-store', signal: controller.signal });
       if (!response.ok) throw new Error();
       const payload = await response.json();
       if (!Array.isArray(payload.items)) throw new Error();
@@ -62,12 +65,13 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   useEffect(() => { if (view === 'attention') { previousFocus.current = document.activeElement as HTMLElement; setOpen(true); setSelectedId(items.length === 1 ? items[0].id : null); onBack(); } }, [view, onBack, items]);
   const openItem = (id: string) => { setActionError(''); listScroll.current = scrollArea.current?.scrollTop ?? 0; lastSelectedId.current = id; setSelectedId(id); };
   const act = async (action: string) => {
+    if (preview) { preview.blocked(); return; }
     if (!selected?.endpoint || busy) return;
     setBusy(true); setActionError('');
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(selected.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }), signal: controller.signal });
+      const response = await requestRead(selected.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }), signal: controller.signal });
       if (!response.ok) throw new Error();
       await refresh();
     } catch { setActionError('Не удалось отправить. Попробуйте ещё раз.'); }
@@ -119,7 +123,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
             {actionError && <p role="alert" className="my-3 text-sm text-red-800">{actionError}</p>}
             {selected.kind === 'cash_issue' && request && <Button type="button" className="employee-material-primary-action h-12 w-full" onClick={() => { close(); cashIssue?.open(request.ref); }}>Проверить выдачу</Button>}
             {selected.kind === 'closing' && selected.state === 'action' && <Button type="button" className="employee-material-primary-action h-12 w-full" onClick={() => { close(); onClosing(selected.closingScope); }}>Продолжить сдачу смены</Button>}
-            {Boolean(selected.actions?.length) && <div className="grid gap-2">{selected.actions?.map(a => <Button key={a.action} type="button" disabled={busy} className="employee-material-secondary-action min-h-12 w-full" onClick={() => void act(a.action)}>{busy ? 'Отправляем…' : a.label}</Button>)}</div>}
+            {Boolean(selected.actions?.length) && <div className="grid gap-2">{selected.actions?.map(a => <Button key={a.action} type="button" disabled={busy || Boolean(preview)} title={preview ? "Только просмотр" : undefined} className="employee-material-secondary-action min-h-12 w-full" onClick={() => void act(a.action)}>{busy ? 'Отправляем…' : a.label}</Button>)}</div>}
             {selected.state === 'waiting' && !selected.actions?.length && <Button type="button" className="employee-material-secondary-action h-12 w-full" onClick={() => items.length > 1 ? returnToList() : close()}>Понятно</Button>}
           </>
 

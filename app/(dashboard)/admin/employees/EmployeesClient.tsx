@@ -1,14 +1,16 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Pencil, Search, UserPlus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Eye, KeyRound, Pencil, Search, UserPlus } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table } from '@/components/ui/table';
+import EmployeeAccessDialog, { type AccessUser, type IssuedAccess } from './EmployeeAccessDialog';
 
-type User = {
+type User = AccessUser & {
   id: number;
   name: string;
   login: string;
@@ -25,7 +27,7 @@ type User = {
   oneCManagerName: string | null;
 };
 
-type Draft = Omit<User, 'payrollFixedSalary'> & { password: string; payrollFixedSalary: string };
+type Draft = Omit<User, 'payrollFixedSalary' | 'sessionVersion'> & { payrollFixedSalary: string };
 
 const departmentLabels: Record<string, string> = {
   retail: 'Розница',
@@ -45,7 +47,6 @@ const emptyDraft: Draft = {
   id: 0,
   name: '',
   login: '',
-  password: '',
   role: 'EMPLOYEE',
   department: 'retail',
   isActive: true,
@@ -59,11 +60,16 @@ const emptyDraft: Draft = {
   oneCManagerName: '',
 };
 
-export default function EmployeesClient({ initialUsers }: { initialUsers: User[] }) {
+export default function EmployeesClient({ initialUsers, currentUserId }: { initialUsers: User[]; currentUserId: number }) {
+  const router = useRouter();
+  const [previewBusy, setPreviewBusy] = useState<number | null>(null);
   const [users, setUsers] = useState(initialUsers);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [accessUser, setAccessUser] = useState<AccessUser | null>(null);
+  const [issuedAccess, setIssuedAccess] = useState<IssuedAccess | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'employees' | 'admins' | 'inactive'>('employees');
   const adminCount = users.filter((user) => user.role === 'ADMIN' && user.isActive).length;
@@ -96,45 +102,77 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
       payrollFixedSalary: user.payrollFixedSalary === null ? '' : String(user.payrollFixedSalary),
       payrollRuleFrom: user.payrollRuleFrom ?? '',
       payrollRuleThrough: user.payrollRuleThrough ?? '',
-      password: '',
-    });
+        });
+  }
+
+  function openAccess(user: AccessUser) {
+    setIssuedAccess(null);
+    setAccessUser(user);
+  }
+
+  function accessChanged(access: IssuedAccess) {
+    setUsers((current) => current.map((user) => user.id === access.userId ? {
+      ...user, sessionVersion: access.sessionVersion,
+    } : user));
   }
 
   async function save() {
+    if (saving) return;
     setError('');
-    const url = editingId === 'new' ? '/api/admin/employees' : `/api/admin/employees/${editingId}`;
-    const method = editingId === 'new' ? 'POST' : 'PATCH';
-    const response = await fetch(url, { method, body: JSON.stringify(draft) });
-
-    if (!response.ok) {
+    setSaving(true);
+    try {
+      const url = editingId === 'new' ? '/api/admin/employees' : `/api/admin/employees/${editingId}`;
+      const response = await fetch(url, { method: editingId === 'new' ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) });
       const data = await response.json();
-      setError(data.error || 'Не удалось сохранить сотрудника');
-      return;
-    }
+      if (!response.ok) { setError(data.error || 'Не удалось сохранить сотрудника'); return; }
+      const { issuedAccess: access, ...saved } = data;
+      setUsers((current) => {
+        const next = editingId === 'new' ? [...current, saved] : current.map((user) => user.id === saved.id ? saved : user);
+        return next.sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.role.localeCompare(right.role) || left.name.localeCompare(right.name, 'ru'));
+      });
+      setEditingId(null);
+      setDraft(emptyDraft);
+      if (access) { setAccessUser(saved); setIssuedAccess(access); }
+    } catch {
+      setError('Не удалось получить ответ. Обновите список и проверьте, сохранился ли сотрудник, перед повторной попыткой.');
+    } finally { setSaving(false); }
+  }
 
-    const saved = await response.json();
-    setUsers((current) => {
-      const normalizedSaved: User = saved;
-      const next = editingId === 'new' ? [...current, normalizedSaved] : current.map((user) => (user.id === saved.id ? normalizedSaved : user));
-      return next.sort((left, right) => Number(right.isActive) - Number(left.isActive) || left.role.localeCompare(right.role) || left.name.localeCompare(right.name, 'ru'));
-    });
-    setEditingId(null);
-    setDraft(emptyDraft);
+  async function openPreview(user: User) {
+    if (previewBusy !== null) return;
+    setPreviewBusy(user.id); setError('');
+    try {
+      const response = await fetch(`/api/admin/employees/${user.id}/preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Не удалось открыть просмотр.');
+      router.push(body.href);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Не удалось открыть просмотр.'); }
+    finally { setPreviewBusy(null); }
+  }
+
+  function accessAction(user: User) {
+    if (user.id === currentUserId) return <span className='self-center text-xs text-slate-500'>Ваш аккаунт</span>;
+    return <div className='flex flex-wrap items-center gap-2'>{user.role === 'EMPLOYEE' && ['WORKDAY', 'PROCUREMENT'].includes(user.portalArea) && <Button disabled={!user.isActive || previewBusy !== null} aria-label={`Посмотреть как сотрудник: ${user.name}`} className='h-9 gap-2 whitespace-nowrap bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50' onClick={() => void openPreview(user)}><Eye className='h-4 w-4'/>{previewBusy === user.id ? 'Открываем…' : 'Посмотреть'}</Button>}<Button disabled={!user.isActive} className='h-9 gap-2 whitespace-nowrap bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => openAccess(user)}><KeyRound className='h-4 w-4' />Выдать доступ</Button></div>;
   }
 
   return (
     <div className='space-y-5'>
+      {accessUser && <EmployeeAccessDialog user={accessUser} initialAccess={issuedAccess} onIssued={accessChanged} onClose={() => { setAccessUser(null); setIssuedAccess(null); }} />}
+      <nav className='admin-section-tabs' aria-label='Группы сотрудников'>
+        {([
+          ['employees', 'Сотрудники', employeeCount],
+          ['admins', 'Администраторы', adminCount],
+          ['inactive', 'Отключены', users.filter((user) => !user.isActive).length],
+        ] as const).map(([key, label, count]) => (
+          <button key={key} type='button' aria-pressed={filter === key} onClick={() => setFilter(key)} className={`admin-section-tab${filter === key ? ' is-active' : ''}`}>
+            {label}<span>{count}</span>
+          </button>
+        ))}
+      </nav>
       <Card className='flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between'>
         <div className='relative min-w-0 flex-1 lg:max-w-md'>
           <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400' />
           <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder='Найти сотрудника' className='pl-9' />
-        </div>
-        <div className='flex flex-wrap gap-2'>
-          {([
-            ['employees', `Сотрудники · ${employeeCount}`],
-            ['admins', `ADMIN · ${adminCount}`],
-            ['inactive', `Отключены · ${users.filter((user) => !user.isActive).length}`],
-          ] as const).map(([key, label]) => <button key={key} type='button' aria-pressed={filter === key} onClick={() => setFilter(key)} className={`rounded-lg px-3 py-2 text-xs font-extrabold ring-1 transition ${filter === key ? 'bg-slate-950 text-white ring-slate-950' : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'}`}>{label}</button>)}
         </div>
         <Button className='gap-2' data-portal-secondary={Boolean(editingId)} onClick={startCreate}>
           <UserPlus className='h-4 w-4' />
@@ -149,7 +187,6 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
             <Input placeholder='Отображаемое имя' value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))} />
             <Input placeholder='Логин' value={draft.login} onChange={(event) => setDraft((value) => ({ ...value, login: event.target.value }))} />
             <Input placeholder='ФИО в payroll, если отличается' value={draft.payrollName ?? ''} onChange={(event) => setDraft((value) => ({ ...value, payrollName: event.target.value }))} />
-            <Input placeholder={editingId === 'new' ? 'Пароль' : 'Новый пароль, если нужно'} type='password' value={draft.password} onChange={(event) => setDraft((value) => ({ ...value, password: event.target.value }))} />
             <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.role} onChange={(event) => setDraft((value) => ({ ...value, role: event.target.value }))}>
               <option value='ADMIN'>Администратор</option>
               <option value='EMPLOYEE'>Сотрудник</option>
@@ -184,10 +221,11 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
               Активен
             </label>
           </div>
+          {editingId === 'new' && <p className='mt-3 text-sm text-slate-500'>Пароль будет создан автоматически после сохранения. Данные для входа можно скопировать и передать сотруднику.</p>}
           {error && <p className='mt-3 text-sm text-red-600'>{error}</p>}
           <div className='mt-4 flex gap-2'>
-            <Button disabled={!draft.name.trim() || !draft.login.trim() || (editingId === 'new' && !draft.password.trim())} onClick={save}>Сохранить</Button>
-            <Button className='bg-slate-200 text-slate-700 hover:bg-slate-300 hover:text-slate-800' onClick={() => setEditingId(null)}>Отмена</Button>
+            <Button disabled={saving || !draft.name.trim() || !draft.login.trim()} onClick={save}>{saving ? 'Сохраняем…' : 'Сохранить'}</Button>
+            <Button className='bg-slate-200 text-slate-700 hover:bg-slate-300 hover:text-slate-800' disabled={saving} onClick={() => setEditingId(null)}>Отмена</Button>
           </div>
         </Card>
       )}
@@ -208,7 +246,8 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
               <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Рабочий экран</p><p className='mt-1 font-bold text-slate-700'>{user.role === 'ADMIN' ? 'Админка' : user.portalArea === 'PROCUREMENT' ? 'Закупки и оплаты' : 'Рабочий день'}</p></div>
               <div className='col-span-2'><p className='text-[10px] font-extrabold uppercase tracking-wide text-slate-400'>Для зарплаты</p><p className='mt-1 font-bold text-slate-700'>{user.payrollName?.trim() || user.name}</p><p className={`mt-0.5 text-xs font-semibold ${user.payrollSalaryType ? 'text-slate-500' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></div>
             </div>
-            <Button className='mt-4 h-10 w-full gap-2 bg-white text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}><Pencil className='h-4 w-4' />Настроить</Button>
+            <div className='mt-4'>{accessAction(user)}</div>
+            <Button className='mt-3 h-10 w-full gap-2 bg-white text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}><Pencil className='h-4 w-4' />Настроить</Button>
           </Card>
         ))}
         {!filteredUsers.length && <Card className='p-8 text-center text-sm font-medium text-slate-500'>По выбранному фильтру сотрудников нет.</Card>}
@@ -238,7 +277,8 @@ export default function EmployeesClient({ initialUsers }: { initialUsers: User[]
                 <td className='px-5 py-4'><p className='text-sm font-semibold text-slate-700'>{user.payrollName?.trim() || user.name}</p><p className={`mt-0.5 text-xs font-medium ${user.payrollSalaryType ? 'text-slate-400' : 'text-amber-700'}`}>{user.payrollReportGroup || 'Требует настройки'}</p></td>
                 <td className='px-5 py-4'><Badge className={user.isActive ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}>{user.isActive ? 'Активен' : 'Отключён'}</Badge></td>
                 <td className='px-5 py-4'>
-                  <div className='flex gap-2'>
+                  <div className='flex flex-wrap gap-2'>
+                  {accessAction(user)}
                   <Button className='h-9 gap-2 bg-white px-3 text-slate-700 ring-1 ring-border hover:bg-slate-50 hover:text-slate-900' onClick={() => startEdit(user)}>
                     <Pencil className='h-4 w-4' />
                     Настроить

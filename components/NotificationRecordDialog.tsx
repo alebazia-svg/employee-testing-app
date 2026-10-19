@@ -1,17 +1,20 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import {useEffect,useRef,useState} from 'react';
 import {supplierOnlyPaymentLabel} from '@/lib/procurement-supplier-advance';
 import {useRouter} from 'next/navigation';
 import {X} from 'lucide-react';
 import type {NotificationDetail,NotificationPlan} from '@/lib/notification-detail';
-import {safeNotificationHref} from '@/lib/notification-opening';
+import {safeNotificationHref, employeeNotificationOpening} from '@/lib/notification-opening';
 import {ExpenseRequestDialogRow} from './ExpenseRequestDialogRow';
 import {ProcurementApprovedEdit} from './ProcurementApprovedEdit';
 import {ProcurementReceipts} from './ProcurementReceipts';
 import './procurement-admin-list.css';
 
-export type NotificationSelection={id:string|number;audience:'admin'|'employee';title:string;body:string;href:string};
-export function NotificationRecordDialog({item,onClose,onViewed}:{item:NotificationSelection;onClose:()=>void;onViewed?:()=>void}) {
+export type NotificationSelection={kind?:string;id:string|number;audience:'admin'|'employee';title:string;body:string;href:string};
+export function NotificationRecordDialog({item,onClose,onViewed,readOnly=false}:{readOnly?:boolean;item:NotificationSelection;onClose:()=>void;onViewed?:()=>void}) {
+  const inspection=useEmployeePreview();
+  const inspectRecord=!!inspection && employeeNotificationOpening({kind:item.kind??''})!=='page';
   const router=useRouter(),dialog=useRef<HTMLDialogElement>(null);
   const [detail,setDetail]=useState<NotificationDetail|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
   const [state,setState]=useState({dirty:false,busy:false}),[discard,setDiscard]=useState(false);
@@ -22,13 +25,14 @@ export function NotificationRecordDialog({item,onClose,onViewed}:{item:Notificat
   const busy=state.busy||saving;
   const close=()=>{if(busy)return;if(state.dirty||reason.trim())setDiscard(true);else onClose();};
   useEffect(()=>{
+    if(readOnly&&!inspectRecord)return;
     const abort=new AbortController();setError('');
-    fetch(`/api/notification-details/${item.audience}/${encodeURIComponent(item.id)}`,{cache:'no-store',signal:abort.signal})
+    (inspection?.request ?? fetch)(`/api/notification-details/${item.audience}/${encodeURIComponent(item.id)}`,{cache:'no-store',signal:abort.signal})
       .then(async r=>{const body=await r.json();if(!r.ok)throw Error(body.error||'Не удалось открыть запись.');return body;})
-      .then(body=>{if(!abort.signal.aborted){setDetail(body);if(!viewed.current){viewed.current=true;viewCallback.current?.();}}})
+      .then(body=>{if(!abort.signal.aborted){setDetail(body);if(!readOnly&&!viewed.current){viewed.current=true;viewCallback.current?.();}}})
       .catch(()=>{if(!abort.signal.aborted)setError('Не удалось загрузить актуальные данные. Повторите попытку — уведомление сохранено.');});
     return()=>abort.abort();
-  },[item.audience,item.id,retry]);
+  },[item.audience,item.id,retry,readOnly,inspectRecord,inspection]);
   const expense=detail?.kind==='expense';
   useEffect(()=>{
     if(expense)return;
@@ -37,7 +41,7 @@ export function NotificationRecordDialog({item,onClose,onViewed}:{item:Notificat
     return()=>{el.close();document.body.style.overflow=overflow;requestAnimationFrame(()=>{if(opener?.isConnected&&!document.querySelector('dialog[open]'))opener.focus();});};
   },[expense]);
   async function decide(plan:NotificationPlan,action:string){
-    if(busy||!plan.revision)return;setSaving(true);setError('');
+    if(readOnly||busy||!plan.revision)return;setSaving(true);setError('');
     try{
       const revision=plan.revision;
       const response=await fetch(`/api/admin/procurement/payment-plans/${encodeURIComponent(plan.id)}/revision`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:action==='RETURN'?'REJECT':action,revisionId:revision.id,reason})});
@@ -53,7 +57,7 @@ export function NotificationRecordDialog({item,onClose,onViewed}:{item:Notificat
     <div className="pam-dialog-content space-y-4">
       {discard&&<><h3 className="font-bold">Закрыть без сохранения?</h3><p>Введённые изменения не сохранятся.</p></>}
       <div hidden={discard} className="space-y-4">
-        {!detail?<><p className="whitespace-pre-wrap text-sm">{item.body}</p>{!error&&<p role="status" className="text-sm text-slate-500">Загружаем актуальные данные…</p>}</>:null}
+        {!detail?<><p className="whitespace-pre-wrap text-sm">{item.body}</p>{!error&&!readOnly&&<p role="status" className="text-sm text-slate-500">Загружаем актуальные данные…</p>}</>:null}
         {plan&&<>
           <div hidden={receiptPreview} className="space-y-4">
           <div><h3 className="text-xl font-bold">{plan.supplierPartner}</h3><p className="mt-1 text-sm text-slate-500">{plan.planCode} · {plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):plan.paymentPurpose==='DELIVERY'?'За доставку':supplierOnlyPaymentLabel(plan)}</p></div>
@@ -67,6 +71,7 @@ export function NotificationRecordDialog({item,onClose,onViewed}:{item:Notificat
           {detail?.kind==='payment'&&detail.admin&&plan.status==='SUBMITTED'&&!plan.revision&&<p className="text-sm text-slate-600">Согласование — в платёжном календаре, после сверки оплат.</p>}
           {decision==='RETURN'&&<label className="block text-sm font-semibold">{plan.revision?'Причина отказа':'Что исправить'}<textarea autoFocus minLength={3} maxLength={300} value={reason} disabled={busy} onChange={e=>setReason(e.target.value)} className="mt-2 w-full rounded-lg border p-3"/></label>}
         </>}
+        {readOnly&&<p className="text-xs text-slate-500">Режим проверки · уведомление осталось непрочитанным</p>}
         {message&&<p role="status" className="text-sm text-green-800">{message}</p>}
         {saving&&<p role="status" className="text-sm text-slate-600">{plan?.revision?'Проверяем оплату в 1С и сохраняем решение…':'Сохраняем решение…'}</p>}
         {error&&<div role="alert"><p className="pam-error">{error}</p><button className="pam-button" disabled={busy} onClick={()=>setRetry(v=>v+1)}>Повторить загрузку</button></div>}
@@ -74,7 +79,7 @@ export function NotificationRecordDialog({item,onClose,onViewed}:{item:Notificat
     </div>
     <footer className="pam-dialog-footer">{discard?<><button className="pam-button" onClick={()=>setDiscard(false)}>Продолжить редактирование</button><button className="pam-button" onClick={onClose}>Не сохранять</button></>:<>
       <button className="pam-button" disabled={busy} onClick={close}>Закрыть</button>
-      {!state.dirty&&<button className="pam-button" disabled={busy} onClick={()=>{onClose();router.push(safeNotificationHref(item.href,item.audience==='admin'?'/admin/inbox':'/employee'));}}>Открыть раздел</button>}
+      {!readOnly&&!state.dirty&&<button className="pam-button" disabled={busy} onClick={()=>{onClose();router.push(safeNotificationHref(item.href,item.audience==='admin'?'/admin/inbox':'/employee'));}}>Открыть раздел</button>}
       {detail?.kind==='payment'&&detail.admin&&plan?.revision&&<>{decision==='RETURN'?<button className="pam-button pam-primary" disabled={busy||reason.trim().length<3} onClick={()=>decide(plan,'RETURN')}>Сохранить решение</button>:<><button className="pam-button" disabled={busy} onClick={()=>setDecision('RETURN')}>Отклонить изменения</button><button className="pam-button pam-primary" disabled={busy} onClick={()=>decide(plan,'APPROVE')}>{busy?'Сохраняем…':'Согласовать изменения'}</button></>}</>}
     </>}</footer>
   </dialog>;

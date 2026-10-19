@@ -1,4 +1,5 @@
 'use client';
+import { EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
 
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
@@ -38,6 +39,7 @@ export function ProcurementPaymentDialog({editing,busy,onClose,returnFocus,child
       <h2 ref={headingRef} tabIndex={-1} id={titleId} className="text-lg font-bold outline-none">{editing?'Изменить оплату':'Добавить оплату'}</h2>
       <button type="button" aria-label="Закрыть форму" disabled={busy} onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-40"><X className="h-5 w-5"/></button>
     </header>
+    <EmployeePreviewNotice />
     <div className="min-h-0 overflow-y-auto overscroll-contain">{children}</div>
   </dialog>;
 }

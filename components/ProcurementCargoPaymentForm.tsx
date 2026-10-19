@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import {useEffect,useRef,useState} from 'react';
 import {PROCUREMENT_CARGO} from '@/lib/procurement-cargo';
 import {ProcurementCnyFields} from './ProcurementCnyFields';
@@ -12,6 +13,7 @@ export function ProcurementCargoPaymentForm({preview=false,blocked=false,onCance
   onDraftStateChange:(state:{hasDraft:boolean;saving:boolean})=>void;
   cnyRateReference?:PlannedRateReference;usdtRateReference?:{rate:number|null;conversionAt?:string};
 }){
+  const inspection = useEmployeePreview();
   const [date,setDate]=useState(''),[method,setMethod]=useState('CASH'),[amount,setAmount]=useState(''),[rate,setRate]=useState(''),[comment,setComment]=useState('');
   const [saving,setSaving]=useState(false),[error,setError]=useState('');
   const [fundingSource,setFundingSource]=useState('');
@@ -24,6 +26,7 @@ export function ProcurementCargoPaymentForm({preview=false,blocked=false,onCance
   useEffect(()=>{onDraftStateChange({hasDraft,saving})},[hasDraft,saving,onDraftStateChange]);
   async function submit(event:React.FormEvent){
     event.preventDefault();setError('');
+    if(inspection){setError('Режим проверки: заявка не отправлена.');return;}
     if(preview){setError('Проверка интерфейса: отправка отключена.');return;}
     if(blocked||!date||!total||total<=0){setError('Проверьте дату, сумму и доступность данных.');return;}
     setSaving(true);

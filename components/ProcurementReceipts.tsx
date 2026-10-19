@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import React,{useEffect,useId,useRef,useState} from 'react';
 import {Paperclip,X} from 'lucide-react';
 import {needsReceiptSinceRollout,receiptPaymentAmount,RECEIPT_MAX_BYTES} from '@/lib/procurement-receipt-policy';
@@ -16,6 +17,7 @@ export function ProcurementReceipts({plans,allPlans=plans,single=false,hideEmpty
   return <ReceiptWorkspace plans={plans} allPlans={allPlans} single={single} hideEmptyBeforePayment={hideEmptyBeforePayment} inline={inline} onBusyChange={onBusyChange} onPreviewChange={onPreviewChange}/>;
 }
 function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,onBusyChange,onPreviewChange}:{plans:Plan[];allPlans:Plan[];single:boolean;hideEmptyBeforePayment:boolean;inline:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void}) {
+  const preview = useEmployeePreview();
   const [viewFile,setViewFile]=useState<{file:Receipt;supplier:string}|null>(null);
   useEffect(()=>{onPreviewChange?.(!!viewFile);},[viewFile,onPreviewChange]);
   const fileOpener=useRef<HTMLButtonElement|null>(null);
@@ -40,7 +42,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,o
     const result:Receipt[]=[];
     for(let i=0;i<ids.length;i+=100){
       const query=new URLSearchParams(ids.slice(i,i+100).map(id=>['plan',id]));
-      const response=await fetch(`/api/procurement/receipts?${query}`,{cache:'no-store',signal});
+      const response=await (preview?.request ?? fetch)(`/api/procurement/receipts?${query}`,{cache:'no-store',signal});
       if(!response.ok)throw new Error('Не удалось загрузить чеки. Повторите позже.');
       result.push(...(await response.json()).receipts);
     }
@@ -68,6 +70,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,o
   const pending=plans.filter(plan=>needsReceiptSinceRollout(plan,filesFor(plan.id).length));
   const displayed=single?plans:target?allPlans.filter(p=>p.id===target):pending;
   const add=async(plan:Plan,files:File[])=>{
+    if(preview){preview.blocked();return;}
     if(!files.length||uploading.current)return;
     uploading.current=true;requestVersion.current++;
     const fromQueue=!single&&!target;
@@ -88,14 +91,14 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,o
   };
   const hasPayment=plans.some(plan=>Number(plan.evidence?.issuedAmount)>0||Number(plan.evidence?.paidAmount)>0||Number(plan.evidence?.paidForeignAmount)>0||Boolean(plan.evidence?.cashOrders?.length)||Boolean(plan.evidence?.currencyPayments?.length));
   if(single&&hideEmptyBeforePayment&&!open&&!error&&ready&&!receipts.length&&!hasPayment)return null;
-  const content=viewFile?<ProcurementReceiptViewer key={viewFile.file.id} url={`${root}${encodeURIComponent(viewFile.file.planId)}/receipts/${encodeURIComponent(viewFile.file.id)}`} name={viewFile.file.originalName} onBack={closeFile}/>:<div className="procurement-receipts-body">
+  const content=viewFile?<ProcurementReceiptViewer key={viewFile.file.id} url={(preview?.readUrl ?? (url => url))(`${root}${encodeURIComponent(viewFile.file.planId)}/receipts/${encodeURIComponent(viewFile.file.id)}`)} name={viewFile.file.originalName} onBack={closeFile}/>:<div className="procurement-receipts-body">
         <p className="mb-3 text-sm text-slate-500">Чек перевода поставщику · фото или PDF до 10 МБ.</p>
         {notice?<p role="status" className="mb-3 rounded-lg bg-[#f8f2eb] p-3 text-sm text-[#754725]">{notice}</p>:null}
         {error?<div role="alert"><p>{error}</p><button type="button" className={button} disabled={!!busy} onClick={()=>load().catch(error=>setError(error.message))}>Повторить загрузку</button></div>:null}
         {!ready?<p>Загружаем чеки…</p>:<>
           {!displayed.length?<p>Нет оплат, для которых нужно добавить чек.</p>:<ul className="procurement-receipts-list">{displayed.map(plan=><li key={plan.id} style={inline?{gridTemplateColumns:'minmax(0,1fr) auto'}:undefined}>
             {inline?<div><h3>Чеки оплаты</h3></div>:<><div><h3>{plan.supplierPartner}</h3><p>{plan.orderNumbers.length?'Заказ '+plan.orderNumbers.join(', '):'Оплата поставщику'}</p></div><strong>{paymentAmount(plan)}</strong></>}
-            <ReceiptPicker disabled={!!busy} supplier={plan.supplierPartner} label={busy===plan.id?'Сохраняем…':filesFor(plan.id).length?'Добавить ещё':'Добавить чек'} onFiles={files=>add(plan,files)}/>
+            <ReceiptPicker disabled={!!busy || !!preview} supplier={plan.supplierPartner} label={busy===plan.id?'Сохраняем…':filesFor(plan.id).length?'Добавить ещё':'Добавить чек'} onFiles={files=>add(plan,files)}/>
             {filesFor(plan.id).length?<ul className="procurement-receipts-files">{filesFor(plan.id).map(file=><li key={file.id}><button type="button" className="receipt-preview-open" onClick={event=>{fileOpener.current=event.currentTarget;setViewFile({file,supplier:plan.supplierPartner});}} aria-label={`Посмотреть чек ${file.originalName}`}><Paperclip size={22} aria-hidden="true"/><div><strong>{file.originalName}</strong><em>Посмотреть чек</em></div></button><span>{file.author.name} · {new Date(file.createdAt).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span></li>)}</ul>:null}
           </li>)}</ul>}
           {target&&!single?<button className={button} onClick={()=>setTarget('')}>К остальным оплатам</button>:null}

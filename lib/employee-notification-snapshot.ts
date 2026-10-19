@@ -1,0 +1,68 @@
+import 'server-only';
+import { prisma } from '@/lib/prisma';
+import { workdayIssueView } from '@/lib/workday-control-issue-view';
+import { filterActiveWorkdayNotifications, reconcileActiveWorkdayNotifications, workdayNotificationHref, workdayTaskNotificationCopy } from '@/lib/workday-notifications';
+import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
+import { cashNoticeBase } from '@/lib/procurement-morning-policy';
+import { currentDeliveryPush, DELIVERY_READY_KIND } from '@/lib/procurement-delivery-notifications';
+import { DELIVERY_PUSH_COPY } from '@/lib/employee-push-policy';
+import { COLLECTION_READY_KIND, COLLECTION_PUSH_COPY, currentCollectionPushes } from '@/lib/procurement-collection-notifications';
+import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY, cashIssueForUser } from '@/lib/procurement-cash-issue-policy';
+import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
+
+export async function loadEmployeeNotifications(user: { id: number }, readOnly = false) {
+  const rows = await prisma.workdayNotification.findMany({
+    where: { userId: user.id, status: 'sent', OR: [{ readAt: null }, { kind: CASH_ISSUE_KIND }] },
+    orderBy: { sentAt: 'desc' },
+    select: {
+      id: true,
+      kind: true,
+      fingerprint: true,
+      title: true,
+      body: true,
+      sentAt: true,
+      readAt: true,
+      taskId: true,
+      issueId: true,
+      reviewId: true,
+      task: { select: { status: true, category: true, title: true, run: { select: { status: true } } } },
+      issue: { select: { status: true, employeeActionRequired: true, ruleKey: true, title: true, detail: true, sourceData: true } },
+      review: { select: { status: true } },
+    },
+  });
+  const seenTargets = new Set<string>();
+  const activeRows = await (readOnly ? filterActiveWorkdayNotifications : reconcileActiveWorkdayNotifications)(prisma, rows);
+  const delivery = activeRows.some(row => row.kind === DELIVERY_READY_KIND) ? await currentDeliveryPush() : null;
+  const collections = activeRows.some(row => row.kind === COLLECTION_READY_KIND) ? await currentCollectionPushes() : null;
+  const cashIssue = activeRows.some(row => row.kind === CASH_ISSUE_KIND) ? await currentCashIssue() : null;
+  const notifications = activeRows
+    .filter((notification) => {
+      const reply = notification.kind.endsWith('_reply');
+      const target = reply ? `reply:${notification.id}` : notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : workdayNotificationThreadKey(notification);
+      if (seenTargets.has(target)) return false;
+      seenTargets.add(target);
+      return true;
+    })
+    .map(({ task, issue, review: _review, ...notification }) => {
+      const issueView = issue && !notification.kind.endsWith('_reply') ? workdayIssueView(issue) : null;
+      const taskCopy = task ? workdayTaskNotificationCopy(task, notification.kind) : null;
+      const deliveryCopy = notification.kind === DELIVERY_READY_KIND && delivery?.state === 'ready'
+        && delivery.fingerprint === (cashNoticeBase(notification) ?? notification.fingerprint) && delivery.userId === user.id ? delivery : null;
+      const collectionCopy = collections?.state === 'ready' ? collections.notices.find(n => n.userId === user.id && n.fingerprint === (cashNoticeBase(notification) ?? notification.fingerprint)) : null;
+      const ownIssue = cashIssue ? cashIssueForUser(cashIssue, user.id) : null;
+      const issueCopy = ownIssue?.fingerprint === notification.fingerprint ? ownIssue : null;
+      const copy = notification.kind === CASH_ISSUE_KIND ? issueCopy ?? { ...CASH_ISSUE_PUSH_COPY, body: 'Статус выдачи уточняется. Откройте заявку перед выдачей денег.' }
+        : notification.kind === DELIVERY_READY_KIND ? deliveryCopy ?? DELIVERY_PUSH_COPY
+        : notification.kind === COLLECTION_READY_KIND ? collectionCopy ?? COLLECTION_PUSH_COPY : null;
+      return {
+        ...notification,
+        ...(notification.kind === CASH_ISSUE_KIND ? { readAt: null } : {}),
+        title: copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title,
+        body: copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body,
+        href: workdayNotificationHref(notification),
+      };
+    })
+    .sort((a, b) => Number(b.kind === CASH_ISSUE_KIND) - Number(a.kind === CASH_ISSUE_KIND))
+    .slice(0, 30);
+  return { notifications };
+}

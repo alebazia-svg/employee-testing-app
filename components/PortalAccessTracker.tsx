@@ -10,6 +10,7 @@ import { collectDeviceObservation } from '../lib/portal-device-observation';
 export function PortalAccessTracker() {
   const path = usePathname();
   useEffect(() => {
+    if (path.startsWith('/admin/employees/preview/')) return;
     if (!/^\/(admin|employee|procurement)(\/|$)/.test(path)) return;
     let stopped = false, busy = false, lastAttempt = 0, dirty = true;
     let interactionAt = 0;

@@ -10,7 +10,12 @@ import { accessClientIp } from '@/lib/portal-access-network';
 import { portalRequestOrigin } from '@/lib/portal-device-observation';
 
 export async function POST(req: Request) {
-  const { login, password } = await req.json();
+  let payload;
+  try { payload = await req.json(); } catch { return Response.json({ error: 'Некорректный запрос' }, { status: 400 }); }
+  const { login, password } = payload ?? {};
+  if (typeof login !== 'string' || !login.trim() || login.length > 256 || typeof password !== 'string' || password.length > 256) {
+    return Response.json({ error: 'Неверный логин или пароль' }, { status: 400 });
+  }
   if (!loginAllowed(req, login)) {
     return Response.json({ error: 'Слишком много попыток входа. Подождите 15 минут.' }, { status: 429 });
   }
@@ -29,7 +34,7 @@ export async function POST(req: Request) {
   clearLoginFailures(req, login);
 
   const cookieStore = await cookies();
-  const token = createSessionToken(user.id);
+  const token = createSessionToken(user.id, Date.now(), { sessionVersion: user.sessionVersion });
   const previousBrowser = cookieStore.get(accessBrowserCookie)?.value;
   const browserInstanceId = validAccessBrowserId(previousBrowser) ? previousBrowser : randomUUID();
   try { await recordPortalAccess({ userId: user.id, token, browserInstanceId, origin: portalRequestOrigin(req), clientIp: accessClientIp(req.headers), userAgent: req.headers.get('user-agent') ?? '', login: true }); }
@@ -44,5 +49,5 @@ export async function POST(req: Request) {
   });
   cookieStore.delete('userId');
 
-  return Response.json({ role: user.role, portalArea: user.portalArea });
+  return Response.json({ role: user.role, portalArea: user.portalArea }, { headers: { 'Cache-Control': 'no-store' } });
 }

@@ -1,6 +1,7 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -62,6 +63,8 @@ function urlBase64ToUint8Array(value: string) {
 }
 
 export function WorkdayNotificationsClient() {
+  const preview = useEmployeePreview();
+  const requestRead = preview?.request ?? fetch;
   const router = useRouter();
   const cashIssue = useCashIssue();
   const searchParams = useSearchParams();
@@ -76,17 +79,18 @@ export function WorkdayNotificationsClient() {
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
-    const response = await fetch('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
+    const response = await requestRead('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
     if (!response?.ok) return;
     const payload = await response.json();
     const nextNotifications = Array.isArray(payload.notifications)
       ? payload.notifications.filter((item: WorkdayNotification) => !item.readAt)
       : [];
     setNotifications(nextNotifications);
-    void syncPwaAppBadge(nextNotifications.length);
+    if (!preview) void syncPwaAppBadge(nextNotifications.length);
   }, []);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
+    if (preview) return;
     setBusy(true);
     setError('');
     try {
@@ -119,6 +123,7 @@ export function WorkdayNotificationsClient() {
   }, []);
 
   useEffect(() => {
+    if (preview) { void refresh(); const timer = window.setInterval(() => void refresh(), 10000); return () => window.clearInterval(timer); }
     if ('serviceWorker' in navigator) {
       void navigator.serviceWorker.register('/workday-sw.js', { scope: '/' }).catch(() => undefined);
     }
@@ -132,12 +137,13 @@ export function WorkdayNotificationsClient() {
   }, [connectPush, refresh]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || preview) return;
     const closeTimer = window.setTimeout(() => setOpen(false), 10_000);
     return () => window.clearTimeout(closeTimer);
   }, [open]);
 
   async function dismiss(notification: WorkdayNotification) {
+    if (preview) return;
     const threadKey = workdayNotificationThreadKey(notification);
     setNotifications((current) => {
       const next = current.filter((item) => workdayNotificationThreadKey(item) !== threadKey);
@@ -152,6 +158,7 @@ export function WorkdayNotificationsClient() {
   }
 
   async function openNotification(notification: WorkdayNotification) {
+    if (preview) { setOpen(false); setSelected({ ...notification, audience: "employee" }); return; }
     if (notification.kind === CASH_ISSUE_KIND && cashIssue) {
       const ref = new URL(notification.href, window.location.origin).searchParams.get('request');
       if (ref) { setOpen(false); cashIssue.open(ref); return; }
@@ -164,7 +171,7 @@ export function WorkdayNotificationsClient() {
 
   return (
     <div className='relative'>
-      {selected&&<NotificationRecordDialog key={selected.id} item={selected} onViewed={()=>{const n=notifications.find(n=>n.id===selected.id);if(n)void dismiss(n);}} onClose={()=>setSelected(null)}/>}
+      {selected&&<NotificationRecordDialog readOnly={Boolean(preview)} key={selected.id} item={selected} onViewed={()=>{const n=notifications.find(n=>n.id===selected.id);if(n)void dismiss(n);}} onClose={()=>setSelected(null)}/>}
       <button
         type='button'
         onClick={() => setOpen((current) => !current)}
@@ -178,17 +185,17 @@ export function WorkdayNotificationsClient() {
             {notifications.length > 9 ? '9+' : notifications.length}
           </span>
         )}
-        {!pushConnected && notifications.length === 0 && <span className='absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-[#f5f4ef]' />}
+        {!preview && !pushConnected && notifications.length === 0 && <span className='absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-[#f5f4ef]' />}
       </button>
 
       {open && createPortal(
-        <div role='dialog' aria-label='Уведомления' className={cn('employee-material-popover fixed left-1/2 top-[6.5rem] z-50 w-[calc(100%-2rem)] max-w-[488px] -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl', moboPreview && 'employee-material-popover-mobo')}>
+        <div role='dialog' aria-label='Уведомления' style={preview ? { '--employee-notification-top': `${preview.topInset + 12}px`, maxHeight: `calc(100dvh - ${preview.topInset + 24}px)`, overflowY: 'auto' } as CSSProperties : undefined} className={cn('employee-material-popover fixed left-1/2 top-[6.5rem] z-50 w-[calc(100%-2rem)] max-w-[488px] -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl', moboPreview && 'employee-material-popover-mobo')}>
           <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3.5'>
             <p className='text-base font-bold'>Уведомления</p>
             <button type='button' onClick={() => setOpen(false)} className='employee-material-popover-close flex h-8 w-8 items-center justify-center rounded-lg text-slate-500' aria-label='Закрыть уведомления'><X className='h-[18px] w-[18px]' /></button>
           </div>
 
-          {!pushConnected && (
+          {!preview && !pushConnected && (
             <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>
               <p className='text-sm font-semibold leading-snug text-slate-800'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
               <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='employee-material-green-action mt-3 rounded-lg bg-green-700 px-3.5 py-2.5 text-sm font-bold text-white disabled:opacity-50'>
@@ -198,6 +205,7 @@ export function WorkdayNotificationsClient() {
             </div>
           )}
 
+          {preview && <p className='border-b border-slate-200 px-4 py-3 text-xs text-slate-600'>Проверка: просмотр не отмечает уведомления прочитанными. Доставку push на телефон проверяйте отдельно.</p>}
           {notifications.length === 0 ? (
             <p className='px-4 py-6 text-center text-sm font-medium text-slate-500'>Нет актуальных уведомлений</p>
           ) : (

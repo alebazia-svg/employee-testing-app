@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import React,{useEffect,useId,useRef,useState,type ComponentProps} from 'react';
 import {Search} from 'lucide-react';
@@ -26,6 +27,7 @@ const empty=()=>({plannedAmount:'',paymentMethod:'CASH',foreignAmount:'',exchang
 const input='mt-1.5 w-full rounded-xl border border-[var(--portal-border)] bg-white px-3 py-2.5 text-sm font-semibold';
 
 export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,initialSelectedRefs,onCreated,onCancel,onDraftStateChange,usdtRateReference,cnyRateReference,basisPreview=false,submissionBlocked=false,supplierDebtError=false,todayKey='',activeOrderRefs=[],activeSupplierNames=[],cargoAllowed=false,availableUsdt=null}:Props){
+  const inspection = useEmployeePreview();
   const orders:Order[]=[...sourceOrders,...supplierAdvanceChoices(supplierBalances,activeSupplierNames,supplierDebtError),...Object.entries(supplierDebtError?{}:supplierBalances)
     .filter(([name,b])=>supplierPosition(b)==='debt'&&!activeSupplierNames.includes(name))
     .map(([supplierPartner,b])=>({ref:'debt:'+supplierPartner,number:'',supplierPartner,supplierCounterparty:'',orderPaymentGap:0,supplierDebt:b.debt,plannedActiveAmount:0,unplannedAmount:b.debt,orderComment:''}))];
@@ -83,6 +85,7 @@ export function ProcurementPaymentForm({orders:sourceOrders,supplierBalances,ini
   const excess=first?paymentOrderExcess(first,draft.plannedAmount):0;
   async function submit(event:React.FormEvent){
     event.preventDefault();setMessage('');
+    if(inspection){setMessage('Режим проверки: заявка не отправлена.');return;}
     if(!first||!date||!validAmount||selectionInvalid||submissionBlocked){setMessage('Проверьте дату, сумму и доступность выбранной оплаты.');return;}
     if(basisPreview){setMessage('Проверка интерфейса: заявка не отправляется.');return;}
     setSaving(true);
