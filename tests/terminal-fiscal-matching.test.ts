@@ -447,7 +447,7 @@ test('never exposes uncertain or technical states to an employee', () => {
 });
 
 test('reasonCode contract is exhaustive and permits every emitted status', () => {
-  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 29);
+  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 30);
   const scenarios = [
     only(),
     only({ oneCChecks: [] }),
@@ -461,4 +461,60 @@ test('reasonCode contract is exhaustive and permits every emitted status', () =>
   for (const contract of Object.values(MATCHING_REASON_CODE_CONTRACT)) {
     if (!contract.allowedStatuses.includes('mismatch' as never)) assert.equal(contract.employeeVisible, false);
   }
+});
+
+test('resolves a forced candidate using distinct fiscally and item-confirmed checks', () => {
+  const secondBank = {...bank,rrn:'second',transactionDate:'2026-08-10T07:06:00.000Z'};
+  const secondCheck = {...check,sourceRef:'second-check',dateTime:'2026-08-10T07:07:00.000Z',fiscalDocumentNumber:'second-fd'};
+  const secondReceipt = {...receipt,fiscalDocumentNumber:'second-fd',receiptAt:'2026-08-10T07:07:00.000Z'};
+  const records = reconcileTerminalFiscalMvp(input({bankOperations:[bank,secondBank],oneCChecks:[check,secondCheck],ofdReceipts:[receipt,secondReceipt]})).records;
+  assert.deepEqual(records.map(r=>[r.status,r.oneCCheckKey]),[['confirmed','check-1'],['confirmed','second-check']]);
+  const differentGoods = {...secondReceipt,items:[{...receipt.items[0],name:'Другой товар'}]};
+  const uncertain = reconcileTerminalFiscalMvp(input({bankOperations:[bank,secondBank],oneCChecks:[check,secondCheck],ofdReceipts:[receipt,differentGoods]})).records;
+  assert.equal(uncertain[1].reasonCode,'ONE_C_MULTIPLE_CANDIDATES');
+  const incomplete = reconcileTerminalFiscalMvp(input({bankOperations:[bank,secondBank],oneCChecks:[check,secondCheck],ofdReceipts:[receipt,secondReceipt],sources:{...input().sources,ofd:{...input().sources.ofd,complete:false}}})).records;
+  assert.equal(incomplete[1].status,'unavailable');
+  assert.equal(incomplete[1].oneCCheckKey,undefined);
+});
+
+test('identical totals and fully verified goods do not resolve two equal alternatives', () => {
+  const secondBank={...bank,rrn:'second',transactionDate:'2026-08-10T07:01:00.000Z'};
+  const secondCheck={...check,sourceRef:'second-check',dateTime:'2026-08-10T07:03:00.000Z',fiscalDocumentNumber:'second-fd'};
+  const records=reconcileTerminalFiscalMvp(input({bankOperations:[bank,secondBank],oneCChecks:[check,secondCheck],ofdReceipts:[receipt,{...receipt,fiscalDocumentNumber:'second-fd'}]})).records;
+  assert.ok(records.every(r=>r.reasonCode==='ONE_C_MULTIPLE_CANDIDATES'));
+});
+
+test('one fiscal receipt cannot confirm two different 1C document refs', () => {
+  const secondBank={...bank,rrn:'second',transactionDate:'2026-08-10T08:00:00.000Z'};
+  const secondCheck={...check,sourceRef:'other-ref-same-fiscal',dateTime:'2026-08-10T08:02:00.000Z'};
+  const records=reconcileTerminalFiscalMvp(input({bankOperations:[bank,secondBank],oneCChecks:[check,secondCheck]})).records;
+  assert.ok(records.every(r=>r.reasonCode==='ONE_C_CHECK_REUSED'));
+});
+
+test('a later day payment reserves its own receipt ahead of an older same-amount gap', () => {
+  const nextBank={...bank,rrn:'next-day',transactionDate:'2026-08-11T07:00:00.000Z'};
+  const nextCheck={...check,dateTime:'2026-08-11T07:02:00.000Z'};
+  const records=reconcileTerminalFiscalMvp(input({now:'2026-08-12T09:00:00.000Z',bankOperations:[bank,nextBank],oneCChecks:[nextCheck],ofdReceipts:[{...receipt,receiptAt:'2026-08-11T07:02:00.000Z'}]})).records;
+  assert.equal(records[0].reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(records[1].status,'confirmed');
+});
+
+test('recognizes 1200 + 300 with matching goods in one OFD receipt as a possible split, never a proven bank match', () => {
+  const splitBank={...bank,amountKopecks:150000};
+  const part=(ref:string,amount:number,name:string,cashier:string):OneCCheck=>({...check,sourceRef:ref,totalKopecks:amount,electronicKopecks:amount,cashier:{ref:cashier,name:cashier},cardPayments:[{...check.cardPayments[0],amountKopecks:amount}],items:[{name,quantity:1,priceKopecks:amount,sumKopecks:amount}],fiscalDocumentNumber:ref});
+  const first=part('part-1200',120000,'Чехол','manager-a'),second=part('part-300',30000,'Поклейка','manager-b');
+  const combined={...receipt,totalKopecks:150000,electronicKopecks:150000,items:[...first.items,...second.items]};
+  const result=only({bankOperations:[splitBank],oneCChecks:[first,second],ofdReceipts:[combined]});
+  assert.equal(result.reasonCode,'ONE_C_POSSIBLE_SPLIT_SALE');
+  assert.equal(result.status,'needs_review');
+  assert.equal(result.oneCCheckKey,undefined);
+  assert.equal(result.oneCCashierRef,undefined);
+  assert.equal(matchingActionPolicy(result).employeeVisible,false);
+  const wrongGoods={...combined,items:[{name:'Другой товар',quantity:1,priceKopecks:150000,sumKopecks:150000}]};
+  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,second],ofdReceipts:[wrongGoods]}).reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,{...second,cashRegisterRef:'other-kkm'}],ofdReceipts:[combined]}).reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,{...second,dateTime:'2026-08-10T08:02:00.000Z'}],ofdReceipts:[combined]}).reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+  const actualPartialPayment={...bank,rrn:'separate-1200-sale',amountKopecks:120000};
+  const separate=reconcileTerminalFiscalMvp(input({bankOperations:[splitBank,actualPartialPayment],oneCChecks:[first,second],ofdReceipts:[combined]})).records;
+  assert.equal(separate[0].reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
 });

@@ -67,3 +67,17 @@ test('rolling unresolved sweep is limited to one five-minute slot per hour', () 
   assert.equal(terminalFiscalShouldRunUnresolvedSweep(new Date('2026-08-13T09:02:00.000Z')), true);
   assert.equal(terminalFiscalShouldRunUnresolvedSweep(new Date('2026-08-13T09:07:00.000Z')), false);
 });
+
+test('historical unresolved days rotate one per hourly sweep without dropping recent reviews', () => {
+  const dates=[new Date('2026-09-07T10:00:00Z'),new Date('2026-09-07T11:00:00Z'),new Date('2026-09-09T10:00:00Z'),new Date('2026-09-13T10:00:00Z'),new Date('2026-10-16T10:00:00Z'),new Date('invalid')];
+  const seen=new Set<string>();
+  for(let hour=9;hour<12;hour++){
+    const periods=terminalFiscalUnresolvedPeriods(dates,new Date(`2026-10-19T${String(hour).padStart(2,'0')}:02:00Z`));
+    assert.equal(periods.length,2);
+    assert.ok(periods.some(p=>p.periodFrom.toISOString()==='2026-10-15T21:00:00.000Z'));
+    const older=periods.filter(p=>p.periodFrom<new Date('2026-10-12T21:00:00Z'));
+    assert.equal(older.length,1);
+    seen.add(older[0].periodFrom.toISOString());
+  }
+  assert.equal(seen.size,3);
+});

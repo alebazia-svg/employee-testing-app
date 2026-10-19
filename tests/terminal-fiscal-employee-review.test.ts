@@ -95,6 +95,11 @@ test('admin review screen distinguishes unresolved ADMIN-only and confirmed late
   const admin = terminalFiscalAdminReviewView({ ...common, status: 'admin_review' });
   assert.equal(admin.statusLabel, 'Проверка администратора');
   assert.match(admin.discussionMessage, /не закрытая ошибка/);
+  const split = terminalFiscalAdminReviewView({ ...common, status: 'admin_review',
+    match: { status: 'needs_review', reasonCode: 'ONE_C_POSSIBLE_SPLIT_SALE', oneCSourceRef: null, timeDifferenceSeconds: null } });
+  assert.equal(split.title, 'Возможное разделение продажи');
+  assert.match(split.message, /товары/);
+  assert.doesNotMatch(split.message, /пробейте|чек.*не найден/i);
 
   const unavailable = terminalFiscalAdminReviewView({
     ...common,

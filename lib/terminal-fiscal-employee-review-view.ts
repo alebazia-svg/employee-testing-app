@@ -76,6 +76,14 @@ export function terminalFiscalAdminReviewView(input: {
     };
   }
   if (input.status === 'admin_review') {
+    if (input.match?.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE') return {
+      tone: 'admin' as const,
+      statusLabel: 'Проверка администратора',
+      title: 'Возможное разделение продажи',
+      operationMeta,
+      message: 'Сумма и товары частей продажи в 1С совпадают с общим чеком ОФД. Связь с оплатой требует проверки.',
+      discussionMessage: 'Это возможное разделение продажи, а не подтверждённый непробитый чек.',
+    };
     const sourceIncomplete = input.match?.reasonCode?.startsWith('SOURCE_') === true;
     return {
       tone: 'admin' as const,

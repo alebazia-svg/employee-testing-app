@@ -226,3 +226,30 @@ test('runner without explicit persist leaves all four audit tables unchanged', a
     prisma.terminalFiscalMatch.count(), prisma.terminalFiscalMatchEvaluation.count(),
   ]), before);
 });
+
+test('historical late reads include later competing payments but report only the selected day', async () => {
+  const mapping = await prisma.terminalFiscalMapping.create({data:{label:marker,terminalKey:`${marker}-later`,oneCAcquiringTerminalRef:'late-acq',oneCCashRegisterRef:'late-kkm',kktRegistrationNumber:'late-kkt',effectiveFrom:new Date('2026-08-01T00:00:00Z')}});
+  const from=new Date('2026-08-10T00:00:00+03:00'),to=new Date('2026-08-11T00:00:00+03:00');
+  const at='2026-08-10T07:00:00.000Z',nextAt='2026-08-11T07:00:00.000Z',checkedAt='2026-08-19T12:00:00.000Z';
+  const original={terminalKey:mapping.terminalKey,rrn:'original',transactionDate:at,amountKopecks:150000,type:'Debit' as const};
+  const later={...original,rrn:'later',transactionDate:nextAt};
+  const items=[{name:'Стекло',quantity:1,priceKopecks:150000,sumKopecks:150000}];
+  const check={sourceRef:'later-check',sourceType:'sale_check' as const,operationType:'sale' as const,dateTime:'2026-08-11T07:02:00.000Z',cashRegisterRef:'late-kkm',kktRegistrationNumber:'late-kkt',totalKopecks:150000,electronicKopecks:150000,cashier:{ref:'',name:''},cardPayments:[{lineNumber:'1',amountKopecks:150000,acquiringTerminalRef:'late-acq',referenceNumber:'',authorizationCode:'',terminalReceiptNumber:''}],items,fiscalState:'confirmed' as const,fiscalStateMeaning:'data_state_only' as const,fiscalDriveNumber:'late-fn',fiscalDocumentNumber:'late-fd',fiscalSign:'late-fp'};
+  const receipt={fiscalDriveNumber:'late-fn',fiscalDocumentNumber:'late-fd',fiscalSign:'late-fp',operationType:1,receiptAt:check.dateTime,kktRegistrationNumber:'late-kkt',totalKopecks:150000,electronicKopecks:150000,items};
+  const before=await prisma.terminalFiscalMatch.count();
+  const result=await runTerminalFiscalHistoricalDryRun({mappingId:mapping.id,periodFrom:from,periodTo:to},{
+    loadTbank:async query=>{assert.ok(Date.parse(query.to)>to.getTime());return{complete:true,checkedAt,data:[original,later]};},
+    loadOneC:async()=>({complete:true,checkedAt,data:[check]}),loadOfd:async()=>({complete:true,checkedAt,data:[receipt]}),
+  });
+  assert.ok(result.acquired);
+  assert.equal(result.summary.total,1);
+  assert.equal(result.summary.statuses.confirmed,0);
+  assert.equal(result.summary.reasonCodes.ONE_C_CANDIDATE_NOT_FOUND,1);
+  const lateCheck={...check,dateTime:'2026-08-12T07:02:00.000Z'};
+  const lateResult=await runTerminalFiscalHistoricalDryRun({mappingId:mapping.id,periodFrom:from,periodTo:to},{loadTbank:async()=>({complete:true,checkedAt,data:[original]}),loadOneC:async()=>({complete:true,checkedAt,data:[lateCheck]}),loadOfd:async()=>({complete:true,checkedAt,data:[{...receipt,receiptAt:lateCheck.dateTime}]})});
+  assert.ok(lateResult.acquired);
+  assert.equal(lateResult.summary.total,1);
+  assert.equal(lateResult.summary.statuses.confirmed,1);
+  assert.equal(lateResult.summary.reasonCodes.MATCH_CONFIRMED_LATE,1);
+  assert.equal(await prisma.terminalFiscalMatch.count(),before);
+});

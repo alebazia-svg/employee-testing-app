@@ -47,7 +47,8 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
     const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true }, orderBy: { id: 'asc' } });
     if (!admins.length) throw new Error('TERMINAL_FISCAL_ADMIN_RECIPIENT_MISSING');
     const approved = existing && await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(existing.id) } });
-    const keepOpen = Boolean(approved && existing?.status === 'open');
+    const possibleSplit = record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE';
+    const keepOpen = Boolean(approved && existing?.status === 'open' && !possibleSplit);
     const review = await tx.terminalFiscalEmployeeReview.upsert({
       where: { reviewKey },
       create: { reviewKey, matchingHash: hash, mappingId: record.mappingId ?? null,
@@ -69,15 +70,17 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       && record.sourceCompleteness.tbank
       && record.sourceCompleteness.oneC;
     const uncertain = !definitelyMissing;
+    const title = possibleSplit ? 'Возможное разделение продажи' : uncertain ? 'Нужна проверка сопоставления' : 'В 1С нет чека';
+    const body = `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${possibleSplit
+      ? 'Сумма и товары частей продажи согласуются с общим чеком ОФД. Связь с оплатой требует проверки администратора.'
+      : uncertain ? 'Портал не смог однозначно сопоставить оплату и чек; требуется проверка администратора.'
+      : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`;
     const event = await tx.adminInboxEvent.upsert({
       where: { eventKey: `${reviewKey}:admin-first` },
       create: { eventKey: `${reviewKey}:admin-first`, type: 'terminal_fiscal_review.created',
-        title: uncertain ? 'Нужна проверка сопоставления' : 'В 1С нет чека',
-        body: `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${uncertain
-          ? 'Портал не смог однозначно сопоставить оплату и чек; требуется проверка администратора.'
-          : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`,
+        title, body,
         href: `/admin/workday/payment-checks/${review.id}`, sourceType: 'terminal_fiscal_review', sourceId: review.id, occurredAt: now },
-      update: {},
+      update: possibleSplit ? { title, body } : {},
     });
     await tx.adminInboxReceipt.createMany({ data: admins.map((a) => ({ eventId: event.id, userId: a.id })), skipDuplicates: true });
   });
@@ -140,6 +143,7 @@ export async function approveFiscalReview(db: PrismaClient, id: string, adminId:
     const review = await tx.terminalFiscalEmployeeReview.findUnique({ where: { id } });
     if (!review || review.status === 'resolved') throw new Error('REVIEW_NOT_AVAILABLE');
     const match = await tx.terminalFiscalMatch.findUnique({ where: { matchingId: review.matchingHash } });
+    if (match?.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || review.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE') throw new Error('REVIEW_NOT_AVAILABLE');
     if (match && (match.status === 'confirmed' || match.oneCSourceRef)) throw new Error('CHECK_ALREADY_EXISTS');
     const approved = await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(id) } });
     if (approved && review.status === 'open') return { alreadyApproved: true };
