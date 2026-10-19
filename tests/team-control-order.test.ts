@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compareTeamRows,teamRowStatus,type TeamStatusRow} from '../lib/team-control-order';
+import {workdayCardNeighbors} from '../lib/workday-card-navigation';
 const row=(values:Partial<TeamStatusRow>={}):TeamStatusRow=>({id:1,name:'Сотрудник',state:'План неизвестен',start:'—',end:'—',planState:'unknown',sourceUnavailable:false,missing:false,...values});
 test('working covers both Google and app marks, even without a plan',()=>{
   assert.equal(teamRowStatus(row({state:'Работает',start:'09:00'})),'working');
@@ -23,4 +24,14 @@ test('working comes first, then missing and finished; ties are stable by Russian
   const rows=[row({id:1,name:'Яна',planState:'off',state:'Выходной'}),row({id:2,name:'Милана',state:'Работает',start:'10:48'}),row({id:3,name:'Зухра'}),row({id:4,name:'Лиана',state:'Работает',start:'08:54'}),row({id:5,name:'Анна',state:'Не отметился',planState:'working',missing:true}),row({id:6,name:'Ирина',end:'17:00'})];
   assert.deepEqual([...rows].sort(compareTeamRows).map(r=>r.id),[4,2,5,6,1,3]);
   assert.deepEqual(rows.map(r=>r.id),[1,2,3,4,5,6]);
+});
+test('card navigation follows the filtered order across departments and stops at its ends',()=>{
+  const list=[{employeeId:8,name:'Лиана'},{employeeId:3,name:'Милана'}];
+  const first=workdayCardNeighbors(list,8,'2026-10-19');
+  assert.equal(first.previous,null);
+  assert.deepEqual(first.next,{name:'Милана',href:'/admin/workday?date=2026-10-19&control=all&employee=3#employees-control'});
+  const last=workdayCardNeighbors(list,3,'2026-10-19');
+  assert.equal(last.previous?.name,'Лиана');assert.equal(last.next,null);
+  assert.deepEqual(workdayCardNeighbors(list,99,'2026-10-19'),{previous:null,next:null});
+  assert.deepEqual(workdayCardNeighbors([list[0]],8,'2026-10-19'),{previous:null,next:null});
 });

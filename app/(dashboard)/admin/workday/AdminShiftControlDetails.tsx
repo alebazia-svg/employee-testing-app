@@ -1,5 +1,5 @@
 'use client';
-import { WORKDAY_CARD_OPEN, openWorkdayCard, type WorkdayCardTarget } from '@/lib/workday-card-navigation';
+import { WORKDAY_CARD_OPEN, openWorkdayCard, workdayCardNeighbors, type WorkdayCardList, type WorkdayCardTarget } from '@/lib/workday-card-navigation';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 import { handoverCashResult, handoverEncashmentResult, missingHandoverPhotos } from '@/lib/workday-handover-view';
 import { taskTimingLabel } from '@/lib/team-control';
@@ -831,12 +831,16 @@ export function AdminShiftControlDetails({
   initialReviewTarget,
   initialOpen = false,
   closeHref,
-  previousEmployee,
-  nextEmployee,
+  previousEmployee: serverPreviousEmployee,
+  nextEmployee: serverNextEmployee,
 }: Props) {
   const latestCashEntryAt = cashOperations.reduce<string | null>((latest, operation) => !latest || operation.createdAt > latest ? operation.createdAt : latest, null);
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [navigation,setNavigation]=useState<WorkdayCardList|undefined>();
+  const neighbors=navigation?workdayCardNeighbors(navigation,employeeId,dateKey):null;
+  const previousEmployee=neighbors?neighbors.previous:serverPreviousEmployee;
+  const nextEmployee=neighbors?neighbors.next:serverNextEmployee;
   const [focusTarget,setFocusTarget]=useState(initialReviewTarget);
   const [cardView, setCardView] = useState<'day' | 'cash' | 'close'>('day');
   const [focusedOperation, setFocusedOperation] = useState<number | null>(null);
@@ -944,6 +948,7 @@ export function AdminShiftControlDetails({
       const target=(event as CustomEvent<WorkdayCardTarget>).detail;
       if(!target)return;
       if(target.employeeId!==employeeId){setOpen(false);return;}
+      setNavigation(target.navigation);
       setFocusTarget(target.focus??undefined);
       setOpen(true);
     };
@@ -1155,7 +1160,7 @@ export function AdminShiftControlDetails({
                   {previousEmployee ? (
                     <Link
                       href={previousEmployee.href}
-                      onClick={event=>openWorkdayCard(event,dateKey)}
+                      onClick={event=>openWorkdayCard(event,dateKey,navigation)}
                       className='inline-flex h-9 items-center gap-1 rounded-lg bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'
                       title={previousEmployee.name}
                     >
@@ -1171,7 +1176,7 @@ export function AdminShiftControlDetails({
                   {nextEmployee ? (
                     <Link
                       href={nextEmployee.href}
-                      onClick={event=>openWorkdayCard(event,dateKey)}
+                      onClick={event=>openWorkdayCard(event,dateKey,navigation)}
                       className='inline-flex h-9 items-center gap-1 rounded-lg bg-slate-100 px-3 text-xs font-extrabold text-slate-700 transition hover:bg-slate-200'
                       title={nextEmployee.name}
                     >
@@ -1198,13 +1203,13 @@ export function AdminShiftControlDetails({
             {(previousEmployee || nextEmployee) ? (
               <div className='flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2 md:hidden'>
                 {previousEmployee ? (
-                  <Link href={previousEmployee.href} className='inline-flex min-w-0 items-center gap-1 text-xs font-extrabold text-slate-700'>
+                  <Link href={previousEmployee.href} onClick={event=>openWorkdayCard(event,dateKey,navigation)} className='inline-flex min-w-0 items-center gap-1 text-xs font-extrabold text-slate-700'>
                     <ChevronLeft className='h-4 w-4 shrink-0' />
                     <span className='truncate'>Предыдущий: {previousEmployee.name}</span>
                   </Link>
                 ) : <span />}
                 {nextEmployee ? (
-                  <Link href={nextEmployee.href} className='inline-flex min-w-0 items-center gap-1 text-xs font-extrabold text-slate-700'>
+                  <Link href={nextEmployee.href} onClick={event=>openWorkdayCard(event,dateKey,navigation)} className='inline-flex min-w-0 items-center gap-1 text-xs font-extrabold text-slate-700'>
                     <span className='truncate'>Следующий: {nextEmployee.name}</span>
                     <ChevronRight className='h-4 w-4 shrink-0' />
                   </Link>
