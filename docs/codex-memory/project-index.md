@@ -212,3 +212,9 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 - Plan gaps stay in Plan and never inflate operational attention. Preserve real
   shift/receipt/cash questions and unresolved earlier-day owner requests.
 - Local Google scenario adapters remain outside the production release.
+
+## Terminal fiscal matching — correction release 1.9.3, 2026-10-19
+
+- Released and verified: `terminal-fiscal-matching-candidate-20261019.md`.
+- Seven-day 1C read limit, late-payment competition, forced assignments and
+  goods-backed possible split detection. Historical outcomes require scheduled rechecks.
