@@ -48,3 +48,17 @@ test('last-good snapshot is not replaced by disconnected or unexpectedly empty s
   assert.match(getPayrollAttendanceSnapshotReplacementError({ ...payload, formSummaries: [] }, payload) ?? '', /пустую посещаемость/);
   assert.match(getPayrollAttendanceSnapshotReplacementError({ ...payload, scheduleSummaries: [] }, payload) ?? '', /пустой график/);
 });
+
+test('mixed attendance snapshot keeps source dates and supports legacy snapshots', () => {
+  const mixed = createPayrollAttendanceSnapshotPayload({
+    ...payload,
+    period: { monthIndex: 9, year: 2026, periodKey: '2026-10' },
+    attendanceMode: 'google-sheets+pwa',
+    attendanceSources: [{ employee: 'Хурзокова Лиана', userId: 8, fromDate: '2026-10-18', appDates: ['2026-10-18'], googleFallbackDates: ['2026-10-19'], overlapDates: ['2026-10-18'] }],
+  });
+  assert.deepEqual(readPayrollAttendanceSnapshotPayload(mixed, '2026-10'), mixed);
+  assert.equal(getPayrollAttendanceSnapshotReplacementError(mixed, payload), null);
+  assert.equal(readPayrollAttendanceSnapshotPayload({ ...mixed, attendanceSources: undefined }, '2026-10'), null);
+  assert.equal(readPayrollAttendanceSnapshotPayload({ ...mixed, attendanceSources: [{ ...mixed.attendanceSources![0], googleFallbackDates: ['2026-10-18'] }] }, '2026-10'), null);
+  assert.equal(readPayrollAttendanceSnapshotPayload({ ...mixed, attendanceSources: [{ ...mixed.attendanceSources![0], appDates: ['2026-11-01'] }] }, '2026-10'), null);
+});

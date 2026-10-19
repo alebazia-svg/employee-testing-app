@@ -1,5 +1,8 @@
 'use client';
 
+import PayrollAttendanceSourceNote from './PayrollAttendanceSourceNote';
+import type { PayrollAttendanceSourceSummary } from '@/lib/payroll-attendance-snapshot';
+
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Database, Eye, FileSpreadsheet, Upload } from 'lucide-react';
@@ -1269,7 +1272,8 @@ type PayrollAttendancePreviewResponse = {
     year: number;
     periodKey: string;
   };
-  attendanceMode: 'demo' | 'google-sheets';
+  attendanceMode: 'demo' | 'google-sheets' | 'google-sheets+pwa';
+  attendanceSources?: PayrollAttendanceSourceSummary[];
   attendanceMessage: string;
   scheduleMode: 'not-configured' | 'google-sheets';
   scheduleMessage: string;
@@ -4513,13 +4517,14 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         };
       }
 
+      const appSource = attendancePreview.attendanceSources?.find((source) => uniqueFormMatches.some((match) => normalizePersonName(match.employee) === normalizePersonName(source.employee)));
       const status = uniqueFormMatches.length === 0 ? 'не найден' : uniqueFormMatches.length > 1 ? 'несколько совпадений' : 'найдено по форме';
       const lateCount = uniqueFormMatches.length ? uniqueFormMatches.reduce((sum, match) => sum + match.lateCount, 0) : null;
 
       return {
         manager: row.manager,
         sourceType: config.sourceType,
-        source: getPayrollAttendanceSourceLabel(config.sourceType),
+        source: appSource ? 'Приложение / резерв Google' : getPayrollAttendanceSourceLabel(config.sourceType),
         sourceNames: attendanceNames.join(', ') || '—',
         matchedNames: uniqueFormMatches.map((match) => match.employee).join(', ') || '—',
         formRows,
@@ -4530,7 +4535,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
         daySourceField: 'formUniqueDates',
         lateCount,
         status,
-        comment: config.comment,
+        comment: appSource ? `С ${appSource.fromDate.split('-').reverse().join('.')} дни из приложения, при отсутствии отметки — Google Sheets. Каждый день учитывается один раз.` : config.comment,
       };
     });
   }, [attendancePreview, salesPayrollRows]);
@@ -8066,8 +8071,8 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                       <div className='mt-4'>
                         <div className='mb-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
                           <div className='flex flex-wrap gap-2'>
-                            <Badge className={attendancePreview.attendanceMode === 'google-sheets' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
-                              Отметки: {attendancePreview.attendanceMode === 'google-sheets' ? 'Google Sheets' : 'демо'}
+                            <Badge className={attendancePreview.attendanceMode !== 'demo' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
+                              Отметки: {attendancePreview.attendanceMode === 'google-sheets+pwa' ? 'Приложение + Google Sheets' : attendancePreview.attendanceMode === 'google-sheets' ? 'Google Sheets' : 'демо'}
                             </Badge>
                             <Badge className={attendancePreview.scheduleMode === 'google-sheets' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-700'}>
                               График: {attendancePreview.scheduleMode === 'google-sheets' ? 'Google Sheets' : 'не подключён'}
@@ -8088,6 +8093,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                             Применить найденные дни
                           </button>
                         </div>
+                        {attendancePreview.attendanceSources?.map((source) => <PayrollAttendanceSourceNote key={source.userId} source={source} />)}
                         {attendanceApplyResult && (
                           <div className='mb-3 grid gap-3'>
                             <div className='grid gap-2 text-sm sm:grid-cols-4'>
@@ -8141,8 +8147,8 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                                 <th className='px-3 py-3'>Сотрудник в ЗП</th>
                                 <th className='px-3 py-3'>Источник</th>
                                 <th className='px-3 py-3'>Имя/варианты имени в источнике</th>
-                                <th className='px-3 py-3 text-right'>Строк формы за период</th>
-                                <th className='px-3 py-3 text-right'>Уникальных дат формы</th>
+                                <th className='px-3 py-3 text-right'>Учтённых отметок</th>
+                                <th className='px-3 py-3 text-right'>Уникальных дней</th>
                                 <th className='px-3 py-3 text-right'>Дней по графику</th>
                                 <th className='px-3 py-3 text-right'>Отработано дней для предпросмотра</th>
                                 <th className='px-3 py-3 text-right'>Дней к подстановке</th>
@@ -8545,6 +8551,9 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                     names={savedCardRun ? savedCardRun.employeeResults.map(row => row.employeeName) : (selectedManagerSource === 'oneC' ? oneCShadowCalculation?.shadowRows ?? [] : fullPayrollRows).map(row => row.manager)}
                   />}
                   <div className={modernManagerCard && managerCardTab === 'payments' ? 'hidden' : 'grid gap-5'}>
+                    {!savedCardRun && isAttendancePreviewPeriodCurrent && attendancePreview?.attendanceSources
+                      ?.filter((source) => normalizePersonName(source.employee) === normalizePersonName(selectedManagerPayroll.manager))
+                      .map((source) => <PayrollAttendanceSourceNote key={source.userId} source={source} />)}
                     {selectedManagerSource === 'oneC' && selectedManagerPayroll.manager === agentCreditCommissionEmployee && <PayrollFinboxEditor key={selectedPayrollPeriodKey} periodKey={selectedPayrollPeriodKey} onSaved={period=>{if(period===selectedPayrollPeriodKey)setFinboxRefresh(v=>v+1);}}/>}
                     {selectedManagerPayroll.salaryType === 'purchase_daily' && (
                       <section className='rounded-xl border border-slate-200 bg-white p-4'>
