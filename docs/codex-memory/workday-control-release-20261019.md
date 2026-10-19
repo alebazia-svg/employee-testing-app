@@ -114,3 +114,69 @@ Replacement: sha256:eb87eeb71acefc4acd073c2f5026eeb5f3220f446f9dacaf44b4c2f149ea
 Rollback tag portal-app:rollback-before-1.8.2 retained; no schema change.
 Deployment exit 0, container healthy, uploads and existing runtime mounts
 preserved; verified-image registration succeeded. VPS .rollback/ preserved.
+
+## Corrective release 1.9.2 — issue dialogs and employee order
+
+Released 2026-10-19 to https://team.mobo-opt.ru after the owner approved the
+interactive local preview and explicitly requested publication.
+Runtime commit: `f11900e0a97604770a0206d22b14d25b3b5759a6`.
+Build: `2026-10-19T15:16:50.142Z` (18:16 Moscow).
+
+Issue links open one local dialog over the current workday tab. Switching
+receipts retains the displayed content until the replacement arrives and
+disables its actions during the transition. Closing preserves the original
+tab/filter; draft protection and error/retry remain available. The new detail
+GET endpoint checks ADMIN access independently and returns private/no-store data.
+
+The overview keeps its existing department grouping, columns and shared design.
+Within each department, existing displayed states determine the order: working,
+missing expected start, unfinished shift, expected start, recorded earlier-day
+arrival, finished, day off, vacation, unknown plan, unavailable source. Ties use
+Russian name order. Quick filters expose working and missing marks; the status
+list separates day off, vacation, completion, unknown plan and unavailable data.
+Working includes both Google and app marks. Previous/next employee navigation
+follows the visible filtered list, including mobile links.
+
+No schedule-source cutover or admin/employee schedule-priority change was made:
+Liana remains the app pilot; other employees retain their Google source policy.
+No notification rules, payroll/OFD/attendance-page behavior, schema, migrations,
+1C writes, uploads or environment configuration changed. The demonstration
+snapshot and example employees exist only in an isolated local preview worktree
+and database, not in the release. Unrelated dirty worktrees were left untouched.
+
+Runtime/test files: app/(dashboard)/admin/workday/AdminShiftControlDetails.tsx,
+WorkdayIssueDialog.tsx, WorkdayIssueDialogFrame.tsx and page.tsx;
+app/api/admin/workday/issues/[id]/route.ts;
+components/TerminalFiscalReviewConversation.tsx;
+components/admin/TeamDailyControl.tsx;
+lib/admin-workday-issue-detail.ts, lib/team-control-order.ts,
+lib/workday-card-navigation.ts, lib/workday-issue-navigation.ts;
+tests/team-control-order.test.ts, tests/workday-issue-navigation.test.ts;
+package.json and package-lock.json.
+
+Evidence:
+- TypeScript, production build, 39 navigation/team/status tests and 5 release
+  metadata tests passed. Local API checks covered ADMIN/employee/anonymous
+  access, invalid/missing IDs and closed issues.
+- Local real-app checks covered 390/1440 px, all status choices and empty
+  results, correct employee actions after sorting, cancellation, card navigation,
+  draft preservation, history, error/retry and retained dialog size under a
+  deliberately delayed read in the isolated database.
+- Server Git commit, public release metadata/build time and authenticated ADMIN
+  version label independently match this release. Existing Docker metadata has
+  revision null/source unknown; source identity was verified through SSH Git.
+- Production working filter shows Liana (app) and Milana (Google); day-off filter
+  shows Magomed. Liana -> Milana navigation retains the working filter.
+- Zukhra's live issues 6337 and 33002 open/switch inside one dialog over Overview;
+  close retains the remarks filter. No production message, schedule or financial
+  decision was submitted during verification.
+- Health ok:true, workday/employee routes HTTP 200, anonymous issue API HTTP 403.
+- Deployment exit 0, portal-app healthy, existing upload/planning/cabinet mounts
+  preserved. Verified-image registration succeeded after independent checks and
+  after releasing the deployment lock. VPS .rollback/ left untouched.
+
+Previous image: sha256:4f843eabbdbbcdbbe72233344c2c98b2f7560ec9896de115cf1ba65d2a250b14
+Replacement: sha256:5f174a5097235b3ef7ecf81847ccce20a498ef250621d405b5a6a81509d1954d
+Rollback tag: portal-app:rollback-before-1.9.2. No schema changes; rollback remains
+schema-compatible. Physical-phone PWA and real push delivery were not tested in
+this ADMIN release.
