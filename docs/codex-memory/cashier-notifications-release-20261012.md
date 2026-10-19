@@ -75,6 +75,20 @@ flow. Arrange one explicitly authorized device check for the assigned cashier
 with an active shift and a valid payable request; do not create a real financial
 request solely as a notification test without explicit authorization.
 
+## Actionable push-copy follow-up — version 1.9.1
+
+On 19 October 2026 the owner approved replacing the generic cashier lock-screen
+message with an action-first message that names the currently verified
+recipient, remaining amount and source cashbox. For the live request reviewed
+that day the intended copy is “Выдать Астемиру 20 000 ₽” and “Из кассы «Касса
+Хурзокова». После выдачи оформите расходник в 1С.”
+
+The dispatcher derives this copy only after its existing live revalidation.
+Opening the notification still performs the authenticated recheck, and unknown,
+completed, rejected or reassigned state continues to defer or cancel delivery.
+The generic text remains only as an unavailable-state fallback. No 1C write,
+schema change, migration or cashier-routing change is part of this follow-up.
+
 ## Exact release files
 
 - `app/(dashboard)/employee/CashIssueClient.module.css`
