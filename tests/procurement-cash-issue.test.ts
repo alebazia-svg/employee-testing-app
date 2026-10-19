@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
-import { cashIssueKey, cashIssuePermission, cashIssueHref, cashIssueCompactCopy, CASH_ISSUE_KIND } from '../lib/procurement-cash-issue-policy';
+import { cashIssueKey, cashIssuePermission, cashIssueHref, cashIssueCompactCopy, cashIssuePushCopy, CASH_ISSUE_KIND } from '../lib/procurement-cash-issue-policy';
 import type { DeliveryNativeStatus } from '../lib/procurement-delivery-native';
 import { DELIVERY_PHONE_RESERVE_REF } from '../lib/procurement-delivery-reserve';
 const require = createRequire(import.meta.url);
@@ -58,7 +58,7 @@ test('PWA keeps a read issue task visible and never exposes another cashier’s 
   assert.equal(body.notifications[0].body.includes('Тохов'),mode==='own');
  }
 });
-test('cashier dispatcher claims one send, uses safe copy and links to assigned request',async()=>{
+test('cashier dispatcher claims one send, names the live request and links to assigned request',async()=>{
  const env={...process.env};process.env.WEB_PUSH_VAPID_PUBLIC_KEY='mock';process.env.WEB_PUSH_VAPID_PRIVATE_KEY='mock';
  try{
  for(const decision of ['send','defer','cancel']){
@@ -70,11 +70,11 @@ test('cashier dispatcher claims one send, uses safe copy and links to assigned r
    '@/lib/procurement-delivery-notifications':{queueDeliveryReadyPush:async()=>{}},
    '@/lib/procurement-collection-notifications':{queueCollectionReadyPush:async()=>{}},
    '@/lib/procurement-morning-notifications':{queueCashMorningPushes:async()=>{}},
-   '@/lib/procurement-cash-issue-notifications':{queueCashIssuePush:async()=>{},cashIssuePushDecision:async()=>({state:decision,until:new Date(now.getTime()+60000)})},
+   '@/lib/procurement-cash-issue-notifications':{queueCashIssuePush:async()=>{},cashIssuePushDecision:async()=>decision==='send'?({state:'send',...cashIssuePushCopy(cashIssuePermission(status(),now)!)}):({state:decision,until:new Date(now.getTime()+60000)})},
    'web-push':{setVapidDetails:()=>{},sendNotification:async(_:any,payload:string)=>sent.push(JSON.parse(payload))},
   });
   await Promise.all([api.dispatchDueWorkdayNotifications(now),api.dispatchDueWorkdayNotifications(now)]);
-  assert.equal(sent.length,decision==='send'?1:0);if(sent.length){assert.equal(sent[0].url,`/employee/cash-issue?request=${ref}`);assert.match(sent[0].title,/Заявка.*готова/);assert.doesNotMatch(sent[0].body,/5000|Чеченова|Тохов/);}
+  assert.equal(sent.length,decision==='send'?1:0);if(sent.length){assert.equal(sent[0].url,`/employee/cash-issue?request=${ref}`);assert.equal(sent[0].title,'Выдать Астемиру 5 000 ₽');assert.equal(sent[0].body,'Из кассы «Касса Чеченова». После выдачи оформите расходник в 1С.');}
  }
  }finally{process.env=env;}
 });
@@ -97,6 +97,10 @@ test('compact copy tells cashier the request exists and RKO is their next step',
  assert.match(cashIssueCompactCopy(ready).title,/Выдать Астемиру 5/);
  assert.equal(cashIssueCompactCopy(ready).subtitle,'Заявка готова · оформите расходник');
  assert.match(cashIssueCompactCopy({...ready,amount:3000,issued:2000}).title,/Астемиру ещё 3/);
+ assert.deepEqual(cashIssuePushCopy(ready), {
+  title: 'Выдать Астемиру 5 000 ₽',
+  body: 'Из кассы «Касса Чеченова». После выдачи оформите расходник в 1С.',
+ });
 });
 
 test('no current active shift pauses the request and defers its push without declaring it issued', async () => {

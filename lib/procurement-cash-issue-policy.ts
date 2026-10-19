@@ -14,8 +14,9 @@ export function cashIssueNotices(current: CashIssueState): CashIssueNotice[] {
 export function cashIssueForUser(current: CashIssueState, userId: number) {
   return cashIssueNotices(current).find(notice => notice.userId === userId) ?? null;
 }
-// Push may arrive after an assignment changes. The authenticated screen always
-// rechecks who may issue money; the lock-screen message is deliberately neutral.
+// Fallback only while live details are unavailable. The sender uses
+// cashIssuePushCopy after rechecking the assignment and payable request; the
+// authenticated screen rechecks them again when the cashier opens it.
 export const CASH_ISSUE_PUSH_COPY = { title: 'Заявка на выдачу денег готова', body: 'Проверьте сумму и получателя. После выдачи оформите расходник в 1С.' };
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export function cashIssueKey(status: DeliveryNativeStatus, userId: number) {
@@ -45,5 +46,12 @@ export function cashIssueCompactCopy(request: NonNullable<ReturnType<typeof cash
   return {
     title: `Выдать ${recipient}${request.issued > 0 ? ' ещё' : ''} ${amount} ₽`,
     subtitle: request.cashboxRef === DELIVERY_PHONE_RESERVE_REF ? `Из кассы «${request.cashbox}»` : 'Заявка готова · оформите расходник',
+  };
+}
+
+export function cashIssuePushCopy(request: NonNullable<ReturnType<typeof cashIssuePermission>>) {
+  return {
+    title: cashIssueCompactCopy(request).title,
+    body: `Из кассы «${request.cashbox}». После выдачи оформите расходник в 1С.`,
   };
 }

@@ -4,7 +4,7 @@ import { loadDeliveryView } from './procurement-delivery-reminders';
 import { deliveryNativeFresh } from './procurement-delivery-native';
 import { getMoscowDateKey } from './workday';
 import { employeePushNotBefore } from './employee-push-policy';
-import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY, cashIssueKey, cashIssuePermission, cashIssueCompactCopy, cashIssueNotices, cashIssueForUser, type CashIssueState, type CashIssueNotice } from './procurement-cash-issue-policy';
+import { CASH_ISSUE_KIND, cashIssueKey, cashIssuePermission, cashIssueCompactCopy, cashIssuePushCopy, cashIssueNotices, cashIssueForUser, type CashIssueState, type CashIssueNotice } from './procurement-cash-issue-policy';
 import { DELIVERY_PHONE_RESERVE_REF } from './procurement-delivery-reserve';
 export type { CashIssueState } from './procurement-cash-issue-policy';
 
@@ -70,7 +70,7 @@ export async function queueCashIssuePush(now = new Date()) {
     const scheduledAt = employeePushNotBefore(now);
     for (const notice of notices) {
       const row = await tx.workdayNotification.upsert({ where: { fingerprint: notice.fingerprint }, update: {}, create: {
-        userId: notice.userId, kind: CASH_ISSUE_KIND, fingerprint: notice.fingerprint, ...CASH_ISSUE_PUSH_COPY, scheduledAt, nextPushAttemptAt: scheduledAt,
+        userId: notice.userId, kind: CASH_ISSUE_KIND, fingerprint: notice.fingerprint, ...cashIssuePushCopy(notice.request), scheduledAt, nextPushAttemptAt: scheduledAt,
       } });
       // Reassignment, a new active shift or a reversed RKO re-open the same notification.
       // Cancelling a notification never closes the underlying financial request.
@@ -88,5 +88,5 @@ export async function cashIssuePushDecision(notification: { fingerprint: string;
   const notice = cashIssueForUser(current, notification.userId);
   if (!notice || notice.fingerprint !== notification.fingerprint) return { state: 'cancel' as const };
   const until = employeePushNotBefore(now);
-  return until > now ? { state: 'defer' as const, until } : { state: 'send' as const, ...CASH_ISSUE_PUSH_COPY };
+  return until > now ? { state: 'defer' as const, until } : { state: 'send' as const, ...cashIssuePushCopy(notice.request) };
 }
