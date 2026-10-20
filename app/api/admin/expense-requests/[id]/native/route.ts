@@ -1,4 +1,5 @@
 import { requireAdminApi } from '@/lib/admin-api-auth';
+import { refreshOneExpenseStatus } from '@/lib/expense-request-status-refresh';
 import { prisma } from '@/lib/prisma';
 import { createExpenseAdminClient, expenseNativeTransport, ExpenseNativeError } from '@/lib/expense-request-admin-client';
 import { expenseObject, parseExpenseCommand, validateExpenseCommandAgainstCard } from '@/lib/expense-request-command';
@@ -63,12 +64,14 @@ export async function POST(request: Request, context: Context) {
         try { validateExpenseCommandAgainstCard(command, card); }
         catch (error) { return Response.json({ error: error instanceof Error ? error.message : 'Заявка изменилась.' }, { status: 409, headers }); }
       }
-      return Response.json(await client.preview(item.oneCRequestRef, command, actor), { headers });
+      const result = await client.preview(item.oneCRequestRef, command, actor);
+      if (result.kind === 'committed') await refreshOneExpenseStatus(item.oneCRequestRef).catch(() => null);
+      return Response.json(result, { headers });
     }
     if (typeof body.previewToken !== 'string') return Response.json({ error: 'Сначала проверьте изменения.' }, { status: 400, headers });
     const result = await client.confirm(item.oneCRequestRef, command, actor, body.previewToken);
-    // Successful writes are not fabricated in the portal cache. The existing
-    // read-only synchronizer will import the independently read native status.
+    // Do not turn a failed notification refresh into a failed financial command.
+    await refreshOneExpenseStatus(item.oneCRequestRef).catch(() => null);
     return Response.json({ kind: 'committed', ...result }, { headers });
   } catch (error) { return failure(error); }
 }

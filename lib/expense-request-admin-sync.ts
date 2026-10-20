@@ -48,6 +48,8 @@ export async function syncExpenseRequestAdminAudit(input: {
 }): Promise<ExpenseRequestAdminSyncResult> {
   const db = input.db ?? prisma;
   const now = input.now ?? new Date();
+  const observedAt = new Date(input.snapshot.startedAt ?? input.snapshot.checkedAt);
+  if (!Number.isFinite(+observedAt)) throw new Error('EXPENSE_REQUEST_OBSERVATION_INVALID');
   const runKey = expenseRequestSyncRunKey({
     from: input.from,
     to: input.to,
@@ -113,7 +115,12 @@ export async function syncExpenseRequestAdminAudit(input: {
       const partner = named(row.partner);
       const businessOperation = named(row.business_operation);
       const outcome = await db.$transaction(async (tx) => {
+        // Serialize with targeted status updates before reading the existing state.
+        await tx.$queryRaw`SELECT id FROM "ExpenseRequestAdminCase" WHERE "oneCRequestRef" = ${ref} FOR UPDATE`;
         const existing = await tx.expenseRequestAdminCase.findUnique({ where: { oneCRequestRef: ref } });
+        if (existing && existing.lastSeenAt > observedAt) {
+          return { existed: true, newEvaluation: false, newlyEnteredNotApproved: false, skipped: true };
+        }
         const lifecycle = deriveExpenseRequestLifecycle({
           existing: existing ? {
             isNotApproved: existing.isNotApproved, notApprovedCycle: existing.notApprovedCycle,
@@ -133,7 +140,7 @@ export async function syncExpenseRequestAdminAudit(input: {
             deletionMark: row.deletion_mark ?? null, currentStatusKey: statusKey, currentStatusName: status.name,
             isNotApproved: lifecycle.isNotApproved, notApprovedCycle: lifecycle.notApprovedCycle,
             currentCycleOrigin: lifecycle.currentCycleOrigin,
-            enteredNotApprovedAt: lifecycle.enteredNotApprovedAt, firstSeenAt: now, lastSeenAt: now,
+            enteredNotApprovedAt: lifecycle.enteredNotApprovedAt, firstSeenAt: now, lastSeenAt: observedAt,
             seenAt: lifecycle.seenAt, seenById: lifecycle.seenById, reviewedAt: lifecycle.reviewedAt, reviewedById: lifecycle.reviewedById,
             latestSourceHash: sourceHash, latestRuleVersion: evaluation.version, latestCategory: evaluation.category,
             latestCompletenessState: evaluation.completenessState, requestedByRef: requestedBy.ref, requestedByName: requestedBy.name,
@@ -144,7 +151,7 @@ export async function syncExpenseRequestAdminAudit(input: {
             deletionMark: row.deletion_mark ?? null, currentStatusKey: statusKey, currentStatusName: status.name,
             isNotApproved: lifecycle.isNotApproved, notApprovedCycle: lifecycle.notApprovedCycle,
             currentCycleOrigin: lifecycle.currentCycleOrigin,
-            enteredNotApprovedAt: lifecycle.enteredNotApprovedAt, lastSeenAt: now,
+            enteredNotApprovedAt: lifecycle.enteredNotApprovedAt, lastSeenAt: observedAt,
             seenAt: lifecycle.seenAt, seenById: lifecycle.seenById, reviewedAt: lifecycle.reviewedAt, reviewedById: lifecycle.reviewedById,
             latestSourceHash: sourceHash, latestRuleVersion: evaluation.version, latestCategory: evaluation.category,
             latestCompletenessState: evaluation.completenessState, requestedByRef: requestedBy.ref, requestedByName: requestedBy.name,
@@ -182,6 +189,7 @@ export async function syncExpenseRequestAdminAudit(input: {
         });
         return { existed: Boolean(existing), newEvaluation: !existingEvaluation, newlyEnteredNotApproved: lifecycle.newlyEnteredNotApproved };
       });
+      if ('skipped' in outcome && outcome.skipped) continue;
       if (outcome.existed) updatedCases += 1; else createdCases += 1;
       if (outcome.newEvaluation) evaluations += 1;
       if (outcome.newlyEnteredNotApproved) newNotApproved += 1;

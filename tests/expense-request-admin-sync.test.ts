@@ -31,6 +31,7 @@ function fakeDb() {
   let evaluationSequence = 0;
   let client: PrismaClient;
   client = {
+    $queryRaw: async () => [],
     $transaction: async (callback: any) => callback(client),
     user: {
       findMany: async () => [{ id: 1 }],
