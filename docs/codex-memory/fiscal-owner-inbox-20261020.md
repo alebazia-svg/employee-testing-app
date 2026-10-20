@@ -1,7 +1,7 @@
 # Fiscal checks in owner inbox — 2026-10-20
 
-Status: implemented and verified locally; NOT released. Production1.10.3
-still has the old exclusion until separately approved deployment.
+Status: released and independently verified as1.10.6 on2026-10-21.
+Runtime commit35d6b51ee018e8ddc60df6e7b3f7fc4255329421.
 
 Owner explicitly changed the policy: terminal fiscal ADMIN-first reviews must
 use the same portal attention/push mechanism as manager/buyer requests. No
@@ -123,3 +123,28 @@ Additional audit files:
 - tests/fiscal-review-data.test.ts
 - tests/fiscal-review-content.test.ts
 - tests/fiscal-notification-access.test.ts
+
+
+## Production release1.10.6 —2026-10-21
+
+Owner explicitly approved release. Reconciled and merged production1.10.5;
+kept parallel expense-status and QR-receipt changes. Repeated checks after merge:
+34 client-focused tests,47 server/notification/QR/fiscal tests,1 isolated lifecycle
+integration,5 release-info tests, TypeScript and production build pass.
+Fixed a fixture crossing the Moscow date boundary; production logic unchanged.
+
+Server commit35d6b51ee018e8ddc60df6e7b3f7fc4255329421; public release-info
+version1.10.6, builtAt2026-10-20T21:16:04.468Z (21Oct00:16 MSK).
+Authenticated Edge UI verified shared version1.10.6 and actual resolved6800RUB
+modal: workplaceРозница1, aQsi10693079, cashierЧеченова Милана,
+late29m12s; close returns to history. Public /api/health returnedok:true.
+Previous image1.10.5:
+sha256:ea5fb9a495c66fe9615c357f98ec1e7120427eaae7edcf631ec5c194f55158a1
+Replacement image:
+sha256:b702f6d9d2c52ab179ee8091bb53515a9795b6e2d60b0643a6f6c7733bc4a84f
+Existing conservative maintenance freed disk from14.9GiB to27.23GiB before
+build, preserving current plus two verified images. Verified registration
+completed after independent checks; deploymentexit0. No schema migration,
+production DB edits, env edits, uploads cleanup or1C publication.
+Physical phone push delivery remains unverified; no synthetic production
+notification was sent. Unrelated main checkout/node_modules symlink untouched.
