@@ -29,6 +29,8 @@ project from scratch.
 
 ## Read First By Task
 
+- Expense approval notification refresh: `expense-status-refresh-20261020.md`
+  (local candidate, not deployed; bounded status checks alongside full sync).
 - Product priority, current phase or a new idea: `master-plan.md`, then
   `launch-checklist.md` and `decision-log.md`.
 - Workday UI/API/checklists/cash: `workday-playbook.md`,
