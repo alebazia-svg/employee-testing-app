@@ -1033,3 +1033,12 @@ Owner prioritized resolving the present historical discrepancies from existing
 1C/OFD/acquiring/bank-statement evidence. ADMIN-first delivery remains enabled;
 automatic employee reminders are not approved by this decision. Current report
 candidate/evidence: terminal-fiscal-chain-candidate-20261019.md.
+
+## 2026-10-20 — Fiscal ADMIN reviews belong in portal owner attention
+
+Owner explicitly approved replacing the routine fiscal-created event exclusion:
+use the same persistent portal attention/push lifecycle as buyer/manager
+requests, without Telegram for these new checks. Reading is not resolution;
+late receipt discovery stops attention and preserves history. Existing manual
+approval before sending a manager remark remains unchanged. Implementation
+and isolated verification: `fiscal-owner-inbox-20261020.md`; not yet deployed.
