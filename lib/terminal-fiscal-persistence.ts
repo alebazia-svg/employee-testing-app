@@ -110,7 +110,7 @@ function matchPersistenceData(record: MatchingAuditRecord, runId: string) {
     bankOperationAt: optionalDate(record.evidence.bankTransactionDate),
     bankOperationHash,
     oneCSourceRef,
-    oneCSourceHash: record.oneCCheckKey ? digest([record.oneCCheckKey]) : null,
+    oneCSourceHash: record.evidence.amountCoverage ? digest(['amount-coverage',...record.evidence.amountCoverage.bankKeys.slice().sort(),...record.evidence.amountCoverage.oneCRefs.slice().sort()]) : record.oneCCheckKey ? digest([record.oneCCheckKey]) : null,
     oneCCashierRef: record.oneCCashierRef ?? null,
     ofdFiscalKeyHash: record.ofdReceiptKey ? digest([record.ofdReceiptKey]) : null,
     candidateCount: record.candidateCount,

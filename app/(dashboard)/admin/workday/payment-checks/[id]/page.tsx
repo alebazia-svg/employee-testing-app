@@ -1,3 +1,8 @@
+import { TerminalFiscalChainEvidence } from '@/components/TerminalFiscalChainEvidence';
+import { runTerminalFiscalHistoricalDryRun } from '@/lib/terminal-fiscal-runner';
+import { technicalHash } from '@/lib/terminal-fiscal-sources';
+import type { FiscalChainEvidence } from '@/lib/terminal-fiscal-chain-review';
+import { isFiscalChainReason } from '@/lib/terminal-fiscal-chain-review';
 import { redirect } from 'next/navigation';
 import { MessageCircle, SearchCheck } from 'lucide-react';
 import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
@@ -43,11 +48,24 @@ export default async function AdminPaymentCheckPage(props: { params: Promise<{ i
   });
   const resolved = view.tone === 'resolved';
   const shared = review.assignmentScope === 'retail_shift' || review.assignmentScope === 'retail_day';
-  const pendingAdmin = TERMINAL_FISCAL_ADMIN_FIRST && review.status === 'admin_review';
+  const pendingAdmin = TERMINAL_FISCAL_ADMIN_FIRST && review.status === 'admin_review' && !resolved;
   const proposed = pendingAdmin ? await fiscalProposedRecipients(prisma, review.bankOperationAt, review.mappingId) : null;
   const simpleCheck = pendingAdmin && !match?.oneCSourceRef && match?.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND'
     && match.tbankComplete && match.oneCComplete;
   const showDiscussion = !pendingAdmin || review.messages.length > 0;
+  let chain: FiscalChainEvidence | undefined;
+  let chainUnavailable = false;
+  if (pendingAdmin && review.mappingId && isFiscalChainReason(match?.reasonCode ?? review.reasonCode)) {
+    try {
+      const day = new Intl.DateTimeFormat('en-CA', {timeZone:'Europe/Moscow'}).format(review.bankOperationAt);
+      const from = new Date(`${day}T00:00:00+03:00`);
+      const result = await runTerminalFiscalHistoricalDryRun({mappingId:review.mappingId,periodFrom:from,
+        periodTo:new Date(from.getTime()+86400000),persist:false,includeEvidence:true});
+      if (result.acquired) chain = result.output?.records.find(r=>technicalHash(r.matchingKey)===review.matchingHash)?.evidence.chain;
+      chainUnavailable = !chain;
+    } catch { chainUnavailable = true; }
+  }
+
   return (
     <AdminShell>
       <AdminBreadcrumbs current='Проверка продажи' />
@@ -63,7 +81,9 @@ export default async function AdminPaymentCheckPage(props: { params: Promise<{ i
           {!pendingAdmin && <dl className={`mt-5 grid gap-3 border-t pt-4 text-sm sm:grid-cols-2 ${resolved ? 'border-green-200' : 'border-amber-200'}`}><div><dt className={`font-semibold ${resolved ? 'text-green-700' : 'text-amber-700'}`}>{shared ? 'Ответственные сотрудники' : 'Сотрудник'}</dt><dd className={`mt-1 font-extrabold ${resolved ? 'text-green-950' : 'text-amber-950'}`}>{review.assignmentScope === 'admin_gate' ? 'Не назначены — проверял администратор' : shared ? review.participants.map((item) => item.user.name).join(', ') : review.employee.name}</dd></div><div><dt className={`font-semibold ${resolved ? 'text-green-700' : 'text-amber-700'}`}>Основание адресации</dt><dd className={`mt-1 font-extrabold ${resolved ? 'text-green-950' : 'text-amber-950'}`}>{review.assignmentScope === 'workstation_shift' ? 'Рабочее место и состав смены' : review.assignmentScope === 'retail_shift' ? 'Работали в Рознице в момент оплаты' : review.assignmentScope === 'retail_day' ? 'Работали в Рознице в этот день' : review.assignmentScope === 'admin_gate' ? 'Предварительная проверка' : 'Кассир по данным 1С'}</dd></div></dl>}
           {!resolved && !pendingAdmin && <p className='mt-4 text-xs font-semibold leading-relaxed text-amber-800'>{shared ? 'Это общая задача сотрудникам Розницы, а не персональное обвинение. Она закроется у всех после появления чека в 1С.' : 'Это нейтральная проверка, а не подтверждённая ошибка сотрудника.'}</p>}
           {match?.reasonCode === 'BANK_OPERATION_UNSUPPORTED' && match.bankOperationRawType ? <p className='mt-3 text-xs font-semibold text-slate-600'>Исходный тип операции Т-Банка: {match.bankOperationRawType}</p> : null}
-          {pendingAdmin && !match?.oneCSourceRef && match?.reasonCode !== 'ONE_C_POSSIBLE_SPLIT_SALE' && <FiscalAdminApproval reviewId={review.id} recipients={proposed?.users ?? []} primary={proposed?.primary ?? null} confidence={proposed?.confidence ?? 'uncertain'} />}
+          {chain && <TerminalFiscalChainEvidence chain={chain} />}
+          {chainUnavailable && <p className='mt-4 text-sm'>Свежая сверка не подтвердила состав цепочки или данные недоступны. Автоматически проверка не закрыта.</p>}
+          {pendingAdmin && !match?.oneCSourceRef && match?.reasonCode !== 'ONE_C_POSSIBLE_SPLIT_SALE' && !isFiscalChainReason(match?.reasonCode ?? '') && !isFiscalChainReason(review.reasonCode) && <FiscalAdminApproval reviewId={review.id} recipients={proposed?.users ?? []} primary={proposed?.primary ?? null} confidence={proposed?.confidence ?? 'uncertain'} />}
           {pendingAdmin && !match?.oneCSourceRef && <FiscalTestPaymentButton reviewId={review.id} />}
           {pendingAdmin && match?.oneCSourceRef && <p className='mt-4 text-sm font-bold text-amber-900'>Чек уже есть в 1С. Сначала проверьте расхождение; просьба пробить новый чек сотрудникам не отправляется.</p>}
         </Card>

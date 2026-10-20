@@ -125,3 +125,26 @@ export async function loadTBankCabinetOperations(input: {
       .sort((left, right) => left.transactionDate.localeCompare(right.transactionDate)),
   };
 }
+
+// Archived evidence may restore an already recorded operation after a provider
+// change. It never substitutes a stale snapshot for today's live source.
+export async function loadHistoricalCabinetEvidence(input: {
+  path: string; terminalKey: string; from: string; to: string;
+  unresolvedHashes: ReadonlySet<string>;
+}): Promise<{ operations: BankOperation[]; coversRequestedPeriod: boolean }> {
+  if (!input.unresolvedHashes.size) return { operations: [], coversRequestedPeriod: false };
+  let snapshot: CabinetSnapshot | null;
+  try { snapshot = parseTBankCabinetSnapshot(JSON.parse(await readFile(input.path, 'utf8'))); } catch { return { operations: [], coversRequestedPeriod: false }; }
+  if (!snapshot?.complete) return { operations: [], coversRequestedPeriod: false };
+  const from = Date.parse(input.from), to = Date.parse(input.to);
+  const generated = Date.parse(snapshot.generatedAt);
+  const start = Date.parse(snapshot.periodFrom), end = Math.min(Date.parse(snapshot.periodTo), generated);
+  const eligible = snapshot.operations.filter(o => o.terminalKey === input.terminalKey
+    && Date.parse(o.transactionDate) >= Math.max(from, start) && Date.parse(o.transactionDate) < Math.min(to, end))
+    .map(o => ({ terminalKey: o.terminalKey, rrn: o.rrn || `cabinet:${o.operationId}`,
+      transactionDate: o.transactionDate, amountKopecks: o.amountKopecks, type: o.type, rawType: o.source }));
+  const { createHash } = await import('node:crypto');
+  const known = eligible.some(o => input.unresolvedHashes.has(createHash('sha256')
+    .update(`terminal-fiscal:${[o.terminalKey, o.rrn, o.transactionDate, o.type, o.amountKopecks].join('|')}`).digest('hex')));
+  return { operations: known ? eligible : [], coversRequestedPeriod: known && start <= from && end >= to };
+}

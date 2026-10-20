@@ -47,7 +47,8 @@ export function terminalFiscalAdminReviewView(input: {
   } | null;
 }) {
   const operationMeta = `${moscowDateTimeFormatter.format(new Date(input.bankOperationAt))} · ${formatKopecks(input.amountKopecks)}`;
-  if (input.status === 'resolved') {
+  if (input.status === 'resolved' || input.match?.status === 'confirmed') {
+    if(input.match?.reasonCode==='MATCH_AMOUNT_COVERED')return {tone:'resolved' as const,statusLabel:'Проверка завершена',title:'Сумма покрыта чеками',operationMeta,message:'Сумма оплаты покрыта подтверждёнными чеками 1С и ОФД. Действий от сотрудника не требуется.',discussionMessage:'Проверка завершена. История сообщений сохранена.'};
     const check = input.match?.oneCSourceRef ? ` ${input.match.oneCSourceRef}` : '';
     const awaitingSourceRetry = input.match?.reasonCode?.startsWith('SOURCE_') === true && Boolean(input.match.oneCSourceRef);
     if (awaitingSourceRetry) {
@@ -76,6 +77,20 @@ export function terminalFiscalAdminReviewView(input: {
     };
   }
   if (input.status === 'admin_review') {
+    if (input.match?.reasonCode === 'SOURCE_TBANK_HISTORICAL_INCOMPLETE') return {
+      tone: 'admin' as const, statusLabel: 'Нужны данные банка', title: 'Неполная история оплат', operationMeta,
+      message: 'Оплата есть в архиве Т-Банка, но архив покрывает не весь период. Автоматически связать её с чеком пока нельзя.',
+      discussionMessage: 'Отсутствие чека не доказано. Сотруднику ничего пробивать повторно не нужно.',
+    };
+
+    const chain = ({
+      ONE_C_SPLIT_RECEIPTS_REVIEW: ['Оплата нескольких чеков', 'Сумма оплаты складывается из нескольких чеков, подтверждённых ОФД. Проверьте связь документов.'],
+      ONE_C_COMBINED_PAYMENTS_REVIEW: ['Чек оплачен частями', 'Сумма нескольких оплат совпадает с чеком, подтверждённым ОФД. Проверьте связь платежей.'],
+      ONE_C_EXCHANGE_REVIEW: ['Обмен с доплатой', 'Найдены продажа, возврат и новая продажа. Доплата согласуется с разницей сумм. Проверьте связь документов.'],
+    } as Record<string, string[]>)[input.match?.reasonCode ?? ''];
+    if (chain) return { tone: 'admin' as const, statusLabel: 'Проверка администратора', title: chain[0], operationMeta,
+      message: chain[1], discussionMessage: 'Это возможная цепочка операций, а не доказанный непробитый чек.' };
+
     if (input.match?.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE') return {
       tone: 'admin' as const,
       statusLabel: 'Проверка администратора',

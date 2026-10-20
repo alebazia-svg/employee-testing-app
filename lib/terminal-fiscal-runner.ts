@@ -1,3 +1,5 @@
+import {applyFiscalAmountCoverage} from './terminal-fiscal-amount-coverage';
+import { loadHistoricalCabinetEvidence } from '@/lib/tbank-cabinet-snapshot';
 import 'server-only';
 
 import { prisma } from '@/lib/prisma';
@@ -41,6 +43,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   periodFrom: Date;
   periodTo: Date;
   persist?: boolean;
+  includeEvidence?: boolean;
   syncWorkdayControl?: boolean;
   syncSourceHealth?: boolean;
   deferEmployeeReviewSync?: boolean;
@@ -78,6 +81,28 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       (dependencies.loadOneC ?? loadOneCTerminalFiscalEvidence)({ fromDate: dateOnly(input.periodFrom), toDate: nextDateKey(dateOnly(lateMatchTo)) }),
       (dependencies.loadOfd ?? loadPlatformaOfdReceipts)({ kktRegistrationNumber: mapping.kktRegistrationNumber, from: input.periodFrom.toISOString(), to: lateMatchTo.toISOString() }),
     ]);
+    const archivePath = process.env.TBANK_CABINET_SNAPSHOT_PATH?.trim();
+    if (archivePath) {
+      const unresolved = await prisma.terminalFiscalEmployeeReview.findMany({
+        where: { mappingId: mapping.id, status: { in: ['admin_review', 'open'] },
+          bankOperationAt: { gte: input.periodFrom, lt: input.periodTo } }, select: { matchingHash: true },
+      });
+      const archived = await loadHistoricalCabinetEvidence({ path: archivePath, terminalKey: mapping.terminalKey,
+        from: input.periodFrom.toISOString(), to: lateMatchTo.toISOString(),
+        unresolvedHashes: new Set(unresolved.map(r => r.matchingHash)) });
+      let restored = false;
+      for (const operation of archived.operations) {
+        // Different RRN at the same instant is not proof of a new payment.
+        // Preserve the live record and leave any old ambiguous review intact.
+        if (!tbank.data.some(live => live.terminalKey === operation.terminalKey
+          && live.amountKopecks === operation.amountKopecks && live.type === operation.type
+          && (live.rrn === operation.rrn || Date.parse(live.transactionDate) === Date.parse(operation.transactionDate)))) { tbank.data.push(operation); restored = true; }
+      }
+      if (restored && !archived.coversRequestedPeriod) {
+        tbank.complete = false;
+        tbank.errorCode = 'HISTORICAL_BANK_COVERAGE_INCOMPLETE';
+      }
+    }
     const now = new Date().toISOString();
     const periodOneCChecks = oneC.data.filter((check) => {
       const at = new Date(check.dateTime).getTime();
@@ -101,7 +126,8 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
       oneCChecks: periodOneCChecks,
       ofdReceipts: ofd.data,
     });
-    const periodOutput = { ...strictOutput, records: strictOutput.records.filter(record => {
+    const coveredOutput=applyFiscalAmountCoverage({output:strictOutput,mapping,bankOperations:tbank.data,oneCChecks:periodOneCChecks,ofdReceipts:ofd.data,from:input.periodFrom,to:input.periodTo,complete:{bank:tbank.complete,oneC:oneC.complete,ofd:ofd.complete}});
+    const periodOutput = { ...coveredOutput, records: coveredOutput.records.filter(record => {
       const at = Date.parse(record.evidence.bankTransactionDate);
       return at >= input.periodFrom.getTime() && at < input.periodTo.getTime();
     }) };
@@ -125,6 +151,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
           reasonCode: record.reasonCode,
           oneCCheckKey: record.oneCCheckKey ?? null,
           oneCCashierRef: record.oneCCashierRef ?? null,
+          amountCoverage:record.evidence.amountCoverage??null,
           ofdReceiptKey: record.ofdReceiptKey ?? null,
         }))),
       });
@@ -173,6 +200,9 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
         : null;
     return {
       acquired: true as const,
+      output: input.includeEvidence ? output : undefined,
+      evidence: input.includeEvidence ? {bankOperations:tbank.data,oneCChecks:periodOneCChecks,ofdReceipts:ofd.data,mapping,
+        complete:{bank:tbank.complete,oneC:oneC.complete,ofd:ofd.complete}} : undefined,
       persisted: Boolean(lease),
       summary: input.syncWorkdayControl === true
         ? { ...summary, safety: { employeeVisible: true, incidentCreation: true, notifications: true } as const }

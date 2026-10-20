@@ -1,3 +1,4 @@
+import { isFiscalChainReason } from './terminal-fiscal-chain-review';
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
@@ -38,7 +39,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
     }
     if (record.status === 'confirmed') {
       if (existing) {
-        await tx.terminalFiscalEmployeeReview.update({ where: { id: existing.id }, data: { status: 'resolved', resolvedAt: now, lastCheckedAt: now } });
+        await tx.terminalFiscalEmployeeReview.update({ where: { id: existing.id }, data: { status: 'resolved', reasonCode:record.reasonCode, resolvedAt: existing.resolvedAt ?? now, lastCheckedAt: now } });
         await tx.workdayNotification.updateMany({ where: { reviewId: existing.id, status: 'pending' }, data: { status: 'cancelled' } });
       }
       return;
@@ -47,8 +48,9 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
     const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true }, orderBy: { id: 'asc' } });
     if (!admins.length) throw new Error('TERMINAL_FISCAL_ADMIN_RECIPIENT_MISSING');
     const approved = existing && await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(existing.id) } });
-    const possibleSplit = record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE';
-    const keepOpen = Boolean(approved && existing?.status === 'open' && !possibleSplit);
+    const possibleSplit = record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || isFiscalChainReason(record.reasonCode);
+    const keepOpen = Boolean(approved && existing?.status === 'open' && !possibleSplit && !record.oneCCheckKey
+      && ['ONE_C_CANDIDATE_PENDING','ONE_C_CANDIDATE_NOT_FOUND'].includes(record.reasonCode));
     const review = await tx.terminalFiscalEmployeeReview.upsert({
       where: { reviewKey },
       create: { reviewKey, matchingHash: hash, mappingId: record.mappingId ?? null,
@@ -70,9 +72,9 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       && record.sourceCompleteness.tbank
       && record.sourceCompleteness.oneC;
     const uncertain = !definitelyMissing;
-    const title = possibleSplit ? 'Возможное разделение продажи' : uncertain ? 'Нужна проверка сопоставления' : 'В 1С нет чека';
+    const title = record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? 'Нужна проверка сопоставления' : 'В 1С нет чека';
     const body = `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${possibleSplit
-      ? 'Сумма и товары частей продажи согласуются с общим чеком ОФД. Связь с оплатой требует проверки администратора.'
+      ? 'Найдены связанные по суммам фискальные документы; товары сверены с ОФД. Требуется проверить цепочку оплат, чеков и возвратов.'
       : uncertain ? 'Портал не смог однозначно сопоставить оплату и чек; требуется проверка администратора.'
       : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`;
     const event = await tx.adminInboxEvent.upsert({
@@ -143,7 +145,7 @@ export async function approveFiscalReview(db: PrismaClient, id: string, adminId:
     const review = await tx.terminalFiscalEmployeeReview.findUnique({ where: { id } });
     if (!review || review.status === 'resolved') throw new Error('REVIEW_NOT_AVAILABLE');
     const match = await tx.terminalFiscalMatch.findUnique({ where: { matchingId: review.matchingHash } });
-    if (match?.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || review.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE') throw new Error('REVIEW_NOT_AVAILABLE');
+    if (match?.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || review.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || isFiscalChainReason(match?.reasonCode ?? '') || isFiscalChainReason(review.reasonCode)) throw new Error('REVIEW_NOT_AVAILABLE');
     if (match && (match.status === 'confirmed' || match.oneCSourceRef)) throw new Error('CHECK_ALREADY_EXISTS');
     const approved = await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(id) } });
     if (approved && review.status === 'open') return { alreadyApproved: true };

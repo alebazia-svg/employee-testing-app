@@ -1,4 +1,6 @@
 export const terminalFiscalReasonLabels: Record<string, string> = {
+  MATCH_AMOUNT_COVERED: 'Сумма покрыта чеками 1С и ОФД',
+  SOURCE_TBANK_HISTORICAL_INCOMPLETE: 'Не хватает исторических данных банка',
   SOURCE_TBANK_INCOMPLETE: 'Т-Банк передал данные не полностью',
   SOURCE_ONE_C_INCOMPLETE: '1С передала данные не полностью',
   SOURCE_OFD_INCOMPLETE: 'Платформа ОФД временно передала неполные данные',
@@ -10,6 +12,9 @@ export const terminalFiscalReasonLabels: Record<string, string> = {
   ONE_C_CANDIDATE_NOT_FOUND: 'Для оплаты не найден подходящий документ 1С',
   ONE_C_MULTIPLE_CANDIDATES: 'В 1С найдено несколько подходящих документов',
   ONE_C_CHECK_REUSED: 'Один документ 1С связан с несколькими оплатами',
+  ONE_C_SPLIT_RECEIPTS_REVIEW: 'Возможна оплата нескольких чеков',
+  ONE_C_COMBINED_PAYMENTS_REVIEW: 'Возможна оплата чека частями',
+  ONE_C_EXCHANGE_REVIEW: 'Возможен обмен с доплатой',
   ONE_C_POSSIBLE_SPLIT_SALE: 'Возможное разделение продажи на несколько документов',
   ONE_C_MULTIPLE_CARD_PAYMENTS: 'В чеке 1С несколько карточных оплат',
   ONE_C_UNSUPPORTED_DOCUMENT: 'Документ 1С требует отдельной проверки',
@@ -39,12 +44,13 @@ export function terminalFiscalReasonTimes(records: Array<{ reasonCode: string; b
 }
 
 export function terminalFiscalSourceIncomplete(reasonCode: string) {
-  return reasonCode === 'SOURCE_TBANK_INCOMPLETE'
+  return reasonCode === 'SOURCE_TBANK_HISTORICAL_INCOMPLETE' || reasonCode === 'SOURCE_TBANK_INCOMPLETE'
     || reasonCode === 'SOURCE_ONE_C_INCOMPLETE'
     || reasonCode === 'SOURCE_OFD_INCOMPLETE';
 }
 
 export function terminalFiscalSourceContext(reasonCode: string) {
+  if (reasonCode === 'SOURCE_TBANK_HISTORICAL_INCOMPLETE') return 'Оплата сохранена в архиве, но полной банковской истории за период нет. Отсутствие чека не доказано.';
   if (reasonCode === 'SOURCE_TBANK_INCOMPLETE') return 'Данные Т-Банка за этот период получены не полностью.';
   if (reasonCode === 'SOURCE_ONE_C_INCOMPLETE') return 'Данные Т-Банка получены, но 1С передала сведения не полностью.';
   if (reasonCode === 'SOURCE_OFD_INCOMPLETE') return 'Данные Т-Банка и 1С получены, но ОФД не завершил полное чтение.';

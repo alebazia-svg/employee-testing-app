@@ -1,3 +1,5 @@
+import { TerminalFiscalDailyReport } from '@/components/TerminalFiscalDailyReport';
+import { loadDailyFiscalReport } from '@/lib/terminal-fiscal-daily-report-loader';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, CreditCard, RefreshCw } from 'lucide-react';
@@ -26,7 +28,7 @@ function formatOperationType(value: 'Debit' | 'Credit' | 'Other') {
 }
 
 function isDateKey(value: string | undefined): value is string {
-  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10)===value);
 }
 
 function moscowDayBounds(dateKey: string) {
@@ -42,7 +44,7 @@ function formatMoney(value: number) {
 
 export default async function AdminTBankAcquiringPage(
   props: {
-    searchParams: Promise<{ terminalKey?: string; date?: string }>;
+    searchParams: Promise<{ terminalKey?: string; date?: string; technical?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
@@ -50,11 +52,30 @@ export default async function AdminTBankAcquiringPage(
   if (!currentUser) redirect('/login');
   if (currentUser.role !== 'ADMIN') redirect('/employee');
 
-  const terminalsResult = await getTBankTerminals();
+
   const selectedTerminal = searchParams.terminalKey?.trim() || '';
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
   const selectedDate = isDateKey(searchParams.date) ? searchParams.date : today;
   const { from: fromDate, till: tillDate } = moscowDayBounds(selectedDate);
+  if(searchParams.technical!=='1') {
+    const report=await loadDailyFiscalReport(selectedDate);
+    const dateShift=(offset:number)=>new Date(Date.parse(`${selectedDate}T12:00:00Z`)+offset*86400000).toISOString().slice(0,10);
+    return <AdminShell pageTitle='Торговый эквайринг' pageDescription='Дневная сверка терминалов, 1С и ОФД.'>
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
+        <form className='flex flex-wrap items-center gap-2' method='get'>
+          <Link aria-label='Предыдущий день' className='rounded-md border border-stone-200 bg-white px-3 py-2' href={`?date=${dateShift(-1)}`}>←</Link>
+          <input aria-label='Дата отчёта' type='date' name='date' defaultValue={selectedDate} className='rounded-md border border-stone-200 bg-white px-3 py-2 text-sm'/>
+          <button className='rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium' type='submit'>Показать</button>
+          <Link aria-label='Следующий день' className='rounded-md border border-stone-200 bg-white px-3 py-2' href={`?date=${dateShift(1)}`}>→</Link>
+          {selectedDate!==today&&<Link className='px-2 py-2 text-sm text-stone-600' href={`?date=${today}`}>Сегодня</Link>}
+        </form>
+      </div>
+      <TerminalFiscalDailyReport report={report}/>
+      <Link className='text-sm text-stone-500' href={`?date=${selectedDate}&technical=1`}>Диагностика подключения →</Link>
+    </AdminShell>;
+  }
+  const terminalsResult = await getTBankTerminals();
+
   const oneCMapping = tBankTerminalOneCMapping[selectedTerminal] ?? null;
   const [operationsResult, oneCResult] = await Promise.all([
     selectedTerminal ? getTBankTerminalOperations({
@@ -120,7 +141,7 @@ export default async function AdminTBankAcquiringPage(
             {terminalsResult.terminals.map((terminal) => (
               <Link
                 key={terminal.key}
-                href={`/admin/workday/tbank?terminalKey=${encodeURIComponent(terminal.key)}&date=${selectedDate}`}
+                href={`/admin/workday/tbank?technical=1&terminalKey=${encodeURIComponent(terminal.key)}&date=${selectedDate}`}
                 className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm font-bold transition ${selectedTerminal === terminal.key ? 'border-[#9fadc2] bg-[#eef2f8] text-[#263b5c]' : 'border-slate-200 bg-white text-slate-800 hover:border-[#c8d0dc] hover:bg-[#f7f9fc]'}`}
               >
                 <span className='flex items-center gap-2'><CreditCard className='h-4 w-4' />{terminal.key}</span>
@@ -140,7 +161,7 @@ export default async function AdminTBankAcquiringPage(
               <p className='mt-1 text-sm font-semibold text-slate-500'>{selectedTerminal ? `Терминал ${selectedTerminal} · ${selectedDate}` : 'Терминал не выбран'}</p>
             </div>
             {selectedTerminal ? (
-              <Link href={`/admin/workday/tbank?terminalKey=${encodeURIComponent(selectedTerminal)}&date=${selectedDate}`} title='Обновить' className='flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'>
+              <Link href={`/admin/workday/tbank?technical=1&terminalKey=${encodeURIComponent(selectedTerminal)}&date=${selectedDate}`} title='Обновить' className='flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'>
                 <RefreshCw className='h-4 w-4' />
               </Link>
             ) : null}
@@ -182,7 +203,7 @@ export default async function AdminTBankAcquiringPage(
               <h2 className='text-xl font-extrabold text-slate-950'>Теневая сверка с 1С</h2>
               <p className='mt-1 text-sm font-semibold text-slate-500'>Сотруднику результат не показывается и задания автоматически не закрываются.</p>
             </div>
-            <form className='flex items-end gap-2' action='/admin/workday/tbank'>
+            <form className='flex items-end gap-2' action='/admin/workday/tbank'><input type='hidden' name='technical' value='1' />
               <input type='hidden' name='terminalKey' value={selectedTerminal} />
               <label className='text-xs font-bold text-slate-600'>Дата<input className='mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-sm' type='date' name='date' defaultValue={selectedDate} /></label>
               <button className='rounded-lg bg-slate-950 px-4 py-2 text-sm font-extrabold text-white' type='submit'>Проверить</button>

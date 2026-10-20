@@ -1,4 +1,5 @@
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.6';
+import { fiscalChainReview, type FiscalChainEvidence } from './terminal-fiscal-chain-review';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.7';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
@@ -9,7 +10,9 @@ export type MatchingOperationType = 'sale' | 'refund';
 export type MatchingReasonCode =
   | 'MATCH_CONFIRMED'
   | 'MATCH_CONFIRMED_LATE'
+  | 'MATCH_AMOUNT_COVERED'
   | 'SOURCE_TBANK_INCOMPLETE'
+  | 'SOURCE_TBANK_HISTORICAL_INCOMPLETE'
   | 'SOURCE_ONE_C_INCOMPLETE'
   | 'SOURCE_OFD_INCOMPLETE'
   | 'TERMINAL_MAPPING_MISSING'
@@ -21,6 +24,9 @@ export type MatchingReasonCode =
   | 'ONE_C_CANDIDATE_NOT_FOUND'
   | 'ONE_C_MULTIPLE_CANDIDATES'
   | 'ONE_C_CHECK_REUSED'
+  | 'ONE_C_SPLIT_RECEIPTS_REVIEW'
+  | 'ONE_C_COMBINED_PAYMENTS_REVIEW'
+  | 'ONE_C_EXCHANGE_REVIEW'
   | 'ONE_C_POSSIBLE_SPLIT_SALE'
   | 'ONE_C_MULTIPLE_CARD_PAYMENTS'
   | 'ONE_C_UNSUPPORTED_DOCUMENT'
@@ -45,8 +51,10 @@ type MatchingReasonContract = {
 };
 
 export const MATCHING_REASON_CODE_CONTRACT = {
+  MATCH_AMOUNT_COVERED: { meaning: 'Сумма оплат покрыта фискальными чеками; точные пары документов не назначены', allowedStatuses: ['confirmed'], employeeVisible: false },
   MATCH_CONFIRMED: { meaning: 'Три источника однозначно совпали', allowedStatuses: ['confirmed'], employeeVisible: false },
   MATCH_CONFIRMED_LATE: { meaning: 'Три источника однозначно совпали, документ 1С создан позднее оплаты', allowedStatuses: ['confirmed'], employeeVisible: false },
+  SOURCE_TBANK_HISTORICAL_INCOMPLETE: { meaning: 'Историческая банковская выгрузка не покрывает период проверки', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_TBANK_INCOMPLETE: { meaning: 'Источник Т-Банка получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_ONE_C_INCOMPLETE: { meaning: 'Источник 1С получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_OFD_INCOMPLETE: { meaning: 'Источник OFD получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
@@ -59,6 +67,9 @@ export const MATCHING_REASON_CODE_CONTRACT = {
   ONE_C_CANDIDATE_NOT_FOUND: { meaning: 'После grace period не найден чек ККМ или эквайринговая операция 1С по строгим критериям', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_MULTIPLE_CANDIDATES: { meaning: 'Найдено несколько равноправных документов 1С', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_CHECK_REUSED: { meaning: 'Один документ 1С претендует на несколько банковских операций', allowedStatuses: ['needs_review'], employeeVisible: false },
+  ONE_C_SPLIT_RECEIPTS_REVIEW: { meaning: 'Оплата согласуется с несколькими фискальными чеками; связь требует проверки', allowedStatuses: ['needs_review'], employeeVisible: false },
+  ONE_C_COMBINED_PAYMENTS_REVIEW: { meaning: 'Несколько оплат согласуются с одним фискальным чеком; связь требует проверки', allowedStatuses: ['needs_review'], employeeVisible: false },
+  ONE_C_EXCHANGE_REVIEW: { meaning: 'Найдена цепочка продажи, возврата и доплаты; связь требует проверки', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_POSSIBLE_SPLIT_SALE: { meaning: 'Части продажи в 1С по сумме и товарам согласуются с общим чеком ОФД, связь требует проверки', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_MULTIPLE_CARD_PAYMENTS: { meaning: 'В чеке несколько карточных строк; случай вне MVP', allowedStatuses: ['needs_review'], employeeVisible: false },
   ONE_C_UNSUPPORTED_DOCUMENT: { meaning: 'Документ 1С является кредитом или коррекцией; случай вне MVP', allowedStatuses: ['needs_review'], employeeVisible: false },
@@ -179,6 +190,8 @@ export type MatchingAuditRecord = {
   timeDifferenceSeconds?: number;
   candidateCount: number;
   evidence: {
+    chain?: FiscalChainEvidence;
+    amountCoverage?: {bankKeys:string[];oneCRefs:string[]};
     bankTransactionDate: string;
     bankOperationRawType?: string;
     oneCDateTime?: string;
@@ -354,11 +367,11 @@ function sameItemValues(left: MatchingItem[], right: MatchingItem[]) {
   return JSON.stringify(normalizedItemValues(left)) === JSON.stringify(normalizedItemValues(right));
 }
 
-function sameItems(left: MatchingItem[], right: MatchingItem[]) {
+function sameItems(left: MatchingItem[], right: MatchingItem[], allowShortenedNames = false) {
   if (JSON.stringify(normalizedItems(left)) === JSON.stringify(normalizedItems(right))) return true;
   if (left.length !== right.length) return false;
 
-  const nameTokens = (value: string) => normalizeMatchingItemName(value).match(/[\p{L}\p{N}]+(?:[.,]\p{N}+)*/gu) ?? [];
+  const nameTokens = (value: string) => normalizeMatchingItemName(allowShortenedNames ? value.replace(/\s*\(шт\.?\)\s*$/iu, '') : value).match(/[\p{L}\p{N}]+(?:[.,]\p{N}+)*/gu) ?? [];
   const numericParts = (value: string) => normalizeMatchingItemName(value).match(/\d+(?:[.,]\d+)*/g) ?? [];
   const safeExtendedName = (oneCName: string, ofdName: string) => {
     if (JSON.stringify(numericParts(oneCName)) !== JSON.stringify(numericParts(ofdName))) return false;
@@ -379,7 +392,7 @@ function sameItems(left: MatchingItem[], right: MatchingItem[]) {
     oneC.quantity === ofd.quantity
     && oneC.priceKopecks === ofd.priceKopecks
     && oneC.sumKopecks === ofd.sumKopecks
-    && safeExtendedName(oneC.name, ofd.name)
+    && (safeExtendedName(oneC.name, ofd.name) || (allowShortenedNames && safeExtendedName(ofd.name, oneC.name)))
   );
   const used = new Set<number>();
   const assign = (index: number): boolean => {
@@ -405,7 +418,7 @@ function withHistory(record: Omit<MatchingAuditRecord, 'history'>, previous: Map
 }
 
 function sourceFailure(input: TerminalFiscalMatchingInput): MatchingReasonCode | null {
-  if (!input.sources.tbank.complete) return 'SOURCE_TBANK_INCOMPLETE';
+  if (!input.sources.tbank.complete) return input.sources.tbank.error === 'HISTORICAL_BANK_COVERAGE_INCOMPLETE' ? 'SOURCE_TBANK_HISTORICAL_INCOMPLETE' : 'SOURCE_TBANK_INCOMPLETE';
   if (!input.sources.oneC.complete) return 'SOURCE_ONE_C_INCOMPLETE';
   if (!input.sources.ofd.complete) return 'SOURCE_OFD_INCOMPLETE';
   return null;
@@ -813,5 +826,16 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
     }, previous);
   });
 
-  return { version: TERMINAL_FISCAL_MATCHING_VERSION, evaluatedAt: input.now, records };
+  const reviewed = sourceFailure(input) ? records : fiscalChainReview(input, records, (check, mapping) => {
+    if (check.fiscalConflict || check.fiscalState !== 'confirmed' || !check.items.length || !canonicalFiscalKey(check)
+      || check.cashRegisterRef !== mapping.oneCCashRegisterRef) return false;
+    const receipts = input.ofdReceipts.filter(r => canonicalFiscalKey(r) === canonicalFiscalKey(check));
+    return input.oneCChecks.filter(c => canonicalFiscalKey(c) === canonicalFiscalKey(check)).length === 1
+      && receipts.length === 1 && receipts[0].kktRegistrationNumber === mapping.kktRegistrationNumber
+      && receipts[0].operationType === (check.operationType === 'refund' ? 2 : 1)
+      && receipts[0].totalKopecks === check.totalKopecks && receipts[0].electronicKopecks === check.electronicKopecks
+      && sameItems(check.items, receipts[0].items, true);
+  });
+  return { version: TERMINAL_FISCAL_MATCHING_VERSION, evaluatedAt: input.now,
+    records: reviewed.map(({ history, ...record }) => withHistory(record, previous)) };
 }

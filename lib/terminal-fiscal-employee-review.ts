@@ -469,20 +469,20 @@ export async function syncTerminalFiscalEmployeeReviews(
       globalCoverage: input.globalCoverage,
     });
     const adminFirst = (input.adminFirst ?? TERMINAL_FISCAL_ADMIN_FIRST) && mode === 'notify';
-    if (adminFirst) {
-      if (decision.action === 'wait') continue;
-      if (decision.action === 'notify' || decision.action === 'admin_only') {
-        await stageFiscalAdminReview(prisma, record, input.mapping);
-        adminOnly += 1;
-        continue;
-      }
+    if (adminFirst && record.status !== 'confirmed') {
+      if (decision.action === 'wait' && !record.oneCCheckKey) continue;
+      // A 1C acquiring document is not proof of fiscalization. Keep its
+      // unresolved fiscal question in ADMIN, retiring any employee request.
+      await stageFiscalAdminReview(prisma, record, input.mapping);
+      adminOnly += 1;
+      continue;
     }
     if (decision.action === 'wait') continue;
     if (decision.action === 'resolve') {
       const count = await prisma.$transaction(async (tx) => {
         const result = await tx.terminalFiscalEmployeeReview.updateMany({
           where: { reviewKey, status: { in: ['open', 'admin_review', 'shadow_candidate'] } },
-          data: { status: 'resolved', resolvedAt: new Date(input.output.evaluatedAt), lastCheckedAt: new Date(input.output.evaluatedAt) },
+          data: { status: 'resolved', reasonCode:record.reasonCode, resolvedAt: new Date(input.output.evaluatedAt), lastCheckedAt: new Date(input.output.evaluatedAt) },
         });
         if (result.count) await tx.workdayNotification.updateMany({
           where: { review: { reviewKey }, status: 'pending' },

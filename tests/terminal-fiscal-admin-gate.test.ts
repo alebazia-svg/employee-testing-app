@@ -143,3 +143,29 @@ test('possible split withdraws an earlier missing-check request and stays ADMIN-
   assert.match(event.body,/товары/);
   await assert.rejects(approveFiscalReview(f.db,id,1,[4,5],()=> 'Пробейте чек'),/REVIEW_NOT_AVAILABLE/);
 });
+
+test('grouped payments, split receipts and exchanges never forward a generic missing-check task', async () => {
+  for (const reasonCode of ['ONE_C_SPLIT_RECEIPTS_REVIEW','ONE_C_COMBINED_PAYMENTS_REVIEW','ONE_C_EXCHANGE_REVIEW'] as const) {
+    const f=fixture(); await stageFiscalAdminReview(f.db,f.record);
+    const id=f.reviews[0].id;
+    await approveFiscalReview(f.db,id,1,[4,5],()=> 'Проверьте чек');
+    await stageFiscalAdminReview(f.db,{...f.record,reasonCode});
+    assert.equal(f.reviews[0].status,'admin_review');
+    assert.ok(f.notifications.every(n=>n.status!=='pending'));
+    await assert.rejects(approveFiscalReview(f.db,id,1,[4,5],()=> 'Пробейте чек'),/REVIEW_NOT_AVAILABLE/);
+  }
+});
+
+test('amount coverage retires an approved employee review and pending reminders without reopening it', async()=>{
+ const f=fixture();await stageFiscalAdminReview(f.db,f.record);const id=f.reviews[0].id;
+ await approveFiscalReview(f.db,id,1,[4,5],()=> 'existing message');
+ f.notifications.forEach(n=>n.status='pending');
+ const covered={...f.record,status:'confirmed' as const,reasonCode:'MATCH_AMOUNT_COVERED' as const,oneCCheckKey:undefined,ofdReceiptKey:undefined};
+ await stageFiscalAdminReview(f.db,covered);
+ assert.equal(f.reviews[0].status,'resolved');assert.ok(f.notifications.every(n=>n.status==='cancelled'));
+ const ended=f.reviews[0].resolvedAt;const events=f.events.length;
+ await stageFiscalAdminReview(f.db,{...covered,evaluatedAt:'2026-09-03T19:00:00Z'});
+ assert.equal(f.reviews[0].resolvedAt,ended);assert.equal(f.events.length,events);assert.equal(f.notifications.length,2);
+ f.db.terminalFiscalMatch.findUnique=async()=>({status:'confirmed',reasonCode:'MATCH_AMOUNT_COVERED'});
+ await assert.rejects(approveFiscalReview(f.db,id,1,[4,5],()=>''),/REVIEW_NOT_AVAILABLE/);
+});

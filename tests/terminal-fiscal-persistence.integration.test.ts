@@ -253,3 +253,87 @@ test('historical late reads include later competing payments but report only the
   assert.equal(lateResult.summary.reasonCodes.MATCH_CONFIRMED_LATE,1);
   assert.equal(await prisma.terminalFiscalMatch.count(),before);
 });
+
+test('runner restores recorded bank evidence but keeps incomplete historical coverage unavailable', async () => {
+  const {mkdtemp,writeFile,rm}=await import('node:fs/promises');
+  const {tmpdir}=await import('node:os');const {join}=await import('node:path');const {createHash}=await import('node:crypto');
+  const directory=await mkdtemp(join(tmpdir(),'fiscal-runner-archive-'));const path=join(directory,'bank.json');
+  const previousPath=process.env.TBANK_CABINET_SNAPSHOT_PATH;
+  const mapping=await prisma.terminalFiscalMapping.create({data:{label:marker,terminalKey:`${marker}-archive`,oneCAcquiringTerminalRef:'archive-acq',oneCCashRegisterRef:'archive-cash',kktRegistrationNumber:'archive-kkt',effectiveFrom:new Date('2026-08-01T00:00:00Z')}});
+  const user=await prisma.user.create({data:{login:`${marker}-archive`,name:'Local archive test',role:'ADMIN',passwordHash:'not-a-login-hash'}});
+  try {
+    const at='2026-08-10T10:00:00+03:00';
+    const hash=createHash('sha256').update(`terminal-fiscal:${mapping.terminalKey}|archived-rrn|${at}|Debit|40000`).digest('hex');
+    await prisma.terminalFiscalEmployeeReview.create({data:{reviewKey:`terminal-fiscal-review:${hash}`,matchingHash:hash,mappingId:mapping.id,employeeId:user.id,status:'admin_review',reasonCode:'ONE_C_CANDIDATE_NOT_FOUND',bankOperationAt:new Date(at),amountKopecks:40000,cashierRefHash:'test'}});
+    await writeFile(path,JSON.stringify({version:1,generatedAt:'2026-08-10T09:22:00Z',periodFrom:'2026-08-01T00:00:00Z',periodTo:'2026-08-10T09:24:00Z',complete:true,operations:[{operationId:'id',rrn:'archived-rrn',terminalKey:mapping.terminalKey,transactionDate:at,amountKopecks:40000,type:'Debit',source:'TERM_CARD'}]}));
+    process.env.TBANK_CABINET_SNAPSHOT_PATH=path;
+    const result=await runTerminalFiscalHistoricalDryRun({mappingId:mapping.id,periodFrom:new Date('2026-08-10T00:00:00+03:00'),periodTo:new Date('2026-08-11T00:00:00+03:00'),includeEvidence:true},{loadTbank:async()=>({complete:true,checkedAt:'2026-10-19T00:00:00Z',data:[]}),loadOneC:async()=>({complete:true,checkedAt:'2026-10-19T00:00:00Z',data:[]}),loadOfd:async()=>({complete:true,checkedAt:'2026-10-19T00:00:00Z',data:[]})});
+    assert.ok(result.acquired);assert.equal(result.persisted,false);assert.equal(result.output?.records.length,1);
+    assert.equal(result.output?.records[0].reasonCode,'SOURCE_TBANK_HISTORICAL_INCOMPLETE');
+    assert.equal(await prisma.terminalFiscalMatch.count({where:{mappingId:mapping.id}}),0);
+  } finally {
+    if(previousPath===undefined)delete process.env.TBANK_CABINET_SNAPSHOT_PATH;else process.env.TBANK_CABINET_SNAPSHOT_PATH=previousPath;
+    await prisma.terminalFiscalEmployeeReview.deleteMany({where:{mappingId:mapping.id}});await prisma.user.delete({where:{id:user.id}});await rm(directory,{recursive:true,force:true});
+  }
+});
+
+test('full coverage cycle persists group proof and retires approved review, legacy issue and queued reminders',async()=>{
+ const {approveFiscalReview,fiscalProposedRecipients}=await import('../lib/terminal-fiscal-admin-gate');
+ const {terminalFiscalIssueFingerprint}=await import('../lib/terminal-fiscal-workday-control');
+ const mapping=await prisma.terminalFiscalMapping.create({data:{label:marker,terminalKey:`${marker}-coverage`,oneCAcquiringTerminalRef:'coverage-acq',oneCCashRegisterRef:'coverage-cash',kktRegistrationNumber:'coverage-kkt',effectiveFrom:new Date('2026-08-01T00:00:00Z')}});
+ const admin=await prisma.user.create({data:{login:`${marker}-coverage-admin`,name:'Local coverage admin',role:'ADMIN',passwordHash:'test-only-no-login'}});
+ const employee=await prisma.user.create({data:{login:`${marker}-coverage-employee`,name:'Local coverage employee',role:'EMPLOYEE',passwordHash:'test-only-no-login'}});
+ const previous=process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED;process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED='true';
+ try {
+  await prisma.workDayEntry.create({data:{userId:employee.id,date:'2026-08-10',department:'retail',shiftCode:'09_18',shiftLabel:'09:00–18:00',startedAt:new Date('2026-08-10T06:00:00Z'),status:'active'}});
+  const at='2026-08-10T07:00:00.000Z',checkedAt='2026-10-19T10:00:00.000Z';
+  const bank={terminalKey:mapping.terminalKey,rrn:'coverage-payment',transactionDate:at,amountKopecks:260000,type:'Debit' as const};
+  const query={mappingId:mapping.id,periodFrom:new Date('2026-08-10T00:00:00+03:00'),periodTo:new Date('2026-08-11T00:00:00+03:00'),persist:true,syncWorkdayControl:true,includeEvidence:true};
+  const missing=await runTerminalFiscalHistoricalDryRun(query,{loadTbank:async()=>({complete:true,checkedAt,data:[bank]}),loadOneC:async()=>({complete:true,checkedAt,data:[]}),loadOfd:async()=>({complete:true,checkedAt,data:[]})});
+  assert.ok(missing.acquired&&missing.output);const record=missing.output.records[0];
+  const review=await prisma.terminalFiscalEmployeeReview.findFirstOrThrow({where:{mappingId:mapping.id}});assert.equal(review.status,'admin_review');
+  const proposed=await fiscalProposedRecipients(prisma,new Date(at),mapping.id);
+  await approveFiscalReview(prisma,review.id,admin.id,proposed.users.map(u=>u.id),()=> 'Local approved task');
+  assert.ok(await prisma.workdayNotification.count({where:{reviewId:review.id,status:'pending'}}));
+  const legacy=await prisma.workdayControlIssue.create({data:{userId:employee.id,fingerprint:terminalFiscalIssueFingerprint(record),ruleKey:'terminal_fiscal_mismatch',severity:'error',title:'Local historical issue',detail:'Local test',status:'open',nextReminderAt:new Date()}});
+  await prisma.workdayNotification.create({data:{userId:employee.id,issueId:legacy.id,fingerprint:`${marker}-legacy-reminder`,kind:'issue_reminder',title:'Local reminder',body:'test',scheduledAt:new Date()}});
+  const checks=[250000,10000].map((amount,i)=>({sourceRef:`${marker}-coverage-c${i}`,sourceType:'sale_check' as const,operationType:'sale' as const,dateTime:`2026-08-10T07:${i?'40':'30'}:00.000Z`,cashRegisterRef:'coverage-cash',kktRegistrationNumber:'coverage-kkt',totalKopecks:amount,electronicKopecks:amount,cashier:{ref:'coverage-user',name:'Local coverage employee'},cardPayments:[{lineNumber:'1',amountKopecks:amount,acquiringTerminalRef:'coverage-acq',referenceNumber:'',authorizationCode:'',terminalReceiptNumber:''}],items:[{name:`Товар ${i}`,quantity:1,priceKopecks:amount,sumKopecks:amount}],fiscalState:'confirmed' as const,fiscalStateMeaning:'data_state_only' as const,fiscalDriveNumber:`${marker}-fn`,fiscalDocumentNumber:`fd${i}`,fiscalSign:`fp${i}`}));
+  const dependencies={loadTbank:async()=>({complete:true,checkedAt,data:[bank]}),loadOneC:async()=>({complete:true,checkedAt,data:checks}),loadOfd:async()=>({complete:true,checkedAt,data:checks.map(c=>({fiscalDriveNumber:c.fiscalDriveNumber,fiscalDocumentNumber:c.fiscalDocumentNumber,fiscalSign:c.fiscalSign,operationType:1,receiptAt:c.dateTime,kktRegistrationNumber:c.kktRegistrationNumber,totalKopecks:c.totalKopecks,electronicKopecks:c.electronicKopecks,items:c.items}))})};
+  const covered=await runTerminalFiscalHistoricalDryRun(query,dependencies);assert.ok(covered.acquired&&covered.output);assert.equal(covered.output.records[0].reasonCode,'MATCH_AMOUNT_COVERED');
+  const match=await prisma.terminalFiscalMatch.findFirstOrThrow({where:{mappingId:mapping.id}});assert.equal(match.status,'confirmed');assert.equal(match.oneCSourceRef,null);assert.equal(match.ofdFiscalKeyHash,null);assert.ok(match.oneCSourceHash);
+  const ended=await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:review.id}});assert.equal(ended.status,'resolved');assert.equal(ended.reasonCode,'MATCH_AMOUNT_COVERED');
+  assert.equal((await prisma.workdayControlIssue.findUniqueOrThrow({where:{id:legacy.id}})).status,'resolved');
+  assert.equal(await prisma.workdayNotification.count({where:{OR:[{reviewId:review.id},{issueId:legacy.id}],status:'pending'}}),0);
+  const notificationCount=await prisma.workdayNotification.count({where:{reviewId:review.id}});
+  await runTerminalFiscalHistoricalDryRun(query,dependencies);
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:review.id}}),notificationCount);
+  assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:review.id}})).resolvedAt?.getTime(),ended.resolvedAt?.getTime());
+  await assert.rejects(approveFiscalReview(prisma,review.id,admin.id,proposed.users.map(u=>u.id),()=>''),/REVIEW_NOT_AVAILABLE/);
+ }finally {
+  if(previous===undefined)delete process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED;else process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED=previous;
+  const ids=(await prisma.terminalFiscalEmployeeReview.findMany({where:{mappingId:mapping.id},select:{id:true}})).map(r=>r.id);
+  await prisma.adminInboxEvent.deleteMany({where:{sourceType:'terminal_fiscal_review',sourceId:{in:ids}}});
+  await prisma.terminalFiscalEmployeeReview.deleteMany({where:{mappingId:mapping.id}});
+  await prisma.user.deleteMany({where:{id:{in:[admin.id,employee.id]}}});
+ }
+});
+
+test('standalone acquiring document for 27800 stays an ADMIN question until fiscal proof exists',async()=>{
+ const mapping=await prisma.terminalFiscalMapping.create({data:{label:marker,terminalKey:`${marker}-unfiscalized`,oneCAcquiringTerminalRef:'unfiscalized-acq',oneCCashRegisterRef:'unfiscalized-cash',kktRegistrationNumber:'unfiscalized-kkt',effectiveFrom:new Date('2026-08-01T00:00:00Z')}});
+ const admin=await prisma.user.create({data:{login:`${marker}-unfiscalized-admin`,name:'Local fiscal gap admin',role:'ADMIN',passwordHash:'test-only'}});
+ const previous=process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED;process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED='true';
+ try{
+  const at='2026-08-10T11:26:00.000Z',checkedAt='2026-10-19T10:00:00Z';
+  const bank={terminalKey:mapping.terminalKey,rrn:'unfiscalized',transactionDate:at,amountKopecks:2780000,type:'Debit' as const};
+  const acquiring={sourceRef:`${marker}-00OF-000080`,sourceType:'acquiring_operation' as const,operationType:'sale' as const,dateTime:'2026-08-10T11:27:00.000Z',cashRegisterRef:'',kktRegistrationNumber:'',totalKopecks:2780000,electronicKopecks:2780000,cashier:{ref:'',name:''},cardPayments:[{lineNumber:'1',amountKopecks:2780000,acquiringTerminalRef:'unfiscalized-acq',referenceNumber:'',authorizationCode:'',terminalReceiptNumber:''}],items:[],fiscalState:'unconfirmed' as const,fiscalStateMeaning:'data_state_only' as const};
+  const run=()=>runTerminalFiscalHistoricalDryRun({mappingId:mapping.id,periodFrom:new Date('2026-08-10T00:00:00+03:00'),periodTo:new Date('2026-08-11T00:00:00+03:00'),persist:true,syncWorkdayControl:true,includeEvidence:true},{loadTbank:async()=>({complete:true,checkedAt,data:[bank]}),loadOneC:async()=>({complete:true,checkedAt,data:[acquiring]}),loadOfd:async()=>({complete:true,checkedAt,data:[]})});
+  const first=await run();assert.ok(first.acquired&&first.output);assert.notEqual(first.output.records[0].status,'confirmed');assert.equal(first.output.records[0].oneCCheckKey,acquiring.sourceRef);
+  const review=await prisma.terminalFiscalEmployeeReview.findFirstOrThrow({where:{mappingId:mapping.id}});assert.equal(review.status,'admin_review');assert.equal(review.amountKopecks,2780000);
+  await run();assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:review.id}})).status,'admin_review');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:review.id}}),0);
+ }finally{
+  if(previous===undefined)delete process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED;else process.env.TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED=previous;
+  const ids=(await prisma.terminalFiscalEmployeeReview.findMany({where:{mappingId:mapping.id},select:{id:true}})).map(r=>r.id);
+  await prisma.adminInboxEvent.deleteMany({where:{sourceType:'terminal_fiscal_review',sourceId:{in:ids}}});await prisma.terminalFiscalEmployeeReview.deleteMany({where:{mappingId:mapping.id}});await prisma.user.delete({where:{id:admin.id}});
+ }
+});

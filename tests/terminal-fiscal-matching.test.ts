@@ -447,7 +447,7 @@ test('never exposes uncertain or technical states to an employee', () => {
 });
 
 test('reasonCode contract is exhaustive and permits every emitted status', () => {
-  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 30);
+  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 35);
   const scenarios = [
     only(),
     only({ oneCChecks: [] }),
@@ -517,4 +517,12 @@ test('recognizes 1200 + 300 with matching goods in one OFD receipt as a possible
   const actualPartialPayment={...bank,rrn:'separate-1200-sale',amountKopecks:120000};
   const separate=reconcileTerminalFiscalMvp(input({bankOperations:[splitBank,actualPartialPayment],oneCChecks:[first,second],ofdReceipts:[combined]})).records;
   assert.equal(separate[0].reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+});
+
+
+test('historical bank coverage gaps cannot confirm an otherwise matching receipt', () => {
+  const i=input(); i.sources.tbank={complete:false,checkedAt:i.now,error:'HISTORICAL_BANK_COVERAGE_INCOMPLETE'};
+  const r=reconcileTerminalFiscalMvp(i).records[0];
+  assert.equal(r.status,'unavailable'); assert.equal(r.reasonCode,'SOURCE_TBANK_HISTORICAL_INCOMPLETE');
+  assert.equal(r.oneCCheckKey,undefined);
 });

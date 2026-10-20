@@ -587,3 +587,8 @@ test('shared shift conversation is visible to a participant and ADMIN reply reac
   assert.equal(notifications[0].reviewId, 'review-1');
   assert.equal(notifications[0].kind, 'terminal_fiscal_review_reply');
 });
+
+test('covered payment renders as completed even before its review-status refresh',()=>{
+ const r=terminalFiscalAdminReviewView({status:'admin_review',bankOperationAt:'2026-10-12T09:00:00Z',amountKopecks:260000,match:{status:'confirmed',reasonCode:'MATCH_AMOUNT_COVERED',oneCSourceRef:null,timeDifferenceSeconds:null}});
+ assert.equal(r.tone,'resolved');assert.equal(r.title,'Сумма покрыта чеками');assert.match(r.message,/Действий от сотрудника не требуется/);
+});
