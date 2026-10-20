@@ -25,6 +25,8 @@ test('receipt push passes 200 delivered entries, sends the next once, and observ
   const g=globalThis as any;g.receiptDispatchDb=db;g.receiptDispatchSent=sent;
   const mocks:Record<string,string>={
     'server-only':'',
+    './admin-inbox-attention-push':'export const dispatchAdminAttentionPush=async()=>({receipts:0,sent:0,failed:0});',
+    './push-attempt-observation':'export const observePushAttempt=async(_subscription,send)=>send();',
     '@/lib/prisma':'export const prisma=globalThis.receiptDispatchDb;',
     '@/lib/admin-inbox-data':'export const loadAdminInbox=async()=>({unreadCount:1});',
     'web-push':'export default {setVapidDetails(){},async sendNotification(s,p){globalThis.receiptDispatchSent.push(JSON.parse(p).notificationId)}};',

@@ -136,6 +136,7 @@ export function ExpenseNativeClient({ caseId, onDirtyChange, onBusyChange }: { c
       else {
         setCard(current => current ? { ...current, state: result.state } : current); setChanges({}); setPreview(null); setActiveField(null); setUncertain(false); clearRecovery();
         setNotice(result.verified ? action === 'mark_payable' ? 'Заявка утверждена к оплате в 1С. Менеджер может оформить расходник.' : 'Изменения сохранены в 1С.' : '1С записала действие, но данные успели измениться. Проверьте актуальную карточку.');
+        window.dispatchEvent(new Event('expense-status-changed'));
         await load();
       }
     } catch (e) { if (stage === 'confirm' && pending.current) setUncertain(true); setError(e instanceof Error ? e.message : 'Ответ не получен. Проверьте результат.'); }

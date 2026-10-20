@@ -45,11 +45,11 @@ test('cash, historic payments and existing receipt exclusions stay unchanged',()
   assert.equal(needsReceiptSinceRollout(partial,1),false);
   assert.equal(needsReceiptSinceRollout({...partial,evidence:{...partial.evidence,cashOrders:[{date:'09.10.2026'}]}},0),false);
 });
-test('both real cabinets feed confirmed payments to the queue, leaving history on completion',()=>{
+test('both real cabinets use the shared receipt eligibility, leaving history on completion',()=>{
   for(const file of ['app/(dashboard)/admin/procurement/AdminProcurementClient.tsx','app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx']) {
     const source=readFileSync(file,'utf8');
-    assert.match(source,/const receiptPlans = plans\.filter\(hasConfirmedReceiptPayment\)/);
-    assert.match(source,/<ProcurementReceipts plans=\{receiptPlans\} allPlans=\{plans\}/);
+    assert.match(source,/const receiptPlans = plans\.filter\(canCollectProcurementReceipt\)/);
+    assert.match(source,/<ProcurementReceipts (?:admin )?plans=\{receiptPlans\} allPlans=\{plans\}/);
     assert.match(source,/<ProcurementPaymentHistory plans=\{(?:completedPlans|paidPlans)\}/);
   }
 });

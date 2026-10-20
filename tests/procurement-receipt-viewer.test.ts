@@ -59,7 +59,7 @@ test('PDF is rendered locally only on demand with cancellation, without active P
 test('receipt notifications reuse their dialog and restore payment context on return',()=>{
  const source=read('components/NotificationRecordDialog.tsx');
  assert.match(source,/hidden=\{receiptPreview\}/);
- assert.match(source,/single inline onPreviewChange=\{setReceiptPreview\}/);
+ assert.match(source,/single inline admin=\{detail.admin\} onPreviewChange=\{setReceiptPreview\}/);
  const receipt=read('components/ProcurementReceipts.tsx');
  assert.match(receipt,/onPreviewChange\?\.\(!!viewFile\)/);
 });

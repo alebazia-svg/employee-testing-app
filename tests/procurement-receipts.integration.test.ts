@@ -8,7 +8,8 @@ import {randomUUID} from 'node:crypto';
 import {saveProcurementReceipt,readProcurementReceipt,receiptPlan} from '../lib/procurement-receipts';
 
 const url=process.env.DATABASE_URL||'';
-if(url!=='postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test')throw Error('ISOLATED_RECEIPT_TEST_DATABASE_REQUIRED');
+if(!['postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test',
+  'postgresql://postgres@127.0.0.1:55439/procurement_qr_receipts_20261020'].includes(url))throw Error('ISOLATED_RECEIPT_TEST_DATABASE_REQUIRED');
 const db=new PrismaClient();
 test.after(()=>db.$disconnect());
 test('real PostgreSQL: both authors, concurrent retries, durable bytes, permissions, and no financial mutations',async()=>{
@@ -38,6 +39,16 @@ test('real PostgreSQL: both authors, concurrent retries, durable bytes, permissi
   assert.equal(event.receipts.some(r=>r.userId===owner.id),false);
   assert.ok(event.href.includes(`receipts=${plan.id}`));
   assert.deepEqual(await db.supplierPaymentPlan.findUnique({where:{id:plan.id}}),plan);
+  // QR proof arrives BEFORE any RKO. Exercise the real existing persistence
+  // path on this isolated database; no dispatcher or external push is started.
+  const qr=await db.supplierPaymentPlan.create({data:{planCode:`qr-${marker}`,managerUserId:owner.id,supplierPartner:'QR TEST ONLY',orderRefs:[],orderNumbers:[],plannedDate:new Date('2026-10-20'),plannedAmount:42200,condition:'TEST',paymentMethod:'ACCOUNTABLE_QR',status:'APPROVED'}});
+  const uploaded=await saveProcurementReceipt(db,owner,qr.id,buyerFile,root);
+  const retry=await saveProcurementReceipt(db,owner,qr.id,buyerFile,root);
+  assert.equal(retry.duplicate,true);
+  assert.equal(uploaded.receipt.id,retry.receipt.id);
+  assert.deepEqual(await db.supplierPaymentPlan.findUnique({where:{id:qr.id}}),qr);
+  assert.equal(await db.adminInboxEvent.count({where:{eventKey:`procurement-receipt:${uploaded.receipt.id}`}}),1);
+  assert.equal(await db.supplierPaymentPlanEvent.count({where:{planId:qr.id,action:'RECEIPT_ADDED'}}),1);
   await db.user.update({where:{id:owner.id},data:{isActive:false}});
   await assert.rejects(receiptPlan(db,{...owner,isActive:false},plan.id),/не найдена/);
   assert.equal(await db.supplierPaymentPlanEvent.count({where:{planId:plan.id,action:'RECEIPT_ADDED'}}),2);

@@ -1,13 +1,19 @@
 export const RECEIPT_MAX_BYTES = 10 * 1024 * 1024;
 export const RECEIPT_ADMIN_EVENT = 'procurement.receipt_added';
 export const RECEIPT_EMPLOYEE_KIND = 'procurement_receipt_added';
-type ReceiptPaymentPlan = {
+export type ReceiptPaymentPlan = {
+  paymentMethod?: string;
+  status?: string;
+  plannedDate?: string;
+  createdAt?: string;
   evidence?: {
     state?: string;
     verification?: string;
     issuedAmount?: number;
     paidAmount?: number;
     paidForeignAmount?: number;
+    cashOrders?: {date?: string; number?: string}[];
+    currencyPayments?: {date?: string}[];
   };
 };
 
@@ -23,6 +29,36 @@ export function hasConfirmedReceiptPayment(plan: ReceiptPaymentPlan) {
   ].includes(evidence.state || '')) return false;
   return [evidence.issuedAmount, evidence.paidAmount, evidence.paidForeignAmount]
     .some(amount => typeof amount === 'number' && Number.isFinite(amount) && amount > 0);
+}
+
+/** QR is paid by the buyer before ADMIN records the supplier expense in 1C.
+ * Approval permits collecting proof, but is never financial payment evidence.
+ */
+export function canCollectQrReceiptBeforePayment(plan: ReceiptPaymentPlan) {
+  return plan.paymentMethod === 'ACCOUNTABLE_QR' && plan.status === 'APPROVED'
+    && !['ISSUED_BY_ONE_C', 'PAID_BY_ONE_C', 'SMALL_REMAINDER_COMPLETED'].includes(plan.evidence?.state || '')
+    && !hasConfirmedReceiptPayment(plan);
+}
+
+export function canCollectProcurementReceipt(plan: ReceiptPaymentPlan) {
+  return hasConfirmedReceiptPayment(plan) || canCollectQrReceiptBeforePayment(plan);
+}
+
+export function needsProcurementReceipt(plan: ReceiptPaymentPlan, receiptCount: number, today: string) {
+  if (hasConfirmedReceiptPayment(plan)) return needsReceiptSinceRollout(plan, receiptCount);
+  if (receiptCount || !canCollectQrReceiptBeforePayment(plan)) return false;
+  const date = receiptPaymentDate(plan.plannedDate || '');
+  // Do not manufacture tasks from undated plans or collect historic receipts.
+  return Boolean(date && date >= RECEIPT_TRACKING_FROM && date <= today);
+}
+
+export function qrReceiptStatus(plan: ReceiptPaymentPlan, receiptCount: number, admin: boolean) {
+  if (!receiptCount || plan.paymentMethod !== 'ACCOUNTABLE_QR') return '';
+  if (!admin || !canCollectQrReceiptBeforePayment(plan)) return 'Чек добавлен';
+  if (!plan.evidence || plan.evidence.verification === 'unavailable' || ['MISMATCH', 'NEEDS_REVIEW', 'SOURCE_UNAVAILABLE'].includes(plan.evidence.state || '')) {
+    return 'Чек добавлен · оформление в 1С не подтверждено';
+  }
+  return 'Чек добавлен · ожидает оформления в 1С';
 }
 
 export function receiptPaymentAmount(plan: ReceiptPaymentPlan & { plannedAmount: string | number }) {

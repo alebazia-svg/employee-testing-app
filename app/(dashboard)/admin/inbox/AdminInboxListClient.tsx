@@ -31,6 +31,11 @@ export function AdminInboxListClient({ initialItems, initialAttention, initialVi
   const [error, setError] = useState('');
   const [showSystemHistory, setShowSystemHistory] = useState(false);
   useEffect(() => startVisibleSync(() => router.refresh(), 60_000), [router]);
+  useEffect(() => {
+    const changed = () => router.refresh();
+    window.addEventListener('expense-status-changed', changed);
+    return () => window.removeEventListener('expense-status-changed', changed);
+  }, [router]);
   const view = initialView;
   const items = view === 'attention' ? initialAttention : initialItems.filter(i => view === 'system' ? (showSystemHistory ? i.meta.category === 'system' : i.meta.category === 'system' && i.sourceState.active) : i.meta.category !== 'system');
   const unread = initialItems.some(i => !i.readAt);

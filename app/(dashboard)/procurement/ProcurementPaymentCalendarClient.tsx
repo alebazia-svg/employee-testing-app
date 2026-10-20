@@ -10,7 +10,7 @@ import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionN
 import { buyerOrderPurpose, supplierPosition, supplierPositionSummary } from '@/lib/procurement-supplier-position';
 import { ProcurementPaymentHistory } from "@/components/ProcurementPaymentHistory";
 import { ProcurementReceipts } from '@/components/ProcurementReceipts';
-import { hasConfirmedReceiptPayment } from '@/lib/procurement-receipt-policy';
+import { canCollectProcurementReceipt } from '@/lib/procurement-receipt-policy';
 import {supplierOnlyPaymentLabel, SUPPLIER_ADVANCE} from '@/lib/procurement-supplier-advance';
 import { useProcurementVisualPreview } from '@/components/ProcurementVisualPreview';
 import { ProcurementDeliveryCash, type DeliveryCashSnapshot } from '@/components/ProcurementDeliveryCash';
@@ -314,7 +314,7 @@ export default function ProcurementPaymentCalendarClient({
   const isCurrencyPaid = (plan: Plan) => plan.evidence?.state === "PAID_BY_ONE_C";
   const isPaymentFinished = (plan: Plan) => isFinishedPaymentState(plan.evidence?.state);
   const paidPlans = [...activePlans.filter(isPaymentFinished), ...plans.filter(plan=>plan.status===COMPLETED_WITHOUT_TOPUP)];
-  const receiptPlans = plans.filter(hasConfirmedReceiptPayment);
+  const receiptPlans = plans.filter(canCollectProcurementReceipt);
   const unknownPayments = activePlans.filter(plan => plan.status === 'APPROVED' && plan.evidence?.verification === 'unavailable');
   const workingPlans = activePlans.filter(plan => !isPaymentFinished(plan) && (plan.status !== 'APPROVED' || plan.evidence?.verification !== 'unavailable'));
   const planningOrders = calculateOrderPlanning(

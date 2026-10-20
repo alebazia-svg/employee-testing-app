@@ -90,13 +90,15 @@ export function AdminInboxBell() {
   useEffect(() => {
     const stopVisibleSync = startVisibleSync(load, 60_000);
     void connectPush(false);
+    const changed = () => { void load(); };
+    window.addEventListener('expense-status-changed', changed);
     function close(event: MouseEvent) {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
     }
     function escape(event: KeyboardEvent) { if (event.key === 'Escape') setOpen(false); }
     document.addEventListener('keydown', escape);
     document.addEventListener('mousedown', close);
-    return () => { document.removeEventListener('keydown', escape); stopVisibleSync(); document.removeEventListener('mousedown', close); };
+    return () => { window.removeEventListener('expense-status-changed', changed); document.removeEventListener('keydown', escape); stopVisibleSync(); document.removeEventListener('mousedown', close); };
   }, []);
 
   async function markRead(id:string) {

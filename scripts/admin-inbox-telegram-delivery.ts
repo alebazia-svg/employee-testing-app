@@ -1,3 +1,4 @@
+import { refreshPendingExpenseStatuses } from '../lib/expense-request-status-refresh';
 import { prisma } from '../lib/prisma';
 import {
   claimAdminInboxTelegramDelivery,
@@ -13,6 +14,7 @@ function option(name: string) {
 async function main() {
   const command = process.argv[2] ?? '';
   if (command === 'claim') {
+    await refreshPendingExpenseStatuses().catch(() => null);
     const delivery = await claimAdminInboxTelegramDelivery(prisma);
     process.stdout.write(`${JSON.stringify({ ok: true, delivery })}\n`);
     return;

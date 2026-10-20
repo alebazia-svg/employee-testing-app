@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 import {createRequire} from 'node:module';
+import {paymentEvidenceIdentity} from '../lib/procurement-evidence-continuity';
+import {qrReceiptStatus} from '../lib/procurement-receipt-policy';
 test('notification detail authenticates recipient and record owner, never reads 1C or writes',async t=>{
   const g=globalThis as any;
   const plan={id:'plan',planCode:'TEST',managerUserId:2,supplierPartner:'Supplier',plannedDate:new Date(),updatedAt:new Date(),plannedAmount:100,foreignAmount:null,exchangeRate:null,paymentMethod:'CASH',condition:'',orderNumbers:['1'],status:'APPROVED',paymentPurpose:'GOODS',oneCCashEvidence:null};
@@ -31,6 +33,15 @@ test('notification detail authenticates recipient and record owner, never reads 
   assert.equal((await get('admin','someone-else')).status,404);
   sourceType='supplier_payment_receipt';eventType='procurement.receipt_added';
   assert.equal((await (await get()).json()).kind,'receipts');
+  plan.paymentMethod='ACCOUNTABLE_QR';
+  assert.equal(qrReceiptStatus((await (await get()).json()).plan,1,true),'Чек добавлен · оформление в 1С не подтверждено');
+  const stamp=new Date().toISOString();
+  (plan as any).oneCCashEvidence={lastCompletePaymentView:{version:1,identity:paymentEvidenceIdentity(plan),readStartedAt:stamp,verifiedAt:stamp,
+    evidence:{state:'ISSUED_BY_ONE_C',issuedAmount:100,paidAmount:0,paidForeignAmount:0,cashOrders:[],currencyPayments:[]}}};
+  const receiptDetail=(await (await get()).json()).plan;
+  assert.equal(receiptDetail.evidence.verification,'last-confirmed');
+  assert.equal(qrReceiptStatus(receiptDetail,1,true),'Чек добавлен');
+  assert.equal('oneCCashEvidence' in receiptDetail,false);
   sourceType='expense_request';href='/admin/expense-requests/case';
   const expense=await (await get()).json();assert.equal(expense.kind,'expense');assert.equal(expense.item.cashbox,'Касса');
   href='/admin/expense-requests/not-the-case';assert.equal((await get()).status,404);

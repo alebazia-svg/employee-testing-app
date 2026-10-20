@@ -5,7 +5,7 @@ import { expenseObject, isExpenseRef, parseExpenseCommand, readNativeExpenseCard
 export class ExpenseNativeError extends Error {
   constructor(message: string, readonly uncertain = false, readonly status = 502) { super(message); }
 }
-type Transport = (params: { method: 'GET' | 'POST'; query?: URLSearchParams; body?: Record<string, unknown> }) => Promise<unknown>;
+type Transport = (params: { method: 'GET' | 'POST'; query?: URLSearchParams; body?: Record<string, unknown>; timeoutMs?: number }) => Promise<unknown>;
 
 const messages: Record<string, string> = {
   field_readback_failed: '1С не подтвердила новое значение поля после пробной записи. Проверьте, подходит ли оно выбранной операции. Исправьте или отмените изменения.',
@@ -22,11 +22,11 @@ const messages: Record<string, string> = {
   execution_data_incomplete: '1С не подтвердила сведения об исполнении. Повторите проверку позже.',
 };
 
-export const expenseNativeTransport: Transport = async ({ method, query, body }) => {
+export const expenseNativeTransport: Transport = async ({ method, query, body, timeoutMs }) => {
   const env = readOneCRuntimeEnv();
   if (!env.baseUrl || !env.user || !env.password) throw new ExpenseNativeError('Связь с 1С не настроена.', false, 503);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30_000);
+  const timer = setTimeout(() => controller.abort(), method === 'GET' ? Math.min(timeoutMs ?? 30_000, 30_000) : 30_000);
   const confirming = body?.confirm === true;
   let commandSent = false;
   try {

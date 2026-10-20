@@ -1,4 +1,5 @@
 import 'server-only';
+import { refreshPendingExpenseStatuses } from './expense-request-status-refresh';
 import { expenseSyncLastSuccess, sourceCheckIsStale } from './admin-inbox-source-health';
 import { buyerDeadline, cashIssueDeadline, deadlineLabel, urgentDeadline } from './admin-inbox-deadlines';
 import { loadDecisionCashiers, expenseCashboxRef } from './admin-inbox-deadline-source';
@@ -44,6 +45,8 @@ export type AdminInboxViewItem = {
 };
 
 export async function loadAdminInbox(input: { userId: number; limit: number; unreadOnly?: boolean; view?: 'attention' | 'history' | 'system'; now?: Date }) {
+  // A failed/contended fast check must not break the inbox or resolve a task.
+  if (!input.now) await refreshPendingExpenseStatuses().catch(() => null);
   const now = input.now ?? new Date();
   const today = attentionDay(now);
   const [displayRows, unreadRows, lifecycleRows] = await Promise.all([

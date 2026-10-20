@@ -64,6 +64,7 @@ type ExpenseRequestPage = {
 };
 
 export type ExpenseRequestSnapshot = {
+  startedAt?: string;
   rows: ExpenseRequestSourceRow[];
   complete: boolean;
   checkedAt: string;
@@ -97,6 +98,7 @@ function readPositiveInteger(value: string | undefined, fallback: number) {
 }
 
 export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date; strictRequests?: boolean; includeHistory?: boolean; historyConcurrency?: 1 | 2 }): Promise<ExpenseRequestSnapshot> {
+  const startedAt = new Date().toISOString();
   if (!(input.from instanceof Date) || Number.isNaN(input.from.getTime()) || !(input.to instanceof Date) || Number.isNaN(input.to.getTime())) {
     throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
   }
@@ -135,7 +137,7 @@ export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date;
       if (unique.has(ref)) { complete = false; errors.push('ROW_REF_DUPLICATED'); }
       else unique.set(ref, row);
     }
-    return { rows: [...unique.values()], complete, checkedAt: new Date().toISOString(), pageCount, errors: [...new Set(errors)] };
+    return { startedAt, rows: [...unique.values()], complete, checkedAt: new Date().toISOString(), pageCount, errors: [...new Set(errors)] };
   }
   if (input.to.getTime() - input.from.getTime() > MAX_PERIOD_MS) throw new Error('EXPENSE_REQUEST_PERIOD_INVALID');
   const env = readOneCRuntimeEnv();
@@ -209,5 +211,5 @@ export async function fetchExpenseRequestSnapshot(input: { from: Date; to: Date;
     uniqueRows.set(ref, row);
   }
 
-  return { rows: [...uniqueRows.values()], complete, checkedAt: new Date().toISOString(), pageCount, errors: [...new Set(errors)] };
+  return { startedAt, rows: [...uniqueRows.values()], complete, checkedAt: new Date().toISOString(), pageCount, errors: [...new Set(errors)] };
 }

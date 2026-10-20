@@ -29,6 +29,10 @@ project from scratch.
 
 ## Read First By Task
 
+- QR receipt-before-expense workflow: `procurement-qr-receipts-20261020.md`
+  (released 1.10.5 / `138f1cf`; other payment methods unchanged).
+- Expense approval notification refresh: `expense-status-refresh-20261020.md`
+  (production 1.10.4, runtime `0caf26b`; bounded status checks alongside full sync).
 - Product priority, current phase or a new idea: `master-plan.md`, then
   `launch-checklist.md` and `decision-log.md`.
 - Workday UI/API/checklists/cash: `workday-playbook.md`,

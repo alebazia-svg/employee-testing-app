@@ -1,0 +1,143 @@
+# Expense approval status refresh — production 1.10.4, 2026-10-20
+
+## Scope and status
+
+Owner approved speeding up removal of expense approval tasks after approval in
+1C, without increasing notification noise or materially increasing source load.
+Implemented and verified locally on `979cd8c` (deployment branch documentation
+head following production runtime `574ff73`, version 1.10.1). Subsequently
+rebased and **released as 1.10.4**, runtime `0caf26b` (verification below).
+Local code commit after preparation on current deployment head: `8e876cf` on
+`codex/expense-status-refresh` (original candidate was `921d101`).
+Future release/version changes must be reconciled with the current deployment
+branch and live metadata rather than reusing this release number.
+
+No Prisma schema/migration, 1C extension, account/credential, reminder interval,
+business priority, employee issuance workflow or unrelated System UI changes.
+Existing unrelated dirty worktrees were left untouched.
+
+## Mechanism
+
+- Full 31-day synchronization stays every three minutes. New requests still
+  arrive through that full synchronization; this change accelerates retirement
+  of existing pending approval tasks, not discovery of new requests.
+- Read existing live pending cases through the existing native-card GET.
+  All devices/processes share one PostgreSQL advisory lock and a persisted
+  60-second cooldown. No pending cases means no 1C calls or new sync-run rows.
+- Each background batch has at most ten reads, six seconds of network-loop
+  budget and a two-second timeout per read. Larger queues rotate. Slow/failed
+  reads leave tasks active; full synchronization remains the fallback.
+- Run from live ADMIN inbox reads and existing notification runners before
+  Telegram claim / web-push dispatch. No extra scheduler or service. Calls to
+  loadAdminInbox with an explicit historical/test `now` skip source refresh;
+  production dispatch runners explicitly refresh before their snapshot.
+- Status-only runs use `status_refresh`, sourceComplete=false. They must never
+  masquerade as successful full-source health checks. Pending reads do not
+  update lastSeenAt, so normal bulk metadata updates are not starved.
+- After portal commit (including idempotent committed preview), independently
+  reread that exact 1C document, then refresh mounted bell/inbox via an event.
+  Refresh failure must not turn a successful financial command into a failure.
+- Only known, validated statuses and matching refs retire a task. CAS protects
+  concurrent changes/reopened cycles. Bulk snapshots carry their fetch start
+  time and lock each existing row before comparison, so an older bulk response
+  cannot resurrect a newly resolved task. History is preserved.
+
+## Expected timing and cost
+
+Healthy small queues: background retirement is normally around a minute; an
+already open screen can add its existing 60-second refresh interval. This is
+not a hard deadline. Slow 1C, contention or larger queues use subsequent ticks
+or the three-minute full-sync fallback. Focus/visibility refresh is retained.
+Approval through the portal triggers the exact-case refresh immediately.
+
+Read-only production sampling before implementation: 119 full-period rows,
+two pages, about 5.19 seconds / 1.81 MB; one native-card read about 0.18 seconds /
+17.4 KB. These are individual samples, not a load test or an availability SLA.
+At the cap, there are at most ten additional native reads per shared background
+minute, not ten per open device. Explicit owner commands may add exact reads.
+
+## Verification
+
+- 53 unit tests passed across sync/lifecycle/attention/visible refresh and native
+  command/transport/source timeout coverage.
+- Eight integration scenarios (nine TAP results including parent) passed on
+  disposable local PostgreSQL: no pending work; independent-client locking and
+  cooldown; unchanged pending reads; offline/unknown/mismatched responses;
+  inbox retirement/history/stale bulk/reopened cycle; concurrent newer update;
+  explicit-command refresh; bounded rotating queue.
+- `npx tsc --noEmit`, `npm run build`, `git diff --check` passed. Final typecheck
+  includes the Telegram claim hook added after the app build.
+- Authenticated actual app at localhost:3160, isolated DB and mock 1C: pending
+  item and bell count 1 automatically became 0 after source status changed to
+  payable, without manual reload. History retained the item. No production
+  write or real push sent. Screenshots are under
+  `/Users/bela/.codex/visualizations/2026/10/20/expense-status/` (before, after,
+  history). No layout changes were made.
+- Empty local migration replay hit an existing TerminalFiscalReviewParticipant
+  migration dependency/order issue. Only the disposable test DB was initialized
+  with `prisma db push`; production DB and migration files were untouched.
+- Integration test requires EXPENSE_STATUS_INTEGRATION=1 and guards the exact
+  isolated DB host/port/name (127.0.0.1:55456/expense_status_test). Normal suites
+  skip it. Run with Node `--conditions=react-server --import tsx --test`.
+
+## Changed runtime and test files
+
+- `lib/expense-request-status-refresh.ts` (new)
+- `lib/expense-request-source.ts`
+- `lib/expense-request-admin-sync.ts`
+- `lib/expense-request-admin-client.ts`
+- `lib/admin-inbox-data.ts`
+- `scripts/admin-inbox-web-push-delivery.ts`
+- `scripts/admin-inbox-telegram-delivery.ts`
+- `app/api/admin/expense-requests/[id]/native/route.ts`
+- `app/(dashboard)/admin/expense-requests/[id]/native/ExpenseNativeClient.tsx`
+- `components/AdminInboxBell.tsx`
+- `app/(dashboard)/admin/inbox/AdminInboxListClient.tsx`
+- `tests/expense-request-admin-sync.test.ts`
+- `tests/expense-request-status-refresh.integration.test.ts` (new)
+
+## Release / rollback
+
+Read-only pre-release check later on 2026-10-20: live version 1.10.3, built
+2026-10-20T14:16:07.774Z; VPS source `3769cc0`; deployment branch `14462c1`.
+Candidate rebased cleanly onto `14462c1`, preserving the intervening fiscal
+report releases. All 53 unit tests and the full build passed again. Telegram
+mock delivery tests require ADMIN_INBOX_TELEGRAM_ENABLED=1; without it their
+two queue assertions correctly fail because delivery is disabled. No real
+messages were sent. Integration code is unchanged from the earlier DB run.
+Server root filesystem had 19 GiB available; storage maintenance last result
+was success. Existing `offonika-admin-inbox-telegram.timer` fires every minute
+and `offonika-expense-request-sync.timer` every three minutes. No server changes.
+
+Owner approved production release in response to the concrete release question.
+Released 1.10.4, runtime `0caf26bccc8325e5fa3cd066de58b207cf870d63`, deploy exit 0.
+Package/lock versions are aligned; five release metadata tests and the final
+versioned build passed. Server source independently verified over SSH; public
+metadata on both portal.alebazia.xyz and team.mobo-opt.ru reports 1.10.4, built
+2026-10-20T15:15:09.547Z (18:15 Moscow). Existing Docker metadata revision remains
+null/source unknown; exact commit verification uses the server checkout.
+
+Authenticated production inbox and bell verified in Edge, with visible footer
+1.10.4 / 20.10.2026 18:15 MSK. Existing procurement task remains actionable;
+technical incidents remain in System and do not inflate the bell count. No real
+expense document was approved just for testing and no test push was sent. The
+controlled status transition proof remains the isolated integration/UI run.
+Proof screenshot: `expense-status/production-1.10.4.png` in the visualization
+directory above. `/api/health` returned ok; container reports healthy. Existing
+upload, fiscal-report and procurement-planning volumes and cabinet bind persist.
+Production tracked files are clean; pre-existing untracked `.rollback/` untouched.
+The notification service completed successfully after restart at
+2026-10-20 15:20:12 UTC (ExecMainStatus=0); reminder timing was not changed.
+
+- Previous 1.10.3 image, tagged `portal-app:rollback-before-1.10.4`:
+  `sha256:56a704371a79125daf1156733dc022365a27a8656496be8be1dd22bf6a3d37ae`
+- Replacement image:
+  `sha256:8ddcf13f22dcb35884bb37cdb0a9c2fd0a72fdf904fee01725ef5d19a277b95c`
+- Deployment held the shared storage flock, released it before registration,
+  then registered the verified replacement with portal-storage-maintenance.
+  No cleanup or migration performed. Disk had 18 GiB free after release.
+
+No schema rollback is needed. Restoring the prior runtime restores the previous
+refresh behavior; targeted sync-run rows are not successful full syncs and are
+safe to retain. Future deployments must follow the current runbook and version
+gate. This record does not authorize later unrelated releases.
