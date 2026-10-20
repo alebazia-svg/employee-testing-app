@@ -1,5 +1,6 @@
-import { TerminalFiscalDailyReport } from '@/components/TerminalFiscalDailyReport';
-import { loadDailyFiscalReport } from '@/lib/terminal-fiscal-daily-report-loader';
+import { Suspense } from 'react';
+import { TerminalFiscalReportRefresh } from '@/components/TerminalFiscalReportRefresh';
+import { readFiscalReport } from '@/lib/terminal-fiscal-report-cache';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, CreditCard, RefreshCw } from 'lucide-react';
@@ -42,6 +43,11 @@ function formatMoney(value: number) {
   return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
 }
 
+async function DailyReportContent({ day }: { day: string }) {
+  const report = await readFiscalReport(day);
+  return <TerminalFiscalReportRefresh key={day} day={day} initial={report} />;
+}
+
 export default async function AdminTBankAcquiringPage(
   props: {
     searchParams: Promise<{ terminalKey?: string; date?: string; technical?: string }>;
@@ -58,7 +64,6 @@ export default async function AdminTBankAcquiringPage(
   const selectedDate = isDateKey(searchParams.date) ? searchParams.date : today;
   const { from: fromDate, till: tillDate } = moscowDayBounds(selectedDate);
   if(searchParams.technical!=='1') {
-    const report=await loadDailyFiscalReport(selectedDate);
     const dateShift=(offset:number)=>new Date(Date.parse(`${selectedDate}T12:00:00Z`)+offset*86400000).toISOString().slice(0,10);
     return <AdminShell pageTitle='Торговый эквайринг' pageDescription='Дневная сверка терминалов, 1С и ОФД.'>
       <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
@@ -70,7 +75,17 @@ export default async function AdminTBankAcquiringPage(
           {selectedDate!==today&&<Link className='px-2 py-2 text-sm text-stone-600' href={`?date=${today}`}>Сегодня</Link>}
         </form>
       </div>
-      <TerminalFiscalDailyReport report={report}/>
+      <Suspense key={selectedDate} fallback={
+        <div role="status" aria-live="polite" className="mb-5 rounded-xl border border-stone-200 bg-white px-5 py-6">
+          <div className="flex items-center gap-2 text-sm font-medium text-stone-700">
+            <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin" />
+            Загружаем сверку за {selectedDate.split('-').reverse().join('.')}
+          </div>
+          <p className="mt-2 text-sm text-stone-500">Получаем оплаты, чеки и выписку.</p>
+        </div>
+      }>
+        <DailyReportContent day={selectedDate} />
+      </Suspense>
       <Link className='text-sm text-stone-500' href={`?date=${selectedDate}&technical=1`}>Диагностика подключения →</Link>
     </AdminShell>;
   }

@@ -3,7 +3,7 @@ import {TerminalFiscalTransactionTable} from './TerminalFiscalTransactionTable';
 import type {FiscalSettlement} from '@/lib/terminal-fiscal-settlement';
 import type { DailyFiscalReport } from '@/lib/terminal-fiscal-daily-report';
 const money=(n:number)=>`${(n/100).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})} ₽`;
-const time=(s:string)=>new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'}).format(new Date(s));
+const time=(s:string)=>new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(s));
 export function TerminalFiscalDailyReport({report}:{report:DailyFiscalReport & {configurationComplete?:boolean;updatedAt?:string;settlement?:FiscalSettlement}}) {
  const settlement=report.settlement;
  const states:Record<string,string>={incomplete:'Данные неполные',difference:'Есть разница',review:'Суммы равны · есть проверки',balanced:'Суммы равны'};

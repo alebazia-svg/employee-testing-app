@@ -1,10 +1,12 @@
 import 'server-only';
-import {loadFiscalSettlement} from './terminal-fiscal-settlement-loader';
+import {loadFiscalSettlementSource} from './terminal-fiscal-settlement-loader';
+import {compareFiscalSettlement} from './terminal-fiscal-settlement';
 import { prisma } from './prisma';
 import { runTerminalFiscalHistoricalDryRun } from './terminal-fiscal-runner';
 import { technicalHash } from './terminal-fiscal-sources';
 import { buildDailyFiscalReport, type DailyFiscalEvidence } from './terminal-fiscal-daily-report';
 export async function loadDailyFiscalReport(day:string) {
+  const settlementSource=loadFiscalSettlementSource(day);
   const from=new Date(`${day}T00:00:00+03:00`),to=new Date(from.getTime()+86400000);
   const [mappings,workstations]=await Promise.all([
     prisma.terminalFiscalMapping.findMany({where:{isActive:true,effectiveFrom:{lt:to},OR:[{effectiveTo:null},{effectiveTo:{gt:from}}]},select:{id:true,workstationId:true}}),
@@ -33,6 +35,7 @@ export async function loadDailyFiscalReport(day:string) {
     const review=transaction.bank.map(b=>reviews.find(r=>r.matchingHash===technicalHash(`terminal-fiscal:${b.key}`))).find(Boolean);
     if(review)transaction.reviewHref=`/admin/workday/payment-checks/${review.id}`;
   }
-  const settlement=await loadFiscalSettlement(day,report.nativeFiscalKopecks,report.nativeFiscalComplete&&configurationComplete);
+  const source=await settlementSource;
+  const settlement=compareFiscalSettlement(source.raw,{from:source.from,to:source.to,fiscalKopecks:report.nativeFiscalKopecks,fiscalComplete:report.nativeFiscalComplete&&configurationComplete});
   return {...report,settlement,configurationComplete,updatedAt:new Date().toISOString()};
 }
