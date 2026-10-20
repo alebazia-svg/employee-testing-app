@@ -1,6 +1,7 @@
 # Fiscal chains and daily report — local candidate 2026-10-19
 
-Status: local only, not committed, pushed or deployed. Production is still 1.9.3.
+Status: released as portal 1.10.1 on 2026-10-20, runtime commit
+574ff7392bdb0c3b60a9626cf6fc99b1b20f11b3; supersedes 1.10.0.
 The owner approved improving matching after ten unresolved ADMIN reviews were
 investigated. This candidate extends the existing matcher and review lifecycle;
 it adds no schema, production data writes, 1C writes or employee sends.
@@ -288,7 +289,25 @@ Implementation files in this lifecycle step (within this worktree):
 - `tests/terminal-fiscal-employee-review.test.ts`
 - `tests/terminal-fiscal-persistence.integration.test.ts`
 
-The local candidate is not deployed. Existing unrelated dirty files/checkouts
-are untouched. Remove the temporary developer preview route before committing
-production code; source integration/authenticated target-page release QA remains
-separate from the developer preview and these isolated tests.
+## Production verification — 2026-10-20
+
+Owner explicitly approved deployment. Merged the latest production branch,
+preserved 1.10.0 authentication changes, removed the developer preview route,
+and passed merged TypeScript/build, 203 fiscal checks (one optional skip),
+11 authentication checks and 5 release-info checks. Isolated HTTP checks
+verified ADMIN access and denied employee/anonymous report access.
+
+VPS deployment exited 0. Server commit independently verified as 574ff739;
+public metadata and authenticated footer show 1.10.1, built
+2026-10-20T10:53:09.276Z. Container healthy; mount comparison unchanged.
+Previous image: sha256:8e094965b6b5e1eadec086a4abe5314889dd9aa5cb091f039427df1cb9d0a20d.
+Replacement image: sha256:a8120d46e23c51f44f4b8b075caec756fe91f9f6776b24ce18cb84732e351cad.
+Previous image retained; replacement registered verified after releasing flock.
+No production migrations or direct database/1C writes performed.
+
+Authenticated live report for October 12 loaded source data, showed 38650 RUB
+terminal/documents versus 10850 RUB OFD, and a 27800 RUB fiscal gap. The
+"Для проверки" filter retained exactly that one row; the exchange composition
+was covered. Manual employee delivery remains unchanged. Physical phone push
+and every historical production refresh were not tested in this deployment.
+Unrelated dirty files/checkouts and node_modules symlink were left untouched.
