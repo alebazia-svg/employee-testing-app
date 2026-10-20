@@ -1,15 +1,16 @@
-# Expense approval status refresh — local candidate, 2026-10-20
+# Expense approval status refresh — production 1.10.4, 2026-10-20
 
 ## Scope and status
 
 Owner approved speeding up removal of expense approval tasks after approval in
 1C, without increasing notification noise or materially increasing source load.
 Implemented and verified locally on `979cd8c` (deployment branch documentation
-head following production runtime `574ff73`, version 1.10.1). **Not deployed.**
+head following production runtime `574ff73`, version 1.10.1). Subsequently
+rebased and **released as 1.10.4**, runtime `0caf26b` (verification below).
 Local code commit after preparation on current deployment head: `8e876cf` on
 `codex/expense-status-refresh` (original candidate was `921d101`).
-Release/version must be reconciled with the current deployment branch and live
-release metadata immediately before an approved production release.
+Future release/version changes must be reconciled with the current deployment
+branch and live metadata rather than reusing this release number.
 
 No Prisma schema/migration, 1C extension, account/credential, reminder interval,
 business priority, employee issuance workflow or unrelated System UI changes.
@@ -108,8 +109,35 @@ Server root filesystem had 19 GiB available; storage maintenance last result
 was success. Existing `offonika-admin-inbox-telegram.timer` fires every minute
 and `offonika-expense-request-sync.timer` every three minutes. No server changes.
 
-Production approval and verification remain pending. Before release, recheck
-live source/version, follow AGENTS.md and VPS runbook, increment the appropriate
-patch version and preserve the previous image. No schema rollback is needed.
-Restoring the prior runtime restores the previous refresh behavior; targeted
-sync-run rows are not successful full syncs and are safe to retain.
+Owner approved production release in response to the concrete release question.
+Released 1.10.4, runtime `0caf26bccc8325e5fa3cd066de58b207cf870d63`, deploy exit 0.
+Package/lock versions are aligned; five release metadata tests and the final
+versioned build passed. Server source independently verified over SSH; public
+metadata on both portal.alebazia.xyz and team.mobo-opt.ru reports 1.10.4, built
+2026-10-20T15:15:09.547Z (18:15 Moscow). Existing Docker metadata revision remains
+null/source unknown; exact commit verification uses the server checkout.
+
+Authenticated production inbox and bell verified in Edge, with visible footer
+1.10.4 / 20.10.2026 18:15 MSK. Existing procurement task remains actionable;
+technical incidents remain in System and do not inflate the bell count. No real
+expense document was approved just for testing and no test push was sent. The
+controlled status transition proof remains the isolated integration/UI run.
+Proof screenshot: `expense-status/production-1.10.4.png` in the visualization
+directory above. `/api/health` returned ok; container reports healthy. Existing
+upload, fiscal-report and procurement-planning volumes and cabinet bind persist.
+Production tracked files are clean; pre-existing untracked `.rollback/` untouched.
+The notification service completed successfully after restart at
+2026-10-20 15:20:12 UTC (ExecMainStatus=0); reminder timing was not changed.
+
+- Previous 1.10.3 image, tagged `portal-app:rollback-before-1.10.4`:
+  `sha256:56a704371a79125daf1156733dc022365a27a8656496be8be1dd22bf6a3d37ae`
+- Replacement image:
+  `sha256:8ddcf13f22dcb35884bb37cdb0a9c2fd0a72fdf904fee01725ef5d19a277b95c`
+- Deployment held the shared storage flock, released it before registration,
+  then registered the verified replacement with portal-storage-maintenance.
+  No cleanup or migration performed. Disk had 18 GiB free after release.
+
+No schema rollback is needed. Restoring the prior runtime restores the previous
+refresh behavior; targeted sync-run rows are not successful full syncs and are
+safe to retain. Future deployments must follow the current runbook and version
+gate. This record does not authorize later unrelated releases.
