@@ -6,7 +6,8 @@ Owner approved speeding up removal of expense approval tasks after approval in
 1C, without increasing notification noise or materially increasing source load.
 Implemented and verified locally on `979cd8c` (deployment branch documentation
 head following production runtime `574ff73`, version 1.10.1). **Not deployed.**
-Local code commit: `921d101` on `codex/expense-status-refresh`.
+Local code commit after preparation on current deployment head: `8e876cf` on
+`codex/expense-status-refresh` (original candidate was `921d101`).
 Release/version must be reconciled with the current deployment branch and live
 release metadata immediately before an approved production release.
 
@@ -95,6 +96,17 @@ minute, not ten per open device. Explicit owner commands may add exact reads.
 - `tests/expense-request-status-refresh.integration.test.ts` (new)
 
 ## Release / rollback
+
+Read-only pre-release check later on 2026-10-20: live version 1.10.3, built
+2026-10-20T14:16:07.774Z; VPS source `3769cc0`; deployment branch `14462c1`.
+Candidate rebased cleanly onto `14462c1`, preserving the intervening fiscal
+report releases. All 53 unit tests and the full build passed again. Telegram
+mock delivery tests require ADMIN_INBOX_TELEGRAM_ENABLED=1; without it their
+two queue assertions correctly fail because delivery is disabled. No real
+messages were sent. Integration code is unchanged from the earlier DB run.
+Server root filesystem had 19 GiB available; storage maintenance last result
+was success. Existing `offonika-admin-inbox-telegram.timer` fires every minute
+and `offonika-expense-request-sync.timer` every three minutes. No server changes.
 
 Production approval and verification remain pending. Before release, recheck
 live source/version, follow AGENTS.md and VPS runbook, increment the appropriate
