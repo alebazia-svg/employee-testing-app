@@ -235,3 +235,12 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
   report and review/reminder retirement; standalone acquiring documents without
   fiscal proof remain ADMIN questions. See the candidate note's shared lifecycle
   section for203 checks and exact files. Not deployed; ADMIN-first unchanged.
+
+
+## Daily fiscal report saved view — production 1.10.3
+
+- Runtime3769cc0: `fiscal-report-snapshot-20261020.md`.
+- Full receipt evidence opens from a private persistent snapshot while live
+  refresh runs in the background. Today's pending bank statement does not block
+  caching complete receipts; incomplete refreshes never downgrade a complete
+  saved report/statement. ADMIN access and notification policy unchanged.
