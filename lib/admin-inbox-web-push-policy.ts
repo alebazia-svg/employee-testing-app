@@ -9,6 +9,7 @@ const STANDARD_HOURS_EVENT_TYPES = [
   'procurement.payment_submitted',
   'workday_issue.employee_action',
   'workday_issue.employee_message',
+  'terminal_fiscal_review.created',
   'terminal_fiscal_review.employee_action',
   'terminal_fiscal_review.employee_message',
   'dependency.down',

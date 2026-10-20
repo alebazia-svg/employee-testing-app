@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {retailWorkplaceHint as hint,type RetailWorkplacePerson} from '../lib/retail-workplace-hint';
+const google=(arrival:number|null,plan:'working'|'off'|null=null)=>({plan,arrival,departure:null,shift:'',lateMinutes:0,note:'',ambiguous:false});
+const team=():RetailWorkplacePerson[]=>[{name:'Зухра',homeKkm:'z',day:google(null)},{name:'Милана',homeKkm:'m',day:google(540)},{name:'Магомед',homeKkm:null,day:google(540)}];
+test('two actual marks identify fixed seat and hypothesize floating seat without inventing a cashier',()=>{const p=team();assert.equal(hint(p,'m',600)?.name,'Милана');assert.deepEqual(hint(p,'z',600),{name:'Магомед',basis:'Предположительно по составу смены'});assert.equal(hint(p,'z',500),null);});
+test('explicit day off and Magomed start infer absent-mark colleague under owner two-person rule',()=>{const p=team();p[1].day=google(null,'off');assert.deepEqual(hint(p,'z',600),{name:'Зухра',basis:'Предположительно по составу смены'});assert.equal(hint(p,'m',600)?.name,'Магомед');p[0].day=google(540);assert.equal(hint(p,'m',600)?.name,'Магомед');});
+test('unknown days, duplicate equipment, source conflicts, three starts and ended marks never give a guessed assignment',()=>{const p=team();p[1].day=google(null);assert.equal(hint(p,'z',600),null);p[0].day=google(540);p[1].day=google(540);assert.equal(hint(p,'z',600),null);p[1].day=google(null);p[0].homeKkm='m';assert.equal(hint(p,'m',600),null);p[0].homeKkm='z';p[0].day=google(540,'off');assert.equal(hint(p,'z',600)?.name,'Зухра');p[0].day=google(null);p[1].day=google(540);p[2].day.departure=570;assert.equal(hint(p,'z',600),null);});

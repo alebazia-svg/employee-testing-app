@@ -1,6 +1,7 @@
 /** Only individual, identifiable records belong in a focused notification dialog. */
-export type NotificationOpening = 'payment' | 'receipts' | 'expense' | 'page';
+export type NotificationOpening = 'payment' | 'receipts' | 'expense' | 'fiscal' | 'page';
 export function adminNotificationOpening(event:{sourceType?:string;type:string;body?:string;href:string}):NotificationOpening {
+  if(event.sourceType==='terminal_fiscal_review' && /^\/admin\/workday\/payment-checks\/[^/?#]+$/.test(event.href))return 'fiscal';
   if(event.sourceType==='supplier_payment_receipt'&&event.type==='procurement.receipt_added')return 'receipts';
   // Legacy batch events stored the first plan as sourceId: do not hide the rest.
   if(event.sourceType==='supplier_payment_plan'&&!/ · \d+ оплат · /.test(event.body||''))return 'payment';

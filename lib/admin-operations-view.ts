@@ -59,7 +59,7 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
   },
   'terminal_fiscal_review.created': {
     category: 'decisions',
-    typeLabel: 'Чек пробит с задержкой',
+    typeLabel: 'Проверка чека',
     actionLabel: 'Открыть проверку',
   },
   'workday.kkm_shift_close_attention': { category: 'decisions', typeLabel: 'Закрытие кассовой смены', actionLabel: 'Открыть контроль' },

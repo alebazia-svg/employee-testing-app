@@ -48,7 +48,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const today = attentionDay(now);
   const [displayRows, unreadRows, lifecycleRows] = await Promise.all([
     prisma.adminInboxReceipt.findMany({
-      where: { userId: input.userId, ...(input.view === 'history' ? { event: { sourceType: { notIn: ['dependency', 'infrastructure'] }, type: { not: 'terminal_fiscal_review.created' } } } : input.view === 'system' ? { event: { OR: [{ sourceType: { in: ['dependency', 'infrastructure'] } }, { type: 'terminal_fiscal_review.created' }] } } : {}) },
+      where: { userId: input.userId, ...(input.view === 'history' ? { event: { sourceType: { notIn: ['dependency', 'infrastructure'] } } } : input.view === 'system' ? { event: { OR: [{ sourceType: { in: ['dependency', 'infrastructure'] } }] } } : {}) },
       include: { event: true },
       orderBy: { event: { occurredAt: 'desc' } },
       take: input.limit,
@@ -89,7 +89,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     }) : [],
     reviewIds.length ? prisma.terminalFiscalEmployeeReview.findMany({
       where: { id: { in: reviewIds } },
-      select: { id: true, status: true },
+      select: { id: true, status: true, amountKopecks: true, bankOperationAt: true },
     }) : [],
     exceptionIds.length ? prisma.workdayCloseExceptionRequest.findMany({
       where: { id: { in: exceptionIds } },
@@ -136,6 +136,14 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const cashiers = await loadDecisionCashiers([...expenseCashboxes.values(), ...nativeDeliveries.map(d => d.native?.status?.cashboxRef)].filter((ref): ref is string => Boolean(ref)), now);
   const urgencies = new Map<string, AttentionUrgency>();
   const pushDetails = new Map<string, AttentionPushDetail>();
+  for (const review of reviews) {
+    const at = review.bankOperationAt.toLocaleString('ru-RU', {timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    pushDetails.set(`terminal_fiscal_review:${review.id}`, {
+      identity: pushIdentity('Проверка чека', review.amountKopecks / 100),
+      action: review.status === 'admin_review' ? 'Проверить чек' : 'Открыть проверку',
+      detail: `Оплата ${at} МСК. ${review.status === 'admin_review' ? 'Требуется ваше решение.' : 'Вопрос ещё не закрыт.'}`,
+    });
+  }
   const deliveryHrefs = new Map<string, string>();
   const delayedDeliverySources = new Map<string, string>();
   const unavailableDeliverySources = new Set<string>();

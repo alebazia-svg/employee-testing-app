@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Bell, ChevronRight, CheckCheck } from 'lucide-react';
 import type { AdminInboxViewItem } from '@/lib/admin-inbox-data';
 import { startVisibleSync } from '@/lib/visible-sync';
@@ -12,21 +12,31 @@ type View = 'attention' | 'history' | 'system';
 const PAGE_SIZE = 30;
 const when = (value: string) => new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Europe/Moscow' }).format(new Date(value));
 
-export function AdminInboxListClient({ initialItems, initialAttention, initialView, technicalCount }: {
-  initialItems: AdminInboxViewItem[]; initialAttention: AdminInboxViewItem[]; initialView: View; technicalCount: number;
+export function AdminInboxListClient({ initialItems, initialAttention, initialView, technicalCount,initialReview }: {
+  initialReview?:NotificationSelection|null; initialItems: AdminInboxViewItem[]; initialAttention: AdminInboxViewItem[]; initialView: View; technicalCount: number;
 }) {
   const router = useRouter();
+  const params=useSearchParams();
+  const deepReview=params.get('review');
   const [selected,setSelected]=useState<NotificationSelection|null>(null);
+  const openedReview=useRef<string|null>(null);
+  useEffect(()=>{
+    if(!deepReview){openedReview.current=null;return;}
+    if(openedReview.current===deepReview)return;
+    const found=[...initialItems,...initialAttention].find(i=>i.event.sourceType==='terminal_fiscal_review'&&i.event.sourceId===deepReview);
+    const target=initialReview|| (found?{id:found.id,audience:'admin' as const,...found.event}:null);
+    if(target){openedReview.current=deepReview;setSelected(target);}
+  },[deepReview,initialReview,initialItems,initialAttention]);
   const [shown, setShown] = useState(PAGE_SIZE);
   const [error, setError] = useState('');
   const [showSystemHistory, setShowSystemHistory] = useState(false);
   useEffect(() => startVisibleSync(() => router.refresh(), 60_000), [router]);
   const view = initialView;
-  const items = view === 'attention' ? initialAttention : initialItems.filter(i => view === 'system' ? (showSystemHistory ? i.meta.category === 'system' || i.event.type === 'terminal_fiscal_review.created' : i.meta.category === 'system' && i.sourceState.active) : i.meta.category !== 'system' && i.event.type !== 'terminal_fiscal_review.created');
+  const items = view === 'attention' ? initialAttention : initialItems.filter(i => view === 'system' ? (showSystemHistory ? i.meta.category === 'system' : i.meta.category === 'system' && i.sourceState.active) : i.meta.category !== 'system');
   const unread = initialItems.some(i => !i.readAt);
   async function markRead(id:string) {
     const item = [...initialItems, ...initialAttention].find(item => item.id === id);
-    if (!item?.eventId) return;
+    if (!item?.eventId && id.startsWith('plan:')) return;
     await fetch(`/api/admin/inbox/${encodeURIComponent(id)}/read`,{method:'POST'}).catch(()=>null);
     router.refresh();
   }
@@ -42,7 +52,7 @@ export function AdminInboxListClient({ initialItems, initialAttention, initialVi
     router.refresh();
   }
   return <section className='mx-auto w-full max-w-[1200px]'>
-    {selected&&<NotificationRecordDialog key={selected.id} item={selected} onViewed={()=>void markRead(String(selected.id))} onClose={()=>{setSelected(null);router.refresh();}}/>}
+    {selected&&<NotificationRecordDialog key={selected.id} item={selected} onViewed={()=>void markRead(String(selected.id))} onClose={()=>{setSelected(null);if(deepReview)router.replace(`/admin/inbox?view=${view}`,{scroll:false});else router.refresh();}}/>}
     <nav aria-label='Разделы уведомлений' className='admin-section-tabs mb-4'>
       {([{ key: 'attention', label: 'Требуют внимания', count: initialAttention.length }, { key: 'history', label: 'История' }, { key: 'system', label: 'Система', count: technicalCount }] as const).map(tab =>
         <button key={tab.key} type='button' aria-current={view === tab.key ? 'page' : undefined} className='admin-section-tab' onClick={() => { setShown(PAGE_SIZE); router.push(`/admin/inbox?view=${tab.key}`); }}>{tab.label}{'count' in tab && tab.count > 0 && <span className='admin-section-tab-count'>{tab.count}</span>}</button>)}

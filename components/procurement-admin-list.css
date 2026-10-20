@@ -32,3 +32,7 @@
 @media(max-width:1200px){.pam-row,.pam-columns{grid-template-columns:145px minmax(130px,1fr) 125px 125px 16px;gap:12px;padding-inline:16px}.pam-method,.pam-columns>:nth-child(4){padding-left:0}}
 @media(max-width:1000px){.pam-columns{display:none}.pam-row{grid-template-columns:minmax(0,1fr) auto;gap:6px 14px}.pam-supplier{grid-column:1;grid-row:1}.pam-amount{grid-column:2;grid-row:1}.pam-date{grid-column:1;grid-row:2}.pam-method{grid-column:1;grid-row:3;padding:0}.pam-chevron{grid-column:2;grid-row:2/4;justify-self:end}}
 @media(max-width:650px){.pam-dialog{width:100%;height:100dvh;max-height:100dvh;max-width:none;border:0;border-radius:0}.pam-dialog-heading{padding:10px 16px}.pam-dialog-content{padding:20px 16px;flex:1}.pam-dialog-footer{padding:12px 16px max(14px,env(safe-area-inset-bottom));gap:8px}.pam-dialog-footer .pam-button{flex:1}.pam-cancel{order:3;width:100%;min-height:30px;margin:0}.pam-key-info{gap:12px;padding:14px}.pam-key-info strong{font-size:21px}.pam-identity{flex-wrap:wrap}.pam-search{max-width:none}}
+
+/* Fiscal notification: retain a focused window on narrow ADMIN screens. */
+.pam-dialog.fiscal-notification-dialog{max-width:640px}
+@media(max-width:650px){.pam-dialog.fiscal-notification-dialog{width:calc(100% - 24px);height:auto;max-height:calc(100dvh - 32px);border:1px solid #d8d1c7;border-radius:16px}.fiscal-notification-dialog .pam-dialog-content{flex:initial}}

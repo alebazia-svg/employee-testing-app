@@ -1,4 +1,5 @@
 'use client';
+import {FiscalNotificationDialog} from './FiscalNotificationDialog';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import {useEffect,useRef,useState} from 'react';
 import {supplierOnlyPaymentLabel} from '@/lib/procurement-supplier-advance';
@@ -11,8 +12,8 @@ import {ProcurementApprovedEdit} from './ProcurementApprovedEdit';
 import {ProcurementReceipts} from './ProcurementReceipts';
 import './procurement-admin-list.css';
 
-export type NotificationSelection={kind?:string;id:string|number;audience:'admin'|'employee';title:string;body:string;href:string};
-export function NotificationRecordDialog({item,onClose,onViewed,readOnly=false}:{readOnly?:boolean;item:NotificationSelection;onClose:()=>void;onViewed?:()=>void}) {
+export type NotificationSelection={kind?:string;id:string|number;audience:'admin'|'employee';title:string;body:string;href:string;sourceType?:string};
+function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}:{readOnly?:boolean;item:NotificationSelection;onClose:()=>void;onViewed?:()=>void}) {
   const inspection=useEmployeePreview();
   const inspectRecord=!!inspection && employeeNotificationOpening({kind:item.kind??''})!=='page';
   const router=useRouter(),dialog=useRef<HTMLDialogElement>(null);
@@ -83,4 +84,9 @@ export function NotificationRecordDialog({item,onClose,onViewed,readOnly=false}:
       {detail?.kind==='payment'&&detail.admin&&plan?.revision&&<>{decision==='RETURN'?<button className="pam-button pam-primary" disabled={busy||reason.trim().length<3} onClick={()=>decide(plan,'RETURN')}>Сохранить решение</button>:<><button className="pam-button" disabled={busy} onClick={()=>setDecision('RETURN')}>Отклонить изменения</button><button className="pam-button pam-primary" disabled={busy} onClick={()=>decide(plan,'APPROVE')}>{busy?'Сохраняем…':'Согласовать изменения'}</button></>}</>}
     </>}</footer>
   </dialog>;
+}
+
+export function NotificationRecordDialog(props:{readOnly?:boolean;item:NotificationSelection;onClose:()=>void;onViewed?:()=>void}) {
+ if(props.item.audience==='admin'&&props.item.sourceType==='terminal_fiscal_review')return <FiscalNotificationDialog {...props}/>;
+ return <StandardNotificationRecordDialog {...props}/>;
 }

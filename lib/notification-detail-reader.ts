@@ -1,3 +1,4 @@
+import {loadFiscalReviewData} from './fiscal-review-data';
 import {prisma} from '@/lib/prisma';
 import {adminNotificationOpening,employeeNotificationOpening} from '@/lib/notification-opening';
 import {readPaymentRevision} from '@/lib/procurement-plan-revision';
@@ -19,6 +20,10 @@ export async function readNotificationDetail(user: { id: number; role: string; p
     const receipt=await prisma.adminInboxReceipt.findFirst({where:{id,userId:user.id},include:{event:true}});
     if(!receipt)return missing();
     const event=receipt.event;kind=adminNotificationOpening(event);
+    if(kind==='fiscal'){
+      const detail=await loadFiscalReviewData(event.sourceId,user.id);
+      return detail?Response.json({kind,detail},{headers:{'Cache-Control':'private, no-store'}}):missing();
+    }
     if(kind==='expense'){
       const caseId=event.href.split('/').at(-1)!;
       const item=await prisma.expenseRequestAdminCase.findFirst({where:{id:caseId,oneCRequestRef:event.sourceId},include:{evaluations:{orderBy:{evaluatedAt:'desc'},take:1}}});

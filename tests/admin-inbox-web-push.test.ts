@@ -64,13 +64,13 @@ test('shift-closing blockers remain eligible until 23:00 Moscow', () => {
   assert.deepEqual(eligibleAdminInboxWebPushTypes(new Date('2026-09-24T21:00:00.000Z')), []);
 });
 
-test('recovery, expiry, update and routine review events stay inbox-only', () => {
+test('recovery, expiry and update stay inbox-only while fiscal decisions use portal push', () => {
   const types = eligibleAdminInboxWebPushTypes(new Date('2026-09-24T09:00:00.000Z'));
   assert.equal(types.includes('dependency.recovered'), false);
   assert.equal(types.includes('infrastructure.recovered'), false);
   assert.equal(types.includes('dependency.expiring'), false);
   assert.equal(types.includes('procurement.payment_updated'), false);
-  assert.equal(types.includes('terminal_fiscal_review.created'), false);
+  assert.equal(types.includes('terminal_fiscal_review.created'), true);
   assert.equal(types.includes('work_schedule.coverage_gap'), false);
 });
 

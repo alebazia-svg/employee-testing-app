@@ -1,104 +1,15 @@
-import { TerminalFiscalChainEvidence } from '@/components/TerminalFiscalChainEvidence';
-import { runTerminalFiscalHistoricalDryRun } from '@/lib/terminal-fiscal-runner';
-import { technicalHash } from '@/lib/terminal-fiscal-sources';
-import type { FiscalChainEvidence } from '@/lib/terminal-fiscal-chain-review';
-import { isFiscalChainReason } from '@/lib/terminal-fiscal-chain-review';
-import { redirect } from 'next/navigation';
-import { MessageCircle, SearchCheck } from 'lucide-react';
-import { AdminBreadcrumbs } from '@/components/AdminBreadcrumbs';
-import { AdminShell } from '@/components/AdminShell';
-import { TerminalFiscalReviewConversation } from '@/components/TerminalFiscalReviewConversation';
-import { Card } from '@/components/ui/card';
-import { FiscalAdminApproval } from '@/components/FiscalAdminApproval';
-import { FiscalTestPaymentButton } from '@/components/FiscalTestPaymentButton';
-import { TERMINAL_FISCAL_ADMIN_FIRST, fiscalProposedRecipients } from '@/lib/terminal-fiscal-admin-gate';
-import { getCurrentUser } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
-import { terminalFiscalAdminReviewView } from '@/lib/terminal-fiscal-employee-review-view';
-
-export const dynamic = 'force-dynamic';
-
-export default async function AdminPaymentCheckPage(props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const admin = await getCurrentUser();
-  if (!admin) redirect('/login');
-  if (admin.role !== 'ADMIN') redirect('/employee');
-  const review = await prisma.terminalFiscalEmployeeReview.findUnique({
-    where: { id: params.id },
-    include: {
-      employee: { select: { name: true } },
-      mapping: { select: { label: true, terminalKey: true } },
-      participants: { include: { user: { select: { name: true } } }, orderBy: { user: { name: 'asc' } } },
-      messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } },
-    },
-  });
-  if (!review) redirect('/admin/workday');
-  const open = review.status === 'open';
-  const match = await prisma.terminalFiscalMatch.findUnique({
-    where: { matchingId: review.matchingHash },
-    select: { status: true, reasonCode: true, bankOperationRawType: true, oneCSourceRef: true, timeDifferenceSeconds: true,
-      tbankComplete: true, oneCComplete: true, ofdComplete: true },
-  });
-  const elapsedMinutes = Math.max(0, Math.floor((review.lastCheckedAt.getTime() - review.bankOperationAt.getTime()) / 60_000));
-  const view = terminalFiscalAdminReviewView({
-    status: review.status,
-    bankOperationAt: review.bankOperationAt,
-    amountKopecks: review.amountKopecks,
-    match,
-  });
-  const resolved = view.tone === 'resolved';
-  const shared = review.assignmentScope === 'retail_shift' || review.assignmentScope === 'retail_day';
-  const pendingAdmin = TERMINAL_FISCAL_ADMIN_FIRST && review.status === 'admin_review' && !resolved;
-  const proposed = pendingAdmin ? await fiscalProposedRecipients(prisma, review.bankOperationAt, review.mappingId) : null;
-  const simpleCheck = pendingAdmin && !match?.oneCSourceRef && match?.reasonCode === 'ONE_C_CANDIDATE_NOT_FOUND'
-    && match.tbankComplete && match.oneCComplete;
-  const showDiscussion = !pendingAdmin || review.messages.length > 0;
-  let chain: FiscalChainEvidence | undefined;
-  let chainUnavailable = false;
-  if (pendingAdmin && review.mappingId && isFiscalChainReason(match?.reasonCode ?? review.reasonCode)) {
-    try {
-      const day = new Intl.DateTimeFormat('en-CA', {timeZone:'Europe/Moscow'}).format(review.bankOperationAt);
-      const from = new Date(`${day}T00:00:00+03:00`);
-      const result = await runTerminalFiscalHistoricalDryRun({mappingId:review.mappingId,periodFrom:from,
-        periodTo:new Date(from.getTime()+86400000),persist:false,includeEvidence:true});
-      if (result.acquired) chain = result.output?.records.find(r=>technicalHash(r.matchingKey)===review.matchingHash)?.evidence.chain;
-      chainUnavailable = !chain;
-    } catch { chainUnavailable = true; }
-  }
-
-  return (
-    <AdminShell>
-      <AdminBreadcrumbs current='Проверка продажи' />
-      <div className={showDiscussion ? 'grid gap-5 xl:grid-cols-[minmax(0,0.85fr)_minmax(360px,1.15fr)]' : 'mx-auto w-full max-w-xl'}>
-        <Card className={resolved ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}>
-          {simpleCheck ? <>
-            <div className='flex items-center gap-3'><SearchCheck className='h-6 w-6 shrink-0 text-amber-700' /><h1 className='text-2xl font-extrabold text-amber-950'>Проверьте чек</h1></div>
-            <p className='mt-3 text-base font-bold text-amber-950'>{view.operationMeta}</p>
-            <p className='mt-4 text-base leading-relaxed text-slate-800'>Оплата подтверждена через aQsi. 1С прочитана полностью, соответствующего чека нет уже {elapsedMinutes} мин.</p>
-            <dl className='mt-4 grid gap-2 text-sm text-slate-700'><div><dt className='font-semibold'>Терминал</dt><dd>{review.mapping?.label ?? review.mapping?.terminalKey ?? 'Не определён'}</dd></div><div><dt className='font-semibold'>Предполагаемое рабочее место</dt><dd>{proposed?.confidence === 'high' && proposed.primary ? proposed.primary.name : 'Не удалось определить однозначно'}</dd></div></dl>
-            <p className='mt-3 text-sm leading-relaxed text-slate-700'>Проверьте в 1С. Если чека действительно нет, передайте задачу менеджеру кнопкой ниже.</p>
-          </> : <div className='flex gap-3'><SearchCheck className={`mt-0.5 h-6 w-6 shrink-0 ${resolved ? 'text-green-700' : 'text-amber-700'}`} /><div><p className={`text-xs font-extrabold uppercase tracking-wide ${resolved ? 'text-green-700' : 'text-amber-700'}`}>{view.statusLabel}</p><h1 className={`mt-1 text-2xl font-black ${resolved ? 'text-green-950' : 'text-amber-950'}`}>{view.title}</h1><p className={`mt-2 text-sm font-extrabold ${resolved ? 'text-green-800' : 'text-amber-800'}`}>{view.operationMeta}</p><p className={`mt-3 text-base font-bold leading-relaxed ${resolved ? 'text-green-950' : 'text-amber-950'}`}>{view.message}</p></div></div>}
-          {!pendingAdmin && <dl className={`mt-5 grid gap-3 border-t pt-4 text-sm sm:grid-cols-2 ${resolved ? 'border-green-200' : 'border-amber-200'}`}><div><dt className={`font-semibold ${resolved ? 'text-green-700' : 'text-amber-700'}`}>{shared ? 'Ответственные сотрудники' : 'Сотрудник'}</dt><dd className={`mt-1 font-extrabold ${resolved ? 'text-green-950' : 'text-amber-950'}`}>{review.assignmentScope === 'admin_gate' ? 'Не назначены — проверял администратор' : shared ? review.participants.map((item) => item.user.name).join(', ') : review.employee.name}</dd></div><div><dt className={`font-semibold ${resolved ? 'text-green-700' : 'text-amber-700'}`}>Основание адресации</dt><dd className={`mt-1 font-extrabold ${resolved ? 'text-green-950' : 'text-amber-950'}`}>{review.assignmentScope === 'workstation_shift' ? 'Рабочее место и состав смены' : review.assignmentScope === 'retail_shift' ? 'Работали в Рознице в момент оплаты' : review.assignmentScope === 'retail_day' ? 'Работали в Рознице в этот день' : review.assignmentScope === 'admin_gate' ? 'Предварительная проверка' : 'Кассир по данным 1С'}</dd></div></dl>}
-          {!resolved && !pendingAdmin && <p className='mt-4 text-xs font-semibold leading-relaxed text-amber-800'>{shared ? 'Это общая задача сотрудникам Розницы, а не персональное обвинение. Она закроется у всех после появления чека в 1С.' : 'Это нейтральная проверка, а не подтверждённая ошибка сотрудника.'}</p>}
-          {match?.reasonCode === 'BANK_OPERATION_UNSUPPORTED' && match.bankOperationRawType ? <p className='mt-3 text-xs font-semibold text-slate-600'>Исходный тип операции Т-Банка: {match.bankOperationRawType}</p> : null}
-          {chain && <TerminalFiscalChainEvidence chain={chain} />}
-          {chainUnavailable && <p className='mt-4 text-sm'>Свежая сверка не подтвердила состав цепочки или данные недоступны. Автоматически проверка не закрыта.</p>}
-          {pendingAdmin && !match?.oneCSourceRef && match?.reasonCode !== 'ONE_C_POSSIBLE_SPLIT_SALE' && !isFiscalChainReason(match?.reasonCode ?? '') && !isFiscalChainReason(review.reasonCode) && <FiscalAdminApproval reviewId={review.id} recipients={proposed?.users ?? []} primary={proposed?.primary ?? null} confidence={proposed?.confidence ?? 'uncertain'} />}
-          {pendingAdmin && !match?.oneCSourceRef && <FiscalTestPaymentButton reviewId={review.id} />}
-          {pendingAdmin && match?.oneCSourceRef && <p className='mt-4 text-sm font-bold text-amber-900'>Чек уже есть в 1С. Сначала проверьте расхождение; просьба пробить новый чек сотрудникам не отправляется.</p>}
-        </Card>
-        {showDiscussion && <Card>
-          <div className='mb-4 flex items-center gap-2'><MessageCircle className='h-5 w-5 text-[#263b5c]' /><h2 className='text-lg font-extrabold'>Обсуждение</h2></div>
-          <TerminalFiscalReviewConversation
-            initialMessages={review.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))}
-            currentUserId={admin.id}
-            endpoint={`/api/admin/terminal-fiscal/reviews/${review.id}/messages`}
-            disabled={!open}
-            disabledMessage={view.discussionMessage}
-            disabledTone={view.tone === 'admin' ? 'admin' : 'resolved'}
-          />
-        </Card>}
-      </div>
-    </AdminShell>
-  );
+import Link from 'next/link';
+import {redirect} from 'next/navigation';
+import {AdminShell} from '@/components/AdminShell';
+import {getCurrentUser} from '@/lib/auth';
+import {loadFiscalReviewData} from '@/lib/fiscal-review-data';
+import {FiscalReviewContent} from '@/components/FiscalReviewContent';
+export const dynamic='force-dynamic';
+export default async function AdminPaymentCheckPage({params}:{params:Promise<{id:string}>}) {
+ const admin=await getCurrentUser();
+ if(!admin)redirect('/login');
+ if(admin.role!=='ADMIN')redirect('/employee');
+ const detail=await loadFiscalReviewData((await params).id,admin.id);
+ if(!detail)redirect('/admin/workday');
+ return <AdminShell pageTitle="Проверка чека"><div className="mx-auto w-full max-w-3xl"><Link href="/admin/inbox?view=attention" className="mb-4 inline-flex rounded-md border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600">← К уведомлениям</Link><div className="rounded-xl border border-stone-200 bg-white p-5 sm:p-6"><FiscalReviewContent detail={detail}/></div></div></AdminShell>;
 }

@@ -17,9 +17,11 @@ test('each business object appears once; cash precedes procurement and old reque
   assert.deepEqual(selectAdminAttention([item('plan','supplier_payment_plan'), old, update]).map(i=>i.id), ['second','plan']);
   assert.equal(selectAdminAttention([item('done','expense_request',false)]).length,0);
 });
-test('automatic checks stay out but employee messages remain actionable', () => {
+test('fiscal reviews stay actionable after reading and disappear only when resolved', () => {
   const review = {...item('review','terminal_fiscal_review'),meta:{category:'decisions'},event:{...item('review').event,sourceType:'terminal_fiscal_review',type:'terminal_fiscal_review.created'}};
-  assert.equal(selectAdminAttention([review]).length,0);
+  assert.equal(selectAdminAttention([review]).length,1);
+  assert.equal(selectAdminAttention([{...review,readAt:now.toISOString()}]).length,1);
+  assert.equal(selectAdminAttention([{...review,sourceState:{active:false}}]).length,0);
   assert.equal(selectAdminAttention([{...review,event:{...review.event,type:'terminal_fiscal_review.employee_message'}}]).length,1);
 });
 test('an old pending request is picked up after downtime or next morning, without a thirty-minute expiry', () => {

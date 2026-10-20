@@ -2,7 +2,7 @@ export type AttentionPushDetail = { identity: string; detail: string; action: st
 export type AttentionUrgency = { key: string; at: string; label: string; phase: 'upcoming' | 'due'; signals?: string[] };
 /** Business attention is independent from notification read state. */
 export const ATTENTION_LIFECYCLE_SOURCES = ['expense_request', 'supplier_payment_plan', 'procurement_delivery', 'procurement_delivery_request', 'workday_close_exception', 'cash_operation', 'workday_control_issue', 'terminal_fiscal_review'] as const;
-export const ATTENTION_PUSH_TYPES = ['expense_request.created', 'procurement.delivery_requested', 'procurement.delivery_manual_requested', 'procurement.payment_submitted', 'workday.close_exception_requested', 'workday.cash_encashment_exception_requested', 'workday.cash_operation_failed', 'workday.kkm_shift_close_attention', 'workday_issue.employee_action', 'workday_issue.employee_message', 'terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'] as const;
+export const ATTENTION_PUSH_TYPES = ['expense_request.created', 'procurement.delivery_requested', 'procurement.delivery_manual_requested', 'procurement.payment_submitted', 'workday.close_exception_requested', 'workday.cash_encashment_exception_requested', 'workday.cash_operation_failed', 'workday.kkm_shift_close_attention', 'workday_issue.employee_action', 'workday_issue.employee_message', 'terminal_fiscal_review.created', 'terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'] as const;
 export type AttentionItem = {
   id: string; readAt: string | null;
   event: { type: string; sourceType: string; sourceId: string; occurredAt: string; title?: string; body?: string; href?: string; deadline?: string; push?: AttentionPushDetail; urgency?: AttentionUrgency; technicalAttention?: boolean };
@@ -15,8 +15,6 @@ export function attentionKey(item: AttentionItem) {
 export function needsAdminAttention(item: AttentionItem) {
   // Technical health is visible in System, not an unresolved owner decision.
   if (item.meta.category === 'system' || item.event.technicalAttention === true) return false;
-  // A routine automatic fiscal check belongs in section control, not owner messages.
-  if (item.event.type === 'terminal_fiscal_review.created') return false;
   if ((ATTENTION_LIFECYCLE_SOURCES as readonly string[]).includes(item.event.sourceType)) return item.sourceState.active;
   return item.readAt === null;
 }
@@ -98,7 +96,7 @@ export function attentionDigestText(items: AttentionItem[], previous: DigestStat
     const item = items[0], data = details(item);
     const title = item.event.urgency ? `Срочно: ${data.identity}` : isNew(item) ? `${data.identity} — ${data.action}` : `Напоминание: ${data.identity}`;
     // Source links are local ADMIN destinations; never accept an external push target.
-    const href = item.event.href;
+    const href = item.event.sourceType === 'terminal_fiscal_review' ? `/admin/inbox?view=attention&review=${encodeURIComponent(item.event.sourceId)}` : item.event.href;
     const url = href && !href.includes('..') && /^\/admin\/[a-zA-Z0-9/?#%&=._:-]+$/.test(href) ? href : fallbackUrl;
     return { title: pushText(title, 110), body: [isNew(item) ? 'Новое.' : '', `${data.action}.`, pushText(data.detail, 100), pushText(item.event.deadline, 90)].filter(Boolean).join(' '), url };
   }
