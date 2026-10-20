@@ -4,6 +4,7 @@ import {readPaymentRevision} from '@/lib/procurement-plan-revision';
 import {receiptPlanFromFingerprint,canAccessProcurementReceipts} from '@/lib/procurement-receipt-policy';
 import {buyerPaymentComment} from '@/lib/procurement-buyer-comment';
 import {expenseListItem} from '@/lib/expense-request-list-item';
+import {savedPaymentEvidence} from '@/lib/procurement-evidence-continuity';
 
 export async function readNotificationDetail(user: { id: number; role: string; portalArea: string; isActive: boolean }, audience: string, id: string) {
   const admin=audience==='admin';
@@ -38,6 +39,12 @@ export async function readNotificationDetail(user: { id: number; role: string; p
   const plan=await prisma.supplierPaymentPlan.findUnique({where:{id:planId}});
   if(!plan||!canAccessProcurementReceipts(user,plan.managerUserId))return missing();
   // DB-only opening; financial mutations retain their existing fresh 1C guards.
+  const saved=kind==='receipts'?savedPaymentEvidence(plan):null;
+  const receiptEvidence=kind==='receipts'?{evidence:saved?{
+    state:saved.evidence.state,verification:'last-confirmed',
+    issuedAmount:saved.evidence.issuedAmount,paidAmount:saved.evidence.paidAmount,
+    paidForeignAmount:saved.evidence.paidForeignAmount,
+  }:{state:'SOURCE_UNAVAILABLE',verification:'unavailable'}}:{};
   plan.orderNumbers=Array.isArray(plan.orderNumbers)?plan.orderNumbers.filter(value=>typeof value==='string'):[];
-  return Response.json({kind,admin,plan:{id:plan.id,planCode:plan.planCode,supplierPartner:plan.supplierPartner,plannedDate:plan.plannedDate.toISOString(),updatedAt:plan.updatedAt.toISOString(),plannedAmount:String(plan.plannedAmount),foreignAmount:plan.foreignAmount===null?null:String(plan.foreignAmount),exchangeRate:plan.exchangeRate===null?null:String(plan.exchangeRate),paymentMethod:plan.paymentMethod,condition:buyerPaymentComment(plan.condition),orderNumbers:plan.orderNumbers,status:plan.status,paymentPurpose:plan.paymentPurpose,revision:readPaymentRevision(plan.oneCCashEvidence)}},{headers:{'Cache-Control':'private, no-store'}});
+  return Response.json({kind,admin,plan:{...receiptEvidence,id:plan.id,planCode:plan.planCode,supplierPartner:plan.supplierPartner,plannedDate:plan.plannedDate.toISOString(),updatedAt:plan.updatedAt.toISOString(),plannedAmount:String(plan.plannedAmount),foreignAmount:plan.foreignAmount===null?null:String(plan.foreignAmount),exchangeRate:plan.exchangeRate===null?null:String(plan.exchangeRate),paymentMethod:plan.paymentMethod,condition:buyerPaymentComment(plan.condition),orderNumbers:plan.orderNumbers,status:plan.status,paymentPurpose:plan.paymentPurpose,revision:readPaymentRevision(plan.oneCCashEvidence)}},{headers:{'Cache-Control':'private, no-store'}});
 }
