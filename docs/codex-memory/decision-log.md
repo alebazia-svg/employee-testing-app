@@ -1010,3 +1010,26 @@ an explicit scoped exception to the pilot's Google-only payroll day source,
 not a cutover for every employee. Owner subsequently approved publication;
 released in 1.9.0 (`5c7492c`). See the payroll playbook and
 `payroll-pwa-attendance-release-20261019.md` for verification and boundaries.
+
+## 2026-10-19 — Magomed's retail workstation follows the shift composition
+
+Owner confirmed the actual stable workplace rule: Milana always uses her own
+computer/KKM, Zukhra always uses hers; Magomed uses the absent colleague's
+computer and does not switch workplaces during that shift. With Milana +
+Magomed, Magomed uses Zukhra's workplace; with Zukhra + Magomed, he uses Milana's.
+Owner approved encoding this for the later full employee-app rollout, without
+an extra mandatory employee selection when the composition is known.
+
+This is an accepted future activation rule, not a current runtime change.
+Use the schedule for a proposed assignment and actual shift starts to validate
+composition; missing plans, replacements, both/neither home cashier present and
+conflicting starts require clarification rather than invented responsibility.
+Equipment remains a physical identity; the actual 1C cashier remains the source
+for an existing receipt. A planned workplace can route a missing-receipt review
+but is not proof of the person who performed a historical sale. Do not apply
+this future inference retroactively to the current receipt investigation.
+
+Owner prioritized resolving the present historical discrepancies from existing
+1C/OFD/acquiring/bank-statement evidence. ADMIN-first delivery remains enabled;
+automatic employee reminders are not approved by this decision. Current report
+candidate/evidence: terminal-fiscal-chain-candidate-20261019.md.

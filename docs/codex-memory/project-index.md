@@ -218,3 +218,16 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
 - Released and verified: `terminal-fiscal-matching-candidate-20261019.md`.
 - Seven-day 1C read limit, late-payment competition, forced assignments and
   goods-backed possible split detection. Historical outcomes require scheduled rechecks.
+
+## Fiscal chains / workplaces — local candidate 2026-10-19
+
+- See `terminal-fiscal-chain-candidate-20261019.md`; not deployed.
+- Owner confirmed Magomed is named in his 1C checks when using either computer.
+  Existing two workplace/KKM/aQsi bindings must not allocate sales by home user.
+- Local grouped-receipt/payment/exchange detection is ADMIN review only.
+  Per-document breakdown and daily report are implemented locally; authenticated
+  owner preview and release remain pending. Incomplete historical archives never confirm matches.
+- Local completion: shared `MATCH_AMOUNT_COVERED` result now drives the runner,
+  report and review/reminder retirement; standalone acquiring documents without
+  fiscal proof remain ADMIN questions. See the candidate note's shared lifecycle
+  section for203 checks and exact files. Not deployed; ADMIN-first unchanged.
