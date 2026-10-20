@@ -1,11 +1,10 @@
 import { prisma } from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { parsePayrollEmployeeRuleInput, PayrollEmployeeRuleValidationError } from '@/lib/payroll-employee-rules';
 
 const employeeSelect = {
-  id: true, name: true, login: true, role: true, department: true, isActive: true, payrollName: true,
+  id: true, name: true, login: true, role: true, sessionVersion: true, department: true, isActive: true, payrollName: true,
   payrollSalaryType: true, payrollReportGroup: true, payrollFixedSalary: true, payrollRuleFrom: true, payrollRuleThrough: true,
   portalArea: true, oneCManagerName: true,
 } as const;
@@ -19,6 +18,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     name?: string; login?: string; password?: string; role?: string; department?: string; isActive?: boolean; payrollName?: string; portalArea?: string; oneCManagerName?: string;
   };
   const userId = Number(params.id);
+  if (password) return Response.json({ error: 'Для смены пароля используйте «Сбросить и выдать пароль».' }, { status: 400 });
   if (!name?.trim() || !login?.trim()) {
     return Response.json({ error: 'Заполните имя и логин' }, { status: 400 });
   }
@@ -47,7 +47,6 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         portalArea: role === 'ADMIN' ? 'WORKDAY' : portalArea === 'PROCUREMENT' ? 'PROCUREMENT' : 'WORKDAY',
         oneCManagerName: portalArea === 'PROCUREMENT' && typeof oneCManagerName === 'string' && oneCManagerName.trim() ? oneCManagerName.trim() : null,
         ...payrollRule,
-        ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
       },
       select: employeeSelect,
     });

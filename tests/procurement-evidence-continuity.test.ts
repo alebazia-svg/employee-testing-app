@@ -140,7 +140,7 @@ test('concurrent older snapshot cannot overwrite newer cache or a manual link ed
 
 test('both screens consume persisted views; unknown is not awaiting; review actions require complete sources', () => {
   const admin = readFileSync('app/(dashboard)/admin/procurement/AdminProcurementLive.tsx','utf8');
-  const buyer = readFileSync('app/(dashboard)/procurement/page.tsx','utf8');
+  const buyer = readFileSync('app/(dashboard)/procurement/ProcurementHome.tsx','utf8');
   for(const page of [admin,buyer]) assert.match(page,/preservePaymentEvidenceViews/);
   assert.match(admin,/paymentLinks=\{displayComplete \?/);
   assert.match(admin,/initialPlans=\{plansWithOrderContext\.map/);
@@ -152,4 +152,17 @@ test('both screens consume persisted views; unknown is not awaiting; review acti
   for(const path of ['app/(dashboard)/admin/procurement/AdminProcurementClient.tsx','app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx']) {
     assert.match(readFileSync(path,'utf8'),/verification\s*!==\s*'unavailable'/);
   }
+});
+
+
+test('administrator inspection returns fresh evidence without persisting any presentation cache', async () => {
+  const normal = memory(), preview = memory();
+  const input = new Map([[preview.p.id, evidence('ISSUED_BY_ONE_C')]]);
+  const expected = await preservePaymentEvidenceViews([normal.p], input, true, now, normal.store, now);
+  const before = structuredClone(preview.p);
+  const actual = await preservePaymentEvidenceViews([preview.p], input, true, now, preview.store, now, { persist: false });
+  assert.deepEqual(actual, expected);
+  assert.equal(normal.writes.length, 1);
+  assert.equal(preview.writes.length, 0);
+  assert.deepEqual(preview.p, before);
 });

@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview, EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
 import { closeReasonRequiresComment } from '@/lib/workday-close-request';
 import { EmployeeAttentionPanel } from '@/components/workday/EmployeeAttentionPanel';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
@@ -143,7 +144,7 @@ function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () 
   }
 
   return (
-    <div
+    <><EmployeePreviewNotice /><div
       className={cn('-mx-2 -mt-3 mb-1 flex h-8 touch-none items-center justify-center', disabled ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')}
       aria-hidden='true'
       onPointerDown={handlePointerDown}
@@ -152,7 +153,7 @@ function BottomSheetDragHandle({ onDismiss, disabled = false }: { onDismiss: () 
       onPointerCancel={() => { startYRef.current = null; resetSheet(); }}
     >
       <span className='h-1.5 w-12 rounded-full bg-slate-300' />
-    </div>
+    </div></>
   );
 }
 
@@ -490,13 +491,16 @@ function cameraErrorMessage(error: unknown) {
 
 function WorkdayQrScanner({
   userDepartment,
+  onPreviewNext,
   onCancel,
   onAccepted,
 }: {
   userDepartment: string;
+  onPreviewNext?: () => void;
   onCancel: () => void;
   onAccepted: (result: { department: string; qrPayload: string }) => void;
 }) {
+  const inspection = useEmployeePreview();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -567,6 +571,7 @@ function WorkdayQrScanner({
   }
 
   async function startCamera() {
+    if (inspection) return;
     setError('');
     setState('starting');
     stopCamera();
@@ -607,8 +612,9 @@ function WorkdayQrScanner({
           </button>
         </div>
 
+        {inspection && <div className='mb-3 rounded-xl bg-white/10 p-3 text-sm'><p>Проверка интерфейса · камера и начало смены отключены</p><button type='button' onClick={onPreviewNext} className='mt-2 min-h-11 underline'>Посмотреть выбор смены</button></div>}
         <div className='employee-material-camera relative flex-1 overflow-hidden rounded-3xl bg-black shadow-2xl shadow-black/40'>
-          <video ref={videoRef} className='h-full w-full object-cover' muted playsInline autoPlay />
+          {!inspection && <video ref={videoRef} className='h-full w-full object-cover' muted playsInline autoPlay />}
           <canvas ref={canvasRef} className='hidden' />
           <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
             <div className='employee-material-scan-frame h-56 w-56 rounded-3xl border-4 border-[#efbd37] shadow-[0_0_0_999px_rgba(2,6,23,0.42)]' />
@@ -1229,6 +1235,8 @@ export function EmployeeTodayClient({
   ownVacations = [],
   departmentVacations = [],
 }: Props) {
+  const preview = useEmployeePreview();
+  const request = preview?.request ?? fetch;
   const router = useRouter();
   const searchParams = useSearchParams();
   const paletteClass = {
@@ -1408,12 +1416,23 @@ export function EmployeeTodayClient({
     && !bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen
     && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen
     && !comment.trim() && !message && !error,
+    !preview,
   );
+
+  useEffect(() => {
+    if (!preview) return;
+    const blockFile = (event: MouseEvent) => {
+      if (event.target instanceof HTMLInputElement && event.target.type === 'file') { event.preventDefault(); event.stopImmediatePropagation(); preview.blocked(); }
+    };
+    document.addEventListener('click', blockFile, true);
+    return () => document.removeEventListener('click', blockFile, true);
+  }, [preview]);
 
   const initialRenderNow = useMemo(() => new Date(`${today}T00:00:00+03:00`), [today]);
   const displayNow = now ?? initialRenderNow;
 
   useEffect(() => {
+    if (preview) return;
     const startNotice = window.sessionStorage.getItem('workdayStartNotice');
     if (startNotice) {
       window.sessionStorage.removeItem('workdayStartNotice');
@@ -1552,7 +1571,7 @@ export function EmployeeTodayClient({
     const timeout = window.setTimeout(() => controller.abort(), workdaySyncTimeoutMs);
 
     try {
-      const response = await fetch('/api/employee/workday/today', {
+      const response = await request('/api/employee/workday/today', {
         cache: 'no-store',
         signal: controller.signal,
       });
@@ -1604,6 +1623,7 @@ export function EmployeeTodayClient({
   }, [activeTab, syncCurrentWorkdayState]);
 
   const refreshCashOutboxCount = useCallback(async () => {
+    if (preview) return;
     try {
       const items = await listEmployeeCashOutboxItems();
       setCashOutboxCount(items.filter((item) => item.userId === user.id).length);
@@ -1613,6 +1633,7 @@ export function EmployeeTodayClient({
   }, [user.id]);
 
   const flushCashOutbox = useCallback(async () => {
+    if (preview) return;
     if (cashOutboxSyncingRef.current || !navigator.onLine) return;
     cashOutboxSyncingRef.current = true;
     setCashOutboxSyncing(true);
@@ -1677,7 +1698,7 @@ export function EmployeeTodayClient({
     if (requestedMonth) setLoadingScheduleMonth(requestedMonth);
     try {
       const query = requestedMonth ? `?month=${encodeURIComponent(requestedMonth)}` : '';
-      const response = await fetch(`/api/employee/workday/schedule${query}`, { cache: 'no-store' });
+      const response = await request(`/api/employee/workday/schedule${query}`, { cache: 'no-store' });
       if (!response.ok) return;
       const payload: unknown = await response.json();
       if (!isRecord(payload) || !Array.isArray(payload.ownSchedule) || !Array.isArray(payload.departmentSchedule)) return;
@@ -1750,6 +1771,7 @@ export function EmployeeTodayClient({
       ? pendingShiftControlTasks.find((task) => task.id !== actionableShiftControlTask.id) ?? null
       : pendingShiftControlTasks[0] ?? null;
   const primaryShiftControlTask = actionableShiftControlTask ?? nextShiftControlTask;
+  const inspectedShiftControlTask = actionableShiftControlTask ?? (preview ? primaryShiftControlTask : null);
   const remainingShiftControlCount = pendingShiftControlTasks.length;
   const otherShiftControlTaskCount = pendingShiftControlTasks.filter((task) => task.id !== primaryShiftControlTask?.id).length;
   const completedKkmCloseCheck = readRecord(handoverTask?.handoverData, 'kkmCloseCheck');
@@ -1818,11 +1840,12 @@ export function EmployeeTodayClient({
   }
 
   async function submitWorkdayDeviation() {
+    if (preview) { preview.blocked(); return; }
     if (!deviationSheetKind || isSaving) return;
     setIsSaving(true);
     setError('');
     try {
-      const response = await fetch('/api/employee/workday/deviations', {
+      const response = await request('/api/employee/workday/deviations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2097,11 +2120,12 @@ export function EmployeeTodayClient({
   }
 
   async function saveVacation() {
+    if (preview) { preview.blocked(); return; }
     setError('');
     setMessage('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/vacations', {
+      const response = await request('/api/employee/workday/vacations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2130,12 +2154,13 @@ export function EmployeeTodayClient({
   }
 
   async function cancelVacation() {
+    if (preview) { preview.blocked(); return; }
     if (!editingVacation) return;
     setError('');
     setMessage('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/vacations', {
+      const response = await request('/api/employee/workday/vacations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'cancel', id: editingVacation.id }),
@@ -2155,11 +2180,12 @@ export function EmployeeTodayClient({
   }
 
   async function updateSchedule(date: string, status: 'working' | 'off', confirmCoverageImpact = false) {
+    if (preview) { preview.blocked(); return; }
     setError('');
     setMessage('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/schedule', {
+      const response = await request('/api/employee/workday/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date, status, confirmCoverageImpact }),
@@ -2230,12 +2256,13 @@ export function EmployeeTodayClient({
   }
 
   async function saveBulkSchedule() {
+    if (preview) { preview.blocked(); return; }
     if (bulkScheduleChanges.length === 0) return;
     setError('');
     setMessage('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/schedule/bulk', {
+      const response = await request('/api/employee/workday/schedule/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ monthKey: calendarMonth, mode: bulkScheduleKind, changes: bulkScheduleChanges, confirmed: true }),
@@ -2257,11 +2284,12 @@ export function EmployeeTodayClient({
   }
 
   async function declineScheduleReplacement(date: string) {
+    if (preview) { preview.blocked(); return; }
     setError('');
     setMessage('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/schedule', {
+      const response = await request('/api/employee/workday/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date, action: 'decline_replacement' }),
@@ -2298,12 +2326,13 @@ export function EmployeeTodayClient({
   }
 
   async function handleQrAccepted({ department, qrPayload }: { department: string; qrPayload: string }) {
+    if (preview) { preview.blocked(); return; }
     setQrScannerOpen(false);
     setMessage('');
     setError('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/start-intent', {
+      const response = await request('/api/employee/workday/start-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qrPayload }),
@@ -2337,7 +2366,7 @@ export function EmployeeTodayClient({
     setMessage('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/change-shift', { cache: 'no-store' });
+      const response = await request('/api/employee/workday/change-shift', { cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось проверить доступные смены');
       if (!payload.canCorrect || !Array.isArray(payload.allowedShiftCodes) || payload.allowedShiftCodes.length === 0) {
@@ -2356,11 +2385,12 @@ export function EmployeeTodayClient({
   }
 
   async function correctShift(toShiftCode: string) {
+    if (preview) { preview.blocked(); return; }
     setError('');
     setMessage('');
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/change-shift', {
+      const response = await request('/api/employee/workday/change-shift', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ toShiftCode }),
@@ -2378,6 +2408,7 @@ export function EmployeeTodayClient({
 
   async function chooseShiftAfterQr(value: string) {
     setSelectedShift(value);
+    if (preview) { preview.blocked(); return; }
     if (value && qrDepartmentConfirmed && !workDay && !isSaving) {
       setShiftPickerOpen(false);
       await startWorkDay(value, qrDepartmentConfirmed);
@@ -2385,6 +2416,7 @@ export function EmployeeTodayClient({
   }
 
   async function startWorkDay(shiftCodeOverride = selectedShift, qrDepartmentOverride = qrDepartmentConfirmed) {
+    if (preview) { preview.blocked(); return; }
     setError('');
     setMessage('');
     if (!qrDepartmentOverride) {
@@ -2405,7 +2437,7 @@ export function EmployeeTodayClient({
     }
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/start', {
+      const response = await request('/api/employee/workday/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ shiftCode: shiftCodeOverride, comment, startIntentId: workdayStartIntentId }),
@@ -2441,7 +2473,8 @@ export function EmployeeTodayClient({
     }
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/finish', { method: 'POST' });
+      if (preview) { preview.blocked(); return; }
+      const response = await request('/api/employee/workday/finish', { method: 'POST' });
       const payload = await response.json();
       if (!response.ok) {
         if (payload.code === 'OPEN_REQUIRED_ISSUES') {
@@ -2465,6 +2498,7 @@ export function EmployeeTodayClient({
   }
 
   async function finishUnfinishedWorkDay() {
+    if (preview) { preview.blocked(); return; }
     if (!previousWorkDay) return;
     setError('');
     setMessage('');
@@ -2478,7 +2512,7 @@ export function EmployeeTodayClient({
     }
     setIsSaving(true);
     try {
-      const response = await fetch('/api/employee/workday/finish', {
+      const response = await request('/api/employee/workday/finish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2513,6 +2547,7 @@ export function EmployeeTodayClient({
   }
 
   async function requestCloseException() {
+    if (preview) { preview.blocked(); return; }
     if (!closeExceptionReason) {
       setError('Выберите техническую причину');
       return;
@@ -2524,7 +2559,7 @@ export function EmployeeTodayClient({
     setIsSaving(true);
     setError('');
     try {
-      const response = await fetch('/api/employee/workday/close-exception', {
+      const response = await request('/api/employee/workday/close-exception', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reasonCode: closeExceptionReason, comment: closeReasonRequiresComment(closeExceptionReason) ? closeExceptionComment : '' }),
@@ -2543,6 +2578,7 @@ export function EmployeeTodayClient({
   }
 
   async function requestCashEncashmentException() {
+    if (preview) { preview.blocked(); return; }
     if (!cashEncashmentExceptionReason) {
       setError('Выберите причину');
       return;
@@ -2554,7 +2590,7 @@ export function EmployeeTodayClient({
     setIsSaving(true);
     setError('');
     try {
-      const response = await fetch('/api/employee/workday/cash-encashment-exception', {
+      const response = await request('/api/employee/workday/cash-encashment-exception', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: cashEncashmentExceptionReason, comment: cashEncashmentExceptionComment }),
@@ -2696,6 +2732,7 @@ export function EmployeeTodayClient({
   }
 
   async function submitCashOperation(file: File | null) {
+    if (preview) { preview.blocked(); return; }
     if (!cashOperationDraft.direction) return;
     if (!file) return;
     if (!activeWorkDay) {
@@ -2773,6 +2810,7 @@ export function EmployeeTodayClient({
   }
 
   async function saveHandoverDraft(task: ShiftControlTask, draft = handoverDraft) {
+    if (preview) { setHandoverSavedDraft(draft); return { ...task, handoverData: null }; }
     const formData = new FormData();
     formData.append('intent', 'draft');
     ([
@@ -2828,6 +2866,7 @@ export function EmployeeTodayClient({
   }
 
   async function completeOpeningPhotoTask(task: ShiftControlTask, file: File) {
+    if (preview) { preview.blocked(); return; }
     setError('');
     setIsSaving(true);
     try {
@@ -2870,6 +2909,8 @@ export function EmployeeTodayClient({
   }
 
   async function completeShiftControlTask(task: ShiftControlTask, draftOverride?: ShiftTaskDraft) {
+    if (preview && task.category === 'handover') { startHandoverWizard(task); return; }
+    if (preview) { preview.blocked(); return; }
     const draft = draftOverride ?? shiftTaskDrafts[task.id] ?? emptyShiftTaskDraft(task);
     const localErrors: Record<string, string> = {};
     const payload: {
@@ -2950,7 +2991,7 @@ export function EmployeeTodayClient({
             setUploadProgress,
           )
         : await (async () => {
-            const response = await fetch(`/api/employee/shift-control/tasks/${task.id}`, {
+            const response = await request(`/api/employee/shift-control/tasks/${task.id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: requestBody,
@@ -2987,6 +3028,7 @@ export function EmployeeTodayClient({
 
   function canActOnShiftTask(task: ShiftControlTask) {
     if (task.status === 'done') return editingShiftTaskId === task.id;
+    if (preview) return true;
     if (earlyFinishDeviation) return task.id === pendingShiftControlTasks[0]?.id;
     return task.plannedTimeMinutes === null || task.plannedTimeMinutes === undefined || getMoscowMinutes(displayNow) >= task.plannedTimeMinutes;
   }
@@ -3370,6 +3412,7 @@ export function EmployeeTodayClient({
   }
 
   async function submitHandover(task: ShiftControlTask, draft = handoverDraft, steps = buildHandoverSteps(draft)) {
+    if (preview) { preview.blocked(); return; }
     for (const step of steps) {
       const stepError = getHandoverStepError(step, draft);
       if (stepError) {
@@ -3487,6 +3530,7 @@ export function EmployeeTodayClient({
   // Compatibility for permissions issued before server-side closure was released.
   // New approvals are consumed and close the workday in the admin transaction.
   useEffect(() => {
+    if (preview) return;
     const request = cashEncashmentExceptionRequestState;
     const task = activeHandoverTask;
     const isApprovedEncashmentStep = request?.status === 'approved' && !request.consumedAt && handoverSteps[handoverStep] === 'encashment';
@@ -3503,6 +3547,7 @@ export function EmployeeTodayClient({
   }, [activeHandoverTask, cashEncashmentExceptionRequestState, handoverStep, handoverSteps, isCompleted, isSaving]);
 
   useEffect(() => {
+    if (preview) return;
     const request = closeExceptionRequestState;
     const task = shiftControlTasks.find((item) => item.category === 'handover' && item.status !== 'done') ?? null;
     if (request?.status !== 'approved' || request.consumedAt || !closeExceptionMatchesCurrentIssues || isCompleted || isSaving) {
@@ -3530,6 +3575,7 @@ export function EmployeeTodayClient({
   }, [activeWorkDay, closeExceptionMatchesCurrentIssues, closeExceptionRequestState, handoverDraft, isCompleted, isSaving, shiftControlTasks, staleCloseComment, staleCloseReason, unfinished]);
 
   async function handleHandoverPhotoSelected(task: ShiftControlTask, field: HandoverPhotoKey, file: File | null) {
+    if (preview) { preview.blocked(); return; }
     if (!file) return;
     setHandoverAttemptedStep(null);
     setHandoverSaveError('');
@@ -3557,6 +3603,7 @@ export function EmployeeTodayClient({
   }
 
   async function sendKkmClosePhotoToAdmin(task: ShiftControlTask, file: File | null) {
+    if (preview) { preview.blocked(); return; }
     if (!file) return;
     setIsSaving(true);
     setError('');
@@ -3566,7 +3613,7 @@ export function EmployeeTodayClient({
       const savedTask = await saveHandoverDraft(task, nextDraft);
       const savedDraft = isRecord(savedTask.handoverData) ? draftFromHandoverData(savedTask.handoverData) : nextDraft;
       setHandoverDraft(savedDraft);
-      const response = await fetch('/api/employee/workday/close-exception', {
+      const response = await request('/api/employee/workday/close-exception', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reasonCode: 'kkm', comment: 'Чек закрытия смены распечатался. Фото приложено, но портал пока не подтвердил закрытие кассы.' }),
@@ -3674,6 +3721,11 @@ export function EmployeeTodayClient({
 
     return (
       <div className={step === 'encashment' ? 'employee-material-form min-w-0 pt-4' : 'employee-material-focus employee-material-focus-current employee-material-form rounded-xl border-l-[5px] p-3 ring-1'}>
+        {preview && <label className='mb-3 block rounded-xl bg-[#f8eee3] p-3 text-xs font-semibold text-[#493829]'>Шаг для проверки интерфейса
+          <select aria-label='Шаг для проверки интерфейса' value={handoverStep} onChange={event => { setHandoverStep(Number(event.target.value)); setHandoverAttemptedStep(null); setHandoverSaveError(''); setShowCashEncashmentExceptionForm(false); setEncashmentDetailsOpen(false); }} className='mt-2 min-h-10 w-full rounded-lg border border-[#d7c4b1] bg-white px-2 text-sm'>
+            {handoverSteps.map((key, index) => <option key={key} value={index}>{index + 1}. {handoverStepTitle[key] ?? key}</option>)}
+          </select><span className='mt-1 block font-normal'>Переход не выполняет задачу и не сохраняет данные.</span>
+        </label>}
         {step !== 'encashment' && <div className='mb-3 flex items-start justify-between gap-3'>
           <div className='flex items-start gap-2'>
             <span className='employee-material-task-glyph mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-700 ring-1 ring-green-100'>
@@ -4189,6 +4241,7 @@ export function EmployeeTodayClient({
         <WorkdayQrScanner
           userDepartment={user.department}
           onCancel={() => setQrScannerOpen(false)}
+          onPreviewNext={preview ? () => { setQrScannerOpen(false); setShiftSelectionHint('Проверка интерфейса: выбор смены не начнёт рабочий день.'); setShiftPickerOpen(true); } : undefined}
           onAccepted={handleQrAccepted}
         />
       )}
@@ -4198,7 +4251,7 @@ export function EmployeeTodayClient({
             <BottomSheetDragHandle onDismiss={() => setShiftPickerOpen(false)} disabled={isSaving} />
             <div className='flex items-start justify-between gap-3'>
               <div>
-                <p className='text-xs font-black uppercase tracking-[0.18em] text-green-700'>QR подтверждён</p>
+                <p className='text-xs font-black uppercase tracking-[0.18em] text-green-700'>{preview ? 'Проверка интерфейса' : 'QR подтверждён'}</p>
                 <h2 className='mt-1 text-2xl font-black text-slate-950'>Выберите смену</h2>
                 <p className='mt-1 text-sm font-semibold text-slate-500'>{shiftSelectionHint}</p>
               </div>
@@ -4770,7 +4823,7 @@ export function EmployeeTodayClient({
                       {cashEncashmentExceptionRequestState?.status === 'pending' && primaryShiftControlTask?.category === 'handover' ? (
                         <>
                           <p className='text-sm font-semibold text-slate-700'>Запрос по инкассации отправлен.</p>
-                          {actionableShiftControlTask && renderShiftTaskAction(actionableShiftControlTask, true)}
+                          {inspectedShiftControlTask && renderShiftTaskAction(inspectedShiftControlTask, true)}
                         </>
                       ) : <>
                       <div className='flex items-center gap-2'>
@@ -4791,7 +4844,7 @@ export function EmployeeTodayClient({
                           <span className='text-xs font-bold text-slate-500'>{earlyFinishDeviation ? 'Выполните сейчас для сдачи смены' : primaryTaskTimingLabel(primaryShiftControlTask, displayNow)}</span>
                         </div>
                       )}
-                      {actionableShiftControlTask && renderShiftTaskAction(actionableShiftControlTask, true)}
+                      {inspectedShiftControlTask && renderShiftTaskAction(inspectedShiftControlTask, true)}
                       </>}
                     </div>
                   )}

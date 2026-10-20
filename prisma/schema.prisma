@@ -12,6 +12,9 @@ model User {
   name                             String
   login                            String                            @unique
   passwordHash                     String
+  sessionVersion                   Int                               @default(0)
+  passwordResetAt                  DateTime?
+  passwordResetById                Int?
   role                             String
   department                       String                            @default("retail")
   portalArea                       String                            @default("WORKDAY")
@@ -1569,4 +1572,17 @@ model ProcurementForecastSnapshot {
 
   @@index([snapshotDate, createdAt])
   @@index([contentHash])
+}
+
+// Administrative inspection only; never an employee authentication session.
+model EmployeePreviewVisit {
+  id String @id @default(cuid())
+  adminId Int
+  employeeId Int
+  adminName String
+  employeeName String
+  openedAt DateTime @default(now())
+  expiresAt DateTime
+  @@index([adminId, openedAt])
+  @@index([employeeId, openedAt])
 }

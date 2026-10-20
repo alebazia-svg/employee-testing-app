@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -32,6 +33,8 @@ export function CashIssueSummary({ activeShift }: { activeShift: boolean }) {
 }
 
 export function CashIssueProvider({ children }: { children: ReactNode }) {
+  const preview = useEmployeePreview();
+  const requestRead = preview?.request ?? fetch;
   const [snapshot, setSnapshot] = useState<Snapshot>({ request: null, unavailable: false });
   const [openedRef, setOpenedRef] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -50,7 +53,7 @@ export function CashIssueProvider({ children }: { children: ReactNode }) {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
-      const response = await fetch(`/api/employee/cash-issue${fresh ? '?fresh=1' : ''}`, { cache: 'no-store', signal: controller.signal });
+      const response = await requestRead(`/api/employee/cash-issue${fresh ? '?fresh=1' : ''}`, { cache: 'no-store', signal: controller.signal });
       if (response.status === 401 || response.status === 403) {
         if (id === sequence.current) setSnapshot({ request: null, unavailable: true });
         return;

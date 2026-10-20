@@ -9,10 +9,11 @@ import type { AppState } from './portal-app-observation';
 const attemptKey = 'employee-app-update-attempt';
 
 /** Only the main workday screen opts in; detail forms never reload underneath their owner. */
-export function useEmployeeAppUpdate(isSafe: () => boolean | AppState) {
+export function useEmployeeAppUpdate(isSafe: () => boolean | AppState, enabled = true) {
   const safeRef = useRef(isSafe);
   useLayoutEffect(() => { safeRef.current = isSafe; });
   useEffect(() => {
+    if (!enabled) return;
     const current = readAppRelease({
       version: process.env.NEXT_PUBLIC_APP_VERSION,
       builtAt: process.env.NEXT_PUBLIC_APP_BUILT_AT,
@@ -93,5 +94,5 @@ export function useEmployeeAppUpdate(isSafe: () => boolean | AppState) {
       window.removeEventListener('focus', touched);
       document.removeEventListener('visibilitychange', touched);
     };
-  }, []);
+  }, [enabled]);
 }

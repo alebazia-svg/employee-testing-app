@@ -14,7 +14,7 @@ export default async function EmployeesPage() {
   const users = await prisma.user.findMany({
     orderBy: [{ isActive: 'desc' }, { role: 'asc' }, { name: 'asc' }],
     select: {
-      id: true, name: true, login: true, role: true, department: true, isActive: true, payrollName: true,
+      id: true, name: true, login: true, role: true, sessionVersion: true, department: true, isActive: true, payrollName: true,
       payrollSalaryType: true, payrollReportGroup: true, payrollFixedSalary: true, payrollRuleFrom: true, payrollRuleThrough: true,
       portalArea: true, oneCManagerName: true,
     },
@@ -23,7 +23,7 @@ export default async function EmployeesPage() {
   return (
     <AdminShell pageTitle="Сотрудники" pageDescription="Справочник сотрудников, доступы в портал и данные для расчёта зарплаты.">
       <div className="mb-4 flex flex-wrap items-center gap-2"><Link href='/admin/employees/access' className='inline-flex min-h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700'>Устройства и входы</Link></div>
-      <div className='mt-5'><EmployeesClient initialUsers={users} /></div>
+      <div className='mt-5'><EmployeesClient currentUserId={admin.id} initialUsers={users} /></div>
     </AdminShell>
   );
 }

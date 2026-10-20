@@ -1,12 +1,13 @@
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
-import { readSessionToken, sessionCookieName } from './session';
+import { readSessionToken, sessionCookieName, sessionMatchesUser } from './session';
 
 export async function getCurrentUser() {
   const cookieStore = await cookies();
   const session = readSessionToken(cookieStore.get(sessionCookieName)?.value);
   if (!session) return null;
-  return prisma.user.findFirst({ where: { id: session.userId, isActive: true } });
+  const user = await prisma.user.findUnique({ where: { id: session.userId } });
+  return user && sessionMatchesUser(session, user) ? user : null;
 }
 
 export async function requireCurrentUser() {

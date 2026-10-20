@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ProcurementDeliveryCash } from './ProcurementDeliveryCash';
 import type { DeliveryView } from '@/lib/procurement-delivery-reminders';
@@ -10,6 +11,7 @@ import { ProcurementDeliveryNativeStatus } from './ProcurementDeliveryNativeStat
 import { deliveryCollectionAmount, deliveryNativeFresh } from '@/lib/procurement-delivery-native';
 
 export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView }) {
+  const preview = useEmployeePreview();
   const [view, setView] = useState(initial);
   const [pending, setPending] = useState<'GET' | 'POST' | null>(null);
   const [error, setError] = useState('');
@@ -21,6 +23,7 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
   const fresh = deliveryFresh(view.snapshot, now);
   const act = useCallback(async (method: 'GET' | 'POST', input?: DeliveryRequestInput) => {
+    if (preview && method !== 'GET') { setError('Режим проверки: запрос не отправлен.'); return; }
     // Focus, pageshow and visibility events often arrive together.
     if (activeRequest.current || (method === 'GET' && Date.now() - lastRead.current < 10_000)) return;
     const controller = new AbortController();
@@ -30,7 +33,7 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
     setPending(method); setNow(Date.now());
     if (method === 'POST') setError('');
     try {
-      const response = await fetch('/api/procurement/delivery', { method, cache: 'no-store', signal: controller.signal,
+      const response = await (preview?.request ?? fetch)('/api/procurement/delivery', { method, cache: 'no-store', signal: controller.signal,
         ...(method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) } : {}) });
       const data = await response.json();
       if (!response.ok) throw Error('DELIVERY_UNAVAILABLE');
@@ -50,7 +53,7 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
         setPending(null);
       }
     }
-  }, []);
+  }, [preview]);
   useEffect(() => {
     const refresh = () => act('GET');
     const stop = startVisibleSync(refresh, 60_000);
@@ -79,7 +82,7 @@ export function ProcurementDeliveryPanel({ initial }: { initial: DeliveryView })
       {view.requestDetails ? <p className="mt-1">{view.requestDetails.amount.toLocaleString('ru-RU', { minimumFractionDigits: Number.isInteger(view.requestDetails.amount) ? 0 : 2, maximumFractionDigits: 2 })} ₽</p> : null}
     </div> : null}
     <ProcurementDeliveryNativeStatus view={view.nativeRequest} now={now} failed={refreshFailed} audience="buyer" />
-    {!buyerRequested || !view.requestDetails || issued ? <button type="button" disabled={!canRequest}
+    {!buyerRequested || !view.requestDetails || issued ? <button type="button" disabled={!canRequest && !preview}
       onClick={() => { setError(''); setFormOpen(true); }} className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40">{buyerRequested && !issued ? 'Указать сумму' : 'Запросить пополнение'}</button> : null}
     {formOpen ? <ProcurementDeliveryRequestDialog balance={view.snapshot.balance ?? 0} pending={pending === 'POST'} available={canRequest}
       error={error} onCancel={() => { setFormOpen(false); setError(''); }} onSubmit={input => act('POST', input)} /> : null}

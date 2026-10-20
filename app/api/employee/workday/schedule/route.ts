@@ -1,70 +1,12 @@
+import { requestedDates, scheduleSnapshot } from '@/lib/employee-schedule-snapshot';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { buildDateRange, getMoscowDateKey, scheduleStatuses } from '@/lib/workday';
-import { buildScheduleMonthRange, isValidScheduleDateKey, scheduleMonthKeyFromDate } from '@/lib/workday-schedule';
+import { getMoscowDateKey, scheduleStatuses } from '@/lib/workday';
+import { isValidScheduleDateKey, scheduleMonthKeyFromDate } from '@/lib/workday-schedule';
 import { scheduleCoverage, scheduleCoverageCopy, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '@/lib/work-schedule-coverage';
 import { persistEmployeeScheduleChange } from '@/lib/work-schedule-persistence';
-import { serializeEmployeeVacation } from '@/lib/employee-vacation';
 
 const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
-
-function requestedDates(monthKey?: string | null) {
-  if (!monthKey) return { monthKey: null, dates: buildDateRange(getMoscowDateKey(), 31) };
-  return buildScheduleMonthRange(monthKey);
-}
-
-async function scheduleSnapshot(user: { id: number; department: string }, dates: string[], monthKey: string | null) {
-  const [ownSchedule, departmentSchedule, replacementNotifications, ownVacations, departmentVacations] = await Promise.all([
-    prisma.workScheduleEntry.findMany({
-      where: { userId: user.id, date: { in: dates } },
-      orderBy: { date: 'asc' },
-    }),
-    prisma.workScheduleEntry.findMany({
-      where: {
-        department: user.department,
-        date: { in: dates },
-        user: { role: 'EMPLOYEE', isActive: true, department: user.department },
-      },
-      include: { user: { select: { id: true, name: true, department: true } } },
-      orderBy: [{ date: 'asc' }, { user: { name: 'asc' } }],
-    }),
-    prisma.workdayNotification.findMany({
-      where: {
-        userId: user.id,
-        kind: 'schedule_replacement_request',
-        status: { in: ['pending', 'sent'] },
-        readAt: null,
-      },
-      select: { fingerprint: true },
-    }),
-    prisma.employeeVacation.findMany({
-      where: { userId: user.id, status: 'active', dateFrom: { lte: dates[dates.length - 1] }, dateTo: { gte: dates[0] } },
-      orderBy: [{ dateFrom: 'asc' }, { createdAt: 'asc' }],
-    }),
-    prisma.employeeVacation.findMany({
-      where: {
-        department: user.department,
-        status: 'active',
-        dateFrom: { lte: dates[dates.length - 1] },
-        dateTo: { gte: dates[0] },
-        user: { role: 'EMPLOYEE', isActive: true, department: user.department },
-      },
-      include: { user: { select: { id: true, name: true, department: true } } },
-      orderBy: [{ dateFrom: 'asc' }, { user: { name: 'asc' } }],
-    }),
-  ]);
-  const replacementRequestDates = replacementNotifications
-    .map((notification) => notification.fingerprint.match(/^schedule-coverage:[^:]+:(\d{4}-\d{2}-\d{2}):/)?.[1])
-    .filter((date): date is string => Boolean(date));
-  return {
-    ownSchedule,
-    departmentSchedule,
-    ownVacations: ownVacations.map(serializeEmployeeVacation),
-    departmentVacations: departmentVacations.map(serializeEmployeeVacation),
-    replacementRequestDates,
-    range: { monthKey, from: dates[0], to: dates[dates.length - 1] },
-  };
-}
 
 export async function GET(req: Request) {
   const user = await getCurrentUser();

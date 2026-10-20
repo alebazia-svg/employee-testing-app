@@ -727,7 +727,7 @@ select {
 
 .employee-material-popover {
   position: fixed !important;
-  top: 96px !important;
+  top: var(--employee-notification-top, 96px) !important;
   right: auto !important;
   left: 50% !important;
   width: min(488px, calc(100vw - 32px)) !important;

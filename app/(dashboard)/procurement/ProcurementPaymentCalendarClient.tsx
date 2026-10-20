@@ -1,4 +1,5 @@
 "use client";
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { ProcurementPaymentDebtSummary } from '@/components/ProcurementPaymentDebtSummary';
 import { ProcurementCnyFields } from '@/components/ProcurementCnyFields';
 import { ProcurementUsdtFields } from '@/components/ProcurementUsdtFields';
@@ -264,6 +265,7 @@ export default function ProcurementPaymentCalendarClient({
   readOnlyPreview?: { compact: boolean; supplierCount: number; debtTotal: number | null };
   otherUsdtReserve?: number | null;
 }) {
+  const preview = useEmployeePreview();
   const [paymentView, setPaymentView] = useState<'current' | 'history'>('current');
   const visualPreview = useProcurementVisualPreview();
   const compact = readOnlyPreview?.compact ?? true;
@@ -373,7 +375,7 @@ export default function ProcurementPaymentCalendarClient({
   // mutation endpoint rechecks ownership, version, basis, payment and overlap.
   const editingBlocked = mappingBlocked || plansSourceError;
   function openNew(supplier = "", selectedRefs?: string[]) {
-    if (planningBlocked) return;
+    if (planningBlocked && !preview) return;
     setPaymentCreated(false);
     paymentFormOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const refs = selectedRefs || workingCatalogue.working.filter(order => !existingPlanForOrder(order))
@@ -469,6 +471,7 @@ export default function ProcurementPaymentCalendarClient({
   }
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (preview) { setMessage("Режим проверки: изменения не сохранены."); return; }
     if (basisPreview || (editingId ? editingBlocked : planningBlocked) || readOnlyPreview) {
       setMessage(basisPreview || readOnlyPreview ? 'Проверка интерфейса: отправка отключена.' : 'Данные не загружены полностью. Обновите страницу перед сохранением.');
       return;
@@ -556,7 +559,7 @@ export default function ProcurementPaymentCalendarClient({
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end xl:flex-row-reverse xl:items-center xl:gap-3">
-          {!planningBlocked ? (
+          {!planningBlocked || preview ? (
             <button
               aria-hidden={paymentView === 'history' || undefined}
               disabled={paymentView === 'history'}
@@ -628,7 +631,7 @@ export default function ProcurementPaymentCalendarClient({
           <div>
             <h2 className="text-lg font-black">Мои заявки</h2>
           </div>
-          {!planningBlocked ? (
+          {!planningBlocked || preview ? (
             <p className="text-xs font-bold text-slate-500">
               {compact ? `Всего заявок: ${workingPlans.length}` : `Поставщиков с долгом: ${readOnlyPreview?.supplierCount ?? (supplierDebtError ? '—' : Object.values(supplierBalances).filter(balance=>supplierPosition(balance)==='debt').length)}`}
             </p>

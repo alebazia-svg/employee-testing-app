@@ -29,11 +29,12 @@ test('previous confirmed paid state stays history-only, without stale cash colle
 });
 test('buyer streams live sources, preserves form instance and keeps captured edit version',()=>{
   const page=readFileSync('app/(dashboard)/procurement/page.tsx','utf8');
+  const home=readFileSync('app/(dashboard)/procurement/ProcurementHome.tsx','utf8');
   const stream=readFileSync('app/(dashboard)/procurement/ProcurementCalendarStream.tsx','utf8');
   const client=readFileSync('app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx','utf8');
-  assert.ok(page.indexOf("user.role!=='EMPLOYEE'")<page.indexOf('await readAdminPlans()'));
-  assert.ok(page.includes('<Suspense fallback={null}>'));
-  assert.ok(page.includes('sameAdminPlanVersions(initialPlans,latest)'));
+  assert.ok(page.indexOf("user.role !== 'EMPLOYEE'")<page.indexOf('return <ProcurementHome'));
+  assert.ok(home.includes('<Suspense fallback={null}>'));
+  assert.ok(home.includes('sameAdminPlanVersions(initialPlans,latest)'));
   assert.ok(stream.includes('value.generation===current.current'));
   assert.ok(!stream.includes('<Calendar key='));
   assert.ok(client.includes('setEditingVersion(plan.updatedAt)'));

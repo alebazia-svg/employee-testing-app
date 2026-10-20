@@ -213,6 +213,10 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
   shift/receipt/cash questions and unresolved earlier-day owner requests.
 - Local Google scenario adapters remain outside the production release.
 
+## Employee access and cabinet inspection — production 1.10.0
+
+- Released runtime `a5a3339`: `password-access-20261019.md`. Permanent generated passwords, targeted session revocation and actor-bound WORKDAY/PROCUREMENT inspection with real forms and blocked persistence. Both additive migrations applied and verified; existing passwords unchanged. Personal ADMIN accounts remain a separate proposal.
+
 ## Terminal fiscal matching — correction release 1.9.3, 2026-10-19
 
 - Released and verified: `terminal-fiscal-matching-candidate-20261019.md`.

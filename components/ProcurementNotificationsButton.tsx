@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -23,6 +24,7 @@ function urlBase64ToUint8Array(value: string) {
 
 export function ProcurementNotificationsButton() {
   const router = useRouter();
+  const preview = useEmployeePreview();
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [selected,setSelected]=useState<NotificationSelection|null>(null);
@@ -32,15 +34,16 @@ export function ProcurementNotificationsButton() {
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
-    const response = await fetch('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
+    const response = await (preview?.request ?? fetch)('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
     if (!response?.ok) return;
     const payload = await response.json().catch(() => null);
     const nextItems = Array.isArray(payload?.notifications) ? payload.notifications : [];
     setItems(nextItems);
-    void syncPwaAppBadge(nextItems.length);
-  }, []);
+    if (!preview) void syncPwaAppBadge(nextItems.length);
+  }, [preview]);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
+    if (preview) { preview.blocked(); return; }
     setBusy(true);
     setError('');
     try {
@@ -71,12 +74,12 @@ export function ProcurementNotificationsButton() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [preview]);
 
   useEffect(() => {
     void refresh();
-    if ('serviceWorker' in navigator) void navigator.serviceWorker.register('/workday-sw.js', { scope: '/' }).catch(() => undefined);
-    if ('Notification' in window && Notification.permission === 'granted') void connectPush(false);
+    if (!preview && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/workday-sw.js', { scope: '/' }).catch(() => undefined);
+    if (!preview && 'Notification' in window && Notification.permission === 'granted') void connectPush(false);
     const timer = window.setInterval(() => void refresh(), 30_000);
     function close(event: MouseEvent) {
       if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
@@ -86,15 +89,16 @@ export function ProcurementNotificationsButton() {
       window.clearInterval(timer);
       document.removeEventListener('mousedown', close);
     };
-  }, [connectPush, refresh]);
+  }, [connectPush, refresh, preview]);
 
   async function openItem(item: ProcurementNotification) {
     setOpen(false);
-    if(employeeNotificationOpening(item)!=='page'){setSelected({...item,audience:'employee'});return;}
+    if(preview || employeeNotificationOpening(item)!=='page'){setSelected({...item,audience:'employee'});return;}
     router.push(safeNotificationHref(item.href,'/procurement'));
     await dismiss(item);
   }
   async function dismiss(item:{id:number}) {
+    if (preview) return;
     setItems((current) => {
       const next = current.filter((notification) => notification.id !== item.id);
       void syncPwaAppBadge(next.length);
@@ -109,7 +113,7 @@ export function ProcurementNotificationsButton() {
 
   return (
     <div ref={root} className="relative">
-      {selected&&<NotificationRecordDialog key={selected.id} item={selected} onViewed={()=>void dismiss({id:Number(selected.id)})} onClose={()=>setSelected(null)}/>}
+      {selected&&<NotificationRecordDialog key={selected.id} item={selected} readOnly={!!preview} onViewed={()=>void dismiss({id:Number(selected.id)})} onClose={()=>setSelected(null)}/>}
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -130,7 +134,7 @@ export function ProcurementNotificationsButton() {
             <p className="font-extrabold text-slate-950">Уведомления</p>
             <p className="text-xs font-medium text-slate-500">Решения по вашим оплатам</p>
           </div>
-          {!pushConnected ? (
+          {!preview && !pushConnected ? (
             <div className="border-b border-green-100 bg-green-50 px-4 py-3">
               <p className="text-xs font-bold leading-relaxed text-green-950">Узнавайте сразу, когда оплату согласовали или отменили.</p>
               <button type="button" disabled={busy} onClick={() => void connectPush(true)} className="admin-material-primary mt-2 rounded-lg px-3 py-2 text-xs font-extrabold text-white disabled:opacity-50">
