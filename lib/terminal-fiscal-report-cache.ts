@@ -16,7 +16,7 @@ function location(day: string) {
   return path.join(process.env.FISCAL_REPORT_CACHE_DIR || path.join(process.cwd(), '.cache', 'fiscal-reports'), scope, `${day}.json`);
 }
 export function completeFiscalReport(report: SavedFiscalReport) {
-  return report.configurationComplete && report.complete.bank && report.complete.oneC && report.complete.ofd && report.settlement.complete;
+  return report.configurationComplete && report.complete.bank && report.complete.oneC && report.complete.ofd;
 }
 export async function readFiscalReport(day: string): Promise<SavedFiscalReport | null> {
   const target = location(day);
@@ -31,6 +31,8 @@ export async function readFiscalReport(day: string): Promise<SavedFiscalReport |
 }
 export async function writeFiscalReport(day: string, report: SavedFiscalReport) {
   if (!completeFiscalReport(report)) return false;
+  const previous = await readFiscalReport(day);
+  if (previous?.settlement.complete && !report.settlement.complete) return false;
   const target = location(day);
   await mkdir(path.dirname(target), {recursive:true, mode:0o700});
   const temporary = `${target}.${randomUUID()}.tmp`;

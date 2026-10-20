@@ -18,6 +18,8 @@ test('persistent fiscal cache preserves last full snapshot, isolates sources and
  const report:SavedFiscalReport={...base,complete:{bank:true,oneC:true,ofd:true},configurationComplete:true,updatedAt:new Date().toISOString(),settlement:{...compareFiscalSettlement(null,{from:day,to:day,fiscalKopecks:0,fiscalComplete:true}),complete:true}};
  try {
   assert.equal(await readFiscalReport(day),null);
+  assert.equal(await writeFiscalReport(day,{...report,settlement:{...report.settlement,complete:false}}),true);
+  assert.equal((await readFiscalReport(day))?.settlement.complete,false);
   assert.equal(await writeFiscalReport(day,report),true);
   assert.deepEqual(await readFiscalReport(day),report);
   assert.equal(await writeFiscalReport(day,{...report,complete:{...report.complete,ofd:false}}),false);

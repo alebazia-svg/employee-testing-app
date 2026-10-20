@@ -18,13 +18,13 @@ export function TerminalFiscalReportRefresh({day,initial}:{day:string;initial:Sa
       .then(async response=>{if(!response.ok)throw Error();return response.json();})
       .then(({report:fresh,saved}:{report:SavedFiscalReport;saved:boolean})=>{
         if(!active)return;
-        const complete=fresh.configurationComplete&&fresh.complete.bank&&fresh.complete.oneC&&fresh.complete.ofd&&fresh.settlement.complete;
-        if(current.current?.configurationComplete&&current.current.complete.bank&&current.current.complete.oneC&&current.current.complete.ofd&&current.current.settlement.complete&&!complete) {
+        const complete=fresh.configurationComplete&&fresh.complete.bank&&fresh.complete.oneC&&fresh.complete.ofd;
+        if(current.current?.configurationComplete&&current.current.complete.bank&&current.current.complete.oneC&&current.current.complete.ofd&&( !complete || (current.current.settlement.complete&&!fresh.settlement.complete) )) {
           setMessage('Не все источники ответили. Показана сохранённая сверка.');
         } else {
           current.current=fresh;
           setReport(fresh);
-          setMessage(!complete?'Получена часть данных.':saved?'':'Данные обновлены, но сохранить отчёт не удалось.');
+          setMessage(!complete?'Получена часть данных.':!saved?'Данные обновлены, но сохранить отчёт не удалось.':!fresh.settlement.complete?'Выписка получена не полностью.':'');
         }
       })
       .catch(()=>{if(active)setMessage(current.current?'Не удалось обновить. Показаны последние полученные данные.':'Не удалось загрузить сверку.');})
