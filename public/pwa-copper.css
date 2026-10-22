@@ -160,7 +160,10 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-profile-copy > p:first-child { font-size:15px !important; }
   .employee-material-header { z-index:0 !important; }
   .employee-material-header + div { background:var(--pwa-canvas); border-radius:26px 26px 0 0; position:relative; margin-top:-26px; padding-top:18px !important; }
-  .employee-material-header + .flex-1 { padding-bottom:calc(112px + env(safe-area-inset-bottom)) !important; }
+  .employee-material-header + .flex-1 { padding-bottom:0 !important; }
+  /* A real trailing box keeps the final card reachable above the floating dock. */
+  .employee-material-header + .flex-1::after { content:""; display:block; height:calc(112px + env(safe-area-inset-bottom)); flex-shrink:0; pointer-events:none; }
+  .employee-material-ui:has(.pwa-schedule-savebar) .employee-material-header + .flex-1::after { height:calc(152px + env(safe-area-inset-bottom)); }
   .employee-material-header + div > a[href^='/employee'] { min-height:44px; color:#555a60 !important; }
   .employee-material-sheet a[href^='/employee/'] > span:last-child { color:#80502f !important; }
   .pwa-composition-start { margin-top:0; background:#fff !important; border-color:var(--pwa-line) !important; padding:20px !important; box-shadow:0 4px 16px #30271804 !important; }
@@ -182,7 +185,7 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   #pwa-colleagues-today h3 { min-height:0; line-height:20px; }
   #pwa-colleagues-today [data-colleague-group] > div:first-child { margin-bottom:10px !important; }
   #pwa-colleagues-today [data-colleague-group] > .grid > .employee-material-person:first-child { padding-top:0 !important; }
-  .employee-material-ui .employee-material-nav { left:50% !important; right:auto !important; bottom:calc(12px + env(safe-area-inset-bottom)) !important; width:calc(100% - 28px) !important; max-width:488px !important; transform:translateX(-50%) !important; border:1px solid #ffffffb3 !important; border-radius:30px !important; padding:9px 14px !important; background:linear-gradient(135deg,#ffffff66,transparent 42%,#ffffff26),rgba(28,32,38,.12) !important; backdrop-filter:blur(7px) saturate(145%); -webkit-backdrop-filter:blur(7px) saturate(145%); box-shadow:0 8px 24px #181b201a,inset 0 1px 1px #ffffffd9,inset 0 -1px 2px #ffffff80 !important; }
+  .employee-material-ui .employee-material-nav { left:0 !important; right:0 !important; margin-inline:auto !important; bottom:calc(12px + env(safe-area-inset-bottom)) !important; width:calc(100% - 28px) !important; max-width:488px !important; transform:none !important; -webkit-transform:none !important; will-change:auto; border:1px solid #ffffffb3 !important; border-radius:30px !important; padding:9px 14px !important; background:linear-gradient(135deg,#ffffff66,transparent 42%,#ffffff26),rgba(28,32,38,.12) !important; backdrop-filter:blur(7px) saturate(145%); -webkit-backdrop-filter:blur(7px) saturate(145%); box-shadow:0 8px 24px #181b201a,inset 0 1px 1px #ffffffd9,inset 0 -1px 2px #ffffff80 !important; }
   .employee-material-ui .employee-material-nav .employee-material-tab { color:#101317 !important; text-shadow:0 1px 1px #ffffff55; }
   .employee-material-ui .employee-material-nav .employee-material-tab:not(.is-active) { color:#20252a !important; }
   .employee-material-ui .employee-material-nav .employee-material-tab.is-active .pwa-composition-nav-icon { color:var(--pwa-copper) !important; }
@@ -334,7 +337,8 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
 /* Quiet navigation and compact schedule; saved status colors survive selection. */
 body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-ui div.pwa-review-task { border-left:1px solid #ddd6cd !important; }
-  .pwa-schedule-view > .employee-material-schedule-switch-card { margin-top:4px !important; }
+  .employee-material-header + div:has(> .pwa-schedule-view) { padding-top:12px !important; }
+  .pwa-schedule-view > .employee-material-schedule-switch-card { margin-top:0 !important; }
   .pwa-schedule-view .employee-material-segment { padding:3px !important; gap:3px !important; background:#eeece7 !important; border:1px solid #e1ddd5; border-radius:14px !important; }
   .employee-material-ui .pwa-schedule-view .employee-material-segment-option { min-height:44px; height:44px; border:1px solid transparent; border-radius:10px !important; color:#686b70 !important; font-weight:600 !important; }
   .employee-material-ui .pwa-schedule-view .employee-material-segment-option.is-active { background:#fff !important; color:#24282d !important; border-color:#dedbd4 !important; box-shadow:0 1px 3px #24282d08 !important; }
@@ -345,7 +349,7 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-ui .pwa-schedule-tools > .pwa-schedule-vacation { display:flex; align-items:center; gap:5px; margin-left:auto; background:transparent !important; border:0 !important; color:#61666d !important; }
   .employee-material-ui .pwa-schedule-view .employee-material-calendar-card { margin-top:6px !important; padding:8px !important; }
   .employee-material-ui .employee-material-calendar-nav { min-height:44px; min-width:44px; background:transparent !important; border:0 !important; }
-  .employee-material-ui .employee-material-calendar-day { position:relative; aspect-ratio:auto !important; height:48px !important; min-height:48px; border-radius:8px !important; }
+  .employee-material-ui .employee-material-calendar-day { position:relative; aspect-ratio:auto !important; height:52px !important; min-height:52px; border-radius:8px !important; }
   .employee-material-calendar-day[data-schedule-status=working] { --pwa-day-color:#9ed3ae; --pwa-day-ink:#123d21; }
   .employee-material-calendar-day[data-schedule-status=off] { --pwa-day-color:#dce2df; --pwa-day-ink:#26332d; }
   .employee-material-calendar-day[data-schedule-status=vacation] { --pwa-day-color:#e8f1fb; --pwa-day-ink:#24476b; }
@@ -360,8 +364,8 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-calendar-card > .pwa-calendar-legend { gap:6px 10px !important; margin-top:6px !important; flex-wrap:wrap; font-size:12px !important; font-weight:500 !important; }
   .employee-material-ui .pwa-schedule-day-summary { padding:10px !important; gap:3px 8px !important; border-radius:14px !important; box-shadow:none !important; }
   .employee-material-ui .pwa-schedule-day-summary > div:first-child { display:block !important; grid-column:1 !important; }
-  .pwa-schedule-day-summary > div:first-child p { font-size:15px !important; line-height:20px !important; }
-  .employee-material-ui .pwa-schedule-day-summary.grid > p:not(.col-span-2) { grid-column:1 !important; font-size:13px !important; line-height:19px !important; font-weight:400 !important; }
+  .pwa-schedule-day-summary > div:first-child p { font-size:16px !important; line-height:21px !important; }
+  .employee-material-ui .pwa-schedule-day-summary.grid > p:not(.col-span-2) { grid-column:1 !important; font-size:14px !important; line-height:20px !important; font-weight:400 !important; }
   .pwa-schedule-day-status { font-weight:600; color:#41464b; }
   .pwa-schedule-day-status[data-status=working] { color:#247642; font-weight:700; }
   .employee-material-ui .pwa-schedule-day-summary.grid > div.m-0 { grid-column:2; grid-row:1 / span 2; align-self:center; }
@@ -386,7 +390,11 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
 body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .pwa-calendar-grid,.pwa-calendar-weekdays { width:100%; max-width:364px; margin-inline:auto; }
   .employee-material-ui .employee-material-calendar-day > span:first-child { gap:2px; padding:2px 1px; }
-  .employee-material-ui .employee-material-calendar-day > span:first-child > span:first-child { font-size:16px !important; line-height:18px !important; font-weight:700 !important; font-variant-numeric:tabular-nums; }
+  .employee-material-ui .employee-material-calendar-day > span:first-child > span:first-child { font-size:18px !important; line-height:21px !important; font-weight:700 !important; font-variant-numeric:tabular-nums; }
   .employee-material-ui .employee-material-calendar-day > span:first-child > span:last-child { font-size:12px !important; line-height:14px !important; font-weight:500 !important; }
   .employee-material-ui .employee-material-calendar-card[data-editing=true] .employee-material-calendar-day[aria-pressed=true]:not(:focus-visible) { outline:2px solid #6b9d78 !important; outline-offset:-2px; box-shadow:none !important; }
 }
+
+/* Keep employee-page edge gestures from dragging the dock with the viewport. */
+html:has(#pwa-copper-theme):has(main.employee-material-ui),
+body:has(#pwa-copper-theme):has(main.employee-material-ui) { overscroll-behavior-y:none; }
