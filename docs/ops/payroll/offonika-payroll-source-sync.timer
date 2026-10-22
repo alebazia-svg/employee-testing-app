@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly payroll sources refresh during Moscow working hours
+
+[Timer]
+OnCalendar=*-*-* 05..20:15:00 UTC
+Persistent=true
+RandomizedDelaySec=60
+Unit=offonika-payroll-source-sync.service
+
+[Install]
+WantedBy=timers.target

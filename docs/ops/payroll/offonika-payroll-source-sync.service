@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh approved payroll source snapshots
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/docker/employee-testing-app
+ExecStart=/usr/bin/docker exec portal-app node --conditions=react-server --import tsx scripts/payroll-source-sync.ts --confirm-snapshot-write
+TimeoutStartSec=9min
+StandardOutput=journal
+StandardError=journal
