@@ -97,7 +97,43 @@ read. Do not call an old earnings boundary fresh or conflate it with payout date
 
 ## Exact runtime file scope
 
-The full exact file list is `git show --format= --name-only 3cd8bba`; it includes
+### Follow-up 1.13.14 — calendar first display and active icon details
+
+Owner approved this narrow release; salary loading and all task/notification
+behavior remain unchanged. Runtime/server commit:
+`5432908809b6de1268c090be83d43a837b2e8e4c`. Public and authenticated About show
+1.13.14, built `2026-10-22T22:22:05.325Z` (October 23 01:22 Moscow).
+Home reads the complete current calendar grid plus the existing 31 upcoming
+dates in the same bounded queries. Only the explicitly complete initial month
+is marked loaded; other months still require a successful range response.
+No new browser persistence or polling. Active calendar/card inner strokes are
+white, copper bodies retained, calendar cell dimensions unchanged.
+
+TypeScript, production build, 154 workday tests and 25 release/UI/tab tests pass.
+Local seven-second transport delay leaves calendar visible. Authenticated
+production first opening immediately shows Liana's eight original working days
+(16, 18–24 October), no ellipsis cells; cell height remains 52px. Actual SVG
+computed strokes for both active icons are `rgb(255,249,235)`. No production
+schedule edit or financial write was submitted. Physical iPhone check remains
+the owner's verification.
+
+Previous image: `sha256:1292b455fc49b509e5276e00d9eb558bac0f41dceb52d2ca8ab0b90a585538c4`.
+Replacement: `sha256:c2e6790bbf40b085c79dd9d2c99dc3f4bc15b9c583ef23ec1a892d7ee510dda7`.
+Container healthy; environment hash, mounts and feature flags preserved. Brief
+public startup failure cleared within the scripted retry before UI verification.
+Verified-image registration followed independent server/public/UI checks;
+deployment exit 0. Registry contains 1.13.14, 1.13.13 and 1.13.12 checked images;
+17 GiB free after deployment. Owner's unrelated primary-checkout WIP untouched.
+
+Exact files in follow-up: `app/(dashboard)/employee/EmployeeTodayClient.tsx`,
+`components/EmployeeNavigation.tsx`, `lib/employee-home.ts`,
+`lib/workday-schedule.ts`, `public/pwa-copper.css`,
+`tests/employee-tab-streaming.test.mjs`, `tests/workday-schedule.test.ts`,
+`package.json`, `package-lock.json`.
+
+### Original 1.13.13 file scope
+
+The full original exact file list is `git show --format= --name-only 3cd8bba`; it includes
 the shared employee shell/preview, personal payroll screens/read models, reminder
 and inbox components, semantic icon helpers/styles, start-card CSS, package
 metadata and focused tests. No procurement runtime file changed. Unrelated dirty

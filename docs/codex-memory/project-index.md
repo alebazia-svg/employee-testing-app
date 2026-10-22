@@ -47,6 +47,8 @@ project from scratch.
 - PWA native salary tabs and semantic reminders: `pwa-native-tabs-release-20261023.md`
   (released 1.13.13 / `3cd8bba`; combined owner-approved candidate, authenticated
   production checks and rollback registration complete; source limits retained).
+  Follow-up 1.13.14 / `5432908`: server-complete calendar visible immediately,
+  white active icon details; salary loading unchanged. Server/public/UI verified.
 - PWA cross-tab actionable reminder history: `pwa-action-reminder-candidate-20261022.md`
   (released 1.13.7 / `d34e813`: saved-first payroll, two rolling months,
   actionable reminders and native checklist outline; server/metadata/UI verified.
