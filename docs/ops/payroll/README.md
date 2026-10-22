@@ -1,4 +1,10 @@
-# Payroll source refresh — candidate, not installed
+# Payroll source refresh — installed with production 1.13.1
+
+Installed and first-run verified on 2026-10-22 after explicit owner approval.
+Both flags are enabled; five WORKDAY managers passed readiness. Procurement is
+excluded. See `docs/codex-memory/payroll-pwa-candidate-20261022.md` for the exact
+release/image/backup evidence and remaining physical-phone verification.
+Future earning months still require an explicit ADMIN draft confirmation.
 
 The one-shot runner reuses the same source refresh services as the authenticated
 ADMIN routes. It is not a public endpoint and needs no new bearer token. It

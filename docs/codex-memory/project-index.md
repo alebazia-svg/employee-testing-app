@@ -46,9 +46,9 @@ project from scratch.
 - Workday UI/API/checklists/cash: `workday-playbook.md`,
   `one-c-workday-audit.md`, then relevant source files.
 - Payroll: `payroll-playbook.md`, then tests and existing calculation helpers.
-  Employee payroll candidate/activation gates: `payroll-pwa-candidate-20261022.md`
-  (local preparation, not released; independent refresh implemented/tested locally,
-  production activation and actual-phone verification remain pending).
+  Employee payroll release/activation gates: `payroll-pwa-candidate-20261022.md`
+  (released 1.13.1 / `a92c4fe`; server drafts and hourly refresh enabled for five
+  WORKDAY managers; procurement excluded; actual-phone verification pending).
 - OFD: `ofd-one-c-playbook.md`, then `/admin/ofd` page and OFD helpers.
 - AIAgentAPI endpoint/release: stop in this repo, open `ai-business-os`, read
   its `AGENTS.md` and `99-releases/RELEASE-PROCESS.md`.

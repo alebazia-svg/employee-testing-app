@@ -1,13 +1,70 @@
-# Employee payroll: integrated local candidate, 2026-10-22
+# Employee payroll: production release 1.13.1, 2026-10-22
 
 ## Status and authority
 
-Owner explicitly approved commit, deployment, additive draft storage and staged
-automatic refresh/employee activation on 2026-10-22 after the release scope was
-listed. Release 1.13.0 is being prepared; do not treat it as deployed until the
-independent server/public/UI verification below is recorded. Earlier local-only
-checkpoints remain historical evidence, not the current operations authority.
-No 1C write or historical final-run change is authorized.
+Released 1.13.1 after the owner's explicit approval of commit, deployment,
+additive draft storage and staged automatic refresh/employee activation.
+Production runtime/server commit `a92c4fe05978941f8ca24b26c656cbe76769626c`;
+main feature commit `f3e7bab`, preparation documentation `c0a7e90`.
+Earlier local-only checkpoints below remain historical evidence. No 1C write
+or historical final-run change was performed or authorized.
+
+## Verified production outcome
+
+- Version 1.13.0 was first deployed ADMIN-only. It exposed a first-save UX gap:
+  an unchanged initial draft could not be explicitly confirmed. Patched in
+  separately versioned 1.13.1 (`a92c4fe`), with a tested `Подтвердить данные`
+  action; no invented manual corrections or financial annotations were added.
+- Final public metadata and authenticated ADMIN footer show 1.13.1, built
+  `2026-10-22T12:45:58.390Z` (15:45 Moscow). Public build identity is `unknown`
+  / revision null because Git metadata is not in the Docker context; the exact
+  server Git commit above was independently read over SSH, not inferred from it.
+- Healthy current image is
+  `sha256:a2166d495873644d3744ba442c4f59e2e1841d799420bc43823ec080138d61af`.
+  Prior image 1.13.0 is `sha256:2da1a88da067678b1c983320ed02904391c7297c5ac1e2a7a5810054fa4523a8`;
+  pre-feature 1.12.1 is `sha256:e5853f05cf2e88593058afefd6544789b49c2fa4aa3bd61e6d7b7659f6006ad7`.
+  All were registered through the shared verified-image policy. Rollback must
+  disable employee access/timer first; the additive table remains compatible.
+- Fresh backup `/var/backups/offonika-portal/20261022T124406Z` passed manifest
+  hashes, upload gzip and PostgreSQL dump TOC checks. A previous same-day release
+  backup also exists at `20261022T123027Z`. No restoration was performed.
+  The exact draft migration was the only pending SQL before 1.13.0; it applied
+  successfully. The 1.13.1 preflight found no further pending migration/drift.
+- Both persistent feature flags are enabled. The authenticated ADMIN explicitly
+  confirmed October inputs via the real UI, creating draft revision 1. Total
+  gross remains 595,552.84, advances 7,500, after advances 588,052.84; employee
+  rows remain unchanged, including Magomed 28,401.19 from current attendance.
+  No final payroll was created/replaced and no missing Diana inputs were guessed.
+- `offonika-payroll-source-sync.service` ran successfully. Its parsed result
+  confirmed an actual persisted October update, not merely a busy skip. The
+  readiness reader verified all five active WORKDAY employees with complete
+  estimates and verified advances before employee access was enabled.
+  `offonika-payroll-source-sync.timer` is active; hourly 08:15–23:15 Moscow.
+  First future timer trigger was scheduled for 16:15 Moscow; the completed
+  first run was explicitly started through systemd, not a claimed observed tick.
+- Astemir/PROCUREMENT remains excluded; no procurement salary page was shipped.
+  Current estimates exclude discipline/one-time premiums and preserve retail/
+  wholesale component grouping. Historical totals/payments use authoritative 1C.
+  A new unapproved month needs one explicit ADMIN confirmation before background
+  calculations are eligible; never silently seed empty owner decisions.
+- Build, TypeScript, 78 payroll tests, first-confirmation tests, private-read/
+  history/rounding and release-metadata checks passed. PostgreSQL integrations,
+  source-failure preservation and five-employee local HTTP acceptance passed
+  before release. Production health returned `{"ok":true}` in the browser;
+  the signed ADMIN is denied the private employee salary API. A shell anonymous
+  HTTP probe timed out, so no fresh live anonymous-status verification is claimed.
+- Actual physical-phone/employee-login UI verification remains pending. Employee
+  UI was verified in the isolated authenticated application, while production
+  readiness used the exact private server reader for all five accounts without
+  impersonating employees or weakening authentication.
+- Approved maintenance removed unused cache and older eligible rollback images
+  beyond the retained set; live containers, uploads, DB and backups were protected.
+  Post-release SSH disk check reports about 19 GiB free. Deleted build artifacts
+  can be rebuilt from source; do not claim they remain tagged in Docker.
+- Operational logs are local `/tmp/mobo-payroll-deploy-1.13.0.log`,
+  `/tmp/mobo-payroll-deploy-1.13.1.log`, `/tmp/mobo-payroll-activate-1.13.1.log`.
+  Production evidence/config backups are under `.rollback/payroll-1.13.0` and
+  `.rollback/payroll-1.13.1` on the VPS; never commit their server.env copies.
 
 Candidate was prepared on `c6ee4a4` and subsequently fast-forwarded to the latest
 deployment branch `9ab1671` (1.12.1), retaining all salary WIP. Production Git
