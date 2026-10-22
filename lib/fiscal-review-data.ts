@@ -10,6 +10,7 @@ import {technicalHash, aqsiTerminalIdForPortalKey} from './terminal-fiscal-sourc
 import {isFiscalChainReason} from './terminal-fiscal-chain-review';
 import type {FiscalChainEvidence} from './terminal-fiscal-chain-review';
 import {TERMINAL_FISCAL_ADMIN_FIRST, fiscalProposedRecipients} from './terminal-fiscal-admin-gate';
+import {TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED} from './terminal-fiscal-day-closure';
 import {terminalFiscalAdminReviewView} from './terminal-fiscal-employee-review-view';
 export async function loadFiscalReviewData(id:string,currentUserId:number) {
   const review = await prisma.terminalFiscalEmployeeReview.findUnique({
@@ -31,11 +32,13 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
   const elapsedMinutes = Math.max(0, Math.floor((review.lastCheckedAt.getTime() - review.bankOperationAt.getTime()) / 60_000));
   const view = terminalFiscalAdminReviewView({
     status: review.status,
+    archivedUnresolved: review.reasonCode === TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED,
     bankOperationAt: review.bankOperationAt,
     amountKopecks: review.amountKopecks,
     match,
   });
   const resolved = view.tone === 'resolved';
+  const archivedUnresolved = review.status === 'resolved' && review.reasonCode === TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED;
   const shared = review.assignmentScope === 'retail_shift' || review.assignmentScope === 'retail_day';
   const pendingAdmin = TERMINAL_FISCAL_ADMIN_FIRST && review.status === 'admin_review' && !resolved;
   const proposed = pendingAdmin ? await fiscalProposedRecipients(prisma, review.bankOperationAt, review.mappingId) : null;
@@ -86,7 +89,7 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
   }
   const aqsi = review.mapping ? aqsiTerminalIdForPortalKey({portalTerminalKey:review.mapping.terminalKey,mappings:process.env.AQSI_TERMINAL_MAPPINGS,legacyPortalTerminalKey:process.env.AQSI_PORTAL_TERMINAL_KEY,legacyTerminalId:process.env.AQSI_TERMINAL_ID}) : null;
   return {
-    id:review.id,currentUserId,open,resolved,pendingAdmin,simpleCheck,elapsedMinutes,view,
+    id:review.id,currentUserId,open,resolved,archivedUnresolved,pendingAdmin,simpleCheck,elapsedMinutes,view,
     amount:`${(review.amountKopecks/100).toLocaleString('ru-RU',{maximumFractionDigits:2})} ₽`,
     at:review.bankOperationAt.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),
     workstation:review.mapping?.workstation?.label || review.mapping?.label || null,
@@ -98,6 +101,7 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
     showDiscussion,chain:chain??null,chainUnavailable,
     canApprove:pendingAdmin&&!match?.oneCSourceRef&&match?.reasonCode!=='ONE_C_POSSIBLE_SPLIT_SALE'&&!isFiscalChainReason(match?.reasonCode??'')&&!isFiscalChainReason(review.reasonCode),
     canReconcileDay:pendingAdmin&&!isFiscalChainReason(match?.reasonCode??review.reasonCode),
+    canArchiveUnresolved:pendingAdmin,
     canTest:pendingAdmin&&!match?.oneCSourceRef,
     hasOneCCheck:Boolean(match?.oneCSourceRef),
     reasonCode:match?.reasonCode??review.reasonCode,

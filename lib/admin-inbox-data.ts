@@ -92,7 +92,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     }) : [],
     reviewIds.length ? prisma.terminalFiscalEmployeeReview.findMany({
       where: { id: { in: reviewIds } },
-      select: { id: true, status: true, amountKopecks: true, bankOperationAt: true },
+      select: { id: true, status: true, reasonCode: true, amountKopecks: true, bankOperationAt: true },
     }) : [],
     exceptionIds.length ? prisma.workdayCloseExceptionRequest.findMany({
       where: { id: { in: exceptionIds } },
@@ -220,7 +220,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
         : sourceType === 'procurement_delivery_request' ? activeDeliverySourceIds.has(sourceId) && deliveryEvents.some(e => activeDeliveryIds.has(e.id) && row.event.eventKey === `delivery:manual:${e.id}`)
         : currentExpenseKeys.has(row.event.eventKey),
       businessStatus: plansById.get(sourceId)?.status ?? issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,
-      reasonCode: exception?.reasonCode,
+      reasonCode: exception?.reasonCode ?? review?.reasonCode,
       sourceDate: exception?.workDayEntry.date,
       today,
       employeeActionRequired: issue?.employeeActionRequired,

@@ -128,6 +128,12 @@ test('admin review screen distinguishes unresolved ADMIN-only and confirmed late
   assert.equal(resolved.title, 'Оплата и чек сверены');
   assert.match(resolved.message, /00OF-002948/);
   assert.match(resolved.message, /7 мин 17 сек/);
+
+  const archived = terminalFiscalAdminReviewView({ ...common, status: 'resolved', archivedUnresolved: true });
+  assert.equal(archived.statusLabel, 'В истории · не исправлено');
+  assert.equal(archived.title, 'Старая проверка убрана из активных');
+  assert.match(archived.message, /без подтверждения исправления/);
+  assert.doesNotMatch(archived.message, /ошибка исправлена|оплата и чек сверены/i);
 });
 
 test('does not notify before the safe read, with incomplete 1C, or with ambiguous cashier evidence', () => {

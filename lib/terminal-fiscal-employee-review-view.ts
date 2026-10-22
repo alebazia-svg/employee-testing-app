@@ -37,6 +37,7 @@ function delayLabel(value: number | null | undefined) {
 
 export function terminalFiscalAdminReviewView(input: {
   status: string;
+  archivedUnresolved?: boolean;
   bankOperationAt: string | Date;
   amountKopecks: number;
   match?: {
@@ -47,6 +48,16 @@ export function terminalFiscalAdminReviewView(input: {
   } | null;
 }) {
   const operationMeta = `${moscowDateTimeFormatter.format(new Date(input.bankOperationAt))} · ${formatKopecks(input.amountKopecks)}`;
+  if (input.status === 'resolved' && input.archivedUnresolved) {
+    return {
+      tone: 'resolved' as const,
+      statusLabel: 'В истории · не исправлено',
+      title: 'Старая проверка убрана из активных',
+      operationMeta,
+      message: 'Проверка закрыта без подтверждения исправления. Уведомления отключены, история сохранена; новые операции контролируются как обычно.',
+      discussionMessage: 'Проверка находится в истории как нерешённая. Новые проверки создаются по обычным правилам.',
+    };
+  }
   if (input.status === 'resolved' || input.match?.status === 'confirmed') {
     if(input.match?.reasonCode==='MATCH_AMOUNT_COVERED')return {tone:'resolved' as const,statusLabel:'Проверка завершена',title:'Сумма покрыта чеками',operationMeta,message:'Сумма оплаты покрыта подтверждёнными чеками 1С и ОФД. Действий от сотрудника не требуется.',discussionMessage:'Проверка завершена. История сообщений сохранена.'};
     const check = input.match?.oneCSourceRef ? ` ${input.match.oneCSourceRef}` : '';
