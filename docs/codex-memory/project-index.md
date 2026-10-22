@@ -44,7 +44,10 @@ project from scratch.
   Follow-up 1.13.8 / `f3840fa`: pending ADMIN deferral before approval, finished
   USDT reserve exclusion and compact buyer header; real Cargo deferral open/cancel,
   server/public/UI version and verified-image registration confirmed.
-- PWA cross-tab actionable reminder: `pwa-action-reminder-candidate-20261022.md`
+- PWA native salary tabs and semantic reminders: `pwa-native-tabs-release-20261023.md`
+  (released 1.13.13 / `3cd8bba`; combined owner-approved candidate, authenticated
+  production checks and rollback registration complete; source limits retained).
+- PWA cross-tab actionable reminder history: `pwa-action-reminder-candidate-20261022.md`
   (released 1.13.7 / `d34e813`: saved-first payroll, two rolling months,
   actionable reminders and native checklist outline; server/metadata/UI verified.
   October source freshness warning remains separate; physical iPhone check pending).

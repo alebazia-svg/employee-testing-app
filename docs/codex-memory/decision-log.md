@@ -1,5 +1,33 @@
 ﻿# Portal Decision Log
 
+## 2026-10-23 - Employee native tabs and notification icon semantics (released 1.13.13)
+
+Owner approved replacing repeated bells with meaningful task icons after comparing
+movement, copper emphasis and their combination. Keep the header bell as the
+single entry into the inbox. Receipts, checklists, money, closing, schedule and
+messages use their own symbols in task notices and the inbox. Replies must remain
+messages even when linked to a receipt. Unknown types use a neutral information
+symbol, not another bell. Waiting-state clocks remain status indicators.
+
+Only actionable compact notices animate; inbox/history/detail icons stay still.
+Retain reduced-motion support and existing 38x34 animated / 20px static bounds.
+This is presentation only: notification delivery, ordering, read state, task
+completion, defer, navigation, polling and financial actions are unchanged.
+The comparison screen is authenticated and gated by PORTAL_ISOLATED_DEMO=1;
+its labelled examples never write business records. Owner separately authorized
+production deployment. Physical iPhone verification remains pending.
+
+The accumulated local candidate also corrects salary-tab latency by extending
+the existing native Workday/Schedule tab shell to salary, not by introducing a
+second navigation system. The account-scoped in-memory payroll store stays
+bounded to the two rolling months; saved display is separate from fresh source
+verification. Attention stays mounted across tabs so opening an existing issue
+does not transiently show zero. Before release, merged deployment branch 8bffd24
+and preserved newer 1.13.11/1.13.12 runtime work unchanged. Production 1.13.13 /
+`3cd8bba` independently verified through server, public metadata and authenticated
+UI; current plus two previous verified images registered. Full evidence and
+source-freshness/physical-device limits: `pwa-native-tabs-release-20261023.md`.
+
 ## 2026-10-06 - Payment evidence display continuity (released 1.1.8)
 
 Owner-approved release deployed as `3c0a675be6b641ecc0e9d6a7bc0aa698e0b5dc82`.
