@@ -73,7 +73,7 @@ test('collection appears inside its request, with date and cashbox, but does not
 function render(props:unknown, view:'current'|'history'='current', expanded:string|null=null) {
   const key = `${view}:${expanded}`;
   renderers[key] ??= (async()=>{
-    const output=await build({stdin:{contents:`import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import Calendar from './app/(dashboard)/procurement/ProcurementPaymentCalendarClient'; export const render=p=>renderToStaticMarkup(<Calendar {...p}/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',plugins:[{name:'router',setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const useRouter=()=>({refresh(){}});'}));
+    const output=await build({stdin:{contents:`import React from 'react'; import {renderToStaticMarkup} from 'react-dom/server'; import Calendar from './app/(dashboard)/procurement/ProcurementPaymentCalendarClient'; export const render=p=>renderToStaticMarkup(<Calendar {...p}/>);`,resolveDir:process.cwd(),loader:'tsx'},bundle:true,write:false,platform:'node',format:'cjs',packages:'external',jsx:'automatic',loader:{'.css':'empty'},plugins:[{name:'router',setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:'navigation',namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},()=>({contents:'export const useRouter=()=>({refresh(){}});'}));
       b.onLoad({filter:/ProcurementPaymentCalendarClient\.tsx$/},async args=>{
         const source=await readFile(args.path,'utf8');
         const initial="useState<'current' | 'history'>('current')";

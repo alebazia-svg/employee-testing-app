@@ -9,8 +9,15 @@ test('date-only edit preserves approved amount, FX, supplier and order identity 
   assert.equal(data.plannedAmount,731483);assert.equal(data.foreignAmount,8173);assert.equal(data.exchangeRate,89.5);
   assert.deepEqual(revisionChanges(plan,data).map(c=>c.key),['plannedDate']);assert.deepEqual(data.orderRefs,plan.orderRefs);
 });
-test('rejects stale version, injected basis, invalid/past dates and missing audit reason',()=>{
-  for(const bad of [{version:'old'},{orderRefs:['other']},{plannedDate:'2026-02-30'},{plannedDate:'2026-10-11'},{reason:''}])assert.throws(()=>approvedEditData(plan,{...body,...bad},'2026-10-12'));
+test('rejects stale version, injected basis, invalid/past dates and malformed optional reason',()=>{
+  for(const bad of [{version:'old'},{orderRefs:['other']},{plannedDate:'2026-02-30'},{plannedDate:'2026-10-11'},{reason:42},{reason:'a'.repeat(501)}])assert.throws(()=>approvedEditData(plan,{...body,...bad},'2026-10-12'));
+});
+test('admin can edit without explaining; changed fields still produce the audit diff',()=>{
+  for(const reason of [undefined,'','   ','OK']){
+    const result=approvedEditData(plan,{...body,reason},'2026-10-12');
+    assert.equal(result.reason,reason?.trim()||'');
+    assert.deepEqual(revisionChanges(plan,result.data).map(c=>c.key),['plannedDate']);
+  }
 });
 test('financial edits validate sums and currency; comment-only never recalculates old FX',()=>{
   assert.throws(()=>approvedEditData(plan,{...body,plannedAmount:-1,foreignAmount:null},'2026-10-12'));

@@ -10,7 +10,7 @@ import { currentCashIssue } from './procurement-cash-issue-notifications';
 
 export function procurementNotificationPlan(fingerprint: string, kind: string) {
   if (!kind.startsWith('procurement_payment_')) return null;
-  return /^procurement-payment:([^:]+):(approved|needs_changes|cancelled):/.exec(fingerprint)?.[1] ?? null;
+  return /^procurement-payment:([^:]+):(approved|needs_changes|cancelled|updated):/.exec(fingerprint)?.[1] ?? null;
 }
 type Row = { id: number; kind: string; fingerprint: string };
 type Db = Pick<Prisma.TransactionClient, 'supplierPaymentPlan'>;
@@ -37,7 +37,8 @@ export async function inactiveProcurementNotifications(db: Db, rows: Row[]) {
       const closed = !p || ['CANCELLED', 'COMPLETED_WITHOUT_TOPUP'].includes(p.status);
       const fullyPaid = p && paid?.versions.get(id) === p.updatedAt.toISOString() && isFinishedPaymentState(paid.get(id)?.state);
       const oldDecision = p && (r.kind === 'procurement_payment_approved' && p.status !== 'APPROVED'
-        || r.kind === 'procurement_payment_needs_changes' && p.status === 'SUBMITTED');
+        || r.kind === 'procurement_payment_needs_changes' && p.status === 'SUBMITTED'
+        || r.kind === 'procurement_payment_updated' && p.status !== 'SUBMITTED');
       // A rejected revision can leave the original plan APPROVED: that notice remains
       // meaningful until payment, cancellation or resubmission.
       if (closed || fullyPaid || oldDecision) inactive.add(r.id);

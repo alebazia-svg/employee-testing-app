@@ -30,3 +30,11 @@ test('production actions, monetary warnings, receipt access and history remain w
   const receipts=read('components/ProcurementReceipts.tsx');
   assert.ok(receipts.includes('ready&&!receipts.length&&!hasPayment'));
 });
+test('pending request edits stay separate from approval and use the existing dirty guard',()=>{
+  const source=read('app/(dashboard)/admin/procurement/AdminProcurementClient.tsx');
+  for(const text of ['pendingEditState.editing?','pendingEditState.dirty','pendingEditState.busy','beforeApproval disabled={!!busy}','onStateChange={setPendingEditState}'])assert.ok(source.includes(text),text);
+  const editor=read('components/ProcurementApprovedEdit.tsx');
+  assert.ok(editor.includes('editing:open'));
+  assert.ok(editor.includes('Изменения сохранены. Заявка ждёт вашего согласования.'));
+  assert.ok(editor.includes('!beforeApproval?'));
+});

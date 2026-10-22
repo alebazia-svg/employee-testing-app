@@ -8,7 +8,7 @@ export function approvedEditData(plan:Record<string,any>,payload:unknown,today:s
   if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>![...editable,'reason','version'].includes(k)))throw Error('Проверьте данные изменения.');
   if(typeof body.version!=='string'||body.version!==new Date(plan.updatedAt).toISOString())throw Error('Заявка изменилась. Обновите страницу.');
   const reason=typeof body.reason==='string'?body.reason.trim():'';
-  if(reason.length<3||reason.length>500)throw Error('Укажите причину изменения: от 3 до 500 символов.');
+  if((body.reason!=null&&typeof body.reason!=='string')||reason.length>500)throw Error('Комментарий должен быть не длиннее 500 символов.');
   const before:RevisionData={
     paymentPurpose:plan.paymentPurpose||'GOODS',fundingSource:plan.fundingSource??null,
     supplierPartner:plan.supplierPartner,supplierCounterparty:plan.supplierCounterparty,

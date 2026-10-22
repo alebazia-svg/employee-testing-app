@@ -5,7 +5,7 @@ import {build} from 'esbuild';
 import {createRequire} from 'node:module';
 
 test('admin edits preserve links, audit and notify; roles, races, paid and 1C collection states are protected',async()=>{
-  assert.equal(process.env.DATABASE_URL,'postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test');
+  assert.ok(['postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test','postgresql://postgres:local-test-only@127.0.0.1:55451/funding_schedule_test'].includes(process.env.DATABASE_URL||''),'isolated local database required');
   const db=new PrismaClient(),g=globalThis as any,marker=`approved-edit-${Date.now()}`;
   const employee=await db.user.create({data:{name:marker,login:marker,passwordHash:'not-login',role:'EMPLOYEE',portalArea:'PROCUREMENT'}});
   const admin=await db.user.create({data:{name:marker+'admin',login:marker+'admin',passwordHash:'not-login',role:'ADMIN'}});
@@ -42,5 +42,26 @@ test('admin edits preserve links, audit and notify; roles, races, paid and 1C co
     await db.supplierPaymentPlan.update({where:{id:plan.id},data:{oneCCashEvidence:{untouched:'sentinel',pendingRevision:{id:'pending',data:{},changes:[]}}}});
     assert.equal((await send({plannedDate:'2026-10-14'})).status,409);
     assert.equal((await current()).plannedDate.toISOString().slice(0,10),'2026-10-13');
+    // A pending request can be corrected, but only a separate approval action
+    // may authorize payment. Keep every existing supplier/order identity.
+    await db.supplierPaymentPlan.update({where:{id:plan.id},data:{status:'SUBMITTED',approvedAt:null,approvedById:null,oneCCashEvidence:{untouched:'sentinel'}}});
+    const pendingBefore=await current();
+    assert.equal((await send({plannedDate:'2026-10-15',foreignAmount:8000,exchangeRate:90,plannedAmount:720000,reason:''})).status,200);
+    const pendingAfter=await current();
+    assert.equal(pendingAfter.status,'SUBMITTED');assert.equal(pendingAfter.approvedAt,null);assert.equal(pendingAfter.approvedById,null);
+    assert.equal(Number(pendingAfter.plannedAmount),720000);assert.equal(Number(pendingAfter.foreignAmount),8000);
+    for(const key of ['supplierPartner','supplierCounterparty','orderRefs','orderNumbers','oneCCashEvidence'] as const)assert.deepEqual(pendingAfter[key],pendingBefore[key]);
+    const pendingNotices=await db.workdayNotification.findMany({where:{userId:employee.id,kind:'procurement_payment_updated'}});
+    assert.equal(pendingNotices.length,1);assert.equal(pendingNotices[0].title,'Заявка изменена администратором');assert.match(pendingNotices[0].body,/ещё на согласовании/);
+    state.paid={...state.paid,state:'SOURCE_UNAVAILABLE'};
+    assert.equal((await send({plannedDate:'2026-10-16'})).status,409);state.paid={...state.paid,state:'NO_EVIDENCE'};
+    const approvalBuild=await build({entryPoints:['app/api/admin/procurement/payment-plans/[id]/route.ts'],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'isolated',setup(b){b.onResolve({filter:/^(?:@\/lib\/|\.\/)/},a=>{const key=a.path.replace(/^@\/lib\/|^\.\//,'');return mocks[key]?{path:key,namespace:'mock'}:null;});b.onLoad({filter:/.*/,namespace:'mock'},a=>({contents:mocks[a.path],loader:'js'}));}}]});
+    const approval={exports:{} as any};new Function('require','module','exports',approvalBuild.outputFiles[0].text)(createRequire(import.meta.url),approval,approval.exports);
+    const approve=(version:string)=>approval.exports.PATCH(new Request('http://localhost/test',{method:'PATCH',body:JSON.stringify({action:'APPROVE',version})}),{params:Promise.resolve({id:plan.id})});
+    assert.equal((await approve(pendingBefore.updatedAt.toISOString())).status,409);
+    assert.equal((await current()).status,'SUBMITTED');
+    assert.equal((await approve(pendingAfter.updatedAt.toISOString())).status,200);
+    const approvedAfter=await current();assert.equal(approvedAfter.status,'APPROVED');assert.equal(approvedAfter.approvedById,admin.id);assert.equal(Number(approvedAfter.plannedAmount),720000);
+    assert.equal((await db.workdayNotification.findUniqueOrThrow({where:{id:pendingNotices[0].id}})).status,'cancelled');
   }finally{await db.supplierPaymentPlan.delete({where:{id:plan.id}});await db.user.deleteMany({where:{id:{in:[employee.id,admin.id]}}});await db.$disconnect();delete g.approvedEditTest;}
 });

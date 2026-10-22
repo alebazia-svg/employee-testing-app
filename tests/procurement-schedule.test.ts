@@ -31,6 +31,7 @@ test('deferral has a separate effective date without overwriting original terms 
  assert.equal(JSON.stringify(plan),before);
  const dated={...plan,oneCCashEvidence:{fundingDeferral:{...plan.oneCCashEvidence.fundingDeferral,date:'2026-10-25'}}};
  assert.equal(paymentPreparationDate(dated),'2026-10-25');
+ assert.equal(paymentScheduleLabel(dated),'Деньги будут готовы');
  assert.equal(paymentPreparationDate({...dated,plannedDate:'2026-10-27'}),'2026-10-27');
  assert.equal(paymentPreparationDate({...dated,plannedDate:'2026-10-23'}),'2026-10-25');
  assert.equal(paymentPreparationDate({...plan,plannedDate:'2026-10-27'}),null);

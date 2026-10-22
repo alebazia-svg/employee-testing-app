@@ -202,7 +202,7 @@ test('employee bell uses fresh collection sum, keeps a neutral outage fallback a
       '@/lib/prisma': { prisma: { workdayNotification: { findMany: async (args: any) => {
         reads++; assert.equal(args.where.userId, 42);
         return [{ id: 720, kind: 'procurement_delivery_ready', fingerprint: 'current', title: 'Можно получить 15 000 ₽',
-          body: 'Старая касса', task: null, issue: null, review: null }];
+          body: 'Старая касса', status: 'sent', sentAt: new Date(), readAt: null, task: null, issue: null, review: null }];
       } } } },
       '@/lib/workday-control-issue-view': {},
       '@/lib/workday-notifications': { reconcileActiveWorkdayNotifications: async (_db: any, rows: any) => rows, workdayNotificationHref: () => '/procurement#delivery' },

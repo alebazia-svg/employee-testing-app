@@ -10,7 +10,7 @@ export function adminNotificationOpening(event:{sourceType?:string;type:string;b
 }
 export function employeeNotificationOpening(item:{kind:string}):NotificationOpening {
   if(item.kind==='procurement_receipt_added')return 'receipts';
-  if(['procurement_payment_approved','procurement_payment_needs_changes','procurement_payment_cancelled'].includes(item.kind))return 'payment';
+  if(['procurement_payment_approved','procurement_payment_needs_changes','procurement_payment_cancelled','procurement_payment_updated'].includes(item.kind))return 'payment';
   return 'page';
 }
 export function safeNotificationHref(href:string,fallback:string) {

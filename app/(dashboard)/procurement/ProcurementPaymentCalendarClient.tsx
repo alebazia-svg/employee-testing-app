@@ -705,7 +705,7 @@ export default function ProcurementPaymentCalendarClient({
                       <div className="compact-payment-status space-y-1">
                         {visualPreview?.badge?.(plan.id)}
                         <span
-                          className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-4 ${paymentScheduleLabel(plan) ? "bg-stone-100 text-stone-700" : plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
+                          className={`block w-fit shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold leading-4 ${paymentScheduleLabel(plan)==='Оплата отложена' ? "bg-stone-100 text-stone-700" : plan.status === "APPROVED" ? "bg-green-100 text-green-800" : plan.status === "NEEDS_CHANGES" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-900"}`}
                         >
                           {stage(plan) || paymentScheduleLabel(plan) || (plan.status === "APPROVED"
                             ? plan.evidence?.state === "MISMATCH" ? "ОПЛАТА НА ПРОВЕРКЕ" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "Деньги будут готовы"
@@ -1041,7 +1041,7 @@ export default function ProcurementPaymentCalendarClient({
                 Ждёт решения: {basisPreview || plansSourceError ? '—' : plans.filter((plan) => plan.status === "SUBMITTED").length}
               </span>
               <span className="whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1.5 text-slate-700">
-                Деньги будут готовы: {reservesUnavailable ? '—' : plans.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan) && !activePaymentDeferral(plan) && !stage(plan)).length}
+                Деньги будут готовы: {reservesUnavailable ? '—' : plans.filter((plan) => plan.status === "APPROVED" && !isPaymentFinished(plan) && (!activePaymentDeferral(plan)||!!activePaymentDeferral(plan)?.date) && !stage(plan)).length}
               </span>
               {plans.some(plan => plan.revision) ? <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">Изменения на согласовании: {plans.filter(plan => plan.revision).length}</span> : null}
             </div>

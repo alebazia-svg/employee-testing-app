@@ -42,10 +42,11 @@ export function paymentPreparationDate(plan:ScheduledPlan):string|null {
 }
 export function paymentScheduleLabel(plan:ScheduledPlan) {
  if(['MISMATCH','NEEDS_REVIEW','SOURCE_UNAVAILABLE'].includes(plan.evidence?.state||''))return '';
- return activePaymentDeferral(plan)?'Оплата отложена':'';
+ const deferred=activePaymentDeferral(plan);
+ return deferred?deferred.date?'Деньги будут готовы':'Оплата отложена':'';
 }
 export function paymentScheduleDetail(plan:ScheduledPlan) {
  const deferred=activePaymentDeferral(plan);
  if(!deferred)return '';
- return deferred.date?`Деньги ожидаются ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(deferred.date+'T12:00:00Z'))}`:'Дата уточняется';
+ return deferred.date?`Деньги будут готовы ${new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(deferred.date+'T12:00:00Z'))}`:'Дата уточняется';
 }
