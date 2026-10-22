@@ -29,6 +29,10 @@ project from scratch.
 
 ## Read First By Task
 
+- PWA schedule/calendar and bottom navigation: `pwa-schedule-release-20261022.md`
+  (released 1.12.1 / `b699238`; stronger working-day green, readable calendar,
+  compact controls and scroll protection; physical iPhone recheck pending).
+
 - PWA cash requests / notification centre: `pwa-cash-notifications-20261021.md`
   (released 1.11.0 / `e94323a`; production cashbox mappings and authenticated UI verified;
   reserve registry restored with verified 1.10.6 and rebuilt 1.10.5, 2026-10-22).
