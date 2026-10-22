@@ -1,3 +1,4 @@
+import { employeePayrollResponse } from '@/lib/employee-payroll-response';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { employeePreviewHeaders as headers, readEmployeePreview } from '@/lib/employee-preview';
 import { getEmployeeWorkdaySnapshot } from '@/lib/employee-workday-snapshot';
@@ -21,9 +22,14 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
   if (!preview) return Response.json({ error: 'Просмотр завершён. Откройте сотрудника заново.' }, { status: 410, headers });
   const url = new URL(req.url), user = preview.employee;
   const resource = url.searchParams.get('resource');
-  const allowed = user.portalArea === 'PROCUREMENT' ? ['notifications', 'notification-detail', 'receipts', 'receipt-file', 'delivery'] : ['notifications', 'today', 'attention', 'schedule', 'cash-issue', 'change-shift'];
+  const allowed = user.portalArea === 'PROCUREMENT' ? ['notifications', 'notification-detail', 'receipts', 'receipt-file', 'delivery'] : ['notifications', 'today', 'attention', 'schedule', 'cash-issue', 'change-shift', 'payroll'];
   if (!resource || !allowed.includes(resource)) return Response.json({ error: 'Недоступно в режиме просмотра' }, { status: 400, headers });
   switch (resource) {
+    case 'payroll': {
+      const query = new URLSearchParams(url.searchParams);
+      query.delete('resource');
+      return employeePayrollResponse(user, query);
+    }
     case 'notification-detail': return readNotificationDetail(user, 'employee', url.searchParams.get('notification') ?? '');
     case 'receipts': {
       const ids = url.searchParams.getAll('plan');

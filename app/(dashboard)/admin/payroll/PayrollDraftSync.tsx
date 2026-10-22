@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getInitialPayrollBonuses } from '@/lib/payroll-compensation';
-import { payrollDraftDifferences, payrollDraftFingerprint, validatePayrollDraft, type PayrollDraft, type PayrollDraftRead } from '@/lib/payroll-draft';
+import { canSavePayrollDraft, payrollDraftDifferences, payrollDraftFingerprint, validatePayrollDraft, type PayrollDraft, type PayrollDraftRead } from '@/lib/payroll-draft';
 
 type State = { period: string; phase: 'loading' | 'ready' | 'choice' | 'error'; record?: PayrollDraftRead; local?: PayrollDraft; message?: string };
 function readBrowser(period: string) {
@@ -67,6 +67,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
   const locked = state.record?.locked ?? false;
   const baseline = state.record?.payload ?? { manual: {}, fixed: {}, purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] };
   const dirty = enabled && ready && !locked && payrollDraftFingerprint(payload) !== payrollDraftFingerprint(baseline);
+  const canSave = canSavePayrollDraft({ enabled, ready, locked, saving, dirty, revision: state.record?.revision });
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
@@ -85,7 +86,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
     } catch { setState(previous => ({ ...previous, message: 'Не удалось сохранить запасную копию правок браузера. Выбор не применён.' })); }
   }, [period, state]);
   const save = useCallback(async () => {
-    if (!dirty || saving || !state.record) return;
+    if (!canSave || !state.record) return;
     let snapshot: PayrollDraft;
     try { snapshot = validatePayrollDraft(current.current.payload); }
     catch (error) { setState(previous => ({ ...previous, message: (error as Error).message })); return; }
@@ -112,7 +113,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
     } catch {
       if (mounted.current && current.current.period === period) setState(previous => ({ ...previous, message: 'Сохранение не подтверждено. Ваш ввод оставлен на экране — повторите сохранение.' }));
     } finally { clearTimeout(timeout); if (mounted.current) setSaving(false); }
-  }, [dirty, period, saving, state.record]);
+  }, [canSave, period, state.record]);
   function restore(draft: PayrollDraft) {
     if (!ready || saving || locked) return;
     try {
@@ -122,7 +123,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
       setState(previous => ({ ...previous, message: undefined }));
     } catch { setState(previous => ({ ...previous, message: 'Не удалось подготовить прежние правки. Текущий ввод сохранён на экране.' })); }
   }
-  return { enabled, ready, saving, dirty, locked, state, choose, save, restore, reload: () => setRefresh(value => value + 1) };
+  return { enabled, ready, saving, dirty, canSave, locked, state, choose, save, restore, reload: () => setRefresh(value => value + 1) };
 }
 export function PayrollDraftStatus({ sync, compact = false }: { sync: ReturnType<typeof usePayrollDraftSync>; compact?: boolean }) {
   const [history, setHistory] = useState<Array<{ revision: number; savedAt: string; author: string; payload: PayrollDraft }>>([]);
@@ -153,7 +154,7 @@ export function PayrollDraftStatus({ sync, compact = false }: { sync: ReturnType
     <div className='flex flex-wrap items-center justify-between gap-2'>
       <p role={state.phase === 'error' ? 'alert' : 'status'}>{label}</p>
       <div className='flex flex-wrap gap-2'>
-        {state.phase === 'ready' && !sync.locked && <button type='button' className='min-h-11 rounded-lg bg-primary px-3 py-2 font-semibold text-white disabled:opacity-50' disabled={!sync.dirty || sync.saving} onClick={() => void sync.save()}>Сохранить правки</button>}
+        {state.phase === 'ready' && !sync.locked && <button type='button' className='min-h-11 rounded-lg bg-primary px-3 py-2 font-semibold text-white disabled:opacity-50' disabled={!sync.canSave} onClick={() => void sync.save()}>{state.record?.revision === 0 ? 'Подтвердить данные' : 'Сохранить правки'}</button>}
         {state.phase === 'error' && <button type='button' className='min-h-11 rounded-lg border px-3 py-2 font-semibold' onClick={sync.reload}>Загрузить данные</button>}
         {state.phase === 'choice' && <>
           <button type='button' className='min-h-11 rounded-lg border px-3 py-2 font-semibold' onClick={() => sync.choose(false)}>{state.record?.payload ? 'Открыть сохранённые' : 'Начать без прежних правок'}</button>

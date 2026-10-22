@@ -1,7 +1,8 @@
 'use client';
-import Link from 'next/link';
+import { EmployeeNavigation } from '@/components/EmployeeNavigation';
+import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { useEffect, useState } from 'react';
-import { PremiumCardIcon, PremiumCalendarIcon, PremiumClockIcon } from '@/components/PwaPreviewIcons';
+import { PremiumCardIcon } from '@/components/PwaPreviewIcons';
 import type { EmployeeEarning } from '@/lib/employee-payroll-estimate';
 
 type Salary = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed'; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null };
@@ -9,6 +10,8 @@ const money = (value: number) => new Intl.NumberFormat('ru-RU', { maximumFractio
 const monthTitle = (period: string) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${period}-01T12:00:00Z`));
 
 export function PersonalPayrollClient({ currentMonth }: { currentMonth: string }) {
+  const preview = useEmployeePreview();
+  const request = preview?.request ?? fetch;
   const [month, setMonth] = useState(currentMonth);
   const [salary, setSalary] = useState<Salary | null>(null);
   const [error, setError] = useState('');
@@ -23,7 +26,7 @@ export function PersonalPayrollClient({ currentMonth }: { currentMonth: string }
   useEffect(() => {
     const controller = new AbortController();
     setSalary(null); setError('');
-    void fetch(`/api/employee/payroll?month=${encodeURIComponent(month)}`, { cache: 'no-store', signal: controller.signal })
+    void request(`/api/employee/payroll?month=${encodeURIComponent(month)}`, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
         if (!response.ok) throw Error('Не удалось обновить расчёт. Попробуйте ещё раз.');
         const result = await response.json() as Salary;
@@ -35,7 +38,7 @@ export function PersonalPayrollClient({ currentMonth }: { currentMonth: string }
         if (!controller.signal.aborted) setSalary(result);
       }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Расчёт пока недоступен.'); });
     return () => controller.abort();
-  }, [month, refresh]);
+  }, [month, refresh, request]);
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible') setRefresh(value => value + 1); };
     document.addEventListener('visibilitychange', onVisible);
@@ -78,15 +81,6 @@ export function PersonalPayrollClient({ currentMonth }: { currentMonth: string }
         </>}
     </div>
     {needsRetry && <button type='button' onClick={() => setRefresh(value => value + 1)} className='mt-4 min-h-11 rounded-xl border border-[#e5e2da] px-5 text-base font-semibold'>Повторить</button>}
-    <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
-      <div className='grid grid-cols-3 gap-1'>
-        {[{ label: 'Рабочий день', href: '/employee', Icon: PremiumClockIcon }, { label: 'График', href: '/employee?tab=schedule', Icon: PremiumCalendarIcon }, { label: 'Моя зарплата', href: '/employee/payroll', Icon: PremiumCardIcon }].map(({ label, href, Icon }, index) => <Link
-          key={href} href={href} aria-current={index === 2 ? 'page' : undefined}
-          className={`employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-0 px-2 text-xs font-extrabold ${index === 2 ? 'is-active' : 'text-slate-500'}`}>
-          <Icon className='h-6 w-6' color={index === 2 ? 'var(--portal-brand-strong)' : '#687078'} secondaryColor={index === 2 ? 'var(--portal-brand-colleague-blue)' : '#b6babd'} secondaryOpacity={index === 2 ? 1 : 0.82} />
-          <span className='employee-material-tab-label'>{label}</span>
-        </Link>)}
-      </div>
-    </nav>
+    <EmployeeNavigation active='payroll' payrollEnabled />
   </div>;
 }

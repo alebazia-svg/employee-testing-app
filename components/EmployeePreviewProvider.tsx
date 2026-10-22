@@ -2,8 +2,9 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Eye, RefreshCw } from 'lucide-react';
+import { employeePreviewHref } from '@/lib/employee-navigation';
 import { employeePreviewUrl } from '@/lib/employee-preview-request';
-type Preview = { readUrl: (input: string) => string; topInset: number; request: (input: string, init?: RequestInit) => Promise<Response>; blocked: () => void };
+type Preview = { href: (input: string) => string; readUrl: (input: string) => string; topInset: number; request: (input: string, init?: RequestInit) => Promise<Response>; blocked: () => void };
 const Context = createContext<Preview | null>(null);
 export const useEmployeePreview = () => useContext(Context);
 export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, children }: { visitId: string; employeeName: string; expiresAt: string; children: ReactNode }) {
@@ -18,6 +19,7 @@ export function EmployeePreviewProvider({ visitId, employeeName, expiresAt, chil
   const [notice, setNotice] = useState(''), [expired, setExpired] = useState(false);
   const value = useMemo<Preview>(() => ({
     topInset,
+    href: input => employeePreviewHref(visitId, input),
     readUrl: input => employeePreviewUrl(visitId, input),
     blocked: () => setNotice('Режим проверки: изменения не сохранены, действие сотрудника не выполнено.'),
     request: async (input, init) => {

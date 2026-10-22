@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Bell, X } from 'lucide-react';
-import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
+import {acknowledgeEmployeeNotification,isNewEmployeeNotification} from '@/lib/employee-inbox-view';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
 import { cn } from '@/lib/utils';
 import { useCashIssue } from './CashIssueClient';
@@ -35,25 +35,30 @@ export function WorkdayNotificationsClient() {
   const [selected,setSelected]=useState<NotificationSelection|null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [inboxError,setInboxError]=useState('');
+  const [readError,setReadError]=useState('');
+  const [loading,setLoading]=useState(true);
   const knownIds = useRef<Set<string> | null>(null);
   const refreshSequence = useRef(0);
+  const failedRead=useRef<WorkdayNotification|null>(null);
   const [banner, setBanner] = useState<WorkdayNotification | null>(null);
-  const unreadCount = notifications.filter(item => !item.readAt && item.active !== false).length;
+  const unreadCount = notifications.filter(isNewEmployeeNotification).length;
 
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
     const response = await requestRead('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
-    if (!response?.ok || sequence !== refreshSequence.current) return;
-    const payload = await response.json();
-    const nextNotifications = Array.isArray(payload.notifications)
-      ? payload.notifications as WorkdayNotification[]
-      : [];
-    const fresh = nextNotifications.find(item => !item.readAt && item.active !== false && knownIds.current && !knownIds.current.has(`${item.id}:${item.sentAt ?? ""}`));
+    const payload=response?.ok?await response.json().catch(()=>null):null;
+    if(sequence!==refreshSequence.current)return;
+    setLoading(false);
+    if(!Array.isArray(payload?.notifications)){setInboxError('Не удалось обновить уведомления. Показан последний загруженный список.');return;}
+    setInboxError('');
+    const nextNotifications=payload.notifications as WorkdayNotification[];
+    const fresh = nextNotifications.find(item => isNewEmployeeNotification(item) && knownIds.current && !knownIds.current.has(`${item.id}:${item.sentAt ?? ""}`));
     knownIds.current = new Set(nextNotifications.map(item => `${item.id}:${item.sentAt ?? ""}`));
     if (fresh && !document.querySelector('[role="dialog"], dialog[open]') && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName ?? '')) setBanner(fresh);
     setNotifications(nextNotifications);
-    if (!preview) void syncPwaAppBadge(nextNotifications.filter(item => !item.readAt && item.active !== false).length);
-  }, []);
+    if (!preview) void syncPwaAppBadge(nextNotifications.filter(isNewEmployeeNotification).length);
+  }, [preview,requestRead]);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
     if (preview) return;
@@ -110,13 +115,18 @@ export function WorkdayNotificationsClient() {
 
   async function dismiss(notification: WorkdayNotification) {
     if (preview) return;
-    const threadKey = workdayNotificationThreadKey(notification);
     const response = await fetch('/api/employee/workday-notifications', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: notification.id }),
     }).catch(() => null);
-    if (!response?.ok) return;
-    setNotifications(current => current.map(item => workdayNotificationThreadKey(item) === threadKey && (!item.sentAt || !notification.sentAt || item.sentAt <= notification.sentAt) ? { ...item, readAt: new Date().toISOString() } : item));
-    void refresh();
+    if (!response?.ok){failedRead.current=notification;setReadError('Не удалось отметить сообщение прочитанным. Повторите попытку.');return;}
+    failedRead.current=null;
+    setReadError('');
+    refreshSequence.current++;
+    setNotifications(current=>{
+      const next=acknowledgeEmployeeNotification(current,notification,new Date().toISOString());
+      void syncPwaAppBadge(next.filter(isNewEmployeeNotification).length);
+      return next;
+    });
   }
 
   async function openNotification(notification: WorkdayNotification) {
@@ -160,7 +170,7 @@ export function WorkdayNotificationsClient() {
       </button>
 
       {banner && !open && createPortal(<div className="employee-new-notice fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[140] mx-auto flex max-w-[488px] items-center gap-2 rounded-2xl bg-[#f5f4ef] p-3 text-slate-800 shadow-xl" role="status"><Bell size={20} className="shrink-0 text-[#a77550]"/><button type="button" className="min-w-0 flex-1 text-left text-sm font-semibold" onClick={() => void openNotification(banner)}>{banner.title}</button><button type="button" onClick={() => setBanner(null)} aria-label="Скрыть уведомление" className="p-2"><X size={18}/></button></div>, document.body)}
-      {open && <EmployeeNotificationInbox items={notifications} onClose={() => setOpen(false)} onChoose={item => void openNotification(item)} permission={<>
+      {open && <EmployeeNotificationInbox items={notifications} loading={loading} error={inboxError||readError} onRetry={()=>{if(!inboxError&&failedRead.current)void dismiss(failedRead.current);else void refresh();}} onClose={() => setOpen(false)} onChoose={item => void openNotification(item)} permission={<>
 {!preview && !pushConnected && (
             <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>
               <p className='text-sm font-semibold leading-snug text-slate-800'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>

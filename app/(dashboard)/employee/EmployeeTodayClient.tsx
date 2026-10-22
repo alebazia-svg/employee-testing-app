@@ -5,14 +5,13 @@ import { employeeExpenseHint, type EmployeeExpenseSnapshot } from '@/lib/employe
 import { EmployeeAttentionPanel } from '@/components/workday/EmployeeAttentionPanel';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 
+import { EmployeeNavigation } from '@/components/EmployeeNavigation';
 import jsQR from 'jsqr';
 import { cashRecountInputError } from '@/lib/cash-recount-input';
 import { checklistScrollTarget } from '@/lib/checklist-viewport';
 import { parseWorkdayQrDepartment } from '@/lib/workday-qr';
 import {
-  PremiumCalendarIcon,
   PremiumCameraIcon,
-  PremiumCardIcon,
   PremiumCheckCircleIcon,
   PremiumClockIcon,
   PremiumClipboardCheckIcon,
@@ -471,11 +470,6 @@ type CashOperationDraft = {
 const EMPTY_CASH_FORM_IDLE_MS = 2 * 60_000;
 const CASH_FORM_BACKGROUND_RESET_MS = 5 * 60_000;
 const OTHER_TASKS_IDLE_MS = 45_000;
-
-const tabs: Array<{ id: Tab; label: string; icon: typeof PremiumClockIcon }> = [
-  { id: 'day', label: 'Рабочий день', icon: PremiumClockIcon },
-  { id: 'schedule', label: 'График', icon: PremiumCalendarIcon },
-];
 
 const workdaySyncIntervalMs = 60_000;
 const scheduleSyncIntervalMs = 30_000;
@@ -1260,8 +1254,7 @@ export function EmployeeTodayClient({
     'mobo-type': 'portal-palette-mobo portal-typography-refined',
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
-  const [activeTab, setActiveTab] = useState<Tab>(() => payrollEnabled && searchParams.get('tab') === 'schedule' ? 'schedule' : 'day');
-  const visibleTabs = tabs;
+  const [activeTab, setActiveTab] = useState<Tab>(() => searchParams.get('tab') === 'schedule' ? 'schedule' : 'day');
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -5358,58 +5351,15 @@ export function EmployeeTodayClient({
           </div>
         )}
 
-        {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
-          <div className={cn('grid gap-1', payrollEnabled && !preview ? 'grid-cols-3' : 'grid-cols-2')}>
-            {visibleTabs.map((item) => {
-              const Icon = item.icon;
-              const active = activeTab === item.id || (item.id === 'day' && activeTab === 'attention');
-              return (
-                <button
-                  key={item.id}
-                  type='button'
-                  aria-current={active ? 'page' : undefined}
-                  onClick={() => {
-                    if (item.id !== 'schedule' && activeTab === 'schedule' && bulkScheduleMode) {
-                      const hasUnsavedSelection = bulkScheduleKind === 'edit'
-                        ? bulkScheduleChanges.length > 0
-                        : bulkWorkingDates.size > 0;
-                      if (hasUnsavedSelection) {
-                        setBulkScheduleExitConfirmOpen(true);
-                        return;
-                      }
-                      cancelBulkSchedule();
-                    }
-                    if (item.id === 'schedule' && activeTab !== 'schedule') {
-                      setCalendarMonth(monthKeyFromDate(today));
-                      setSelectedScheduleDate(today);
-                    }
-                    setActiveTab(item.id);
-                  }}
-                  className={cn(
-                    'employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-0 px-2 text-xs font-extrabold transition',
-                    active ? 'is-active' : 'text-slate-500',
-                  )}
-                >
-                  <span className={cn('relative flex h-6 w-6 items-center justify-center', `employee-material-nav-icon-${item.id}`)} aria-hidden='true'>
-                    {item.id === 'day' ? <Clock3 className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : item.id === 'attention' ? <TriangleAlert className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : <CalendarDays className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} />}
-                    <Icon
-                      className='h-6 w-6'
-                      color={active ? 'var(--portal-brand-strong)' : '#687078'}
-                      secondaryColor={active ? 'var(--portal-brand-colleague-blue)' : '#b6babd'}
-                      secondaryOpacity={active ? 1 : 0.82}
-                    />
-                  </span>
-                  <span className='employee-material-tab-label'>{item.label}</span>
-                </button>
-              );
-            })}
-            {payrollEnabled && !preview && <button type='button' onClick={() => router.push('/employee/payroll')}
-              className='employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-0 px-2 text-xs font-extrabold text-slate-500'>
-              <PremiumCardIcon className='h-6 w-6' color='#687078' secondaryColor='#b6babd' secondaryOpacity={0.82} />
-              <span className='employee-material-tab-label'>Моя зарплата</span>
-            </button>}
-          </div>
-        </nav>}
+        {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
+          if (section === 'payroll') return false;
+          if (section === 'schedule' && activeTab !== 'schedule') {
+            setCalendarMonth(monthKeyFromDate(today));
+            setSelectedScheduleDate(today);
+          }
+          setActiveTab(section);
+          return true;
+        }} />}
     </main>
   );
 }

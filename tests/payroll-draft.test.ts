@@ -26,3 +26,12 @@ test('incomplete bonus drafts are preserved, duplicate bonus IDs rejected', () =
 test('object key order does not create false conflicts', () => {
   assert.equal(payrollDraftFingerprint({ a: 1, b: { c: 2, d: '' } }), payrollDraftFingerprint({ b: { d: '', c: 2 }, a: 1 }));
 });
+import { canSavePayrollDraft } from '../lib/payroll-draft';
+test('first confirmation needs no invented correction, later unchanged drafts and locked/loading states stay protected', () => {
+  const initial = { enabled: true, ready: true, locked: false, saving: false, dirty: false, revision: 0 };
+  assert.equal(canSavePayrollDraft(initial), true);
+  for (const patch of [{ enabled: false }, { ready: false }, { locked: true }, { saving: true }, { revision: undefined }, { revision: 1 }]) {
+    assert.equal(canSavePayrollDraft({ ...initial, ...patch }), false);
+  }
+  assert.equal(canSavePayrollDraft({ ...initial, revision: 1, dirty: true }), true);
+});
