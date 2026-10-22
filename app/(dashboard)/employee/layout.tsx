@@ -3,6 +3,8 @@ import { CashIssueProvider } from './CashIssueClient';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import { EmployeeInterfaceStyle } from '@/components/EmployeeInterfaceStyle';
+import { EmployeeActionReminderProvider } from '@/components/workday/EmployeeActionReminder';
+import { EmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,5 +13,5 @@ export default async function EmployeeLayout({ children }: { children: React.Rea
   if (!user) redirect('/login');
   if (user.role !== 'EMPLOYEE') redirect('/admin');
   if (user.portalArea === 'PROCUREMENT') redirect('/procurement');
-  return <><EmployeeInterfaceStyle copper /><Suspense fallback={children}><CashIssueProvider>{children}</CashIssueProvider></Suspense></>;
+  return <><EmployeeInterfaceStyle copper /><Suspense fallback={null}><CashIssueProvider key={user.id}><EmployeePayrollSnapshots><EmployeeActionReminderProvider>{children}</EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider></Suspense></>;
 }

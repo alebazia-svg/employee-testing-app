@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { validatePayrollDraft, validatePayrollDraftWrite, payrollDraftFingerprint } from '../lib/payroll-draft';
 const payload = () => ({ manual: { 'Тестовый сотрудник': { workedDays: '', lateCount: '', advance: '0', comment: '' } }, fixed: {}, purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] });
 test('drafts retain blanks, explicit zero and original decimal input without recalculation', () => {
@@ -27,6 +28,48 @@ test('object key order does not create false conflicts', () => {
   assert.equal(payrollDraftFingerprint({ a: 1, b: { c: 2, d: '' } }), payrollDraftFingerprint({ b: { d: '', c: 2 }, a: 1 }));
 });
 import { canSavePayrollDraft } from '../lib/payroll-draft';
+import { payrollDraftComparisonFingerprint, payrollDraftDifferences } from '../lib/payroll-draft';
+test('blank records and legacy agreed Muhammad days do not create October conflicts', () => {
+  const saved = { manual: {}, fixed: {}, purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] };
+  const local = { ...saved, manual: {
+    'Кумахова Диана': { workedDays: '', lateCount: '', advance: '', comment: '', agentCreditCommission: '' },
+    'Кумыков Мухаммед': { workedDays: '16', lateCount: '', advance: '', comment: '' },
+  } };
+  const original = JSON.stringify(local);
+  assert.equal(payrollDraftComparisonFingerprint(local, '2026-10'), payrollDraftComparisonFingerprint(saved, '2026-10'));
+  assert.deepEqual(payrollDraftDifferences(local, saved, '2026-10'), []);
+  assert.notEqual(payrollDraftComparisonFingerprint(local, '2026-09'), payrollDraftComparisonFingerprint(saved, '2026-09'));
+  assert.equal(JSON.stringify(local), original, 'comparison must not modify recovery/save data');
+});
+test('real corrections and explicit zero remain conflicts', () => {
+  const saved = { manual: {}, fixed: {}, purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] };
+  for (const patch of [{ advance: '0' }, { advance: '7500' }, { lateCount: '0' }, { workedDays: '12' }, { comment: 'Проверить' }]) {
+    const local = { ...saved, manual: { 'Кумахова Диана': { workedDays: '', lateCount: '', advance: '', comment: '', ...patch } } };
+    assert.notEqual(payrollDraftComparisonFingerprint(local, '2026-10'), payrollDraftComparisonFingerprint(saved, '2026-10'));
+    assert.equal(payrollDraftDifferences(local, saved, '2026-10').length, 1);
+  }
+});
+test('conflict UI keeps comparison collapsed and protects writes without disabling inspection', () => {
+  const ui = readFileSync('app/(dashboard)/admin/payroll/PayrollDraftSync.tsx', 'utf8');
+  assert.doesNotMatch(ui, /<fieldset disabled=\{!sync.ready/);
+  assert.match(ui, /onClickCapture=\{guard\} onChangeCapture=\{guard\} onBeforeInputCapture=\{guard\} onSubmitCapture=\{guard\}/);
+  assert.match(ui, /control\?\.hasAttribute\('data-payroll-read-action'\)/);
+  assert.doesNotMatch(ui, /<details[^>]*\bopen[ >]/);
+  const overview = readFileSync('app/(dashboard)/admin/payroll/PayrollOverviewPreview.tsx', 'utf8');
+  assert.match(overview, /<button data-payroll-read-action[^\n]*aria-controls="payroll-preview-checks"/);
+  assert.match(overview, /<button data-payroll-read-action[^>]*onClick=\{\(\)=>p.onEmployee/);
+  assert.doesNotMatch(overview, /<button data-payroll-read-action[^>]*onClick=\{p.onSave\}/);
+});
+test('saved drafts do not add persistent labels or disabled save buttons to the overview', () => {
+  const ui = readFileSync('app/(dashboard)/admin/payroll/PayrollDraftSync.tsx', 'utf8');
+  assert.doesNotMatch(ui, /Правки сохранены|Ручных правок нет|Есть несохранённые правки/);
+  assert.match(ui, /if \(historyOnly \? !state.record\?\.revision : !label && !showSave\) return null/);
+  assert.match(ui, /!historyOnly && showSave && <button/);
+  assert.match(ui, /setTimeout\(\(\) => setShowSaved\(false\), 3000\)/);
+  assert.match(ui, /historyOnly && <button data-payroll-read-action/);
+  const page = readFileSync('app/(dashboard)/admin/payroll/PayrollClient.tsx', 'utf8');
+  assert.match(page, /← Вернуться к расчёту<\/button>\}\s*<PayrollDraftStatus sync=\{draftSync\} historyOnly \/>/);
+});
 test('first confirmation needs no invented correction, later unchanged drafts and locked/loading states stay protected', () => {
   const initial = { enabled: true, ready: true, locked: false, saving: false, dirty: false, revision: 0 };
   assert.equal(canSavePayrollDraft(initial), true);

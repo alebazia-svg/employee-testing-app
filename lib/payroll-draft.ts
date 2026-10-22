@@ -86,13 +86,32 @@ export function payrollDraftFingerprint(value: unknown): string {
   return JSON.stringify(canonical(value));
 }
 
-export function payrollDraftDifferences(local: PayrollDraft, saved: PayrollDraft | null) {
+/** Comparison only: preserve the original draft for saving/recovery. Blank fields
+ * are not corrections; Muhammad's agreed monthly days supersede legacy input. */
+export function payrollDraftComparisonFingerprint(draft: PayrollDraft | null, period: string) {
+  const normalized = draft ? {
+    ...draft,
+    manual: Object.fromEntries(Object.entries(draft.manual).flatMap(([name, row]) => {
+      const fields = Object.fromEntries(Object.entries(row).filter(([key, value]) =>
+        value !== '' && value !== undefined && !(name === 'Кумыков Мухаммед' && period >= '2026-10' && key === 'workedDays')));
+      return Object.keys(fields).length ? [[name, fields]] : [];
+    })),
+    fixed: Object.fromEntries(Object.entries(draft.fixed).flatMap(([name, row]) => {
+      const fields = Object.fromEntries(Object.entries(row).filter(([, value]) => value !== '' && value !== undefined));
+      return Object.keys(fields).length ? [[name, fields]] : [];
+    })),
+  } : { manual: {}, fixed: {}, purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] };
+  return payrollDraftFingerprint(normalized);
+}
+
+export function payrollDraftDifferences(local: PayrollDraft, saved: PayrollDraft | null, period = '') {
   const differences: Array<{ employee: string; field: string; local: string; saved: string }> = [];
   const labels: Record<string, string> = { workedDays: 'Дни', lateCount: 'Опоздания', advance: 'Аванс', agentCreditCommission: 'Финбокс', comment: 'Комментарий', source: 'Источник дней', bonus: 'Доплата', deduction: 'Удержание', amount: 'Премия', reason: 'Основание премии', employeeName: 'Получатель премии' };
   const display = (value: unknown) => value === undefined || value === '' ? 'Не указано' : String(value);
   function compare(employee: string, a: Record<string, unknown>, b: Record<string, unknown>) {
     for (const field of new Set([...Object.keys(a), ...Object.keys(b)])) {
-      if (a[field] !== b[field]) differences.push({ employee, field: labels[field] ?? field, local: display(a[field]), saved: display(b[field]) });
+      if (employee === 'Кумыков Мухаммед' && period >= '2026-10' && field === 'workedDays') continue;
+      if ((a[field] ?? '') !== (b[field] ?? '')) differences.push({ employee, field: labels[field] ?? field, local: display(a[field]), saved: display(b[field]) });
     }
   }
   for (const group of ['manual', 'fixed'] as const) for (const name of new Set([...Object.keys(local[group]), ...Object.keys(saved?.[group] ?? {})])) {

@@ -12,6 +12,8 @@ import { orderEmployeeAttention, type EmployeeAttentionItem } from '@/lib/employ
 import { useCashIssue } from '@/app/(dashboard)/employee/CashIssueClient';
 import { cashIssueCompactCopy } from '@/lib/procurement-cash-issue-policy';
 import { Button } from '@/components/ui/button';
+import { useActionReminderEnabled, usePublishAttentionReminder } from './EmployeeActionReminder';
+import { ReminderBell } from './ReminderBell';
 
 type Item = EmployeeAttentionItem;
 function Marker({ kind, waiting }: { kind: Item['kind']; waiting: boolean }) {
@@ -29,6 +31,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   paletteClass: string;
 }) {
   const preview = useEmployeePreview();
+  const reminderPreviewEnabled = useActionReminderEnabled();
   const requestRead = preview?.request ?? fetch;
   const cashIssue = useCashIssue();
   const searchParams = useSearchParams();
@@ -63,6 +66,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const payable = liveExpenses?.payable.filter(item => item.ref !== request?.ref);
   const ownItems = liveItems.flatMap(item => item.kind !== 'cash' || !payable ? [item] : payable.length ? [{ ...item, facts: payable.map(row => [`№${row.number} · ${row.purpose}`, `${row.remaining.toLocaleString('ru-RU')} ₽`] as [string,string]) }] : []);
   const allItems = orderEmployeeAttention([...ownItems, ...cashItem]);
+  usePublishAttentionReminder(allItems, loadState === 'ready', loadState === 'error' || expenseUnavailable);
   const items = allItems.filter(item => !scope || item.kind === scope);
   const entry = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -98,7 +102,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
     return () => window.removeEventListener('mobo:attention-open', listener);
   });
   const openedQuery = useRef(false);
-  useEffect(() => { if (!openedQuery.current && ['cash', 'receipt', 'closing'].includes(searchParams.get('attention') ?? '')) { openedQuery.current = true; openSheet(searchParams.get('attention') as 'cash' | 'receipt' | 'closing', searchParams.get('item')); } }, [searchParams]);
+  useEffect(() => { if (!openedQuery.current && ['cash', 'receipt', 'closing', 'encashment'].includes(searchParams.get('attention') ?? '')) { openedQuery.current = true; openSheet(searchParams.get('attention') as Item['kind'], searchParams.get('item')); } }, [searchParams]);
   useEffect(() => { if (view === 'attention') { previousFocus.current = document.activeElement as HTMLElement; setOpen(true); setSelectedId(items.length === 1 ? items[0].id : null); onBack(); } }, [view, onBack, items]);
   const openItem = (id: string) => { setActionError(''); listScroll.current = scrollArea.current?.scrollTop ?? 0; lastSelectedId.current = id; setSelectedId(id); };
   const act = async (action: string) => {
@@ -150,7 +154,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
       const title = kind === 'receipt' ? 'Проверьте чеки' : kind === 'cash' ? 'Оформите расходники в 1С' : rows[0].title;
       const count = kind === 'cash' ? (payable?.length ?? 0) : rows.length;
       return <button key={kind} ref={entry} type="button" onClick={() => openSheet(kind)} aria-haspopup="dialog" className={`employee-attention-row ${rows.some(item => item.notificationIds?.length) ? 'employee-new-notice' : ''}`}>
-        <span className="attention-preview-marker needs-action" aria-hidden="true"><Bell size={20} strokeWidth={1.7} className="text-[#a77550]"/></span>
+        {reminderPreviewEnabled && actionable ? <ReminderBell /> : <span className="attention-preview-marker needs-action" aria-hidden="true"><Bell size={20} strokeWidth={1.7} className="text-[#a77550]"/></span>}
         <span className="min-w-0 flex-1"><strong>{title}</strong><small className="employee-attention-caption">{kind === 'cash' ? 'Есть заявки к оплате' : !actionable ? rows[0].status : ''}{rows.some(item => item.notificationIds?.length) && <span className="employee-attention-new">Новое</span>}</small></span>
         {(kind === 'cash' ? count > 0 : count > 1) && <span className="shrink-0 text-xs font-bold tabular-nums text-stone-500" aria-label={kind === 'cash' ? `Заявок к оплате: ${count}` : undefined}>{count}</span>}<ChevronRight size={18} aria-hidden="true"/>
       </button>;

@@ -12,7 +12,7 @@ import { payrollFeatureState } from '@/lib/payroll-features';
 const directorySelect = { id: true, name: true, role: true, department: true, isActive: true, payrollName: true,
   payrollSalaryType: true, payrollReportGroup: true, payrollFixedSalary: true, payrollRuleFrom: true, payrollRuleThrough: true } as const;
 
-export async function employeePayrollResponse(viewer: PayrollViewer | null, query: URLSearchParams) {
+export async function employeePayrollResponse(viewer: PayrollViewer | null, query: URLSearchParams, storedOnly = false) {
   const headers = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' };
   // Disabled until the server draft migration and ADMIN reconciliation pass.
   if (!payrollFeatureState().employeeEnabled) {
@@ -21,8 +21,10 @@ export async function employeePayrollResponse(viewer: PayrollViewer | null, quer
   let historicalName: string | null = null;
   const result = await readEmployeePayroll(viewer, query, {
     currentPeriod: () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit' }).format(new Date()),
-    findCurrent: readStoredPersonalCurrentPayroll,
+    findCurrent: storedOnly ? (period, userId) => readStoredPersonalCurrentPayroll(period, userId, prisma, async () => null) : readStoredPersonalCurrentPayroll,
     findSettlement: async (period, userId) => {
+      // First paint must not wait for 1C. No invented historical paid/accrued sum.
+      if (storedOnly) return null;
       const users = await prisma.user.findMany({ select: directorySelect });
       const name = getPrivatePayrollBinding(users, userId);
       if (!name || name !== historicalName) return null;

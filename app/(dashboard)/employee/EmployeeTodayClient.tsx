@@ -71,6 +71,7 @@ import {
   type EmployeeCashOutboxItem,
 } from '@/lib/employee-cash-outbox';
 import { EmployeePortalHeader, employeeHeaderDateLabel } from './EmployeePortalHeader';
+import { EmployeeActionReminder, usePublishWorkdayReminder } from '@/components/workday/EmployeeActionReminder';
 import { StaleWorkdayCloseSheet } from './StaleWorkdayCloseSheet';
 import { earlyFinishReasons, lateArrivalReasons, lateArrivalThresholdMinutes, type WorkdayDeviationKind } from '@/lib/workday-deviation';
 
@@ -1264,6 +1265,7 @@ export function EmployeeTodayClient({
   const [workDay, setWorkDay] = useState(todayWorkDay);
   const [unfinished, setUnfinished] = useState(unfinishedWorkDay);
   const [shiftControlState, setShiftControlState] = useState(shiftControl);
+  usePublishWorkdayReminder({ workDay, unfinishedWorkDay: unfinished, shiftControl: shiftControlState });
   const [cashOperationsState, setCashOperationsState] = useState(cashOperations);
   const [requiredIssuesState, setRequiredIssuesState] = useState(requiredIssues);
   const [paymentChecksState, setPaymentChecksState] = useState(paymentChecks);
@@ -4655,6 +4657,8 @@ export function EmployeeTodayClient({
           )}
 
           <EmployeeAttentionPanel onExpenses={setExpenseSnapshot} activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} onClosing={scope => { if (scope === 'encashment' && handoverTask) startHandoverWizard(handoverTask); else if (kkmCloseIssue) { setCloseResolutionPath(null); setCloseResolutionOpen(true); } else setCloseBlockedSheetOpen(true); }} view={activeTab} onBack={() => setActiveTab('day')} paletteClass={paletteClass} renderHandle={onDismiss => <BottomSheetDragHandle onDismiss={onDismiss} />} />
+
+          <EmployeeActionReminder view={activeTab === 'day' && showShiftControl ? 'actual-day' : activeTab} onOpen={() => setActiveTab('day')} />
 
           {activeTab === 'day' && (
             <div className={cn('pwa-review-day space-y-3', showCloseResolution && 'pwa-review-day-closing', !workDay && !unfinished && 'pwa-day-before-start')}>

@@ -1,0 +1,20 @@
+.icon { flex-shrink: 0; color: #a77550; overflow: visible; }
+.bell { transform-origin: 12px 2px; animation: ring 3.8s ease-in-out infinite; }
+.signals { opacity: 0; animation: signals 3.8s ease-in-out infinite; }
+@keyframes ring {
+  0%, 42%, 100% { transform: rotate(0); }
+  7% { transform: rotate(18deg); }
+  14% { transform: rotate(-18deg); }
+  21% { transform: rotate(12deg); }
+  28% { transform: rotate(-9deg); }
+  35% { transform: rotate(4deg); }
+}
+@keyframes signals {
+  0%, 43%, 100% { opacity: 0; }
+  7%, 23% { opacity: .85; }
+  15%, 33% { opacity: .18; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell, .signals { animation: none; }
+  .signals { opacity: 0; }
+}

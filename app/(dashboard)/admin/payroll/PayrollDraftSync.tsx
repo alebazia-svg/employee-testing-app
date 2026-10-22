@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { getInitialPayrollBonuses } from '@/lib/payroll-compensation';
-import { canSavePayrollDraft, payrollDraftDifferences, payrollDraftFingerprint, validatePayrollDraft, type PayrollDraft, type PayrollDraftRead } from '@/lib/payroll-draft';
+import { canSavePayrollDraft, payrollDraftComparisonFingerprint, payrollDraftDifferences, payrollDraftFingerprint, validatePayrollDraft, type PayrollDraft, type PayrollDraftRead } from '@/lib/payroll-draft';
 
 type State = { period: string; phase: 'loading' | 'ready' | 'choice' | 'error'; record?: PayrollDraftRead; local?: PayrollDraft; message?: string };
 function readBrowser(period: string) {
@@ -29,6 +29,7 @@ async function readResponse(response: Response, period: string): Promise<Payroll
 export function usePayrollDraftSync(enabled: boolean, period: string, payload: PayrollDraft, apply: (payload: PayrollDraft) => void) {
   const [state, setState] = useState<State>({ period: '', phase: 'loading' });
   const [saving, setSaving] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const current = useRef({ payload, apply, period }); current.current = { payload, apply, period };
   const pending = useRef<{ period: string; revision: number; payload: PayrollDraft; requestId: string } | null>(null);
@@ -36,6 +37,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (!enabled) return;
+    setSavedNotice(0);
     let cancelled = false;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -49,10 +51,10 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
         if (cancelled) return;
         if (record.locked) { setState({ period, phase: 'ready', record }); return; }
         if (!browser) { setState({ period, phase: 'choice', record, message: 'Правки из браузера не удалось прочитать. Можно открыть сохранённые данные.' }); return; }
-        if (browser.hasLocal && (!record.payload || payrollDraftFingerprint(browser.payload) !== payrollDraftFingerprint(record.payload))) {
+        if (browser.hasLocal && payrollDraftComparisonFingerprint(browser.payload, period) !== payrollDraftComparisonFingerprint(record.payload, period)) {
           setState({ period, phase: 'choice', record, local: browser.payload, message: record.payload
-            ? 'Правки в этом браузере отличаются от сохранённых. Выберите, с какими продолжить.'
-            : 'В этом браузере есть прежние правки. Их можно перенести в общее сохранение.' });
+            ? 'Найдены разные варианты данных. Сравните изменения перед сохранением.'
+            : 'В этом браузере есть несохранённые изменения. Проверьте их перед сохранением.' });
           return;
         }
         current.current.apply(record.payload ?? browser.payload);
@@ -66,7 +68,7 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
   const ready = !enabled || state.period === period && state.phase === 'ready';
   const locked = state.record?.locked ?? false;
   const baseline = state.record?.payload ?? { manual: {}, fixed: {}, purchase: { advance: '', deduction: '', comment: '' }, bonuses: [] };
-  const dirty = enabled && ready && !locked && payrollDraftFingerprint(payload) !== payrollDraftFingerprint(baseline);
+  const dirty = enabled && ready && !locked && payrollDraftComparisonFingerprint(payload, period) !== payrollDraftComparisonFingerprint(baseline, period);
   const canSave = canSavePayrollDraft({ enabled, ready, locked, saving, dirty, revision: state.record?.revision });
   useEffect(() => {
     if (!dirty) return;
@@ -109,7 +111,10 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
       pending.current = null;
       if (payrollDraftFingerprint(record.payload) !== payrollDraftFingerprint(snapshot)) {
         setState({ period, phase: 'choice', record, local: current.current.payload, message: 'На сервере уже есть более новые правки. Выберите, с какими продолжить.' });
-      } else setState({ period, phase: 'ready', record });
+      } else {
+        setState({ period, phase: 'ready', record });
+        setSavedNotice(value => value + 1);
+      }
     } catch {
       if (mounted.current && current.current.period === period) setState(previous => ({ ...previous, message: 'Сохранение не подтверждено. Ваш ввод оставлен на экране — повторите сохранение.' }));
     } finally { clearTimeout(timeout); if (mounted.current) setSaving(false); }
@@ -123,13 +128,20 @@ export function usePayrollDraftSync(enabled: boolean, period: string, payload: P
       setState(previous => ({ ...previous, message: undefined }));
     } catch { setState(previous => ({ ...previous, message: 'Не удалось подготовить прежние правки. Текущий ввод сохранён на экране.' })); }
   }
-  return { enabled, ready, saving, dirty, canSave, locked, state, choose, save, restore, reload: () => setRefresh(value => value + 1) };
+  return { enabled, ready, saving, dirty, canSave, locked, state, savedNotice, choose, save, restore, reload: () => setRefresh(value => value + 1) };
 }
-export function PayrollDraftStatus({ sync, compact = false }: { sync: ReturnType<typeof usePayrollDraftSync>; compact?: boolean }) {
+export function PayrollDraftStatus({ sync, compact = false, historyOnly = false }: { sync: ReturnType<typeof usePayrollDraftSync>; compact?: boolean; historyOnly?: boolean }) {
   const [history, setHistory] = useState<Array<{ revision: number; savedAt: string; author: string; payload: PayrollDraft }>>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyError, setHistoryError] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
+  useEffect(() => {
+    if (!sync.savedNotice) { setShowSaved(false); return; }
+    setShowSaved(true);
+    const timer = setTimeout(() => setShowSaved(false), 3000);
+    return () => clearTimeout(timer);
+  }, [sync.savedNotice, sync.state.period]);
   useEffect(() => { setHistory([]); setHistoryOpen(false); setHistoryError(''); }, [sync.state.period, sync.state.record?.revision]);
   useEffect(() => {
     if (!historyOpen) return;
@@ -146,27 +158,28 @@ export function PayrollDraftStatus({ sync, compact = false }: { sync: ReturnType
   }, [historyOpen, sync.state.period]);
   if (!sync.enabled) return null;
   const { state } = sync;
-  const label = state.phase === 'loading' ? 'Загружаю сохранённые правки…'
-    : sync.saving ? 'Сохраняю правки…'
-      : state.message ?? (sync.locked ? 'Месяц утверждён или закрыт. Финальный расчёт защищён.'
-        : sync.dirty ? 'Есть несохранённые правки' : state.record?.revision ? 'Правки сохранены' : 'Ручных правок нет');
-  return <section aria-label='Сохранение правок зарплаты' className={compact ? 'min-w-0 self-end text-sm' : 'mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm'}>
+  const label = state.phase === 'loading' ? 'Загружаю данные…'
+    : sync.saving ? 'Сохраняю…'
+      : state.message ?? (showSaved && !sync.dirty ? 'Сохранено' : '');
+  const showSave = state.phase === 'ready' && !sync.locked && (sync.canSave || sync.saving);
+  if (historyOnly ? !state.record?.revision : !label && !showSave) return null;
+  return <section aria-label={historyOnly ? 'История изменений зарплаты' : 'Сохранение изменений зарплаты'} className={compact ? 'min-w-0 self-end text-sm' : 'mb-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm'}>
     <div className='flex flex-wrap items-center justify-between gap-2'>
-      <p role={state.phase === 'error' ? 'alert' : 'status'}>{label}</p>
+      {!historyOnly && label && <p role={state.phase === 'error' ? 'alert' : 'status'}>{label}</p>}
       <div className='flex flex-wrap gap-2'>
-        {state.phase === 'ready' && !sync.locked && <button type='button' className='min-h-11 rounded-lg bg-primary px-3 py-2 font-semibold text-white disabled:opacity-50' disabled={!sync.canSave} onClick={() => void sync.save()}>{state.record?.revision === 0 ? 'Подтвердить данные' : 'Сохранить правки'}</button>}
-        {state.phase === 'error' && <button type='button' className='min-h-11 rounded-lg border px-3 py-2 font-semibold' onClick={sync.reload}>Загрузить данные</button>}
-        {state.phase === 'choice' && <>
+        {!historyOnly && showSave && <button type='button' className='min-h-11 rounded-lg bg-primary px-3 py-2 font-semibold text-white disabled:opacity-50' disabled={!sync.canSave} onClick={() => void sync.save()}>{sync.saving ? 'Сохраняю…' : state.record?.revision === 0 ? 'Подтвердить данные' : 'Сохранить изменения'}</button>}
+        {!historyOnly && state.phase === 'error' && <button type='button' className='min-h-11 rounded-lg border px-3 py-2 font-semibold' onClick={sync.reload}>Загрузить данные</button>}
+        {!historyOnly && state.phase === 'choice' && <>
           <button type='button' className='min-h-11 rounded-lg border px-3 py-2 font-semibold' onClick={() => sync.choose(false)}>{state.record?.payload ? 'Открыть сохранённые' : 'Начать без прежних правок'}</button>
           {state.local && <button type='button' className='min-h-11 rounded-lg border px-3 py-2 font-semibold' onClick={() => sync.choose(true)}>Продолжить с правками браузера</button>}
         </>}
-        {state.record && state.record.revision > 0 && <button type='button' disabled={!sync.ready || sync.saving} className='min-h-11 rounded-lg border px-3 py-2 font-semibold disabled:opacity-50' onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? 'Скрыть историю' : 'История правок'}</button>}
+        {historyOnly && <button data-payroll-read-action type='button' disabled={sync.saving} className='min-h-11 rounded-lg border px-3 py-2 font-semibold disabled:opacity-50' onClick={() => setHistoryOpen(value => !value)}>{historyOpen ? 'Скрыть историю изменений' : 'История изменений'}</button>}
       </div>
     </div>
-    {state.phase === 'choice' && <p className='mt-1 text-xs text-slate-600'>Исходный черновик браузера будет сохранён отдельно. Перед общим сохранением проверьте дни, суммы и премии.</p>}
-    {state.phase === 'choice' && state.local && <details className='mt-2 rounded-lg bg-slate-50 p-2' open>
-      <summary className='cursor-pointer font-semibold'>Сравнить правки</summary>
-      <div className='mt-2 grid gap-2'>{payrollDraftDifferences(state.local, state.record?.payload ?? null).map((row, index) => <div key={index} className='rounded-lg border border-slate-200 bg-white p-2'>
+    {!historyOnly && state.phase === 'choice' && <p className='mt-1 text-xs text-slate-600'>Оба варианта сохранятся. Просмотр расчёта и проверок доступен.</p>}
+    {!historyOnly && state.phase === 'choice' && state.local && <details className='mt-2 rounded-lg bg-slate-50 p-2'>
+      <summary className='cursor-pointer font-semibold'>Сравнить изменения</summary>
+      <div className='mt-2 max-h-64 overflow-y-auto grid gap-2'>{payrollDraftDifferences(state.local, state.record?.payload ?? null, state.period).map((row, index) => <div key={index} className='rounded-lg border border-slate-200 bg-white p-2'>
         <p className='font-semibold'>{row.employee} · {row.field}</p>
         <div className='mt-1 grid grid-cols-2 gap-2 break-words'><p><span className='block text-xs text-slate-500'>В этом браузере</span>{row.local}</p><p><span className='block text-xs text-slate-500'>Сохранено</span>{row.saved}</p></div>
       </div>)}</div>
@@ -186,6 +199,23 @@ export function PayrollDraftStatus({ sync, compact = false }: { sync: ReturnType
 }
 
 export function PayrollDraftGuard({ sync, children }: { sync: ReturnType<typeof usePayrollDraftSync>; children: ReactNode }) {
+  const [blocked, setBlocked] = useState(false);
+  useEffect(() => { setBlocked(false); }, [sync.ready, sync.state.period]);
   if (!sync.enabled) return <>{children}</>;
-  return <fieldset disabled={!sync.ready || sync.saving} className='m-0 min-w-0 border-0 p-0'>{children}</fieldset>;
+  // A draft conflict must not disable navigation, inspection or closing a card.
+  // All form changes and unmarked actions fail closed until the choice is made.
+  const guard = (event: React.SyntheticEvent) => {
+    if (sync.ready && !sync.saving) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const control = target.closest('button, input, select, textarea, a, [role="button"], [role="tab"]');
+    if (control?.hasAttribute('data-payroll-read-action')) return;
+    if (control || event.type === 'submit') {
+      event.preventDefault(); event.stopPropagation(); setBlocked(true);
+    }
+  };
+  return <div onClickCapture={guard} onChangeCapture={guard} onBeforeInputCapture={guard} onSubmitCapture={guard}>
+    {blocked && <p role='status' className='mb-2 text-sm text-amber-900'>Просмотр доступен. Для изменения или сохранения сначала выберите правки выше.</p>}
+    {children}
+  </div>;
 }

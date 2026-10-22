@@ -4,15 +4,17 @@ import test from 'node:test';
 
 const client = readFileSync(new URL('../app/(dashboard)/employee/EmployeeTodayClient.tsx', import.meta.url), 'utf8');
 const card = readFileSync(new URL('../components/EmployeeAttentionSummaryCard.tsx', import.meta.url), 'utf8');
+const panel = readFileSync(new URL('../components/workday/EmployeeAttentionPanel.tsx', import.meta.url), 'utf8');
 
 test('attention card keeps direct single-task navigation and grouped multi-task navigation', () => {
-  assert.match(client, /attentionCount > 0 && !showCloseResolution/);
-  assert.match(client, /attentionCount === 1 \? attentionItems\[0\]\.title/);
-  assert.match(client, /attentionCount === 1 \? attentionItems\[0\]\.meta/);
-  assert.match(client, /if \(attentionCount === 1\) \{ router\.push\(attentionItems\[0\]\.href\); return; \}/);
-  assert.match(client, /requiredIssuesForBanner\.every\(\(issue\) => issue\.ruleKey === 'credit_realization_mismatch'\)/);
-  assert.match(client, /Проверьте задачи: \$\{attentionCount\}/);
-  assert.match(client, /'Проверить чеки' : 'Посмотреть задачи'/);
+  // The released UI moved this navigation into the native attention panel.
+  // Preserve direct single-row opening and a list for multiple rows there.
+  assert.match(client, /<EmployeeAttentionPanel/);
+  assert.match(panel, /setSelectedId\(id \?\? \(rows\.length === 1 \? rows\[0\]\.id : null\)\)/);
+  assert.match(panel, /onClick=\{\(\) => openSheet\(kind\)\}/);
+  assert.match(panel, /onClick=\{\(\) => openItem\(item\.id\)\}/);
+  assert.match(panel, /Проверьте чеки/);
+  assert.match(panel, /selectedId && !selected/);
   assert.match(card, /DangerTriangleIcon.*color='#a85a08'.*secondaryColor='#f6d58b'/);
 });
 

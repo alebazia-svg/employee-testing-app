@@ -6111,13 +6111,13 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
     <div className='flex flex-wrap items-end gap-2'>
           <label className='grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500'>
             Месяц
-            <select value={month} onChange={(event) => setMonth(event.target.value)} className='min-w-[150px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
+            <select data-payroll-read-action value={month} onChange={(event) => setMonth(event.target.value)} className='min-w-[150px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
               {months.map((monthName, index) => <option key={monthName} value={index}>{monthName}</option>)}
             </select>
           </label>
           <label className='grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500'>
             Год
-            <select value={year} onChange={(event) => setYear(event.target.value)} className='min-w-[104px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
+            <select data-payroll-read-action value={year} onChange={(event) => setYear(event.target.value)} className='min-w-[104px] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold normal-case text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'>
               {years.map((yearValue) => <option key={yearValue} value={yearValue}>{yearValue}</option>)}
             </select>
           </label>
@@ -6164,10 +6164,10 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
           issues={oneCShadowCalculation.blockingIssues}
           employeeIssues={oneCShadowCalculation.reviewEmployees}
           advancesValid={!oneCShadowCalculation.advanceIssues.length}
-          saveDisabled={isSavingPayroll || isCurrentPeriodClosed || oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
+          saveDisabled={!draftSync.ready || draftSync.saving || isSavingPayroll || isCurrentPeriodClosed || oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
           onSave={() => void prepareAutomaticSave()}
           exportLabel={currentFinalRun ? 'Скачать финальную ведомость' : 'Скачать Excel'}
-          exportDisabled={currentFinalRun ? isSavedRunExporting || !oneCShadowBaseline || oneCShadowBaseline.id !== currentFinalRun.id : oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error)}
+          exportDisabled={!draftSync.ready || draftSync.saving || (currentFinalRun ? isSavedRunExporting || !oneCShadowBaseline || oneCShadowBaseline.id !== currentFinalRun.id : oneCShadowCalculation.mode !== 'preliminary' || !finboxRead.data || isAutomaticExporting || Boolean(oneCShadowCalculation.advanceIssues.length) || isPayrollDirectoryLoading || Boolean(payrollDirectoryError) || Boolean(bonusValidation.error))}
           onEmployee={name => { void openOneCManagerDetails(name); }}
           onSaveProducts={async decisions => {
             let partialError: unknown = null;
@@ -6416,11 +6416,12 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
             </div>
           </summary>
           <div className='border-t border-slate-100 p-3'>
-            {visualPreview && <button type='button' className='mb-3 min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold' onClick={() => {
+            {visualPreview && <button data-payroll-read-action type='button' className='mb-3 min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold' onClick={() => {
               const source = document.getElementById('payroll-source-panel');
               if (source instanceof HTMLDetailsElement) source.open = false;
               document.getElementById('payroll-overview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}>← Вернуться к расчёту</button>}
+            <PayrollDraftStatus sync={draftSync} historyOnly />
             <PayrollDailyOneCControl
               replacement={reviewSourceReplacement}
               month={month}
@@ -7621,7 +7622,7 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                       )}
                     </div>
                     <div className='shrink-0'>
-                      <button type='button' onClick={() => setSelectedManager(null)} className='mt-3 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 hover:border-primary/40'>
+                      <button data-payroll-read-action type='button' onClick={() => setSelectedManager(null)} className='mt-3 rounded-lg border border-border px-3 py-2 text-sm font-semibold text-slate-700 hover:border-primary/40'>
                         Закрыть
                       </button>
                     </div>
@@ -7653,8 +7654,8 @@ export default function AdminPayrollPage({ visualPreview = true, liveWorkspace =
                   </div>
 
                   {modernManagerCard && <div className='admin-section-tabs mb-3' role='tablist' aria-label='Разделы карточки сотрудника'>
-                    <button type='button' role='tab' aria-selected={managerCardTab === 'calculation'} className={`admin-section-tab ${managerCardTab === 'calculation' ? 'is-active' : ''}`} onClick={() => setManagerCardTab('calculation')}>Расчёт</button>
-                    <button type='button' role='tab' aria-selected={managerCardTab === 'payments'} className={`admin-section-tab ${managerCardTab === 'payments' ? 'is-active' : ''}`} onClick={() => setManagerCardTab('payments')}>Выплаты</button>
+                    <button data-payroll-read-action type='button' role='tab' aria-selected={managerCardTab === 'calculation'} className={`admin-section-tab ${managerCardTab === 'calculation' ? 'is-active' : ''}`} onClick={() => setManagerCardTab('calculation')}>Расчёт</button>
+                    <button data-payroll-read-action type='button' role='tab' aria-selected={managerCardTab === 'payments'} className={`admin-section-tab ${managerCardTab === 'payments' ? 'is-active' : ''}`} onClick={() => setManagerCardTab('payments')}>Выплаты</button>
                   </div>}
                   <div className={modernManagerCard ? 'settlement-employee-body' : 'contents'} key={modernManagerCard ? managerCardTab : 'calculation'}>
                   {settlementRows && managerCardTab === 'payments' && <SettlementCardPayments row={selectedSettlement} />}
