@@ -156,14 +156,14 @@ def build(department, department_label, theme='light', destination=OUT):
     qr = draw_qr(c, matrix_for(department))
     for index, (top, lines) in enumerate([
         (84, ('Открой', 'приложение')),
-        (110, ('Нажми «Начать', 'рабочий день»')),
+        (110, ('Нажми', '«Открыть камеру»')),
         (142, ('Выбери', 'свою смену')),
     ]):
         label(c, f'{index+1:02}', 90, top+4.5, 9.5, bold=True, color='#975B36')
         for offset, line in enumerate(lines):
             label(c, line, 90, top+11+offset*5.8, 14, bold=True, max_width=47)
         if index == 1:
-            label(c, 'Отсканируй QR', 90, 134.5, 11.5, bold=True, color='#975B36', max_width=47)
+            label(c, 'Сканируй QR', 90, 134.5, 11.5, bold=True, color='#975B36', max_width=47)
         if index < 2:
             c.setStrokeColor(HexColor('#D4D1C8'))
             c.setLineWidth(.25*mm)
