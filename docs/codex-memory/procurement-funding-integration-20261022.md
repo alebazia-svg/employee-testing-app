@@ -165,7 +165,7 @@ was performed. This mismatch does not establish a portal regression.
 - Running image `sha256:e72975b706c981a7df73b78e2aa1c1d8a44bdc60b00cb6a06d8bad35e7094320`;
   state running/healthy, `/api/health` returned ok.
 - Authenticated production ADMIN calendar loaded six pending requests, zero
-  waiting, 32 history; existing Tural detail and approval/edit workflow controls
+  waiting, 32 history; existing Tural detail and approval controls
   remained available. Visible footer confirmed 1.13.4 / 22.10.2026 20:33 MSK.
   No real financial/date/status/receipt action submitted. The deployed QR and
   deferral transitions are covered locally, not asserted as live mutations.
@@ -188,3 +188,116 @@ was performed. This mismatch does not establish a portal regression.
 - Local-only evidence: `/tmp/mobo-funding-deploy-1.13.4.log`,
   `/tmp/mobo-funding-verify-1.13.4.log`,
   `/tmp/mobo-funding-release-1.13.4.png`; not committed.
+
+## Follow-up: editing before approval (implementation before 1.13.6)
+
+- Owner found the omission in 1.13.4: edit/defer controls were only in the
+  APPROVED dialog; all six actual current requests were SUBMITTED. The prior
+  production-verification wording incorrectly implied editing was verified
+  there; corrected above. Owner approved correction before separate approval.
+- Existing pending dialog now includes the existing editor (date, amount,
+  method, comment and audit reason), not a replacement calendar. While editing,
+  approval/return/cancel footer actions are hidden; dirty-close/busy guards apply.
+- Server accepts SUBMITTED or APPROVED, rechecks the exact status/version under
+  the shared transaction lock and preserves status/approval fields. Source
+  failure, paid/conflicting evidence, collection, pending revisions and identity
+  guards remain. No new financial matching or 1C writes.
+- Pending edits enqueue `procurement_payment_updated`, not a false approval.
+  Subsequent edit/decision retires stale notices; normal quiet hours unchanged.
+  Employee detail opening and lifecycle recognize the kind. No real dispatch.
+- Focused final checks: 9 client/unit tests and 3 server/isolated-DB tests passed;
+  production build passed. DB test explicitly edits pending amount/date,
+  preserves identities, rejects unavailable source and old approval version,
+  then separately approves the saved version and retires its edit notice.
+- Browser on actual components/routes + isolated database: 20000 -> 22000,
+  25 -> 26 October; dirty-close warning preserves amount/reason; save keeps
+  SUBMITTED and shows success; separate approval moves it to waiting. Independent
+  DB readback confirms APPROVED/22000/26 October/order unchanged/3 audit events.
+  Synthetic fixture `funding-acceptance-pending` reset to SUBMITTED for review.
+  Screenshot `/tmp/mobo-pending-edit-saved.png`; no production changes.
+- Verification caveats: legacy delivery-bell test fails 15000 vs 10000 both on
+  unchanged HEAD a4dee53 and this tree (its fixture lacks sent status, so the
+  current snapshot treats it as history). Not attributed to this change and
+  not silently marked passed. Schedule DB test once failed at line 70 in a
+  concurrent multi-file invocation; isolated baseline/current and sequential
+  combined reruns passed. Shared local DB suites should run sequentially.
+- At this checkpoint no follow-up commit/version/deploy had happened; production
+  was 1.13.4 / 803a0f7. The subsequent approved release is recorded below.
+
+### Owner review: no mandatory ADMIN explanation (local)
+
+- Owner approved optional ADMIN edit reasons. Empty/omitted reasons now pass;
+  malformed/overlong values still fail, and actor/date/changed-field audit remains.
+  Buyer financial-revision reason rules were not changed.
+- Known funding dates read «Деньги будут готовы»; unknown dates read «Оплата
+  отложена» / «Дата уточняется». Stored deferral, effective later date, reserve,
+  partial payment and QR completion rules remain unchanged. Buyer summary and
+  schedule notices use the same distinction; ADMIN future unpaid rows display
+  the familiar ready-date label only for unambiguous NO_EVIDENCE.
+- Actual isolated browser saved pending date 26 -> 25 October without reason,
+  then separately approved; partial fixture's funding date was cleared without
+  comment, preserving 300 USDT paid / 700 remaining. Both role screens verified;
+  QR shows «Ожидает расходника» after receipt counts load. Synthetic records only.
+- 12 focused unit/UI-contract tests + 2 sequential local PostgreSQL tests pass;
+  build passed, final typecheck/diff checks passed. Expanded legacy buyer-render
+  suite cannot initialize CSS imports in its esbuild harness (19 render cases);
+  not reported as passing. Physical mobile/PWA and live saves not tested.
+- Screenshots: `/tmp/mobo-funding-admin-optional-comment.png` and
+  `/tmp/mobo-funding-buyer-optional-comment.png`. Unrelated dirty files preserved.
+
+### Follow-up release preparation 1.13.6
+
+- Owner authorized release conditional on checks. Fresh live/deployment checks
+  found concurrent 1.13.5; merged its identity/wording changes, retaining both
+  its «Нужно исправить заявку» and the funding-date wording above.
+- Runtime commits: `575a04c`, merge `353c06e`, version `4d2d44a` (1.13.6).
+  Exact runtime files staged, normal push to deployment branch; no force push.
+- Production build and TypeScript/diff checks passed. Post-merge checks passed:
+  55 funding/QR/notification tests, 58 payment/closure regression tests,
+  4 ADMIN dialog tests, 2 sequential isolated PostgreSQL integration tests,
+  and 5 version/metadata tests. SSR tests run without react-server condition;
+  server-only tests with it. No production fixture writes or test dispatches.
+- Legacy render harness now ignores CSS for SSR; delivery notification fixture
+  explicitly has current sent status. Five legacy buyer assertions still fail
+  identically on unchanged a4dee53 and this code: stale action-blocking/copy
+  expectations, not new regressions. They are not counted among passing tests.
+- Native Terminal server preflight requested; deployment is not confirmed until
+  the verification entry below records live commit, metadata, health and UI.
+- Procurement evidence progress remains 54.8/100; no project stage or ledger
+  item changed. Autonomous procurement and 1C write permissions stay disabled.
+
+### Verified production follow-up 1.13.6
+
+- Released runtime commit `4d2d44afc9eda6f4c0d7dc50fd6671468f304860`.
+  Public metadata: 1.13.6, built `2026-10-22T18:32:58.242Z` (21:32 Moscow).
+  Metadata revision remains unknown/null in the existing container build;
+  exact server Git HEAD independently verified over SSH.
+- Container image `sha256:4d64a1620eebcdbe9cc0809032c90d46a97d35804d52fe8bef5cd61b4632ef9d`,
+  running/healthy; public `/api/health` returned ok. Env hash and sorted mount
+  descriptions unchanged. No migration, production data edits, test notification,
+  1C publication or other service restart. Disk 16.31 GiB before, about 14 GiB
+  after; no cleanup performed. All registered rollback images verified present.
+  Prior 1.13.5 image preserved as `portal-app:rollback-before-1.13.6`.
+- Authenticated production ADMIN: footer 1.13.6; six pending, zero waiting,
+  32 history. Opened Kuzoom Lucy pending details: «Изменить» enabled, existing
+  amount/date/order/comment retained, optional reason visible, save disabled
+  until an edit, approval buttons hidden during editing. Cancel restored
+  approval/return/cancel controls; dialog closed without saving. No actual
+  financial/date/status mutation. Background forecast check remained loading
+  during this brief check; no claim that 1C latency is eliminated.
+- After independent server/public/UI checks, deployment lock released and
+  `portal-storage-maintenance --register-verified` succeeded. Marker
+  `RELEASE_VERIFIED_AND_REGISTERED`; current plus two preceding verified images.
+- Evidence (local only): `/tmp/mobo-funding-preflight-1.13.6.log`,
+  `/tmp/mobo-funding-deploy-1.13.6.log`, `/tmp/mobo-funding-release-1.13.6.png`.
+  Physical iPhone/PWA and production save/QR transitions not exercised; actual
+  saves and business transitions verified against the isolated local database.
+  Unrelated workspace changes preserved.
+- Runtime files changed by this follow-up (besides version package/lock):
+  `app/(dashboard)/admin/procurement/AdminProcurementClient.tsx`,
+  `app/(dashboard)/procurement/ProcurementPaymentCalendarClient.tsx`,
+  `components/ProcurementApprovedEdit.tsx`, `lib/procurement-approved-edit.ts`,
+  `lib/procurement-approved-edit-server.ts`, `lib/procurement-schedule.ts`,
+  `lib/procurement-payment-notifications.ts`, `lib/procurement-notification-lifecycle.ts`,
+  `lib/notification-opening.ts`. Tests are in runtime commit `575a04c`;
+  release records are committed separately from runtime code.
