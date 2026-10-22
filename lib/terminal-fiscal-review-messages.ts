@@ -1,3 +1,4 @@
+import { portalPersonName } from './portal-person';
 import 'server-only';
 
 import type { PrismaClient } from '@prisma/client';
@@ -34,13 +35,14 @@ export async function addEmployeeTerminalFiscalReviewMessage(input: {
     if (!review) throw new Error('REVIEW_NOT_AVAILABLE');
     const message = await tx.terminalFiscalReviewMessage.create({
       data: { reviewId: review.id, authorId: input.employeeId, body: input.body, createdAt: now },
+      include: { author: { select: { name: true, payrollName: true } } },
     });
     const event = await tx.adminInboxEvent.create({
       data: {
         eventKey: `terminal_fiscal_review:employee_message:${message.id}`,
         type: 'terminal_fiscal_review.employee_message',
-        title: 'Сообщение по проверке продажи',
-        body: `${review.assignmentScope === 'retail_shift' || review.assignmentScope === 'retail_day' ? 'Сотрудники Розницы' : review.employee.name}: ${short(input.body)}`,
+        title: `${message.author ? portalPersonName(message.author) : review.employee.name} · сообщение по чеку`,
+        body: short(input.body),
         href: `/admin/workday/payment-checks/${review.id}`,
         sourceType: 'terminal_fiscal_review',
         sourceId: review.id,
@@ -73,6 +75,7 @@ export async function addAdminTerminalFiscalReviewMessage(input: {
     if (!review) throw new Error('REVIEW_NOT_AVAILABLE');
     const message = await tx.terminalFiscalReviewMessage.create({
       data: { reviewId: review.id, authorId: input.adminId, body: input.body, createdAt: now },
+      include: { author: { select: { name: true, payrollName: true } } },
     });
     const recipientIds = [...new Set((review.participants ?? []).length
       ? review.participants.map((participant) => participant.userId)
@@ -83,8 +86,8 @@ export async function addAdminTerminalFiscalReviewMessage(input: {
         reviewId: review.id,
         fingerprint: `terminal-fiscal-review:${review.id}:admin-message:${message.id}:${userId}`,
         kind: 'terminal_fiscal_review_reply',
-        title: 'Ответ администратора',
-        body: short(input.body),
+        title: 'Ответ по чеку',
+        body: short(message.author ? `${portalPersonName(message.author)}: ${input.body}` : input.body),
         scheduledAt: now,
       },
     });

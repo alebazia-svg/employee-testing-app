@@ -1,3 +1,4 @@
+import { portalPersonName } from '@/lib/portal-person';
 import 'server-only';
 import {getAttendanceRows,getScheduleRows} from './google-sheets';
 import {retailAttendanceSource} from './retail-attendance-source';
@@ -17,7 +18,7 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
       employee: { select: { name: true } },
       mapping: { select: { label: true, terminalKey: true, oneCCashRegisterRef:true, workstation: {select:{label:true}} } },
       participants: { include: { user: { select: { name: true } } }, orderBy: { user: { name: 'asc' } } },
-      messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } },
+      messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, payrollName: true, role: true } } } },
     },
   });
   if (!review) return null;
@@ -104,7 +105,7 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
     checkedAt:review.lastCheckedAt.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
     rawType:match?.reasonCode==='BANK_OPERATION_UNSUPPORTED'?match.bankOperationRawType:null,
     message:match?.oneCSourceRef?view.message.replace(` ${match.oneCSourceRef}`,''):view.message,
-    messages:review.messages.map(m=>({...m,createdAt:m.createdAt.toISOString()})),
+    messages:review.messages.map(m=>({...m,author:{id:m.author.id,name:portalPersonName(m.author),role:m.author.role},createdAt:m.createdAt.toISOString()})),
   };
 }
 export type FiscalReviewData=NonNullable<Awaited<ReturnType<typeof loadFiscalReviewData>>>;

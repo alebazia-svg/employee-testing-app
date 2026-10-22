@@ -28,7 +28,7 @@ export function EmployeeCreditIssueActionCard(props: { issueId: number; title: s
     </div>
     {state === 'normal' ? <button type='button' onClick={() => setState('exceptions')} className='employee-material-secondary-action mt-4 min-h-12 w-full rounded-xl px-4 text-sm font-extrabold'>Нужна помощь</button> : null}
     {state === 'exceptions' ? <div className='mt-4 grid gap-2'><button type='button' disabled={busy} onClick={() => void act('not_found')} className='employee-material-secondary-action min-h-12 rounded-xl px-3 text-sm font-black disabled:opacity-50'>{props.notFoundLabel}</button><button type='button' disabled={busy} onClick={() => void act('not_mine')} className='employee-material-secondary-action min-h-12 rounded-xl px-3 text-sm font-black disabled:opacity-50'>Продажа не моя</button></div> : null}
-    {state === 'not_found' || state === 'not_mine' ? <div className='mt-4 rounded-2xl bg-[#edf2f7] px-4 py-3 text-sm font-bold text-slate-800'><p className='font-black'>{state === 'not_found' ? 'Администратор уведомлён' : 'Администратор проверит ответственного'}</p><p className='mt-1 text-xs text-slate-600'>{props.closeBlocked ? 'Смена открыта до решения.' : 'Ответ сохранён.'}</p></div> : null}
+    {state === 'not_found' || state === 'not_mine' ? <div className='mt-4 rounded-2xl bg-[#edf2f7] px-4 py-3 text-sm font-bold text-slate-800'><p className='font-black'>{state === 'not_found' ? 'Обращение отправлено' : 'Ответственный уточняется'}</p>{props.closeBlocked && <p className='mt-1 text-xs text-slate-600'>Смена открыта до решения.</p>}</div> : null}
     {error ? <p className='mt-3 text-xs font-bold text-rose-700'>{error}</p> : null}
   </Card>;
 }

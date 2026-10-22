@@ -86,9 +86,9 @@ export async function decideWorkdayCloseException(db: PrismaClient, input: {
           userId: request.employeeId,
           fingerprint: `workday-close-exception:${request.id}:${input.status}`,
           kind: closing ? 'workday_closed_by_admin' : 'workday_close_exception_decision',
-          title: closing ? 'Рабочий день завершён' : 'Завершение не согласовано',
+          title: closing ? 'Смена завершена' : 'Завершение не согласовано',
           body: closing
-            ? `Администратор завершил рабочий день за ${workDay.date}. ${cashException ? 'Инкассация не подтверждена.' : 'Неисправленные проблемы остаются на контроле.'}`
+            ? `Смена за ${workDay.date} завершена. ${cashException ? 'Инкассация не подтверждена.' : 'Неисправленные проблемы остаются на контроле.'}`
             : input.decisionComment,
           scheduledAt: now,
         },

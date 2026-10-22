@@ -56,8 +56,8 @@ export async function POST(req: Request) {
       data: {
         eventKey: `cash-encashment-exception:${created.id}:requested`,
         type: 'workday.cash_encashment_exception_requested',
-        title: 'Инкассация не выполнена',
-        body: `${user.name}: остаток наличных ${balance.toLocaleString('ru-RU')} ₽. Требуется решение администратора.`,
+        title: `${user.name} · без инкассации`,
+        body: `Остаток наличных ${balance.toLocaleString('ru-RU')} ₽ · требуется решение.`,
         href: `/admin/workday/close-exceptions/${created.id}`,
         sourceType: 'workday_close_exception',
         sourceId: created.id,

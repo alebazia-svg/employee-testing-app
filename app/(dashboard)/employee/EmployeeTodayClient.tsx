@@ -2574,7 +2574,7 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось отправить запрос');
       setCloseExceptionRequestState(payload.request);
-      setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен администратору');
+      setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен');
       await syncCurrentWorkdayState(true);
       setCloseResolutionOpen(false);
     } catch (reason) {
@@ -2608,7 +2608,7 @@ export function EmployeeTodayClient({
       setShowCashEncashmentExceptionForm(false);
       setEncashmentDetailsOpen(false);
       setEncashmentResumePending(false);
-      setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен администратору');
+      setMessage(payload.created === false ? 'Запрос уже ожидает решения' : 'Запрос отправлен');
       await syncCurrentWorkdayState(true);
       setActiveHandoverTaskId(null);
     } catch (reason) {
@@ -3550,7 +3550,7 @@ export function EmployeeTodayClient({
     const attemptKey = `${request.id}:${task.id}`;
     if (approvedCashExceptionAutoFinishRef.current === attemptKey) return;
     approvedCashExceptionAutoFinishRef.current = attemptKey;
-    setMessage('Администратор разрешил завершение. Завершаем рабочий день…');
+    setMessage('Завершение согласовано. Завершаем смену…');
     void submitHandover(task);
   }, [activeHandoverTask, cashEncashmentExceptionRequestState, handoverStep, handoverSteps, isCompleted, isSaving]);
 
@@ -3568,7 +3568,7 @@ export function EmployeeTodayClient({
     const attemptKey = `${request.id}:${targetKey}`;
     if (approvedRequiredIssuesAutoFinishRef.current === attemptKey) return;
     approvedRequiredIssuesAutoFinishRef.current = attemptKey;
-    setMessage('Администратор разрешил завершение. Закрываем рабочий день…');
+    setMessage('Завершение согласовано. Завершаем смену…');
     if (unfinished) {
       void finishUnfinishedWorkDay();
       return;
@@ -3629,7 +3629,7 @@ export function EmployeeTodayClient({
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось отправить фото администратору');
       setCloseExceptionRequestState(payload.request);
-      setMessage('Фото отправлено. Ждём решения администратора.');
+      setMessage('Фото отправлено. Ожидает согласования.');
       await syncCurrentWorkdayState(true);
       setCloseResolutionOpen(false);
     } catch (reason) {
@@ -3801,10 +3801,10 @@ export function EmployeeTodayClient({
         {step === 'encashment' && (
           <div className='grid min-w-0 gap-4'>
             {cashEncashmentExceptionRequestState?.status === 'approved' ? (
-              <p role='status' className='text-sm font-semibold text-slate-700'>Администратор разрешил завершить смену без инкассации.</p>
+              <p role='status' className='text-sm font-semibold text-slate-700'>Завершение без инкассации согласовано.</p>
             ) : cashEncashmentExceptionRequestState?.status === 'pending' && !encashmentResumePending ? (
               <div className='grid gap-3'>
-                <p role='status' className='text-sm font-semibold leading-snug text-slate-700'>Администратор получил запрос. Смена пока открыта.</p>
+                <p role='status' className='text-sm font-semibold leading-snug text-slate-700'>Смена пока открыта.</p>
                 <Button type='button' className='employee-material-secondary-action min-h-11 text-sm font-extrabold' onClick={() => setEncashmentResumePending(true)}>Всё же выполнить инкассацию</Button>
                 <button type='button' className='min-h-11 text-sm font-bold text-slate-600 underline-offset-4 hover:underline' onClick={closeHandoverSheet}>Вернуться к рабочему дню</button>
               </div>
@@ -3812,7 +3812,7 @@ export function EmployeeTodayClient({
               <div className='grid min-w-0 gap-3'>
                 <select value={cashEncashmentExceptionReason} onChange={(event) => setCashEncashmentExceptionReason(event.target.value)} className='min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите причину</option><option value='safe_access'>Нет доступа к депозитному сейфу</option><option value='handover'>Деньги переданы ответственному сотруднику</option><option value='other'>Другая причина</option></select>
                 <textarea value={cashEncashmentExceptionComment} onChange={(event) => setCashEncashmentExceptionComment(event.target.value)} rows={2} maxLength={1000} placeholder='Где деньги?' className='w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' />
-                <div className='grid grid-cols-2 gap-2'><Button type='button' className='employee-material-secondary-action min-h-11 text-sm font-extrabold' disabled={isSaving} onClick={() => setShowCashEncashmentExceptionForm(false)}>Назад</Button><Button type='button' className='employee-material-primary-action min-h-11 text-sm font-extrabold' disabled={isSaving} onClick={requestCashEncashmentException}>Отправить</Button></div>
+                <div className='grid grid-cols-2 gap-2'><Button type='button' className='employee-material-secondary-action min-h-11 text-sm font-extrabold' disabled={isSaving} onClick={() => setShowCashEncashmentExceptionForm(false)}>Назад</Button><Button type='button' className='employee-material-primary-action min-h-11 text-sm font-extrabold' disabled={isSaving} onClick={requestCashEncashmentException}>Запросить завершение</Button></div>
               </div>
             ) : !encashmentDetailsOpen ? (
               <div className='grid gap-3'>
@@ -4103,7 +4103,7 @@ export function EmployeeTodayClient({
                       <h3 className='text-base font-black text-slate-950'>Почему не распечатался чек?</h3>
                       <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold'><option value=''>Выберите причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
                       {closeReasonRequiresComment(closeExceptionReason) && <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />}
-                      <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || (closeReasonRequiresComment(closeExceptionReason) && !closeExceptionComment.trim())} onClick={requestCloseException}>Сообщить администратору</Button>
+                      <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || (closeReasonRequiresComment(closeExceptionReason) && !closeExceptionComment.trim())} onClick={requestCloseException}>Запросить завершение</Button>
                     </div>
                   )}
                   {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
@@ -4121,18 +4121,18 @@ export function EmployeeTodayClient({
               <div className='flex items-start justify-between gap-3'>
                 <div>
                   <h2 id='close-exception-sheet-title' className='text-xl font-black leading-tight text-slate-950'>Почему не получается?</h2>
-                  <p className='mt-1 text-sm font-semibold text-slate-500'>Администратор решит, можно ли закрыть смену с ошибкой.</p>
+                  <p className='mt-1 text-sm font-semibold text-slate-500'>Запрос на завершение смены с неисправленной ошибкой.</p>
                 </div>
                 <button type='button' onClick={() => setCloseResolutionOpen(false)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
               </div>
             </div>
             <div className='min-w-0 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5'>
               <div className='grid gap-3'>
-                {unfinished && <p className='text-sm font-semibold text-slate-600'>После разрешения администратора портал закроет предыдущий день.</p>}
+                {unfinished && <p className='text-sm font-semibold text-slate-600'>После согласования предыдущая смена завершится.</p>}
                 <select value={closeExceptionReason} onChange={(event) => setCloseExceptionReason(event.target.value)} className='min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold' aria-label='Техническая причина'><option value=''>Выберите причину</option><option value='power'>Нет света</option><option value='internet'>Нет интернета</option><option value='one_c'>Не работает 1С</option><option value='kkm'>Не работает касса</option><option value='other'>Другая причина</option></select>
                 {closeReasonRequiresComment(closeExceptionReason) && <textarea value={closeExceptionComment} onChange={(event) => setCloseExceptionComment(event.target.value)} rows={3} maxLength={1000} className='w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold' placeholder='Что произошло? Коротко' aria-label='Что произошло?' />}
                 {error && <p role='alert' className='rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800'>{error}</p>}
-                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || (closeReasonRequiresComment(closeExceptionReason) && !closeExceptionComment.trim())} onClick={requestCloseException}>Отправить администратору</Button>
+                <Button type='button' className='employee-material-primary-action min-h-12 w-full font-extrabold' disabled={isSaving || !closeExceptionReason || (closeReasonRequiresComment(closeExceptionReason) && !closeExceptionComment.trim())} onClick={requestCloseException}>Запросить завершение</Button>
               </div>
             </div>
           </div>
@@ -4156,7 +4156,7 @@ export function EmployeeTodayClient({
               <BottomSheetDragHandle onDismiss={closeHandoverSheet} disabled={isSaving} />
               <div className='flex items-start justify-between gap-3'>
                 <div>
-                  <h2 id='handover-sheet-title' className='text-xl font-black leading-tight text-slate-950'>{handoverSteps[handoverStep] === 'encashment' ? cashEncashmentExceptionRequestState?.status === 'pending' && !encashmentResumePending ? 'Ждём решения' : showCashEncashmentExceptionForm ? 'Не могу выполнить' : 'Инкассация' : 'Сдача смены'}</h2>
+                  <h2 id='handover-sheet-title' className='text-xl font-black leading-tight text-slate-950'>{handoverSteps[handoverStep] === 'encashment' ? cashEncashmentExceptionRequestState?.status === 'pending' && !encashmentResumePending ? 'Ожидает согласования' : showCashEncashmentExceptionForm ? 'Без инкассации' : 'Инкассация' : 'Сдача смены'}</h2>
                   <p className='mt-1 text-sm font-semibold text-slate-500'>Шаг {handoverStep + 1} из {handoverSteps.length}</p>
                 </div>
                 <button type='button' onClick={closeHandoverSheet} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
@@ -4358,7 +4358,7 @@ export function EmployeeTodayClient({
             style={{ display: 'none' }}
             onClick={() => document.getElementById('pwa-current-action')?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })}
           >
-            <span><strong>{showCloseResolution ? 'Смена не закрыта' : 'Смена открыта'}</strong><small>{showCloseResolution ? currentCloseExceptionStatus === 'pending' ? 'Ждём решения администратора' : 'Нужно завершить сдачу' : workDay?.shiftLabel}</small></span>
+            <span><strong>{showCloseResolution ? 'Смена не закрыта' : 'Смена открыта'}</strong><small>{showCloseResolution ? currentCloseExceptionStatus === 'pending' ? 'Ожидает согласования' : 'Нужно завершить сдачу' : workDay?.shiftLabel}</small></span>
             <span className='pwa-dock-action'>{showCloseResolution ? 'Продолжить' : 'К чек-листу'} <ChevronRight className='h-4 w-4' aria-hidden='true' /></span>
           </button>}
           {!isOnline || cashOutboxCount > 0 ? (
@@ -4612,7 +4612,7 @@ export function EmployeeTodayClient({
                       {bulkReducedCount > 0 && bulkEmptyCount > 0 ? ' · ' : ''}
                       {bulkEmptyCount > 0 ? `Никто не выходит — ${bulkEmptyCount} дн.` : ''}
                     </p>
-                    <p className='mt-1 text-xs font-semibold text-amber-800'>Данные будут видны коллегам и администратору.</p>
+                    <p className='mt-1 text-xs font-semibold text-amber-800'>Изменение увидят коллеги и администратор портала.</p>
                   </div>
                 )}
                 <Button
@@ -4750,11 +4750,11 @@ export function EmployeeTodayClient({
                     <p className='text-base font-black text-amber-950'>Смена не закрыта</p>
                     <p className='mt-1 text-sm font-semibold leading-snug text-amber-900'>
                       {currentCloseExceptionStatus === 'pending'
-                        ? 'Ждём решения администратора.'
+                        ? 'Ожидает согласования.'
                         : currentCloseExceptionStatus === 'approved'
                           ? 'Закрытие разрешено. Завершаем смену…'
                           : currentCloseExceptionStatus === 'rejected'
-                            ? 'Администратор не разрешил закрытие. Исправьте ошибку.'
+                            ? 'Завершение не согласовано. Исправьте ошибку.'
                             : kkmCloseIssue
                               ? 'Закрытие кассы не подтверждено. Закройте смену на ККМ. Если чек уже есть — приложите фото.'
                               : 'Исправьте чек или запросите закрытие смены.'}
@@ -4803,7 +4803,7 @@ export function EmployeeTodayClient({
                     {workDay?.endedAt && <p className='pwa-shift-summary mt-1 text-lg font-extrabold text-slate-950'>{formatTime(workDay.startedAt)}–{formatTime(workDay.endedAt)} <span className='text-xs font-medium text-slate-600'>· фактическое время</span></p>}
                     {Boolean(workDay?.lateMinutes) && <p className='mt-1 text-xs font-semibold text-amber-700'>Опоздание · {workDay!.lateMinutes} мин</p>}
                     {closedWithoutEncashment ? (
-                      <p className='mt-1 text-sm font-semibold text-slate-700'>Без инкассации · разрешено администратором</p>
+                      <p className='mt-1 text-sm font-semibold text-slate-700'>Без инкассации · согласовано</p>
                     ) : kkmClosureConfirmed ? <p className='mt-0.5 text-xs font-extrabold text-green-700'>Касса подтверждена · смена сдана</p> : null}
                   </div>
                 </Card>
@@ -5040,7 +5040,7 @@ export function EmployeeTodayClient({
                               : operation.status === 'resolved_manual'
                                 ? 'Подтверждено'
                               : operation.status === 'one_c_error'
-                                ? 'У администратора'
+                                ? 'Передано на проверку'
                                 : 'Обрабатывается'}
                           </Badge>
                         </div>

@@ -87,7 +87,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
       }
       if(fromQueue)setTarget('');
       setNotice(canCollectQrReceiptBeforePayment(plan)
-        ? `Чек сохранён · ${plan.supplierPartner}. ${admin?'Оформите расходник в 1С.':'Администратор увидит его в портале.'} Заявка завершится после подтверждения оплаты в 1С.`
+        ? `Чек сохранён · ${plan.supplierPartner}. ${admin?'Оформите расходник в 1С.':''} Заявка завершится после подтверждения оплаты в 1С.`
         : `Чек сохранён · ${plan.supplierPartner}. Доступен в истории оплаты.`);
       window.dispatchEvent(new Event('procurement-receipts-changed'));
     }catch(error){setTarget(plan.id);setError(error instanceof Error?error.message:'Чек не сохранён. Повторите попытку.');}

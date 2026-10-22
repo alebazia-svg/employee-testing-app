@@ -1,3 +1,4 @@
+import { employeeReplyMessageId, employeeReplyCopy } from './employee-reply-author';
 import 'server-only';
 import { loadEmployeeExpenses } from './employee-expense-snapshot';
 import { EMPLOYEE_EXPENSE_KIND, expenseNotificationKey } from './employee-expense-policy';
@@ -37,6 +38,13 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
       review: { select: { status: true } },
     },
   });
+  const replyRows = rows.map(row => ({ row, messageId: employeeReplyMessageId(row) })).filter(item => item.messageId);
+  const issueMessageIds = replyRows.filter(item => item.row.kind === 'workday_issue_reply').map(item => item.messageId!);
+  const reviewMessageIds = replyRows.filter(item => item.row.kind === 'terminal_fiscal_review_reply').map(item => item.messageId!);
+  const [issueMessages, reviewMessages] = await Promise.all([
+    issueMessageIds.length ? prisma.workdayControlIssueMessage.findMany({where:{id:{in:issueMessageIds},issueId:{in:replyRows.flatMap(item=>item.row.issueId?[item.row.issueId]:[])},author:{role:'ADMIN'}},select:{id:true,issueId:true,body:true,author:{select:{name:true,payrollName:true}}}}) : [],
+    reviewMessageIds.length ? prisma.terminalFiscalReviewMessage.findMany({where:{id:{in:reviewMessageIds},reviewId:{in:replyRows.flatMap(item=>item.row.reviewId?[item.row.reviewId]:[])},author:{role:'ADMIN'}},select:{id:true,reviewId:true,body:true,author:{select:{name:true,payrollName:true}}}}) : [],
+  ]);
   const seenTargets = new Set<string>();
   const activeRows = await (readOnly ? filterActiveWorkdayNotifications : reconcileActiveWorkdayNotifications)(prisma, rows.filter(row => row.status === 'sent'));
   const activeIds = new Set(activeRows.map(row => row.id));
@@ -57,6 +65,9 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
       return true;
     })
     .map(({ task, issue, review: _review, ...notification }) => {
+      const messageId = employeeReplyMessageId(notification);
+      const message = notification.kind === 'workday_issue_reply' ? issueMessages.find(m=>m.id===messageId&&m.issueId===notification.issueId) : reviewMessages.find(m=>m.id===messageId&&m.reviewId===notification.reviewId);
+      const replyCopy = ['workday_issue_reply','terminal_fiscal_review_reply'].includes(notification.kind) ? employeeReplyCopy(notification.kind, message) : null;
       const issueView = issue && !notification.kind.endsWith('_reply') ? workdayIssueView(issue) : null;
       const taskCopy = task ? workdayTaskNotificationCopy(task, notification.kind) : null;
       const deliveryCopy = notification.kind === DELIVERY_READY_KIND && delivery?.state === 'ready'
@@ -71,8 +82,8 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
         ...notification,
         active: activeIds.has(notification.id),
         ...(issue ? { attentionKind: issue.ruleKey === 'kkm_shift_not_closed' ? 'closing' as const : 'receipt' as const } : {}),
-        title: activeIds.has(notification.id) ? copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title : notification.title,
-        body: activeIds.has(notification.id) ? copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body : notification.body,
+        title: replyCopy?.title || (notification.kind === 'workday_closed_by_admin' ? 'Смена завершена' : '') || (activeIds.has(notification.id) ? copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title : notification.title),
+        body: replyCopy?.body || (activeIds.has(notification.id) ? copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body : notification.body).replace(/^Администратор завершил рабочий день за (\d{4}-\d{2}-\d{2})\./u, 'Смена за $1 завершена.'),
         href: workdayNotificationHref(notification),
       };
     })

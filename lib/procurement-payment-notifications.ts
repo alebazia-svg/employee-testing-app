@@ -121,7 +121,7 @@ export async function notifyProcurementManagerAboutDecision(input: {
       userId: input.plan.managerUserId,
       fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}:${input.eventKey || 'decision'}`,
       kind: approved ? 'procurement_payment_approved' : needsChanges ? 'procurement_payment_needs_changes' : 'procurement_payment_cancelled',
-      title: input.rescheduled ? 'Дата оплаты изменена' : input.revisionDecision ? approved ? 'Изменения оплаты согласованы' : 'Сохраняются прежние условия оплаты' : approved ? 'Оплата согласована' : needsChanges ? 'Исправьте оплату' : 'Оплата отменена',
+      title: input.rescheduled ? 'Дата оплаты изменена' : input.revisionDecision ? approved ? 'Изменения оплаты согласованы' : 'Сохраняются прежние условия оплаты' : approved ? 'Оплата согласована' : needsChanges ? 'Нужно исправить заявку' : 'Оплата отменена',
       body: needsChanges
         ? `${input.plan.supplierPartner} · ${input.reason || 'уточните данные заявки'}`
         : `${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)}`,

@@ -557,7 +557,7 @@ test('shared shift conversation is visible to a participant and ADMIN reply reac
         : { id: 'review-1', employeeId: 5, status: 'open', participants: [{ userId: 5 }, { userId: 6 }] },
     },
     terminalFiscalReviewMessage: {
-      create: async ({ data }: any) => { const row = { id: `message-${messages.length + 1}`, ...data }; messages.push(row); return row; },
+      create: async ({ data }: any) => { const row = { id: `message-${messages.length + 1}`, ...data, author: data.authorId === 1 ? {name:'Администратор',payrollName:'Кештова Бэла'} : {name:'Второй сотрудник',payrollName:null} }; messages.push(row); return row; },
     },
     adminInboxEvent: {
       create: async ({ data }: any) => { const row = { id: `event-${events.length + 1}`, ...data }; events.push(row); return row; },
@@ -575,7 +575,8 @@ test('shared shift conversation is visible to a participant and ADMIN reply reac
   await addEmployeeTerminalFiscalReviewMessage({ prisma: db as PrismaClient, reviewId: 'review-1', employeeId: 5, body: 'Нужно уточнить продажу.' });
   assert.equal(events.length, 1);
   assert.equal(events[0].type, 'terminal_fiscal_review.employee_message');
-  assert.match(events[0].body, /Сотрудники Розницы/);
+  assert.equal(events[0].title, 'Второй сотрудник · сообщение по чеку');
+  assert.equal(events[0].body, 'Нужно уточнить продажу.');
   assert.equal(receipts.length, 1);
   assert.equal(deliveries.length, 0);
   assert.equal(notifications.length, 0);
@@ -586,6 +587,7 @@ test('shared shift conversation is visible to a participant and ADMIN reply reac
   assert.deepEqual(notifications.map((item) => item.userId), [5, 6]);
   assert.equal(notifications[0].reviewId, 'review-1');
   assert.equal(notifications[0].kind, 'terminal_fiscal_review_reply');
+  assert.equal(notifications[0].body,'Кештова Бэла: Проверьте журнал продаж.');
 });
 
 test('covered payment renders as completed even before its review-status refresh',()=>{
