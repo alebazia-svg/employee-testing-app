@@ -228,6 +228,11 @@ export default function ProcurementPaymentCalendarClient({
   checkedAt,
   sourceError,
   sourceRefreshing = false,
+  planningDisplayAvailable = false,
+  planningDisplayAt = '',
+  balancesDisplayAt = '',
+  balancesRefreshing = false,
+  balancesUnavailable = false,
   plansSourceError = false,
   evidenceSourceError,
   managerMappingError,
@@ -251,6 +256,11 @@ export default function ProcurementPaymentCalendarClient({
   checkedAt: string;
   sourceError: string;
   sourceRefreshing?: boolean;
+  planningDisplayAvailable?: boolean;
+  planningDisplayAt?: string;
+  balancesDisplayAt?: string;
+  balancesRefreshing?: boolean;
+  balancesUnavailable?: boolean;
   plansSourceError?: boolean;
   evidenceSourceError: boolean;
   managerMappingError: boolean;
@@ -342,7 +352,7 @@ export default function ProcurementPaymentCalendarClient({
   const newPaymentOrders = ordersForRequest(planningOrders, todayKey).filter(order => !existingPlanForOrder(order));
   const activeOrderRefs = workingPlans.flatMap(plan => plan.orderRefs);
   const workingCatalogue = procurementWorkingOrders(missingOrders, todayKey, activeOrderRefs);
-  const reviewOrders = Object.entries(supplierDebtError ? {} : supplierBalances)
+  const reviewOrders = Object.entries(supplierDebtError && !planningDisplayAvailable ? {} : supplierBalances)
     .filter(([,balance]) => supplierPosition(balance) === 'review' || supplierPosition(balance) === 'debt' && balance.debt >= MIN_SUGGESTED_PAYMENT_RUB)
     .map(([supplierPartner,balance])=>({supplierPartner,balance}))
     .sort((a,b)=> Number(supplierPosition(a.balance)==='review')-Number(supplierPosition(b.balance)==='review') || b.balance.debt-a.balance.debt || a.supplierPartner.localeCompare(b.supplierPartner,'ru'));
@@ -361,11 +371,11 @@ export default function ProcurementPaymentCalendarClient({
   const reservesUnavailable = basisPreview || plansSourceError || evidenceSourceError || unverifiedPaymentView;
   const plannedUsdt = reservesUnavailable || ownUsdtReserve == null || otherUsdtReserve == null
     ? null : ownUsdtReserve + otherUsdtReserve;
-  const freeQr = reservesUnavailable || accountableBalance.error || accountableBalance.balance == null ? null : accountableBalance.balance - plannedQr;
-  const freeUsdt = usdtBalance.error || usdtBalance.balance == null || plannedUsdt == null
+  const freeQr = balancesRefreshing || balancesUnavailable || reservesUnavailable || accountableBalance.error || accountableBalance.balance == null ? null : accountableBalance.balance - plannedQr;
+  const freeUsdt = balancesRefreshing || balancesUnavailable || usdtBalance.error || usdtBalance.balance == null || plannedUsdt == null
     ? null : usdtBalance.balance - plannedUsdt;
   const otherEditReserve=usdtReservedByPlans(activePlans.filter(plan=>plan.id!==editingId),referenceUsdtRate);
-  const editAvailableUsdt=reservesUnavailable||usdtBalance.error||usdtBalance.balance==null||otherUsdtReserve==null||otherEditReserve==null?null:usdtBalance.balance-otherUsdtReserve-otherEditReserve;
+  const editAvailableUsdt=balancesRefreshing||balancesUnavailable||reservesUnavailable||usdtBalance.error||usdtBalance.balance==null||otherUsdtReserve==null||otherEditReserve==null?null:usdtBalance.balance-otherUsdtReserve-otherEditReserve;
   const groupedPlans = useMemo(() => {
     const groups = new Map<string, Plan[]>();
     [...workingPlans]
@@ -766,11 +776,13 @@ export default function ProcurementPaymentCalendarClient({
         </div>
       </section>
 
-      {!planningBlocked && reviewOrders.length > 0 ? (
+      {sourceRefreshing && !planningDisplayAvailable && supplierDebtError ? <section className="rounded-2xl border border-slate-200 bg-white p-4" aria-busy="true"><h2 className="text-lg font-black">Запланировать оплату</h2><p className="mt-2 text-sm text-slate-500">Загружаем поставщиков и заказы…</p></section> : null}
+      {reviewOrders.length > 0 && (!planningBlocked || planningDisplayAvailable) ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" inert={formOpen || undefined} aria-hidden={formOpen || undefined}>
           <div className="flex flex-col gap-1 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
             <div>
               <h2 className="text-lg font-black text-slate-900">Запланировать оплату</h2>
+              {planningDisplayAt ? <p className="mt-1 text-xs text-slate-500">Данные на {displayCheckedAt(planningDisplayAt)}{supplierDebtError ? sourceRefreshing ? ' · обновляем…' : ' · обновление не удалось' : ''}</p> : null}
             </div>
             {reviewOrders.length ? (
               <p className="shrink-0 text-xs font-bold text-slate-500">
@@ -798,7 +810,7 @@ export default function ProcurementPaymentCalendarClient({
                   </div>
                   <button
                     type="button"
-                    disabled={supplierPosition(order.balance)==='review'}
+                    disabled={supplierPosition(order.balance)==='review' || (planningBlocked && !workingPlans.some(plan=>plan.supplierPartner===order.supplierPartner))}
                     onClick={() => { const existing = workingPlans.find(plan=>plan.supplierPartner===order.supplierPartner); if (existing) editPlan(existing); else openNew(order.supplierPartner, [`debt:${order.supplierPartner}`]); }}
                     className="procurement-secondary-action inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 transition"
                   >
@@ -1031,8 +1043,8 @@ export default function ProcurementPaymentCalendarClient({
             <div className={`${compact ? 'mt-3' : 'mt-4'} grid gap-3`}>
               <SummaryMetric
                 label="Долг поставщикам по 1С"
-                value={mappingBlocked || supplierDebtError || readOnlyPreview?.debtTotal === null ? "—" : rub.format(readOnlyPreview?.debtTotal ?? positionSummary.debt)}
-                hint={positionSummary.reviewCount ? `Без ${positionSummary.reviewCount} поставщиков: долг не подтверждён` : ''}
+                value={mappingBlocked || (supplierDebtError && !planningDisplayAvailable) || readOnlyPreview?.debtTotal === null ? "—" : rub.format(readOnlyPreview?.debtTotal ?? positionSummary.debt)}
+                hint={[planningDisplayAt ? `Данные на ${displayCheckedAt(planningDisplayAt)}${supplierDebtError ? sourceRefreshing ? ' · обновляем…' : ' · обновление не удалось' : ''}` : '',positionSummary.reviewCount ? `Без ${positionSummary.reviewCount} поставщиков: долг не подтверждён` : ''].filter(Boolean).join(' · ')}
               />
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
@@ -1047,6 +1059,7 @@ export default function ProcurementPaymentCalendarClient({
 
             <div className={`${compact ? 'mt-3 pt-3' : 'mt-4 pt-4'} border-t border-slate-200`}>
               <h3 className="text-sm font-black text-slate-900">Остатки касс</h3>
+              {balancesRefreshing || balancesUnavailable || balancesDisplayAt ? <p className="mt-1 text-xs text-slate-500" role="status">{balancesDisplayAt ? `Данные на ${displayCheckedAt(balancesDisplayAt)}` : balancesRefreshing ? 'Загружаем остатки' : 'Остатки недоступны'}{balancesRefreshing && balancesDisplayAt ? ' · обновляем…' : balancesUnavailable && balancesDisplayAt ? ' · обновление не удалось' : ''}</p> : null}
               <div className={compact ? 'mt-2 space-y-2' : 'mt-3 space-y-3'}>
                 <BalanceSummary
                   title="QR · рубли"
@@ -1075,6 +1088,11 @@ export default function ProcurementPaymentCalendarClient({
       </div>
     </div>
   );
+}
+
+function displayCheckedAt(value:string) {
+  const date=new Date(value);
+  return Number.isFinite(date.getTime())?new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'}).format(date):'—';
 }
 
 function SummaryMetric({ label, value, hint }: { label: string; value: string | number; hint?: string }) {

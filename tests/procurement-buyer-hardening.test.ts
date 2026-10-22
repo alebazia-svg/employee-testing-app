@@ -184,6 +184,25 @@ test('compact calendar header omits the planning subtitle in both tabs',async()=
     assert.match(html,/История оплат/);
   }
 });
+test('saved planning and cash remain visible during refresh without enabling a new payment or spendable balance',async()=>{
+  const props={...buyerReviewScenario('lifecycle','2026-10-22')!,basisPreview:false,initialPlans:[],
+    sourceRefreshing:true,sourceError:'SOURCE_LOADING',supplierDebtError:true,evidenceSourceError:true,
+    planningDisplayAvailable:true,planningDisplayAt:'2026-10-22T10:00:00Z',balancesDisplayAt:'2026-10-22T10:00:00Z',balancesRefreshing:true,
+    supplierBalances:{'Сохранённый поставщик':{debt:10000,advance:0,closingBalance:10000,reviewRequired:false}},
+    usdtBalance:{balance:1250,checkedAt:'2026-10-22T10:00:00Z',sourceLabel:'Test',error:''}};
+  const html=await render(props);
+  assert.match(html,/Сохранённый поставщик/);assert.match(html,/Запланировать оплату/);
+  assert.match(html,/Данные на/);assert.match(html,/обновляем/);
+  assert.doesNotMatch(html,/>Добавить оплату</);
+  assert.equal((html.match(/>Свободно<\/p><p[^>]*>—<\/p>/g)||[]).length,2);
+  assert.match(html,/<button type="button" disabled=""[^>]*>[^]*?Запланировать<\/button>/);
+  const failed=await render({...props,sourceRefreshing:false,balancesRefreshing:false,balancesUnavailable:true});
+  assert.match(failed,/Сохранённый поставщик/);assert.match(failed,/обновление не удалось/);
+});
+test('first opening reserves a visible planning block instead of an unexplained empty gap',async()=>{
+  const html=await render({...buyerReviewScenario('lifecycle','2026-10-22')!,initialPlans:[],sourceRefreshing:true,sourceError:'SOURCE_LOADING',supplierDebtError:true,planningDisplayAvailable:false,balancesRefreshing:true});
+  assert.match(html,/Загружаем поставщиков и заказы/);assert.match(html,/Загружаем остатки/);
+});
 test('history tab retains the same summary and hides planning actions; current is the default',async()=>{
   const props={...buyerReviewScenario('lifecycle','2026-09-29')!,basisPreview:false,supplierDebtError:false};
   const current=await render(props);
