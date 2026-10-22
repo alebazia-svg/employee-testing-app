@@ -49,3 +49,11 @@ export function buildScheduleMonthRange(monthKey: string) {
     dates: buildDateRange(utcDateKey(start), days),
   };
 }
+
+// Initial home data covers the visible month as well as the upcoming-days view.
+export function buildInitialScheduleRange(today: string) {
+  const monthKey = scheduleMonthKeyFromDate(today);
+  const month = monthKey ? buildScheduleMonthRange(monthKey) : null;
+  if (!month) throw new Error('Invalid schedule date');
+  return { monthKey: month.monthKey, dates: [...new Set([...month.dates, ...buildDateRange(today, 31)])].sort() };
+}

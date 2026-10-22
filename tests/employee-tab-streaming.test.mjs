@@ -3,8 +3,23 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const home = read('app/(dashboard)/employee/EmployeeTodayClient.tsx');
+const loader = read('lib/employee-home.ts');
 const client = read('app/(dashboard)/employee/payroll/PersonalPayrollClient.tsx');
 const preview = read('app/(dashboard)/admin/employees/preview/[visitId]/page.tsx');
+test('server-complete calendar is visible before background refresh, not inferred from partial rows', () => {
+  assert.ok(loader.includes('buildInitialScheduleRange(today)'));
+  assert.ok(loader.includes('initialScheduleMonth,'));
+  assert.ok(home.includes('new Set(initialScheduleMonth ? [initialScheduleMonth] : [])'));
+  assert.ok(home.includes("startVisibleSync(syncScheduleState, scheduleSyncIntervalMs)"));
+  assert.ok(!home.includes('setLoadedScheduleMonths(new Set())'));
+});
+
+test('active calendar and salary icons use copper bodies with white internal strokes', () => {
+  const navigation = read('components/EmployeeNavigation.tsx');
+  const css = read('public/pwa-copper.css');
+  assert.ok(navigation.includes('<CreditCard className=\'pwa-composition-only pwa-composition-nav-icon\''));
+  assert.ok(css.includes(':is(.employee-material-nav-icon-schedule,.employee-material-nav-icon-payroll) .pwa-composition-nav-icon :is(path,line) { stroke:#fff9eb; }'));
+});
 const panel = read('components/workday/EmployeeAttentionPanel.tsx');
 const reminder = read('components/workday/EmployeeActionReminder.tsx');
 

@@ -2,10 +2,26 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildScheduleMonthRange,
+  buildInitialScheduleRange,
   isValidScheduleDateKey,
   isValidScheduleMonthKey,
   scheduleMonthKeyFromDate,
 } from '../lib/workday-schedule';
+
+test('initial snapshot includes every calendar cell and all 31 upcoming dates', () => {
+  for (const today of ['2026-10-23', '2026-11-30', '2026-12-31', '2027-01-01', '2028-02-29']) {
+    const initial = buildInitialScheduleRange(today);
+    const month = buildScheduleMonthRange(today.slice(0, 7))!;
+    assert.equal(initial.monthKey, today.slice(0, 7));
+    for (const date of month.dates) assert.ok(initial.dates.includes(date));
+    const last = new Date(`${today}T00:00:00Z`);
+    last.setUTCDate(last.getUTCDate() + 30);
+    assert.ok(initial.dates.includes(last.toISOString().slice(0, 10)));
+    assert.equal(initial.dates.length, new Set(initial.dates).size);
+    assert.deepEqual(initial.dates, [...initial.dates].sort());
+    assert.ok(initial.dates.length <= 73);
+  }
+});
 
 test('builds the complete Monday-to-Sunday grid for a six-row month', () => {
   const range = buildScheduleMonthRange('2026-08');

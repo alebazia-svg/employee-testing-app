@@ -384,6 +384,7 @@ type Props = {
   payrollEnabled?: boolean;
   user: UserSummary;
   today: string;
+  initialScheduleMonth?: string;
   ownSchedule: ScheduleEntry[];
   departmentSchedule: ScheduleEntry[];
   departmentUsers: UserSummary[];
@@ -1227,6 +1228,7 @@ export function EmployeeTodayClient({
   payrollEnabled = false,
   user,
   today,
+  initialScheduleMonth,
   ownSchedule,
   departmentSchedule,
   departmentUsers,
@@ -1317,7 +1319,7 @@ export function EmployeeTodayClient({
   const [bulkWorkingDates, setBulkWorkingDates] = useState<Set<string>>(() => new Set());
   const [bulkScheduleConfirmOpen, setBulkScheduleConfirmOpen] = useState(false);
   const [bulkScheduleExitConfirmOpen, setBulkScheduleExitConfirmOpen] = useState(false);
-  const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set());
+  const [loadedScheduleMonths, setLoadedScheduleMonths] = useState<Set<string>>(() => new Set(initialScheduleMonth ? [initialScheduleMonth] : []));
   const [loadingScheduleMonth, setLoadingScheduleMonth] = useState<string | null>(null);
   const [pendingScheduleChange, setPendingScheduleChange] = useState<PendingScheduleChange | null>(null);
   const [vacationEditorOpen, setVacationEditorOpen] = useState(false);

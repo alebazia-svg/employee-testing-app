@@ -2,7 +2,8 @@ import { payrollFeatureState } from './payroll-features';
 import 'server-only';
 import { getEmployeeWorkdaySnapshot } from '@/lib/employee-workday-snapshot';
 import { prisma } from '@/lib/prisma';
-import { buildDateRange, getMoscowDateKey } from '@/lib/workday';
+import { getMoscowDateKey } from '@/lib/workday';
+import { buildInitialScheduleRange } from '@/lib/workday-schedule';
 import { serializeEmployeeVacation } from '@/lib/employee-vacation';
 
 function serializeScheduleEntry(entry: {
@@ -26,7 +27,7 @@ function serializeScheduleEntry(entry: {
 export async function loadEmployeeHome(user: { id: number; name: string; department: string }) {
 
   const today = getMoscowDateKey();
-  const dates = buildDateRange(today, 31);
+  const { dates, monthKey: initialScheduleMonth } = buildInitialScheduleRange(today);
 
   const [ownSchedule, departmentSchedule, departmentUsers, workdaySnapshot, ownVacations, departmentVacations] = await Promise.all([
     prisma.workScheduleEntry.findMany({
@@ -65,6 +66,7 @@ export async function loadEmployeeHome(user: { id: number; name: string; departm
     payrollEnabled: payrollFeatureState().employeeEnabled,
     user: { id: user.id, name: user.name, department: user.department },
     today: today,
+    initialScheduleMonth,
     ownSchedule: ownSchedule.map(serializeScheduleEntry),
     departmentSchedule: departmentSchedule.map(serializeScheduleEntry),
     departmentUsers: departmentUsers,

@@ -218,6 +218,7 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-ui .employee-material-nav .employee-material-tab:not(.is-active) { color:#20252a !important; }
   .employee-material-ui .employee-material-nav .employee-material-tab.is-active .pwa-composition-nav-icon { color:var(--pwa-copper) !important; }
   .employee-material-ui .employee-material-nav .employee-material-tab.is-active svg :is(circle,rect) { fill:var(--pwa-copper); stroke:var(--pwa-copper); }
+  .employee-material-ui .employee-material-nav .employee-material-tab.is-active :is(.employee-material-nav-icon-schedule,.employee-material-nav-icon-payroll) .pwa-composition-nav-icon :is(path,line) { stroke:#fff9eb; }
   .employee-material-tab > span:first-child { width:28px !important; height:28px !important; }
   .pwa-composition-nav-icon { width:26px; height:26px; }
   /* Equal navigation symbols; do not enlarge the clock independently. */

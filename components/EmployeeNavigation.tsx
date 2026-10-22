@@ -1,6 +1,6 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, Clock3 } from 'lucide-react';
+import { CalendarDays, Clock3, CreditCard } from 'lucide-react';
 import { PremiumCalendarIcon, PremiumCardIcon, PremiumClockIcon } from './PwaPreviewIcons';
 import { useEmployeePreview } from './EmployeePreviewProvider';
 import { employeeNavigation, type EmployeeSection } from '@/lib/employee-navigation';
@@ -23,10 +23,10 @@ export function EmployeeNavigation({ active, payrollEnabled, onSelect }: {
             router.push(preview ? preview.href(section.href) : section.href);
           }}
           className={cn('employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-0 px-2 text-xs font-extrabold transition', selected ? 'is-active' : 'text-slate-500')}>
-          {section.id === 'payroll' ? <Icon className='h-6 w-6' color={selected ? 'var(--portal-brand-strong)' : '#687078'} secondaryColor={selected ? 'var(--portal-brand-colleague-blue)' : '#b6babd'} secondaryOpacity={selected ? 1 : 0.82} /> : <span className={cn('relative flex h-6 w-6 items-center justify-center', `employee-material-nav-icon-${section.id}`)} aria-hidden='true'>
-            {section.id === 'day' ? <Clock3 className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : section.id === 'schedule' ? <CalendarDays className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : null}
+          <span className={cn('relative flex h-6 w-6 items-center justify-center', `employee-material-nav-icon-${section.id}`)} aria-hidden='true'>
+            {section.id === 'day' ? <Clock3 className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : section.id === 'schedule' ? <CalendarDays className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} /> : <CreditCard className='pwa-composition-only pwa-composition-nav-icon' style={{ display: 'none' }} size={23} strokeWidth={1.7} />}
             <Icon className='h-6 w-6' color={selected ? 'var(--portal-brand-strong)' : '#687078'} secondaryColor={selected ? 'var(--portal-brand-colleague-blue)' : '#b6babd'} secondaryOpacity={selected ? 1 : 0.82} />
-          </span>}<span className='employee-material-tab-label'>{section.label}</span>
+          </span><span className='employee-material-tab-label'>{section.label}</span>
         </button>;
       })}
     </div>
