@@ -86,3 +86,13 @@ export function terminalFiscalUnresolvedPeriods(operationDates: Date[], now = ne
 export function terminalFiscalShouldRunUnresolvedSweep(now = new Date()) {
   return now.getUTCMinutes() < 5;
 }
+
+export function terminalFiscalShouldEvaluateDayClosure(
+  mode: TerminalFiscalAutoRunMode,
+  period: { periodFrom: Date; periodTo: Date },
+  now = new Date(),
+) {
+  const completeDay = period.periodTo.getTime() - period.periodFrom.getTime() === 24 * 60 * 60 * 1000
+    && period.periodTo.getTime() <= moscowMidnightUtc(now).getTime();
+  return completeDay && (mode === 'previous' || terminalFiscalShouldRunUnresolvedSweep(now));
+}

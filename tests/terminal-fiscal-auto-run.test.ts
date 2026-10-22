@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod, terminalFiscalAutomaticPeriods, terminalFiscalPeriodTracksSourceHealth, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
+import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriod, terminalFiscalAutomaticPeriods, terminalFiscalPeriodTracksSourceHealth, terminalFiscalShouldEvaluateDayClosure, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
 
 test('automatic current period uses Moscow midnight and a completed five-minute bucket after source delay', () => {
   const period = terminalFiscalAutomaticPeriod('current', new Date('2026-08-13T09:28:00.000Z'));
@@ -66,6 +66,20 @@ test('unresolved reviews add unique completed days from the rolling seven-day wi
 test('rolling unresolved sweep is limited to one five-minute slot per hour', () => {
   assert.equal(terminalFiscalShouldRunUnresolvedSweep(new Date('2026-08-13T09:02:00.000Z')), true);
   assert.equal(terminalFiscalShouldRunUnresolvedSweep(new Date('2026-08-13T09:07:00.000Z')), false);
+});
+
+test('completed-day closure is evaluated hourly in current mode and on every final run', () => {
+  const period = {
+    periodFrom: new Date('2026-09-08T21:00:00.000Z'),
+    periodTo: new Date('2026-09-09T21:00:00.000Z'),
+  };
+  assert.equal(terminalFiscalShouldEvaluateDayClosure('current', period, new Date('2026-10-22T09:02:00.000Z')), true);
+  assert.equal(terminalFiscalShouldEvaluateDayClosure('current', period, new Date('2026-10-22T09:07:00.000Z')), false);
+  assert.equal(terminalFiscalShouldEvaluateDayClosure('previous', period, new Date('2026-10-22T09:07:00.000Z')), true);
+  assert.equal(terminalFiscalShouldEvaluateDayClosure('previous', {
+    periodFrom: period.periodFrom,
+    periodTo: new Date('2026-09-09T12:00:00.000Z'),
+  }, new Date('2026-10-22T09:07:00.000Z')), false);
 });
 
 test('historical unresolved days rotate one per hourly sweep without dropping recent reviews', () => {

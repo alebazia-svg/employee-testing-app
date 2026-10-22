@@ -1,7 +1,10 @@
 import { prisma } from '../lib/prisma';
-import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods, terminalFiscalPeriodTracksSourceHealth, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
+import { parseTerminalFiscalAutoRunCli, terminalFiscalAutomaticPeriods, terminalFiscalPeriodTracksSourceHealth, terminalFiscalShouldEvaluateDayClosure, terminalFiscalShouldRunUnresolvedSweep, terminalFiscalUnresolvedPeriods } from '../lib/terminal-fiscal-auto-run';
 import { runTerminalFiscalHistoricalDryRun } from '../lib/terminal-fiscal-runner';
 import { syncTerminalFiscalEmployeeReviews } from '../lib/terminal-fiscal-employee-review';
+import { loadDailyFiscalReport } from '../lib/terminal-fiscal-daily-report-loader';
+import { resolveTerminalFiscalReviewsForDay, terminalFiscalDayClosureDecision } from '../lib/terminal-fiscal-day-closure';
+import { getMoscowDateKey } from '../lib/workday';
 
 async function main() {
   const options = parseTerminalFiscalAutoRunCli(process.argv.slice(2));
@@ -19,6 +22,7 @@ async function main() {
     return;
   }
   const results = [];
+  const dayClosures = [];
   for (const period of periods) {
     const reviewContexts: NonNullable<Awaited<ReturnType<typeof runTerminalFiscalHistoricalDryRun>>['employeeReviewContext']>[] = [];
     const mappings = await prisma.terminalFiscalMapping.findMany({
@@ -66,6 +70,26 @@ async function main() {
         });
       }
     }
+    if (options.persist && terminalFiscalShouldEvaluateDayClosure(options.mode, period, now)) {
+      const day = getMoscowDateKey(period.periodFrom);
+      const report = await loadDailyFiscalReport(day);
+      const decision = terminalFiscalDayClosureDecision({
+        configurationComplete: report.configurationComplete,
+        nativeFiscalComplete: report.nativeFiscalComplete,
+        nativeFiscalKopecks: report.nativeFiscalKopecks,
+        ofdComplete: report.complete.ofd,
+        ofdKopecks: report.total.ofdKopecks,
+        settlement: report.settlement,
+      });
+      const resolution = decision.close
+        ? await resolveTerminalFiscalReviewsForDay(prisma, {
+          from: period.periodFrom,
+          to: period.periodTo,
+          resolvedAt: now,
+        })
+        : { resolved: 0, notificationsCancelled: 0 };
+      dayClosures.push({ day, ...decision, ...resolution });
+    }
   }
   process.stdout.write(`${JSON.stringify({
     ok: true,
@@ -73,6 +97,7 @@ async function main() {
     persisted: options.persist,
     periodCount: periods.length,
     results,
+    dayClosures,
   })}\n`);
 }
 

@@ -3,12 +3,17 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, TerminalMapping } from './terminal-fiscal-matching';
+import {
+  TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED,
+  terminalFiscalReviewHasFinalResolution,
+} from './terminal-fiscal-day-closure';
 
 // Temporary pilot policy. Returning to automatic delivery requires an owner decision.
 export const TERMINAL_FISCAL_ADMIN_FIRST = true;
 const TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS = 20 * 60_000;
 export const fiscalApprovalKey = (id: string) => `terminal-fiscal-review:${id}:admin-approved`;
 export const fiscalTestPaymentKey = (id: string) => `terminal-fiscal-review:${id}:test-payment`;
+export const fiscalDayTotalResolutionKey = (id: string) => `terminal-fiscal-review:${id}:day-total-reconciled`;
 
 type ProposedUser = { id: number; name: string };
 export type FiscalProposedRecipients = {
@@ -31,6 +36,10 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
   if (!Number.isFinite(at.getTime())) return;
   await db.$transaction(async (tx) => {
     const existing = await tx.terminalFiscalEmployeeReview.findUnique({ where: { reviewKey } });
+    if (existing && terminalFiscalReviewHasFinalResolution(existing)) {
+      await tx.workdayNotification.updateMany({ where: { reviewId: existing.id, status: 'pending' }, data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null } });
+      return;
+    }
     const markedAsTest = existing && await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalTestPaymentKey(existing.id) } });
     if (markedAsTest) {
       if (existing.status !== 'resolved') await tx.terminalFiscalEmployeeReview.update({ where: { id: existing.id }, data: { status: 'resolved', resolvedAt: existing.resolvedAt ?? now, lastCheckedAt: now } });
@@ -186,5 +195,45 @@ export async function dismissFiscalReviewAsTestPayment(db: PrismaClient, id: str
       update: {},
     });
     return { resolvedAt: now };
+  });
+}
+
+export async function dismissFiscalReviewAsReconciledDay(db: PrismaClient, id: string, adminId: number) {
+  return db.$transaction(async (tx) => {
+    const admin = await tx.user.findFirst({ where: { id: adminId, role: 'ADMIN', isActive: true }, select: { id: true } });
+    if (!admin) throw new Error('FORBIDDEN');
+    const review = await tx.terminalFiscalEmployeeReview.findUnique({ where: { id } });
+    if (!review) throw new Error('REVIEW_NOT_AVAILABLE');
+    if (terminalFiscalReviewHasFinalResolution(review)) return { resolvedAt: review.resolvedAt, alreadyResolved: true };
+    if (review.status === 'resolved') throw new Error('REVIEW_NOT_AVAILABLE');
+    const now = new Date();
+    await tx.terminalFiscalEmployeeReview.update({
+      where: { id },
+      data: {
+        status: 'resolved',
+        reasonCode: TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED,
+        resolvedAt: now,
+        lastCheckedAt: now,
+      },
+    });
+    await tx.workdayNotification.updateMany({
+      where: { reviewId: id, status: 'pending' },
+      data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
+    });
+    await tx.adminInboxEvent.upsert({
+      where: { eventKey: fiscalDayTotalResolutionKey(id) },
+      create: {
+        eventKey: fiscalDayTotalResolutionKey(id),
+        type: 'terminal_fiscal_review.day_total_reconciled',
+        title: 'Проверка закрыта после сверки дня',
+        body: `Администратор ${adminId} подтвердил сверку итогов дня для операции ${money(review.amountKopecks)}.`,
+        href: `/admin/workday/payment-checks/${id}`,
+        sourceType: 'terminal_fiscal_review',
+        sourceId: id,
+        occurredAt: now,
+      },
+      update: {},
+    });
+    return { resolvedAt: now, alreadyResolved: false };
   });
 }

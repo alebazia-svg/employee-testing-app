@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { stageFiscalAdminReview, approveFiscalReview, fiscalApprovalKey, fiscalProposedRecipients } from '../lib/terminal-fiscal-admin-gate';
+import { stageFiscalAdminReview, approveFiscalReview, dismissFiscalReviewAsReconciledDay, fiscalApprovalKey, fiscalDayTotalResolutionKey, fiscalProposedRecipients } from '../lib/terminal-fiscal-admin-gate';
+import { TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED } from '../lib/terminal-fiscal-day-closure';
 import type { MatchingAuditRecord } from '../lib/terminal-fiscal-matching';
 
 function fixture() {
@@ -74,6 +75,23 @@ test('confirmed match resolves staged review without employee delivery', async (
   const f = fixture(); await stageFiscalAdminReview(f.db, f.record);
   await stageFiscalAdminReview(f.db, { ...f.record, status: 'confirmed' });
   assert.equal(f.reviews[0].status, 'resolved'); assert.equal(f.notifications.length, 0);
+});
+
+test('owner-confirmed day total closes the card permanently and records the decision once', async () => {
+  const f = fixture();
+  await stageFiscalAdminReview(f.db, f.record);
+  const id = f.reviews[0].id;
+  const first = await dismissFiscalReviewAsReconciledDay(f.db, id, 1);
+  assert.equal(first.alreadyResolved, false);
+  assert.equal(f.reviews[0].status, 'resolved');
+  assert.equal(f.reviews[0].reasonCode, TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED);
+  assert.equal(f.events.filter((event) => event.eventKey === fiscalDayTotalResolutionKey(id)).length, 1);
+  await stageFiscalAdminReview(f.db, { ...f.record, evaluatedAt: '2026-09-04T18:00:00Z' });
+  assert.equal(f.reviews[0].status, 'resolved');
+  assert.equal(f.reviews[0].reasonCode, TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED);
+  assert.equal(f.events.filter((event) => event.eventKey === fiscalDayTotalResolutionKey(id)).length, 1);
+  const second = await dismissFiscalReviewAsReconciledDay(f.db, id, 1);
+  assert.equal(second.alreadyResolved, true);
 });
 
 function routingDb(input: {

@@ -96,6 +96,7 @@ export async function loadFiscalReviewData(id:string,currentUserId:number) {
     recipientLabel:review.assignmentScope==='admin_gate'?'Сотрудникам не передано':shared?review.participants.map(p=>p.user.name).join(', '):review.employee.name,
     showDiscussion,chain:chain??null,chainUnavailable,
     canApprove:pendingAdmin&&!match?.oneCSourceRef&&match?.reasonCode!=='ONE_C_POSSIBLE_SPLIT_SALE'&&!isFiscalChainReason(match?.reasonCode??'')&&!isFiscalChainReason(review.reasonCode),
+    canReconcileDay:pendingAdmin&&!isFiscalChainReason(match?.reasonCode??review.reasonCode),
     canTest:pendingAdmin&&!match?.oneCSourceRef,
     hasOneCCheck:Boolean(match?.oneCSourceRef),
     reasonCode:match?.reasonCode??review.reasonCode,

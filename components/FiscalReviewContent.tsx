@@ -3,6 +3,7 @@ import { CheckCircle2, AlertCircle } from 'lucide-react';
 import type {FiscalReviewData} from '@/lib/fiscal-review-data';
 import {FiscalAdminApproval} from './FiscalAdminApproval';
 import {FiscalTestPaymentButton} from './FiscalTestPaymentButton';
+import {FiscalDayReconciledButton} from './FiscalDayReconciledButton';
 import {TerminalFiscalChainEvidence} from './TerminalFiscalChainEvidence';
 import {TerminalFiscalReviewConversation} from './TerminalFiscalReviewConversation';
 export function FiscalReviewContent({detail:d,onChanged,onBusyChange}:{detail:FiscalReviewData;onChanged?:()=>void;onBusyChange?:(busy:boolean)=>void}) {
@@ -39,6 +40,7 @@ export function FiscalReviewContent({detail:d,onChanged,onBusyChange}:{detail:Fi
   {d.chain&&<TerminalFiscalChainEvidence chain={d.chain}/>}
   {d.chainUnavailable&&<p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">Состав цепочки пока не подтверждён. Проверка остаётся открытой.</p>}
   {d.canApprove&&!waiting&&<FiscalAdminApproval reviewId={d.id} recipients={d.proposed.users} primary={d.proposed.primary} confidence={d.proposed.confidence} onDone={onChanged} onBusyChange={onBusyChange}/>}
+  {d.canReconcileDay&&<FiscalDayReconciledButton reviewId={d.id} onDone={onChanged} onBusyChange={onBusyChange}/>}
   {d.canTest&&<FiscalTestPaymentButton reviewId={d.id} onDone={onChanged} onBusyChange={onBusyChange}/>}
   {d.pendingAdmin&&d.hasOneCCheck&&<p className="text-sm text-stone-600">Документ в 1С есть. Проверьте расхождение; просьба пробить повторный чек не отправляется.</p>}
   {!d.pendingAdmin&&!d.resolved&&<p className="text-xs text-stone-500">Передано: {d.recipientLabel}</p>}
