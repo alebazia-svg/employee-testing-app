@@ -5,7 +5,7 @@ import {CalendarDays,ChevronRight,Search,X} from 'lucide-react';
 import type {ProcurementListItem} from './ProcurementSplitList';
 import './procurement-admin-list.css';
 
-type Item=ProcurementListItem&{dateLabel?:string;basis?:string;method?:string;priority?:string};
+type Item=ProcurementListItem&{dateLabel?:string;basis?:string;method?:string;priority?:string;amountCaption?:string};
 type Props={items:Item[];renderDetail:(id:string)=>ReactNode;renderFooter?:(id:string,close:()=>void)=>ReactNode;empty?:string;dirty?:boolean;busy?:boolean;onClose?:()=>void;onOpen?:(id:string)=>void;error?:string;history?:boolean;searchQuery?:string;openItemId?:string};
 
 export function ProcurementAdminList({items,renderDetail,renderFooter,empty='Записей нет.',dirty=false,busy=false,onClose,onOpen,error,history=false,searchQuery,openItemId}:Props){
@@ -27,7 +27,7 @@ export function ProcurementAdminList({items,renderDetail,renderFooter,empty='З�
         <button type="button" className="pam-row" aria-label={`Подробности оплаты ${item.name}`} onClick={()=>{setSelected(item.id);onOpen?.(item.id);}}>
           <span className="pam-date" data-priority={item.priority}><CalendarDays size={16}/>{item.dateLabel||item.meta}</span>
           <span className="pam-supplier"><strong>{item.name}</strong><small>{item.basis||item.search}</small>{item.warning?<small className="pam-warning" data-neutral={item.warningTone==='neutral'}>{item.warning}</small>:null}</span>
-          <strong className="pam-amount">{item.amount}</strong><span className="pam-method">{item.method||''}</span><ChevronRight className="pam-chevron" size={17}/>
+          <strong className="pam-amount">{item.amountCaption?<span className="block text-xs font-medium text-slate-500">{item.amountCaption}</span>:null}{item.amount}</strong><span className="pam-method">{item.method||''}</span><ChevronRight className="pam-chevron" size={17}/>
         </button>
       </React.Fragment>)}
       {!filtered.length?<p className="pam-empty">{query?'Ничего не найдено. Измените поиск.':empty}</p>:null}

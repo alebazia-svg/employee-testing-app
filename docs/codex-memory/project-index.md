@@ -29,6 +29,11 @@ project from scratch.
 
 ## Read First By Task
 
+- Funding/date integration released 1.13.4 / `803a0f7`:
+  `procurement-funding-integration-20261022.md`. Buyer rescheduling, ADMIN deferral,
+  UI/forecast and conservative QR transfer matching locally verified. Server,
+  public metadata and authenticated ADMIN verified; live QR mutations not tested.
+
 - PWA schedule/calendar and bottom navigation: `pwa-schedule-release-20261022.md`
   (released 1.12.1 / `b699238`; stronger working-day green, readable calendar,
   compact controls and scroll protection; physical iPhone recheck pending).

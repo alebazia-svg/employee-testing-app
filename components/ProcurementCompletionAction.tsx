@@ -2,7 +2,7 @@
 import React,{useEffect,useId,useRef,useState} from 'react';
 import {useRouter} from 'next/navigation';
 type Quote={quote:string;remainingAmount:number;remainingForeignAmount:number|null};
-export function ProcurementCompletionAction({id,supplier,reopen=false,preview}:{id:string;supplier:string;reopen?:boolean;preview?:{quote:Quote;onSave:(reason:string)=>void}}){
+export function ProcurementCompletionAction({id,supplier,reopen=false,preview,disabled=false}:{id:string;supplier:string;reopen?:boolean;disabled?:boolean;preview?:{quote:Quote;onSave:(reason:string)=>void}}){
   const router=useRouter(),dialog=useRef<HTMLDialogElement>(null),title=useId();
   const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[quote,setQuote]=useState<Quote|null>(null),[reason,setReason]=useState('');
   const action=reopen?'REOPEN':'COMPLETE';
@@ -14,7 +14,7 @@ export function ProcurementCompletionAction({id,supplier,reopen=false,preview}:{
     if(preview){preview.onSave(reason);setOpen(false);setBusy(false);return;}
     try{const r=await fetch(`/api/admin/procurement/payment-plans/${id}/completion`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,quote:quote.quote,reason})});const data=await r.json();if(!r.ok)throw Error(data.error);setOpen(false);router.refresh();}catch(e){setError(e instanceof Error?e.message:'Не удалось сохранить.');setQuote(null);}finally{setBusy(false);}}
   return <>
-    <button type="button" onClick={start} className="mt-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">{reopen?'Вернуть в активные':'Завершить без доплаты'}</button>
+    <button type="button" disabled={disabled} onClick={start} className="mt-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">{reopen?'Вернуть в активные':'Завершить без доплаты'}</button>
     <dialog ref={dialog} aria-labelledby={title} onCancel={e=>{e.preventDefault();if(!busy)setOpen(false);}} className="m-auto w-[calc(100%_-_2rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-slate-950 shadow-2xl backdrop:bg-slate-900/40">
       <h2 id={title} className="text-xl font-black">{reopen?'Вернуть заявку в активные?':'Завершить без доплаты?'}</h2>
       <p className="mt-2 text-sm font-bold">{supplier}</p>

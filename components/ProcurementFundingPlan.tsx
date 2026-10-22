@@ -5,7 +5,7 @@ import {fundingScenario, ownerAmount, RENT_RESERVE_MINOR, type FundingEvidence, 
 import './procurement-funding-plan.css';
 
 const rub = (n: number) => n.toLocaleString('ru-RU', {maximumFractionDigits: 2}) + '\u00a0₽';
-const day = (s: string) => new Date(s.slice(0, 10) + 'T12:00:00Z').toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', timeZone: 'Europe/Moscow'});
+const day = (s: string) => s?new Date(s.slice(0, 10) + 'T12:00:00Z').toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', timeZone: 'Europe/Moscow'}):'Дата уточняется';
 const method = (s: string) => ({USDT: 'Обмен на USDT', CNY: 'Перевод в юанях', CASH: 'Наличные', ACCOUNTABLE_QR: 'Оплата по QR', BANK: 'Перевод на карту'}[s] ?? 'Способ оплаты не определён');
 function Steps({steps}: {steps: FundingStep[]}) {
   return <ol className="fp-steps">{steps.map((s, i) => <li key={s.source + s.date + i}>
@@ -41,12 +41,12 @@ export default function Funding({data, stale=false, refreshing=false}: {data: Fu
     <div className="fp-main">
       <div className="fp-left">
         {nearest.length ? <section className="fp-card fp-priority">
-          <header><div className="fp-priority-date"><CalendarDays size={20}/><h3>{nearestDate!.slice(0, 10) < data.asOf ? 'Срок прошёл · ' : 'Ближайшая выплата · '}{day(nearestDate!)}</h3></div><span className="fp-badge fp-attention">{nearestUnknown ? 'Нужны данные' : nearestGap > 0 ? 'Осталось подобрать источник' : 'Вариант подготовки'}</span></header>
+          <header><div className="fp-priority-date"><CalendarDays size={20}/><h3>{nearestDate ? (nearestDate.slice(0, 10) < data.asOf ? 'Срок прошёл · ' : 'Ближайшая выплата · ') : ''}{day(nearestDate!)}</h3></div><span className="fp-badge fp-attention">{nearestUnknown ? 'Нужны данные' : nearestGap > 0 ? 'Осталось подобрать источник' : 'Вариант подготовки'}</span></header>
           {nearest.map(r => <div className="fp-nearest" key={r.id}>
             <div className="fp-payment-head"><label><input type="checkbox" aria-label={'Включить ' + r.supplier} checked onChange={e => toggle(r.id, e.target.checked)}/><span><b>{r.supplier}</b><small>{method(r.paymentMethod)}{r.foreignAmount && r.paymentMethod === 'USDT' ? ' · ' + r.foreignAmount.toLocaleString('ru-RU') + ' USDT' : ''}</small></span></label>
               <div className="fp-payment-amount"><strong>{r.need === null ? 'Сумма не подтверждена' : r.walletCovered ? r.foreignAmount?.toLocaleString('ru-RU') + '\u00a0USDT' : rub(r.need)}</strong><small>{r.walletCovered ? 'Из кассы USDT' : ['USDT', 'CNY'].includes(r.paymentMethod) ? 'Рублёвый ориентир заявки' : 'Подготовить к оплате'}</small></div>
             </div>
-            {r.unknown ? <p className="fp-warning">{r.blockedByEarlier ? 'Сначала нужен расчёт более ранней заявки: иначе одни деньги могут быть предложены дважды.' : 'Для этой заявки не подтверждены сумма или остаток нужной валюты. Распределение не выполнено.'}</p> : <>
+            {r.unknown ? <p className="fp-warning">{!r.plannedDate?'Оплата отложена без даты. Обязательство сохранено; для распределения денег определите срок или исключите заявку только из этого сценария.':r.blockedByEarlier ? 'Сначала нужен расчёт более ранней заявки: иначе одни деньги могут быть предложены дважды.' : 'Для этой заявки не подтверждены сумма или остаток нужной валюты. Распределение не выполнено.'}</p> : <>
               <div className="fp-step-label">{includeManagerCash ? 'Вариант с кассами менеджеров' : 'Основной вариант'}</div><Steps steps={r.steps}/>
               {r.gap! > 0 && <div className="fp-shortfall"><span>Подобрать источник ещё на</span><strong>{rub(r.gap!)}</strong></div>}
             </>}

@@ -63,6 +63,10 @@ export async function preservePaymentEvidenceViews(plans: EvidenceContinuityPlan
     if (!current) continue;
     const saved = savedPaymentEvidence(plan);
     const superseded = !!saved && Date.parse(saved.readStartedAt) > readStartedAt.getTime();
+    // Transfer verification is independent of supplier-payment verification.
+    // Retain labelled previous evidence during its outage; a complete negative
+    // transfer read removes it, so reversals do not revive from the cache.
+    if(current.qrFunding?.state==='unavailable'&&saved?.evidence.qrFunding?.state==='confirmed')current.qrFunding={...saved.evidence.qrFunding,lastConfirmed:true};
     views.set(plan.id, paymentEvidenceView(plan, current, complete && !superseded, verifiedAt));
     if (options.persist === false || !complete || superseded) continue;
     const { collection, ...withoutCollection } = current;

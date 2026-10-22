@@ -22,6 +22,7 @@ import { expenseRequestMoscowCalendarDate, expenseRequestMoscowDayEnd, fetchExpe
 import { getLatestProcurementUsdtRate } from "@/lib/procurement-usdt-rate";
 import { fetchSupplierCurrencyPaymentSnapshot } from "@/lib/procurement-currency-payment-source";
 import { matchProcurementPaymentEvidence } from "@/lib/procurement-currency-payment-evidence";
+import {readQrFunding,attachQrFunding} from '@/lib/procurement-qr-funding-source';
 import { paymentEvidenceFrom } from "@/lib/procurement-ruble-payment-evidence";
 import { manualPaymentLinks } from "@/lib/procurement-manual-payment-links";
 import { paymentCompletion } from '@/lib/procurement-payment-completion';
@@ -57,6 +58,7 @@ async function readLive({user,initialPlans,generation,readOnly}:{user:Procuremen
   // Match globally so an RKO cannot independently close requests in two cabinets.
   // Only the authenticated manager's plans are serialized below.
   const plansQuery = Promise.resolve(initialPlans);
+  const qrFundingPromise=readQrFunding(initialPlans.map(p=>({...p,plannedAmount:Number(p.plannedAmount),createdAt:paymentMatchCreatedAt(p),hasPendingRevision:!!readPaymentRevision(p.oneCCashEvidence)})),todayKey);
   const cnyRatePromise = plansQuery.then(rows => getProcurementCnyRate(rows
     .filter(plan => plan.managerUserId === user.id && plan.status !== 'CANCELLED' && plan.paymentMethod !== 'USDT')
     .map(plan => ({comment:plan.condition, date:plan.createdAt, knownCny:plan.paymentMethod==='CNY', sourceLabel:'Комментарий заявки', documentNumber:plan.planCode})))).catch(() => undefined);
@@ -131,6 +133,7 @@ async function readLive({user,initialPlans,generation,readOnly}:{user:Procuremen
     currencySource?.conversions || [],
     { allowSmallRemainder: !evidenceSourceError && !plansSourceError },
   );
+  attachQrFunding(paymentEvidence,await qrFundingPromise);
   const displayEvidence = await preservePaymentEvidenceViews(allPlans, paymentEvidence,
     !evidenceSourceError && !plansSourceError, evidenceReadStartedAt, prisma.supplierPaymentPlan, new Date(), { persist: !readOnly });
   const serializedPlans = plans.map((plan) => {

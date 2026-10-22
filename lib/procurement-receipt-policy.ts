@@ -7,6 +7,7 @@ export type ReceiptPaymentPlan = {
   plannedDate?: string;
   createdAt?: string;
   evidence?: {
+    qrFunding?: import('./procurement-qr-funding').QrFunding;
     state?: string;
     verification?: string;
     issuedAmount?: number;
@@ -47,6 +48,7 @@ export function canCollectProcurementReceipt(plan: ReceiptPaymentPlan) {
 export function needsProcurementReceipt(plan: ReceiptPaymentPlan, receiptCount: number, today: string) {
   if (hasConfirmedReceiptPayment(plan)) return needsReceiptSinceRollout(plan, receiptCount);
   if (receiptCount || !canCollectQrReceiptBeforePayment(plan)) return false;
+  if (plan.evidence?.qrFunding?.state === 'confirmed') return true;
   const date = receiptPaymentDate(plan.plannedDate || '');
   // Do not manufacture tasks from undated plans or collect historic receipts.
   return Boolean(date && date >= RECEIPT_TRACKING_FROM && date <= today);
@@ -59,6 +61,15 @@ export function qrReceiptStatus(plan: ReceiptPaymentPlan, receiptCount: number, 
     return 'Чек добавлен · оформление в 1С не подтверждено';
   }
   return 'Чек добавлен · ожидает оформления в 1С';
+}
+
+/** A stage label, not financial evidence or permission to finish a request. */
+export function qrPaymentStage(plan:ReceiptPaymentPlan,receiptCount:number|null) {
+  if(!canCollectQrReceiptBeforePayment(plan)||!plan.evidence||plan.evidence.verification==='unavailable'||
+    ['MISMATCH','NEEDS_REVIEW','SOURCE_UNAVAILABLE'].includes(plan.evidence.state||''))return '';
+  if(receiptCount!==null&&receiptCount>0)return 'Ожидает расходника';
+  if(receiptCount===0&&plan.evidence.qrFunding?.state==='confirmed')return 'Ожидает чека';
+  return '';
 }
 
 export function receiptPaymentAmount(plan: ReceiptPaymentPlan & { plannedAmount: string | number }) {

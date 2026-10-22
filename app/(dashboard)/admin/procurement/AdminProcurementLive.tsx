@@ -1,6 +1,7 @@
 import { AdminProcurementUpdate } from "./AdminProcurementStream";
 import { type AdminPlans, sameAdminPlanVersions } from "@/lib/procurement-admin-plans";
 import { preservePaymentEvidenceViews } from '@/lib/procurement-evidence-continuity';
+import {readQrFunding,attachQrFunding} from '@/lib/procurement-qr-funding-source';
 
 import { prisma } from "@/lib/prisma";
 import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from "@/lib/expense-request-source";
@@ -44,6 +45,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
   const from = new Date(to);
   from.setDate(from.getDate() - 31);
   const plansQuery = Promise.resolve(initialPlans);
+  const qrFundingPromise=readQrFunding(initialPlans.map(p=>({...p,plannedAmount:Number(p.plannedAmount),createdAt:paymentMatchCreatedAt(p),hasPendingRevision:!!readPaymentRevision(p.oneCCashEvidence)})),todayKey);
   const [plansResult, managersResult, ordersResult, settlementsResult, requestsResult, balancesResult, rateResult, currencyPaymentsResult] =
     await Promise.allSettled([
       plansQuery,
@@ -103,6 +105,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
   );
   const evidenceComplete = plansResult.status === 'fulfilled' && requestSource?.complete === true &&
     currencySource?.complete === true && currencySource.rubPaymentsSupported === true;
+  attachQrFunding(paymentEvidence,await qrFundingPromise);
   const displayEvidence = await preservePaymentEvidenceViews(plans, paymentEvidence, evidenceComplete,
     evidenceReadStartedAt, prisma.supplierPaymentPlan);
   const serialized = plans.map((plan) => ({
@@ -194,7 +197,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
   if (!usdtRateReference?.rate) warnings.push("курс последней конвертации USDT");
   const forecastInput: AdminForecastInput = {
     todayKey, plansComplete: plansResult.status === 'fulfilled', ordersComplete: ordersSource?.complete === true,
-    plansWithOrderContext: plansWithOrderContext.map(({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,evidence}) => ({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,evidence:{state:evidence.state,issuedAmount:evidence.issuedAmount,paidAmount:evidence.paidAmount,remainingAmount:evidence.remainingAmount,remainingForeignAmount:evidence.remainingForeignAmount,paymentAmountNeedsConfirmation:evidence.paymentAmountNeedsConfirmation}})),
+    plansWithOrderContext: plansWithOrderContext.map(({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,oneCCashEvidence,evidence}) => ({id,status,supplierPartner,paymentMethod,plannedDate,plannedAmount,foreignAmount,oneCCashEvidence,evidence:{state:evidence.state,issuedAmount:evidence.issuedAmount,paidAmount:evidence.paidAmount,remainingAmount:evidence.remainingAmount,remainingForeignAmount:evidence.remainingForeignAmount,paymentAmountNeedsConfirmation:evidence.paymentAmountNeedsConfirmation}})),
     scopedOrders: scopedOrders.map(({supplierPartner,supplierCounterparty,orderPaymentGap})=>({supplierPartner,supplierCounterparty,orderPaymentGap})),
     managerOrders: managerOrders.map(({supplierPartner,supplierCounterparty})=>({supplierPartner,supplierCounterparty})),
     usdtBalance:{balance:usdtBalance.balance}, accountableBalance:{balance:accountableBalance.balance}, usdtRateReference,

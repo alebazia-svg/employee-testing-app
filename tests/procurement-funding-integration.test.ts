@@ -4,11 +4,32 @@ import {fundingEvidenceView,fundingSourcesComplete,retainDatedBankEvidence} from
 import {fundingScenario} from '../lib/procurement-funding-scenario';
 import type {AdminForecastInput,AdminForecastSources} from '../lib/procurement-admin-forecast';
 import {OWNER_MONEY_ACCOUNTS} from '../lib/procurement-cash-forecast-source';
+import {buildAdminProcurementForecast} from '../lib/procurement-admin-forecast';
 
 const input=():AdminForecastInput=>({todayKey:'2026-10-11',plansComplete:true,ordersComplete:true,
  plansWithOrderContext:[{id:'p',status:'APPROVED',supplierPartner:'Supplier',plannedDate:'2026-10-12',plannedAmount:'10000',foreignAmount:null,paymentMethod:'CASH',evidence:{state:'NO_EVIDENCE',issuedAmount:0,paidAmount:0}}],
  scopedOrders:[],managerOrders:[],usdtBalance:{balance:100},accountableBalance:{balance:0}});
 const source=():AdminForecastSources=>({asOf:'2026-10-11',checkedAt:'2026-10-11T15:00:00Z',history:null,owner:null,payroll:null,tbank:null,debts:null});
+
+test('deferral changes forecast timing, not outstanding obligation or approval reserve',()=>{
+ const i=input(),p=i.plansWithOrderContext[0];
+ p.evidence={state:'PARTIALLY_ISSUED',issuedAmount:2500,paidAmount:0,remainingAmount:7500};
+ const stored={date:null as string|null,comment:'',changedAt:'2026-10-11T15:00:00Z',actorId:1};
+ p.oneCCashEvidence={fundingDeferral:stored};
+ const before=JSON.stringify(i);
+ const v=fundingEvidenceView(i,source());
+ assert.equal(v.plans[0].requestedRub,'7500.00');assert.equal(v.plans[0].plannedDate,'');
+ assert.equal(fundingScenario(v,['p']).rows[0].unknown,true);
+ const undated=buildAdminProcurementForecast(i,source());
+ assert.equal(undated.debtReserveBreakdown.approvedPlansMinor,750000);
+ assert.ok(!undated.forecast30Days.rows.some(r=>r.items.some(item=>item.id==='plan:p')));
+ assert.equal(JSON.stringify(i),before);
+ stored.date='2026-10-24';
+ const dated=buildAdminProcurementForecast(i,source());
+ assert.equal(dated.debtReserveBreakdown.approvedPlansMinor,750000);
+ assert.equal(dated.forecast30Days.rows.find(r=>r.items.some(item=>item.id==='plan:p'))?.date,'2026-10-24');
+ assert.equal(p.plannedDate,'2026-10-12');
+});
 
 test('production view omits all completed and inactive plans without rematching',()=>{
  const i=input();for(const state of ['PAID_BY_ONE_C','ISSUED_BY_ONE_C','SMALL_REMAINDER_COMPLETED']){
