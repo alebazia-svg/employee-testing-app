@@ -1,6 +1,6 @@
-# Funding/date workflow — local integration, 2026-10-22
+# Funding/date workflow — released 1.13.4, 2026-10-22
 
-Status: **implementation and local acceptance complete; NOT deployed**.
+Status: **released 1.13.4; server, public metadata and authenticated ADMIN UI verified**.
 Code committed as `2e20f9b` after the owner's explicit commit-only approval.
 Owner approved moving from the native local preview to persistence and safety
 checks. This is not an approval for production fixture edits or test messages.
@@ -64,14 +64,19 @@ in `/Users/bela/Projects/portal-funding-review-20261022` on port 3141.
   still APPROVED/100000, buyer date saved 25 October. Zero push subscriptions
   and delivery rows. Test inbox notices are isolated only.
 
-## Remaining before release
+## Release gates and remaining verification limits
 
-1. Reconcile latest deployment branch (notification release independently
-   verified as 1.13.2 / 9c238dc); do not ship this older base unchanged.
-2. Obtain release direction, reread AGENTS/runbook, recheck live/branch version,
-   bump patch and rerun checks after integration. No version reserved yet.
-3. Verify live QR pairing after deploy. Physical iPhone/PWA and real employee
-   mutations were not tested; responsive checks are not device acceptance.
+1. Completed: merged latest deployment branch through 1.13.3 / db1b94a,
+   preserving notification inbox and employee inspection changes. No conflicts.
+2. Completed: owner explicitly approved release; AGENTS/runbook and live/branch
+   versions reread; package/lock updated together to 1.13.4. Final build and five
+   release metadata checks passed. Combined code previously passed 220 tests
+   plus actual PostgreSQL schedule transaction verification.
+3. Live QR pairing and real schedule mutations were not exercised: authenticated
+   ADMIN showed six pending requests, zero waiting for payment and 32 historical
+   payments. No fake production request or real business mutation was created
+   for QA. Physical iPhone/PWA remains untested; responsive local checks are not
+   physical-device acceptance.
 
 ## Completed QR and presentation increment
 
@@ -144,6 +149,42 @@ in `/Users/bela/Projects/portal-funding-review-20261022` on port 3141.
 - This note and the project-index pointer.
 
 Unrelated worktrees and dirty files were not modified. Code commit `2e20f9b`;
-documentation recorded separately. No push/deploy or production mutations.
+documentation recorded separately. Subsequent approved deployment is below;
+no manual production business-data mutations.
 Main 1C bootstrap reported production435 vs Yandex436; no 1C release preparation
 was performed. This mismatch does not establish a portal regression.
+
+## Production release record
+
+- Owner instruction: «Выпускай» (OPERATIONS APPROVAL), calendar scope only.
+- Runtime/version commit: `803a0f7799e1a05c3b79dce921521aff38238790`;
+  merged branch commit `b1c8dd1`; pushed normally to `design-local-updates`.
+- Public version **1.13.4**, build **2026-10-22T17:33:20.297Z** (20:33 Moscow).
+  Metadata revision remains null/source unknown in the existing Docker pipeline;
+  exact source identity independently checked via server Git HEAD.
+- Running image `sha256:e72975b706c981a7df73b78e2aa1c1d8a44bdc60b00cb6a06d8bad35e7094320`;
+  state running/healthy, `/api/health` returned ok.
+- Authenticated production ADMIN calendar loaded six pending requests, zero
+  waiting, 32 history; existing Tural detail and approval/edit workflow controls
+  remained available. Visible footer confirmed 1.13.4 / 22.10.2026 20:33 MSK.
+  No real financial/date/status/receipt action submitted. The deployed QR and
+  deferral transitions are covered locally, not asserted as live mutations.
+- Native macOS Terminal deployed only portal-app. No migration, 1C publication,
+  env edit, upload edit, test notification or other service restart requested.
+- Disk preflight found 13.59 GiB free. Existing owner-approved maintenance
+  verified current plus two protected rollback images, removed three eligible
+  old rollback images (pre-1.13.1, pre-1.13.0, pre-1.12.1) and 8.239 GB unused
+  build cache; free space reached 24.97 GiB, about 20 GiB after release.
+  Removed build artifacts can be rebuilt, not restored byte-for-byte from trash.
+  Containers, volumes, uploads and protected rollback images were not deleted.
+- Prior image `sha256:e176e66d1aa56791db775c181d52a7d978e629502ef67466706f491c1acd0d52`
+  tagged `portal-app:rollback-before-1.13.4`. Original deploy script did not reach
+  its final verification marker after replacement; independent follow-up verified
+  health, commit, public version, all protected image IDs, all three named volumes
+  and the read-only T-bank bind mount. No second deploy was needed.
+- After authenticated UI verification, the independent verification script ran
+  `portal-storage-maintenance --register-verified` successfully; log marker
+  `RELEASE_VERIFIED_AND_REGISTERED`. Current and two preceding images retained.
+- Local-only evidence: `/tmp/mobo-funding-deploy-1.13.4.log`,
+  `/tmp/mobo-funding-verify-1.13.4.log`,
+  `/tmp/mobo-funding-release-1.13.4.png`; not committed.
