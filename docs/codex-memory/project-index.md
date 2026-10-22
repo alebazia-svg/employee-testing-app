@@ -29,6 +29,10 @@ project from scratch.
 
 ## Read First By Task
 
+- Buyer cabinet initial loading: `procurement-buyer-loading-20261022.md` —
+  independent planning/cash/delivery/evidence streams; user-scoped saved display
+  with source dates, never an authorization or financial-validation cache.
+
 - Portal author names, profile role and request/decision wording: `portal-identity-wording-20261022.md` (released 1.13.5; real message/decision authors, surname-first owner identity, compact role).
 
 - Funding/date integration released 1.13.4 / `803a0f7`:
