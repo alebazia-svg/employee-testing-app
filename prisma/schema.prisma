@@ -1429,6 +1429,19 @@ model SalesAnalyticsRow {
   @@index([isNegative])
 }
 
+model PayrollDraftRevision {
+  id              Int      @id @default(autoincrement())
+  periodKey       String
+  revision        Int
+  requestId       String
+  payload         Json
+  createdByUserId Int
+  createdAt       DateTime @default(now())
+
+  @@unique([periodKey, revision])
+  @@unique([periodKey, requestId])
+}
+
 model PayrollFinboxRevision {
   id              Int      @id @default(autoincrement())
   periodKey       String

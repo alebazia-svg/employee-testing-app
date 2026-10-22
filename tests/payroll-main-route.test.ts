@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs';
 test('ordinary payroll route enables workspace and keeps admin authorization', () => {
   const source = readFileSync('app/(dashboard)/admin/payroll/page.tsx', 'utf8');
   assert.match(source, /admin\.role !== 'ADMIN'/);
-  assert.match(source, /<AdminPayrollPage liveWorkspace testEnvironment=/);
+  assert.match(source, /<AdminPayrollPage liveWorkspace\b/);
+  assert.match(source, /testEnvironment=/);
+  assert.match(source, /serverDraftsEnabled=\{payrollFeatureState\(\)\.draftsEnabled\}/);
   assert.match(source, /payroll-settlement-preview\.css/);
 });
 

@@ -378,6 +378,7 @@ type WorkdayCloseException = {
 };
 
 type Props = {
+  payrollEnabled?: boolean;
   user: UserSummary;
   today: string;
   ownSchedule: ScheduleEntry[];
@@ -1225,6 +1226,7 @@ function ColleagueGroup({
 }
 
 export function EmployeeTodayClient({
+  payrollEnabled = false,
   user,
   today,
   ownSchedule,
@@ -1258,7 +1260,7 @@ export function EmployeeTodayClient({
     'mobo-type': 'portal-palette-mobo portal-typography-refined',
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
-  const [activeTab, setActiveTab] = useState<Tab>('day');
+  const [activeTab, setActiveTab] = useState<Tab>(() => payrollEnabled && searchParams.get('tab') === 'schedule' ? 'schedule' : 'day');
   const visibleTabs = tabs;
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
@@ -5357,7 +5359,7 @@ export function EmployeeTodayClient({
         )}
 
         {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
-          <div className='grid grid-cols-2 gap-1'>
+          <div className={cn('grid gap-1', payrollEnabled && !preview ? 'grid-cols-3' : 'grid-cols-2')}>
             {visibleTabs.map((item) => {
               const Icon = item.icon;
               const active = activeTab === item.id || (item.id === 'day' && activeTab === 'attention');
@@ -5401,6 +5403,11 @@ export function EmployeeTodayClient({
                 </button>
               );
             })}
+            {payrollEnabled && !preview && <button type='button' onClick={() => router.push('/employee/payroll')}
+              className='employee-material-tab flex min-h-[52px] flex-col items-center justify-center gap-0 px-2 text-xs font-extrabold text-slate-500'>
+              <PremiumCardIcon className='h-6 w-6' color='#687078' secondaryColor='#b6babd' secondaryOpacity={0.82} />
+              <span className='employee-material-tab-label'>Моя зарплата</span>
+            </button>}
           </div>
         </nav>}
     </main>

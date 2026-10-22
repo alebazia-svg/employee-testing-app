@@ -6,8 +6,9 @@ import * as snapshots from '../lib/payroll-attendance-snapshot';
 import * as summaries from '../lib/payroll-attendance-summary';
 import * as sources from '../lib/payroll-attendance-source';
 
-const source = readFileSync(new URL('../app/api/admin/payroll/attendance-preview/route.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source.slice(source.indexOf('function pad')), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const source = readFileSync(new URL('../lib/payroll-attendance-refresh.ts', import.meta.url), 'utf8');
+const route = readFileSync(new URL('../app/api/admin/payroll/attendance-preview/route.ts', import.meta.url), 'utf8');
+const compiled = ts.transpileModule(source.slice(source.indexOf('function pad')) + route.slice(route.indexOf('export async function GET(')), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const employee = 'Хурзокова Лиана';
 const savedPayload = snapshots.createPayrollAttendanceSnapshotPayload({
   period: { monthIndex: 9, year: 2026, periodKey: '2026-10' }, attendanceMode: 'google-sheets', attendanceMessage: '', scheduleMode: 'google-sheets', scheduleMessage: '',
@@ -17,6 +18,7 @@ async function run(options: { denied?: boolean; appError?: boolean; googleError?
   const calls: string[] = [];
   const saved = options.noSaved ? null : { payload: savedPayload, sourceCheckedAt: new Date('2026-10-18T06:00:00Z'), updatedAt: new Date('2026-10-18T06:00:00Z') };
   const dependencies = {
+    withPayrollSourceLock: async (task: () => Promise<Response>) => task(),
     ...snapshots, ...summaries, ...sources,
     getMoscowDateKey: () => '2026-10-19',
     requireAdminApi: async () => options.denied ? { ok: false, response: Response.json({}, { status: 403 }) } : { ok: true },

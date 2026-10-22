@@ -1,0 +1,55 @@
+.payroll-phone{color:#26352f;background:#f4f6f3}.salary-content{padding:12px 18px 105px}.salary-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:18px}.salary-heading h1{font-size:24px;font-weight:800;letter-spacing:-.7px}.salary-heading>span{color:var(--portal-brand-strong);font-size:14px;font-weight:750}.salary-hero{padding:22px;border-radius:24px;background:linear-gradient(125deg,#def0e4,#f0f8f1);border:1px solid #d0e5d7}.salary-hero>p:first-child{font-size:15px;font-weight:650;color:#365b48}.salary-total{font-size:44px;line-height:1.2;letter-spacing:-1.6px;font-weight:800;color:#20563f;margin:10px 0}.salary-total>span{font-size:30px;font-weight:600}.salary-through{font-size:14px;color:#4b695b}.salary-explanation{margin-top:16px;padding-top:13px;border-top:1px solid #cddfd3;font-size:13px;line-height:1.5;color:#496454}.salary-breakdown{margin-top:21px}.salary-breakdown h2,.salary-bonus h2{font-size:15px;font-weight:750}.salary-breakdown>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid #e2e7e2;font-size:16px}.salary-breakdown small,.salary-advance small{display:block;font-size:12px;color:#69756d;margin-top:3px}.salary-breakdown strong,.salary-advance strong{white-space:nowrap;font-size:17px;font-weight:750;font-variant-numeric:tabular-nums}.salary-advance{display:flex;align-items:center;gap:11px;padding:17px 0;font-size:15px}.salary-advance>strong{margin-left:auto}.salary-wallet{padding:9px;border-radius:12px;background:#eee6dc}.salary-bonus{padding:14px 16px;border:1px solid #e8ddca;background:#fcf8ef;border-radius:16px}.salary-bonus>div{display:flex;align-items:center;justify-content:space-between;gap:8px}.salary-bonus>div>span{font-size:12px;color:#87632b;font-weight:700}.salary-bonus p{font-size:13px;margin-top:8px;color:#63533a}.salary-bonus>small{display:block;font-size:11px;line-height:1.4;color:#82765f;margin-top:7px}.salary-preview-note{font-size:11px;line-height:1.4;text-align:center;color:#77817a;margin:14px 12px 0}@media(max-width:360px){.salary-content{padding-left:14px;padding-right:14px}.salary-heading h1{font-size:22px}.salary-heading>span{font-size:12px}.salary-total{font-size:40px}.salary-bonus>div{align-items:flex-start;flex-direction:column}}
+.salary-breakdown>div{padding:9px 0;font-size:15px}.salary-breakdown strong{font-size:16px}.salary-rounding-note{font-size:11px;color:#77817a;margin-top:8px}.salary-hero{padding:18px 20px}.salary-total{margin:7px 0}.salary-explanation{margin-top:10px;padding-top:10px}.salary-breakdown{margin-top:17px}
+.payroll-phone .salary-heading>span{color:#99613e}.salary-bonus summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:28px;cursor:pointer;list-style:none;font-size:14px;font-weight:750}.salary-bonus summary::-webkit-details-marker{display:none}.salary-bonus-status{display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:12px;color:#87632b}.salary-chevron{font-size:18px;transition:transform .15s}.salary-bonus[open] .salary-chevron{transform:rotate(180deg)}.salary-bonus summary:focus-visible{outline:2px solid #99613e;outline-offset:6px;border-radius:3px}.payroll-phone .salary-hero{padding:24px 20px}.payroll-phone .salary-through{font-size:12px}.payroll-phone .salary-breakdown>div{padding:15px 0}.payroll-phone .salary-breakdown{margin-top:25px}.payroll-phone .salary-advance{padding:20px 0}
+.salary-month-picker{position:relative;color:#99613e;font-size:14px;font-weight:750}.salary-month-picker summary{cursor:pointer;list-style:none;min-height:44px;display:flex;align-items:center;gap:5px}.salary-month-picker summary::-webkit-details-marker{display:none}.salary-month-picker>div{position:absolute;right:0;top:44px;z-index:10;min-width:180px;background:#fff;border:1px solid #e4ddd5;border-radius:14px;padding:6px;box-shadow:0 12px 30px #24362c20}.salary-month-picker a{display:block;padding:13px 12px;border-radius:9px;color:#4d514c;text-decoration:none}.salary-month-picker a[aria-current]{background:#f2e8dd;color:#8f5837}.salary-month-picker a:hover{background:#f5f1eb}.salary-history-bonus{margin-top:22px}
+.payroll-phone .salary-breakdown h2{font-size:18px;line-height:1.35}.payroll-phone .salary-breakdown>div,.payroll-phone .salary-advance{font-size:16px}.payroll-phone .salary-breakdown strong,.payroll-phone .salary-advance strong{font-size:18px}.payroll-phone .salary-breakdown small,.payroll-phone .salary-advance small,.payroll-phone .salary-through{font-size:14px;line-height:1.45}.salary-wallet{flex-shrink:0}
+/* Shared with the owner preview; all rules stay scoped to the salary screen. */
+.payroll-phone .salary-wallet .pwa-icon-outline{color:var(--pwa-copper,#a76b43);stroke:var(--pwa-copper,#a76b43)}
+main.payroll-phone .salary-month-picker{font-size:16px}main.payroll-phone .salary-breakdown>div,main.payroll-phone .salary-advance{font-size:18px}main.payroll-phone .salary-breakdown strong,main.payroll-phone .salary-advance strong{font-size:20px}main.payroll-phone .salary-breakdown small,main.payroll-phone .salary-advance small,main.payroll-phone .salary-through{font-size:15px;color:#526258}main.payroll-phone .salary-wallet svg{width:28px;height:28px}main.payroll-phone .salary-heading{flex-wrap:wrap}
+main.payroll-phone .salary-hero{background:linear-gradient(135deg,#fffefa,#f1f3ed);border:1px solid #e1e3d9;border-radius:20px;box-shadow:0 3px 12px #29352b05;padding:22px 20px}main.payroll-phone .salary-hero>p:first-child{color:#4d584f;font-size:16px}main.payroll-phone .salary-total{color:#2c624a;margin:9px 0 14px}.salary-status>span{display:inline-block;font-size:13px;line-height:1.4;font-weight:650;color:#626956}.salary-status .salary-through{margin-top:5px}main.payroll-phone .salary-month-picker summary{border-radius:10px;padding:0 8px;background:#eee7dd;color:#925c37}main.payroll-phone .salary-heading{gap:4px;margin-bottom:16px}main.payroll-phone .salary-heading h1{font-size:23px}main.payroll-phone .salary-month-picker{font-size:15px}main.payroll-phone .salary-breakdown{margin-top:24px}main.payroll-phone .salary-breakdown h2{margin-bottom:3px}main.payroll-phone .salary-advance{border-bottom:1px solid #e2e7e2;padding:18px 0}main.payroll-phone .salary-wallet{background:#efe6db;border:1px solid #e6d8c7;border-radius:12px}main.payroll-phone .salary-content{padding-bottom:105px}@media(max-width:359px){main.payroll-phone .salary-heading h1{font-size:21px}main.payroll-phone .salary-month-picker{font-size:14px}main.payroll-phone .salary-month-picker summary{padding:0 5px}}
+main.payroll-phone .salary-month-picker{font-size:16px}main.payroll-phone .salary-status>span{font-size:14px}
+main.payroll-phone .salary-total{color:var(--pwa-ink,#24282d)}main.payroll-phone .salary-hero>p:first-child{color:var(--pwa-ink,#24282d);font-weight:750}main.payroll-phone .salary-status>span{color:var(--pwa-copper,#b96c36)}main.payroll-phone .salary-through{color:var(--pwa-muted,#60636a)}main.payroll-phone .salary-month-picker summary{background:transparent;border:1px solid var(--pwa-line,#e5e2da);color:var(--pwa-ink,#24282d)}main.payroll-phone .salary-advance{border-top:1px solid var(--pwa-line,#e5e2da);border-bottom:0;margin-top:4px}main.payroll-phone .salary-breakdown>div:last-child{border-bottom:0}
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) main.payroll-phone.employee-material-ui div.salary-hero.pwa-review-task{border:1px solid var(--pwa-line,#e5e2da) !important}
+
+/* Personal screen only: retain the existing palette and navigation geometry. */
+main.payroll-phone .personal-payroll-content .salary-hero {
+  padding: 26px 22px;
+}
+main.payroll-phone .personal-payroll-content .salary-total {
+  font-size: clamp(42px, 12vw, 54px);
+  line-height: 1.16;
+  letter-spacing: -1.6px;
+  margin: 14px 0 18px;
+  font-variant-numeric: tabular-nums;
+}
+main.payroll-phone .personal-payroll-content .salary-breakdown {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid var(--pwa-line, #e5e2da);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 4px 16px #24282d06;
+}
+main.payroll-phone .personal-payroll-content .salary-breakdown h2 {
+  margin-bottom: 6px;
+}
+main.payroll-phone .personal-payroll-content .salary-breakdown > div {
+  padding: 16px 0;
+  gap: 10px;
+  font-size: 17px;
+}
+main.payroll-phone .personal-payroll-content .salary-breakdown > div:last-child {
+  padding-bottom: 0;
+}
+main.payroll-phone .personal-payroll-content .salary-breakdown strong {
+  font-size: 19px;
+}
+main.payroll-phone .personal-payroll-content .employee-material-tab.is-active .pwa-icon-outline line {
+  stroke: #fff9eb;
+}
+@media (max-width: 359px) {
+  main.payroll-phone .personal-payroll-content .salary-hero { padding: 24px 18px; }
+  main.payroll-phone .personal-payroll-content .salary-breakdown { padding: 18px 16px; }
+  main.payroll-phone .personal-payroll-content .salary-breakdown > div { font-size: 16px; }
+  main.payroll-phone .personal-payroll-content .salary-breakdown strong { font-size: 17px; }
+}

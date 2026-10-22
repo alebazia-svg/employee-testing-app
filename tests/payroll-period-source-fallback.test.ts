@@ -4,8 +4,10 @@ import test from 'node:test';
 import ts from 'typescript';
 
 // Execute the actual GET orchestration with isolated source/cache dependencies.
-const source = readFileSync(new URL('../app/api/admin/payroll/daily-control/route.ts', import.meta.url), 'utf8');
-const getSource = source.slice(source.indexOf('export async function GET('), source.indexOf('export async function POST('));
+const source = readFileSync(new URL('../lib/payroll-one-c-refresh.ts', import.meta.url), 'utf8');
+const route = readFileSync(new URL('../app/api/admin/payroll/daily-control/route.ts', import.meta.url), 'utf8');
+const getSource = source.slice(source.indexOf('export async function readPayrollOneCControl('), source.indexOf('export async function refreshPayrollOneCControl('))
+  + route.slice(route.indexOf('export async function GET('), route.indexOf('export async function POST('));
 const compiled = ts.transpileModule(getSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 async function run(options: { final?: boolean; daily?: boolean; rawDaily?: boolean; current?: boolean; unauthorized?: boolean; cacheFails?: boolean } = {}) {
   const calls: string[] = [];
