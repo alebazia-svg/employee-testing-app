@@ -37,6 +37,9 @@ project from scratch.
   public metadata and authenticated ADMIN verified; live QR mutations not tested.
   Follow-up 1.13.6 / `4d2d44a`: ADMIN edits before approval, optional reason,
   known/unknown funding-date wording; production edit open/cancel verified.
+- PWA cross-tab actionable reminder: `pwa-action-reminder-candidate-20261022.md`
+  (approved 1.13.7 release preparation: saved-first payroll, two rolling months,
+  actionable reminders and native checklist outline; deploy verification pending).
 
 - PWA schedule/calendar and bottom navigation: `pwa-schedule-release-20261022.md`
   (released 1.12.1 / `b699238`; stronger working-day green, readable calendar,
