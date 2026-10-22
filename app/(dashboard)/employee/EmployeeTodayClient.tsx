@@ -1,6 +1,7 @@
 'use client';
 import { useEmployeePreview, EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
 import { closeReasonRequiresComment } from '@/lib/workday-close-request';
+import { employeeExpenseHint, type EmployeeExpenseSnapshot } from '@/lib/employee-expense-policy';
 import { EmployeeAttentionPanel } from '@/components/workday/EmployeeAttentionPanel';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 
@@ -1235,6 +1236,7 @@ export function EmployeeTodayClient({
   ownVacations = [],
   departmentVacations = [],
 }: Props) {
+  const [expenseSnapshot, setExpenseSnapshot] = useState<EmployeeExpenseSnapshot>({ state: 'unavailable', checkedAt: null, pending: [], payable: [] });
   const preview = useEmployeePreview();
   const request = preview?.request ?? fetch;
   const router = useRouter();
@@ -3202,6 +3204,7 @@ export function EmployeeTodayClient({
                 className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-primary focus:ring-2 focus:ring-primary/20'
                 placeholder='0'
               />
+              {employeeExpenseHint(expenseSnapshot) && <span className='text-xs font-normal leading-relaxed text-slate-600'>{employeeExpenseHint(expenseSnapshot)}</span>}
               {errors.numericValue && <span className='text-xs font-bold text-amber-700'>{errors.numericValue}</span>}
             </label>
           </div>
@@ -4646,7 +4649,7 @@ export function EmployeeTodayClient({
             </div>
           )}
 
-          <EmployeeAttentionPanel activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} onClosing={scope => { if (scope === 'encashment' && handoverTask) startHandoverWizard(handoverTask); else if (kkmCloseIssue) { setCloseResolutionPath(null); setCloseResolutionOpen(true); } else setCloseBlockedSheetOpen(true); }} view={activeTab} onBack={() => setActiveTab('day')} paletteClass={paletteClass} renderHandle={onDismiss => <BottomSheetDragHandle onDismiss={onDismiss} />} />
+          <EmployeeAttentionPanel onExpenses={setExpenseSnapshot} activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} onClosing={scope => { if (scope === 'encashment' && handoverTask) startHandoverWizard(handoverTask); else if (kkmCloseIssue) { setCloseResolutionPath(null); setCloseResolutionOpen(true); } else setCloseBlockedSheetOpen(true); }} view={activeTab} onBack={() => setActiveTab('day')} paletteClass={paletteClass} renderHandle={onDismiss => <BottomSheetDragHandle onDismiss={onDismiss} />} />
 
           {activeTab === 'day' && (
             <div className={cn('pwa-review-day space-y-3', showCloseResolution && 'pwa-review-day-closing', !workDay && !unfinished && 'pwa-day-before-start')}>

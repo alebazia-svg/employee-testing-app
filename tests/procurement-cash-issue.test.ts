@@ -47,14 +47,14 @@ test('outage and incomplete identities defer; completed/rejected requests cancel
 });
 test('PWA keeps a read issue task visible and never exposes another cashier’s details or old amount while offline',async()=>{
  for(const mode of ['own','other','offline']){
-  const row={id:9,kind:CASH_ISSUE_KIND,fingerprint:cashIssueKey(status(),42),readAt:now,title:'Neutral',body:'Neutral',task:null,issue:null,review:null,taskId:null,issueId:null,reviewId:null};
+  const row={id:9,status:'sent',sentAt:now,kind:CASH_ISSUE_KIND,fingerprint:cashIssueKey(status(),42),readAt:now,title:'Neutral',body:'Neutral',task:null,issue:null,review:null,taskId:null,issueId:null,reviewId:null};
   const api=await load('app/api/employee/workday-notifications/route.ts',{
    '@/lib/auth':{getCurrentUser:async()=>({id:42})},
-   '@/lib/prisma':{prisma:{workdayNotification:{findMany:async(args:any)=>{assert.deepEqual(args.where.OR,[{readAt:null},{kind:CASH_ISSUE_KIND}]);return [row];}}}},
+   '@/lib/prisma':{prisma:{workdayNotification:{findMany:async(args:any)=>{assert.equal(args.where.userId,42);assert.deepEqual(args.where.OR[0],{status:'sent',readAt:null});assert.deepEqual(args.where.OR[1].status,{in:['sent','cancelled']});return [row];}}}},
    '@/lib/workday-notifications':{reconcileActiveWorkdayNotifications:async(_:any,rows:any)=>rows,workdayNotificationHref:()=>'/employee/cash-issue',workdayTaskNotificationCopy:()=>null},
    '@/lib/procurement-cash-issue-notifications':{currentCashIssue:async()=>mode==='offline'?{state:'unknown'}:{state:'ready',userId:mode==='other'?43:42,fingerprint:row.fingerprint,title:'Выдать 5 000 ₽',body:'Тохов Астемир'}},
   });
-  const body=await(await api.GET()).json();assert.equal(body.notifications[0].readAt,null);
+  const body=await(await api.GET()).json();assert.equal(body.notifications[0].readAt,now.toISOString());assert.equal(body.notifications[0].active,true);
   assert.equal(body.notifications[0].body.includes('Тохов'),mode==='own');
  }
 });

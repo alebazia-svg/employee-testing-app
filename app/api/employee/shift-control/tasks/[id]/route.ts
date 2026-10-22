@@ -1,3 +1,5 @@
+import { loadEmployeeExpenses } from '@/lib/employee-expense-snapshot';
+import { pendingCashExpenseEvidence } from '@/lib/cash-expense-evidence';
 import { updateActiveHandoverTask } from '@/lib/workday-close-decision';
 import { getCurrentUser } from '@/lib/auth';
 import { cashRecountInputError } from '@/lib/cash-recount-input';
@@ -219,6 +221,7 @@ async function captureOneCCashAudit({
       return {
         status: 'captured',
         cashboxName: cashbox.name,
+        cashboxRef: cashbox.ref,
         balance: statement.closingBalance,
         oneCCheckedAt: statement.checkedAt,
         error: null,
@@ -956,7 +959,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
           userId: user.id,
           date: task.run.date,
           includeReserve: false,
-          capturedAt: completedAt,
+          capturedAt: editedAt,
           })),
           factCashBalance: numericValue,
         };
@@ -970,6 +973,12 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       cashboxName: personalAudit && typeof personalAudit.cashboxName === 'string' ? personalAudit.cashboxName : '',
       sourceError: personalAudit && typeof personalAudit.error === 'string' ? personalAudit.error : null,
     });
+    const expenses = await loadEmployeeExpenses(user.id).catch(() => null);
+    if (!expenses || expenses.state !== 'ready' || expenses.cashboxRef && expenses.cashboxRef !== personalAudit?.cashboxRef) {
+      cashComparison = { ...cashComparison, status: 'unavailable', discrepancyType: 'unavailable', difference: null, expenseSourceUnavailable: true, sourceError: 'Не удалось проверить заявки в 1С.' };
+    } else { const evidence = pendingCashExpenseEvidence({
+      actual: numericValue, expected, capturedAt: cashComparison.capturedAt, cashboxRef: expenses.cashboxRef, snapshot: expenses,
+    }); if (evidence) cashComparison.expenseEvidence = evidence; }
     let nextHandoverData: Record<string, unknown> = {
       ...existingData,
       [shiftControlOneCAuditKey]: oneCAudit,

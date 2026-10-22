@@ -3,6 +3,7 @@ export type EmployeeAttentionItem = {
   id: string; title: string; kind: 'receipt' | 'cash' | 'encashment' | 'closing' | 'cash_issue';
   state: 'action' | 'waiting'; status: string; priority: number; date: string;
   detail: string; closingScope?: 'encashment' | 'closing'; facts?: Array<[string, string]>; reply?: string; shared?: boolean;
+  notificationIds?: number[];
   endpoint?: string; actions?: Array<{ label: string; action: string }>;
 };
 export function orderEmployeeAttention(items: EmployeeAttentionItem[]) {

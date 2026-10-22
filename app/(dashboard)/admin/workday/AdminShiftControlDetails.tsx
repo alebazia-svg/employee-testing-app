@@ -127,6 +127,7 @@ type EmployeeNavigation = {
 };
 
 export type ShiftAutoCheck = {
+  expenseState?: 'awaiting_documents' | 'documented';
   id: string;
   taskId: number;
   label: string;
@@ -589,7 +590,7 @@ function TaskDetailCard({
       {item.autoChecks.length > 0 ? (
         <div className='mt-3 grid gap-2'>
           {item.autoChecks.map((check) => {
-            const badge = manualReviewConfirmsIssue(check) ? { label: 'Проблема подтверждена', className: 'bg-rose-100 text-rose-800' } : manualReviewResolves(check) ? { label: 'Проверено вручную', className: 'bg-green-100 text-green-800' } : autoCheckBadge(check.status);
+            const badge = manualReviewConfirmsIssue(check) ? { label: 'Проблема подтверждена', className: 'bg-rose-100 text-rose-800' } : manualReviewResolves(check) ? { label: 'Проверено вручную', className: 'bg-green-100 text-green-800' } : check.expenseState === 'awaiting_documents' ? { label: 'Ожидает оформления заявок', className: 'bg-amber-50 text-amber-800' } : autoCheckBadge(check.status);
             const cashPhotoHref = photoHref({ storagePath: check.cashOperation?.photoPath });
             const cashPhotoLabel = `Фото инкассации · ${formatMoney(check.cashOperation?.amount)}`;
             return (
@@ -654,7 +655,7 @@ function TaskDetailCard({
       ) : null}
       {tone === 'attention' && !reviewOnly ? (
         <p className='mt-2 text-xs font-extrabold text-amber-800'>
-          {hasMismatch ? 'Сравните сумму сотрудника, данные 1С и подтверждения.' : item.autoChecks.some(check => check.status === 'unavailable' && !manualReviewResolves(check)) ? 'Нет данных для сверки. Уточните причину.' : needsTimingReview ? 'Уточните причину задержки.' : 'Проверьте ответ и подтверждения сотрудника.'}
+          {hasMismatch ? 'Сравните сумму сотрудника, данные 1С и подтверждения.' : item.autoChecks.some(check => check.status === 'unavailable' && !manualReviewResolves(check)) ? 'Нет данных для сверки. Уточните причину.' : item.autoChecks.some(check => check.expenseState === 'awaiting_documents') ? 'После проведения расходников связь с заявками проверится автоматически.' : needsTimingReview ? 'Уточните причину задержки.' : 'Проверьте ответ и подтверждения сотрудника.'}
         </p>
       ) : null}
     </div>
@@ -732,6 +733,7 @@ function taskBusinessState(item: ReviewedTask): TaskBusinessState {
   };
 
   const waiting = unresolvedChecks.find((check) => check.status === 'waiting');
+  if (waiting?.expenseState === 'awaiting_documents') return { tone: 'attention', label: 'Ожидает оформления заявок', result: 'Факт сохранён · ожидает оформления заявок' };
   if (waiting) return { tone: 'attention', label: 'Ожидается сверка', result: `Ожидается результат: ${waiting.label}` };
 
   if ((item.task.category === 'cash' || item.task.category === 'handover') && !item.autoChecks.length) return {tone:'attention',label:'Не удалось проверить',result:'Автоматическая сверка отсутствует'};

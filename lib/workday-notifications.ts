@@ -1,4 +1,7 @@
 import 'server-only';
+import { reconcileCashExpenseEvidence } from './cash-expense-reconciliation';
+import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
+import { expensePushDecision, queueEmployeeExpensePushes } from './employee-expense-notifications';
 import { observePushAttempt } from './push-attempt-observation';
 import {RECEIPT_EMPLOYEE_KIND,receiptHref,receiptPlanFromFingerprint} from './procurement-receipt-policy';
 
@@ -277,6 +280,7 @@ function notificationTargetKey(notification: { id: number; taskId: number | null
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  if (notification.kind === EMPLOYEE_EXPENSE_KIND) return '/employee?attention=cash';
   if (notification.kind === CASH_ISSUE_KIND) return cashIssueHref(notification.fingerprint);
   if(notification.kind===RECEIPT_EMPLOYEE_KIND) {
     const plan=receiptPlanFromFingerprint(notification.fingerprint||'');
@@ -342,12 +346,14 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   // A crashed sender may already have delivered its push. Keep its inbox item, but
   // never automatically replay an uncertain delivery and wake the employee twice.
   await prisma.workdayNotification.updateMany({ where: {
-    kind: { in: [DELIVERY_READY_KIND, COLLECTION_READY_KIND, CASH_ISSUE_KIND] }, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
+    kind: { in: [DELIVERY_READY_KIND, COLLECTION_READY_KIND, CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND] }, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
     status: { in: ['pending', 'sent'] },
   }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
   // The delivery producer is idempotent; a source outage must not block other domains.
   await queueDeliveryReadyPush(now).catch(() => undefined);
   await queueCashIssuePush(now).catch(() => undefined);
+  await queueEmployeeExpensePushes(now).catch(() => undefined);
+  await reconcileCashExpenseEvidence(now).catch(() => undefined);
   await queueCollectionReadyPush(now).catch(() => undefined);
   await queueCashMorningPushes(now).catch(() => undefined);
   await reconcileStoredUnreadWorkdayNotifications();
@@ -378,7 +384,8 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   const activeDueIds = new Set(activeDue.map((notification) => notification.id));
 
   for (const notification of due) {
-    const delivery = notification.kind === CASH_ISSUE_KIND ? await cashIssuePushDecision(notification, dispatchTime())
+    const delivery = notification.kind === EMPLOYEE_EXPENSE_KIND ? await expensePushDecision(notification, dispatchTime())
+      : notification.kind === CASH_ISSUE_KIND ? await cashIssuePushDecision(notification, dispatchTime())
       : notification.kind === DELIVERY_READY_KIND ? await deliveryPushDecision(notification, dispatchTime())
       : notification.kind === COLLECTION_READY_KIND ? await collectionPushDecision(notification, dispatchTime()) : null;
     if (delivery?.state === 'defer') {
@@ -443,7 +450,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
-          : delivery?.state === 'send' ? notification.kind === CASH_ISSUE_KIND ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
+          : delivery?.state === 'send' ? [CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND].includes(notification.kind) ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
         url: workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,

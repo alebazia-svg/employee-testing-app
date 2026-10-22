@@ -1,4 +1,6 @@
 import 'server-only';
+import { loadEmployeeExpenses } from './employee-expense-snapshot';
+import { EMPLOYEE_EXPENSE_KIND, expenseNotificationKey } from './employee-expense-policy';
 import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { filterActiveWorkdayNotifications, reconcileActiveWorkdayNotifications, workdayNotificationHref, workdayTaskNotificationCopy } from '@/lib/workday-notifications';
@@ -12,10 +14,15 @@ import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
 
 export async function loadEmployeeNotifications(user: { id: number }, readOnly = false) {
   const rows = await prisma.workdayNotification.findMany({
-    where: { userId: user.id, status: 'sent', OR: [{ readAt: null }, { kind: CASH_ISSUE_KIND }] },
+    where: { userId: user.id, sentAt: { not: null }, OR: [
+      { status: 'sent', readAt: null },
+      { status: { in: ['sent', 'cancelled'] }, sentAt: { gte: new Date(Date.now() - 30 * 86400000) } },
+    ] },
+    take: 200,
     orderBy: { sentAt: 'desc' },
     select: {
       id: true,
+      status: true,
       kind: true,
       fingerprint: true,
       title: true,
@@ -31,11 +38,17 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
     },
   });
   const seenTargets = new Set<string>();
-  const activeRows = await (readOnly ? filterActiveWorkdayNotifications : reconcileActiveWorkdayNotifications)(prisma, rows);
+  const activeRows = await (readOnly ? filterActiveWorkdayNotifications : reconcileActiveWorkdayNotifications)(prisma, rows.filter(row => row.status === 'sent'));
+  const activeIds = new Set(activeRows.map(row => row.id));
+  const expenses = activeRows.some(row => row.kind === EMPLOYEE_EXPENSE_KIND) ? await loadEmployeeExpenses(user.id) : null;
+  if (expenses && expenses.state !== 'unavailable') {
+    const keys = new Set(expenses.payable.map(item => expenseNotificationKey(user.id, expenses.cashboxRef, item)));
+    for (const row of rows) if (row.kind === EMPLOYEE_EXPENSE_KIND && !keys.has(row.fingerprint)) activeIds.delete(row.id);
+  }
   const delivery = activeRows.some(row => row.kind === DELIVERY_READY_KIND) ? await currentDeliveryPush() : null;
   const collections = activeRows.some(row => row.kind === COLLECTION_READY_KIND) ? await currentCollectionPushes() : null;
   const cashIssue = activeRows.some(row => row.kind === CASH_ISSUE_KIND) ? await currentCashIssue() : null;
-  const notifications = activeRows
+  const notifications = [...rows].sort((a,b) => Number(activeIds.has(b.id)) - Number(activeIds.has(a.id)))
     .filter((notification) => {
       const reply = notification.kind.endsWith('_reply');
       const target = reply ? `reply:${notification.id}` : notification.taskId ? `task:${notification.taskId}` : notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : workdayNotificationThreadKey(notification);
@@ -56,13 +69,14 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
         : notification.kind === COLLECTION_READY_KIND ? collectionCopy ?? COLLECTION_PUSH_COPY : null;
       return {
         ...notification,
-        ...(notification.kind === CASH_ISSUE_KIND ? { readAt: null } : {}),
-        title: copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title,
-        body: copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body,
+        active: activeIds.has(notification.id),
+        ...(issue ? { attentionKind: issue.ruleKey === 'kkm_shift_not_closed' ? 'closing' as const : 'receipt' as const } : {}),
+        title: activeIds.has(notification.id) ? copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title : notification.title,
+        body: activeIds.has(notification.id) ? copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body : notification.body,
         href: workdayNotificationHref(notification),
       };
     })
-    .sort((a, b) => Number(b.kind === CASH_ISSUE_KIND) - Number(a.kind === CASH_ISSUE_KIND))
-    .slice(0, 30);
+    .sort((a, b) => (b.sentAt?.getTime() ?? 0) - (a.sentAt?.getTime() ?? 0))
+    .slice(0, 100);
   return { notifications };
 }

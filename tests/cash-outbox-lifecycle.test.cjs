@@ -49,6 +49,7 @@ function setup({ storageFails = false, removalFails = false, refreshFails = fals
     }
   }
   const context = {File,Blob,FormData,Date,XMLHttpRequest:FakeXHR,
+    preview: null, // Real employee mode; the current component also supports read-only ADMIN preview.
     isRecord:x=>x!==null && typeof x==='object',useCallback:fn=>fn,
     cashOperationDraft:{...item,idempotencyKey:item.id},user:{id:7},activeWorkDay:{id:19,date:'2026-09-04'},
     parseMoneyInput:x=>Number(x.replace(',','.')),

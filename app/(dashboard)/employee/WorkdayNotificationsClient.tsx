@@ -1,17 +1,12 @@
 'use client';
+import { EmployeeNotificationInbox, type EmployeeInboxItem } from '@/components/workday/EmployeeNotificationInbox';
+import { EMPLOYEE_EXPENSE_KIND } from '@/lib/employee-expense-policy';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter, useSearchParams } from 'next/navigation';
-import {
-  PremiumBillListIcon,
-  PremiumChatIcon,
-  PremiumCheckCircleIcon,
-  PremiumClockIcon,
-  PremiumDangerTriangleIcon,
-} from '@/components/PwaPreviewIcons';
-import { Bell, ChevronRight, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Bell, X } from 'lucide-react';
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
 import { cn } from '@/lib/utils';
@@ -20,41 +15,7 @@ import { CASH_ISSUE_KIND } from '@/lib/procurement-cash-issue-policy';
 import {employeeNotificationOpening,safeNotificationHref} from '@/lib/notification-opening';
 import {NotificationRecordDialog,type NotificationSelection} from '@/components/NotificationRecordDialog';
 
-type WorkdayNotification = {
-  id: number;
-  kind: string;
-  title: string;
-  body: string;
-  readAt: string | null;
-  href: string;
-  taskId: number | null;
-  issueId: number | null;
-  reviewId: string | null;
-};
-
-function NotificationMarker({ notification }: { notification: WorkdayNotification }) {
-  if (notification.kind.endsWith('_reply')) {
-    return <span className='employee-material-state-marker employee-material-state-marker-success flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><PremiumChatIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /></span>;
-  }
-  if (notification.kind === 'workday_close_exception_decision') {
-    const rejected = notification.title.includes('не согласовано');
-    return rejected
-      ? <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
-      : <span className='employee-material-state-marker employee-material-state-marker-success flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-green-700'><PremiumCheckCircleIcon color='#278f18' secondaryColor='#b7e9ac' secondaryOpacity={1} className='h-4 w-4' /></span>;
-  }
-  if (['issue_detected', 'issue_reminder', 'terminal_fiscal_review'].includes(notification.kind)) {
-    return notification.kind === 'terminal_fiscal_review'
-      ? <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumBillListIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>
-      : <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumDangerTriangleIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
-  }
-  if (notification.kind === 'planned') {
-    return <span className='employee-material-state-marker employee-material-state-marker-info flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><PremiumClockIcon color='#455b78' secondaryColor='#b9cbe0' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
-  }
-  if (['overdue', 'overdue_repeat'].includes(notification.kind)) {
-    return <span className='employee-material-state-marker employee-material-state-marker-warning flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-amber-700'><PremiumClockIcon color='#a85a08' secondaryColor='#f6d58b' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
-  }
-  return <span className='employee-material-state-marker employee-material-state-marker-info flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-700'><PremiumClockIcon color='#455b78' secondaryColor='#b9cbe0' secondaryOpacity={0.9} className='h-4 w-4' /></span>;
-}
+type WorkdayNotification = EmployeeInboxItem;
 
 function urlBase64ToUint8Array(value: string) {
   const padding = '='.repeat((4 - value.length % 4) % 4);
@@ -67,9 +28,6 @@ export function WorkdayNotificationsClient() {
   const requestRead = preview?.request ?? fetch;
   const router = useRouter();
   const cashIssue = useCashIssue();
-  const searchParams = useSearchParams();
-  const palette = searchParams.get('palette');
-  const moboPreview = palette === null || palette.startsWith('mobo');
   const [notifications, setNotifications] = useState<WorkdayNotification[]>([]);
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
   const [pushConnected, setPushConnected] = useState(false);
@@ -77,16 +35,24 @@ export function WorkdayNotificationsClient() {
   const [selected,setSelected]=useState<NotificationSelection|null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const knownIds = useRef<Set<string> | null>(null);
+  const refreshSequence = useRef(0);
+  const [banner, setBanner] = useState<WorkdayNotification | null>(null);
+  const unreadCount = notifications.filter(item => !item.readAt && item.active !== false).length;
 
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     const response = await requestRead('/api/employee/workday-notifications', { cache: 'no-store' }).catch(() => null);
-    if (!response?.ok) return;
+    if (!response?.ok || sequence !== refreshSequence.current) return;
     const payload = await response.json();
     const nextNotifications = Array.isArray(payload.notifications)
-      ? payload.notifications.filter((item: WorkdayNotification) => !item.readAt)
+      ? payload.notifications as WorkdayNotification[]
       : [];
+    const fresh = nextNotifications.find(item => !item.readAt && item.active !== false && knownIds.current && !knownIds.current.has(`${item.id}:${item.sentAt ?? ""}`));
+    knownIds.current = new Set(nextNotifications.map(item => `${item.id}:${item.sentAt ?? ""}`));
+    if (fresh && !document.querySelector('[role="dialog"], dialog[open]') && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName ?? '')) setBanner(fresh);
     setNotifications(nextNotifications);
-    if (!preview) void syncPwaAppBadge(nextNotifications.length);
+    if (!preview) void syncPwaAppBadge(nextNotifications.filter(item => !item.readAt && item.active !== false).length);
   }, []);
 
   const connectPush = useCallback(async (requestPermission: boolean) => {
@@ -137,31 +103,37 @@ export function WorkdayNotificationsClient() {
   }, [connectPush, refresh]);
 
   useEffect(() => {
-    if (!open || preview) return;
-    const closeTimer = window.setTimeout(() => setOpen(false), 10_000);
-    return () => window.clearTimeout(closeTimer);
-  }, [open]);
+    if (!banner) return;
+    const timer = window.setTimeout(() => setBanner(null), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [banner]);
 
   async function dismiss(notification: WorkdayNotification) {
     if (preview) return;
     const threadKey = workdayNotificationThreadKey(notification);
-    setNotifications((current) => {
-      const next = current.filter((item) => workdayNotificationThreadKey(item) !== threadKey);
-      void syncPwaAppBadge(next.length);
-      return next;
-    });
-    await fetch('/api/employee/workday-notifications', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: notification.id }),
+    const response = await fetch('/api/employee/workday-notifications', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: notification.id }),
     }).catch(() => null);
+    if (!response?.ok) return;
+    setNotifications(current => current.map(item => workdayNotificationThreadKey(item) === threadKey && (!item.sentAt || !notification.sentAt || item.sentAt <= notification.sentAt) ? { ...item, readAt: new Date().toISOString() } : item));
+    void refresh();
   }
 
   async function openNotification(notification: WorkdayNotification) {
+    setBanner(null);
+    if (notification.active === false) { void dismiss(notification); return; }
+    if (notification.kind === EMPLOYEE_EXPENSE_KIND || notification.issueId || notification.reviewId) {
+      setOpen(false); void dismiss(notification);
+      const kind = notification.kind === EMPLOYEE_EXPENSE_KIND ? 'cash' : notification.attentionKind ?? 'receipt';
+      const id = notification.issueId ? `issue:${notification.issueId}` : notification.reviewId ? `review:${notification.reviewId}` : 'expense:payable';
+      if (window.location.pathname === '/employee') requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:attention-open', { detail: { kind, id } })));
+      else router.push(`/employee?attention=${kind}&item=${encodeURIComponent(id)}`);
+      return;
+    }
     if (preview) { setOpen(false); setSelected({ ...notification, audience: "employee" }); return; }
     if (notification.kind === CASH_ISSUE_KIND && cashIssue) {
       const ref = new URL(notification.href, window.location.origin).searchParams.get('request');
-      if (ref) { setOpen(false); cashIssue.open(ref); return; }
+      if (ref) { setOpen(false); cashIssue.open(ref); void dismiss(notification); return; }
     }
     setOpen(false);
     if(employeeNotificationOpening(notification)!=='page'){setSelected({...notification,audience:'employee'});return;}
@@ -174,28 +146,22 @@ export function WorkdayNotificationsClient() {
       {selected&&<NotificationRecordDialog readOnly={Boolean(preview)} key={selected.id} item={selected} onViewed={()=>{const n=notifications.find(n=>n.id===selected.id);if(n)void dismiss(n);}} onClose={()=>setSelected(null)}/>}
       <button
         type='button'
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => { setBanner(null); setOpen(current => !current); void refresh(); }}
         className={cn('employee-material-header-action relative flex h-11 w-11 items-center justify-center rounded-full text-slate-600', open && 'is-open')}
         aria-label='Уведомления'
         aria-expanded={open}
       >
         <Bell className='h-[21px] w-[21px]' strokeWidth={2} />
-        {notifications.length > 0 && (
+        {unreadCount > 0 && (
           <span className='absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#e4534d] px-1 text-[10px] font-black text-white ring-2 ring-[#f5f4ef] shadow-[0_3px_8px_rgba(135,48,43,0.28)]'>
-            {notifications.length > 9 ? '9+' : notifications.length}
+            {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
-        {!preview && !pushConnected && notifications.length === 0 && <span className='absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-amber-400 ring-2 ring-[#f5f4ef]' />}
       </button>
 
-      {open && createPortal(
-        <div role='dialog' aria-label='Уведомления' style={preview ? { '--employee-notification-top': `${preview.topInset + 12}px`, maxHeight: `calc(100dvh - ${preview.topInset + 24}px)`, overflowY: 'auto' } as CSSProperties : undefined} className={cn('employee-material-popover fixed left-1/2 top-[6.5rem] z-50 w-[calc(100%-2rem)] max-w-[488px] -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-2xl', moboPreview && 'employee-material-popover-mobo')}>
-          <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3.5'>
-            <p className='text-base font-bold'>Уведомления</p>
-            <button type='button' onClick={() => setOpen(false)} className='employee-material-popover-close flex h-8 w-8 items-center justify-center rounded-lg text-slate-500' aria-label='Закрыть уведомления'><X className='h-[18px] w-[18px]' /></button>
-          </div>
-
-          {!preview && !pushConnected && (
+      {banner && !open && createPortal(<div className="employee-new-notice fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[140] mx-auto flex max-w-[488px] items-center gap-2 rounded-2xl bg-[#f5f4ef] p-3 text-slate-800 shadow-xl" role="status"><Bell size={20} className="shrink-0 text-[#a77550]"/><button type="button" className="min-w-0 flex-1 text-left text-sm font-semibold" onClick={() => void openNotification(banner)}>{banner.title}</button><button type="button" onClick={() => setBanner(null)} aria-label="Скрыть уведомление" className="p-2"><X size={18}/></button></div>, document.body)}
+      {open && <EmployeeNotificationInbox items={notifications} onClose={() => setOpen(false)} onChoose={item => void openNotification(item)} permission={<>
+{!preview && !pushConnected && (
             <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>
               <p className='text-sm font-semibold leading-snug text-slate-800'>Включите напоминания, чтобы не пропустить действие по рабочему дню.</p>
               <button type='button' disabled={busy || permission === 'unsupported'} onClick={() => void connectPush(true)} className='employee-material-green-action mt-3 rounded-lg bg-green-700 px-3.5 py-2.5 text-sm font-bold text-white disabled:opacity-50'>
@@ -204,27 +170,7 @@ export function WorkdayNotificationsClient() {
               {error && <p className='mt-2 text-xs font-bold text-rose-700'>{error}</p>}
             </div>
           )}
-
-          {preview && <p className='border-b border-slate-200 px-4 py-3 text-xs text-slate-600'>Проверка: просмотр не отмечает уведомления прочитанными. Доставку push на телефон проверяйте отдельно.</p>}
-          {notifications.length === 0 ? (
-            <p className='px-4 py-6 text-center text-sm font-medium text-slate-500'>Нет актуальных уведомлений</p>
-          ) : (
-            <div className='max-h-80 overflow-y-auto'>
-              {notifications.map((notification) => (
-                <button key={notification.id} type='button' onClick={() => void openNotification(notification)} className='employee-material-notification-item flex w-full items-start gap-3 border-b border-slate-200/60 px-3 py-3.5 text-left last:border-b-0'>
-                  <NotificationMarker notification={notification} />
-                  <span className='min-w-0 flex-1'>
-                    <p className='text-sm font-bold leading-snug text-[#273137]'>{notification.title}</p>
-                    <p className='mt-1 text-[13px] font-medium leading-snug text-[#59646b]'>{notification.body}</p>
-                  </span>
-                  <ChevronRight className='mt-1 h-4 w-4 shrink-0 text-[#455158]' />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>,
-        document.body,
-      )}
+      </>}/>}
     </div>
   );
 }

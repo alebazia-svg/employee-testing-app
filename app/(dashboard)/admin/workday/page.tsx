@@ -591,6 +591,21 @@ function buildEmployeeAutoChecks({
         });
         continue;
       }
+      const cashComparison = isRecord(task.handoverData) && isRecord(task.handoverData.cashComparison) ? task.handoverData.cashComparison : null;
+      if (cashComparison?.expenseSourceUnavailable === true) {
+        checks.push({ id: `cash-${task.id}`, taskId: task.id, label: 'Наличные в кассе', actual: task.numericValue, expected: snapshot.balance, status: 'unavailable', summary: 'Факт сохранён. Данные заявок 1С не подтверждены; итог сверки пока неизвестен.' });
+        continue;
+      }
+      const expenseEvidence = cashComparison && isRecord(cashComparison.expenseEvidence) ? cashComparison.expenseEvidence : null;
+      if (expenseEvidence?.state === 'awaiting_documents' || expenseEvidence?.state === 'documented') {
+        checks.push({ id: `cash-${task.id}`, taskId: task.id, label: 'Наличные в кассе', actual: task.numericValue, expected: snapshot.balance,
+          expenseState: expenseEvidence.state,
+          status: expenseEvidence.state === 'documented' ? 'matched' : 'waiting',
+          summary: expenseEvidence.state === 'documented' ? 'Разница подтверждена расходниками по заявкам.' : 'Разница совпадает с несогласованными заявками. Ожидает оформления.',
+          evidence: `Исходный остаток 1С: ${formatMoney(snapshot.balance)}. Факт: ${formatMoney(task.numericValue)}.`,
+        });
+        continue;
+      }
       checks.push(moneyAutoCheck({
         id: `cash-${task.id}`,
         taskId: task.id,

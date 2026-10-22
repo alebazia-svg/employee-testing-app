@@ -1,4 +1,5 @@
 import 'server-only';
+import type { CashExpenseEvidence } from './cash-expense-evidence';
 
 import { createHash } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
@@ -14,6 +15,8 @@ export type CashRecountDecision =
 
 export type CashRecountComparison = {
   status: 'matched' | 'mismatch' | 'unavailable';
+  expenseEvidence?: CashExpenseEvidence;
+  expenseSourceUnavailable?: boolean;
   actual: number;
   expected: number | null;
   difference: number | null;
@@ -116,6 +119,7 @@ export function decideCashRecountAction(input: {
 }
 
 function detail(comparison: CashRecountComparison) {
+  if (comparison.expenseEvidence?.state === 'awaiting_documents') return `Разница ${Math.abs(comparison.difference ?? 0).toLocaleString('ru-RU')} ₽ совпадает с несогласованными заявками. Ожидает оформления расходников. Факт ${comparison.actual.toLocaleString('ru-RU')} ₽, остаток 1С ${comparison.expected?.toLocaleString('ru-RU')} ₽.`;
   const label = comparison.discrepancyType === 'surplus' ? 'Излишек' : 'Недостача';
   return `${label} ${Math.abs(comparison.difference ?? 0).toLocaleString('ru-RU')} ₽. Факт ${comparison.actual.toLocaleString('ru-RU')} ₽, остаток 1С ${comparison.expected?.toLocaleString('ru-RU')} ₽.`;
 }
@@ -154,7 +158,8 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
   const reopening = Boolean(existing && existing.status !== 'open');
   const elevated = Math.abs(input.comparison.difference ?? 0) > cashRecountCommentThresholdRub;
   const escalating = Boolean(existing?.status === 'open' && existing.severity !== 'error' && elevated);
-  const severity = elevated || existing?.severity === 'error' ? 'error' : 'warning';
+  const severity = input.comparison.expenseEvidence ? 'warning' : elevated || existing?.severity === 'error' ? 'error' : 'warning';
+  const title = input.comparison.expenseEvidence ? 'Ожидает оформления заявок' : 'Расхождение наличных в кассе';
   const nextReminderAt = null;
   const issue = await db.workdayControlIssue.upsert({
     where: { fingerprint },
@@ -165,7 +170,7 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
       ruleKey: 'cash_recount_mismatch',
       severity,
       status: 'open',
-      title: 'Расхождение наличных в кассе',
+      title,
       detail: detail(input.comparison),
       sourceData: {
         date: input.date,
@@ -176,6 +181,7 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
         discrepancyType: input.comparison.discrepancyType,
         capturedAt: input.comparison.capturedAt,
         comment: input.comment,
+        ...(input.comparison.expenseEvidence ? { expenseEvidence: input.comparison.expenseEvidence } : {}),
       },
       detectedAt: input.now,
       lastDetectedAt: input.now,
@@ -186,7 +192,7 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
       taskId: input.taskId,
       severity,
       status: 'open',
-      title: 'Расхождение наличных в кассе',
+      title,
       detail: detail(input.comparison),
       sourceData: {
         date: input.date,
@@ -197,6 +203,7 @@ export async function syncCashRecountWorkdayControl(db: CashRecountDb, input: {
         discrepancyType: input.comparison.discrepancyType,
         capturedAt: input.comparison.capturedAt,
         comment: input.comment,
+        ...(input.comparison.expenseEvidence ? { expenseEvidence: input.comparison.expenseEvidence } : {}),
       },
       lastDetectedAt: input.now,
       resolvedAt: null,

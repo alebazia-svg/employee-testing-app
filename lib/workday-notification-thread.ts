@@ -1,3 +1,4 @@
+import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
 import { cashNoticeBase, cashMorningKey } from './procurement-morning-policy';
 
 export type WorkdayNotificationThreadTarget = {
@@ -10,6 +11,7 @@ export type WorkdayNotificationThreadTarget = {
 };
 
 export function workdayNotificationThreadKey(notification: WorkdayNotificationThreadTarget) {
+  if (notification.kind === EMPLOYEE_EXPENSE_KIND) return 'expense:payable';
   if (notification.issueId) return `issue:${notification.issueId}`;
   if (notification.reviewId) return `review:${notification.reviewId}`;
   if (notification.taskId) return `task:${notification.taskId}`;
@@ -19,6 +21,7 @@ export function workdayNotificationThreadKey(notification: WorkdayNotificationTh
 }
 
 export function workdayNotificationThreadWhere(notification: WorkdayNotificationThreadTarget) {
+  if (notification.kind === EMPLOYEE_EXPENSE_KIND) return { kind: EMPLOYEE_EXPENSE_KIND, status: 'sent' };
   if (notification.issueId) return { issueId: notification.issueId };
   if (notification.reviewId) return { reviewId: notification.reviewId };
   if (notification.taskId) return { taskId: notification.taskId };

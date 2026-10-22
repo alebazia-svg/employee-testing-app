@@ -26,7 +26,7 @@ test('draft network failure is translated before reaching the form', async () =>
 function harness({ fail = false, final = true } = {}) {
   const state = { saving: false, error: '', saves: 0, submits: 0, step: final ? 2 : 0, message: '' };
   const ctx = {
-    Error,
+    Error, preview: null,
     handoverDraft: { encashmentAmount: '25000', encashmentDirection: 'deposit_safe' },
     handoverStep: state.step,
     setHandoverAttemptedStep() {},
@@ -87,7 +87,7 @@ test('lost finish response is recovered only from a confirmed completed snapshot
     const state = { closed: false, message: '', error: '', calls: 0 };
     class EmployeeApiError extends Error {}
     const ctx = {
-      Error, TypeError, FormData, EmployeeApiError, EmployeeNetworkError: class extends Error {},
+      preview: null, Error, TypeError, FormData, EmployeeApiError, EmployeeNetworkError: class extends Error {},
       handoverDraft: {}, buildHandoverSteps: () => [], isHandoverFile: () => false,
       setError() {}, setIsHandoverKkmCheckPending() {}, setIsSaving() {},
       setHandoverSaveError: value => { state.error = value; },

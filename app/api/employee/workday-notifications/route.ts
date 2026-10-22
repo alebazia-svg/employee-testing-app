@@ -16,11 +16,11 @@ export async function POST(req: Request) {
   if (!Number.isInteger(id) || id <= 0) return Response.json({ error: 'Invalid notification id' }, { status: 400 });
   const notification = await prisma.workdayNotification.findFirst({
     where: { id, userId: user.id },
-    select: { id: true, kind: true, fingerprint: true, taskId: true, issueId: true, reviewId: true },
+    select: { id: true, kind: true, fingerprint: true, sentAt: true, taskId: true, issueId: true, reviewId: true },
   });
   if (!notification) return Response.json({ error: 'Notification not found' }, { status: 404 });
   await prisma.workdayNotification.updateMany({
-    where: { userId: user.id, ...workdayNotificationThreadWhere(notification) },
+    where: { userId: user.id, ...workdayNotificationThreadWhere(notification), status: 'sent', sentAt: { lte: notification.sentAt ?? new Date(0) } },
     data: { readAt: new Date() },
   });
   return Response.json({ ok: true });
