@@ -11,7 +11,7 @@ import { EmployeeActionReminder } from '@/components/workday/EmployeeActionRemin
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
 const monthTitle = (period: string) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${period}-01T12:00:00Z`));
 
-export function PersonalPayrollClient({ currentMonth, initialSalary = null }: { currentMonth: string; initialSalary?: Salary | null }) {
+export function PersonalPayrollClient({ currentMonth, initialSalary = null, refreshEnabled = true }: { currentMonth: string; initialSalary?: Salary | null; refreshEnabled?: boolean }) {
   const preview = useEmployeePreview();
   const request = preview?.request ?? fetch;
   const activeMonth = useEmployeePayrollMonth(currentMonth);
@@ -30,6 +30,9 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null }: { 
     || (salary?.state === 'current_estimate' && salary.savedAdvance == null)
     || (salary?.state === 'confirmed' && (salary.paid == null || salary.remaining == null)));
   useEffect(() => {
+    // The streaming fallback uses the same UI/cache without starting a second
+    // expensive payroll read while the server snapshot is still on its way.
+    if (!refreshEnabled) return;
     const controller = new AbortController();
     lastStarted.current = Date.now();
     setUpdating(true); setError('');
@@ -45,7 +48,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null }: { 
       }).catch(cause => { if (!controller.signal.aborted || controller.signal.reason === 'timeout') setError(cause instanceof Error && !controller.signal.aborted ? cause.message : 'Не удалось обновить расчёт. Попробуйте ещё раз.'); })
       .finally(() => { window.clearTimeout(timer); if (!controller.signal.aborted || controller.signal.reason === 'timeout') setUpdating(false); });
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [month, refresh, request, remember, clear, activeMonth]);
+  }, [month, refresh, request, remember, clear, activeMonth, refreshEnabled]);
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - lastStarted.current >= 30000) setRefresh(value => value + 1); };
     document.addEventListener('visibilitychange', onVisible);
@@ -60,7 +63,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null }: { 
   return <div className='salary-content personal-payroll-content'>
     <EmployeeActionReminder view='payroll' />
     <div className='salary-heading'><h1>Моя зарплата</h1><label className='salary-month-picker'>
-      <span className='sr-only'>Месяц зарплаты</span><select value={month} onChange={event => { setError(''); setSelectedMonth(event.target.value === activeMonth ? null : event.target.value); }} className='min-h-11 max-w-[190px] rounded-xl border border-[#e5e2da] bg-transparent px-2 font-semibold'>
+      <span className='sr-only'>Месяц зарплаты</span><select disabled={!refreshEnabled} value={month} onChange={event => { setError(''); setSelectedMonth(event.target.value === activeMonth ? null : event.target.value); }} className='min-h-11 max-w-[190px] rounded-xl border border-[#e5e2da] bg-transparent px-2 font-semibold'>
         {months.map(period => <option key={period} value={period}>{monthTitle(period)}</option>)}
       </select>
     </label></div>
