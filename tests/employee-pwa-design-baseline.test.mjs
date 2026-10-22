@@ -15,7 +15,10 @@ test('approved employee PWA palette remains the default', async () => {
   ]);
 
   assert.match(employeeSource, /\?\? 'portal-palette-mobo portal-typography-refined'/);
-  assert.match(notificationsSource, /palette === null \|\| palette\.startsWith\('mobo'\)/);
+  // Notification UI was extracted in the already released shared inbox.
+  assert.match(notificationsSource, /<EmployeeNotificationInbox/);
+  const inbox = await readFile('components/workday/EmployeeNotificationInbox.tsx', 'utf8');
+  assert.match(inbox, /employee-inbox portal-neutral-design employee-material-ui/);
   assert.match(globalStyles, /--portal-canvas: #f3f5f7;/);
   assert.match(globalStyles, /--portal-action: #263b5c;/);
   assert.match(globalStyles, /--portal-brand-accent: #efbd37;/);
@@ -28,9 +31,13 @@ test('approved employee PWA navigation semantics remain intact without decorativ
     readFile(brandStylesPath, 'utf8'),
   ]);
 
-  assert.match(employeeSource, /label: 'Рабочий день', icon: PremiumClockIcon/);
-  assert.match(employeeSource, /label: 'График', icon: PremiumCalendarIcon/);
-  assert.match(employeeSource, /employee-material-tab-label/);
+  const navigation = await readFile('components/EmployeeNavigation.tsx', 'utf8');
+  const sections = await readFile('lib/employee-navigation.ts', 'utf8');
+  assert.match(employeeSource, /<EmployeeNavigation/);
+  assert.match(sections, /id: 'day', label: 'Рабочий день'/);
+  assert.match(sections, /id: 'schedule', label: 'График'/);
+  assert.match(navigation, /day: PremiumClockIcon, schedule: PremiumCalendarIcon, payroll: PremiumCardIcon/);
+  assert.match(navigation, /employee-material-tab-label/);
   assert.match(globalStyles, /employee-material-nav-icon-day svg[\s\S]*?transform: scale\(1\.12\)/);
   assert.match(brandStyles, /employee-material-tab\.is-active \.employee-material-tab-label::after[\s\S]*?display: none !important;[\s\S]*?content: none !important;/);
   assert.match(globalStyles, /--solar-secondary-color: #263b5c !important;/);
@@ -58,6 +65,18 @@ test('month calendar cells are square and show initials without ellipsis', async
   assert.doesNotMatch(employeeSource, /mt-auto max-w-full truncate text-\[10px\]/);
 });
 
+test('personal salary keeps readable earnings and uses spacing-only compact adaptation', async () => {
+  const css = await readFile('app/(dashboard)/employee/payroll/payroll.css', 'utf8');
+  const client = await readFile('app/(dashboard)/employee/payroll/PersonalPayrollClient.tsx', 'utf8');
+  assert.match(css, /personal-payroll-content \.salary-breakdown > div \{[\s\S]*?font-size: 17px;/);
+  assert.match(css, /personal-payroll-content \.salary-breakdown strong \{\s*font-size: 19px;/);
+  const compact = css.slice(css.indexOf('@media (max-height: 820px)'));
+  assert.ok(compact.length > 0);
+  assert.doesNotMatch(compact, /font-size|transform|overflow:\s*hidden|display:\s*none/);
+  assert.match(client, /salary\.earnings!\.map/);
+  assert.doesNotMatch(client, /<details|<summary/);
+});
+
 test('semantic state icons keep the approved color system', async () => {
   const [employeeSource, notificationsSource, globalStyles] = await Promise.all([
     readFile(employeeSourcePath, 'utf8'),
@@ -66,8 +85,10 @@ test('semantic state icons keep the approved color system', async () => {
   ]);
 
   assert.match(employeeSource, /employee-material-state-marker-success/);
-  assert.match(notificationsSource, /employee-material-state-marker-warning/);
-  assert.match(notificationsSource, /employee-material-state-marker-info/);
+  assert.match(notificationsSource, /<EmployeeNotificationInbox/);
+  const inbox = await readFile('components/workday/EmployeeNotificationInbox.tsx', 'utf8');
+  assert.match(inbox, /item\.kind\.endsWith\('_reply'\) \? MessageCircle : Bell/);
+  assert.match(inbox, /employee-inbox-row \$\{unread \? 'is-unread' : ''\}/);
   assert.match(globalStyles, /employee-material-state-marker-warning[\s\S]*?background: #fff7e3 !important;/);
   assert.match(globalStyles, /employee-material-state-marker-success[\s\S]*?background: #eef8f1 !important;/);
   assert.match(globalStyles, /employee-material-state-marker-info[\s\S]*?background: #eef4fb !important;/);
@@ -108,7 +129,7 @@ test('KKM close failure uses the approved real-employee sheet, not the legacy in
   assert.match(source, /Закрытие кассы не подтверждено/);
   assert.match(source, /Закройте смену на ККМ\. Если чек уже есть — приложите фото\./);
   assert.match(source, /Чек закрытия распечатался\?/);
-  assert.match(source, /Ждём решения администратора\./);
+  assert.match(source, /Ожидает согласования\./);
   assert.match(source, /Продолжить сдачу смены/);
   assert.match(source, /currentCloseExceptionStatus === 'pending'[\s\S]*?currentCloseExceptionStatus === 'approved'[\s\S]*?currentCloseExceptionStatus === 'rejected'/);
   assert.match(source, /showCloseResolution && !kkmCloseIssue/);
@@ -121,7 +142,7 @@ test('other required issues keep the technical request in a sheet across re-entr
   assert.match(source, /requiredIssuesState\.length > 0 && \(closeBlocked \|\| handoverWasBlocked \|\| Boolean\(kkmCloseIssue\) \|\| Boolean\(closeExceptionRequestState\)\)/);
   assert.match(source, /closeResolutionOpen && showCloseResolution && !kkmCloseIssue/);
   assert.match(source, /Почему не получается\?/);
-  assert.match(source, /Администратор решит, можно ли закрыть смену с ошибкой\./);
+  assert.match(source, /Запрос на завершение смены с неисправленной ошибкой\./);
   assert.match(source, /activeWorkDay && !hasPreviousWorkday && !showShiftControl && !showCloseResolution/);
 });
 

@@ -46,7 +46,7 @@ export function paymentCardSummary(data: Evidence | null, employee: string, name
 }
 export default function PayrollPaymentEvidence({ periodKey, employee, names, read }: { periodKey: string; employee: string; names: string[]; read: ReturnType<typeof usePayrollPaymentEvidence> }) {
   const { data, error } = read;
-  if (error) return <section role='status' className='rounded-xl border border-amber-200 p-4'><p>{error}</p><button type='button' className='mt-3 underline' onClick={read.retry}>Повторить проверку</button></section>;
+  if (error) return <section role='status' className='rounded-xl border border-amber-200 p-4'><p>{error}</p><button data-payroll-read-action type='button' className='mt-3 underline' onClick={read.retry}>Повторить проверку</button></section>;
   if (!data || data.periodKey !== periodKey) return <p role='status' className='p-4'>Проверяем выплаты в 1С…</p>;
   const ref = resolvePayrollSettlementIdentity(employee, names, periodKey, data.cash, data.balance, data.ledger?.employees);
   const balance = employeeSalaryBalance(data.balance, ref);

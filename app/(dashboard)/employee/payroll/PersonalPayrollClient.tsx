@@ -1,67 +1,77 @@
 'use client';
 import { EmployeeNavigation } from '@/components/EmployeeNavigation';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PremiumCardIcon } from '@/components/PwaPreviewIcons';
-import type { EmployeeEarning } from '@/lib/employee-payroll-estimate';
+import { employeePayrollMonths, validEmployeePayrollView, type EmployeePayrollView as Salary } from '@/lib/employee-payroll-view';
+import { useEmployeePayrollMonth } from '@/components/useEmployeePayrollMonth';
+import { useEmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
+import { EmployeeActionReminder } from '@/components/workday/EmployeeActionReminder';
 
-type Salary = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed'; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null };
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
 const monthTitle = (period: string) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${period}-01T12:00:00Z`));
 
-export function PersonalPayrollClient({ currentMonth }: { currentMonth: string }) {
+export function PersonalPayrollClient({ currentMonth, initialSalary = null }: { currentMonth: string; initialSalary?: Salary | null }) {
   const preview = useEmployeePreview();
   const request = preview?.request ?? fetch;
-  const [month, setMonth] = useState(currentMonth);
-  const [salary, setSalary] = useState<Salary | null>(null);
+  const activeMonth = useEmployeePayrollMonth(currentMonth);
+  const months = employeePayrollMonths(activeMonth);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+  const month = selectedMonth && months.includes(selectedMonth) ? selectedMonth : activeMonth;
+  const store = useEmployeePayrollSnapshots();
+  const remember = store?.remember, clear = store?.clear;
+  const [loaded, setSalary] = useState<Salary | null>(initialSalary);
+  const salary = store?.values.get(month) ?? (loaded?.month === month ? loaded : null);
+  const [updating, setUpdating] = useState(true);
+  const lastStarted = useRef(0);
   const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
-  const needsRetry = !!error || salary?.state === 'unavailable'
+  const needsRetry = !updating && (!!error || salary?.state === 'unavailable'
     || (salary?.state === 'current_estimate' && salary.savedAdvance == null)
-    || (salary?.state === 'confirmed' && (salary.paid == null || salary.remaining == null));
-  const months = Array.from({ length: 3 }, (_, offset) => {
-    const date = new Date(`${currentMonth}-01T12:00:00Z`); date.setUTCMonth(date.getUTCMonth() - offset);
-    return date.toISOString().slice(0, 7);
-  });
+    || (salary?.state === 'confirmed' && (salary.paid == null || salary.remaining == null)));
   useEffect(() => {
     const controller = new AbortController();
-    setSalary(null); setError('');
+    lastStarted.current = Date.now();
+    setUpdating(true); setError('');
+    const timer = window.setTimeout(() => controller.abort('timeout'), 15000);
     void request(`/api/employee/payroll?month=${encodeURIComponent(month)}`, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
+        if (controller.signal.aborted) return;
+        if ([401, 403, 404, 410].includes(response.status)) { clear?.(); setSalary(null); throw Error('Войдите в приложение заново.'); }
         if (!response.ok) throw Error('Не удалось обновить расчёт. Попробуйте ещё раз.');
-        const result = await response.json() as Salary;
-        if (result.month !== month || !['unavailable', 'current_estimate', 'confirmed'].includes(result.state)
-          || (result.state === 'current_estimate' && (!Number.isFinite(result.estimatedAccrued) || !Array.isArray(result.earnings)
-            || result.earnings.some(row => typeof row.label !== 'string' || !Number.isFinite(row.amount))
-            || result.earnings.reduce((sum, row) => sum + row.amount, 0) !== result.estimatedAccrued))
-          || (result.state === 'confirmed' && !Number.isFinite(result.accrued))) throw Error('Расчёт пока недоступен.');
-        if (!controller.signal.aborted) setSalary(result);
-      }).catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Расчёт пока недоступен.'); });
-    return () => controller.abort();
-  }, [month, refresh, request]);
+        const result: unknown = await response.json();
+        if (!validEmployeePayrollView(result, month)) throw Error('Расчёт пока недоступен.');
+        if (!controller.signal.aborted) { setSalary(result); remember?.(result, months); }
+      }).catch(cause => { if (!controller.signal.aborted || controller.signal.reason === 'timeout') setError(cause instanceof Error && !controller.signal.aborted ? cause.message : 'Не удалось обновить расчёт. Попробуйте ещё раз.'); })
+      .finally(() => { window.clearTimeout(timer); if (!controller.signal.aborted || controller.signal.reason === 'timeout') setUpdating(false); });
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [month, refresh, request, remember, clear, activeMonth]);
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') setRefresh(value => value + 1); };
+    const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - lastStarted.current >= 30000) setRefresh(value => value + 1); };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('pageshow', onVisible);
+    window.addEventListener('focus', onVisible);
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('pageshow', onVisible);
+      window.removeEventListener('focus', onVisible);
     };
   }, []);
   return <div className='salary-content personal-payroll-content'>
+    <EmployeeActionReminder view='payroll' />
     <div className='salary-heading'><h1>Моя зарплата</h1><label className='salary-month-picker'>
-      <span className='sr-only'>Месяц зарплаты</span><select value={month} onChange={event => { setSalary(null); setMonth(event.target.value); }} className='min-h-11 max-w-[190px] rounded-xl border border-[#e5e2da] bg-transparent px-2 font-semibold'>
+      <span className='sr-only'>Месяц зарплаты</span><select value={month} onChange={event => { setError(''); setSelectedMonth(event.target.value === activeMonth ? null : event.target.value); }} className='min-h-11 max-w-[190px] rounded-xl border border-[#e5e2da] bg-transparent px-2 font-semibold'>
         {months.map(period => <option key={period} value={period}>{monthTitle(period)}</option>)}
       </select>
     </label></div>
-    <div aria-live='polite' aria-busy={!salary && !error}>
-      {error ? <div role='alert' className='rounded-2xl border border-amber-200 bg-amber-50 p-5 text-base'>{error}</div>
-        : !salary ? <p className='py-8 text-base'>Обновляем расчёт…</p>
+    <div aria-live='polite' aria-busy={updating}>
+      {error && <p role='alert' className='mb-3 text-sm text-amber-900'>{salary && salary.state !== 'unavailable' ? 'Показан последний загруженный расчёт. ' : ''}{error}</p>}
+      {!salary ? !error && <p className='py-8 text-base'>Обновляем расчёт…</p>
         : salary.state === 'unavailable' ? <div className='salary-hero pwa-review-task'><p>Расчёт пока недоступен</p><p className='mt-3 text-base'>Он появится после проверки данных.</p></div>
         : <>
           <section className='salary-hero pwa-review-task' aria-label='Начисленная зарплата'>
             <p>Начислено за месяц</p><div className='salary-total'>{salary.state === 'confirmed' ? money(salary.accrued!) : `≈ ${money(salary.estimatedAccrued!)}`} <span>₽</span></div>
-            <div className='salary-status'><span>{salary.state === 'current_estimate' ? 'Предварительный расчёт' : 'Подтверждённая сумма'}</span>
+            <div className='salary-status'><span>{salary.state === 'current_estimate' ? 'Предварительный расчёт' : 'Подтверждённая сумма'}{updating && <span className='text-slate-500'> · Обновляется…</span>}</span>
               {salary.verifiedThrough && <p className='salary-through'>Продажи учтены по {new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${salary.verifiedThrough}T12:00:00Z`))}</p>}
             </div>
           </section>
@@ -76,7 +86,7 @@ export function PersonalPayrollClient({ currentMonth }: { currentMonth: string }
           </section> : salary.savedAdvance != null && salary.savedAdvance > 0 ? <section className='salary-advance'><span className='salary-wallet'><PremiumCardIcon color='var(--portal-brand-strong)' size={28} /></span><div>Получено авансом</div>
             <strong>{money(salary.savedAdvance)} ₽</strong>
           </section> : null}
-          {salary.state === 'current_estimate' && salary.savedAdvance == null
+          {salary.state === 'current_estimate' && salary.savedAdvance == null && !updating
             && <p role='status' className='mt-2 text-base text-slate-600'>Не удалось проверить авансы. Попробуйте позже.</p>}
         </>}
     </div>
