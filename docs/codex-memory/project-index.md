@@ -37,6 +37,9 @@ project from scratch.
   public metadata and authenticated ADMIN verified; live QR mutations not tested.
   Follow-up 1.13.6 / `4d2d44a`: ADMIN edits before approval, optional reason,
   known/unknown funding-date wording; production edit open/cancel verified.
+  Follow-up 1.13.8 / `f3840fa`: pending ADMIN deferral before approval, finished
+  USDT reserve exclusion and compact buyer header; real Cargo deferral open/cancel,
+  server/public/UI version and verified-image registration confirmed.
 - PWA cross-tab actionable reminder: `pwa-action-reminder-candidate-20261022.md`
   (approved 1.13.7 release preparation: saved-first payroll, two rolling months,
   actionable reminders and native checklist outline; deploy verification pending).

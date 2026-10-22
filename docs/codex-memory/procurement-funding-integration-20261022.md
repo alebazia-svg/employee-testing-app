@@ -301,3 +301,67 @@ was performed. This mismatch does not establish a portal regression.
   `lib/procurement-payment-notifications.ts`, `lib/procurement-notification-lifecycle.ts`,
   `lib/notification-opening.ts`. Tests are in runtime commit `575a04c`;
   release records are committed separately from runtime code.
+
+## Follow-up 1.13.8 — pending deferral, USDT reserve and compact buyer header
+
+- Owner explicitly approved release after the actual local ADMIN/buyer review.
+  Runtime candidate `f3840faec50d88ed74b6a171b73db9f3b621f903`; code `b0791aa`.
+  Concurrent approved PWA/payroll 1.13.7 (`d34e813`) was merged without conflict;
+  the calendar uses the next patch, not the occupied version. No force push.
+- Corrected the omitted SUBMITTED deferral path: ADMIN can DEFER/RESUME before
+  approval, without mandatory date/comment. Approval remains a separate action.
+  Both role views show effective dates; unknown funding is a short status
+  «Оплата отложена» and separate «Дата уточняется», never a new approval status.
+  Funding editor participates in existing dirty/busy guards and suppresses
+  approval actions while open. The result is previewed before saving.
+- Approval preserves the saved deferral and uses its effective date in the
+  employee notification, rather than promising the old requested date. Existing
+  quiet hours, audit, stale-version, identity and financial evidence guards stay.
+- USDT reserve now uses the same finished-state predicate as calendar history:
+  ISSUED_BY_ONE_C and SMALL_REMAINDER_COMPLETED also release the reserve, including
+  RUB-expense completion without an invented USDT transfer. Confirmed partial
+  foreign remainder remains reserved; ambiguous evidence is not free cash.
+- Buyer header is about 55 px shorter at the reviewed desktop viewport; source
+  freshness sits beside the existing tabs, touch targets remain at least 44 px.
+  No calendar replacement, accounting matching change, migration or 1C write.
+- Focused verification: 46 unit/UI-policy cases and two actual isolated-DB
+  transaction suites passed. The latter now exercise DEFER -> separate APPROVE
+  with known/unknown dates, identity/amount preservation and correct notices.
+  Five release metadata checks, build and TypeScript/diff checks passed.
+  After merge, payroll/reminder/view/draft tests and all 78 payroll tests passed.
+- Actual-components UI checked on localhost:3145 with isolated synthetic records,
+  including 390 px mobile. Evidence: `/tmp/mobo-calendar-compact-usdt.png` and
+  `/tmp/mobo-cargo-deferral-final-check.png`. No production test saves or sends.
+- Exact calendar source files: both `AdminProcurementClient.tsx` and
+  `ProcurementPaymentCalendarClient.tsx`; `components/ProcurementApprovedEdit.tsx`,
+  `ProcurementFundingSchedule.tsx`, `ProcurementShell.tsx`;
+  `lib/procurement-payment-notifications.ts`, `procurement-schedule-server.ts`,
+  `procurement-schedule.ts`, `procurement-usdt-reserve.ts`. Five focused test files
+  plus `procurement-deferred-approval-notice.test.ts` cover the change; package
+  manifests carry the version. Source file paths are recorded in commit b0791aa.
+- Deployment waits for the preceding release's independent verified-image
+  registration, then uses the existing deployment/storage lock. Only portal-app
+  is rebuilt. Production success is not asserted until the verification below.
+- Procurement evidence progress remains 54.8/100; no stage IDs changed and no
+  autonomous spending/procurement or 1C write authority was added.
+
+### Production verification — 1.13.8
+
+- Released runtime commit `f3840faec50d88ed74b6a171b73db9f3b621f903`.
+  Independent SSH readback confirmed that exact clean tracked checkout.
+  Public release-info reports 1.13.8, builtAt `2026-10-22T19:35:07.212Z`;
+  authenticated ADMIN footer confirms 1.13.8 / 22:35 MSK. Public revision remains
+  null in the existing Docker build, so commit identity was verified via SSH.
+- Container healthy; public health returned `{"ok":true}`. Existing env hash
+  and mounts unchanged. No migration, cleanup, business writes or 1C publication.
+- Real pending «Карго Юра» exposes enabled «Изменить» and «Отложить оплату».
+  Opened deferral, verified optional date/comment and separate approval wording,
+  then cancelled without saving. Original request/status/amount preserved.
+  Screenshot: `/tmp/mobo-calendar-release-1.13.8.png` (local evidence only).
+- Independent verification marker completed; verified-image registration returned
+  `RELEASE_VERIFIED_AND_REGISTERED` in `/tmp/mobo-calendar-deploy-1.13.8.log`.
+  Current image: `sha256:dbc4f7392a465925a40682225faa6d6f7d32fdfeaf6fae1841dd2429e7e04645`.
+  Rollback tag `portal-app:rollback-before-1.13.8` retains preceding 1.13.7 image
+  `sha256:1bdfbbab39765027a10c4ce659489f20a2f10fa106f11cc79ec37e73b111e10a`.
+- Limits: no real financial save or notification sent for verification; actual
+  saves covered by isolated PostgreSQL tests. Physical iPhone/PWA not exercised.
