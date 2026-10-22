@@ -1,3 +1,4 @@
+import { payrollFeatureState } from './payroll-features';
 import 'server-only';
 import { getEmployeeWorkdaySnapshot } from '@/lib/employee-workday-snapshot';
 import { prisma } from '@/lib/prisma';
@@ -61,6 +62,7 @@ export async function loadEmployeeHome(user: { id: number; name: string; departm
   ]);
 
   return {
+    payrollEnabled: payrollFeatureState().employeeEnabled,
     user: { id: user.id, name: user.name, department: user.department },
     today: today,
     ownSchedule: ownSchedule.map(serializeScheduleEntry),
