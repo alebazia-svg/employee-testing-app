@@ -1,6 +1,6 @@
-# PWA action reminder — local candidate, 2026-10-22
+# PWA payroll and action reminders — released 1.13.7, 2026-10-22
 
-## Approved production release — 1.13.7, preparation
+## Verified production release — 1.13.7
 
 Owner explicitly approved publishing: «Ну, приступай. Выпустишь, я тогда проверю
 экран». Classification OPERATIONS APPROVAL, scoped to saved-first employee
@@ -22,8 +22,74 @@ salary, database migration or 1C publication/write.
   image `sha256:4d64a1620eebcdbe9cc0809032c90d46a97d35804d52fe8bef5cd61b4632ef9d`.
   Protected reserves: `sha256:1347a05b913c2325633a8b5728b8295f0c63a7198701fe673bdf591719545688`
   and `sha256:e72975b706c981a7df73b78e2aa1c1d8a44bdc60b00cb6a06d8bad35e7094320`.
-- Deployment and post-deployment verification pending. Do not describe prepared
-  commit or successful local build as a completed production release.
+- Deployed only portal-app at runtime commit
+  `d34e813b3c545195ed347cd1b0a22577a570243f`. Public version 1.13.7, build
+  `2026-10-22T19:25:16.513Z`; authenticated ADMIN footer independently matched.
+  Metadata revision remains null/source unknown in the existing pipeline; exact
+  source identity was independently checked with server Git, not inferred from it.
+- Replacement image
+  `sha256:1bdfbbab39765027a10c4ce659489f20a2f10fa106f11cc79ec37e73b111e10a`.
+  Deployment wrapper exited 22 only because the immediate public metadata read
+  returned transient 404 after restart. Subsequent independent public read,
+  authenticated pages and root verification passed; no rebuild/retry needed.
+  Container running/healthy, public `/api/health` returned `{"ok":true}`.
+- Native Terminal final verification exited 0 (`PWA_VERIFIED_REGISTERED_OK`).
+  Env checksum, mounts and payroll/demo flags unchanged; no Prisma file delta,
+  no explicit migration or production business-data write. Registered new image
+  after releasing the deployment lock. Registry now protects replacement,
+  previous 1.13.6 image and `sha256:1347a05b913c2325633a8b5728b8295f0c63a7198701fe673bdf591719545688`.
+  Retention timer enabled, approximately 20 GiB free after build. This is a
+  capacity check, not a guarantee that storage can never fill.
+- Production authenticated UI: ADMIN overview loaded, no persistent saved-status
+  clutter, review button opened questions and returned to overview. Existing
+  Liana employee inspection opened Workday, Schedule and Salary; current salary
+  59,800 estimate stayed visible during background refresh, October/September
+  were the only choices. September confirmed 130,500 paid / zero remaining.
+  No shift, schedule, payroll or 1C financial mutations were used for verification.
+  Inspection audit visit is the normal read-only ADMIN facility.
+- Important source caveat: production October still explicitly says sales through
+  17 October; ADMIN review displayed a days/late refresh Bad Gateway warning.
+  Stored values remained visible. Do not claim live sources are fully current or
+  that this release fixed the independent source freshness problem.
+- Physical iPhone/standalone push-resume check remains with owner. Production
+  Liana had completed shift and no actionable reminder; positive action resolution
+  and failure recovery were rehearsed in isolated local data, not manufactured
+  on production. Main dirty checkout and unrelated work left untouched.
+
+### Exact runtime files in d34e813
+
+```text
+app/(dashboard)/admin/employees/preview/[visitId]/page.tsx
+app/(dashboard)/admin/payroll/PayrollClient.tsx
+app/(dashboard)/admin/payroll/PayrollDraftSync.tsx
+app/(dashboard)/admin/payroll/PayrollFinalOverview.tsx
+app/(dashboard)/admin/payroll/PayrollLivePayments.tsx
+app/(dashboard)/admin/payroll/PayrollOverviewPreview.tsx
+app/(dashboard)/admin/payroll/PayrollPaymentEvidence.tsx
+app/(dashboard)/employee/EmployeeTodayClient.tsx
+app/(dashboard)/employee/layout.tsx
+app/(dashboard)/employee/payroll/PersonalPayrollClient.tsx
+app/(dashboard)/employee/payroll/PersonalPayrollScreen.tsx
+app/(dashboard)/employee/payroll/payroll.css
+components/EmployeePayrollSnapshots.tsx
+components/useEmployeePayrollMonth.ts
+components/workday/EmployeeActionReminder.module.css
+components/workday/EmployeeActionReminder.tsx
+components/workday/EmployeeAttentionPanel.tsx
+components/workday/ReminderBell.module.css
+components/workday/ReminderBell.tsx
+lib/employee-action-reminder.ts
+lib/employee-payroll-response.ts
+lib/employee-payroll-view.ts
+lib/payroll-draft.ts
+package-lock.json
+package.json
+tests/employee-action-reminder.test.ts
+tests/employee-attention-card.test.mjs
+tests/employee-payroll-view.test.ts
+tests/employee-pwa-design-baseline.test.mjs
+tests/payroll-draft.test.ts
+```
 
 The remaining content below is historical candidate evidence, superseded by the
 latest status sections where they differ.
