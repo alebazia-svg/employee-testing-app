@@ -562,10 +562,6 @@ export default function ProcurementPaymentCalendarClient({
           <h1 className="text-2xl font-black sm:text-3xl">
             Платёжный календарь
           </h1>
-          <p aria-hidden={paymentView === 'history' || undefined}
-            className={`mt-1 text-sm font-medium text-slate-600 ${paymentView === 'history' ? 'invisible' : ''}`}>
-            Запланируйте известные оплаты, чтобы деньги подготовили вовремя.
-          </p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end xl:flex-row-reverse xl:items-center xl:gap-3">
           {!planningBlocked || preview ? (

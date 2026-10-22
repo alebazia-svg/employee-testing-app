@@ -174,6 +174,16 @@ test('completed residual is absent from active buyer requests even while fresh e
   assert.match(html,/История оплат/);
 });
 
+test('compact calendar header omits the planning subtitle in both tabs',async()=>{
+  const props={...buyerReviewScenario('lifecycle','2026-09-29')!,basisPreview:false};
+  for(const view of ['current','history'] as const){
+    const html=await render(props,view);
+    assert.doesNotMatch(html,/Запланируйте известные оплаты/);
+    assert.match(html,/<h1[^>]*>Платёжный календарь<\/h1>/);
+    assert.match(html,/Текущие оплаты/);
+    assert.match(html,/История оплат/);
+  }
+});
 test('history tab retains the same summary and hides planning actions; current is the default',async()=>{
   const props={...buyerReviewScenario('lifecycle','2026-09-29')!,basisPreview:false,supplierDebtError:false};
   const current=await render(props);
@@ -182,7 +192,7 @@ test('history tab retains the same summary and hides planning actions; current i
   assert.match(current,/Мои заявки|Добавить оплаты/);
   assert.match(history,/aria-pressed="true"[^>]*>История оплат/);
   assert.doesNotMatch(history,/Запланировать оплату|>Изменить</);
-  assert.match(history,/<p aria-hidden="true" class="[^"]*invisible">Запланируйте известные оплаты/);
+  assert.doesNotMatch(current + history,/Запланируйте известные оплаты/);
   assert.match(history,/<button aria-hidden="true" disabled="" tabindex="-1" class="[^"]*invisible"[^>]*>[\s\S]*?Добавить оплаты<\/button>/);
   assert.equal(history.match(/<header/g)?.length,current.match(/<header/g)?.length);
   assert.equal(history.match(/<aside[\s\S]*?<\/aside>/)?.[0],current.match(/<aside[\s\S]*?<\/aside>/)?.[0]);
