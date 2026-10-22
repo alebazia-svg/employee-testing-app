@@ -71,7 +71,7 @@ export function WorkdayNotificationsClient() {
       if (nextPermission !== 'granted') throw new Error('Разрешите уведомления в настройках устройства.');
       const configResponse = await fetch('/api/employee/push-subscription', { cache: 'no-store' });
       const config = await configResponse.json();
-      if (!configResponse.ok || !config.publicKey) throw new Error('Push-уведомления ещё не настроены администратором.');
+      if (!configResponse.ok || !config.publicKey) throw new Error('Push-уведомления ещё не настроены.');
       const registration = await navigator.serviceWorker.register('/workday-sw.js', { scope: '/' });
       const existing = await registration.pushManager.getSubscription();
       const subscription = existing ?? await registration.pushManager.subscribe({
@@ -131,7 +131,7 @@ export function WorkdayNotificationsClient() {
 
   async function openNotification(notification: WorkdayNotification) {
     setBanner(null);
-    if (notification.active === false) { void dismiss(notification); return; }
+    if (notification.active === false && employeeNotificationOpening(notification) === 'page') { void dismiss(notification); return; }
     if (notification.kind === EMPLOYEE_EXPENSE_KIND || notification.issueId || notification.reviewId) {
       setOpen(false); void dismiss(notification);
       const kind = notification.kind === EMPLOYEE_EXPENSE_KIND ? 'cash' : notification.attentionKind ?? 'receipt';

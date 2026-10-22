@@ -1,6 +1,8 @@
 'use client';
 
 import Link from 'next/link';
+import { useAdminIdentity } from './AdminIdentityProvider';
+import { portalPersonInitials } from '@/lib/portal-person';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Banknote, BriefcaseBusiness, Building2, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Truck, Users, Wrench, X } from 'lucide-react';
@@ -67,6 +69,7 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
   headerWidthClass?: string;
 }) {
   const pathname = usePathname();
+  const accountName = useAdminIdentity();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMoreActive = [...dailyNavigation.slice(3), ...serviceNavigation].some((item) => isActive(pathname, item.href));
@@ -159,10 +162,10 @@ export function AdminShell({ children, pageTitle, pageDescription, headerWidthCl
             {pageTitle && <header className='min-w-0'><h1 className='text-2xl font-bold leading-tight tracking-tight text-slate-950 sm:text-[28px]'>{pageTitle}</h1>{pageDescription && <div className='mt-1 max-w-3xl text-sm leading-relaxed text-slate-500'>{pageDescription}</div>}</header>}
             <div className='hidden shrink-0 items-center gap-3 md:flex'><AdminInboxBell />
             <div className='admin-account-chip hidden items-center gap-3 rounded-full px-4 py-2 sm:flex'>
-              <div className='admin-account-avatar flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold'>АД</div>
+              <div className='admin-account-avatar flex h-10 w-10 items-center justify-center rounded-full text-sm font-extrabold'>{portalPersonInitials(accountName)}</div>
               <div>
-                <p className='text-sm font-bold text-slate-950'>Администратор</p>
-                <p className='text-xs font-medium text-slate-500'>admin</p>
+                <p className='text-sm font-bold text-slate-950'>{accountName}</p>
+                <p className='text-xs font-medium text-slate-500'>Администратор</p>
               </div>
             </div>
             </div>

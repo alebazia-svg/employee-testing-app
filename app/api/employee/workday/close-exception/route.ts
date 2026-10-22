@@ -43,8 +43,8 @@ export async function POST(req: Request) {
       data: {
         eventKey: `workday_close_exception:${request.id}:requested`,
         type: 'workday.close_exception_requested',
-        title: 'Запрос на завершение дня',
-        body: `${user.name}: техническая причина · незакрытых ошибок: ${issueIds.length}.`,
+        title: `${user.name} · завершение смены`,
+        body: `${({power:'Нет света',internet:'Нет интернета',one_c:'Не работает 1С',kkm:'Не работает касса',other:'Другая техническая причина'} as Record<string,string>)[reasonCode]} · неисправленных ошибок: ${issueIds.length}.`,
         href: `/admin/workday/close-exceptions/${request.id}`,
         sourceType: 'workday_close_exception',
         sourceId: request.id,

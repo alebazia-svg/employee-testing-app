@@ -1,3 +1,4 @@
+import { portalPersonName } from './portal-person';
 import 'server-only';
 
 import type { PrismaClient } from '@prisma/client';
@@ -35,8 +36,8 @@ export async function addEmployeeWorkdayIssueMessage(input: {
       data: {
         eventKey: `workday_issue:employee_message:${message.id}`,
         type: 'workday_issue.employee_message',
-        title: 'Сообщение по обязательной ошибке',
-        body: `${issue.user.name}: ${short(input.body)}`,
+        title: `${issue.user.name} · сообщение по чеку`,
+        body: short(input.body),
         href: `/admin/workday/issues/${issue.id}`,
         sourceType: 'workday_control_issue',
         sourceId: String(issue.id),
@@ -66,6 +67,7 @@ export async function addAdminWorkdayIssueMessage(input: {
     if (!issue) throw new Error('ISSUE_NOT_AVAILABLE');
     const message = await tx.workdayControlIssueMessage.create({
       data: { issueId: issue.id, authorId: input.adminId, body: input.body, createdAt: now },
+      include: { author: { select: { name: true, payrollName: true } } },
     });
     await tx.workdayNotification.create({
       data: {
@@ -73,8 +75,8 @@ export async function addAdminWorkdayIssueMessage(input: {
         issueId: issue.id,
         fingerprint: `workday-issue:${issue.id}:admin-message:${message.id}`,
         kind: 'workday_issue_reply',
-        title: 'Ответ администратора',
-        body: short(input.body),
+        title: 'Ответ по проверке',
+        body: short(message.author ? `${portalPersonName(message.author)}: ${input.body}` : input.body),
         scheduledAt: now,
       },
     });

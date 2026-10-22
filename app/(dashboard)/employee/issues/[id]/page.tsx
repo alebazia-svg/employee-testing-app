@@ -1,3 +1,4 @@
+import { portalPersonName } from '@/lib/portal-person';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PremiumChatIcon, PremiumCheckCircleIcon, PremiumDangerTriangleIcon } from '@/components/PwaPreviewIcons';
@@ -21,7 +22,7 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
   const issueId = Number(params.id);
   const issue = Number.isInteger(issueId) ? await prisma.workdayControlIssue.findFirst({
     where: { id: issueId, userId: user.id },
-    include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, role: true } } } } },
+    include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true, payrollName: true, role: true } } } } },
   }) : null;
   if (!issue) redirect('/employee');
   const open = issue.status === 'open' && issue.employeeActionRequired;
@@ -64,8 +65,8 @@ export default async function EmployeeWorkdayIssuePage(props: { params: Promise<
             </Card>
           )}
           {showConversation && !isCreditIssue && <Card className='employee-material-form mt-4'>
-            <div className='mb-4 flex items-center gap-2'><span className='employee-material-alert-symbol flex h-7 w-7 items-center justify-center'><PremiumChatIcon color='#263b5c' secondaryColor='#b9cbe0' secondaryOpacity={0.9} className='h-6 w-6' /></span><h2 className='text-lg font-extrabold'>Сообщение администратору</h2></div>
-            <TerminalFiscalReviewConversation initialMessages={issue.messages.map((message) => ({ ...message, createdAt: message.createdAt.toISOString() }))} currentUserId={user.id} endpoint={`/api/employee/workday-issues/${issue.id}/messages`} disabled={!open} />
+            <div className='mb-4 flex items-center gap-2'><span className='employee-material-alert-symbol flex h-7 w-7 items-center justify-center'><PremiumChatIcon color='#263b5c' secondaryColor='#b9cbe0' secondaryOpacity={0.9} className='h-6 w-6' /></span><h2 className='text-lg font-extrabold'>Сообщения</h2></div>
+            <TerminalFiscalReviewConversation initialMessages={issue.messages.map((message) => ({ ...message, author: { id: message.author.id, name: portalPersonName(message.author), role: message.author.role }, createdAt: message.createdAt.toISOString() }))} currentUserId={user.id} endpoint={`/api/employee/workday-issues/${issue.id}/messages`} disabled={!open} />
           </Card>}
         </div>
       </div>

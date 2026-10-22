@@ -1,3 +1,4 @@
+import { portalPersonName } from '@/lib/portal-person';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ShieldAlert, CircleCheck } from 'lucide-react';
@@ -34,7 +35,7 @@ export default async function AdminCloseExceptionPage(props: { params: Promise<{
   if (admin.role !== 'ADMIN') redirect('/employee');
   const request = await prisma.workdayCloseExceptionRequest.findUnique({
     where: { id: params.id },
-    include: { employee: { select: { name: true } }, decidedBy: { select: { name: true } }, workDayEntry: { select: { date: true, endedAt: true } } },
+    include: { employee: { select: { name: true } }, decidedBy: { select: { name: true, payrollName: true } }, workDayEntry: { select: { date: true, endedAt: true } } },
   });
   if (!request) redirect('/admin/workday');
   const cashEncashmentException = isCashEncashmentException(request.reasonCode);
@@ -74,7 +75,7 @@ export default async function AdminCloseExceptionPage(props: { params: Promise<{
             </section> : null}
           </div>
         )}
-        {request.status === 'pending' ? <CloseExceptionDecisionClient requestId={request.id} approveLabel={cashEncashmentException ? 'Завершить без инкассации' : undefined} /> : <div className='mt-5 border-t border-amber-200 pt-4 text-sm font-semibold text-slate-700'><p>Состояние: {statusLabels[request.status] ?? request.status}</p>{request.workDayEntry.endedAt && <p className='mt-1'>Рабочий день завершён: {request.workDayEntry.endedAt.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}</p>}{request.decisionComment && <p className='mt-1'>Комментарий: {request.decisionComment}</p>}{request.decidedBy && <p className='mt-1'>Администратор: {request.decidedBy.name}</p>}<p className='mt-2'>{automaticallyResolved ? 'Проблема устранена — решение не требуется. Запрос сохранён в истории.' : cashEncashmentException ? request.status === 'resolved' ? 'Активного действия больше не требуется.' : 'Разрешение не создаёт кассовые документы и не подтверждает инкассацию.' : 'Решение относится только к этому рабочему дню. Неисправленные проблемы остаются открытыми.'}</p></div>}
+        {request.status === 'pending' ? <CloseExceptionDecisionClient requestId={request.id} approveLabel={cashEncashmentException ? 'Завершить без инкассации' : undefined} /> : <div className='mt-5 border-t border-amber-200 pt-4 text-sm font-semibold text-slate-700'><p>Состояние: {statusLabels[request.status] ?? request.status}</p>{request.workDayEntry.endedAt && <p className='mt-1'>Рабочий день завершён: {request.workDayEntry.endedAt.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })}</p>}{request.decisionComment && <p className='mt-1'>Комментарий: {request.decisionComment}</p>}{request.decidedBy && <p className='mt-1'>Решение: {portalPersonName(request.decidedBy)}</p>}<p className='mt-2'>{automaticallyResolved ? 'Проблема устранена — решение не требуется. Запрос сохранён в истории.' : cashEncashmentException ? request.status === 'resolved' ? 'Активного действия больше не требуется.' : 'Разрешение не создаёт кассовые документы и не подтверждает инкассацию.' : 'Решение относится только к этому рабочему дню. Неисправленные проблемы остаются открытыми.'}</p></div>}
       </Card>
     </AdminShell>
   );

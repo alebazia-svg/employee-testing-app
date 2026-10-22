@@ -3,7 +3,7 @@
 import { useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-export function CloseExceptionDecisionClient({ requestId, approveLabel = 'Разрешить и завершить день', embedded = false }: { requestId: string; approveLabel?: string; embedded?: boolean }) {
+export function CloseExceptionDecisionClient({ requestId, approveLabel = 'Согласовать и завершить', embedded = false }: { requestId: string; approveLabel?: string; embedded?: boolean }) {
   const commentId = useId();
   const [comment, setComment] = useState('');
   const [saving, setSaving] = useState(false);
@@ -36,7 +36,7 @@ export function CloseExceptionDecisionClient({ requestId, approveLabel = 'Раз
       {error && <p className='text-sm font-bold text-red-700'>{error}</p>}
       <div className='team-close-actions grid gap-2 sm:grid-cols-2'>
         <Button type='button' disabled={saving} onClick={() => decide('approved')} className='font-extrabold'>{approveLabel}</Button>
-        <Button type='button' disabled={saving} onClick={() => decide('rejected')} className='bg-white font-extrabold text-slate-700 ring-1 ring-slate-300 shadow-none hover:bg-slate-50'>Не разрешать</Button>
+        <Button type='button' disabled={saving} onClick={() => decide('rejected')} className='bg-white font-extrabold text-slate-700 ring-1 ring-slate-300 shadow-none hover:bg-slate-50'>Не согласовать</Button>
       </div>
     </div>
   );

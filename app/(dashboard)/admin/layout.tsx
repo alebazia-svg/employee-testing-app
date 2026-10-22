@@ -1,3 +1,5 @@
+import { AdminIdentityProvider } from '@/components/AdminIdentityProvider';
+import { portalPersonName } from '@/lib/portal-person';
 import { redirect } from 'next/navigation';
 import { getCurrentUser, portalHomePath } from '@/lib/auth';
 
@@ -7,5 +9,5 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   if (user.role !== 'ADMIN') redirect(portalHomePath(user));
-  return children;
+  return <AdminIdentityProvider name={portalPersonName(user)}>{children}</AdminIdentityProvider>;
 }

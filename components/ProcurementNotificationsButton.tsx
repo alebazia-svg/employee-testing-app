@@ -93,7 +93,7 @@ export function ProcurementNotificationsButton() {
   }, [connectPush, refresh, preview]);
 
   async function openItem(item: ProcurementNotification) {
-    if(item.active===false){void dismiss(item);return;}
+    if(item.active===false&&employeeNotificationOpening(item)==='page'){void dismiss(item);return;}
     setOpen(false);
     if(preview || employeeNotificationOpening(item)!=='page'){setSelected({...item,audience:'employee'});return;}
     router.push(safeNotificationHref(item.href,'/procurement'));

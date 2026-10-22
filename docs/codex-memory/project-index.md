@@ -29,6 +29,8 @@ project from scratch.
 
 ## Read First By Task
 
+- Portal author names, profile role and request/decision wording: `portal-identity-wording-20261022.md` (released 1.13.5; real message/decision authors, surname-first owner identity, compact role).
+
 - Funding/date integration released 1.13.4 / `803a0f7`:
   `procurement-funding-integration-20261022.md`. Buyer rescheduling, ADMIN deferral,
   UI/forecast and conservative QR transfer matching locally verified. Server,

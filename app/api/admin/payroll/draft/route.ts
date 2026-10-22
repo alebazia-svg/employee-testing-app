@@ -1,3 +1,4 @@
+import { portalPersonName } from '@/lib/portal-person';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-api-auth';
 import { validateFinboxPeriod } from '@/lib/payroll-finbox-input';
@@ -17,8 +18,8 @@ export async function GET(req: Request) {
   try {
     if (new URL(req.url).searchParams.get('history') === '1') {
       const records = await prisma.payrollDraftRevision.findMany({ where: { periodKey }, orderBy: { revision: 'desc' }, take: 20 });
-      const authors = await prisma.user.findMany({ where: { id: { in: [...new Set(records.map(row => row.createdByUserId))] } }, select: { id: true, name: true } });
-      const names = new Map(authors.map(row => [row.id, row.name]));
+      const authors = await prisma.user.findMany({ where: { id: { in: [...new Set(records.map(row => row.createdByUserId))] } }, select: { id: true, name: true, payrollName: true } });
+      const names = new Map(authors.map(row => [row.id, portalPersonName(row)]));
       return Response.json({ periodKey, records: records.map(row => ({ revision: row.revision, savedAt: row.createdAt.toISOString(), author: names.get(row.createdByUserId) ?? 'Администратор', payload: validatePayrollDraft(row.payload) })) }, { headers });
     }
     const [saved, period] = await prisma.$transaction([

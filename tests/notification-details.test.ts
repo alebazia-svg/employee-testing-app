@@ -7,12 +7,15 @@ import {qrReceiptStatus} from '../lib/procurement-receipt-policy';
 test('notification detail authenticates recipient and record owner, never reads 1C or writes',async t=>{
   const g=globalThis as any;
   const plan={id:'plan',planCode:'TEST',managerUserId:2,supplierPartner:'Supplier',plannedDate:new Date(),updatedAt:new Date(),plannedAmount:100,foreignAmount:null,exchangeRate:null,paymentMethod:'CASH',condition:'',orderNumbers:['1'],status:'APPROVED',paymentPurpose:'GOODS',oneCCashEvidence:null};
+  let fingerprint='procurement-payment:plan:approved:event', decisionActor:any={name:'Администратор',payrollName:'Кештова Бэла'}, requestOwner=2;
   let user:any=null,sourceType='supplier_payment_plan',kind='procurement_payment_approved',owner=2,eventType='procurement.payment_updated',href='/admin/procurement';
   const db={adminInboxReceipt:{findFirst:async({where}:any)=>where.id==='own'&&where.userId===1?{event:{sourceId:'plan',sourceType,type:eventType,href,body:''}}:null},
+    supplierPaymentPlanEvent:{findFirst:async({where}:any)=>where.id==='event'&&where.planId==='plan'&&decisionActor?{action:'APPROVED',createdAt:new Date('2026-10-22T14:10:00Z'),actor:decisionActor}:null},
+    workdayCloseExceptionRequest:{findFirst:async({where}:any)=>where.id==='request'&&where.employeeId===requestOwner?{decidedAt:new Date('2026-10-22T14:10:00Z'),decidedBy:decisionActor,workDayEntry:{date:'2026-10-22'},reasonCode:'cash_encashment_pending',decisionComment:'Уточните причину.'}:null},
     supplierPaymentPlan:{findUnique:async()=>({...plan,managerUserId:owner})},
     supplierPaymentReceipt:{findUnique:async({where}:any)=>where.id==='plan'?{planId:'plan'}:null},
     expenseRequestAdminCase:{findFirst:async({where}:any)=>where.id==='case'&&where.oneCRequestRef==='plan'?{id:'case',oneCRequestRef:'plan',oneCNumber:'1',amount:100,lastSeenAt:new Date(),currentStatusKey:'not_approved',currentCycleOrigin:'live',evaluations:[{sourceComplete:true,normalizedSource:{cashbox:{name:'Касса'},cashFlowItem:{name:'Доставка'}}}]}:null},
-    workdayNotification:{findFirst:async({where}:any)=>where.id===3&&where.userId===2?{kind,fingerprint:'procurement-payment:plan:approved:event'}:null}};
+    workdayNotification:{findFirst:async({where}:any)=>where.id===3&&where.userId===2?{kind,fingerprint}:null}};
   g.notificationDetailTest={getUser:()=>user,db};t.after(()=>delete g.notificationDetailTest);
   t.mock.method(globalThis,'fetch',async()=>{throw Error('No network allowed for opening a stored record');});
   const code=await build({entryPoints:['app/api/notification-details/[audience]/[id]/route.ts'],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'read-only',setup(b){b.onResolve({filter:/^@\/lib\/(auth|prisma)$/},a=>({path:a.path,namespace:'mock'}));b.onLoad({filter:/.*/,namespace:'mock'},a=>({contents:a.path.endsWith('auth')?'export const getCurrentUser=async()=>globalThis.notificationDetailTest.getUser();':'export const prisma=globalThis.notificationDetailTest.db;',loader:'js'}));}}]});
@@ -22,7 +25,18 @@ test('notification detail authenticates recipient and record owner, never reads 
   user={id:2,role:'EMPLOYEE',portalArea:'PROCUREMENT',isActive:true};assert.equal((await get()).status,403);
   assert.equal((await get('admin','plan:plan:revision:2026-10-12')).status,403);
   assert.equal((await get('employee','plan:plan:revision:2026-10-12')).status,404);
-  assert.equal((await get('employee','3')).status,200);assert.equal((await get('employee','4')).status,404);
+  const ownDetail=await get('employee','3');assert.equal(ownDetail.status,200);assert.deepEqual((await ownDetail.json()).decision,{label:'Согласовано',name:'Кештова Бэла',at:'2026-10-22T14:10:00.000Z'});
+  fingerprint='procurement-payment:plan:approved:another-event';assert.equal((await (await get('employee','3')).json()).decision,undefined);
+  fingerprint='procurement-payment:plan:approved:decision';assert.equal((await (await get('employee','3')).json()).decision,undefined);
+  kind='workday_closed_by_admin';fingerprint='workday-close-exception:request:approved';
+  const closeDetail=await (await get('employee','3')).json();assert.equal(closeDetail.decision.name,'Кештова Бэла');assert.match(closeDetail.body,/Инкассация не подтверждена/);
+  requestOwner=8;assert.equal((await get('employee','3')).status,404);requestOwner=2;
+  fingerprint='workday-close-exception:request:rejected';kind='workday_close_exception_decision';
+  assert.equal((await (await get('employee','3')).json()).body,'Уточните причину.');
+  decisionActor={name:'Орлов Алексей',payrollName:null};assert.equal((await (await get('employee','3')).json()).decision.name,'Орлов Алексей');
+  fingerprint='invalid';assert.equal((await get('employee','3')).status,404);
+  fingerprint='procurement-payment:plan:approved:event';kind='procurement_payment_approved';
+  assert.equal((await get('employee','4')).status,404);
   assert.equal((await get('employee','NaN')).status,404);assert.equal((await get('employee','1.2')).status,404);
   owner=8;assert.equal((await get('employee','3')).status,404);owner=2;
   kind='planned';assert.equal((await get('employee','3')).status,404);kind='procurement_payment_approved';

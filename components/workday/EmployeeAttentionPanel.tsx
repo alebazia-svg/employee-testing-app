@@ -166,13 +166,13 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
             <>{selected.kind !== 'cash' && <p className="my-3 text-sm text-slate-700">{selected.detail}</p>}</>
             {Boolean(selected.facts?.length) && <dl className="cash-discrepancy-sheet-facts">{selected.facts?.map(([label,value], index) => <div key={`${label}-${index}`} className="contents"><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
             {selected.kind === 'cash' && <p className="my-3 text-xs leading-relaxed text-slate-500">{expenseUnavailable ? 'Данные 1С не обновились. Проверьте статус заявки в 1С перед оформлением.' : selected.detail}</p>}
-            {selected.reply && <div className="my-3 rounded-xl bg-stone-100 p-3"><p className="text-xs font-semibold text-slate-500">Ответ администратора</p><p className="mt-1 text-sm text-slate-800">{selected.reply}</p></div>}
+            {selected.reply && <div className="my-3 rounded-xl bg-stone-100 p-3"><p className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-semibold text-slate-500"><span>{selected.replyAuthor?.name || "Ответ по проверке"}</span>{selected.replyAuthor && <time dateTime={selected.replyAuthor.at}>{new Intl.DateTimeFormat("ru-RU",{timeZone:"Europe/Moscow",hour:"2-digit",minute:"2-digit"}).format(new Date(selected.replyAuthor.at))}</time>}</p><p className="mt-1 text-sm text-slate-800">{selected.reply}</p></div>}
             {selected.state === 'waiting' && <p role="status" className="my-3 text-sm font-semibold text-slate-700">{selected.status}</p>}
             {actionError && <p role="alert" className="my-3 text-sm text-red-800">{actionError}</p>}
             {selected.kind === 'cash_issue' && request && <Button type="button" className="employee-material-primary-action h-12 w-full" onClick={() => { close(); cashIssue?.open(request.ref); }}>Проверить выдачу</Button>}
             {selected.kind === 'closing' && selected.state === 'action' && <Button type="button" className="employee-material-primary-action h-12 w-full" onClick={() => { close(); onClosing(selected.closingScope); }}>Продолжить сдачу смены</Button>}
             {Boolean(selected.actions?.length) && <div className="grid gap-2">{selected.actions?.map(a => <Button key={a.action} type="button" disabled={busy || Boolean(preview)} title={preview ? "Только просмотр" : undefined} className="employee-material-secondary-action min-h-12 w-full" onClick={() => void act(a.action)}>{busy ? 'Отправляем…' : a.label}</Button>)}</div>}
-            {selected.state === 'waiting' && !selected.actions?.length && <Button type="button" className="employee-material-secondary-action h-12 w-full" onClick={() => items.length > 1 ? returnToList() : close()}>Понятно</Button>}
+            {selected.state === 'waiting' && !['closing', 'encashment'].includes(selected.kind) && !selected.actions?.length && <Button type="button" className="employee-material-secondary-action h-12 w-full" onClick={() => items.length > 1 ? returnToList() : close()}>Понятно</Button>}
           </>
 
 
