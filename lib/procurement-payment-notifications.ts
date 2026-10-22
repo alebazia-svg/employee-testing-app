@@ -2,6 +2,7 @@ import 'server-only';
 
 import type { Prisma } from '@prisma/client';
 import {SUPPLIER_ADVANCE, SUPPLIER_ADVANCE_LABEL} from './procurement-supplier-advance';
+import {paymentPreparationDate} from './procurement-schedule';
 
 type NotificationDb = Pick<
   Prisma.TransactionClient,
@@ -18,6 +19,7 @@ type PaymentPlanSummary = {
   condition: string;
   paymentMethod: string;
   managerUserId: number;
+  oneCCashEvidence?: unknown;
 };
 
 const rub = new Intl.NumberFormat('ru-RU', {
@@ -102,14 +104,15 @@ export async function notifyAdminsAboutProcurementPlans(input: {
 
 export async function notifyProcurementManagerAboutPendingEdit(input: {
   db: NotificationDb; plan: PaymentPlanSummary; eventKey: string; now?: Date;
+  scheduleChange?: {deferred:boolean;date:string|null;comment:string};
 }) {
   const now=input.now??new Date();
   const fingerprint=`procurement-payment:${input.plan.id}:updated:${input.eventKey}`;
   await retirePendingEditNotices(input.db,input.plan,now,fingerprint);
   await input.db.workdayNotification.upsert({where:{fingerprint},create:{
     userId:input.plan.managerUserId,fingerprint,kind:'procurement_payment_updated',
-    title:'Заявка изменена администратором',
-    body:`${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)} · ещё на согласовании`,
+    title:input.scheduleChange?input.scheduleChange.deferred?input.scheduleChange.date?'Деньги будут готовы':'Оплата отложена':'Отсрочка оплаты отменена':'Заявка изменена администратором',
+    body:input.scheduleChange?[input.plan.supplierPartner,input.scheduleChange.deferred?input.scheduleChange.date?`Деньги будут готовы ${shortDate.format(new Date(input.scheduleChange.date+'T00:00:00Z'))}`:'Дата уточняется':`Подготовить к ${shortDate.format(input.plan.plannedDate)}`,'Заявка ещё на согласовании',input.scheduleChange.comment].filter(Boolean).join(' · '):`${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)} · ещё на согласовании`,
     status:'pending',scheduledAt:now,nextPushAttemptAt:now,
   },update:{}});
 }
@@ -133,6 +136,9 @@ export async function notifyProcurementManagerAboutDecision(input: {
   await retirePendingEditNotices(input.db,input.plan,now);
   const approved = input.decision === 'APPROVED';
   const needsChanges = input.decision === 'NEEDS_CHANGES';
+  // Approving a previously deferred request must not promise its old date.
+  const preparationDate = approved ? paymentPreparationDate({status:'APPROVED',plannedDate:input.plan.plannedDate.toISOString(),oneCCashEvidence:input.plan.oneCCashEvidence}) : input.plan.plannedDate.toISOString().slice(0,10);
+  const dateText = preparationDate ? `к ${shortDate.format(new Date(preparationDate+'T00:00:00Z'))}` : 'Дата подготовки денег уточняется';
   if (input.rescheduled || input.scheduleChange || input.revisionDecision && approved) {
     // Do not leave the old approved date in the unread inbox or pending push queue.
     await input.db.workdayNotification.updateMany({where:{userId:input.plan.managerUserId,kind:'procurement_payment_approved',fingerprint:{startsWith:`procurement-payment:${input.plan.id}:approved:`},status:{in:['pending','sent']}},data:{status:'cancelled',readAt:now,nextPushAttemptAt:null}});
@@ -146,7 +152,7 @@ export async function notifyProcurementManagerAboutDecision(input: {
       title: input.scheduleChange ? input.scheduleChange.deferred ? input.scheduleChange.date ? 'Деньги будут готовы' : 'Оплата отложена' : 'Отсрочка оплаты отменена' : input.rescheduled ? 'Дата оплаты изменена' : input.revisionDecision ? approved ? 'Изменения оплаты согласованы' : 'Сохраняются прежние условия оплаты' : approved ? 'Оплата согласована' : needsChanges ? 'Нужно исправить заявку' : 'Оплата отменена',
       body: input.scheduleChange ? [input.plan.supplierPartner,input.scheduleChange.deferred ? input.scheduleChange.date ? `Деньги будут готовы ${shortDate.format(new Date(input.scheduleChange.date+'T00:00:00Z'))}` : 'Дата подготовки денег уточняется' : `Подготовить к ${shortDate.format(input.plan.plannedDate)}`,input.scheduleChange.comment].filter(Boolean).join(' · ') : needsChanges
         ? `${input.plan.supplierPartner} · ${input.reason || 'уточните данные заявки'}`
-        : `${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)}`,
+        : `${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · ${dateText}`,
       status: 'pending',
       scheduledAt: now,
       nextPushAttemptAt: now,

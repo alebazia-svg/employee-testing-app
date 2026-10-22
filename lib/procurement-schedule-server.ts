@@ -3,7 +3,7 @@ import {expenseRequestMoscowCalendarDate} from './expense-request-source';
 import {freshEvidence} from './procurement-plan-revision-server';
 import {readPaymentRevision} from './procurement-plan-revision';
 import {isFinishedPaymentState} from './procurement-small-remainder';
-import {notifyAdminsAboutProcurementPlans,notifyProcurementManagerAboutDecision} from './procurement-payment-notifications';
+import {notifyAdminsAboutProcurementPlans,notifyProcurementManagerAboutDecision,notifyProcurementManagerAboutPendingEdit} from './procurement-payment-notifications';
 import {paymentDeferral,scheduleCommand} from './procurement-schedule';
 type Actor={id:number;name:string;role:string;portalArea:string;isActive:boolean};
 const json=(v:unknown)=>JSON.parse(JSON.stringify(v));
@@ -13,13 +13,14 @@ export async function changePaymentSchedule(id:string,actor:Actor,payload:unknow
  if(actor.role!=='ADMIN'&&command.action!=='RESCHEDULE')throw Error('Только администратор может отложить оплату.');
  const candidate=await prisma.supplierPaymentPlan.findFirst({where:{id,...(actor.role==='ADMIN'?{}:{managerUserId:actor.id})}});
  if(!candidate)throw Error('Заявка не найдена.');
- if(candidate.status!=='APPROVED'||candidate.updatedAt.toISOString()!==command.version)throw Error('Заявка изменилась или уже завершена. Обновите её.');
+ const canSchedule=candidate.status==='APPROVED'||actor.role==='ADMIN'&&candidate.status==='SUBMITTED'&&command.action!=='RESCHEDULE';
+ if(!canSchedule||candidate.updatedAt.toISOString()!==command.version)throw Error('Заявка изменилась или уже завершена. Обновите её.');
  if(readPaymentRevision(candidate.oneCCashEvidence))throw Error('Сначала нужно рассмотреть уже отправленные изменения.');
  const evidence=await freshEvidence();
  return prisma.$transaction(async tx=>{
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(73106241)`;
   const before=await tx.supplierPaymentPlan.findUniqueOrThrow({where:{id}});
-  if(before.status!=='APPROVED'||before.updatedAt.toISOString()!==command.version||evidence.versions.get(id)!==command.version||readPaymentRevision(before.oneCCashEvidence))throw Error('Заявка изменилась во время проверки. Обновите её.');
+  if(before.status!==candidate.status||before.updatedAt.toISOString()!==command.version||evidence.versions.get(id)!==command.version||readPaymentRevision(before.oneCCashEvidence))throw Error('Заявка изменилась во время проверки. Обновите её.');
   const paid=evidence.get(id);
   if(!paid||isFinishedPaymentState(paid.state)||['MISMATCH','NEEDS_REVIEW','SOURCE_UNAVAILABLE'].includes(paid.state)||paid.paymentAmountNeedsConfirmation)throw Error('Сначала проверьте оплату заявки. Изменения не сохранены.');
   if(paid.collection)throw Error('Выдача уже назначена в 1С. Сначала измените или отмените её там.');
@@ -37,6 +38,7 @@ export async function changePaymentSchedule(id:string,actor:Actor,payload:unknow
    await tx.workdayNotification.updateMany({where:{userId:after.managerUserId,kind:'procurement_payment_approved',fingerprint:{startsWith:`procurement-payment:${id}:approved:`},status:{in:['pending','sent']}},data:{status:'cancelled',readAt:new Date(),nextPushAttemptAt:null}});
    await notifyAdminsAboutProcurementPlans({db:tx,eventKey:`procurement-date:${event.id}`,action:'UPDATED',dateChange:{before:before.plannedDate,after:after.plannedDate},managerName:actor.name,plans:[after]});
   }
+  else if(before.status==='SUBMITTED')await notifyProcurementManagerAboutPendingEdit({db:tx,plan:after,eventKey:event.id,scheduleChange:{deferred:command.action==='DEFER',date:command.date||null,comment:command.comment}});
   else await notifyProcurementManagerAboutDecision({db:tx,plan:after,decision:'APPROVED',rescheduled:command.action==='RESCHEDULE',scheduleChange:command.action==='RESCHEDULE'?undefined:{deferred:command.action==='DEFER',date:command.date||null,comment:command.comment},eventKey:event.id});
   return {...json(after),revision:null,dateChanged:command.action==='RESCHEDULE'};
  });

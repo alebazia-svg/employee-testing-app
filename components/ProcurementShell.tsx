@@ -8,9 +8,9 @@ import { ReleaseLabel } from '@/components/ReleaseLabel';
 export function ProcurementShell({ userName, children }: { userName: string; children: React.ReactNode }) {
   const initials = userName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   return <main className='portal-neutral-design procurement-shell min-h-[100dvh] overflow-x-clip text-slate-950'>
-    <section className='admin-workspace min-h-[100dvh] min-w-0 px-3 pb-10 pt-4 sm:px-6 lg:px-8 lg:py-6'>
+    <section className='admin-workspace min-h-[100dvh] min-w-0 px-3 pb-10 pt-4 sm:px-6 lg:px-8 lg:pb-6'>
       <div className='mx-auto w-full max-w-[1320px]'>
-        <header className='procurement-shell-header mb-4 flex items-center justify-between gap-3 lg:rounded-2xl lg:border lg:border-slate-200/80 lg:bg-white/75 lg:px-5 lg:py-3 lg:shadow-[0_12px_32px_rgba(15,23,42,0.05)]'>
+        <header className='procurement-shell-header mb-3 flex items-center justify-between gap-3 lg:rounded-2xl lg:border lg:border-slate-200/80 lg:bg-white/75 lg:px-5 lg:py-3 lg:shadow-[0_12px_32px_rgba(15,23,42,0.05)]'>
           <div className='flex items-center gap-4'>
             <PortalIdentityBlock variant='mobo-master' className='w-[176px] origin-left scale-[0.86] sm:scale-100' />
           </div>

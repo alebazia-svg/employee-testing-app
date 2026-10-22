@@ -35,7 +35,11 @@ test('deferral has a separate effective date without overwriting original terms 
  assert.equal(paymentPreparationDate({...dated,plannedDate:'2026-10-27'}),'2026-10-27');
  assert.equal(paymentPreparationDate({...dated,plannedDate:'2026-10-23'}),'2026-10-25');
  assert.equal(paymentPreparationDate({...plan,plannedDate:'2026-10-27'}),null);
- for(const status of ['CANCELLED','COMPLETED_WITHOUT_TOPUP','SUBMITTED'])assert.equal(activePaymentDeferral({...plan,status}),null);
+ for(const status of ['CANCELLED','COMPLETED_WITHOUT_TOPUP','NEEDS_CHANGES'])assert.equal(activePaymentDeferral({...plan,status}),null);
+ assert.equal(paymentPreparationDate({...plan,status:'SUBMITTED'}),null);
+ assert.equal(paymentScheduleLabel({...plan,status:'SUBMITTED'}),'Оплата отложена');
+ assert.equal(paymentPreparationDate({...dated,status:'SUBMITTED'}),'2026-10-25');
+ assert.equal(paymentScheduleLabel({...dated,status:'SUBMITTED'}),'Деньги будут готовы');
  for(const state of ['PAID_BY_ONE_C','ISSUED_BY_ONE_C','SMALL_REMAINDER_COMPLETED'])assert.equal(activePaymentDeferral({...plan,evidence:{state}}),null);
  for(const state of ['MISMATCH','SOURCE_UNAVAILABLE','NEEDS_REVIEW'])assert.equal(paymentScheduleLabel({...plan,evidence:{state}}),'');
  assert.equal(paymentPreparationDate({...plan,oneCCashEvidence:{fundingDeferral:null}}),'2026-10-10');

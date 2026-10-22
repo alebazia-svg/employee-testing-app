@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {PrismaClient} from '@prisma/client';
 import {build} from 'esbuild';
 import {createRequire} from 'node:module';
+import {paymentPreparationDate} from '../lib/procurement-schedule';
 
 test('admin edits preserve links, audit and notify; roles, races, paid and 1C collection states are protected',async()=>{
   assert.ok(['postgresql://postgres@127.0.0.1:55439/procurement_receipts_current_test','postgresql://postgres:local-test-only@127.0.0.1:55451/funding_schedule_test'].includes(process.env.DATABASE_URL||''),'isolated local database required');
@@ -63,5 +64,28 @@ test('admin edits preserve links, audit and notify; roles, races, paid and 1C co
     assert.equal((await approve(pendingAfter.updatedAt.toISOString())).status,200);
     const approvedAfter=await current();assert.equal(approvedAfter.status,'APPROVED');assert.equal(approvedAfter.approvedById,admin.id);assert.equal(Number(approvedAfter.plannedAmount),720000);
     assert.equal((await db.workdayNotification.findUniqueOrThrow({where:{id:pendingNotices[0].id}})).status,'cancelled');
+    // Exercise real persistence across both endpoints: defer while pending,
+    // then approve separately. Approval must retain the funding decision and
+    // never send the original date as a promise when funding is unknown.
+    const scheduleBuild=await build({entryPoints:['app/api/procurement/payment-plans/[id]/schedule/route.ts'],bundle:true,write:false,platform:'node',format:'cjs',packages:'external',plugins:[{name:'isolated',setup(b){b.onResolve({filter:/^(?:@\/lib\/|\.\/)/},a=>{const key=a.path.replace(/^@\/lib\/|^\.\//,'');return mocks[key]?{path:key,namespace:'mock'}:null;});b.onLoad({filter:/.*/,namespace:'mock'},a=>({contents:mocks[a.path],loader:'js'}));}}]});
+    const schedule={exports:{} as any};new Function('require','module','exports',scheduleBuild.outputFiles[0].text)(createRequire(import.meta.url),schedule,schedule.exports);
+    for(const date of ['', '2026-10-25']) {
+      await db.supplierPaymentPlan.update({where:{id:plan.id},data:{status:'SUBMITTED',approvedAt:null,approvedById:null,oneCCashEvidence:{untouched:'sentinel'}}});
+      const beforeDeferral=await current();
+      const response=await schedule.exports.PATCH(new Request('http://localhost/test',{method:'PATCH',body:JSON.stringify({action:'DEFER',version:beforeDeferral.updatedAt.toISOString(),date,comment:''})}),{params:Promise.resolve({id:plan.id})});
+      assert.equal(response.status,200);
+      const deferred=await current();
+      assert.equal(deferred.status,'SUBMITTED');assert.equal(deferred.approvedAt,null);
+      assert.equal(paymentPreparationDate({...deferred,plannedDate:deferred.plannedDate.toISOString()}),date||null);
+      assert.equal((await approve(beforeDeferral.updatedAt.toISOString())).status,409);
+      assert.equal((await approve(deferred.updatedAt.toISOString())).status,200);
+      const approved=await current();
+      assert.equal(approved.status,'APPROVED');assert.equal(approved.approvedById,admin.id);
+      for(const field of ['oneCCashEvidence','plannedDate','plannedAmount','foreignAmount','exchangeRate','orderRefs','orderNumbers','supplierCounterparty'] as const)assert.deepEqual(approved[field],deferred[field],field);
+      const notification=await db.workdayNotification.findFirstOrThrow({where:{userId:employee.id,kind:'procurement_payment_approved',status:'pending'},orderBy:{id:'desc'}});
+      assert.equal(notification.title,'Оплата согласована');
+      assert.ok(notification.body.endsWith(date?'к 25 октября':'Дата подготовки денег уточняется'));
+      assert.equal(await db.workdayNotification.count({where:{userId:employee.id,kind:'procurement_payment_updated',status:'pending'}}),0);
+    }
   }finally{await db.supplierPaymentPlan.delete({where:{id:plan.id}});await db.user.deleteMany({where:{id:{in:[employee.id,admin.id]}}});await db.$disconnect();delete g.approvedEditTest;}
 });

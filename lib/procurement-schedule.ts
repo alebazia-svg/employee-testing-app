@@ -30,7 +30,7 @@ export function onlyPaymentDateChanged(before:Record<string,unknown>|null,after:
 type ScheduledPlan = {status:string;plannedDate:string;oneCCashEvidence?:unknown;evidence?:{state?:string}};
 /** Scheduling changes presentation only. Never use this to release a reserve or match an expense. */
 export function activePaymentDeferral(plan:ScheduledPlan) {
- if(plan.status!=='APPROVED'||['ISSUED_BY_ONE_C','PAID_BY_ONE_C','SMALL_REMAINDER_COMPLETED'].includes(plan.evidence?.state||''))return null;
+ if(!['APPROVED','SUBMITTED'].includes(plan.status)||['ISSUED_BY_ONE_C','PAID_BY_ONE_C','SMALL_REMAINDER_COMPLETED'].includes(plan.evidence?.state||''))return null;
  return paymentDeferral(plan.oneCCashEvidence);
 }
 export function paymentPreparationDate(plan:ScheduledPlan):string|null {

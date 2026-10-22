@@ -556,8 +556,8 @@ export default function ProcurementPaymentCalendarClient({
   };
 
   return (
-    <div className="procurement-calendar space-y-4">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="procurement-calendar space-y-3">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-black sm:text-3xl">
             Платёжный календарь
@@ -580,17 +580,19 @@ export default function ProcurementPaymentCalendarClient({
               Добавить оплату
             </button>
           ) : null}
-          <ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" refreshing={sourceRefreshing} pauseWhileDialogOpen />
         </div>
       </header>
-      <nav aria-label="Разделы календаря" className="flex gap-6 border-b border-[var(--portal-border)]">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--portal-border)]">
+      <nav aria-label="Разделы календаря" className="flex gap-6">
         <button type="button" aria-pressed={paymentView==='current'} disabled={formOpen}
           onClick={()=>setPaymentView('current')}
-          className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-3 text-sm font-bold disabled:opacity-50 ${paymentView==='current'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}>Текущие оплаты</button>
+          className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-2 text-sm font-bold disabled:opacity-50 ${paymentView==='current'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}>Текущие оплаты</button>
         <button type="button" aria-pressed={paymentView==='history'} disabled={formOpen}
           onClick={()=>setPaymentView('history')}
-          className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-3 text-sm font-bold disabled:opacity-50 ${paymentView==='history'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}>История оплат</button>
+          className={`-mb-px min-h-11 rounded-none border-0 border-b-[3px] bg-transparent px-1 py-2 text-sm font-bold disabled:opacity-50 ${paymentView==='history'?'border-[var(--portal-text)] text-[var(--portal-text)]':'border-transparent text-[var(--portal-text-muted)] hover:text-[var(--portal-text)]'}`}>История оплат</button>
       </nav>
+        <div className="pb-1"><ProcurementDataRefresh checkedAt={checkedAt} label="Заказы 1С" refreshing={sourceRefreshing} pauseWhileDialogOpen /></div>
+      </div>
       {visualPreview?.toolbar}
       {!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts plans={receiptPlans} allPlans={plans} onCounts={setReceiptCounts}/> : null}
       {sourceRefreshing ? <p role="status" className="text-sm text-slate-600">Обновляем данные 1С. Сохранённые заявки доступны; изменения проверяются при сохранении.</p> : null}
@@ -711,6 +713,7 @@ export default function ProcurementPaymentCalendarClient({
                             ? plan.evidence?.state === "MISMATCH" ? "ОПЛАТА НА ПРОВЕРКЕ" : plan.evidence?.state === "PARTIALLY_ISSUED" || plan.evidence?.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : "Деньги будут готовы"
                             : plan.status === "NEEDS_CHANGES" ? "НУЖНО ИСПРАВИТЬ" : "Ждёт решения")}
                         </span>
+                        {plan.status==='SUBMITTED'&&activePaymentDeferral(plan)?<p className="text-xs text-amber-800">Ждёт решения</p>:null}
                         {plan.status === "NEEDS_CHANGES" && plan.correctionReason ? <p className="max-w-[240px] text-xs font-bold text-red-700">{plan.correctionReason}</p> : null}
                         {plan.revision ? <p className="max-w-[240px] text-xs font-bold text-amber-800">Изменения на согласовании. Пока действуют прежние условия.</p> : null}
                         {!compact && <ProcurementChangeHistory events={plan.events} buyerView />}

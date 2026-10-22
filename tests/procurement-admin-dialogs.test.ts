@@ -36,5 +36,10 @@ test('pending request edits stay separate from approval and use the existing dir
   const editor=read('components/ProcurementApprovedEdit.tsx');
   assert.ok(editor.includes('editing:open'));
   assert.ok(editor.includes('Изменения сохранены. Заявка ждёт вашего согласования.'));
-  assert.ok(editor.includes('!beforeApproval?'));
+  assert.ok(!editor.includes('!beforeApproval?<button'));
+  assert.ok(editor.includes('beforeApproval={beforeApproval}'));
+  const schedule=read('components/ProcurementFundingSchedule.tsx');
+  assert.ok(schedule.includes('editing:true'));
+  assert.ok(schedule.includes('Заявка останется на согласовании.'));
+  assert.ok(schedule.includes('После сохранения: оплата отложена · дата уточняется'));
 });

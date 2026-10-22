@@ -1,4 +1,5 @@
 import { isInactivePaymentPlan } from './procurement-payment-completion';
+import { isFinishedPaymentState } from './procurement-small-remainder';
 /** Read-only reservation in USDT. Ruble references are never proof of exchange. */
 export type UsdtReservePlan = {
   fundingSource?: string | null;
@@ -16,7 +17,9 @@ export function usdtReservedByPlans(plans: UsdtReservePlan[], rate: number | nul
   for (const plan of plans) {
     if (isInactivePaymentPlan(plan.status) || plan.paymentMethod !== 'USDT') continue;
     if (plan.fundingSource === 'CASH_EXCHANGE') continue;
-    if (plan.evidence?.state === 'PAID_BY_ONE_C') continue;
+    // Use the same completion boundary as the calendar/history. A RUB expense
+    // can finish USDT funding without establishing a foreign transfer amount.
+    if (isFinishedPaymentState(plan.evidence?.state)) continue;
     if (['MISMATCH', 'NEEDS_REVIEW'].includes(plan.evidence?.state || '')) return null;
     const foreign = nonnegative(plan.foreignAmount);
     if (foreign != null && foreign > 0) {

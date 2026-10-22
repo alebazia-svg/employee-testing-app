@@ -3,14 +3,15 @@ import {useEffect,useState} from 'react';
 import {paymentDeferral} from '@/lib/procurement-schedule';
 
 type Plan={id:string;plannedDate:string;updatedAt?:string;oneCCashEvidence?:unknown};
-export function ProcurementFundingSchedule({plan,today,onClose,onSaved,onStateChange}:{plan:Plan;today:string;onClose:()=>void;onSaved:(plan:Plan)=>void;onStateChange:(state:{dirty:boolean;busy:boolean})=>void}) {
+const displayDate=(value:string)=>value&&Number.isFinite(Date.parse(value+'T12:00:00Z'))?new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(value+'T12:00:00Z')):'выберите дату';
+export function ProcurementFundingSchedule({plan,today,beforeApproval=false,onClose,onSaved,onStateChange}:{plan:Plan;today:string;beforeApproval?:boolean;onClose:()=>void;onSaved:(plan:Plan)=>void;onStateChange:(state:{dirty:boolean;busy:boolean;editing?:boolean})=>void}) {
  const previous=paymentDeferral(plan.oneCCashEvidence);
  const [date,setDate]=useState(previous?.date||''),[comment,setComment]=useState(previous?.comment||'');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[discard,setDiscard]=useState(false);
  const [resuming,setResuming]=useState(false),[resumeDate,setResumeDate]=useState(plan.plannedDate.slice(0,10)<today?today:plan.plannedDate.slice(0,10));
  const changed=!previous||date!==(previous.date||'')||comment!==previous.comment;
  const dirty=resuming||date!==(previous?.date||'')||comment!==(previous?.comment||'');
- useEffect(()=>{onStateChange({dirty,busy});},[dirty,busy,onStateChange]);
+ useEffect(()=>{onStateChange({dirty,busy,editing:true});},[dirty,busy,onStateChange]);
  useEffect(()=>()=>onStateChange({dirty:false,busy:false}),[onStateChange]);
  async function save(action:'DEFER'|'RESUME') {
   if(busy)return;setBusy(true);setError('');
@@ -29,7 +30,8 @@ export function ProcurementFundingSchedule({plan,today,onClose,onSaved,onStateCh
    <label className="text-sm font-semibold">Комментарий Астемиру<textarea rows={2} maxLength={500} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Необязательно" className={input}/></label>
   </fieldset>}
   {!resuming&&date&&date<plan.plannedDate.slice(0,10)?<p className="text-xs text-slate-600">В календаре — {new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(plan.plannedDate))}: дата заявки позже.</p>:null}
-  <p className="text-xs text-slate-600">Согласование и уже оплаченная сумма сохранятся. Астемир получит уведомление.</p>
+  <p role="status" className="text-sm font-semibold">{resuming?'После сохранения: срок заявки — '+displayDate(resumeDate):date?'После сохранения: деньги будут готовы '+displayDate(date):'После сохранения: оплата отложена · дата уточняется'}</p>
+  <p className="text-xs text-slate-600">{beforeApproval?'Заявка останется на согласовании.':'Согласование и уже оплаченная сумма сохранятся.'} Астемир получит уведомление.</p>
   {error?<p role="alert" className="text-sm text-red-700">{error}</p>:null}
   {discard?<div role="alert" className="flex flex-wrap items-center gap-2 text-sm"><span>Отменить несохранённые изменения?</span><button type="button" className="pam-button" onClick={()=>setDiscard(false)}>Продолжить</button><button type="button" className="pam-button" onClick={onClose}>Не сохранять</button></div>:<div className="flex flex-wrap justify-end gap-2">
    {previous&&!resuming?<button type="button" className="pam-button mr-auto" disabled={busy} onClick={()=>{setResuming(true);setError('');}}>Отменить отсрочку</button>:null}

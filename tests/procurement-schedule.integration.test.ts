@@ -92,6 +92,29 @@ test('schedule route persists atomically, preserves finances, and notifies witho
   await db.supplierPaymentPlan.update({where:{id:p.id},data:{oneCCashEvidence:metadata,status:'CANCELLED'}});
   assert.equal((await command('RESUME')).status,409);
   assert.equal(await db.supplierPaymentPlanEvent.count({where:{planId:p.id}}),6);
+  // ADMIN may prepare funding before approval, without manufacturing approval or releasing identity guards.
+  await db.supplierPaymentPlan.update({where:{id:p.id},data:{status:'SUBMITTED',approvedAt:null,approvedById:null,oneCCashEvidence:metadata}});
+  g.scheduleEvidenceState='NO_EVIDENCE';g.scheduleUser=buyer;
+  assert.equal((await command('DEFER')).status,409);
+  assert.equal((await command('RESUME',{date:'2026-10-29'})).status,409);
+  g.scheduleUser=admin;
+  const pendingBefore=await current();
+  assert.equal((await command('DEFER',{date:'',comment:''})).status,200);
+  const pendingDeferred=await current();
+  for(const field of ['status','approvedAt','approvedById','plannedDate','plannedAmount','foreignAmount','supplierPartner','supplierCounterparty','orderRefs','orderNumbers'] as const)assert.equal(JSON.stringify(pendingDeferred[field]),JSON.stringify(pendingBefore[field]),field);
+  assert.equal(paymentPreparationDate({...pendingDeferred,plannedDate:pendingDeferred.plannedDate.toISOString()}),null);
+  const pendingNotice=await db.workdayNotification.findFirstOrThrow({where:{userId:buyer.id,status:'pending',kind:'procurement_payment_updated'}});
+  assert.equal(pendingNotice.title,'Оплата отложена');assert.match(pendingNotice.body,/Дата уточняется.*ещё на согласовании/);
+  assert.equal((await send({action:'DEFER',date:'2026-10-29',version:pendingBefore.updatedAt.toISOString()})).status,409);
+  g.scheduleEvidenceState='SOURCE_UNAVAILABLE';assert.equal((await command('DEFER',{date:'2026-10-29'})).status,409);g.scheduleEvidenceState='NO_EVIDENCE';
+  assert.equal((await command('DEFER',{date:'2026-10-29'})).status,200);
+  assert.equal((await current()).status,'SUBMITTED');
+  const datedNotice=await db.workdayNotification.findFirstOrThrow({where:{userId:buyer.id,status:'pending',kind:'procurement_payment_updated'}});
+  assert.equal(datedNotice.title,'Деньги будут готовы');assert.match(datedNotice.body,/29 октября.*ещё на согласовании/);
+  assert.equal((await db.workdayNotification.findUniqueOrThrow({where:{id:pendingNotice.id}})).status,'cancelled');
+  assert.equal((await command('RESUME',{date:'2026-10-30'})).status,200);
+  assert.equal((await current()).status,'SUBMITTED');assert.equal(((await current()).oneCCashEvidence as any).fundingDeferral,null);
+  assert.equal((await current()).approvedAt,null);
   // Real inbox records in a private database; no dispatcher/provider is imported.
  }finally{
   await db.adminInboxEvent.deleteMany({where:{sourceId:p.id}});
