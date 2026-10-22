@@ -11,7 +11,7 @@ import { EmployeeActionReminder } from '@/components/workday/EmployeeActionRemin
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
 const monthTitle = (period: string) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${period}-01T12:00:00Z`));
 
-export function PersonalPayrollClient({ currentMonth, initialSalary = null, refreshEnabled = true }: { currentMonth: string; initialSalary?: Salary | null; refreshEnabled?: boolean }) {
+export function PersonalPayrollClient({ currentMonth, initialSalary = null, embedded = false, onOpenReminder }: { currentMonth: string; initialSalary?: Salary | null; embedded?: boolean; onOpenReminder?: () => void }) {
   const preview = useEmployeePreview();
   const request = preview?.request ?? fetch;
   const activeMonth = useEmployeePayrollMonth(currentMonth);
@@ -30,14 +30,24 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, refr
     || (salary?.state === 'current_estimate' && salary.savedAdvance == null)
     || (salary?.state === 'confirmed' && (salary.paid == null || salary.remaining == null)));
   useEffect(() => {
-    // The streaming fallback uses the same UI/cache without starting a second
-    // expensive payroll read while the server snapshot is still on its way.
-    if (!refreshEnabled) return;
     const controller = new AbortController();
     lastStarted.current = Date.now();
     setUpdating(true); setError('');
     const timer = window.setTimeout(() => controller.abort('timeout'), 15000);
-    void request(`/api/employee/payroll?month=${encodeURIComponent(month)}`, { cache: 'no-store', signal: controller.signal })
+    const load = async () => {
+      // First visit gets the existing stored projection; revisits reuse the
+      // account-scoped result immediately. Neither path waits for 1C to open a tab.
+      if (embedded && month === activeMonth && !salary) {
+        const response = await request(`/api/employee/payroll?month=${encodeURIComponent(month)}&snapshot=stored`, { cache: 'no-store', signal: controller.signal });
+        if ([401, 403, 404, 410].includes(response.status)) { clear?.(); setSalary(null); throw Error('Войдите в приложение заново.'); }
+        if (response.ok && !controller.signal.aborted) {
+          const result: unknown = await response.json();
+          if (validEmployeePayrollView(result, month) && result.state !== 'unavailable') { setSalary(result); remember?.(result, months); }
+        }
+      }
+      return request(`/api/employee/payroll?month=${encodeURIComponent(month)}`, { cache: 'no-store', signal: controller.signal });
+    };
+    void load()
       .then(async response => {
         if (controller.signal.aborted) return;
         if ([401, 403, 404, 410].includes(response.status)) { clear?.(); setSalary(null); throw Error('Войдите в приложение заново.'); }
@@ -48,7 +58,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, refr
       }).catch(cause => { if (!controller.signal.aborted || controller.signal.reason === 'timeout') setError(cause instanceof Error && !controller.signal.aborted ? cause.message : 'Не удалось обновить расчёт. Попробуйте ещё раз.'); })
       .finally(() => { window.clearTimeout(timer); if (!controller.signal.aborted || controller.signal.reason === 'timeout') setUpdating(false); });
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [month, refresh, request, remember, clear, activeMonth, refreshEnabled]);
+  }, [month, refresh, request, remember, clear, activeMonth, embedded]);
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - lastStarted.current >= 30000) setRefresh(value => value + 1); };
     document.addEventListener('visibilitychange', onVisible);
@@ -61,9 +71,9 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, refr
     };
   }, []);
   return <div className='salary-content personal-payroll-content'>
-    <EmployeeActionReminder view='payroll' />
+    <EmployeeActionReminder view='payroll' onOpen={onOpenReminder} />
     <div className='salary-heading'><h1>Моя зарплата</h1><label className='salary-month-picker'>
-      <span className='sr-only'>Месяц зарплаты</span><select disabled={!refreshEnabled} value={month} onChange={event => { setError(''); setSelectedMonth(event.target.value === activeMonth ? null : event.target.value); }} className='min-h-11 max-w-[190px] rounded-xl border border-[#e5e2da] bg-transparent px-2 font-semibold'>
+      <span className='sr-only'>Месяц зарплаты</span><select value={month} onChange={event => { setError(''); setSelectedMonth(event.target.value === activeMonth ? null : event.target.value); }} className='min-h-11 max-w-[190px] rounded-xl border border-[#e5e2da] bg-transparent px-2 font-semibold'>
         {months.map(period => <option key={period} value={period}>{monthTitle(period)}</option>)}
       </select>
     </label></div>
@@ -85,6 +95,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, refr
           {salary.state === 'confirmed' ? <section className='salary-breakdown' aria-label='Выплата зарплаты'>
             <h2>Выплаты</h2>
             <div><span>Уже получено</span><strong>{salary.paid == null ? 'Проверяется' : `${money(salary.paid)} ₽`}</strong></div>
+            {!!salary.creditedFromEarlier && <div><span>Учтено из ранее выданного</span><strong>{money(salary.creditedFromEarlier)} ₽</strong></div>}
             <div><span>Осталось получить</span><strong>{salary.remaining == null ? 'Проверяется' : `${money(salary.remaining)} ₽`}</strong></div>
           </section> : salary.savedAdvance != null && salary.savedAdvance > 0 ? <section className='salary-advance'><span className='salary-wallet'><PremiumCardIcon color='var(--portal-brand-strong)' size={28} /></span><div>Получено авансом</div>
             <strong>{money(salary.savedAdvance)} ₽</strong>
@@ -94,6 +105,6 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, refr
         </>}
     </div>
     {needsRetry && <button type='button' onClick={() => setRefresh(value => value + 1)} className='mt-4 min-h-11 rounded-xl border border-[#e5e2da] px-5 text-base font-semibold'>Повторить</button>}
-    <EmployeeNavigation active='payroll' payrollEnabled />
+    {!embedded && <EmployeeNavigation active='payroll' payrollEnabled />}
   </div>;
 }

@@ -11,6 +11,13 @@ test('unknown payments are not zero; a confirmed zero remaining is valid', () =>
   for (const payment of [{ paid: null, remaining: null }, { paid: 30000, remaining: 0 }]) assert.equal(validEmployeePayrollView({ month: periods[1], state: 'confirmed', accrued: 30000, ...payment }, periods[1]), true);
   assert.equal(validEmployeePayrollView({ month: periods[1], state: 'confirmed', accrued: 30000, paid: 30000, remaining: 5000 }, periods[1]), false);
 });
+test('earlier credit must be finite and reconcile all displayed amounts exactly', () => {
+  const confirmed = { month: periods[1], state: 'confirmed', accrued: 89100, paid: 89000, remaining: 0, creditedFromEarlier: 100 };
+  assert.equal(validEmployeePayrollView(confirmed, periods[1]), true);
+  for (const creditedFromEarlier of [-100, 0, 50, 200, NaN, Infinity]) {
+    assert.equal(validEmployeePayrollView({ ...confirmed, creditedFromEarlier }, periods[1]), false);
+  }
+});
 test('valid negative return components retain the existing calculation semantics', () => {
   assert.equal(validEmployeePayrollView({ ...value(), estimatedAccrued: -100, earnings: [{ label: 'Аксессуары', amount: -100 }] }, periods[0]), true);
 });

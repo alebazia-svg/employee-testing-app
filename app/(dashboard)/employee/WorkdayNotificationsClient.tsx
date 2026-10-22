@@ -1,4 +1,6 @@
 'use client';
+import { EmployeeNoticeIcon } from '@/components/workday/EmployeeNoticeIcon';
+import { employeeInboxIconKind } from '@/lib/employee-notice-icons';
 import { EmployeeNotificationInbox, type EmployeeInboxItem } from '@/components/workday/EmployeeNotificationInbox';
 import { EMPLOYEE_EXPENSE_KIND } from '@/lib/employee-expense-policy';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
@@ -169,7 +171,7 @@ export function WorkdayNotificationsClient() {
         )}
       </button>
 
-      {banner && !open && createPortal(<div className="employee-new-notice fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[140] mx-auto flex max-w-[488px] items-center gap-2 rounded-2xl bg-[#f5f4ef] p-3 text-slate-800 shadow-xl" role="status"><Bell size={20} className="shrink-0 text-[#a77550]"/><button type="button" className="min-w-0 flex-1 text-left text-sm font-semibold" onClick={() => void openNotification(banner)}>{banner.title}</button><button type="button" onClick={() => setBanner(null)} aria-label="Скрыть уведомление" className="p-2"><X size={18}/></button></div>, document.body)}
+      {banner && !open && createPortal(<div className="employee-new-notice fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[140] mx-auto flex max-w-[488px] items-center gap-2 rounded-2xl bg-[#f5f4ef] p-3 text-slate-800 shadow-xl" role="status"><span className='text-[#a77550]'><EmployeeNoticeIcon kind={employeeInboxIconKind(banner)} /></span><button type="button" className="min-w-0 flex-1 text-left text-sm font-semibold" onClick={() => void openNotification(banner)}>{banner.title}</button><button type="button" onClick={() => setBanner(null)} aria-label="Скрыть уведомление" className="p-2"><X size={18}/></button></div>, document.body)}
       {open && <EmployeeNotificationInbox items={notifications} loading={loading} error={inboxError||readError} onRetry={()=>{if(!inboxError&&failedRead.current)void dismiss(failedRead.current);else void refresh();}} onClose={() => setOpen(false)} onChoose={item => void openNotification(item)} permission={<>
 {!preview && !pushConnected && (
             <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>

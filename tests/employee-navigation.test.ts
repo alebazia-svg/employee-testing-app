@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { employeeNavigation, employeePreviewHref, employeeSectionViews } from '../lib/employee-navigation';
+import { employeeNavigation, employeePreviewHref, employeeSectionViews, initialEmployeeSection } from '../lib/employee-navigation';
 import { employeePreviewUrl } from '../lib/employee-preview-request';
 
 test('every enabled employee tab has an inspection destination and renderer', () => {
@@ -23,4 +23,13 @@ test('salary inspection uses the scoped reader, preserves month validation and f
   assert.equal(employeePreviewUrl('visit', '/api/employee/payroll?month=2026-10&userId=99'), '/api/admin/employees/preview/visit?resource=payroll&month=2026-10');
   assert.equal(employeePreviewUrl('visit', '/api/employee/payroll?month=2026-10&month=2026-09'), '/api/admin/employees/preview/visit?resource=payroll&month=2026-10&month=2026-09');
   for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) assert.throws(() => employeePreviewUrl('visit', '/api/employee/payroll', { method }));
+});
+test('all tabs share the existing native shell and retain feature gating', () => {
+  assert.equal(initialEmployeeSection('payroll', true), 'payroll');
+  assert.equal(initialEmployeeSection('payroll', false), 'day');
+  assert.equal(initialEmployeeSection('schedule', true), 'schedule');
+  assert.equal(initialEmployeeSection('unknown', true), 'day');
+  assert.deepEqual(Object.values(employeeSectionViews), ['home', 'home', 'home']);
+  assert.equal(employeePreviewUrl('visit', '/api/employee/payroll?month=2026-10&snapshot=stored'), '/api/admin/employees/preview/visit?resource=payroll&month=2026-10&snapshot=stored');
+  assert.equal(employeePreviewUrl('visit', '/api/employee/payroll?snapshot=stored&snapshot=wrong'), '/api/admin/employees/preview/visit?resource=payroll&snapshot=stored&snapshot=wrong');
 });

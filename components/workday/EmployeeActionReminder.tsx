@@ -6,7 +6,8 @@ import { X } from 'lucide-react';
 import { startVisibleSync } from '@/lib/visible-sync';
 import type { EmployeeAttentionItem } from '@/lib/employee-attention';
 import { employeeActionReminder, type ReminderWorkday } from '@/lib/employee-action-reminder';
-import { ReminderBell } from './ReminderBell';
+import { EmployeeNoticeIcon } from './EmployeeNoticeIcon';
+import { employeeReminderIconKind } from '@/lib/employee-notice-icons';
 import styles from './EmployeeActionReminder.module.css';
 import { useCashIssue } from '@/app/(dashboard)/employee/CashIssueClient';
 import { cashIssueCompactCopy } from '@/lib/procurement-cash-issue-policy';
@@ -56,9 +57,9 @@ export function EmployeeActionReminderProvider({ children }: { children: ReactNo
   const abort = useRef<AbortController | null>(null);
   const workdayVersion = useRef(0), attentionVersion = useRef(0);
   const publishWorkday = useCallback((value: ReminderWorkday) => { workdayVersion.current++; setWorkday(value); }, []);
-  const publishAttention = useCallback((value: EmployeeAttentionItem[], failed: boolean) => { attentionVersion.current++; setAttention(value); setAttentionError(failed); }, []);
+  const publishAttention = useCallback((value: EmployeeAttentionItem[], failed: boolean) => { attentionVersion.current++; if (!failed) setAttention(value); setAttentionError(failed); }, []);
   const payroll = pathname.includes('/payroll');
-  const offDay = payroll || view === 'schedule';
+  const offDay = payroll || view === 'schedule' || view === 'payroll';
   const refresh = useCallback(async (forceAttention = false) => {
     if (abort.current) return;
     const controller = new AbortController(); abort.current = controller;
@@ -78,7 +79,7 @@ export function EmployeeActionReminderProvider({ children }: { children: ReactNo
         if (!response.ok) throw Error();
         const snapshot = await response.json();
         if (!Array.isArray(snapshot.items)) throw Error();
-        if (attentionRevision === attentionVersion.current) { setAttention(snapshot.items); setAttentionError(snapshot.expenses?.state === 'unavailable'); }
+        if (attentionRevision === attentionVersion.current) { setAttention(snapshot.items); setAttentionError(false); }
       }
       setError(false);
     } catch { if (timedOut || !controller.signal.aborted) setError(true); }
@@ -135,7 +136,8 @@ export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?
     return () => cancelAnimationFrame(frame);
   }, [view, state?.action?.id, state?.action?.target]);
   if (!state || ['day', 'actual-day'].includes(view) || state.deferred) return null;
-  if (state.error) return <aside role='status' className={`${styles.notice} mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-700`}><p className='flex-1'>Не удалось обновить задания</p><button className={styles.open} onClick={() => void state.refresh()}>Повторить</button></aside>;
+  // Source availability is not an employee task. Keep known real actions;
+  // never turn a failed background read into a new scary action banner.
   const action = state.action;
   if (!action) return null;
   const href = preview ? `${preview.href('/employee')}${new URL(action.href, 'https://preview.invalid').search}${new URL(action.href, 'https://preview.invalid').hash}` : action.href;
@@ -148,10 +150,17 @@ export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?
       requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:attention-open', { detail: { kind: url.searchParams.get('attention'), id: url.searchParams.get('item') } })));
     }
   };
+  return <ActionReminderNotice title={action.title} icon={<EmployeeNoticeIcon kind={employeeReminderIconKind(action)} animated />} onOpen={onOpen || action.target === 'cash_issue' ? open : undefined} href={href} onDefer={state.defer} />;
+}
+
+/** Shared presentation: the isolated comparison uses the actual notice UI. */
+export function ActionReminderNotice({ title, icon = <EmployeeNoticeIcon kind='notice' />, onOpen, href, onDefer }: {
+  title: string; icon?: ReactNode; onOpen?: () => void; href?: string; onDefer: () => void;
+}) {
   return <aside role='status' aria-label='Напоминание о задании' className={`${styles.notice} mb-2 flex min-h-12 min-w-0 items-center gap-1 rounded-xl px-2 text-slate-800`}>
-    <ReminderBell />
-    <p className='min-w-0 flex-1 text-sm font-semibold leading-snug'>{action.title}</p>
-    {onOpen || action.target === 'cash_issue' ? <button type='button' className={styles.open} onClick={open}>Открыть</button> : <Link href={href} className={styles.open}>Открыть</Link>}
-    <button type='button' aria-label='Напомнить позже' title='Напомнить позже' className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600' onClick={state.defer}><X size={18} aria-hidden='true' /></button>
+    {icon}
+    <p className='min-w-0 flex-1 text-sm font-semibold leading-snug'>{title}</p>
+    {onOpen ? <button type='button' className={styles.open} onClick={onOpen}>Открыть</button> : <Link href={href!} className={styles.open}>Открыть</Link>}
+    <button type='button' aria-label='Напомнить позже' title='Напомнить позже' className='flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600' onClick={onDefer}><X size={18} aria-hidden='true' /></button>
   </aside>;
 }

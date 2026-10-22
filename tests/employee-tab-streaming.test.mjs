@@ -2,28 +2,38 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-const salary = read('app/(dashboard)/employee/payroll/PersonalPayrollScreen.tsx');
+const home = read('app/(dashboard)/employee/EmployeeTodayClient.tsx');
 const client = read('app/(dashboard)/employee/payroll/PersonalPayrollClient.tsx');
+const preview = read('app/(dashboard)/admin/employees/preview/[visitId]/page.tsx');
+const panel = read('components/workday/EmployeeAttentionPanel.tsx');
+const reminder = read('components/workday/EmployeeActionReminder.tsx');
 
-test('salary opens its existing screen before the stored calculation finishes', () => {
-  assert.ok(salary.includes('export function PersonalPayrollScreen'));
-  assert.ok(salary.includes('fallback={<PersonalPayrollClient'));
-  assert.ok(salary.includes('refreshEnabled={false}'));
-  assert.ok(salary.includes('<SavedPayroll user={user}'));
-  assert.ok(salary.includes('employeePayrollResponse(user, new URLSearchParams(), true)'));
+test('salary is a native local tab, not a blocking server navigation', () => {
+  assert.ok(home.includes("activeTab === 'payroll' && <PersonalPayrollClient"));
+  assert.ok(home.includes('embedded onOpenReminder'));
+  assert.ok(!home.includes("if (section === 'payroll') return false"));
+  assert.ok(preview.includes('<EmployeeTodayClient'));
+  assert.ok(!preview.includes('key={tab}'));
+  assert.ok(!preview.includes('PersonalPayrollScreen'));
+  assert.ok(read('app/(dashboard)/employee/payroll/page.tsx').includes("redirect('/employee?tab=payroll')"));
 });
-
-test('salary fallback shows the account-scoped last result without duplicate live reads', () => {
+test('salary loads the private saved projection first and retains the account cache', () => {
   assert.ok(client.includes('useEmployeePayrollSnapshots()'));
   assert.ok(client.includes('store?.values.get(month)'));
-  assert.ok(client.includes('if (!refreshEnabled) return;'));
+  assert.ok(client.includes('month === activeMonth && !salary'));
+  assert.ok(client.includes('&snapshot=stored'));
   assert.ok(client.includes('controller.abort()'));
-  assert.ok(client.includes('disabled={!refreshEnabled}'));
+});
+test('calendar defaults to month and operational notice never becomes a technical warning', () => {
+  assert.ok(home.includes("setScheduleMode('month')"));
+  assert.ok(!home.includes("setScheduleMode(requestedDate ? 'month' : 'list')"));
+  assert.ok(!panel.includes('Заявки: не удалось обновить данные 1С.'));
+  assert.ok(!reminder.includes('Не удалось обновить задания'));
+  assert.ok(panel.includes('employeeAttentionSummary(action.length, waiting.length, refreshing'));
+  assert.ok(panel.includes('!refreshing && loadState'));
 });
 
-test('failed stored reads fall through to the existing retryable private client', () => {
-  assert.ok(salary.includes('let initial: unknown = null;'));
-  assert.ok(salary.includes('try { initial = await'));
-  assert.ok(salary.includes('catch {'));
-  assert.ok(client.includes('if ([401, 403, 404, 410].includes(response.status)) { clear?.()'));
+test('unfinished previous shift details stay on workday rather than displacing salary or calendar', () => {
+  assert.ok(home.includes("activeTab === 'day' && previousWorkDay && ("));
+  assert.ok(!home.includes('{previousWorkDay && ('));
 });

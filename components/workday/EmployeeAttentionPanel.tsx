@@ -3,22 +3,22 @@ import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Bell, ChevronRight, X, CheckCircle2 } from 'lucide-react';
-import { PremiumDangerTriangleIcon, PremiumBillListIcon, PremiumClockIcon } from '@/components/PwaPreviewIcons';
+import { ArrowLeft, ChevronRight, X, CheckCircle2 } from 'lucide-react';
+import { PremiumClockIcon } from '@/components/PwaPreviewIcons';
 import { useSearchParams } from 'next/navigation';
 import type { EmployeeExpenseSnapshot } from '@/lib/employee-expense-policy';
 import { startVisibleSync } from '@/lib/visible-sync';
-import { orderEmployeeAttention, type EmployeeAttentionItem } from '@/lib/employee-attention';
+import { employeeAttentionSummary, orderEmployeeAttention, type EmployeeAttentionItem } from '@/lib/employee-attention';
 import { useCashIssue } from '@/app/(dashboard)/employee/CashIssueClient';
 import { cashIssueCompactCopy } from '@/lib/procurement-cash-issue-policy';
 import { Button } from '@/components/ui/button';
 import { useActionReminderEnabled, usePublishAttentionReminder } from './EmployeeActionReminder';
-import { ReminderBell } from './ReminderBell';
+import { EmployeeNoticeIcon } from './EmployeeNoticeIcon';
+import { employeeAttentionIconKind } from '@/lib/employee-notice-icons';
 
 type Item = EmployeeAttentionItem;
 function Marker({ kind, waiting }: { kind: Item['kind']; waiting: boolean }) {
-  const Icon = waiting ? PremiumClockIcon : kind === 'receipt' ? PremiumBillListIcon : PremiumDangerTriangleIcon;
-  return <span className={`attention-preview-marker ${waiting ? 'is-waiting' : 'needs-action'}`} aria-hidden="true"><Icon color={waiting ? '#687078' : '#a85a08'} secondaryColor={waiting ? '#d5d9dc' : '#f6d58b'} secondaryOpacity={0.9} className="h-5 w-5 shrink-0" /></span>;
+  return <span className={`attention-preview-marker ${waiting ? 'is-waiting' : 'needs-action'}`} aria-hidden="true">{waiting ? <PremiumClockIcon color='#687078' secondaryColor='#d5d9dc' secondaryOpacity={0.9} className='h-5 w-5 shrink-0' /> : <EmployeeNoticeIcon kind={employeeAttentionIconKind(kind)} />}</span>;
 }
 
 export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClass, activeShift = false, onClosing, onExpenses }: {
@@ -41,11 +41,13 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const expenseListener = useRef(onExpenses); expenseListener.current = onExpenses;
   const [liveItems, setLiveItems] = useState<Item[]>([]);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const requestSequence = useRef(0);
   const refresh = useCallback(async () => {
     const sequence = ++requestSequence.current;
+    setRefreshing(true);
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 10000);
     try {
@@ -58,7 +60,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
         if (payload.expenses) { if (payload.expenses.state !== 'unavailable') setLiveExpenses(payload.expenses); expenseListener.current?.(payload.expenses); }
         setLoadState('ready'); }
     } catch { if (sequence === requestSequence.current) setLoadState('error'); }
-    finally { window.clearTimeout(timer); }
+    finally { window.clearTimeout(timer); if (sequence === requestSequence.current) setRefreshing(false); }
   }, []);
   useEffect(() => startVisibleSync(refresh, 30000), [refresh]);
   const request = activeShift ? cashIssue?.snapshot.request : null;
@@ -66,7 +68,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const payable = liveExpenses?.payable.filter(item => item.ref !== request?.ref);
   const ownItems = liveItems.flatMap(item => item.kind !== 'cash' || !payable ? [item] : payable.length ? [{ ...item, facts: payable.map(row => [`№${row.number} · ${row.purpose}`, `${row.remaining.toLocaleString('ru-RU')} ₽`] as [string,string]) }] : []);
   const allItems = orderEmployeeAttention([...ownItems, ...cashItem]);
-  usePublishAttentionReminder(allItems, loadState === 'ready', loadState === 'error' || expenseUnavailable);
+  usePublishAttentionReminder(allItems, loadState === 'ready', loadState === 'error');
   const items = allItems.filter(item => !scope || item.kind === scope);
   const entry = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -147,14 +149,12 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const action = items.filter(item => item.state === 'action');
   const waiting = items.filter(item => item.state === 'waiting');
   return <>
-    {loadState === 'error' && <button type="button" className="cash-discrepancy-trigger attention-preview-entry" onClick={() => void refresh()}>Не удалось обновить замечания · повторить</button>}
-    {expenseUnavailable && <p className="px-1 text-xs text-slate-500" role="status">Заявки: не удалось обновить данные 1С.</p>}
     {view !== 'schedule' && allItems.length > 0 && <section className="employee-attention-groups" aria-label="Текущие действия">{[...new Set(allItems.map(item => item.kind))].map(kind => {
       const rows = allItems.filter(item => item.kind === kind), actionable = rows.some(item => item.state === 'action');
       const title = kind === 'receipt' ? 'Проверьте чеки' : kind === 'cash' ? 'Оформите расходники в 1С' : rows[0].title;
       const count = kind === 'cash' ? (payable?.length ?? 0) : rows.length;
       return <button key={kind} ref={entry} type="button" onClick={() => openSheet(kind)} aria-haspopup="dialog" className={`employee-attention-row ${rows.some(item => item.notificationIds?.length) ? 'employee-new-notice' : ''}`}>
-        {reminderPreviewEnabled && actionable ? <ReminderBell /> : <span className="attention-preview-marker needs-action" aria-hidden="true"><Bell size={20} strokeWidth={1.7} className="text-[#a77550]"/></span>}
+        <EmployeeNoticeIcon kind={employeeAttentionIconKind(kind)} animated={reminderPreviewEnabled && actionable} />
         <span className="min-w-0 flex-1"><strong>{title}</strong><small className="employee-attention-caption">{kind === 'cash' ? 'Есть заявки к оплате' : !actionable ? rows[0].status : ''}{rows.some(item => item.notificationIds?.length) && <span className="employee-attention-new">Новое</span>}</small></span>
         {(kind === 'cash' ? count > 0 : count > 1) && <span className="shrink-0 text-xs font-bold tabular-nums text-stone-500" aria-label={kind === 'cash' ? `Заявок к оплате: ${count}` : undefined}>{count}</span>}<ChevronRight size={18} aria-hidden="true"/>
       </button>;
@@ -162,7 +162,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
     {open && createPortal(<div className={`portal-neutral-design employee-material-ui employee-workday-sheet-overlay fixed inset-0 z-[130] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6 ${paletteClass}`} onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <section ref={sheet} role="dialog" aria-modal="true" aria-labelledby="attention-preview-dialog-title" className="employee-material-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:rounded-[28px]">
         {renderHandle(close)}
-        <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-2 pt-4"><div>{selected && items.length>1 && <button type="button" className="attention-preview-back" onClick={returnToList}><ArrowLeft size={16} aria-hidden="true"/>Назад</button>}<h2 id="attention-preview-dialog-title" className="text-[22px] font-black leading-tight text-slate-950">{selected?.title ?? (scope === 'receipt' ? 'Проверить чеки' : scope === 'cash' ? 'Заявки к оплате' : 'Замечания')}</h2><p className="mt-1 text-xs text-slate-500">{selected ? new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'}).format(new Date(selected.date)) : action.length ? `Нужно сделать: ${action.length}${waiting.length ? ` · на проверке: ${waiting.length}` : ''}` : `На проверке: ${waiting.length}`}</p></div><button type="button" onClick={close} disabled={busy} className="employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label="Закрыть замечания"><X size={20}/></button></div>
+        <div className="flex shrink-0 items-start justify-between gap-3 px-5 pb-2 pt-4"><div>{selected && items.length>1 && <button type="button" className="attention-preview-back" onClick={returnToList}><ArrowLeft size={16} aria-hidden="true"/>Назад</button>}<h2 id="attention-preview-dialog-title" className="text-[22px] font-black leading-tight text-slate-950">{selected?.title ?? (scope === 'receipt' ? 'Проверить чеки' : scope === 'cash' ? 'Заявки к оплате' : 'Замечания')}</h2><p className="mt-1 text-xs text-slate-500">{selected ? new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'}).format(new Date(selected.date)) : employeeAttentionSummary(action.length, waiting.length, refreshing || loadState === 'loading', loadState === 'error')}</p></div><button type="button" onClick={close} disabled={busy} className="employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600" aria-label="Закрыть замечания"><X size={20}/></button></div>
         <div ref={scrollArea} className="min-h-0 overflow-y-auto overscroll-contain">{selectedId && !selected ? <div className="p-5"><p role="status" className="text-sm">{loadState === 'loading' ? 'Проверяем актуальность…' : loadState === 'error' || scope === 'cash' && expenseUnavailable ? 'Не удалось проверить актуальность. Повторите позже.' : 'Замечание больше не требует действий.'}</p><Button type="button" className="employee-material-secondary-action mt-3 w-full" onClick={returnToList}>К списку</Button></div> : selected ? <>
         <div className="px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-2">
           <>
@@ -182,8 +182,9 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
 
         </div>
         </> : <div className="attention-preview-page px-5 pb-5 pt-2">
-        {loadState === 'loading' && items.length === 0 && <p role="status" className="text-sm text-slate-500">Загружаем замечания…</p>}
-        {loadState === 'ready' && items.length===0&&<div className="attention-preview-history"><CheckCircle2 size={20} aria-hidden="true"/><strong>Открытых замечаний нет</strong></div>}
+        {(refreshing || loadState === 'loading') && items.length === 0 && <p role="status" className="text-sm text-slate-500">Загружаем замечания…</p>}
+        {!refreshing && loadState === 'error' && items.length === 0 && <div role="status"><p>Не удалось загрузить список.</p><button type="button" onClick={() => void refresh()} className="min-h-11 font-semibold">Повторить</button></div>}
+        {!refreshing && loadState === 'ready' && items.length===0&&<div className="attention-preview-history"><CheckCircle2 size={20} aria-hidden="true"/><strong>Открытых замечаний нет</strong></div>}
         {[{ title: 'Нужно сделать', rows: action }, { title: 'Ожидает проверки', rows: waiting }].map(group => group.rows.length > 0 && <section className="attention-preview-group" key={group.title}><h3>{group.title}<span>{group.rows.length}</span></h3><div className="attention-preview-list">{group.rows.map(item => <button type="button" key={item.id} data-attention-item={item.id} onClick={() => openItem(item.id)}><Marker kind={item.kind} waiting={item.state === 'waiting'}/><span className="attention-preview-item-copy"><strong>{item.title}</strong><small>{item.shared ? 'Общая задача смены · ' : ''}{item.status}</small></span><ChevronRight size={18} aria-hidden="true"/></button>)}</div></section>)}
         {action.length === 0 && items.length > 0 && <p className="attention-preview-all-done"><CheckCircle2 size={18} aria-hidden="true"/>От вас сейчас ничего не требуется</p>}
         </div>}</div>

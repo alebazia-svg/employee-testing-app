@@ -1,0 +1,30 @@
+.icon { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; color:inherit; }
+.animated { color:#a77550; }
+.animated svg { animation:copper 3.8s ease-in-out infinite; }
+.paper { transform-origin:50% 65%; animation:paper 3.8s ease-in-out infinite; }
+.nudge { animation:nudge 3.8s ease-in-out infinite; }
+.vertical { animation:vertical 3.8s ease-in-out infinite; }
+@keyframes paper {
+  0%,44%,100% { transform:translateY(0) rotate(0); }
+  8% { transform:translateY(-3px) rotate(-11deg); }
+  17% { transform:translateY(-3px) rotate(10deg); }
+  27% { transform:translateY(-1px) rotate(-6deg); }
+  36% { transform:translateY(0) rotate(3deg); }
+}
+@keyframes nudge {
+  0%,44%,100% { transform:translateX(0); }
+  10%,27% { transform:translateX(3px); }
+  18%,35% { transform:translateX(-1px); }
+}
+@keyframes vertical {
+  0%,44%,100% { transform:translateY(0); }
+  10%,27% { transform:translateY(3px); }
+  18%,35% { transform:translateY(-1px); }
+}
+@keyframes copper {
+  0%,45%,100% { stroke:#a77550; stroke-width:1.8; fill:transparent; }
+  10%,29% { stroke:#a45a2c; stroke-width:2.7; fill:#c7894c33; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .animated,.animated svg { animation:none; }
+}

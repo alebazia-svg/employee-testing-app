@@ -67,13 +67,15 @@ export async function readEmployeePayroll(
     if (!settlement || !Number.isFinite(settlement.accrued) || settlement.accrued < 0) return unavailable;
     const verifiedPayments = settlement.paid !== null && settlement.remaining !== null
       && [settlement.paid, settlement.remaining].every(value => Number.isFinite(value) && value >= 0)
-      && Math.round((settlement.paid + settlement.remaining) * 100) === Math.round(settlement.accrued * 100);
+      && Number.isFinite(settlement.creditedFromEarlier ?? 0) && (settlement.creditedFromEarlier ?? 0) >= 0
+      && Math.round((settlement.paid + settlement.remaining + (settlement.creditedFromEarlier ?? 0)) * 100) === Math.round(settlement.accrued * 100);
     return { status: 200, body: {
       month: period,
       state: 'confirmed' as const,
       accrued: settlement.accrued,
       paid: verifiedPayments ? settlement.paid : null,
       remaining: verifiedPayments ? settlement.remaining : null,
+      ...(verifiedPayments && settlement.creditedFromEarlier ? { creditedFromEarlier: settlement.creditedFromEarlier } : {}),
     } };
   } catch {
     return { status: 503, body: { error: 'Расчёт временно недоступен. Попробуйте позже.' } };

@@ -9,9 +9,8 @@ import { EmployeeTodayClient } from '@/app/(dashboard)/employee/EmployeeTodayCli
 import { CashIssueProvider } from '@/app/(dashboard)/employee/CashIssueClient';
 import { ProcurementHome } from '@/app/(dashboard)/procurement/ProcurementHome';
 import { ProcurementShell } from '@/components/ProcurementShell';
-import { PersonalPayrollScreen } from '@/app/(dashboard)/employee/payroll/PersonalPayrollScreen';
 import { payrollFeatureState } from '@/lib/payroll-features';
-import { employeeNavigation, employeeSectionViews, type EmployeeSection } from '@/lib/employee-navigation';
+import { employeeNavigation } from '@/lib/employee-navigation';
 import { EmployeeActionReminderProvider } from '@/components/workday/EmployeeActionReminder';
 import { EmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
 export const dynamic = 'force-dynamic';
@@ -22,5 +21,5 @@ export default async function EmployeePreviewPage({ params, searchParams }: { pa
   if (!preview) return <main className="mx-auto max-w-lg p-8"><h1 className="text-xl font-bold">Просмотр завершён</h1><p className="my-4">Откройте сотрудника заново из списка.</p><Link className="underline" href="/admin/employees">К сотрудникам</Link></main>;
   const tab = (await searchParams).tab ?? 'day';
   if (preview.employee.portalArea === 'WORKDAY' && !employeeNavigation(payrollFeatureState().employeeEnabled).some(section => section.id === tab)) notFound();
-  return <>{preview.employee.portalArea === 'WORKDAY' && <EmployeeInterfaceStyle copper />}<EmployeePreviewProvider key={preview.visit.id} visitId={preview.visit.id} employeeName={preview.employee.name} expiresAt={preview.visit.expiresAt.toISOString()}>{preview.employee.portalArea === 'PROCUREMENT' ? <ProcurementShell userName={preview.employee.name}><ProcurementHome user={preview.employee} readOnly /></ProcurementShell> : <CashIssueProvider><EmployeePayrollSnapshots><EmployeeActionReminderProvider>{employeeSectionViews[tab as EmployeeSection] === 'payroll' ? <PersonalPayrollScreen user={preview.employee} /> : <EmployeeTodayClient key={tab} {...await loadEmployeeHome(preview.employee)} />}</EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider>}</EmployeePreviewProvider></>;
+  return <>{preview.employee.portalArea === 'WORKDAY' && <EmployeeInterfaceStyle copper />}<EmployeePreviewProvider key={preview.visit.id} visitId={preview.visit.id} employeeName={preview.employee.name} expiresAt={preview.visit.expiresAt.toISOString()}>{preview.employee.portalArea === 'PROCUREMENT' ? <ProcurementShell userName={preview.employee.name}><ProcurementHome user={preview.employee} readOnly /></ProcurementShell> : <CashIssueProvider><EmployeePayrollSnapshots><EmployeeActionReminderProvider><EmployeeTodayClient {...await loadEmployeeHome(preview.employee)} /></EmployeeActionReminderProvider></EmployeePayrollSnapshots></CashIssueProvider>}</EmployeePreviewProvider></>;
 }

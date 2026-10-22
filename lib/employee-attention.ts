@@ -10,6 +10,11 @@ export function orderEmployeeAttention(items: EmployeeAttentionItem[]) {
   return [...new Map(items.map(item => [item.id, item])).values()].sort((a,b) =>
     Number(a.state === 'waiting') - Number(b.state === 'waiting') || a.priority - b.priority || a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
 }
+
+export function employeeAttentionSummary(action: number, waiting: number, loading: boolean, failed: boolean) {
+  if (!action && !waiting) return loading ? 'Загружаем замечания…' : failed ? 'Список временно недоступен' : 'Открытых замечаний нет';
+  return action ? `Нужно сделать: ${action}${waiting ? ` · на проверке: ${waiting}` : ''}` : `На проверке: ${waiting}`;
+}
 export function employeeReviewState(input: { response?: string; handler?: string; adminRepliedAfterResponse: boolean }) {
   if (input.adminRepliedAfterResponse) return { state: 'action' as const, status: 'Есть ответ' };
   if (input.response === 'help') return { state: 'waiting' as const, status: 'Ожидает ответа' };

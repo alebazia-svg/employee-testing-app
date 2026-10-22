@@ -7,6 +7,42 @@ const notificationsSourcePath = 'app/(dashboard)/employee/WorkdayNotificationsCl
 const globalStylesPath = 'app/globals.css';
 const brandStylesPath = 'app/mobo-brand.css';
 
+test('QR start cue uses one scan line with a stationary code and reduced motion support', async () => {
+  const css = await readFile('public/pwa-copper.css', 'utf8');
+  assert.ok(css.indexOf('@keyframes pwa-qr-scan') < css.indexOf('body:has('));
+  assert.match(css, /\.pwa-qr-scan-line \{\s*animation:pwa-qr-scan 2\.8s ease-in-out infinite;/);
+  assert.match(css, /@media\(prefers-reduced-motion:reduce\) \{[^}]*animation:none;/);
+  assert.doesNotMatch(css, /pwa-qr-start-sheen|pwa-qr-corner-breathe|pwa-qr-detail-emphasis/);
+  const source = await readFile(employeeSourcePath, 'utf8');
+  assert.match(source, /className='pwa-qr-scan-line'/);
+  assert.match(source, /<QrCode x=\{6\} y=\{6\}/);
+  assert.match(css, /svg\.pwa-start-qr-scanner \{ padding:3px !important; \}/);
+});
+
+test('prestart card exposes one native scan action without duplicated labels or a second button', async () => {
+  const source = await readFile(employeeSourcePath, 'utf8');
+  const card = source.slice(source.indexOf("<section className='pwa-composition-only pwa-composition-start'"), source.indexOf('</section>', source.indexOf("<section className='pwa-composition-only pwa-composition-start'")));
+  assert.match(card, />Начать смену<\/h2>/);
+  assert.match(card, /Отсканируйте <span className='whitespace-nowrap'>QR-код<\/span> в магазине\./);
+  assert.match(card, /Открыть камеру/);
+  assert.equal((card.match(/<button\b/g) ?? []).length, 1);
+  assert.match(card, /aria-labelledby='pwa-composition-start-title' aria-describedby='pwa-start-qr-hint' onClick=\{openQrStart\}/);
+  assert.doesNotMatch(card, /Рабочий день|Не начат|pwa-composition-start-button/);
+  const css = await readFile('public/pwa-copper.css', 'utf8');
+  assert.match(css, /\.pwa-composition-start \.pwa-composition-start-body \{ display:flex; flex-direction:row;[^}]*min-height:116px;/);
+  assert.match(css, /\.pwa-composition-start \.pwa-composition-start-body > svg\.pwa-start-qr-scanner \{ order:1; width:88px; height:88px;/);
+  assert.match(css, /\.pwa-start-card-footer \{[^}]*min-height:52px;[^}]*background:linear-gradient\(135deg,#303337,#191c20\); color:#fffdf6;[^}]*font-size:16px;/);
+  assert.match(css, /\.pwa-start-card-footer > svg \{ width:26px; height:26px; flex-shrink:0; color:#d99a68; stroke-width:2\.4;/);
+  assert.match(css, /\.pwa-composition-start \.pwa-composition-start-body h2 \{ font-size:26px;/);
+  assert.match(css, /\.pwa-composition-start \.pwa-composition-start-body p \{ font-size:16px;/);
+});
+
+test('copper bottom navigation uses equal base sizes with a small optical clock adjustment', async () => {
+  const css = await readFile('public/pwa-copper.css', 'utf8');
+  assert.match(css, /\.employee-material-ui \.employee-material-nav \.employee-material-tab svg \{ width:26px !important; height:26px !important; transform:none !important; \}/);
+  assert.match(css, /\.employee-material-ui \.employee-material-nav \.employee-material-nav-icon-day svg \{ transform:scale\(1\.04\) !important; \}/);
+});
+
 test('approved employee PWA palette remains the default', async () => {
   const [employeeSource, notificationsSource, globalStyles] = await Promise.all([
     readFile(employeeSourcePath, 'utf8'),
@@ -87,7 +123,7 @@ test('semantic state icons keep the approved color system', async () => {
   assert.match(employeeSource, /employee-material-state-marker-success/);
   assert.match(notificationsSource, /<EmployeeNotificationInbox/);
   const inbox = await readFile('components/workday/EmployeeNotificationInbox.tsx', 'utf8');
-  assert.match(inbox, /item\.kind\.endsWith\('_reply'\) \? MessageCircle : Bell/);
+  assert.match(inbox, /<EmployeeNoticeIcon kind=\{employeeInboxIconKind\(item\)\} \/>/);
   assert.match(inbox, /employee-inbox-row \$\{unread \? 'is-unread' : ''\}/);
   assert.match(globalStyles, /employee-material-state-marker-warning[\s\S]*?background: #fff7e3 !important;/);
   assert.match(globalStyles, /employee-material-state-marker-success[\s\S]*?background: #eef8f1 !important;/);

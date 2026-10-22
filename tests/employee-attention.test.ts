@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { employeeReviewState, orderEmployeeAttention, type EmployeeAttentionItem } from '../lib/employee-attention';
+import { employeeAttentionSummary, employeeReviewState, orderEmployeeAttention, type EmployeeAttentionItem } from '../lib/employee-attention';
+test('loading and unavailable attention never claim there are zero checks', () => {
+  assert.equal(employeeAttentionSummary(0, 0, true, false), 'Загружаем замечания…');
+  assert.equal(employeeAttentionSummary(0, 0, false, true), 'Список временно недоступен');
+  assert.equal(employeeAttentionSummary(0, 0, false, false), 'Открытых замечаний нет');
+  assert.equal(employeeAttentionSummary(1, 0, true, false), 'Нужно сделать: 1');
+  assert.equal(employeeAttentionSummary(0, 2, false, false), 'На проверке: 2');
+});
 test('a new admin reply brings a waiting shared review back to action', () => {
   assert.equal(employeeReviewState({ response: 'help', adminRepliedAfterResponse: false }).state, 'waiting');
   assert.equal(employeeReviewState({ response: 'help', adminRepliedAfterResponse: true }).state, 'action');

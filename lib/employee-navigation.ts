@@ -6,7 +6,10 @@ export const employeeSections = [
 ] as const;
 export type EmployeeSection = typeof employeeSections[number]['id'];
 // Adding a section requires choosing its real renderer in inspection too.
-export const employeeSectionViews = { day: 'home', schedule: 'home', payroll: 'payroll' } as const satisfies Record<EmployeeSection, 'home' | 'payroll'>;
+export const employeeSectionViews = { day: 'home', schedule: 'home', payroll: 'home' } as const satisfies Record<EmployeeSection, 'home'>;
+export function initialEmployeeSection(tab: string | null, payrollEnabled: boolean): EmployeeSection {
+  return tab === 'payroll' && payrollEnabled ? 'payroll' : tab === 'schedule' ? 'schedule' : 'day';
+}
 export function employeeNavigation(payrollEnabled: boolean) {
   return employeeSections.filter(section => section.id !== 'payroll' || payrollEnabled);
 }

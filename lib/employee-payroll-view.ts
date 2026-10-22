@@ -1,6 +1,6 @@
 import type { EmployeeEarning } from './employee-payroll-estimate';
 
-export type EmployeePayrollView = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed'; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null };
+export type EmployeePayrollView = { month: string; state: 'unavailable' | 'current_estimate' | 'confirmed'; estimatedAccrued?: number; earnings?: EmployeeEarning[]; savedAdvance?: number | null; verifiedThrough?: string; accrued?: number; paid?: number | null; remaining?: number | null; creditedFromEarlier?: number };
 
 export function validEmployeePayrollView(value: unknown, month: string): value is EmployeePayrollView {
   if (!value || typeof value !== 'object') return false;
@@ -14,8 +14,9 @@ export function validEmployeePayrollView(value: unknown, month: string): value i
     && row.earnings.reduce((sum, item) => sum + item.amount, 0) === row.estimatedAccrued
     && (row.savedAdvance == null || amount(row.savedAdvance));
   return row.state === 'confirmed' && amount(row.accrued)
+    && (row.creditedFromEarlier === undefined || amount(row.creditedFromEarlier))
     && ((row.paid == null && row.remaining == null) || amount(row.paid) && amount(row.remaining)
-      && Math.round((row.paid! + row.remaining!) * 100) === Math.round(row.accrued! * 100));
+      && Math.round((row.paid! + row.remaining! + (row.creditedFromEarlier ?? 0)) * 100) === Math.round(row.accrued! * 100));
 }
 
 export function employeePayrollMonthAt(now = new Date()) {

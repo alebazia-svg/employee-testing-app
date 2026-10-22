@@ -79,3 +79,13 @@ test('confirmed first payment does not replace full posted salary, unknown payme
     assert.deepEqual(result.body, { month: '2026-09', state: 'confirmed', ...settlement });
   }
 });
+test('verified earlier credit is disclosed, not added to cash paid or removed from accrued', async () => {
+  const settlement = { accrued: 89100, paid: 89000, remaining: 0, creditedFromEarlier: 100 };
+  assert.deepEqual((await readEmployeePayroll(viewer, query(), { ...deps(), findSettlement: async () => settlement })).body,
+    { month: '2026-09', state: 'confirmed', ...settlement });
+  for (const creditedFromEarlier of [-1, NaN, 50, 200]) {
+    const result = await readEmployeePayroll(viewer, query(), { ...deps(), findSettlement: async () => ({ ...settlement, creditedFromEarlier }) });
+    assert.equal((result.body as any).remaining, null);
+    assert.equal((result.body as any).creditedFromEarlier, undefined);
+  }
+});

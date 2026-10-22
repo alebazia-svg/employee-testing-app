@@ -10,14 +10,10 @@ const object = (v: unknown): Record<string, unknown> => {
   return v as Record<string, unknown>;
 };
 
-/** Posted accruals explicitly labelled with a salary month, not a claim that
- * the month is finalized. Never reconstruct an accrual from cash or a balance. */
-export function payrollPostedAccrual(ledger: PayrollLedgerRead | undefined, ref: string, period: string) {
-  if (!ledger?.allocationEvidence || ledger.dateFrom > `${period}-01`) return null;
-  const rows = ledger.allocationEvidence.movements.filter(r => r.employeeRef === ref && r.sign === -1);
-  let total = 0, found = false;
+/** Existing explicit month rules, shared by accrual and prior-credit checks. */
+export function payrollLedgerAccrualPeriod(row: NonNullable<PayrollLedgerRead['allocationEvidence']>['movements'][number]) {
+  const ref = row.employeeRef;
   const stems = ['янв','фев','мар','апр','ма','июн','июл','авг','сент','окт','ноя','дек'];
-  for (const row of rows) {
     // Owner confirmed these exact bonus lines as August premiums on 2026-10-18.
     // Match source identity and unchanged facts, never the generic word "bonus".
     const augustPremiums = [
@@ -29,15 +25,24 @@ export function payrollPostedAccrual(ledger: PayrollLedgerRead | undefined, ref:
       && row.organizationRef === '1c2d6c5c-251f-11ec-ac9f-0025901e48ee'
       && row.date === '2026-09-01' && row.kind === 'asset_liability_movement'
       && row.comment.trim() === 'Бонусы к продажам';
-    if (premium) {
-      if (period === '2026-08') { total += row.amountMinor; found = true; }
-      continue;
-    }
+    if (premium) return '2026-08';
     const match = /^\s*(?:проценты|выходы?|фикс|зарплата|заработная плата)\s+(?:за\s+)?([а-яё]+)(?:\s+(20\d{2}))?\s*$/iu.exec(row.comment);
     const month = match ? stems.findIndex(s => match[1].toLowerCase().startsWith(s)) + 1 : 0;
     if (row.kind !== 'asset_liability_movement' || !month || row.amountMinor < 0) return null;
     const year = match![2] ? Number(match![2]) : Number(row.date.slice(0,4)) - (month > Number(row.date.slice(5,7)) ? 1 : 0);
-    if (`${year}-${String(month).padStart(2,'0')}` === period) { total += row.amountMinor; found = true; }
+    return `${year}-${String(month).padStart(2,'0')}`;
+}
+
+/** Posted accruals explicitly labelled with a salary month, not a claim that
+ * the month is finalized. Never reconstruct an accrual from cash or a balance. */
+export function payrollPostedAccrual(ledger: PayrollLedgerRead | undefined, ref: string, period: string) {
+  if (!ledger?.allocationEvidence || ledger.dateFrom > `${period}-01`) return null;
+  const rows = ledger.allocationEvidence.movements.filter(r => r.employeeRef === ref && r.sign === -1);
+  let total = 0, found = false;
+  for (const row of rows) {
+    const assigned = payrollLedgerAccrualPeriod(row);
+    if (!assigned) return null;
+    if (assigned === period) { total += row.amountMinor; found = true; }
   }
   return found ? total / 100 : null;
 }

@@ -1,5 +1,11 @@
 /* Acceptance-only presentation system. No workflow or notification timing changes.
    Three explicit markers keep this system above the older opt-in explorations. */
+@keyframes pwa-qr-scan {
+  0% { transform:translateY(-9px); opacity:0; }
+  12% { opacity:1; }
+  64% { transform:translateY(9px); opacity:1; }
+  76%,100% { transform:translateY(9px); opacity:0; }
+}
 body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   --pwa-paper:#ffffff; --pwa-canvas:#f7f6f2; --pwa-line:#e5e2da;
   --pwa-ink:#24282d; --pwa-muted:#60636a; --pwa-copper:#b96c36;
@@ -38,6 +44,15 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .pwa-composition-start-body p { font-size:13px; line-height:1.45; margin-top:6px; color:var(--pwa-muted); }
   .pwa-composition-start-button,.employee-material-primary-action,.employee-material-green-action,.employee-photo-action { display:flex; align-items:center; justify-content:center; gap:8px; min-height:52px !important; background:linear-gradient(135deg,#303337,#191c20) !important; color:#fffdf6 !important; border:1px solid #191c20 !important; border-radius:15px !important; box-shadow:inset 0 1px #ffffff18,0 4px 10px #181b2010 !important; font-size:15px !important; font-weight:600 !important; }
   .pwa-composition-start-button { width:100%; padding:12px 16px; justify-content:space-between; }
+  /* One scan line; the QR and frame remain sharp and stationary. */
+  .pwa-qr-scan-line { opacity:0; pointer-events:none; }
+  .pwa-composition-start-body > svg.pwa-start-qr-scanner { padding:3px !important; }
+  .pwa-composition-start:has(.pwa-start-card-action:not(:disabled)) .pwa-qr-scan-line {
+    animation:pwa-qr-scan 2.8s ease-in-out infinite;
+  }
+  @media(prefers-reduced-motion:reduce) {
+    .pwa-composition-start:has(.pwa-start-card-action:not(:disabled)) .pwa-qr-scan-line { animation:none; }
+  }
   /* Stretch the existing native button over the card without adding another action. */
   .pwa-composition-start { position:relative; }
   .pwa-composition-start-button { position:static; }
@@ -174,6 +189,19 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .pwa-composition-start-body h2 { font-size:24px; letter-spacing:-.7px; }
   .pwa-composition-start-body p { font-size:14px; color:#62665d; }
   .pwa-composition-start-button { min-height:56px !important; font-size:16px !important; }
+  .pwa-composition-start .pwa-composition-start-body { display:flex; flex-direction:row; align-items:center; gap:18px; min-height:116px; margin:0 !important; text-align:left; }
+  .pwa-composition-start .pwa-composition-start-body > svg.pwa-start-qr-scanner { order:1; width:88px; height:88px; padding:7px !important; border-radius:22px; flex-shrink:0; }
+  .pwa-composition-start .pwa-composition-start-body > div { order:0; min-width:0; flex:1; }
+  .pwa-composition-start .pwa-composition-start-body h2 { font-size:26px; line-height:1.2; }
+  .pwa-composition-start .pwa-composition-start-body p { font-size:16px; line-height:1.45; text-wrap:balance; }
+  .pwa-start-card-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:52px; margin-top:16px; padding:12px 16px; border:1px solid #191c20; border-radius:14px; background:linear-gradient(135deg,#303337,#191c20); color:#fffdf6; box-shadow:inset 0 1px 0 #ffffff18,0 4px 10px #181b2010; font-size:16px; line-height:22px; font-weight:600; pointer-events:none; }
+  .pwa-start-card-footer > svg { width:26px; height:26px; flex-shrink:0; color:#d99a68; stroke-width:2.4; }
+  .pwa-composition-start:has(.pwa-start-card-action:active:not(:disabled)) .pwa-start-card-footer { background:#191c20; }
+  .pwa-composition-start:has(.pwa-start-card-action:disabled) .pwa-start-card-footer { opacity:0.6; }
+  .pwa-start-card-action { position:absolute; inset:0; width:100%; height:100%; border:0 !important; border-radius:inherit; background:transparent !important; box-shadow:none !important; cursor:pointer; }
+  .pwa-start-card-action:focus-visible { outline:2px solid var(--pwa-copper); outline-offset:3px; }
+  .pwa-start-card-action:disabled { cursor:default; }
+  .pwa-composition-start:has(.pwa-start-card-action:active:not(:disabled)) { border-color:var(--pwa-copper) !important; }
   #pwa-colleagues-today h2 { font-size:17px !important; color:#343a2e !important; }
   #pwa-colleagues-today [data-colleague-group] { background:#fff !important; border-color:var(--pwa-line) !important; padding:12px !important; }
   #pwa-colleagues-today h3,.pwa-review-colleagues h3 .pwa-studio-only { font-size:14px !important; color:#3b4234 !important; }
@@ -192,6 +220,9 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-ui .employee-material-nav .employee-material-tab.is-active svg :is(circle,rect) { fill:var(--pwa-copper); stroke:var(--pwa-copper); }
   .employee-material-tab > span:first-child { width:28px !important; height:28px !important; }
   .pwa-composition-nav-icon { width:26px; height:26px; }
+  /* Equal navigation symbols; do not enlarge the clock independently. */
+  .employee-material-ui .employee-material-nav .employee-material-tab svg { width:26px !important; height:26px !important; transform:none !important; }
+  .employee-material-ui .employee-material-nav .employee-material-nav-icon-day svg { transform:scale(1.04) !important; }
   .employee-material-tab-label { font-size:12px !important; }
   /* Selection must remain legible without relying on a pale tint. */
   .employee-material-sheet :is(.employee-material-choice,.employee-material-reason-choice,.employee-material-schedule-choice):is(.is-selected,.is-working,.is-off,[aria-pressed=true]) {

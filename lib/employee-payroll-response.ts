@@ -14,6 +14,13 @@ const directorySelect = { id: true, name: true, role: true, department: true, is
 
 export async function employeePayrollResponse(viewer: PayrollViewer | null, query: URLSearchParams, storedOnly = false) {
   const headers = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' };
+  // Same private projection/auth checks, without waiting for external advances.
+  // Invalid/duplicate modes remain in the query and fail normal validation.
+  if (query.getAll('snapshot').length === 1 && query.get('snapshot') === 'stored') {
+    storedOnly = true;
+    query = new URLSearchParams(query);
+    query.delete('snapshot');
+  }
   // Disabled until the server draft migration and ADMIN reconciliation pass.
   if (!payrollFeatureState().employeeEnabled) {
     return Response.json({ error: 'Раздел недоступен.' }, { status: 404, headers });

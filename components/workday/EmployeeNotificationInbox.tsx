@@ -1,7 +1,9 @@
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Bell, CheckCheck, ChevronRight, MessageCircle } from 'lucide-react';
+import { ArrowLeft, CheckCheck, ChevronRight } from 'lucide-react';
+import { EmployeeNoticeIcon } from './EmployeeNoticeIcon';
+import { employeeInboxIconKind } from '@/lib/employee-notice-icons';
 import {employeeInboxSections,isNewEmployeeNotification} from '@/lib/employee-inbox-view';
 import {NotificationInboxSwitch} from '@/components/NotificationInboxSwitch';
 export type EmployeeInboxItem = {
@@ -37,9 +39,9 @@ export function EmployeeNotificationInbox({ items, onClose, onChoose, permission
         <NotificationInboxSwitch history={showHistory} count={sections.fresh.length} onChange={setShowHistory}/>
         {shown.length === 0 && <div className="employee-inbox-empty">{loading?<p role="status">Загружаем уведомления…</p>:error?null:showHistory?'В истории пока нет сообщений':<><CheckCheck size={30} className="mx-auto mb-3 text-[#a77550]"/><strong className="block text-base text-[#343b3b]">Новых уведомлений нет</strong><p className="mt-2 text-xs">Прочитанные сообщения — в истории.</p></>}</div>}
         {[...new Set(shown.map(item => dayLabel(item.sentAt)))].map(day => <section className="employee-inbox-group" key={day}><h3>{day}</h3><div className="employee-inbox-rows">{shown.filter(item => dayLabel(item.sentAt) === day).map(item => {
-          const unread = isNewEmployeeNotification(item), Icon = item.kind.endsWith('_reply') ? MessageCircle : Bell;
+          const unread = isNewEmployeeNotification(item);
           return <button type="button" key={item.id} className={`employee-inbox-row ${unread ? 'is-unread' : ''}`} onClick={() => { if (item.active === false) setHistory(item); onChoose(item); }}>
-            <span className="employee-inbox-icon"><Icon size={20} strokeWidth={1.7}/></span><span className="employee-inbox-copy"><strong>{item.title}</strong><span>{item.body}</span>{item.sentAt && Number.isFinite(Date.parse(item.sentAt)) && <time>{new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' }).format(new Date(item.sentAt))}</time>}</span><span className="employee-inbox-row-end">{unread && <i aria-label="Новое"/>}<ChevronRight size={16}/></span>
+            <span className="employee-inbox-icon"><EmployeeNoticeIcon kind={employeeInboxIconKind(item)} /></span><span className="employee-inbox-copy"><strong>{item.title}</strong><span>{item.body}</span>{item.sentAt && Number.isFinite(Date.parse(item.sentAt)) && <time>{new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' }).format(new Date(item.sentAt))}</time>}</span><span className="employee-inbox-row-end">{unread && <i aria-label="Новое"/>}<ChevronRight size={16}/></span>
           </button>;
         })}</div></section>)}
         {permission}

@@ -1,0 +1,26 @@
+.page { max-width:520px; min-height:100dvh; margin:0 auto; padding:24px 16px; background:#f5f4f0; color:#252a2e; font-family:Arial,sans-serif; }
+.back { display:inline-block; padding:8px 0; margin-bottom:16px; color:#795334; font-size:14px; }
+.page h1 { margin:0 0 8px; font-size:26px; line-height:1.2; font-weight:700; }
+.intro { margin:0 0 28px; font-size:16px; color:#606369; }
+.example { margin-bottom:24px; }
+.example h2 { margin:0 0 10px; font-size:16px; line-height:1.4; font-weight:600; }
+.description { margin:8px 0 0; font-size:14px; line-height:1.45; color:#606369; }
+.note { margin:28px 0 0; padding-top:16px; border-top:1px solid #dedbd5; font-size:14px; line-height:1.45; color:#606369; }
+.inboxButton { width:100%; min-height:48px; border:1px solid #33383d; border-radius:14px; padding:12px; background:#33383d; color:#fffdf6; font-size:16px; }
+.icon { display:flex; align-items:center; justify-content:center; width:38px; height:34px; flex-shrink:0; color:#a77550; }
+.movement { transform-origin:50% 65%; animation:receipt-move 3.8s ease-in-out infinite; }
+.copper svg { animation:receipt-accent 3.8s ease-in-out infinite; }
+@keyframes receipt-move {
+  0%,44%,100% { transform:translateY(0) rotate(0); }
+  8% { transform:translateY(-3px) rotate(-11deg); }
+  17% { transform:translateY(-3px) rotate(10deg); }
+  27% { transform:translateY(-1px) rotate(-6deg); }
+  36% { transform:translateY(0) rotate(3deg); }
+}
+@keyframes receipt-accent {
+  0%,45%,100% { stroke:#a77550; stroke-width:1.8; fill:transparent; }
+  10%,29% { stroke:#a45a2c; stroke-width:2.7; fill:#c7894c33; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .movement,.copper svg { animation:none; }
+}

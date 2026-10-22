@@ -6,6 +6,9 @@ import { EmployeeAttentionPanel } from '@/components/workday/EmployeeAttentionPa
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 
 import { EmployeeNavigation } from '@/components/EmployeeNavigation';
+import { initialEmployeeSection } from '@/lib/employee-navigation';
+import { PersonalPayrollClient } from './payroll/PersonalPayrollClient';
+import './payroll/payroll.css';
 import jsQR from 'jsqr';
 import { cashRecountInputError } from '@/lib/cash-recount-input';
 import { checklistScrollTarget } from '@/lib/checklist-viewport';
@@ -418,7 +421,7 @@ type EmployeeWorkdaySnapshot = {
   shiftCorrection: ShiftCorrectionState;
 };
 
-type Tab = 'day' | 'schedule' | 'attention';
+type Tab = 'day' | 'schedule' | 'payroll' | 'attention';
 type ScheduleMode = 'list' | 'month';
 type QrScannerState = 'idle' | 'starting' | 'scanning' | 'found' | 'error';
 type ShiftTaskDraft = {
@@ -1255,7 +1258,7 @@ export function EmployeeTodayClient({
     'mobo-type': 'portal-palette-mobo portal-typography-refined',
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
-  const [activeTab, setActiveTab] = useState<Tab>(() => searchParams.get('tab') === 'schedule' ? 'schedule' : 'day');
+  const [activeTab, setActiveTab] = useState<Tab>(() => initialEmployeeSection(searchParams.get('tab'), payrollEnabled));
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);
@@ -1450,7 +1453,7 @@ export function EmployeeTodayClient({
     if (searchParams.get('tab') !== 'schedule') return;
     const requestedDate = searchParams.get('date');
     setActiveTab('schedule');
-    setScheduleMode(requestedDate ? 'month' : 'list');
+    setScheduleMode('month');
     if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
       setCalendarMonth(monthKeyFromDate(requestedDate));
       setSelectedScheduleDate(requestedDate);
@@ -4056,7 +4059,7 @@ export function EmployeeTodayClient({
   }
 
   return (
-    <main className={cn('portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass)}>
+    <main className={cn('portal-neutral-design employee-material-ui min-h-[100dvh] overflow-x-clip bg-[#151a1d] text-slate-950 md:px-6 md:py-6', paletteClass, activeTab === 'payroll' && 'payroll-phone')}>
       <EmployeeCloseBlockedSheet
         open={closeBlockedSheetOpen}
         items={attentionItems}
@@ -4348,9 +4351,9 @@ export function EmployeeTodayClient({
         <EmployeePortalHeader name={user.name} meta={`${departmentLabel(user.department)} · ${employeeHeaderDateLabel(today)}`} />
 
         <div className={cn(
-          'flex-1 px-4',
-          'pt-2',
-          activeTab === 'schedule' && bulkScheduleMode
+          activeTab === 'payroll' ? 'flex-1' : 'flex-1 px-4',
+          activeTab !== 'payroll' && 'pt-2',
+          activeTab === 'payroll' ? '' : activeTab === 'schedule' && bulkScheduleMode
             ? 'pb-[calc(8.75rem+env(safe-area-inset-bottom))]'
             : 'pb-[calc(5.75rem+env(safe-area-inset-bottom))]',
         )}>
@@ -4389,7 +4392,7 @@ export function EmployeeTodayClient({
               </div>
             </div>
           ) : null}
-          {previousWorkDay && (
+          {activeTab === 'day' && previousWorkDay && (
             <Card className='mb-4 space-y-3 rounded-[24px] border-amber-200 bg-white p-4'>
               <h2 className='text-xl font-black text-slate-950'>Сдать смену · {formatDateLabel(previousWorkDay.date)}</h2>
               <div className='rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3' role='status'>
@@ -4656,20 +4659,26 @@ export function EmployeeTodayClient({
             </div>
           )}
 
-          <EmployeeAttentionPanel onExpenses={setExpenseSnapshot} activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} onClosing={scope => { if (scope === 'encashment' && handoverTask) startHandoverWizard(handoverTask); else if (kkmCloseIssue) { setCloseResolutionPath(null); setCloseResolutionOpen(true); } else setCloseBlockedSheetOpen(true); }} view={activeTab} onBack={() => setActiveTab('day')} paletteClass={paletteClass} renderHandle={onDismiss => <BottomSheetDragHandle onDismiss={onDismiss} />} />
+          <EmployeeAttentionPanel onExpenses={setExpenseSnapshot} activeShift={Boolean(activeWorkDay && activeWorkDay.date === today && activeWorkDay.status === 'active')} onClosing={scope => { if (scope === 'encashment' && handoverTask) startHandoverWizard(handoverTask); else if (kkmCloseIssue) { setCloseResolutionPath(null); setCloseResolutionOpen(true); } else setCloseBlockedSheetOpen(true); }} view={activeTab === 'payroll' ? 'schedule' : activeTab} onBack={() => setActiveTab('day')} paletteClass={paletteClass} renderHandle={onDismiss => <BottomSheetDragHandle onDismiss={onDismiss} />} />
 
-          <EmployeeActionReminder view={activeTab === 'day' && showShiftControl ? 'actual-day' : activeTab} onOpen={() => setActiveTab('day')} />
+          {activeTab !== 'payroll' && <EmployeeActionReminder view={activeTab === 'day' && showShiftControl ? 'actual-day' : activeTab} onOpen={() => setActiveTab('day')} />}
+
+          {activeTab === 'payroll' && <PersonalPayrollClient currentMonth={today.slice(0, 7)} embedded onOpenReminder={() => setActiveTab('day')} />}
 
           {activeTab === 'day' && (
             <div className={cn('pwa-review-day space-y-3', showCloseResolution && 'pwa-review-day-closing', !workDay && !unfinished && 'pwa-day-before-start')}>
 
               {!workDay && !unfinished && <section className='pwa-composition-only pwa-composition-start' style={{ display: 'none' }} aria-labelledby='pwa-composition-start-title'>
-                <div className='pwa-composition-start-top'><span>Рабочий день</span><span className='pwa-composition-status'><span />Не начат</span></div>
                 <div className='pwa-composition-start-body'>
-                  <div><h2 id='pwa-composition-start-title'>Начните смену</h2><p>Отсканируйте QR-код в магазине.</p></div>
-                  <QrCode size={48} strokeWidth={1.3} aria-hidden='true' />
+                  <div><h2 id='pwa-composition-start-title'>Начать смену</h2><p id='pwa-start-qr-hint'>Отсканируйте <span className='whitespace-nowrap'>QR-код</span> в магазине.</p></div>
+                  <svg className='pwa-start-qr-scanner' width={48} height={48} viewBox='0 0 32 32' fill='none' aria-hidden='true'>
+                    <path d='M3 10V5a2 2 0 0 1 2-2h5M22 3h5a2 2 0 0 1 2 2v5M29 22v5a2 2 0 0 1-2 2h-5M10 29H5a2 2 0 0 1-2-2v-5' stroke='currentColor' strokeWidth={1.8} strokeLinecap='round' />
+                    <QrCode x={6} y={6} width={20} height={20} stroke='#794b30' strokeWidth={1.7} />
+                    <path className='pwa-qr-scan-line' d='M5 16h22' stroke='currentColor' strokeWidth={2} strokeLinecap='round' />
+                  </svg>
                 </div>
-                <button type='button' onClick={openQrStart} disabled={isSaving || Boolean(unfinished)} className='pwa-composition-start-button'>Начать рабочий день<ChevronRight size={20} strokeWidth={1.8} aria-hidden='true' /></button>
+                <div className='pwa-start-card-footer' aria-hidden='true'><span>Открыть камеру</span><ChevronRight size={20} strokeWidth={1.8} /></div>
+                <button type='button' aria-labelledby='pwa-composition-start-title' aria-describedby='pwa-start-qr-hint' onClick={openQrStart} disabled={isSaving || Boolean(unfinished)} className='pwa-start-card-action' />
               </section>}
               {!workDay && !unfinished && (
                 <Card className='pwa-studio-start space-y-3 p-4'>
@@ -5356,7 +5365,6 @@ export function EmployeeTodayClient({
         )}
 
         {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
-          if (section === 'payroll') return false;
           if (section === 'schedule' && activeTab !== 'schedule') {
             setCalendarMonth(monthKeyFromDate(today));
             setSelectedScheduleDate(today);
