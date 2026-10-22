@@ -30,7 +30,8 @@ project from scratch.
 ## Read First By Task
 
 - PWA cash requests / notification centre: `pwa-cash-notifications-20261021.md`
-  (released 1.11.0 / `e94323a`; production cashbox mappings and authenticated UI verified).
+  (released 1.11.0 / `e94323a`; production cashbox mappings and authenticated UI verified;
+  reserve registry restored with verified 1.10.6 and rebuilt 1.10.5, 2026-10-22).
 
 - QR receipt-before-expense workflow: `procurement-qr-receipts-20261020.md`
   (released 1.10.5 / `138f1cf`; other payment methods unchanged).

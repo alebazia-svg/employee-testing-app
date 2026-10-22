@@ -36,6 +36,14 @@ pruning, or manual removal under `/var/lib/containerd`.
 
 Owner subsequently approved daily retention: current release plus two verified
 rollback images; unused build cache target 5 GB and free-space target 15 GB.
+Before building, also verify that **every image ID in the verified registry**
+exists in Docker; a successful old maintenance run is not proof that the images
+still exist. Missing reserves must not be silently replaced with arbitrary
+images or removed from the retention policy. Approved recovery may rebuild an
+exact known release source separately, validate it in isolation and record its
+new image identity before updating the registry. See the 2026-10-22 recovery in
+`docs/codex-memory/pwa-cash-notifications-20261021.md`.
+
 Host implementation is versioned in `docs/ops/maintenance/`. It uses the
 `offonika-portal-storage.timer` systemd timer, not an application migration.
 Only exact known portal rollback tag patterns are eligible. All container-used
