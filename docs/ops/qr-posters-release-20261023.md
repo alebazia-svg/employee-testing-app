@@ -1,0 +1,15 @@
+# QR poster instruction correction — 2026-10-23
+
+- Production release: **1.13.15**, runtime commit `ee56be92b697928f024e44d35e2e190e5faf0a36`, target `team.mobo-opt.ru` / VPS `/docker/employee-testing-app`.
+- Owner approved the shown retail and wholesale posters and publication. Step 02 now reads `Нажми` / `«Открыть камеру»`, with the copper prompt `Сканируй QR`. Existing layout, QR payloads and application workflows are unchanged.
+- Changed runtime files: `package.json`, `package-lock.json`, `scripts/generate-approved-workday-posters.py`, and the retail/wholesale `public/print/portal-workday-*-a5.pdf` / `.png` assets.
+- Local verification: both A5 PDFs rendered at 300 dpi and visually inspected; text extraction and width assertions pass. QR image regions match the previously published baseline pixel for pixel. Release-info tests passed 5/5. Source whitespace check passed; PDF binary serialization is excluded from whitespace checks.
+- VPS production build passed compilation and TypeScript validation. Only `portal-app` was rebuilt/restarted, using `server.env`, under the shared storage lock. No schema/migration, database, environment, upload or PWA edits.
+- Previous runtime: `5432908809b6de1268c090be83d43a837b2e8e4c`, version 1.13.14, image `sha256:c2e6790bbf40b085c79dd9d2c99dc3f4bc15b9c583ef23ec1a892d7ee510dda7`. Preserved as `portal-app:rollback-before-1.13.15`; schema remains compatible.
+- Replacement image: `sha256:d8620014b1102bbc645228554d3085eb58c1840d4b559a94b82b6eed73962f55`. Container healthy. Verified-image registration succeeded after independent checks and release of the parent lock; current plus two verified previous images retained.
+- Independent SSH confirmed runtime commit. Public metadata reports 1.13.15, builtAt `2026-10-22T22:32:15.430Z` (23 October 01:32 MSK). Metadata revision remains null/source unknown in the existing Docker pipeline; commit identity was checked separately.
+- Public health returned `{"ok":true}`. Authenticated ADMIN footer visibly showed version 1.13.15 and the matching build date. Published retail PNG was visually checked in the browser. All four public poster assets matched local approved files byte for byte; both downloaded PDFs contain the new instruction.
+- Published SHA256: retail PDF `05273350915424b989c9fa73920a9589ba95d499597e5bbca90091ccdf7ba956`; retail PNG `95e609b0331fe6932fc7cef24c32fc7f6b8229fb9c24480c44fd4792646b7c60`; wholesale PDF `07fe22eaca377447c90861c4b798fbd4060bb2221d32398d5f0526fbd4e3ae29`; wholesale PNG `d7b50bb998761c16f32e8a191a4c9368ea7a95923f462783120b188abf3c744b`.
+- Physical printing and a real employee shift start were not performed. Shared checkout WIP and server pre-existing `.rollback/` were left untouched.
+- Storage preflight passed the 15 GiB threshold and checked every registered reserve. Post-build `df -h /` shows approximately 14 GiB available; a future build must re-run the capacity gate. No cleanup/pruning was performed in this release.
+- Local deployment log: `/tmp/mobo-qr-release-1.13.15.log`.
