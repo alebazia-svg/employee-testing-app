@@ -62,6 +62,11 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Проверка чека',
     actionLabel: 'Открыть проверку',
   },
+  'terminal_fiscal_review.archived_unresolved': {
+    category: 'decisions',
+    typeLabel: 'Проверка чека',
+    actionLabel: 'Открыть историю',
+  },
   'workday.kkm_shift_close_attention': { category: 'decisions', typeLabel: 'Закрытие кассовой смены', actionLabel: 'Открыть контроль' },
   'workday.close_exception_requested': {
     category: 'decisions',
@@ -142,6 +147,7 @@ export function adminInboxSourceState(input: {
   if (input.sourceType === 'terminal_fiscal_review') {
     if (input.businessStatus === 'open') return { active: true, label: 'Проверка активна', tone: 'attention' };
     if (input.businessStatus === 'admin_review') return { active: true, label: 'На контроле администратора', tone: 'active' };
+    if (input.reasonCode === 'OWNER_ARCHIVED_UNRESOLVED') return { active: false, label: 'В истории · не исправлено', tone: 'history' };
     return { active: false, label: 'Закрыто', tone: 'resolved' };
   }
   if (input.sourceType === 'workday_close_exception') {

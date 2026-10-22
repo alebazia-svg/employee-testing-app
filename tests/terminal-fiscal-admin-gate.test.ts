@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { stageFiscalAdminReview, approveFiscalReview, dismissFiscalReviewAsReconciledDay, fiscalApprovalKey, fiscalDayTotalResolutionKey, fiscalProposedRecipients } from '../lib/terminal-fiscal-admin-gate';
-import { TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED } from '../lib/terminal-fiscal-day-closure';
+import { stageFiscalAdminReview, approveFiscalReview, archiveFiscalReviewUnresolved, dismissFiscalReviewAsReconciledDay, fiscalApprovalKey, fiscalArchivedUnresolvedKey, fiscalDayTotalResolutionKey, fiscalProposedRecipients } from '../lib/terminal-fiscal-admin-gate';
+import { TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED, TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED } from '../lib/terminal-fiscal-day-closure';
 import type { MatchingAuditRecord } from '../lib/terminal-fiscal-matching';
 
 function fixture() {
@@ -92,6 +92,25 @@ test('owner-confirmed day total closes the card permanently and records the deci
   assert.equal(f.events.filter((event) => event.eventKey === fiscalDayTotalResolutionKey(id)).length, 1);
   const second = await dismissFiscalReviewAsReconciledDay(f.db, id, 1);
   assert.equal(second.alreadyResolved, true);
+});
+
+test('owner can archive an old unresolved review without marking it reconciled or allowing it to reopen', async () => {
+  const f = fixture();
+  await stageFiscalAdminReview(f.db, f.record);
+  const id = f.reviews[0].id;
+  f.notifications.push({ reviewId: id, status: 'pending', pushStatus: 'pending', nextPushAttemptAt: new Date() });
+  const first = await archiveFiscalReviewUnresolved(f.db, id, 1);
+  assert.equal(first.alreadyResolved, false);
+  assert.equal(f.reviews[0].status, 'resolved');
+  assert.equal(f.reviews[0].reasonCode, TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED);
+  assert.equal(f.notifications[0].status, 'cancelled');
+  assert.equal(f.notifications[0].pushStatus, 'cancelled');
+  assert.equal(f.notifications[0].nextPushAttemptAt, null);
+  assert.equal(f.events.filter((event) => event.eventKey === fiscalArchivedUnresolvedKey(id)).length, 1);
+  await stageFiscalAdminReview(f.db, { ...f.record, evaluatedAt: '2026-10-23T18:00:00Z' });
+  assert.equal(f.reviews[0].status, 'resolved');
+  assert.equal(f.reviews[0].reasonCode, TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED);
+  assert.equal((await archiveFiscalReviewUnresolved(f.db, id, 1)).alreadyResolved, true);
 });
 
 function routingDb(input: {

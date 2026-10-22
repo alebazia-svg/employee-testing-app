@@ -44,6 +44,8 @@ project from scratch.
   (released 1.13.7 / `d34e813`: saved-first payroll, two rolling months,
   actionable reminders and native checklist outline; server/metadata/UI verified.
   October source freshness warning remains separate; physical iPhone check pending).
+  Salary-only latency follow-up released 1.13.10 / `0dadeae`: non-blocking
+  saved-result display, no changes to Workday/Schedule/notifications or bell.
 
 - PWA schedule/calendar and bottom navigation: `pwa-schedule-release-20261022.md`
   (released 1.12.1 / `b699238`; stronger working-day green, readable calendar,

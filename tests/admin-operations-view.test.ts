@@ -11,6 +11,7 @@ test('inbox events receive stable human categories and labels', () => {
     category: 'system', typeLabel: 'Открытая ошибка сотрудника', actionLabel: 'Открыть ошибку',
   });
   assert.equal(adminInboxEventMeta('expense_request.created').category, 'requests');
+  assert.equal(adminInboxEventMeta('terminal_fiscal_review.archived_unresolved').typeLabel, 'Проверка чека');
   assert.equal(adminInboxEventMeta('unknown.event').category, 'system');
 });
 
@@ -20,6 +21,9 @@ test('read state is independent from the source business state', () => {
   });
   assert.equal(adminInboxSourceState({ sourceType: 'workday_control_issue', businessStatus: 'resolved', employeeActionRequired: false }).active, false);
   assert.equal(adminInboxSourceState({ sourceType: 'terminal_fiscal_review', businessStatus: 'admin_review' }).label, 'На контроле администратора');
+  assert.deepEqual(adminInboxSourceState({ sourceType: 'terminal_fiscal_review', businessStatus: 'resolved', reasonCode: 'OWNER_ARCHIVED_UNRESOLVED' }), {
+    active: false, label: 'В истории · не исправлено', tone: 'history',
+  });
   assert.equal(adminInboxSourceState({ sourceType: 'expense_request', current: false }).label, 'В истории');
 });
 

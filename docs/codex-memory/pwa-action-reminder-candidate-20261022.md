@@ -1,4 +1,44 @@
-# PWA payroll and action reminders — released 1.13.7, 2026-10-22
+# PWA payroll and action reminders — release evidence, 2026-10-22
+
+## Salary-only follow-up — released 1.13.10
+
+- Owner explicitly approved «Выпускаем» after narrowing the correction to the
+  salary screen only. Rejected local Workday loading screens, attention cache
+  and parallel reminder reads were removed. Workday, Schedule, reminder policy,
+  checklist highlight and approved bell animation remain byte-identical to the
+  1.13.9 base. Do not reintroduce the broader rejected correction.
+- Runtime `0dadeae7840aa2719a66abcf528ad23d7676d4f5`, based on live/deployment
+  1.13.9 / `32bdca7`. Only two salary UI files, one regression test and the two
+  version manifests changed. `PersonalPayrollScreen` streams its existing client
+  while the stored read runs; its fallback uses the current account's volatile
+  last result and starts no duplicate live read. First entry with no result may
+  show the existing loading text. Formula, financial storage and source refresh
+  logic are unchanged; this is not an offline/cold-start persistence promise.
+- Tests: 52 focused UI/privacy/month/reminder/release tests, 78 payroll tests,
+  TypeScript and production build passed. Isolated browser held the stored-read
+  table for 12 seconds: salary heading and the previous 53,500 fixture amount
+  remained available. Locks rolled back, no business rows changed.
+- Production independently checked: server Git matches runtime, public version
+  1.13.10 built `2026-10-22T20:03:17.233Z` (23:03 Moscow), authenticated ADMIN
+  footer matches. Metadata revision is null/source unknown; Git was verified
+  separately. Native Terminal deploy/verification completed with exit 0.
+- Previous image `sha256:b7c7eedc48a1410dc3895016c31893843a657466dc69a5c49d6191865a8ceeba`
+  retained as `portal-app:rollback-before-1.13.10`; replacement
+  `sha256:f5b3bc2838e2eafdaa4b544a58d54978becea5c4d0019cbc96b019d80f47947c`.
+  Env checksum, mounts and feature flags unchanged; no Prisma delta/migration.
+  Health is healthy, public health returned ok. Registered after independent UI
+  verification and releasing the deployment lock; current + two verified images
+  retained, timer enabled, approximately 17 GiB free after build.
+- Actual Liana inspection: Workday/Schedule/Salary opened without business writes;
+  return from Schedule showed the cached 59,800 estimate immediately alongside
+  updating status. October/September choices retained. Sales still through
+  October 17, live advance check reported unavailable instead of zero; these
+  existing source issues were not fixed or hidden by the UI release. No real
+  shift, payroll approval, schedule or 1C mutation was performed. Physical iPhone
+  check remains with owner. Unrelated main-checkout edits left untouched.
+- Exact changed runtime/test files: `app/(dashboard)/employee/payroll/PersonalPayrollClient.tsx`,
+  `app/(dashboard)/employee/payroll/PersonalPayrollScreen.tsx`,
+  `tests/employee-tab-streaming.test.mjs`, `package.json`, `package-lock.json`.
 
 ## Verified production release — 1.13.7
 

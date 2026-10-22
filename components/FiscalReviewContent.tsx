@@ -4,6 +4,7 @@ import type {FiscalReviewData} from '@/lib/fiscal-review-data';
 import {FiscalAdminApproval} from './FiscalAdminApproval';
 import {FiscalTestPaymentButton} from './FiscalTestPaymentButton';
 import {FiscalDayReconciledButton} from './FiscalDayReconciledButton';
+import {FiscalArchiveUnresolvedButton} from './FiscalArchiveUnresolvedButton';
 import {TerminalFiscalChainEvidence} from './TerminalFiscalChainEvidence';
 import {TerminalFiscalReviewConversation} from './TerminalFiscalReviewConversation';
 export function FiscalReviewContent({detail:d,onChanged,onBusyChange}:{detail:FiscalReviewData;onChanged?:()=>void;onBusyChange?:(busy:boolean)=>void}) {
@@ -19,10 +20,10 @@ export function FiscalReviewContent({detail:d,onChanged,onBusyChange}:{detail:Fi
  const unknown=!d.resolved&&d.sources.bank===null&&d.sources.oneC===null;
  const explanation=unknown?['Нужна повторная сверка','Сохранённого результата нет. Проверка остаётся у вас до обновления данных.']:!d.resolved?explanations[d.reasonCode]:undefined;
  const waiting=!d.resolved&&(d.reasonCode.startsWith('SOURCE_')||!d.sources.bank||!d.sources.oneC||d.reasonCode==='OFD_RECEIPT_PENDING');
- const status=d.resolved?'Проверка завершена':waiting?'Ожидаются данные':d.pendingAdmin?'Ваше решение':'Проверка активна';
+ const status=d.resolved?d.view.statusLabel:waiting?'Ожидаются данные':d.pendingAdmin?'Ваше решение':'Проверка активна';
  return <div className="space-y-5">
   <div className="flex flex-wrap items-center justify-between gap-3">
-   <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${d.resolved?'bg-emerald-50 text-emerald-800':'bg-amber-50 text-amber-900'}`}>{d.resolved?<CheckCircle2 size={14}/>:<AlertCircle size={14}/>} {status}</span>
+   <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${d.archivedUnresolved?'bg-slate-100 text-slate-700':d.resolved?'bg-emerald-50 text-emerald-800':'bg-amber-50 text-amber-900'}`}>{d.resolved?<CheckCircle2 size={14}/>:<AlertCircle size={14}/>} {status}</span>
    <span className="text-xs text-stone-500">{d.at} МСК</span>
   </div>
   <div><p className="text-3xl font-semibold tracking-tight text-stone-900">{d.amount}</p><h3 className="mt-2 text-lg font-semibold text-stone-800">{explanation?.[0]||(d.simpleCheck?'Чек в 1С не найден':d.view.title)}</h3><p className="mt-2 text-sm leading-relaxed text-stone-600">{explanation?.[1]||d.message}</p></div>
@@ -41,6 +42,7 @@ export function FiscalReviewContent({detail:d,onChanged,onBusyChange}:{detail:Fi
   {d.chainUnavailable&&<p className="rounded-lg bg-stone-50 p-3 text-sm text-stone-600">Состав цепочки пока не подтверждён. Проверка остаётся открытой.</p>}
   {d.canApprove&&!waiting&&<FiscalAdminApproval reviewId={d.id} recipients={d.proposed.users} primary={d.proposed.primary} confidence={d.proposed.confidence} onDone={onChanged} onBusyChange={onBusyChange}/>}
   {d.canReconcileDay&&<FiscalDayReconciledButton reviewId={d.id} onDone={onChanged} onBusyChange={onBusyChange}/>}
+  {d.canArchiveUnresolved&&<FiscalArchiveUnresolvedButton reviewId={d.id} onDone={onChanged} onBusyChange={onBusyChange}/>}
   {d.canTest&&<FiscalTestPaymentButton reviewId={d.id} onDone={onChanged} onBusyChange={onBusyChange}/>}
   {d.pendingAdmin&&d.hasOneCCheck&&<p className="text-sm text-stone-600">Документ в 1С есть. Проверьте расхождение; просьба пробить повторный чек не отправляется.</p>}
   {!d.pendingAdmin&&!d.resolved&&<p className="text-xs text-stone-500">Передано: {d.recipientLabel}</p>}

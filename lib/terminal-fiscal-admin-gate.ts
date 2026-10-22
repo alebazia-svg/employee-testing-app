@@ -5,6 +5,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { MatchingAuditRecord, TerminalMapping } from './terminal-fiscal-matching';
 import {
   TERMINAL_FISCAL_OWNER_DAY_TOTAL_RESOLVED,
+  TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED,
   terminalFiscalReviewHasFinalResolution,
 } from './terminal-fiscal-day-closure';
 
@@ -14,6 +15,7 @@ const TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS = 20 * 60_000;
 export const fiscalApprovalKey = (id: string) => `terminal-fiscal-review:${id}:admin-approved`;
 export const fiscalTestPaymentKey = (id: string) => `terminal-fiscal-review:${id}:test-payment`;
 export const fiscalDayTotalResolutionKey = (id: string) => `terminal-fiscal-review:${id}:day-total-reconciled`;
+export const fiscalArchivedUnresolvedKey = (id: string) => `terminal-fiscal-review:${id}:archived-unresolved`;
 
 type ProposedUser = { id: number; name: string };
 export type FiscalProposedRecipients = {
@@ -227,6 +229,48 @@ export async function dismissFiscalReviewAsReconciledDay(db: PrismaClient, id: s
         type: 'terminal_fiscal_review.day_total_reconciled',
         title: 'Проверка закрыта после сверки дня',
         body: `Администратор ${adminId} подтвердил сверку итогов дня для операции ${money(review.amountKopecks)}.`,
+        href: `/admin/workday/payment-checks/${id}`,
+        sourceType: 'terminal_fiscal_review',
+        sourceId: id,
+        occurredAt: now,
+      },
+      update: {},
+    });
+    return { resolvedAt: now, alreadyResolved: false };
+  });
+}
+
+export async function archiveFiscalReviewUnresolved(db: PrismaClient, id: string, adminId: number) {
+  return db.$transaction(async (tx) => {
+    const admin = await tx.user.findFirst({ where: { id: adminId, role: 'ADMIN', isActive: true }, select: { id: true } });
+    if (!admin) throw new Error('FORBIDDEN');
+    const review = await tx.terminalFiscalEmployeeReview.findUnique({ where: { id } });
+    if (!review) throw new Error('REVIEW_NOT_AVAILABLE');
+    if (review.status === 'resolved' && review.reasonCode === TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED) {
+      return { resolvedAt: review.resolvedAt, alreadyResolved: true };
+    }
+    if (review.status === 'resolved') throw new Error('REVIEW_NOT_AVAILABLE');
+    const now = new Date();
+    await tx.terminalFiscalEmployeeReview.update({
+      where: { id },
+      data: {
+        status: 'resolved',
+        reasonCode: TERMINAL_FISCAL_OWNER_ARCHIVED_UNRESOLVED,
+        resolvedAt: now,
+        lastCheckedAt: now,
+      },
+    });
+    await tx.workdayNotification.updateMany({
+      where: { reviewId: id, status: 'pending' },
+      data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
+    });
+    await tx.adminInboxEvent.upsert({
+      where: { eventKey: fiscalArchivedUnresolvedKey(id) },
+      create: {
+        eventKey: fiscalArchivedUnresolvedKey(id),
+        type: 'terminal_fiscal_review.archived_unresolved',
+        title: 'Старая проверка убрана в историю',
+        body: `Администратор ${adminId} убрал из активных нерешённую проверку операции ${money(review.amountKopecks)}. Ошибка не отмечена исправленной.`,
         href: `/admin/workday/payment-checks/${id}`,
         sourceType: 'terminal_fiscal_review',
         sourceId: id,
