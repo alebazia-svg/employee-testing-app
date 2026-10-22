@@ -882,6 +882,13 @@ function countWord(count: number, one: string, few: string, many: string) {
   return many;
 }
 
+function formatSchedulePeriod(from: string, to: string) {
+  return new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric', month: 'long', timeZone: 'UTC',
+    ...(from.slice(0, 4) !== to.slice(0, 4) ? { year: 'numeric' as const } : {}),
+  }).formatRange(new Date(`${from}T12:00:00Z`), new Date(`${to}T12:00:00Z`));
+}
+
 function formatTaskCompletedAt(value: string | Date | null | undefined) {
   if (!value) return null;
   return formatTime(value);
@@ -2016,6 +2023,7 @@ export function EmployeeTodayClient({
     const replacementRequested = replacementRequestDates.has(date) && ownEntry?.status !== 'working';
     const canEdit = date >= today;
     const workingNames = scheduleNames(selectedWorkingRows);
+    const colleaguesUnfilled = colleagueRows.some(({ person, entry }) => !entry && !departmentVacationForDate(date, person.id));
     const vacationNames = scheduleNames(colleagueRows.filter(({ person }) => Boolean(departmentVacationForDate(date, person.id))));
     const statusCopy = ownVacation
       ? 'В отпуске'
@@ -2025,14 +2033,15 @@ export function EmployeeTodayClient({
         ? 'У вас выходной'
         : 'День не выбран';
     const peopleCopy = ownVacation
-      ? `Отпуск: ${formatDateLabel(ownVacation.dateFrom)} — ${formatDateLabel(ownVacation.dateTo)}`
+      ? `${compact ? '' : 'Отпуск: '}${formatSchedulePeriod(ownVacation.dateFrom, ownVacation.dateTo)}`
       : ownEntry?.status === 'working'
-      ? workingNames ? `Вместе с вами: ${workingNames}` : 'В этот день вы работаете без коллег'
-      : workingNames ? `Работают: ${workingNames}` : 'В этот день пока никто не работает';
+      ? workingNames ? `С вами: ${workingNames}${colleaguesUnfilled ? ' · не все отметились' : ''}` : colleaguesUnfilled ? 'График коллег не заполнен' : 'Без коллег'
+      : workingNames ? `Работают: ${workingNames}${colleaguesUnfilled ? ' · не все отметились' : ''}` : colleaguesUnfilled ? 'График коллег не заполнен' : 'Коллеги не работают';
 
     return (
       <div className={cn(
         'employee-material-day-card rounded-lg border bg-white',
+        compact && 'pwa-schedule-day-summary',
         compact ? `grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2.5 ${listView ? 'gap-y-1' : 'gap-y-1.5'} p-2.5` : 'p-3',
         selected ? 'border-slate-400 ring-2 ring-slate-200' : 'border-slate-200',
       )}>
@@ -2040,12 +2049,13 @@ export function EmployeeTodayClient({
           <div className='min-w-0'>
             <p className='truncate text-base font-extrabold text-slate-950'>{formatDateLabel(date)}</p>
           </div>
-          <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', ownVacation ? 'bg-[#e8f1fb] text-[#24476b] ring-1 ring-[#b8cee5]' : scheduleTone(ownEntry?.status))}>
+          {!compact && <Badge className={cn('shrink-0 whitespace-nowrap px-2 py-0.5 text-xs', ownVacation ? 'bg-[#e8f1fb] text-[#24476b] ring-1 ring-[#b8cee5]' : scheduleTone(ownEntry?.status))}>
             {statusCopy}
-          </Badge>
+          </Badge>}
         </div>
         <p className={cn('text-sm font-semibold leading-snug text-slate-600', compact ? 'm-0 min-w-0' : 'mt-2')}>
-          {listView && !ownVacation && ownEntry?.status !== 'working' && !workingNames ? 'Пока никто не работает' : peopleCopy}
+          {compact && <span className='pwa-schedule-day-status' data-status={ownVacation ? 'vacation' : ownEntry?.status ?? 'missing'}>{ownVacation ? 'Отпуск' : ownEntry?.status === 'working' ? 'Работаете' : ownEntry?.status === 'off' ? 'Выходной' : 'День не выбран'} · </span>}
+          {peopleCopy}
         </p>
         {compact && canEdit && (
           <div className='m-0 flex justify-end'>
@@ -5086,7 +5096,7 @@ export function EmployeeTodayClient({
           )}
 
           {activeTab === 'schedule' && (
-            <div className='space-y-3'>
+            <div className='pwa-schedule-view space-y-3'>
               <Card className='employee-material-schedule-switch-card p-1.5'>
                 <div className='employee-material-segment grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1'>
                   {[
@@ -5097,6 +5107,7 @@ export function EmployeeTodayClient({
                       key={mode.id}
                       type='button'
                       disabled={bulkScheduleMode}
+                      aria-pressed={scheduleMode === mode.id}
                       onClick={() => {
                         setScheduleMode(mode.id);
                         if (mode.id === 'month') {
@@ -5125,35 +5136,7 @@ export function EmployeeTodayClient({
 
               {scheduleMode === 'month' && (
                 <>
-                  {scheduleMonthLoaded && incompleteScheduleDates.length > 0 && !bulkScheduleMode && (
-                    <Card className='flex items-center gap-2.5 border-slate-200 bg-white p-2'>
-                        <span className='employee-material-heading-icon employee-material-state-marker employee-material-state-marker-info flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-700'>
-                          <PremiumCalendarIcon color='#263b5c' secondaryColor='#cad8e8' secondaryOpacity={0.9} className='h-7 w-7' />
-                        </span>
-                        <div className='min-w-0 flex-1'>
-                          <p className='text-sm font-extrabold text-slate-800'>Осталось выбрать {incompleteScheduleDates.length} дн.</p>
-                        </div>
-                      <Button
-                        type='button'
-                        className='employee-material-schedule-fill h-10 shrink-0 rounded-xl px-3 text-xs font-black'
-                        onClick={startBulkSchedule}
-                      >
-                        Заполнить
-                      </Button>
-                    </Card>
-                  )}
-                  {bulkScheduleMode && (
-                    <Card className='border-green-200 bg-green-50/80 p-3'>
-                      <div className='flex items-start justify-between gap-3'>
-                        <div className='min-w-0'>
-                          <p className='text-sm font-extrabold text-green-950'>{bulkScheduleKind === 'edit' ? 'Измените нужные дни' : 'Отметьте дни, когда работаете'}</p>
-                          <p className='mt-1 text-[11px] font-semibold leading-relaxed text-green-800'>{bulkScheduleKind === 'edit' ? 'Сохранятся только изменённые даты.' : 'Неотмеченные дни станут выходными. Уже заполненные дни не изменятся.'}</p>
-                        </div>
-                        <button type='button' className='shrink-0 text-xs font-extrabold text-slate-500' onClick={cancelBulkSchedule}>Отмена</button>
-                      </div>
-                    </Card>
-                  )}
-                  <Card className='employee-material-calendar-card space-y-2 p-2.5'>
+                  <Card className='employee-material-calendar-card space-y-2 p-2.5' data-editing={bulkScheduleMode || undefined}>
                   <div className='flex items-center justify-between gap-2'>
                     <button
                       type='button'
@@ -5182,11 +5165,7 @@ export function EmployeeTodayClient({
                         >
                           К текущему месяцу
                         </button>
-                      ) : (
-                        <p className='mt-0.5 text-[11px] font-bold leading-none text-slate-400'>
-                          {scheduleMonthLoading ? 'Обновляем…' : 'Текущий месяц'}
-                        </p>
-                      )}
+                      ) : scheduleMonthLoading ? <p className='mt-0.5 text-[11px] text-slate-500'>Обновляем…</p> : null}
                     </div>
                     <button
                       type='button'
@@ -5203,26 +5182,32 @@ export function EmployeeTodayClient({
                     </button>
                   </div>
 
-                  {scheduleMonthLoaded && !bulkScheduleMode && incompleteScheduleDates.length === 0 && (
-                    <div className='flex justify-center py-0.5'>
-                      <button
-                        type='button'
-                        className='employee-material-secondary-action inline-flex h-[42px] min-w-[190px] items-center justify-center gap-2 rounded-xl px-4 text-xs font-extrabold text-slate-800'
-                        onClick={startBulkScheduleEdit}
-                      >
-                        <Pencil className='h-4 w-4' aria-hidden='true' />
-                        <span>Изменить несколько дней</span>
+                  {scheduleMonthLoaded && !bulkScheduleMode && (
+                    <div className='pwa-schedule-tools'>
+                      {incompleteScheduleDates.length > 0 && <span>Не выбрано: {incompleteScheduleDates.length} дн.</span>}
+                      <button type='button' className='pwa-schedule-edit-days' onClick={incompleteScheduleDates.length > 0 ? startBulkSchedule : startBulkScheduleEdit}>
+                        <Pencil className='h-3.5 w-3.5' aria-hidden='true' />{incompleteScheduleDates.length > 0 ? 'Заполнить' : 'Изменить дни'}
                       </button>
+                      {!upcomingOwnVacation && <button type='button' className='pwa-schedule-vacation' onClick={() => openVacationEditor(null)}><CalendarDays className='h-4 w-4' aria-hidden='true' />Отпуск</button>}
+                    </div>
+                  )}
+                  {bulkScheduleMode && (
+                    <div className='pwa-schedule-edit-help'>
+                      <div className='flex items-start justify-between gap-3'>
+                        <p>{bulkScheduleKind === 'edit' ? 'Нажмите на дату: рабочий ↔ выходной' : 'Нажмите на дни, когда работаете'}</p>
+                        <button type='button' onClick={cancelBulkSchedule}>Отмена</button>
+                      </div>
+                      <p className='pwa-schedule-edit-explanation'>{bulkScheduleKind === 'edit' ? 'Зелёный — рабочий, серый — выходной.' : 'Неотмеченные дни станут выходными. Уже заполненные дни не изменятся.'}</p>
                     </div>
                   )}
 
-                  <div className='grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-slate-500'>
+                  <div className='pwa-calendar-weekdays grid grid-cols-7 gap-1 text-center text-xs font-extrabold text-slate-500'>
                     {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((day) => (
                       <span key={day}>{day}</span>
                     ))}
                   </div>
 
-                  <div className='grid grid-cols-7 gap-1'>
+                  <div className='pwa-calendar-grid grid grid-cols-7 gap-1'>
                     {calendarDays.map((cell) => {
                       const ownEntry = ownScheduleByDate.get(cell.date);
                       const ownVacation = ownVacationForDate(cell.date);
@@ -5241,13 +5226,13 @@ export function EmployeeTodayClient({
                           : isOutsideMonth
                             ? 'bg-transparent text-slate-400 ring-transparent'
                           : bulkWorking
-                            ? 'bg-green-100 text-green-950 ring-green-300'
+                            ? 'bg-[#9ed3ae] text-[#123d21] ring-green-300'
                           : bulkEligible
                             ? 'bg-[#e7ebe9] text-slate-800 ring-[#c7cfcb]'
                           : ownVacation
                             ? 'bg-[#e8f1fb] text-[#24476b] ring-[#b8cee5]'
                           : ownEntry?.status === 'working'
-                          ? 'bg-[#d9f1dc] text-[#123d21] ring-[#9ed1a7]'
+                          ? 'bg-[#9ed3ae] text-[#123d21] ring-[#9ed1a7]'
                           : ownEntry?.status === 'off'
                             ? 'bg-[#dce2df] text-[#26332d] ring-[#aebbb5]'
                             : isLockedMissing
@@ -5262,7 +5247,9 @@ export function EmployeeTodayClient({
                             if (bulkScheduleMode) toggleBulkWorkingDate(cell.date);
                             else if (cell.inMonth) setSelectedScheduleDate(cell.date);
                           }}
-                          aria-pressed={bulkEligible ? bulkWorking : undefined}
+                          aria-pressed={bulkScheduleMode ? bulkEligible ? bulkWorking : undefined : selected}
+                          aria-current={isToday ? 'date' : undefined}
+                          data-schedule-status={ownVacation ? 'vacation' : ownEntry?.status ?? (isLockedMissing ? 'past-missing' : 'missing')}
                           disabled={isOutsideMonth || (bulkScheduleMode && !bulkEligible)}
                           className={cn(
                             'employee-material-calendar-day flex aspect-square min-w-0 flex-col overflow-hidden rounded-lg p-1 text-left ring-1 transition hover:scale-[1.01] disabled:hover:scale-100',
@@ -5270,7 +5257,7 @@ export function EmployeeTodayClient({
                             isOutsideMonth && 'opacity-30',
                             bulkScheduleMode && !bulkEligible && 'opacity-55',
                             bulkWorking && 'ring-2 ring-green-500 shadow-[0_8px_18px_rgba(22,163,74,0.14)]',
-                            !bulkScheduleMode && selected && !isToday && 'is-selected',
+                            !bulkScheduleMode && selected && 'is-selected',
                             !bulkScheduleMode && isToday && 'is-today',
                           )}
                         >
@@ -5310,11 +5297,11 @@ export function EmployeeTodayClient({
                     })}
                   </div>
 
-                  <div className='flex flex-nowrap items-center justify-center gap-3 px-0.5 text-[10px] font-extrabold text-slate-600'>
-                    <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#d9f1dc] ring-1 ring-[#9ed1a7]' />Работаю</span>
+                  <div className='pwa-calendar-legend flex flex-nowrap items-center justify-center gap-3 px-0.5 text-[10px] font-extrabold text-slate-600'>
+                    <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#9ed3ae] ring-1 ring-[#9ed1a7]' />Работа</span>
                     <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#dce2df] ring-1 ring-[#aebbb5]' />Выходной</span>
-                    <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#e8f1fb] ring-1 ring-[#b8cee5]' />Отпуск</span>
-                    {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#fbfcfe] ring-1 ring-[#dfe4ea]' />Нужно выбрать</span>}
+                    {calendarDays.some((cell) => cell.inMonth && ownVacationForDate(cell.date)) && <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#e8f1fb] ring-1 ring-[#b8cee5]' />Отпуск</span>}
+                    {!bulkScheduleMode && incompleteScheduleDates.length > 0 && <span className='inline-flex min-w-0 items-center gap-1 whitespace-nowrap'><span className='h-2.5 w-2.5 shrink-0 rounded bg-[#fbfcfe] ring-1 ring-[#dfe4ea]' />Не выбрано</span>}
                   </div>
 
                   {scheduleMonthLoaded && !bulkScheduleMode && (
@@ -5326,20 +5313,11 @@ export function EmployeeTodayClient({
                       >
                         <span className='flex min-w-0 items-center gap-2'>
                           <CalendarDays className='h-4 w-4 shrink-0' aria-hidden='true' />
-                          <span className='truncate text-xs font-extrabold'>Отпуск · {formatDateLabel(upcomingOwnVacation.dateFrom)} — {formatDateLabel(upcomingOwnVacation.dateTo)}</span>
+                          <span className='text-xs font-semibold leading-snug'>Отпуск · {formatSchedulePeriod(upcomingOwnVacation.dateFrom, upcomingOwnVacation.dateTo)}</span>
                         </span>
                         <span className='shrink-0 text-xs font-extrabold'>Изменить</span>
                       </button>
-                    ) : (
-                      <button
-                        type='button'
-                        className='pwa-vacation-action mx-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold text-slate-500 transition hover:text-green-700'
-                        onClick={() => openVacationEditor(null)}
-                      >
-                        <CalendarDays className='h-4 w-4' aria-hidden='true' />
-                        Отметить отпуск
-                      </button>
-                    )
+                    ) : null
                   )}
 
                   {scheduleMonthLoaded && !bulkScheduleMode && selectedScheduleDate.startsWith(`${calendarMonth}-`) && (
@@ -5361,15 +5339,14 @@ export function EmployeeTodayClient({
       </div>
 
         {activeTab === 'schedule' && bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && (
-          <div className='fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 mx-auto w-full max-w-[520px] px-3'>
-            <div className='employee-material-sheet flex items-center gap-3 rounded-2xl p-2.5 shadow-[0_16px_38px_rgba(15,23,42,0.16)]'>
-              <div className='min-w-[92px] px-1'>
-                <p className='text-[10px] font-bold leading-none text-slate-500'>{bulkScheduleKind === 'edit' ? 'Будет изменено' : 'Будет сохранено'}</p>
-                <p className='mt-1 text-sm font-black leading-none text-green-800'>{bulkCounts.totalDays} дн.</p>
-              </div>
+          <div className='pwa-schedule-savebar fixed inset-x-0 z-50 mx-auto w-full max-w-[520px] px-3'>
+            <div>
+              <p aria-live='polite'>
+                {bulkCounts.totalDays === 0 ? 'Выберите дни в календаре' : `${bulkScheduleKind === 'edit' ? 'Изменено' : 'К сохранению'}: ${bulkCounts.totalDays} ${countWord(bulkCounts.totalDays, 'день', 'дня', 'дней')}`}
+              </p>
               <Button
                 type='button'
-                className='employee-material-green-action h-11 flex-1 rounded-xl text-sm font-black'
+                className='employee-material-green-action h-11 w-full rounded-xl text-sm font-black'
                 disabled={bulkCounts.totalDays === 0}
                 onClick={() => setBulkScheduleConfirmOpen(true)}
               >
@@ -5379,7 +5356,7 @@ export function EmployeeTodayClient({
           </div>
         )}
 
-        {!bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
+        {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <nav aria-label='Основная навигация сотрудника' className='employee-material-nav fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-[520px] px-3 pb-[calc(0.65rem+env(safe-area-inset-bottom))] pt-2'>
           <div className='grid grid-cols-2 gap-1'>
             {visibleTabs.map((item) => {
               const Icon = item.icon;

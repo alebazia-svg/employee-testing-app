@@ -330,3 +330,63 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
     .employee-material-ui .employee-material-nav { background:#e5e2dd !important; }
   }
 }
+
+/* Quiet navigation and compact schedule; saved status colors survive selection. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .employee-material-ui div.pwa-review-task { border-left:1px solid #ddd6cd !important; }
+  .pwa-schedule-view > .employee-material-schedule-switch-card { margin-top:4px !important; }
+  .pwa-schedule-view .employee-material-segment { padding:3px !important; gap:3px !important; background:#eeece7 !important; border:1px solid #e1ddd5; border-radius:14px !important; }
+  .employee-material-ui .pwa-schedule-view .employee-material-segment-option { min-height:44px; height:44px; border:1px solid transparent; border-radius:10px !important; color:#686b70 !important; font-weight:600 !important; }
+  .employee-material-ui .pwa-schedule-view .employee-material-segment-option.is-active { background:#fff !important; color:#24282d !important; border-color:#dedbd4 !important; box-shadow:0 1px 3px #24282d08 !important; }
+  .pwa-schedule-tools { display:flex; align-items:center; gap:8px; margin-top:6px !important; }
+  .pwa-schedule-tools > span { flex:1; font-size:12px; color:#696b70; }
+  .employee-material-ui .pwa-schedule-tools > button { min-height:44px; padding:8px 10px !important; border-radius:11px !important; box-shadow:none !important; font-size:13px !important; font-weight:600 !important; white-space:nowrap; }
+  .employee-material-ui .pwa-schedule-tools > .pwa-schedule-edit-days { background:#fff !important; border:1px solid #dcd6cd !important; color:#34383d !important; }
+  .employee-material-ui .pwa-schedule-tools > .pwa-schedule-vacation { display:flex; align-items:center; gap:5px; margin-left:auto; background:transparent !important; border:0 !important; color:#61666d !important; }
+  .employee-material-ui .pwa-schedule-view .employee-material-calendar-card { margin-top:6px !important; padding:8px !important; }
+  .employee-material-ui .employee-material-calendar-nav { min-height:44px; min-width:44px; background:transparent !important; border:0 !important; }
+  .employee-material-ui .employee-material-calendar-day { position:relative; aspect-ratio:auto !important; height:48px !important; min-height:48px; border-radius:8px !important; }
+  .employee-material-calendar-day[data-schedule-status=working] { --pwa-day-color:#9ed3ae; --pwa-day-ink:#123d21; }
+  .employee-material-calendar-day[data-schedule-status=off] { --pwa-day-color:#dce2df; --pwa-day-ink:#26332d; }
+  .employee-material-calendar-day[data-schedule-status=vacation] { --pwa-day-color:#e8f1fb; --pwa-day-ink:#24476b; }
+  .employee-material-calendar-day[data-schedule-status=past-missing] { --pwa-day-color:#eef0ed; --pwa-day-ink:#60636a; }
+  .employee-material-calendar-day[data-schedule-status=missing] { --pwa-day-color:#fbfcfe; --pwa-day-ink:#60636a; }
+  .employee-material-ui .employee-material-calendar-day.is-selected { background:var(--pwa-day-color) !important; color:var(--pwa-day-ink) !important; }
+  .employee-material-ui .employee-material-calendar-day.employee-material-calendar-missing { background:#fbfcfe !important; color:#60636a !important; }
+  .employee-material-ui .employee-material-calendar-day.is-today { outline:none !important; }
+  .employee-material-ui .employee-material-calendar-day.is-today::before { content:''; position:absolute; top:5px; right:5px; width:4px; height:4px; border-radius:50%; background:var(--pwa-copper); }
+  .employee-material-ui .employee-material-calendar-day.is-selected:not(:focus-visible) { outline:2px solid #555d63 !important; outline-offset:-2px; box-shadow:none !important; }
+  .employee-material-ui .employee-material-calendar-day:focus-visible { outline:3px solid var(--pwa-copper) !important; outline-offset:1px; }
+  .employee-material-calendar-card > .pwa-calendar-legend { gap:6px 10px !important; margin-top:6px !important; flex-wrap:wrap; font-size:12px !important; font-weight:500 !important; }
+  .employee-material-ui .pwa-schedule-day-summary { padding:10px !important; gap:3px 8px !important; border-radius:14px !important; box-shadow:none !important; }
+  .employee-material-ui .pwa-schedule-day-summary > div:first-child { display:block !important; grid-column:1 !important; }
+  .pwa-schedule-day-summary > div:first-child p { font-size:15px !important; line-height:20px !important; }
+  .employee-material-ui .pwa-schedule-day-summary.grid > p:not(.col-span-2) { grid-column:1 !important; font-size:13px !important; line-height:19px !important; font-weight:400 !important; }
+  .pwa-schedule-day-status { font-weight:600; color:#41464b; }
+  .pwa-schedule-day-status[data-status=working] { color:#247642; font-weight:700; }
+  .employee-material-ui .pwa-schedule-day-summary.grid > div.m-0 { grid-column:2; grid-row:1 / span 2; align-self:center; }
+  .employee-material-ui .pwa-schedule-day-summary > div.m-0 > button { padding:8px !important; font-size:12px !important; }
+  .employee-material-ui .employee-material-calendar-card > .pwa-schedule-day-summary { margin-top:6px !important; border:0 !important; border-top:1px solid #e9e5de !important; border-radius:0 !important; padding:8px 2px 0 !important; box-shadow:none !important; --tw-ring-shadow:0 0 #0000 !important; }
+}
+
+/* Schedule actions belong to the calendar; editing has one bottom action area. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .pwa-schedule-tools { margin-top:0 !important; padding:0 2px 4px; border-bottom:1px solid #eeeae4; }
+  .employee-material-ui .pwa-schedule-tools > .pwa-schedule-edit-days { display:inline-flex; align-items:center; gap:6px; padding:6px !important; background:transparent !important; border:0 !important; color:#50565c !important; }
+  .pwa-schedule-edit-help { padding:4px 2px 8px; border-bottom:1px solid #eeeae4; }
+  .pwa-schedule-edit-help p { margin:0; font-size:13px; line-height:19px; font-weight:600; color:#353b40; }
+  .pwa-schedule-edit-help button { flex-shrink:0; min-height:44px; padding:0 6px; margin-top:-10px; font-size:12px; font-weight:600; color:#62686e; }
+  .pwa-schedule-edit-help .pwa-schedule-edit-explanation { margin-top:2px; font-size:12px; line-height:18px; font-weight:400; color:#696e73; }
+  .pwa-schedule-savebar { bottom:calc(12px + env(safe-area-inset-bottom)); }
+  .pwa-schedule-savebar > div { padding:12px; border:1px solid #dfdcd5; border-radius:22px; background:#fff; box-shadow:0 4px 22px #20241b12; }
+  .pwa-schedule-savebar p { margin:0 0 9px; text-align:center; font-size:12px; line-height:18px; color:#5e656b; }
+}
+
+/* Readable calendar cells with bounded width on desktop previews. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .pwa-calendar-grid,.pwa-calendar-weekdays { width:100%; max-width:364px; margin-inline:auto; }
+  .employee-material-ui .employee-material-calendar-day > span:first-child { gap:2px; padding:2px 1px; }
+  .employee-material-ui .employee-material-calendar-day > span:first-child > span:first-child { font-size:16px !important; line-height:18px !important; font-weight:700 !important; font-variant-numeric:tabular-nums; }
+  .employee-material-ui .employee-material-calendar-day > span:first-child > span:last-child { font-size:12px !important; line-height:14px !important; font-weight:500 !important; }
+  .employee-material-ui .employee-material-calendar-card[data-editing=true] .employee-material-calendar-day[aria-pressed=true]:not(:focus-visible) { outline:2px solid #6b9d78 !important; outline-offset:-2px; box-shadow:none !important; }
+}
