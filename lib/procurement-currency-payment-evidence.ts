@@ -30,6 +30,7 @@ export type EvidencePlan = {
 };
 
 export type ProcurementPaymentEvidence = Omit<ReturnType<typeof matchCashEvidence>, 'state'> & {
+  qrFunding?: import('./procurement-qr-funding').QrFunding;
   state: ReturnType<typeof matchCashEvidence>['state'] | 'PAID_BY_ONE_C' | 'PARTIALLY_PAID_BY_ONE_C' | typeof SMALL_REMAINDER_COMPLETED | 'SOURCE_UNAVAILABLE';
   paidAmount: number;
   paidForeignAmount: number;

@@ -9,6 +9,7 @@ import { buildProcurementCashPreparation } from './procurement-cash-preparation'
 import { buildProcurementFinancialAssistant } from './procurement-financial-assistant';
 import { assessProcurementRequests } from './procurement-request-funding';
 import { isFinishedPaymentState } from './procurement-small-remainder';
+import {paymentPreparationDate} from './procurement-schedule';
 const normalizeManagerName = (value: string) => value.trim().toLocaleLowerCase('ru-RU').replaceAll('ё', 'е').replace(/\s+/g, ' ');
 
 export type AdminForecastSources = {
@@ -24,7 +25,7 @@ export type AdminForecastSources = {
 };
 export type AdminForecastInput = {
   todayKey: string; plansComplete: boolean; ordersComplete: boolean;
-  plansWithOrderContext: {id:string;status:string;supplierPartner:string;paymentMethod:string;plannedDate:string;plannedAmount:string;foreignAmount:string|null;evidence:{state:string;issuedAmount:number;paidAmount:number;remainingAmount?:number|null;remainingForeignAmount?:number|null;verification?:string;paymentAmountNeedsConfirmation?:boolean}}[];
+  plansWithOrderContext: {id:string;status:string;supplierPartner:string;paymentMethod:string;plannedDate:string;plannedAmount:string;foreignAmount:string|null;oneCCashEvidence?:unknown;evidence:{state:string;issuedAmount:number;paidAmount:number;remainingAmount?:number|null;remainingForeignAmount?:number|null;verification?:string;paymentAmountNeedsConfirmation?:boolean}}[];
   scopedOrders: {supplierPartner:string;supplierCounterparty:string;orderPaymentGap:number}[];
   managerOrders: {supplierPartner:string;supplierCounterparty:string}[];
   usdtBalance:{balance:number|null}; accountableBalance:{balance:number|null};
@@ -85,7 +86,7 @@ export function buildAdminProcurementForecast(input: AdminForecastInput, sources
         supplier: plan.supplierPartner,
         paymentMethod: plan.paymentMethod,
         status: plan.status,
-        plannedDate: plan.plannedDate.slice(0, 10),
+        plannedDate: paymentPreparationDate(plan)||'',
         requestedRub: Math.max(0, Number(plan.plannedAmount) - reflected).toFixed(2),
         issuedRub: "0",
       };
@@ -182,7 +183,7 @@ export function buildAdminProcurementForecast(input: AdminForecastInput, sources
       const remainingMinor = Math.max(0, plannedMinor - reflectedMinor);
       const initialForeign = Number(plan.foreignAmount || 0);
       const foreignAmount = plan.evidence.remainingForeignAmount != null ? Number(plan.evidence.remainingForeignAmount) : initialForeign > 0 && plannedMinor > 0 ? initialForeign * Math.min(1, remainingMinor / plannedMinor) : null;
-      return { id: plan.id, status: plan.status, paymentMethod: plan.paymentMethod, plannedDate: plan.plannedDate.slice(0, 10), remainingMinor, foreignAmount };
+      return { id: plan.id, status: plan.status, paymentMethod: plan.paymentMethod, plannedDate: paymentPreparationDate(plan)||'', remainingMinor, foreignAmount };
     });
   const requestFundingAssessments = assessProcurementRequests({
     asOf: todayKey, plans: fundingPlans,

@@ -1,4 +1,7 @@
 "use client";
+import {activePaymentDeferral,paymentPreparationDate,paymentScheduleLabel,paymentScheduleDetail} from '@/lib/procurement-schedule';
+import {qrPaymentStage} from '@/lib/procurement-receipt-policy';
+import {paymentListRemainder} from '@/lib/procurement-list-amount';
 import { ProcurementCollectionNotice } from '@/components/ProcurementCollectionNotice';
 import { ProcurementApprovedEdit } from '@/components/ProcurementApprovedEdit';
 import { ProcurementRevisionReview } from '@/components/ProcurementRevisionReview';
@@ -80,6 +83,7 @@ type Plan = {
   }[];
   manager: { name: string };
   evidence: {
+    qrFunding?: import('@/lib/procurement-qr-funding').QrFunding;
     verification?: 'current' | 'last-confirmed' | 'unavailable';
     verifiedAt?: string;
     collection?: import('@/lib/procurement-collection').ProcurementCollection;
@@ -231,13 +235,18 @@ export default function AdminProcurementClient({
   // would briefly enable actions against the previous cached plan array.
   const [localPlans, setLocalPlans] = useState({source:initialPlans,value:initialPlans});
   const plans = localPlans.source===initialPlans ? localPlans.value : initialPlans;
+  const [receiptCounts,setReceiptCounts]=useState<Record<string,number>>({});
+  const stage=(plan:Plan)=>qrPaymentStage(plan,receiptCounts[plan.id]??null);
   const setPlans = (update:(current:Plan[])=>Plan[]) => setLocalPlans(previous=>({
     source:initialPlans,value:update(previous.source===initialPlans?previous.value:initialPlans),
   }));
   const [tab, setTab] = useState<"pending" | "approved" | "plan" | "history">(() => visualPreview?.initialAdminTab ?? (revisionCount || initialPlans.some(p => p.status === "SUBMITTED" && p.evidence.state !== "PAID_BY_ONE_C") ? "pending" : "approved"));
   const [forecastRequested,setForecastRequested]=useState(false);
   const [rescheduleState,setRescheduleState]=useState({dirty:false,busy:false});
-  const forecast=useAdminProcurementForecast(forecastInput,refreshState==='ready'&&(forecastRequested||tab==='plan'),visualPreview?.forecastReader,refreshState);
+  const currentForecastInput=useMemo(()=>forecastInput?{...forecastInput,plansWithOrderContext:forecastInput.plansWithOrderContext.map(row=>{
+    const latest=plans.find(p=>p.id===row.id);return latest?{...row,plannedDate:latest.plannedDate,oneCCashEvidence:latest.oneCCashEvidence,plannedAmount:latest.plannedAmount,foreignAmount:latest.foreignAmount,paymentMethod:latest.paymentMethod,status:latest.status}:row;
+  })}:undefined,[forecastInput,plans]);
+  const forecast=useAdminProcurementForecast(currentForecastInput,refreshState==='ready'&&(forecastRequested||tab==='plan'),visualPreview?.forecastReader,refreshState);
   const {forecastHistory,forecast30Days,supplierWarnings,supplierWarningsReady,debtAllocation,debtReserveBreakdown,cashPreparation,financialAssistant,requestFundingAssessments}=forecast.data??{forecastHistory: initial_forecastHistory,forecast30Days: initial_forecast30Days,supplierWarnings: initial_supplierWarnings,supplierWarningsReady: initial_supplierWarningsReady,debtAllocation: initial_debtAllocation,debtReserveBreakdown: initial_debtReserveBreakdown,cashPreparation: initial_cashPreparation,financialAssistant: initial_financialAssistant,requestFundingAssessments: initial_requestFundingAssessments};
   const fundingByPlanId = new Map(requestFundingAssessments.map((assessment) => [assessment.planId, assessment]));
   const forecastStatus=refreshState!=='ready'?<p role="status" className="text-sm text-slate-600">{refreshState==='loading'?'Проверяем оплаты и остатки в 1С…':'Свежие данные пока недоступны. Обновление повторится автоматически.'}</p>:forecastInput&&!forecast.data?<div role="status" className="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">{forecast.error?<><p>Прогноз пока недоступен. Заявки и история оплат доступны.</p><button type="button" className="pam-button mt-3" onClick={forecast.retry}>Повторить загрузку</button></>:"Проверяем остатки и обязательные выплаты…"}</div>:null;
@@ -280,11 +289,11 @@ export default function AdminProcurementClient({
   const groupedPlans = useMemo(() => {
     const ordered = [...calendarPlans].sort(
       (a, b) =>
-        a.plannedDate.localeCompare(b.plannedDate),
+        (paymentPreparationDate(a)||'9999-12-31').localeCompare(paymentPreparationDate(b)||'9999-12-31'),
     );
     const groups = new Map<string, Plan[]>();
     ordered.forEach((plan) => {
-      const key = dateKey(plan.plannedDate);
+      const key = paymentPreparationDate(plan)||'9999-12-31';
       groups.set(key, [...(groups.get(key) || []), plan]);
     });
     return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -299,7 +308,7 @@ export default function AdminProcurementClient({
         : Number(plan.foreignAmount || 0) || (estimatedUsdtPlanIds.has(plan.id) ? plannedRub / referenceUsdtRate : 0);
       return {
         id: plan.id,
-        plannedDate: plan.plannedDate,
+        plannedDate: paymentPreparationDate(plan)||'',
         plannedAmount: remainingRub,
         paymentMethod: plan.paymentMethod,
         fundingSource: plan.fundingSource,
@@ -496,7 +505,7 @@ export default function AdminProcurementClient({
         {([{id:"pending",label:"На согласование",count:submitted.length+revisionCount},{id:"approved",label:"Ждут оплаты",count:calendarPlans.length},{id:"plan",label:"План и прогноз",count:null},{id:"history",label:"История оплат",count:completedPlans.length}] as const).map(item=><button key={item.id} type="button" aria-pressed={tab===item.id} onClick={()=>{setTab(item.id);if(item.id==="plan")setForecastRequested(true);setReturningId("");setReturnReason("");}} className={tab===item.id?"admin-section-tab is-active":"admin-section-tab"}>{item.label}{item.count!==null?<span className={item.id==="pending"&&item.count>0?"needs-decision":""}>{item.count}</span>:null}</button>)}
       </nav>
       {!visualPreview?.fundingPlan&&visualPreview?.toolbar}
-      <div className="pam-toolbar">{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'} pauseWhileDialogOpen/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts admin plans={receiptPlans} allPlans={plans}/> : null}</div>
+      <div className="pam-toolbar">{tab==='plan'&&visualPreview?.fundingPlan?visualPreview.toolbar:tab!=="plan"?<label className="pam-search"><Search size={17}/><input type="search" aria-label="Найти поставщика или заказ" placeholder="Поставщик или № заказа" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}/></label>:null}<ProcurementDataRefresh checkedAt={sourceCheckedAt} label={visualPreview?.fundingPlan?'Снимок':refreshState==='ready'?'Сверка оплат':'Последняя сверка оплат'} intervalMs={60_000} refreshing={refreshState==='loading'} pauseWhileDialogOpen/>{!visualPreview || visualPreview.persistedReceipts ? <ProcurementReceipts admin plans={receiptPlans} allPlans={plans} onCounts={setReceiptCounts}/> : null}</div>
       {actionMessage?<p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{actionMessage}</p>:null}
       {sourceWarnings.length ? (
         <details className="order-0 group rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-950">
@@ -557,30 +566,36 @@ export default function AdminProcurementClient({
       </section>
       <section hidden={tab !== "approved"} className="space-y-4">
         <div className="procurement-payment-priorities" aria-label="Сроки согласованных оплат">
-          <span><strong>Согласовано — ждёт вашей оплаты</strong></span>
-          <span data-priority="overdue" data-active={calendarPlans.some(plan=>dateKey(plan.plannedDate)<todayKey)}>Просрочено: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)<todayKey).length}</strong></span>
-          <span data-priority="today">Сегодня: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)===todayKey).length}</strong></span>
-          <span data-priority="tomorrow">Завтра: <strong>{calendarPlans.filter(plan=>dateKey(plan.plannedDate)===nextDayKey(todayKey)).length}</strong></span>
+          <span><strong>Согласованные оплаты</strong></span>
+          <span data-priority="overdue" data-active={calendarPlans.some(plan=>!stage(plan)&&(paymentPreparationDate(plan)||'9999-12-31')<todayKey)}>Просрочено: <strong>{calendarPlans.filter(plan=>!stage(plan)&&(paymentPreparationDate(plan)||'9999-12-31')<todayKey).length}</strong></span>
+          <span data-priority="today">Сегодня: <strong>{calendarPlans.filter(plan=>paymentPreparationDate(plan)===todayKey).length}</strong></span>
+          <span data-priority="tomorrow">Завтра: <strong>{calendarPlans.filter(plan=>paymentPreparationDate(plan)===nextDayKey(todayKey)).length}</strong></span>
         </div>
-<ProcurementAdminList  key="approved" dirty={rescheduleState.dirty} busy={rescheduleState.busy} searchQuery={searchQuery} items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>({id:plan.id,name:plan.supplierPartner,amount:amountLabel(plan),meta:date(plan.plannedDate),dateLabel:date(plan.plannedDate),basis:orderLabel(plan),method:methodLabel(plan),priority:dateKey(plan.plannedDate)<todayKey?"overdue":dateKey(plan.plannedDate)===todayKey?"today":"later",search:plan.orderNumbers.join(" "),group:dateKey(plan.plannedDate)<todayKey?"Просрочено":dateKey(plan.plannedDate)===todayKey?"Сегодня":dateKey(plan.plannedDate)===nextDayKey(todayKey)?"Завтра":"Далее",warning:plan.evidence.paymentAmountNeedsConfirmation?"Проверьте найденную оплату":plan.evidence.state==="MISMATCH"?"Расхождение с 1С":["PARTIALLY_ISSUED","PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state)?"Частично оплачено":undefined}))} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
+<ProcurementAdminList key="approved" dirty={rescheduleState.dirty} busy={rescheduleState.busy} searchQuery={searchQuery} items={groupedPlans.flatMap(([,rows])=>rows).map(plan=>{
+ const day=paymentPreparationDate(plan), sortDay=day||'9999-12-31';
+ return {id:plan.id,name:plan.supplierPartner,amount:paymentListRemainder(plan)?.replace(/^Доплатить /,'')||amountLabel(plan),amountCaption:paymentListRemainder(plan)?'Доплатить':undefined,meta:day?date(day):'Дата уточняется',dateLabel:day?date(day):'Дата уточняется',basis:orderLabel(plan),method:methodLabel(plan),priority:!stage(plan)&&sortDay<todayKey?'overdue' as const:day===todayKey?'today' as const:'later' as const,search:plan.orderNumbers.join(' '),group:stage(plan)?'Оплаты по QR':!day?'Дата уточняется':day<todayKey?'Просрочено':day===todayKey?'Сегодня':day===nextDayKey(todayKey)?'Завтра':'Далее',warning:plan.evidence.paymentAmountNeedsConfirmation?'Проверьте найденную оплату':plan.evidence.state==='MISMATCH'?'Расхождение с 1С':stage(plan)||paymentScheduleLabel(plan)||(['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)?'Частично оплачено':undefined)};
+ })} empty={unknownPayments.length ? "Статус оплат уточняется. Дождитесь обновления." : "Оплат в ожидании нет."} renderDetail={id=>{
           const plan=calendarPlans.find(p=>p.id===id)!;
-          const deadline = dateKey(plan.plannedDate);
-          const priority = deadline < todayKey ? "overdue" : deadline === todayKey ? "today" : deadline === nextDayKey(todayKey) ? "tomorrow" : "later";
+          const deferred=activePaymentDeferral(plan);
+          const deadline = paymentPreparationDate(plan)||'9999-12-31';
+          const priority = stage(plan)?'later':deadline < todayKey ? "overdue" : deadline === todayKey ? "today" : deadline === nextDayKey(todayKey) ? "tomorrow" : "later";
           const needsCheck = plan.evidence.paymentAmountNeedsConfirmation || plan.evidence.state === "MISMATCH" || ["PARTIALLY_ISSUED", "PARTIALLY_PAID_BY_ONE_C"].includes(plan.evidence.state);
           return (<><div className="procurement-payment-deadline" data-priority={priority}>
-            <div className="flex items-center gap-2">{priority === "overdue" ? <AlertTriangle className="h-5 w-5 shrink-0"/> : <CalendarDays className="h-5 w-5 shrink-0"/>}<strong>{priority === "overdue" ? "Срок оплаты прошёл" : priority === "today" ? "Оплата сегодня" : priority === "tomorrow" ? "Оплата завтра" : "Предстоящая оплата"}</strong></div>
-            <p>{date(plan.plannedDate)} · {refreshState!=='ready' ? "Статус оплаты уточняется" : plan.evidence.collection ? "Выдача из кассы назначена" : needsCheck ? "Сначала проверьте найденную оплату и остаток" : priority === "overdue" ? "Проверьте оплату — срок уже прошёл" : priority === "today" ? "Подготовьте деньги к оплате сегодня" : priority === "tomorrow" ? "Подготовьте деньги заранее" : "Подготовьте деньги к указанной дате"}</p>
+            <div className="flex items-center gap-2">{priority === "overdue" ? <AlertTriangle className="h-5 w-5 shrink-0"/> : <CalendarDays className="h-5 w-5 shrink-0"/>}<strong>{stage(plan)||paymentScheduleLabel(plan)|| (priority === "overdue" ? "Срок оплаты прошёл" : priority === "today" ? "Оплата сегодня" : priority === "tomorrow" ? "Оплата завтра" : "Предстоящая оплата")}</strong></div>
+            <p>{stage(plan)?stage(plan)==='Ожидает чека'?'Деньги переданы в подотчёт. После оплаты Астемир добавит чек.':'Чек добавлен. Оформите оплату поставщику в 1С.':<>{deferred?paymentScheduleDetail(plan):date(plan.plannedDate)} · {refreshState!=='ready' ? "Статус оплаты уточняется" : plan.evidence.collection ? "Выдача из кассы назначена" : needsCheck ? "Проверьте найденную оплату и остаток" : deferred ? (deferred.comment||'Согласование сохраняется') : priority === "overdue" ? "Проверьте оплату — срок уже прошёл" : priority === "today" ? "Подготовьте деньги к оплате сегодня" : priority === "tomorrow" ? "Подготовьте деньги заранее" : "Подготовьте деньги к указанной дате"}</>}</p>
+            {deferred?<p>В заявке: подготовить к {date(plan.plannedDate)}</p>:null}
+            {plan.evidence.qrFunding?.lastConfirmed?<p>Перемещение: последняя проверка {new Date(plan.evidence.qrFunding.checkedAt).toLocaleString('ru-RU')}. Обновление пока не подтверждено.</p>:null}
           </div><article key={plan.id} data-confirmed-only={!needsCheck} className="procurement-detail procurement-approved-detail">
                     {plan.evidence.paymentAmountNeedsConfirmation ? <p className="rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900 sm:col-span-4">Оплата найдена: {plan.evidence.paidForeignAmount.toLocaleString('ru-RU')} USDT. Рублёвый эквивалент не подтверждён — проверьте выполнение заявки перед повторной оплатой.</p> : null}
                     <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-950">{plan.supplierPartner}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${plan.evidence.state === "MISMATCH" ? "bg-red-100 text-red-800" : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? "bg-blue-100 text-blue-800" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "bg-blue-100 text-blue-800" : plan.evidence.state === "PARTIALLY_ISSUED" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-800"}`}>{plan.evidence.state === "MISMATCH" ? "НЕ СОВПАДАЕТ С 1С" : plan.evidence.state === "ISSUED_BY_ONE_C" ? "ОПЛАЧЕНО ПО 1С" : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? "ЧАСТИЧНО ОПЛАЧЕНО" : plan.evidence.state === "PARTIALLY_ISSUED" ? "ЧАСТИЧНО ПО 1С" : "СОГЛАСОВАНО"}</span></div><p className="mt-0.5 text-xs font-semibold leading-relaxed text-slate-500">{orderLabel(plan)}</p>{plan.evidence.state === "MISMATCH" ? <p className="mt-1 text-xs font-black text-red-700">В заявке: {plan.supplierPartner} · в 1С: {plan.evidence.actualSupplier || "другой поставщик"}</p> : plan.evidence.state === "PARTIALLY_ISSUED" ? <p className="mt-1 text-xs font-bold text-amber-800">По 1С оплачено {rub.format(plan.evidence.issuedAmount)} из {rub.format(Number(plan.plannedAmount))}</p> : plan.evidence.state === "PARTIALLY_PAID_BY_ONE_C" ? <p className="mt-1 text-xs font-bold text-blue-800">Оплачено {plan.evidence.paidForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT · осталось {plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString("ru-RU", { maximumFractionDigits: 4 })} USDT` : rub.format(plan.evidence.remainingAmount)}</p> : null}</div>
+                    <ProcurementApprovedEdit plan={plan} today={todayKey} pending={!!readPaymentRevision(plan.oneCCashEvidence)} disabled={plan.evidence.verification==='current'&&['MISMATCH','NEEDS_REVIEW'].includes(plan.evidence.state)} onStateChange={setRescheduleState} onSaved={saved=>setPlans(current=>current.map(row=>row.id===saved.id?{...row,...saved}:row))}/>
                     <div><p className="text-xs font-bold text-slate-500">Сумма заявки</p><p className="mt-0.5 font-extrabold text-slate-950">{amountLabel(plan)}</p>{plan.paymentMethod === "USDT" && !Number(plan.foreignAmount || 0) ? <ProcurementUsdtEstimate amount={Number(plan.plannedAmount)} rate={usdtRateReference?.rate} conversionAt={usdtRateReference?.conversionAt} /> : null}</div>
                     <div><p className="text-xs font-bold text-slate-400">Способ</p><p className="mt-0.5 font-extrabold text-slate-800">{methodLabel(plan)}</p></div>
                     <div className="text-left sm:text-right"><p className="text-xs font-bold text-slate-400">Ответственный</p><p className="mt-0.5 text-sm font-extrabold text-slate-700">{plan.manager.name}</p></div>
                     {refreshState==='ready'&&plan.evidence.verification!=='last-confirmed'&&['PARTIALLY_ISSUED','PARTIALLY_PAID_BY_ONE_C'].includes(plan.evidence.state)&&!plan.evidence.paymentAmountNeedsConfirmation?<div className="procurement-completion-section flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-3 py-2">
-                      <div><p className="text-sm font-bold text-slate-800">Осталось по заявке: {plan.paymentMethod === 'USDT' && plan.evidence.remainingForeignAmount != null ? `${plan.evidence.remainingForeignAmount.toLocaleString('ru-RU',{maximumFractionDigits:4})} USDT` : rub.format(plan.evidence.remainingAmount)}</p><p className="mt-1 text-xs text-slate-500">Если доплачивать не нужно, завершите заявку.</p></div>
-                      <ProcurementCompletionAction id={plan.id} supplier={plan.supplierPartner}/>
+                      <div>{!(plan.evidence.state==='PARTIALLY_PAID_BY_ONE_C'&&plan.evidence.remainingForeignAmount!=null)?<p className="text-sm font-semibold">Осталось по заявке: {rub.format(plan.evidence.remainingAmount)}</p>:null}<p className="text-xs text-slate-500">Если доплачивать не нужно, завершите заявку.</p></div>
+                      <ProcurementCompletionAction id={plan.id} supplier={plan.supplierPartner} disabled={rescheduleState.busy||rescheduleState.dirty}/>
                     </div>:null}
-                    <ProcurementApprovedEdit plan={plan} today={todayKey} pending={!!readPaymentRevision(plan.oneCCashEvidence)} disabled={plan.evidence.verification==='current'&&['MISMATCH','NEEDS_REVIEW'].includes(plan.evidence.state)} onStateChange={setRescheduleState}/>
                     <ProcurementCollectionNotice collection={plan.evidence.collection} today={todayKey} />
                     <div className="procurement-comment-section"><ProcurementAdminComment value={planComment(plan)} /></div>
                     <div className="sm:col-span-4"><ProcurementChangeHistory events={plan.events} /></div>

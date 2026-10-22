@@ -2,6 +2,7 @@ import type {AdminForecastInput, AdminForecastSources} from './procurement-admin
 import type {FundingEvidence} from './procurement-funding-scenario';
 import {isFinishedPaymentState} from './procurement-small-remainder';
 import {OWNER_MONEY_ACCOUNTS} from './procurement-cash-forecast-source';
+import {paymentPreparationDate} from './procurement-schedule';
 
 export function retainDatedBankEvidence(next:AdminForecastSources, previous?:AdminForecastSources):AdminForecastSources {
   if(next.datedTbank?.status==='verified'||previous?.datedTbank?.status!=='verified')return next;
@@ -47,7 +48,7 @@ export function fundingEvidenceView(input: AdminForecastInput, source: AdminFore
       const partialForeign=['USDT','CNY'].includes(p.paymentMethod)&&paid>0;
       // RUB equivalent of a partially paid foreign transfer cannot be derived proportionally.
       const amount=known&&!partialForeign&&Number.isFinite(remaining)&&remaining>=0?remaining.toFixed(2):'';
-      return {id:p.id,supplier:p.supplierPartner,status:p.status,paymentMethod:p.paymentMethod,plannedDate:p.plannedDate,
+      return {id:p.id,supplier:p.supplierPartner,status:p.status,paymentMethod:p.paymentMethod,plannedDate:paymentPreparationDate(p)||'',
         requestedRub:amount,foreignAmount:p.foreignAmount===null?null:Number(p.foreignAmount)};
     }),
   };

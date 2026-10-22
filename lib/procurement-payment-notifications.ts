@@ -50,6 +50,7 @@ export async function notifyAdminsAboutProcurementPlans(input: {
   eventKey: string;
   action: 'SUBMITTED' | 'UPDATED';
   revisionProposal?: boolean;
+  dateChange?: {before:Date;after:Date};
   managerName: string;
   plans: PaymentPlanSummary[];
   now?: Date;
@@ -60,7 +61,7 @@ export async function notifyAdminsAboutProcurementPlans(input: {
   const first = input.plans[0];
   const single = input.plans.length === 1;
   const comment = single ? meaningfulComment(first.condition) : '';
-  const title = input.revisionProposal ? 'Изменения оплаты на согласование' : input.action === 'UPDATED' ? 'Оплата поставщику изменена' : single && first.paymentPurpose === SUPPLIER_ADVANCE ? 'Новый аванс поставщику' : 'Новая оплата поставщику';
+  const title = input.dateChange ? 'Дата подготовки денег изменена' : input.revisionProposal ? 'Изменения оплаты на согласование' : input.action === 'UPDATED' ? 'Оплата поставщику изменена' : single && first.paymentPurpose === SUPPLIER_ADVANCE ? 'Новый аванс поставщику' : 'Новая оплата поставщику';
   const body = single
     ? [
         input.managerName,
@@ -68,6 +69,7 @@ export async function notifyAdminsAboutProcurementPlans(input: {
         first.paymentPurpose === SUPPLIER_ADVANCE && comment !== SUPPLIER_ADVANCE_LABEL ? SUPPLIER_ADVANCE_LABEL : '',
         rub.format(Number(first.plannedAmount)),
         `к ${shortDate.format(first.plannedDate)}`,
+        input.dateChange ? `${shortDate.format(input.dateChange.before)} → ${shortDate.format(input.dateChange.after)} · согласование не требуется` : '',
         methodLabel(first.paymentMethod),
         comment,
       ].filter(Boolean).join(' · ')
@@ -104,6 +106,7 @@ export async function notifyProcurementManagerAboutDecision(input: {
   decision: 'APPROVED' | 'CANCELLED' | 'NEEDS_CHANGES';
   revisionDecision?: boolean;
   rescheduled?: boolean;
+  scheduleChange?: {deferred:boolean;date:string|null;comment:string};
   reason?: string;
   eventKey?: string;
   now?: Date;
@@ -111,7 +114,7 @@ export async function notifyProcurementManagerAboutDecision(input: {
   const now = input.now ?? new Date();
   const approved = input.decision === 'APPROVED';
   const needsChanges = input.decision === 'NEEDS_CHANGES';
-  if (input.rescheduled || input.revisionDecision && approved) {
+  if (input.rescheduled || input.scheduleChange || input.revisionDecision && approved) {
     // Do not leave the old approved date in the unread inbox or pending push queue.
     await input.db.workdayNotification.updateMany({where:{userId:input.plan.managerUserId,kind:'procurement_payment_approved',fingerprint:{startsWith:`procurement-payment:${input.plan.id}:approved:`},status:{in:['pending','sent']}},data:{status:'cancelled',readAt:now,nextPushAttemptAt:null}});
   }
@@ -121,8 +124,8 @@ export async function notifyProcurementManagerAboutDecision(input: {
       userId: input.plan.managerUserId,
       fingerprint: `procurement-payment:${input.plan.id}:${input.decision.toLowerCase()}:${input.eventKey || 'decision'}`,
       kind: approved ? 'procurement_payment_approved' : needsChanges ? 'procurement_payment_needs_changes' : 'procurement_payment_cancelled',
-      title: input.rescheduled ? 'Дата оплаты изменена' : input.revisionDecision ? approved ? 'Изменения оплаты согласованы' : 'Сохраняются прежние условия оплаты' : approved ? 'Оплата согласована' : needsChanges ? 'Исправьте оплату' : 'Оплата отменена',
-      body: needsChanges
+      title: input.scheduleChange ? input.scheduleChange.deferred ? 'Оплата отложена' : 'Отсрочка оплаты отменена' : input.rescheduled ? 'Дата оплаты изменена' : input.revisionDecision ? approved ? 'Изменения оплаты согласованы' : 'Сохраняются прежние условия оплаты' : approved ? 'Оплата согласована' : needsChanges ? 'Исправьте оплату' : 'Оплата отменена',
+      body: input.scheduleChange ? [input.plan.supplierPartner,input.scheduleChange.deferred ? input.scheduleChange.date ? `Деньги ожидаются ${shortDate.format(new Date(input.scheduleChange.date+'T00:00:00Z'))}` : 'Дата подготовки денег уточняется' : `Подготовить к ${shortDate.format(input.plan.plannedDate)}`,input.scheduleChange.comment].filter(Boolean).join(' · ') : needsChanges
         ? `${input.plan.supplierPartner} · ${input.reason || 'уточните данные заявки'}`
         : `${input.plan.supplierPartner} · ${rub.format(Number(input.plan.plannedAmount))} · к ${shortDate.format(input.plan.plannedDate)}`,
       status: 'pending',

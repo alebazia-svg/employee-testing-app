@@ -12,11 +12,11 @@ const root='/api/procurement/payment-plans/';
 const button='procurement-receipt-button';
 const paymentAmount=receiptPaymentAmount;
 
-export function ProcurementReceipts({plans,allPlans=plans,single=false,hideEmptyBeforePayment=false,inline=false,admin=false,onBusyChange,onPreviewChange}:{plans:Plan[];allPlans?:Plan[];single?:boolean;hideEmptyBeforePayment?:boolean;inline?:boolean;admin?:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void}) {
+export function ProcurementReceipts({plans,allPlans=plans,single=false,hideEmptyBeforePayment=false,inline=false,admin=false,onBusyChange,onPreviewChange,onCounts}:{plans:Plan[];allPlans?:Plan[];single?:boolean;hideEmptyBeforePayment?:boolean;inline?:boolean;admin?:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void;onCounts?:(counts:Record<string,number>)=>void}) {
   if(process.env.NEXT_PUBLIC_PROCUREMENT_RECEIPTS_ENABLED!=='1')return null;
-  return <ReceiptWorkspace plans={plans} allPlans={allPlans} single={single} hideEmptyBeforePayment={hideEmptyBeforePayment} inline={inline} admin={admin} onBusyChange={onBusyChange} onPreviewChange={onPreviewChange}/>;
+  return <ReceiptWorkspace plans={plans} allPlans={allPlans} single={single} hideEmptyBeforePayment={hideEmptyBeforePayment} inline={inline} admin={admin} onBusyChange={onBusyChange} onPreviewChange={onPreviewChange} onCounts={onCounts}/>;
 }
-function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,admin,onBusyChange,onPreviewChange}:{plans:Plan[];allPlans:Plan[];single:boolean;hideEmptyBeforePayment:boolean;inline:boolean;admin:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void}) {
+function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,admin,onBusyChange,onPreviewChange,onCounts}:{plans:Plan[];allPlans:Plan[];single:boolean;hideEmptyBeforePayment:boolean;inline:boolean;admin:boolean;onBusyChange?:(busy:boolean)=>void;onPreviewChange?:(open:boolean)=>void;onCounts?:(counts:Record<string,number>)=>void}) {
   const preview = useEmployeePreview();
   const [viewFile,setViewFile]=useState<{file:Receipt;supplier:string}|null>(null);
   useEffect(()=>{onPreviewChange?.(!!viewFile);},[viewFile,onPreviewChange]);
@@ -35,6 +35,7 @@ function ReceiptWorkspace({plans,allPlans,single,hideEmptyBeforePayment,inline,a
   const requestVersion=useRef(0);
   const uploading=useRef(false);
   const signature=allPlans.map(p=>p.id).sort().join(',');
+  useEffect(()=>{if(ready)onCounts?.(Object.fromEntries(signature.split(',').filter(Boolean).map(id=>[id,receipts.filter(r=>r.planId===id).length])));},[ready,receipts,signature,onCounts]);
   const qrBeforePayment=plans.some(canCollectQrReceiptBeforePayment);
   const load=async(signal?:AbortSignal)=>{
     if(uploading.current)return;

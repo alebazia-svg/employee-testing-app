@@ -29,6 +29,17 @@ async function save(m: ReturnType<typeof memory>, e = evidence('ISSUED_BY_ONE_C'
   return preservePaymentEvidenceViews([m.p], new Map([[m.p.id, e]]), true, now, m.store, now);
 }
 
+test('QR funding outage retains labelled proof but complete reversal clears it without touching payment amounts',async()=>{
+ const m=memory();
+ await save(m,{...evidence('NO_EVIDENCE',0),qrFunding:{state:'confirmed',checkedAt:now.toISOString(),documentRef:'transfer',amount:47600}});
+ const unavailable={...evidence('NO_EVIDENCE',0),qrFunding:{state:'unavailable' as const,checkedAt:now.toISOString()}};
+ const views=await save(m,unavailable);
+ assert.equal(views.get(m.p.id)?.qrFunding?.lastConfirmed,true);
+ assert.equal(views.get(m.p.id)?.issuedAmount,0);
+ await save(m,{...evidence('NO_EVIDENCE',0),qrFunding:{state:'none',checkedAt:now.toISOString()}});
+ assert.equal(savedPaymentEvidence(m.p)?.evidence.qrFunding?.state,'none');
+});
+
 test('confirmed Baseus survives repeated outages and a fresh page load without writes', async () => {
   const m = memory(); await save(m);
   for (let i = 0; i < 3; i++) {
