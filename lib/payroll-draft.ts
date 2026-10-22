@@ -106,3 +106,7 @@ export function payrollDraftDifferences(local: PayrollDraft, saved: PayrollDraft
   const sources: Record<string, string> = { manual: 'Введены вручную', attendance: 'Отметки', schedule: 'График', manualCorrection: 'Ручная поправка' };
   return differences.map(row => row.field === 'Источник дней' ? { ...row, local: sources[row.local] ?? row.local, saved: sources[row.saved] ?? row.saved } : row);
 }
+/** First save is an explicit confirmation even when no manual correction exists. */
+export function canSavePayrollDraft(input: { enabled: boolean; ready: boolean; locked: boolean; saving: boolean; dirty: boolean; revision?: number }) {
+  return input.enabled && input.ready && !input.locked && !input.saving && (input.dirty || input.revision === 0);
+}
