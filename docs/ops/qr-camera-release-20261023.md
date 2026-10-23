@@ -144,3 +144,31 @@ Physical iPhone capture remains unverified and is the owner's planned next test.
 - Exact changed runtime/test/version files: employee/WorkdayQrPhotoScanner.tsx,
   lib/workday-qr-photo.ts, package.json, package-lock.json,
   tests/workday-qr-photo.test.ts and tests/fixtures/qr-photo/{README.md,portal-qr-window.png}.
+
+
+## Monitor photograph patch 1.14.4 — verified production
+
+- Code commit: `3928e052db01733edc0cbc865a1ed20eee77fb39`. Owner approved
+  production release. First full-frame passes use 640/960/1280 maximum dimensions
+  before existing region search, suppressing monitor pixel patterns.
+- Owner-provided photograph reproduced failure at original resolution. New
+  decoder reads the same file as retail without cropping, 23–45 ms on local
+  computer. This is not an iPhone runtime latency measurement.
+- 12 QR tests, TypeScript, 5 release metadata tests and local production build
+  passed. VPS production build succeeded. Physical phone capture still awaits
+  owner verification. No changes to UI, video scan or business rules.
+- Public release metadata and authenticated ADMIN footer show 1.14.4, built
+  2026-10-23T20:54:21.561Z; exact server commit independently checked over SSH.
+  Container healthy. Metadata revision is null under existing build mechanism.
+- All nine User rows, including QR preferences, unchanged across restart:
+  `9:daf65e7fa5ebbc4a68e5c525ec3236e7`. Runtime env/mount comparisons passed;
+  server.env unchanged, schema current (73 existing migrations), no migration.
+- Previous image: `sha256:be482317b754b4edc1959297890ac370240dfe72260fd3fab2dc1e074510a516`.
+- Replacement: `sha256:19a9fd6da094926cbd2f24119d0011fdb9c7ecd625dffd689ce844bb73f242e0`.
+- Previous code: `88d7f4522e3e1cdb02d5e7090eabdb5a7ce4da5e`;
+  rollback tag portal-app:rollback-before-1.14.4. Compose/Dockerfile and schema
+  unchanged. Existing approved storage maintenance preserves current +2 verified
+  reserves. Only portal-app rebuilt/restarted; unrelated dirty checkout untouched.
+- Exact changed files: lib/workday-qr-photo.ts, tests/workday-qr-photo.test.ts,
+  tests/fixtures/qr-photo/README.md, tests/fixtures/qr-photo/iphone-monitor-retail.jpg,
+  package.json and package-lock.json.
