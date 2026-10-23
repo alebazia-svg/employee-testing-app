@@ -11,7 +11,7 @@ test('attention card keeps direct single-task navigation and grouped multi-task 
   // Preserve direct single-row opening and a list for multiple rows there.
   assert.match(client, /<EmployeeAttentionPanel/);
   assert.match(panel, /setSelectedId\(id \?\? \(rows\.length === 1 \? rows\[0\]\.id : null\)\)/);
-  assert.match(panel, /onClick=\{\(\) => openSheet\(kind\)\}/);
+  assert.match(panel, /onClick=\{\(\) => kind === 'cash_issue' && request \? cashIssue\?\.open\(request.ref\) : openSheet\(kind\)\}/);
   assert.match(panel, /onClick=\{\(\) => openItem\(item\.id\)\}/);
   assert.match(panel, /Проверьте чеки/);
   assert.match(panel, /selectedId && !selected/);

@@ -2,7 +2,7 @@
 export type EmployeeNoticeKind = 'receipt' | 'checklist' | 'money' | 'encashment' | 'closing' | 'message' | 'schedule' | 'delivery' | 'notice';
 
 export function employeeAttentionIconKind(kind: string): EmployeeNoticeKind {
-  if (kind === 'receipt' || kind === 'encashment' || kind === 'closing' || kind === 'checklist') return kind;
+  if (kind === 'schedule' || kind === 'receipt' || kind === 'encashment' || kind === 'closing' || kind === 'checklist') return kind;
   if (kind === 'cash' || kind === 'cash_issue') return 'money';
   return 'notice';
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { getReleaseInfo } from '@/lib/release-info';
 
 /** Presentation only. Does not enable fixtures, camera simulation or API writes. */
 export function EmployeeInterfaceStyle({ studio = true, copper = false }: { studio?: boolean; copper?: boolean }) {
@@ -27,10 +28,11 @@ export function EmployeeInterfaceStyle({ studio = true, copper = false }: { stud
     };
   }, [studio]);
 
+  const styleVersion = encodeURIComponent(getReleaseInfo().version);
   return <>
     <span hidden id='pwa-visual-proposal' />
-    <link rel='stylesheet' href='/pwa-visual-proposal.css' />
-    {studio && <><span hidden id='pwa-design-studio' /><link rel='stylesheet' href='/pwa-design-studio.css?v=interface-review-3' /></>}
-    {copper && <><span hidden id='pwa-copper-theme' /><link rel='stylesheet' href='/pwa-copper.css?v=1' /></>}
+    <link rel='stylesheet' href={`/pwa-visual-proposal.css?v=${styleVersion}`} />
+    {studio && <><span hidden id='pwa-design-studio' /><link rel='stylesheet' href={`/pwa-design-studio.css?v=${styleVersion}`} /></>}
+    {copper && <><span hidden id='pwa-copper-theme' /><link rel='stylesheet' href={`/pwa-copper.css?v=${styleVersion}`} /></>}
   </>;
 }

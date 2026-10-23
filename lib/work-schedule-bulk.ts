@@ -3,8 +3,17 @@ export type BulkScheduleStatus = 'working' | 'off';
 export type BulkScheduleChange = {
   date: string;
   status: BulkScheduleStatus;
-  previousStatus?: BulkScheduleStatus;
+  previousStatus?: BulkScheduleStatus | null;
 };
+
+// A snapshot taken when the editor opens protects saved days from background
+// refreshes and lets the server reject concurrent changes instead of overwriting.
+export function buildSchedulePlanChanges(original: Record<string, BulkScheduleStatus | null>, working: ReadonlySet<string>): BulkScheduleChange[] {
+  return Object.entries(original).sort(([a], [b]) => a.localeCompare(b)).flatMap(([date, previousStatus]) => {
+    const status: BulkScheduleStatus = working.has(date) ? 'working' : 'off';
+    return status === previousStatus ? [] : [{ date, status, previousStatus }];
+  });
+}
 
 export function buildBulkScheduleChanges(missingDates: string[], selectedWorkingDates: ReadonlySet<string>): BulkScheduleChange[] {
   return [...missingDates]

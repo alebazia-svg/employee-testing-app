@@ -1,3 +1,4 @@
+import { loadEmployeeScheduleAttention } from './employee-schedule-attention';
 import { portalMessageAuthor } from './portal-person';
 import 'server-only';
 import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
@@ -53,12 +54,13 @@ export async function loadEmployeeAttention(user: { id: number }) {
     items.push({ id: `close:${request.id}`, kind: 'closing', closingScope: scope, title: scope === 'encashment' ? 'Закрыть смену без инкассации' : 'Закрытие смены', date: request.workDayEntry.date, priority: 0, state: request.status === 'pending' ? 'waiting' : 'action', status: request.status === 'pending' ? 'Ожидает согласования' : 'Не согласовано', detail: request.decisionComment || (request.status === 'pending' ? 'Запрос отправлен. Смена пока открыта.' : 'Продолжите сдачу смены и устраните замечания.'), facts: related.map(item => ['На контроле', item.title] as [string,string]) });
   }
   if (expenses.state === 'ready' && expenses.payable.length) items.push({
-    id: 'expense:payable', kind: 'cash', title: 'Заявки к оплате', priority: 1, state: 'action',
+    id: 'expense:payable', kind: 'cash', title: 'Заявки утверждены', priority: 1, state: 'action',
     status: 'Оформите расходники в 1С', date: expenses.checkedAt ?? now.toISOString(),
-    detail: 'Оформите расходники в 1С — уведомление исчезнет само.',
+    detail: 'Оформите расходники в 1С.',
     facts: expenses.payable.map(row => [`№${row.number} · ${row.purpose}`, `${row.remaining.toLocaleString('ru-RU')} ₽`]),
   });
   const unread = await prisma.workdayNotification.findMany({ where: { userId: user.id, status: 'sent', readAt: null }, select: { id: true, kind: true, issueId: true, reviewId: true } });
   for (const item of items) item.notificationIds = unread.filter(row => row.issueId && item.id === `issue:${row.issueId}` || row.reviewId && item.id === `review:${row.reviewId}` || item.id === 'expense:payable' && row.kind === EMPLOYEE_EXPENSE_KIND).map(row => row.id);
+  items.push(...await loadEmployeeScheduleAttention(user.id));
   return { items: orderEmployeeAttention(items), expenses, checkedAt: now.toISOString() };
 }

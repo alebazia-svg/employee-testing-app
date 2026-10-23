@@ -4,10 +4,12 @@ type ColleagueShiftInput = {
   department: string;
   colleagueUserId: number;
   scheduledWorkingUserIds: number[];
+  missingScheduleUserIds?: number[];
   startedWorkdays: Array<{ userId: number; shiftCode: string }>;
 };
 
 function resolveColleagueShift(input: ColleagueShiftInput): { code: string | null; conflict: boolean } {
+  if (input.missingScheduleUserIds?.length) return { code: null, conflict: false };
   if (input.department !== 'retail' && input.department !== 'wholesale') return { code: null, conflict: false };
   if (!input.scheduledWorkingUserIds.includes(input.colleagueUserId)) return { code: null, conflict: false };
 

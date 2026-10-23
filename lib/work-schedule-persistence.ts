@@ -1,8 +1,9 @@
 import 'server-only';
 
 import type { Prisma } from '@prisma/client';
+import { reconcileScheduleQuestions } from './work-schedule-notifications';
 import { formatDateLabel } from '@/lib/workday';
-import { scheduleCoverage, scheduleCoverageCopy, schedulePersonName, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '@/lib/work-schedule-coverage';
+import { scheduleCoverage, schedulePersonName, scheduleWorkingCountAfterChange, shouldRequestScheduleReplacement } from '@/lib/work-schedule-coverage';
 
 type ScheduleEmployee = { id: number; name: string; department: string };
 type ScheduleEntryState = { userId: number; status: string };
@@ -46,72 +47,20 @@ export async function persistEmployeeScheduleChange(tx: Prisma.TransactionClient
 
   if (input.notifyCoverage === false) return coverage;
 
-  const fingerprintPrefix = `schedule-coverage:${input.user.department}:${input.date}:`;
-  await tx.workdayNotification.updateMany({
-    where: { fingerprint: `${fingerprintPrefix}${input.user.id}`, status: { in: ['pending', 'sent'] } },
-    data: { status: 'cancelled', pushStatus: 'cancelled', readAt: now, nextPushAttemptAt: null },
+  await reconcileScheduleQuestions(tx, {
+    actorId: input.user.id, department: input.user.department, date: input.date,
+    requestKnownOff: shouldRequestScheduleReplacement({ previousStatus: input.previousStatus, nextStatus: input.status, coverage }),
+  });
+  const existingEvent = await tx.adminInboxEvent.findUnique({
+    where: { eventKey: `schedule-coverage:${input.user.department}:${input.date}` }, select: { id: true },
   });
   if (!coverage.needsReplacement) {
-    await tx.workdayNotification.updateMany({
-      where: { fingerprint: { startsWith: fingerprintPrefix }, status: { in: ['pending', 'sent'] } },
-      data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
-    });
-    const event = await tx.adminInboxEvent.findUnique({
-      where: { eventKey: `schedule-coverage:${input.user.department}:${input.date}` },
-      select: { id: true },
-    });
-    if (event) await tx.adminInboxReceipt.updateMany({ where: { eventId: event.id, readAt: null }, data: { readAt: now } });
+    if (existingEvent) await tx.adminInboxReceipt.updateMany({ where: { eventId: existingEvent.id, readAt: null }, data: { readAt: now } });
     return coverage;
   }
-
-  if (!shouldRequestScheduleReplacement({
-    previousStatus: input.previousStatus,
-    nextStatus: input.status,
-    coverage,
-  })) return coverage;
-
-  const workingUserIds = new Set(
-    input.departmentEntries
-      .filter((entry) => entry.status === 'working' && entry.userId !== input.user.id)
-      .map((entry) => entry.userId),
-  );
-  if (input.status === 'working') workingUserIds.add(input.user.id);
-  const candidates = await tx.user.findMany({
-    where: {
-      role: 'EMPLOYEE',
-      isActive: true,
-      department: input.user.department,
-      id: { notIn: [...workingUserIds, input.user.id] },
-    },
-    select: { id: true },
-  });
-  const copy = scheduleCoverageCopy(coverage);
-  for (const candidate of candidates) {
-    await tx.workdayNotification.upsert({
-      where: { fingerprint: `${fingerprintPrefix}${candidate.id}` },
-      create: {
-        userId: candidate.id,
-        fingerprint: `${fingerprintPrefix}${candidate.id}`,
-        kind: 'schedule_replacement_request',
-        title: coverage.state === 'empty' ? 'На этот день пока никто не выходит' : 'На этот день нужна замена',
-        body: `${formatDateLabel(input.date)} · ${copy.body}`,
-        scheduledAt: now,
-      },
-      update: {
-        title: coverage.state === 'empty' ? 'На этот день пока никто не выходит' : 'На этот день нужна замена',
-        body: `${formatDateLabel(input.date)} · ${copy.body}`,
-        status: 'pending',
-        scheduledAt: now,
-        sentAt: null,
-        readAt: null,
-        pushStatus: 'pending',
-        pushDeliveredAt: null,
-        nextPushAttemptAt: null,
-        lastError: '',
-        attemptCount: 0,
-      },
-    });
-  }
+  // Preserve the existing administrator warning for a reduced working plan;
+  // initial schedule filling does not create a new administrative alarm.
+  if (!existingEvent && !shouldRequestScheduleReplacement({ previousStatus: input.previousStatus, nextStatus: input.status, coverage })) return coverage;
 
   const event = await tx.adminInboxEvent.upsert({
     where: { eventKey: `schedule-coverage:${input.user.department}:${input.date}` },

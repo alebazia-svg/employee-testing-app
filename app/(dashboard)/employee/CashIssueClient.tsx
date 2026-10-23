@@ -105,7 +105,7 @@ export function CashIssueProvider({ children }: { children: ReactNode }) {
   return <CashIssueContext.Provider value={{ snapshot, open, refresh }}>{children}
     {openedRef && createPortal(<div className='portal-neutral-design portal-palette-mobo portal-typography-refined employee-material-ui'>
       <div className='employee-workday-sheet-overlay fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/45 backdrop-blur-[2px] md:items-center md:p-6' onClick={event => { if (event.target === event.currentTarget) close(); }}>
-        <div ref={modal} role='dialog' aria-modal='true' aria-labelledby='cash-issue-title' className='employee-material-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:rounded-[28px]'>
+        <div ref={modal} role='dialog' aria-modal='true' aria-labelledby='cash-issue-title' className='employee-material-sheet employee-cash-issue-sheet flex max-h-[90dvh] w-full max-w-[520px] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl md:rounded-[28px]'>
           <div className='px-5 pb-3 pt-3'><div className='mx-auto mb-3 h-1 w-9 rounded-full bg-slate-300' aria-hidden='true' /><div className='flex items-center justify-between gap-3'><h2 id='cash-issue-title' className='text-xl font-black text-slate-950'>Выдача денег</h2><button ref={closeButton} type='button' onClick={close} aria-label='Закрыть выдачу денег' className='employee-material-sheet-close flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600'><X className='h-5 w-5' /></button></div></div>
           <div className='overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]'>
             {ready ? <>

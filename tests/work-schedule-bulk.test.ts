@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildBulkScheduleChanges, buildBulkScheduleEditChanges, bulkScheduleCounts } from '../lib/work-schedule-bulk';
+import { buildSchedulePlanChanges, buildBulkScheduleChanges, buildBulkScheduleEditChanges, bulkScheduleCounts } from '../lib/work-schedule-bulk';
 
 test('bulk schedule marks selected missing dates as working and all other missing dates as off', () => {
   const changes = buildBulkScheduleChanges(
@@ -57,4 +57,22 @@ test('bulk edit ignores dates without a saved original status', () => {
     new Map([['2026-09-01', 'working']]),
   );
   assert.deepEqual(changes, []);
+});
+
+
+test('plan fills missing dates and edits saved days without rewriting unchanged days', () => {
+  const original = Object.freeze({ '2026-10-23': 'working', '2026-10-24': null, '2026-10-25': 'off', '2026-10-26': null } as const);
+  assert.deepEqual(buildSchedulePlanChanges(original, new Set(['2026-10-23', '2026-10-25'])), [
+    { date: '2026-10-24', status: 'off', previousStatus: null },
+    { date: '2026-10-25', status: 'working', previousStatus: 'off' },
+    { date: '2026-10-26', status: 'off', previousStatus: null },
+  ]);
+  assert.equal(original['2026-10-24'], null);
+});
+
+test('plan ignores selected dates outside the eligible snapshot and detects deselection', () => {
+  assert.deepEqual(buildSchedulePlanChanges({ '2026-10-23': 'working' }, new Set(['2026-10-22'])), [
+    { date: '2026-10-23', status: 'off', previousStatus: 'working' },
+  ]);
+  assert.deepEqual(buildSchedulePlanChanges({ '2026-10-23': 'working' }, new Set(['2026-10-23'])), []);
 });

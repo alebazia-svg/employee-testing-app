@@ -3,7 +3,7 @@ import test from 'node:test';
 import { buildLatenessShadowSnapshot, evaluateLatenessShadowV1, LATENESS_SHADOW_POLICY_V1 } from '../lib/attendance-shadow';
 import { parseWorkdayQrDepartment, workdayStartIntentExpiresAt, WORKDAY_START_INTENT_TTL_MS } from '../lib/workday-qr';
 import { evaluateDepartmentShiftCombination } from '../lib/workday-shift-combination';
-import { deriveWorkdayShiftSelection } from '../lib/workday-shift-selection';
+import { deriveWorkdayShiftSelection, loadWorkdayShiftSelection } from '../lib/workday-shift-selection';
 
 test('lateness-shadow-v1 keeps every agreed boundary stable', () => {
   const expectations: Array<[number, number]> = [
@@ -213,4 +213,37 @@ test('an unscheduled employee receives the remaining paired shift after a collea
     scheduledWorkingUserIds: [3],
     startedWorkdays: [{ userId: 3, shiftCode: '10_19' }],
   }).allowedShiftCodes, ['09_18']);
+});
+
+
+test('incomplete department schedule offers every shift without a solo or paired assumption', () => {
+  for (const department of ['retail', 'wholesale']) {
+    const all = department === 'retail' ? ['09_18', '11_20', '09_20'] : ['09_18', '09_19', '10_19'];
+    for (const scheduledWorkingUserIds of [[], [1], [1, 2]]) {
+      for (const startedWorkdays of [[], [{ userId: 2, shiftCode: '09_18' }]]) {
+        const selection = deriveWorkdayShiftSelection({ department, currentUserId: 1, scheduledWorkingUserIds, missingScheduleUserIds: [3], startedWorkdays });
+        assert.equal(selection.mode, 'incomplete_schedule');
+        assert.deepEqual(new Set(selection.allowedShiftCodes), new Set(all));
+        assert.deepEqual(selection.exceptionShiftCodes, []);
+      }
+    }
+  }
+});
+
+
+test('database selection distinguishes a missing date, a saved day off and an active vacation', async () => {
+  for (const colleagueState of ['missing', 'off', 'vacation', 'working']) {
+    const db = {
+      user: { findMany: async () => [{ id: 1 }, { id: 2 }] },
+      workScheduleEntry: { findMany: async (query: { where: { user?: { isActive?: boolean } } }) => {
+        assert.equal(query.where.user?.isActive, true);
+        return [{ userId: 1, status: 'working' }, ...(['off', 'working'].includes(colleagueState) ? [{ userId: 2, status: colleagueState }] : [])];
+      } },
+      workDayEntry: { findMany: async () => [] },
+      employeeVacation: { findMany: async () => colleagueState === 'vacation' ? [{ userId: 2 }] : [] },
+    };
+    const selection = await loadWorkdayShiftSelection(db as never, { department: 'wholesale', currentUserId: 1, date: '2026-10-23' });
+    assert.equal(selection.mode, colleagueState === 'missing' ? 'incomplete_schedule' : colleagueState === 'working' ? 'first_of_pair' : 'solo');
+    assert.deepEqual(selection.allowedShiftCodes, colleagueState === 'missing' ? ['09_18', '09_19', '10_19'] : colleagueState === 'working' ? ['09_18', '10_19'] : ['09_19']);
+  }
 });

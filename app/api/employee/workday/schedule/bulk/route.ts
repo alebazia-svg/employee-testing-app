@@ -1,13 +1,13 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { formatDateLabel, getMoscowDateKey } from '@/lib/workday';
+import { getMoscowDateKey } from '@/lib/workday';
 import { isValidScheduleDateKey, isValidScheduleMonthKey } from '@/lib/workday-schedule';
 import { persistEmployeeScheduleChange } from '@/lib/work-schedule-persistence';
 
 const noStoreHeaders = { 'Cache-Control': 'private, no-store, max-age=0' };
 
-type BulkMode = 'fill' | 'edit';
-type BulkChange = { date: string; status: 'working' | 'off'; previousStatus?: 'working' | 'off' };
+type BulkMode = 'fill' | 'edit' | 'plan';
+type BulkChange = { date: string; status: 'working' | 'off'; previousStatus?: 'working' | 'off' | null };
 
 function parseBulkChanges(value: unknown, monthKey: string, today: string, mode: BulkMode) {
   if (!Array.isArray(value) || value.length === 0 || value.length > 31) return null;
@@ -25,10 +25,11 @@ function parseBulkChanges(value: unknown, monthKey: string, today: string, mode:
       || date < today
       || (status !== 'working' && status !== 'off')
       || (mode === 'edit' && previousStatus !== 'working' && previousStatus !== 'off')
+      || (mode === 'plan' && (!('previousStatus' in item) || (previousStatus !== null && previousStatus !== 'working' && previousStatus !== 'off')))
       || dates.has(date)
     ) return null;
     dates.add(date);
-    changes.push({ date, status, ...(mode === 'edit' ? { previousStatus } : {}) });
+    changes.push({ date, status, ...(mode !== 'fill' ? { previousStatus } : {}) });
   }
   return changes.sort((left, right) => left.date.localeCompare(right.date));
 }
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Подтвердите заполнение графика' }, { status: 400, headers: noStoreHeaders });
   }
   const monthKey = payload?.monthKey;
-  const mode: BulkMode = payload?.mode === 'edit' ? 'edit' : 'fill';
+  const mode: BulkMode = payload?.mode === 'plan' ? 'plan' : payload?.mode === 'edit' ? 'edit' : 'fill';
   if (typeof monthKey !== 'string' || !isValidScheduleMonthKey(monthKey)) {
     return Response.json({ error: 'Некорректный месяц' }, { status: 400, headers: noStoreHeaders });
   }
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
     const staleDates = mode === 'fill'
       ? existingOwn.map((entry) => entry.date)
       : changes
-        .filter((change) => existingOwnByDate.get(change.date) !== change.previousStatus)
+        .filter((change) => (existingOwnByDate.get(change.date) ?? null) !== change.previousStatus)
         .map((change) => change.date);
     if (staleDates.length > 0) return { staleDates };
 
@@ -94,79 +95,19 @@ export async function POST(req: Request) {
         user,
         date: change.date,
         status: change.status,
-        previousStatus: mode === 'edit' ? existingOwnByDate.get(change.date) : null,
+        previousStatus: mode !== 'fill' ? existingOwnByDate.get(change.date) : null,
         departmentEntries: entries,
-        source: mode === 'edit' ? 'employee_bulk_edit' : 'employee_bulk',
-        // A monthly edit can touch dozens of dates. Per-date replacement pushes
-        // belong only to the explicit single-day flow; otherwise one save floods
-        // every colleague with a notification for each affected day.
-        notifyCoverage: false,
+        source: mode !== 'fill' ? 'employee_bulk_edit' : 'employee_bulk',
       });
       coverageResults.push({ date: change.date, state: coverage.state });
     }
 
-    if (mode === 'edit') {
-      const stateByDate = new Map(coverageResults.map((item) => [item.date, item.state]));
-      const replacementDates = changes
-        .filter((change) => (
-          change.previousStatus === 'working'
-          && change.status === 'off'
-          && stateByDate.get(change.date) !== 'full'
-        ))
-        .map((change) => change.date);
-
-      if (replacementDates.length > 0) {
-        const colleagues = await tx.user.findMany({
-          where: {
-            role: 'EMPLOYEE',
-            isActive: true,
-            department: user.department,
-            id: { not: user.id },
-          },
-          select: { id: true },
-        });
-        const workingByUserAndDate = new Set(
-          departmentEntries
-            .filter((entry) => entry.status === 'working')
-            .map((entry) => `${entry.userId}:${entry.date}`),
-        );
-        const candidates = colleagues.filter((colleague) => (
-          replacementDates.some((date) => !workingByUserAndDate.has(`${colleague.id}:${date}`))
-        ));
-        const now = new Date();
-        const body = replacementDates.length === 1
-          ? `${formatDateLabel(replacementDates[0])} · Сможете выйти на замену?`
-          : `${replacementDates.length} дн. · Откройте график и отметьте дни, когда сможете выйти.`;
-        for (const candidate of candidates) {
-          const fingerprint = `schedule-coverage-digest:${user.department}:${monthKey}:${user.id}:${candidate.id}`;
-          await tx.workdayNotification.upsert({
-            where: { fingerprint },
-            create: {
-              userId: candidate.id,
-              fingerprint,
-              kind: 'schedule_replacement_digest',
-              title: 'Нужна замена в графике',
-              body,
-              scheduledAt: now,
-            },
-            update: {
-              title: 'Нужна замена в графике',
-              body,
-              status: 'pending',
-              scheduledAt: now,
-              sentAt: null,
-              readAt: null,
-              pushStatus: 'pending',
-              pushDeliveredAt: null,
-              nextPushAttemptAt: null,
-              lastError: '',
-              attemptCount: 0,
-            },
-          });
-        }
-      }
-    }
     return { staleDates: [], coverageResults };
+  }, { isolationLevel: 'Serializable', timeout: 15000 }).catch((error: unknown) => {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'P2034') {
+      return { staleDates: changes.map((change) => change.date) };
+    }
+    throw error;
   });
 
   if (result.staleDates.length > 0) {

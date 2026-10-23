@@ -2,7 +2,7 @@ import { getShiftOptionsForDepartment } from '@/lib/workday';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
-export type WorkdayShiftSelectionMode = 'solo' | 'first_of_pair' | 'remaining' | 'outside_schedule_remaining' | 'outside_schedule' | 'unavailable';
+export type WorkdayShiftSelectionMode = 'incomplete_schedule' | 'solo' | 'first_of_pair' | 'remaining' | 'outside_schedule_remaining' | 'outside_schedule' | 'unavailable';
 
 export type WorkdayShiftSelection = {
   mode: WorkdayShiftSelectionMode;
@@ -35,6 +35,7 @@ export function deriveWorkdayShiftSelection(input: {
   department: string;
   currentUserId: number;
   scheduledWorkingUserIds: number[];
+  missingScheduleUserIds?: number[];
   startedWorkdays: Array<{ userId: number; shiftCode: string }>;
 }): WorkdayShiftSelection {
   if (input.department !== 'retail' && input.department !== 'wholesale') {
@@ -43,6 +44,14 @@ export function deriveWorkdayShiftSelection(input: {
 
   const scheduledIds = new Set(input.scheduledWorkingUserIds);
   const scheduledCount = scheduledIds.size;
+  // An empty colleague date is unknown availability, never a confirmed day off.
+  if (input.missingScheduleUserIds?.length) {
+    return {
+      mode: 'incomplete_schedule', scheduledCount,
+      allowedShiftCodes: getShiftOptionsForDepartment(input.department).map((shift) => shift.code),
+      exceptionShiftCodes: [],
+    };
+  }
   const expectedShiftCodes = shiftCodesByDepartmentAndCount[input.department][scheduledCount];
   if (!scheduledIds.has(input.currentUserId)) {
     const pairedShiftCodes = shiftCodesByDepartmentAndCount[input.department][2];
@@ -125,6 +134,7 @@ export function permittedWorkdayShiftCodes(selection: WorkdayShiftSelection) {
 }
 
 export function workdayShiftSelectionHint(selection: WorkdayShiftSelection) {
+  if (selection.mode === 'incomplete_schedule') return 'Не все отметили график на сегодня. Выберите свою фактическую смену.';
   if (selection.mode === 'solo') return 'Сегодня в отделе один сотрудник — смена определена по графику.';
   if (selection.mode === 'remaining') return 'Коллега уже начал рабочий день — вам доступна оставшаяся смена.';
   if (selection.mode === 'outside_schedule_remaining') return 'Коллега уже начал рабочий день — оставшаяся смена определена автоматически.';
@@ -139,10 +149,10 @@ export async function loadWorkdayShiftSelection(
   db: SelectionDb,
   input: { department: string; currentUserId: number; date: string },
 ) {
-  const [schedules, startedWorkdays, vacations] = await Promise.all([
+  const [schedules, startedWorkdays, vacations, employees] = await Promise.all([
     db.workScheduleEntry.findMany({
-      where: { department: input.department, date: input.date, status: 'working' },
-      select: { userId: true },
+      where: { department: input.department, date: input.date, user: { role: 'EMPLOYEE', isActive: true, department: input.department } },
+      select: { userId: true, status: true },
     }),
     db.workDayEntry.findMany({
       where: { department: input.department, date: input.date },
@@ -157,13 +167,19 @@ export async function loadWorkdayShiftSelection(
       },
       select: { userId: true },
     }),
+    db.user.findMany({
+      where: { role: 'EMPLOYEE', isActive: true, department: input.department },
+      select: { id: true },
+    }),
   ]);
   const vacationUserIds = new Set(vacations.map((vacation) => vacation.userId));
 
+  const filledUserIds = new Set(schedules.filter((entry) => entry.status === 'working' || entry.status === 'off').map((entry) => entry.userId));
   return deriveWorkdayShiftSelection({
     department: input.department,
     currentUserId: input.currentUserId,
-    scheduledWorkingUserIds: schedules.map((entry) => entry.userId).filter((userId) => !vacationUserIds.has(userId)),
+    missingScheduleUserIds: employees.filter((employee) => !filledUserIds.has(employee.id) && !vacationUserIds.has(employee.id)).map((employee) => employee.id),
+    scheduledWorkingUserIds: schedules.filter((entry) => entry.status === 'working').map((entry) => entry.userId).filter((userId) => !vacationUserIds.has(userId)),
     startedWorkdays,
   });
 }

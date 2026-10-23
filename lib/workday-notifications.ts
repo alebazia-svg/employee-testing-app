@@ -1,4 +1,5 @@
 import 'server-only';
+import { activeScheduleNotices, scheduleNoticeKinds, scheduleNoticeRef } from './work-schedule-notifications';
 import { reconcileCashExpenseEvidence } from './cash-expense-reconciliation';
 import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
 import { expensePushDecision, queueEmployeeExpensePushes } from './employee-expense-notifications';
@@ -47,6 +48,7 @@ export function closeExceptionNotificationRef(notification: Pick<NotificationLif
 }
 
 export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
+  const activeSchedule = await activeScheduleNotices(db, rows);
   const inactiveProcurement = await inactiveProcurementNotifications(db, rows);
   const refs = rows.map(closeExceptionNotificationRef).filter((item): item is NonNullable<typeof item> => Boolean(item));
   const requestIds = [...new Set(refs.map((item) => item.requestId))];
@@ -76,6 +78,7 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
 
   return rows.filter((notification) => {
     if (inactiveProcurement.has(notification.id)) return false;
+    if (scheduleNoticeKinds.includes(notification.kind) && !activeSchedule.has(notification.id)) return false;
     if (notification.kind === 'cash_operation_created') return false;
     if (notification.task) return notification.task.status === 'pending' && notification.task.run.status === 'active';
     if (notification.issue) return notification.issue.status === 'open' && notification.issue.employeeActionRequired;
@@ -94,9 +97,14 @@ export async function reconcileActiveWorkdayNotifications<T extends Notification
   const activeRows = await filterActiveWorkdayNotifications(db, rows);
   const activeIds = new Set(activeRows.map((notification) => notification.id));
   const inactiveIds = rows
-    .filter((notification) => !activeIds.has(notification.id))
+    .filter((notification) => !activeIds.has(notification.id) && !scheduleNoticeKinds.includes(notification.kind))
     .map((notification) => notification.id);
 
+  const resolvedScheduleIds = rows.filter(row => !activeIds.has(row.id) && scheduleNoticeKinds.includes(row.kind)).map(row => row.id);
+  if (resolvedScheduleIds.length) await db.workdayNotification.updateMany({
+    where: { id: { in: resolvedScheduleIds }, status: { in: ['pending', 'sent'] } },
+    data: { status: 'resolved', pushStatus: 'cancelled', nextPushAttemptAt: null },
+  });
   if (inactiveIds.length) {
     await db.workdayNotification.updateMany({
       where: { id: { in: inactiveIds }, status: 'sent', readAt: null },
@@ -272,10 +280,14 @@ function configureWebPush() {
   return true;
 }
 
-function notificationTargetKey(notification: { id: number; taskId: number | null; issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+export function notificationTargetKey(notification: { id: number; taskId: number | null; issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
   if (notification.taskId) return `task:${notification.taskId}`;
   if (notification.issueId) return `issue:${notification.issueId}`;
   if (notification.reviewId) return `review:${notification.reviewId}`;
+  const schedule = scheduleNoticeRef(notification.fingerprint ?? '');
+  if (schedule && scheduleNoticeKinds.includes(notification.kind ?? '')) return `schedule:${schedule.department}:${schedule.date.slice(0, 7)}`;
+  const digest = notification.kind === 'schedule_replacement_digest' ? /^schedule-coverage-digest:([^:]+):(\d{4}-\d{2}):/.exec(notification.fingerprint ?? '') : null;
+  if (digest) return `schedule:${digest[1]}:${digest[2]}`;
   return workdayNotificationThreadKey(notification);
 }
 
@@ -291,13 +303,12 @@ export function workdayNotificationHref(notification: { issueId: number | null; 
   if (notification.kind?.startsWith('procurement_payment_')) return '/procurement';
   if (notification.reviewId) return `/employee/payment-checks/${notification.reviewId}`;
   if (notification.issueId) return `/employee/issues/${notification.issueId}`;
-  if (notification.kind === 'schedule_replacement_request') {
+  if (notification.kind === 'schedule_replacement_request' || notification.kind === 'schedule_fill_request') {
     const date = notification.fingerprint?.match(/^schedule-coverage:[^:]+:(\d{4}-\d{2}-\d{2}):/)?.[1];
-    return date ? `/employee?tab=schedule&date=${date}` : '/employee?tab=schedule';
+    return date ? `/employee?attention=schedule&item=schedule%3A${date}` : '/employee?attention=schedule';
   }
   if (notification.kind === 'schedule_replacement_digest') {
-    const month = notification.fingerprint?.match(/^schedule-coverage-digest:[^:]+:(\d{4}-\d{2}):/)?.[1];
-    return month ? `/employee?tab=schedule&date=${month}-01` : '/employee?tab=schedule';
+    return '/employee?attention=schedule';
   }
   return '/employee';
 }
@@ -405,14 +416,18 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       }
     }
     if (!activeDueIds.has(notification.id)) {
-      await prisma.workdayNotification.update({
-        where: { id: notification.id },
-        data: { status: 'cancelled', pushStatus: 'cancelled', nextPushAttemptAt: null },
+      const status = scheduleNoticeKinds.includes(notification.kind) ? 'resolved' : 'cancelled';
+      await prisma.workdayNotification.updateMany({
+        where: { id: notification.id, ...(scheduleNoticeKinds.includes(notification.kind) ? { status: { in: ['pending', 'sent'] } } : {}) },
+        data: { status, pushStatus: 'cancelled', nextPushAttemptAt: null },
       });
-      results.push({ id: notification.id, status: 'cancelled', pushStatus: 'cancelled' });
+      results.push({ id: notification.id, status, pushStatus: 'cancelled' });
       continue;
     }
 
+    // Recheck calendar state immediately before delivery: a colleague may have
+    // answered while the dispatcher was processing another notification.
+    if (scheduleNoticeKinds.includes(notification.kind) && !(await activeScheduleNotices(prisma, [notification])).has(notification.id)) continue;
     const sendTime = dispatchTime();
     const notBefore = employeePushNotBefore(sendTime);
     if (notBefore > sendTime) {
@@ -450,8 +465,8 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
-          : delivery?.state === 'send' ? [CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND].includes(notification.kind) ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
-        url: workdayNotificationHref(notification),
+          : scheduleNoticeKinds.includes(notification.kind) ? { title: 'Вопросы по графику', body: 'Откройте приложение и отметьте рабочие дни или выходные.' } : delivery?.state === 'send' ? [CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND].includes(notification.kind) ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
+        url: scheduleNoticeKinds.includes(notification.kind) ? '/employee?attention=schedule' : workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,
       });
@@ -503,7 +518,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       lastErrorCode,
     });
     await prisma.workdayNotification.updateMany({
-      where: { id: notification.id, ...(delivery?.state === 'send' ? { pushStatus: 'delivery_sending', status: { in: ['pending', 'sent'] } } : {}) },
+      where: { id: notification.id, ...(scheduleNoticeKinds.includes(notification.kind) ? { status: { in: ['pending', 'sent'] } } : {}), ...(delivery?.state === 'send' ? { pushStatus: 'delivery_sending', status: { in: ['pending', 'sent'] } } : {}) },
       data: {
         status: 'sent',
         sentAt: notification.sentAt ?? now,

@@ -430,3 +430,131 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
 /* Keep employee-page edge gestures from dragging the dock with the viewport. */
 html:has(#pwa-copper-theme):has(main.employee-material-ui),
 body:has(#pwa-copper-theme):has(main.employee-material-ui) { overscroll-behavior-y:none; }
+
+/* Local schedule-selection candidate: existing PWA surfaces and calendar. */
+.employee-material-ui .schedule-plan-entry { display:flex; width:100%; min-height:44px; align-items:center; justify-content:center; gap:8px; padding:10px 14px; border:1px solid #d8d2c7; border-radius:12px; background:#f1eee7; text-align:center; color:#3d403d; font-size:15px; line-height:22px; font-weight:700; }
+.employee-material-ui .schedule-plan-entry:hover { background:#e9e5dc; }
+.employee-material-ui .schedule-plan-entry:focus-visible { outline:2px solid #a76b3d; outline-offset:3px; }
+.schedule-plan-heading { padding:10px 2px 12px; border-bottom:1px solid #e5e3dd; }
+.schedule-plan-heading h2 { margin:0; font-size:20px; line-height:26px; font-weight:750; }
+.schedule-plan-heading button { min-height:44px; padding:8px; font-size:14px; color:#5d6361; }
+.schedule-plan-heading p { margin:2px 0 0; font-size:15px; line-height:22px; color:#545e59; }
+.employee-material-ui .schedule-plan-cell { position:relative; min-height:56px !important; }
+.schedule-plan-check { position:absolute; top:5px; right:4px; width:14px; height:14px; stroke-width:3px; color:#174f2d; }
+.schedule-plan-editor .employee-material-calendar-day > span:first-child { align-items:flex-start; }
+.schedule-plan-editor .employee-material-calendar-day > span:first-child > span:last-child { font-size:12px !important; }
+.schedule-plan-editor .pwa-calendar-legend { padding-top:6px; padding-bottom:4px; }
+.pwa-schedule-savebar .schedule-plan-unsaved { display:block; margin-top:3px; font-size:12px; color:#777a75; }
+.pwa-schedule-savebar p:has(.schedule-plan-unsaved) { font-size:15px; line-height:20px; }
+
+
+/* Separate personal status from colleagues and incomplete schedules. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .employee-material-ui .pwa-schedule-day-summary > div:first-child { display:flex !important; flex-direction:row !important; grid-column:1 / -1 !important; align-items:center; justify-content:space-between; gap:8px; }
+  .employee-material-ui .pwa-schedule-day-summary.grid > .pwa-schedule-day-people { grid-column:1 !important; grid-row:2 !important; }
+  .employee-material-ui .pwa-schedule-day-summary.grid > .pwa-schedule-day-edit { grid-column:2 !important; grid-row:2 !important; }
+  .pwa-schedule-day-summary .pwa-schedule-day-status { font-size:14px; font-weight:750; line-height:20px; }
+  .pwa-schedule-day-people { overflow-wrap:anywhere; }
+  .pwa-schedule-unfilled { margin:4px 0 0; font-size:13px; font-weight:500; line-height:18px; color:#686e69; }
+  .pwa-schedule-savebar p:has(.schedule-plan-unsaved) { font-size:14px; line-height:20px; }
+}
+
+.employee-material-ui .employee-material-calendar-card > .pwa-schedule-vacation { display:flex; align-items:center; justify-content:center; gap:7px; min-height:44px; font-size:14px; }
+
+/* A selected date shows each person's planned status without prose or extra cards. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .employee-material-ui .pwa-schedule-edit-link { display:inline-flex; align-items:center; justify-content:flex-end; flex-shrink:0; gap:5px; min-height:44px; padding:4px 0 4px 6px !important; border:0 !important; border-radius:0 !important; background:transparent !important; box-shadow:none !important; font-size:13px; font-weight:600; color:#555b55; white-space:nowrap; }
+  .pwa-schedule-edit-link:focus-visible { outline:2px solid #a76b3d; outline-offset:2px; border-radius:6px; }
+  .pwa-schedule-roster { display:grid; gap:0; margin:0; padding:0; grid-column:1 / -1; }
+  .pwa-schedule-roster-row { display:grid; grid-template-columns:minmax(80px,0.38fr) minmax(0,1fr); align-items:center; gap:12px; min-height:32px; padding:5px 0; border-top:1px solid transparent; font-size:14px; line-height:20px; }
+  .pwa-schedule-roster-row + .pwa-schedule-roster-row { border-top:1px solid #eeede9; }
+  .pwa-schedule-roster-row dt { color:#343a37; font-weight:500; overflow-wrap:anywhere; }
+  .pwa-schedule-roster-row dd { margin:0; text-align:left; color:#434b46; font-weight:500; overflow-wrap:anywhere; }
+  .pwa-schedule-roster-row.is-own dt { font-weight:750; }
+  .pwa-schedule-roster-row dd[data-status=working] { color:#247642; font-weight:700; }
+  .pwa-schedule-roster-row dd[data-status=vacation] { color:#365b7d; }
+  .pwa-schedule-roster-row dd[data-status=missing] { color:#5d635e; }
+}
+
+/* Today keeps the copper outline; another selected date keeps its graphite outline. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .employee-material-ui .employee-material-calendar-day.is-today::before { content:none !important; }
+
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) .employee-material-ui .employee-material-calendar-card .pwa-calendar-grid .employee-material-calendar-day.is-today:not(:focus-visible) { outline:2px solid var(--pwa-copper) !important; outline-offset:-2px; box-shadow:none !important; }
+
+/* A clear date heading and a compact aligned roster, using the existing surface. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .employee-material-ui .pwa-schedule-day-summary > div:first-child p { font-size:18px !important; line-height:24px !important; font-weight:750 !important; letter-spacing:-0.25px; }
+  .employee-material-ui .employee-material-calendar-card > .pwa-schedule-day-summary { padding:4px 4px 2px !important; gap:0 8px !important; }
+  .employee-material-ui .pwa-schedule-edit-link { color:#85542f !important; font-weight:550 !important; }
+  .pwa-schedule-roster-row dd[data-status=working] { font-weight:600; }
+}
+
+/* Schedule hierarchy: navigation, calendar, selected date, then personal action. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .pwa-calendar-month-title { font-size:18px !important; line-height:24px !important; font-weight:750 !important; letter-spacing:-0.25px; }
+  .employee-material-ui .pwa-schedule-day-summary > div:first-child { min-height:32px; }
+  .pwa-schedule-roster-row.is-own { align-items:center; padding-block:5px; min-height:32px; }
+  .pwa-schedule-roster-row .pwa-schedule-own-status { display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+  .pwa-schedule-own-status > span { min-width:0; }
+  .employee-material-ui .pwa-schedule-own-status .pwa-schedule-edit-link { position:relative; min-height:20px; height:20px; font-size:13px; line-height:20px; gap:4px; padding:0 0 0 4px !important; }
+  .employee-material-ui .pwa-schedule-own-status .pwa-schedule-edit-link::after { content:""; position:absolute; inset:-12px 0; }
+  .pwa-schedule-day-summary .pwa-schedule-roster { margin-top:0; }
+  .employee-material-ui .pwa-schedule-view .schedule-plan-entry { border-radius:12px; box-shadow:none; }
+}
+
+/* Keep calendar content on one alignment axis at both phone and preview widths. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .employee-material-ui .employee-material-calendar-card > :is(.schedule-plan-entry,.schedule-plan-heading,.pwa-calendar-legend,.pwa-schedule-vacation,.pwa-schedule-day-summary),
+  .employee-material-ui .employee-material-calendar-card > div:first-child { width:100%; max-width:364px; margin-inline:auto !important; }
+}
+
+/* Compact schedule spacing without shrinking calendar cells or touch targets. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .employee-material-ui:has(.pwa-schedule-view) .employee-material-header { padding-top:14px !important; padding-bottom:36px !important; }
+  .employee-material-header + div:has(> .pwa-schedule-view) { padding-top:8px !important; }
+  .employee-material-ui .pwa-schedule-view .employee-material-calendar-card { margin-top:4px !important; }
+  .employee-material-ui .employee-material-calendar-card:not([data-editing]) > :is(.schedule-plan-entry,.pwa-calendar-weekdays,.pwa-calendar-grid,.pwa-calendar-legend) { margin-top:4px !important; }
+  .employee-material-ui .employee-material-calendar-card > .schedule-plan-entry { position:relative; width:100%; max-width:364px; min-height:36px !important; height:36px; padding:6px 14px !important; line-height:22px; }
+  .employee-material-ui .employee-material-calendar-card > .schedule-plan-entry::after { content:""; position:absolute; inset:-4px 0; }
+  .employee-material-ui .employee-material-calendar-card > .pwa-schedule-vacation { margin-top:0 !important; }
+  .employee-material-ui .employee-material-calendar-card > .pwa-schedule-day-summary { margin-top:0 !important; padding-top:2px !important; }
+  .employee-material-ui .pwa-schedule-day-summary > div:first-child { min-height:28px; }
+  .pwa-schedule-roster-row:not(.is-own) { padding-block:5px; }
+}
+
+/* Decorative status dots retain the written status and the existing row height. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .pwa-schedule-roster-row dd { --schedule-status-dot:#87949a; }
+  .pwa-schedule-roster-row dd[data-status=working] { --schedule-status-dot:#4bc423; }
+  .pwa-schedule-roster-row dd[data-status=missing] { --schedule-status-dot:#e5a21a; }
+  .pwa-schedule-roster-row dd[data-status=vacation] { --schedule-status-dot:#648db5; }
+  .pwa-schedule-roster-row dd:not(.pwa-schedule-own-status),
+  .pwa-schedule-own-status > span { position:relative; padding-left:13px; }
+  .pwa-schedule-roster-row dd:not(.pwa-schedule-own-status)::before,
+  .pwa-schedule-own-status > span::before { content:""; position:absolute; left:0; top:7px; width:6px; height:6px; border-radius:50%; background:var(--schedule-status-dot); }
+}
+
+/* Attention sheets own their inner spacing; avoid stacking old sheet padding. */
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .employee-material-sheet.employee-attention-sheet { padding:0 !important; }
+  .employee-attention-sheet-header { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:12px; flex-shrink:0; padding:0 20px 12px; }
+  .employee-attention-sheet-header > h2 { grid-area:1 / 1; align-self:center; }
+  .employee-attention-sheet-header > p { grid-column:1 / -1; }
+  .employee-attention-sheet-header:has(.attention-preview-back) > h2 { grid-area:2 / 1 / auto / -1; }
+  .employee-attention-sheet-header:has(.attention-preview-back) .employee-attention-sheet-toolbar { grid-area:1 / 1 / auto / -1; }
+  .employee-attention-sheet-toolbar { grid-area:1 / 2; display:flex; align-items:center; justify-content:space-between; min-height:44px; margin-bottom:4px; }
+  .employee-attention-sheet-toolbar > .employee-material-sheet-close { margin-left:auto; }
+  .employee-attention-sheet-toolbar .attention-preview-back { min-height:44px; margin:0; font-size:13px; }
+  .employee-attention-sheet .attention-preview-page { padding:0 20px calc(20px + env(safe-area-inset-bottom)); }
+  .employee-attention-sheet .attention-preview-group { margin-bottom:16px; }
+  .employee-attention-sheet .attention-preview-group:last-child { margin-bottom:0; }
+  .employee-attention-sheet-detail { padding:0 20px calc(20px + env(safe-area-inset-bottom)); }
+  .employee-attention-sheet-detail > p:first-child { margin-top:0; margin-bottom:16px; line-height:1.5; }
+}
+
+body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
+  .employee-material-sheet.employee-cash-issue-sheet { padding:0 !important; }
+  .employee-attention-request-facts { column-gap:16px; row-gap:12px; margin:16px 0; }
+  .employee-attention-request-facts dt { color:var(--pwa-ink); overflow-wrap:anywhere; }
+  .employee-attention-request-facts dd { white-space:nowrap; align-self:start; }
+}

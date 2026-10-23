@@ -105,3 +105,10 @@ test('unsupported or off-schedule colleague never receives a guessed shift', () 
     startedWorkdays: [{ userId: 1, shiftCode: '09_18' }],
   }), null);
 });
+
+
+test('an unfilled colleague date prevents guessed planned shift times', () => {
+  const input = { department: 'retail', colleagueUserId: 2, scheduledWorkingUserIds: [2], missingScheduleUserIds: [3], startedWorkdays: [] };
+  assert.equal(expectedColleagueShiftCode(input), null);
+  assert.equal(hasColleagueShiftConflict(input), false);
+});
