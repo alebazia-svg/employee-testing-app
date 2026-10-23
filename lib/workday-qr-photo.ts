@@ -42,7 +42,9 @@ export async function decodeWorkdayQrPhoto(
   isCurrent: () => boolean = () => true,
 ) {
   const whole = { left: 0, top: 0, width, height };
-  const regions: PhotoRegion[] = [{ ...whole, limit: 1280 }];
+  // Smaller full-frame copies suppress monitor pixel patterns in camera photos.
+  // Try these inexpensive passes before the more costly region search.
+  const regions: PhotoRegion[] = [640, 960, 1280].map((limit) => ({ ...whole, limit }));
   // Overlap keeps QR codes on a tile boundary intact in another tile.
   const starts = [0, 0.225, 0.45];
   for (const top of starts) for (const left of starts) {

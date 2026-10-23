@@ -85,3 +85,14 @@ test('cancelling while searching regions discards further decoding', async () =>
   let checks = 0;
   await assert.rejects(decodeWorkdayQrPhoto(new Uint8ClampedArray(data), info.width, info.height, 'retail', () => ++checks < 2), { name: 'AbortError' });
 });
+
+
+test('owner iPhone photo of monitor is decoded without manual crop', async () => {
+  const { data, info } = await sharp('tests/fixtures/qr-photo/iphone-monitor-retail.jpg').ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const pixels = new Uint8ClampedArray(data);
+  assert.equal(jsQR(pixels, info.width, info.height)?.data ?? null, null);
+  assert.deepEqual(await decodeWorkdayQrPhoto(pixels, info.width, info.height, 'retail'), {
+    department: 'retail', qrPayload: 'offonika-workday-start:retail',
+  });
+  await assert.rejects(decodeWorkdayQrPhoto(pixels, info.width, info.height, 'wholesale'), /другого отдела/);
+});
