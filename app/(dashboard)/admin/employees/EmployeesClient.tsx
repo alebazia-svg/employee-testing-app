@@ -25,6 +25,7 @@ type User = AccessUser & {
   payrollRuleThrough: string | null;
   portalArea: string;
   oneCManagerName: string | null;
+  qrScanMode: string;
 };
 
 type Draft = Omit<User, 'payrollFixedSalary' | 'sessionVersion'> & { payrollFixedSalary: string };
@@ -58,6 +59,7 @@ const emptyDraft: Draft = {
   payrollRuleThrough: '',
   portalArea: 'WORKDAY',
   oneCManagerName: '',
+  qrScanMode: 'SCAN',
 };
 
 export default function EmployeesClient({ initialUsers, currentUserId }: { initialUsers: User[]; currentUserId: number }) {
@@ -216,6 +218,16 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
             <label className='grid gap-1 text-xs font-bold text-slate-600'>Действует по (необязательно)
               <Input type='month' value={draft.payrollRuleThrough ?? ''} onChange={(event) => setDraft((value) => ({ ...value, payrollRuleThrough: event.target.value }))} />
             </label>
+            {draft.role === 'EMPLOYEE' && draft.portalArea === 'WORKDAY' && (
+              <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
+                Способ чтения QR
+                <select className='rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20' value={draft.qrScanMode} onChange={(event) => setDraft((value) => ({ ...value, qrScanMode: event.target.value }))}>
+                  <option value='SCAN'>Сканирование камерой</option>
+                  <option value='PHOTO'>Фотография QR</option>
+                </select>
+                <span className='text-xs font-normal text-slate-500'>Если сканер показывает чёрный экран, выберите фотографию. Сотруднику нужно заново открыть страницу рабочего дня после сохранения.</span>
+              </label>
+            )}
             <label className='flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700'>
               <input type='checkbox' checked={draft.isActive} onChange={(event) => setDraft((value) => ({ ...value, isActive: event.target.checked }))} />
               Активен

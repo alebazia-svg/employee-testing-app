@@ -20,6 +20,7 @@ model User {
   portalArea                       String                            @default("WORKDAY")
   oneCManagerName                  String?
   isActive                         Boolean                           @default(true)
+  qrScanMode                       String                            @default("SCAN")
   payrollName                      String?
   payrollSalaryType                String?
   payrollReportGroup               String?

@@ -10,7 +10,7 @@ export function previewEmployeeAllowed(user: { role: string; isActive: boolean; 
 export async function readEmployeePreview(adminId: number, visitId: string, now = new Date()) {
   const visit = await prisma.employeePreviewVisit.findFirst({ where: { id: visitId, adminId, expiresAt: { gt: now } } });
   if (!visit) return null;
-  const employee = await prisma.user.findUnique({ where: { id: visit.employeeId }, select: { id: true, name: true, department: true, role: true, isActive: true, portalArea: true, oneCManagerName: true } });
+  const employee = await prisma.user.findUnique({ where: { id: visit.employeeId }, select: { id: true, name: true, department: true, role: true, isActive: true, portalArea: true, oneCManagerName: true, qrScanMode: true } });
   if (!employee || !previewEmployeeAllowed(employee)) return null;
   return { visit, employee };
 }

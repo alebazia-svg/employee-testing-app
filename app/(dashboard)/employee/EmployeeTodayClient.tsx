@@ -10,6 +10,8 @@ import { initialEmployeeSection } from '@/lib/employee-navigation';
 import { PersonalPayrollClient } from './payroll/PersonalPayrollClient';
 import './payroll/payroll.css';
 import jsQR from 'jsqr';
+import { WorkdayQrPhotoScanner, type WorkdayQrPhotoHandle } from './WorkdayQrPhotoScanner';
+import { usesWorkdayQrPhotoFallback } from '@/lib/workday-qr-mode';
 import { cashRecountInputError } from '@/lib/cash-recount-input';
 import { checklistScrollTarget } from '@/lib/checklist-viewport';
 import { parseWorkdayQrDepartment } from '@/lib/workday-qr';
@@ -239,6 +241,7 @@ class EmployeeApiError extends Error {
 class EmployeeNetworkError extends Error {}
 
 type UserSummary = {
+  qrScanMode?: string;
   id: number;
   name: string;
   department: string;
@@ -1298,6 +1301,7 @@ export function EmployeeTodayClient({
   const [cashFormFocused, setCashFormFocused] = useState(false);
   const [selectedShift, setSelectedShift] = useState('');
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const qrPhotoRef = useRef<WorkdayQrPhotoHandle>(null);
   const [qrDepartmentConfirmed, setQrDepartmentConfirmed] = useState<string | null>(null);
   const [workdayStartIntentId, setWorkdayStartIntentId] = useState<string | null>(null);
   const [startShiftCodes, setStartShiftCodes] = useState<string[] | null>(null);
@@ -2319,6 +2323,7 @@ export function EmployeeTodayClient({
     setStartExceptionShiftCodes([]);
     setShiftSelectionHint('Выберите свою смену на сегодня.');
     setQrScannerOpen(true);
+    if (usesWorkdayQrPhotoFallback(user)) qrPhotoRef.current?.openCamera();
   }
 
   async function handleQrAccepted({ department, qrPayload }: { department: string; qrPayload: string }) {
@@ -4234,14 +4239,22 @@ export function EmployeeTodayClient({
           </div>
         );
       })()}
-      {qrScannerOpen && (
+      {usesWorkdayQrPhotoFallback(user) ? (
+        <WorkdayQrPhotoScanner
+          ref={qrPhotoRef}
+          open={qrScannerOpen}
+          userDepartment={user.department}
+          onCancel={() => setQrScannerOpen(false)}
+          onAccepted={handleQrAccepted}
+        />
+      ) : qrScannerOpen ? (
         <WorkdayQrScanner
           userDepartment={user.department}
           onCancel={() => setQrScannerOpen(false)}
           onPreviewNext={preview ? () => { setQrScannerOpen(false); setShiftSelectionHint('Проверка интерфейса: выбор смены не начнёт рабочий день.'); setShiftPickerOpen(true); } : undefined}
           onAccepted={handleQrAccepted}
         />
-      )}
+      ) : null}
       {shiftPickerOpen && !workDay && (
         <div className='employee-workday-sheet-overlay fixed inset-0 z-50 flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-[2px]' role='dialog' aria-modal='true' aria-label='Выбор смены'>
           <div className='employee-material-sheet w-full max-w-[520px] overflow-y-auto rounded-t-[28px] bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 shadow-2xl'>
@@ -4642,7 +4655,7 @@ export function EmployeeTodayClient({
 
               {!workDay && !unfinished && <section className='pwa-composition-only pwa-composition-start' style={{ display: 'none' }} aria-labelledby='pwa-composition-start-title'>
                 <div className='pwa-composition-start-body'>
-                  <div><h2 id='pwa-composition-start-title'>Начать смену</h2><p id='pwa-start-qr-hint'>Отсканируйте <span className='whitespace-nowrap'>QR-код</span> в магазине.</p></div>
+                  <div><h2 id='pwa-composition-start-title'>Начать смену</h2><p id='pwa-start-qr-hint'>{usesWorkdayQrPhotoFallback(user) ? 'Сфотографируйте' : 'Отсканируйте'} <span className='whitespace-nowrap'>QR-код</span> в магазине.</p></div>
                   <svg className='pwa-start-qr-scanner' width={48} height={48} viewBox='0 0 32 32' fill='none' aria-hidden='true'>
                     <path d='M3 10V5a2 2 0 0 1 2-2h5M22 3h5a2 2 0 0 1 2 2v5M29 22v5a2 2 0 0 1-2 2h-5M10 29H5a2 2 0 0 1-2-2v-5' stroke='currentColor' strokeWidth={1.8} strokeLinecap='round' />
                     <QrCode x={6} y={6} width={20} height={20} stroke='#794b30' strokeWidth={1.7} />

@@ -1,3 +1,4 @@
+import { isWorkdayQrMode } from '@/lib/workday-qr-mode';
 import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import { generateEmployeePassword, passwordValidationError, passwordRequestAllowed } from '@/lib/password-access';
@@ -8,7 +9,7 @@ import { parsePayrollEmployeeRuleInput, PayrollEmployeeRuleValidationError } fro
 const employeeSelect = {
   id: true, name: true, login: true, role: true, sessionVersion: true, department: true, isActive: true, payrollName: true,
   payrollSalaryType: true, payrollReportGroup: true, payrollFixedSalary: true, payrollRuleFrom: true, payrollRuleThrough: true,
-  portalArea: true, oneCManagerName: true,
+  portalArea: true, oneCManagerName: true, qrScanMode: true,
 } as const;
 
 export async function GET() {
@@ -29,6 +30,10 @@ export async function POST(req: Request) {
   let payload: Record<string, unknown>;
   try { payload = await req.json(); } catch { return Response.json({ error: 'Некорректный запрос.' }, { status: 400 }); }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return Response.json({ error: 'Некорректный запрос.' }, { status: 400 });
+  const qrScanMode = payload.qrScanMode;
+  if (qrScanMode !== undefined && !isWorkdayQrMode(qrScanMode)) {
+    return Response.json({ error: 'Неизвестный способ чтения QR' }, { status: 400 });
+  }
   const { name, login, password, role, department, isActive, payrollName, portalArea, oneCManagerName } = payload as {
     name?: string; login?: string; password?: string; role?: string; department?: string; isActive?: boolean; payrollName?: string; portalArea?: string; oneCManagerName?: string;
   };
@@ -44,6 +49,7 @@ export async function POST(req: Request) {
     const payrollRule = parsePayrollEmployeeRuleInput(payload);
     const user = await prisma.user.create({
       data: {
+        ...(qrScanMode !== undefined ? { qrScanMode } : {}),
         name: name.trim(),
         login: login.trim(),
         passwordHash: await bcrypt.hash(issuedPassword, 12),

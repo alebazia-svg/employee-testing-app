@@ -24,7 +24,7 @@ function serializeScheduleEntry(entry: {
   };
 }
 
-export async function loadEmployeeHome(user: { id: number; name: string; department: string }) {
+export async function loadEmployeeHome(user: { id: number; name: string; department: string; qrScanMode?: string }) {
 
   const today = getMoscowDateKey();
   const { dates, monthKey: initialScheduleMonth } = buildInitialScheduleRange(today);
@@ -64,7 +64,7 @@ export async function loadEmployeeHome(user: { id: number; name: string; departm
 
   return {
     payrollEnabled: payrollFeatureState().employeeEnabled,
-    user: { id: user.id, name: user.name, department: user.department },
+    user: { id: user.id, name: user.name, department: user.department, qrScanMode: user.qrScanMode },
     today: today,
     initialScheduleMonth,
     ownSchedule: ownSchedule.map(serializeScheduleEntry),

@@ -1,3 +1,4 @@
+import { isWorkdayQrMode } from '@/lib/workday-qr-mode';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 import { requireAdminApi } from '@/lib/admin-api-auth';
@@ -6,7 +7,7 @@ import { parsePayrollEmployeeRuleInput, PayrollEmployeeRuleValidationError } fro
 const employeeSelect = {
   id: true, name: true, login: true, role: true, sessionVersion: true, department: true, isActive: true, payrollName: true,
   payrollSalaryType: true, payrollReportGroup: true, payrollFixedSalary: true, payrollRuleFrom: true, payrollRuleThrough: true,
-  portalArea: true, oneCManagerName: true,
+  portalArea: true, oneCManagerName: true, qrScanMode: true,
 } as const;
 
 export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
@@ -14,6 +15,10 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
   const access = await requireAdminApi();
   if (!access.ok) return access.response;
   const payload = await req.json() as Record<string, unknown>;
+  const qrScanMode = payload.qrScanMode;
+  if (qrScanMode !== undefined && !isWorkdayQrMode(qrScanMode)) {
+    return Response.json({ error: 'Неизвестный способ чтения QR' }, { status: 400 });
+  }
   const { name, login, password, role, department, isActive, payrollName, portalArea, oneCManagerName } = payload as {
     name?: string; login?: string; password?: string; role?: string; department?: string; isActive?: boolean; payrollName?: string; portalArea?: string; oneCManagerName?: string;
   };
@@ -38,6 +43,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
     const user = await prisma.user.update({
       where: { id: userId },
       data: {
+        ...(qrScanMode !== undefined ? { qrScanMode } : {}),
         name: name.trim(),
         login: login.trim(),
         role: role === 'ADMIN' ? 'ADMIN' : 'EMPLOYEE',
