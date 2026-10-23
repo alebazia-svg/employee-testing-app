@@ -111,3 +111,36 @@ Physical iPhone capture remains unverified and is the owner's planned next test.
 - `prisma/schema.prisma`
 - `tests/workday-qr-mode.test.ts`
 - `tests/workday-qr-photo.test.ts`
+
+
+## Photo recognition patch 1.14.3 — verified production
+
+- Owner approved release. Code: `88d7f4522e3e1cdb02d5e7090eabdb5a7ce4da5e`;
+  based on verified 1.14.2, preserving schedule editor changes.
+- Decoder automatically searches overlapping enlarged image regions, adds a
+  quiet border and retains a high-resolution full-frame fallback. Capture UI,
+  normal video scanner and employee preferences remain unchanged. No migration.
+- Regression fixture is the real portal QR dialog image: original full-frame
+  jsQR fails, region search reads both department codes. Tests cover rotation,
+  moderate skew, close-up, small off-centre QR, cancellation and rejection.
+- 11 QR tests, 169 workday tests, 5 release metadata tests, TypeScript and local
+  and VPS production builds passed. Local demo image capture-to-shift-selection
+  succeeded. Physical iPhone photography remains unverified; severely distorted
+  or unreadable QR images are not guaranteed to decode.
+- Target: https://portal.alebazia.xyz. Public release-info and authenticated ADMIN
+  footer independently show 1.14.3, built 2026-10-23T20:38:32.914Z. VPS commit
+  independently checked; container healthy. Metadata revision remains null under
+  the existing build mechanism; commit verified separately over SSH.
+- All nine User rows including qrScanMode unchanged across restart; checksum
+  `9:daf65e7fa5ebbc4a68e5c525ec3236e7`. server.env hash unchanged; runtime env
+  maps and upload mounts match Compose/image. Schema current, 73 migrations.
+- Previous commit: `2d25f8be63d07579a1e726b6bc043154ea3679f5`.
+- Previous image: `sha256:38c9d5636f6da71061d0a8638d49dce2f2a92e77a2e92a6c779f06a7cede0c8e`.
+- Replacement: `sha256:be482317b754b4edc1959297890ac370240dfe72260fd3fab2dc1e074510a516`.
+- Existing approved storage maintenance ran before build; current and two
+  verified reserves preserved. Only portal-app rebuilt/restarted. No uploads,
+  env, business data or unrelated source changes. Previous image tagged
+  portal-app:rollback-before-1.14.3; schema and Compose/Dockerfile unchanged.
+- Exact changed runtime/test/version files: employee/WorkdayQrPhotoScanner.tsx,
+  lib/workday-qr-photo.ts, package.json, package-lock.json,
+  tests/workday-qr-photo.test.ts and tests/fixtures/qr-photo/{README.md,portal-qr-window.png}.
