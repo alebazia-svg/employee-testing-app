@@ -50,14 +50,16 @@ export const WorkdayQrPhotoScanner = forwardRef<WorkdayQrPhotoHandle, {
       await image.decode();
       if (attempt !== attemptRef.current) return;
       const canvas = document.createElement('canvas');
-      const scale = Math.min(1, 2048 / Math.max(image.naturalWidth, image.naturalHeight));
+      const scale = Math.min(1, 2560 / Math.max(image.naturalWidth, image.naturalHeight));
       canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
       canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
       const context = canvas.getContext('2d', { willReadFrequently: true });
       if (!context) throw new Error('Не удалось обработать фото. Попробуйте ещё раз.');
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-      const result = decodeWorkdayQrPhoto(pixels.data, pixels.width, pixels.height, userDepartment);
+      const result = await decodeWorkdayQrPhoto(pixels.data, pixels.width, pixels.height, userDepartment, () => attempt === attemptRef.current);
       if (attempt === attemptRef.current) onAccepted(result);
     } catch (reason) {
       if (attempt === attemptRef.current) {
