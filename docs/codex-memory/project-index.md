@@ -292,3 +292,10 @@ old WIP files from unrelated tasks. Never use `git add .`; stage exact files.
   refresh runs in the background. Today's pending bank statement does not block
   caching complete receipts; incomplete refreshes never downgrade a complete
   saved report/statement. ADMIN access and notification policy unchanged.
+
+## QR Camera Compatibility (released 2026-10-23)
+
+Per-employee ADMIN SCAN/PHOTO setting and direct system photo capture are in
+1.14.1. All production users remain SCAN; the owner chooses Milana's mode.
+See `qr-camera-modes-20261023.md` and `../ops/qr-camera-release-20261023.md`.
+Physical iPhone capture is not yet verified.
