@@ -29,6 +29,12 @@ project from scratch.
 
 ## Read First By Task
 
+- Schedule selection 1.14.0 release: `pwa-schedule-selection-candidate-20261023.md` —
+  compact approved calendar, incomplete-plan shift correction, notification
+  automatic date-specific calendar questions and guarded answers tested locally;
+  expense routing deferred to its own chat. Released and independently verified;
+  final evidence: `../ops/pwa-calendar-release-20261023.md`.
+
 - Buyer cabinet initial loading: `procurement-buyer-loading-20261022.md` —
   independent planning/cash/delivery/evidence streams; user-scoped saved display
   with source dates, never an authorization or financial-validation cache.
