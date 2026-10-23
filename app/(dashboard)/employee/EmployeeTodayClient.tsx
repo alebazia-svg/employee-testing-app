@@ -5137,7 +5137,7 @@ export function EmployeeTodayClient({
               {scheduleMode === 'month' && (
                 <>
                   <Card className='employee-material-calendar-card space-y-2 p-2.5' data-editing={bulkScheduleMode || undefined}>
-                  <div className='flex items-center justify-between gap-2'>
+                  {!bulkScheduleMode && <div className='flex items-center justify-between gap-2'>
                     <button
                       type='button'
                       className='employee-material-calendar-nav flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
@@ -5180,7 +5180,7 @@ export function EmployeeTodayClient({
                     >
                       <ChevronRight className='h-5 w-5' />
                     </button>
-                  </div>
+                  </div>}
 
                   {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
@@ -5191,8 +5191,12 @@ export function EmployeeTodayClient({
 
                   {bulkScheduleMode && (
                     <div className='schedule-plan-heading'>
-                      <div className='flex items-center justify-between gap-3'><h2>Выберите рабочие дни</h2><button type='button' disabled={isSaving} onClick={() => bulkSelectionChanged ? setBulkScheduleExitConfirmOpen(true) : cancelBulkSchedule()}>Отмена</button></div>
-                      <p>Отметьте дни, когда работаете.<br />Остальные будут выходными.</p>
+                      <h2>Выберите рабочие дни</h2>
+                      <button type='button' className='schedule-plan-close' aria-label='Выйти из редактирования графика' disabled={isSaving} onClick={() => bulkSelectionChanged ? setBulkScheduleExitConfirmOpen(true) : cancelBulkSchedule()}>
+                        <X className='h-5 w-5' aria-hidden='true' />
+                      </button>
+                      <p>Остальные будут выходными.</p>
+                      <p className='schedule-plan-month'>{monthTitle(calendarMonth)}</p>
                     </div>
                   )}
 
@@ -5329,32 +5333,39 @@ export function EmployeeTodayClient({
                   </Card>
                 </>
               )}
+              {bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && (
+                <div className='pwa-schedule-savebar sticky z-50 w-full'>
+                  <div>
+                    <p aria-live='polite'>
+                      Рабочих: <strong>{selectedWorkDays.length}</strong> · Выходных: <strong>{selectedOffDays.length}</strong>
+                    </p>
+                    <Button
+                      type='button'
+                      className='employee-material-green-action h-11 w-full rounded-xl text-sm font-black'
+                      disabled={isSaving || bulkCounts.totalDays === 0}
+                      onClick={() => {
+                        if (bulkReducedCount > 0 || bulkEmptyCount > 0) setBulkScheduleConfirmOpen(true);
+                        else void saveBulkSchedule();
+                      }}
+                    >
+                      {isSaving ? 'Сохраняем…' : 'Сохранить график'}
+                    </Button>
+                    <Button
+                      type='button'
+                      className='employee-material-secondary-action schedule-plan-exit mt-2 h-11 w-full rounded-xl text-sm font-bold'
+                      disabled={isSaving}
+                      onClick={() => bulkSelectionChanged ? setBulkScheduleExitConfirmOpen(true) : cancelBulkSchedule()}
+                    >
+                      Выйти без сохранения
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
         </div>
       </div>
-
-        {activeTab === 'schedule' && bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && (
-          <div className='pwa-schedule-savebar fixed inset-x-0 z-50 mx-auto w-full max-w-[520px] px-3'>
-            <div>
-              <p aria-live='polite'>
-                Рабочих: <strong>{selectedWorkDays.length}</strong> · Выходных: <strong>{selectedOffDays.length}</strong><span className='schedule-plan-unsaved'>{bulkCounts.totalDays ? 'Ещё не сохранено' : 'Нет изменений'}</span>
-              </p>
-              <Button
-                type='button'
-                className='employee-material-green-action h-11 w-full rounded-xl text-sm font-black'
-                disabled={isSaving || bulkCounts.totalDays === 0}
-                onClick={() => {
-                  if (bulkReducedCount > 0 || bulkEmptyCount > 0) setBulkScheduleConfirmOpen(true);
-                  else void saveBulkSchedule();
-                }}
-              >
-                {isSaving ? 'Сохраняем…' : 'Сохранить график'}
-              </Button>
-            </div>
-          </div>
-        )}
 
         {!bulkScheduleMode && !bulkScheduleConfirmOpen && !bulkScheduleExitConfirmOpen && !editingScheduleDate && !pendingScheduleChange && !vacationEditorOpen && <EmployeeNavigation active={activeTab === 'attention' ? 'day' : activeTab} payrollEnabled={payrollEnabled} onSelect={section => {
           if (section === 'schedule' && activeTab !== 'schedule') {

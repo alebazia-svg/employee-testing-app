@@ -178,7 +178,7 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .employee-material-header + .flex-1 { padding-bottom:0 !important; }
   /* A real trailing box keeps the final card reachable above the floating dock. */
   .employee-material-header + .flex-1::after { content:""; display:block; height:calc(112px + env(safe-area-inset-bottom)); flex-shrink:0; pointer-events:none; }
-  .employee-material-ui:has(.pwa-schedule-savebar) .employee-material-header + .flex-1::after { height:calc(152px + env(safe-area-inset-bottom)); }
+  .employee-material-ui:has(.pwa-schedule-savebar) .employee-material-header + .flex-1::after { height:calc(16px + env(safe-area-inset-bottom)); }
   .employee-material-header + div > a[href^='/employee'] { min-height:44px; color:#555a60 !important; }
   .employee-material-sheet a[href^='/employee/'] > span:last-child { color:#80502f !important; }
   .pwa-composition-start { margin-top:0; background:#fff !important; border-color:var(--pwa-line) !important; padding:20px !important; box-shadow:0 4px 16px #30271804 !important; }
@@ -413,9 +413,9 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .pwa-schedule-edit-help p { margin:0; font-size:13px; line-height:19px; font-weight:600; color:#353b40; }
   .pwa-schedule-edit-help button { flex-shrink:0; min-height:44px; padding:0 6px; margin-top:-10px; font-size:12px; font-weight:600; color:#62686e; }
   .pwa-schedule-edit-help .pwa-schedule-edit-explanation { margin-top:2px; font-size:12px; line-height:18px; font-weight:400; color:#696e73; }
-  .pwa-schedule-savebar { bottom:calc(12px + env(safe-area-inset-bottom)); }
+  .pwa-schedule-savebar { bottom:calc(12px + env(safe-area-inset-bottom)); margin-top:12px !important; }
   .pwa-schedule-savebar > div { padding:12px; border:1px solid #dfdcd5; border-radius:22px; background:#fff; box-shadow:0 4px 22px #20241b12; }
-  .pwa-schedule-savebar p { margin:0 0 9px; text-align:center; font-size:12px; line-height:18px; color:#5e656b; }
+  .pwa-schedule-savebar p { margin:0 0 9px; text-align:center; font-size:14px; line-height:20px; color:#5e656b; }
 }
 
 /* Readable calendar cells with bounded width on desktop previews. */
@@ -435,17 +435,18 @@ body:has(#pwa-copper-theme):has(main.employee-material-ui) { overscroll-behavior
 .employee-material-ui .schedule-plan-entry { display:flex; width:100%; min-height:44px; align-items:center; justify-content:center; gap:8px; padding:10px 14px; border:1px solid #d8d2c7; border-radius:12px; background:#f1eee7; text-align:center; color:#3d403d; font-size:15px; line-height:22px; font-weight:700; }
 .employee-material-ui .schedule-plan-entry:hover { background:#e9e5dc; }
 .employee-material-ui .schedule-plan-entry:focus-visible { outline:2px solid #a76b3d; outline-offset:3px; }
-.schedule-plan-heading { padding:10px 2px 12px; border-bottom:1px solid #e5e3dd; }
-.schedule-plan-heading h2 { margin:0; font-size:20px; line-height:26px; font-weight:750; }
-.schedule-plan-heading button { min-height:44px; padding:8px; font-size:14px; color:#5d6361; }
-.schedule-plan-heading p { margin:2px 0 0; font-size:15px; line-height:22px; color:#545e59; }
+.schedule-plan-heading { position:relative; padding:8px 2px 10px; border-bottom:1px solid #e5e3dd; }
+.schedule-plan-heading h2 { margin:0; text-align:center; font-size:20px; line-height:24px; font-weight:750; }
+.schedule-plan-heading .schedule-plan-close { position:absolute; top:-2px; right:-6px; display:flex; align-items:center; justify-content:center; width:44px; height:44px; min-height:44px; padding:0; border:0; border-radius:50%; background:transparent; color:#545e59; }
+.schedule-plan-heading .schedule-plan-close:hover { background:#f1eee7; }
+.pwa-schedule-savebar .schedule-plan-exit { min-height:44px; }
+.schedule-plan-heading p { margin:6px 0 0; font-size:15px; line-height:22px; text-align:center; color:#545e59; }
+.schedule-plan-heading p.schedule-plan-month { margin-top:14px; font-size:16px; line-height:22px; color:#303b35; font-weight:700; }
 .employee-material-ui .schedule-plan-cell { position:relative; min-height:56px !important; }
 .schedule-plan-check { position:absolute; top:5px; right:4px; width:14px; height:14px; stroke-width:3px; color:#174f2d; }
 .schedule-plan-editor .employee-material-calendar-day > span:first-child { align-items:flex-start; }
 .schedule-plan-editor .employee-material-calendar-day > span:first-child > span:last-child { font-size:12px !important; }
 .schedule-plan-editor .pwa-calendar-legend { padding-top:6px; padding-bottom:4px; }
-.pwa-schedule-savebar .schedule-plan-unsaved { display:block; margin-top:3px; font-size:12px; color:#777a75; }
-.pwa-schedule-savebar p:has(.schedule-plan-unsaved) { font-size:15px; line-height:20px; }
 
 
 /* Separate personal status from colleagues and incomplete schedules. */
@@ -456,7 +457,6 @@ body:has(#pwa-copper-theme):has(#pwa-design-studio):has(#pwa-visual-proposal) {
   .pwa-schedule-day-summary .pwa-schedule-day-status { font-size:14px; font-weight:750; line-height:20px; }
   .pwa-schedule-day-people { overflow-wrap:anywhere; }
   .pwa-schedule-unfilled { margin:4px 0 0; font-size:13px; font-weight:500; line-height:18px; color:#686e69; }
-  .pwa-schedule-savebar p:has(.schedule-plan-unsaved) { font-size:14px; line-height:20px; }
 }
 
 .employee-material-ui .employee-material-calendar-card > .pwa-schedule-vacation { display:flex; align-items:center; justify-content:center; gap:7px; min-height:44px; font-size:14px; }
