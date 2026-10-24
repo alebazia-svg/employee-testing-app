@@ -21,7 +21,7 @@ export async function employeeActivityReport(userId: number, date: string, now =
     prisma.portalActivityEvent.findMany({ where: { userId, createdAt: range, session: { isService: false } }, orderBy: { createdAt: 'desc' }, take: 601 }),
     prisma.workDayEntry.findMany({ where: { userId, OR: [{ startedAt: range }, { endedAt: range }] }, take: 10 }),
     prisma.shiftControlTask.findMany({ where: { run: { userId }, completedAt: range, status: 'done' }, orderBy: { completedAt: 'desc' }, take: 201 }),
-    prisma.workScheduleChange.findMany({ where: { userId, source: 'employee', createdAt: range }, orderBy: { createdAt: 'desc' }, take: 201 }),
+    prisma.workScheduleChange.findMany({ where: { userId, source: { in: ['employee', 'employee_bulk', 'employee_bulk_edit'] }, createdAt: range }, orderBy: { createdAt: 'desc' }, take: 201 }),
     prisma.cashOperation.findMany({ where: { userId, createdAt: range }, orderBy: { createdAt: 'desc' }, take: 201 }),
     prisma.workdayNotification.findMany({ where: { userId, sentAt: range }, orderBy: { sentAt: 'desc' }, take: 201,
       include: { task: { select: { status: true, title: true, completedAt: true, numericValue: true } }, issue: { select: { status: true, resolvedAt: true } }, review: { select: { status: true, resolvedAt: true } } } }),
@@ -31,7 +31,7 @@ export async function employeeActivityReport(userId: number, date: string, now =
   const refs = notifications.map(expenseRef).filter(Boolean);
   const cases = refs.length ? await prisma.expenseRequestAdminCase.findMany({ where: { oneCRequestRef: { in: refs } }, include: { evaluations: { orderBy: { evaluatedAt: 'desc' }, take: 1 } } }) : [];
   const facts: ActivityFact[] = events.map(e => ({ id: e.id, section: e.section as ActivitySection, at: e.createdAt.toISOString(),
-    title: e.kind === 'visit' ? 'Открыл раздел' : 'Открыл уведомление', note: e.kind === 'visit' ? 'Раздел был открыт в видимом приложении.' : 'Открытие в приложении зафиксировано; это не подтверждает выполнение поручения.', visit: e.kind === 'visit' }));
+    title: e.kind === 'visit' ? 'Открыл раздел' : notifications.some(n => n.id === e.notificationId) ? `Открыл уведомление «${notifications.find(n => n.id === e.notificationId)!.title}»` : 'Открыл уведомление', note: e.kind === 'visit' ? 'Раздел был открыт в видимом приложении.' : 'Открытие в приложении зафиксировано; это не подтверждает выполнение поручения.', visit: e.kind === 'visit' }));
   const add = (id: string, section: ActivitySection, at: Date | null, title: string, note = 'Подтверждено сохранённой записью портала.') => {
     if (at && at >= bounds.start && at < bounds.end) facts.push({ id, section, at: at.toISOString(), title, note, visit: false });
   };
@@ -40,7 +40,7 @@ export async function employeeActivityReport(userId: number, date: string, now =
     add(`end:${d.id}`, 'day', d.endedAt, 'Смена завершена', 'Факт завершения; это мог сделать и администратор.');
   }
   for (const t of tasks) add(`task:${t.id}`, 'day', t.completedAt, `${t.title}${t.numericValue !== null ? ` · ${t.numericValue.toLocaleString('ru-RU')}` : ''}`);
-  for (const s of schedules) add(`schedule:${s.id}`, 'schedule', s.createdAt, `График на ${s.date}: ${s.nextStatus === 'working' ? 'рабочий день' : 'выходной'}`);
+  for (const s of schedules) add(`schedule:${s.id}`, 'schedule', s.createdAt, `Сохранил график: ${new Date(`${s.date}T12:00:00+03:00`).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'long' })} — ${s.nextStatus === 'working' ? 'рабочий день' : 'выходной'}`);
   for (const c of cash) add(`cash:${c.id}`, 'day', c.createdAt, `Кассовая операция · ${c.amount.toLocaleString('ru-RU')} ₽`, c.oneCPostedAt ? `Проведено в 1С · № ${c.oneCDocumentNumber || 'не передан'}` : 'Запись в портале; проведение в 1С не подтверждено.');
   facts.sort((a,b) => b.at.localeCompare(a.at));
   const obligations: ActivityObligation[] = notifications.slice(0,200).map(n => {

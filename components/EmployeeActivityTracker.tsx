@@ -18,15 +18,25 @@ export function useEmployeeActivityVisit(section: ActivitySection | null, disabl
   useEffect(() => {
     if (preview || disabled || !section) return;
     let sent = false;
+    let hiddenAt: number | null = null;
     const record = () => {
       if (sent || document.visibilityState !== 'visible') return;
       sent = true;
       sendEmployeeActivity({ kind: 'visit', section });
     };
     // React development remount and very fast tab changes are not separate visits.
-    const timer = window.setTimeout(record, 350);
-    document.addEventListener('visibilitychange', record);
-    return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', record); };
+    let timer = window.setTimeout(record, 350);
+    const visibilityChanged = () => {
+      window.clearTimeout(timer);
+      if (document.visibilityState !== 'visible') { hiddenAt = Date.now(); return; }
+      // A return after a real break is a visit even when the tab did not change.
+      // Brief system dialogs and notification shade checks are not new visits.
+      if (hiddenAt !== null && Date.now() - hiddenAt >= 30000) sent = false;
+      hiddenAt = null;
+      timer = window.setTimeout(record, 350);
+    };
+    document.addEventListener('visibilitychange', visibilityChanged);
+    return () => { window.clearTimeout(timer); document.removeEventListener('visibilitychange', visibilityChanged); };
   }, [section, disabled, preview]);
 }
 export function EmployeeActivityTracker() {

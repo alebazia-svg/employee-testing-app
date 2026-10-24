@@ -29,6 +29,8 @@ test('journal deduplicates concurrent retries, excludes service sessions and sep
   await writeEmployeeActivity(u.id,session.sessionHash,{key:'test-open-2',kind:'notification_open',notificationId:n.id},new Date(+now+6000));
   report=await employeeActivityReport(u.id,'2026-10-24',now);
   assert.equal(report.obligations[0].openedAt,new Date(+now+5000).toISOString());
+  assert.ok(report.sections.find(s=>s.id==='notifications')?.events.some(e=>e.title==='Открыл уведомление «Касса»'));
+  assert.equal(report.sections.find(s=>s.id==='notifications')?.visits,0);
   assert.equal(await prisma.portalActivityEvent.count({where:{userId:u.id,kind:'notification_open'}}),1);
   await prisma.portalAccessSession.update({where:{id:session.id},data:{isService:true}});
   assert.equal(await writeEmployeeActivity(u.id,session.sessionHash,{...visit,key:'test-service-1'},now),false);
@@ -39,6 +41,17 @@ test('journal deduplicates concurrent retries, excludes service sessions and sep
   await prisma.portalActivityEvent.createMany({data:Array.from({length:600},(_,i)=>({userId:u.id,sessionId:session.id,eventKey:`limit-${i}`,section:'day',kind:'visit',createdAt:now}))});
   assert.equal(await writeEmployeeActivity(u.id,session.sessionHash,{...visit,key:'test-limit'},now),false);
   assert.equal((await employeeActivityReport(u.id,'2026-10-24',now)).truncated,true);
+});
+test('single and bulk employee schedule saves appear as actions; administrator edits do not', async () => {
+  const u = await prisma.user.create({data:{login:`schedule-activity-${Date.now()}`,name:'Schedule journal',role:'EMPLOYEE',passwordHash:'not-a-login'}}); ids.push(u.id);
+  const now = new Date('2026-10-24T08:00:00Z');
+  await prisma.workScheduleChange.createMany({data:['employee','employee_bulk','employee_bulk_edit','admin'].map((source,i)=>({userId:u.id,date:`2026-10-${25+i}`,department:'Опт',nextStatus:'working',source,workingBefore:0,workingAfter:1,coverageState:'ok',createdAt:now}))});
+  const report = await employeeActivityReport(u.id,'2026-10-24',now);
+  const schedule = report.sections.find(s=>s.id==='schedule')!;
+  assert.equal(schedule.actions,3);
+  assert.equal(schedule.visits,0);
+  assert.ok(schedule.events.every(e=>e.title.startsWith('Сохранил график:')));
+  assert.ok(schedule.events.every(e=>!e.title.includes('28 октября')));
 });
 test('unavailable journal table does not throw or mutate business data', async () => {
   const u = await prisma.user.create({data:{login:`offline-test-${Date.now()}`,name:'Offline journal',role:'EMPLOYEE',passwordHash:'not-a-login'}}); ids.push(u.id);
