@@ -31,7 +31,21 @@ export function ProcurementDocumentSections({plan,files,admin,disabled,today,onA
   const canRequest=admin&&onRequestQr&&requisitesOptions?.qr&&!complete&&!deferred&&!qrConfirmed&&plan.status==='APPROVED'&&!plan.documentState?.pendingRevision;
   const payments=[...(plan.evidence?.cashOrders||[]).map(row=>({...row,ref:'ref' in row&&row.ref?`cash:${row.ref}`:''})),...(plan.evidence?.currencyPayments||[]).map(row=>({...row,number:'number' in row?String(row.number):'',ref:'ref' in row&&row.ref?`currency:${row.ref}`:''}))].filter(row=>row.ref);
   const refsDefault=payments.length===1?[payments[0].ref]:[];
-  const chooseReceipt=()=>{setSelected(refsDefault);setPurpose('RECEIPT');setReplacement(undefined);setPanel('receipt');};
+  const chooseRequisites=(file?:Receipt)=>{
+    setPurpose(file?.purpose==='REQUISITES'?'REQUISITES':defaultRequisitesPurpose);
+    setReplacement(file);
+    setPanel('');
+    input.current?.click();
+  };
+  const chooseReceipt=()=>{
+    setSelected(refsDefault);
+    setPurpose('RECEIPT');
+    setReplacement(undefined);
+    // A single payment (or the existing early QR receipt) needs no extra form.
+    // Keep the native picker in this click event so mobile browsers allow it.
+    if(payments.length<=1){setPanel('');input.current?.click();}
+    else setPanel('receipt');
+  };
   const paymentChoices=<fieldset className="payment-document-choices"><legend>Чек за оплату</legend>{payments.map(row=><label key={row.ref}><input type="checkbox" checked={selected.includes(row.ref)} disabled={disabled} onChange={e=>setSelected(prev=>e.target.checked?[...prev,row.ref]:prev.filter(ref=>ref!==row.ref))}/>Расходник {row.number||'без номера'}{row.date?` · ${row.date}`:''}</label>)}</fieldset>;
   const list=(rows:Receipt[],historical=false)=><ul className="payment-document-files">{rows.map(file=>{
     const confirmed=plan.status&&plan.paymentMethod&&plan.plannedDate?qrIsConfirmed(file,{...plan,status:plan.status,paymentMethod:plan.paymentMethod,plannedDate:plan.plannedDate},today):false;
@@ -39,7 +53,7 @@ export function ProcurementDocumentSections({plan,files,admin,disabled,today,onA
       <button className="payment-document-open" type="button" title={file.originalName} aria-label={`Открыть ${file.originalName}`} onClick={event=>onOpen(file,event.currentTarget)}><Paperclip size={18}/><span>{file.purpose==='QR'?'QR-код для оплаты':file.originalName}</span></button>
       <div className="payment-document-meta">{file.author.name} · {new Date(file.createdAt).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short'})}{historical?' · Заменён':''}</div>
       {!historical&&file.purpose==='QR'&&requisitesOptions?.qr&&!complete&&!deferred?<div className="payment-document-line"><span title={confirmed?`${file.qrConfirmedBy?.name||'Пользователь'} подтвердил актуальность у поставщика`:undefined} className={confirmed?'payment-document-ok':'payment-document-warning'}>{confirmed?'Подтверждён сегодня':'Требует проверки'}</span>{!confirmed&&plan.status==='APPROVED'?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>setPanel(`confirm:${file.id}`)}>Подтвердить</button>:null}</div>:null}
-      {!historical&&!isPaymentReceipt(file)&&requisitesOptions&&!complete?<button type="button" disabled={disabled} className="payment-document-secondary" onClick={()=>{setPurpose(file.purpose==='QR'&&requisitesOptions.qr?'QR':'REQUISITES');setReplacement(file);setPanel('requisites');}}>Заменить</button>:null}
+      {!historical&&!isPaymentReceipt(file)&&requisitesOptions&&!complete?<button type="button" disabled={disabled} className="payment-document-secondary" onClick={()=>chooseRequisites(file)}>Заменить</button>:null}
       {!historical&&admin&&isPaymentReceipt(file)?<button type="button" disabled={disabled} className="payment-document-secondary" onClick={()=>{setPurpose(defaultRequisitesPurpose);setPanel(`classify:${file.id}`);}}>Это реквизиты</button>:null}
       {!historical&&admin&&!isPaymentReceipt(file)&&canAddReceipt?<button type="button" disabled={disabled} className="payment-document-secondary" onClick={()=>{setSelected(refsDefault);setPanel(`receipt:${file.id}`);}}>Это чек оплаты</button>:null}
       {!historical&&isPaymentReceipt(file)&&payments.length>0&&!pendingQrCoversPayment(plan,file)&&(needReceipt||file.paymentRefs==null)?<button type="button" disabled={disabled} className="payment-document-secondary" onClick={()=>{setSelected(Array.isArray(file.paymentRefs)?file.paymentRefs.filter((ref):ref is string=>typeof ref==='string'&&payments.some(p=>p.ref===ref)):refsDefault);setPanel(`link:${file.id}`);}}>Указать расходник</button>:null}
@@ -50,11 +64,10 @@ export function ProcurementDocumentSections({plan,files,admin,disabled,today,onA
     </li>;
   })}</ul>;
   return <div className="payment-document-sections">
-    {requisites.length||requisitesOptions&&!complete?<section><div className="payment-document-heading"><h3>Реквизиты для оплаты</h3>{requisitesOptions&&!complete?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>{setPurpose(defaultRequisitesPurpose);setReplacement(undefined);setPanel('requisites');}}>Добавить реквизиты</button>:null}</div>
+    {requisites.length||requisitesOptions&&!complete?<section><div className="payment-document-heading"><h3>Реквизиты для оплаты</h3>{requisitesOptions&&!complete?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>chooseRequisites()}>Добавить реквизиты</button>:null}</div>
       {canRequest?<button type="button" className="procurement-receipt-button" disabled={disabled} onClick={()=>setPanel('request-qr')}>{requestLabel}</button>:null}
       {panel==='request-qr'&&canRequest?<div className="payment-document-panel"><p>{hasQr?'Попросить закупщика подтвердить актуальность QR или заменить его?':'Попросить закупщика добавить QR-код для этой оплаты?'}</p><div><button type="button" className="procurement-receipt-button" disabled={disabled} onClick={async()=>{if(await onRequestQr?.())setPanel('');}}>Отправить запрос</button><button type="button" className="procurement-receipt-button" disabled={disabled} onClick={()=>setPanel('')}>Отмена</button></div></div>:null}
       {requisites.length?list(requisites):null}
-      {panel==='requisites'&&requisitesOptions?<div className="payment-document-panel">{requisitesOptions.qr?<fieldset><legend>{replacement?'Новый файл вместо прежнего':'Что добавляем'}</legend><label><input type="radio" checked={purpose==='QR'} disabled={disabled} onChange={()=>setPurpose('QR')}/> {requisitesOptions.qrLabel}</label><label><input type="radio" checked={purpose==='REQUISITES'} disabled={disabled} onChange={()=>setPurpose('REQUISITES')}/> {requisitesOptions.fileLabel}</label></fieldset>:null}<p>{requisitesOptions.hint}</p><div><button type="button" className="procurement-receipt-button" disabled={disabled} onClick={()=>input.current?.click()}>Выбрать файл</button><button type="button" disabled={disabled} className="procurement-receipt-button" onClick={()=>setPanel('')}>Отмена</button></div><p>Фото или PDF · до 10 МБ</p></div>:null}
     </section>:null}
     <section><div className="payment-document-heading"><h3>Чеки оплаты {needReceipt?<span className="payment-document-warning">Нужен чек</span>:null}</h3>{canAddReceipt?<button type="button" disabled={disabled} className="procurement-receipt-button" onClick={chooseReceipt}>Добавить чек</button>:null}</div>
       {receipts.length?list(receipts):<p className="payment-document-empty">{canAddReceipt?'Чек ещё не добавлен':'После оплаты здесь будет чек'}</p>}
