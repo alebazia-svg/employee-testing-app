@@ -3,6 +3,7 @@ import { WORKDAY_CARD_OPEN, openWorkdayCard, workdayCardNeighbors, type WorkdayC
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
 import { handoverCashResult, handoverEncashmentResult, missingHandoverPhotos } from '@/lib/workday-handover-view';
 import { taskTimingLabel } from '@/lib/team-control';
+import type { TeamAttendance } from '@/lib/team-attendance';
 import { getMoscowDateKey } from '@/lib/workday';
 
 import Link from 'next/link';
@@ -92,6 +93,7 @@ type Props = {
   run: ShiftRun | null;
   workDay: WorkDayInfo;
   attendanceNote?: string;
+  attendance?: TeamAttendance;
   dateKey: string;
   autoChecks?: ShiftAutoCheck[];
   timingViolations?: WorkdayTimingViolation[];
@@ -825,6 +827,7 @@ export function AdminShiftControlDetails({
   workDay,
   dateKey,
   attendanceNote,
+  attendance,
   autoChecks = [],
   timingViolations = [],
   terminalFiscalControl = null,
@@ -1392,7 +1395,15 @@ export function AdminShiftControlDetails({
               </details>
             </div></>)}
             <div ref={cardBodyRef} className='team-shift-body min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6'>
-              <div className='team-shift-facts'><div><small>План</small><b>{scheduleLabel === 'работаю' ? 'Рабочий день' : scheduleLabel}</b><span>{workDay?.shiftLabel ?? 'Время смены не задано'}</span></div><div><small>Начало</small><b>{formatTime(workDay?.startedAt ?? null)}</b><span>{workDay?.lateMinutes ? `Позже на ${workDay.lateMinutes} мин` : workDay ? 'Начало отмечено' : 'Нет отметки приложения'}</span></div><div><small>Состояние</small><span className={`team-status ${workDay && !workDay.endedAt && dateKey < getMoscowDateKey() ? 'amber' : workDay ? 'green' : ''}`}>{workDay?.endedAt?'Рабочий день завершён':workdayStateLabel}</span>{workDay?.endedAt&&<span>В {formatTime(workDay.endedAt)}</span>}</div></div>
+              <div className='team-shift-facts'>
+                <div><small>План</small><b>{scheduleLabel === 'работаю' ? 'Рабочий день' : scheduleLabel}</b><span>{(attendance?.shift ?? workDay?.shiftLabel) || 'Время смены не задано'}</span></div>
+                <div><small>Начало</small><b>{attendance?.start ?? formatTime(workDay?.startedAt ?? null)}</b>
+                  {attendance ? <><span>{attendance.startSource === 'app' ? 'Приложение' : attendance.startSource === 'google' ? 'Google · резерв' : attendance.marksAvailable ? 'Нет отметки' : 'Google недоступен'}</span>{attendance.late > 0 && <span>Позже на {attendance.late} мин</span>}</> : <span>{workDay?.lateMinutes ? `Позже на ${workDay.lateMinutes} мин` : workDay ? 'Начало отмечено' : 'Нет отметки приложения'}</span>}
+                </div>
+                <div><small>Состояние</small><span className={`team-status ${attendance ? attendance.state === 'Не завершил смену' || attendance.state === 'Не отметился' ? 'amber' : attendance.start !== '—' ? 'green' : '' : workDay && !workDay.endedAt && dateKey < getMoscowDateKey() ? 'amber' : workDay ? 'green' : ''}`}>{attendance?.state ?? (workDay?.endedAt?'Рабочий день завершён':workdayStateLabel)}</span>
+                  {attendance ? attendance.end !== '—' && <span>Завершение: {attendance.endSource === 'google' ? 'Google · резерв' : 'приложение'}</span> : workDay?.endedAt && <span>В {formatTime(workDay.endedAt)}</span>}
+                </div>
+              </div>
               {cardView === 'day' && <>
                 {attendanceNote && <p className='team-card-note'>{attendanceNote}</p>}
                 {!workDay&&!run&&!cashOperations.length&&!requiredIssues.length&&!closeRequests.length&&<p className='team-card-note'>Действий в приложении за этот день нет.</p>}

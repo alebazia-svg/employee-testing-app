@@ -1,7 +1,8 @@
 import { attendanceEmployeeKey } from '@/lib/attendance-identity';
 
-// Owner-approved rollout: Google remains active; only Liana uses the app pilot.
-// This is presentation policy, never an import or a change to saved schedules.
+// Schedule/check policy: Google remains active; Liana uses the app schedule.
+// Attendance marks have a separate all-staff cutover in team-attendance.ts.
+// Never infer a schedule or rewrite saved records from a mark's source.
 export function usesAppSchedule(name: string) {
   return attendanceEmployeeKey(name) === attendanceEmployeeKey('Хурзокова Лиана');
 }
