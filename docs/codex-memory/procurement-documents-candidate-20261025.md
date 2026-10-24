@@ -263,3 +263,39 @@ Recommend directly opening the file chooser when exactly one expense exists
 (or the existing early QR receipt case), keeping explicit selection for multiple
 expenses. Server validation/coverage must remain unchanged. This is not part of
 published 1.15.2; a subsequent approved runtime change needs a fresh patch version.
+
+### Follow-up released: direct file picker, 1.15.3
+
+Owner approved restoring direct receipt upload and removing the requisites type
+selection step, then explicitly approved release. Runtime commit
+`f7961e20922344faf10a71cd28438a11deccff2c` is deployed and verified.
+
+- One exact expense / existing early QR receipt: Add receipt opens the file
+  chooser directly. Multiple expenses retain explicit selection. Exact payment
+  refs and all server authorization/coverage checks remain unchanged.
+- Add requisites and Replace open the chooser directly. New requisites retain
+  the existing method-based default (QR for USDT/CNY, REQUISITES for BANK);
+  replacement retains an existing REQUISITES purpose. This is not content
+  recognition or automatic confirmation of QR validity. No old file is relabelled.
+- Changed runtime component: `components/ProcurementDocumentSections.tsx`.
+  Added isolated browser regression test; package/lock versions aligned.
+  Twenty-four tests passed (browser scenarios, component rendering, document
+  policies/dispatch, QR request policy and release metadata), plus TypeScript,
+  full build and diff checks. Physical iPhone picker remains untested.
+- Server Git, public version and authenticated ADMIN label verified as 1.15.3;
+  builtAt `2026-10-24T22:38:48.215Z` (25 October 01:38 MSK), public health 200.
+  Public revision remains null; source was independently checked through SSH.
+- Real ADMIN filechooser events verified after one click: Cargo Add receipt and
+  Tural Add requisites. No intermediary panel, no production files uploaded,
+  no changes to applications/approval/notification state. Cancellation and
+  repeat file selection tested locally. Buyer behavior uses the shared component
+  and was tested in isolation; live buyer mutation was not performed.
+- No migration, database writes or cleanup in this release. Env/mount signatures
+  preserved, current plus two registered images checked before building;
+  `portal-app:rollback-before-1.15.3` retained. Approximately 16 GiB free after.
+- Verified image registered after independent UI checks, outside deploy flock:
+  `sha256:03906bd520bbe85c777a2d3b19e1336ddbc25c4f36acc2533b40fe2eea2baebe`.
+  Script `/tmp/mobo-picker-1.15.3-remote.sh` ended PICKER_DEPLOY_VERIFIED=1,
+  PICKER_DEPLOY_EXIT=0. Native Terminal launcher used; owner entered sudo there.
+- Proof: `/tmp/mobo-picker-1.15.3-production.png`. Unrelated team-control and
+  attendance working-tree notes excluded and preserved.
