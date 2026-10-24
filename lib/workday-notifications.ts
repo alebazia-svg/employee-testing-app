@@ -20,6 +20,8 @@ import { isCashMorning, cashMorningNotBefore } from '@/lib/procurement-morning-p
 import { workdayNotificationThreadKey } from '@/lib/workday-notification-thread';
 import { CASH_ISSUE_KIND, cashIssueHref } from '@/lib/procurement-cash-issue-policy';
 import { cashIssuePushDecision, queueCashIssuePush } from '@/lib/procurement-cash-issue-notifications';
+import {QR_CHECK_KIND,qrCheckPlan} from './procurement-qr-check-policy';
+import {qrCheckPushDecision} from './procurement-qr-check-notifications';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -292,6 +294,7 @@ export function notificationTargetKey(notification: { id: number; taskId: number
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  if(notification.kind===QR_CHECK_KIND){const id=qrCheckPlan(notification.fingerprint||'');return id?receiptHref(id,false):'/procurement';}
   if (notification.kind === EMPLOYEE_EXPENSE_KIND) return '/employee?attention=cash';
   if (notification.kind === CASH_ISSUE_KIND) return cashIssueHref(notification.fingerprint);
   if(notification.kind===RECEIPT_EMPLOYEE_KIND) {
@@ -357,7 +360,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
   // A crashed sender may already have delivered its push. Keep its inbox item, but
   // never automatically replay an uncertain delivery and wake the employee twice.
   await prisma.workdayNotification.updateMany({ where: {
-    kind: { in: [DELIVERY_READY_KIND, COLLECTION_READY_KIND, CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND] }, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
+    kind: { in: [DELIVERY_READY_KIND, COLLECTION_READY_KIND, CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND, QR_CHECK_KIND] }, pushStatus: 'delivery_sending', nextPushAttemptAt: { lte: now },
     status: { in: ['pending', 'sent'] },
   }, data: { status: 'sent', sentAt: now, pushStatus: 'delivery_unknown', nextPushAttemptAt: null, lastError: 'DELIVERY_RESULT_UNKNOWN' } });
   // The delivery producer is idempotent; a source outage must not block other domains.
@@ -396,6 +399,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
 
   for (const notification of due) {
     const delivery = notification.kind === EMPLOYEE_EXPENSE_KIND ? await expensePushDecision(notification, dispatchTime())
+      : notification.kind === QR_CHECK_KIND ? await qrCheckPushDecision(notification,dispatchTime())
       : notification.kind === CASH_ISSUE_KIND ? await cashIssuePushDecision(notification, dispatchTime())
       : notification.kind === DELIVERY_READY_KIND ? await deliveryPushDecision(notification, dispatchTime())
       : notification.kind === COLLECTION_READY_KIND ? await collectionPushDecision(notification, dispatchTime()) : null;
@@ -465,7 +469,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
-          : scheduleNoticeKinds.includes(notification.kind) ? { title: 'Вопросы по графику', body: 'Откройте приложение и отметьте рабочие дни или выходные.' } : delivery?.state === 'send' ? [CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND].includes(notification.kind) ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
+          : scheduleNoticeKinds.includes(notification.kind) ? { title: 'Вопросы по графику', body: 'Откройте приложение и отметьте рабочие дни или выходные.' } : delivery?.state === 'send' ? [CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND, QR_CHECK_KIND].includes(notification.kind) ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
         url: scheduleNoticeKinds.includes(notification.kind) ? '/employee?attention=schedule' : workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,

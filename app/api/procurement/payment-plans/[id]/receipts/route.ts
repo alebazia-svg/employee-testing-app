@@ -1,15 +1,17 @@
 import {getCurrentUser} from '@/lib/auth';
 import {prisma} from '@/lib/prisma';
-import {receiptPlan,receiptSelect,ReceiptError,saveProcurementReceipt} from '@/lib/procurement-receipts';
+import {receiptPlan,receiptSelect,ReceiptError,saveProcurementReceipt,legacyReceiptWhere} from '@/lib/procurement-receipts';
+import {documentPurpose} from '@/lib/procurement-document-policy';
+import {verifyDocumentPaymentRefs} from '@/lib/procurement-document-coverage-server';
 import {RECEIPT_MAX_BYTES} from '@/lib/procurement-receipt-policy';
 export const runtime='nodejs';
 type Props={params:Promise<{id:string}>};
 const fail=(error:unknown)=>Response.json({error:error instanceof ReceiptError?error.message:'Не удалось обработать чек. Повторите позже.'},{status:error instanceof ReceiptError?error.status:503});
-export async function GET(_req:Request,props:Props) {
+export async function GET(req:Request,props:Props) {
   const user=await getCurrentUser();if(!user)return Response.json({error:'Необходим вход.'},{status:401});
   try {
     const {id}=await props.params;await receiptPlan(prisma,user,id);
-    return Response.json({receipts:await prisma.supplierPaymentReceipt.findMany({where:{planId:id},select:receiptSelect,orderBy:{createdAt:'asc'}})},{headers:{'Cache-Control':'no-store'}});
+    return Response.json({receipts:await prisma.supplierPaymentReceipt.findMany({where:{planId:id,...(new URL(req.url).searchParams.get('documents')==='1'?{}:legacyReceiptWhere)},select:receiptSelect,orderBy:{createdAt:'asc'}})},{headers:{'Cache-Control':'no-store'}});
   } catch(error){return fail(error);}
 }
 export async function POST(req:Request,props:Props) {
@@ -29,7 +31,12 @@ export async function POST(req:Request,props:Props) {
     try {data=await new Response(Buffer.concat(chunks),{headers:{'Content-Type':req.headers.get('content-type')||''}}).formData();}catch{throw new ReceiptError('Не удалось прочитать файл.',400);}
     const files=data.getAll('file');const file=files[0];
     if(files.length!==1||!(file instanceof File))throw new ReceiptError('Выберите один файл.',400);
-    const result=await saveProcurementReceipt(prisma,user,id,file);
+    let purpose;
+    try{purpose=documentPurpose(data.get('purpose')||'RECEIPT');}catch{throw new ReceiptError('Выберите назначение файла.',400);}
+    const coverage=data.has('paymentRefs')?await verifyDocumentPaymentRefs(id,purpose,data.get('paymentRefs')):undefined;
+    const replaceId=data.get('replaceId');
+    if(replaceId!=null&&(typeof replaceId!=='string'||replaceId.length>100))throw new ReceiptError('Некорректный файл для замены.',400);
+    const result=await saveProcurementReceipt(prisma,user,id,file,undefined,{purpose,...coverage,replaceId:replaceId||undefined,replaceRevision:data.has('replaceRevision')?Number(data.get('replaceRevision')):undefined});
     return Response.json(result,{status:result.duplicate?200:201});
   }catch(error){return fail(error);}
 }

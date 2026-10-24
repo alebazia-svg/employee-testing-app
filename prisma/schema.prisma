@@ -72,6 +72,7 @@ model User {
   approvedProcurementPaymentPlans  SupplierPaymentPlan[]             @relation("SupplierPaymentPlanApprovedBy")
   procurementPaymentEvents         SupplierPaymentPlanEvent[]
   procurementReceipts              SupplierPaymentReceipt[]
+  confirmedProcurementQr           SupplierPaymentReceipt[] @relation("ConfirmedProcurementQr")
 }
 
 model SupplierPaymentPlan {
@@ -136,12 +137,25 @@ model SupplierPaymentReceipt {
   mimeType     String
   size         Int
   sha256       String
+  purpose      String              @default("RECEIPT")
+  revision     Int                 @default(0)
+  replacedById String?
+  qrConfirmedAt DateTime?
+  qrConfirmedById Int?
+  qrConfirmationContext String?
+  paymentRefs  Json?
+  paymentSnapshots Json?
+  receiptPlanContext String?
   createdAt    DateTime            @default(now())
   plan         SupplierPaymentPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
   author       User                @relation(fields: [authorUserId], references: [id], onDelete: Restrict)
+  qrConfirmedBy User?              @relation("ConfirmedProcurementQr", fields: [qrConfirmedById], references: [id], onDelete: Restrict, map: "SupplierPaymentReceipt_qr_actor_fk")
+  replacedBy SupplierPaymentReceipt? @relation("ReplacedPaymentDocument", fields: [replacedById], references: [id], onDelete: Restrict, map: "SupplierPaymentReceipt_replacement_fk")
+  replaces SupplierPaymentReceipt[] @relation("ReplacedPaymentDocument")
 
   @@unique([planId, sha256])
   @@index([planId, createdAt])
+  @@index([planId, purpose])
 }
 
 model ExpenseRequestSyncRun {

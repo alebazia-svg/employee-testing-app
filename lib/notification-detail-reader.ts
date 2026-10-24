@@ -8,6 +8,8 @@ import {receiptPlanFromFingerprint,canAccessProcurementReceipts} from '@/lib/pro
 import {buyerPaymentComment} from '@/lib/procurement-buyer-comment';
 import {expenseListItem} from '@/lib/expense-request-list-item';
 import {savedPaymentEvidence} from '@/lib/procurement-evidence-continuity';
+import {documentState} from '@/lib/procurement-document-policy';
+import {QR_CHECK_KIND,qrCheckPlan} from './procurement-qr-check-policy';
 
 export async function readNotificationDetail(user: { id: number; role: string; portalArea: string; isActive: boolean }, audience: string, id: string) {
   const admin=audience==='admin';
@@ -52,7 +54,7 @@ export async function readNotificationDetail(user: { id: number; role: string; p
       if(request.decidedBy)decision={label:match[2]==='approved'?'Согласовано':'Не согласовано',name:portalPersonName(request.decidedBy),at:request.decidedAt.toISOString()};
       return Response.json({kind,body:match[2]==='approved'?`Смена за ${request.workDayEntry.date} завершена. ${request.reasonCode.startsWith('cash_encashment_')?'Инкассация не подтверждена.':'Неисправленные проблемы остаются на контроле.'}`:request.decisionComment,...(decision?{decision}:{})},{headers});
     }
-    planId=kind==='receipts'?receiptPlanFromFingerprint(notification.fingerprint):/^procurement-payment:([^:]+):/.exec(notification.fingerprint)?.[1]||null;
+    planId=kind==='receipts'?(notification.kind===QR_CHECK_KIND?qrCheckPlan(notification.fingerprint):receiptPlanFromFingerprint(notification.fingerprint)):/^procurement-payment:([^:]+):/.exec(notification.fingerprint)?.[1]||null;
   }
   if(!planId||!['payment','receipts'].includes(kind))return missing();
   const plan=await prisma.supplierPaymentPlan.findUnique({where:{id:planId}});
@@ -69,7 +71,9 @@ export async function readNotificationDetail(user: { id: number; role: string; p
     state:saved.evidence.state,verification:'last-confirmed',
     issuedAmount:saved.evidence.issuedAmount,paidAmount:saved.evidence.paidAmount,
     paidForeignAmount:saved.evidence.paidForeignAmount,
+    cashOrders:saved.evidence.cashOrders,currencyPayments:saved.evidence.currencyPayments,
+    qrFunding:saved.evidence.qrFunding,
   }:{state:'SOURCE_UNAVAILABLE',verification:'unavailable'}}:{};
   plan.orderNumbers=Array.isArray(plan.orderNumbers)?plan.orderNumbers.filter(value=>typeof value==='string'):[];
-  return Response.json({kind,admin,...(decision?{decision}:{}),plan:{...receiptEvidence,id:plan.id,planCode:plan.planCode,supplierPartner:plan.supplierPartner,plannedDate:plan.plannedDate.toISOString(),updatedAt:plan.updatedAt.toISOString(),plannedAmount:String(plan.plannedAmount),foreignAmount:plan.foreignAmount===null?null:String(plan.foreignAmount),exchangeRate:plan.exchangeRate===null?null:String(plan.exchangeRate),paymentMethod:plan.paymentMethod,condition:buyerPaymentComment(plan.condition),orderNumbers:plan.orderNumbers,status:plan.status,paymentPurpose:plan.paymentPurpose,revision:readPaymentRevision(plan.oneCCashEvidence)}},{headers:{'Cache-Control':'private, no-store'}});
+  return Response.json({kind,admin,...(decision?{decision}:{}),plan:{...receiptEvidence,id:plan.id,planCode:plan.planCode,supplierPartner:plan.supplierPartner,supplierCounterparty:plan.supplierCounterparty,currency:plan.currency,orderRefs:plan.orderRefs,documentState:documentState(plan.oneCCashEvidence),plannedDate:plan.plannedDate.toISOString(),updatedAt:plan.updatedAt.toISOString(),plannedAmount:String(plan.plannedAmount),foreignAmount:plan.foreignAmount===null?null:String(plan.foreignAmount),exchangeRate:plan.exchangeRate===null?null:String(plan.exchangeRate),paymentMethod:plan.paymentMethod,condition:buyerPaymentComment(plan.condition),orderNumbers:plan.orderNumbers,status:plan.status,paymentPurpose:plan.paymentPurpose,revision:readPaymentRevision(plan.oneCCashEvidence)}},{headers:{'Cache-Control':'private, no-store'}});
 }

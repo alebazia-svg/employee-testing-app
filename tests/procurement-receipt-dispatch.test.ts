@@ -7,12 +7,12 @@ test('receipt push passes 200 delivered entries, sends the next once, and observ
   const now=new Date('2026-10-11T09:00:00Z');
   const sent:string[]=[];
   const deliveries=new Map<string,any>();
-  const rows=Array.from({length:201},(_,i)=>({id:`r${i}`,userId:1,readAt:null,eventId:`e${i}`,
-    event:{id:`e${i}`,type:'procurement.receipt_added',createdAt:now,title:'Чек',body:'Добавлен',href:'/procurement'},
+  const rows=Array.from({length:202},(_,i)=>({id:`r${i}`,userId:1,readAt:null,eventId:`e${i}`,
+    event:{id:`e${i}`,sourceId:`f${i}`,type:'procurement.receipt_added',createdAt:now,title:'Чек',body:'Добавлен',href:'/procurement'},
     user:{pushSubscriptions:[{id:1,createdAt:new Date('2026-10-01'),endpoint:'https://invalid.test/push',p256dh:'test',auth:'test'}]}}));
   rows.slice(0,200).forEach(row=>deliveries.set(row.eventId,{id:row.eventId,status:'sent',attemptCount:1}));
   const pages:string[]=[];
-  const db={adminInboxEvent:{findFirst:async()=>null},adminInboxReceipt:{findMany:async(args:any)=>{
+  const db={supplierPaymentReceipt:{findUnique:async({where}:any)=>({id:where.id,purpose:where.id==='f201'?'QR':'RECEIPT',replacedById:null})},adminInboxEvent:{findFirst:async()=>null},adminInboxReceipt:{findMany:async(args:any)=>{
     assert.deepEqual(args.orderBy,[{createdAt:'asc'},{id:'asc'}]);
     pages.push(args.cursor?.id||'start');
     const start=args.cursor?rows.findIndex(row=>row.id===args.cursor.id)+args.skip:0;
@@ -40,7 +40,8 @@ test('receipt push passes 200 delivered entries, sends the next once, and observ
   keys.forEach(key=>process.env[key]='test-only');
   try{
     const api=await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
-    assert.deepEqual(await api.dispatchAdminInboxWebPush(now),{receipts:201,sent:1,failed:0});
+    assert.deepEqual(await api.dispatchAdminInboxWebPush(now),{receipts:202,sent:1,failed:0});
+    assert.equal(deliveries.get('e201').status,'cancelled');
     assert.deepEqual(pages,['start','r99','r199']);assert.deepEqual(sent,['e200']);
     assert.equal((await api.dispatchAdminInboxWebPush(now)).sent,0);
     await api.dispatchAdminInboxWebPush(new Date('2026-10-11T23:00:00Z'));

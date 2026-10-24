@@ -13,8 +13,8 @@ export type ReceiptPaymentPlan = {
     issuedAmount?: number;
     paidAmount?: number;
     paidForeignAmount?: number;
-    cashOrders?: {date?: string; number?: string}[];
-    currencyPayments?: {date?: string}[];
+    cashOrders?: {ref?: string; date?: string; number?: string;amount?:number}[];
+    currencyPayments?: {ref?: string; date?: string; number?: string;foreignAmount?:number}[];
   };
 };
 

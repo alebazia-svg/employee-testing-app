@@ -11,7 +11,7 @@ import { getWorkdayShiftCorrectionState } from '@/lib/workday-shift-change';
 import { getMoscowDateKey } from '@/lib/workday';
 import { readNotificationDetail } from '@/lib/notification-detail-reader';
 import { prisma } from '@/lib/prisma';
-import { receiptSelect, readProcurementReceipt, ReceiptError } from '@/lib/procurement-receipts';
+import { receiptSelect, readProcurementReceipt, ReceiptError, legacyReceiptWhere } from '@/lib/procurement-receipts';
 import { deliveryUserAllowed } from '@/lib/procurement-delivery-policy';
 import { deliveryMappedUser, loadDeliveryView } from '@/lib/procurement-delivery-reminders';
 // Explicit read-only allowlist. No arbitrary route forwarding or effective-user auth.
@@ -34,7 +34,7 @@ export async function GET(req: Request, context: { params: Promise<{ visitId: st
     case 'receipts': {
       const ids = url.searchParams.getAll('plan');
       if (!ids.length || ids.length > 100 || ids.some(id => !id || id.length > 100)) return Response.json({ error: 'Неверный список заявок.' }, { status: 400, headers });
-      const receipts = await prisma.supplierPaymentReceipt.findMany({ where: { planId: { in: ids }, plan: { managerUserId: user.id } }, select: receiptSelect, orderBy: { createdAt: 'asc' } });
+      const receipts = await prisma.supplierPaymentReceipt.findMany({ where: { planId: { in: ids }, plan: { managerUserId: user.id }, ...(url.searchParams.get('documents')==='1'?{}:legacyReceiptWhere) }, select: receiptSelect, orderBy: { createdAt: 'asc' } });
       return Response.json({ receipts }, { headers });
     }
     case 'receipt-file': {

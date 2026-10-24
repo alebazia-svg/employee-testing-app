@@ -22,6 +22,7 @@ export function employeePreviewUrl(visitId: string, input: string, init?: Reques
   if (notification) params.set('notification', notification[1]);
   if (receiptFile) { params.set('plan', decodeURIComponent(receiptFile[1])); params.set('receipt', decodeURIComponent(receiptFile[2])); }
   if (resource === 'receipts') for (const id of url.searchParams.getAll('plan')) params.append('plan', id);
+  if (resource === 'receipts' && url.searchParams.get('documents') === '1') params.set('documents','1');
   if (resource === 'payroll') for (const month of url.searchParams.getAll('month')) params.append('month', month);
   if (resource === 'payroll') for (const mode of url.searchParams.getAll('snapshot')) params.append('snapshot', mode);
   if (resource === 'schedule' && url.searchParams.has('month')) params.set('month', url.searchParams.get('month')!);

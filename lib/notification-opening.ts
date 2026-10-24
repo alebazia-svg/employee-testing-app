@@ -10,7 +10,7 @@ export function adminNotificationOpening(event:{sourceType?:string;type:string;b
 }
 export function employeeNotificationOpening(item:{kind:string}):NotificationOpening {
   if(['workday_closed_by_admin','workday_close_exception_decision'].includes(item.kind))return 'notice';
-  if(item.kind==='procurement_receipt_added')return 'receipts';
+  if(['procurement_receipt_added','procurement_qr_check'].includes(item.kind))return 'receipts';
   if(['procurement_payment_approved','procurement_payment_needs_changes','procurement_payment_cancelled','procurement_payment_updated'].includes(item.kind))return 'payment';
   return 'page';
 }

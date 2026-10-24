@@ -13,8 +13,10 @@ export type PaymentEvidenceView = ProcurementPaymentEvidence & {
 };
 const object = (value: unknown): Record<string, any> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {};
 
-/** Display continuity only. Never pass cached evidence to matching, reserves,
- * notifications, manual linking or any write decision. */
+/** Financial display continuity only. Never authorize matching, reserves,
+ * notifications, manual expense linking or financial writes from this cache.
+ * Document storage may reference already observed exact payment IDs; it cannot
+ * change reconciliation, payment amounts or completion. */
 export function paymentEvidenceIdentity(plan: EvidenceContinuityPlan) {
   const meta = object(plan.oneCCashEvidence);
   return createHash('sha256').update(JSON.stringify([

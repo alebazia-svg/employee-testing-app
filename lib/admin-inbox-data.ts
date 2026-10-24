@@ -22,6 +22,7 @@ import {
 } from '@/lib/admin-inbox-read-policy';
 import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycle';
 import { prisma } from '@/lib/prisma';
+import {isPaymentReceipt} from './procurement-document-policy';
 
 export type AdminInboxViewItem = {
   id: string;
@@ -68,6 +69,9 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   ]);
 
   const rows = [...new Map([...displayRows, ...unreadRows, ...lifecycleRows].map((row) => [row.id, row])).values()];
+  const receiptIds=rows.filter(r=>r.event.sourceType==='supplier_payment_receipt').map(r=>r.event.sourceId);
+  const currentReceipts=receiptIds.length?await prisma.supplierPaymentReceipt.findMany({where:{id:{in:receiptIds}},select:{id:true,purpose:true,replacedById:true}}):[];
+  const activeReceiptIds=new Set(currentReceipts.filter(isPaymentReceipt).map(f=>f.id));
 
   const expenseRefs = rows.filter((row) => row.event.sourceType === 'expense_request').map((row) => row.event.sourceId);
   const issueIds = rows.filter((row) => row.event.sourceType === 'workday_control_issue').map((row) => Number(row.event.sourceId)).filter(Number.isInteger);
@@ -212,7 +216,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const exception = exceptionsById.get(sourceId);
     const cashOperation = cashOperationsById.get(sourceId);
     const meta = adminInboxEventMeta(row.event.type);
-    const lifecycleManaged = (ATTENTION_LIFECYCLE_SOURCES as readonly string[]).includes(sourceType);
+    const correctedReceipt=sourceType==='supplier_payment_receipt'&&!activeReceiptIds.has(sourceId);
+    const lifecycleManaged = correctedReceipt||(ATTENTION_LIFECYCLE_SOURCES as readonly string[]).includes(sourceType);
     const sourceState = adminInboxSourceState({
       sourceType,
       eventType: row.event.type,
@@ -229,6 +234,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     if (isAdminInboxTechnicalEvent(row.event.type) && latestTechnicalEventBySource.get(adminInboxTechnicalSourceKey(row.event)) !== row.event.id) {
       sourceState.active = false; sourceState.label = 'В истории'; sourceState.tone = 'history';
     }
+    if(correctedReceipt){sourceState.active=false;sourceState.label='Назначение файла изменено';sourceState.tone='history';}
     const item: AdminInboxViewItem = {
       id: row.id,
       eventId: row.event.id,

@@ -12,10 +12,39 @@
 .procurement-receipts-list h3 {font-size:14px;font-weight:700;overflow-wrap:anywhere;}
 .procurement-receipts-list p {margin-top:5px;font-size:11px;color:#687079;}
 .procurement-receipts-list strong {white-space:nowrap;font-variant-numeric:tabular-nums;}
-.procurement-receipts-dialog .procurement-receipt-add {background:#faf1e7!important;border-color:#d8b99a!important;color:#754725!important;white-space:nowrap;}
-.procurement-receipts-dialog .procurement-receipt-add:hover {background:#f3e4d3!important;}
+.procurement-receipts-dialog .procurement-receipt-add {background:#fff!important;border-color:#d9dce0!important;color:#41464d!important;white-space:nowrap;}
+.procurement-receipts-dialog .procurement-receipt-add:hover {background:#faf7f3!important;}
 .procurement-receipts-files {grid-column:1/-1;list-style:none;padding:0;font-size:12px;}
 .procurement-receipts-files li {margin-top:8px;overflow-wrap:anywhere;}
 .procurement-receipts-files a {color:#754725;text-decoration:underline;}
 .procurement-receipts-files span {display:block;color:#687079;margin-top:3px;}
 @media(max-width:560px){.procurement-receipts-list>li{grid-template-columns:minmax(0,1fr) auto;gap:12px;}.procurement-receipts-list>li>div:first-child{grid-column:1/-1;}}
+.payment-document-sections {display:grid;gap:18px;color:#303438;font-size:14px;}
+.payment-document-sections section+section {border-top:1px solid #e6e2dc;padding-top:16px;}
+.payment-document-heading,.payment-document-line {display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;}
+.payment-document-heading h3 {font-size:15px!important;}
+.payment-document-warning {display:inline-block;color:#865018;background:#fff1d8;border-radius:6px;padding:3px 7px;font-size:12px;margin-left:4px;}
+.payment-document-ok {font-size:12px;color:#276044;}
+.payment-document-view-status {margin:0;padding:10px 20px;background:#faf5ed;color:#754725;font-size:13px;border-bottom:1px solid #e6ded4;}
+.payment-documents-inline {padding:0;}
+.procurement-detail>.procurement-document-section {grid-column:1/-1;min-width:0;}
+.payment-documents-inline .procurement-receipts-list>li {padding:12px 0;border-bottom:0;}
+.payment-document-files {list-style:none;padding:0;margin:0;}
+.payment-document-files>li {padding:10px 0;}
+.payment-document-open {display:flex;align-items:center;gap:8px;color:#353b40;text-align:left;font-weight:600;max-width:100%;}
+.payment-document-open span {overflow-wrap:anywhere;min-width:0;}
+.payment-document-open svg {flex-shrink:0;}
+.payment-document-meta {font-size:12px;color:#626971;margin:3px 0 6px 26px;}
+.payment-document-sections .payment-document-empty {font-size:13px;color:#626971;margin:9px 0 0;}
+.payment-document-secondary {font-size:12px;color:#755438;padding:6px 0;margin-right:12px;}
+.payment-document-panel {border:1px solid #e3d9ce;border-radius:10px;background:#faf8f5;padding:12px;margin-top:10px;}
+.payment-document-panel p {font-size:13px!important;color:#41464d!important;margin:0 0 8px!important;}
+.payment-document-panel label,.payment-document-panel legend {display:block;font-size:13px;margin-bottom:8px;}
+.payment-document-panel input {margin-right:7px;}
+.payment-document-panel>div {display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.payment-document-sections summary {font-size:13px;color:#626971;cursor:pointer;}
+.payment-history-money {display:grid;grid-template-columns:1fr 1fr;gap:16px;border:1px solid #e6ded4;border-radius:12px;background:#faf8f5;padding:14px 16px;}
+.payment-history-money span {display:block;color:#626971;font-size:13px;}
+.payment-history-money strong {display:block;font-size:20px;font-weight:750;color:#303438;margin-top:5px;font-variant-numeric:tabular-nums;}
+.payment-history-money p {font-size:13px;color:#626971;margin-top:4px;}
+@media(max-width:460px){.payment-history-money{gap:12px;padding:12px;}.payment-history-money strong{font-size:17px;}}

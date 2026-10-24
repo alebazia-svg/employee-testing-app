@@ -7,15 +7,37 @@ import { cashNoticeBase } from './procurement-morning-policy';
 import { isFinishedPaymentState } from './procurement-small-remainder';
 import { CASH_ISSUE_KIND, cashIssueNotices } from './procurement-cash-issue-policy';
 import { currentCashIssue } from './procurement-cash-issue-notifications';
+import {RECEIPT_EMPLOYEE_KIND} from './procurement-receipt-policy';
+import {isPaymentReceipt} from './procurement-document-policy';
+import {QR_CHECK_KIND,needsQrCheck,qrCheckPlan,qrCheckRequestDay} from './procurement-qr-check-policy';
+import {qrCheckKey} from './procurement-qr-check-key';
+import {savedPaymentEvidence} from './procurement-evidence-continuity';
 
 export function procurementNotificationPlan(fingerprint: string, kind: string) {
   if (!kind.startsWith('procurement_payment_')) return null;
   return /^procurement-payment:([^:]+):(approved|needs_changes|cancelled|updated):/.exec(fingerprint)?.[1] ?? null;
 }
 type Row = { id: number; kind: string; fingerprint: string };
-type Db = Pick<Prisma.TransactionClient, 'supplierPaymentPlan'>;
+type Db = Pick<Prisma.TransactionClient, 'supplierPaymentPlan'|'supplierPaymentReceipt'>;
 export async function inactiveProcurementNotifications(db: Db, rows: Row[]) {
   const inactive = new Set<number>();
+  const qrRows=rows.filter(r=>r.kind===QR_CHECK_KIND);
+  if(qrRows.length){
+    // DB-only projection: opening the bell never starts another 1C scan.
+    const ids=qrRows.map(r=>qrCheckPlan(r.fingerprint)).filter((id):id is string=>!!id);
+    const plans=await db.supplierPaymentPlan.findMany({where:{id:{in:ids}},include:{receipts:{where:{purpose:'QR',replacedById:null}}}});
+    for(const r of qrRows){
+      const plan=plans.find(p=>p.id===qrCheckPlan(r.fingerprint)),day=qrCheckRequestDay(r.fingerprint);
+      if(!plan||!day||!needsQrCheck(plan,plan.receipts,day)||qrCheckKey(plan,plan.receipts,day)!==r.fingerprint||isFinishedPaymentState(savedPaymentEvidence(plan)?.evidence.state))inactive.add(r.id);
+    }
+  }
+  const receiptRows=rows.filter(r=>r.kind===RECEIPT_EMPLOYEE_KIND);
+  if(receiptRows.length){
+    const ids=receiptRows.map(r=>/^procurement-receipt:[^:]+:([^:]+)$/.exec(r.fingerprint)?.[1]).filter((id):id is string=>!!id);
+    const files=await db.supplierPaymentReceipt.findMany({where:{id:{in:ids}},select:{id:true,purpose:true,replacedById:true}});
+    const active=new Set(files.filter(isPaymentReceipt).map(f=>f.id));
+    for(const r of receiptRows)if(!active.has(r.fingerprint.split(':')[2]))inactive.add(r.id);
+  }
   if (rows.some(r => r.kind === CASH_ISSUE_KIND)) {
     const current = await currentCashIssue();
     if (current.state !== 'unknown') for (const row of rows) {

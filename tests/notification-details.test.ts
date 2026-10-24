@@ -39,6 +39,9 @@ test('notification detail authenticates recipient and record owner, never reads 
   assert.equal((await get('employee','4')).status,404);
   assert.equal((await get('employee','NaN')).status,404);assert.equal((await get('employee','1.2')).status,404);
   owner=8;assert.equal((await get('employee','3')).status,404);owner=2;
+  kind='procurement_qr_check';fingerprint=`procurement-qr-check:plan:manual:2026-10-25:${'a'.repeat(64)}`;
+  assert.equal((await (await get('employee','3')).json()).kind,'receipts');
+  owner=8;assert.equal((await get('employee','3')).status,404);owner=2;
   kind='planned';assert.equal((await get('employee','3')).status,404);kind='procurement_payment_approved';
   user={id:1,role:'ADMIN',portalArea:'ADMIN',isActive:true};
   assert.equal((await get('admin','plan:plan:revision:2026-10-12')).status,200);

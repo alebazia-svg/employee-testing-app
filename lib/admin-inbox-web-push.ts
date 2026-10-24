@@ -5,6 +5,7 @@ import { observePushAttempt } from './push-attempt-observation';
 import { dispatchAdminAttentionPush } from './admin-inbox-attention-push';
 import { ATTENTION_PUSH_TYPES } from './admin-inbox-attention-policy';
 import { prisma } from '@/lib/prisma';
+import {isPaymentReceipt} from './procurement-document-policy';
 import { loadAdminInbox } from '@/lib/admin-inbox-data';
 import {
   adminInboxWebPushPayload,
@@ -95,6 +96,13 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
       });
       if (claimed.count !== 1) continue;
       try {
+        if(receipt.event.type===RECEIPT_PUSH_TYPE){
+          const file=await prisma.supplierPaymentReceipt.findUnique({where:{id:receipt.event.sourceId},select:{id:true,purpose:true,replacedById:true}});
+          if(!file||!isPaymentReceipt(file)){
+            await prisma.adminInboxDelivery.update({where:{id:delivery.id},data:{status:'cancelled',lastErrorCode:'DOCUMENT_PURPOSE_CHANGED'}});
+            continue;
+          }
+        }
         await observePushAttempt(subscription, () => webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, adminInboxWebPushPayload({
           title: receipt.event.title,
           body: receipt.event.body,

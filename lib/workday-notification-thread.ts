@@ -1,5 +1,6 @@
 import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
 import { cashNoticeBase, cashMorningKey } from './procurement-morning-policy';
+import {QR_CHECK_KIND,qrCheckPlan} from './procurement-qr-check-policy';
 
 export type WorkdayNotificationThreadTarget = {
   id: number;
@@ -11,6 +12,7 @@ export type WorkdayNotificationThreadTarget = {
 };
 
 export function workdayNotificationThreadKey(notification: WorkdayNotificationThreadTarget) {
+  if(notification.kind===QR_CHECK_KIND&&qrCheckPlan(notification.fingerprint||''))return `qr-check:${qrCheckPlan(notification.fingerprint!)}`;
   if (notification.kind === EMPLOYEE_EXPENSE_KIND) return 'expense:payable';
   if (notification.issueId) return `issue:${notification.issueId}`;
   if (notification.reviewId) return `review:${notification.reviewId}`;
@@ -21,6 +23,7 @@ export function workdayNotificationThreadKey(notification: WorkdayNotificationTh
 }
 
 export function workdayNotificationThreadWhere(notification: WorkdayNotificationThreadTarget) {
+  if(notification.kind===QR_CHECK_KIND&&qrCheckPlan(notification.fingerprint||''))return {kind:QR_CHECK_KIND,fingerprint:{startsWith:`procurement-qr-check:${qrCheckPlan(notification.fingerprint!)}:`},status:'sent'};
   if (notification.kind === EMPLOYEE_EXPENSE_KIND) return { kind: EMPLOYEE_EXPENSE_KIND, status: 'sent' };
   if (notification.issueId) return { issueId: notification.issueId };
   if (notification.reviewId) return { reviewId: notification.reviewId };

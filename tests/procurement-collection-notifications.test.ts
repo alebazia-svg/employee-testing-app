@@ -100,7 +100,7 @@ test('bell is personal, shows current cashbox and amount, uses neutral text on o
     const api = await load('app/api/employee/workday-notifications/route.ts', {
       '@/lib/auth': { getCurrentUser: async () => state === 'anonymous' ? null : { id: 42 } },
       '@/lib/prisma': { prisma: { workdayNotification: { findMany: async (a: any) => {
-        reads++; assert.equal(a.where.userId, 42); return [{ id: 1, kind: 'procurement_collection_ready', fingerprint: 'key', title: 'stale', body: 'stale' }];
+        reads++; assert.equal(a.where.userId, 42); return [{ id: 1, status:'sent',kind: 'procurement_collection_ready', fingerprint: 'key', title: 'stale', body: 'stale' }];
       } } } },
       '@/lib/workday-notifications': { reconcileActiveWorkdayNotifications: async (_d: any, rows: any) => rows, workdayNotificationHref: () => '/procurement' },
       '@/lib/procurement-collection-notifications': { COLLECTION_READY_KIND: 'procurement_collection_ready',
