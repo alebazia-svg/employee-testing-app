@@ -1,5 +1,6 @@
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { syncSubscribedAccess } from '@/lib/push-access-sync';
 
 function readString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -22,21 +23,29 @@ export async function POST(req: Request) {
   const auth = readString(payload?.keys?.auth);
   if (!endpoint || !p256dh || !auth) return Response.json({ error: 'Некорректная push-подписка' }, { status: 400 });
 
-  const subscription = await prisma.workdayPushSubscription.upsert({
-    where: { endpoint },
-    create: { userId: user.id, endpoint, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '' },
-    update: { userId: user.id, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '', disabledAt: null },
-  });
-  await prisma.workdayNotification.updateMany({
-    where: {
-      userId: user.id,
-      status: 'sent',
-      readAt: null,
-      pushStatus: { in: ['no_subscription', 'retry_pending'] },
-    },
-    data: { pushStatus: 'retry_pending', nextPushAttemptAt: new Date(), lastError: '' },
-  });
-  return Response.json({ ok: true, id: subscription.id });
+  try {
+    const result = await prisma.$transaction(async tx => {
+      const subscription = await tx.workdayPushSubscription.upsert({
+        where: { endpoint },
+        create: { userId: user.id, endpoint, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '' },
+        update: { userId: user.id, p256dh, auth, userAgent: req.headers.get('user-agent') ?? '', disabledAt: null },
+      });
+      const accessSynced = await syncSubscribedAccess(tx, user.id, subscription);
+      await tx.workdayNotification.updateMany({
+        where: {
+          userId: user.id,
+          status: 'sent',
+          readAt: null,
+          pushStatus: { in: ['no_subscription', 'retry_pending'] },
+        },
+        data: { pushStatus: 'retry_pending', nextPushAttemptAt: new Date(), lastError: '' },
+      });
+      return { ok: true, id: subscription.id, active: true, accessSynced };
+    });
+    return Response.json(result);
+  } catch {
+    return Response.json({ error: 'Не удалось сохранить подключение. Попробуйте ещё раз.' }, { status: 503 });
+  }
 }
 
 export async function DELETE(req: Request) {

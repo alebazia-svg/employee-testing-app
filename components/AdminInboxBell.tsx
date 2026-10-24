@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { savePushSubscription } from '@/lib/push-subscription-client';
 import { ArrowLeft, Bell, ChevronRight, X } from 'lucide-react';
 import {NotificationInboxSwitch} from './NotificationInboxSwitch';
 import { syncPwaAppBadge } from '@/lib/pwa-app-badge';
@@ -66,12 +67,7 @@ export function AdminInboxBell() {
       const registration = await navigator.serviceWorker.register('/workday-sw.js', { scope: '/' });
       const existing = await registration.pushManager.getSubscription();
       const subscription = existing ?? await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(config.publicKey) });
-      const response = await fetch('/api/admin/push-subscription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription),
-      });
-      if (!response.ok) throw new Error('Не удалось сохранить разрешение на уведомления.');
+      await savePushSubscription('/api/admin/push-subscription', subscription);
       setPushConnected(true);
       void load();
     } catch (error) {

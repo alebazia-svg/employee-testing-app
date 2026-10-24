@@ -4,6 +4,7 @@ import { employeeInboxIconKind } from '@/lib/employee-notice-icons';
 import { EmployeeNotificationInbox, type EmployeeInboxItem } from '@/components/workday/EmployeeNotificationInbox';
 import { EMPLOYEE_EXPENSE_KIND } from '@/lib/employee-expense-policy';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
+import { savePushSubscription } from '@/lib/push-subscription-client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -80,12 +81,7 @@ export function WorkdayNotificationsClient() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(config.publicKey),
       });
-      const response = await fetch('/api/employee/push-subscription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription),
-      });
-      if (!response.ok) throw new Error('Не удалось сохранить разрешение на уведомления.');
+      await savePushSubscription('/api/employee/push-subscription', subscription);
       setPushConnected(true);
     } catch (caught) {
       setPushConnected(false);

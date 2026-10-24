@@ -1,5 +1,6 @@
 'use client';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
+import { savePushSubscription } from '@/lib/push-subscription-client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -66,12 +67,7 @@ export function ProcurementNotificationsButton() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(config.publicKey),
       });
-      const response = await fetch('/api/employee/push-subscription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription),
-      });
-      if (!response.ok) throw new Error('Не удалось подключить уведомления.');
+      await savePushSubscription('/api/employee/push-subscription', subscription);
       setPushConnected(true);
     } catch (caught) {
       setPushConnected(false);

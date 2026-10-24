@@ -1,6 +1,7 @@
 import { getCurrentAdmin } from '@/lib/auth';
 import { adminPushRegistrationModeForRequest } from '@/lib/admin-push-subscription-policy';
 import { prisma } from '@/lib/prisma';
+import { syncSubscribedAccess } from '@/lib/push-access-sync';
 
 function readString(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
@@ -27,29 +28,33 @@ export async function POST(req: Request) {
   const registrationMode = adminPushRegistrationModeForRequest(req);
   const now = new Date();
   const userAgent = req.headers.get('user-agent') ?? '';
-  const subscription = await prisma.workdayPushSubscription.upsert({
-    where: { endpoint },
-    create: {
-      userId: admin.id,
-      endpoint,
-      p256dh,
-      auth,
-      userAgent,
-      disabledAt: registrationMode === 'legacy-disabled' ? now : null,
-    },
-    update: {
-      userId: admin.id,
-      p256dh,
-      auth,
-      userAgent,
-      disabledAt: registrationMode === 'legacy-disabled' ? now : null,
-    },
-  });
-  return Response.json({
-    ok: true,
-    id: subscription.id,
-    active: registrationMode !== 'legacy-disabled',
-  });
+  try {
+    const result = await prisma.$transaction(async tx => {
+      const subscription = await tx.workdayPushSubscription.upsert({
+        where: { endpoint },
+        create: {
+          userId: admin.id,
+          endpoint,
+          p256dh,
+          auth,
+          userAgent,
+          disabledAt: registrationMode === 'legacy-disabled' ? now : null,
+        },
+        update: {
+          userId: admin.id,
+          p256dh,
+          auth,
+          userAgent,
+          disabledAt: registrationMode === 'legacy-disabled' ? now : null,
+        },
+      });
+      const accessSynced = await syncSubscribedAccess(tx, admin.id, subscription);
+      return { ok: true, id: subscription.id, active: registrationMode !== 'legacy-disabled', accessSynced };
+    });
+    return Response.json(result);
+  } catch {
+    return Response.json({ error: 'Не удалось сохранить подключение. Попробуйте ещё раз.' }, { status: 503 });
+  }
 }
 
 export async function DELETE(req: Request) {

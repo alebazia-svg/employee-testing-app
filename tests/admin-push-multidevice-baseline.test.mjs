@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const route = await readFile(new URL('../app/api/admin/push-subscription/route.ts', import.meta.url), 'utf8');
 const bell = await readFile(new URL('../components/AdminInboxBell.tsx', import.meta.url), 'utf8');
+const saver = await readFile(new URL('../lib/push-subscription-client.ts', import.meta.url), 'utf8');
 const postHandler = route.split('export async function POST')[1].split('export async function DELETE')[0];
 
 test('registering one admin device never disables another active device', () => {
@@ -14,6 +15,7 @@ test('registering one admin device never disables another active device', () => 
 
 test('every permitted admin device refreshes its own push subscription', () => {
   assert.match(bell, /void connectPush\(false\)/);
-  assert.match(bell, /body: JSON\.stringify\(subscription\)/);
+  assert.match(bell, /savePushSubscription\('\/api\/admin\/push-subscription', subscription\)/);
+  assert.match(saver, /body: JSON\.stringify\(subscription\)/);
   assert.doesNotMatch(bell, /currentPwaClientMode/);
 });
