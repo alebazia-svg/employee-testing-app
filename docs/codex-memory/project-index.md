@@ -299,3 +299,10 @@ Per-employee ADMIN SCAN/PHOTO setting and direct system photo capture are in
 1.14.1. All production users remain SCAN; the owner chooses Milana's mode.
 See `qr-camera-modes-20261023.md` and `../ops/qr-camera-release-20261023.md`.
 Physical iPhone capture is not yet verified.
+
+## Employee activity — candidate 1.15.0
+
+- `employee-activity-20261024.md`: owner-approved bounded journal and
+  Employees → Activity modal. Additive migration; first-open evidence distinct
+  from legacy automatic readAt. Capture is best effort, not employee scoring.
+  Check the release evidence in that note before calling it production.
