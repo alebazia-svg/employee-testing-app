@@ -6,7 +6,8 @@ import { fetchSupplierCurrencyPaymentSnapshot } from '@/lib/procurement-currency
 import { expenseRequestMoscowDayEnd, fetchExpenseRequestSnapshot } from '@/lib/expense-request-source';
 import { matchProcurementPaymentEvidence } from '@/lib/procurement-currency-payment-evidence';
 import { paymentEvidenceFrom, paymentTimestamp, uniqueSupplierPayments } from '@/lib/procurement-ruble-payment-evidence';
-import { manualPaymentLinks, paymentFingerprint, samePaymentSupplier } from '@/lib/procurement-manual-payment-links';
+import { manualPaymentLinks, paymentFingerprint, samePaymentSupplier, manualPaymentCurrencyMatches } from '@/lib/procurement-manual-payment-links';
+import {rublePaymentFitsRemaining} from '@/lib/procurement-small-remainder';
 import {hasConfirmedPaymentBasis} from '@/lib/procurement-payment-basis';
 import {attachRequestOrderLinks} from '@/lib/procurement-request-payment-link';
 
@@ -39,7 +40,7 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
       let next = links.filter((link) => link.ref.toLowerCase() !== ref);
       if (payload.action === 'LINK') {
         if (plan.status !== 'APPROVED') throw new Error('Выберите согласованную заявку.');
-        const payment = uniqueSupplierPayments(source!.payments).find((row) => row.ref.toLowerCase() === ref && row.documentCurrency === (plan.paymentMethod === 'USDT' ? 'USDT' : 'РУБ'));
+        const payment = uniqueSupplierPayments(source!.payments).find((row) => row.ref.toLowerCase() === ref && manualPaymentCurrencyMatches(plan.paymentMethod, row.documentCurrency));
         if (!payment?.posted || payment.deleted || !samePaymentSupplier(plan, payment) ||
             !(paymentTimestamp(payment.date) >= plan.createdAt.getTime())) throw new Error('Расходник не соответствует поставщику или дате заявки.');
         const withBasis = attachRequestOrderLinks([payment], requests!.rows)[0];
@@ -68,8 +69,12 @@ export async function POST(req: Request, props: { params: Promise<{ id: string }
         const assignedForeign = proposed.currencyPayments.find((row) => row.ref.toLowerCase() === ref)?.foreignAmount || 0;
         if (payment.documentAmount <= 0 || (payment.documentCurrency === 'USDT'
           ? Math.abs(assignedForeign - payment.documentAmount) > 0.000001
-          : Math.round(payment.documentAmount * 100) > Math.round(remaining * 100))) {
+          : !rublePaymentFitsRemaining(remaining, payment.documentAmount, source!.rubPaymentsSupported === true && !readPaymentRevision(plan.oneCCashEvidence)))) {
           throw new Error('Сумма расходника больше остатка заявки. Такой платёж требует отдельного распределения.');
+        }
+        if (proposed.rubleAllocationNeedsReview || proposed.paymentAmountNeedsConfirmation || proposed.state === 'MISMATCH' ||
+            ![...proposed.cashOrders, ...proposed.currencyPayments].some(row => row.ref.toLowerCase() === ref)) {
+          throw new Error('Оплату нельзя однозначно зачесть. Проверьте другие расходники этой заявки.');
         }
         next = [...next, { ref, fingerprint }];
       }

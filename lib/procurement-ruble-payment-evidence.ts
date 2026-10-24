@@ -3,7 +3,7 @@ import type { SupplierCurrencyPaymentRow } from './procurement-currency-payment-
 import { paymentFingerprint, samePaymentSupplier } from './procurement-manual-payment-links';
 import {COMPLETED_WITHOUT_TOPUP} from './procurement-payment-completion';
 import {hasConfirmedPaymentBasis} from './procurement-payment-basis';
-import { smallRubleRemainder, smallUsdtRubleFundingRemainder } from './procurement-small-remainder';
+import { smallRubleRemainder, smallUsdtRubleFundingRemainder, rublePaymentFitsRemaining } from './procurement-small-remainder';
 
 const key = (value: string) => value.trim().toLowerCase();
 const minor = (value: number) => Math.round(value * 100);
@@ -152,7 +152,7 @@ export function applyRublePaymentEvidence(
       !samePaymentSupplier({ supplierPartner: '', supplierCounterparty: debtPlan.supplierCounterparty },
         { ...payment, supplier: '' });
     if (candidates.length !== 1 || (supplierDebtFallback
-      ? !debtPlan || debtPlan.orderRefs.length > 0 || !hasConfirmedPaymentBasis(payment, plans.flatMap(plan => plan.orderRefs)) || counterpartyConflict || minor(payment.documentAmount) > minor(debtPlan.plannedAmount) - alreadyIssued
+      ? !debtPlan || debtPlan.orderRefs.length > 0 || !hasConfirmedPaymentBasis(payment, plans.flatMap(plan => plan.orderRefs)) || counterpartyConflict || !rublePaymentFitsRemaining((minor(debtPlan.plannedAmount) - alreadyIssued) / 100, payment.documentAmount, allowSmallRemainder && !debtPlan.hasPendingRevision && debtPlan.status === 'APPROVED')
       : !manualOwners.length && allocatedOrders.some(ref=>!candidates[0]?.orderRefs.some(p=>key(p)===ref)))) {
       for (const plan of candidates) {
         const current = evidence.get(plan.id)!;

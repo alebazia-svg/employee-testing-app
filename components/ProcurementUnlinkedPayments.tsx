@@ -3,14 +3,16 @@ import { useState } from 'react';
 import {supplierOnlyPaymentLabel} from '@/lib/procurement-supplier-advance';
 import { useRouter } from 'next/navigation';
 import type { SupplierCurrencyPaymentRow } from '@/lib/procurement-currency-payment-source';
-import { samePaymentSupplier } from '@/lib/procurement-manual-payment-links';
+import { samePaymentSupplier, manualPaymentCurrencyMatches } from '@/lib/procurement-manual-payment-links';
+import {rublePaymentFitsRemaining} from '@/lib/procurement-small-remainder';
 import {hasConfirmedPaymentBasis} from '@/lib/procurement-payment-basis';
 
-type Plan = { paymentPurpose?: string; id: string; supplierPartner: string; supplierCounterparty: string; orderRefs?: string[]; orderNumbers: string[]; remaining: number; remainingForeign: number | null; status: string; paymentMethod: string };
-export function ProcurementUnlinkedPayments({ payments, plans, linked, view = 'review' }: {
+type Plan = { paymentPurpose?: string; id: string; supplierPartner: string; supplierCounterparty: string; orderRefs?: string[]; orderNumbers: string[]; remaining: number; remainingForeign: number | null; status: string; paymentMethod: string; hasPendingRevision?: boolean };
+export function ProcurementUnlinkedPayments({ payments, plans, linked, view = 'review', allowSmallExcess = false }: {
   payments: SupplierCurrencyPaymentRow[]; plans: Plan[];
   linked: { planId: string; ref: string; label: string; confirmed: boolean }[];
   view?: 'review' | 'history';
+  allowSmallExcess?: boolean;
 }) {
   const router = useRouter();
   const [choices, setChoices] = useState<Record<string, string>>({});
@@ -43,8 +45,8 @@ export function ProcurementUnlinkedPayments({ payments, plans, linked, view = 'r
       const foreign = payment.documentCurrency === 'USDT';
       const hasBasis = hasConfirmedPaymentBasis(payment, plans.flatMap(plan => plan.orderRefs || []));
       const contractLabel = payment.contract?.trim() || payment.registerContractBasis?.contracts.map(c => c.name).join(', ');
-      const options = plans.filter((plan) => plan.status === 'APPROVED' && (plan.paymentMethod === 'USDT') === foreign &&
-        (foreign ? plan.remainingForeign == null || plan.remainingForeign >= payment.documentAmount : plan.remaining >= payment.documentAmount) && samePaymentSupplier(plan, payment));
+      const options = plans.filter((plan) => plan.status === 'APPROVED' && manualPaymentCurrencyMatches(plan.paymentMethod, payment.documentCurrency) &&
+        (foreign ? plan.remainingForeign == null || plan.remainingForeign >= payment.documentAmount : rublePaymentFitsRemaining(plan.remaining, payment.documentAmount, allowSmallExcess && !plan.hasPendingRevision)) && samePaymentSupplier(plan, payment));
       return <div key={payment.ref} className="grid gap-2 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,1fr)_auto] lg:items-center">
         <div><p className="font-semibold">{payment.supplier || payment.counterparty} · {foreign ? `${payment.documentAmount.toLocaleString('ru-RU')} USDT` : money(payment.documentAmount)}</p>
           <p className="text-xs text-slate-500">РКО {payment.number} · {payment.date}{contractLabel ? ` · ${contractLabel}` : ''}</p>

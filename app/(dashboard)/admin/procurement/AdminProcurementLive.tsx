@@ -221,8 +221,9 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
           revisionCount={plans.filter(plan=>readPaymentRevision(plan.oneCCashEvidence)).length}
           revisionReview={<ProcurementRevisionReview items={plans.flatMap(plan => {const revision=readPaymentRevision(plan.oneCCashEvidence);return revision ? [{id:plan.id,supplierPartner:plan.supplierPartner,revision}] : [];})} />}
           paymentLinks={displayComplete ? <ProcurementUnlinkedPayments
+          allowSmallExcess={currencySource?.rubPaymentsSupported === true}
           payments={uniqueSupplierPayments(attachRequestOrderLinks(currencySource?.complete ? currencySource.payments : [], requestsResult.status === 'fulfilled' ? requestsResult.value.rows : []))
-            .filter((payment) => ['РУБ', 'USDT'].includes(payment.documentCurrency) && payment.posted && !payment.deleted && payment.documentAmount > 0 &&
+            .filter((payment) => ['РУБ', 'RUB', 'USDT'].includes(payment.documentCurrency) && payment.posted && !payment.deleted && payment.documentAmount > 0 &&
               plans.some((plan) => plan.status === 'APPROVED' && samePaymentSupplier(plan, payment) && plan.createdAt.getTime() <= paymentTimestamp(payment.date) &&
                 !isFinishedPaymentState(paymentEvidence.get(plan.id)?.state)) &&
               ![...paymentEvidence.values()].some((item) => [...item.cashOrders, ...item.currencyPayments].some((order) => order.ref === payment.ref)) &&
@@ -230,7 +231,7 @@ async function readLive(initialPlans: AdminPlans, generation: string) {
             .slice().reverse()}
           plans={plans.map((plan) => ({ id: plan.id, supplierPartner: plan.supplierPartner, paymentPurpose: plan.paymentPurpose,
             supplierCounterparty: plan.supplierCounterparty, orderRefs: Array.isArray(plan.orderRefs) ? plan.orderRefs.map(String) : [], orderNumbers: Array.isArray(plan.orderNumbers) ? plan.orderNumbers.map(String) : [],
-            remaining: paymentEvidence.get(plan.id)?.remainingAmount || 0, remainingForeign: paymentEvidence.get(plan.id)?.remainingForeignAmount ?? null, status: plan.status, paymentMethod: plan.paymentMethod }))}
+            remaining: paymentEvidence.get(plan.id)?.remainingAmount || 0, remainingForeign: paymentEvidence.get(plan.id)?.remainingForeignAmount ?? null, status: plan.status, paymentMethod: plan.paymentMethod, hasPendingRevision: Boolean(readPaymentRevision(plan.oneCCashEvidence)) }))}
           linked={manualLinksForDisplay}
         /> : null}
           paymentLinkHistory={displayComplete ? <ProcurementUnlinkedPayments view="history" payments={[]} plans={[]} linked={manualLinksForDisplay} /> : null}

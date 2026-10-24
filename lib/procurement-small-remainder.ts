@@ -14,6 +14,16 @@ type Plan = {
 const cents = (amount: number) => Number.isFinite(amount) && Number.isSafeInteger(Math.round(amount * 100))
   && Math.abs(amount * 100 - Math.round(amount * 100)) < .00001 ? Math.round(amount * 100) : NaN;
 
+/** A small excess may cover one confirmed RUB budget; never split or discard
+ * the actual RKO amount. Both bounds apply to the still-unpaid budget. */
+export function rublePaymentFitsRemaining(remaining: number, amount: number, allowSmallExcess = false) {
+  const target = cents(remaining), paid = cents(amount);
+  if (!(target > 0 && paid > 0)) return false;
+  const excess = paid - target;
+  return excess <= 0 || (allowSmallExcess && excess <= SMALL_REMAINDER_MAX_RUB * 100 &&
+    excess * 100 <= target * SMALL_REMAINDER_MAX_PERCENT);
+}
+
 /** Both inclusive bounds must hold; use integer kopecks, not a rounded percent. */
 export function smallRubleRemainder(plan: Plan, paid: number): number | null {
   if (plan.status !== 'APPROVED' || plan.hasPendingRevision ||

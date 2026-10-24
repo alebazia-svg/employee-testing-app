@@ -2,6 +2,13 @@ import type { SupplierCurrencyPaymentRow } from './procurement-currency-payment-
 import {PROCUREMENT_CARGO} from './procurement-cargo';
 
 export type ManualPaymentLink = { ref: string; fingerprint: string };
+/** RUB documents fund the budget even when the supplier receives USDT.
+ * A USDT document is only admissible for a USDT request. */
+export function manualPaymentCurrencyMatches(method: string, currency: string) {
+  return ['RUB', 'РУБ'].includes(currency)
+    ? ['CASH', 'BANK', 'ACCOUNTABLE_QR', 'CNY', 'USDT'].includes(method)
+    : currency === 'USDT' && method === 'USDT';
+}
 export function manualPaymentLinks(value: unknown): ManualPaymentLink[] {
   if (!value || typeof value !== 'object' || !('manualRubleLinks' in value) || !Array.isArray(value.manualRubleLinks)) return [];
   return value.manualRubleLinks.filter((row): row is ManualPaymentLink => Boolean(row &&

@@ -46,6 +46,24 @@ test('manual payment route: real PostgreSQL persistence, concurrency, auth, revo
     g.paymentTestSource.complete = true;
     g.paymentTestSource.payments[0].supplier = 'Other';
     assert.equal((await send(winner.id)).status, 409);
+    g.paymentTestSource.payments[0].supplier = 'MEMS';
+    await db.supplierPaymentPlan.updateMany({where:{managerUserId:user.id},data:{paymentMethod:'USDT',foreignAmount:3500,exchangeRate:80,currency:'USDT'}});
+    g.paymentTestSource.payments[0].documentAmount=280030;
+    assert.equal((await send(winner.id)).status,409,'small excess requires supported complete RUB source');
+    g.paymentTestSource.rubPaymentsSupported=true;
+    assert.equal((await send(winner.id)).status,200,'RUB RKO may fund one explicitly selected USDT plan');
+    const funded=await db.supplierPaymentPlan.findUniqueOrThrow({where:{id:winner.id}});
+    assert.equal((funded.oneCCashEvidence as any).manualRubleLinks.length,1);
+    assert.equal((await send(plans.find(p=>p.id!==winner.id)!.id)).status,409,'one RKO cannot fund both plans');
+    assert.equal((await send(winner.id,'UNLINK')).status,200);
+    g.paymentTestSource.payments[0].documentAmount=280501;
+    assert.equal((await send(winner.id)).status,409,'large excess still needs separate allocation');
+    g.paymentTestSource.payments[0].documentAmount=280030;
+    g.paymentTestSource.payments[0].posted=false;
+    assert.equal((await send(winner.id)).status,409,'unposted RKO never accepted');
+    g.paymentTestSource.payments[0].posted=true;
+    g.paymentTestSource.payments[0].documentCurrency='RUB';
+    assert.equal((await send(winner.id)).status,200,'RUB alias is supported');
   } finally {
     await db.supplierPaymentPlan.deleteMany({ where: { managerUserId: user.id } });
     await db.user.delete({ where: { id: user.id } });
