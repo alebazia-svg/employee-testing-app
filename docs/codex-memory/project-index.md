@@ -300,10 +300,15 @@ Per-employee ADMIN SCAN/PHOTO setting and direct system photo capture are in
 See `qr-camera-modes-20261023.md` and `../ops/qr-camera-release-20261023.md`.
 Physical iPhone capture is not yet verified.
 
-## Employee activity — production 1.15.0
+## Employee activity — production 1.15.1
 
 - `employee-activity-20261024.md`: owner-approved bounded journal and
   Employees → Activity modal. Additive migration; first-open evidence distinct
   from legacy automatic readAt. Capture is best effort, not employee scoring.
   Released 2026-10-24, source dab9884; see the note for verified migration,
   backup and UI evidence. Physical iPhone open capture remains unverified.
+
+- Follow-up 1.15.1, source `80a92cb`: approved daily timeline, visits separate
+  from saved actions, background returns and employee bulk schedule edits.
+  No migration; server/public/authenticated ADMIN verified. Release and limits
+  are recorded in `employee-activity-20261024.md`.

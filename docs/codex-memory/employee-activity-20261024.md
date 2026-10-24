@@ -115,3 +115,53 @@ Rollback restores the previous compatible image/version and leaves the two
 additive journal tables. No auth, notification cadence, routing, payroll or 1C
 write mechanism was altered by the activity feature. Existing unrelated main
 and preview worktree changes were not staged or reverted.
+
+## Daily timeline correction — 1.15.1
+
+Owner reviewed the actual local application and approved production release.
+Released and verified 2026-10-24. Source/server commit
+`80a92cb7497fe243cc90db7d7b44a0596b471b05`.
+
+- One chronological history is now primary: visible page visits, named message
+  opens and saved actions. Six latest events initially; inline expansion shows
+  the rest. Section visit counts are secondary; informational messages are
+  separate from actionable obligations. No inference that opening means reading.
+- Returning to the same tab after at least 30 seconds in the background records
+  a new visit; brief interruptions and hidden screens do not. Existing bounded,
+  best-effort journal and ADMIN/service exclusion remain unchanged.
+- Employee single/bulk/bulk-edit schedule changes appear in the history;
+  administrator schedule edits are excluded from employee actions.
+- Real local UI evidence: test manager opened Schedule at 19:43:17 and saved
+  October 25 as working at 19:43:44. No real employee was impersonated.
+- Local typecheck/build passed; 12 activity/client/worker/HTTP checks and five
+  release metadata tests passed. Desktop/mobile, expansion and close/re-entry
+  checked. Physical iPhone background-return capture is not yet verified.
+- No schema, 1C, notification-delivery or business-action changes. Previous
+  compatible image retained for rollback; additive 1.15.0 tables stay in place.
+- Runtime files: `app/(dashboard)/admin/employees/EmployeeActivityDialog.tsx`,
+  `components/EmployeeActivityTracker.tsx`, `lib/employee-activity-report.ts`,
+  `package.json`, `package-lock.json`. Tests:
+  `tests/employee-activity-client.test.cjs`,
+  `tests/employee-activity.integration.test.ts`.
+- Unrelated main and older preview worktree files were not staged or reverted.
+
+### Production verification for 1.15.1
+
+- Public version 1.15.1, build `2026-10-24T18:03:11.226Z` (21:03 MSK).
+  Exact source independently verified over SSH; public metadata revision remains
+  null/source unknown. Authenticated Employees UI shows version 1.15.1.
+- Liana's actual Activity modal loads the new daily history, six saved facts,
+  completed tasks and the 500 RUB posted expense. Zero recorded visits remains
+  explicitly distinguished from proof of non-use; no fabricated history.
+- Health 200, anonymous ADMIN activity API 401, container healthy. Environment
+  checksum and mounts unchanged. No migrations run. About 15 GiB free afterward.
+- Previous image: `sha256:920ecad24047202f2262a5d9e3554bc0058325647e816e3361fc985a2133a45d`;
+  replacement: `sha256:ceb0602512dc32032fb6208797777ddd4185e2246d5dbf469a65aa7630636162`.
+  Previous tagged `portal-app:rollback-before-1.15.1`; all three prior registry
+  images existed at preflight. New image registered after independent UI check.
+- `/tmp/mobo-activity-151-output.log` ends `ACTIVITY_151_VERIFIED=1` and
+  `ACTIVITY_151_EXIT=0`. Native Terminal launch and completed deployment are
+  separately confirmed. Production screenshot capture timed out twice; actual
+  authenticated UI and source/public checks succeeded. No screenshot claimed.
+- Actual future employee visits after this release, including physical iPhone
+  background-return capture, remain to observe; local behavior is verified.
