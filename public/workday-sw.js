@@ -65,6 +65,19 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = new URL(event.notification.data?.url || '/employee', self.location.origin).href;
+  // Record only an intentional employee push click. Navigation never awaits telemetry.
+  try {
+    const id = event.notification.data?.notificationId;
+    const target = new URL(targetUrl);
+    if (Number.isSafeInteger(id) && id > 0 && target.origin === self.location.origin && /^\/(employee|procurement)(\/|$)/.test(target.pathname)) {
+      event.waitUntil(fetch('/api/employee/activity', {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: crypto.randomUUID(), kind: 'notification_open', notificationId: id }),
+        signal: AbortSignal.timeout(4000),
+      }).catch(() => {}));
+    }
+  } catch { /* Opening the app remains available on devices without telemetry support. */ }
+
   event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
     for (const client of windows) {
       if ('focus' in client) {

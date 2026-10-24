@@ -44,6 +44,7 @@ model User {
   cashOperations                   CashOperation[]
   oneCCashboxMapping               UserOneCCashboxMapping?
   pushSubscriptions                WorkdayPushSubscription[]
+  activityEvents                   PortalActivityEvent[]
   accessSessions                   PortalAccessSession[]
   ownedAccessBrowsers              PortalAccessBrowserOwner[]
   workdayNotifications             WorkdayNotification[]
@@ -1005,6 +1006,8 @@ model PortalAccessSession {
   user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   pushSubscription   WorkdayPushSubscription? @relation(fields: [pushSubscriptionId], references: [id], onDelete: SetNull)
 
+  activityEvents PortalActivityEvent[]
+
   @@index([firstSeenAt, id])
   @@index([userId, firstSeenAt])
   @@index([userId, browserInstanceId])
@@ -1599,4 +1602,27 @@ model EmployeePreviewVisit {
   expiresAt DateTime
   @@index([adminId, openedAt])
   @@index([employeeId, openedAt])
+}
+
+// Operational usage evidence only. Never used for payroll or performance scoring.
+model PortalActivityEvent {
+  id        String @id @default(cuid())
+  userId    Int
+  sessionId String
+  eventKey  String @db.VarChar(100)
+  section   String @db.VarChar(32)
+  kind      String @db.VarChar(32)
+  notificationId Int?
+  createdAt DateTime @default(now())
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session   PortalAccessSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventKey])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+model PortalActivityCoverage {
+  id Int @id
+  startedAt DateTime @default(now())
 }

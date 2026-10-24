@@ -1,3 +1,4 @@
+import { EmployeeActivityTracker } from '@/components/EmployeeActivityTracker';
 import { redirect } from 'next/navigation';
 import { getCurrentUser, portalHomePath } from '@/lib/auth';
 import { ProcurementShell } from '@/components/ProcurementShell';
@@ -8,5 +9,5 @@ export default async function ProcurementLayout({ children }: { children: React.
   const user = await getCurrentUser();
   if (!user) redirect('/login');
   if (user.role !== 'EMPLOYEE' || user.portalArea !== 'PROCUREMENT') redirect(portalHomePath(user));
-  return <ProcurementShell userName={user.name}>{children}</ProcurementShell>;
+  return <ProcurementShell userName={user.name}><EmployeeActivityTracker />{children}</ProcurementShell>;
 }

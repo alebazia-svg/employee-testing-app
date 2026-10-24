@@ -1,4 +1,5 @@
 'use client';
+import { useEmployeeActivityVisit } from '@/components/EmployeeActivityTracker';
 import { useEmployeePreview, EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
 import { closeReasonRequiresComment } from '@/lib/workday-close-request';
 import { employeeExpenseHint, type EmployeeExpenseSnapshot } from '@/lib/employee-expense-policy';
@@ -1265,6 +1266,7 @@ export function EmployeeTodayClient({
   }[searchParams.get('palette') ?? ''] ?? 'portal-palette-mobo portal-typography-refined';
 
   const [activeTab, setActiveTab] = useState<Tab>(() => initialEmployeeSection(searchParams.get('tab'), payrollEnabled));
+  useEmployeeActivityVisit(activeTab === 'attention' ? 'notifications' : activeTab);
   const [prestartColleaguesOpen, setPrestartColleaguesOpen] = useState(false);
   const [ownScheduleState, setOwnScheduleState] = useState(ownSchedule);
   const [departmentScheduleState, setDepartmentScheduleState] = useState(departmentSchedule);

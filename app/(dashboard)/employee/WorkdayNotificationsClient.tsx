@@ -1,4 +1,5 @@
 'use client';
+import { sendEmployeeActivity } from '@/components/EmployeeActivityTracker';
 import { EmployeeNoticeIcon } from '@/components/workday/EmployeeNoticeIcon';
 import { employeeInboxIconKind } from '@/lib/employee-notice-icons';
 import { EmployeeNotificationInbox, type EmployeeInboxItem } from '@/components/workday/EmployeeNotificationInbox';
@@ -128,6 +129,7 @@ export function WorkdayNotificationsClient() {
   }
 
   async function openNotification(notification: WorkdayNotification) {
+    if (!preview) sendEmployeeActivity({ kind: 'notification_open', notificationId: notification.id });
     setBanner(null);
     if (notification.active === false && employeeNotificationOpening(notification) === 'page') { void dismiss(notification); return; }
     if (notification.kind === EMPLOYEE_EXPENSE_KIND || notification.issueId || notification.reviewId) {
@@ -154,7 +156,7 @@ export function WorkdayNotificationsClient() {
       {selected&&<NotificationRecordDialog readOnly={Boolean(preview)} key={selected.id} item={selected} onViewed={()=>{const n=notifications.find(n=>n.id===selected.id);if(n)void dismiss(n);}} onClose={()=>setSelected(null)}/>}
       <button
         type='button'
-        onClick={() => { setBanner(null); setOpen(current => !current); void refresh(); }}
+        onClick={() => { if (!open && !preview) sendEmployeeActivity({ kind: 'visit', section: 'notifications' }); setBanner(null); setOpen(current => !current); void refresh(); }}
         className={cn('employee-material-header-action relative flex h-11 w-11 items-center justify-center rounded-full text-slate-600', open && 'is-open')}
         aria-label='Уведомления'
         aria-expanded={open}

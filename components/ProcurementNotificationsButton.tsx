@@ -1,4 +1,5 @@
 'use client';
+import { sendEmployeeActivity } from './EmployeeActivityTracker';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import { savePushSubscription } from '@/lib/push-subscription-client';
 
@@ -89,6 +90,7 @@ export function ProcurementNotificationsButton() {
   }, [connectPush, refresh, preview]);
 
   async function openItem(item: ProcurementNotification) {
+    if (!preview) sendEmployeeActivity({ kind: 'notification_open', notificationId: item.id });
     if(item.active===false&&employeeNotificationOpening(item)==='page'){void dismiss(item);return;}
     setOpen(false);
     if(preview || employeeNotificationOpening(item)!=='page'){setSelected({...item,audience:'employee'});return;}
@@ -116,7 +118,7 @@ export function ProcurementNotificationsButton() {
       {selected&&<NotificationRecordDialog key={selected.id} item={selected} readOnly={!!preview} onViewed={()=>{const item=items.find(n=>n.id===Number(selected.id));if(item)void dismiss(item);}} onClose={()=>setSelected(null)}/>}
       <button
         type="button"
-        onClick={() => {setOpen(true);void refresh();}}
+        onClick={() => {if (!open && !preview) sendEmployeeActivity({ kind: 'visit', section: 'notifications' });setOpen(true);void refresh();}}
         aria-label="Уведомления"
         aria-expanded={open}
         className="admin-material-control procurement-notification-trigger relative flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-700 transition hover:-translate-y-0.5 hover:text-slate-950"

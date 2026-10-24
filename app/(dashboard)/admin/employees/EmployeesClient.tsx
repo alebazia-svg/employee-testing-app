@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table } from '@/components/ui/table';
+import EmployeeActivityDialog from './EmployeeActivityDialog';
 import EmployeeAccessDialog, { type AccessUser, type IssuedAccess } from './EmployeeAccessDialog';
 
 type User = AccessUser & {
@@ -64,6 +65,7 @@ const emptyDraft: Draft = {
 
 export default function EmployeesClient({ initialUsers, currentUserId }: { initialUsers: User[]; currentUserId: number }) {
   const router = useRouter();
+  const [activityUser, setActivityUser] = useState<User | null>(null);
   const [previewBusy, setPreviewBusy] = useState<number | null>(null);
   const [users, setUsers] = useState(initialUsers);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -159,6 +161,7 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
 
   return (
     <div className='space-y-5'>
+      {activityUser && <EmployeeActivityDialog user={activityUser} onClose={() => setActivityUser(null)} />}
       {accessUser && <EmployeeAccessDialog user={accessUser} initialAccess={issuedAccess} onIssued={accessChanged} onClose={() => { setAccessUser(null); setIssuedAccess(null); }} />}
       <nav className='admin-section-tabs' aria-label='Группы сотрудников'>
         {([
@@ -247,7 +250,7 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
           <Card key={user.id} className='admin-material-card p-4'>
             <div className='flex items-start justify-between gap-3'>
               <div className='min-w-0'>
-                <p className='font-extrabold text-slate-950'>{user.name}</p>
+                <p className='font-extrabold text-slate-950'>{user.name}</p>{user.role === 'EMPLOYEE' && <button onClick={() => setActivityUser(user)} className='mt-1 min-h-9 text-sm font-semibold text-[#945e3b] hover:underline'>Активность</button>}
                 <p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p>
               </div>
               <Badge className={user.isActive ? 'shrink-0 bg-green-100 text-green-800' : 'shrink-0 bg-slate-100 text-slate-500'}>{user.isActive ? 'Активен' : 'Отключён'}</Badge>
@@ -282,7 +285,7 @@ export default function EmployeesClient({ initialUsers, currentUserId }: { initi
             {filteredUsers.map((user) => {
               return (
               <tr key={user.id} className='border-t border-slate-200/80'>
-                <td className='px-5 py-4'><p className='font-bold text-slate-950'>{user.name}</p><p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p></td>
+                <td className='px-5 py-4'><p className='font-bold text-slate-950'>{user.name}</p>{user.role === 'EMPLOYEE' && <button onClick={() => setActivityUser(user)} className='mt-1 min-h-9 text-sm font-semibold text-[#945e3b] hover:underline'>Активность</button>}<p className='mt-0.5 text-xs font-semibold text-slate-500'>Логин: {user.login}</p></td>
                 <td className='px-5 py-4 text-slate-700'>{departmentLabels[user.department] ?? user.department}</td>
                 <td className='px-5 py-4 text-sm font-semibold text-slate-700'>{user.role === 'ADMIN' ? 'Администратор' : 'Сотрудник'}</td>
                 <td className='px-5 py-4 text-sm font-semibold text-slate-700'>{user.role === 'ADMIN' ? 'Админка' : user.portalArea === 'PROCUREMENT' ? 'Закупки и оплаты' : 'Рабочий день'}</td>
