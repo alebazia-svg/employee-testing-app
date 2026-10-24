@@ -73,3 +73,45 @@ tests/employee-activity-http.test.mjs
 tests/employee-activity-worker.test.cjs
 tests/employee-activity.integration.test.ts
 tests/employee-activity.test.ts
+
+## Production release — verified 1.15.0
+
+Released 2026-10-24. Source/server commit `dab98849282e4eb0a7b65421beb9b8de3035378a`
+contains feature `7c83951` and the already-approved procurement 1.14.7 changes
+from `8b5f74a`. No separate installation of the older 1.14.7 is needed; its
+prepared script fails closed on the changed deployment branch/head.
+
+- Public version **1.15.0**, build `2026-10-24T16:08:56.751Z` (19:08 MSK).
+  Public metadata still has revision null/source unknown; exact commit was
+  independently read over SSH. Authenticated Employees UI displays 1.15.0.
+- Previous image `sha256:bfb70bf64074f17ef231a56a46a6618786bf7a3e3ff3b456f83f88096efd353a`;
+  replacement `sha256:920ecad24047202f2262a5d9e3554bc0058325647e816e3361fc985a2133a45d`.
+  Previous image kept as `portal-app:rollback-before-1.15.0` and current + two
+  verified rollback images registered after independent UI/public verification.
+- Backup: `/var/backups/offonika/employee-activity-before-1.15.0-20261024T160650Z.dump`;
+  nonempty custom archive, pg_restore list verified before migration.
+- Every applied migration checksum matched the source manifest; the ONLY
+  pending migration was `20261024130000_employee_activity_journal`. Applied
+  successfully. Coverage row starts `2026-10-24T16:13:21.297Z` (19:13:21 MSK).
+  No old rows were backfilled. Application env checksum and volume mount
+  signatures unchanged. 17 GiB free after release; unrelated `.rollback/` kept.
+- Health 200; anonymous ADMIN activity endpoint 401. Read-only real ADMIN
+  verification: Liana's six saved workday facts, three completed cash tasks,
+  request 00OF-001129 for 500 RUB and posted RKO 00OF-001938. Original 10:10:46
+  readAt is visibly historical/possibly automatic, not proven opening.
+- Real visits remain zero immediately after rollout; no real employee was
+  impersonated to fabricate journal evidence. New visits require the updated
+  app. Physical iPhone push-click capture has NOT yet been tested; service
+  worker failure/navigation and ADMIN isolation are covered by tests.
+- Final validation: typecheck + local and VPS production builds; 36 domain/
+  journal regressions, 9 worker/release checks, one HTTP test with multiple
+  auth/CSRF/actor/date assertions against the actual local production build.
+  Real local PWA capture and ADMIN inspection exclusion also checked visually.
+- Runtime log `/tmp/mobo-activity-release-output.log` ends
+  `ACTIVITY_DEPLOY_VERIFIED=1`, `ACTIVITY_DEPLOY_EXIT=0`. Screenshot
+  `/tmp/mobo-activity-1.15.0-production.png`; actual production tab left open.
+
+Rollback restores the previous compatible image/version and leaves the two
+additive journal tables. No auth, notification cadence, routing, payroll or 1C
+write mechanism was altered by the activity feature. Existing unrelated main
+and preview worktree changes were not staged or reverted.
