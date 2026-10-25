@@ -13,7 +13,7 @@ export function taxDocumentReminderEventKey(period: { periodKey: string; missing
 export async function syncTaxDocumentReminder(db: PrismaClient, now = new Date()) {
   const [reports, documents] = await Promise.all([
     loadAusnReportCatalog(),
-    db.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, originalName: true } }),
+    db.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, coverageFrom: true, coverageTo: true, originalName: true } }),
   ]);
   const next = buildTaxDocumentPlan({ now, reports, documents: documents.map((document) => ({ ...document, source: 'portal' as const })) }).find((period) => period.status === 'missing');
   if (!next) return { state: 'complete' as const };

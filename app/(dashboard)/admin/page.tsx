@@ -70,7 +70,7 @@ export default async function AdminPage() {
     getTerminalFiscalWorkdaySummary({ periodFrom: range.from, periodTo: range.to }),
     loadCurrentAusnReport(),
     loadAusnReportCatalog(),
-    prisma.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, originalName: true } }),
+    prisma.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, coverageFrom: true, coverageTo: true, originalName: true } }),
   ]);
 
   const vacationUserIds = new Set(vacations.map((vacation) => vacation.userId));

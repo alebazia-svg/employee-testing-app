@@ -20,6 +20,8 @@ it available in the portal archive. The AUSN transition confirmation follows
 the same one-time archive model. Monthly income, ENS operations and FNS tax
 calculation evidence are tracked sequentially; KKT details and correction files
 remain conditional so their absence does not create a false missing period.
+Cumulative reports use verified `coverageFrom` and `coverageTo` month keys, so
+one original file may confirm several covered months without duplicate storage.
 
 The tax screen uses the shared ADMIN material cards, metric cards, typography,
 status colours and responsive grid instead of introducing a separate visual

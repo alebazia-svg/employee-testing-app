@@ -80,6 +80,8 @@ model TaxControlDocument {
   id             String   @id @default(cuid())
   documentType   String
   periodKey      String
+  coverageFrom   String?
+  coverageTo     String?
   originalName   String
   storageKey     String   @unique
   mimeType       String
@@ -92,6 +94,7 @@ model TaxControlDocument {
 
   @@unique([documentType, periodKey, sha256])
   @@index([periodKey, documentType, createdAt])
+  @@index([coverageFrom, coverageTo, documentType])
   @@index([status, createdAt])
 }
 

@@ -6,6 +6,7 @@ export type RequiredMonthlyTaxDocument = typeof requiredMonthlyTaxDocuments[numb
 
 export const taxDocumentHelp: Record<keyof typeof taxDocumentTypes, { required: boolean; source: string; instruction: string }> = {
   USN_DECLARATION: { required: true, source: 'ЛК ИП ФНС или бухгалтер', instruction: 'Нужна только декларация УСН за период до перехода на АУСН. Если оригинал уже сохранён в постоянном архиве портала, повторно загружать его не нужно.' },
+  USN_DECLARATION_RECEIPT: { required: false, source: 'ЛК ИП ФНС → Сообщения или оператор ЭДО', instruction: 'Квитанция подтверждает дату и регистрационный номер принятой декларации. Хранится рядом с декларацией.' },
   AUSN_TRANSITION_NOTICE: { required: true, source: 'ЛК ИП ФНС → АУСН или уведомления ФНС', instruction: 'Одноразовый документ, подтверждающий дату перехода на АУСН. Загрузите один раз и храните в постоянном архиве.' },
   AUSN_INCOME: { required: true, source: 'ЛК ФНС → АУСН → Доходы', instruction: 'Скачайте итог или реестр доходов за выбранный месяц после формирования данных ФНС.' },
   AUSN_KKT: { required: false, source: 'ЛК ФНС → АУСН → Доходы → ККТ', instruction: 'Детализация нужна только при расхождении с OFD или для проверки конкретных чеков.' },
@@ -14,7 +15,7 @@ export const taxDocumentHelp: Record<keyof typeof taxDocumentTypes, { required: 
   CORRECTION_EVIDENCE: { required: false, source: 'ЛК ФНС, OFD или бухгалтер', instruction: 'Загружайте только когда есть возврат, корректировка или пояснение к расхождению.' },
 };
 
-export type TaxDocumentEvidence = { documentType: string; periodKey: string; originalName: string; source: 'portal' };
+export type TaxDocumentEvidence = { documentType: string; periodKey: string; coverageFrom?: string | null; coverageTo?: string | null; originalName: string; source: 'portal' };
 export type TaxPeriodPlan = { periodKey: string; status: 'complete' | 'missing'; missing: RequiredMonthlyTaxDocument[]; present: RequiredMonthlyTaxDocument[] };
 
 function monthIndex(key: string) { const [year, month] = key.split('-').map(Number); return year * 12 + month - 1; }
@@ -38,7 +39,12 @@ function runnerEvidence(reports: AusnReportView[], periodKey: string, type: Requ
 
 export function buildTaxDocumentPlan(input: { now: Date; reports: AusnReportView[]; documents: TaxDocumentEvidence[]; startMonth?: string }) {
   return dueAusnPeriods(input.now, input.startMonth).map<TaxPeriodPlan>((periodKey) => {
-    const present = requiredMonthlyTaxDocuments.filter((type) => input.documents.some((document) => document.periodKey === periodKey && document.documentType === type) || runnerEvidence(input.reports, periodKey, type));
+    const present = requiredMonthlyTaxDocuments.filter((type) => input.documents.some((document) => {
+      if (document.documentType !== type) return false;
+      const from = document.coverageFrom || document.periodKey;
+      const to = document.coverageTo || document.periodKey;
+      return from <= periodKey && periodKey <= to;
+    }) || runnerEvidence(input.reports, periodKey, type));
     const missing = requiredMonthlyTaxDocuments.filter((type) => !present.includes(type));
     return { periodKey, present: [...present], missing: [...missing], status: missing.length ? 'missing' : 'complete' };
   });

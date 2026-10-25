@@ -75,7 +75,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   const hasTaxReminder = rows.some((row) => row.event.sourceType === 'tax_control');
   const currentTaxEventKey = hasTaxReminder ? await Promise.all([
     loadAusnReportCatalog(),
-    prisma.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, originalName: true } }),
+    prisma.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, coverageFrom: true, coverageTo: true, originalName: true } }),
   ]).then(([reports, documents]) => {
     const next = buildTaxDocumentPlan({ now, reports, documents: documents.map((document) => ({ ...document, source: 'portal' as const })) }).find((period) => period.status === 'missing');
     return next ? taxDocumentReminderEventKey(next) : undefined;

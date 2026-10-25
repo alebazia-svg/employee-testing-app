@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) throw new Error('Выберите файл.');
     stored = await persistTaxDocument(file);
     const record = await prisma.taxControlDocument.create({
-      data: { ...input, ...stored, uploadedById: access.user.id },
+      data: { ...input, coverageFrom: input.periodKey, coverageTo: input.periodKey, ...stored, uploadedById: access.user.id },
       select: { id: true, documentType: true, periodKey: true, originalName: true, status: true, createdAt: true },
     });
     return Response.json({ document: record }, { status: 201 });

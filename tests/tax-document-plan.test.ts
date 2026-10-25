@@ -28,3 +28,15 @@ test('oldest incomplete period stays visible until all required documents exist'
   assert.equal(plan[0].missing.length, 3);
   assert.equal(plan[1].periodKey, '2026-05');
 });
+
+test('one cumulative FNS file can confirm several covered months without duplication', () => {
+  const documents = [
+    { documentType: 'AUSN_INCOME', periodKey: '2026-09', coverageFrom: '2026-04', coverageTo: '2026-09', originalName: 'income.xlsx', source: 'portal' as const },
+    { documentType: 'ENS_OPERATIONS', periodKey: '2026-07', coverageFrom: '2026-04', coverageTo: '2026-07', originalName: 'ens.zip', source: 'portal' as const },
+    { documentType: 'AUSN_CALCULATION', periodKey: '2026-06', coverageFrom: '2026-04', coverageTo: '2026-06', originalName: 'calculation.pdf', source: 'portal' as const },
+  ];
+  const plan = buildTaxDocumentPlan({ now: new Date('2026-10-25T09:00:00+03:00'), reports: [], documents });
+  assert.equal(plan.find((period) => period.periodKey === '2026-04')?.status, 'complete');
+  assert.deepEqual(plan.find((period) => period.periodKey === '2026-07')?.missing, ['AUSN_CALCULATION']);
+  assert.deepEqual(plan.find((period) => period.periodKey === '2026-08')?.missing, ['ENS_OPERATIONS', 'AUSN_CALCULATION']);
+});

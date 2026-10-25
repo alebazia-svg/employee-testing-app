@@ -198,6 +198,9 @@ the employee PWA pilot and does not authorize a production migration or deploy.
 - recurring FNS evidence is tracked month by month from April 2026; the portal
   opens the oldest incomplete month first and explains where each missing file
   can be obtained;
+- cumulative FNS exports keep one immutable original with an explicit coverage
+  range; the same source can confirm several months without copying the file or
+  treating an unfinished current month as complete;
 - an idempotent reminder sync publishes the oldest incomplete period to the
   ADMIN inbox and uses the existing Telegram delivery queue when that channel
   is enabled;

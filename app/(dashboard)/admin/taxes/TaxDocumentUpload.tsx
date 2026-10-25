@@ -40,8 +40,8 @@ export function TaxDocumentUpload({ defaultPeriod }: { defaultPeriod: string }) 
     <label className='text-sm font-bold text-slate-700'>Период
       <input name='periodKey' value={period} onChange={(event) => setPeriod(event.target.value)} pattern='20\d{2}(-\d{2})?' className='mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-semibold text-slate-900' required />
     </label>
-    <label className='text-sm font-bold text-slate-700'>Файл PDF, XLSX, XML или CSV
-      <input ref={fileRef} name='file' type='file' accept='.pdf,.xlsx,.xml,.csv,text/csv,application/pdf,application/xml' className='mt-1.5 block h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm' required />
+    <label className='text-sm font-bold text-slate-700'>Файл PDF, Excel, ZIP, XML или CSV
+      <input ref={fileRef} name='file' type='file' accept='.pdf,.xls,.xlsx,.zip,.xml,.csv,text/csv,application/pdf,application/xml,application/zip' className='mt-1.5 block h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm' required />
     </label>
     <button disabled={busy} className='inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-extrabold text-white disabled:opacity-50'><Upload className='h-4 w-4' />{busy ? 'Загрузка…' : 'Загрузить'}</button>
     {message && <p className={`text-sm font-semibold lg:col-span-4 ${message.startsWith('Документ сохранён') ? 'text-green-700' : 'text-red-700'}`}>{message}</p>}
