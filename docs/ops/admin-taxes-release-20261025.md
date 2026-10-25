@@ -30,3 +30,14 @@ therefore derives coverage from non-empty year/month reporting columns rather
 than the display label. Re-uploading the same archive reconciles its saved
 coverage range in place and removes the temporary upload, so the archive keeps
 one physical copy and one database record.
+
+Production verified: version **1.17.2**, server commit
+`414ef0ec40ee19b85930bb222f7d5afeb7eb63a5`, image
+`sha256:610cf6249c80e1cef9450f76168dc33aa5984c2b47f2ca38d038ceb180760abb`.
+Public health, release metadata, authenticated ADMIN label and tax calendar were
+checked. Both existing ENS records were reconciled in place to `2026-04–2026-06`
+and `2026-04–2026-07`; April–June are complete, July is the next incomplete
+period and lacks only the FNS tax calculation. The verified image was registered
+after UI verification. The permanent archive contains the located 2025/2026
+declarations and receipts, transition certificate, calculation certificate,
+cumulative income workbook and both ENS archives.
