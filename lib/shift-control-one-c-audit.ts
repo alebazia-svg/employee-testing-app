@@ -7,6 +7,7 @@ export function stripShiftControlOneCAudit(value: unknown) {
   delete result[shiftControlOneCAuditKey];
   delete result[shiftControlEmployeeRevisionHistoryKey];
   delete result.cashComparison;
+  delete result.handoverExpenses;
   delete result.cashRecountInputHistory;
   delete result.cashRecountAttempt;
   if (result.cashRecountStage !== 'comment_required') delete result.cashRecountStage;

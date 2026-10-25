@@ -1,3 +1,4 @@
+import { loadHandoverCashExpenses } from '@/lib/handover-cash-expense-snapshot';
 import { scheduleHandoverCheckAudit } from '@/lib/employee-handover-audit-server';
 import { loadEmployeeExpenses } from '@/lib/employee-expense-snapshot';
 import { pendingCashExpenseEvidence } from '@/lib/cash-expense-evidence';
@@ -329,8 +330,14 @@ async function saveHandoverDraft(
     : cashDifference! > 0 ? 'surplus' : 'shortage';
   const calculatedDiscrepancyAmount = discrepancyMagnitude !== null && discrepancyMagnitude > 0 ? discrepancyMagnitude : null;
 
+  const handoverExpenses = personalCashBalance === null ? null : await loadHandoverCashExpenses(userId, {
+    actual: personalCashBalance, expected: expectedCash,
+    capturedAt: typeof oneCAudit?.capturedAt === 'string' ? oneCAudit.capturedAt : new Date().toISOString(),
+  });
   const nextData = {
     ...existing,
+    handoverExpenses: handoverExpenses ?? null,
+    cashExpenseNotice: handoverExpenses ? { ...handoverExpenses, requestRefs: [], documentRefs: [] } : null,
     draft: true,
     shiftCode: task.run.workDayEntry.shiftCode,
     updatedAt: new Date().toISOString(),

@@ -1,4 +1,6 @@
+import { handoverExpenseLabel, type HandoverCashExpenses } from './handover-cash-expenses';
 type Check = {
+  handoverExpenses?: HandoverCashExpenses;
   status: 'matched' | 'mismatch' | 'waiting' | 'unavailable';
   actual?: number | null;
   expected?: number | null;
@@ -29,6 +31,7 @@ function manualResult(check?: Check): HandoverResult | null {
 export function handoverCashResult(actual: number | null, check?: Check): HandoverResult {
   const manual = manualResult(check);
   if (manual) return manual;
+  if (check?.handoverExpenses) { const e=check.handoverExpenses; return {label:handoverExpenseLabel(e),tone:e.state==='documented'?'green':'amber',difference:e.state==='documented'?undefined:e.approvalAmount||e.payableAmount}; }
   if (actual === null || !Number.isFinite(actual)) return { label: 'Сумма не введена', tone: 'amber' };
   if (!check || check.status === 'unavailable' || check.expected == null || !Number.isFinite(check.expected)) return { label: 'Нет данных 1С', tone: 'amber' };
   if (check.status === 'waiting') return { label: 'Ожидается сверка', tone: 'amber' };

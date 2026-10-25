@@ -15,7 +15,7 @@ export function teamControlSummary(row:ControlSummaryRow,date:string,ownerAction
   if(alert.startsWith('Нет записи графика')||alert.startsWith('Выход запланирован'))continue;
   if(row.issues.some(issue=>alert===issue.title||alert.startsWith(`${issue.title} ·`)))continue;
   if(seen.has(alert))continue;seen.add(alert);
-  items.push({key:`alert-${items.length}`,label:alert,href:detail(row.alertTargets[alert]),kind:alert.startsWith('Завершить рабочий день')?'decision':'check'});
+  items.push({key:`alert-${items.length}`,label:alert,href:detail(row.alertTargets[alert]),kind:alert.startsWith('Завершить рабочий день')||alert.startsWith('К согласованию')?'decision':alert.startsWith('Оформите расходник')?'employee':'check'});
  }
  for(const issue of row.issues){
   const key=`issue-${issue.id}`;if(items.some(item=>item.key===key))continue;

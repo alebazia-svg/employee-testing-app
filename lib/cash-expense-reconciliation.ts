@@ -1,3 +1,4 @@
+import { refreshHandoverCashExpenseNotices } from './handover-cash-expense-snapshot';
 import 'server-only';
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
@@ -8,6 +9,7 @@ import { expenseRecord as record } from './expense-request-list-view';
 export async function reconcileCashExpenseEvidence(now = new Date()) {
   const run = await prisma.expenseRequestSyncRun.findFirst({ where: { status: { not: 'running' } }, orderBy: { startedAt: 'desc' } });
   if (!run?.sourceComplete || run.status !== 'completed' || !run.completedAt || +now - +run.completedAt > EXPENSE_SOURCE_MAX_AGE_MS) return;
+  await refreshHandoverCashExpenseNotices(now);
   const issues = await prisma.workdayControlIssue.findMany({ where: { status: { in: ['open', 'resolved'] }, ruleKey: 'cash_recount_mismatch', OR: [{ sourceData: { path: ['expenseEvidence', 'state'], equals: 'awaiting_documents' } }, { sourceData: { path: ['expenseEvidence', 'state'], equals: 'documented' } }] }, include: { task: true } });
   for (const issue of issues) {
     const data = record(issue.sourceData), evidence = record(data.expenseEvidence);
