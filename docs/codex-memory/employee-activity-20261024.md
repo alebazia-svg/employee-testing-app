@@ -523,3 +523,49 @@ portal-app, apply the sole expected migration and independently verify UI/versio
 Physical iPhone event capture remains a post-release verification item, not a
 claim established by the desktop/local tests. Exact preflight summary is retained
 locally in /tmp/mobo-activity-db-preflight-summary.json. No runtime files changed.
+
+## Production release — verified 1.16.0, 2026-10-25
+
+Owner explicitly confirmed rollout including the nullable audit-context migration.
+Runtime/server commit cfca478007a25f9ccd54329b64ee741240862326 includes feature
+54e9b10 and preserves upstream procurement 1.15.3. Version advanced to 1.16.0 for
+the approved feature release; package/lock/root package versions agree. Five
+release-metadata tests passed in addition to the previously verified 79 checks.
+
+- Rechecked live version/branch/server before push; no concurrent portal rollout
+  found. Native Terminal executed /tmp/mobo-activity-1160.command and the reviewed
+  /tmp/mobo-activity-1160-remote.sh. Held shared deployment/storage flock through
+  build, migration, restart and technical verification; released it before
+  verified-image registration. Password was entered by the owner only in Terminal.
+- Revalidated all applied migration checksums and sole pending migration. Fresh
+  backup /var/backups/offonika/employee-audit-before-1.16.0-20261025T080507Z.dump
+  was nonempty and passed pg_restore --list immediately before migration.
+- Migration 20261024193000_employee_handover_audit applied successfully. Readback
+  confirmed finished migration and nullable JSONB PortalActivityEvent.context.
+  No historical activity backfill or financial/1C mutations performed.
+- Previous image sha256:03906bd520bbe85c777a2d3b19e1336ddbc25c4f36acc2533b40fe2eea2baebe
+  retained with portal-app:rollback-before-1.16.0; replacement image
+  sha256:86bd343706284595237dc1f4ad5699511f1f482da2e3ed5564fb51e213392fca.
+  Environment checksum and mount signatures unchanged; only portal-app rebuilt.
+- Independent SSH read confirms server commit cfca478; public release version
+  1.16.0, builtAt 2026-10-25T08:01:09.962Z. Public metadata revision remains null
+  (existing build mechanism); commit verified separately, not inferred.
+- Container healthy, public health 200, anonymous ADMIN activity API 401. Preview
+  page contains Next not-found marker and no demo content (streamed HTTP 200 is
+  not alone a route-success signal). Free disk after rollout 22,812,618,752 bytes.
+- Authenticated production ADMIN shows 1.16.0 / 25.10.2026 11:01 MSK. Opened
+  Liana's real current-day activity: five prior recorded visits between 08:50 and
+  08:59, including day/schedule/payroll. Errors filter shows no recorded errors;
+  this does not prove there were none before the new collector. Screenshot:
+  /tmp/mobo-activity-1.16.0-production.png. Left production activity modal open.
+- After independent UI verification, registered the replacement as verified;
+  current plus two preceding verified images retained. Log
+  /tmp/mobo-activity-1160-release.log ends ACTIVITY_1160_COMPLETE=1,
+  ACTIVITY_1160_EXIT=0 and LAUNCHER_RELEASE_EXIT=0.
+
+Physical iPhone capture of the newly instrumented interactions and live 1C
+failure/recovery are still not verified. Employees need the updated app to emit
+new interaction kinds; old unrecorded events cannot be reconstructed. No real
+employee was impersonated or asked to perform a financial action for release QA.
+Rollback restores the previous compatible app image and leaves the nullable
+context column intact. Unrelated primary-checkout work remains untouched.

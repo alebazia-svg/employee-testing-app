@@ -313,10 +313,9 @@ Physical iPhone capture is not yet verified.
   No migration; server/public/authenticated ADMIN verified. Release and limits
   are recorded in `employee-activity-20261024.md`.
 
-- Next local candidate (2026-10-25): owner rejected a duplicate day-control
-  overview and approved a compact chronological table: visits, shown/open notifications,
-  receipt/cash actions, errors and handover steps. Real local capture verified;
-  additive context migration
-  applied only in the isolated test DB. Local candidate commit 54e9b10, not released. See the same
-  note for exact files, checks and remaining physical-device/1C limits. Reconciled
-  with upstream 1.15.3 (211444b); 79 combined checks and local build passed.
+- Released 1.16.0 (2026-10-25), runtime cfca478: compact chronological audit of
+  visits, shown/open notifications, receipt/cash actions, errors and handover
+  steps. Additive nullable context migration applied after a verified fresh
+  backup. Preserves procurement 1.15.3; 79 combined checks and five release checks
+  passed. Server/public/authenticated ADMIN and rollback registration verified.
+  See the same note for exact release evidence and physical-iPhone/1C limits.
