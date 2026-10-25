@@ -177,6 +177,24 @@ After the two-person pilot passes:
 4. Review pilot evidence and promote only proven follow-up needs into the active
    roadmap.
 
+## Parallel Isolated ADMIN Module - Tax Control
+
+The owner approved local development on 2026-10-25. This work is isolated from
+the employee PWA pilot and does not authorize a production migration or deploy.
+
+- `/admin/taxes` is the owner-facing home for the AUSN limit, source
+  completeness, FNS document checklist and upload history;
+- canonical income and tax values come only from the installed production AUSN
+  runner cache; the portal fails closed when that cache is missing;
+- the portal may derive an attention horizon from the runner's monthly totals,
+  but must not copy or replace tax-base calculation rules;
+- ADMIN attention starts at 80% or a 60-day horizon, escalates at 90% or 45
+  days, and becomes urgent at 95% or 30 days;
+- FNS uploads are audit records with type, period, uploader, SHA-256 and guarded
+  storage; accepting a file is not evidence that reconciliation succeeded;
+- not yet authorized: production migration, deploy, automatic tax decisions,
+  1C writes or installation/change of the production runner service.
+
 ## After Launch Roadmap
 
 ### Supplier payment calendar limited rollout

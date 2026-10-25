@@ -11,6 +11,7 @@ import { prisma } from '@/lib/prisma';
 import { getTerminalFiscalWorkdaySummary, presentTerminalFiscalWorkdaySummary } from '@/lib/terminal-fiscal-summary';
 import { formatDateLabel, getMoscowDateKey } from '@/lib/workday';
 import { cashEncashmentExceptionPrefix, isCashEncashmentException } from '@/lib/workday-cash-encashment-exception';
+import { assessTaxLimitRisk, loadCurrentAusnReport } from '@/lib/ausn-report-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,7 +38,7 @@ export default async function AdminPage() {
 
   const today = getMoscowDateKey();
   const range = moscowDayRange(today);
-  const [employees, schedules, vacations, workdays, issues, reviews, closeRequests, expenseCases, cashOperationErrors, terminalSummary] = await Promise.all([
+  const [employees, schedules, vacations, workdays, issues, reviews, closeRequests, expenseCases, cashOperationErrors, terminalSummary, taxReport] = await Promise.all([
     prisma.user.findMany({ where: { role: 'EMPLOYEE', isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     prisma.workScheduleEntry.findMany({ where: { date: today }, select: { userId: true, status: true } }),
     prisma.employeeVacation.findMany({ where: { status: 'active', dateFrom: { lte: today }, dateTo: { gte: today } }, select: { userId: true } }),
@@ -65,6 +66,7 @@ export default async function AdminPage() {
       take: 20,
     }),
     getTerminalFiscalWorkdaySummary({ periodFrom: range.from, periodTo: range.to }),
+    loadCurrentAusnReport(),
   ]);
 
   const vacationUserIds = new Set(vacations.map((vacation) => vacation.userId));
@@ -77,7 +79,17 @@ export default async function AdminPage() {
   const startedIds = new Set(workdays.map((entry) => entry.userId));
   const notStartedNames = [...scheduledIds].filter((id) => !startedIds.has(id)).map((id) => employeeById.get(id)).filter(Boolean) as string[];
 
+  const taxRisk = assessTaxLimitRisk(taxReport);
+  const taxRiskAction: ActionItem[] = ['early', 'plan', 'urgent'].includes(taxRisk.level) ? [{
+    key: `tax-limit-${taxRisk.level}`,
+    title: taxRisk.label,
+    detail: `${taxRisk.explanation}${taxReport.remaining === undefined ? '' : ` Остаток: ${taxReport.remaining.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽.`}`,
+    href: '/admin/taxes',
+    occurredAt: taxReport.runTimeUtc ? new Date(taxReport.runTimeUtc) : new Date(),
+    kind: 'decision' as const,
+  }] : [];
   const actions: ActionItem[] = [
+    ...taxRiskAction,
     ...closeRequests.map((item) => ({ key: `close-${item.id}`, title: isCashEncashmentException(item.reasonCode) ? `Инкассация не выполнена · ${item.employee.name}` : `Разрешение завершить день · ${item.employee.name}`, detail: item.status === 'approved' && isCashEncashmentException(item.reasonCode) ? 'Разрешено без РКО и ПКО; требуется фактическое устранение.' : item.comment || 'Сотрудник указал техническую причину.', href: `/admin/workday/close-exceptions/${item.id}`, occurredAt: item.requestedAt, kind: 'decision' as const })),
     ...expenseCases.map((item) => ({ key: `expense-${item.id}`, title: `Новая заявка ${item.oneCNumber || ''}`.trim(), detail: [item.requestedByName, money(item.amount), item.businessOperationName].filter(Boolean).join(' · '), href: `/admin/expense-requests/${item.id}`, occurredAt: item.enteredNotApprovedAt ?? item.updatedAt, kind: 'request' as const })),
     ...cashOperationErrors.map((item) => ({ key: `cash-operation-${item.id}`, title: `Инкассация не проведена · ${item.user.name}`, detail: `${item.amount.toLocaleString('ru-RU')} ₽ · ${item.status === 'manual_in_progress' ? 'Взято в ручную' : item.status === 'retrying_1c' ? 'Повторное проведение' : item.oneCError || 'Можно повторить автоматически или взять в ручную'}`, href: `/admin/workday?date=${item.date}&employee=${item.user.id}`, occurredAt: item.updatedAt, kind: 'decision' as const })),

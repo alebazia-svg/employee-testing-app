@@ -1,0 +1,8 @@
+export const taxDocumentTypes = {
+  USN_DECLARATION: 'Декларация УСН до перехода',
+  AUSN_INCOME: 'Доходы АУСН из ЛК ФНС',
+  AUSN_KKT: 'Детализация ККТ из ЛК ФНС',
+  ENS_OPERATIONS: 'Операции ЕНС',
+  AUSN_CALCULATION: 'Расчёт налога АУСН',
+  CORRECTION_EVIDENCE: 'Корректировки и возвраты',
+} as const;

@@ -1,5 +1,18 @@
 ﻿# Portal Decision Log
 
+## 2026-10-25 - AUSN Control Is An Isolated ADMIN Tax Module
+
+The portal exposes AUSN control under `/admin/taxes`, separate from the
+technical OFD screen and sales analytics. The screen consumes the canonical
+production runner cache and keeps source evidence visible. It never
+recalculates the tax base or treats FNS files as the independent income source.
+
+Limit attention uses two independent signals: percentage consumed and an
+operational forecast based on the last three complete runner months. The portal
+shows no safe forecast when the canonical report is unavailable. FNS documents
+are stored as immutable, deduplicated audit inputs and require a later runner
+reconciliation result before the UI may call them processed or matched.
+
 ## 2026-10-23 - Employee native tabs and notification icon semantics (released 1.13.13)
 
 Owner approved replacing repeated bells with meaningful task icons after comparing

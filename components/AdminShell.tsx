@@ -5,7 +5,7 @@ import { useAdminIdentity } from './AdminIdentityProvider';
 import { portalPersonInitials } from '@/lib/portal-person';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Banknote, BriefcaseBusiness, Building2, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Truck, Users, Wrench, X } from 'lucide-react';
+import { Banknote, BriefcaseBusiness, Building2, CalendarDays, ChevronDown, CreditCard, FileClock, History, Home, Landmark, Menu, PanelLeftClose, PanelLeftOpen, ReceiptText, Truck, Users, Wrench, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { AdminInboxBell } from '@/components/AdminInboxBell';
 import { LogoutButton } from '@/components/LogoutButton';
@@ -23,6 +23,7 @@ const dailyNavigation: NavigationItem[] = [
   { href: '/admin/attendance', label: 'График', icon: CalendarDays },
   { href: '/admin/employees', label: 'Сотрудники', icon: Users },
   { href: '/admin/payroll', label: 'Зарплата', icon: Banknote },
+  { href: '/admin/taxes', label: 'Налоги', icon: Landmark },
 ];
 
 const serviceNavigation: NavigationItem[] = [

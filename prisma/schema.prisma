@@ -73,6 +73,26 @@ model User {
   procurementPaymentEvents         SupplierPaymentPlanEvent[]
   procurementReceipts              SupplierPaymentReceipt[]
   confirmedProcurementQr           SupplierPaymentReceipt[] @relation("ConfirmedProcurementQr")
+  taxDocuments                    TaxControlDocument[]
+}
+
+model TaxControlDocument {
+  id             String   @id @default(cuid())
+  documentType   String
+  periodKey      String
+  originalName   String
+  storageKey     String   @unique
+  mimeType       String
+  size           Int
+  sha256         String
+  status         String   @default("UPLOADED")
+  uploadedById   Int
+  createdAt      DateTime @default(now())
+  uploadedBy     User     @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@unique([documentType, periodKey, sha256])
+  @@index([periodKey, documentType, createdAt])
+  @@index([status, createdAt])
 }
 
 model SupplierPaymentPlan {
