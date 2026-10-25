@@ -96,16 +96,15 @@ test('receipt picker: direct upload, exact links, cancellation, retry and multip
     assert.deepEqual((await saved())[0],{names:['receipt.pdf'],purpose:'REQUISITES',replacement:previous,refs:undefined});
     await (await picker()).setFiles(file);
     assert.equal((await saved())[1].replacement,undefined);
-    for(const method of ['USDT','CNY','BANK']){
-      await mount({method,files:[{...previous,purpose:'RECEIPT'}]});
-      await page.getByRole('button',{name:'Это реквизиты',exact:true}).click();
+    for(const admin of [true,false])for(const method of ['USDT','CNY','BANK','CASH','ACCOUNTABLE_QR']){
+      await mount({admin,method,files:[previous,{...previous,id:'receipt',originalName:'paid.pdf',purpose:'RECEIPT'}]});
+      assert.equal(await page.getByRole('button',{name:'Это реквизиты',exact:true}).count(),0);
+      assert.equal(await page.getByRole('button',{name:'Это чек оплаты',exact:true}).count(),0);
       assert.equal(await page.getByRole('radio').count(),0);
       assert.equal(await page.getByText(/QR кошелька|Реквизиты кошелька|QR Alipay|Другие реквизиты/).count(),0);
-      await page.getByRole('button',{name:'Отмена',exact:true}).click();
+      assert.equal(await page.getByRole('button',{name:'Открыть old.pdf',exact:true}).count(),1);
+      assert.equal(await page.getByRole('button',{name:'Открыть paid.pdf',exact:true}).count(),1);
       assert.deepEqual(await page.evaluate(()=>(window as any).changed),[]);
-      await page.getByRole('button',{name:'Это реквизиты',exact:true}).click();
-      await page.getByRole('button',{name:'Да, это реквизиты',exact:true}).click();
-      assert.deepEqual(await page.evaluate(()=>(window as any).changed),[{id:'old',action:'CLASSIFY',purpose:method==='BANK'?'REQUISITES':'QR'}]);
     }
     await mount({count:0,method:'USDT'});
     assert.equal(await page.getByRole('button',{name:'Добавить чек',exact:true}).count(),0);
