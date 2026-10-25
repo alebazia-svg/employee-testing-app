@@ -4,7 +4,8 @@ import { readInteraction } from './employee-interaction-policy';
 import { prisma } from './prisma';
 import { employeeNotificationOpening } from './notification-opening';
 import { activitySections, activityDayBounds, ACTIVITY_RETENTION_DAYS, type ActivitySection } from './employee-activity-policy';
-import { expenseOutstanding, EMPLOYEE_EXPENSE_KIND, EXPENSE_SOURCE_MAX_AGE_MS } from './employee-expense-policy';
+import { expenseAllocations } from './employee-expense-routing';
+import { expenseRemaining, EMPLOYEE_EXPENSE_KIND, EXPENSE_SOURCE_MAX_AGE_MS } from './employee-expense-policy';
 import { expenseRecord as record, expenseText as text } from './expense-request-list-view';
 import { readHandoverContext, handoverEventTitle } from './employee-handover-audit-policy';
 
@@ -74,7 +75,7 @@ export async function employeeActivityReport(userId: number, date: string, now =
   const grouped = new Map<string, ActivityObligation>();
   for (const n of notifications.slice(0,200)) {
     const opened = opens.find(e => e.notificationId === n.id);
-    const informational = employeeNotificationOpening(n) === 'notice';
+    const informational = employeeNotificationOpening(n) === 'notice' || n.kind === EMPLOYEE_EXPENSE_KIND && n.fingerprint.endsWith(':coordinate');
     let result = informational ? 'Информационное сообщение' : 'Выполнение не подтверждено', resultAt: string | null = null, title = n.task?.title || n.title;
     let note = 'Отметка прочтения и закрытие сообщения сами по себе не подтверждают выполнение.';
     let knownOpen = Boolean(n.task && n.task.status !== 'done' || n.issue?.status === 'open' || n.review?.status === 'open');
@@ -83,17 +84,21 @@ export async function employeeActivityReport(userId: number, date: string, now =
     else if (n.issue?.status !== 'open' && n.issue?.resolvedAt || n.review?.status !== 'open' && n.review?.resolvedAt) { result = 'Вопрос закрыт'; resultAt = (n.issue?.resolvedAt || n.review?.resolvedAt)!.toISOString(); note = 'Закрытие подтверждено системой; это не обязательно личное действие сотрудника.'; }
     const c = cases.find(c => c.oneCRequestRef === expenseRef(n));
     if (c) {
-      title = `Расход · ${c.amount?.toString() || '—'} ₽ · № ${c.oneCNumber}`;
+      title = n.title;
       const evaluation = c.evaluations.find(e => e.sourceHash === c.latestSourceHash);
       const source = record(evaluation?.normalizedSource);
       sourceAt = c.lastSeenAt.toISOString();
-      const outstanding = expenseOutstanding(source);
+      const cashboxRef = n.fingerprint.split(':')[2];
+      const allocations = expenseAllocations(source);
+      const own = allocations?.filter(a => a.cashboxRef === cashboxRef);
+      const paidFromBox = Array.isArray(record(source.linkedCashExpenseOrders).rows) && (record(source.linkedCashExpenseOrders).rows as unknown[]).some(r => text(record(record(r).cashbox).ref).toLowerCase() === cashboxRef && record(r).posted === true && record(r).deletion_mark === false && Number(record(r).executed_amount) > 0);
+      const outstanding = allocations === null || !own?.length && !paidFromBox && expenseRemaining(source, false) !== 0 ? null : own!.reduce((sum, a) => sum + a.remaining, 0);
       knownOpen = Boolean(evaluation?.sourceComplete && +now >= +c.lastSeenAt && +now - +c.lastSeenAt <= EXPENSE_SOURCE_MAX_AGE_MS && outstanding !== null && outstanding > 0);
-      if (evaluation?.sourceComplete && expenseOutstanding(source) === 0) {
-        result = 'Расходник проведён';
+      if (evaluation?.sourceComplete && outstanding === 0) {
+        result = 'Часть заявки исполнена';
         const rows = record(source.linkedCashExpenseOrders).rows;
-        const orders = Array.isArray(rows) ? rows.map(record).filter(r => r.posted === true && r.deletion_mark === false) : [];
-        note = `${orders.map(r => `№ ${text(r.number)} · время документа ${text(r.date)}`).join('; ')}. Автор и точное время проведения не подтверждены.`;
+        const orders = Array.isArray(rows) ? rows.map(record).filter(r => r.posted === true && r.deletion_mark === false && text(record(r.cashbox).ref).toLowerCase() === cashboxRef) : [];
+        note = `${orders.length ? '' : 'Заявка полностью исполнена по данным 1С. '}${orders.map(r => `№ ${text(r.number)} · время документа ${text(r.date)}`).join('; ')}. Автор и точное время проведения не подтверждены.`;
       } else note = knownOpen ? 'По полным сохранённым данным 1С исполнение ещё не подтверждено.' : 'Данные 1С неполные или устарели. По ним нельзя делать вывод о задержке сотрудника.';
     }
     const done = !['Выполнение не подтверждено','Информационное сообщение'].includes(result);

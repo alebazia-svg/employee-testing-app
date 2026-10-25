@@ -1,8 +1,8 @@
 export type AttentionPushDetail = { identity: string; detail: string; action: string; reference?: string };
 export type AttentionUrgency = { key: string; at: string; label: string; phase: 'upcoming' | 'due'; signals?: string[] };
 /** Business attention is independent from notification read state. */
-export const ATTENTION_LIFECYCLE_SOURCES = ['expense_request', 'supplier_payment_plan', 'procurement_delivery', 'procurement_delivery_request', 'workday_close_exception', 'cash_operation', 'workday_control_issue', 'terminal_fiscal_review', 'tax_limit'] as const;
-export const ATTENTION_PUSH_TYPES = ['expense_request.created', 'procurement.delivery_requested', 'procurement.delivery_manual_requested', 'procurement.payment_submitted', 'workday.close_exception_requested', 'workday.cash_encashment_exception_requested', 'workday.cash_operation_failed', 'workday.kkm_shift_close_attention', 'workday_issue.employee_action', 'workday_issue.employee_message', 'terminal_fiscal_review.created', 'terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'] as const;
+export const ATTENTION_LIFECYCLE_SOURCES = ['expense_cash_issue', 'expense_request', 'supplier_payment_plan', 'procurement_delivery', 'procurement_delivery_request', 'workday_close_exception', 'cash_operation', 'workday_control_issue', 'terminal_fiscal_review', 'tax_limit'] as const;
+export const ATTENTION_PUSH_TYPES = ['expense_request.cash_issue', 'expense_request.created', 'procurement.delivery_requested', 'procurement.delivery_manual_requested', 'procurement.payment_submitted', 'workday.close_exception_requested', 'workday.cash_encashment_exception_requested', 'workday.cash_operation_failed', 'workday.kkm_shift_close_attention', 'workday_issue.employee_action', 'workday_issue.employee_message', 'terminal_fiscal_review.created', 'terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'] as const;
 export type AttentionItem = {
   id: string; readAt: string | null;
   event: { type: string; sourceType: string; sourceId: string; occurredAt: string; title?: string; body?: string; href?: string; deadline?: string; push?: AttentionPushDetail; urgency?: AttentionUrgency; technicalAttention?: boolean };
@@ -20,7 +20,7 @@ export function needsAdminAttention(item: AttentionItem) {
 }
 export function attentionPriority(item: AttentionItem) {
   if (item.meta.category === 'system') return 3;
-  if (['expense_request', 'procurement_delivery', 'procurement_delivery_request', 'cash_operation'].includes(item.event.sourceType)) return 0;
+  if (['expense_cash_issue', 'expense_request', 'procurement_delivery', 'procurement_delivery_request', 'cash_operation'].includes(item.event.sourceType)) return 0;
   if (item.event.sourceType === 'supplier_payment_plan') return 2;
   return 1;
 }
@@ -70,7 +70,7 @@ export function digestDue(input: { items: AttentionItem[]; previous: DigestState
 export function attentionCounts(items: AttentionItem[]) {
   let expenses = 0, accountable = 0, procurement = 0, other = 0;
   for (const item of items) {
-    if (item.event.sourceType === 'expense_request') expenses++;
+    if (['expense_request', 'expense_cash_issue'].includes(item.event.sourceType)) expenses++;
     else if (['procurement_delivery', 'procurement_delivery_request'].includes(item.event.sourceType)) accountable++;
     else if (item.event.sourceType === 'supplier_payment_plan') procurement++;
     else other++;
@@ -98,13 +98,14 @@ export function attentionDigestText(items: AttentionItem[], previous: DigestStat
     // Source links are local ADMIN destinations; never accept an external push target.
     const href = item.event.sourceType === 'terminal_fiscal_review' ? `/admin/inbox?view=attention&review=${encodeURIComponent(item.event.sourceId)}` : item.event.href;
     const url = href && !href.includes('..') && /^\/admin\/[a-zA-Z0-9/?#%&=._:-]+$/.test(href) ? href : fallbackUrl;
+    if (item.event.sourceType === 'expense_cash_issue') return { title: pushText(item.event.title || `${data.action} · ${data.identity}`, 110), body: pushText(item.event.body, 140), url: `/admin/inbox?view=attention&cashIssue=${encodeURIComponent(item.id)}` };
     return { title: pushText(title, 110), body: [isNew(item) ? 'Новое.' : '', `${data.action}.`, pushText(data.detail, 100), pushText(item.event.deadline, 90)].filter(Boolean).join(' '), url };
   }
   // A new request must be identifiable even when older overdue work ranks first.
   const newest = items.filter(item => isNew(item) && !item.event.technicalAttention).sort((a,b) => b.event.occurredAt.localeCompare(a.event.occurredAt))[0];
   const first = newest ?? items[0];
   const second = items.find(item => item.id !== first.id)!;
-  const lines = [first, second].map(item => `${isNew(item) ? 'Новое · ' : item.event.urgency ? 'Срочно · ' : ''}${pushText(details(item).identity, 70)}${details(item).reference ? ' · № ' + pushText(details(item).reference, 16) : ''} — ${pushText(details(item).action, 30)}`);
+  const lines = [first, second].map(item => `${isNew(item) ? 'Новое · ' : item.event.urgency ? 'Срочно · ' : ''}${pushText(details(item).identity, 70)}${details(item).reference ? ' · № ' + pushText(details(item).reference, 16) : ''} — ${pushText(details(item).action, 30)}${item.event.sourceType === 'expense_cash_issue' ? ' · ' + pushText(details(item).detail, 40) : ''}`);
   if (items.length > 2) lines.push(`Ещё ${items.length - 2} требуют решения`);
   return { title: `Требуют внимания: ${items.length}`, body: lines.join('\n'), url: fallbackUrl };
 }

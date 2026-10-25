@@ -1,7 +1,8 @@
 import { employeeReplyMessageId, employeeReplyCopy } from './employee-reply-author';
 import 'server-only';
-import { loadEmployeeExpenses } from './employee-expense-snapshot';
-import { EMPLOYEE_EXPENSE_KIND, expenseNotificationKey } from './employee-expense-policy';
+import { loadEmployeeExpenseRouting } from './employee-expense-routing-snapshot';
+import { expenseRouteKey, expenseRouteCopy } from './employee-expense-routing';
+import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
 import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { filterActiveWorkdayNotifications, reconcileActiveWorkdayNotifications, workdayNotificationHref, workdayTaskNotificationCopy } from '@/lib/workday-notifications';
@@ -48,10 +49,10 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
   const seenTargets = new Set<string>();
   const activeRows = await (readOnly ? filterActiveWorkdayNotifications : reconcileActiveWorkdayNotifications)(prisma, rows.filter(row => row.status === 'sent'));
   const activeIds = new Set(activeRows.map(row => row.id));
-  const expenses = activeRows.some(row => row.kind === EMPLOYEE_EXPENSE_KIND) ? await loadEmployeeExpenses(user.id) : null;
+  const expenses = activeRows.some(row => row.kind === EMPLOYEE_EXPENSE_KIND) ? await loadEmployeeExpenseRouting(user.id) : null;
   if (expenses && expenses.state !== 'unavailable') {
-    const keys = new Set(expenses.payable.map(item => expenseNotificationKey(user.id, expenses.cashboxRef, item)));
-    for (const row of rows) if (row.kind === EMPLOYEE_EXPENSE_KIND && !keys.has(row.fingerprint)) activeIds.delete(row.id);
+    const keys = new Set(expenses.items.map(expenseRouteKey));
+    for (const row of rows) if (row.kind === EMPLOYEE_EXPENSE_KIND && !keys.has(row.fingerprint) && !expenses.unavailableRefs.includes(row.fingerprint.split(':')[3])) activeIds.delete(row.id);
   }
   const delivery = activeRows.some(row => row.kind === DELIVERY_READY_KIND) ? await currentDeliveryPush() : null;
   const collections = activeRows.some(row => row.kind === COLLECTION_READY_KIND) ? await currentCollectionPushes() : null;
@@ -75,7 +76,8 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
       const collectionCopy = collections?.state === 'ready' ? collections.notices.find(n => n.userId === user.id && n.fingerprint === (cashNoticeBase(notification) ?? notification.fingerprint)) : null;
       const ownIssue = cashIssue ? cashIssueForUser(cashIssue, user.id) : null;
       const issueCopy = ownIssue?.fingerprint === notification.fingerprint ? ownIssue : null;
-      const copy = notification.kind === CASH_ISSUE_KIND ? issueCopy ?? { ...CASH_ISSUE_PUSH_COPY, body: 'Статус выдачи уточняется. Откройте заявку перед выдачей денег.' }
+      const expenseItems = expenses?.items.filter(item => item.ref === notification.fingerprint.split(':')[3]) ?? [];
+      const copy = notification.kind === EMPLOYEE_EXPENSE_KIND && expenseItems.length ? expenseRouteCopy(expenseItems) : notification.kind === CASH_ISSUE_KIND ? issueCopy ?? { ...CASH_ISSUE_PUSH_COPY, body: 'Статус выдачи уточняется. Откройте заявку перед выдачей денег.' }
         : notification.kind === DELIVERY_READY_KIND ? deliveryCopy ?? DELIVERY_PUSH_COPY
         : notification.kind === COLLECTION_READY_KIND ? collectionCopy ?? COLLECTION_PUSH_COPY : null;
       return {

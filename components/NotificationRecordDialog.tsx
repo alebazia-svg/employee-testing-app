@@ -57,12 +57,18 @@ function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}
   if(expense)return <ExpenseRequestDialogRow item={detail.item} initialOpen detailOnly onDismiss={onClose}/>;
   const plan=detail&&(detail.kind==='payment'||detail.kind==='receipts')?detail.plan:null;
   return <dialog ref={dialog} className={`pam-dialog ${receiptPreview?'receipt-notification-preview':''}`} aria-label={item.title} onCancel={e=>{e.preventDefault();close();}}>
-    <header className="pam-dialog-heading"><h2>{item.title}</h2><button aria-label="Закрыть уведомление" disabled={busy} onClick={close}><X size={20}/></button></header>
+    <header className="pam-dialog-heading"><h2>{detail?.kind==='cash_issue'?'Расходник за вами':item.title}</h2><button aria-label="Закрыть уведомление" disabled={busy} onClick={close}><X size={20}/></button></header>
     <div className="pam-dialog-content space-y-4">
       {!readOnly&&item.audience==="employee"&&<InteractionShown context={{target:"notification",ref:String(item.id),stage:"shown"}}/>}
       {discard&&<><h3 className="font-bold">Закрыть без сохранения?</h3><p>Введённые изменения не сохранятся.</p></>}
       <div hidden={discard} className="space-y-4">
         {!detail?<><p className="whitespace-pre-wrap text-sm">{item.body}</p>{!error&&!readOnly&&<p role="status" className="text-sm text-slate-500">Загружаем актуальные данные…</p>}</>:null}
+        {detail?.kind==='cash_issue'&&<>
+          <div><p className="text-3xl font-bold tracking-tight">{detail.amount.toLocaleString('ru-RU')} ₽</p><p className="mt-1 text-base font-semibold">{detail.cashbox}</p></div>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">{detail.reason}</p>{detail.handoverNote&&<p className="text-xs text-slate-500">{detail.handoverNote}</p>}
+          <dl className="grid grid-cols-[100px_1fr] gap-x-4 gap-y-2 text-sm"><dt className="text-slate-500">Заявка</dt><dd className="font-semibold">№ {detail.number} · к оплате</dd><dt className="text-slate-500">Заявитель</dt><dd>{detail.applicant}</dd>{detail.recipient&&<><dt className="text-slate-500">Получатель</dt><dd>{detail.recipient}</dd></>}<dt className="text-slate-500">Назначение</dt><dd>{detail.purpose}</dd></dl>
+          <p className="text-sm text-slate-600">Если деньги уже выданы — оформите расходник в 1С по этой заявке. Если ещё нет — оформите после выдачи.</p>
+        </>}
         {detail?.kind==='notice'&&<p className="whitespace-pre-wrap text-sm">{detail.body}</p>}
         {plan&&<>
           <div hidden={receiptPreview} className="space-y-4">

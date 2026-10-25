@@ -1,3 +1,5 @@
+import { loadExpenseRouting } from './employee-expense-routing-snapshot';
+import { adminExpenseRouteKey } from './employee-expense-routing';
 import { portalPersonName } from './portal-person';
 import type { NotificationDecision } from './notification-detail';
 import {loadFiscalReviewData} from './fiscal-review-data';
@@ -28,6 +30,14 @@ export async function readNotificationDetail(user: { id: number; role: string; p
     const receipt=await prisma.adminInboxReceipt.findFirst({where:{id,userId:user.id},include:{event:true}});
     if(!receipt)return missing();
     const event=receipt.event;kind=adminNotificationOpening(event);
+    if(event.sourceType==='expense_cash_issue') {
+      const routing = await loadExpenseRouting();
+      if(routing.state !== 'ready' || routing.unavailableRefs.includes(event.eventKey.split(':')[1]))
+        return Response.json({kind:'notice',body:'Статус выдачи не обновлён. Перед выдачей проверьте заявку и расходники в 1С.'},{headers});
+      const part = routing.adminItems.find(i => adminExpenseRouteKey(i) === event.eventKey);
+      return Response.json(part ? {kind:'cash_issue',amount:part.remaining,cashbox:part.cashbox,reason:part.reason,handoverNote:part.handoverNote,applicant:part.applicant,number:part.number,recipient:part.recipient||'',purpose:part.purpose}
+        : {kind:'notice',body:'По последним данным эта выдача больше не ожидается. Повторно выдавать деньги по уведомлению не нужно.'},{headers});
+    }
     if(kind==='fiscal'){
       const detail=await loadFiscalReviewData(event.sourceId,user.id);
       return detail?Response.json({kind,detail},{headers:{'Cache-Control':'private, no-store'}}):missing();

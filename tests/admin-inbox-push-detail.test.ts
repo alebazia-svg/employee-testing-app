@@ -40,3 +40,10 @@ test('unavailable amounts are not invented and long comments cannot displace dea
   }
   const text=attentionDigestText([one]);assert.ok(text.title.length<=110);assert.ok(text.body.length<240);assert.ok(text.body.endsWith('До 18:00'));
 });
+
+
+test('cashbox handover push is short and identifies both action and reason',()=>{
+ const item:any={id:'cash',readAt:null,event:{type:'expense_request.cash_issue',sourceType:'expense_cash_issue',sourceId:'cash',occurredAt:'2026-10-25T15:00:00Z',title:'Оформите расходник · 16 000 ₽',body:'Касса Костеренко · Смена завершена',href:'/admin/expense-requests/local-case',push:{identity:'16 000 ₽ · Касса Костеренко',action:'Оформите расходник',detail:'Смена завершена'}},meta:{category:'requests'},sourceState:{active:true}};
+ const copy=attentionDigestText([item]);assert.equal(copy.title,item.event.title);assert.equal(copy.body,item.event.body);
+ assert.equal(attentionDigestText([item],{ids:['cash'],repeat:true}).body,item.event.body);
+});

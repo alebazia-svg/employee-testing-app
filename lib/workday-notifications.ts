@@ -1,7 +1,9 @@
 import 'server-only';
 import { activeScheduleNotices, scheduleNoticeKinds, scheduleNoticeRef } from './work-schedule-notifications';
 import { reconcileCashExpenseEvidence } from './cash-expense-reconciliation';
-import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
+import { EMPLOYEE_EXPENSE_KIND, expensePushTtl } from './employee-expense-policy';
+import { loadExpenseRouting } from './employee-expense-routing-snapshot';
+import { expenseRouteKey } from './employee-expense-routing';
 import { expensePushDecision, queueEmployeeExpensePushes } from './employee-expense-notifications';
 import { observePushAttempt } from './push-attempt-observation';
 import {RECEIPT_EMPLOYEE_KIND,receiptHref,receiptPlanFromFingerprint} from './procurement-receipt-policy';
@@ -50,6 +52,8 @@ export function closeExceptionNotificationRef(notification: Pick<NotificationLif
 }
 
 export async function filterActiveWorkdayNotifications<T extends NotificationLifecycleRow>(db: DbClient, rows: T[]) {
+  const routing = rows.some(row => row.kind === EMPLOYEE_EXPENSE_KIND) ? await loadExpenseRouting().catch(() => null) : null;
+  const expenseKeys = new Set(routing?.items.map(expenseRouteKey));
   const activeSchedule = await activeScheduleNotices(db, rows);
   const inactiveProcurement = await inactiveProcurementNotifications(db, rows);
   const refs = rows.map(closeExceptionNotificationRef).filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -79,6 +83,7 @@ export async function filterActiveWorkdayNotifications<T extends NotificationLif
   const requestsById = new Map(referencedRequests.map((request) => [request.id, request]));
 
   return rows.filter((notification) => {
+    if (notification.kind === EMPLOYEE_EXPENSE_KIND && routing?.state === 'ready' && !routing.unavailableRefs.includes(notification.fingerprint?.split(':')[3] ?? '') && !expenseKeys.has(notification.fingerprint ?? '')) return false;
     if (inactiveProcurement.has(notification.id)) return false;
     if (scheduleNoticeKinds.includes(notification.kind) && !activeSchedule.has(notification.id)) return false;
     if (notification.kind === 'cash_operation_created') return false;
@@ -487,7 +492,7 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
           await observePushAttempt(subscription, () => webpush.sendNotification({
             endpoint: subscription.endpoint,
             keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-          }, payload, { TTL: employeePushTtl(attemptTime), timeout: 10000 }));
+          }, payload, { TTL: notification.kind === EMPLOYEE_EXPENSE_KIND ? expensePushTtl(attemptTime) : employeePushTtl(attemptTime), timeout: 10000 }));
           deliveredCount += 1;
         } catch (error) {
           const statusCode = typeof error === 'object' && error && 'statusCode' in error ? Number(error.statusCode) : 0;

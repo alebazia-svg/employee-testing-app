@@ -1,7 +1,11 @@
 import { expenseRecord as record, expenseText as text, expenseName as name } from './expense-request-list-view';
+import { employeePushTtl } from './employee-push-policy';
 
 export const EMPLOYEE_EXPENSE_KIND = 'employee_expense_payable';
 export const EXPENSE_SOURCE_MAX_AGE_MS = 6 * 60_000;
+// An actionable cash instruction must not wait on an offline phone all day.
+// The current obligation remains available in the authenticated PWA.
+export function expensePushTtl(now: Date) { return Math.min(180, employeePushTtl(now)); }
 export type EmployeeExpense = { ref: string; number: string; purpose: string; remaining: number; date: string; cycle: number };
 export type EmployeeExpenseSnapshot = { state: 'ready' | 'unavailable' | 'unmapped'; checkedAt: string | null; payable: EmployeeExpense[]; pending: EmployeeExpense[] };
 const minor = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.round(value * 100) : null;
@@ -13,7 +17,7 @@ const complete = (value: unknown) => {
 export function expenseOutstanding(source: unknown): number | null {
   return expenseRemaining(source, true);
 }
-function expenseRemaining(source: unknown, requireRequestCashbox: boolean): number | null {
+export function expenseRemaining(source: unknown, requireRequestCashbox: boolean): number | null {
   const s = record(source), execution = record(s.execution), links = record(s.linkedCashExpenseOrders);
   const total = minor(s.amount), remaining = minor(execution.remaining_amount), executed = minor(execution.executed_amount);
   if (record(s.completeness).complete === false || execution.amounts_consistent === false || total === null || total === 0 || remaining === null || executed === null || remaining + executed !== total

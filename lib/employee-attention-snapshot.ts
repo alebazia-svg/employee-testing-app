@@ -3,17 +3,20 @@ import { portalMessageAuthor } from './portal-person';
 import 'server-only';
 import { EMPLOYEE_EXPENSE_KIND } from './employee-expense-policy';
 import { loadEmployeeExpenses } from './employee-expense-snapshot';
+import { loadEmployeeExpenseRouting } from './employee-expense-routing-snapshot';
+import { expenseRouteKey } from './employee-expense-routing';
 import { prisma } from '@/lib/prisma';
 import { workdayIssueView } from '@/lib/workday-control-issue-view';
 import { employeeReviewState, orderEmployeeAttention, type EmployeeAttentionItem } from '@/lib/employee-attention';
 export async function loadEmployeeAttention(user: { id: number }) {
   const now = new Date();
-  const [issues, reviews, cash, requests, expenses] = await Promise.all([
+  const [issues, reviews, cash, requests, expenses, expenseRouting] = await Promise.all([
     prisma.workdayControlIssue.findMany({ where: { userId: user.id, status: 'open', employeeActionRequired: true }, include: { messages: { orderBy: { createdAt: 'desc' }, include: { author: { select: { role: true, name: true, payrollName: true } } } } } }),
     prisma.terminalFiscalEmployeeReview.findMany({ where: { status: 'open', OR: [{ employeeId: user.id }, { participants: { some: { userId: user.id } } }] }, include: { participants: { include: { user: { select: { name: true } } } }, messages: { orderBy: { createdAt: 'desc' }, include: { author: { select: { role: true, name: true, payrollName: true } } } } } }),
     prisma.cashOperation.findMany({ where: { userId: user.id, status: { notIn: ['posted_1c_pair', 'resolved_manual'] } }, orderBy: { createdAt: 'asc' } }),
     prisma.workdayCloseExceptionRequest.findMany({ where: { employeeId: user.id, consumedAt: null, workDayEntry: { endedAt: null, status: { in: ['active', 'missing_checkout'] } } }, include: { workDayEntry: { select: { date: true } } }, orderBy: { requestedAt: 'desc' } }),
     loadEmployeeExpenses(user.id).catch(() => ({ state: 'unavailable' as const, checkedAt: null, payable: [], pending: [] })),
+    loadEmployeeExpenseRouting(user.id).catch(() => ({ state: 'unavailable' as const, items: [], unavailableRefs: [] })),
   ]);
   const events = issues.length ? await prisma.adminInboxEvent.findMany({ where: { sourceType: 'workday_control_issue', sourceId: { in: issues.map(i => String(i.id)) }, eventKey: { startsWith: 'credit_issue:' } }, select: { sourceId: true, eventKey: true, occurredAt: true }, orderBy: { occurredAt: 'desc' } }) : [];
   const items: EmployeeAttentionItem[] = issues.map(issue => {
@@ -53,14 +56,15 @@ export async function loadEmployeeAttention(user: { id: number }) {
     for (const item of related) items.splice(items.indexOf(item), 1);
     items.push({ id: `close:${request.id}`, kind: 'closing', closingScope: scope, title: scope === 'encashment' ? 'Закрыть смену без инкассации' : 'Закрытие смены', date: request.workDayEntry.date, priority: 0, state: request.status === 'pending' ? 'waiting' : 'action', status: request.status === 'pending' ? 'Ожидает согласования' : 'Не согласовано', detail: request.decisionComment || (request.status === 'pending' ? 'Запрос отправлен. Смена пока открыта.' : 'Продолжите сдачу смены и устраните замечания.'), facts: related.map(item => ['На контроле', item.title] as [string,string]) });
   }
-  if (expenses.state === 'ready' && expenses.payable.length) items.push({
-    id: 'expense:payable', kind: 'cash', title: 'Заявки утверждены', priority: 1, state: 'action',
-    status: 'Оформите расходники в 1С', date: expenses.checkedAt ?? now.toISOString(),
-    detail: 'Оформите расходники в 1С.',
-    facts: expenses.payable.map(row => [`№${row.number} · ${row.purpose}`, `${row.remaining.toLocaleString('ru-RU')} ₽`]),
+  for (const row of expenseRouting.items) items.push({
+    id: expenseRouteKey(row), expenseRef: row.ref, expenseCashboxRef: row.cashboxRef, expenseMode: row.mode,
+    kind: 'cash', title: `${row.mode === 'execute' ? 'Оформите расходник · ' : ''}${row.remaining.toLocaleString('ru-RU')} ₽`, priority: 1,
+    state: row.onShift ? 'action' : 'waiting',
+    status: row.mode === 'coordinate' ? 'Уточните выдачу' : row.onShift ? 'Оформите расходник в 1С' : 'После начала смены',
+    date: row.date, detail: row.detail, facts: [['Заявка', `№ ${row.number}`], ['Касса', row.cashbox], ...(row.recipient ? [['Получатель', row.recipient] as [string, string]] : []), ['Назначение', row.purpose]],
   });
-  const unread = await prisma.workdayNotification.findMany({ where: { userId: user.id, status: 'sent', readAt: null }, select: { id: true, kind: true, issueId: true, reviewId: true } });
-  for (const item of items) item.notificationIds = unread.filter(row => row.issueId && item.id === `issue:${row.issueId}` || row.reviewId && item.id === `review:${row.reviewId}` || item.id === 'expense:payable' && row.kind === EMPLOYEE_EXPENSE_KIND).map(row => row.id);
+  const unread = await prisma.workdayNotification.findMany({ where: { userId: user.id, status: 'sent', readAt: null }, select: { id: true, kind: true, issueId: true, reviewId: true, fingerprint: true } });
+  for (const item of items) item.notificationIds = unread.filter(row => row.issueId && item.id === `issue:${row.issueId}` || row.reviewId && item.id === `review:${row.reviewId}` || item.kind === 'cash' && row.kind === EMPLOYEE_EXPENSE_KIND && row.fingerprint === item.id).map(row => row.id);
   items.push(...await loadEmployeeScheduleAttention(user.id));
-  return { items: orderEmployeeAttention(items), expenses, checkedAt: now.toISOString() };
+  return { items: orderEmployeeAttention(items), expenses, expenseRoutingState: expenseRouting.state, expenseUnavailableRefs: expenseRouting.unavailableRefs, checkedAt: now.toISOString() };
 }
