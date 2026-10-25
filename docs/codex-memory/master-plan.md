@@ -192,6 +192,15 @@ the employee PWA pilot and does not authorize a production migration or deploy.
   days, and becomes urgent at 95% or 30 days;
 - FNS uploads are audit records with type, period, uploader, SHA-256 and guarded
   storage; accepting a file is not evidence that reconciliation succeeded;
+- the recorded pre-transition USN amount is not a substitute for the original
+  declaration: the declaration and AUSN transition confirmation are permanent,
+  one-time archive documents that remain viewable and downloadable;
+- recurring FNS evidence is tracked month by month from April 2026; the portal
+  opens the oldest incomplete month first and explains where each missing file
+  can be obtained;
+- an idempotent reminder sync publishes the oldest incomplete period to the
+  ADMIN inbox and uses the existing Telegram delivery queue when that channel
+  is enabled;
 - not yet authorized: production migration, deploy, automatic tax decisions,
   1C writes or installation/change of the production runner service.
 

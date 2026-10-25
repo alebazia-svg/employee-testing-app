@@ -23,6 +23,9 @@ import {
 import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycle';
 import { prisma } from '@/lib/prisma';
 import {isPaymentReceipt} from './procurement-document-policy';
+import { loadAusnReportCatalog } from './ausn-report-cache';
+import { buildTaxDocumentPlan } from './tax-document-plan';
+import { taxDocumentReminderEventKey } from './tax-document-reminders';
 
 export type AdminInboxViewItem = {
   id: string;
@@ -63,12 +66,20 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       orderBy: { event: { occurredAt: 'desc' } },
     }),
     prisma.adminInboxReceipt.findMany({
-      where: { userId: input.userId, event: { sourceType: { in: [...ATTENTION_LIFECYCLE_SOURCES, 'dependency', 'infrastructure'] } } },
+      where: { userId: input.userId, event: { sourceType: { in: [...ATTENTION_LIFECYCLE_SOURCES, 'dependency', 'infrastructure', 'tax_control'] } } },
       include: { event: true }, orderBy: { event: { occurredAt: 'desc' } },
     }),
   ]);
 
   const rows = [...new Map([...displayRows, ...unreadRows, ...lifecycleRows].map((row) => [row.id, row])).values()];
+  const hasTaxReminder = rows.some((row) => row.event.sourceType === 'tax_control');
+  const currentTaxEventKey = hasTaxReminder ? await Promise.all([
+    loadAusnReportCatalog(),
+    prisma.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, originalName: true } }),
+  ]).then(([reports, documents]) => {
+    const next = buildTaxDocumentPlan({ now, reports, documents: documents.map((document) => ({ ...document, source: 'portal' as const })) }).find((period) => period.status === 'missing');
+    return next ? taxDocumentReminderEventKey(next) : undefined;
+  }) : undefined;
   const receiptIds=rows.filter(r=>r.event.sourceType==='supplier_payment_receipt').map(r=>r.event.sourceId);
   const currentReceipts=receiptIds.length?await prisma.supplierPaymentReceipt.findMany({where:{id:{in:receiptIds}},select:{id:true,purpose:true,replacedById:true}}):[];
   const activeReceiptIds=new Set(currentReceipts.filter(isPaymentReceipt).map(f=>f.id));
@@ -221,7 +232,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const sourceState = adminInboxSourceState({
       sourceType,
       eventType: row.event.type,
-      current: sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id)
+      current: sourceType === 'tax_control' ? row.event.eventKey === currentTaxEventKey
+        : sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id)
         : sourceType === 'procurement_delivery_request' ? activeDeliverySourceIds.has(sourceId) && deliveryEvents.some(e => activeDeliveryIds.has(e.id) && row.event.eventKey === `delivery:manual:${e.id}`)
         : currentExpenseKeys.has(row.event.eventKey),
       businessStatus: plansById.get(sourceId)?.status ?? issue?.status ?? review?.status ?? exception?.status ?? cashOperation?.status,

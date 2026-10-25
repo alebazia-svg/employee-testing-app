@@ -8,6 +8,7 @@ export type AusnReportView = {
   reason?: string;
   sourceFile?: string;
   reportTitle?: string;
+  periodKey?: string;
   codeVersion?: string;
   runTimeUtc?: string;
   dataCutoff?: string;
@@ -18,6 +19,8 @@ export type AusnReportView = {
   usedPercent?: number;
   monthlyIncome: Array<{ label: string; amount: number; partial: boolean }>;
   forecastDaysToLimit?: number;
+  usnBaseline?: number;
+  usnBaselineSource?: string;
   sourceCompleteness: Record<string, string>;
   attention: string[];
 };
@@ -31,6 +34,7 @@ function cell(markdown: string, label: string) {
 
 export function parseAusnReport(markdown: string, sourceFile = 'report.md'): AusnReportView {
   const reportTitle = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim();
+  const periodKey = reportTitle?.match(/20\d{2}-\d{2}/)?.[0];
   const total = cell(markdown, 'Всего доходов года для лимита');
   const remaining = cell(markdown, 'Остаток до лимита');
   const percent = cell(markdown, 'Использовано лимита');
@@ -50,15 +54,27 @@ export function parseAusnReport(markdown: string, sourceFile = 'report.md'): Aus
   const averageMonth = recentComplete.length ? recentComplete.reduce((sum, row) => sum + row.amount, 0) / recentComplete.length : 0;
   const remainingNumber = remaining ? moneyNumber(remaining) : undefined;
   const forecastDaysToLimit = remainingNumber !== undefined && remainingNumber > 0 && averageMonth > 0 ? Math.ceil(remainingNumber / (averageMonth / 30)) : undefined;
+  const usnBaselineCell = cell(markdown, 'УСН до 31.03.2026');
   return {
-    available: Boolean(reportTitle && total && remaining && percent), sourceFile, reportTitle,
+    available: Boolean(reportTitle && total && remaining && percent), sourceFile, reportTitle, periodKey,
     codeVersion: cell(markdown, 'Версия кода отчёта'), runTimeUtc: cell(markdown, 'UTC run time'),
     dataCutoff: cell(markdown, 'Data cutoff'), agentApiUser: cell(markdown, 'AgentAPI пользователь'),
     agentApiVersion: cell(markdown, 'AgentAPI версия'), totalIncome: total ? moneyNumber(total) : undefined,
     remaining: remainingNumber, usedPercent: percent ? moneyNumber(percent) : undefined, monthlyIncome, forecastDaysToLimit,
+    usnBaseline: usnBaselineCell ? moneyNumber(usnBaselineCell) : undefined,
+    usnBaselineSource: /УСН до 31\.03\.2026[^\n]*по декларации/i.test(markdown) ? 'Декларация учтена production runner' : undefined,
     sourceCompleteness, attention,
     reason: reportTitle && total && remaining && percent ? undefined : 'Кэш найден, но не соответствует контракту исполнительного отчёта.',
   };
+}
+
+export async function loadAusnReportCatalog(): Promise<AusnReportView[]> {
+  const directory = process.env.AUSN_REPORT_CACHE_DIR || '/app/runtime/ausn-reports';
+  try {
+    const names = await readdir(directory);
+    const reports = await Promise.all(names.filter((name) => /\.(?:md|txt)$/i.test(name)).map(async (name) => parseAusnReport(await readFile(path.join(directory, name), 'utf8'), name)));
+    return reports.filter((report) => report.reportTitle);
+  } catch { return []; }
 }
 
 export async function loadCurrentAusnReport(): Promise<AusnReportView> {

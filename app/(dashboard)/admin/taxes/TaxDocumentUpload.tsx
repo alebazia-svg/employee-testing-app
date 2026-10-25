@@ -10,6 +10,13 @@ export function TaxDocumentUpload({ defaultPeriod }: { defaultPeriod: string }) 
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [period, setPeriod] = useState(defaultPeriod);
+
+  function selectDocumentType(value: string) {
+    if (value === 'USN_DECLARATION') setPeriod('2026-03');
+    else if (value === 'AUSN_TRANSITION_NOTICE') setPeriod('2026-04');
+    else setPeriod(defaultPeriod);
+  }
 
   async function submit(form: FormData) {
     setBusy(true); setMessage('');
@@ -17,7 +24,7 @@ export function TaxDocumentUpload({ defaultPeriod }: { defaultPeriod: string }) 
       const response = await fetch('/api/admin/taxes/documents', { method: 'POST', body: form });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Не удалось загрузить документ.');
-      setMessage('Документ сохранён. Он появился в журнале и доступен для серверной сверки.');
+      setMessage('Документ сохранён в архиве портала. После серверного импорта результат сверки появится в статусе периода.');
       if (fileRef.current) fileRef.current.value = '';
       router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось загрузить документ.'); }
@@ -26,12 +33,12 @@ export function TaxDocumentUpload({ defaultPeriod }: { defaultPeriod: string }) 
 
   return <form action={submit} className='grid gap-3 lg:grid-cols-[1.2fr_180px_1.3fr_auto] lg:items-end'>
     <label className='text-sm font-bold text-slate-700'>Тип документа
-      <select name='documentType' className='mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-semibold text-slate-900' required>
+      <select name='documentType' onChange={(event) => selectDocumentType(event.target.value)} className='mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-semibold text-slate-900' required>
         {Object.entries(taxDocumentTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
     </label>
     <label className='text-sm font-bold text-slate-700'>Период
-      <input name='periodKey' defaultValue={defaultPeriod} pattern='20\d{2}(-\d{2})?' className='mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-semibold text-slate-900' required />
+      <input name='periodKey' value={period} onChange={(event) => setPeriod(event.target.value)} pattern='20\d{2}(-\d{2})?' className='mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-semibold text-slate-900' required />
     </label>
     <label className='text-sm font-bold text-slate-700'>Файл PDF, XLSX, XML или CSV
       <input ref={fileRef} name='file' type='file' accept='.pdf,.xlsx,.xml,.csv,text/csv,application/pdf,application/xml' className='mt-1.5 block h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm' required />

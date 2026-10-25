@@ -27,6 +27,7 @@ test('canonical runner markdown is parsed without recalculating tax totals', () 
 | Всего доходов года для лимита | 48 115 663,16 ₽ |
 | Остаток до лимита | 11 884 336,84 ₽ |
 | Использовано лимита | 80,19% |
+| УСН до 31.03.2026 | 2 404 309,00 ₽ · по декларации |
 | июль 2026 | 6 051 307,14 ₽ · АУСН |
 | август 2026 | 7 736 169,57 ₽ · АУСН |
 | сентябрь 2026 | 7 169 708,73 ₽ · АУСН |
@@ -50,4 +51,6 @@ test('canonical runner markdown is parsed without recalculating tax totals', () 
   assert.equal(parsed.monthlyIncome.length, 4);
   assert.equal(parsed.monthlyIncome[3].partial, true);
   assert.equal(parsed.forecastDaysToLimit, 52);
+  assert.equal(parsed.usnBaseline, 2404309);
+  assert.equal(parsed.usnBaselineSource, 'Декларация учтена production runner');
 });

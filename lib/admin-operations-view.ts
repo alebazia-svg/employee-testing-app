@@ -42,6 +42,11 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Заявка на расход',
     actionLabel: 'Открыть заявку',
   },
+  'tax.document_missing': {
+    category: 'decisions',
+    typeLabel: 'Документы ФНС',
+    actionLabel: 'Открыть налоги',
+  },
   'workday_issue.employee_message': {
     category: 'messages',
     typeLabel: 'Сообщение сотрудника',
@@ -137,6 +142,11 @@ export function adminInboxSourceState(input: {
     return input.current
       ? { active: true, label: 'Текущая заявка', tone: 'active' }
       : { active: false, label: 'В истории', tone: 'history' };
+  }
+  if (input.sourceType === 'tax_control') {
+    return input.current
+      ? { active: true, label: 'Документы ожидаются', tone: 'attention' }
+      : { active: false, label: 'Период обновлён', tone: 'resolved' };
   }
   if (input.sourceType === 'workday_control_issue') {
     const active = input.businessStatus === 'open' && input.employeeActionRequired === true;

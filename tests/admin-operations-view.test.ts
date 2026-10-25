@@ -25,6 +25,10 @@ test('read state is independent from the source business state', () => {
     active: false, label: 'В истории · не исправлено', tone: 'history',
   });
   assert.equal(adminInboxSourceState({ sourceType: 'expense_request', current: false }).label, 'В истории');
+  assert.deepEqual(adminInboxSourceState({ sourceType: 'tax_control', current: true }), {
+    active: true, label: 'Документы ожидаются', tone: 'attention',
+  });
+  assert.equal(adminInboxSourceState({ sourceType: 'tax_control', current: false }).label, 'Период обновлён');
 });
 
 test('lost dependency and recovery have clear portal states', () => {

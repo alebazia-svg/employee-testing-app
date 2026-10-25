@@ -13,6 +13,18 @@ shows no safe forecast when the canonical report is unavailable. FNS documents
 are stored as immutable, deduplicated audit inputs and require a later runner
 reconciliation result before the UI may call them processed or matched.
 
+The runner's recorded USN baseline and the original declaration file are two
+different kinds of evidence. The baseline may be used in the canonical report,
+while the original declaration must still be uploaded once if the owner wants
+it available in the portal archive. The AUSN transition confirmation follows
+the same one-time archive model. Monthly income, ENS operations and FNS tax
+calculation evidence are tracked sequentially; KKT details and correction files
+remain conditional so their absence does not create a false missing period.
+
+The tax screen uses the shared ADMIN material cards, metric cards, typography,
+status colours and responsive grid instead of introducing a separate visual
+system.
+
 ## 2026-10-23 - Employee native tabs and notification icon semantics (released 1.13.13)
 
 Owner approved replacing repeated bells with meaningful task icons after comparing
