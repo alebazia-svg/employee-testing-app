@@ -19,7 +19,7 @@ test('receipt picker: direct upload, exact links, cancellation, retry and multip
       const root=createRoot(document.getElementById('root'));
       let sequence=0;
       window.mount=(options={})=>{
-        window.saved=[]; window.uploadOk=true;
+        window.saved=[]; window.changed=[]; window.uploadOk=true;
         const {count=1,method='USDT',admin=true,disabled=false,currency=false,files=[]}=options;
         const payments=Array.from({length:count},(_,i)=>({ref:'payment-'+i,number:'RKO-'+i,amount:50,date:'2026-10-25'}));
         flushSync(()=>root.render(<ProcurementDocumentSections key={++sequence}
@@ -28,7 +28,7 @@ test('receipt picker: direct upload, exact links, cancellation, retry and multip
             evidence:{state:count?'PARTIALLY_ISSUED':'NO_EVIDENCE',issuedAmount:count?50:0,
               cashOrders:currency?[]:payments,currencyPayments:currency?payments:[]}}}
           files={files} admin={admin} disabled={disabled} today="2026-10-25"
-          onOpen={()=>{}} onChange={async()=>true}
+          onOpen={()=>{}} onChange={async(file,action,purpose)=>{window.changed.push({id:file.id,action,purpose});return true;}}
           onAdd={async(files,purpose,replacement,refs)=>{
             window.saved.push({names:files.map(f=>f.name),purpose,replacement,refs});
             return window.uploadOk;
@@ -96,6 +96,17 @@ test('receipt picker: direct upload, exact links, cancellation, retry and multip
     assert.deepEqual((await saved())[0],{names:['receipt.pdf'],purpose:'REQUISITES',replacement:previous,refs:undefined});
     await (await picker()).setFiles(file);
     assert.equal((await saved())[1].replacement,undefined);
+    for(const method of ['USDT','CNY','BANK']){
+      await mount({method,files:[{...previous,purpose:'RECEIPT'}]});
+      await page.getByRole('button',{name:'Это реквизиты',exact:true}).click();
+      assert.equal(await page.getByRole('radio').count(),0);
+      assert.equal(await page.getByText(/QR кошелька|Реквизиты кошелька|QR Alipay|Другие реквизиты/).count(),0);
+      await page.getByRole('button',{name:'Отмена',exact:true}).click();
+      assert.deepEqual(await page.evaluate(()=>(window as any).changed),[]);
+      await page.getByRole('button',{name:'Это реквизиты',exact:true}).click();
+      await page.getByRole('button',{name:'Да, это реквизиты',exact:true}).click();
+      assert.deepEqual(await page.evaluate(()=>(window as any).changed),[{id:'old',action:'CLASSIFY',purpose:method==='BANK'?'REQUISITES':'QR'}]);
+    }
     await mount({count:0,method:'USDT'});
     assert.equal(await page.getByRole('button',{name:'Добавить чек',exact:true}).count(),0);
     await mount({disabled:true});
