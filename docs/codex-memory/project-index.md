@@ -319,3 +319,13 @@ Physical iPhone capture is not yet verified.
   backup. Preserves procurement 1.15.3; 79 combined checks and five release checks
   passed. Server/public/authenticated ADMIN and rollback registration verified.
   See the same note for exact release evidence and physical-iPhone/1C limits.
+
+## KKM / handover expense responsibility — production 1.17.6
+
+- Runtime310198d; release evidence: `kkm-ofd-cash-audit-20261025.md`.
+- Exact OFD shift closing is checked even while1C still reports open.
+- Handover shortages fully covered by own-cashbox requests distinguish owner
+  approval from employee RKO work; posted direct allocations confirm historical
+  counts without rewriting the original snapshot. Partial/mixed states and
+  reversal covered. Actual app check visibility is independent of plan source.
+- No schema/1C writes. Real Magomed16000 explanation verified after deployment.

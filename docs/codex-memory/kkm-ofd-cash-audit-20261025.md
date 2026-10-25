@@ -144,3 +144,25 @@ Old credit/inbox candidate and main checkout unrelated files left untouched.
   sudo is interactive. Do not claim rollback-image verification was completed.
 - No remote push or deployment performed. This document is committed separately
   from runtime. Old credit/inbox WIP and primary checkout remain untouched.
+
+## Released 1.17.6 — production verified
+Owner explicitly approved deployment. Runtime commit:
+310198d0dfb28904d1a16aacd34e64091c8edf91.
+Public release1.17.6 built2026-10-25T16:38:36.726Z (19:38 MSK).
+Server commit independently verified exact. Authenticated production footer1.17.6;
+/api/health {ok:true}, container running/healthy. Reviewed real Magomed task499:
+2390 counted vs18390 initial1C, now Подтверждено расходником;
+no personal shortage, closing confirmed, only4min lateness retained.
+Screenshot:/tmp/mobo-production-1.17.6-magomed.png.
+Previous image sha256:46710c96dd9abc8a3f773275d1ad307c44718cdddef828ebd833f3de7a93ccc0.
+Replacement image sha256:2a442f4032ce85f7c5f11d39cf18cd7ecc47ba79107e99d648eae616c88955fa.
+Preflight independently inspected all3 verified registry images, current image
+matched registry. Rollback tag portal-app:rollback-before-1.17.6 preserved.
+server.env hash and sorted mounts unchanged. No migrations or manual DB writes.
+Deployment script reached RELEASE_VERIFIED_AND_REGISTERED; current image added
+to existing verified registry only after independent server/public/UI checks.
+Native macOS Terminal launched via open -a Terminal with narrowly reviewed
+/tmp/mobo-kkm-release-1176.command; owner entered sudo only there.
+PWA physical-device push not tested. Historical rejected credit/inbox WIP not
+included. No1C package publication. Separate Zukhra control question remains
+outside this release investigation; no production questions manually dismissed.
