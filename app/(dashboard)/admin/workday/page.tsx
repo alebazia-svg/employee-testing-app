@@ -1,3 +1,5 @@
+import { loadHandoverCashExpenses } from '@/lib/handover-cash-expense-snapshot';
+import { handoverExpenseLabel } from '@/lib/handover-cash-expenses';
 import { fiscalControlAction, pastOwnerActions, openCashControl } from '@/lib/team-control-summary';
 import { TERMINAL_FISCAL_ADMIN_FIRST, fiscalProposedRecipients } from '@/lib/terminal-fiscal-admin-gate';
 import { WorkdayIssueDialog } from './WorkdayIssueDialog';
@@ -1387,7 +1389,7 @@ export default async function AdminWorkdayPage(
   const cashStatementLoadedCount = cashStatementRows.filter((row) => row.result?.ok).length;
   const cashStatementMissingCashboxCount = cashStatementRows.filter((row) => !row.cashbox).length;
   const cashStatementRowByUser = new Map(cashStatementRows.map((row) => [row.employee.id, row]));
-  const autoChecksByUser = new Map(cashStatementEmployees.map((employee) => {
+  const autoChecksByUser = new Map(await Promise.all(cashStatementEmployees.map(async (employee) => {
     const run = shiftControlRunByUser.get(employee.id);
     const cashRow = cashStatementRowByUser.get(employee.id);
     const latestManualReviewByCheckId = new Map<string, ShiftAutoCheckManualReview>();
@@ -1425,11 +1427,19 @@ export default async function AdminWorkdayPage(
       ...check,
       manualReview: latestManualReviewByCheckId.get(check.id) ?? null,
     }));
+    for (const check of checks.filter(c=>c.id.startsWith('handover-cash-'))) {
+      const task = run?.tasks.find(t=>t.id===check.taskId);
+      const audit = task ? readTaskCashAudit(task as AutoCheckTask, 'personalCash') : null;
+      if (check.actual == null || !audit?.capturedAt || audit.balance == null) continue;
+      const expenses = await loadHandoverCashExpenses(employee.id, { actual:check.actual, expected:audit.balance, capturedAt:audit.capturedAt });
+      if (expenses===undefined) Object.assign(check,{status:'unavailable',summary:'Заявки ещё не проверены. Недостача не подтверждена.'});
+      if (expenses) Object.assign(check, { handoverExpenses:expenses, status:expenses.state==='documented'?'matched':'waiting', summary:handoverExpenseLabel(expenses) });
+    }
     return [
       employee.id,
       checks,
     ] as const;
-  }));
+  })));
   const acquiringTaskRows = employees
     .filter((employee) => usesWorkdayShiftControl(employee))
     .flatMap((employee) => {
@@ -1501,6 +1511,7 @@ export default async function AdminWorkdayPage(
       const incompleteCount = unresolvedAutoChecks.filter((check) => (
         check.manualReview?.decision !== 'confirmed_issue'
         && (check.status === 'waiting' || check.status === 'unavailable')
+        && !check.handoverExpenses
         && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')
       )).length;
       const missedTaskCount = (run?.tasks ?? []).filter((task) => task.status === 'missed').length;
@@ -1618,7 +1629,7 @@ export default async function AdminWorkdayPage(
         reviewText,
         cannotVerify,
         incompleteCount,
-        incompleteChecks: unresolvedAutoChecks.filter(check => check.manualReview?.decision !== 'confirmed_issue' && (check.status === 'waiting' || check.status === 'unavailable') && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')),
+        incompleteChecks: unresolvedAutoChecks.filter(check => !check.handoverExpenses && check.manualReview?.decision !== 'confirmed_issue' && (check.status === 'waiting' || check.status === 'unavailable') && (run?.tasks ?? []).some(task => task.id === check.taskId && task.status === 'done')),
         primaryIssueLifecycle,
         completedTaskCount,
         totalTaskCount,
@@ -1710,6 +1721,7 @@ export default async function AdminWorkdayPage(
         <TeamDailyControl ownerActions={ownerActions} departmentActions={departmentActions} initialTab={searchParams?.view === 'attention' ? 'attention' : searchParams?.view === 'audit' ? 'audit' : 'overview'} date={selectedDate} readAt={formatTime(new Date(googleSnapshot.readAt))} sourceWarning={(!googleSnapshot.planAvailable || !googleSnapshot.marksAvailable) ? 'Часть сведений Google сейчас недоступна.' : ''}
           rows={employeeControlRows.map((row): TeamDayRow => {
             const app = usesAppSchedule(row.employee.name);
+            const hasAppControl = Boolean(row.workDay || row.run) || app;
             const google = googleDay(row.employee.name, selectedDate, googleSnapshot.plans, googleSnapshot.marks);
             const planState = row.vacation ? 'vacation' : app ? row.schedule?.status ?? 'unknown' : googleSnapshot.planAvailable ? google.plan ?? 'unknown' : 'unavailable';
             const start = row.attendance?.start ?? (app ? row.workDay ? formatTime(row.workDay.startedAt) : '—' : clockLabel(google.arrival));
@@ -1730,7 +1742,16 @@ export default async function AdminWorkdayPage(
               alerts.push(text);
               alertTargets[text] = `shift-cash-${operation.id}`;
             }
-            if (app && row.cannotVerify) {
+            for (const check of row.autoChecks ?? []) {
+              if (!check.handoverExpenses || check.handoverExpenses.state==='documented') continue;
+              const e=check.handoverExpenses;
+              for (const [label,amount] of [['К согласованию',e.approvalAmount],['Оформите расходник',e.payableAmount]] as const) {
+                if(!amount)continue;
+                const text = `${label} · ${formatMoney(amount)}`;
+                alerts.push(text); alertTargets[text]=`shift-task-${check.taskId}`;
+              }
+            }
+            if (hasAppControl && row.cannotVerify) {
               for (const check of row.incompleteChecks.filter(check=>!check.id.startsWith('cash-operation-'))) {
                 const reason = check.summary.includes('Остаток 1С на момент проверки не был сохранён')
                   ? 'нет сохранённой суммы 1С для сравнения'
@@ -1742,11 +1763,11 @@ export default async function AdminWorkdayPage(
               }
               if (!row.incompleteChecks.length) alerts.push('Автоматическая сверка отсутствует. Откройте проверки смены и уточните доступность исходных данных');
             }
-            if (app && (row.category === 'error' || row.category === 'attention') && !row.reviewText.startsWith('Результат не подтверждён:')) alerts.push(row.reviewText);
+            if (hasAppControl && (row.category === 'error' || row.category === 'attention') && !row.reviewText.startsWith('Результат не подтверждён:')) alerts.push(row.reviewText);
             if (startControl.unknownTime) alerts.push('Выход запланирован · уточните время начала смены');
             const nextTask = row.run?.tasks.filter(t=>t.status!=='done'&&t.status!=='missed'&&t.plannedTimeMinutes!==null).sort((a,b)=>a.plannedTimeMinutes!-b.plannedTimeMinutes!)[0];
             const completedTask = row.run?.tasks.filter(t=>t.status==='done'&&t.completedAt).sort((a,b)=>b.completedAt!.getTime()-a.completedAt!.getTime())[0];
-            const timing = app ? row.timingViolations.map(v=>v.detail) : [];
+            const timing = hasAppControl ? row.timingViolations.map(v=>v.detail) : [];
             for (const violation of row.timingViolations) alertTargets[violation.detail] = violation.taskId ? `shift-task-${violation.taskId}` : 'shift-start';
             const timely = completedTask ? taskTimingLabel(completedTask.plannedTimeMinutes, completedTask.completedAt?.toISOString() ?? null, selectedDate).text : '';
             return {id:row.employee.id,sourceUnavailable:row.attendance ? !row.attendance.marksAvailable : !app&&(!googleSnapshot.planAvailable||!googleSnapshot.marksAvailable),detailAvailable:true,name:row.employee.name,department:row.employee.department,source:row.attendance?.sourceLabel ?? (app?'Приложение · пилот':'Google'),planState,
@@ -1754,7 +1775,7 @@ export default async function AdminWorkdayPage(
               state:row.attendance?.state ?? teamShiftState(selectedDate,today,start!=='—',Boolean(row.workDay&&!row.workDay.endedAt),end,planState==='vacation'?'Отпуск':planState==='off'?'Выходной':missing?'Не отметился':planState==='unknown'?'План неизвестен':planState==='unavailable'?'Источник недоступен':'Ожидается начало'),
               active:row.attendance?.active ?? (app&&row.activeWorkDay),late:row.attendance?.late ?? (app?row.workDay?.lateMinutes??0:google.lateMinutes),missing,
               review:alerts.length?`${alerts[0]}${alerts.length>1?` · ещё ${alerts.length-1}`:''}`:row.requiredIssues.length?`Открытых обращений: ${row.requiredIssues.length}`:app?(row.category === 'error' || row.category === 'attention' || row.cannotVerify) ? row.reviewText : completedTask?`Выполнено ${formatTime(completedTask.completedAt)} · ${timely}`:row.reviewText:google.ambiguous?'Уточнить исходные записи Google':planState==='unknown'?'Уточнить график Google':'Учёт через Google',
-              next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:alerts.length>0||app&&(row.category==='error'||row.category==='attention'||row.cannotVerify),alertTargets,alerts,timing,issues:row.requiredIssues};
+              next:app&&nextTask?`Следующая проверка: ${clockLabel(nextTask.plannedTimeMinutes)}`:row.requiredIssues.length?'Исправляет сотрудник':'',issueCount:row.requiredIssues.length,needsReview:alerts.length>0||hasAppControl&&(row.category==='error'||row.category==='attention'||row.cannotVerify),alertTargets,alerts,timing,issues:row.requiredIssues};
           })}
           planControls={employeeControlRows.map(row => (
                       <AdminWorkdayCorrectionButton

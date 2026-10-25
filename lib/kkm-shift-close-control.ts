@@ -70,14 +70,14 @@ function normalized(value: string) {
   return value.trim().toLowerCase().replace(/ё/g, 'е');
 }
 
-export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string; simulation?: KkmShiftCloseSimulation | null }): Promise<KkmShiftCloseEvidence> {
+export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: number; date: string; simulation?: KkmShiftCloseSimulation | null }, sources = { loadOneCKkmChecks, getCashShifts, loadPlatformaOfdZReports }): Promise<KkmShiftCloseEvidence> {
   const checkedAt = new Date().toISOString();
   const empty = { checkedAt, cashierRef: '', cashRegisterRef: '', cashRegisterName: '', kktRegistrationNumber: '', oneCShiftNumber: '', fiscalShiftNumber: '', oneCOpenedAt: '', oneCClosedAt: '', ofdOpenedAt: '', ofdClosedAt: '', ofdDocumentLink: '' };
   const identity = await input.db.userOneCCashboxMapping.findUnique({ where: { userId: input.userId } });
   const cashierRef = identity?.oneCCashierRef?.trim() || '';
   if (!cashierRef) return { ...empty, status: 'unavailable', sourceError: 'Кассир сотрудника не сопоставлен с 1С.' };
 
-  const checks = await loadOneCKkmChecks(kkmShiftCloseOneCPeriod(input.date)).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'ONE_C_REQUEST_FAILED' }));
+  const checks = await sources.loadOneCKkmChecks(kkmShiftCloseOneCPeriod(input.date)).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'ONE_C_REQUEST_FAILED' }));
   if (!checks.complete) return { ...empty, cashierRef, status: 'unavailable', sourceError: 'Не удалось получить полный список чеков 1С.' };
   const employeeChecks = checks.data.filter((check) => check.cashier.ref === cashierRef).sort((a, b) => Date.parse(a.dateTime) - Date.parse(b.dateTime));
   const lastCheck = employeeChecks.at(-1) ?? null;
@@ -85,19 +85,28 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
     return { ...empty, cashierRef, status: 'unavailable', sourceError: 'По чекам 1С не удалось определить ККТ сотрудника за этот день.' };
   }
 
-  const shifts = await getCashShifts(input.date).catch(() => ({ ok: false as const, dateFrom: input.date, dateTo: input.date, shifts: [], error: 'ONE_C_REQUEST_FAILED' }));
+  const shifts = await sources.getCashShifts(input.date).catch(() => ({ ok: false as const, dateFrom: input.date, dateTo: input.date, shifts: [], error: 'ONE_C_REQUEST_FAILED' }));
   if (!shifts.ok) return { ...empty, cashierRef, cashRegisterRef: lastCheck.cashRegisterRef, kktRegistrationNumber: lastCheck.kktRegistrationNumber, status: 'unavailable', sourceError: 'Не удалось проверить состояние смены в 1С.' };
   const candidates = shifts.shifts.filter((shift) => shift.cashRegister.ref === lastCheck.cashRegisterRef && shift.posted !== false && shift.deletionMark !== true);
   const shift = [...candidates].sort((a, b) => Date.parse(b.closedAt || b.openedAt || b.datetime) - Date.parse(a.closedAt || a.openedAt || a.datetime))[0] ?? null;
   if (!shift) return { ...empty, cashierRef, cashRegisterRef: lastCheck.cashRegisterRef, kktRegistrationNumber: lastCheck.kktRegistrationNumber, status: 'one_c_open', sourceError: 'Смена этой ККМ в 1С не найдена.' };
   const common = { ...empty, cashierRef, cashRegisterRef: shift.cashRegister.ref, cashRegisterName: shift.cashRegister.name, kktRegistrationNumber: lastCheck.kktRegistrationNumber, oneCShiftNumber: shift.number, fiscalShiftNumber: shift.fiscalShiftNumber, oneCOpenedAt: shift.openedAt, oneCClosedAt: shift.closedAt };
   const oneCClosed = Boolean(shift.closedAt) && normalized(shift.status).includes('закрыт');
-  if (!oneCClosed) return { ...common, status: 'one_c_open', sourceError: `Состояние смены в 1С: ${shift.status || 'не указано'}.` };
 
   const period = moscowPeriod(input.date);
-  const ofd = await loadPlatformaOfdZReports({ kktRegistrationNumber: lastCheck.kktRegistrationNumber, ...period }).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' }));
+  const ofd = await sources.loadPlatformaOfdZReports({ kktRegistrationNumber: lastCheck.kktRegistrationNumber, ...period }).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' }));
   if (!ofd.complete) return { ...common, status: 'unavailable', sourceError: 'Платформа OFD временно не ответила полностью.' };
-  const report = ofd.data.find((item) => item.shiftNumber === shift.fiscalShiftNumber) ?? null;
+  // The same physical KKT and fiscal shift may already be closed even while 1C lags.
+  // Never accept another shift or a closing report older than the employee's last check.
+  const lastCheckAt = Date.parse(lastCheck.dateTime);
+  const report = ofd.data.find((item) => Boolean(shift.fiscalShiftNumber)
+    && item.kktRegistrationNumber === lastCheck.kktRegistrationNumber
+    && item.shiftNumber === shift.fiscalShiftNumber
+    && Number.isFinite(Date.parse(item.closedAt))
+    && Date.parse(item.closedAt) >= lastCheckAt
+    && Date.parse(item.closedAt) >= Date.parse(period.from)
+    && Date.parse(item.closedAt) < Date.parse(period.to)) ?? null;
+  if (!report && !oneCClosed) return { ...common, status: 'one_c_open', sourceError: `Состояние смены в 1С: ${shift.status || 'не указано'}. Закрытие этой смены в ОФД не найдено.` };
   if (!report) return { ...common, status: 'ofd_missing', sourceError: '1С закрыла смену, но Z‑отчёт этой ККТ не найден в OFD.' };
   return { ...common, status: 'confirmed', ofdOpenedAt: report.openedAt, ofdClosedAt: report.closedAt, ofdDocumentLink: report.documentLink, sourceError: '' };
 }
@@ -115,7 +124,7 @@ export async function syncKkmShiftCloseIssue(db: Db, input: { userId: number; ta
   const existing = await db.workdayControlIssue.findUnique({ where: { fingerprint } });
   if (input.evidence.status === 'confirmed') {
     if (existing?.status === 'open') {
-      await db.workdayControlIssue.update({ where: { id: existing.id }, data: { status: 'resolved', resolvedAt: input.now, lastDetectedAt: input.now, nextReminderAt: null } });
+      await db.workdayControlIssue.update({ where: { id: existing.id }, data: { status: 'resolved', resolvedAt: input.now, lastDetectedAt: input.now, nextReminderAt: null, sourceData: input.evidence as unknown as Prisma.InputJsonValue } });
       await db.workdayNotification.updateMany({ where: { issueId: existing.id, status: 'pending' }, data: { status: 'cancelled' } });
     }
     if (existing && ['open', 'resolved'].includes(existing.status)) {

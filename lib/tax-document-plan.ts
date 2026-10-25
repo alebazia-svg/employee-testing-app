@@ -11,11 +11,11 @@ export const taxDocumentHelp: Record<keyof typeof taxDocumentTypes, { required: 
   AUSN_INCOME: { required: true, source: 'ЛК ФНС → АУСН → Доходы', instruction: 'Скачайте итог или реестр доходов за выбранный месяц после формирования данных ФНС.' },
   AUSN_KKT: { required: false, source: 'ЛК ФНС → АУСН → Доходы → ККТ', instruction: 'Детализация нужна только при расхождении с OFD или для проверки конкретных чеков.' },
   ENS_OPERATIONS: { required: true, source: 'ЛК ИП ФНС → ЕНС → Операции', instruction: 'Сформируйте выгрузку, включающую начисление АУСН за нужный месяц. До появления начисления файл считается преждевременным.' },
-  AUSN_CALCULATION: { required: true, source: 'ЛК ФНС → АУСН → Расчёт налога', instruction: 'Скачайте расчёт ФНС после его появления, обычно после завершения месяца.' },
+  AUSN_CALCULATION: { required: true, source: 'ЛК АУСН → Прочее → Справки → Справка о полученных доходах', instruction: 'Сформируйте справку за текущий год и загрузите обновлённый PDF. Один накопительный файл закрывает все подтверждённые в нём месяцы; отдельного скачиваемого расчёта налога за каждый месяц в ЛК АУСН нет.' },
   CORRECTION_EVIDENCE: { required: false, source: 'ЛК ФНС, OFD или бухгалтер', instruction: 'Загружайте только когда есть возврат, корректировка или пояснение к расхождению.' },
 };
 
-export type TaxDocumentEvidence = { documentType: string; periodKey: string; coverageFrom?: string | null; coverageTo?: string | null; originalName: string; source: 'portal' };
+export type TaxDocumentEvidence = { documentType: string; periodKey: string; coverageFrom?: string | null; coverageTo?: string | null; originalName: string; status?: string; source: 'portal' };
 export type TaxPeriodPlan = { periodKey: string; status: 'complete' | 'missing'; missing: RequiredMonthlyTaxDocument[]; present: RequiredMonthlyTaxDocument[] };
 
 function monthIndex(key: string) { const [year, month] = key.split('-').map(Number); return year * 12 + month - 1; }
@@ -41,6 +41,7 @@ export function buildTaxDocumentPlan(input: { now: Date; reports: AusnReportView
   return dueAusnPeriods(input.now, input.startMonth).map<TaxPeriodPlan>((periodKey) => {
     const present = requiredMonthlyTaxDocuments.filter((type) => input.documents.some((document) => {
       if (document.documentType !== type) return false;
+      if (document.status === 'PROCESSING_FAILED') return false;
       const from = document.coverageFrom || document.periodKey;
       const to = document.coverageTo || document.periodKey;
       return from <= periodKey && periodKey <= to;

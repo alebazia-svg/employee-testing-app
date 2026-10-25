@@ -1,3 +1,4 @@
+import type { HandoverCashExpenses } from '@/lib/handover-cash-expenses';
 'use client';
 import { WORKDAY_CARD_OPEN, openWorkdayCard, workdayCardNeighbors, type WorkdayCardList, type WorkdayCardTarget } from '@/lib/workday-card-navigation';
 import { completedWithoutEncashment } from '@/lib/workday-close-view';
@@ -130,6 +131,7 @@ type EmployeeNavigation = {
 
 export type ShiftAutoCheck = {
   expenseState?: 'awaiting_documents' | 'documented';
+  handoverExpenses?: HandoverCashExpenses;
   id: string;
   taskId: number;
   label: string;
@@ -454,11 +456,11 @@ function TaskValue({ task, onPreview }: { task: ShiftTask; onPreview: (photo: Ph
 
 function CashComparison({check,actual,encashment,encashmentCheck,draft=false}:{check?:ShiftAutoCheck;actual?:number|null;encashment?:Record<string,unknown>;encashmentCheck?:ShiftAutoCheck;draft?:boolean}) {
  const fact=check?.actual??actual??null,expected=check?.expected??null;
- const verdict=draft?{label:'Черновик',tone:'amber',difference:undefined}:handoverCashResult(fact,check);
+ const verdict=check?.handoverExpenses?handoverCashResult(fact,check):draft?{label:'Черновик',tone:'amber',difference:undefined}:handoverCashResult(fact,check);
  const result=verdict.label+(verdict.difference===undefined?'':` ${formatMoney(verdict.difference)}`);
  const tone=verdict.tone;
  const encashmentVerdict=encashment?(encashment.encashmentExceptionRequestId && encashmentCheck?.status==='matched' ? handoverEncashmentResult(encashment,encashmentCheck) : draft?{label:'Черновик',tone:'amber'}:handoverEncashmentResult(encashment,encashmentCheck)):null;
- return <div className="team-handover-table-wrap"><table className="team-handover-table"><thead><tr><th scope="col">Проверка</th><th scope="col">Введено</th><th scope="col">1С</th><th scope="col">Результат</th></tr></thead><tbody><tr><th scope="row">Остаток кассы</th><td>{fact===null?'Не указано':formatMoney(fact)}</td><td>{expected===null?'Нет данных':formatMoney(expected)}</td><td><span className={`team-status ${tone}`}>{result}</span></td></tr>{encashment&&<tr><th scope="row">Инкассация при сдаче</th><td>{encashment.requiresEncashment===true&&typeof encashment.encashmentAmount==='number'?formatMoney(encashment.encashmentAmount):'—'}</td><td>—</td><td><span className={`team-status ${encashmentVerdict?.tone}`}>{encashmentVerdict?.label}</span></td></tr>}</tbody></table></div>;
+ return <div className="team-handover-table-wrap"><table className="team-handover-table"><thead><tr><th scope="col">Проверка</th><th scope="col">Введено</th><th scope="col">1С</th><th scope="col">Результат</th></tr></thead><tbody><tr><th scope="row">Остаток кассы</th><td>{fact===null?'Не указано':formatMoney(fact)}</td><td>{expected===null?'Нет данных':formatMoney(expected)}</td><td>{check?.handoverExpenses && check.handoverExpenses.approvalAmount>0 && check.handoverExpenses.payableAmount>0 ? <div className='grid gap-1'><span className='team-status amber'>К согласованию {formatMoney(check.handoverExpenses.approvalAmount)}</span><span className='team-status amber'>Оформите расходник {formatMoney(check.handoverExpenses.payableAmount)}</span></div> : <span className={`team-status ${tone}`}>{result}</span>}</td></tr>{encashment&&<tr><th scope="row">Инкассация при сдаче</th><td>{encashment.requiresEncashment===true&&typeof encashment.encashmentAmount==='number'?formatMoney(encashment.encashmentAmount):'—'}</td><td>—</td><td><span className={`team-status ${encashmentVerdict?.tone}`}>{encashmentVerdict?.label}</span></td></tr>}</tbody></table></div>;
 }
 
 function HandoverDetails({ data, department, onPreview, checks=[], submitted=true }: { submitted?:boolean; data: unknown; department: string; onPreview: (photo: PhotoPreview) => void; checks?:ShiftAutoCheck[] }) {

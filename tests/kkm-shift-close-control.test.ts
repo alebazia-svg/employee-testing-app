@@ -93,3 +93,33 @@ test('technical KKT uncertainty becomes admin-only and keeps the original incide
   assert.equal(notificationUpdate.data.status, 'cancelled');
   assert.equal(eventUpdate.occurredAt.toISOString(), detectedAt.toISOString());
 });
+
+test('OFD closes the exact fiscal shift even when 1C still reports it open', async () => {
+  const { verifyEmployeeKkmShiftClose } = await import('../lib/kkm-shift-close-control');
+  const db: any = { userOneCCashboxMapping: { findUnique: async () => ({ oneCCashierRef: 'cashier' }) } };
+  const check = { cashier: { ref: 'cashier' }, cashRegisterRef: 'kkm', kktRegistrationNumber: 'kkt', dateTime: '2026-10-25T14:22:00+03:00' };
+  const shift = { cashRegister: { ref: 'kkm', name: 'Касса' }, posted: true, deletionMark: false, number: '75', fiscalShiftNumber: '75', openedAt: '2026-10-25T08:48:00+03:00', closedAt: '', status: 'Открыта', datetime: '2026-10-25T08:48:00+03:00' };
+  const report = { kktRegistrationNumber: 'kkt', shiftNumber: '75', openedAt: shift.openedAt, closedAt: '2026-10-25T17:52:00+03:00', documentLink: 'report' };
+  let reports: any[] = [report], complete = true;
+  const sources: any = {
+    loadOneCKkmChecks: async () => ({ complete: true, data: [check] }),
+    getCashShifts: async () => ({ ok: true, shifts: [shift] }),
+    loadPlatformaOfdZReports: async () => ({ complete, data: reports }),
+  };
+  const verify = () => verifyEmployeeKkmShiftClose({ db, userId: 5, date: '2026-10-25' }, sources);
+  const confirmed = await verify();
+  assert.equal(confirmed.status, 'confirmed');
+  assert.equal(confirmed.oneCClosedAt, '');
+  assert.equal(confirmed.ofdClosedAt, report.closedAt);
+  assert.equal(kkmShiftCloseRequiresEmployeeAction(confirmed), false);
+  for (const invalid of [{ ...report, shiftNumber: '74' }, { ...report, kktRegistrationNumber: 'other' }, { ...report, closedAt: '2026-10-25T13:00:00+03:00' }, { ...report, closedAt: 'bad' }]) {
+    reports = [invalid];
+    assert.equal((await verify()).status, 'one_c_open');
+  }
+  reports = [report]; complete = false;
+  assert.equal((await verify()).status, 'unavailable');
+  complete = true; reports = [];
+  assert.equal((await verify()).status, 'one_c_open');
+  shift.status = 'Закрыта'; shift.closedAt = report.closedAt;
+  assert.equal((await verify()).status, 'ofd_missing');
+});

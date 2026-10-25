@@ -60,6 +60,9 @@ services:
       PROCUREMENT_PLANNING_MODE: snapshot
       FISCAL_REPORT_CACHE_DIR: /app/runtime/fiscal-reports
       AUSN_REPORT_CACHE_DIR: /app/runtime/ausn-reports
+      AUSN_PORTAL_INTAKE_DIR: /app/runtime/ausn-intake
+      AUSN_BRIDGE_HOST: ${AUSN_BRIDGE_HOST:-portal-ausn@host.docker.internal}
+      AUSN_BRIDGE_KEY_PATH: /app/runtime/ausn-bridge/id_ed25519
       AQSI_PORTAL_TERMINAL_KEY: "1010808747019437"
       AQSI_TERMINAL_ID: "10693079"
       AQSI_TERMINAL_MAPPINGS: "1010808747019437=10693079,2332022071=11085322"
@@ -67,11 +70,15 @@ services:
       - portal-uploads:/app/uploads
       - portal-fiscal-reports:/app/runtime/fiscal-reports
       - /var/lib/ausn-report/reports:/app/runtime/ausn-reports:ro
+      - /var/lib/ausn-report/portal-intake:/app/runtime/ausn-intake
+      - /var/lib/ausn-report/portal-bridge:/app/runtime/ausn-bridge:ro
       - portal-planning-snapshots:/app/runtime/procurement-planning
       - /home/bela/offonika-tbank-cabinet:/app/runtime/tbank-cabinet:ro
     networks:
       - default
       - agentapi-read
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     labels:
       - traefik.enable=true
       - traefik.http.routers.portal-app.rule=Host(`${PORTAL_DOMAIN}`)
