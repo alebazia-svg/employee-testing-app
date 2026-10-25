@@ -29,6 +29,10 @@ project from scratch.
 
 ## Read First By Task
 
+- Receipt reminders and handover candidate: `fiscal-reminder-policy-20261026.md` —
+  approved 30-minute quiet period, fresh nonblocking handover check, one reminder,
+  safe workstation attribution and end-of-day ADMIN escalation. Local only.
+
 - Schedule selection 1.14.0 release: `pwa-schedule-selection-candidate-20261023.md` —
   compact approved calendar, incomplete-plan shift correction, notification
   automatic date-specific calendar questions and guarded answers tested locally;
