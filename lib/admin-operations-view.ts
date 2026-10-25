@@ -13,6 +13,7 @@ export type AdminInboxSourceState = {
 };
 
 const eventMeta: Record<string, AdminInboxEventMeta> = {
+  'expense_request.cash_issue': { category: 'requests', typeLabel: 'Выдача денег', actionLabel: 'Открыть' },
   'procurement.receipt_added': {
     category: 'messages', typeLabel: 'Чек оплаты', actionLabel: 'Открыть чеки',
   },
@@ -143,7 +144,7 @@ export function adminInboxSourceState(input: {
         ? { active: false, label: 'Работа восстановлена', tone: 'resolved' }
         : { active: false, label: 'Системное событие', tone: 'neutral' };
   }
-  if (input.sourceType === 'expense_request') {
+  if (['expense_request', 'expense_cash_issue'].includes(input.sourceType)) {
     return input.current
       ? { active: true, label: 'Текущая заявка', tone: 'active' }
       : { active: false, label: 'В истории', tone: 'history' };

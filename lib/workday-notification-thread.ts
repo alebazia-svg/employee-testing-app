@@ -13,7 +13,7 @@ export type WorkdayNotificationThreadTarget = {
 
 export function workdayNotificationThreadKey(notification: WorkdayNotificationThreadTarget) {
   if(notification.kind===QR_CHECK_KIND&&qrCheckPlan(notification.fingerprint||''))return `qr-check:${qrCheckPlan(notification.fingerprint!)}`;
-  if (notification.kind === EMPLOYEE_EXPENSE_KIND) return 'expense:payable';
+  if (notification.kind === EMPLOYEE_EXPENSE_KIND) return `expense:${notification.fingerprint?.split(':')[3] || notification.id}`;
   if (notification.issueId) return `issue:${notification.issueId}`;
   if (notification.reviewId) return `review:${notification.reviewId}`;
   if (notification.taskId) return `task:${notification.taskId}`;
@@ -24,7 +24,7 @@ export function workdayNotificationThreadKey(notification: WorkdayNotificationTh
 
 export function workdayNotificationThreadWhere(notification: WorkdayNotificationThreadTarget) {
   if(notification.kind===QR_CHECK_KIND&&qrCheckPlan(notification.fingerprint||''))return {kind:QR_CHECK_KIND,fingerprint:{startsWith:`procurement-qr-check:${qrCheckPlan(notification.fingerprint!)}:`},status:'sent'};
-  if (notification.kind === EMPLOYEE_EXPENSE_KIND) return { kind: EMPLOYEE_EXPENSE_KIND, status: 'sent' };
+  if (notification.kind === EMPLOYEE_EXPENSE_KIND) return notification.fingerprint?.split(':')[3] ? { kind: EMPLOYEE_EXPENSE_KIND, fingerprint: { contains: `:${notification.fingerprint.split(':')[3]}:` }, status: 'sent' } : { id: notification.id };
   if (notification.issueId) return { issueId: notification.issueId };
   if (notification.reviewId) return { reviewId: notification.reviewId };
   if (notification.taskId) return { taskId: notification.taskId };

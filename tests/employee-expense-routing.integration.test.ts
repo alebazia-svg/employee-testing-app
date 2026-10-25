@@ -1,0 +1,85 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+
+test('isolated PostgreSQL: native distribution -> queue -> dispatch guard -> inbox -> partial RKO -> reversal', {skip:process.env.EXPENSE_ROUTING_INTEGRATION!=='1'},async()=>{
+ const url=new URL(process.env.DATABASE_URL!);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'55460');assert.equal(url.pathname,'/expense_routing_test_20261025');
+ const {prisma}=await import('../lib/prisma');
+ const {syncExpenseRequestAdminAudit}=await import('../lib/expense-request-admin-sync');
+ const {loadExpenseRouting}=await import('../lib/employee-expense-routing-snapshot');
+ const {queueEmployeeExpensePushes,expensePushDecision}=await import('../lib/employee-expense-notifications');
+ const {loadEmployeeNotifications}=await import('../lib/employee-notification-snapshot');
+ const {loadEmployeeAttention}=await import('../lib/employee-attention-snapshot');
+ const {loadAdminInbox}=await import('../lib/admin-inbox-data');
+ const {readNotificationDetail}=await import('../lib/notification-detail-reader');
+ const {loadEmployeeExpenses}=await import('../lib/employee-expense-snapshot');
+ const {DELIVERY_PHONE_RESERVE_REF:reserve}=await import('../lib/procurement-delivery-reserve');
+ const {getMoscowDateKey}=await import('../lib/workday');
+ const {employeePushNotBefore}=await import('../lib/employee-push-policy');
+ await prisma.expenseRequestAdminCase.updateMany({where:{oneCNumber:'LOCAL-1141'},data:{deletionMark:true}});
+ const now=new Date(), day=getMoscowDateKey(now), requestRef=randomUUID(), boxA=randomUUID(),boxB=randomUUID();
+ await prisma.user.upsert({where:{id:25800},create:{id:25800,login:'routing.test.admin',name:'Учебный ADMIN',passwordHash:'disabled',role:'ADMIN',department:'retail'},update:{isActive:true}});
+ const applicantRefs=[randomUUID(),randomUUID(),randomUUID()];
+ const ids=[25801,25802,25803],names=['Тест Лиана','Тест Магомед','Тест Зухра'];
+ for(let i=0;i<3;i++) {
+  await prisma.user.upsert({where:{id:ids[i]},create:{id:ids[i],login:`routing.test.${i}`,name:names[i],oneCManagerName:null,passwordHash:'disabled',role:'EMPLOYEE',department:i===0?'wholesale':'retail'},update:{isActive:true,oneCManagerName:null}});
+  await prisma.userOneCCashboxMapping.upsert({where:{userId:ids[i]},create:{userId:ids[i],oneCCashboxRef:[boxA,boxB,randomUUID()][i],oneCCashboxName:`Касса ${names[i]}`,oneCCashierRef:applicantRefs[i],oneCCashierName:names[i]},update:{oneCCashierRef:applicantRefs[i],oneCCashierName:names[i],oneCCashboxRef:i===0?boxA:i===1?boxB:randomUUID(),isActive:true}});
+  await prisma.workDayEntry.upsert({where:{userId_date:{userId:ids[i],date:day}},create:{userId:ids[i],date:day,department:i===0?'wholesale':'retail',shiftCode:'test',shiftLabel:'Тест',startedAt:new Date(+now-3600000),endedAt:i===1?new Date(+now-60000):null,status:i===1?'completed':'active'},update:{startedAt:new Date(+now-3600000),endedAt:i===1?new Date(+now-60000):null,status:i===1?'completed':'active'}});
+ }
+ const row:any={ref:requestRef,number:'LOCAL-1141',date:now.toISOString(),amount:103000,posted:true,deletion_mark:false,status:{key:'payable'},cashbox:{ref:'',name:''},requested_by:{ref:applicantRefs[2],name:names[2]},currency:{name:'руб'},payment_form:{cash:true,cashless:false,card:false},completeness:{complete:true},planned_distribution:{complete:true,rows:[[boxA,'Касса Лианы',50000],[boxB,'Касса Магомеда',16000],[reserve,'Резерв Под Телефоны',37000]].map(([ref,name,amount],i)=>({line_number:i+1,payment_place:{ref,name},amount,payment_date:day}))},execution:{complete:true,executed_amount:0,remaining_amount:103000},linked_cash_expense_orders:{complete:true,rows:[]}};
+ const sync=async(complete=true)=>{const at=new Date();await syncExpenseRequestAdminAudit({snapshot:{rows:[row],complete,checkedAt:at.toISOString(),startedAt:at.toISOString(),pageCount:1,errors:[]},from:new Date(+now-86400000),to:new Date(+now+86400000),baseline:true});};
+ const notices=()=>prisma.workdayNotification.findMany({where:{kind:'employee_expense_payable',fingerprint:{contains:`:${requestRef}:`}},orderBy:{id:'asc'}});
+ const pay=(box:string,amount:number)=>{row.execution.executed_amount+=amount;row.execution.remaining_amount-=amount;row.linked_cash_expense_orders.rows.push({ref:randomUUID(),number:'LOCAL-RKO',date:new Date().toISOString(),posted:true,deletion_mark:false,amount,request_amount:amount,executed_amount:amount,cashbox:{ref:box},source_paths:['payment_line.request']});};
+ try {
+  await sync();assert.equal((await loadExpenseRouting()).items.filter(item=>item.ref===requestRef).length,2,'real WORKDAY shape: null procurement manager name still routes reserve through saved cashier identity');
+  await prisma.userOneCCashboxMapping.update({where:{userId:ids[2]},data:{isActive:false}});
+  assert.ok(!(await loadExpenseRouting()).items.some(i=>i.ref===requestRef&&i.cashboxRef===reserve),'inactive binding never identifies applicant');
+  await prisma.userOneCCashboxMapping.update({where:{userId:ids[2]},data:{isActive:true,oneCCashierRef:null}});
+  assert.ok(!(await loadExpenseRouting()).items.some(i=>i.ref===requestRef&&i.cashboxRef===reserve),'no fallback to employee/display name');
+  await prisma.userOneCCashboxMapping.update({where:{userId:ids[2]},data:{oneCCashierRef:applicantRefs[2]}});
+  assert.deepEqual((await loadEmployeeExpenses(ids[2])).pending,[],'reserve and foreign till never explain applicant cash shortage');
+  await Promise.all([queueEmployeeExpensePushes(),queueEmployeeExpensePushes()]);
+  const adminReceipt=await prisma.adminInboxReceipt.findFirstOrThrow({where:{userId:25800,event:{sourceType:'expense_cash_issue',eventKey:{contains:requestRef}}},include:{event:true}});
+  assert.equal(await prisma.adminInboxReceipt.count({where:{userId:25800,event:{sourceType:'expense_cash_issue',eventKey:{contains:requestRef}}}}),1);
+  const adminInbox=()=>loadAdminInbox({userId:25800,limit:100,view:'attention',now:new Date()});
+  assert.match((await adminInbox()).attention.find(i=>i.id===adminReceipt.id)!.event.body,/Смена завершена/);
+  await prisma.adminInboxReceipt.update({where:{id:adminReceipt.id},data:{readAt:new Date()}});
+  assert.ok((await adminInbox()).attention.some(i=>i.id===adminReceipt.id),'read is not completion for ADMIN either');
+  const detail=await readNotificationDetail({id:25800,role:'ADMIN',portalArea:'WORKDAY',isActive:true},'admin',adminReceipt.id);
+  assert.equal((await detail.json()).amount,16000);
+  assert.equal((await readNotificationDetail({id:25801,role:'EMPLOYEE',portalArea:'WORKDAY',isActive:true},'admin',adminReceipt.id)).status,403);
+  let queued=await notices();assert.equal(queued.length,2,'concurrent timer runs do not duplicate notices');
+  assert.ok(!queued.some(n=>n.userId===ids[1]),'off-shift cashier has no instruction or push');
+  assert.equal((await loadExpenseRouting()).adminItems.find(i=>i.ref===requestRef)?.reason,'Смена завершена');
+  const live=queued.find(n=>n.userId===ids[0])!;const decision=await expensePushDecision(live);assert.equal(decision.state,employeePushNotBefore(new Date())>new Date()?'defer':'send');
+  assert.equal((await expensePushDecision(live,new Date(Date.now()+7*60000))).state,'defer','stale source cannot send even when a notice is already queued');
+  await prisma.workDayEntry.update({where:{userId_date:{userId:ids[0],date:day}},data:{status:'completed',endedAt:new Date()}});
+  assert.equal((await expensePushDecision(live)).state,'cancel','ending the shift prevents dispatch before the next queue reconciliation');
+  await prisma.workDayEntry.update({where:{userId_date:{userId:ids[0],date:day}},data:{status:'active',endedAt:null}});
+  await prisma.userOneCCashboxMapping.update({where:{userId:ids[0]},data:{oneCCashboxRef:randomUUID()}});
+  assert.equal((await expensePushDecision(live)).state,'cancel','old recipient cannot act after cashbox reassignment');
+  await prisma.userOneCCashboxMapping.update({where:{userId:ids[0]},data:{oneCCashboxRef:boxA}});
+  await sync(false);
+  assert.equal((await expensePushDecision(live)).state,'defer','incomplete sync neither authorizes dispatch nor proves completion');
+  await sync();
+  await prisma.workdayNotification.update({where:{id:live.id},data:{status:'sent',sentAt:new Date(),readAt:new Date()}});
+  await queueEmployeeExpensePushes();assert.ok((await prisma.workdayNotification.findUniqueOrThrow({where:{id:live.id}})).readAt,'queue never unread-resets an unchanged approval');
+  assert.equal((await loadEmployeeAttention({id:ids[0]})).items.filter(i=>i.kind==='cash').length,1,'reading does not remove financial action');
+  pay(boxA,30000);await sync();
+  const partial=await expensePushDecision(live);
+  if(partial.state==='send') {assert.match(partial.title,/20\s000/);assert.doesNotMatch(partial.title,/50\s000/);}
+  else assert.equal(partial.state,'defer','quiet hours still apply after partial payment');
+  pay(boxA,20000);await sync();
+  assert.equal((await expensePushDecision(live)).state,'cancel','posted RKO prevents dispatch before the stored notification is cancelled');
+  const inbox=await loadEmployeeNotifications({id:ids[0]},true);assert.equal(inbox.notifications.find(n=>n.id===live.id)?.active,false,'read-only inbox retires paid part before next dispatch');
+  await queueEmployeeExpensePushes();assert.equal((await prisma.workdayNotification.findUniqueOrThrow({where:{id:live.id}})).status,'cancelled');
+  assert.equal((await loadEmployeeAttention({id:ids[2]})).items.filter(i=>i.kind==='cash').length,1);
+  await sync(false);await queueEmployeeExpensePushes();assert.equal((await loadExpenseRouting()).state,'unavailable');assert.ok(!(await adminInbox()).attention.some(i=>i.id===adminReceipt.id),'unknown execution never sends a money instruction');
+  await sync();await prisma.workDayEntry.update({where:{userId_date:{userId:ids[1],date:day}},data:{status:'active',endedAt:null}});
+  await queueEmployeeExpensePushes();queued=await notices();assert.ok(!queued.some(n=>n.userId===ids[1]),'later start never duplicates ADMIN responsibility');assert.equal((await loadExpenseRouting()).adminItems.filter(i=>i.ref===requestRef).length,1);
+  pay(boxB,16000);pay(reserve,37000);await sync();await queueEmployeeExpensePushes();assert.ok((await notices()).every(n=>n.status==='cancelled'));assert.ok(!(await adminInbox()).attention.some(i=>i.id===adminReceipt.id),'paid ADMIN part disappears even if unread');
+  row.linked_cash_expense_orders.rows[0].posted=false;row.linked_cash_expense_orders.rows[0].executed_amount=0;row.execution.executed_amount-=30000;row.execution.remaining_amount+=30000;
+  await sync();await queueEmployeeExpensePushes();assert.equal((await prisma.workdayNotification.findUniqueOrThrow({where:{id:live.id}})).status,'pending','RKO reversal reopens same notice');
+  await prisma.user.update({where:{id:ids[0]},data:{isActive:false}});await queueEmployeeExpensePushes();assert.equal((await expensePushDecision(live)).state,'cancel');
+ } finally {await prisma.expenseRequestAdminCase.updateMany({where:{oneCRequestRef:requestRef},data:{deletionMark:true}});await prisma.user.updateMany({where:{id:{in:[25800,...ids]}},data:{isActive:false}});await prisma.$disconnect();}
+});

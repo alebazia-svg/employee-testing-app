@@ -333,3 +333,17 @@ Physical iPhone capture is not yet verified.
   counts without rewriting the original snapshot. Partial/mixed states and
   reversal covered. Actual app check visibility is independent of plan source.
 - No schema/1C writes. Real Magomed16000 explanation verified after deployment.
+
+
+## Expense cashbox notification routing — production 1.18.0
+
+- Runtime `1e2c67b`; release and verification:
+  `expense-distribution-routing-20261025.md`.
+- Native account distributions identify each cashbox's residual amount. Personal
+  cashboxes go only to their uniquely mapped active-shift cashier; the approved
+  shared reserve goes to the exact eligible active applicant. Safes, off-shift
+  operators and unresolved mappings go to ADMIN. No foreign-cashbox instructions
+  or name/comment guesses. A persisted ADMIN handover does not duplicate on shift
+  start. Direct posted RKO closes only the corresponding part; read is not done.
+- No migration or 1C writes. Combined release tests and authenticated ADMIN
+  verified; physical push for a naturally occurring new request remains pending.

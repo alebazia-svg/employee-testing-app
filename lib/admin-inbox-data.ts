@@ -1,4 +1,6 @@
 import 'server-only';
+import { loadExpenseRouting } from './employee-expense-routing-snapshot';
+import { adminExpenseRouteKey, adminExpenseRouteCopy, ADMIN_EXPENSE_ISSUE_SOURCE } from './employee-expense-routing';
 import { refreshPendingExpenseStatuses } from './expense-request-status-refresh';
 import { expenseSyncLastSuccess, sourceCheckIsStale } from './admin-inbox-source-health';
 import { buyerDeadline, cashIssueDeadline, deadlineLabel, urgentDeadline } from './admin-inbox-deadlines';
@@ -72,6 +74,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   ]);
 
   const rows = [...new Map([...displayRows, ...unreadRows, ...lifecycleRows].map((row) => [row.id, row])).values()];
+  const cashRouting = rows.some(r => r.event.sourceType === ADMIN_EXPENSE_ISSUE_SOURCE) ? await loadExpenseRouting(now) : null;
+  const cashParts = new Map(cashRouting?.adminItems.map(i => [adminExpenseRouteKey(i), i]));
   const hasTaxReminder = rows.some((row) => row.event.sourceType === 'tax_control');
   const currentTaxEventKey = hasTaxReminder ? await Promise.all([
     loadAusnReportCatalog(),
@@ -237,7 +241,8 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
     const sourceState = adminInboxSourceState({
       sourceType,
       eventType: row.event.type,
-      current: sourceType === 'tax_control' ? row.event.eventKey === currentTaxEventKey
+      current: sourceType === ADMIN_EXPENSE_ISSUE_SOURCE ? cashParts.has(row.event.eventKey)
+        : sourceType === 'tax_control' ? row.event.eventKey === currentTaxEventKey
         : sourceType === 'tax_limit' ? row.event.eventKey === currentTaxLimitEventKey
         : sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id)
         : sourceType === 'procurement_delivery_request' ? activeDeliverySourceIds.has(sourceId) && deliveryEvents.some(e => activeDeliveryIds.has(e.id) && row.event.eventKey === `delivery:manual:${e.id}`)
@@ -277,6 +282,20 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       meta: { ...meta, actionLabel: adminInboxActionLabel({ sourceType, defaultLabel: meta.actionLabel, sourceState }) },
       sourceState,
     };
+    if (sourceType === ADMIN_EXPENSE_ISSUE_SOURCE) {
+      const part = cashParts.get(row.event.eventKey);
+      const unavailable = cashRouting?.state !== 'ready' || cashRouting.unavailableRefs.includes(row.event.eventKey.split(':')[1]);
+      if (unavailable) {
+        item.meta.category = 'system'; item.sourceState = { active: true, label: 'Статус не проверен', tone: 'neutral' };
+        item.event.title = 'Статус выдачи не обновлён'; item.event.body = row.event.body.split('\n')[1] || 'Проверьте исполнение в 1С';
+      } else if (part) {
+        Object.assign(item.event, adminExpenseRouteCopy(part));
+        item.sourceState = { active: true, label: 'Оформите расходник', tone: 'attention' };
+        item.event.push = { identity: `${part.remaining.toLocaleString('ru-RU')} ₽ · ${part.cashbox}`, action: 'Оформите расходник', detail: part.reason, reference: part.number };
+      } else {
+        item.event.title = 'Выдача больше не ожидается'; item.event.body = row.event.body.split('\n').slice(1).join(' · ');
+      }
+    }
     if (sourceState.active && ['procurement_delivery', 'procurement_delivery_request'].includes(sourceType) && unavailableDeliverySources.has(sourceId)) {
       item.meta.category = 'system';
       item.meta.actionLabel = 'Проверить статус';
@@ -286,7 +305,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       item.event.href = deliveryHrefs.get(`${sourceType}:${sourceId}`) ?? item.event.href;
     }
     if (sourceState.active && item.meta.category !== 'system') {
-      item.event.push = pushDetails.get(`${sourceType}:${sourceId}`);
+      item.event.push ??= pushDetails.get(`${sourceType}:${sourceId}`);
       item.event.href = deliveryHrefs.get(`${sourceType}:${sourceId}`) ?? item.event.href;
     }
     const urgency = sourceState.active && item.meta.category !== 'system' ? urgencies.get(`${sourceType}:${sourceId}`) : undefined;

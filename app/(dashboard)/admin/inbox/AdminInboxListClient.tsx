@@ -17,16 +17,17 @@ export function AdminInboxListClient({ initialItems, initialAttention, initialVi
 }) {
   const router = useRouter();
   const params=useSearchParams();
-  const deepReview=params.get('review');
+  const cashIssue=params.get('cashIssue');
+  const deepReview=cashIssue || params.get('review');
   const [selected,setSelected]=useState<NotificationSelection|null>(null);
   const openedReview=useRef<string|null>(null);
   useEffect(()=>{
     if(!deepReview){openedReview.current=null;return;}
     if(openedReview.current===deepReview)return;
-    const found=[...initialItems,...initialAttention].find(i=>i.event.sourceType==='terminal_fiscal_review'&&i.event.sourceId===deepReview);
+    const found=[...initialItems,...initialAttention].find(i=>cashIssue ? i.id===cashIssue&&i.event.sourceType==='expense_cash_issue' : i.event.sourceType==='terminal_fiscal_review'&&i.event.sourceId===deepReview);
     const target=initialReview|| (found?{id:found.id,audience:'admin' as const,...found.event}:null);
     if(target){openedReview.current=deepReview;setSelected(target);}
-  },[deepReview,initialReview,initialItems,initialAttention]);
+  },[deepReview,cashIssue,initialReview,initialItems,initialAttention]);
   const [shown, setShown] = useState(PAGE_SIZE);
   const [error, setError] = useState('');
   const [showSystemHistory, setShowSystemHistory] = useState(false);
