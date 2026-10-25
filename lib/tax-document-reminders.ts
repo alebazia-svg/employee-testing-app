@@ -44,17 +44,36 @@ export async function syncTaxLimitReminder(db: PrismaClient, now = new Date()) {
 }
 
 export async function syncTaxControlReminders(db: PrismaClient, now = new Date()) {
-  const [documents, limit] = await Promise.all([
+  const [documents, limit, processing] = await Promise.all([
     syncTaxDocumentReminder(db, now),
     syncTaxLimitReminder(db, now),
+    syncTaxProcessingFailureReminder(db, now),
   ]);
-  return { documents, limit };
+  return { documents, limit, processing };
+}
+
+export async function syncTaxProcessingFailureReminder(db: PrismaClient, now = new Date()) {
+  const failed = await db.taxControlDocument.findFirst({ where: { status: 'PROCESSING_FAILED' }, orderBy: { createdAt: 'desc' }, select: { id: true, originalName: true, periodKey: true } });
+  if (!failed) return { state: 'complete' as const };
+  const eventKey = `tax_processing_failed:${failed.id}`;
+  const event = await db.$transaction(async (tx) => {
+    const saved = await tx.adminInboxEvent.upsert({
+      where: { eventKey },
+      create: { eventKey, type: 'tax.processing_failed', title: 'Отчёт АУСН не обновился', body: `Файл «${failed.originalName}» за ${failed.periodKey} сохранён, но не обработан. Откройте раздел «Налоги» и повторите загрузку.`, href: '/admin/taxes', sourceType: 'tax_control', sourceId: failed.id, occurredAt: now },
+      update: {},
+    });
+    const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
+    await tx.adminInboxReceipt.createMany({ data: admins.map((admin) => ({ eventId: saved.id, userId: admin.id })), skipDuplicates: true });
+    await queueAdminInboxTelegramDelivery({ db: tx, eventId: saved.id });
+    return saved;
+  });
+  return { state: 'failed' as const, eventId: event.id, documentId: failed.id };
 }
 
 export async function syncTaxDocumentReminder(db: PrismaClient, now = new Date()) {
   const [reports, documents] = await Promise.all([
     loadAusnReportCatalog(),
-    db.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, coverageFrom: true, coverageTo: true, originalName: true } }),
+    db.taxControlDocument.findMany({ select: { documentType: true, periodKey: true, coverageFrom: true, coverageTo: true, originalName: true, status: true } }),
   ]);
   const next = buildTaxDocumentPlan({ now, reports, documents: documents.map((document) => ({ ...document, source: 'portal' as const })) }).find((period) => period.status === 'missing');
   if (!next) return { state: 'complete' as const };

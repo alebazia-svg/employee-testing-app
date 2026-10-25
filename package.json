@@ -1,6 +1,6 @@
 {
   "name": "employee-testing-app",
-  "version": "1.17.6",
+  "version": "1.17.7",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -34,6 +34,7 @@
     "procurement:forecast-snapshot": "node --conditions=react-server --env-file=.env --import tsx scripts/procurement-forecast-snapshot.ts",
     "tax-control:reminders": "node --conditions=react-server --env-file=.env --import tsx scripts/sync-tax-document-reminders.ts",
     "tax-control:import": "node --conditions=react-server --env-file=.env --import tsx scripts/import-tax-document-manifest.ts"
+    ,"tax-control:reprocess": "node --conditions=react-server --import tsx scripts/reprocess-tax-documents.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
