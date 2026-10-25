@@ -26,7 +26,7 @@ export function buildFiscalTransactions(input:{from:Date;to:Date;parts:DailyFisc
   const covered=chain&&allComplete&&bs.length>0&&cs.length>0&&linked.length===cs.length&&sumBank===sumChecks;
   const names=[...new Set(cs.map(c=>c.cashier?.name).filter(Boolean))];
   const alternatives=rs.some(r=>(r.evidence?.chain?.alternatives??0)>1);
-  const message=!allComplete?'Неполные данные':covered?'Сумма покрыта':chain?'Возможная связь':matched?'Совпало':alternatives?'Несколько вариантов':!cs.length?'Нет связи с 1С':cs.every(c=>c.sourceType==='acquiring_operation')?'Нет фискального чека':!linked.length?'Нет связи с ОФД':!bs.length?'Нет связи с оплатой':'Нужна проверка';
+  const message=!allComplete?'Неполные данные':covered?'Сумма покрыта':chain?'Возможная связь':matched?'Совпало':alternatives?'Несколько вариантов':rs.some(r=>r.reasonCode==='OFD_CANDIDATE_REQUIRES_LINK')?'Проверить связь с ОФД':!cs.length?'Нет связи с 1С':cs.every(c=>c.sourceType==='acquiring_operation')?'Нет фискального чека':!linked.length?'Нет связи с ОФД':!bs.length?'Нет связи с оплатой':'Нужна проверка';
   const times=[...bs.map(b=>b.transactionDate),...cs.map(c=>c.dateTime)].sort((a,b)=>Date.parse(a)-Date.parse(b));
   for(const b of bs)usedBank.add(bankOperationKey(b));for(const c of cs)usedCheck.add(c.sourceRef);
   result.push({key,at:times[0],manager:names.join(', ')||'Не определён',chain,complete,status:!allComplete?'incomplete':matched?'matched':covered?'covered':'review',message,

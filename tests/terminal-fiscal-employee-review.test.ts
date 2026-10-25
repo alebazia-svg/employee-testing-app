@@ -42,10 +42,10 @@ const mapping: TerminalMapping = {
 function record(overrides: Partial<MatchingAuditRecord> = {}): MatchingAuditRecord {
   return {
     matchingKey: 'operation-1', version: 'mvp-1', status: 'pending', reasonCode: 'ONE_C_CANDIDATE_PENDING',
-    evaluatedAt: '2026-08-17T16:52:00.000Z', graceUntil: '2026-08-17T18:32:00.000Z', mappingId: mapping.id,
+    evaluatedAt: '2026-08-17T17:02:00.000Z', graceUntil: '2026-08-17T18:32:00.000Z', mappingId: mapping.id,
     bankOperationKey: 'secret-operation', operationType: 'sale', amountKopecks: 1_250_000, candidateCount: 0,
     evidence: { bankTransactionDate: '2026-08-17T16:32:00.000Z' },
-    sourceCheckedAt: { tbank: '2026-08-17T16:52:00.000Z', oneC: '2026-08-17T16:52:00.000Z', ofd: '2026-08-17T16:52:00.000Z' },
+    sourceCheckedAt: { tbank: '2026-08-17T17:02:00.000Z', oneC: '2026-08-17T17:02:00.000Z', ofd: '2026-08-17T17:02:00.000Z' },
     sourceCompleteness: { tbank: true, oneC: true, ofd: false }, history: [],
     ...overrides,
   };
@@ -70,14 +70,14 @@ function check(input: {
   };
 }
 
-test('first complete 1C read after twenty minutes is enough when one nearby mapped cashier exists', () => {
+test('first complete 1C read after thirty minutes is enough when one nearby mapped cashier exists', () => {
   const target = record();
   assert.deepEqual(evaluateTerminalFiscalEmployeeReview({
     record: target, periodRecords: [target], mapping, oneCChecks: [check()],
     cashierMappings: [{ userId: 5, oneCCashierRef: 'cashier-magomed' }],
   }), { action: 'notify', employeeId: 5, attributionKey: 'kkm-day-cashier:cashier-magomed', source: 'kkm_day_cashier' });
   assert.equal(terminalFiscalEmployeeReviewText({ operationAt: new Date('2026-08-17T16:32:00.000Z'), amountKopecks: 1_250_000 }),
-    'Оплата 12 500 ₽ в 19:32. Проверьте и пробейте чек.');
+    'Оплата 12 500 ₽ в 19:32. Чек пока не найден. Проверьте продажу.');
 });
 
 test('builds a compact neutral employee workday summary', () => {
@@ -85,7 +85,7 @@ test('builds a compact neutral employee workday summary', () => {
     bankOperationAt: '2026-08-17T16:32:00.000Z',
     amountKopecks: 1_250_000,
   }), {
-    title: 'Пробейте чек',
+    title: 'Проверьте чек',
     meta: '19:32 · 12 500 ₽',
   });
 });
@@ -127,7 +127,7 @@ test('admin review screen distinguishes unresolved ADMIN-only and confirmed late
   });
   assert.equal(resolved.title, 'Оплата и чек сверены');
   assert.match(resolved.message, /00OF-002948/);
-  assert.match(resolved.message, /7 мин 17 сек/);
+  assert.doesNotMatch(resolved.message, /пробит через|7 мин 17 сек/);
 
   const archived = terminalFiscalAdminReviewView({ ...common, status: 'resolved', archivedUnresolved: true });
   assert.equal(archived.statusLabel, 'В истории · не исправлено');
@@ -599,4 +599,15 @@ test('shared shift conversation is visible to a participant and ADMIN reply reac
 test('covered payment renders as completed even before its review-status refresh',()=>{
  const r=terminalFiscalAdminReviewView({status:'admin_review',bankOperationAt:'2026-10-12T09:00:00Z',amountKopecks:260000,match:{status:'confirmed',reasonCode:'MATCH_AMOUNT_COVERED',oneCSourceRef:null,timeDifferenceSeconds:null}});
  assert.equal(r.tone,'resolved');assert.equal(r.title,'Сумма покрыта чеками');assert.match(r.message,/Действий от сотрудника не требуется/);
+});
+
+
+test('thirty-minute boundary and handover override never bypass source and OFD safeguards',()=>{
+ const base=record();const before={...base,sourceCheckedAt:{...base.sourceCheckedAt,oneC:'2026-08-17T17:01:59Z'}};
+ const args={record:before,periodRecords:[before],mapping,oneCChecks:[],cashierMappings:[],kkmResponsibilities:[{id:1,userId:5,oneCCashRegisterRef:mapping.oneCCashRegisterRef,effectiveFrom:new Date('2026-08-17T00:00Z'),effectiveTo:null}]};
+ assert.equal(evaluateTerminalFiscalEmployeeReview(args).action,'wait');
+ assert.equal(evaluateTerminalFiscalEmployeeReview({...args,record:base}).action,'notify');
+ assert.equal(evaluateTerminalFiscalEmployeeReview({...args,minimumAgeMs:0}).action,'notify');
+ assert.equal(evaluateTerminalFiscalEmployeeReview({...args,minimumAgeMs:0,record:{...before,reasonCode:'OFD_CANDIDATE_REQUIRES_LINK'}}).action,'admin_only');
+ assert.equal(evaluateTerminalFiscalEmployeeReview({...args,minimumAgeMs:0,record:{...before,sourceCompleteness:{...before.sourceCompleteness,oneC:false}}}).action,'wait');
 });

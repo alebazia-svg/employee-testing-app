@@ -76,7 +76,7 @@ test('confirms a refund only against refund documents and OFD operation type 2',
 });
 
 test('keeps a missing 1C candidate pending inside grace and review-only afterwards', () => {
-  assert.deepEqual([only({ now: '2026-08-10T07:30:00.000Z', oneCChecks: [] }).status, only({ oneCChecks: [] }).status], ['pending', 'needs_review']);
+  assert.deepEqual([only({ now: '2026-08-10T07:30:00.000Z', oneCChecks: [], ofdReceipts: [] }).status, only({ oneCChecks: [], ofdReceipts: [] }).status], ['pending', 'needs_review']);
 });
 
 test('does not call missing fiscal data a violation', () => {
@@ -167,7 +167,7 @@ test('does not let an unrelated multi-card check affect another operation', () =
     cashRegisterRef: 'other-cash',
     cardPayments: [...check.cardPayments, { ...check.cardPayments[0], lineNumber: '2' }],
   };
-  assert.equal(only({ oneCChecks: [unrelated] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({ oneCChecks: [unrelated], ofdReceipts: [] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
 });
 
 test('marks incomplete sources and mapping failures unavailable', () => {
@@ -214,9 +214,9 @@ test('links a unique late same-day check but still rejects the wrong terminal', 
   const late = { ...check, dateTime: '2026-08-10T07:05:01.000Z' };
   assert.equal(only({ oneCChecks: [late] }).reasonCode, 'MATCH_CONFIRMED_LATE');
   const beforePayment = { ...check, dateTime: '2026-08-10T06:00:00.000Z' };
-  assert.equal(only({ oneCChecks: [beforePayment] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({ oneCChecks: [beforePayment], ofdReceipts: [] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
   const wrongTerminal = { ...check, cardPayments: [{ ...check.cardPayments[0], acquiringTerminalRef: 'other' }] };
-  assert.equal(only({ oneCChecks: [wrongTerminal] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({ oneCChecks: [wrongTerminal], ofdReceipts: [] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
 });
 
 test('accepts a unique acquiring operation as 1C evidence when no KKM check exists', () => {
@@ -278,7 +278,7 @@ test('does not accept an acquiring operation from another terminal or without un
     ...acquiringDocument,
     cardPayments: [{ ...acquiringDocument.cardPayments[0], acquiringTerminalRef: 'other' }],
   };
-  assert.equal(only({ oneCChecks: [wrongTerminal] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({ oneCChecks: [wrongTerminal], ofdReceipts: [] }).reasonCode, 'ONE_C_CANDIDATE_NOT_FOUND');
   assert.equal(only({ oneCChecks: [acquiringDocument], ofdReceipts: [] }).reasonCode, 'OFD_RECEIPT_NOT_FOUND');
   assert.equal(only({ oneCChecks: [acquiringDocument], ofdReceipts: [receipt, { ...receipt }] }).reasonCode, 'OFD_RECEIPT_DUPLICATE');
 });
@@ -332,7 +332,7 @@ test('does not pair repeated same-day checks when one check predates its ordered
     { ...check, sourceRef: 'after-a', dateTime: '2026-08-10T07:30:00.000Z', fiscalDocumentNumber: 'fd-a', fiscalSign: 'fp-a' },
     { ...check, sourceRef: 'before-b', dateTime: '2026-08-10T07:45:00.000Z', fiscalDocumentNumber: 'fd-b', fiscalSign: 'fp-b' },
   ];
-  const records = reconcileTerminalFiscalMvp(input({ bankOperations: banks, oneCChecks: checks })).records;
+  const records = reconcileTerminalFiscalMvp(input({ bankOperations: banks, oneCChecks: checks, ofdReceipts: [] })).records;
   assert.deepEqual(records.map((record) => [record.reasonCode, record.oneCCheckKey]), [
     ['ONE_C_CANDIDATE_NOT_FOUND', undefined],
     ['ONE_C_CANDIDATE_PENDING', undefined],
@@ -430,8 +430,8 @@ test('accepts only deterministic nonnumeric OFD name extensions with exact line 
 });
 
 test('appends history only when status or reason changes', () => {
-  const pending = reconcileTerminalFiscalMvp(input({ now: '2026-08-10T07:30:00.000Z', oneCChecks: [] })).records[0];
-  const unchanged = reconcileTerminalFiscalMvp(input({ now: '2026-08-10T07:40:00.000Z', oneCChecks: [], previous: [pending] })).records[0];
+  const pending = reconcileTerminalFiscalMvp(input({ now: '2026-08-10T07:30:00.000Z', oneCChecks: [], ofdReceipts: [] })).records[0];
+  const unchanged = reconcileTerminalFiscalMvp(input({ now: '2026-08-10T07:40:00.000Z', oneCChecks: [], ofdReceipts: [], previous: [pending] })).records[0];
   assert.equal(unchanged.history.length, 1);
   const confirmed = reconcileTerminalFiscalMvp(input({ previous: [unchanged] })).records[0];
   assert.deepEqual(confirmed.history.map((entry) => entry.status), ['pending', 'confirmed']);
@@ -447,7 +447,7 @@ test('never exposes uncertain or technical states to an employee', () => {
 });
 
 test('reasonCode contract is exhaustive and permits every emitted status', () => {
-  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 35);
+  assert.equal(Object.keys(MATCHING_REASON_CODE_CONTRACT).length, 36);
   const scenarios = [
     only(),
     only({ oneCChecks: [] }),
@@ -511,12 +511,12 @@ test('recognizes 1200 + 300 with matching goods in one OFD receipt as a possible
   assert.equal(result.oneCCashierRef,undefined);
   assert.equal(matchingActionPolicy(result).employeeVisible,false);
   const wrongGoods={...combined,items:[{name:'Другой товар',quantity:1,priceKopecks:150000,sumKopecks:150000}]};
-  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,second],ofdReceipts:[wrongGoods]}).reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
-  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,{...second,cashRegisterRef:'other-kkm'}],ofdReceipts:[combined]}).reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
-  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,{...second,dateTime:'2026-08-10T08:02:00.000Z'}],ofdReceipts:[combined]}).reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,second],ofdReceipts:[wrongGoods]}).reasonCode,'OFD_CANDIDATE_REQUIRES_LINK');
+  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,{...second,cashRegisterRef:'other-kkm'}],ofdReceipts:[combined]}).reasonCode,'OFD_CANDIDATE_REQUIRES_LINK');
+  assert.equal(only({bankOperations:[splitBank],oneCChecks:[first,{...second,dateTime:'2026-08-10T08:02:00.000Z'}],ofdReceipts:[combined]}).reasonCode,'OFD_CANDIDATE_REQUIRES_LINK');
   const actualPartialPayment={...bank,rrn:'separate-1200-sale',amountKopecks:120000};
   const separate=reconcileTerminalFiscalMvp(input({bankOperations:[splitBank,actualPartialPayment],oneCChecks:[first,second],ofdReceipts:[combined]})).records;
-  assert.equal(separate[0].reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+  assert.equal(separate[0].reasonCode,'OFD_CANDIDATE_REQUIRES_LINK');
 });
 
 
@@ -525,4 +525,35 @@ test('historical bank coverage gaps cannot confirm an otherwise matching receipt
   const r=reconcileTerminalFiscalMvp(i).records[0];
   assert.equal(r.status,'unavailable'); assert.equal(r.reasonCode,'SOURCE_TBANK_HISTORICAL_INCOMPLETE');
   assert.equal(r.oneCCheckKey,undefined);
+});
+
+
+test('OFD evidence without a 1C link stays ADMIN-only and never confirms the sale', () => {
+  const record = only({oneCChecks: []});
+  assert.equal(record.reasonCode, 'OFD_CANDIDATE_REQUIRES_LINK');
+  assert.equal(record.status, 'needs_review');
+  assert.equal(record.oneCCheckKey, undefined);
+  assert.equal(record.ofdReceiptKey, undefined);
+  assert.equal(matchingActionPolicy(record).employeeVisible, false);
+  // One receipt cannot prove two payments; both remain unconfirmed.
+  const repeated = reconcileTerminalFiscalMvp(input({oneCChecks: [], bankOperations:[bank,{...bank,rrn:'second'}]}));
+  assert.ok(repeated.records.every(r => r.status !== 'confirmed'));
+});
+
+test('a receipt for another KKT, amount or operation cannot suppress a missing-sale check', () => {
+  for (const other of [{...receipt,kktRegistrationNumber:'other'}, {...receipt,electronicKopecks:100}, {...receipt,operationType:2}]) {
+    assert.equal(only({oneCChecks:[],ofdReceipts:[other]}).reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+  }
+  const known = {...check,dateTime:'2026-08-10T06:00:00Z'};
+  const secondBank = {...bank,rrn:'known-bank',transactionDate:'2026-08-10T06:00:00Z'};
+  const result = reconcileTerminalFiscalMvp(input({oneCChecks:[known],bankOperations:[secondBank,bank]}));
+  assert.equal(result.records[1].reasonCode,'ONE_C_CANDIDATE_NOT_FOUND');
+});
+
+test('document and fiscal clocks remain distinct without inventing a fiscalization delay', () => {
+  const r=only({oneCChecks:[{...check,dateTime:'2026-08-10T07:29:00Z',fiscalDateTime:'2026-08-10T07:17:00Z'}]});
+  assert.equal(r.status,'confirmed');
+  assert.equal(r.evidence.oneCDateTime,'2026-08-10T07:29:00Z');
+  assert.equal(r.evidence.oneCFiscalDateTime,'2026-08-10T07:17:00Z');
+  assert.equal(r.evidence.ofdReceiptAt,receipt.receiptAt);
 });

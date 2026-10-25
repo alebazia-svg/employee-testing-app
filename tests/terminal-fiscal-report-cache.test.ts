@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, readdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildDailyFiscalReport } from '../lib/terminal-fiscal-daily-report';
@@ -30,6 +30,16 @@ test('persistent fiscal cache preserves last full snapshot, isolates sources and
   assert.equal(await readFiscalReport(day),null);
   process.env['1C_BASE_URL']='http://local-fixture.invalid';
   const [scope]=await readdir(directory);
+  const target=path.join(directory,scope,`${day}.json`);
+  const saved=JSON.parse(await readFile(target,'utf8'));
+  assert.ok(saved.algorithmVersion);
+  await writeFile(target,JSON.stringify({...saved,algorithmVersion:'obsolete-rules'}));
+  assert.equal(await readFiscalReport(day),null);
+  assert.equal(await writeFiscalReport(day,report),true);
+  assert.deepEqual(await readFiscalReport(day),report);
+  delete saved.algorithmVersion;
+  await writeFile(target,JSON.stringify(saved));
+  assert.equal(await readFiscalReport(day),null);
   await writeFile(path.join(directory,scope,`${day}.json`),'broken');
   assert.equal(await readFiscalReport(day),null);
   await assert.rejects(()=>readFiscalReport('../../escape'));

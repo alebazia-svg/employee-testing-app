@@ -1,5 +1,5 @@
 import { fiscalChainReview, type FiscalChainEvidence } from './terminal-fiscal-chain-review';
-export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.7';
+export const TERMINAL_FISCAL_MATCHING_VERSION = 'mvp-1.8';
 export const TERMINAL_FISCAL_GRACE_MS = 120 * 60 * 1000;
 export const TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export const TERMINAL_FISCAL_TIME_TOLERANCE_MS = 5 * 60 * 1000;
@@ -33,6 +33,7 @@ export type MatchingReasonCode =
   | 'FISCAL_DATA_PENDING'
   | 'FISCAL_DATA_UNCONFIRMED'
   | 'FISCAL_KEY_CONFLICT'
+  | 'OFD_CANDIDATE_REQUIRES_LINK'
   | 'OFD_RECEIPT_PENDING'
   | 'OFD_RECEIPT_NOT_FOUND'
   | 'OFD_RECEIPT_DUPLICATE'
@@ -53,7 +54,7 @@ type MatchingReasonContract = {
 export const MATCHING_REASON_CODE_CONTRACT = {
   MATCH_AMOUNT_COVERED: { meaning: 'Сумма оплат покрыта фискальными чеками; точные пары документов не назначены', allowedStatuses: ['confirmed'], employeeVisible: false },
   MATCH_CONFIRMED: { meaning: 'Три источника однозначно совпали', allowedStatuses: ['confirmed'], employeeVisible: false },
-  MATCH_CONFIRMED_LATE: { meaning: 'Три источника однозначно совпали, документ 1С создан позднее оплаты', allowedStatuses: ['confirmed'], employeeVisible: false },
+  MATCH_CONFIRMED_LATE: { meaning: 'Три источника однозначно совпали, дата документа 1С отличается от времени оплаты; просрочка фискализации не установлена', allowedStatuses: ['confirmed'], employeeVisible: false },
   SOURCE_TBANK_HISTORICAL_INCOMPLETE: { meaning: 'Историческая банковская выгрузка не покрывает период проверки', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_TBANK_INCOMPLETE: { meaning: 'Источник Т-Банка получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
   SOURCE_ONE_C_INCOMPLETE: { meaning: 'Источник 1С получен не полностью', allowedStatuses: ['unavailable'], employeeVisible: false },
@@ -76,6 +77,7 @@ export const MATCHING_REASON_CODE_CONTRACT = {
   FISCAL_DATA_PENDING: { meaning: 'Полная фискальная тройка ещё может появиться в grace period', allowedStatuses: ['pending'], employeeVisible: false },
   FISCAL_DATA_UNCONFIRMED: { meaning: 'Фискальная тройка отсутствует или неполна после grace period', allowedStatuses: ['needs_review'], employeeVisible: false },
   FISCAL_KEY_CONFLICT: { meaning: '1С вернула конфликтующие фискальные факты', allowedStatuses: ['needs_review'], employeeVisible: false },
+  OFD_CANDIDATE_REQUIRES_LINK: { meaning: 'Есть возможный чек ОФД, но связь с оплатой и документом 1С не доказана', allowedStatuses: ['needs_review'], employeeVisible: false },
   OFD_RECEIPT_PENDING: { meaning: 'Фискальный чек OFD ещё может появиться в grace period', allowedStatuses: ['pending'], employeeVisible: false },
   OFD_RECEIPT_NOT_FOUND: { meaning: 'После grace period точный фискальный ключ не найден в OFD', allowedStatuses: ['needs_review'], employeeVisible: false },
   OFD_RECEIPT_DUPLICATE: { meaning: 'Один канонический фискальный ключ встречается в OFD несколько раз', allowedStatuses: ['needs_review'], employeeVisible: false },
@@ -139,6 +141,8 @@ export type OneCCheck = {
   sourceType: 'sale_check' | 'refund_check' | 'acquiring_operation' | 'correction' | 'credit_realization';
   operationType: 'sale' | 'refund' | 'correction';
   dateTime: string;
+  // KKT clock time from the fiscal register, not the document date or first read.
+  fiscalDateTime?: string;
   cashRegisterRef: string;
   kktRegistrationNumber: string;
   totalKopecks: number;
@@ -187,6 +191,7 @@ export type MatchingAuditRecord = {
   ofdReceiptKey?: string;
   operationType?: MatchingOperationType;
   amountKopecks: number;
+  // Absolute difference between document date and payment time; not fiscalization latency.
   timeDifferenceSeconds?: number;
   candidateCount: number;
   evidence: {
@@ -195,6 +200,7 @@ export type MatchingAuditRecord = {
     bankTransactionDate: string;
     bankOperationRawType?: string;
     oneCDateTime?: string;
+    oneCFiscalDateTime?: string;
     oneCTotalKopecks?: number;
     oneCElectronicKopecks?: number;
     ofdReceiptAt?: string;
@@ -653,6 +659,10 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
   }
 
   const globalSourceFailure = sourceFailure(input);
+  const claimedKeys = new Set(contexts.flatMap(peer => peer.candidates.flatMap(candidate => {
+    const key = canonicalFiscalKey(candidate.check);
+    return key ? [key] : [];
+  })));
   const records = contexts.map((context): MatchingAuditRecord => {
     const operation = context.operation;
     const operationAt = timestamp(operation.transactionDate);
@@ -705,8 +715,25 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
       const multipleCardPayments = hasExcludedMultipleCardCandidate(context);
       const unsupportedDocument = hasExcludedDocumentCandidate(context);
       status = splitSale || multipleCardPayments || unsupportedDocument ? 'needs_review' : isPending ? 'pending' : 'needs_review';
+      // An OFD candidate is not proof of a three-source match. It is enough
+      // to withhold a request to fiscalize again until ADMIN links the sale.
+      // Ignore receipts already claimed by another 1C candidate. Never adjust
+      // equipment clocks or infer a delay from the document date here.
+      const possibleOfd = !multipleCardPayments && !unsupportedDocument && input.ofdReceipts.some(receipt => {
+        const at = timestamp(receipt.receiptAt);
+        const key = canonicalFiscalKey(receipt);
+        return Boolean(key) && !claimedKeys.has(key!) && at !== null && at <= now
+          && Math.abs(at - operationAt) <= TERMINAL_FISCAL_LATE_MATCH_WINDOW_MS
+          && receipt.kktRegistrationNumber === context.mapping?.kktRegistrationNumber
+          && receipt.operationType === expectedOfdOperationType(context.operationType!)
+          && receipt.electronicKopecks === operation.amountKopecks
+          && receipt.totalKopecks >= operation.amountKopecks;
+      });
+      if (possibleOfd) status = 'needs_review';
       reasonCode = splitSale
         ? 'ONE_C_POSSIBLE_SPLIT_SALE'
+        : possibleOfd
+        ? 'OFD_CANDIDATE_REQUIRES_LINK'
         : multipleCardPayments
         ? 'ONE_C_MULTIPLE_CARD_PAYMENTS'
         : unsupportedDocument
@@ -807,6 +834,7 @@ export function reconcileTerminalFiscalMvp(input: TerminalFiscalMatchingInput): 
         bankTransactionDate: operation.transactionDate,
         bankOperationRawType: operation.rawType,
         oneCDateTime: oneCCheck?.dateTime,
+        oneCFiscalDateTime: oneCCheck?.fiscalDateTime,
         oneCTotalKopecks: oneCCheck?.totalKopecks,
         oneCElectronicKopecks: oneCCheck?.electronicKopecks,
         ofdReceiptAt: ofdReceipt?.receiptAt,

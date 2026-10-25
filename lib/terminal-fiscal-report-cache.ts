@@ -1,4 +1,5 @@
 import 'server-only';
+import { TERMINAL_FISCAL_MATCHING_VERSION } from './terminal-fiscal-matching';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
@@ -23,7 +24,7 @@ export async function readFiscalReport(day: string): Promise<SavedFiscalReport |
   try {
     const saved = JSON.parse(await readFile(target, 'utf8'));
     const report = saved.report as SavedFiscalReport;
-    if (saved.schema !== schema || saved.day !== day || !report || !completeFiscalReport(report)
+    if (saved.schema !== schema || saved.algorithmVersion !== TERMINAL_FISCAL_MATCHING_VERSION || saved.day !== day || !report || !completeFiscalReport(report)
       || !Array.isArray(report.rows) || !Array.isArray(report.transactions) || !Array.isArray(report.movements)
       || !Number.isFinite(Date.parse(report.updatedAt)) || Date.parse(report.updatedAt) > Date.now()+60000) return null;
     return report;
@@ -37,7 +38,7 @@ export async function writeFiscalReport(day: string, report: SavedFiscalReport) 
   await mkdir(path.dirname(target), {recursive:true, mode:0o700});
   const temporary = `${target}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporary, JSON.stringify({schema,day,report}), {mode:0o600,flag:'wx'});
+    await writeFile(temporary, JSON.stringify({schema,algorithmVersion:TERMINAL_FISCAL_MATCHING_VERSION,day,report}), {mode:0o600,flag:'wx'});
     await rename(temporary,target);
   } finally { await unlink(temporary).catch(()=>{}); }
   return true;

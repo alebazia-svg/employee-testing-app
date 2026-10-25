@@ -230,6 +230,7 @@ export function normalizeOneCCheck(value: unknown, fiscalFacts: Map<string, Reco
     sourceType: actualSourceType as OneCCheck['sourceType'],
     operationType: operation as OneCCheck['operationType'],
     dateTime,
+    fiscalDateTime: normalizeOneCDateTime(fact?.date) || undefined,
     cashRegisterRef: metadataRef(source.cashRegister) || text(source.cashRegisterRef),
     kktRegistrationNumber: text(fact?.kktRegistrationNumber) || text(source.kktRegistrationNumber),
     totalKopecks: integer(source.amountKopecks ?? source.totalKopecks),

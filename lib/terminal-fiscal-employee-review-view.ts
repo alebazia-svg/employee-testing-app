@@ -18,7 +18,7 @@ export function terminalFiscalEmployeeReviewSummary(input: {
   amountKopecks: number;
 }) {
   return {
-    title: 'Пробейте чек',
+    title: 'Проверьте чек',
     meta: `${moscowTimeFormatter.format(new Date(input.bankOperationAt))} · ${formatKopecks(input.amountKopecks)}`,
   };
 }
@@ -27,13 +27,6 @@ const moscowDateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
   timeZone: 'Europe/Moscow', day: '2-digit', month: '2-digit', year: 'numeric',
   hour: '2-digit', minute: '2-digit', hour12: false,
 });
-
-function delayLabel(value: number | null | undefined) {
-  if (!Number.isFinite(value) || !value || value <= 0) return '';
-  const minutes = Math.floor(value / 60);
-  const seconds = value % 60;
-  return [minutes ? `${minutes} мин` : '', seconds ? `${seconds} сек` : ''].filter(Boolean).join(' ');
-}
 
 export function terminalFiscalAdminReviewView(input: {
   status: string;
@@ -72,11 +65,8 @@ export function terminalFiscalAdminReviewView(input: {
         discussionMessage: 'Активная задача закрыта. Техническая сверка с ОФД продолжается в ADMIN/audit, история сообщений сохранена.',
       };
     }
-    const delay = input.match?.reasonCode === 'MATCH_CONFIRMED_LATE'
-      ? delayLabel(input.match.timeDifferenceSeconds)
-      : '';
     const message = input.match?.status === 'confirmed'
-      ? `Чек${check} найден в 1С и подтверждён ОФД.${delay ? ` Он пробит через ${delay} после оплаты.` : ''}`
+      ? `Чек${check} найден в 1С и подтверждён ОФД.`
       : 'По итоговой сверке операция покрыта чеками 1С. Действий не требуется.';
     return {
       tone: 'resolved' as const,
@@ -88,6 +78,12 @@ export function terminalFiscalAdminReviewView(input: {
     };
   }
   if (input.status === 'admin_review') {
+    if (input.match?.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK') return {
+      tone: 'admin' as const, statusLabel: 'Сверка документов', title: 'Есть возможный чек ОФД', operationMeta,
+      message: 'Нужно связать чек с оплатой и документом 1С. Повторно пробивать чек пока не требуется.',
+      discussionMessage: 'Связь ещё не подтверждена. Просьба пробить чек сотруднику не отправляется.',
+    };
+
     if (input.match?.reasonCode === 'SOURCE_TBANK_HISTORICAL_INCOMPLETE') return {
       tone: 'admin' as const, statusLabel: 'Нужны данные банка', title: 'Неполная история оплат', operationMeta,
       message: 'Оплата есть в архиве Т-Банка, но архив покрывает не весь период. Автоматически связать её с чеком пока нельзя.',

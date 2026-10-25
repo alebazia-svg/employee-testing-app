@@ -337,3 +337,48 @@ test('standalone acquiring document for 27800 stays an ADMIN question until fisc
   await prisma.adminInboxEvent.deleteMany({where:{sourceType:'terminal_fiscal_review',sourceId:{in:ids}}});await prisma.terminalFiscalEmployeeReview.deleteMany({where:{mappingId:mapping.id}});await prisma.user.delete({where:{id:admin.id}});
  }
 });
+
+test('automatic receipt reminder: thirty minutes, no duplicate, nonblocking handover and late resolution',async()=>{
+ const {syncTerminalFiscalEmployeeReviews}=await import('../lib/terminal-fiscal-employee-review');
+ const {stageFiscalAdminReview}=await import('../lib/terminal-fiscal-admin-gate');
+ const {escalateHandoverReceipts}=await import('../lib/terminal-fiscal-handover');
+ const {createHash}=await import('node:crypto');
+ const day='2026-08-19';
+ const at=day+'T09:00:00Z',evaluated=day+'T09:30:00Z';
+ const admin=await prisma.user.create({data:{login:marker+'-auto-admin',name:'Local auto admin',role:'ADMIN',passwordHash:'test'}});
+ const users=await Promise.all([1,2].map(i=>prisma.user.create({data:{login:marker+'-auto-'+i,name:'Local auto '+i,role:'EMPLOYEE',department:'retail',passwordHash:'test'}})));
+ const m=await prisma.terminalFiscalMapping.create({data:{label:marker,terminalKey:marker+'-auto-terminal',oneCAcquiringTerminalRef:marker+'-auto-acq',oneCCashRegisterRef:marker+'-auto-cash',kktRegistrationNumber:marker+'-auto-kkt',effectiveFrom:new Date(day+'T00:00:00Z')}});
+ const entries=await Promise.all(users.map(u=>prisma.workDayEntry.create({data:{userId:u.id,date:day,department:'retail',shiftCode:'09_18',shiftLabel:'09–18',startedAt:new Date(day+'T01:00:00Z'),status:'active'}})));
+ await prisma.userOneCCashboxMapping.create({data:{userId:users[0].id,oneCCashboxRef:marker+'-auto-box',oneCCashboxName:'Local auto box',oneCCashRegisterRef:m.oneCCashRegisterRef}});
+ const mapping={id:m.id,terminalKey:m.terminalKey,oneCAcquiringTerminalRef:m.oneCAcquiringTerminalRef,oneCCashRegisterRef:m.oneCCashRegisterRef,kktRegistrationNumber:m.kktRegistrationNumber,activeFrom:m.effectiveFrom.toISOString()};
+ const record:any={matchingKey:marker+'-auto-payment',mappingId:m.id,status:'pending',reasonCode:'ONE_C_CANDIDATE_PENDING',candidateCount:0,operationType:'sale',amountKopecks:90000,evaluatedAt:evaluated,graceUntil:day+'T11:00:00Z',bankOperationKey:marker+'-auto-bank',evidence:{bankTransactionDate:at},sourceCheckedAt:{tbank:evaluated,oneC:evaluated,ofd:evaluated},sourceCompleteness:{tbank:true,oneC:true,ofd:true},history:[]};
+ const sync=async(r:any,closingEmployeeId?:number)=>syncTerminalFiscalEmployeeReviews(prisma,{output:{records:[r],evaluatedAt:r.evaluatedAt} as any,mapping,oneCChecks:[],closingEmployeeId});
+ const key='terminal-fiscal-review:'+createHash('sha256').update(record.matchingKey).digest('hex');
+ try{
+  await sync({...record,sourceCheckedAt:{...record.sourceCheckedAt,oneC:day+'T09:29:59Z'}});
+  assert.equal(await prisma.terminalFiscalEmployeeReview.count({where:{reviewKey:key}}),0);
+  await sync(record);await sync(record);
+  const review=await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{reviewKey:key}});
+  assert.equal(review.status,'open');assert.equal(review.employeeId,users[0].id);assert.equal(review.assignmentScope,'workstation_shift');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:review.id}}),1);
+  assert.equal(await prisma.adminInboxEvent.count({where:{sourceId:review.id}}),0);
+  const recent={...record,matchingKey:marker+'-auto-recent',evidence:{bankTransactionDate:day+'T09:28:00Z'}};
+  await sync(recent,users[0].id);
+  assert.equal(await prisma.terminalFiscalEmployeeReview.count({where:{mappingId:m.id,status:'open'}}),2);
+  await prisma.workDayEntry.update({where:{id:entries[0].id},data:{status:'completed',endedAt:new Date(evaluated)}});
+  await escalateHandoverReceipts(prisma,{userId:users[0].id,date:day,workDayId:entries[0].id});
+  await escalateHandoverReceipts(prisma,{userId:users[0].id,date:day,workDayId:entries[0].id});
+  assert.equal(await prisma.adminInboxEvent.count({where:{sourceId:review.id}}),1);
+  await stageFiscalAdminReview(prisma,record,mapping);
+  assert.equal(await prisma.adminInboxEvent.count({where:{sourceId:review.id}}),1);
+  assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:review.id}})).status,'open');
+  await sync({...record,status:'confirmed',reasonCode:'MATCH_CONFIRMED',oneCCheckKey:'late-check'});
+  assert.equal((await prisma.terminalFiscalEmployeeReview.findUniqueOrThrow({where:{id:review.id}})).status,'resolved');
+  assert.equal(await prisma.workdayNotification.count({where:{reviewId:review.id,status:'pending'}}),0);
+ }finally{
+  const reviews=await prisma.terminalFiscalEmployeeReview.findMany({where:{mappingId:m.id},select:{id:true}});const ids=reviews.map(r=>r.id);
+  await prisma.adminInboxEvent.deleteMany({where:{sourceId:{in:ids}}});
+  await prisma.terminalFiscalEmployeeReview.deleteMany({where:{mappingId:m.id}});
+  await prisma.user.deleteMany({where:{id:{in:[admin.id,...users.map(u=>u.id)]}}});
+ }
+});

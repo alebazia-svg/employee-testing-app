@@ -9,9 +9,9 @@ import {
   terminalFiscalReviewHasFinalResolution,
 } from './terminal-fiscal-day-closure';
 
-// Temporary pilot policy. Returning to automatic delivery requires an owner decision.
+// Uncertain cases stay ADMIN-first; safe workstation reminders are selected in employee-review.
 export const TERMINAL_FISCAL_ADMIN_FIRST = true;
-const TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS = 20 * 60_000;
+const TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS = 30 * 60_000;
 export const fiscalApprovalKey = (id: string) => `terminal-fiscal-review:${id}:admin-approved`;
 export const fiscalTestPaymentKey = (id: string) => `terminal-fiscal-review:${id}:test-payment`;
 export const fiscalDayTotalResolutionKey = (id: string) => `terminal-fiscal-review:${id}:day-total-reconciled`;
@@ -30,7 +30,7 @@ function money(value: number) {
   return `${(value / 100).toLocaleString('ru-RU')} ₽`;
 }
 
-export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingAuditRecord, mapping?: TerminalMapping) {
+export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingAuditRecord, mapping?: TerminalMapping, options: {minimumAgeMs?:number} = {}) {
   const hash = createHash('sha256').update(record.matchingKey).digest('hex');
   const reviewKey = `terminal-fiscal-review:${hash}`;
   const now = new Date(record.evaluatedAt);
@@ -55,12 +55,12 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       }
       return;
     }
-    if (now.getTime() - at.getTime() < TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS) return;
+    if (now.getTime() - at.getTime() < (options.minimumAgeMs ?? TERMINAL_FISCAL_ADMIN_REVIEW_DELAY_MS)) return;
     const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true }, orderBy: { id: 'asc' } });
     if (!admins.length) throw new Error('TERMINAL_FISCAL_ADMIN_RECIPIENT_MISSING');
     const approved = existing && await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(existing.id) } });
     const possibleSplit = record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || isFiscalChainReason(record.reasonCode);
-    const keepOpen = Boolean(approved && existing?.status === 'open' && !possibleSplit && !record.oneCCheckKey
+    const keepOpen = Boolean((approved || existing?.assignmentScope === 'workstation_shift') && existing?.status === 'open' && !possibleSplit && !record.oneCCheckKey
       && ['ONE_C_CANDIDATE_PENDING','ONE_C_CANDIDATE_NOT_FOUND'].includes(record.reasonCode));
     const review = await tx.terminalFiscalEmployeeReview.upsert({
       where: { reviewKey },
@@ -72,6 +72,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
         ...(!keepOpen ? { status: 'admin_review', resolvedAt: null } : {}) },
     });
     if (!keepOpen) await tx.workdayNotification.updateMany({ where: { reviewId: review.id, status: 'pending' }, data: { status: 'cancelled' } });
+    if (keepOpen && !approved && existing?.assignmentScope === 'workstation_shift') return;
     const when = at.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
     const elapsedMinutes = Math.max(0, Math.floor((now.getTime() - at.getTime()) / 60_000));
     const proposed = await fiscalProposedRecipients(tx, at, record.mappingId);
@@ -83,8 +84,10 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       && record.sourceCompleteness.tbank
       && record.sourceCompleteness.oneC;
     const uncertain = !definitelyMissing;
-    const title = record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? 'Нужна проверка сопоставления' : 'В 1С нет чека';
-    const body = `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${possibleSplit
+    const title = record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? 'Связать чек ОФД с оплатой' : record.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' ? 'Возможное разделение продажи' : possibleSplit ? 'Проверить цепочку оплаты' : uncertain ? 'Нужна проверка сопоставления' : 'В 1С нет чека';
+    const body = `${terminal}${workstation}Оплата ${money(record.amountKopecks)} в ${when}. ${record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK'
+      ? 'Есть возможный чек ОФД. Требуется связать документы; просьба пробить повторный чек не отправляется.'
+      : possibleSplit
       ? 'Найдены связанные по суммам фискальные документы; товары сверены с ОФД. Требуется проверить цепочку оплат, чеков и возвратов.'
       : uncertain ? 'Портал не смог однозначно сопоставить оплату и чек; требуется проверка администратора.'
       : `1С прочитана полностью: соответствующего чека нет уже ${elapsedMinutes} мин.`}`;
@@ -93,7 +96,7 @@ export async function stageFiscalAdminReview(db: PrismaClient, record: MatchingA
       create: { eventKey: `${reviewKey}:admin-first`, type: 'terminal_fiscal_review.created',
         title, body,
         href: `/admin/workday/payment-checks/${review.id}`, sourceType: 'terminal_fiscal_review', sourceId: review.id, occurredAt: now },
-      update: possibleSplit ? { title, body } : {},
+      update: possibleSplit || record.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' ? { title, body } : {},
     });
     await tx.adminInboxReceipt.createMany({ data: admins.map((a) => ({ eventId: event.id, userId: a.id })), skipDuplicates: true });
   });
@@ -158,6 +161,7 @@ export async function approveFiscalReview(db: PrismaClient, id: string, adminId:
     const match = await tx.terminalFiscalMatch.findUnique({ where: { matchingId: review.matchingHash } });
     if (match?.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || review.reasonCode === 'ONE_C_POSSIBLE_SPLIT_SALE' || isFiscalChainReason(match?.reasonCode ?? '') || isFiscalChainReason(review.reasonCode)) throw new Error('REVIEW_NOT_AVAILABLE');
     if (match && (match.status === 'confirmed' || match.oneCSourceRef)) throw new Error('CHECK_ALREADY_EXISTS');
+    if (match?.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK' || review.reasonCode === 'OFD_CANDIDATE_REQUIRES_LINK') throw new Error('REVIEW_NOT_AVAILABLE');
     const approved = await tx.adminInboxEvent.findUnique({ where: { eventKey: fiscalApprovalKey(id) } });
     if (approved && review.status === 'open') return { alreadyApproved: true };
     const proposed = await fiscalProposedRecipients(tx, review.bankOperationAt, review.mappingId);

@@ -1,3 +1,4 @@
+import {refreshHandoverReceipts,escalateHandoverReceipts} from '@/lib/terminal-fiscal-handover';
 import { loadHandoverCashExpenses } from '@/lib/handover-cash-expense-snapshot';
 import { scheduleHandoverCheckAudit } from '@/lib/employee-handover-audit-server';
 import { loadEmployeeExpenses } from '@/lib/employee-expense-snapshot';
@@ -435,6 +436,8 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       }
     }
 
+    await refreshHandoverReceipts(prisma,{userId:user.id,date:task.run.date,department:user.department}).catch(()=>undefined);
+
     const earlyFinishDeviation = await prisma.workdayDeviation.findUnique({
       where: { workDayEntryId_kind: { workDayEntryId: task.run.workDayEntryId, kind: 'early_finish' } },
       select: { id: true },
@@ -815,6 +818,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         return { task: updatedTask, tasks, run: updatedRun, workDay };
       });
 
+      await escalateHandoverReceipts(prisma,{userId:user.id,date:task.run.date,workDayId:task.run.workDayEntryId}).catch(()=>undefined);
       return Response.json({
         ...result,
         task: taskForEmployee(result.task),

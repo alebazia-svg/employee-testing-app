@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createHash } from 'node:crypto';
-import { TERMINAL_FISCAL_ADMIN_FIRST, stageFiscalAdminReview } from './terminal-fiscal-admin-gate';
+import { TERMINAL_FISCAL_ADMIN_FIRST, stageFiscalAdminReview, fiscalProposedRecipients } from './terminal-fiscal-admin-gate';
 import type { PrismaClient } from '@prisma/client';
 import type {
   MatchingAuditRecord,
@@ -10,9 +10,8 @@ import type {
   TerminalMapping,
 } from '@/lib/terminal-fiscal-matching';
 
-export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 20 * 60 * 1000;
+export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS = 30 * 60 * 1000;
 export const TERMINAL_FISCAL_EMPLOYEE_REVIEW_WINDOW_MS = 15 * 60 * 1000;
-const EMPLOYEE_REVIEW_REMINDER_MS = 60 * 60 * 1000;
 // Do not turn already-known historical gaps into surprise employee pushes when
 // the retail-day fallback is first deployed. Older cases remain ADMIN-only.
 const RETAIL_DAY_FALLBACK_EFFECTIVE_AT = new Date('2026-09-03T18:10:00.000Z').getTime();
@@ -311,6 +310,7 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
   cashierMappings: CashierMapping[];
   kkmResponsibilities?: KkmResponsibility[];
   globalCoverage?: TerminalFiscalGlobalCoverageContext;
+  minimumAgeMs?: number;
 }): EmployeeReviewDecision {
   const { record, mapping } = input;
   if (record.oneCCheckKey || record.status === 'confirmed' || record.status === 'mismatch') {
@@ -326,7 +326,7 @@ export function evaluateTerminalFiscalEmployeeReview(input: {
   }
   const operationAt = timestamp(record.evidence.bankTransactionDate);
   const oneCCheckedAt = timestamp(record.sourceCheckedAt.oneC);
-  if (operationAt === null || oneCCheckedAt === null || oneCCheckedAt < operationAt + TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS) {
+  if (operationAt === null || oneCCheckedAt === null || oneCCheckedAt < operationAt + (input.minimumAgeMs ?? TERMINAL_FISCAL_EMPLOYEE_REVIEW_DELAY_MS)) {
     return { action: 'wait', reason: 'FIRST_SAFE_READ_NOT_REACHED' };
   }
 
@@ -416,7 +416,7 @@ function moneyFromKopecks(value: number) {
 export function terminalFiscalEmployeeReviewText(input: { operationAt: Date; amountKopecks: number; sharedShift?: boolean }) {
   return input.sharedShift
     ? `Оплата ${moneyFromKopecks(input.amountKopecks)} в ${moscowTime(input.operationAt)}. В 1С чек не найден. Проверьте обе кассы.`
-    : `Оплата ${moneyFromKopecks(input.amountKopecks)} в ${moscowTime(input.operationAt)}. Проверьте и пробейте чек.`;
+    : `Оплата ${moneyFromKopecks(input.amountKopecks)} в ${moscowTime(input.operationAt)}. Чек пока не найден. Проверьте продажу.`;
 }
 
 export async function syncTerminalFiscalEmployeeReviews(
@@ -428,6 +428,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     mode?: 'notify' | 'shadow';
     adminFirst?: boolean;
     globalCoverage?: TerminalFiscalGlobalCoverageContext;
+    closingEmployeeId?: number;
   },
 ) {
   const refs = [...new Set(input.oneCChecks.map((check) => check.cashier.ref).filter(Boolean))];
@@ -457,6 +458,15 @@ export async function syncTerminalFiscalEmployeeReviews(
       select: { id: true, userId: true, oneCCashRegisterRef: true, effectiveFrom: true, effectiveTo: true },
       take: 2,
     }) : [];
+    const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Europe/Moscow'}).format(new Date(input.output.evaluatedAt));
+    const proposed = input.adminFirst !== false && mode === 'notify' && operationDate === today && record.sourceCompleteness.tbank
+      && record.sourceCompleteness.oneC && record.sourceCompleteness.ofd
+      && !record.oneCCheckKey && record.candidateCount === 0
+      && ['ONE_C_CANDIDATE_PENDING','ONE_C_CANDIDATE_NOT_FOUND'].includes(record.reasonCode)
+      ? await fiscalProposedRecipients(prisma, operationAt, input.mapping.id) : null;
+    const primary = proposed?.confidence === 'high' ? proposed.primary : null;
+    const activePrimary = primary ? await prisma.workDayEntry.findFirst({where:{userId:primary.id,date:today,status:'active',endedAt:null},select:{userId:true}}) : null;
+    const closing = Boolean(activePrimary && input.closingEmployeeId === primary?.id);
     const decision = evaluateTerminalFiscalEmployeeReview({
       record,
       periodRecords: input.output.records,
@@ -465,15 +475,19 @@ export async function syncTerminalFiscalEmployeeReviews(
       cashierMappings: cashierMappings.flatMap((item) => item.oneCCashierRef
         ? [{ userId: item.userId, oneCCashierRef: item.oneCCashierRef }]
         : []),
-      kkmResponsibilities,
+      kkmResponsibilities: activePrimary ? [{id:0,userId:activePrimary.userId,oneCCashRegisterRef:input.mapping.oneCCashRegisterRef,effectiveFrom:operationAt,effectiveTo:null}] : kkmResponsibilities,
+      minimumAgeMs: closing ? 0 : undefined,
       globalCoverage: input.globalCoverage,
     });
-    const adminFirst = (input.adminFirst ?? TERMINAL_FISCAL_ADMIN_FIRST) && mode === 'notify';
+    const previousReview = activePrimary ? await prisma.terminalFiscalEmployeeReview.findUnique({where:{reviewKey}}) : null;
+    const automaticDelivery = Boolean((!previousReview || ['open','admin_review','shadow_candidate'].includes(previousReview.status)) && activePrimary && decision.action === 'notify' && decision.employeeId === activePrimary.userId);
+    const handoverReview = Boolean(input.closingEmployeeId && record.sourceCompleteness.tbank && record.sourceCompleteness.oneC && record.sourceCompleteness.ofd && (!primary || primary.id === input.closingEmployeeId));
+    const adminFirst = !automaticDelivery && (input.adminFirst ?? TERMINAL_FISCAL_ADMIN_FIRST) && mode === 'notify';
     if (adminFirst && record.status !== 'confirmed') {
-      if (decision.action === 'wait' && !record.oneCCheckKey) continue;
+      if (decision.action === 'wait' && !record.oneCCheckKey && !handoverReview) continue;
       // A 1C acquiring document is not proof of fiscalization. Keep its
       // unresolved fiscal question in ADMIN, retiring any employee request.
-      await stageFiscalAdminReview(prisma, record, input.mapping);
+      await stageFiscalAdminReview(prisma, record, input.mapping, {minimumAgeMs: handoverReview ? 0 : undefined});
       adminOnly += 1;
       continue;
     }
@@ -514,7 +528,8 @@ export async function syncTerminalFiscalEmployeeReviews(
     let participantIds = [decision.employeeId];
     let assignmentScope = 'individual';
     let attributionKey = decision.attributionKey;
-    if (input.globalCoverage) {
+    if (automaticDelivery) assignmentScope = 'workstation_shift';
+    if (input.globalCoverage && !automaticDelivery) {
       const dayEntries = await prisma.workDayEntry.findMany({
         where: {
           date: operationDate ?? undefined,
@@ -542,7 +557,7 @@ export async function syncTerminalFiscalEmployeeReviews(
     const created = await prisma.$transaction(async (tx) => {
       const evaluatedAt = new Date(input.output.evaluatedAt);
       const existing = await tx.terminalFiscalEmployeeReview.findUnique({ where: { reviewKey } });
-      if (existing && !['open', 'shadow_candidate'].includes(existing.status)) return false;
+      if (existing && !['open', 'shadow_candidate', ...(automaticDelivery ? ['admin_review'] : [])].includes(existing.status)) return false;
       const review = await tx.terminalFiscalEmployeeReview.upsert({
         where: { reviewKey },
         create: {
@@ -562,29 +577,32 @@ export async function syncTerminalFiscalEmployeeReviews(
         update: {
           lastCheckedAt: evaluatedAt,
           assignmentScope,
-          ...(mode === 'shadow' ? { status: 'shadow_candidate' } : {}),
+          ...(mode === 'shadow' ? { status: 'shadow_candidate' } : automaticDelivery ? {status:'open',employeeId} : {}),
         },
       });
       if (tx.terminalFiscalReviewParticipant) await tx.terminalFiscalReviewParticipant.createMany({
           data: participantIds.map((userId) => ({ reviewId: review.id, userId })),
           skipDuplicates: true,
         });
-      if (mode === 'notify' && review.status === 'open') {
-        for (const userId of participantIds) await tx.workdayNotification.upsert({
+      if (mode === 'notify' && review.status === 'open' && existing?.status !== 'open') {
+        for (const userId of participantIds) {
+          if (automaticDelivery && await tx.workdayNotification.findFirst({where:{reviewId:review.id,userId,kind:'terminal_fiscal_review'},select:{id:true}})) continue;
+          await tx.workdayNotification.upsert({
           where: { fingerprint: `${reviewKey}:created:${userId}` },
           create: {
             userId,
             reviewId: review.id,
             fingerprint: `${reviewKey}:created:${userId}`,
             kind: 'terminal_fiscal_review',
-            title: 'В 1С нет чека',
+            title: 'Проверьте чек',
             body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: sharedAssignment(assignmentScope) }),
             scheduledAt: evaluatedAt,
           },
           update: {},
         });
+        }
       }
-      if (mode === 'notify' && existing === null && review.status === 'open') {
+      if (mode === 'notify' && !automaticDelivery && existing === null && review.status === 'open') {
         const [employee, admins] = await Promise.all([
           sharedAssignment(assignmentScope)
             ? Promise.resolve(null)
@@ -609,32 +627,6 @@ export async function syncTerminalFiscalEmployeeReviews(
           data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })),
           skipDuplicates: true,
         });
-      }
-      if (mode === 'notify' && existing && review.status === 'open'
-        && evaluatedAt.getTime() - new Date(review.detectedAt).getTime() >= EMPLOYEE_REVIEW_REMINDER_MS) {
-        const workdayDate = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
-        }).format(evaluatedAt);
-        const activeWorkdays = await tx.workDayEntry.findMany({
-          where: { userId: { in: participantIds }, date: workdayDate, status: 'active', endedAt: null },
-          select: { userId: true },
-        });
-        if (activeWorkdays.length) {
-          const reminderBucket = Math.floor(evaluatedAt.getTime() / EMPLOYEE_REVIEW_REMINDER_MS);
-          for (const activeWorkday of activeWorkdays) await tx.workdayNotification.upsert({
-            where: { fingerprint: `${reviewKey}:reminder:${reminderBucket}:${activeWorkday.userId}` },
-            create: {
-              userId: activeWorkday.userId,
-              reviewId: review.id,
-              fingerprint: `${reviewKey}:reminder:${reminderBucket}:${activeWorkday.userId}`,
-              kind: 'issue_reminder',
-              title: 'Чек в 1С всё ещё не пробит',
-              body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: sharedAssignment(assignmentScope) }),
-              scheduledAt: evaluatedAt,
-            },
-            update: {},
-          });
-        }
       }
       return existing === null;
     });

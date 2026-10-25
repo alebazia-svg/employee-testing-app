@@ -61,3 +61,12 @@ test('late-check reads respect the 1C seven-day limit and retain every day exact
     keys.forEach((key,index)=>{if(previous[index]===undefined)delete process.env[key];else process.env[key]=previous[index];});
   }
 });
+
+
+test('preserves fiscal-register time independently of the document date',()=>{
+ const raw={sourceRef:'sale',sourceDocumentType:'sale_check',operationType:'sale',date:'25.10.2026 14:24:54',fiscalFactKeys:['fiscal'],cardPayments:[],items:[]};
+ const c=normalizeOneCCheck(raw,new Map([['fiscal',{date:'25.10.2026 14:13:00'}]]));
+ assert.equal(c?.dateTime,'2026-10-25T11:24:54.000Z');
+ assert.equal(c?.fiscalDateTime,'2026-10-25T11:13:00.000Z');
+ assert.equal(normalizeOneCCheck(raw,new Map())?.fiscalDateTime,undefined);
+});

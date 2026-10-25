@@ -1,3 +1,4 @@
+import {refreshHandoverReceipts,escalateHandoverReceipts} from '@/lib/terminal-fiscal-handover';
 import { getCurrentUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, usesWorkdayShiftControl } from '@/lib/workday';
@@ -51,6 +52,8 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Сначала сдайте смену', code: 'SHIFT_CONTROL_HANDOVER_REQUIRED' }, { status: 409 });
     }
   }
+
+  await refreshHandoverReceipts(prisma,{userId:user.id,date:activeWorkDay.date,department:user.department}).catch(()=>undefined);
 
   const requiredIssues = await findOpenRequiredWorkdayIssues(prisma, user.id, activeWorkDay.date);
   const requiredIssueIds = requiredIssues.map((issue) => issue.id).sort((a, b) => a - b);
@@ -125,6 +128,7 @@ export async function POST(req: Request) {
     return updatedWorkDay;
   });
 
+  await escalateHandoverReceipts(prisma,{userId:user.id,date:activeWorkDay.date,workDayId:activeWorkDay.id}).catch(()=>undefined);
   return Response.json({
     workDay,
     staleClosed: closeStale && isStaleWorkDay,

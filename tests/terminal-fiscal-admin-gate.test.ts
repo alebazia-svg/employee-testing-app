@@ -206,3 +206,19 @@ test('amount coverage retires an approved employee review and pending reminders 
  f.db.terminalFiscalMatch.findUnique=async()=>({status:'confirmed',reasonCode:'MATCH_AMOUNT_COVERED'});
  await assert.rejects(approveFiscalReview(f.db,id,1,[4,5],()=>''),/REVIEW_NOT_AVAILABLE/);
 });
+
+
+test('an OFD candidate retires an employee request and cannot be approved as missing receipt',async()=>{
+ const f=fixture(); await stageFiscalAdminReview(f.db,f.record);
+ const id=f.reviews[0].id;
+ await approveFiscalReview(f.db,id,1,[4,5],()=> 'Пробейте чек');
+ f.notifications.forEach(n=>n.status='pending');
+ const candidate={...f.record,reasonCode:'OFD_CANDIDATE_REQUIRES_LINK' as const};
+ await stageFiscalAdminReview(f.db,candidate);
+ assert.equal(f.reviews[0].status,'admin_review');
+ assert.ok(f.notifications.every(n=>n.status==='cancelled'));
+ assert.equal(f.events.find(e=>e.eventKey.endsWith(':admin-first')).title,'Связать чек ОФД с оплатой');
+ await assert.rejects(approveFiscalReview(f.db,id,1,[4,5],()=> 'Пробейте чек'),/REVIEW_NOT_AVAILABLE/);
+ await stageFiscalAdminReview(f.db,{...candidate,status:'confirmed',reasonCode:'MATCH_CONFIRMED'});
+ assert.equal(f.reviews[0].status,'resolved');
+});

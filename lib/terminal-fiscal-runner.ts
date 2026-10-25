@@ -47,6 +47,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
   syncWorkdayControl?: boolean;
   syncSourceHealth?: boolean;
   deferEmployeeReviewSync?: boolean;
+  closingEmployeeId?: number;
 }, dependencies: {
   loadTbank?: typeof loadCompleteTBankOperations;
   loadOneC?: typeof loadOneCTerminalFiscalEvidence;
@@ -185,6 +186,7 @@ export async function runTerminalFiscalHistoricalDryRun(input: {
         if (employeeReviewMode && input.deferEmployeeReviewSync !== true) {
           await syncTerminalFiscalEmployeeReviews(prisma, {
             output,
+            closingEmployeeId: input.closingEmployeeId,
             mapping,
             oneCChecks: employeeReviewOneCChecks,
             mode: employeeReviewMode,

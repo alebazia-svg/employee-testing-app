@@ -33,3 +33,14 @@ test('counts a unique posted acquiring document while OFD remains unresolved',()
  p.records[0].status='needs_review';p.records[0].reasonCode='OFD_RECEIPT_NOT_FOUND';p.ofdReceipts=[];
  const r=report([p]);assert.equal(r.total.oneCKopecks,10000);assert.equal(r.complete.oneC,true);assert.equal(r.unresolved,1);assert.equal(r.status,'difference');
 });
+
+
+test('OFD candidate with complete day coverage preserves totals and does not invent an exact match',()=>{
+ const p=evidence();p.records[0].status='needs_review';p.records[0].reasonCode='OFD_CANDIDATE_REQUIRES_LINK';delete p.records[0].oneCCheckKey;
+ const r=report([p]);assert.equal(r.total.bankKopecks,10000);assert.equal(r.total.oneCKopecks,10000);assert.equal(r.total.ofdKopecks,10000);
+ assert.equal(r.status,'balanced');assert.equal(r.transactions[0].status,'covered');assert.equal(r.unresolved,0);
+ assert.equal(p.records[0].status,'needs_review');
+ p.oneCChecks=[];const missing=report([p]);assert.equal(missing.status,'difference');assert.equal(missing.unresolved,1);
+ assert.ok(missing.transactions.some(t=>t.status==='review'&&t.message==='Проверить связь с ОФД'));
+ p.complete.ofd=false;assert.equal(report([p]).status,'incomplete');
+});

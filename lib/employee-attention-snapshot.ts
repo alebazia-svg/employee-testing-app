@@ -33,9 +33,9 @@ export async function loadEmployeeAttention(user: { id: number }) {
     const handler = review.participants.find(p => p.userId !== user.id && p.response === 'pending' && p.handlingUntil && p.handlingUntil > now);
     const state = employeeReviewState({ response: own?.response, handler: handler?.user.name, adminRepliedAfterResponse: Boolean(reply && (!own?.respondedAt || reply.createdAt > own.respondedAt)) });
     const shared = ['retail_shift', 'retail_day'].includes(review.assignmentScope);
-    items.push({ id: `review:${review.id}`, kind: 'receipt', title: `Чек по оплате · ${(review.amountKopecks/100).toLocaleString('ru-RU')} ₽`, date: review.bankOperationAt.toISOString(), priority: 1, ...state, shared, reply: reply?.body, ...(reply ? { replyAuthor: portalMessageAuthor(reply) } : {}),
-      detail: 'Оплата по терминалу найдена, чек в 1С пока не подтверждён. Проверьте оформление продажи.',
-      facts: [['Оплата', new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(review.bankOperationAt)]],
+    items.push({ id: `review:${review.id}`, kind: 'receipt', title: 'Не найден чек в 1С', listTitle: `${(review.amountKopecks/100).toLocaleString('ru-RU')} ₽ · ${new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'}).format(review.bankOperationAt)}`, listSubtitle: `${new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'long'}).format(review.bankOperationAt)} · ${state.state === 'action' && state.status === 'Нужно проверить' ? 'Не найден чек в 1С' : state.status}`, date: review.bankOperationAt.toISOString(), priority: 1, ...state, shared, reply: reply?.body, ...(reply ? { replyAuthor: portalMessageAuthor(reply) } : {}),
+      detail: 'Если чек ещё не пробит — пробейте его в 1С.',
+      facts: [['Оплата через терминал', `${(review.amountKopecks/100).toLocaleString('ru-RU')} ₽`], ['Время оплаты', new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(review.bankOperationAt)]],
       endpoint: `/api/employee/payment-checks/${review.id}/actions`, actions: state.state === 'action' ? [{ label: 'Нужна помощь', action: 'help' }, { label: 'Оплата не моя', action: 'not_mine' }] : own?.response === 'not_mine' ? [{ label: 'Это моя оплата', action: 'undo_not_mine' }] : [],
     });
   }
