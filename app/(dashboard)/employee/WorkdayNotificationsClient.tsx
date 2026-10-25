@@ -1,4 +1,5 @@
 'use client';
+import { InteractionShown, useInteractionAudit } from '@/components/EmployeeInteractionAudit';
 import { sendEmployeeActivity } from '@/components/EmployeeActivityTracker';
 import { EmployeeNoticeIcon } from '@/components/workday/EmployeeNoticeIcon';
 import { employeeInboxIconKind } from '@/lib/employee-notice-icons';
@@ -29,6 +30,7 @@ function urlBase64ToUint8Array(value: string) {
 
 export function WorkdayNotificationsClient() {
   const preview = useEmployeePreview();
+  const audit = useInteractionAudit();
   const requestRead = preview?.request ?? fetch;
   const router = useRouter();
   const cashIssue = useCashIssue();
@@ -169,7 +171,7 @@ export function WorkdayNotificationsClient() {
         )}
       </button>
 
-      {banner && !open && createPortal(<div className="employee-new-notice fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[140] mx-auto flex max-w-[488px] items-center gap-2 rounded-2xl bg-[#f5f4ef] p-3 text-slate-800 shadow-xl" role="status"><span className='text-[#a77550]'><EmployeeNoticeIcon kind={employeeInboxIconKind(banner)} /></span><button type="button" className="min-w-0 flex-1 text-left text-sm font-semibold" onClick={() => void openNotification(banner)}>{banner.title}</button><button type="button" onClick={() => setBanner(null)} aria-label="Скрыть уведомление" className="p-2"><X size={18}/></button></div>, document.body)}
+      {banner && !open && createPortal(<div className="employee-new-notice fixed inset-x-4 top-[max(1rem,env(safe-area-inset-top))] z-[140] mx-auto flex max-w-[488px] items-center gap-2 rounded-2xl bg-[#f5f4ef] p-3 text-slate-800 shadow-xl" role="status"><span className='text-[#a77550]'><EmployeeNoticeIcon kind={employeeInboxIconKind(banner)} /></span><button type="button" className="min-w-0 flex-1 text-left text-sm font-semibold" onClick={() => void openNotification(banner)}><InteractionShown context={{target:'notification',ref:String(banner.id),stage:'shown'}}/>{banner.title}</button><button type="button" onClick={() => {audit({target:'notification',ref:String(banner.id),stage:'banner_hidden'});setBanner(null);}} aria-label="Скрыть уведомление" className="p-2"><X size={18}/></button></div>, document.body)}
       {open && <EmployeeNotificationInbox items={notifications} loading={loading} error={inboxError||readError} onRetry={()=>{if(!inboxError&&failedRead.current)void dismiss(failedRead.current);else void refresh();}} onClose={() => setOpen(false)} onChoose={item => void openNotification(item)} permission={<>
 {!preview && !pushConnected && (
             <div className='employee-material-notification-permission border-b border-slate-200 bg-slate-50 px-4 py-3.5'>

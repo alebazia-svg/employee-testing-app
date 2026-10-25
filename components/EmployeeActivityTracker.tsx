@@ -2,16 +2,22 @@
 import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useEmployeePreview } from './EmployeePreviewProvider';
-import { activityRoute, type ActivitySection } from '@/lib/employee-activity-policy';
+import { activityRoute, type ActivitySection, type ActivityInput } from '@/lib/employee-activity-policy';
 
-export function sendEmployeeActivity(input: { kind: 'visit'; section: ActivitySection } | { kind: 'notification_open'; notificationId: number }) {
-  if (typeof window === 'undefined' || document.visibilityState !== 'visible' || !/^\/(employee|procurement)(\/|$)/.test(location.pathname)) return;
-  // No durable offline queue: missing telemetry must never slow or retry financial actions.
-  try {
-    const key = crypto.randomUUID();
-    void fetch('/api/employee/activity', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...input, key }), keepalive: true, signal: AbortSignal.timeout(4000) }).catch(() => {});
-  } catch { /* Older devices and blocked network do not affect the application. */ }
+type ClientActivity = ActivityInput extends infer T ? T extends ActivityInput ? Omit<T, 'key'> : never : never;
+// Memory-only FIFO prevents simultaneous shown/open events from competing for the DB lock.
+// No persistent queue, no retries, no business requests; at most 30 small events pending.
+const pending: Array<{body:string;at:number}> = [];
+let draining=false;
+async function drain(){
+ if(draining)return;draining=true;
+ try { while(pending.length){const entry=pending.shift()!;if(Date.now()-entry.at>5000)continue;
+  try{await fetch('/api/employee/activity',{method:'POST',headers:{'Content-Type':'application/json'},body:entry.body,keepalive:true,signal:AbortSignal.timeout(4000)});}catch{/* Missing evidence never blocks work. */}
+ }}finally{draining=false;}
+}
+export function sendEmployeeActivity(input: ClientActivity) {
+ if(typeof window==='undefined'||document.visibilityState!=='visible'||!/^\/(employee|procurement)(\/|$)/.test(location.pathname))return;
+ try {if(pending.length>=30)return;pending.push({body:JSON.stringify({...input,key:crypto.randomUUID()}),at:Date.now()});void drain();}catch{}
 }
 export function useEmployeeActivityVisit(section: ActivitySection | null, disabled = false) {
   const preview = useEmployeePreview();

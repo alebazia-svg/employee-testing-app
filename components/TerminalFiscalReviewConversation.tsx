@@ -1,4 +1,5 @@
 'use client';
+import { InteractionShown, useInteractionAudit } from './EmployeeInteractionAudit';
 
 import { useState } from 'react';
 import { Send } from 'lucide-react';
@@ -26,6 +27,9 @@ export function TerminalFiscalReviewConversation({
   disabledMessage?: string;
   disabledTone?: 'resolved' | 'admin';
 }) {
+  const audit=useInteractionAudit();
+  const match=/^\/api\/employee\/(workday-issues|payment-checks)\/([-a-zA-Z0-9_]+)\/messages$/.exec(endpoint);
+  const target=match?{target:match[1]==='workday-issues'?'issue' as const:'review' as const,ref:match[2]}:null;
   const [messages, setMessages] = useState(initialMessages);
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
@@ -34,6 +38,7 @@ export function TerminalFiscalReviewConversation({
   async function send() {
     const normalized = body.replace(/\s+/g, ' ').trim();
     if (!normalized || busy) return;
+    if(target)audit({...target,stage:'submit'});
     setBusy(true);
     setError('');
     const response = await fetch(endpoint, {
@@ -53,6 +58,7 @@ export function TerminalFiscalReviewConversation({
       createdAt: new Date().toISOString(),
       author: { id: currentUserId, name: 'Вы', role: '' },
     }]);
+    if(target)audit({...target,stage:'accepted'});
     setBody('');
     setBusy(false);
   }
@@ -91,7 +97,7 @@ export function TerminalFiscalReviewConversation({
               <Send className='h-4 w-4' />{busy ? 'Отправляем…' : 'Отправить'}
             </button>
           </div>
-          {error && <p className='mt-2 text-xs font-bold text-rose-700'>{error}</p>}
+          {error && <p className='mt-2 text-xs font-bold text-rose-700'>{target&&<InteractionShown context={{...target,stage:'error'}}/>}{error}</p>}
         </div>
       ) : (
         <p className={`mt-4 rounded-xl px-4 py-3 text-sm font-semibold ${disabledTone === 'admin' ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-800'}`}>{disabledMessage}</p>

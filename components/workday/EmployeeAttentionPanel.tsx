@@ -1,4 +1,6 @@
 'use client';
+import { InteractionShown, useInteractionAudit } from '@/components/EmployeeInteractionAudit';
+import type { InteractionContext } from '@/lib/employee-interaction-policy';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
@@ -32,6 +34,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   paletteClass: string;
 }) {
   const preview = useEmployeePreview();
+  const audit=useInteractionAudit();
   const reminderPreviewEnabled = useActionReminderEnabled();
   const requestRead = preview?.request ?? fetch;
   const cashIssue = useCashIssue();
@@ -83,7 +86,9 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const scrollArea = useRef<HTMLDivElement>(null);
   const listScroll = useRef(0);
   const lastSelectedId = useRef<string | null>(null);
-  const returnToList = () => setSelectedId(null);
+  const targetFor=(id: string | null): Pick<InteractionContext,'target'|'ref'> | null => { const [kind,ref]=id?.split(':')??[];return ref&&['issue','review'].includes(kind)?{target:kind as 'issue'|'review',ref}:null; };
+  const recordSelected=(stage:InteractionContext['stage'])=>{const target=targetFor(selectedId);if(target)audit({...target,stage});};
+  const returnToList = () => {recordSelected('close');setSelectedId(null);};
   const previousFocus = useRef<HTMLElement | null>(null);
   const selected = items.find(item => item.id === selectedId);
   const reading = useRef(new Set<number>());
@@ -98,7 +103,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
       }).catch(() => reading.current.delete(id));
     }
   }, [open, selected, preview]);
-  const close = () => { if (busy) return; setOpen(false); setSelectedId(null); setScope(null); };
+  const close = () => { if (busy) return; recordSelected('close'); setOpen(false); setSelectedId(null); setScope(null); };
   const openSheet = (kind: Item['kind'] | null = null, id: string | null = null) => {
     void refresh(); previousFocus.current = document.activeElement as HTMLElement;
     setScope(kind); const rows = allItems.filter(item => !kind || item.kind === kind);
@@ -116,6 +121,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const act = async (action: string) => {
     if (preview) { preview.blocked(); return; }
     if (!selected?.endpoint || busy) return;
+    recordSelected(['help','not_found','not_mine','undo_not_mine'].includes(action)?action as InteractionContext['stage']:'submit');
     setBusy(true); setActionError('');
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 15000);
@@ -128,6 +134,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
         }
         throw new Error();
       }
+      recordSelected('accepted');
       await refresh();
       if (selected.kind === 'schedule') { onScheduleSaved?.(); close(); }
     } catch { setActionError('Не удалось отправить. Попробуйте ещё раз.'); }
@@ -141,7 +148,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
     const buttons = () => Array.from(sheet.current?.querySelectorAll<HTMLElement>('button, [href], [tabindex="0"]') ?? []);
     buttons()[0]?.focus();
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) { event.preventDefault(); setOpen(false); setSelectedId(null); }
+      if (event.key === 'Escape' && !busy) { event.preventDefault(); close(); }
       if (event.key !== 'Tab') return;
       const list = buttons(), first = list[0], last = list.at(-1);
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
@@ -185,14 +192,16 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
         </header>
         <div ref={scrollArea} className="min-h-0 overflow-y-auto overscroll-contain">{selectedId && !selected ? <div className="p-5"><p role="status" className="text-sm">{loadState === 'loading' ? 'Проверяем актуальность…' : loadState === 'error' || scope === 'cash' && expenseUnavailable ? 'Не удалось проверить актуальность. Повторите позже.' : 'Замечание больше не требует действий.'}</p><Button type="button" className="employee-material-secondary-action mt-3 w-full" onClick={returnToList}>К списку</Button></div> : selected ? <>
         <div className="employee-attention-sheet-detail">
+          {targetFor(selected.id)&&<InteractionShown context={{...targetFor(selected.id)!,stage:"open"}}/>}
           <>
             {selected.shared && <p className="my-3 text-xs font-semibold text-amber-800">Общая задача смены</p>}
             <p className={`my-3 text-sm text-slate-700 ${selected.kind === 'cash' ? 'font-semibold' : ''}`}>{selected.kind === 'cash' && expenseUnavailable ? 'Данные не обновились. Проверьте заявки в 1С.' : selected.detail}</p>
-            {Boolean(selected.facts?.length) && <dl className={`cash-discrepancy-sheet-facts ${selected.kind === 'cash' ? 'employee-attention-request-facts' : ''}`}>{selected.facts?.filter(([label, value]) => label !== 'Сумма' || !selected.title.endsWith(value)).map(([label,value], index) => <div key={`${label}-${index}`} className="contents"><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+            {Boolean(selected.facts?.length) && <dl className={`cash-discrepancy-sheet-facts ${selected.kind === 'cash' ? 'employee-attention-request-facts' : ''}`}>{selected.facts?.filter(([label, value]) => label !== 'Сумма' || !selected.title.endsWith(value)).map(([label,value], index) => <div key={`${label}-${index}`} className="contents"><dt>{label}</dt><dd>{selected.kind==='cash'&&payable?.[index]&&<InteractionShown context={{target:"cash",ref:payable[index].ref,stage:expenseUnavailable?"warning":"shown",...(expenseUnavailable?{message:"data_unavailable" as const}:{})}}/>}{value}</dd></div>)}</dl>}
+
             {selected.kind === 'cash' && <p className="my-3 text-xs leading-relaxed text-slate-500">{expenseUnavailable ? 'В приложении ничего подтверждать не нужно.' : 'После проведения заявки исчезнут.'}</p>}
             {selected.reply && <div className="my-3 rounded-xl bg-stone-100 p-3"><p className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-semibold text-slate-500"><span>{selected.replyAuthor?.name || "Ответ по проверке"}</span>{selected.replyAuthor && <time dateTime={selected.replyAuthor.at}>{new Intl.DateTimeFormat("ru-RU",{timeZone:"Europe/Moscow",hour:"2-digit",minute:"2-digit"}).format(new Date(selected.replyAuthor.at))}</time>}</p><p className="mt-1 text-sm text-slate-800">{selected.reply}</p></div>}
             {selected.state === 'waiting' && <p role="status" className="my-3 text-sm font-semibold text-slate-700">{selected.status}</p>}
-            {actionError && <p role="alert" className="my-3 text-sm text-red-800">{actionError}</p>}
+            {actionError && <p role="alert" className="my-3 text-sm text-red-800">{targetFor(selected.id)&&<InteractionShown context={{...targetFor(selected.id)!,stage:"error",message:"send_failed"}}/>}{actionError}</p>}
             {selected.kind === 'cash_issue' && request && <Button type="button" className="employee-material-primary-action h-12 w-full" onClick={() => { close(); cashIssue?.open(request.ref); }}>Проверить выдачу</Button>}
             {selected.kind === 'closing' && selected.state === 'action' && <Button type="button" className="employee-material-primary-action h-12 w-full" onClick={() => { close(); onClosing(selected.closingScope); }}>Продолжить сдачу смены</Button>}
             {Boolean(selected.actions?.length) && <div className="grid gap-2">{selected.actions?.map(a => <Button key={a.action} type="button" disabled={busy || Boolean(preview)} title={preview ? "Только просмотр" : undefined} className={`${a.action === "schedule_working" ? "employee-material-primary-action" : "employee-material-secondary-action"} min-h-12 w-full`} onClick={() => void act(a.action)}>{busy ? 'Отправляем…' : a.label}</Button>)}</div>}

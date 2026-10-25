@@ -1,4 +1,5 @@
 'use client';
+import { InteractionShown, useInteractionAudit } from './EmployeeInteractionAudit';
 
 import { useState } from 'react';
 import { ReceiptText } from 'lucide-react';
@@ -8,27 +9,32 @@ type State = 'normal' | 'exceptions' | 'not_found' | 'not_mine';
 
 export function EmployeeCreditIssueActionCard(props: { issueId: number; title: string; instruction: string; notFoundLabel: string; closeBlocked?: boolean }) {
   const [state, setState] = useState<State>('normal');
+  const audit=useInteractionAudit();
+  const auditTarget={target:'issue' as const,ref:String(props.issueId)};
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   async function act(action: 'not_found' | 'not_mine') {
     if (busy) return;
     setBusy(true); setError('');
+    audit({...auditTarget,stage:action});
     const result = await fetch(`/api/employee/workday-issues/${props.issueId}/actions`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
     }).then(async (response) => ({ ok: response.ok, body: await response.json().catch(() => null) })).catch(() => null);
     if (!result?.ok) { setError(result?.body?.error || 'Не удалось отправить. Попробуйте ещё раз.'); setBusy(false); return; }
+    audit({...auditTarget,stage:'accepted'});
     setState(action); setBusy(false);
   }
 
   return <Card className='pwa-review-issue rounded-[24px] border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(31,47,66,0.07)]'>
+    <InteractionShown context={{...auditTarget,stage:'open'}}/>
     <div className='flex gap-3'>
       <ReceiptText className='employee-material-alert-symbol mt-0.5 h-6 w-6 shrink-0 text-[#9a5a13]' strokeWidth={2} />
       <div className='min-w-0'><p className='text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#9a5a13]'>Нужно исправить</p><h1 className='mt-1 text-xl font-black leading-snug text-slate-950'>{props.title}</h1><p className='mt-3 text-sm font-bold leading-relaxed text-slate-700'>{props.instruction}</p></div>
     </div>
-    {state === 'normal' ? <button type='button' onClick={() => setState('exceptions')} className='employee-material-secondary-action mt-4 min-h-12 w-full rounded-xl px-4 text-sm font-extrabold'>Нужна помощь</button> : null}
+    {state === 'normal' ? <button type='button' onClick={() => {audit({...auditTarget,stage:'help'});setState('exceptions');}} className='employee-material-secondary-action mt-4 min-h-12 w-full rounded-xl px-4 text-sm font-extrabold'>Нужна помощь</button> : null}
     {state === 'exceptions' ? <div className='mt-4 grid gap-2'><button type='button' disabled={busy} onClick={() => void act('not_found')} className='employee-material-secondary-action min-h-12 rounded-xl px-3 text-sm font-black disabled:opacity-50'>{props.notFoundLabel}</button><button type='button' disabled={busy} onClick={() => void act('not_mine')} className='employee-material-secondary-action min-h-12 rounded-xl px-3 text-sm font-black disabled:opacity-50'>Продажа не моя</button></div> : null}
     {state === 'not_found' || state === 'not_mine' ? <div className='mt-4 rounded-2xl bg-[#edf2f7] px-4 py-3 text-sm font-bold text-slate-800'><p className='font-black'>{state === 'not_found' ? 'Обращение отправлено' : 'Ответственный уточняется'}</p>{props.closeBlocked && <p className='mt-1 text-xs text-slate-600'>Смена открыта до решения.</p>}</div> : null}
-    {error ? <p className='mt-3 text-xs font-bold text-rose-700'>{error}</p> : null}
+    {error ? <p className='mt-3 text-xs font-bold text-rose-700'><InteractionShown context={{...auditTarget,stage:'error'}}/>{error}</p> : null}
   </Card>;
 }

@@ -7,6 +7,31 @@ import { employeeActivityReport } from '../lib/employee-activity-report';
 if (!/^postgresql:\/\/postgres:activity-local-only@127\.0\.0\.1:55464\/activity_test(?:\?|$)/.test(process.env.DATABASE_URL || '')) throw new Error('Use the isolated activity_test database on 55464.');
 const ids: number[] = [];
 after(async () => { await prisma.user.deleteMany({ where: { id: { in: ids } } }); await prisma.$disconnect(); });
+test('procurement QR notifications retain shown/open/error evidence without treating cancellation as execution', async () => {
+  const now = new Date('2026-10-25T08:00:00Z');
+  const user = await prisma.user.create({ data: { login: `activity-qr-${Date.now()}`, name: 'Тест QR-аудита', passwordHash: 'not-a-real-login', role: 'EMPLOYEE', portalArea: 'PROCUREMENT' } }); ids.push(user.id);
+  const session = await prisma.portalAccessSession.create({ data: { userId: user.id, sessionHash: `qr-audit-${user.id}`, device: 'test', browser: 'test', expiresAt: new Date(+now + 86400000) } });
+  const notice = await prisma.workdayNotification.create({ data: { userId: user.id, fingerprint: `qr-audit:${user.id}`, kind: 'procurement_qr_check', title: 'Проверьте актуальность QR-кода', body: 'Уточните QR у поставщика.', scheduledAt: now, sentAt: now, readAt: now, status: 'cancelled' } });
+  const send = (stage: 'shown' | 'open' | 'error' | 'retry', seconds: number) => writeEmployeeActivity(user.id, session.sessionHash, { key: `qr-audit-${stage}`, kind: 'interaction', context: { target: 'notification', ref: String(notice.id), stage, ...(stage === 'error' ? { message: 'load_failed' as const } : {}) } }, new Date(+now + seconds * 1000));
+  assert.equal(await send('shown', 1), true);
+  let report = await employeeActivityReport(user.id, '2026-10-25', new Date(+now + 10000));
+  assert.ok(report.audit);
+  assert.equal(report.audit[0].unopened, true);
+  assert.equal(report.obligations[0].openedAt, null);
+  assert.equal(report.obligations[0].result, 'Выполнение не подтверждено');
+  assert.equal(await send('open', 2), true);
+  assert.equal(await send('error', 3), true);
+  assert.equal(await send('retry', 4), true);
+  report = await employeeActivityReport(user.id, '2026-10-25', new Date(+now + 10000));
+  assert.ok(report.audit);
+  assert.equal(report.audit.length, 1);
+  assert.equal(report.audit[0].title, notice.title);
+  assert.equal(report.audit[0].unopened, false);
+  assert.equal(report.audit[0].steps.filter(step => step.opened === 'notification').length, 1);
+  assert.equal(report.audit[0].steps.filter(step => step.tone === 'error').length, 1);
+  assert.equal(report.audit[0].result, undefined);
+  assert.equal(report.obligations[0].attention, 'unknown');
+});
 test('journal deduplicates concurrent retries, excludes service sessions and separates open from auto-read', async () => {
   const u = await prisma.user.create({ data: { login: `activity-test-${Date.now()}`, name: 'Тест журнала', passwordHash: 'not-a-real-login', role: 'EMPLOYEE' } }); ids.push(u.id);
   const now = new Date('2026-10-24T08:00:00Z');
@@ -61,4 +86,82 @@ test('unavailable journal table does not throw or mutate business data', async (
   try { assert.equal(await writeEmployeeActivity(u.id,'test-offline',{key:'test-failure',kind:'visit',section:'day'}),false); }
   finally { await prisma.$executeRawUnsafe('ALTER TABLE "PortalActivityEvent_test_offline" RENAME TO "PortalActivityEvent"'); }
   assert.equal(await prisma.workdayNotification.count(),n);
+});
+
+test('handover attempts are owned, deduplicated and grouped; server evidence is not employee action', async () => {
+  const now = new Date('2026-10-24T08:00:00Z');
+  const u = await prisma.user.create({data:{login:`handover-activity-${Date.now()}`,name:'Audit',role:'EMPLOYEE',passwordHash:'not-a-login'}}); ids.push(u.id);
+  const other = await prisma.user.create({data:{login:`handover-other-${Date.now()}`,name:'Other',role:'EMPLOYEE',passwordHash:'not-a-login'}}); ids.push(other.id);
+  const session = await prisma.portalAccessSession.create({data:{userId:u.id,sessionHash:`handover-session-${u.id}`,device:'test',browser:'test',expiresAt:new Date(+now+86400000)}});
+  const day = await prisma.workDayEntry.create({data:{userId:u.id,date:'2026-10-24',department:'retail',shiftCode:'full',shiftLabel:'Полная смена',startedAt:now,status:'active'}});
+  const run = await prisma.shiftControlRun.create({data:{userId:u.id,workDayEntryId:day.id,date:'2026-10-24',department:'retail'}});
+  const task = await prisma.shiftControlTask.create({data:{runId:run.id,title:'Сдать смену',category:'handover',sortOrder:1}});
+  const context = {taskId:task.id,attemptId:'attempt-test-123',stage:'submit' as const};
+  assert.equal(await writeEmployeeActivity(other.id,session.sessionHash,{key:'handover-test',kind:'handover',context},now),false);
+  assert.equal(await writeEmployeeActivity(u.id,session.sessionHash,{key:'handover-test',kind:'handover',context:{...context,taskId:task.id+999999}},now),false);
+  await writeEmployeeActivity(u.id,session.sessionHash,{key:'handover-test',kind:'handover',context},now);
+  for(let i=0;i<3;i++) await writeEmployeeActivity(u.id,session.sessionHash,{key:'handover-test',kind:'handover_check',context:{...context,stage:'check_open'}},new Date(+now+1000+i));
+  await writeEmployeeActivity(u.id,session.sessionHash,{key:'handover-test',kind:'handover_check',context:{...context,stage:'check_confirmed'}},new Date(+now+60000));
+  let report = await employeeActivityReport(u.id,'2026-10-24',new Date(+now+61000));
+  assert.equal(report.episodes.length,1);
+  assert.equal(report.episodes[0].facts.length,3);
+  assert.match(report.episodes[0].result,/ККМ подтверждена/);
+  assert.equal(report.sections.flatMap(s=>s.events).filter(e=>e.title==='Открыл уведомление').length,0);
+  await prisma.shiftControlTask.update({where:{id:task.id},data:{status:'done',completedAt:new Date(+now+62000)}});
+  await prisma.workDayEntry.update({where:{id:day.id},data:{status:'completed',endedAt:new Date(+now+62000)}});
+  report=await employeeActivityReport(u.id,'2026-10-24',new Date(+now+63000));
+  assert.equal(report.episodes[0].result,'Сдача смены завершена');
+  assert.equal(report.shift.status,'completed');
+});
+
+test('repeated notices form one obligation, with honest opening and shift-end attention', async () => {
+  const now = new Date('2026-10-24T08:00:00Z');
+  const u = await prisma.user.create({data:{login:`obligation-${Date.now()}`,name:'Audit obligation',role:'EMPLOYEE',passwordHash:'not-a-login'}}); ids.push(u.id);
+  const day=await prisma.workDayEntry.create({data:{userId:u.id,date:'2026-10-24',department:'retail',shiftCode:'full',shiftLabel:'Полная смена',startedAt:now,status:'active'}});
+  const run=await prisma.shiftControlRun.create({data:{userId:u.id,workDayEntryId:day.id,date:'2026-10-24',department:'retail'}});
+  const task=await prisma.shiftControlTask.create({data:{runId:run.id,title:'Пересчёт',category:'cash',sortOrder:1}});
+  for(let i=0;i<3;i++) await prisma.workdayNotification.create({data:{userId:u.id,taskId:task.id,kind:'task',fingerprint:`repeat-${u.id}-${i}`,title:'Пересчёт',body:'Проверить',scheduledAt:now,sentAt:new Date(+now+i*60000),readAt:now,status:'sent'}});
+  let report=await employeeActivityReport(u.id,'2026-10-24',now);
+  assert.equal(report.obligations.length,1);
+  assert.equal(report.obligations[0].attention,'employee');
+  assert.equal(report.obligations[0].openedAt,null);
+  await prisma.workDayEntry.update({where:{id:day.id},data:{endedAt:new Date(+now+3600000),status:'completed'}});
+  report=await employeeActivityReport(u.id,'2026-10-24',new Date(+now+3600000));
+  assert.equal(report.obligations[0].attention,'owner');
+  await prisma.shiftControlTask.update({where:{id:task.id},data:{completedAt:new Date(+now+3601000),status:'done'}});
+  report=await employeeActivityReport(u.id,'2026-10-24',new Date(+now+3602000));
+  assert.equal(report.obligations[0].attention,null);
+});
+
+test('stale or incomplete 1C evidence does not become employee delay after shift end', async () => {
+  const now=new Date('2026-10-24T08:00:00Z');
+  const u=await prisma.user.create({data:{login:`expense-audit-${Date.now()}`,name:'Expense audit',role:'EMPLOYEE',passwordHash:'not-a-login'}});ids.push(u.id);
+  await prisma.workDayEntry.create({data:{userId:u.id,date:'2026-10-24',department:'retail',shiftCode:'full',shiftLabel:'Test',startedAt:new Date(+now-3600000),endedAt:now,status:'completed'}});
+  const ref=`audit-ref-${u.id}`;
+  await prisma.workdayNotification.create({data:{userId:u.id,fingerprint:`employee-expense:${u.id}:box:${ref}:1`,kind:'employee_expense_payable',title:'Расход',body:'Оформить',scheduledAt:now,sentAt:now,status:'sent'}});
+  const run=await prisma.expenseRequestSyncRun.create({data:{runKey:ref,periodFrom:now,periodTo:now,status:'completed',sourceComplete:true}});
+  const c=await prisma.expenseRequestAdminCase.create({data:{oneCRequestRef:ref,latestSourceHash:'hash',lastSeenAt:new Date(+now-400000),amount:1200}});
+  const source={amount:1200,cashbox:{ref:'box'},execution:{complete:true,remaining_amount:1200,executed_amount:0},linkedCashExpenseOrders:{complete:true,rows:[]}};
+  try {
+    const ev=await prisma.expenseRequestAdminEvaluation.create({data:{caseId:c.id,syncRunId:run.id,notApprovedCycle:1,sourceHash:'hash',ruleVersion:'test',category:'other',categoryCandidates:[],completenessState:'complete',evidenceState:'complete',reasonCodes:[],missingInformation:[],decisionSources:[],confidence:'high',ambiguous:false,sourceComplete:true,normalizedSource:source}});
+    let r=await employeeActivityReport(u.id,'2026-10-24',now);assert.equal(r.obligations[0].attention,'unknown');
+    await prisma.expenseRequestAdminCase.update({where:{id:c.id},data:{lastSeenAt:now}});
+    r=await employeeActivityReport(u.id,'2026-10-24',now);assert.equal(r.obligations[0].attention,'owner');
+    await prisma.expenseRequestAdminEvaluation.update({where:{id:ev.id},data:{sourceComplete:false}});
+    r=await employeeActivityReport(u.id,'2026-10-24',now);assert.equal(r.obligations[0].attention,'unknown');
+  } finally {await prisma.expenseRequestAdminCase.delete({where:{id:c.id}});await prisma.expenseRequestSyncRun.delete({where:{id:run.id}});}
+});
+
+test('interaction audit checks ownership, records repeated opens and never modifies notifications',async()=>{
+ const now=new Date('2026-10-25T08:00:00Z');
+ const u=await prisma.user.create({data:{login:`interaction-${Date.now()}`,name:'Interaction test',role:'EMPLOYEE',passwordHash:'not-a-login'}});ids.push(u.id);
+ const session=await prisma.portalAccessSession.create({data:{userId:u.id,sessionHash:`interaction-${u.id}`,device:'test',browser:'test',expiresAt:new Date(+now+86400000)}});
+ const n=await prisma.workdayNotification.create({data:{userId:u.id,kind:'notice',fingerprint:`interaction-${u.id}`,title:'Тест',body:'Текст',scheduledAt:now,sentAt:now}});
+ const input={key:'interaction-001',kind:'interaction' as const,context:{target:'notification' as const,ref:String(n.id),stage:'open' as const}};
+ assert.equal(await writeEmployeeActivity(u.id,session.sessionHash,{...input,context:{...input.context,ref:String(n.id+99999)}},now),false);
+ assert.equal(await writeEmployeeActivity(u.id,session.sessionHash,input,now),true);
+ assert.equal(await writeEmployeeActivity(u.id,session.sessionHash,{...input,key:'interaction-002'},new Date(+now+4000)),true);
+ const report=await employeeActivityReport(u.id,'2026-10-25',new Date(+now+5000));
+ assert.equal(report.audit?.[0].steps.filter(s=>s.opened==='notification').length,2);
+ assert.equal((await prisma.workdayNotification.findUnique({where:{id:n.id}}))?.readAt,null);
 });

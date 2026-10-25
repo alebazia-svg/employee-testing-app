@@ -88,6 +88,9 @@ test('lost finish response is recovered only from a confirmed completed snapshot
     class EmployeeApiError extends Error {}
     const ctx = {
       preview: null, Error, TypeError, FormData, EmployeeApiError, EmployeeNetworkError: class extends Error {},
+      handoverAuditAttempt: { current: undefined },
+      crypto: { randomUUID: () => 'local-handover-recovery-audit' },
+      sendEmployeeActivity() {},
       handoverDraft: {}, buildHandoverSteps: () => [], isHandoverFile: () => false,
       setError() {}, setIsHandoverKkmCheckPending() {}, setIsSaving() {},
       setHandoverSaveError: value => { state.error = value; },

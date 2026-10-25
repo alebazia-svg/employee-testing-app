@@ -1,4 +1,5 @@
 'use client';
+import { InteractionShown } from '@/components/EmployeeInteractionAudit';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, CheckCheck, ChevronRight } from 'lucide-react';
@@ -41,7 +42,7 @@ export function EmployeeNotificationInbox({ items, onClose, onChoose, permission
         {[...new Set(shown.map(item => dayLabel(item.sentAt)))].map(day => <section className="employee-inbox-group" key={day}><h3>{day}</h3><div className="employee-inbox-rows">{shown.filter(item => dayLabel(item.sentAt) === day).map(item => {
           const unread = isNewEmployeeNotification(item);
           return <button type="button" key={item.id} className={`employee-inbox-row ${unread ? 'is-unread' : ''}`} onClick={() => { if (item.active === false) setHistory(item); onChoose(item); }}>
-            <span className="employee-inbox-icon"><EmployeeNoticeIcon kind={employeeInboxIconKind(item)} /></span><span className="employee-inbox-copy"><strong>{item.title}</strong><span>{item.body}</span>{item.sentAt && Number.isFinite(Date.parse(item.sentAt)) && <time>{new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' }).format(new Date(item.sentAt))}</time>}</span><span className="employee-inbox-row-end">{unread && <i aria-label="Новое"/>}<ChevronRight size={16}/></span>
+            <span className="employee-inbox-icon"><EmployeeNoticeIcon kind={employeeInboxIconKind(item)} /></span><span className="employee-inbox-copy"><InteractionShown context={{target:"notification",ref:String(item.id),stage:"shown"}}/><strong>{item.title}</strong><span>{item.body}</span>{item.sentAt && Number.isFinite(Date.parse(item.sentAt)) && <time>{new Intl.DateTimeFormat('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit' }).format(new Date(item.sentAt))}</time>}</span><span className="employee-inbox-row-end">{unread && <i aria-label="Новое"/>}<ChevronRight size={16}/></span>
           </button>;
         })}</div></section>)}
         {permission}

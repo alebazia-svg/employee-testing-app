@@ -1,4 +1,5 @@
 'use client';
+import { InteractionShown, useInteractionAudit } from './EmployeeInteractionAudit';
 import {FiscalNotificationDialog} from './FiscalNotificationDialog';
 import { useEmployeePreview } from '@/components/EmployeePreviewProvider';
 import {useEffect,useRef,useState} from 'react';
@@ -15,6 +16,8 @@ import './procurement-admin-list.css';
 export type NotificationSelection={kind?:string;id:string|number;audience:'admin'|'employee';title:string;body:string;href:string;sourceType?:string};
 function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}:{readOnly?:boolean;item:NotificationSelection;onClose:()=>void;onViewed?:()=>void}) {
   const inspection=useEmployeePreview();
+  const audit=useInteractionAudit();
+  const record=(stage: "close"|"retry")=>{if(!readOnly&&item.audience==="employee")audit({target:"notification",ref:String(item.id),stage});};
   const inspectRecord=!!inspection && employeeNotificationOpening({kind:item.kind??''})!=='page';
   const router=useRouter(),dialog=useRef<HTMLDialogElement>(null);
   const [detail,setDetail]=useState<NotificationDetail|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0);
@@ -24,7 +27,7 @@ function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}
   const [receiptPreview,setReceiptPreview]=useState(false);
   const viewed=useRef(false),viewCallback=useRef(onViewed);viewCallback.current=onViewed;
   const busy=state.busy||saving;
-  const close=()=>{if(busy)return;if(state.dirty||reason.trim())setDiscard(true);else onClose();};
+  const close=()=>{if(busy)return;if(state.dirty||reason.trim())setDiscard(true);else {record("close");onClose();}};
   useEffect(()=>{
     if(readOnly&&!inspectRecord)return;
     const abort=new AbortController();setError('');
@@ -56,6 +59,7 @@ function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}
   return <dialog ref={dialog} className={`pam-dialog ${receiptPreview?'receipt-notification-preview':''}`} aria-label={item.title} onCancel={e=>{e.preventDefault();close();}}>
     <header className="pam-dialog-heading"><h2>{item.title}</h2><button aria-label="Закрыть уведомление" disabled={busy} onClick={close}><X size={20}/></button></header>
     <div className="pam-dialog-content space-y-4">
+      {!readOnly&&item.audience==="employee"&&<InteractionShown context={{target:"notification",ref:String(item.id),stage:"shown"}}/>}
       {discard&&<><h3 className="font-bold">Закрыть без сохранения?</h3><p>Введённые изменения не сохранятся.</p></>}
       <div hidden={discard} className="space-y-4">
         {!detail?<><p className="whitespace-pre-wrap text-sm">{item.body}</p>{!error&&!readOnly&&<p role="status" className="text-sm text-slate-500">Загружаем актуальные данные…</p>}</>:null}
@@ -77,7 +81,7 @@ function StandardNotificationRecordDialog({item,onClose,onViewed,readOnly=false}
         {readOnly&&<p className="text-xs text-slate-500">Режим проверки · уведомление осталось непрочитанным</p>}
         {message&&<p role="status" className="text-sm text-green-800">{message}</p>}
         {saving&&<p role="status" className="text-sm text-slate-600">{plan?.revision?'Проверяем оплату в 1С и сохраняем решение…':'Сохраняем решение…'}</p>}
-        {error&&<div role="alert"><p className="pam-error">{error}</p><button className="pam-button" disabled={busy} onClick={()=>setRetry(v=>v+1)}>Повторить загрузку</button></div>}
+        {error&&<div role="alert">{!readOnly&&item.audience==="employee"&&<InteractionShown context={{target:"notification",ref:String(item.id),stage:"error",message:"load_failed"}}/>}<p className="pam-error">{error}</p><button className="pam-button" disabled={busy} onClick={()=>{record("retry");setRetry(v=>v+1);}}>Повторить загрузку</button></div>}
       </div>
     </div>
     <footer className="pam-dialog-footer">{discard?<><button className="pam-button" onClick={()=>setDiscard(false)}>Продолжить редактирование</button><button className="pam-button" onClick={onClose}>Не сохранять</button></>:<>

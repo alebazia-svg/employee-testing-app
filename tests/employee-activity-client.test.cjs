@@ -25,33 +25,41 @@ function page({ preview = null, visible = true, disabled = false } = {}) {
   const visibility = value => { document.visibilityState = value ? 'visible' : 'hidden'; listeners.get('visibilitychange')?.(); };
   return { events, mount, advance, visibility, unmount: () => cleanup?.() };
 }
-test('tab visits are captured without saves, including returning to a previous tab', () => {
+test('tab visits are captured without saves, including returning to a previous tab', async () => {
   const p = page();
   for (const section of ['day', 'schedule', 'payroll', 'schedule']) { p.mount(section); p.advance(350); }
+  await new Promise(setImmediate);
   assert.deepEqual(p.events.map(e => e.section), ['day', 'schedule', 'payroll', 'schedule']);
+  await new Promise(setImmediate);
   assert.ok(p.events.every(e => e.kind === 'visit'));
 });
-test('return from background after a break records the unchanged tab; brief interruptions do not', () => {
+test('return from background after a break records the unchanged tab; brief interruptions do not', async () => {
   const p = page(); p.mount('schedule'); p.advance(350);
   p.visibility(false); p.advance(1000); p.visibility(true); p.advance(350);
+  await new Promise(setImmediate);
   assert.equal(p.events.length, 1);
   p.visibility(false); p.advance(60000); p.visibility(true); p.advance(350);
+  await new Promise(setImmediate);
   assert.equal(p.events.length, 2);
   p.advance(300000); assert.equal(p.events.length, 2); // No polling/counting time spent.
 });
-test('hidden mounts, rapid tab transitions and unmounts do not invent visits', () => {
+test('hidden mounts, rapid tab transitions and unmounts do not invent visits', async () => {
   const p = page({ visible: false }); p.mount('day'); p.advance(1000);
+  await new Promise(setImmediate);
   assert.equal(p.events.length, 0);
   p.visibility(true); p.advance(350); assert.equal(p.events.length, 1);
   p.mount('schedule'); p.advance(100); p.mount('payroll'); p.advance(350);
+  await new Promise(setImmediate);
   assert.deepEqual(p.events.map(e => e.section), ['day', 'payroll']);
   p.unmount(); p.visibility(false); p.advance(60000); p.visibility(true); p.advance(350);
+  await new Promise(setImmediate);
   assert.equal(p.events.length, 2);
 });
-test('administrator inspection and disabled trackers never create employee visits', () => {
+test('administrator inspection and disabled trackers never create employee visits', async () => {
   for (const config of [{ preview: {} }, { disabled: true }]) {
     const p = page(config); p.mount('day'); p.advance(350);
     p.visibility(false); p.advance(60000); p.visibility(true); p.advance(350);
-    assert.equal(p.events.length, 0);
+    await new Promise(setImmediate);
+  assert.equal(p.events.length, 0);
   }
 });

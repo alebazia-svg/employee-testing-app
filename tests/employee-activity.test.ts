@@ -17,3 +17,18 @@ test('Moscow date boundaries are exact and reject invalid calendar dates', () =>
   assert.equal(activityRoute('/employee'), null);
   assert.equal(activityRoute('/employee/payroll'), 'payroll');
 });
+
+test('handover audit rejects forged server results, identities, arbitrary error text and excessive duration', () => {
+  const input = {key:'handover-key',kind:'handover',context:{taskId:1,attemptId:'attempt-123',stage:'waiting'}};
+  assert.ok(parseActivityInput(input));
+  for (const context of [
+    {...input.context,stage:'check_confirmed'},
+    {...input.context,taskId:-1},
+    {...input.context,employeeId:3},
+    {...input.context,message:'secret form values'},
+    {...input.context,stage:'waiting_end',durationMs:21600001},
+    {...input.context,stage:'waiting_end',durationMs:-1},
+  ]) assert.equal(parseActivityInput({...input,context}),null);
+  assert.equal(parseActivityInput({...input,kind:'handover_check'}),null);
+  assert.ok(parseActivityInput({...input,context:{...input.context,stage:'waiting_end',durationMs:40000}}));
+});

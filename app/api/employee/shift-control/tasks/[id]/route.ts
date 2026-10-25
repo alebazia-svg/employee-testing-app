@@ -1,3 +1,4 @@
+import { scheduleHandoverCheckAudit } from '@/lib/employee-handover-audit-server';
 import { loadEmployeeExpenses } from '@/lib/employee-expense-snapshot';
 import { pendingCashExpenseEvidence } from '@/lib/cash-expense-evidence';
 import { updateActiveHandoverTask } from '@/lib/workday-close-decision';
@@ -527,6 +528,7 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
         },
       });
       if (!savedCheck) return Response.json({ error: 'Рабочий день уже завершён', code: 'WORKDAY_ALREADY_CLOSED' }, { status: 409 });
+      scheduleHandoverCheckAudit(req, user.id, task.id, readFormString(formData, 'activityAttempt'), evidence.status);
       if (evidence.status === 'confirmed' || !kkmShiftCloseRequiresEmployeeAction(evidence)) {
         await syncKkmShiftCloseIssue(prisma, { userId: user.id, taskId: task.id, workDayEntryId: task.run.workDayEntryId, date: task.run.date, evidence, now });
       } else if (now.getTime() - startedAt.getTime() < 90_000) {

@@ -1,5 +1,6 @@
 'use client';
-import { useEmployeeActivityVisit } from '@/components/EmployeeActivityTracker';
+import { HandoverAuditShown } from '@/components/HandoverAuditShown';
+import { useEmployeeActivityVisit, sendEmployeeActivity } from '@/components/EmployeeActivityTracker';
 import { useEmployeePreview, EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
 import { closeReasonRequiresComment } from '@/lib/workday-close-request';
 import { employeeExpenseHint, type EmployeeExpenseSnapshot } from '@/lib/employee-expense-policy';
@@ -1389,6 +1390,7 @@ export function EmployeeTodayClient({
   const [handoverStep, setHandoverStep] = useState(0);
   const [handoverAttemptedStep, setHandoverAttemptedStep] = useState<string | null>(null);
   const [handoverSaveError, setHandoverSaveError] = useState('');
+  const handoverAuditAttempt = useRef<string | undefined>(undefined);
   const [isHandoverKkmCheckPending, setIsHandoverKkmCheckPending] = useState(false);
   const [handoverDraft, setHandoverDraft] = useState<HandoverDraft>(() => emptyHandoverDraft());
   const [handoverSavedDraft, setHandoverSavedDraft] = useState<HandoverDraft>(() => emptyHandoverDraft());
@@ -2665,6 +2667,7 @@ export function EmployeeTodayClient({
   }
 
   function startHandoverWizard(task: ShiftControlTask) {
+    try { handoverAuditAttempt.current = crypto.randomUUID(); } catch { handoverAuditAttempt.current = undefined; }
     const restoredDraft = isRecord(task.handoverData) ? draftFromHandoverData(task.handoverData) : emptyHandoverDraft();
     setActiveHandoverTaskId(task.id);
     setHandoverDraft(restoredDraft);
@@ -3426,7 +3429,14 @@ export function EmployeeTodayClient({
       }
     }
 
+    // Separate audit attempt from financial idempotency and from automatic retries.
+    let auditAttempt: string | undefined;
+    let auditWaitStarted: number | null = null;
+    try { auditAttempt = crypto.randomUUID(); } catch { /* Optional telemetry. */ }
+    handoverAuditAttempt.current = auditAttempt;
+    if (auditAttempt) sendEmployeeActivity({ kind: 'handover', context: { taskId: task.id, attemptId: auditAttempt, stage: 'submit' } });
     const formData = new FormData();
+    if (auditAttempt) formData.append('activityAttempt', auditAttempt);
     ([
       'personalStatementPhoto',
       'terminalReceiptsPhoto',
@@ -3479,6 +3489,7 @@ export function EmployeeTodayClient({
           );
         } catch (reason) {
           if (reason instanceof EmployeeApiError && reason.code === 'KKM_SHIFT_CHECK_PENDING') {
+            if (auditWaitStarted === null) auditWaitStarted = Date.now();
             setIsHandoverKkmCheckPending(true);
             await new Promise((resolve) => window.setTimeout(resolve, 15_000));
             continue;
@@ -3526,6 +3537,7 @@ export function EmployeeTodayClient({
           : reason instanceof Error ? reason.message : 'Не удалось сдать смену');
       }
     } finally {
+      if (auditAttempt && auditWaitStarted !== null) sendEmployeeActivity({ kind: 'handover', context: { taskId: task.id, attemptId: auditAttempt, stage: 'waiting_end', durationMs: Math.min(21600000, Math.max(0, Date.now() - auditWaitStarted)) } });
       setIsHandoverKkmCheckPending(false);
       setIsSaving(false);
     }
@@ -3975,11 +3987,13 @@ export function EmployeeTodayClient({
           <p role='status' className='pwa-cash-check-status mt-4 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200'>
             <RefreshCw className='h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none' aria-hidden='true' />
             Проверяем кассу…
+            <HandoverAuditShown taskId={task.id} attemptId={handoverAuditAttempt.current} stage='waiting' />
           </p>
         )}
         {!isHandoverKkmCheckPending && handoverSaveError && (
           <p className='mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-bold leading-snug text-red-800 ring-1 ring-red-200'>
             {handoverSaveError}
+            <HandoverAuditShown taskId={task.id} attemptId={handoverAuditAttempt.current} stage={handoverSaveError === 'Нет связи с порталом. Когда связь появится, нажмите «Сдать смену» ещё раз.' ? 'network_error' : 'save_error'} />
           </p>
         )}
 
@@ -4071,7 +4085,7 @@ export function EmployeeTodayClient({
               <BottomSheetDragHandle onDismiss={() => setCloseResolutionOpen(false)} disabled={isSaving} />
               <div className='flex items-start justify-between gap-3'>
                 <div>
-                  <h2 id='kkm-resolution-title' className='text-xl font-black leading-tight text-slate-950'>Закрытие кассы</h2>
+                  <h2 id='kkm-resolution-title' className='text-xl font-black leading-tight text-slate-950'>Закрытие кассы{handoverTask && <HandoverAuditShown taskId={handoverTask.id} attemptId={handoverAuditAttempt.current} stage='kkm_question' />}</h2>
                 </div>
                 <button type='button' onClick={() => setCloseResolutionOpen(false)} disabled={isSaving} className='employee-material-sheet-close flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600' aria-label='Закрыть'><X className='h-5 w-5' /></button>
               </div>
@@ -4152,6 +4166,7 @@ export function EmployeeTodayClient({
               <BottomSheetDragHandle onDismiss={closeHandoverSheet} disabled={isSaving} />
               <div className='flex items-start justify-between gap-3'>
                 <div>
+                  {activeHandoverTask && <HandoverAuditShown taskId={activeHandoverTask.id} attemptId={handoverAuditAttempt.current} stage='form_open' />}
                   <h2 id='handover-sheet-title' className='text-xl font-black leading-tight text-slate-950'>{handoverSteps[handoverStep] === 'encashment' ? cashEncashmentExceptionRequestState?.status === 'pending' && !encashmentResumePending ? 'Ожидает согласования' : showCashEncashmentExceptionForm ? 'Без инкассации' : 'Инкассация' : 'Сдача смены'}</h2>
                   <p className='mt-1 text-sm font-semibold text-slate-500'>Шаг {handoverStep + 1} из {handoverSteps.length}</p>
                 </div>
