@@ -3754,6 +3754,16 @@ export function EmployeeTodayClient({
           </div>
         </div>}
 
+        {Boolean(task.handoverData) && typeof task.handoverData === 'object' && (() => {
+          const n=(task.handoverData as Record<string,unknown>).cashExpenseNotice as {state?:string;approvalAmount?:number;payableAmount?:number}|null;
+          const savedCash=(task.handoverData as Record<string,unknown>).personalCash as {cashBalance?:number}|undefined;
+          if(!n || savedCash?.cashBalance!==Number(handoverDraft.personalCashBalance))return null;
+          return <div role="status" className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {Boolean(n.approvalAmount)&&<p><strong>К согласованию · {n.approvalAmount?.toLocaleString('ru-RU')} ₽</strong><br/><span className="text-xs">Заявку ещё не согласовали. Смену можно завершить.</span></p>}
+            {Boolean(n.payableAmount)&&<p><strong>Оформите расходник · {n.payableAmount?.toLocaleString('ru-RU')} ₽</strong><br/><span className="text-xs">Заявка к оплате в 1С.</span></p>}
+            {n.state==='documented'&&<p>Расходник подтверждён</p>}
+          </div>;
+        })()}
         {step === 'zReportPhoto' && renderPhotoInput('Чек закрытия смены', 'zReportPhoto', task, 'Закройте смену на кассе и сфотографируйте распечатанный чек.', stepError)}
 
         {step === 'personalCashBalance' && (
