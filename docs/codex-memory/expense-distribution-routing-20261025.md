@@ -1,6 +1,6 @@
-# Expense allocation routing — local candidate, 2026-10-25
+# Expense allocation routing — production 1.18.0, 2026-10-26
 
-## Phase and owner scope
+## Initial candidate phase and owner scope
 
 Owner approved using native 1C account distribution for employee notifications.
 Native 1C form changes are deferred: live request 00OF-001141 already supplies
@@ -254,3 +254,56 @@ proof /tmp/mobo-routing-20261025/employee-request-number.png.
 - [lib/employee-expense-routing.ts](/Users/bela/.codex/worktrees/employee-activity-release/employee-testing-app/lib/employee-expense-routing.ts)
 - [tests/employee-expense-routing.integration.test.ts](/Users/bela/.codex/worktrees/employee-activity-release/employee-testing-app/tests/employee-expense-routing.integration.test.ts)
 - [tests/employee-expense-routing.test.ts](/Users/bela/.codex/worktrees/employee-activity-release/employee-testing-app/tests/employee-expense-routing.test.ts)
+
+
+## Approved production release — 2026-10-26 MSK
+
+Owner explicitly authorized release. Candidate 02e917b was merged with current
+origin/design-local-updates 59b9afa, retaining its unrelated production changes.
+Runtime source: `1e2c67b4ea1a0b4b9b0e06474138476349f0e5eb`, portal **1.18.0**.
+Package and both lockfile root versions agree. No Prisma/1C changes, financial
+writes, synthetic notifications or manual reassignment UI were included.
+
+Verification on the combined release source: 58 focused routing/notification
+checks, 1 isolated PostgreSQL lifecycle, 5 release metadata checks, TypeScript
+and isolated production build passed. An initial local build in the active
+preview checkout failed on shared .next output; the independent exact-source
+build succeeded without stopping the owner's preview server.
+
+The first VPS build attempt stopped during image export, before image save and
+container restart; its cause was not established. The previous 1.17.7 app stayed
+healthy. Exact-source retry ran as a detached transient systemd service to avoid
+Terminal/SSH lifetime dependence. Its first preflight stopped at Git's owner
+check; all Git operations were corrected to run as repository owner bela without
+changing safe.directory. The next attempt passed gates, saved the image, restarted
+only portal-app and completed with **exit 0**. No schema migration or env/upload
+changes. The pre-existing uploads mount was verified unchanged.
+
+Independent evidence:
+- VPS HEAD is the runtime source above.
+- Public release-info version 1.18.0, built `2026-10-25T21:16:44.930Z`
+  (26 October, 00:16 MSK); cached layers retain the original same-source build time.
+  Metadata revision is still null under the existing Docker build mechanism;
+  SSH verifies the commit independently.
+- Container running/healthy, public /api/health returns ok:true.
+- Authenticated Bela ADMIN Inbox and Expenses both display 1.18.0. Inbox retained
+  the same five unrelated pending items; no old cash tasks reappeared. The current
+  expense queue is empty. Screenshot: /tmp/mobo-routing-release-1.18.0.png.
+- Both timers remain active. After restart, expense sync completed successfully
+  at 2026-10-25 21:36:14 UTC and workday notifications at 21:36:21 UTC, both exit 0.
+  A notification run overlapping container recreation exited 137 at 21:34; the
+  subsequent completed run confirms recovery. Service success is not evidence
+  that an individual phone displayed a push.
+- Verified image registration completed after independent metadata/UI checks.
+  Current: sha256:b3a365c8c1fefe108c77b1dfc47fe38db3c147bc4afb5388598f38b36f7c1c81.
+  Previous 1.17.7: sha256:8098adcdd62dfef6801c8b0cc89960110678cb69b31e038c4c0b41f6a43ec73b.
+  Second retained rollback: sha256:2a442f4032ce85f7c5f11d39cf18cd7ecc47ba79107e99d648eae616c88955fa.
+  All reserves existed before build; previous release rollback tag preserved.
+
+Physical delivery for this new routing remains unverified: the live source
+request was already fully paid, and no fake issuance/employee test push was
+created. Verify a naturally occurring eligible request during a working shift.
+Push TTL of 180 seconds limits stale offline banners; it cannot retract an
+already displayed notification, and delivery is not proof of opening/completion.
+Original dirty checkout and unrelated files were left untouched. Documentation
+is committed separately from runtime; no rebuild is needed for this record.
