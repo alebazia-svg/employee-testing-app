@@ -492,3 +492,34 @@ Before release: obtain explicit rollout authority including the additive context
 migration, choose the fresh version from live/deploy branch, verify production
 migration checksums/pending set and backup, then serialize build/migration/restart.
 Do not rerun old /tmp release scripts or confuse Terminal launch with completion.
+
+### Production read-only preflight passed — 2026-10-25
+
+Owner continued the stated pre-release checks. Native Terminal ran the narrowly
+scoped read-only diagnostic /tmp/mobo-activity-db-preflight.command; agent waited
+through sudo and completion, log ends PREFLIGHT_EXIT=0. DB reads used an explicit
+READ ONLY transaction. No migration, backup creation, cleanup or restart ran.
+
+- All 75 applied migration checksums match this candidate; no unfinished or
+  unknown applied migrations. Sole pending migration:
+  20261024193000_employee_handover_audit. The context column is absent in live DB,
+  as expected before release.
+- Current portal healthy; current and both registered reserve image IDs exist.
+  Current image remains 03906bd520bb…; live version 1.15.3 / f7961e2, fetched
+  deployment branch 211444b. Free disk 28,367,675,392 bytes.
+- Latest existing database archive:
+  /var/backups/offonika/payment-documents-before-1.15.2-20261024T222325Z.dump,
+  23,828,194 bytes, pg_restore --list passed. This only validates archive
+  readability, not a full restore rehearsal. Create and validate a fresh archive
+  immediately before an approved production migration.
+- Storage-maintenance service successful. No deployment lock held at snapshot;
+  acquire the shared lock and revalidate source/image/migrations during rollout.
+  The observed QA notification-dispatch command is not a production build.
+
+Candidate is locally committed and preflight-reviewed; production rollout still
+requires explicit owner approval including the nullable audit-context migration.
+Future rollout must choose a new version, recheck branch concurrency, build only
+portal-app, apply the sole expected migration and independently verify UI/version.
+Physical iPhone event capture remains a post-release verification item, not a
+claim established by the desktop/local tests. Exact preflight summary is retained
+locally in /tmp/mobo-activity-db-preflight-summary.json. No runtime files changed.
