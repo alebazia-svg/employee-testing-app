@@ -2,7 +2,7 @@ import { unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/admin-api-auth';
-import { persistTaxDocument, taxDocumentRequestTooLarge, validateTaxDocumentInput } from '@/lib/tax-document-upload';
+import { detectTaxDocumentCoverage, persistTaxDocument, taxDocumentRequestTooLarge, validateTaxDocumentInput } from '@/lib/tax-document-upload';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +17,13 @@ export async function POST(request: Request) {
     const file = form.get('file');
     if (!(file instanceof File)) throw new Error('Выберите файл.');
     stored = await persistTaxDocument(file);
+    const coverage = detectTaxDocumentCoverage({ ...input, originalName: stored.originalName, bytes: stored.bytes, extension: stored.extension });
+    const { bytes: _bytes, extension: _extension, ...storedData } = stored;
     const record = await prisma.taxControlDocument.create({
-      data: { ...input, coverageFrom: input.periodKey, coverageTo: input.periodKey, ...stored, uploadedById: access.user.id },
+      data: { ...input, periodKey: coverage.coverageTo, coverageFrom: coverage.coverageFrom, coverageTo: coverage.coverageTo, ...storedData, uploadedById: access.user.id },
       select: { id: true, documentType: true, periodKey: true, originalName: true, status: true, createdAt: true },
     });
-    return Response.json({ document: record }, { status: 201 });
+    return Response.json({ document: record, coverage }, { status: 201 });
   } catch (error) {
     if (stored) await unlink(path.join(process.cwd(), 'uploads', stored.storageKey)).catch(() => {});
     const duplicate = typeof error === 'object' && error && 'code' in error && error.code === 'P2002';

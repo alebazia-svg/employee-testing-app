@@ -26,8 +26,9 @@ async function main() {
     const bytes = await readFile(item.path);
     const file = new File([bytes], path.basename(item.path));
     const stored = await persistTaxDocument(file);
+    const { bytes: _bytes, extension: _extension, ...storedData } = stored;
     try {
-      const record = await prisma.taxControlDocument.create({ data: { ...input, coverageFrom, coverageTo, ...stored, uploadedById: admin.id }, select: { id: true, originalName: true } });
+      const record = await prisma.taxControlDocument.create({ data: { ...input, coverageFrom, coverageTo, ...storedData, uploadedById: admin.id }, select: { id: true, originalName: true } });
       results.push({ state: 'imported', ...record, coverageFrom, coverageTo });
     } catch (error) {
       const duplicate = typeof error === 'object' && error && 'code' in error && error.code === 'P2002';

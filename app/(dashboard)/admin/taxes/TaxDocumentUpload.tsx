@@ -24,7 +24,8 @@ export function TaxDocumentUpload({ defaultPeriod }: { defaultPeriod: string }) 
       const response = await fetch('/api/admin/taxes/documents', { method: 'POST', body: form });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Не удалось загрузить документ.');
-      setMessage('Документ сохранён в архиве портала. После серверного импорта результат сверки появится в статусе периода.');
+      const range = payload.coverage?.coverageFrom === payload.coverage?.coverageTo ? payload.coverage?.coverageTo : `${payload.coverage?.coverageFrom}–${payload.coverage?.coverageTo}`;
+      setMessage(`Документ сохранён в архиве. Покрытие: ${range}. ${payload.coverage?.note || ''}`);
       if (fileRef.current) fileRef.current.value = '';
       router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось загрузить документ.'); }
@@ -37,13 +38,14 @@ export function TaxDocumentUpload({ defaultPeriod }: { defaultPeriod: string }) 
         {Object.entries(taxDocumentTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
     </label>
-    <label className='text-sm font-bold text-slate-700'>Период
+    <label className='text-sm font-bold text-slate-700'>Последний подтверждённый месяц
       <input name='periodKey' value={period} onChange={(event) => setPeriod(event.target.value)} pattern='20\d{2}(-\d{2})?' className='mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-semibold text-slate-900' required />
     </label>
     <label className='text-sm font-bold text-slate-700'>Файл PDF, Excel, ZIP, XML или CSV
       <input ref={fileRef} name='file' type='file' accept='.pdf,.xls,.xlsx,.zip,.xml,.csv,text/csv,application/pdf,application/xml,application/zip' className='mt-1.5 block h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm' required />
     </label>
     <button disabled={busy} className='inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-extrabold text-white disabled:opacity-50'><Upload className='h-4 w-4' />{busy ? 'Загрузка…' : 'Загрузить'}</button>
+    <p className='text-xs font-semibold leading-relaxed text-slate-500 lg:col-span-4'>Для Excel «Доходы АУСН» и ZIP «Операции ЕНС» диапазон определяется по содержимому файла. Для PDF со справкой о расчёте укажите последний месяц, который виден в документе.</p>
     {message && <p className={`text-sm font-semibold lg:col-span-4 ${message.startsWith('Документ сохранён') ? 'text-green-700' : 'text-red-700'}`}>{message}</p>}
   </form>;
 }
