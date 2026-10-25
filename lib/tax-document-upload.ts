@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { unzipSync } from 'fflate';
+import JSZip from 'jszip';
 import * as XLSX from 'xlsx';
 import { taxDocumentTypes } from './tax-document-types';
 
@@ -42,7 +42,7 @@ function parseRussianDate(value: unknown) {
   return match ? new Date(Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]))) : null;
 }
 
-export function detectTaxDocumentCoverage(input: { documentType: string; periodKey: string; originalName: string; bytes: Uint8Array; extension: string }) {
+export async function detectTaxDocumentCoverage(input: { documentType: string; periodKey: string; originalName: string; bytes: Uint8Array; extension: string }) {
   const fallback = { coverageFrom: input.periodKey, coverageTo: input.periodKey, detected: false, note: 'Период подтверждён вручную.' };
   if (input.documentType === 'AUSN_CALCULATION') return { coverageFrom: '2026-04', coverageTo: input.periodKey, detected: false, note: 'Диапазон начинается с перехода на АУСН; последний месяц подтверждён вручную.' };
   if (input.documentType === 'AUSN_INCOME' && ['xls', 'xlsx'].includes(input.extension)) {
@@ -56,18 +56,18 @@ export function detectTaxDocumentCoverage(input: { documentType: string; periodK
   }
   if (input.documentType === 'ENS_OPERATIONS' && input.extension === 'zip') {
     try {
-      const archive = unzipSync(input.bytes);
-      const csv = Object.values(archive).map((entry) => {
+      const archive = await JSZip.loadAsync(input.bytes);
+      const entries = await Promise.all(Object.values(archive.files).filter((entry) => !entry.dir).map((entry) => entry.async('uint8array')));
+      const csv = entries.map((entry) => {
         const utf8 = new TextDecoder('utf-8').decode(entry);
         return utf8.includes('Отчетный период') ? utf8 : new TextDecoder('windows-1251').decode(entry);
       }).find((text) => text.includes('Отчетный период'));
       if (csv) {
         const lines = csv.split(/\r?\n/).filter(Boolean);
         const headers = lines[0].split(';').map((value) => value.trim());
-        const obligationIndex = headers.indexOf('Наименование обязательства');
         const yearIndex = headers.indexOf('Отчетный год');
         const periodIndex = headers.indexOf('Отчетный период');
-        const periods = lines.slice(1).map((line) => line.split(';')).filter((row) => /АУСН/i.test(row[obligationIndex] || '')).map((row) => {
+        const periods = lines.slice(1).map((line) => line.split(';')).map((row) => {
           const month = monthNames[(row[periodIndex] || '').trim().toLowerCase()];
           const year = (row[yearIndex] || '').trim();
           return month && /^20\d{2}$/.test(year) ? `${year}-${month}` : null;

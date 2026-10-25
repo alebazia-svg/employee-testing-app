@@ -17,8 +17,17 @@ export async function POST(request: Request) {
     const file = form.get('file');
     if (!(file instanceof File)) throw new Error('Выберите файл.');
     stored = await persistTaxDocument(file);
-    const coverage = detectTaxDocumentCoverage({ ...input, originalName: stored.originalName, bytes: stored.bytes, extension: stored.extension });
+    const coverage = await detectTaxDocumentCoverage({ ...input, originalName: stored.originalName, bytes: stored.bytes, extension: stored.extension });
     const { bytes: _bytes, extension: _extension, ...storedData } = stored;
+    const existing = await prisma.taxControlDocument.findFirst({ where: { documentType: input.documentType, sha256: stored.sha256 }, select: { id: true, coverageFrom: true, coverageTo: true } });
+    if (existing) {
+      await unlink(path.join(process.cwd(), 'uploads', stored.storageKey)).catch(() => {});
+      stored = null;
+      const coverageFrom = [existing.coverageFrom, coverage.coverageFrom].filter((value): value is string => Boolean(value)).sort()[0];
+      const coverageTo = [existing.coverageTo, coverage.coverageTo].filter((value): value is string => Boolean(value)).sort().at(-1)!;
+      const record = await prisma.taxControlDocument.update({ where: { id: existing.id }, data: { periodKey: coverageTo, coverageFrom, coverageTo }, select: { id: true, documentType: true, periodKey: true, originalName: true, status: true, createdAt: true } });
+      return Response.json({ document: record, coverage: { ...coverage, coverageFrom, coverageTo, note: `${coverage.note} Диапазон существующего файла обновлён без дублирования.` } });
+    }
     const record = await prisma.taxControlDocument.create({
       data: { ...input, periodKey: coverage.coverageTo, coverageFrom: coverage.coverageFrom, coverageTo: coverage.coverageTo, ...storedData, uploadedById: access.user.id },
       select: { id: true, documentType: true, periodKey: true, originalName: true, status: true, createdAt: true },
