@@ -47,6 +47,11 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     typeLabel: 'Документы ФНС',
     actionLabel: 'Открыть налоги',
   },
+  'tax.limit_attention': {
+    category: 'decisions',
+    typeLabel: 'Лимит АУСН',
+    actionLabel: 'Открыть налоги',
+  },
   'workday_issue.employee_message': {
     category: 'messages',
     typeLabel: 'Сообщение сотрудника',
@@ -147,6 +152,11 @@ export function adminInboxSourceState(input: {
     return input.current
       ? { active: true, label: 'Документы ожидаются', tone: 'attention' }
       : { active: false, label: 'Период обновлён', tone: 'resolved' };
+  }
+  if (input.sourceType === 'tax_limit') {
+    return input.current
+      ? { active: true, label: 'Требует внимания', tone: 'attention' }
+      : { active: false, label: 'Уровень риска изменился', tone: 'resolved' };
   }
   if (input.sourceType === 'workday_control_issue') {
     const active = input.businessStatus === 'open' && input.employeeActionRequired === true;

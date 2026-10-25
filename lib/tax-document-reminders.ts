@@ -1,13 +1,54 @@
 import 'server-only';
 
 import type { PrismaClient } from '@prisma/client';
-import { loadAusnReportCatalog } from './ausn-report-cache';
+import { assessTaxLimitRisk, loadAusnReportCatalog, loadCurrentAusnReport } from './ausn-report-cache';
 import { queueAdminInboxTelegramDelivery } from './admin-inbox';
 import { buildTaxDocumentPlan } from './tax-document-plan';
 import { taxDocumentTypes } from './tax-document-types';
 
 export function taxDocumentReminderEventKey(period: { periodKey: string; missing: readonly string[] }) {
   return `tax_document_missing:${period.periodKey}:${[...period.missing].sort().join(',')}`;
+}
+
+export function taxLimitReminderEventKey(input: { level: string; dataCutoff?: string }) {
+  const year = input.dataCutoff?.slice(0, 4) || new Date().getUTCFullYear().toString();
+  return `tax_limit:${year}:${input.level}`;
+}
+
+export async function syncTaxLimitReminder(db: PrismaClient, now = new Date()) {
+  const report = await loadCurrentAusnReport();
+  const risk = assessTaxLimitRisk(report);
+  if (risk.level === 'unknown' || risk.level === 'normal') return { state: risk.level as 'unknown' | 'normal' };
+  const eventKey = taxLimitReminderEventKey({ level: risk.level, dataCutoff: report.dataCutoff });
+  const event = await db.$transaction(async (tx) => {
+    const saved = await tx.adminInboxEvent.upsert({
+      where: { eventKey },
+      create: {
+        eventKey,
+        type: 'tax.limit_attention',
+        title: risk.label,
+        body: `${risk.explanation}${report.remaining === undefined ? '' : ` Остаток: ${report.remaining.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽.`}`,
+        href: '/admin/taxes',
+        sourceType: 'tax_limit',
+        sourceId: report.dataCutoff?.slice(0, 4) || now.getUTCFullYear().toString(),
+        occurredAt: now,
+      },
+      update: {},
+    });
+    const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
+    await tx.adminInboxReceipt.createMany({ data: admins.map((admin) => ({ eventId: saved.id, userId: admin.id })), skipDuplicates: true });
+    await queueAdminInboxTelegramDelivery({ db: tx, eventId: saved.id });
+    return saved;
+  });
+  return { state: risk.level, eventId: event.id, eventKey };
+}
+
+export async function syncTaxControlReminders(db: PrismaClient, now = new Date()) {
+  const [documents, limit] = await Promise.all([
+    syncTaxDocumentReminder(db, now),
+    syncTaxLimitReminder(db, now),
+  ]);
+  return { documents, limit };
 }
 
 export async function syncTaxDocumentReminder(db: PrismaClient, now = new Date()) {

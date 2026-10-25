@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Upload } from 'lucide-react';
 import { taxDocumentTypes } from '@/lib/tax-document-types';
 
-export function TaxDocumentUpload({ defaultPeriod }: { defaultPeriod: string }) {
+export function TaxDocumentUpload({ defaultPeriod, defaultDocumentType = 'USN_DECLARATION' }: { defaultPeriod: string; defaultDocumentType?: keyof typeof taxDocumentTypes }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +34,7 @@ export function TaxDocumentUpload({ defaultPeriod }: { defaultPeriod: string }) 
 
   return <form action={submit} className='grid gap-3 lg:grid-cols-[1.2fr_180px_1.3fr_auto] lg:items-end'>
     <label className='text-sm font-bold text-slate-700'>Тип документа
-      <select name='documentType' onChange={(event) => selectDocumentType(event.target.value)} className='mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-semibold text-slate-900' required>
+      <select name='documentType' defaultValue={defaultDocumentType} onChange={(event) => selectDocumentType(event.target.value)} className='mt-1.5 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 font-semibold text-slate-900' required>
         {Object.entries(taxDocumentTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
     </label>

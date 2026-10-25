@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
-import { syncTaxDocumentReminder } from '../lib/tax-document-reminders';
+import { syncTaxControlReminders } from '../lib/tax-document-reminders';
 
-syncTaxDocumentReminder(prisma)
+syncTaxControlReminders(prisma)
   .then((result) => console.log(JSON.stringify(result)))
   .finally(() => prisma.$disconnect());

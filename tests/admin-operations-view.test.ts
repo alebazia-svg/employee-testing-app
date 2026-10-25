@@ -11,6 +11,7 @@ test('inbox events receive stable human categories and labels', () => {
     category: 'system', typeLabel: 'Открытая ошибка сотрудника', actionLabel: 'Открыть ошибку',
   });
   assert.equal(adminInboxEventMeta('expense_request.created').category, 'requests');
+  assert.equal(adminInboxEventMeta('tax.limit_attention').typeLabel, 'Лимит АУСН');
   assert.equal(adminInboxEventMeta('terminal_fiscal_review.archived_unresolved').typeLabel, 'Проверка чека');
   assert.equal(adminInboxEventMeta('unknown.event').category, 'system');
 });
@@ -29,6 +30,10 @@ test('read state is independent from the source business state', () => {
     active: true, label: 'Документы ожидаются', tone: 'attention',
   });
   assert.equal(adminInboxSourceState({ sourceType: 'tax_control', current: false }).label, 'Период обновлён');
+  assert.deepEqual(adminInboxSourceState({ sourceType: 'tax_limit', current: true }), {
+    active: true, label: 'Требует внимания', tone: 'attention',
+  });
+  assert.equal(adminInboxSourceState({ sourceType: 'tax_limit', current: false }).active, false);
 });
 
 test('lost dependency and recovery have clear portal states', () => {

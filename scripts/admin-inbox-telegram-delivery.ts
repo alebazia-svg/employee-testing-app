@@ -1,6 +1,6 @@
 import { refreshPendingExpenseStatuses } from '../lib/expense-request-status-refresh';
 import { prisma } from '../lib/prisma';
-import { syncTaxDocumentReminder } from '../lib/tax-document-reminders';
+import { syncTaxControlReminders } from '../lib/tax-document-reminders';
 import {
   claimAdminInboxTelegramDelivery,
   markAdminInboxTelegramDeliveryFailed,
@@ -15,7 +15,7 @@ function option(name: string) {
 async function main() {
   const command = process.argv[2] ?? '';
   if (command === 'claim') {
-    await syncTaxDocumentReminder(prisma).catch(() => null);
+    await syncTaxControlReminders(prisma).catch(() => null);
     await refreshPendingExpenseStatuses().catch(() => null);
     const delivery = await claimAdminInboxTelegramDelivery(prisma);
     process.stdout.write(`${JSON.stringify({ ok: true, delivery })}\n`);

@@ -23,9 +23,9 @@ import {
 import { expenseRequestCurrentWhere } from '@/lib/expense-request-admin-lifecycle';
 import { prisma } from '@/lib/prisma';
 import {isPaymentReceipt} from './procurement-document-policy';
-import { loadAusnReportCatalog } from './ausn-report-cache';
+import { assessTaxLimitRisk, loadAusnReportCatalog, loadCurrentAusnReport } from './ausn-report-cache';
 import { buildTaxDocumentPlan } from './tax-document-plan';
-import { taxDocumentReminderEventKey } from './tax-document-reminders';
+import { taxDocumentReminderEventKey, taxLimitReminderEventKey } from './tax-document-reminders';
 
 export type AdminInboxViewItem = {
   id: string;
@@ -66,7 +66,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       orderBy: { event: { occurredAt: 'desc' } },
     }),
     prisma.adminInboxReceipt.findMany({
-      where: { userId: input.userId, event: { sourceType: { in: [...ATTENTION_LIFECYCLE_SOURCES, 'dependency', 'infrastructure', 'tax_control'] } } },
+      where: { userId: input.userId, event: { sourceType: { in: [...ATTENTION_LIFECYCLE_SOURCES, 'dependency', 'infrastructure', 'tax_control', 'tax_limit'] } } },
       include: { event: true }, orderBy: { event: { occurredAt: 'desc' } },
     }),
   ]);
@@ -79,6 +79,11 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
   ]).then(([reports, documents]) => {
     const next = buildTaxDocumentPlan({ now, reports, documents: documents.map((document) => ({ ...document, source: 'portal' as const })) }).find((period) => period.status === 'missing');
     return next ? taxDocumentReminderEventKey(next) : undefined;
+  }) : undefined;
+  const hasTaxLimitReminder = rows.some((row) => row.event.sourceType === 'tax_limit');
+  const currentTaxLimitEventKey = hasTaxLimitReminder ? await loadCurrentAusnReport().then((report) => {
+    const risk = assessTaxLimitRisk(report);
+    return risk.level === 'unknown' || risk.level === 'normal' ? undefined : taxLimitReminderEventKey({ level: risk.level, dataCutoff: report.dataCutoff });
   }) : undefined;
   const receiptIds=rows.filter(r=>r.event.sourceType==='supplier_payment_receipt').map(r=>r.event.sourceId);
   const currentReceipts=receiptIds.length?await prisma.supplierPaymentReceipt.findMany({where:{id:{in:receiptIds}},select:{id:true,purpose:true,replacedById:true}}):[];
@@ -233,6 +238,7 @@ export async function loadAdminInbox(input: { userId: number; limit: number; unr
       sourceType,
       eventType: row.event.type,
       current: sourceType === 'tax_control' ? row.event.eventKey === currentTaxEventKey
+        : sourceType === 'tax_limit' ? row.event.eventKey === currentTaxLimitEventKey
         : sourceType === 'procurement_delivery' ? activeDeliveryIds.has(row.event.id)
         : sourceType === 'procurement_delivery_request' ? activeDeliverySourceIds.has(sourceId) && deliveryEvents.some(e => activeDeliveryIds.has(e.id) && row.event.eventKey === `delivery:manual:${e.id}`)
         : currentExpenseKeys.has(row.event.eventKey),
