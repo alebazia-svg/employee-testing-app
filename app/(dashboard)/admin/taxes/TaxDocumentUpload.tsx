@@ -45,7 +45,7 @@ export function TaxDocumentUpload({ defaultPeriod, defaultDocumentType = 'USN_DE
       <input ref={fileRef} name='file' type='file' accept='.pdf,.xls,.xlsx,.zip,.xml,.csv,text/csv,application/pdf,application/xml,application/zip' className='mt-1.5 block h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm' required />
     </label>
     <button disabled={busy} className='inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-extrabold text-white disabled:opacity-50'><Upload className='h-4 w-4' />{busy ? 'Загрузка…' : 'Загрузить'}</button>
-    <p className='text-xs font-semibold leading-relaxed text-slate-500 lg:col-span-4'>Для Excel «Доходы АУСН» и ZIP «Операции ЕНС» диапазон определяется по содержимому файла. Для PDF со справкой о расчёте укажите последний месяц, который виден в документе.</p>
+    <p className='text-xs font-semibold leading-relaxed text-slate-500 lg:col-span-4'>Для Excel «Доходы АУСН» и ZIP «Операции ЕНС» диапазон определяется по содержимому файла. Для PDF «Справка о доходах АУСН» укажите последний подтверждённый в справке месяц — один обновлённый файл закроет весь период с начала применения АУСН.</p>
     {message && <p className={`text-sm font-semibold lg:col-span-4 ${message.startsWith('Документ сохранён') ? 'text-green-700' : 'text-red-700'}`}>{message}</p>}
   </form>;
 }
