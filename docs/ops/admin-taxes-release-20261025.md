@@ -22,3 +22,11 @@ metadata and authenticated ADMIN UI, then register the verified image.
 Rollback restores the preceding verified portal image and source commit. The
 additive table and nullable coverage columns may remain; do not delete uploaded
 files, archive rows, inbox history or Docker volumes during rollback.
+
+## Follow-up 1.17.2
+
+Real FNS ENS archives label monthly AUSN accruals as `Налоги УСН`. The patch
+therefore derives coverage from non-empty year/month reporting columns rather
+than the display label. Re-uploading the same archive reconciles its saved
+coverage range in place and removes the temporary upload, so the archive keeps
+one physical copy and one database record.
