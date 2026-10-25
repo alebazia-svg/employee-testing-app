@@ -28,7 +28,7 @@ export function TaxDocumentUpload({ defaultPeriod, latestDuePeriod = defaultPeri
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Не удалось загрузить документ.');
       const range = payload.coverage?.coverageFrom === payload.coverage?.coverageTo ? payload.coverage?.coverageTo : `${payload.coverage?.coverageFrom}–${payload.coverage?.coverageTo}`;
-      setMessage(`Документ сохранён в архиве. Покрытие: ${range}. ${payload.coverage?.note || ''}`);
+      setMessage(`${payload.processing?.message || 'Документ сохранён в архиве.'} Покрытие: ${range}. ${payload.coverage?.note || ''}`);
       if (fileRef.current) fileRef.current.value = '';
       router.refresh();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось загрузить документ.'); }
@@ -49,6 +49,6 @@ export function TaxDocumentUpload({ defaultPeriod, latestDuePeriod = defaultPeri
     </label>
     <button disabled={busy} className='inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-extrabold text-white disabled:opacity-50'><Upload className='h-4 w-4' />{busy ? 'Загрузка…' : 'Загрузить'}</button>
     <p className='text-xs font-semibold leading-relaxed text-slate-500 lg:col-span-4'>Для Excel «Доходы АУСН» и ZIP «Операции ЕНС» диапазон определяется по содержимому файла. Для PDF «Справка о доходах АУСН» укажите самый поздний месяц, указанный внутри справки: если в ней есть июль, август и сентябрь, выберите сентябрь. Повторная загрузка того же PDF расширит период без создания копии.</p>
-    {message && <p className={`text-sm font-semibold lg:col-span-4 ${message.startsWith('Документ сохранён') ? 'text-green-700' : 'text-red-700'}`}>{message}</p>}
+    {message && <p className={`text-sm font-semibold lg:col-span-4 ${message.includes('не обновился') || message.includes('не подключена') || message.includes('нужна выгрузка') ? 'text-amber-700' : 'text-green-700'}`}>{message}</p>}
   </form>;
 }

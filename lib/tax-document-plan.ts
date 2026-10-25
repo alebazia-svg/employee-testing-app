@@ -15,7 +15,7 @@ export const taxDocumentHelp: Record<keyof typeof taxDocumentTypes, { required: 
   CORRECTION_EVIDENCE: { required: false, source: 'ЛК ФНС, OFD или бухгалтер', instruction: 'Загружайте только когда есть возврат, корректировка или пояснение к расхождению.' },
 };
 
-export type TaxDocumentEvidence = { documentType: string; periodKey: string; coverageFrom?: string | null; coverageTo?: string | null; originalName: string; source: 'portal' };
+export type TaxDocumentEvidence = { documentType: string; periodKey: string; coverageFrom?: string | null; coverageTo?: string | null; originalName: string; status?: string; source: 'portal' };
 export type TaxPeriodPlan = { periodKey: string; status: 'complete' | 'missing'; missing: RequiredMonthlyTaxDocument[]; present: RequiredMonthlyTaxDocument[] };
 
 function monthIndex(key: string) { const [year, month] = key.split('-').map(Number); return year * 12 + month - 1; }
@@ -41,6 +41,7 @@ export function buildTaxDocumentPlan(input: { now: Date; reports: AusnReportView
   return dueAusnPeriods(input.now, input.startMonth).map<TaxPeriodPlan>((periodKey) => {
     const present = requiredMonthlyTaxDocuments.filter((type) => input.documents.some((document) => {
       if (document.documentType !== type) return false;
+      if (document.status === 'PROCESSING_FAILED') return false;
       const from = document.coverageFrom || document.periodKey;
       const to = document.coverageTo || document.periodKey;
       return from <= periodKey && periodKey <= to;
