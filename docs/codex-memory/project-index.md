@@ -312,3 +312,11 @@ Physical iPhone capture is not yet verified.
   from saved actions, background returns and employee bulk schedule edits.
   No migration; server/public/authenticated ADMIN verified. Release and limits
   are recorded in `employee-activity-20261024.md`.
+
+- Next local candidate (2026-10-25): owner rejected a duplicate day-control
+  overview and approved a compact chronological table: visits, shown/open notifications,
+  receipt/cash actions, errors and handover steps. Real local capture verified;
+  additive context migration
+  applied only in the isolated test DB. Local candidate commit 54e9b10, not released. See the same
+  note for exact files, checks and remaining physical-device/1C limits. Reconciled
+  with upstream 1.15.3 (211444b); 79 combined checks and local build passed.
