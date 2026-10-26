@@ -1158,3 +1158,16 @@ The owner separately authorized production deployment. Released and independentl
 verified as 1.18.9 / 401a2a7; the actual old wholesale question is history-only,
 active attention count fell 6 to 5, and employee inspection no longer requires
 empty later days. See the correction note for release and verification limits.
+
+
+## 2026-10-26 - Fiscal help is a personal request, not a matching digest
+
+Owner approved a short employee message identifying their terminal card payment
+by amount, date/time and printed terminal check number; no card digits, RRN or
+manual completion click. Completion is determined by source reconciliation.
+Only “Нужна помощь” and “Продажа не моя” remain exception paths. A help action
+must identify the employee and payment in its own ADMIN push, preserving one
+request per response cycle and remaining open until fiscal resolution.
+The owner explicitly requires visual review in the real local application before
+production release. Local candidate and operational speed/rollback boundaries:
+`fiscal-help-preview-20261026.md`. No release approval implied by implementation.
