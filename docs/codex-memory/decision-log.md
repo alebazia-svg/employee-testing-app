@@ -1171,3 +1171,11 @@ request per response cycle and remaining open until fiscal resolution.
 The owner explicitly requires visual review in the real local application before
 production release. Local candidate and operational speed/rollback boundaries:
 `fiscal-help-preview-20261026.md`. No release approval implied by implementation.
+
+
+Owner accepted the local visual preview and explicitly authorized production
+release on 2026-10-27, including guarded minute rechecks. Released and verified as
+1.18.14 / e778abf with the existing employee-reminder override preserved. Extra
+minute ticks and the ordinary full cycle succeeded; physical push delivery for a
+new real help request remains unverified. Full evidence and unit rollback files:
+`fiscal-help-preview-20261026.md`.

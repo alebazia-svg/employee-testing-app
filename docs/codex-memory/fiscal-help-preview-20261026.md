@@ -1,9 +1,11 @@
-# Personal fiscal help and short employee copy — local candidate 2026-10-26
+# Personal fiscal help and short employee copy — released 1.18.14
 
-Status: owner approved implementing this scope, then explicitly required visual
-review before release. LOCAL ONLY; not deployed, no production timer changes, no
-application release number reserved. Based on freshly fetched a837483 (includes
-the parallel 1.18.10–1.18.12 work); main checkout dirty WIP remains untouched.
+Status: released and independently verified on 2026-10-27 as 1.18.14, source
+e778abf78d4baa88d5d5e105eef7ccdeb8adc57b. Owner approved the actual local visual
+preview and separately authorized release, including minute pending-case checks.
+The local candidate began on a837483 (1.18.12); release merged the latest 1.18.13
+source 9a62698, preserving f9c92f7 authoritative OFD closure behavior. Main checkout
+dirty WIP remains untouched.
 
 ## Accepted scope
 
@@ -89,7 +91,7 @@ help wording, deduplication, renewed help after an ADMIN reply, source-outage
 attention, separate payload/delivery order, no resend, skipping resolved help,
 minute-period selection and GET privacy/ownership. Sender transport is stubbed: no
 real user push was sent. TypeScript and optimized production build passed. Native
-iPhone push appearance/delivery and live minute-timer behavior remain unverified.
+iPhone push appearance/delivery remains unverified. Live timer evidence is below.
 
 Read-only source investigation found aQsi terminal 11085322, card payment 500 RUB
 at 2026-10-26 16:42:03, printed check 000413 (RRN was read only for identity and
@@ -100,13 +102,20 @@ to polling or claim a precise first-source-availability time.
 
 ## Release and rollback gate
 
-Owner visual approval remains pending. Recheck live metadata and the deployment
-branch before assigning the next portal version. No production schedules,
-notifications, environment, uploads or 1C documents were manually changed.
-The release must include installing the reviewed current.service AND timer on
-the VPS after the new app is running, then daemon-reload/restart timer; inspect
-actual unit files/drop-ins and preserve their exact previous contents first.
-Verify ordinary and extra-tick results, locks and healthy source behavior.
+Owner visual/release approval was received on 2026-10-27. Fresh public metadata
+and origin/design-local-updates were both 1.18.13 before selecting patch 1.18.14;
+rechecked immediately before push. No production schedules, notifications,
+environment, uploads or 1C documents were manually changed. Ordinary runtime
+matching persistence remains enabled. The release installed the reviewed base
+current.service and timer after healthy app startup. The existing
+employee-review.conf drop-in overrides ExecStart, so its exact existing command
+was preserved with --pending-rechecks appended; employee reminders remain enabled
+and shadow mode remains disabled. No other overrides were added. All three prior
+files and the effective pre-release units were saved under
+/docker/employee-testing-app/.rollback/fiscal-help-1.18.14-units after exact hash
+and DropInPaths checks. Timer was paused only for the app switch after build, and
+the existing fiscal run was allowed to finish. daemon-reload, unit validation and
+restart of the enabled timer succeeded. Ordinary and extra ticks were verified.
 Rollback must restore the previous timer/service pair before reverting the app:
 old code ignores the new flag and would otherwise do ordinary work every minute.
 No production migration is needed. Do not send old resolved help again as a test.
@@ -133,7 +142,55 @@ No production migration is needed. Do not send old resolved help again as a test
 - ops/systemd/offonika-terminal-fiscal-current.service
 - ops/systemd/offonika-terminal-fiscal-current.timer
 - package.json
+- package-lock.json (release version synchronization)
 - scripts/terminal-fiscal-auto-run.ts
 - tests/aqsi-acquiring.test.ts
 - tests/terminal-fiscal-auto-run.test.ts
 - tests/fiscal-help.test.ts
+
+## Production release evidence — 2026-10-27
+
+- Target: https://team.mobo-opt.ru, portal-app only. Previous server source
+  9a626985dce6f3ff2bd02988fb6e50c7cbfdd245 / 1.18.13; independently verified new
+  server source e778abf78d4baa88d5d5e105eef7ccdeb8adc57b / 1.18.14.
+- Public builtAt 2026-10-26T21:14:18.029Z = 27 October 00:14 Moscow. Authenticated
+  ADMIN footer agrees. Existing Docker revision metadata remains null/source
+  unknown; exact source was verified independently over SSH. API health ok;
+  container running/healthy. Unauthorized GET of the status endpoint returns 403.
+- Current verified image:
+  sha256:d0a7243fdb316dbe6e17573d127153bd8f9a03b07f5757632c4f30b972aa9c1d.
+  Previous/reserve 1:
+  sha256:bde75d705168a34d551d88ce53562cac90c616eb6fc45b5cee87b8792c45a2df.
+  Reserve 2:
+  sha256:e226701c28b02c85428196a6e129cbfacea927e3834acbe9beb7a3b1126790ac.
+  Registry/image existence gates passed; registration ran after independent
+  checks and after releasing the storage lock. Release exit code 0.
+- Existing approved retention was needed at the initial 15 GiB gate and restored
+  free space to 23.11 GiB before build. Protected images, volumes, uploads, DB and
+  backups were preserved; post-build df showed 18 GiB free. Server.env hash and
+  upload mounts matched before/after. No migration or 1C publication/write.
+- Effective fiscal command retains TERMINAL_FISCAL_EMPLOYEE_REVIEW_ENABLED=true
+  and TERMINAL_FISCAL_EMPLOYEE_REVIEW_SHADOW_ENABLED=false, with --pending-rechecks.
+  Timer updated at 2026-10-26T21:19:52Z (00:19:52 Moscow on 27 October).
+  Extra ticks at 21:20:02–21:20:05 and 21:21:02–21:21:05 UTC succeeded.
+  Later 21:23/21:24 ticks also succeeded and skipped source reads because no
+  employee cases were open (the existing generic log reason is PERIOD_NOT_READY).
+- The ordinary 21:22:01–21:22:07 UTC cycle completed all four period/mapping
+  runs. For 26 October the two mappings reported six and eight confirmed bank
+  operations, zero pending/mismatch/unavailable/needs_review. The new-day runs
+  were empty and complete. Authenticated read-only runs API independently showed
+  both current mapping runs completed with bank/1C/OFD complete and no error.
+- Authenticated ADMIN attention remains the same four unrelated matters. No old
+  receipt/help case reopened. The original Zukhra 500 RUB review remains resolved,
+  with the linked 1C receipt and OFD confirmation; no claim that this release
+  created that earlier receipt. Screenshots:
+  /tmp/mobo-fiscal-help-1.18.14-inbox.jpg and
+  /tmp/mobo-fiscal-help-1.18.14-closed-500.jpg.
+- Final merged-source checks: fiscal 221 passed / one optional fixture skipped;
+  workday 189 passed; five release-info checks, TypeScript and optimized local
+  build passed. Server build, timer/unit and read-only runtime checks passed.
+- No artificial production help action or employee message was submitted to test
+  delivery. The separate help sender and payload were tested with stub transport
+  and the actual local PostgreSQL/UI flow. First real new help delivery and native
+  phone display remain unverified. Source outages/slow runs can still delay fiscal
+  confirmation; the minute cadence does not promise confirmation in one minute.
