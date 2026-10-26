@@ -3,7 +3,7 @@
 Owner approved a defined weekly policy after reviewing the unshipped monthly
 prototype, then explicitly authorized production deployment. Main weekly
 reminder was released and verified as 1.18.3; inspection parity follow-up below
-is locally verified, prepared as 1.18.5 after the parallel 1.18.4 release.
+was released and independently verified as 1.18.5 after the parallel 1.18.4 release.
 Live public metadata and freshly fetched deployment branch were both 1.18.2
 before preparing this patch. Runtime commit: 8167990. Previous server source:
 d9da4c7cbb7b09b86aeeac3b75c0d0e0d461e041. No migration or schema delta;
@@ -38,10 +38,41 @@ endpoint. Identity filtering, actor-bound visits and blocked writes remain.
 The real isolated HTTP test compares both snapshots, rejects far weeks,
 employee access and POST. Transport tests, TypeScript and build passed.
 Parallel receipt release a718908 (1.18.4) was fast-forwarded without editing its
-files. Do not push while its deploy still expects that exact branch tip.
+files. Its completion/verification was observed before publishing the follow-up.
 Public 1.18.4 and its source a718908 were observed before choosing 1.18.5.
 Inspection runtime fix b88372f preserves the colleague's receipt changes.
-No schema changes. Release 1.18.5 is prepared, not yet deployed.
+No schema changes.
+
+## Production 1.18.5 verification
+
+- Source 08218287296db57fa1999c662f1802f0735aa877, inspection runtime b88372f,
+  version commit c7addd1. Includes the parallel 1.18.4 code and its verified-release
+  documentation; none of its receipt runtime files were changed by this task.
+- Public and authenticated ADMIN version 1.18.5; build
+  2026-10-26T15:27:02.643Z (18:27 Moscow). Server source independently read via SSH.
+  Existing public metadata revision remains null/unknown in Docker.
+- Current image sha256:6cf1a18ea1a0d5b4a2074f33898262115469287590929c073f3a4cae194bca85,
+  running/healthy; public health ok. Previous 1.18.4 image
+  sha256:593329090e2d3b7b5456390d5ba254895a5fd50cb1f77bb9099573e2412483cf.
+  Verified registry contains current, that 1.18.4 image and the 1.18.3 image above.
+  Parent lock released before registration; release exit 0.
+- Env hash and upload mounts matched before/after. No migration, manual DB,
+  employee plan/answer or 1C write. Daily notification retirement/creation uses
+  the approved ordinary worker. Physical-device push display is not verified.
+- On the actual employee inspection, Zukhra had filled 27 October while this
+  release was in progress. The row correctly stopped saying tomorrow missing,
+  remained for later empty days, and opened directly on 28 October in the bounded
+  26 October–1 November calendar. Existing receipt/closing reminders remain.
+  Screenshots: /tmp/mobo-schedule-admin-1.18.5.png and
+  /tmp/mobo-schedule-week-production-1.18.5.png. No actions submitted.
+- Final source build, TypeScript, five release checks, preview transport tests
+  and the real isolated HTTP parity/authorization/write-blocking test passed.
+  Earlier full workday/adjacent/lifecycle checks remain above.
+- Disk free after this release is 14 GiB. A future build must reapply the 15 GiB
+  capacity gate and the existing approved retention/runbook before starting;
+  this task performed no cache/image/volume cleanup.
+- Activity follow-up remains untouched in its named Git stash; main checkout
+  work was not included. Final changes and evidence are listed in this document.
 
 ## Accepted policy
 
