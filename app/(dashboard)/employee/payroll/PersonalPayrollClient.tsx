@@ -7,6 +7,7 @@ import { employeePayrollMonths, validEmployeePayrollView, type EmployeePayrollVi
 import { useEmployeePayrollMonth } from '@/components/useEmployeePayrollMonth';
 import { useEmployeePayrollSnapshots } from '@/components/EmployeePayrollSnapshots';
 import { EmployeeActionReminder } from '@/components/workday/EmployeeActionReminder';
+import { beginEmployeeOperation, useEmployeePeriodView } from '@/components/EmployeeOperationAudit';
 
 const money = (value: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(value);
 const monthTitle = (period: string) => new Intl.DateTimeFormat('ru-RU', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${period}-01T12:00:00Z`));
@@ -18,6 +19,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
   const months = employeePayrollMonths(activeMonth);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
   const month = selectedMonth && months.includes(selectedMonth) ? selectedMonth : activeMonth;
+  useEmployeePeriodView('payroll_view', month);
   const store = useEmployeePayrollSnapshots();
   const remember = store?.remember, clear = store?.clear;
   const [loaded, setSalary] = useState<Salary | null>(initialSalary);
@@ -31,6 +33,7 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
     || (salary?.state === 'confirmed' && (salary.paid == null || salary.remaining == null)));
   useEffect(() => {
     const controller = new AbortController();
+    const finishAudit = beginEmployeeOperation('payroll_load', {disabled:!!preview,period:month});
     lastStarted.current = Date.now();
     setUpdating(true); setError('');
     const timer = window.setTimeout(() => controller.abort('timeout'), 15000);
@@ -54,8 +57,8 @@ export function PersonalPayrollClient({ currentMonth, initialSalary = null, embe
         if (!response.ok) throw Error('Не удалось обновить расчёт. Попробуйте ещё раз.');
         const result: unknown = await response.json();
         if (!validEmployeePayrollView(result, month)) throw Error('Расчёт пока недоступен.');
-        if (!controller.signal.aborted) { setSalary(result); remember?.(result, months); }
-      }).catch(cause => { if (!controller.signal.aborted || controller.signal.reason === 'timeout') setError(cause instanceof Error && !controller.signal.aborted ? cause.message : 'Не удалось обновить расчёт. Попробуйте ещё раз.'); })
+        if (!controller.signal.aborted) { setSalary(result); remember?.(result, months); finishAudit(result.state === 'unavailable' ? 'failed' : 'completed', result.state === 'unavailable' ? 'unavailable' : undefined); }
+      }).catch(cause => { if (!controller.signal.aborted || controller.signal.reason === 'timeout') { finishAudit('failed', navigator.onLine ? 'request' : 'network'); setError(cause instanceof Error && !controller.signal.aborted ? cause.message : 'Не удалось обновить расчёт. Попробуйте ещё раз.'); } })
       .finally(() => { window.clearTimeout(timer); if (!controller.signal.aborted || controller.signal.reason === 'timeout') setUpdating(false); });
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [month, refresh, request, remember, clear, activeMonth, embedded]);

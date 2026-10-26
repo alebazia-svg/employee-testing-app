@@ -3,10 +3,48 @@ import assert from 'node:assert/strict';
 import { prisma } from '../lib/prisma';
 import { writeEmployeeActivity } from '../lib/employee-activity';
 import { employeeActivityReport } from '../lib/employee-activity-report';
+import { buildActivityView } from '../lib/employee-activity-view';
+import { buildProcessView } from '../lib/employee-process-view';
 // Explicitly isolated local database, never run against a restored production database.
 if (!/^postgresql:\/\/postgres:activity-local-only@127\.0\.0\.1:55464\/activity_test(?:\?|$)/.test(process.env.DATABASE_URL || '')) throw new Error('Use the isolated activity_test database on 55464.');
 const ids: number[] = [];
+test('operation events persist by employee and attempt, never establish financial completion or survive service exclusion', async()=>{
+ const now=new Date('2026-10-26T09:00:00Z');
+ const user=await prisma.user.create({data:{login:`operations-${Date.now()}`,name:'Operation audit test',role:'EMPLOYEE',passwordHash:'not-a-login'}});ids.push(user.id);
+ const session=await prisma.portalAccessSession.create({data:{userId:user.id,sessionHash:`operations-${user.id}`,device:'test',browser:'test',expiresAt:new Date(+now+86400000)}});
+ const context={action:'cash_send' as const,stage:'started' as const,attemptId:'attempt-operation-123',ref:'cash-operation-123'};
+ assert.equal(await writeEmployeeActivity(user.id,session.sessionHash,{key:'operation-start-123',kind:'operation',context},now),true);
+ assert.equal(await writeEmployeeActivity(user.id,session.sessionHash,{key:'operation-start-duplicate',kind:'operation',context},now),true);
+ assert.equal(await writeEmployeeActivity(user.id,session.sessionHash,{key:'operation-finish-123',kind:'operation',context:{...context,stage:'completed',durationMs:3000}},new Date(+now+3000)),true);
+ assert.equal(await prisma.portalActivityEvent.count({where:{userId:user.id}}),2);
+ const rows=buildProcessView(await employeeActivityReport(user.id,'2026-10-26',new Date(+now+6000)));
+ assert.equal(rows.length,1);assert.equal(rows[0].confirmed,false);assert.match(rows[0].outcome,/не подтверждён/);
+ await prisma.portalAccessSession.update({where:{id:session.id},data:{isService:true}});
+ assert.deepEqual(buildProcessView(await employeeActivityReport(user.id,'2026-10-26',new Date(+now+6000))),[]);
+ assert.equal(await writeEmployeeActivity(user.id,session.sessionHash,{key:'service-operation',kind:'operation',context},new Date(+now+10000)),false);
+});
 after(async () => { await prisma.user.deleteMany({ where: { id: { in: ids } } }); await prisma.$disconnect(); });
+test('a prior-day notice opened today retains its task result and original send date without writes', async () => {
+  const now = new Date('2026-10-26T08:00:00Z'), prior = new Date('2026-10-25T08:00:00Z');
+  const user = await prisma.user.create({ data: { login: `audit-old-${Date.now()}`, name: 'Old notice audit', role: 'EMPLOYEE', passwordHash: 'not-a-login' } }); ids.push(user.id);
+  const session = await prisma.portalAccessSession.create({ data: { userId: user.id, sessionHash: `old-audit-${user.id}`, device: 'test', browser: 'test', expiresAt: new Date(+now+86400000) } });
+  const day = await prisma.workDayEntry.create({ data: { userId: user.id, date: '2026-10-25', department: 'retail', shiftCode: 'full', shiftLabel: 'Test', startedAt: prior, status: 'completed', endedAt: prior } });
+  const run = await prisma.shiftControlRun.create({ data: { userId: user.id, workDayEntryId: day.id, date: '2026-10-25', department: 'retail' } });
+  const task = await prisma.shiftControlTask.create({ data: { runId: run.id, title: 'Принять кассу', category: 'cash', sortOrder: 1, status: 'done', completedAt: now } });
+  const notice = await prisma.workdayNotification.create({ data: { userId: user.id, taskId: task.id, kind: 'task', fingerprint: `old-audit-${user.id}`, title: task.title, body: 'Проверить', sentAt: prior, scheduledAt: prior, pushDeliveredAt: prior } });
+  await writeEmployeeActivity(user.id, session.sessionHash, { key: 'old-audit-open', kind: 'interaction', context: { target: 'notification', ref: String(notice.id), stage: 'open' } }, now);
+  const before = await prisma.workdayNotification.findUnique({ where: { id: notice.id } });
+  const report = await employeeActivityReport(user.id, '2026-10-26', now);
+  const view = buildActivityView(report);
+  assert.equal(view.notices.length, 1);
+  assert.equal(view.notices[0].sent.length, 0);
+  assert.equal(view.notices[0].firstSentAt, prior.toISOString());
+  assert.equal(view.notices[0].pushAccepted[0], prior.toISOString());
+  assert.equal(view.notices[0].completed, true);
+  assert.equal(view.notices[0].opened[0], now.toISOString());
+  assert.equal(view.saved.length, 1);
+  assert.deepEqual(await prisma.workdayNotification.findUnique({ where: { id: notice.id } }), before);
+});
 test('procurement QR notifications retain shown/open/error evidence without treating cancellation as execution', async () => {
   const now = new Date('2026-10-25T08:00:00Z');
   const user = await prisma.user.create({ data: { login: `activity-qr-${Date.now()}`, name: 'Тест QR-аудита', passwordHash: 'not-a-real-login', role: 'EMPLOYEE', portalArea: 'PROCUREMENT' } }); ids.push(user.id);
@@ -75,7 +113,7 @@ test('single and bulk employee schedule saves appear as actions; administrator e
   const schedule = report.sections.find(s=>s.id==='schedule')!;
   assert.equal(schedule.actions,3);
   assert.equal(schedule.visits,0);
-  assert.ok(schedule.events.every(e=>e.title.startsWith('Сохранил график:')));
+  assert.ok(schedule.events.every(e=>e.title.startsWith('График ') && e.title.includes(' → ') && e.period));
   assert.ok(schedule.events.every(e=>!e.title.includes('28 октября')));
 });
 test('unavailable journal table does not throw or mutate business data', async () => {
@@ -141,7 +179,7 @@ test('stale or incomplete 1C evidence does not become employee delay after shift
   await prisma.workdayNotification.create({data:{userId:u.id,fingerprint:`employee-expense:${u.id}:box:${ref}:1`,kind:'employee_expense_payable',title:'Расход',body:'Оформить',scheduledAt:now,sentAt:now,status:'sent'}});
   const run=await prisma.expenseRequestSyncRun.create({data:{runKey:ref,periodFrom:now,periodTo:now,status:'completed',sourceComplete:true}});
   const c=await prisma.expenseRequestAdminCase.create({data:{oneCRequestRef:ref,latestSourceHash:'hash',lastSeenAt:new Date(+now-400000),amount:1200}});
-  const source={amount:1200,cashbox:{ref:'box'},execution:{complete:true,remaining_amount:1200,executed_amount:0},linkedCashExpenseOrders:{complete:true,rows:[]}};
+  const source={amount:1200,date:'2026-10-24T10:00:00+03:00',cashbox:{ref:'box'},execution:{complete:true,remaining_amount:1200,executed_amount:0},linkedCashExpenseOrders:{complete:true,rows:[]}};
   try {
     const ev=await prisma.expenseRequestAdminEvaluation.create({data:{caseId:c.id,syncRunId:run.id,notApprovedCycle:1,sourceHash:'hash',ruleVersion:'test',category:'other',categoryCandidates:[],completenessState:'complete',evidenceState:'complete',reasonCodes:[],missingInformation:[],decisionSources:[],confidence:'high',ambiguous:false,sourceComplete:true,normalizedSource:source}});
     let r=await employeeActivityReport(u.id,'2026-10-24',now);assert.equal(r.obligations[0].attention,'unknown');

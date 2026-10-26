@@ -1,79 +1,47 @@
 'use client';
-import { Fragment, useState } from 'react';
-import { AlertTriangle, Check, ChevronDown, MousePointer2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronDown, AlertTriangle, Search } from 'lucide-react';
 import type { EmployeeActivityReport } from '@/lib/employee-activity-report';
-import type { AuditEpisode, AuditStep } from '@/lib/employee-audit-timeline';
-export const activityTime = (value: string) => new Date(value).toLocaleTimeString('ru-RU', { timeZone: 'Europe/Moscow', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-const shortTime = (value: string) => activityTime(value).slice(0, 5);
+import { buildProcessView, filterProcessView, elapsed, type ProcessItem } from '@/lib/employee-process-view';
 
-function describe(item: AuditEpisode, step: AuditStep) {
-  const place = item.visits ? item.title : step.opened === 'notification' || step.label === 'Уведомление отправлено' || step.label === 'Сообщение появилось в видимой области приложения' ? 'Уведомления' : item.id.startsWith('cash:') ? 'Выдача денег' : item.id.startsWith('handover:') ? 'Сдача смены' : item.id.startsWith('notification:') ? 'Уведомления' : 'Проверка чека';
-  const labels: Record<string, [string, string]> = {
-    'Уведомление отправлено': ['Система отправила уведомление', ''],
-    'Сообщение появилось в видимой области приложения': ['Уведомление показалось в приложении', ''],
-    'Открыл уведомление': ['Открыл уведомление', 'Открытие записано'],
-    'Открыл карточку': ['Открыл карточку', ''],
-    'Закрыл карточку': ['Закрыл карточку', ''],
-    'Нажал ответ о ненайденном документе': ['Выбрал ответ: документ не найден', ''],
-    'Приложение получило подтверждение сохранения ответа': ['Получил подтверждение отправки', 'Ответ сохранён'],
-    'Не удалось отправить. Попробуйте ещё раз.': ['На экране появилась ошибка', 'Отправка не подтверждена'],
-    'На экране показана ошибка': ['На экране появилась ошибка', 'Текст не записан'],
-    'Открыта форма сдачи смены': ['Открыл сдачу смены', ''],
-    'Запущена сдача смены': ['Нажал «Сдать смену»', ''],
-    'На экране показано: «Проверяем кассу…»': ['На экране — проверка кассы', 'Ожидание'],
-    'Закрытие ККМ подтверждено системой': ['Система проверила закрытие ККМ', 'ККМ закрыта'],
-  };
-  const [action, outcome] = item.visits ? ['Открыл раздел', ''] : labels[step.label] || [step.label, ''];
-  return { place, action, outcome };
+export const activityTime = (value:string) => new Date(value).toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const time=(value:string)=>activityTime(value).slice(0,5);
+const dated=(value:string)=>new Date(value).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+const sections={day:'Рабочий день',notifications:'Уведомления',payroll:'Зарплата',schedule:'График',other:'Другое'};
+
+function ProcessRow({item,date}:{item:ProcessItem;date:string}) {
+ const [limit,setLimit]=useState(30);
+ const opened=item.steps.find(s=>s.opened==='notification');
+ const shown=item.steps.find(s=>s.target==='notification'&&s.stage==='shown');
+ const stamp=(at:string)=>new Date(Date.parse(at)+10800000).toISOString().slice(0,10)===date?time(at):dated(at);
+ return <article className="border-b border-slate-200 py-3 last:border-0">
+   <div className="flex gap-3 sm:gap-5"><time className="w-11 shrink-0 pt-0.5 text-sm tabular-nums text-slate-600">{stamp(item.at)}</time><div className="min-w-0 flex-1">
+     <div className="flex items-start justify-between gap-2"><h3 className="text-base font-semibold leading-6 text-slate-900">{item.title}</h3>{item.unresolved&&<AlertTriangle aria-label="Есть событие для проверки" size={18} className="mt-1 shrink-0 text-amber-700"/>}</div>
+     <p className={'mt-1 text-sm leading-6 '+(item.unresolved?'text-amber-900':item.confirmed?'text-emerald-800':'text-slate-700')}>{item.attentionReason||item.outcome}{!item.attentionReason&&item.outcomeAt?' · '+stamp(item.outcomeAt):''}</p>
+     {item.attentionReason&&item.confirmed&&<p className="mt-1 text-sm leading-6 text-slate-700">{item.outcome}{item.outcomeAt?' · '+stamp(item.outcomeAt):''}</p>}
+     {item.message!==undefined&&<p className="mt-1 text-sm leading-6 text-slate-600">{shown?'Показано в приложении '+stamp(shown.at):'Показ не записан'} · {opened?'Открыто '+stamp(opened.at):'Открытие не записано'}</p>}
+     {item.summary.length>0&&<p className="mt-1 text-sm leading-6 text-slate-600">{item.summary.join(' · ')}</p>}
+     <details className="group mt-1"><summary className="flex min-h-10 w-fit cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-[#945e3b]">Ход операции<ChevronDown size={15} className="group-open:rotate-180"/></summary>
+       {item.message&&<p className="mb-3 rounded-lg bg-stone-50 p-3 text-sm leading-6 text-slate-700">{item.message}</p>}
+       <ol className="divide-y divide-slate-100">{item.steps.slice(0,limit).map(s=><li key={s.id} className="flex gap-3 py-2.5"><time title={activityTime(s.at)} className="w-11 shrink-0 text-sm tabular-nums text-slate-500">{stamp(s.at)}</time><div className="min-w-0"><p className={'text-sm leading-6 '+(s.tone==='error'?'font-medium text-amber-900':'text-slate-800')}>{s.label}{s.durationMs!==undefined?' · '+elapsed(s.durationMs):''}</p>{s.note&&<p className="mt-0.5 text-sm leading-5 text-slate-600">{s.note}</p>}<p className="mt-1 text-xs text-slate-500">{s.origin==='system'?'Подтверждение системы':'Событие из приложения'}</p></div></li>)}</ol>
+       {item.steps.length>limit&&<button className="min-h-10 text-sm font-medium text-[#945e3b]" onClick={()=>setLimit(n=>n+30)}>Ещё события · {item.steps.length-limit}</button>}
+     </details>
+   </div></div>
+ </article>;
 }
 
-export default function EmployeeDayReport({ data }: { data: EmployeeActivityReport }) {
-  const [filter, setFilter] = useState('all');
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const items = data.audit || [];
-  const source = items.flatMap(item => item.steps.map(step => ({ item, step, ...describe(item, step) }))).sort((a, b) => a.step.at.localeCompare(b.step.at));
-  const all: (typeof source[number] & { followUp?: AuditStep })[] = [];
-  const attempts = new Set(['Отправил ответ', 'Нажал ответ о ненайденном документе', 'Нажал «Операция не моя»', 'Нажал отмену ответа «Не моя операция»']);
-  // Keep the immediate UI response beside its click, retaining both exact events in details.
-  // Never combine a server/1C result, another object, or a delayed response.
-  for (let i = 0; i < source.length; i++) {
-    const row = source[i], next = source[i + 1];
-    const elapsed = next ? Date.parse(next.step.at) - Date.parse(row.step.at) : -1;
-    if (attempts.has(row.step.label) && next?.item.id === row.item.id && next.step.origin === 'app' && elapsed >= 0 && elapsed < 10000 && ['Не удалось отправить. Попробуйте ещё раз.', 'На экране показана ошибка', 'Приложение получило подтверждение сохранения ответа'].includes(next.step.label)) {
-      all.push({ ...row, outcome: next.outcome, followUp: next.step }); i++;
-    } else all.push(row);
-  }
-  const visible = all.filter(row => filter === 'all' || (filter === 'problems' ? ['error', 'warning'].includes((row.followUp || row.step).tone) : row.place === 'Уведомления'));
-  const pending = data.obligations.filter(item => item.attention === 'employee' || item.attention === 'owner');
-  return <>
-    {pending.length > 0 && <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3"><p className="text-sm font-semibold text-amber-950">Осталось в работе</p>{pending.map(item => <p key={item.id} className="mt-1 text-sm text-amber-950">{item.title} — {item.openedAt ? `открыто в ${shortTime(item.openedAt)}, ` : ''}{item.result.toLowerCase()}.</p>)}</div>}
-    <nav aria-label="Действия сотрудника" className="admin-section-tabs mb-3">
-      {([['all', 'Все действия'], ['problems', 'Ошибки и предупреждения'], ['notifications', 'Уведомления']] as const).map(([key, title]) => <button key={key} onClick={() => { setFilter(key); setExpanded(null); }} className={`admin-section-tab ${filter === key ? 'is-active' : ''}`} aria-pressed={filter === key}>{title}</button>)}
-    </nav>
-    <p className="mb-3 text-xs text-slate-500">По порядку в течение дня · время московское</p>
-    {data.truncated && <p role="status" className="mb-3 rounded-lg bg-amber-50 p-3 text-sm">Достигнут лимит журнала. Показана часть событий.</p>}
-    {visible.length ? <div role="table" aria-label="Ход работы в приложении" className="overflow-hidden rounded-xl border border-slate-200">
-      <div role="row" className="hidden grid-cols-[60px_125px_minmax(0,1fr)_170px_20px] gap-3 border-b border-slate-200 bg-stone-50 px-4 py-2.5 text-xs font-semibold text-slate-500 sm:grid">
-        {['Время', 'Где', 'Что произошло', 'Результат', ''].map((label, i) => <span role="columnheader" key={i}>{label}</span>)}
-      </div>
-      {visible.map(({ item, step, place, action, outcome, followUp }) => {
-        const tone = (followUp || step).tone;
-        const key = `${item.id}:${step.id}`;
-        const problem = tone === 'error' || tone === 'warning';
-        const colored = tone === 'error' ? 'text-red-800' : tone === 'warning' ? 'text-amber-900' : tone === 'success' ? 'text-emerald-800' : 'text-slate-600';
-        const details = !item.visits;
-        return <Fragment key={key}>
-          <div role="row" className={`grid grid-cols-[48px_minmax(0,1fr)_20px] items-start gap-x-3 gap-y-1 border-b border-slate-100 px-3 py-2.5 last:border-b-0 sm:grid-cols-[60px_125px_minmax(0,1fr)_170px_20px] sm:px-4 ${problem ? tone === 'error' ? 'bg-red-50/60' : 'bg-amber-50/60' : 'bg-white'}`}>
-            <time role="cell" title={activityTime(step.at)} className="row-span-3 pt-0.5 text-xs tabular-nums text-slate-500 sm:row-span-1">{shortTime(step.at)}</time>
-            <span role="cell" className="text-xs text-slate-500 sm:pt-0.5">{place}</span>
-            <div role="cell" className="col-start-2 min-w-0 text-sm sm:col-auto"><p className={item.visits ? 'text-slate-600' : 'font-medium text-slate-900'}>{action}</p>{!item.visits && <p className="mt-0.5 break-words text-xs text-slate-500">{item.title}</p>}</div>
-            <span role="cell" className={`col-start-2 flex items-start gap-1.5 text-xs sm:col-auto sm:pt-0.5 ${colored}`}>{problem ? <AlertTriangle size={13} className="mt-0.5 shrink-0"/> : tone === 'success' ? <Check size={14} className="shrink-0"/> : null}{outcome || (problem ? step.label : <span className="hidden text-slate-300 sm:inline">—</span>)}</span>
-            <span role="cell" className="col-start-3 row-start-1 sm:col-auto sm:row-auto">{details && <button aria-label={`Подробности: ${shortTime(step.at)}, ${action}`} aria-expanded={expanded === key} onClick={() => setExpanded(expanded === key ? null : key)} className="-m-2 flex h-9 w-9 items-center justify-center rounded-md text-[#996744] hover:bg-[#f5e8dc]"><ChevronDown size={15} className={expanded === key ? 'rotate-180' : ''}/></button>}</span>
-          </div>
-          {expanded === key && <div role="row" className="border-b border-slate-200 bg-stone-50 px-4 py-3 sm:pl-[92px]"><div role="cell" className="space-y-1 text-xs leading-5 text-slate-600"><p>{activityTime(step.at)} · {step.origin === 'system' ? 'Запись системы' : 'Запись из приложения сотрудника'}</p>{item.notice && <p><strong className="font-medium">Сообщение: </strong>{item.notice}</p>}{step.note && <p>{step.note}</p>}{followUp && <><p>{activityTime(followUp.at)} · {followUp.label}</p>{followUp.note && <p>{followUp.note}</p>}</>}</div></div>}
-        </Fragment>;
-      })}
-    </div> : <div className="rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center"><MousePointer2 className="mx-auto mb-3 text-[#996744]" size={24}/><p className="font-semibold text-slate-800">{filter === 'all' ? 'За этот день записей пока нет' : 'Таких событий не записано'}</p><p className="mt-2 text-sm text-slate-500">Отсутствие записи не означает, что сотрудник не работал.</p></div>}
-    <details className="mt-4 text-xs leading-5 text-slate-500"><summary className="cursor-pointer">О данных журнала</summary><p className="mt-2">Открытие не доказывает прочтение. Сохранённый ответ не подтверждает исправление в 1С. Системное событие не всегда устанавливает автора действия.</p><p className="mt-2">Собираются только подключённые действия. При потере связи часть событий может не сохраниться. Длительность просмотра и другие приложения не отслеживаются. Хранение: {data.retentionDays} дней.</p></details>
-  </>;
+export default function EmployeeDayReport({data}:{data:EmployeeActivityReport}) {
+ const items=useMemo(()=>buildProcessView(data),[data]);
+ const [attentionOnly,setAttentionOnly]=useState(false),[section,setSection]=useState('all'),[query,setQuery]=useState(''),[limit,setLimit]=useState(20);
+ const {items:filtered,attentionCount}=filterProcessView(items,{query,section,attentionOnly});
+ const coverageMissing=!data.startedAt||data.date<new Date(data.startedAt).toLocaleDateString('en-CA',{timeZone:'Europe/Moscow'});
+ return <div>
+   <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600"><span>{data.shift.startedAt?'Начало смены '+time(data.shift.startedAt):'Отметки начала смены нет'}</span>{data.shift.endedAt&&<span>Завершение {time(data.shift.endedAt)}</span>}</div>
+   {(data.truncated||coverageMissing)&&<p role="status" className="mb-3 rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-900">Журнал за день неполный. Ниже только записанные события; отсутствие события не означает бездействие сотрудника.</p>}
+   <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3"><label className="flex min-h-10 min-w-40 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3"><Search size={16} className="shrink-0 text-slate-500"/><input aria-label="Найти действие" placeholder="Найти действие" className="w-full min-w-0 bg-transparent py-2 text-sm outline-none" value={query} onChange={e=>{setQuery(e.target.value);setLimit(20);}}/></label><select aria-label="Раздел приложения" value={section} onChange={e=>{setSection(e.target.value);setLimit(20);}} className="min-h-10 max-w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"><option value="all">Все разделы</option>{Object.entries(sections).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select><button type="button" aria-pressed={attentionOnly} aria-label={`Требует проверки: ${attentionCount}`} onClick={()=>{setAttentionOnly(value=>!value);setLimit(20);}} className={'flex min-h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#945e3b] '+(attentionOnly?'border-[#ba835b] bg-[#f5e8dc] text-[#754325]':'border-slate-200 bg-white text-slate-700')}><span>Требует проверки</span><span className={'inline-flex min-w-6 items-center justify-center rounded-md px-1.5 py-0.5 text-xs tabular-nums '+(attentionCount?'bg-[#f4d8b4] text-[#754325]':'bg-slate-100 text-slate-600')}>{attentionCount}</span></button></div>
+   {filtered.slice(0,limit).map(item=><ProcessRow key={item.id} item={item} date={data.date}/>)}
+   {!filtered.length&&<p role="status" className="py-8 text-center text-sm leading-6 text-slate-600">{!items.length?'Действия за этот день не записаны. Это не означает, что сотрудник не работал.':attentionOnly?query||section!=='all'?'По выбранным условиям нет записей для проверки.':'В записанном журнале нет нерешённых ошибок.':'По этому условию событий нет.'}</p>}
+   {filtered.length>limit&&<button className="min-h-11 rounded-lg border border-slate-200 px-4 text-sm text-[#945e3b]" onClick={()=>setLimit(n=>n+20)}>Показать ещё · {filtered.length-limit}</button>}
+   <details className="mt-3 border-t border-slate-200 pt-2 text-sm leading-6 text-slate-600"><summary className="min-h-11 cursor-pointer py-2 font-medium text-slate-700">Точность данных</summary><p>«Требует проверки» показывает записанные затруднения без последующего подтверждения результата. Счётчик учитывает выбранный раздел и поиск. Это не доказательство, что сбой продолжается сейчас. Устранённые ошибки остаются в общем списке и подробностях.</p><p className="mt-2">Открытие сообщения не доказывает прочтение. Подтверждение результата системой не всегда устанавливает автора и точное время действия в 1С. Интервал между открытием и результатом — не оценка скорости сотрудника.</p><p className="mt-2">Время ответа — длительность запроса по данным приложения, включая время в фоне, а не время бездействия. Просмотры зарплаты и графика сгруппированы по периоду. Частые открытия «Рабочего дня» без действий не показаны.</p><p className="mt-2">Запись событий не блокирует работу. При отсутствии сети, старой версии приложения или достижении лимита часть событий может отсутствовать. Новые подробности появятся после обновления приложения; прошлые незаписанные действия восстановить нельзя. Служебные подключения исключены. История — {data.retentionDays} дней.</p></details>
+ </div>;
 }
