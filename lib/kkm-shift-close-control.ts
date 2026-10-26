@@ -79,19 +79,17 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
 
   const checks = await sources.loadOneCKkmChecks(kkmShiftCloseOneCPeriod(input.date)).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'ONE_C_REQUEST_FAILED' }));
   if (!checks.complete) return { ...empty, cashierRef, status: 'unavailable', sourceError: 'Не удалось получить полный список чеков 1С.' };
-  const employeeChecks = checks.data.filter((check) => check.cashier.ref === cashierRef).sort((a, b) => Date.parse(a.dateTime) - Date.parse(b.dateTime));
+  const employeeChecks = checks.data.filter((check) => check.cashier.ref === cashierRef).sort((a, b) => Date.parse(a.fiscalDateTime || a.dateTime) - Date.parse(b.fiscalDateTime || b.dateTime));
   const lastCheck = employeeChecks.at(-1) ?? null;
   if (!lastCheck?.cashRegisterRef || !lastCheck.kktRegistrationNumber) {
     return { ...empty, cashierRef, status: 'unavailable', sourceError: 'По чекам 1С не удалось определить ККТ сотрудника за этот день.' };
   }
 
   const shifts = await sources.getCashShifts(input.date).catch(() => ({ ok: false as const, dateFrom: input.date, dateTo: input.date, shifts: [], error: 'ONE_C_REQUEST_FAILED' }));
-  if (!shifts.ok) return { ...empty, cashierRef, cashRegisterRef: lastCheck.cashRegisterRef, kktRegistrationNumber: lastCheck.kktRegistrationNumber, status: 'unavailable', sourceError: 'Не удалось проверить состояние смены в 1С.' };
-  const candidates = shifts.shifts.filter((shift) => shift.cashRegister.ref === lastCheck.cashRegisterRef && shift.posted !== false && shift.deletionMark !== true);
+  const candidates = (shifts.ok ? shifts.shifts : []).filter((shift) => shift.cashRegister.ref === lastCheck.cashRegisterRef && shift.posted !== false && shift.deletionMark !== true);
   const shift = [...candidates].sort((a, b) => Date.parse(b.closedAt || b.openedAt || b.datetime) - Date.parse(a.closedAt || a.openedAt || a.datetime))[0] ?? null;
-  if (!shift) return { ...empty, cashierRef, cashRegisterRef: lastCheck.cashRegisterRef, kktRegistrationNumber: lastCheck.kktRegistrationNumber, status: 'one_c_open', sourceError: 'Смена этой ККМ в 1С не найдена.' };
-  const common = { ...empty, cashierRef, cashRegisterRef: shift.cashRegister.ref, cashRegisterName: shift.cashRegister.name, kktRegistrationNumber: lastCheck.kktRegistrationNumber, oneCShiftNumber: shift.number, fiscalShiftNumber: shift.fiscalShiftNumber, oneCOpenedAt: shift.openedAt, oneCClosedAt: shift.closedAt };
-  const oneCClosed = Boolean(shift.closedAt) && normalized(shift.status).includes('закрыт');
+  const common = { ...empty, cashierRef, cashRegisterRef: lastCheck.cashRegisterRef, cashRegisterName: shift?.cashRegister.name || '', kktRegistrationNumber: lastCheck.kktRegistrationNumber, oneCShiftNumber: shift?.number || '', fiscalShiftNumber: shift?.fiscalShiftNumber || '', oneCOpenedAt: shift?.openedAt || '', oneCClosedAt: shift?.closedAt || '' };
+  const oneCClosed = Boolean(shift?.closedAt) && normalized(shift?.status || '').includes('закрыт');
 
   const period = moscowPeriod(input.date);
   const ofd = await sources.loadPlatformaOfdZReports({ kktRegistrationNumber: lastCheck.kktRegistrationNumber, ...period }).catch(() => ({ complete: false as const, checkedAt, data: [], errorCode: 'OFD_REQUEST_FAILED' }));
@@ -101,16 +99,32 @@ export async function verifyEmployeeKkmShiftClose(input: { db: Db; userId: numbe
   // Compare KKT events on the fiscal clock: the 1C document clock can be ahead
   // of the receipt and Z-report. Without fiscal evidence remain conservative.
   const lastCheckAt = Date.parse(lastCheck.fiscalDateTime || lastCheck.dateTime);
-  const report = ofd.data.find((item) => Boolean(shift.fiscalShiftNumber)
+  const latestKktCheckAt = Math.max(...checks.data.filter(c => c.kktRegistrationNumber === lastCheck.kktRegistrationNumber)
+    .map(c => Date.parse(c.fiscalDateTime || c.dateTime)));
+  let report = ofd.data.find((item) => Boolean(shift?.fiscalShiftNumber)
     && item.kktRegistrationNumber === lastCheck.kktRegistrationNumber
-    && item.shiftNumber === shift.fiscalShiftNumber
+    && item.shiftNumber === shift?.fiscalShiftNumber
     && Number.isFinite(Date.parse(item.closedAt))
-    && Date.parse(item.closedAt) >= lastCheckAt
+    && Date.parse(item.openedAt) <= lastCheckAt
+    && Date.parse(item.closedAt) >= latestKktCheckAt
+    && (!lastCheck.fiscalDriveNumber || item.fiscalDriveNumber === lastCheck.fiscalDriveNumber)
     && Date.parse(item.closedAt) >= Date.parse(period.from)
     && Date.parse(item.closedAt) < Date.parse(period.to)) ?? null;
-  if (!report && !oneCClosed) return { ...common, status: 'one_c_open', sourceError: `Состояние смены в 1С: ${shift.status || 'не указано'}. Закрытие этой смены в ОФД не найдено.` };
+  if (!report && lastCheck.fiscalDateTime && lastCheck.fiscalDriveNumber && lastCheck.fiscalDocumentNumber && lastCheck.fiscalSign && !lastCheck.fiscalConflict) {
+    // A 1C shift's fiscal identity can lag behind the actual fiscal evidence.
+    // Bind the actual fiscal receipt to one unique OFD shift on the same FN/KKT.
+    // Include other cashiers' later checks on this physical KKT in the time guard.
+    const fiscalReports = ofd.data.filter(item => item.kktRegistrationNumber === lastCheck.kktRegistrationNumber
+      && item.fiscalDriveNumber === lastCheck.fiscalDriveNumber
+      && Date.parse(item.openedAt) <= lastCheckAt && Date.parse(item.closedAt) >= latestKktCheckAt
+      && Date.parse(item.closedAt) >= Date.parse(period.from) && Date.parse(item.closedAt) < Date.parse(period.to));
+    if (fiscalReports.length === 1) {
+      report = fiscalReports[0];
+    }
+  }
+  if (!report && !oneCClosed) return { ...common, status: 'unavailable', sourceError: 'Закрытие ОФД пока не подтверждено. Открытый или запаздывающий документ 1С не доказывает, что касса не закрыта. Портал повторит проверку автоматически.' };
   if (!report) return { ...common, status: 'ofd_missing', sourceError: '1С закрыла смену, но Z‑отчёт этой ККТ не найден в OFD.' };
-  return { ...common, status: 'confirmed', ofdOpenedAt: report.openedAt, ofdClosedAt: report.closedAt, ofdDocumentLink: report.documentLink, sourceError: '' };
+  return { ...common, status: 'confirmed', fiscalShiftNumber: report.shiftNumber, ofdOpenedAt: report.openedAt, ofdClosedAt: report.closedAt, ofdDocumentLink: report.documentLink, sourceError: '' };
 }
 
 export function kkmShiftCloseFingerprint(workDayEntryId: number) {
