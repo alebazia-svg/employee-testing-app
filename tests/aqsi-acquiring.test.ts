@@ -1,3 +1,4 @@
+import {bankOperationKey} from '../lib/terminal-fiscal-matching';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadAqsiOperations } from '../lib/aqsi-acquiring';
@@ -15,13 +16,16 @@ test('loads successful aQsi card and SBP slips as portal bank operations', async
       calls.push(String(url));
       assert.equal(new Headers(init?.headers).get('x-client-key'), 'Application secret');
       return response({ count: 2, pages: 1, rows: [
-        { id: 'card', content: { type: 'purchase', amount: 60000, dateTime: '2026-09-01T11:37:20+03:00', retrievalReferenceNumber: 'card-rrn', terminalId: '10693079', iface: 'contactless', responseCode: '000' } },
+        { id: 'card', content: { sequenceNumber:'000413', type: 'purchase', amount: 60000, dateTime: '2026-09-01T11:37:20+03:00', retrievalReferenceNumber: 'card-rrn', terminalId: '10693079', iface: 'contactless', responseCode: '000' } },
         { id: 'qr', content: { type: 'purchase', amount: 140000, dateTime: '2026-09-01T15:45:23+03:00', retrievalReferenceNumber: 'qr-rrn', terminalId: '10693079', iface: 'sbp', responseCode: 'SUCCESS' } },
       ] });
     },
   });
   assert.equal(result.complete, true);
   assert.equal(result.data.length, 2);
+  assert.equal(result.data[0].terminalReceiptNumber,'000413');
+  assert.equal(bankOperationKey(result.data[0]),bankOperationKey({...result.data[0],terminalReceiptNumber:'000999'}),'printed number enriches display, never changes payment identity');
+  assert.equal(result.data[1].terminalReceiptNumber,undefined);
   assert.deepEqual(result.data.map((item) => item.rawType), ['TERM_CARD', 'TERM_SBP']);
   assert.match(calls[0], /filtered\.terminalId=10693079/);
 });

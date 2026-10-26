@@ -22,6 +22,7 @@ const eventMeta: Record<string, AdminInboxEventMeta> = {
     category: 'requests', typeLabel: 'Запрос подотчёта', actionLabel: 'Открыть подотчёт',
   },
   'workday_issue.employee_action': { category: 'messages', typeLabel: 'Ответ сотрудника', actionLabel: 'Открыть обсуждение' },
+  'terminal_fiscal_review.help_requested': { category: 'messages', typeLabel: 'Просьба о помощи', actionLabel: 'Помочь сотруднику' },
   'terminal_fiscal_review.employee_action': { category: 'messages', typeLabel: 'Ответ по продаже', actionLabel: 'Открыть обсуждение' },
   'procurement.delivery_requested': {
     category: 'requests', typeLabel: 'Пополнение подотчёта', actionLabel: 'Открыть подотчёт',
@@ -172,7 +173,7 @@ export function adminInboxSourceState(input: {
     // unresolved business decision. Actual employee replies still need attention.
     if (['open', 'admin_review'].includes(input.businessStatus ?? '')
       && terminalFiscalSourceIncomplete(input.reasonCode ?? '')
-      && !['terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'].includes(input.eventType ?? '')) {
+      && !['terminal_fiscal_review.help_requested', 'terminal_fiscal_review.employee_action', 'terminal_fiscal_review.employee_message'].includes(input.eventType ?? '')) {
       return { active: false, label: 'Ожидаются данные источника', tone: 'neutral' };
     }
     if (input.businessStatus === 'open') return { active: true, label: 'Проверка активна', tone: 'attention' };

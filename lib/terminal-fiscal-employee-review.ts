@@ -1,3 +1,4 @@
+import {terminalPaymentCopy} from './terminal-payment-copy';
 import 'server-only';
 
 import { terminalFiscalSourceIncomplete } from './terminal-fiscal-reason-view';
@@ -599,13 +600,18 @@ export async function syncTerminalFiscalEmployeeReviews(
             fingerprint: `${reviewKey}:created:${userId}`,
             kind: 'terminal_fiscal_review',
             title: 'Проверьте чек',
-            body: terminalFiscalEmployeeReviewText({ operationAt, amountKopecks: record.amountKopecks, sharedShift: sharedAssignment(assignmentScope) }),
+            body: terminalPaymentCopy({ operationAt, amountKopecks: record.amountKopecks, receiptNumber:record.evidence.terminalReceiptNumber, method:record.evidence.bankOperationRawType, shared:sharedAssignment(assignmentScope), relative:false }).body,
             scheduledAt: evaluatedAt,
           },
           update: {},
         });
         }
       }
+      // Enrich an active notice from the exact bank operation; history stays intact.
+      if (mode === 'notify' && record.evidence.terminalReceiptNumber && review.status === 'open') await tx.workdayNotification.updateMany({
+        where:{reviewId:review.id,kind:'terminal_fiscal_review',status:{in:['pending','sent']}},
+        data:{body:terminalPaymentCopy({operationAt,amountKopecks:record.amountKopecks,receiptNumber:record.evidence.terminalReceiptNumber,method:record.evidence.bankOperationRawType,shared:sharedAssignment(assignmentScope),relative:false}).body},
+      });
       if (mode === 'notify' && !automaticDelivery && existing === null && review.status === 'open') {
         const [employee, admins] = await Promise.all([
           sharedAssignment(assignmentScope)

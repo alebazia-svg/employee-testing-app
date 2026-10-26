@@ -19,7 +19,7 @@ export function employeeAttentionSummary(action: number, waiting: number, loadin
 }
 export function employeeReviewState(input: { response?: string; handler?: string; adminRepliedAfterResponse: boolean }) {
   if (input.adminRepliedAfterResponse) return { state: 'action' as const, status: 'Есть ответ' };
-  if (input.response === 'help') return { state: 'waiting' as const, status: 'Ожидает ответа' };
+  if (input.response === 'help') return { state: 'waiting' as const, status: 'Запрос отправлен руководителю' };
   if (input.response === 'not_mine') return { state: 'waiting' as const, status: 'Ответственный уточняется' };
   if (input.handler) return { state: 'waiting' as const, status: `Проверяет ${input.handler}` };
   return { state: 'action' as const, status: 'Нужно проверить' };

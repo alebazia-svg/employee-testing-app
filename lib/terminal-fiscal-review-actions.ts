@@ -1,15 +1,16 @@
+import {terminalFiscalHelpCopy,terminalPaymentMetadata,TERMINAL_FISCAL_HELP_TYPE} from './terminal-payment-copy';
 import 'server-only';
 import type { PrismaClient } from '@prisma/client';
 
 export type TerminalFiscalEmployeeAction = 'open' | 'help' | 'not_mine' | 'undo_not_mine';
 
 async function notifyAdmins(tx: Parameters<Parameters<PrismaClient['$transaction']>[0]>[0], input: {
-  reviewId: string; eventKey: string; title: string; body: string; now: Date;
+  reviewId: string; eventKey: string; title: string; body: string; now: Date; type?:string;
 }) {
   const event = await tx.adminInboxEvent.upsert({
     where: { eventKey: input.eventKey },
-    update: { title: input.title, body: input.body, occurredAt: input.now },
-    create: { eventKey: input.eventKey, type: 'terminal_fiscal_review.employee_action', title: input.title, body: input.body, href: `/admin/workday/payment-checks/${input.reviewId}`, sourceType: 'terminal_fiscal_review', sourceId: input.reviewId, occurredAt: input.now },
+    update: {},
+    create: { eventKey: input.eventKey, type: input.type ?? 'terminal_fiscal_review.employee_action', title: input.title, body: input.body, href: `/admin/workday/payment-checks/${input.reviewId}`, sourceType: 'terminal_fiscal_review', sourceId: input.reviewId, occurredAt: input.now },
   });
   const admins = await tx.user.findMany({ where: { role: 'ADMIN', isActive: true }, select: { id: true } });
   if (admins.length) await tx.adminInboxReceipt.createMany({ data: admins.map((admin) => ({ eventId: event.id, userId: admin.id })), skipDuplicates: true });
@@ -22,7 +23,7 @@ export async function applyTerminalFiscalEmployeeAction(input: {
   return input.prisma.$transaction(async (tx) => {
     const review = await tx.terminalFiscalEmployeeReview.findFirst({
       where: { id: input.reviewId, status: 'open', OR: [{ employeeId: input.userId }, { participants: { some: { userId: input.userId } } }] },
-      include: { participants: { include: { user: { select: { id: true, name: true } } } } },
+      include: { messages:{where:{author:{role:'ADMIN'}},select:{id:true},orderBy:{createdAt:'desc'},take:1}, notifications:{where:{kind:'terminal_fiscal_review'},select:{body:true},orderBy:{scheduledAt:'desc'},take:1}, participants: { include: { user: { select: { id: true, name: true } } } } },
     });
     if (!review) throw new Error('REVIEW_NOT_AVAILABLE');
     let participant = review.participants.find((item) => item.userId === input.userId);
@@ -40,7 +41,8 @@ export async function applyTerminalFiscalEmployeeAction(input: {
 
     if (input.action === 'help') {
       await tx.terminalFiscalReviewParticipant.update({ where: { id: participant.id }, data: { response: 'help', respondedAt: now, handlingUntil: null } });
-      await notifyAdmins(tx, { reviewId: review.id, eventKey: `terminal_fiscal_review:help:${review.id}:${input.userId}`, title: 'Сотрудник не находит чек', body: `${participant.user.name} не находит чек по оплате ${(review.amountKopecks / 100).toLocaleString('ru-RU')} ₽.`, now });
+      await notifyAdmins(tx, { reviewId: review.id, eventKey: `terminal_fiscal_review:help:${review.id}:${input.userId}${review.messages?.[0]?.id ? `:after:${review.messages[0].id}` : ''}`, type:TERMINAL_FISCAL_HELP_TYPE,
+        ...terminalFiscalHelpCopy({name:participant.user.name,amountKopecks:review.amountKopecks,operationAt:review.bankOperationAt,...terminalPaymentMetadata(review.notifications)}), now });
       return { state: 'help', handlerName: null, handlingUntil: null };
     }
 

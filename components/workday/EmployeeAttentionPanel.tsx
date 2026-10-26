@@ -67,7 +67,8 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
     } catch { if (sequence === requestSequence.current) setLoadState('error'); }
     finally { window.clearTimeout(timer); if (sequence === requestSequence.current) setRefreshing(false); }
   }, []);
-  useEffect(() => startVisibleSync(refresh, 30000), [refresh]);
+  const hasReceipt = liveItems.some(item => item.id.startsWith('review:'));
+  useEffect(() => startVisibleSync(refresh, hasReceipt ? 10000 : 30000), [refresh,hasReceipt]);
   useEffect(() => {
     const update = () => { void refresh(); };
     window.addEventListener('mobo:attention-refresh', update);
@@ -91,6 +92,9 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const returnToList = () => {recordSelected('close');setSelectedId(null);};
   const previousFocus = useRef<HTMLElement | null>(null);
   const selected = items.find(item => item.id === selectedId);
+  useEffect(()=>{
+    if(open && selectedId?.startsWith('review:') && loadState==='ready' && !refreshing && !selected && items.length===0){setOpen(false);setSelectedId(null);setScope(null);}
+  },[open,selectedId,loadState,refreshing,selected,items.length]);
   const selectedExpenseUnavailable = expenseUnavailable || expenseUnavailableRefs.includes(selected?.expenseRef ?? selectedId?.split(':')[3] ?? '');
   const reading = useRef(new Set<number>());
   const markRead = (item: Item) => {

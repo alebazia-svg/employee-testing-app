@@ -96,3 +96,11 @@ export function terminalFiscalShouldEvaluateDayClosure(
     && period.periodTo.getTime() <= moscowMidnightUtc(now).getTime();
   return completeDay && (mode === 'previous' || terminalFiscalShouldRunUnresolvedSweep(now));
 }
+
+/** Ordinary five-minute work stays unchanged; extra minute ticks only revisit open employee cases. */
+export function terminalFiscalIsRegularTick(now:Date) { return now.getUTCMinutes()%5===2; }
+export function terminalFiscalPendingPeriods(operationDates:Date[],now=new Date()) {
+  const today=moscowMidnightUtc(now), oldest=new Date(+today-6*86400000);
+  const starts=[...new Set(operationDates.filter(at=>Number.isFinite(+at)&&at>=oldest&&at<now).map(at=>+moscowMidnightUtc(at)))];
+  return starts.sort((a,b)=>b-a).slice(0,2).sort((a,b)=>a-b).map(start=>({periodFrom:new Date(start),periodTo:new Date(Math.min(+now,start+86400000))}));
+}

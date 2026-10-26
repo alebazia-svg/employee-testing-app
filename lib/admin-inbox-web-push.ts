@@ -1,3 +1,4 @@
+import {TERMINAL_FISCAL_HELP_TYPE} from './terminal-payment-copy';
 import 'server-only';
 
 import webpush from 'web-push';
@@ -29,12 +30,13 @@ function configureWebPush() {
 
 export async function dispatchAdminInboxWebPush(now = new Date()) {
   if (!configureWebPush()) throw new Error('WEB_PUSH_NOT_CONFIGURED');
-  const digest = await dispatchAdminAttentionPush(now);
+  // Personal help is dispatched before the common digest.
+  const digest = {receipts:0,sent:0,failed:0};
   // Preserve the existing 22:00–23:00 closing-blocker channel. During the
   // daytime those decisions are covered by the common digest instead.
   const digestHours = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'Europe/Moscow' }).format(now) !== '22';
   const eligibleTypes = eligibleAdminInboxWebPushTypes(now).filter(type => (!digestHours || !(ATTENTION_PUSH_TYPES as readonly string[]).includes(type)) && !isTechnicalAdminInboxDownEvent(type));
-  if (eligibleTypes.length === 0) return digest;
+  if (eligibleTypes.length === 0) return dispatchAdminAttentionPush(now);
   const eventCutoff = getAdminInboxPushEventCutoff(now);
   let sent = digest.sent;
   let failed = digest.failed;
@@ -63,7 +65,7 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
   });
   receiptCount += receipts.length;
   for (const receipt of receipts) {
-    if(receipt.event.type===RECEIPT_PUSH_TYPE && receipt.readAt) continue;
+    if([RECEIPT_PUSH_TYPE,TERMINAL_FISCAL_HELP_TYPE].includes(receipt.event.type) && receipt.readAt) continue;
     if (!isAdminInboxWebPushEligible({
       type: receipt.event.type,
       eventCreatedAt: receipt.event.createdAt,
@@ -77,6 +79,7 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
     // The late closing channel must not revive a decided or past-shift encashment.
     if (receipt.event.type === 'workday.cash_encashment_exception_requested'
       && !inbox.attention.some(item => item.event.sourceType === receipt.event.sourceType && item.event.sourceId === receipt.event.sourceId)) continue;
+    if (receipt.event.type === TERMINAL_FISCAL_HELP_TYPE && !inbox.attention.some(item => item.event.sourceType === 'terminal_fiscal_review' && item.event.sourceId === receipt.event.sourceId)) continue;
     const badgeCount = inbox.attentionCount;
     for (const subscription of receipt.user.pushSubscriptions) {
       if (!subscriptionExistedWhenAdminInboxEventWasCreated({
@@ -109,6 +112,7 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
           url: receipt.event.href,
           notificationId: receipt.event.id,
           badgeCount,
+          ...(receipt.event.type === TERMINAL_FISCAL_HELP_TYPE ? {renotify:true} : {}),
         })));
         await prisma.adminInboxDelivery.update({ where: { id: delivery.id }, data: { status: 'sent', sentAt: now, externalMessageId: subscription.id.toString(), leaseToken: null, leaseUntil: null } });
         sent += 1;
@@ -123,5 +127,6 @@ export async function dispatchAdminInboxWebPush(now = new Date()) {
   if (receipts.length < 100) break;
   cursor = receipts[receipts.length - 1].id;
   }
-  return { receipts: receiptCount, sent, failed };
+  const common=await dispatchAdminAttentionPush(now);
+  return { receipts: receiptCount+common.receipts, sent:sent+common.sent, failed:failed+common.failed };
 }
