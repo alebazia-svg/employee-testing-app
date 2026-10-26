@@ -3,7 +3,7 @@
 Owner approved a defined weekly policy after reviewing the unshipped monthly
 prototype, then explicitly authorized production deployment. Main weekly
 reminder was released and verified as 1.18.3; inspection parity follow-up below
-is locally verified and awaits the parallel 1.18.4 release before deployment.
+is locally verified, prepared as 1.18.5 after the parallel 1.18.4 release.
 Live public metadata and freshly fetched deployment branch were both 1.18.2
 before preparing this patch. Runtime commit: 8167990. Previous server source:
 d9da4c7cbb7b09b86aeeac3b75c0d0e0d461e041. No migration or schema delta;
@@ -39,6 +39,9 @@ The real isolated HTTP test compares both snapshots, rejects far weeks,
 employee access and POST. Transport tests, TypeScript and build passed.
 Parallel receipt release a718908 (1.18.4) was fast-forwarded without editing its
 files. Do not push while its deploy still expects that exact branch tip.
+Public 1.18.4 and its source a718908 were observed before choosing 1.18.5.
+Inspection runtime fix b88372f preserves the colleague's receipt changes.
+No schema changes. Release 1.18.5 is prepared, not yet deployed.
 
 ## Accepted policy
 

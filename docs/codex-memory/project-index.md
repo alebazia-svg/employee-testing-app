@@ -32,7 +32,7 @@ project from scratch.
 - Weekly schedule reminder local candidate: `schedule-week-reminder-candidate-20261026.md` —
   Friday planning, one bounded weekly calendar and live retirement; locally
   released/verified as 1.18.3; ADMIN inspection week-query parity follow-up is
-  locally verified and awaiting the parallel release. Supersedes the unshipped monthly prototype. Separate
+  locally verified/prepared as 1.18.5 after the parallel 1.18.4 release. Supersedes the unshipped monthly prototype. Separate
   activity follow-up remains deferred.
 
 - Schedule/reminder production 1.18.2: `schedule-reminders-candidate-20261026.md` —
