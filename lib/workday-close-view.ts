@@ -47,3 +47,16 @@ export function workdayTaskProgressLabel(input: {
   if (input.technicalClose && input.missed > 0) return `Пропущено шагов: ${input.missed}`;
   return input.total > 0 ? `Выполнено ${input.completed} из ${input.total}` : 'Проверок пока нет';
 }
+
+/** Persisted administrative permission is not proof of an ordinary submitted handover. */
+export function handoverClosedByAdmin(task: { category?: string; status: string; handoverData?: unknown } | null | undefined) {
+  if (!task || task.category !== 'handover' || !['missed', 'done'].includes(task.status)) return false;
+  const data = task.handoverData;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const value = (data as Record<string, unknown>).adminClosure;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const closure = value as Record<string, unknown>;
+  return typeof closure.requestId === 'string' && closure.requestId.trim().length > 0
+    && typeof closure.adminId === 'number' && Number.isSafeInteger(closure.adminId) && closure.adminId > 0
+    && typeof closure.closedAt === 'string' && Number.isFinite(Date.parse(closure.closedAt));
+}

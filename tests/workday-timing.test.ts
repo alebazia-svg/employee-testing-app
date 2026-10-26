@@ -202,3 +202,14 @@ test('flags an early checkout on the workday date', () => {
   assert.equal(violations[0].minutesLate, 20);
   assert.equal(violations[0].label, 'Ранний уход на 20 мин');
 });
+
+
+test('approved handover closure leaves audit but does not stay overdue; other missed tasks remain actionable',()=>{
+ const closed={status:'completed',shiftStartMinutes:540,shiftEndMinutes:1080,startedAt:'2026-10-26T06:04:00Z',endedAt:'2026-10-26T15:31:38Z',lateMinutes:4};
+ const handover={id:508,title:'Сдать смену',category:'handover',plannedTimeMinutes:1080,status:'missed',completedAt:null,handoverData:{adminClosure:{requestId:'approved',adminId:1,closedAt:'2026-10-26T15:31:38Z'}}};
+ const input={dateKey:'2026-10-26',todayDateKey:'2026-10-26',nowMinutes:1200,workDay:closed,tasks:[handover,{...handover,id:507,category:'cash',title:'Пересчитать наличные'}]};
+ const overdue=evaluateWorkdayTiming(input).filter(v=>v.kind==='task_overdue');
+ assert.deepEqual(overdue.map(v=>v.taskId),[507]);
+ assert.equal(evaluateWorkdayTiming({...input,workDay:{...closed,endedAt:null},tasks:[handover]}).some(v=>v.taskId===508&&v.kind==='task_overdue'),true,'an active day is not closed by display text');
+ assert.equal(evaluateWorkdayTiming({...input,tasks:[{...handover,handoverData:{}}]}).some(v=>v.taskId===508&&v.kind==='task_overdue'),true,'missing permission never hides an unfinished handover');
+});

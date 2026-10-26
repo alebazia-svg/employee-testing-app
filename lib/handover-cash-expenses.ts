@@ -1,6 +1,10 @@
 import { expenseRecord as record, expenseText as text, expenseListStage } from './expense-request-list-view';
 import { employeeExpenseSnapshot, expenseOutstanding } from './employee-expense-policy';
 import { parseOneCDateTime } from './one-c-date';
+const branchComplete = (value: Record<string, unknown>) => value.complete === true && value.truncated !== true
+  && (!Array.isArray(value.errors) || value.errors.length === 0)
+  && (!Array.isArray(value.missing_fields) || value.missing_fields.length === 0);
+
 export type HandoverCashExpenses = {
   state: 'awaiting_approval' | 'awaiting_documents' | 'documented';
   approvalAmount: number; payableAmount: number; documentedAmount: number;
@@ -19,10 +23,16 @@ export function handoverCashExpenses(input: {actual:number;expected:number|null;
   const s=record(row.source), links=record(s.linkedCashExpenseOrders), execution=record(s.execution);
   const requestAt=parseOneCDateTime(text(s.date));
   if(!requestAt||requestAt.toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'})!==countedDay)continue;
-  if((expenseOutstanding(s)===null&&expenseListStage(text(record(s.status).key),typeof s.amount==='number'?s.amount:null,s,true,s.deletionMark===true)!=='closed')||s.posted!==true||s.deletionMark!==false||execution.complete!==true||execution.amounts_consistent===false||links.complete!==true||links.truncated===true||!Array.isArray(links.rows))continue;
-  if(!['руб','руб.','rub','rur','₽'].includes(text(record(s.currency).name).toLowerCase()))continue;
+  const ownRequest=text(record(s.cashbox).ref).toLowerCase()===input.cashboxRef.toLowerCase();
+  const ownAllocation=Array.isArray(links.rows)&&links.rows.some(value=>text(record(record(value).cashbox).ref).toLowerCase()===input.cashboxRef.toLowerCase());
+  if(!ownRequest&&!ownAllocation)continue;
+  if(s.deletionMark===true||s.posted===false||text(record(s.status).key)==='rejected')continue;
+  // Paid rows also need fresh, explicit evidence. Absence/staleness is not a reversal.
+  const seen=Date.parse(row.seenAt);
+  if(!Number.isFinite(seen)||input.now-seen>360000||seen>input.now)return undefined;
+  if((expenseOutstanding(s)===null&&expenseListStage(text(record(s.status).key),typeof s.amount==='number'?s.amount:null,s,true,s.deletionMark===true)!=='closed')||s.posted!==true||s.deletionMark!==false||record(s.completeness).complete===false||!branchComplete(execution)||execution.amounts_consistent===false||!branchComplete(links)||!Array.isArray(links.rows))return undefined;
+  if(!['руб','руб.','rub','rur','₽'].includes(text(record(s.currency).name).toLowerCase()))return undefined;
   if(!['payable','approved','not_approved'].includes(text(record(s.status).key)))continue;
-  const seen=Date.parse(row.seenAt);if(!Number.isFinite(seen)||input.now-seen>360000||seen>input.now)continue;
   for(const value of links.rows){
    const r=record(value), at=parseOneCDateTime(text(r.date)), amount=Number(r.executed_amount), ref=text(r.ref);
    if(r.posted!==true||r.deletion_mark!==false||r.request_amount_conflict===true||!at||+at<=captured||+at>input.now||text(record(r.cashbox).ref).toLowerCase()!==input.cashboxRef.toLowerCase())continue;

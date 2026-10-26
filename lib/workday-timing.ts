@@ -1,6 +1,9 @@
+import { handoverClosedByAdmin } from './workday-close-view';
 import { getMoscowDateKey, getMoscowMinutes, getShiftOption, supportedShiftCodesByDepartment } from '@/lib/workday';
 
 export type WorkdayTimingTask = {
+  category?: string;
+  handoverData?: unknown;
   id: number;
   title: string;
   plannedTimeMinutes: number | null;
@@ -173,6 +176,8 @@ export function evaluateWorkdayTiming({
       }
       continue;
     }
+
+    if (workDay?.endedAt && handoverClosedByAdmin(task)) continue;
 
     if (isPastDate || (isToday && nowMinutes > task.plannedTimeMinutes)) {
       violations.push({

@@ -986,12 +986,15 @@ export async function PATCH(req: Request, props: { params: Promise<{ id: string 
       cashboxName: personalAudit && typeof personalAudit.cashboxName === 'string' ? personalAudit.cashboxName : '',
       sourceError: personalAudit && typeof personalAudit.error === 'string' ? personalAudit.error : null,
     });
-    const expenses = await loadEmployeeExpenses(user.id).catch(() => null);
-    if (!expenses || expenses.state !== 'ready' || expenses.cashboxRef && expenses.cashboxRef !== personalAudit?.cashboxRef) {
-      cashComparison = { ...cashComparison, status: 'unavailable', discrepancyType: 'unavailable', difference: null, expenseSourceUnavailable: true, sourceError: 'Не удалось проверить заявки в 1С.' };
-    } else { const evidence = pendingCashExpenseEvidence({
-      actual: numericValue, expected, capturedAt: cashComparison.capturedAt, cashboxRef: expenses.cashboxRef, snapshot: expenses,
-    }); if (evidence) cashComparison.expenseEvidence = evidence; }
+    // Expense-source availability cannot invalidate equal cash or a surplus.
+    if (expected !== null && numericValue < expected) {
+      const expenses = await loadEmployeeExpenses(user.id).catch(() => null);
+      if (!expenses || expenses.state !== 'ready' || expenses.cashboxRef && expenses.cashboxRef !== personalAudit?.cashboxRef) {
+        cashComparison = { ...cashComparison, status: 'unavailable', discrepancyType: 'unavailable', difference: null, expenseSourceUnavailable: true, sourceError: 'Не удалось проверить заявки в 1С.' };
+      } else { const evidence = pendingCashExpenseEvidence({
+        actual: numericValue, expected, capturedAt: cashComparison.capturedAt, cashboxRef: expenses.cashboxRef, snapshot: expenses,
+      }); if (evidence) cashComparison.expenseEvidence = evidence; }
+    }
     let nextHandoverData: Record<string, unknown> = {
       ...existingData,
       [shiftControlOneCAuditKey]: oneCAudit,

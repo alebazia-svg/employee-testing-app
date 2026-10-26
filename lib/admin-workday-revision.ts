@@ -1,3 +1,4 @@
+import { EXPENSE_SOURCE_MAX_AGE_MS } from './employee-expense-policy';
 import { prisma } from '@/lib/prisma';
 import { getMoscowDateKey, getMoscowMinutes } from '@/lib/workday';
 
@@ -32,7 +33,7 @@ export function formatAdminWorkdayRevision({
 }
 
 export async function getAdminWorkdayRevision(date: string) {
-  const [schedules, vacations, workDays, runs, tasks, cashOperations, manualReviews] = await Promise.all([
+  const [schedules, vacations, workDays, runs, tasks, cashOperations, manualReviews, expenseSync] = await Promise.all([
     prisma.workScheduleEntry.aggregate({
       where: { date },
       _count: { _all: true },
@@ -68,8 +69,11 @@ export async function getAdminWorkdayRevision(date: string) {
       _count: { _all: true },
       _max: { id: true, reviewedAt: true },
     }),
+    prisma.expenseRequestSyncRun.findFirst({where:{status:{not:'running'}},orderBy:{startedAt:'desc'},select:{status:true,sourceComplete:true,startedAt:true,completedAt:true}}),
   ]);
 
+  const sourceAge = expenseSync?.completedAt ? Date.now()-+expenseSync.completedAt : Infinity;
+  const expenseReady = expenseSync?.status==='completed' && expenseSync.sourceComplete && sourceAge>=0 && sourceAge<=EXPENSE_SOURCE_MAX_AGE_MS;
   return formatAdminWorkdayRevision({
     date,
     today: getMoscowDateKey(),
@@ -82,6 +86,8 @@ export async function getAdminWorkdayRevision(date: string) {
       { count: tasks._count._all, latestId: tasks._max.id, latestAt: tasks._max.updatedAt },
       { count: cashOperations._count._all, latestId: cashOperations._max.id, latestAt: cashOperations._max.updatedAt },
       { count: manualReviews._count._all, latestId: manualReviews._max.id, latestAt: manualReviews._max.reviewedAt },
+      // Existing visible-sync also refreshes historical counts after recovery or expiry.
+      { count: expenseReady ? 1 : 0, latestAt: expenseSync?.completedAt ?? expenseSync?.startedAt ?? null },
     ],
   });
 }
