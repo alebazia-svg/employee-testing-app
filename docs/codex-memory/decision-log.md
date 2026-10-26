@@ -1158,3 +1158,26 @@ The owner separately authorized production deployment. Released and independentl
 verified as 1.18.9 / 401a2a7; the actual old wholesale question is history-only,
 active attention count fell 6 to 5, and employee inspection no longer requires
 empty later days. See the correction note for release and verification limits.
+
+## 2026-10-26 — OFD priority and short employee closure fallback
+
+The owner confirmed that employees close their physical KKM through 1C. An exact
+OFD closing report is the portal's fiscal confirmation; late presentation or
+posting of the 1C document must not block that evidence. The correction is live
+as 1.18.13 / 9a62698, independently verified on the server and authenticated ADMIN.
+
+The owner then approved simplifying the whole Workday closure path. The employee
+may attach a photo of the paper closing receipt or answer “Чек не распечатался”
+directly on the main card, then finish the workday without administrator approval
+for this KKM fallback. Other mandatory issues remain enforced. Neither response
+is an automatic OFD confirmation or an instruction to write fiscal/financial
+documents. Original cash facts remain unchanged.
+
+An unanswered active-day confirmation receives a 15-minute reminder. Either
+answer stops employee reminders. The owner sees the unconfirmed closure until
+OFD independently confirms it; one source event is updated rather than duplicated.
+Technical connection-health rules for other domains remain unchanged.
+
+This UI/notification extension is a locally verified, unreleased candidate.
+The owner requested visual comparison using the actual application. Details and
+verification boundaries are in `workday-playbook.md`.

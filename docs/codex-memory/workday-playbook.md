@@ -642,3 +642,32 @@ Ask:
 
 If adding reminders, prefer push notifications for checklist timing; Telegram is
 not the preferred first channel for this pilot.
+
+## Owner decision: short KKM closure confirmation, 2026-10-26
+
+- Exact OFD fiscal closure is authoritative. A delayed 1C shift document must
+  not veto the same KKT/FN closure. Production correction: 1.18.13 / 9a62698.
+- New UI/notification flow below is a locally verified, unreleased candidate.
+  The owner requested real before/after screens before its release.
+- When automatic closure is uncertain, show the existing Workday card directly:
+  “Чек закрытия смены”, a plain explanation of the paper receipt, primary
+  “Сфотографировать чек”, secondary “Чек не распечатался”. No intermediate
+  printed/not-printed question or approval request for either response.
+- Either explicit response permits completion of the workday, subject to the
+  other existing mandatory tasks. It does not post/close anything in 1C or claim
+  that OFD has confirmed closure. Store method, actor and time; require a real
+  uploaded image from this task for the photo method. Preserve original cash
+  values, captures and history. Interrupted completion reuses the saved response.
+- If the active employee has not answered, remind after 15 minutes using the
+  existing notification dispatcher and local reminder. Notification reads do not
+  count as an answer. Stop employee reminders after either response or day end;
+  do not send these reminders for a past Moscow date.
+- The owner must still see an unresolved KKM event after employee completion.
+  This is a narrow exception to the general separation of technical health into
+  System. Keep one existing inbox source/event; close attention automatically
+  once fresh OFD evidence confirms it. Do not revive unrelated historical
+  technical warnings or manufacture a financial mismatch from missing data.
+- The rechecker updates only derived closure evidence with an optimistic task
+  guard before resolving its issue. A concurrent employee edit is retried rather
+  than overwritten. Tests: `kkm-shift-close-control.test.ts`,
+  `kkm-close-confirmation.integration.test.ts`, `admin-operations-view.test.ts`.
