@@ -1,7 +1,7 @@
 import 'server-only';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { getMoscowDateKey } from './workday';
-import { reconcileScheduleQuestions, reconcileScheduleWeekQuestions } from './work-schedule-notifications';
+import { reconcileScheduleQuestions, reconcileScheduleNearQuestions } from './work-schedule-notifications';
 import { scheduleCoverageQuestion, scheduleCoverageRef, scheduleQuestionDates } from './schedule-coverage-question';
 
 type Db = Prisma.TransactionClient;
@@ -35,7 +35,7 @@ export async function queueScheduleFillQuestions(db: PrismaClient, now = new Dat
   const dates=scheduleQuestionDates(now);
   const result={processed:0,failed:0};
   if (dates.length) for (const department of ['retail','wholesale']) {
-    try { await db.$transaction(tx=>reconcileScheduleWeekQuestions(tx,department,now),{isolationLevel:'Serializable',timeout:10000}); } catch {result.failed++;}
+    try { await db.$transaction(tx=>reconcileScheduleNearQuestions(tx,department,now),{isolationLevel:'Serializable',timeout:10000}); } catch {result.failed++;}
   }
   for (const date of dates) for (const department of ['retail','wholesale']) {
     try { await db.$transaction(async tx => {

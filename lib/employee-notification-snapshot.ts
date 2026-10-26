@@ -13,8 +13,8 @@ import { DELIVERY_PUSH_COPY } from '@/lib/employee-push-policy';
 import { COLLECTION_READY_KIND, COLLECTION_PUSH_COPY, currentCollectionPushes } from '@/lib/procurement-collection-notifications';
 import { CASH_ISSUE_KIND, CASH_ISSUE_PUSH_COPY, cashIssueForUser } from '@/lib/procurement-cash-issue-policy';
 import { currentCashIssue } from '@/lib/procurement-cash-issue-notifications';
-import { loadScheduleWeekReminders } from './work-schedule-notifications';
-import { SCHEDULE_WEEK_KIND, scheduleWeekHref } from './schedule-week-reminder';
+import { loadScheduleNearReminders } from './work-schedule-notifications';
+import { SCHEDULE_NEAR_KIND, scheduleCalendarHref } from './schedule-near-reminder';
 
 export async function loadEmployeeNotifications(user: { id: number }, readOnly = false) {
   const rows = await prisma.workdayNotification.findMany({
@@ -51,7 +51,7 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
   const seenTargets = new Set<string>();
   const activeRows = await (readOnly ? filterActiveWorkdayNotifications : reconcileActiveWorkdayNotifications)(prisma, rows.filter(row => row.status === 'sent'));
   const activeIds = new Set(activeRows.map(row => row.id));
-  const scheduleWeek = activeRows.some(row=>row.kind===SCHEDULE_WEEK_KIND) ? (await loadScheduleWeekReminders(prisma,[user.id])).get(user.id) : null;
+  const scheduleNear = activeRows.some(row=>row.kind===SCHEDULE_NEAR_KIND) ? (await loadScheduleNearReminders(prisma,[user.id])).get(user.id) : null;
   const expenses = activeRows.some(row => row.kind === EMPLOYEE_EXPENSE_KIND) ? await loadEmployeeExpenseRouting(user.id) : null;
   if (expenses && expenses.state !== 'unavailable') {
     const keys = new Set(expenses.items.map(expenseRouteKey));
@@ -72,7 +72,7 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
       const messageId = employeeReplyMessageId(notification);
       const message = notification.kind === 'workday_issue_reply' ? issueMessages.find(m=>m.id===messageId&&m.issueId===notification.issueId) : reviewMessages.find(m=>m.id===messageId&&m.reviewId===notification.reviewId);
       const replyCopy = ['workday_issue_reply','terminal_fiscal_review_reply'].includes(notification.kind) ? employeeReplyCopy(notification.kind, message) : null;
-      const scheduleCopy = notification.kind===SCHEDULE_WEEK_KIND && activeIds.has(notification.id) ? scheduleWeek : null;
+      const scheduleCopy = notification.kind===SCHEDULE_NEAR_KIND && activeIds.has(notification.id) ? scheduleNear : null;
       const issueView = issue && !notification.kind.endsWith('_reply') ? workdayIssueView(issue) : null;
       const taskCopy = task ? workdayTaskNotificationCopy(task, notification.kind) : null;
       const deliveryCopy = notification.kind === DELIVERY_READY_KIND && delivery?.state === 'ready'
@@ -90,7 +90,7 @@ export async function loadEmployeeNotifications(user: { id: number }, readOnly =
         ...(issue ? { attentionKind: issue.ruleKey === 'kkm_shift_not_closed' ? 'closing' as const : 'receipt' as const } : {}),
         title: replyCopy?.title || (notification.kind === 'workday_closed_by_admin' ? 'Смена завершена' : '') || (activeIds.has(notification.id) ? scheduleCopy?.title || copy?.title || issueView?.summaryTitle || taskCopy?.title || notification.title : notification.title),
         body: replyCopy?.body || (activeIds.has(notification.id) ? scheduleCopy?.body || copy?.body || issueView?.notificationBody || taskCopy?.body || notification.body : notification.body).replace(/^Администратор завершил рабочий день за (\d{4}-\d{2}-\d{2})\./u, 'Смена за $1 завершена.'),
-        href: scheduleCopy?.active ? scheduleWeekHref(scheduleCopy.missing[0],scheduleCopy.weekStart) : workdayNotificationHref(notification),
+        href: scheduleCopy?.active ? scheduleCalendarHref(scheduleCopy.missing[0],scheduleCopy.missing.length===1) : workdayNotificationHref(notification),
       };
     })
     .sort((a, b) => (b.sentAt?.getTime() ?? 0) - (a.sentAt?.getTime() ?? 0))

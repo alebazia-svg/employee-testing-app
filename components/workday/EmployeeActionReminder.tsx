@@ -143,7 +143,7 @@ export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?
   if (view === 'schedule' && action.target === 'schedule') return null;
   const href = preview ? `${preview.href('/employee')}${new URL(action.href, 'https://preview.invalid').search}${new URL(action.href, 'https://preview.invalid').hash}` : action.href;
   const open = () => {
-    if (action.target === 'schedule') { window.dispatchEvent(new CustomEvent('mobo:schedule-open',{detail:{date:new URL(action.href,window.location.origin).searchParams.get('date'),weekStart:new URL(action.href,window.location.origin).searchParams.get('week')}})); }
+    if (action.target === 'schedule') { const url=new URL(action.href,window.location.origin); window.dispatchEvent(new CustomEvent('mobo:schedule-open',{detail:{date:url.searchParams.get('date'),edit:url.searchParams.get('edit')==='1'}})); }
     else if (action.target === 'cash_issue') { cashIssue?.open(action.id.slice('cash-issue:'.length)); }
     else if (action.target === 'checklist') { onOpen?.(); }
     else {

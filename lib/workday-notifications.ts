@@ -1,9 +1,10 @@
 import { schedulePushAt } from './schedule-coverage-question';
 import { queueScheduleFillQuestions } from './schedule-coverage-reconciliation';
 import 'server-only';
-import { activeScheduleNotices, scheduleNoticeKinds, scheduleNoticeRef } from './work-schedule-notifications';
-import { scheduleWeekNoticeRef, scheduleWeekHref, SCHEDULE_WEEK_KIND } from './schedule-week-reminder';
+import { activeScheduleNotices, scheduleNoticeKinds, scheduleNoticeRef, loadScheduleNearReminders } from './work-schedule-notifications';
+import { scheduleWeekNoticeRef, SCHEDULE_WEEK_KIND } from './schedule-week-reminder';
 import { getMoscowDateKey } from './workday';
+import { SCHEDULE_NEAR_KIND, scheduleNearNoticeRef, scheduleCalendarHref } from './schedule-near-reminder';
 import { reconcileCashExpenseEvidence } from './cash-expense-reconciliation';
 import { EMPLOYEE_EXPENSE_KIND, expensePushTtl } from './employee-expense-policy';
 import { loadExpenseRouting } from './employee-expense-routing-snapshot';
@@ -292,6 +293,8 @@ function configureWebPush() {
 }
 
 export function notificationTargetKey(notification: { id: number; taskId: number | null; issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  const near = notification.kind === SCHEDULE_NEAR_KIND ? scheduleNearNoticeRef(notification.fingerprint ?? '') : null;
+  if (near) return `schedule-near:${near.department}:${near.date}`;
   const month = notification.kind === SCHEDULE_WEEK_KIND ? scheduleWeekNoticeRef(notification.fingerprint ?? '') : null;
   if (month) return `schedule-week:${month.department}:${month.weekStart}`;
   if (notification.taskId) return `task:${notification.taskId}`;
@@ -305,9 +308,10 @@ export function notificationTargetKey(notification: { id: number; taskId: number
 }
 
 export function workdayNotificationHref(notification: { issueId: number | null; reviewId: string | null; kind?: string; fingerprint?: string }) {
+  if (notification.kind === SCHEDULE_NEAR_KIND) return scheduleCalendarHref(getMoscowDateKey());
   if (notification.kind === SCHEDULE_WEEK_KIND) {
     const ref = scheduleWeekNoticeRef(notification.fingerprint ?? ''), today = getMoscowDateKey();
-    return ref ? scheduleWeekHref(today,ref.weekStart) : '/employee';
+    return ref ? scheduleCalendarHref(today) : '/employee';
   }
   if(notification.kind===QR_CHECK_KIND){const id=qrCheckPlan(notification.fingerprint||'');return id?receiptHref(id,false):'/procurement';}
   if (notification.kind === EMPLOYEE_EXPENSE_KIND) return '/employee?attention=cash';
@@ -485,11 +489,13 @@ export async function dispatchDueWorkdayNotifications(now = new Date()) {
     let providerAttemptCount = 0;
 
     if (pushConfigured && !targetAlreadyUnread && notification.user.pushSubscriptions.length > 0) {
+      const nearCopy = notification.kind === SCHEDULE_NEAR_KIND ? (await loadScheduleNearReminders(prisma,[notification.userId],getMoscowDateKey(dispatchTime()))).get(notification.userId) : null;
+      if (nearCopy && !nearCopy.active) continue;
       const payload = JSON.stringify({
         ...(notification.task
           ? workdayTaskNotificationCopy(notification.task, notification.kind)
-          : scheduleNoticeKinds.includes(notification.kind) ? { title: notification.title, body: notification.body } : delivery?.state === 'send' ? [CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND, QR_CHECK_KIND].includes(notification.kind) ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
-        url: workdayNotificationHref(notification),
+          : scheduleNoticeKinds.includes(notification.kind) ? { title: nearCopy?.title || notification.title, body: nearCopy?.body || notification.body } : delivery?.state === 'send' ? [CASH_ISSUE_KIND, EMPLOYEE_EXPENSE_KIND, QR_CHECK_KIND].includes(notification.kind) ? { title: delivery.title, body: delivery.body } : notification.kind === COLLECTION_READY_KIND ? COLLECTION_PUSH_COPY : DELIVERY_PUSH_COPY : { title: notification.title, body: notification.body }),
+        url: nearCopy?.active ? scheduleCalendarHref(nearCopy.missing[0],nearCopy.missing.length===1) : workdayNotificationHref(notification),
         notificationId: notification.id,
         badgeCount,
       });

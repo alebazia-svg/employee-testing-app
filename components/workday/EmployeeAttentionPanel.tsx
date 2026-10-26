@@ -112,7 +112,7 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
   const openCalendar = (item: Item) => {
     markRead(item);
     close();
-    window.dispatchEvent(new CustomEvent('mobo:schedule-open', {detail:{date:item.scheduleDate,weekStart:item.scheduleWeekStart}}));
+    window.dispatchEvent(new CustomEvent('mobo:schedule-open', {detail:{date:item.scheduleDate,edit:item.scheduleOpenEditor===true}}));
   };
   const openSheet = (kind: Item['kind'] | null = null, id: string | null = null) => {
     void refresh();
@@ -187,9 +187,9 @@ export function EmployeeAttentionPanel({ view, onBack, renderHandle, paletteClas
       const rows = allItems.filter(item => item.kind === kind), actionable = rows.some(item => item.state === 'action');
       const title = kind === 'receipt' ? 'Проверьте чеки' : kind === 'cash' ? rows.length === 1 ? rows[0].title : rows.some(row => row.state === 'action' && row.expenseMode === 'execute') ? 'Оформите расходники в 1С' : rows.some(row => row.state === 'action') ? 'Уточните выдачу по заявке' : 'Заявки к оплате' : kind === 'schedule' && rows.length > 1 ? 'Вопросы по графику' : rows[0].title;
       const count = kind === 'cash' ? new Set(rows.map(row => row.expenseRef || row.id)).size : rows.length;
-      return <button key={kind} ref={entry} type="button" onClick={() => kind === 'cash_issue' && request ? cashIssue?.open(request.ref) : openSheet(kind)} aria-haspopup="dialog" className={`employee-attention-row ${rows.some(item => item.notificationIds?.length) ? 'employee-new-notice' : ''}`}>
+      return <button key={kind} ref={entry} type="button" onClick={() => kind === 'cash_issue' && request ? cashIssue?.open(request.ref) : openSheet(kind)} aria-haspopup={rows.length===1 && rows[0].scheduleAction==='week' && !rows[0].scheduleOpenEditor ? undefined : 'dialog'} className={`employee-attention-row ${rows.some(item => item.notificationIds?.length) ? 'employee-new-notice' : ''}`}>
         <EmployeeNoticeIcon kind={employeeAttentionIconKind(kind)} animated={reminderPreviewEnabled && actionable} />
-        <span className="min-w-0 flex-1"><strong>{title}</strong><small className="employee-attention-caption">{kind === 'cash' ? rows.length === 1 ? `По заявке ${rows[0].facts?.find(([label]) => label === 'Заявка')?.[1] || ''} в 1С` : 'Заявки готовы в 1С' : rows.length===1 && rows[0].scheduleAction==='week' ? `${['Сегодня не отмечено','Завтра не отмечено'].includes(rows[0].status) ? rows[0].status + ' · ' : ''}Открыть график` : !actionable ? rows[0].status : ''}{kind !== 'cash' && !(rows.length===1 && rows[0].scheduleAction==='week') && rows.some(item => item.notificationIds?.length) && <span className="employee-attention-new">Новое</span>}</small></span>
+        <span className="min-w-0 flex-1"><strong>{title}</strong><small className="employee-attention-caption">{kind === 'cash' ? rows.length === 1 ? `По заявке ${rows[0].facts?.find(([label]) => label === 'Заявка')?.[1] || ''} в 1С` : 'Заявки готовы в 1С' : rows.length===1 && rows[0].scheduleAction==='week' ? rows[0].status : !actionable ? rows[0].status : ''}{kind !== 'cash' && !(rows.length===1 && rows[0].scheduleAction==='week') && rows.some(item => item.notificationIds?.length) && <span className="employee-attention-new">Новое</span>}</small></span>
         {count > 1 && <span className="shrink-0 text-xs font-bold tabular-nums text-stone-500" aria-label={kind === 'cash' ? `Заявок к оплате: ${count}` : undefined}>{count}</span>}<ChevronRight size={18} aria-hidden="true"/>
       </button>;
     })}</section>}

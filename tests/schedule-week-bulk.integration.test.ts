@@ -50,6 +50,7 @@ test('isolated live weekly bulk API: authentication, bounded atomic writes, stal
     const weeklySnapshot = await fetch(`http://127.0.0.1:3212/api/employee/workday/schedule?week=${weekStart}`, { headers: { Cookie: cookie } });
     assert.equal(weeklySnapshot.status, 200);
     const weeklyData = await weeklySnapshot.json();
+    assert.equal(weeklyData.today, today, 'calendar snapshots carry the current Moscow date for an app resumed overnight');
     assert.equal(weeklyData.range.to, dates.at(-1));
     assert.equal(weeklyData.ownSchedule.length, 2);
     assert.equal((await fetch(`http://127.0.0.1:3212/api/employee/workday/schedule?week=${shiftScheduleDate(weekStart, 14)}`, { headers: { Cookie: cookie } })).status, 400);

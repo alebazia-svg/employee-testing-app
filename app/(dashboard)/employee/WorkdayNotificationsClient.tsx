@@ -1,4 +1,5 @@
 'use client';
+import { SCHEDULE_NEAR_KIND } from '@/lib/schedule-near-reminder';
 import { InteractionShown, useInteractionAudit } from '@/components/EmployeeInteractionAudit';
 import { sendEmployeeActivity } from '@/components/EmployeeActivityTracker';
 import { EmployeeNoticeIcon } from '@/components/workday/EmployeeNoticeIcon';
@@ -143,6 +144,15 @@ export function WorkdayNotificationsClient() {
       return;
     }
     if (preview) { setOpen(false); setSelected({ ...notification, audience: "employee" }); return; }
+    if (notification.kind === SCHEDULE_NEAR_KIND && window.location.pathname === '/employee') {
+      const target = new URL(safeNotificationHref(notification.href, '/employee'), window.location.origin);
+      const date = target.searchParams.get('date');
+      if (date) {
+        setOpen(false); void dismiss(notification);
+        requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('mobo:schedule-open', { detail: { date, edit: target.searchParams.get('edit') === '1' } })));
+        return;
+      }
+    }
     if (notification.kind === CASH_ISSUE_KIND && cashIssue) {
       const ref = new URL(notification.href, window.location.origin).searchParams.get('request');
       if (ref) { setOpen(false); cashIssue.open(ref); void dismiss(notification); return; }

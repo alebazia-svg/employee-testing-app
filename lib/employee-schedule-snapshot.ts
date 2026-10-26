@@ -58,6 +58,7 @@ export async function scheduleSnapshot(user: { id: number; department: string },
     .map((notification) => notification.fingerprint.match(/^schedule-coverage:[^:]+:(\d{4}-\d{2}-\d{2}):/)?.[1])
     .filter((date): date is string => Boolean(date));
   return {
+    today: getMoscowDateKey(),
     ownSchedule,
     departmentSchedule,
     ownVacations: ownVacations.map(serializeEmployeeVacation),
