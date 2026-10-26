@@ -647,8 +647,10 @@ not the preferred first channel for this pilot.
 
 - Exact OFD fiscal closure is authoritative. A delayed 1C shift document must
   not veto the same KKT/FN closure. Production correction: 1.18.13 / 9a62698.
-- New UI/notification flow below is a locally verified, unreleased candidate.
-  The owner requested real before/after screens before its release.
+- New UI/notification flow below was owner-approved after the real before/after
+  preview and released on 2026-10-27 as 1.18.15 / 9db7be3.
+  Server commit, both public hostnames, authenticated ADMIN version, health and
+  verified-image registration were checked; release exited 0.
 - When automatic closure is uncertain, show the existing Workday card directly:
   “Чек закрытия смены”, a plain explanation of the paper receipt, primary
   “Сфотографировать чек”, secondary “Чек не распечатался”. No intermediate
@@ -671,3 +673,29 @@ not the preferred first channel for this pilot.
   guard before resolving its issue. A concurrent employee edit is retried rather
   than overwritten. Tests: `kkm-shift-close-control.test.ts`,
   `kkm-close-confirmation.integration.test.ts`, `admin-operations-view.test.ts`.
+
+### Short KKM closure release verification — 2026-10-27
+
+- Runtime `9db7be30633da69e30002a3d3ce564bc82daff97`, version 1.18.15,
+  build `2026-10-26T22:04:45.530Z` (27 October 01:04 Moscow).
+  Preserves independently released 1.18.14 personal fiscal help and minute rechecks;
+  no systemd unit changes were applied by this deployment.
+- Employee responses preserve the original cash facts, captures and history.
+  Workday-first transaction locks and task snapshot guards reject stale drafts
+  and background results. A late failed check cannot revive employee action.
+- An already counted previous-day KKM handover retains the same short response
+  path after midnight, with its date displayed. General stale-day rules remain.
+  Lost completion responses are checked against the exact owned workday ID.
+- Validation: 194 Workday tests, 35 merged fiscal-help/notification/navigation
+  tests, 13 PostgreSQL integration checks, 5 release metadata tests, TypeScript
+  and production build. Actual isolated UI exercised photo/no-print, midnight,
+  lost response after completion and lost response after photo save. HTTP checks
+  verified stale-money protection, owned-day lookup, foreign-day isolation,
+  invalid IDs and replay of completed tasks.
+- Production authenticated ADMIN: version 1.18.15 and Milana's 26 October closure
+  confirmed; original 17702 cash and separate reserve discrepancy remain intact.
+  Health endpoint returned ok, container healthy, env and mounts unchanged,
+  verified image registry contains new current plus two preceding verified images.
+  Free disk after deployment: 17 GiB. No migration/manual production DB write.
+- Physical iPhone and actual system push display remain unverified. The photo/
+  no-print write scenarios were tested only on the isolated demo, not real staff.

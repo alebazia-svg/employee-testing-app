@@ -1178,9 +1178,11 @@ answer stops employee reminders. The owner sees the unconfirmed closure until
 OFD independently confirms it; one source event is updated rather than duplicated.
 Technical connection-health rules for other domains remain unchanged.
 
-This UI/notification extension is a locally verified, unreleased candidate.
-The owner requested visual comparison using the actual application. Details and
-verification boundaries are in `workday-playbook.md`.
+The owner reviewed the actual application comparison, requested a thorough audit,
+then explicitly authorized production release on 2026-10-27. Released and verified
+as 1.18.15 / 9db7be3, preserving parallel 1.18.14. Server/public/authenticated ADMIN
+and verified-image registration passed; physical iPhone/push display remains
+unverified. Release details and limits are in `workday-playbook.md`.
 
 ## 2026-10-26 - Fiscal help is a personal request, not a matching digest
 
