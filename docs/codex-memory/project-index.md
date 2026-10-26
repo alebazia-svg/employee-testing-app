@@ -29,8 +29,10 @@ project from scratch.
 
 ## Read First By Task
 
-- Schedule/reminder local candidate: `schedule-reminders-candidate-20261026.md` —
-  missing-day reminders and live ADMIN plan coverage; activity follow-up deferred.
+- Schedule/reminder production 1.18.2: `schedule-reminders-candidate-20261026.md` —
+  missing-day reminders and live ADMIN plan coverage; server/public/authenticated
+  UI and exact Zukhra question push-provider acceptance verified. Activity
+  follow-up deferred; physical-device display remains unverified.
 
 - Receipt reminders and handover release 1.18.1: `fiscal-reminder-policy-20261026.md` —
   approved 30-minute quiet period, fresh nonblocking handover check, one reminder,

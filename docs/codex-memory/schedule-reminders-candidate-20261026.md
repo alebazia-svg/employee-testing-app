@@ -1,6 +1,6 @@
 # Schedule reminders candidate — 2026-10-26
 
-Release preparation approved; candidate 1.18.2, not deployed. Owner approved schedule/reminder changes first,
+Released and verified as 1.18.2 on 2026-10-26. Owner approved schedule/reminder changes first,
 with real local PWA and ADMIN visual review before any release. Detailed activity
 instrumentation is deferred: saved separately in the named schedule-activity Git
 stash; do not accidentally include it in the first release.
@@ -75,3 +75,27 @@ Changed runtime/test files:
 - `tests/schedule-reminders.integration.test.ts`
 - `tests/work-schedule-coverage.test.ts`
 - `tests/work-schedule-notifications.test.ts`
+
+
+Production release evidence:
+
+- Owner explicitly approved release. Deployed source `d9da4c7cbb7b09b86aeeac3b75c0d0e0d461e041`
+  includes runtime `426a50db79652562b376582f2e6e663048cc3962` plus preparation documentation.
+- Public version and authenticated ADMIN label: 1.18.2. Build date
+  `2026-10-26T06:05:04.580Z` (09:05 MSK). Server commit independently matched.
+- New healthy image `sha256:4cdb1c936362243e998b9afcc1a87bfb5ea9fd83e53c6a7e9740095c225a53ff`.
+  Previous 1.18.1 image `sha256:a39a49a9bcdd44182528950bbe1f7927897b97e41859ba27f1ea8afefcc7b0b7`
+  retained; verified registry now includes new current plus 1.18.1 and 1.18.0.
+  Maintenance registration succeeded after independent verification and releasing
+  the deployment lock. Release exit 0; free disk 19 GiB after build.
+- Existing environment hash and upload mounts matched before/after; no migration.
+  Authenticated employee inspection and ADMIN loaded; health endpoint ok and
+  workday/inbox/attendance/employee route smoke checks had no 500.
+- Natural dispatcher sent Zukhra's missing-today question at
+  `2026-10-26T06:11:04.911Z` (09:11 MSK). Exact notice in the persisted activity
+  report confirms push-provider acceptance. Actual read-only employee inspection
+  shows the question with Working/Off choices; no answer was submitted for her.
+  Physical iPhone display/read remains unverified.
+- Local main-checkout dirty work, server `.rollback/`, separate activity stash
+  and ignored receipt-dispatch follow-up were left untouched. Activity follow-up
+  remains outstanding; it is not part of this production version.
