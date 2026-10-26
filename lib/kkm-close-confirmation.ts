@@ -24,3 +24,9 @@ export function preserveKkmCloseFacts(form:FormData,data:unknown,comment='') {
  for(const [key,v]of Object.entries(fields))form.set(key,v);
  for(const key of ['personalStatementPhoto','terminalReceiptsPhoto','tbankReceiptsPhoto','tbankTerminalReportPhoto','encashmentDocumentPhoto'])form.delete(key);
 }
+
+/** Historical closure evidence may live on the resolved issue, before task sync existed. */
+export function hasConfirmedKkmCloseEvidence(data:unknown, issues:ReadonlyArray<{taskId:number|null;userId:number;originDate:string;ruleKey:string;status:string;sourceData:unknown}>, identity:{taskId:number;userId:number;date:string}) {
+ if(record(record(data).kkmCloseCheck).status==='confirmed')return true;
+ return issues.some(issue=>issue.taskId===identity.taskId && issue.userId===identity.userId && issue.originDate===identity.date && issue.ruleKey==='kkm_shift_not_closed' && issue.status==='resolved' && record(issue.sourceData).status==='confirmed');
+}

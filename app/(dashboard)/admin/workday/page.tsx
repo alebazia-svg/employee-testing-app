@@ -1,4 +1,4 @@
-import { kkmCloseConfirmation } from '@/lib/kkm-close-confirmation';
+import { kkmCloseConfirmation, hasConfirmedKkmCloseEvidence } from '@/lib/kkm-close-confirmation';
 import { loadHandoverCashExpenses } from '@/lib/handover-cash-expense-snapshot';
 import { handoverExpenseLabel } from '@/lib/handover-cash-expenses';
 import { fiscalControlAction, pastOwnerActions, openCashControl } from '@/lib/team-control-summary';
@@ -514,6 +514,7 @@ function cashboxMappingStatusMessage(status?: string, error?: string) {
 }
 
 function buildEmployeeAutoChecks({
+  confirmedKkmTaskIds,
   employeeName,
   department,
   tasks,
@@ -531,6 +532,7 @@ function buildEmployeeAutoChecks({
   cashShifts,
   tbankSales,
 }: {
+  confirmedKkmTaskIds: Set<number>;
   employeeName: string;
   department: string;
   tasks: AutoCheckTask[];
@@ -1067,7 +1069,7 @@ function buildEmployeeAutoChecks({
         )), task)
         : null;
       const savedClose = handoverData && isRecord(handoverData.kkmCloseCheck) ? handoverData.kkmCloseCheck : null;
-      const ofdConfirmed = savedClose?.status === 'confirmed';
+      const ofdConfirmed = savedClose?.status === 'confirmed' || confirmedKkmTaskIds.has(task.id);
       const closeConfirmation = kkmCloseConfirmation(handoverData);
       const photoConfirmed = Boolean(closeConfirmation);
       const closed = Boolean(assignedShift?.closedAt) && normalizeSearchText(assignedShift?.status ?? '').includes('закрыт');
@@ -1173,6 +1175,10 @@ export default async function AdminWorkdayPage(
         tasks: {
           orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
           include: {
+            controlIssues: {
+              where: { ruleKey: 'kkm_shift_not_closed', status: 'resolved', originDate: selectedDate },
+              select: { taskId: true, userId: true, originDate: true, ruleKey: true, status: true, sourceData: true },
+            },
             manualReviews: {
               orderBy: [{ reviewedAt: 'desc' }, { id: 'desc' }],
               include: {
@@ -1412,6 +1418,7 @@ export default async function AdminWorkdayPage(
       }
     }
     const checks = buildEmployeeAutoChecks({
+      confirmedKkmTaskIds: new Set((run?.tasks ?? []).filter(task => hasConfirmedKkmCloseEvidence(task.handoverData, task.controlIssues, {taskId:task.id,userId:employee.id,date:selectedDate})).map(task=>task.id)),
       employeeName: employee.name,
       department: employee.department,
       tasks: (run?.tasks ?? []) as AutoCheckTask[],
