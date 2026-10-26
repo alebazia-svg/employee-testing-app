@@ -69,10 +69,14 @@ the response and separate ADMIN event. The employee remained waiting.
 A complete synthetic bank/1C/OFD fixture was reconciled by the real matching
 engine (confirmed), then the real employee-review synchronizer resolved that
 local row. The open employee view retired it automatically without reload or a
-manual completion button; ADMIN attention removed the help after refresh. This
+manual completion button; ADMIN attention removed the help after refresh. The
+standalone direct-link page also changed to “Чек найден в 1С” automatically
+within its 5-second polling cycle, verified in the actual authenticated local UI. This
 is a local fixture, not a new claim about the already-resolved production sale.
 
 Screenshots:
+- /tmp/mobo-fiscal-help-employee-card.jpg (actual compact detail capture)
+- /tmp/mobo-fiscal-help-resolved-card.jpg (actual direct-page automatic resolution)
 - /tmp/mobo-fiscal-help-employee-before.jpg
 - /tmp/mobo-fiscal-help-employee-waiting.jpg
 - /tmp/mobo-fiscal-help-admin.jpg
