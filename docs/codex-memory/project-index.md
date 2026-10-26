@@ -29,6 +29,11 @@ project from scratch.
 
 ## Read First By Task
 
+- Weekly schedule reminder local candidate: `schedule-week-reminder-candidate-20261026.md` —
+  Friday planning, one bounded weekly calendar and live retirement; locally
+  verified, release 1.18.3 authorized/prepared, deployment pending. Supersedes the unshipped monthly prototype. Separate
+  activity follow-up remains deferred.
+
 - Schedule/reminder production 1.18.2: `schedule-reminders-candidate-20261026.md` —
   missing-day reminders and live ADMIN plan coverage; server/public/authenticated
   UI and exact Zukhra question push-provider acceptance verified. Activity
