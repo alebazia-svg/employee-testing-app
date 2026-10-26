@@ -140,9 +140,11 @@ export function EmployeeActionReminder({ view, onOpen }: { view: string; onOpen?
   // never turn a failed background read into a new scary action banner.
   const action = state.action;
   if (!action) return null;
+  if (view === 'schedule' && action.target === 'schedule') return null;
   const href = preview ? `${preview.href('/employee')}${new URL(action.href, 'https://preview.invalid').search}${new URL(action.href, 'https://preview.invalid').hash}` : action.href;
   const open = () => {
-    if (action.target === 'cash_issue') { cashIssue?.open(action.id.slice('cash-issue:'.length)); }
+    if (action.target === 'schedule') { window.dispatchEvent(new CustomEvent('mobo:schedule-open',{detail:{date:new URL(action.href,window.location.origin).searchParams.get('date'),weekStart:new URL(action.href,window.location.origin).searchParams.get('week')}})); }
+    else if (action.target === 'cash_issue') { cashIssue?.open(action.id.slice('cash-issue:'.length)); }
     else if (action.target === 'checklist') { onOpen?.(); }
     else {
       const url = new URL(action.href, window.location.origin);

@@ -1,4 +1,5 @@
 'use client';
+import { scheduleWeekAllowsDate, scheduleWeekStart, shiftScheduleDate } from '@/lib/schedule-week-reminder';
 import { HandoverAuditShown } from '@/components/HandoverAuditShown';
 import { useEmployeeActivityVisit, sendEmployeeActivity } from '@/components/EmployeeActivityTracker';
 import { useEmployeePreview, EmployeePreviewNotice } from '@/components/EmployeePreviewProvider';
@@ -1320,6 +1321,8 @@ export function EmployeeTodayClient({
   const [staleCloseOpen, setStaleCloseOpen] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>('month');
   const [calendarMonth, setCalendarMonth] = useState(monthKeyFromDate(today));
+  const [planningWeekStart, setPlanningWeekStart] = useState<string | null>(null);
+  const [loadedPlanningWeek, setLoadedPlanningWeek] = useState<string | null>(null);
   const [selectedScheduleDate, setSelectedScheduleDate] = useState(today);
   const [editingScheduleDate, setEditingScheduleDate] = useState<string | null>(null);
   const [bulkScheduleMode, setBulkScheduleMode] = useState(false);
@@ -1463,6 +1466,8 @@ export function EmployeeTodayClient({
   useEffect(() => {
     if (searchParams.get('tab') !== 'schedule') return;
     const requestedDate = searchParams.get('date');
+    const week = searchParams.get('week');
+    setPlanningWeekStart(week && scheduleWeekAllowsDate(week,today,today) ? week : null);
     setActiveTab('schedule');
     setScheduleMode('month');
     if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
@@ -1470,6 +1475,18 @@ export function EmployeeTodayClient({
       setSelectedScheduleDate(requestedDate);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const open = (event: Event) => {
+      const date = (event as CustomEvent).detail?.date;
+      if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      const week = (event as CustomEvent).detail?.weekStart;
+      setPlanningWeekStart(typeof week === 'string' && scheduleWeekAllowsDate(week,today,today) ? week : null);
+      setScheduleMode('month'); setCalendarMonth(monthKeyFromDate(date)); setSelectedScheduleDate(date); setActiveTab('schedule');
+    };
+    window.addEventListener('mobo:schedule-open',open);
+    return () => window.removeEventListener('mobo:schedule-open',open);
+  }, []);
 
   useEffect(() => {
     const hasActiveWorkDay = Boolean(workDay && workDay.status !== 'completed' && !workDay.endedAt);
@@ -1714,10 +1731,10 @@ export function EmployeeTodayClient({
   }, [flushCashOutbox, refreshCashOutboxCount, syncCurrentWorkdayState]);
 
   const syncScheduleState = useCallback(async () => {
-    const requestedMonth = scheduleMode === 'month' ? calendarMonth : null;
+    const requestedMonth = !planningWeekStart && scheduleMode === 'month' ? calendarMonth : null;
     if (requestedMonth) setLoadingScheduleMonth(requestedMonth);
     try {
-      const query = requestedMonth ? `?month=${encodeURIComponent(requestedMonth)}` : '';
+      const query = planningWeekStart ? `?week=${encodeURIComponent(planningWeekStart)}` : requestedMonth ? `?month=${encodeURIComponent(requestedMonth)}` : '';
       const response = await request(`/api/employee/workday/schedule${query}`, { cache: 'no-store' });
       if (!response.ok) return;
       const payload: unknown = await response.json();
@@ -1734,12 +1751,14 @@ export function EmployeeTodayClient({
       if (requestedMonth) {
         setLoadedScheduleMonths((current) => new Set(current).add(requestedMonth));
       }
+      if (planningWeekStart) setLoadedPlanningWeek(planningWeekStart);
+      window.dispatchEvent(new Event('mobo:attention-refresh'));
     } catch {
       // Keep the last valid schedule and retry on the next visible sync.
     } finally {
       if (requestedMonth) setLoadingScheduleMonth((current) => (current === requestedMonth ? null : current));
     }
-  }, [calendarMonth, scheduleMode]);
+  }, [calendarMonth, scheduleMode, planningWeekStart]);
 
   useEffect(() => {
     if (activeTab !== 'schedule') return;
@@ -1908,8 +1927,13 @@ export function EmployeeTodayClient({
     });
   }
   const handoverSteps = buildHandoverSteps(handoverDraft);
-  const calendarDays = useMemo(() => buildCalendarMonth(calendarMonth), [calendarMonth]);
-  const scheduleMonthLoaded = loadedScheduleMonths.has(calendarMonth);
+  const planningEnd = planningWeekStart ? shiftScheduleDate(planningWeekStart,6) : null;
+  const calendarDays = useMemo(() => {
+    if (!planningWeekStart) return buildCalendarMonth(calendarMonth);
+    const first=scheduleWeekStart(today), end=shiftScheduleDate(planningWeekStart,6);
+    return Array.from({length:Math.round((Date.parse(end)-Date.parse(first))/86400000)+1},(_,i)=>{const date=shiftScheduleDate(first,i);return {date,day:Number(date.slice(8)),inMonth:true};});
+  }, [calendarMonth, planningWeekStart, today]);
+  const scheduleMonthLoaded = planningWeekStart ? loadedPlanningWeek===planningWeekStart : loadedScheduleMonths.has(calendarMonth);
   const scheduleMonthLoading = loadingScheduleMonth === calendarMonth;
   const incompleteScheduleDates = calendarDays.filter((cell) => (
     cell.inMonth && cell.date >= today && !ownScheduleByDate.has(cell.date) && !ownVacationForDate(cell.date)
@@ -2269,7 +2293,7 @@ export function EmployeeTodayClient({
       const response = await request('/api/employee/workday/schedule/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ monthKey: calendarMonth, mode: 'plan', changes: bulkScheduleChanges, confirmed: true }),
+        body: JSON.stringify({ monthKey: calendarMonth, ...(planningWeekStart ? {weekStart:planningWeekStart} : {}), mode: 'plan', changes: bulkScheduleChanges, confirmed: true }),
       });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) {
@@ -5119,17 +5143,18 @@ export function EmployeeTodayClient({
             <div className={cn('pwa-schedule-view space-y-3', bulkScheduleMode && 'schedule-plan-editor')}>
               {!bulkScheduleMode && <Card className='employee-material-schedule-switch-card p-1.5'>
                 <div className='employee-material-segment grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1'>
-                  {[
+                  {(planningWeekStart ? [{id:'week' as const,label:'Неделя'},{id:'month' as const,label:'Весь месяц'}] : [
                     { id: 'list' as const, label: 'Ближайшие дни' },
                     { id: 'month' as const, label: 'Весь месяц' },
-                  ].map((mode) => (
+                  ]).map((mode) => (
                     <button
                       key={mode.id}
                       type='button'
                       disabled={bulkScheduleMode}
-                      aria-pressed={scheduleMode === mode.id}
+                      aria-pressed={planningWeekStart ? mode.id === 'week' : scheduleMode === mode.id}
                       onClick={() => {
-                        setScheduleMode(mode.id);
+                        if(mode.id==='week') return;
+                        setPlanningWeekStart(null); setScheduleMode(mode.id);
                         if (mode.id === 'month') {
                           setCalendarMonth(monthKeyFromDate(today));
                           setSelectedScheduleDate(today);
@@ -5137,7 +5162,7 @@ export function EmployeeTodayClient({
                       }}
                       className={cn(
                         'employee-material-segment-option h-10 rounded-xl text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-70',
-                        scheduleMode === mode.id ? 'is-active' : 'text-slate-500',
+                        (planningWeekStart ? mode.id==='week' : scheduleMode===mode.id) ? 'is-active' : 'text-slate-500',
                       )}
                     >
                       {mode.label}
@@ -5152,7 +5177,7 @@ export function EmployeeTodayClient({
                   {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
                       <Pencil className='h-4 w-4' aria-hidden='true' />
-                      <span>{incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
+                      <span>{planningWeekStart ? incompleteScheduleDates.length ? 'Заполнить неделю' : 'Изменить неделю' : incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
                     </button>
                   )}
                   {previewDates.map((date) => (
@@ -5164,7 +5189,8 @@ export function EmployeeTodayClient({
               {scheduleMode === 'month' && (
                 <>
                   <Card className='employee-material-calendar-card space-y-2 p-2.5' data-editing={bulkScheduleMode || undefined}>
-                  {!bulkScheduleMode && <div className='flex items-center justify-between gap-2'>
+                  {!bulkScheduleMode && planningWeekStart && <div className='text-center py-1'><p className='pwa-calendar-month-title text-base font-extrabold'>График на неделю</p><p className='text-xs text-slate-500'>{formatSchedulePeriod(today,planningEnd!)}</p></div>}
+                  {!bulkScheduleMode && !planningWeekStart && <div className='flex items-center justify-between gap-2'>
                     <button
                       type='button'
                       className='employee-material-calendar-nav flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-800 hover:bg-slate-200'
@@ -5212,7 +5238,7 @@ export function EmployeeTodayClient({
                   {!bulkScheduleMode && scheduleMonthLoaded && calendarDays.some(cell => cell.inMonth && cell.date >= today && !ownVacationForDate(cell.date)) && (
                     <button type='button' className='schedule-plan-entry' onClick={startBulkSchedule}>
                       <Pencil className='h-4 w-4' aria-hidden='true' />
-                      <span>{incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
+                      <span>{planningWeekStart ? incompleteScheduleDates.length ? 'Заполнить неделю' : 'Изменить неделю' : incompleteScheduleDates.length ? 'Выбрать рабочие дни' : 'Изменить график'}</span>
                     </button>
                   )}
 
@@ -5223,7 +5249,7 @@ export function EmployeeTodayClient({
                         <X className='h-5 w-5' aria-hidden='true' />
                       </button>
                       <p>Остальные будут выходными.</p>
-                      <p className='schedule-plan-month'>{monthTitle(calendarMonth)}</p>
+                      <p className='schedule-plan-month'>{planningEnd ? formatSchedulePeriod(today,planningEnd) : monthTitle(calendarMonth)}</p>
                     </div>
                   )}
 
@@ -5348,7 +5374,7 @@ export function EmployeeTodayClient({
                     ) : <button type='button' className='pwa-schedule-vacation w-full justify-center py-2' onClick={() => openVacationEditor(null)}><CalendarDays className='h-4 w-4' />Отметить отпуск</button>
                   )}
 
-                  {scheduleMonthLoaded && !bulkScheduleMode && selectedScheduleDate.startsWith(`${calendarMonth}-`) && (
+                  {scheduleMonthLoaded && !bulkScheduleMode && (planningWeekStart || selectedScheduleDate.startsWith(`${calendarMonth}-`)) && (
                     <ScheduleDayCard date={selectedScheduleDate} selected compact />
                   )}
 

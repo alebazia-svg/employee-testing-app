@@ -8,6 +8,7 @@ export function employeeAttentionIconKind(kind: string): EmployeeNoticeKind {
 }
 
 export function employeeReminderIconKind(action: { target: string; href: string }): EmployeeNoticeKind {
+  if (action.target === 'schedule') return 'schedule';
   if (action.target === 'checklist') return 'checklist';
   if (action.target === 'cash_issue') return 'money';
   return employeeAttentionIconKind(new URL(action.href, 'https://employee.invalid').searchParams.get('attention') ?? '');

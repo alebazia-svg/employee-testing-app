@@ -3,8 +3,9 @@ import 'server-only';
 import type { Prisma } from '@prisma/client';
 import { getMoscowDateKey } from './workday';
 import { scheduleCoverage, schedulePersonName } from './work-schedule-coverage';
+import { requiredScheduleWeekDates, scheduleWeekNoticeRef, scheduleWeekReminder, SCHEDULE_WEEK_KIND, schedulePlanningWeek } from './schedule-week-reminder';
 
-export const scheduleNoticeKinds = ['schedule_fill_request', 'schedule_replacement_request', 'schedule_replacement_digest'];
+export const scheduleNoticeKinds = ['schedule_fill_request', 'schedule_replacement_request', 'schedule_replacement_digest', SCHEDULE_WEEK_KIND];
 type Db = Prisma.TransactionClient;
 type Notice = { id: number; kind: string; fingerprint: string; title: string; readAt: Date | null; scheduledAt: Date };
 export type DatedScheduleNotice = { date: string; notice: Notice };
@@ -25,7 +26,7 @@ export function scheduleQuestionIsActive(input: { kind: string; status?: string;
   // Once asked, an employee still needs to fill their own plan even if colleagues
   // have already supplied the minimum coverage. A replacement is no longer needed.
   if (input.kind === 'schedule_fill_request') return !input.status;
-  return input.shortage;
+  return input.status === 'off' && input.shortage;
 }
 
 /** Older monthly digests did not store dates. Only expose reductions backed by
@@ -33,7 +34,7 @@ export function scheduleQuestionIsActive(input: { kind: string; status?: string;
  * from message text. Explicit date-specific records/answers take precedence. */
 export async function datedScheduleNotices(db: Db, user: { id: number; department: string }, notices: Notice[], today: string): Promise<DatedScheduleNotice[]> {
   const dated: DatedScheduleNotice[] = [];
-  const direct = notices.filter(row => row.kind !== 'schedule_replacement_digest');
+  const direct = notices.filter(row => row.kind === 'schedule_replacement_request');
   for (const notice of direct) {
     const ref = scheduleNoticeRef(notice.fingerprint);
     if (ref && ref.userId === user.id && ref.department === user.department && ref.date >= today) dated.push({ date: ref.date, notice });
@@ -68,6 +69,11 @@ export async function activeScheduleNotices(db: Db, rows: Array<{ id: number; ki
   for (const userId of userIds) {
     const ownNotices = notices.filter(row => row.userId === userId);
     const user = ownNotices[0].user;
+    const weekly = ownNotices.filter(n => n.kind === SCHEDULE_WEEK_KIND && scheduleWeekNoticeRef(n.fingerprint)?.userId === userId && scheduleWeekNoticeRef(n.fingerprint)?.department === user.department && scheduleWeekNoticeRef(n.fingerprint)?.weekStart === schedulePlanningWeek(today));
+    if (weekly.length) {
+      const state = (await loadScheduleWeekReminders(db, [userId], today)).get(userId)!;
+      if (state.active) for (const notice of weekly) result.set(notice.id, [{date: state.missing[0], notice}]);
+    }
     const dated = await datedScheduleNotices(db, user, ownNotices, today);
     const dates = [...new Set(dated.map(row => row.date))].sort();
     if (!dates.length) continue;
@@ -103,7 +109,7 @@ export async function reconcileScheduleQuestions(db: Db, input: { actorId: numbe
   const activeIds = new Set(employees.map(row => row.id));
   const cancelIds = notices.filter(notice => {
     const status = entries.find(row => row.userId === notice.userId)?.status;
-    return !activeIds.has(notice.userId) || notice.userId === input.actorId || !scheduleQuestionIsActive({ kind: notice.kind, status, onVacation: vacationIds.has(notice.userId), shortage, date, today: getMoscowDateKey(now) });
+    return notice.kind === 'schedule_fill_request' || !activeIds.has(notice.userId) || notice.userId === input.actorId || !scheduleQuestionIsActive({ kind: notice.kind, status, onVacation: vacationIds.has(notice.userId), shortage, date, today: getMoscowDateKey(now) });
   }).map(row => row.id);
   // Keep an explicit answer distinct from a question retired by restored coverage.
   // Only the latter may become relevant again after another colleague changes plans.
@@ -120,7 +126,7 @@ export async function reconcileScheduleQuestions(db: Db, input: { actorId: numbe
     const status = entries.find(row => row.userId === employee.id)?.status;
     const old = notices.find(row => row.userId === employee.id);
     const kind = old && ['pending', 'sent'].includes(old.status) && !cancelIds.includes(old.id) ? old.kind : scheduleQuestionKind({ status, onVacation: vacationIds.has(employee.id), shortage, requestKnownOff: input.requestKnownOff });
-    if (!kind) continue;
+    if (!kind || kind === 'schedule_fill_request') continue;
     // One question per employee/date. Reading keeps it open; an answer is final.
     if (old && !['pending', 'sent', 'resolved'].includes(old.status)) continue;
     const title = kind === 'schedule_fill_request' ? `Отметьте график на ${dateLabel}` : `Сможете работать ${dateLabel}?`;
@@ -130,5 +136,37 @@ export async function reconcileScheduleQuestions(db: Db, input: { actorId: numbe
     } else if (old) {
       if (!cancelIds.includes(old.id) && (old.title !== title || old.body !== body)) await db.workdayNotification.update({ where: { id: old.id }, data: { title, body } });
     } else await db.workdayNotification.upsert({ where: {fingerprint:`${prefix}${employee.id}`}, create: { userId: employee.id, fingerprint: `${prefix}${employee.id}`, kind, title, body, scheduledAt: schedulePushAt(date, now) }, update:{} });
+  }
+}
+
+export async function loadScheduleWeekReminders(db: Db, userIds: number[], today = getMoscowDateKey()) {
+  const dates = requiredScheduleWeekDates(today);
+  const [entries, vacations] = await Promise.all([
+    db.workScheduleEntry.findMany({where:{userId:{in:userIds},date:{gte:today,lte:dates.at(-1)!}},select:{userId:true,date:true,status:true}}),
+    db.employeeVacation.findMany({where:{userId:{in:userIds},status:'active',dateFrom:{lte:dates.at(-1)!},dateTo:{gte:today}},select:{userId:true,dateFrom:true,dateTo:true}}),
+  ]);
+  return new Map(userIds.map(id => [id, scheduleWeekReminder({today,weekStart:schedulePlanningWeek(today),entries:entries.filter(e=>e.userId===id),vacations:vacations.filter(v=>v.userId===id)})]));
+}
+
+/** One persisted reminder per person/target week; opening it is never completion. */
+export async function reconcileScheduleWeekQuestions(db: Db, department: string, now = new Date()) {
+  const today = getMoscowDateKey(now), weekStart = schedulePlanningWeek(today);
+  const users = await db.user.findMany({where:{role:'EMPLOYEE',isActive:true,department},select:{id:true}});
+  if (!users.length) return;
+  const userIds = users.map(u=>u.id), states = await loadScheduleWeekReminders(db,userIds,today);
+  // Retire the previous individual-date fill requests, preserving their history.
+  await db.workdayNotification.updateMany({where:{userId:{in:userIds},kind:'schedule_fill_request',status:{in:['pending','sent']}},data:{status:'resolved',pushStatus:'cancelled',nextPushAttemptAt:null}});
+  for (const user of users) {
+    const fingerprint = `schedule-week:${department}:${weekStart}:${user.id}`;
+    const old = await db.workdayNotification.findUnique({where:{fingerprint}});
+    const state = states.get(user.id)!;
+    if (!state.active) {
+      if (old && ['pending','sent'].includes(old.status)) await db.workdayNotification.updateMany({where:{id:old.id,status:{in:['pending','sent']}},data:{status:'resolved',pushStatus:'cancelled',nextPushAttemptAt:null}});
+      continue;
+    }
+    if (old) {
+      const reopen = !['pending','sent'].includes(old.status);
+      if (reopen || old.title !== state.title || old.body !== state.body) await db.workdayNotification.update({where:{id:old.id},data:{title:state.title,body:state.body,...(reopen ? {status:old.sentAt?'sent':'pending',pushStatus:old.sentAt?'cancelled':'pending',nextPushAttemptAt:null} : {})}});
+    } else await db.workdayNotification.upsert({where:{fingerprint},create:{userId:user.id,fingerprint,kind:SCHEDULE_WEEK_KIND,title:state.title,body:state.body,scheduledAt:now},update:{}});
   }
 }

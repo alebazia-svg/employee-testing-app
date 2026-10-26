@@ -3,9 +3,15 @@ import { prisma } from '@/lib/prisma';
 import { buildDateRange, getMoscowDateKey } from '@/lib/workday';
 import { buildScheduleMonthRange } from '@/lib/workday-schedule';
 import { serializeEmployeeVacation } from '@/lib/employee-vacation';
+import { scheduleWeekAllowsDate, scheduleWeekStart, shiftScheduleDate } from './schedule-week-reminder';
 
-export function requestedDates(monthKey?: string | null) {
-  if (!monthKey) return { monthKey: null, dates: buildDateRange(getMoscowDateKey(), 31) };
+export function requestedDates(monthKey?: string | null, weekStart?: string | null, today = getMoscowDateKey()) {
+  if (weekStart !== undefined && weekStart !== null) {
+    if (monthKey || !scheduleWeekAllowsDate(weekStart, today, today)) return null;
+    const from = scheduleWeekStart(today), through = shiftScheduleDate(weekStart, 6);
+    return { monthKey: null, dates: buildDateRange(from, Math.round((Date.parse(through) - Date.parse(from)) / 86400000) + 1) };
+  }
+  if (!monthKey) return { monthKey: null, dates: buildDateRange(today, 31) };
   return buildScheduleMonthRange(monthKey);
 }
 

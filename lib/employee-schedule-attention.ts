@@ -4,6 +4,7 @@ import { activeScheduleNotices, scheduleNoticeKinds, scheduleQuestionIsActive } 
 import { getMoscowDateKey } from './workday';
 import { scheduleCoverage, schedulePersonName } from './work-schedule-coverage';
 import type { EmployeeAttentionItem } from './employee-attention';
+import { requiredScheduleWeekDates, scheduleWeekReminder, SCHEDULE_WEEK_KIND, schedulePlanningWeek } from './schedule-week-reminder';
 
 /** Reading a notice does not answer the request. Recheck the current plan. */
 export async function loadEmployeeScheduleAttention(userId: number): Promise<EmployeeAttentionItem[]> {
@@ -13,7 +14,7 @@ export async function loadEmployeeScheduleAttention(userId: number): Promise<Emp
   const today = getMoscowDateKey();
   const dated = [...(await activeScheduleNotices(prisma, notices, today)).values()].flat();
   if (!dated.length) return [];
-  const dates = [...new Set(dated.map(row => row.date))];
+  const dates = [...new Set([...dated.map(row => row.date), ...(notices.some(n=>n.kind===SCHEDULE_WEEK_KIND)?requiredScheduleWeekDates(today):[])])];
   const [entries, vacations] = await Promise.all([
     prisma.workScheduleEntry.findMany({ where: { department: user.department, date: { in: dates }, user: { role: 'EMPLOYEE', isActive: true, department: user.department } }, include: { user: { select: { name: true } } } }),
     prisma.employeeVacation.findMany({ where: { department: user.department, status: 'active', dateFrom: { lte: dates.slice().sort().at(-1)! }, dateTo: { gte: today } } }),
@@ -30,6 +31,16 @@ export function scheduleAttentionItems({ userId, department, today, dated, entri
   const result = new Map<string, EmployeeAttentionItem>();
   for (const { notice, date } of dated) {
     if (date < today) continue;
+    if (notice.kind === SCHEDULE_WEEK_KIND) {
+      const state = scheduleWeekReminder({today,weekStart:schedulePlanningWeek(today),entries:entries.filter(e=>e.userId===userId),vacations:vacations.filter(v=>v.userId===userId)});
+      if (state.active) result.set(`schedule-week:${state.weekStart}`, {
+        id:`schedule-week:${state.weekStart}`,kind:'schedule',title:state.title,
+        state:'action',status:state.qualifier || 'Остались незаполненные дни',priority:3,date:state.missing[0],
+        detail:state.body,scheduleAction:'week',scheduleDate:state.missing[0],scheduleWeekStart:state.weekStart,
+        notificationIds:notice.readAt?[]:[notice.id],
+      });
+      continue;
+    }
     const vacationIds = new Set(vacations.filter(row => row.dateFrom <= date && row.dateTo >= date).map(row => row.userId));
     const day = entries.filter(row => row.date === date);
     const own = day.find(row => row.userId === userId);

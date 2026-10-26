@@ -5,7 +5,7 @@ export type EmployeeAttentionItem = {
   state: 'action' | 'waiting'; status: string; priority: number; date: string;
   detail: string; closingScope?: 'encashment' | 'closing'; facts?: Array<[string, string]>; reply?: string; replyAuthor?: { name: string; at: string }; shared?: boolean;
   notificationIds?: number[];
-  scheduleNoticeId?: number; scheduleExpectedStatus?: 'off' | null; scheduleDate?: string; scheduleAction?: 'fill' | 'replacement';
+  scheduleWeekStart?: string; scheduleNoticeId?: number; scheduleExpectedStatus?: 'off' | null; scheduleDate?: string; scheduleAction?: 'fill' | 'replacement' | 'week';
   endpoint?: string; actions?: Array<{ label: string; action: string }>;
 };
 export function orderEmployeeAttention(items: EmployeeAttentionItem[]) {
